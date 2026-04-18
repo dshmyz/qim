@@ -97,7 +97,7 @@ const getAvatarUrl = computed(() => {
 })
 </script>
 
-<style>
+<style scoped>
 .user-profile-modal {
   position: fixed;
   top: 0;
