@@ -1,0 +1,314 @@
+/* 小程序模态框样式 */
+.mini-app-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.mini-app-modal-content {
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.mini-app-modal-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mini-app-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+.mini-app-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mini-app-modal-body {
+  padding: 20px;
+}
+.mini-app-modal-icon {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.mini-app-modal-icon img {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+}
+.mini-app-modal-description {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+.mini-app-modal-content-area {
+  background: var(--content-bg);
+  padding: 16px;
+  border-radius: 8px;
+}
+.mini-app-modal-content-area h3 {
+  margin-top: 0;
+  color: var(--text-color);
+}
+.mini-app-modal-content-area p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.mini-app-modal-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+.mini-app-modal-btn {
+  padding: 8px 16px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 计算器样式 */
+.calculator-app {
+  max-width: 350px;
+}
+.calculator-container {
+  width: 100%;
+}
+.calculator-display {
+  background: var(--content-bg);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.calculator-result {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-color);
+  text-align: right;
+  margin-bottom: 8px;
+}
+.calculator-input {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: right;
+  min-height: 18px;
+}
+.calculator-buttons {
+  display: grid;
+  grid-gap: 8px;
+}
+.calculator-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: 8px;
+}
+.calculator-btn {
+  padding: 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.calculator-btn:hover {
+  opacity: 0.8;
+}
+.calculator-btn-number {
+  background: var(--content-bg);
+  color: var(--text-color);
+}
+.calculator-btn-operator {
+  background: var(--primary-color);
+  color: white;
+}
+.calculator-btn-clear {
+  background: #ff6b6b;
+  color: white;
+}
+.calculator-btn-equals {
+  background: #4ecdc4;
+  color: white;
+  grid-column: span 2;
+}
+
+/* 记事本样式 */
+.notepad-app {
+  max-width: 500px;
+}
+.notepad-container {
+  width: 100%;
+}
+.notepad-title {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--content-bg);
+  color: var(--text-color);
+}
+.notepad-content {
+  width: 100%;
+  height: 200px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  resize: vertical;
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-family: inherit;
+}
+.notepad-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.notepad-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.notepad-btn:first-child {
+  background: var(--primary-color);
+  color: white;
+}
+.notepad-btn:last-child {
+  background: var(--content-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+/* 密码生成器样式 */
+.password-generator-app {
+  max-width: 400px;
+}
+.password-result {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.password-result-input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--content-bg);
+  color: var(--text-color);
+}
+.password-copy-btn {
+  padding: 0 16px;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+}
+.password-options {
+  margin-bottom: 20px;
+}
+.password-option {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.password-option label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-color);
+}
+.password-option input[type="range"] {
+  flex: 1;
+}
+.password-option span {
+  width: 30px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+.generate-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* 待办事项样式 */
+.todo-app {
+  max-width: 400px;
+}
+.todo-input-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.todo-input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--content-bg);
+  color: var(--text-color);
+}
+.add-todo-btn {
+  padding: 0 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+}
+.todo-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+.todo-item.completed .todo-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+.todo-text {
+  flex: 1;
+  color: var(--text-color);
+}
+.todo-delete {
+  background: none;
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  font-size: 16px;
+}
