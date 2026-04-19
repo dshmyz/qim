@@ -115,7 +115,7 @@ const hasAdminPermission = computed(() => {
 const loadChannels = async () => {
   loading.value = true
   try {
-    const response = await fetch('${serverUrl.value}/api/v1/channels', {
+    const response = await fetch(`${serverUrl.value}/api/v1/channels`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
         'Content-Type': 'application/json'
@@ -136,7 +136,7 @@ const createChannel = async () => {
   if (!createChannelForm.value.name) return
   
   try {
-    const response = await fetch('${serverUrl.value}/api/v1/channels', {
+    const response = await fetch(`${serverUrl.value}/api/v1/channels`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,

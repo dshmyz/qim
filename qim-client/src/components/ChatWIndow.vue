@@ -287,23 +287,23 @@
   
   <!-- 成员上下文菜单 -->
   <div v-if="showMemberContextMenuFlag" class="context-menu" :style="{ left: memberContextMenuPosition.x + 'px', top: memberContextMenuPosition.y + 'px' }">
-    <div v-if="canRemoveMember" class="context-menu-item" @click="removeMemberFromGroup">
+    <div v-if="canRemoveMember" class="context-menu-item" @click.stop="removeMemberFromGroup">
       <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
       <span>移除群聊</span>
     </div>
-    <div class="context-menu-item" @click="viewMemberInfo">
+    <div class="context-menu-item" @click.stop="viewMemberInfo">
       <span class="context-menu-icon"><i class="fas fa-user"></i></span>
       <span>查看资料</span>
     </div>
-    <div v-if="canSetAdmin" class="context-menu-item" @click="setAsAdmin">
+    <div v-if="canSetAdmin" class="context-menu-item" @click.stop="setAsAdmin">
       <span class="context-menu-icon"><i class="fas fa-star"></i></span>
       <span>{{ isSelectedMemberAdmin ? '取消管理员' : '设为管理员' }}</span>
     </div>
-    <div v-if="canTransferOwner" class="context-menu-item" @click="transferOwner">
+    <div v-if="canTransferOwner" class="context-menu-item" @click.stop="transferOwner">
       <span class="context-menu-icon"><i class="fas fa-crown"></i></span>
       <span>转让群主</span>
     </div>
-    <div class="context-menu-item" @click="sendPrivateMessage">
+    <div class="context-menu-item" @click.stop="sendPrivateMessage">
       <span class="context-menu-icon"><i class="fas fa-comment"></i></span>
       <span>发起私聊</span>
     </div>
@@ -638,6 +638,7 @@ import MessageManager from './MessageManager.vue'
 import { openMiniApp } from '../utils/miniAppUtils'
 import { API_BASE_URL } from '../config'
 import { generateAvatar } from '../utils/avatar'
+import { getCurrentUser } from '../utils/user'
 import '../styles/mini-app.css'
 
 // 服务器地址
@@ -1728,8 +1729,19 @@ const startPrivateChat = (member: any) => {
 
 // 计算当前用户在群中的角色
 const currentUserRole = computed(() => {
-  if (!props.conversation?.members || !props.currentUser) return 'member'
-  const member = props.conversation.members.find((m: any) => m.id === props.currentUser.id)
+  console.log('currentUserRole22', props.currentUser)
+  var currentUser = props.currentUser
+  if (!currentUser){
+    currentUser = getCurrentUser()
+  }
+    console.log('currentUserRole33', currentUser)
+  if (!props.conversation?.members || !currentUser) return 'member'
+  const member = props.conversation.members.find((m: any) => {
+    console.log('m.id', m.id, 'currentUser.id', currentUser.id, 'm.id === currentUser.id', String(m.id) === String(currentUser.id))
+    return String(m.id) === String(currentUser.id)
+  })
+   console.log('currentUserRole44', props.conversation.members)
+  console.log('currentUserRole44', member)
   return member?.role || 'member'
 })
 
@@ -1766,9 +1778,9 @@ const removeMemberFromGroup = async () => {
     closeMemberContextMenu()
     return
   }
-  
   openConfirmDialog('确认移除', `确定要移除成员 ${selectedMember.value.name} 吗？`, async () => {
     try {
+      console.log("dddddddddd",selectedMember.value)
       const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${selectedMember.value.id}`, {
         method: 'DELETE',
         headers: {
@@ -1785,9 +1797,10 @@ const removeMemberFromGroup = async () => {
     } catch (error: any) {
       console.error('移除成员失败:', error)
       ElMessage.error('移除成员失败: ' + error.message)
+    } finally {
+      closeMemberContextMenu()
     }
   })
-  closeMemberContextMenu()
 }
 
 const viewMemberInfo = () => {
@@ -2110,6 +2123,7 @@ const addToNote = () => {
 // 截图相关状态
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
+const currentUser = ref(getCurrentUser())
 
 // 检测是否在Electron环境中
 const isElectron = computed(() => {
@@ -2894,11 +2908,31 @@ const saveGroupInfo = async () => {
         props.updateConversation({ ...props.conversation, name: editGroupName.value })
       }
       
-      // 发送群名称修改系统消息
+      // 发送群名称修改系统消息到后台服务器
+      const currentUser = getCurrentUser()
+      const currentUserName = currentUser?.name || currentUser?.nickname || '未知用户'
+      const systemMessageContent = `${currentUserName} 修改群名称为 ${editGroupName.value}`
+      
+      try {
+        await request(`/api/v1/conversations/${props.conversation.id}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'system',
+            content: systemMessageContent
+          })
+        })
+      } catch (error) {
+        console.error('发送系统消息失败:', error)
+      }
+      
+      // 本地也显示系统消息
       const systemMessage = {
         id: `system_${Date.now()}`,
         type: 'system',
-        content: `${props.currentUser.name} 修改群名称为 ${editGroupName.value}`,
+        content: systemMessageContent,
         timestamp: Date.now(),
         sender: {
           id: 'system',
@@ -2909,17 +2943,25 @@ const saveGroupInfo = async () => {
         isRead: true
       }
       
-      // 这里可以通过emit将系统消息传递给父组件，或者直接添加到本地消息列表
-      // 暂时直接添加到本地消息列表
+      // 添加到本地消息列表
       if (Array.isArray(props.messages)) {
         props.messages.push(systemMessage)
       }
     } else {
       ElMessage.error(response.message || '更新群名称失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新群名称失败:', error)
-    ElMessage.error('网络错误，更新群名称失败')
+    // 根据错误状态码给出更具体的提示
+    if (error?.response?.status === 403) {
+      ElMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
+    } else if (error?.response?.status === 404) {
+      ElMessage.error('群聊不存在或已被解散')
+    } else if (error?.response?.status === 401) {
+      ElMessage.error('登录已过期，请重新登录')
+    } else {
+      ElMessage.error('网络错误，更新群名称失败')
+    }
   }
   showEditGroupInfoModal.value = false
 }
@@ -2956,11 +2998,21 @@ const saveAnnouncement = async () => {
         props.updateConversation({ ...props.conversation, announcement: editAnnouncementContent.value })
       }
     } else {
+      console.log(response.message || '更新群公告失败')
       ElMessage.error(response.message || '更新群公告失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新群公告失败:', error)
-    ElMessage.error('网络错误，更新群公告失败')
+    // 根据错误状态码给出更具体的提示
+    if (error?.response?.status === 403) {
+      ElMessage.error('没有权限更新群公告，只有管理员和群主可以操作')
+    } else if (error?.response?.status === 404) {
+      ElMessage.error('群公告不存在或已被删除')
+    } else if (error?.response?.status === 401) {
+      ElMessage.error('登录已过期，请重新登录')
+    } else {
+      ElMessage.error('网络错误，更新群公告失败')
+    }
   }
   showEditAnnouncementModal.value = false
 }

@@ -800,6 +800,11 @@ func GetConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convID := c.Param("id")
 
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
+
 	db := database.GetDB()
 	var conv model.Conversation
 	if err := db.Preload("Members").Preload("Members.User").First(&conv, convID).Error; err != nil {
@@ -821,6 +826,11 @@ func GetConversation(c *gin.Context) {
 func GetMessages(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convID := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
 
 	// 解析分页参数
 	pageStr := c.Query("page")
@@ -1020,6 +1030,11 @@ func GetMessagesByFilter(c *gin.Context) {
 func SendMessage(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convID := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
 
 	var req struct {
 		Type            string                 `json:"type" binding:"required"`
@@ -1349,6 +1364,11 @@ func MarkConversationAsRead(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
 	// 转换会话ID为uint
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
@@ -1477,6 +1497,11 @@ func generateToken(userID uint, username string) string {
 func AddMemberToGroup(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convID := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
 
 	var req struct {
 		MemberIDs []uint `json:"member_ids" binding:"required"`
@@ -1667,6 +1692,11 @@ func ExitGroup(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
 	// 转换会话ID为uint
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
@@ -1726,6 +1756,11 @@ func RemoveMemberFromGroup(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 	memberIDStr := c.Param("user_id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
 
 	// 转换会话ID和成员ID为uint
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
@@ -2838,6 +2873,11 @@ func PinConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
 	// 转换会话ID为uint
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
@@ -2902,6 +2942,11 @@ func PinConversation(c *gin.Context) {
 func SetConversationMute(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
 
 	// 转换会话ID为uint
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
@@ -3791,4 +3836,230 @@ func TransferOwner(c *gin.Context) {
 		"message": "群主转让成功",
 		"data":    targetMember,
 	})
+}
+
+// 生成短链接
+func CreateShortLink(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req struct {
+		OriginalURL string `json:"original_url" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 生成短链接码
+	code := generateShortCode()
+
+	// 创建短链接记录
+	shortLink := model.ShortLink{
+		UserID:      userID.(uint),
+		OriginalURL: req.OriginalURL,
+		Code:        code,
+		VisitCount:  0,
+	}
+
+	if err := db.Create(&shortLink).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成短链接失败"})
+		return
+	}
+
+	// 构建短链接URL
+	shortURL := "http://" + c.Request.Host + "/" + code
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"id":           shortLink.ID,
+			"original_url": shortLink.OriginalURL,
+			"short_url":    shortURL,
+			"code":         shortLink.Code,
+			"visit_count":  shortLink.VisitCount,
+			"created_at":   shortLink.CreatedAt,
+		},
+	})
+}
+
+// 获取用户的短链接列表
+func GetShortLinks(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	db := database.GetDB()
+
+	var shortLinks []model.ShortLink
+	if err := db.Where("user_id = ?", userID).Order("created_at DESC").Find(&shortLinks).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取短链接列表失败"})
+		return
+	}
+
+	// 构建响应数据
+	response := make([]gin.H, len(shortLinks))
+	for i, link := range shortLinks {
+		shortURL := "http://" + c.Request.Host + "/" + link.Code
+		response[i] = gin.H{
+			"id":           link.ID,
+			"original_url": link.OriginalURL,
+			"short_url":    shortURL,
+			"code":         link.Code,
+			"visit_count":  link.VisitCount,
+			"created_at":   link.CreatedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": response,
+	})
+}
+
+// 重定向短链接到原始URL
+func RedirectShortLink(c *gin.Context) {
+	code := c.Param("code")
+
+	db := database.GetDB()
+
+	// 查询短链接
+	var shortLink model.ShortLink
+	if err := db.Where("code = ?", code).First(&shortLink).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "短链接不存在"})
+		return
+	}
+
+	// 增加访问次数
+	db.Model(&shortLink).Update("visit_count", shortLink.VisitCount+1)
+
+	// 重定向到原始URL
+	c.Redirect(http.StatusFound, shortLink.OriginalURL)
+}
+
+// 生成短链接码
+func generateShortCode() string {
+	// 使用Base62编码生成短链接码
+	const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const codeLength = 6
+
+	code := make([]byte, codeLength)
+	for i := range code {
+		code[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(code)
+}
+
+// 删除短链接
+func DeleteShortLink(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	linkIDStr := c.Param("id")
+
+	linkID, err := strconv.ParseUint(linkIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的短链接ID"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 检查短链接是否存在且属于当前用户
+	var shortLink model.ShortLink
+	if err := db.Where("id = ? AND user_id = ?", linkID, userID).First(&shortLink).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "短链接不存在或无权操作"})
+		return
+	}
+
+	// 删除短链接
+	if err := db.Delete(&shortLink).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除短链接失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "短链接删除成功",
+	})
+}
+
+// 更新群公告
+func UpdateAnnouncement(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
+	// 转换会话ID为uint
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		return
+	}
+
+	// 解析请求体
+	var req struct {
+		Announcement string `json:"announcement"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 验证会话是否存在
+	var conv model.Conversation
+	if err := db.First(&conv, uint(convID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	// 验证是否为群聊
+	if conv.Type != "group" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊设置公告"})
+		return
+	}
+
+	// 验证当前用户是否为群成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		return
+	}
+
+	// 验证当前用户是否为群主或管理员
+	if member.Role != "owner" && member.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以设置群公告"})
+		return
+	}
+
+	// 更新群公告
+	conv.Announcement = req.Announcement
+	if err := db.Save(&conv).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新群公告失败"})
+		return
+	}
+
+	// 发送WebSocket通知给群成员
+	if ws.GlobalHub != nil {
+		// 构建公告更新通知
+		announcementMsg := ws.WSMessage{
+			Type: "group_announcement_updated",
+			Data: gin.H{
+				"conversation_id": conv.ID,
+				"announcement":    req.Announcement,
+			},
+		}
+		jsonMsg, _ := json.Marshal(announcementMsg)
+
+		// 发送给会话中的所有成员
+		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": conv})
 }
