@@ -61,6 +61,7 @@ func MigrateDB(db *gorm.DB) {
 		&model.Channel{},
 		&model.ChannelSubscriber{},
 		&model.ChannelMessage{},
+		&model.ShortLink{},
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}

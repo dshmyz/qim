@@ -26,15 +26,15 @@ type User struct {
 
 // 部门
 type Department struct {
-	ID          uint           `json:"id" gorm:"primarykey"`
-	Name        string         `json:"name" gorm:"size:100;not null"`
+	ID             uint           `json:"id" gorm:"primarykey"`
+	Name           string         `json:"name" gorm:"size:100;not null"`
 	ParentID       *uint          `json:"parent_id"`
-	Level       int            `json:"level" gorm:"not null"`
-	Path        string         `json:"path" gorm:"size:500"`
-	SortOrder   int            `json:"sort_order" gorm:"default:0"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	Level          int            `json:"level" gorm:"not null"`
+	Path           string         `json:"path" gorm:"size:500"`
+	SortOrder      int            `json:"sort_order" gorm:"default:0"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 	SubDepartments []Department   `json:"subDepartments,omitempty" gorm:"foreignkey:ParentID"`
 	Employees      []User         `json:"employees,omitempty" gorm:"many2many:department_employees"`
 }
@@ -58,6 +58,7 @@ type Conversation struct {
 	Name          string               `json:"name" gorm:"size:200"`
 	Avatar        string               `json:"avatar" gorm:"size:500"`
 	CreatorID     uint                 `json:"creator_id"`
+	Announcement  string               `json:"announcement" gorm:"type:text"`
 	LastMessageID *uint                `json:"last_message_id"`
 	LastMessageAt *time.Time           `json:"last_message_at"`
 	CreatedAt     time.Time            `json:"created_at"`
@@ -304,4 +305,17 @@ type ChannelMessage struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 	Channel   Channel        `json:"channel,omitempty" gorm:"foreignkey:ChannelID"`
 	Sender    User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
+}
+
+// 短链接
+type ShortLink struct {
+	ID          uint           `json:"id" gorm:"primarykey"`
+	UserID      uint           `json:"user_id" gorm:"not null;index"`
+	OriginalURL string         `json:"original_url" gorm:"type:text;not null"`
+	Code        string         `json:"code" gorm:"size:20;uniqueIndex;not null"`
+	VisitCount  int            `json:"visit_count" gorm:"default:0"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	User        User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }

@@ -71,6 +71,13 @@ const miniApps = ref([
     icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=password',
     description: '生成强密码',
     path: '/password-generator'
+  },
+  {
+    id: 'short-link',
+    name: '短链接生成',
+    icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=shortlink',
+    description: '将长URL转换为短URL',
+    path: '/short-link'
   }
 ])
 

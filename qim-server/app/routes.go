@@ -103,6 +103,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/conversations/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
 			authed.POST("/conversations/:id/members/:user_id/transfer-owner", handler.TransferOwner)
+			// 更新群公告
+			authed.PUT("/conversations/:id/announcement", handler.UpdateAnnouncement)
 
 			// WebSocket
 			authed.GET("/ws", func(c *gin.Context) {
@@ -175,6 +177,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/notifications", handler.GetNotifications)
 			authed.PUT("/notifications/:id/read", handler.MarkNotificationAsRead)
 			authed.PUT("/notifications/read-all", handler.MarkAllNotificationsAsRead)
+
+			// 短链接管理
+			authed.POST("/shortlinks", handler.CreateShortLink)
+			authed.GET("/shortlinks", handler.GetShortLinks)
 		}
 	}
+
+	// 短链接访问路由（不需要认证）
+	r.GET("/:code", handler.RedirectShortLink)
 }

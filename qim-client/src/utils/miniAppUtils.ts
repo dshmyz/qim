@@ -149,6 +149,32 @@ export const showMiniAppModal = (miniApp: any) => {
         </div>
       </div>
     `;
+  } else if (miniApp.id === 'short-link') {
+    // 短链接生成小程序
+    content = `
+      <div class="mini-app-modal-content short-link-app">
+        <div class="mini-app-modal-header">
+          <div class="mini-app-modal-title">${miniApp.name}</div>
+          <button class="mini-app-modal-close">×</button>
+        </div>
+        <div class="mini-app-modal-body">
+          <div class="short-link-container">
+            <div class="short-link-input-section">
+              <label for="original-url">原始URL</label>
+              <textarea id="original-url" class="original-url-input" placeholder="请输入要缩短的URL"></textarea>
+            </div>
+            <button id="generate-short-link" class="generate-btn">生成短链接</button>
+            <div id="short-link-result" class="short-link-result" style="display: none;">
+              <label>短链接</label>
+              <div class="short-link-output">
+                <input type="text" id="short-url" class="short-url-input" readonly />
+                <button id="copy-short-link" class="copy-btn">复制</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   } else {
     // 其他小程序
     content = `
@@ -524,6 +550,75 @@ export const showMiniAppModal = (miniApp: any) => {
     
     // 初始加载
     loadTodos();
+  } else if (miniApp.id === 'short-link') {
+    // 短链接生成小程序功能
+    const originalUrlInput = document.getElementById('original-url') as HTMLTextAreaElement;
+    const generateBtn = document.getElementById('generate-short-link');
+    const shortLinkResult = document.getElementById('short-link-result');
+    const shortUrlInput = document.getElementById('short-url') as HTMLInputElement;
+    const copyBtn = document.getElementById('copy-short-link');
+
+    // 生成短链接
+    const generateShortLink = async () => {
+      const originalUrl = originalUrlInput?.value.trim();
+      if (!originalUrl) {
+        ElMessage.warning('请输入要缩短的URL');
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem('token');
+        const serverUrl = localStorage.getItem('serverUrl') || 'http://localhost:8080';
+        const response = await fetch(`${serverUrl}/api/v1/shortlinks`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ original_url: originalUrl })
+        });
+
+        if (!response.ok) {
+          throw new Error('生成短链接失败');
+        }
+
+        const data = await response.json();
+        if (data.code === 0 && data.data) {
+          if (shortUrlInput) {
+            shortUrlInput.value = data.data.short_url;
+          }
+          if (shortLinkResult) {
+            shortLinkResult.style.display = 'block';
+          }
+          ElMessage.success('短链接生成成功');
+        }
+      } catch (error) {
+        console.error('生成短链接失败:', error);
+        ElMessage.error('生成短链接失败');
+      }
+    };
+
+    // 绑定生成按钮
+    if (generateBtn) {
+      generateBtn.addEventListener('click', generateShortLink);
+    }
+
+    // 绑定复制按钮
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const shortUrl = shortUrlInput?.value;
+        if (shortUrl) {
+          navigator.clipboard.writeText(shortUrl)
+            .then(() => {
+              ElMessage.success('短链接已复制到剪贴板');
+            })
+            .catch(err => {
+              console.error('复制失败:', err);
+              ElMessage.error('复制失败，请手动复制');
+            });
+        }
+      });
+    }
   }
 };
 

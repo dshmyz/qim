@@ -139,36 +139,57 @@ func InitTestData(db *gorm.DB) {
 		users = []model.User{
 			{
 				Username:     "test",
-				PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 123456
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "测试用户",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=test",
 				Status:       "online",
 			},
 			{
 				Username:     "user1",
-				PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 123456
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户一",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user1",
 				Status:       "online",
 			},
 			{
 				Username:     "user2",
-				PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 123456
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户二",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user2",
 				Status:       "online",
 			},
 			{
 				Username:     "user3",
-				PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 123456
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户三",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user3",
 				Status:       "online",
 			},
+			{
+				Username:     "user4",
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
+				Nickname:     "用户四",
+				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user4",
+				Status:       "online",
+			},
+			{
+				Username:     "user5",
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
+				Nickname:     "用户五",
+				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user5",
+				Status:       "online",
+			},
+			{
+				Username:     "user6",
+				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
+				Nickname:     "用户六",
+				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user6",
+				Status:       "online",
+			},
 		}
 
-		for _, user := range users {
-			db.Create(&user)
+		for i := range users {
+			db.Create(&users[i])
 		}
 	} else {
 		// 从数据库中查询用户数据
@@ -231,6 +252,9 @@ func InitTestData(db *gorm.DB) {
 			{DepartmentID: departments[2].ID, UserID: users[1].ID},
 			{DepartmentID: departments[3].ID, UserID: users[2].ID},
 			{DepartmentID: departments[1].ID, UserID: users[3].ID},
+			{DepartmentID: departments[2].ID, UserID: users[4].ID},
+			{DepartmentID: departments[3].ID, UserID: users[5].ID},
+			{DepartmentID: departments[1].ID, UserID: users[6].ID},
 		}
 
 		for _, de := range departmentEmployees {
@@ -277,6 +301,9 @@ func InitTestData(db *gorm.DB) {
 			{ConversationID: conversation3.ID, UserID: users[1].ID, Role: "member"},
 			{ConversationID: conversation3.ID, UserID: users[2].ID, Role: "member"},
 			{ConversationID: conversation3.ID, UserID: users[3].ID, Role: "member"},
+			{ConversationID: conversation3.ID, UserID: users[4].ID, Role: "member"},
+			{ConversationID: conversation3.ID, UserID: users[5].ID, Role: "member"},
+			{ConversationID: conversation3.ID, UserID: users[6].ID, Role: "member"},
 		}
 
 		for _, cm := range conversationMembers {
