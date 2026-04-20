@@ -701,6 +701,26 @@ func CreateSingleConversation(c *gin.Context) {
 		return
 	}
 
+	// 检查是否在尝试与自己创建会话
+	if userID.(uint) == req.UserID {
+		// 创建一个与自己的单聊会话
+		var targetUser model.User
+		db.First(&targetUser, req.UserID)
+
+		conv := model.Conversation{
+			Type:   "single",
+			Name:   targetUser.Nickname + "（自己）",
+			Avatar: targetUser.Avatar,
+		}
+		db.Create(&conv)
+
+		// 添加成员（只有自己一个成员）
+		db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
+
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": conv})
+		return
+	}
+
 	// 创建新会话
 	var targetUser model.User
 	db.First(&targetUser, req.UserID)
@@ -893,14 +913,9 @@ func GetMessages(c *gin.Context) {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
-	// 处理分享数据，将JSON字符串转换回对象
+	// 处理分享数据和文件数据，将JSON字符串转换回对象
 	var responseMessages []gin.H
 	for _, msg := range messages {
-		var shareData map[string]interface{}
-		// 处理新格式：从content字段读取
-		if msg.Type == "share" && msg.Content != "" {
-			json.Unmarshal([]byte(msg.Content), &shareData)
-		}
 
 		responseMsg := gin.H{
 			"id":                msg.ID,
@@ -908,8 +923,6 @@ func GetMessages(c *gin.Context) {
 			"sender_id":         msg.SenderID,
 			"type":              msg.Type,
 			"content":           msg.Content,
-			"file_name":         msg.FileName,
-			"file_size":         msg.FileSize,
 			"quoted_message_id": msg.QuotedMessageID,
 			"is_recalled":       msg.IsRecalled,
 			"is_read":           msg.IsRead,
@@ -917,7 +930,6 @@ func GetMessages(c *gin.Context) {
 			"created_at":        msg.CreatedAt,
 			"sender":            msg.Sender,
 			"quoted_message":    msg.QuotedMessage,
-			"share_data":        shareData,
 		}
 		responseMessages = append(responseMessages, responseMsg)
 	}
@@ -1040,8 +1052,6 @@ func SendMessage(c *gin.Context) {
 		Type            string                 `json:"type" binding:"required"`
 		Content         string                 `json:"content" binding:"required"`
 		QuotedMessageID *uint                  `json:"quoted_message_id"`
-		FileSize        int64                  `json:"file_size"`
-		FileName        string                 `json:"file_name"`
 		ShareData       map[string]interface{} `json:"share_data"`
 	}
 
@@ -1065,15 +1075,13 @@ func SendMessage(c *gin.Context) {
 	// 处理分享数据
 	content := req.Content
 	// 对于分享消息，content字段已经包含了JSON格式的分享数据
-	// 不需要额外处理
+	// 对于文件消息，content字段已经包含了JSON格式的文件数据
 
 	msg := model.Message{
 		ConversationID:  uint(convIDUint),
 		SenderID:        userID.(uint),
 		Type:            req.Type,
 		Content:         content,
-		FileName:        req.FileName,
-		FileSize:        req.FileSize,
 		QuotedMessageID: req.QuotedMessageID,
 		IsRead:          false,
 	}
@@ -1087,12 +1095,6 @@ func SendMessage(c *gin.Context) {
 		db.Model(&msg.QuotedMessage).Association("Sender").Find(&msg.QuotedMessage.Sender)
 	}
 
-	// 处理分享数据，将JSON字符串转换回对象
-	var shareData map[string]interface{}
-	if msg.Type == "share" && msg.Content != "" {
-		json.Unmarshal([]byte(msg.Content), &shareData)
-	}
-
 	// 构建响应数据
 	responseData := gin.H{
 		"id":                msg.ID,
@@ -1100,8 +1102,6 @@ func SendMessage(c *gin.Context) {
 		"sender_id":         msg.SenderID,
 		"type":              msg.Type,
 		"content":           msg.Content,
-		"file_name":         msg.FileName,
-		"file_size":         msg.FileSize,
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
@@ -1109,7 +1109,6 @@ func SendMessage(c *gin.Context) {
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
-		"share_data":        shareData,
 	}
 
 	// 更新会话最后消息
@@ -1622,26 +1621,99 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 	}
 
-	// 发送 group_member_joined 事件给群内所有成员
-	if ws.GlobalHub != nil {
+	// 创建系统消息
+	if len(addedMembers) > 0 {
+		// 获取添加成员的名称列表
+		var memberNames []string
 		for _, member := range addedMembers {
-			// 构建成员加入事件
-			joinMsg := ws.WSMessage{
-				Type: "group_member_joined",
-				Data: gin.H{
-					"conversation_id": conv.ID,
-					"member": gin.H{
-						"id":       member.ID,
-						"nickname": member.Nickname,
-						"username": member.Username,
-						"avatar":   member.Avatar,
-					},
-				},
-			}
-			jsonMsg, _ := json.Marshal(joinMsg)
+			memberNames = append(memberNames, member.Nickname)
+		}
 
-			// 发送给会话中的所有成员
-			ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
+		// 获取当前用户信息
+		var currentUser model.User
+		if err := db.First(&currentUser, userID).Error; err != nil {
+			// 记录错误但不影响主流程
+			log.Printf("获取用户信息失败: %v", err)
+		}
+
+		// 构建系统消息内容
+		systemMessageContent := fmt.Sprintf("%s 添加了新成员 %s", currentUser.Nickname, strings.Join(memberNames, "、"))
+		if currentUser.Nickname == "" {
+			systemMessageContent = fmt.Sprintf("%s 添加了新成员 %s", currentUser.Username, strings.Join(memberNames, "、"))
+		}
+
+		// 创建系统消息
+		systemMsg := model.Message{
+			ConversationID: conv.ID,
+			SenderID:       0, // 0表示系统
+			Type:           "system",
+			Content:        systemMessageContent,
+			IsRead:         true,
+		}
+		if err := db.Create(&systemMsg).Error; err != nil {
+			// 记录错误但不影响主流程
+			log.Printf("创建系统消息失败: %v", err)
+		}
+
+		// 预加载发送者信息（系统）
+		systemUser := model.User{
+			ID:       0,
+			Username: "system",
+			Nickname: "系统",
+			Avatar:   "",
+		}
+		systemMsg.Sender = systemUser
+
+		// 更新会话最后消息
+		now := time.Now()
+		conv.LastMessageID = &systemMsg.ID
+		conv.LastMessageAt = &now
+		db.Save(&conv)
+
+		// 构建响应数据
+		responseData := gin.H{
+			"id":                systemMsg.ID,
+			"conversation_id":   systemMsg.ConversationID,
+			"sender_id":         systemMsg.SenderID,
+			"type":              systemMsg.Type,
+			"content":           systemMsg.Content,
+			"quoted_message_id": systemMsg.QuotedMessageID,
+			"is_recalled":       systemMsg.IsRecalled,
+			"is_read":           systemMsg.IsRead,
+			"recalled_at":       systemMsg.RecalledAt,
+			"created_at":        systemMsg.CreatedAt,
+			"sender":            systemMsg.Sender,
+		}
+
+		// 发送 group_member_joined 事件给群内所有成员
+		if ws.GlobalHub != nil {
+			for _, member := range addedMembers {
+				// 构建成员加入事件
+				joinMsg := ws.WSMessage{
+					Type: "group_member_joined",
+					Data: gin.H{
+						"conversation_id": conv.ID,
+						"member": gin.H{
+							"id":       member.ID,
+							"nickname": member.Nickname,
+							"username": member.Username,
+							"avatar":   member.Avatar,
+						},
+					},
+				}
+				jsonMsg, _ := json.Marshal(joinMsg)
+
+				// 发送给会话中的所有成员
+				ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
+			}
+
+			// 推送系统消息通知
+			newMsg := ws.WSMessage{
+				Type: "new_message",
+				Data: responseData,
+			}
+			newMsgJson, _ := json.Marshal(newMsg)
+			ws.GlobalHub.SendToConversation(uint(convIDUint), 0, newMsgJson)
 		}
 	}
 
@@ -1854,6 +1926,103 @@ func GetBots(c *gin.Context) {
 		"code": 0,
 		"data": bots,
 	})
+}
+
+// 搜索用户和群组
+func SearchUsers(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	query := c.Query("q")
+
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "搜索关键词不能为空"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 搜索用户
+	var users []model.User
+	db.Where("nickname LIKE ? OR username LIKE ?", "%"+query+"%", "%"+query+"%").Find(&users)
+
+	var responseUsers []gin.H
+	for _, user := range users {
+		// 排除当前用户自己
+		if user.ID != userID.(uint) {
+			responseUsers = append(responseUsers, gin.H{
+				"id":       user.ID,
+				"type":     "user",
+				"name":     user.Nickname,
+				"username": user.Username,
+				"avatar":   user.Avatar,
+				"status":   user.Status,
+			})
+		}
+	}
+
+	// 搜索群聊和讨论组
+	var conversations []model.Conversation
+	db.Where("name LIKE ? AND (type = ? OR type = ?) AND deleted_at IS NULL", "%"+query+"%", "group", "discussion").Find(&conversations)
+
+	for _, conv := range conversations {
+		// 检查当前用户是否是群聊成员
+		var member model.ConversationMember
+		isMember := false
+		if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err == nil {
+			isMember = true
+		}
+
+		responseUsers = append(responseUsers, gin.H{
+			"id":       conv.ID,
+			"type":     conv.Type,
+			"name":     conv.Name,
+			"avatar":   conv.Avatar,
+			"isMember": isMember,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": responseUsers,
+	})
+}
+
+// BroadcastMessage 处理节点间广播消息
+func BroadcastMessage(c *gin.Context) {
+	// 从请求体中获取消息
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		return
+	}
+
+	// 广播消息给本地客户端
+	if ws.GlobalHub != nil {
+		ws.GlobalHub.Broadcast <- []byte(req.Message)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "消息广播成功"})
+}
+
+// SendToUserMessage 处理节点间发送用户特定消息
+func SendToUserMessage(c *gin.Context) {
+	// 从请求体中获取用户 ID 和消息
+	var req struct {
+		UserID  uint   `json:"user_id"`
+		Message string `json:"message"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		return
+	}
+
+	// 发送消息给本地用户
+	if ws.GlobalHub != nil {
+		ws.GlobalHub.SendToUser(req.UserID, []byte(req.Message))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "消息发送成功"})
 }
 
 // 处理机器人消息
@@ -3937,6 +4106,104 @@ func RedirectShortLink(c *gin.Context) {
 	c.Redirect(http.StatusFound, shortLink.OriginalURL)
 }
 
+// 添加用户角色
+func AddUserRole(c *gin.Context) {
+	userIDStr := c.Param("id")
+	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		return
+	}
+
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 验证目标用户是否存在
+	var targetUser model.User
+	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 检查角色是否已存在
+	var existingRole model.UserRole
+	result := db.Where("user_id = ? AND role = ?", uint(targetUserID), req.Role).First(&existingRole)
+	if result.Error == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "角色已存在"})
+		return
+	}
+
+	// 创建新角色
+	userRole := model.UserRole{
+		UserID: uint(targetUserID),
+		Role:   req.Role,
+	}
+
+	if err := db.Create(&userRole).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "添加角色失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "角色添加成功",
+		"data":    userRole,
+	})
+}
+
+// 移除用户角色
+func RemoveUserRole(c *gin.Context) {
+	userIDStr := c.Param("id")
+	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		return
+	}
+
+	role := c.Param("role")
+	if role == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "角色不能为空"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 验证目标用户是否存在
+	var targetUser model.User
+	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 检查角色是否存在
+	var existingRole model.UserRole
+	result := db.Where("user_id = ? AND role = ?", uint(targetUserID), role).First(&existingRole)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "角色不存在"})
+		return
+	}
+
+	// 删除角色
+	if err := db.Delete(&existingRole).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "移除角色失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "角色移除成功",
+		"data":    existingRole,
+	})
+}
+
 // 生成短链接码
 func generateShortCode() string {
 	// 使用Base62编码生成短链接码
@@ -4019,9 +4286,9 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	// 验证是否为群聊
-	if conv.Type != "group" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊设置公告"})
+	// 验证是否为群聊或讨论组
+	if conv.Type != "group" && conv.Type != "discussion" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊或讨论组设置公告"})
 		return
 	}
 
@@ -4032,8 +4299,8 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	// 验证当前用户是否为群主或管理员
-	if member.Role != "owner" && member.Role != "admin" {
+	// 验证权限：群聊需要群主或管理员，讨论组所有成员都可以
+	if conv.Type == "group" && member.Role != "owner" && member.Role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以设置群公告"})
 		return
 	}
@@ -4043,6 +4310,62 @@ func UpdateAnnouncement(c *gin.Context) {
 	if err := db.Save(&conv).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新群公告失败"})
 		return
+	}
+
+	// 获取当前用户信息
+	var currentUser model.User
+	if err := db.First(&currentUser, userID).Error; err != nil {
+		// 记录错误但不影响主流程
+		log.Printf("获取用户信息失败: %v", err)
+	}
+
+	// 构建系统消息内容
+	systemMessageContent := fmt.Sprintf("%s 修改群公告", currentUser.Nickname)
+	if currentUser.Nickname == "" {
+		systemMessageContent = fmt.Sprintf("%s 修改群公告", currentUser.Username)
+	}
+
+	// 创建系统消息
+	systemMsg := model.Message{
+		ConversationID: conv.ID,
+		SenderID:       0, // 0表示系统
+		Type:           "system",
+		Content:        systemMessageContent,
+		IsRead:         true,
+	}
+	if err := db.Create(&systemMsg).Error; err != nil {
+		// 记录错误但不影响主流程
+		log.Printf("创建系统消息失败: %v", err)
+	}
+
+	// 预加载发送者信息（系统）
+	systemUser := model.User{
+		ID:       0,
+		Username: "system",
+		Nickname: "系统",
+		Avatar:   "",
+	}
+	systemMsg.Sender = systemUser
+
+	// 更新会话最后消息
+	now := time.Now()
+	conv.LastMessageID = &systemMsg.ID
+	conv.LastMessageAt = &now
+	db.Save(&conv)
+
+	// 构建响应数据
+	responseData := gin.H{
+		"id":                systemMsg.ID,
+		"conversation_id":   systemMsg.ConversationID,
+		"sender_id":         systemMsg.SenderID,
+		"type":              systemMsg.Type,
+		"content":           systemMsg.Content,
+		"quoted_message_id": systemMsg.QuotedMessageID,
+		"is_recalled":       systemMsg.IsRecalled,
+		"is_read":           systemMsg.IsRead,
+		"recalled_at":       systemMsg.RecalledAt,
+		"created_at":        systemMsg.CreatedAt,
+		"sender":            systemMsg.Sender,
 	}
 
 	// 发送WebSocket通知给群成员
@@ -4059,6 +4382,14 @@ func UpdateAnnouncement(c *gin.Context) {
 
 		// 发送给会话中的所有成员
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
+
+		// 推送系统消息通知
+		newMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: responseData,
+		}
+		newMsgJson, _ := json.Marshal(newMsg)
+		ws.GlobalHub.SendToConversation(uint(convID), 0, newMsgJson)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": conv})

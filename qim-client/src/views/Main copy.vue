@@ -38,264 +38,47 @@
     <!-- 主内容区域 -->
     <div class="main-content-area">
       <!-- 左侧垂直选项栏 -->
-      <div class="side-options">
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'recent' }"
-          @click="activeOption = 'recent'"
-          title="最近联系人"
-        >
-          <span class="option-icon"><i class="fas fa-comment-dots"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'org' }"
-          @click="activeOption = 'org'"
-          title="组织架构"
-        >
-          <span class="option-icon"><i class="fas fa-sitemap"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'groups' }"
-          @click="activeOption = 'groups'"
-          title="群聊"
-        >
-          <span class="option-icon"><i class="fas fa-user-friends"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'apps' }"
-          @click="activeOption = 'apps'"
-          title="应用"
-        >
-          <span class="option-icon"><i class="fas fa-cube"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          @click="showMoreMenu($event)"
-          title="更多"
-        >
-          <span class="option-icon"><i class="fas fa-ellipsis-v"></i></span>
-        </div>
-        <div class="option-spacer"></div>
-        <div class="option-item" @click="showThemeMenu($event)" title="皮肤">
-          <span class="option-icon"><i class="fas fa-palette"></i></span>
-        </div>
-        <div class="option-item settings-option" @click="showSettingsMenu($event)" title="设置">
-          <span class="option-icon"><i class="fas fa-cog"></i></span>
-        </div>
-      </div>
+      <SideOptions
+        :activeOption="activeOption"
+        @update:activeOption="activeOption = $event"
+        @showMoreMenu="showMoreMenu"
+        @showThemeMenu="showThemeMenu"
+        @showSettingsMenu="showSettingsMenu"
+      />
       
       <!-- 主内容区域 -->
       <div class="main-content">
       <!-- 侧边栏（包含我的账号和搜索） -->
-      <div class="sidebar">
-        <div class="sidebar-header">
-          <div class="user-info" @click="showUserProfile = true">
-            <img style="width: 55px; height: 55px;"
-              :src="(currentUser?.avatar && currentUser.avatar.startsWith('http')) ? currentUser.avatar : (currentUser?.avatar ? serverUrl + currentUser.avatar : generateAvatar(currentUser?.username || '用户'))"
-              :alt="currentUser?.username || 'avatar'"
-              class="user-avatar"
-            />
-            <span class="user-name">{{ currentUser?.nickname || currentUser?.username || '我的账号' }}</span>
-          </div>
-          <div class="header-actions">
-            <button class="icon-btn" @click="showNotificationCenter($event)" title="通知">
-              <i class="fas fa-bell"></i>
-              <span v-if="unreadNotificationCount > 0" class="notification-badge">{{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}</span>
-            </button>
-            <button class="icon-btn" @click="showActionMenu($event)">              <i class="fas fa-plus"></i>
-</button>
-          </div>
-        </div>
-
-        <div class="search-box">
-          <input
-            v-model="searchQuery"
-            type="text"
-            :placeholder="getSearchPlaceholder()"
-            class="search-input"
-          />
-        </div>
-
-        <!-- 内容区域 -->
-        <div class="sidebar-content">
-          <!-- 最近联系人 -->
-          <div v-if="activeOption === 'recent'" class="content-section">
-            <div class="conversation-list">
-              <div
-                v-for="conversation in filteredConversations"
-                :key="conversation.id"
-                class="conversation-item"
-                :class="{ active: conversation.id === currentConversationId }"
-                @click="handleConversationSelect(conversation)"
-                @contextmenu.prevent="showContextMenu($event, conversation)"
-              >
-                <div class="conversation-avatar">
-                  <img :src="conversation.avatar" :alt="conversation.name" />
-                  <span v-if="conversation.type === 'group'" class="group-badge">群</span>
-                  <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
-                </div>
-                <div class="conversation-info">
-                  <div class="conversation-name">
-                    {{ conversation.name }}
-                    <span v-if="conversation.type === 'group' && conversation.members" class="member-count">
-                      ({{ conversation.members.length }}人)
-                    </span>
-                  </div>
-                  <div class="conversation-preview">
-                  {{ formatMessagePreview(conversation.lastMessage, conversation) }}
-                </div>
-                </div>
-                <div class="conversation-meta">
-                  <span v-if="conversation.muted" class="muted-icon" title="免打扰"><i class="fas fa-bell-slash"></i></span>
-                  <div class="conversation-time">{{ formatTime(conversation.timestamp) }}</div>
-                  <div v-if="conversation.unreadCount > 0" class="unread-badge">
-                    {{ conversation.unreadCount > 99 ? '99+' : conversation.unreadCount }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 组织架构 -->
-          <div v-else-if="activeOption === 'org'" class="content-section">
-            <div class="tree-container">
-              <!-- 渲染组织架构树 -->
-              <template v-for="department in orgStructure" :key="department.id">
-                <div class="tree-node department-node">
-                  <div class="tree-node-content" @click="toggleDepartment(department.id)">
-                    <span class="toggle-icon">{{ expandedDepartments.includes(department.id) ? '▼' : '▶' }}</span>
-                    <span class="node-name department-name">{{ department.name }}</span>
-                  </div>
-                  <div v-if="expandedDepartments.includes(department.id)" class="tree-children">
-                    <!-- 渲染子部门 -->
-                    <div v-for="child in department.subDepartments" :key="child.id">
-                      <!-- 部门节点 -->
-                      <div class="tree-node sub-department-node">
-                        <div class="tree-node-content" @click="toggleSubDepartment(child.id, child.subDepartments && child.subDepartments.length > 0 ? child.subDepartments[0].id : '')">
-                          <span class="toggle-icon">{{ expandedSubDepartments[child.id]?.length > 0 ? '▼' : '▶' }}</span>
-                          <span class="node-name sub-department-name">{{ child.name }}</span>
-                        </div>
-                        <div v-if="expandedSubDepartments[child.id]?.length > 0" class="tree-children">
-                          <!-- 递归渲染子部门 -->
-                          <div v-if="child.subDepartments && child.subDepartments.length > 0">
-                            <div v-for="grandChild in child.subDepartments" :key="grandChild.id">
-                              <div class="tree-node sub-department-node">
-                                <div class="tree-node-content" @click="toggleSubDepartment(grandChild.id, grandChild.subDepartments && grandChild.subDepartments.length > 0 ? grandChild.subDepartments[0].id : '')">
-                                  <span class="toggle-icon">{{ expandedSubDepartments[grandChild.id]?.length > 0 ? '▼' : '▶' }}</span>
-                                  <span class="node-name sub-department-name">{{ grandChild.name }}</span>
-                                </div>
-                                <div v-if="expandedSubDepartments[grandChild.id]?.length > 0" class="tree-children">
-                                  <!-- 显示员工 -->
-                                  <div v-if="grandChild.employees && grandChild.employees.length > 0">
-                                    <div v-for="employee in grandChild.employees" :key="employee.id" class="tree-node employee-node">
-                                      <div class="tree-node-content" @click="handleUserClick(employee)" @dblclick="startPrivateChat(employee)" @contextmenu.prevent="showUserContextMenu($event, employee)">
-                                        <span class="employee-avatar-container">
-                                          <img :src="employee.avatar" :alt="employee.name" class="employee-avatar" />
-                                        </span>
-                                        <span class="node-name employee-name">{{ employee.name }}</span>
-                                        <span class="employee-position">{{ employee.position }}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <!-- 显示员工 -->
-                          <div v-else-if="child.employees && child.employees.length > 0">
-                            <div v-for="employee in child.employees" :key="employee.id" class="tree-node employee-node">
-                              <div class="tree-node-content" @click="handleUserClick(employee)" @dblclick="startPrivateChat(employee)" @contextmenu.prevent="showUserContextMenu($event, employee)">
-                                <span class="employee-avatar-container">
-                                  <img :src="employee.avatar" :alt="employee.name" class="employee-avatar" />
-                                </span>
-                                <span class="node-name employee-name">{{ employee.name }}</span>
-                                <span class="employee-position">{{ employee.position }}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-
-
-          
-          <!-- 群聊 -->
-          <div v-else-if="activeOption === 'groups'" class="content-section">
-            <GroupList
-              :conversations="conversations"
-              :selectedGroup="selectedGroup"
-              @select="(group) => { console.log('Main - Selected group:', group); selectedGroup = group }"
-              @enter="handleConversationSelect($event)"
-              @invite="handleInviteMembers($event)"
-              @showContextMenu="(event, conv) => showGroupContextMenu(event, conv)"
-            />
-          </div>
-          
-          <!-- 频道 -->
-          <div v-else-if="activeOption === 'channels'" class="content-section">
-            <ChannelList :currentUser="currentUser" @select-channel="handleChannelSelect" />
-          </div>
-          
-          <!-- 应用 -->
-          <div v-else-if="activeOption === 'apps'" class="content-section">
-            <div class="apps-container">
-              <!-- 应用分类和管理 -->
-              <div class="app-tabs">
-                <div 
-                  class="app-tab-item" 
-                  :class="{ active: activeAppTab === 'categories' }"
-                  @click="activeAppTab = 'categories'; selectedAppId = ''"
-                >
-                  <div class="tab-icon"><i class="fas fa-th-large"></i></div>
-                  <span class="tab-name">应用分类</span>
-                </div>
-
-              </div>
-              
-              <!-- 应用分类内容 -->
-              <div v-if="activeAppTab === 'categories'" class="app-tab-content">
-                <div class="app-categories">
-                  <div
-                    v-for="category in appCategories"
-                    :key="category.id"
-                    class="app-category-item"
-                    @click="toggleCategory(category.id)"
-                  >
-                    <div class="category-header">
-                      <span class="category-icon"><i :class="category.icon || 'fas fa-folder'"></i></span>
-                      <span class="category-name">{{ category.name }}</span>
-                      <span class="category-toggle">{{ category.expanded ? '▼' : '▶' }}</span>
-                    </div>
-                    <div v-if="category.expanded" class="category-apps">
-                      <div
-                        v-for="app in category.apps"
-                        :key="app.id"
-                        class="category-app-item"
-                        @click="app.url ? openExternalApp(app.url) : openApp(app.id)"
-                      >
-                        <div class="category-app-icon"><i :class="app.icon"></i></div>
-                        <span class="category-app-name">{{ app.name }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-
-              
-
-            </div>
-          </div>
-        </div>
-      </div>
+      <Sidebar
+        :currentUser="currentUser"
+        :activeOption="activeOption"
+        :searchQuery="searchQuery"
+        :conversations="conversations"
+        :currentConversationId="currentConversationId"
+        :unreadNotificationCount="unreadNotificationCount"
+        :serverUrl="serverUrl"
+        :orgStructure="orgStructure"
+        :selectedGroup="selectedGroup"
+        :selectedChannel="selectedChannel"
+        :appCategories="appCategories"
+        @update:searchQuery="searchQuery = $event"
+        @showUserProfile="showUserProfile = true"
+        @showNotification="showNotificationCenter"
+        @showActionMenu="showActionMenu"
+        @selectConversation="handleConversationSelect"
+        @conversationContextMenu="(event, conversation) => showContextMenu(event, conversation)"
+        @selectUser="handleUserClick"
+        @startPrivateChat="startPrivateChat"
+        @userContextMenu="showUserContextMenu"
+        @selectGroup="(group) => { console.log('Main - Selected group:', group); selectedGroup = group }"
+        @enterGroup="handleConversationSelect"
+        @inviteMembers="handleInviteMembers"
+        @groupContextMenu="showGroupContextMenu"
+        @selectChannel="handleChannelSelect"
+        @openApp="openApp"
+        @openExternalApp="openExternalApp"
+        @resetApp="() => { selectedAppId = '' }"
+      />
       
       <!-- 聊天窗口 -->
       <ChatWindow
@@ -317,7 +100,7 @@
         <div class="right-content-header">
           <h2>{{ getPageTitle() }}</h2>
         </div>
-        <div class="empty-state">
+        <div class="right-content-body">
           <div class="empty-content">
             <div class="empty-icon"><i class="fas fa-comments"></i></div>
             <p>选择一个会话开始聊天</p>
@@ -1096,33 +879,33 @@
     
     <!-- 主题菜单 -->
     <div v-if="showThemeMenuFlag" class="context-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="setTheme('light')">
-        <span class="context-menu-icon theme-icon light-theme"></span>
-        <span>清新白</span>
+      <div class="context-menu-item" @click="setTheme('modern-light')">
+        <span class="context-menu-icon theme-icon modern-light-theme"></span>
+        <span>现代浅色</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('dark')">
-        <span class="context-menu-icon theme-icon dark-theme"></span>
-        <span>炫酷黑</span>
+      <div class="context-menu-item" @click="setTheme('elegant-dark')">
+        <span class="context-menu-icon theme-icon elegant-dark-theme"></span>
+        <span>优雅深色</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('netblue')">
-        <span class="context-menu-icon theme-icon netblue-theme"></span>
-        <span>天青蓝</span>
+      <div class="context-menu-item" @click="setTheme('ocean-blue')">
+        <span class="context-menu-icon theme-icon ocean-blue-theme"></span>
+        <span>海洋蓝</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('elegantpurple')">
-        <span class="context-menu-icon theme-icon elegantpurple-theme"></span>
+      <div class="context-menu-item" @click="setTheme('elegant-purple')">
+        <span class="context-menu-icon theme-icon elegant-purple-theme"></span>
         <span>高雅紫</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('sacredyellow')">
-        <span class="context-menu-icon theme-icon sacredyellow-theme"></span>
-        <span>月牙黄</span>
+      <div class="context-menu-item" @click="setTheme('warm-amber')">
+        <span class="context-menu-icon theme-icon warm-amber-theme"></span>
+        <span>温暖琥珀</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('chinesered')">
-        <span class="context-menu-icon theme-icon chinesered-theme"></span>
-        <span>中国红</span>
+      <div class="context-menu-item" @click="setTheme('crimson-red')">
+        <span class="context-menu-icon theme-icon crimson-red-theme"></span>
+        <span>绯红</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('grassgreen')">
-        <span class="context-menu-icon theme-icon grassgreen-theme"></span>
-        <span>青草绿</span>
+      <div class="context-menu-item" @click="setTheme('emerald-green')">
+        <span class="context-menu-icon theme-icon emerald-green-theme"></span>
+        <span>翡翠绿</span>
       </div>
     </div>
     
@@ -1390,59 +1173,59 @@
               <div class="theme-selector">
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'light' }" 
-                  @click="appearanceSettings.theme = 'light'"
+                  :class="{ active: appearanceSettings.theme === 'modern-light' }" 
+                  @click="appearanceSettings.theme = 'modern-light'"
                 >
-                  <div class="theme-preview light-theme"></div>
-                  <span>清新白</span>
+                  <div class="theme-preview modern-light-theme"></div>
+                  <span>现代浅色</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'dark' }" 
-                  @click="appearanceSettings.theme = 'dark'"
+                  :class="{ active: appearanceSettings.theme === 'elegant-dark' }" 
+                  @click="appearanceSettings.theme = 'elegant-dark'"
                 >
-                  <div class="theme-preview dark-theme"></div>
-                  <span>炫酷黑</span>
+                  <div class="theme-preview elegant-dark-theme"></div>
+                  <span>优雅深色</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'netblue' }" 
-                  @click="appearanceSettings.theme = 'netblue'"
+                  :class="{ active: appearanceSettings.theme === 'ocean-blue' }" 
+                  @click="appearanceSettings.theme = 'ocean-blue'"
                 >
-                  <div class="theme-preview netblue-theme"></div>
-                  <span>天青蓝</span>
+                  <div class="theme-preview ocean-blue-theme"></div>
+                  <span>海洋蓝</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'elegantpurple' }" 
-                  @click="appearanceSettings.theme = 'elegantpurple'"
+                  :class="{ active: appearanceSettings.theme === 'elegant-purple' }" 
+                  @click="appearanceSettings.theme = 'elegant-purple'"
                 >
-                  <div class="theme-preview elegantpurple-theme"></div>
+                  <div class="theme-preview elegant-purple-theme"></div>
                   <span>高雅紫</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'sacredyellow' }" 
-                  @click="appearanceSettings.theme = 'sacredyellow'"
+                  :class="{ active: appearanceSettings.theme === 'warm-amber' }" 
+                  @click="appearanceSettings.theme = 'warm-amber'"
                 >
-                  <div class="theme-preview sacredyellow-theme"></div>
-                  <span>月牙黄</span>
+                  <div class="theme-preview warm-amber-theme"></div>
+                  <span>温暖琥珀</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'chinesered' }" 
-                  @click="appearanceSettings.theme = 'chinesered'"
+                  :class="{ active: appearanceSettings.theme === 'crimson-red' }" 
+                  @click="appearanceSettings.theme = 'crimson-red'"
                 >
-                  <div class="theme-preview chinesered-theme"></div>
-                  <span>中国红</span>
+                  <div class="theme-preview crimson-red-theme"></div>
+                  <span>绯红</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'grassgreen' }" 
-                  @click="appearanceSettings.theme = 'grassgreen'"
+                  :class="{ active: appearanceSettings.theme === 'emerald-green' }" 
+                  @click="appearanceSettings.theme = 'emerald-green'"
                 >
-                  <div class="theme-preview grassgreen-theme"></div>
-                  <span>青草绿</span>
+                  <div class="theme-preview emerald-green-theme"></div>
+                  <span>翡翠绿</span>
                 </div>
               </div>
             </div>
@@ -1553,15 +1336,15 @@ import { ref, computed, defineComponent, onMounted, onUnmounted, watch } from 'v
 import type { Conversation, Message, User } from '../types'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
-import CalendarApp from './apps/CalendarApp.vue'
-import StatisticsApp from './apps/StatisticsApp.vue'
-import StickyNotesApp from './apps/StickyNotesApp.vue'
-import NotesApp from './apps/NotesApp.vue'
-import TaskManagementApp from './apps/TaskManagementApp.vue'
-import FileManagementApp from './apps/FileManagementApp.vue'
-import AppManagementApp from './apps/AppManagementApp.vue'
-import AIAssistantApp from './apps/AIAssistantApp.vue'
-import ShortLinkManager from './apps/ShortLinkManager.vue'
+import CalendarApp from '../components/apps/CalendarApp.vue'
+import StatisticsApp from '../components/apps/StatisticsApp.vue'
+import StickyNotesApp from '../components/apps/StickyNotesApp.vue'
+import NotesApp from '../components/apps/NotesApp.vue'
+import TaskManagementApp from '../components/apps/TaskManagementApp.vue'
+import FileManagementApp from '../components/apps/FileManagementApp.vue'
+import AppManagementApp from '../components/apps/AppManagementApp.vue'
+import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
+import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
 
 // 声明 window.electron 变量
 declare global {
@@ -1573,15 +1356,16 @@ declare global {
     } | undefined
   }
 }
-import Sidebar from './Sidebar.vue'
-import ChatWindow from './ChatWindow.vue'
-import GroupList from './GroupList.vue'
-import GroupDetail from './GroupDetail.vue'
-import ShareModal from '../common/ShareModal.vue'
-import UserProfile from '../common/UserProfile.vue'
-import NotificationCenter from '../common/NotificationCenter.vue'
-import ChannelList from '../common/ChannelList.vue'
-import CreateGroupModal from '../common/CreateGroupModal.vue'
+import Sidebar from '../components/Sidebar.vue'
+import SideOptions from '../components/SideOptions.vue'
+import ChatWindow from '../components/ChatWindow.vue'
+import GroupList from '../components/GroupList.vue'
+import GroupDetail from '../components/GroupDetail.vue'
+import ShareModal from '../components/ShareModal.vue'
+import UserProfile from '../components/UserProfile.vue'
+import NotificationCenter from '../components/NotificationCenter.vue'
+import ChannelList from '../components/ChannelList.vue'
+import CreateGroupModal from '../components/CreateGroupModal.vue'
 import { API_BASE_URL } from '../config'
 import { generateAvatar } from '../utils/avatar'
 
@@ -2106,8 +1890,7 @@ const processConversation = (conv: any) => {
     lastMessage: conv.lastMessage || conv.last_message ? {
       id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
       content: conv.lastMessage?.content || conv.last_message?.content || '',
-      file_name: conv.lastMessage?.file_name || conv.last_message?.file_name,
-      file_size: conv.lastMessage?.file_size || conv.last_message?.file_size,
+
       sender: (conv.lastMessage?.sender || conv.last_message?.sender) ? {
         id: (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id) ? (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id).toString() : '',
         name: conv.lastMessage?.sender?.nickname || conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.name || conv.lastMessage?.sender?.user?.nickname || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.nickname || conv.last_message?.sender?.username || conv.last_message?.sender?.name || conv.last_message?.sender?.user?.nickname || conv.last_message?.sender?.user?.username || '',
@@ -2151,7 +1934,7 @@ const processConversation = (conv: any) => {
     } : undefined,
     unreadCount: unreadCount,
     timestamp: conv.last_message_at ? new Date(conv.last_message_at).getTime() : (conv.created_at ? new Date(conv.created_at).getTime() : Date.now()),
-    type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP' || conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'group' : (conv.type === 'bot' ? 'bot' : 'single'),
+    type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP') ? 'group' : (conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'discussion' : (conv.type === 'bot' ? 'bot' : 'single'),
     members: members,
     pinned: conv.is_pinned || false,
     muted: conv.muted || false
@@ -2857,8 +2640,7 @@ const handleNewMessage = (data: any) => {
     quotedMessageData = {
       id: data.quoted_message.id?.toString() || '',
       content: data.quoted_message.content || '',
-      file_name: data.quoted_message.file_name,
-      file_size: data.quoted_message.file_size,
+
       sender: data.quoted_message.sender ? {
         id: data.quoted_message.sender?.id?.toString() || '',
         name: data.quoted_message.sender?.nickname || data.quoted_message.sender?.username || data.quoted_message.sender?.name || '未知用户',
@@ -3023,8 +2805,7 @@ const processMessage = (msg: any) => {
   const messageObj: any = {
     id: msg.id ? msg.id.toString() : '',
     content: msg.content || '',
-    file_name: msg.file_name,
-    file_size: msg.file_size,
+
     sender: msg.sender ? {
       id: msg.sender.id ? msg.sender.id.toString() : '',
       name: msg.sender.nickname || msg.sender.username || msg.sender.name || msg.sender.user?.nickname || msg.sender.user?.username || '',
@@ -3044,8 +2825,7 @@ const processMessage = (msg: any) => {
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',
       content: msg.quoted_message.content || '',
-      file_name: msg.quoted_message.file_name,
-      file_size: msg.quoted_message.file_size,
+
       sender: msg.quoted_message.sender ? {
         id: msg.quoted_message.sender.id?.toString() || '',
         name: msg.quoted_message.sender?.nickname || msg.quoted_message.sender?.username || msg.quoted_message.sender?.name || msg.quoted_message.sender?.user?.nickname || msg.quoted_message.sender?.user?.username || '未知用户',
@@ -3092,6 +2872,16 @@ const processMessage = (msg: any) => {
       messageObj.newsData = JSON.parse(msg.content)
     } catch (e) {
       console.error('解析资讯数据失败:', e)
+    }
+  }
+  
+  // 处理引用消息中的文件类型
+  if (messageObj.quotedMessage && messageObj.quotedMessage.type === 'file' && messageObj.quotedMessage.content) {
+    try {
+      const fileData = JSON.parse(messageObj.quotedMessage.content)
+      // 对于文件类型的引用消息，我们只需要知道它是文件类型，不需要显示具体内容
+    } catch (e) {
+      // 如果解析失败，保持原样
     }
   }
   
@@ -3271,11 +3061,7 @@ const handleSendMessage = async (messageData: any) => {
       console.log('添加引用消息ID:', requestData.quoted_message_id)
     }
     
-    // 添加文件消息和图片消息的额外字段
-    if (messageType === 'file' || messageType === 'image') {
-      requestData.file_size = messageData.fileSize
-      requestData.file_name = messageData.fileName
-    }
+
     
     console.log('发送消息的请求数据:', requestData)
     
@@ -3288,8 +3074,6 @@ const handleSendMessage = async (messageData: any) => {
       const failedMessage = {
         id: Date.now().toString(),
         content: messageContent,
-        file_name: messageData.fileName,
-        file_size: messageData.fileSize,
         sender: {
           id: currentUser.value?.id?.toString() || '',
           name: currentUser.value?.nickname || currentUser.value?.username || '',
@@ -3339,8 +3123,7 @@ const handleSendMessage = async (messageData: any) => {
       const newMessage = {
         id: response.data.id?.toString() || Date.now().toString(),
         content: response.data.content,
-        file_name: response.data.file_name || messageData.fileName,
-        file_size: response.data.file_size || messageData.fileSize,
+
         sender: {
           id: response.data.sender?.id?.toString() || currentUser.value?.id?.toString() || '',
           name: response.data.sender?.nickname || response.data.sender?.username || currentUser.value?.nickname || currentUser.value?.username || '',
@@ -3382,8 +3165,6 @@ const handleSendMessage = async (messageData: any) => {
       const failedMessage = {
         id: Date.now().toString(),
         content: messageContent,
-        file_name: messageData.fileName,
-        file_size: messageData.fileSize,
         sender: {
           id: currentUser.value?.id?.toString() || '',
           name: currentUser.value?.nickname || currentUser.value?.username || '',
@@ -3457,8 +3238,7 @@ const handleSendMessage = async (messageData: any) => {
     const failedMessage = {
       id: Date.now().toString(),
       content: messageContent,
-      file_name: messageData.fileName,
-      file_size: messageData.fileSize,
+
       sender: {
         id: currentUser.value?.id?.toString() || '',
         name: currentUser.value?.nickname || currentUser.value?.username || '',
@@ -3493,6 +3273,20 @@ const handleSendMessage = async (messageData: any) => {
       storage.saveConversations(conversations.value)
     }
   }
+}
+
+// 获取文件名
+const getFileName = (message: any): string => {
+  try {
+    // 尝试解析content为JSON
+    const contentObj = JSON.parse(message.content)
+    if (contentObj.fileName) {
+      return contentObj.fileName
+    }
+  } catch (e) {
+    // 解析失败，从content字符串中提取文件名
+  }
+  return message.content.split('/').pop() || '文件'
 }
 
 // 处理消息撤回
@@ -3626,11 +3420,11 @@ const formatMessagePreview = (message: any, conversation: any): string => {
       previewText = message.content || '无内容'
       break
     case 'image':
-      const imageName = message.file_name || message.content.split('/').pop() || '图片'
+      const imageName = getFileName(message) || '图片'
       previewText = `[图片] ${imageName}`
       break
     case 'file':
-      const fileName = message.file_name || message.content.split('/').pop() || '文件'
+      const fileName = getFileName(message) || '文件'
       previewText = `[文件] ${fileName}`
       break
     case 'miniApp':
@@ -4644,7 +4438,21 @@ const themeMenuPosition = ref({ x: 0, y: 0 })
 // 更多菜单状态
 const showMoreMenuFlag = ref(false)
 const moreMenuPosition = ref({ x: 0, y: 0 })
-const currentTheme = ref(localStorage.getItem('theme') || 'light')
+
+// 主题名称映射 - 将旧主题名称映射到新主题名称
+const themeNameMap: Record<string, string> = {
+  'light': 'modern-light',
+  'dark': 'elegant-dark',
+  'netblue': 'ocean-blue',
+  'elegantpurple': 'elegant-purple',
+  'sacredyellow': 'warm-amber',
+  'chinesered': 'crimson-red',
+  'grassgreen': 'emerald-green'
+}
+
+// 获取并转换当前主题
+const savedTheme = localStorage.getItem('theme') || 'light'
+const currentTheme = ref(themeNameMap[savedTheme] || savedTheme)
 
 // 系统设置相关
 const showSettingsModal = ref(false)
@@ -6088,6 +5896,7 @@ const openSecuritySettings = () => {
 const setTheme = (theme: string) => {
   currentTheme.value = theme
   localStorage.setItem('theme', theme)
+  appearanceSettings.value.theme = theme
   // 应用主题到页面
   document.documentElement.setAttribute('data-theme', theme)
   closeThemeMenu()
@@ -6105,8 +5914,10 @@ const applyFontSize = (fontSize: number) => {
 // 初始化主题和字体大小
 const initTheme = () => {
   const savedTheme = localStorage.getItem('theme') || 'light'
-  currentTheme.value = savedTheme
-  document.documentElement.setAttribute('data-theme', savedTheme)
+  const mappedTheme = themeNameMap[savedTheme] || savedTheme
+  currentTheme.value = mappedTheme
+  appearanceSettings.value.theme = mappedTheme
+  document.documentElement.setAttribute('data-theme', mappedTheme)
   
   // 初始化字体大小
   const savedFontSize = localStorage.getItem('fontSize')
@@ -6229,33 +6040,34 @@ const handleNewNotification = (notification: any) => {
 </script>
 
 <style>
-/* 主题样式 */
-:root {
-  --primary-color: #3b82f6;
-  --primary-light: #eff6ff;
-  --secondary-color: #f9fafb;
-  --text-color: #1f2937;
-  --border-color: #e5e7eb;
-  --hover-color: #eff6ff;
-  --active-color: #2563eb;
-  --sidebar-bg: #ffffff;
-  --content-bg: #f9fafb;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #f3f4f6;
-  --accent-color: #60a5fa;
-  --text-secondary: #6b7280;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --panel-bg: #ffffff;
-  --list-bg: #fafafa;
-  --card-bg: #ffffff;
-  --header-panel-bg: #f8fafc;
-  --font-size-base: 14px;
+/* ========================================
+   导入设计系统 - Import Design System
+   ======================================== */
+@import url('../assets/styles/design-tokens.css');
+@import url('../assets/styles/components.css');
+
+/* 过渡动画 */
+.im-container {
+  animation: mainWindowFadeIn 0.5s ease-out forwards;
+  opacity: 0;
+  transform: scale(0.95);
 }
 
-/* 炫酷黑主题 */
-[data-theme="dark"] {
+@keyframes mainWindowFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ========================================
+   主题样式 - Theme Styles
+   ======================================== */
+[data-theme="elegant-dark"] {
   --primary-color: #4b5563;
   --primary-light: #374151;
   --secondary-color: #0a0a0a;
@@ -6279,47 +6091,47 @@ const handleNewNotification = (notification: any) => {
 }
 
 /* 炫酷黑主题 - 侧边栏内容区域 */
-[data-theme="dark"] .sidebar-content {
+[data-theme="elegant-dark"] .sidebar-content {
   background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .conversation-list {
+[data-theme="elegant-dark"] .conversation-list {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .conversation-item {
+[data-theme="elegant-dark"] .conversation-item {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .groups-list {
+[data-theme="elegant-dark"] .groups-list {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .group-item {
+[data-theme="elegant-dark"] .group-item {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .tree-container {
+[data-theme="elegant-dark"] .tree-container {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .apps-container {
+[data-theme="elegant-dark"] .apps-container {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .search-input {
+[data-theme="elegant-dark"] .search-input {
   background: var(--sidebar-bg) !important;
 }
 
 /* 炫酷黑主题 - 搜索框背景 */
-[data-theme="dark"] .search-box {
+[data-theme="elegant-dark"] .search-box {
   background: var(--sidebar-bg) !important;
   border-top-color: var(--border-color) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
 /* 天青蓝主题 */
-[data-theme="netblue"] {
+[data-theme="ocean-blue"] {
   --primary-color: #49bccf;
   --primary-light: #e0f2fe;
   --secondary-color: #f0f9ff;
@@ -6342,99 +6154,101 @@ const handleNewNotification = (notification: any) => {
 }
 
 /* 天青蓝主题 - 左边侧边栏 */
-[data-theme="netblue"] .side-options {
+[data-theme="ocean-blue"] .side-options {
   background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
 }
 
 /* 天青蓝主题 - 文本颜色 */
-[data-theme="netblue"] .window-title,
-[data-theme="netblue"] .option-item,
-[data-theme="netblue"] .option-item.active {
+[data-theme="ocean-blue"] .window-title,
+[data-theme="ocean-blue"] .option-item,
+[data-theme="ocean-blue"] .option-item.active {
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 天青蓝主题 - 窗口控制栏左侧 */
-[data-theme="netblue"] .window-controls-left {
+[data-theme="ocean-blue"] .window-controls-left {
   background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
 }
 
 /* 天青蓝主题 - 侧边栏头部 */
-[data-theme="netblue"] .sidebar-header {
-  background: #ffffff;
-  box-shadow: var(--shadow-md);
+[data-theme="ocean-blue"] .sidebar-header {
+  /* background: #ffffff; */
+  /* box-shadow: var(--shadow-md); */
+   color: var(--text-color);
+  text-shadow: none;
 }
 
-[data-theme="netblue"] .sidebar-header .user-name {
+[data-theme="ocean-blue"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 炫酷黑主题 - 侧边栏头部 */
-[data-theme="dark"] .sidebar-header {
+[data-theme="elegant-dark"] .sidebar-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .sidebar-header .user-name {
+[data-theme="elegant-dark"] .sidebar-header .user-name {
   color: var(--text-color) !important;
 }
 
 /* 炫酷黑主题 - 窗口控制栏左侧 */
-/* [data-theme="dark"] .window-controls-left {
+/* [data-theme="elegant-dark"] .window-controls-left {
   background: var(--sidebar-bg) !important;
   border-right: 1px solid var(--border-color) !important;
 } */
 
 /* 炫酷黑主题 - 组织架构树 */
-[data-theme="dark"] .org-content {
+[data-theme="elegant-dark"] .org-content {
   background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .employee-node .tree-node-content {
+[data-theme="elegant-dark"] .employee-node .tree-node-content {
   background: transparent !important;
   opacity: 1 !important;
 }
 
-[data-theme="dark"] .employee-node .tree-node-content:hover {
+[data-theme="elegant-dark"] .employee-node .tree-node-content:hover {
   background: var(--hover-color) !important;
   opacity: 1 !important;
 }
 
 /* 炫酷黑主题 - 图标颜色 */
-[data-theme="dark"] .option-icon {
+[data-theme="elegant-dark"] .option-icon {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .option-item:hover .option-icon,
-[data-theme="dark"] .option-item.active .option-icon {
+[data-theme="elegant-dark"] .option-item:hover .option-icon,
+[data-theme="elegant-dark"] .option-item.active .option-icon {
   color: rgba(229, 231, 235, 1) !important;
 }
 
-[data-theme="dark"] .app-icon,
-[data-theme="dark"] .recent-app-grid-icon,
-[data-theme="dark"] .category-app-icon,
-[data-theme="dark"] .management-icon,
-[data-theme="dark"] .empty-icon,
-[data-theme="dark"] .file-icon,
-[data-theme="dark"] .context-menu-icon,
-[data-theme="dark"] .action-menu-icon,
-[data-theme="dark"] .user-context-menu-icon,
-[data-theme="dark"] .muted-icon,
-[data-theme="dark"] .toggle-icon,
-[data-theme="dark"] .tab-icon,
-[data-theme="dark"] .category-icon,
-[data-theme="dark"] .recent-app-icon {
+[data-theme="elegant-dark"] .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-icon,
+[data-theme="elegant-dark"] .management-icon,
+[data-theme="elegant-dark"] .empty-icon,
+[data-theme="elegant-dark"] .file-icon,
+[data-theme="elegant-dark"] .context-menu-icon,
+[data-theme="elegant-dark"] .action-menu-icon,
+[data-theme="elegant-dark"] .user-context-menu-icon,
+[data-theme="elegant-dark"] .muted-icon,
+[data-theme="elegant-dark"] .toggle-icon,
+[data-theme="elegant-dark"] .tab-icon,
+[data-theme="elegant-dark"] .category-icon,
+[data-theme="elegant-dark"] .recent-app-icon {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .app-item:hover .app-icon,
-[data-theme="dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
-[data-theme="dark"] .category-app-item:hover .category-app-icon,
+[data-theme="elegant-dark"] .app-item:hover .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-item:hover .category-app-icon,
 
 
-[data-theme="dark"] .app-item:hover .app-icon {
+[data-theme="elegant-dark"] .app-item:hover .app-icon {
   transform: scale(1.05);
   background: grey!important;
   /* color: #fff; */
@@ -6442,68 +6256,74 @@ const handleNewNotification = (notification: any) => {
 
 
 /* 炫酷黑主题 - 侧边栏按钮样式 */
-[data-theme="dark"] .option-item {
+[data-theme="elegant-dark"] .option-item {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .option-item:hover {
+[data-theme="elegant-dark"] .option-item:hover {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
-[data-theme="dark"] .option-item.active {
+[data-theme="elegant-dark"] .option-item.active {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
   box-shadow: var(--shadow-md) !important;
 }
 
 /* 炫酷黑主题 - 应用管理tab样式 */
-[data-theme="dark"] .app-tab-item {
+[data-theme="elegant-dark"] .app-tab-item {
   color: rgba(229, 231, 235, 0.7) !important;
   border-bottom-color: transparent !important;
 }
 
-[data-theme="dark"] .app-tab-item:hover {
+[data-theme="elegant-dark"] .app-tab-item:hover {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
 }
 
-[data-theme="dark"] .app-tab-item.active {
+[data-theme="elegant-dark"] .app-tab-item.active {
   border-bottom-color: rgba(229, 231, 235, 1) !important;
   color: rgba(229, 231, 235, 1) !important;
 }
 
 /* 炫酷黑主题 - 群聊徽章样式 */
-[data-theme="dark"] .group-badge {
+[data-theme="elegant-dark"] .group-badge {
   background: #2d3748 !important;
   color: rgba(229, 231, 235, 1) !important;
   border: 1px solid rgba(229, 231, 235, 0.3) !important;
 }
 
 /* 炫酷黑主题 - 右边面板 */
-[data-theme="dark"] .right-content {
+[data-theme="elegant-dark"] .right-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .right-content-header {
+[data-theme="elegant-dark"] .right-content-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .right-content-body {
+[data-theme="elegant-dark"] .chat-header {
+  /* background: var(--sidebar-bg) !important; */
+  box-shadow: none !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .right-content-body {
   background: var(--secondary-color) !important;
   color: var(--text-color) !important;
 }
 
 /* 炫酷黑主题 - 应用内容 */
-[data-theme="dark"] .apps-content {
+[data-theme="elegant-dark"] .apps-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .recent-apps-section,
-[data-theme="dark"] .all-apps-section {
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
   background: var(--secondary-color) !important;
 }
 
@@ -6512,12 +6332,12 @@ const handleNewNotification = (notification: any) => {
 
 
 /* 炫酷黑主题 - 应用分类 */
-[data-theme="dark"] .app-category-item {
+[data-theme="elegant-dark"] .app-category-item {
   background: transparent !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .category-header {
+[data-theme="elegant-dark"] .category-header {
   background: transparent !important;
 }
 
@@ -6800,131 +6620,131 @@ button:active {
 }
 
 /* 主题切换样式 - 深色主题下的Markdown样式 */
-[data-theme="dark"] .markdown-code {
+[data-theme="elegant-dark"] .markdown-code {
   background: #2d2d30;
   border-color: #3e3e42;
   color: #e0e0e0;
 }
 
-[data-theme="dark"] .markdown-link {
+[data-theme="elegant-dark"] .markdown-link {
   color: #90caf9;
 }
 
-[data-theme="dark"] .markdown-link:hover {
+[data-theme="elegant-dark"] .markdown-link:hover {
   color: #bbdefb;
 }
 
-[data-theme="dark"] .preview-content {
+[data-theme="elegant-dark"] .preview-content {
   color: #e0e0e0;
 }
 
-[data-theme="dark"] .note-content-input {
+[data-theme="elegant-dark"] .note-content-input {
   background: #2d2d30;
   color: #e0e0e0;
   border-color: #3e3e42;
 }
 
-[data-theme="dark"] .file-item:hover {
+[data-theme="elegant-dark"] .file-item:hover {
   background-color: #2d2d30;
 }
 
-[data-theme="dark"] .app-item:hover {
+[data-theme="elegant-dark"] .app-item:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-[data-theme="dark"] .tree-node-content:hover {
+[data-theme="elegant-dark"] .tree-node-content:hover {
   background-color: #2d2d30;
 }
 
-[data-theme="dark"] .conversation-item:hover {
+[data-theme="elegant-dark"] .conversation-item:hover {
   background-color: #2d2d30;
 }
 
 /* 主题切换样式 - 天青蓝主题下的Markdown样式 */
-[data-theme="netblue"] .markdown-code {
+[data-theme="ocean-blue"] .markdown-code {
   background: #e0f2fe;
   border-color: #bae6fd;
   color: #0c4a6e;
 }
 
-[data-theme="netblue"] .markdown-link {
+[data-theme="ocean-blue"] .markdown-link {
   color: #0ea5e9;
 }
 
-[data-theme="netblue"] .markdown-link:hover {
+[data-theme="ocean-blue"] .markdown-link:hover {
   color: #0284c7;
 }
 
 /* 炫酷黑主题 - 分类标题悬停样式 */
-[data-theme="dark"] .category-header:hover {
+[data-theme="elegant-dark"] .category-header:hover {
   background: var(--hover-color) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
 /* 炫酷黑主题 - 分类应用样式 */
-[data-theme="dark"] .category-apps {
+[data-theme="elegant-dark"] .category-apps {
   background: transparent !important;
 }
 
-[data-theme="dark"] .category-app-item {
+[data-theme="elegant-dark"] .category-app-item {
   background: transparent !important;
 }
 
-[data-theme="dark"] .category-app-item:hover {
+[data-theme="elegant-dark"] .category-app-item:hover {
   background: var(--hover-color) !important;
 }
 
 
 
 /* 炫酷黑主题 - 应用网格项 */
-[data-theme="dark"] .recent-app-grid-item {
+[data-theme="elegant-dark"] .recent-app-grid-item {
   background: var(--sidebar-bg) !important;
   border: 1px solid var(--border-color) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
 }
 
-[data-theme="dark"] .recent-app-grid-item:hover {
+[data-theme="elegant-dark"] .recent-app-grid-item:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* 炫酷黑主题 - 主内容区域 */
-[data-theme="dark"] .main-content {
+[data-theme="elegant-dark"] .main-content {
   background: var(--secondary-color) !important;
 }
 
 /* 炫酷黑主题 - 无会话状态 */
-[data-theme="dark"] .no-conversation {
+[data-theme="elegant-dark"] .no-conversation {
   background: var(--secondary-color) !important;
   color: var(--text-color) !important;
 }
 
 /* 炫酷黑主题 - 应用内容区域 */
-[data-theme="dark"] .apps-content {
+[data-theme="elegant-dark"] .apps-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .recent-apps-section,
-[data-theme="dark"] .all-apps-section {
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
   background: var(--secondary-color) !important;
 }
 
 /* 天青蓝主题 - 选项项样式调整 */
-[data-theme="netblue"] .option-item {
+[data-theme="ocean-blue"] .option-item {
   color: rgba(255, 255, 255, 0.8);
 }
 
-[data-theme="netblue"] .option-item:hover {
+[data-theme="ocean-blue"] .option-item:hover {
   background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
-[data-theme="netblue"] .option-item.active {
-  background: rgba(255, 255, 255, 0.2);
+[data-theme="ocean-blue"] .option-item.active {
+  /* background: rgba(255, 255, 255, 0.2); */
   color: white;
 }
 
 /* 高雅紫主题 */
-[data-theme="elegantpurple"] {
+[data-theme="elegant-purple"] {
   --primary-color: #7e22ce;
   --primary-light: #f3e8ff;
   --secondary-color: #faf5ff;
@@ -6947,36 +6767,36 @@ button:active {
 }
 
 /* 高雅紫主题 - 左边侧边栏 */
-[data-theme="elegantpurple"] .side-options {
+[data-theme="royal-purple"] .side-options {
   background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
 }
 
 /* 高雅紫主题 - 文本颜色 */
-[data-theme="elegantpurple"] .window-title,
-[data-theme="elegantpurple"] .option-item,
-[data-theme="elegantpurple"] .option-item.active {
+[data-theme="royal-purple"] .window-title,
+[data-theme="royal-purple"] .option-item,
+[data-theme="royal-purple"] .option-item.active {
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 高雅紫主题 - 侧边栏头部 */
-[data-theme="elegantpurple"] .sidebar-header {
+[data-theme="royal-purple"] .sidebar-header {
   background: #ffffff;
-  box-shadow: var(--shadow-md);
+  /* box-shadow: var(--shadow-md); */
 }
 
-[data-theme="elegantpurple"] .sidebar-header .user-name {
+[data-theme="royal-purple"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 高雅紫主题 - 窗口控制栏左侧 */
-[data-theme="elegantpurple"] .window-controls-left {
+[data-theme="royal-purple"] .window-controls-left {
   background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
 }
 
 /* 月牙黄主题 */
-[data-theme="sacredyellow"] {
+[data-theme="warm-amber"] {
   --primary-color: #d4b85f;
   --primary-light: #fffef8;
   --secondary-color: #fffef8;
@@ -6999,36 +6819,38 @@ button:active {
 }
 
 /* 月牙黄主题 - 左边侧边栏 */
-[data-theme="sacredyellow"] .side-options {
+[data-theme="warm-amber"] .side-options {
   background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
 }
 
 /* 月牙黄主题 - 文本颜色 */
-[data-theme="sacredyellow"] .window-title,
-[data-theme="sacredyellow"] .option-item,
-[data-theme="sacredyellow"] .option-item.active {
+[data-theme="warm-amber"] .window-title,
+[data-theme="warm-amber"] .option-item,
+[data-theme="warm-amber"] .option-item.active {
   color: #5a4a25;
   text-shadow: 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
 /* 月牙黄主题 - 侧边栏头部 */
-[data-theme="sacredyellow"] .sidebar-header {
-  background: #fffef8;
-  box-shadow: var(--shadow-md);
+[data-theme="warm-amber"] .sidebar-header {
+  /* background: #fffef8; */
+   color: var(--text-color);
+  text-shadow: none;
+  /* box-shadow: var(--shadow-md); */
 }
 
-[data-theme="sacredyellow"] .sidebar-header .user-name {
+[data-theme="warm-amber"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 月牙黄主题 - 窗口控制栏左侧 */
-[data-theme="sacredyellow"] .window-controls-left {
+[data-theme="warm-amber"] .window-controls-left {
   background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
 }
 
 /* 中国红主题 */
-[data-theme="chinesered"] {
+[data-theme="crimson-red"] {
   --primary-color: #c41e3a;
   --primary-light: #fff5f5;
   --secondary-color: #fff5f5;
@@ -7051,36 +6873,38 @@ button:active {
 }
 
 /* 中国红主题 - 左边侧边栏 */
-[data-theme="chinesered"] .side-options {
+[data-theme="crimson-red"] .side-options {
   background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
 }
 
 /* 中国红主题 - 文本颜色 */
-[data-theme="chinesered"] .window-title,
-[data-theme="chinesered"] .option-item,
-[data-theme="chinesered"] .option-item.active {
+[data-theme="crimson-red"] .window-title,
+[data-theme="crimson-red"] .option-item,
+[data-theme="crimson-red"] .option-item.active {
   color: #fff5f5;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 中国红主题 - 侧边栏头部 */
-[data-theme="chinesered"] .sidebar-header {
-  background: #fff5f5;
-  box-shadow: var(--shadow-md);
+[data-theme="crimson-red"] .sidebar-header {
+  /* background: #fff5f5; */
+  /* box-shadow: var(--shadow-md); */
+   color: var(--text-color);
+  text-shadow: none;
 }
 
-[data-theme="chinesered"] .sidebar-header .user-name {
+[data-theme="crimson-red"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 中国红主题 - 窗口控制栏左侧 */
-[data-theme="chinesered"] .window-controls-left {
+[data-theme="crimson-red"] .window-controls-left {
   background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
 }
 
 /* 青草绿主题 */
-[data-theme="grassgreen"] {
+[data-theme="emerald-green"] {
   --primary-color: #2e8b57;
   --primary-light: #f0fff4;
   --secondary-color: #f0fff4;
@@ -7103,31 +6927,33 @@ button:active {
 }
 
 /* 青草绿主题 - 左边侧边栏 */
-[data-theme="grassgreen"] .side-options {
+[data-theme="emerald-green"] .side-options {
   background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
 
 /* 青草绿主题 - 文本颜色 */
-[data-theme="grassgreen"] .window-title,
-[data-theme="grassgreen"] .option-item,
-[data-theme="grassgreen"] .option-item.active {
+[data-theme="emerald-green"] .window-title,
+[data-theme="emerald-green"] .option-item,
+[data-theme="emerald-green"] .option-item.active {
   color: #f0fff4;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 青草绿主题 - 侧边栏头部 */
-[data-theme="grassgreen"] .sidebar-header {
-  background: #f0fff4;
-  box-shadow: var(--shadow-md);
+[data-theme="emerald-green"] .sidebar-header {
+  /* background: #f0fff4; */
+  /* box-shadow: var(--shadow-md); */
+   color: var(--text-color);
+  text-shadow: none;
 }
 
-[data-theme="grassgreen"] .sidebar-header .user-name {
+[data-theme="emerald-green"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 青草绿主题 - 窗口控制栏左侧 */
-[data-theme="grassgreen"] .window-controls-left {
+[data-theme="emerald-green"] .window-controls-left {
   background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
 
@@ -7500,8 +7326,9 @@ button:active {
   align-items: center;
   padding: 20px 0;
   gap: 20px;
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08);
+  /* box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08); */
   transition: all 0.3s ease;
+  z-index: 10;
 }
 
 .side-options:hover {
@@ -7566,39 +7393,42 @@ button:active {
   box-shadow: var(--shadow-sm);
 }
 
-.light-theme {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+/* ========================================
+   主题图标样式 - Theme Icon Styles
+   ======================================== */
+.modern-light-theme {
+  background: #3b82f6;
+  border: 1px solid #2563eb;
 }
 
-.dark-theme {
-  background: #1a1a1a;
-  border: 1px solid #64ffda;
+.elegant-dark-theme {
+  background: #1e293b;
+  border: 1px solid #334155;
 }
 
-.netblue-theme {
-  background: #0284c7;
-  border: 1px solid #0369a1;
+.ocean-blue-theme {
+  background: #0ea5e9;
+  border: 1px solid #0284c7;
 }
 
-.elegantpurple-theme {
-  background: #7e22ce;
-  border: 1px solid #6b21a8;
+.elegant-purple-theme {
+  background: #8b5cf6;
+  border: 1px solid #7c3aed;
 }
 
-.sacredyellow-theme {
-  background: #c9a227;
-  border: 1px solid #b8973c;
+.warm-amber-theme {
+  background: #f59e0b;
+  border: 1px solid #d97706;
 }
 
-.chinesered-theme {
-  background: #c41e3a;
-  border: 1px solid #a01830;
+.crimson-red-theme {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
 }
 
-.grassgreen-theme {
-  background: #2e8b57;
-  border: 1px solid #247048;
+.emerald-green-theme {
+  background: #10b981;
+  border: 1px solid #059669;
 }
 
 .green-theme {
@@ -8373,411 +8203,6 @@ button:active {
   overflow: hidden;
 }
 
-/* 侧边栏样式 */
-.sidebar {
-  width: 320px;
-  background: var(--sidebar-bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  background: var(--sidebar-bg);
-  height: 72px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.user-name {
-  font-weight: 500;
-  color: var(--text-color);
-  font-size: 14px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.icon-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: none;
-  /* background: var(--text-color); */
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.2s;
-  color: var(--text-color);
-  position: relative;
-    opacity: 0.7;
-}
-
-.icon-btn .notification-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--primary-color);
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.icon-btn:hover {
-  background: var(--hover-color);
-  /* color: #fff; */
-    opacity: 1;
-}
-
-.search-box {
-  padding: 12px 8px;
-  background: transparent;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  outline: none;
-  transition: all 0.2s;
-  background: var(--panel-bg);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.search-input:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
-}
-
-.sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  background: var(--sidebar-bg);
-}
-
-.content-section {
-  height: 100%;
-  overflow-y: auto;
-}
-
-/* 会话列表样式 */
-.conversation-list {
-  background: #fafafa;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  margin: 8px 8px;
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
-}
-
-.conversation-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 20px;
-  background: #fafafa;
-
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.conversation-item:hover {
-  background: var(--hover-color);
-}
-
-.conversation-item.active {
-  background: var(--hover-color);
-}
-
-.conversation-avatar {
-  position: relative;
-  margin-right: 12px;
-}
-
-.conversation-avatar img {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.conversation-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.conversation-name {
-  font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.conversation-preview {
-  font-size: 13px;
-  color: var(--text-color);
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.conversation-meta {
-  text-align: right;
-  margin-left: 8px;
-}
-
-.conversation-time {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin-bottom: 4px;
-}
-
-.unread-badge {
-  background: #f44336;
-  color: white;
-  font-size: 11px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1;
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.member-count {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.7;
-  font-weight: normal;
-}
-
-.muted-icon {
-  font-size: 14px;
-  opacity: 0.7;
-  margin-right: 8px;
-  display: inline-block;
-  vertical-align: middle;
-  color: var(--text-color);
-}
-
-/* 组织架构样式 */
-.org-content {
-  flex: 1;
-  padding: 10px 0;
-  background: var(--content-bg);
-}
-
-.tree-container {
-  background: #fafafa;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  margin: 8px 8px;
-  flex: 1;
-  overflow-y: auto;
-}
-
-/* 自定义滚动条样式 */
-.tree-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.tree-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.tree-container::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-  transition: background 0.2s ease;
-  height: 40px;
-}
-
-.tree-container::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
-}
-
-.tree-node {
-  position: relative;
-}
-
-.tree-node-content {
-  display: flex;
-  align-items: center;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  gap: 10px;
-
-}
-
-.tree-node-content:hover {
-  background: var(--hover-color);
-}
-
-.toggle-icon {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.7;
-  width: 12px;
-  text-align: left;
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-  margin-right: 4px;
-}
-
-.node-name {
-  font-weight: 500;
-  color: var(--text-color);
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.department-name {
-  font-size: 14px;
-  color: var(--primary-color);
-  font-weight: 600;
-}
-
-.sub-department-name {
-  font-size: 14px;
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-.employee-name {
-  font-size: 13px;
-  color: var(--text-color);
-  font-weight: 500;
-  min-width: 60px;
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.employee-avatar-container {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-}
-
-.employee-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.employee-position {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.7;
-  flex-shrink: 0;
-  margin-left: 8px;
-  white-space: nowrap;
-}
-
-.department-stats {
-  font-size: 12px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-  margin-left: 6px;
-  font-weight: 400;
-}
-
-.tree-children {
-  margin-left: 12px;
-  padding-left: 8px;
-}
-
-/* 优化组织架构树的显示 */
-.department-node .tree-children {
-  margin-left: 16px;
-}
-
-.sub-department-node .tree-children {
-  margin-left: 16px;
-}
-
-.department-node:last-child .tree-node-content {
-  border-bottom: none;
-}
-
-.sub-department-node .tree-node-content {
-  padding-left: 16px;
-}
-
-.employee-node .tree-node-content {
-  padding-left: 16px;
-  background: transparent;
-  opacity: 1;
-}
-
-.employee-node .tree-node-content:hover {
-  background: var(--hover-color);
-  opacity: 1;
-}
-
-.employee-node:last-child .tree-node-content {
-  border-bottom: none;
-}
-
-
 /* 群聊样式 */
 .groups-section {
   flex: 1;
@@ -8900,6 +8325,13 @@ button:active {
 }
 
 /* 应用样式 */
+/* 右边面板应用内容样式 */
+.apps-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
 .apps-section {
   flex: 1;
   display: flex;
@@ -8923,8 +8355,8 @@ button:active {
 
 .apps-grid {
   flex: 1;
-  padding: 16px;
-  background: var(--content-bg);
+  /* padding: 16px; */
+  /* background: var(--content-bg); */
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -8993,75 +8425,10 @@ button:active {
   color: var(--primary-color);
 }
 
-/* 应用侧边栏样式 */
-.apps-container {
-  background: #fafafa;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  margin: 8px 8px;
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-}
-
-.app-section {
-  margin-bottom: 20px;
-}
-
-/* 应用面板Tab样式 */
-.app-tabs {
-  display: flex;
-
-  margin-bottom: 16px;
-}
-
-.app-tab-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-bottom: 2px solid transparent;
-  gap: 8px;
-}
-
-.app-tab-item:hover {
-  background: var(--hover-color);
-}
-
-.app-tab-item.active {
-  border-bottom-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.tab-icon {
-  font-size: 16px;
-}
-
-.tab-name {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.app-tab-content {
-  padding: 0;
-}
-
-/* 分类标题图标 */
-.category-icon {
-  margin-right: 8px;
-  font-size: 14px;
-  color: var(--primary-color);
-}
-
-/* 右边面板应用内容样式 */
-.apps-content {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
+/* 最近使用应用样式 */
+.recent-apps-section {
+  padding: 16px 0 32px 0;
+  /* background: var(--content-bg); */
 }
 
 .section-header {
@@ -9069,51 +8436,65 @@ button:active {
 }
 
 .section-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-color);
-}
-
-.recent-apps-section {
-  margin-bottom: 32px;
+  margin: 0;
 }
 
 .recent-apps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  overflow-y: auto;
 }
 
 .recent-app-grid-item {
+  width: 100px;
+  height: 100px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 12px;
   background: var(--list-bg);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
-  min-height: 100px;
 }
 
 .recent-app-grid-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background: var(--hover-color);
 }
 
 .recent-app-grid-icon {
-  font-size: 24px;
+  font-size: 28px;
   margin-bottom: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--list-bg);
   color: var(--primary-color);
+  transition: all 0.2s ease;
+}
+
+.recent-app-grid-item:hover .recent-app-grid-icon {
+  transform: scale(1.05);
+  background: var(--primary-color);
+  color: #fff;
 }
 
 .recent-app-grid-name {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-color);
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9121,138 +8502,12 @@ button:active {
 }
 
 .empty-recent-apps {
-  grid-column: 1 / -1;
+  width: 100%;
+  padding: 20px;
   text-align: center;
-  padding: 40px 0;
-  color: var(--text-secondary);
-}
-
-.all-apps-section {
-  margin-top: 24px;
-}
-
-.app-section-header {
-  padding: 0 0 8px;
-
-  margin-bottom: 12px;
-}
-
-.app-section-header h3 {
-  font-size: 14px;
-  font-weight: 500;
   color: var(--text-color);
-  margin: 0;
+  opacity: 0.6;
 }
-
-/* 最近使用的应用 */
-.recent-apps {
-  padding: 0;
-}
-
-.recent-app-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 8px 12px;
-  transition: background 0.2s;
-}
-
-.recent-app-item:hover {
-  background: var(--hover-color);
-}
-
-.recent-app-icon {
-  font-size: 20px;
-  margin-right: 12px;
-  width: 24px;
-  text-align: center;
-  color: var(--primary-color);
-}
-
-.recent-app-name {
-  font-size: 14px;
-  color: var(--text-color);
-  flex: 1;
-}
-
-/* 应用分类 */
-.app-categories {
-  padding: 0 8px;
-}
-
-.app-category-item {
-  margin-bottom: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-
-}
-
-.category-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.category-header:hover {
-  background: var(--hover-color);
-}
-
-.category-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.category-toggle {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.7;
-  transition: transform 0.2s;
-}
-
-.category-apps {
-  background: transparent;
-}
-
-.category-app-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px 8px 32px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border: none;
-
-}
-
-.category-app-item:hover {
-  background: var(--hover-color);
-}
-
-.category-app-icon {
-  font-size: 16px;
-  margin-right: 12px;
-  width: 20px;
-  text-align: center;
-  color: var(--primary-color);
-}
-
-.category-app-name {
-  font-size: 13px;
-  color: var(--text-color);
-  flex: 1;
-}
-
-
-
-/* 笔记应用样式 */
-
-
 
 
 
@@ -9457,7 +8712,7 @@ button:active {
   left: 0;
   right: 0;
   height: 80px;
-  background: linear-gradient(135deg, var(--primary-color), var(--active-color));
+  background: linear-gradient(135deg, var(--primary-light), var(--active-color));
   border-radius: 8px 8px 0 0;
   z-index: 1;
 }
@@ -9623,7 +8878,7 @@ button:active {
   color: var(--text-color);
   font-weight: 500;
   padding: 5px 8px;
-  background: white;
+  background: var(--input-bg);
   border-radius: 4px;
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
@@ -9995,7 +9250,7 @@ button:active {
 /* 右侧内容样式 */
 .right-content {
   flex: 1;
-  background: var(--content-bg);
+  background: var(--right-content-bg);
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -10004,11 +9259,11 @@ button:active {
 
 .right-content-header {
   padding: 16px 20px;
-  background: var(--sidebar-bg);
+  background: var(--right-content-header-bg);
   height: 72px;
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .right-content-header h2 {
@@ -10026,6 +9281,8 @@ button:active {
   color: var(--text-color);
   font-size: 14px;
   opacity: 0.7;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* 右键菜单样式 */
@@ -10063,31 +9320,46 @@ button:active {
 
 /* 主题图标样式 */
 .theme-icon {
-  width: 16px;
-  height: 16px;
+  width: 16px !important;
+  height: 16px !important;
   border-radius: 50%;
   display: inline-block;
   margin-right: 8px;
 }
 
-.light-theme {
+.modern-light-theme {
   background: #f5f5f5;
   border: 1px solid #e0e0e0;
 }
 
-.dark-theme {
+.elegant-dark-theme {
   background: #333;
   border: 1px solid #555;
 }
 
-.blue-theme {
+.ocean-blue-theme {
   background: #1976d2;
   border: 1px solid #1565c0;
 }
 
-.green-theme {
-  background: #4caf50;
-  border: 1px solid #388e3c;
+.elegant-purple-theme {
+  background: #8b5cf6;
+  border: 1px solid #7c3aed;
+}
+
+.warm-amber-theme {
+  background: #f59e0b;
+  border: 1px solid #d97706;
+}
+
+.crimson-red-theme {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+}
+
+.emerald-green-theme {
+  background: #10b981;
+  border: 1px solid #059669;
 }
 
 .empty-state {
@@ -10095,7 +9367,7 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--content-bg);
+  background: var(--right-content-bg);
 }
 
 .empty-content {
@@ -10875,39 +10147,39 @@ input:checked + .slider:before {
   text-align: center;
 }
 
-.theme-preview.light-theme {
+.theme-preview.modern-light-theme {
   background: #ffffff;
   border: 1px solid #e8e8e8;
 }
 
-.theme-preview.dark-theme {
+.theme-preview.elegant-dark-theme {
   background: #121212;
   border: 1px solid #333333;
 }
 
-.theme-preview.netblue-theme {
+.theme-preview.ocean-blue-theme {
   background: #e6f7ff;
   border: 1px solid #91d5ff;
 }
 
-.theme-preview.elegantpurple-theme {
+.theme-preview.elegant-purple-theme {
   background: #f5f0ff;
   border: 1px solid #d3adf7;
 }
 
-.theme-preview.sacredyellow-theme {
+.theme-preview.warm-amber-theme {
   background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
   border: 1px solid #d4b85f;
 }
 
-.theme-preview.chinesered-theme {
-  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
-  border: 1px solid #a01830;
+.theme-preview.crimson-red-theme {
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  border: 1px solid #b91c1c;
 }
 
-.theme-preview.grassgreen-theme {
-  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
-  border: 1px solid #247048;
+.theme-preview.emerald-green-theme {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  border: 1px solid #059669;
 }
 
 /* 字体大小滑块 */
@@ -10989,84 +10261,84 @@ input:checked + .slider:before {
 }
 
 /* 炫酷黑主题 - 系统设置 */
-[data-theme="dark"] .settings-content {
+[data-theme="elegant-dark"] .settings-content {
   background: var(--sidebar-bg) !important;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-header {
+[data-theme="elegant-dark"] .settings-header {
   background: var(--sidebar-bg) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-header h3 {
+[data-theme="elegant-dark"] .settings-header h3 {
   color: var(--text-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar {
+[data-theme="elegant-dark"] .settings-sidebar {
   background: var(--sidebar-bg) !important;
   border-right: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar-item:hover {
+[data-theme="elegant-dark"] .settings-sidebar-item:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar-item.active {
+[data-theme="elegant-dark"] .settings-sidebar-item.active {
   background: var(--hover-color) !important;
   border-left-color: var(--primary-color) !important;
   color: var(--primary-color) !important;
 }
 
-[data-theme="dark"] .save-btn {
+[data-theme="elegant-dark"] .save-btn {
   background: var(--hover-color);
   color: white;
 }
 
-[data-theme="dark"] .settings-main {
+[data-theme="elegant-dark"] .settings-main {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .settings-section-header h4 {
+[data-theme="elegant-dark"] .settings-section-header h4 {
   color: var(--text-color) !important;
 }
 
-[data-theme="dark"] icon-btn:hover {
+[data-theme="elegant-dark"] icon-btn:hover {
   background: var(--hover-color)!important;
 }
 
-[data-theme="dark"] .settings-item label {
+[data-theme="elegant-dark"] .settings-item label {
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .settings-input,
-[data-theme="dark"] .settings-textarea,
-[data-theme="dark"] .settings-select {
+[data-theme="elegant-dark"] .settings-input,
+[data-theme="elegant-dark"] .settings-textarea,
+[data-theme="elegant-dark"] .settings-select {
   background: var(--input-bg) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-input:focus,
-[data-theme="dark"] .settings-textarea:focus,
-[data-theme="dark"] .settings-select:focus {
+[data-theme="elegant-dark"] .settings-input:focus,
+[data-theme="elegant-dark"] .settings-textarea:focus,
+[data-theme="elegant-dark"] .settings-select:focus {
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2) !important;
 }
 
-[data-theme="dark"] .theme-option:hover {
+[data-theme="elegant-dark"] .theme-option:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .theme-option.active {
+[data-theme="elegant-dark"] .theme-option.active {
   border-color: var(--primary-color) !important;
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .clear-cache-btn,
-[data-theme="dark"] .security-btn {
+[data-theme="elegant-dark"] .clear-cache-btn,
+[data-theme="elegant-dark"] .security-btn {
   background: var(--input-bg) !important;
   color: var(--text-color) !important;
 }
@@ -11076,8 +10348,7 @@ input:checked + .slider:before {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 12px;
+  background: var(--right-content-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
@@ -11087,8 +10358,7 @@ input:checked + .slider:before {
   justify-content: space-between;
   align-items: flex-start;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color);
+  background: var(--right-content-bg);
   transition: all 0.3s ease;
 }
 
@@ -11252,7 +10522,7 @@ input:checked + .slider:before {
 }
 
 .message-list {
-  background: white;
+  background: var(--right-content-bg);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
@@ -11399,8 +10669,7 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
-  border-radius: 12px;
+  background: var(--right-content-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
@@ -11534,16 +10803,16 @@ input:checked + .slider:before {
 .message-item:nth-child(5) { animation-delay: 0.25s; }
 
 
-[data-theme="dark"] .clear-cache-btn:hover,
-[data-theme="dark"] .security-btn:hover {
+[data-theme="elegant-dark"] .clear-cache-btn:hover,
+[data-theme="elegant-dark"] .security-btn:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .about-info {
+[data-theme="elegant-dark"] .about-info {
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .settings-footer {
+[data-theme="elegant-dark"] .settings-footer {
   background: var(--sidebar-bg) !important;
   border-top: 1px solid var(--border-color) !important;
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.3) !important;

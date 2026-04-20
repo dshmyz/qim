@@ -1,0 +1,94 @@
+/* ========================================
+   导入设计系统 - Import Design System
+   ======================================== */
+@import url('../design-tokens.css');
+
+/* ========================================
+   记事本样式 - Notepad Styles
+   ======================================== */
+.notepad-app {
+  max-width: 500px;
+}
+
+.notepad-container {
+  width: 100%;
+}
+
+.notepad-title {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  background: var(--content-bg);
+  color: var(--text-color);
+  transition: all var(--transition-base);
+}
+
+.notepad-title:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.notepad-content {
+  width: 100%;
+  height: 200px;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-2);
+  resize: vertical;
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  transition: all var(--transition-base);
+}
+
+.notepad-content:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.notepad-actions {
+  display: flex;
+  gap: var(--spacing-2);
+  justify-content: flex-end;
+}
+
+.notepad-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-base);
+}
+
+.notepad-btn:first-child {
+  background: var(--primary-color);
+  color: white;
+}
+
+.notepad-btn:first-child:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.notepad-btn:last-child {
+  background: var(--content-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.notepad-btn:last-child:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}

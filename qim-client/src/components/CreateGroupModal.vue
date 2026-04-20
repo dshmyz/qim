@@ -572,7 +572,7 @@ const createConversation = async () => {
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
-  background-color: var(--secondary-color, #f9fafb);
+  background-color: var(--input-color, #f9fafb);
   color: var(--text-color, #1f2937);
 }
 

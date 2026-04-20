@@ -3,14 +3,14 @@
     <div class="file-info">
       <div class="file-icon-container">
         <div class="file-icon">
-          <i :class="getFileIcon(content)"></i>
+          <i :class="getFileIcon(fileUrl)"></i>
         </div>
         <div class="file-size" v-if="fileSize">
           {{ formatFileSize(fileSize) }}
         </div>
       </div>
       <div class="file-details">
-        <div class="file-name">{{ fileName || content.split('/').pop() || content }}</div>
+        <div class="file-name">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
         <div class="file-actions">
           <button class="file-action-btn" @click="downloadFile">下载</button>
           <button class="file-action-btn" @click="saveFileAs">另存为</button>
@@ -21,17 +21,43 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
   content: string
-  fileName?: string
-  fileSize?: number
   isSelf?: boolean
+  serverUrl: string
 }>()
 
 const emit = defineEmits<{
   download: [url: string, fileName?: string]
   saveAs: [url: string, fileName?: string]
 }>()
+
+// 解析文件数据
+const fileData = computed(() => {
+  try {
+    return JSON.parse(props.content)
+  } catch {
+    return { url: props.content, name: '', size: 0 }
+  }
+})
+
+// 获取文件URL
+const fileUrl = computed(() => {
+  const url = fileData.value.url || ''
+  if (url.startsWith('http')) {
+    return url
+  } else {
+    return props.serverUrl + url
+  }
+})
+
+// 获取文件名
+const fileName = computed(() => fileData.value.name || '')
+
+// 获取文件大小
+const fileSize = computed(() => Number(fileData.value.size) || 0)
 
 const getFileIcon = (filePath: string): string => {
   const ext = filePath.split('.').pop()?.toLowerCase()
@@ -95,11 +121,11 @@ const formatFileSize = (size: number): string => {
 }
 
 const downloadFile = () => {
-  emit('download', props.content, props.fileName)
+  emit('download', fileUrl.value, fileName.value)
 }
 
 const saveFileAs = () => {
-  emit('saveAs', props.content, props.fileName)
+  emit('saveAs', fileUrl.value, fileName.value)
 }
 </script>
 

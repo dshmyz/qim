@@ -19,8 +19,8 @@ defineProps<{
 
 .system-message-content {
   padding: 4px 12px;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--text-secondary);
+  background: rgba(150, 150, 150, 0.15);
+  color: #999999;
   font-size: 12px;
   border-radius: 12px;
   line-height: 1.4;

@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `status` VARCHAR(20) DEFAULT 'offline',
   `ip` VARCHAR(50),
   `two_factor_enabled` BOOLEAN DEFAULT FALSE,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS `departments` (
   `level` INTEGER NOT NULL,
   `path` VARCHAR(500),
   `sort_order` INTEGER DEFAULT 0,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS `department_employees` (
   `department_id` INTEGER NOT NULL,
   `position` VARCHAR(100),
   `is_primary` BOOLEAN DEFAULT TRUE,
-  `created_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS `idx_department_employees_user_id` ON `department_employees`(`user_id`);
@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS `conversations` (
   `creator_id` INTEGER,
   `last_message_id` INTEGER,
   `last_message_at` DATETIME,
-  `created_at` DATETIME,
-  `updated_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Conversation members table
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS `conversation_members` (
   `unread_count` INTEGER DEFAULT 0,
   `muted` BOOLEAN DEFAULT FALSE,
   `last_read_at` DATETIME,
-  `joined_at` DATETIME
+  `joined_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS `idx_conversation_members_conversation_id` ON `conversation_members`(`conversation_id`);
@@ -85,15 +85,12 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `sender_id` INTEGER NOT NULL,
   `type` VARCHAR(20) NOT NULL,
   `content` TEXT NOT NULL,
-  `file_id` INTEGER,
-  `file_name` VARCHAR(255),
-  `file_size` INTEGER,
   `quoted_message_id` INTEGER,
   `is_recalled` BOOLEAN DEFAULT FALSE,
   `is_read` BOOLEAN DEFAULT FALSE,
   `recalled_at` DATETIME,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -112,7 +109,7 @@ CREATE TABLE IF NOT EXISTS `files` (
   `storage_path` VARCHAR(500) NOT NULL,
   `checksum` VARCHAR(64),
   `folder_id` INTEGER,
-  `created_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -125,8 +122,8 @@ CREATE TABLE IF NOT EXISTS `folders` (
   `user_id` INTEGER NOT NULL,
   `name` VARCHAR(255) NOT NULL,
   `parent_id` INTEGER,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -141,8 +138,8 @@ CREATE TABLE IF NOT EXISTS `notes` (
   `content` TEXT NOT NULL,
   `color` VARCHAR(20) DEFAULT 'yellow',
   `type` VARCHAR(20) DEFAULT 'note',
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -156,8 +153,8 @@ CREATE TABLE IF NOT EXISTS `conversation_sessions` (
   `conversation_id` INTEGER NOT NULL,
   `is_pinned` BOOLEAN DEFAULT FALSE,
   `pinned_at` DATETIME,
-  `last_visited_at` DATETIME,
-  `created_at` DATETIME
+  `last_visited_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS `idx_user_conversation_session` ON `conversation_sessions`(`user_id`, `conversation_id`);
@@ -170,7 +167,7 @@ CREATE TABLE IF NOT EXISTS `message_read_receipts` (
   `message_id` INTEGER NOT NULL,
   `conversation_id` INTEGER NOT NULL,
   `user_id` INTEGER NOT NULL,
-  `created_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS `idx_message_read_receipts_message_id` ON `message_read_receipts`(`message_id`);
@@ -186,8 +183,8 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `type` VARCHAR(50) NOT NULL,
   `config` TEXT,
   `is_active` BOOLEAN DEFAULT TRUE,
-  `created_at` DATETIME,
-  `updated_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Bot conversations table
@@ -196,7 +193,7 @@ CREATE TABLE IF NOT EXISTS `bot_conversations` (
   `bot_id` INTEGER NOT NULL,
   `user_id` INTEGER NOT NULL,
   `conversation_id` INTEGER NOT NULL,
-  `created_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS `idx_bot_conversations_bot_id` ON `bot_conversations`(`bot_id`);
@@ -213,8 +210,8 @@ CREATE TABLE IF NOT EXISTS `events` (
   `end` DATETIME NOT NULL,
   `all_day` BOOLEAN DEFAULT FALSE,
   `reminder` INTEGER DEFAULT 0,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -226,7 +223,7 @@ CREATE TABLE IF NOT EXISTS `user_roles` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `user_id` INTEGER NOT NULL,
   `role` VARCHAR(50) NOT NULL,
-  `created_at` DATETIME
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS `idx_user_role` ON `user_roles`(`user_id`, `role`);
@@ -241,7 +238,7 @@ CREATE TABLE IF NOT EXISTS `system_messages` (
   `status` VARCHAR(20) DEFAULT 'active',
   `target_type` VARCHAR(20),
   `target_id` INTEGER,
-  `created_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -256,8 +253,8 @@ CREATE TABLE IF NOT EXISTS `mini_apps` (
   `icon` VARCHAR(500),
   `path` VARCHAR(500),
   `status` VARCHAR(20) DEFAULT 'active',
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -273,8 +270,8 @@ CREATE TABLE IF NOT EXISTS `apps` (
   `url` VARCHAR(500),
   `status` VARCHAR(20) DEFAULT 'active',
   `open_type` VARCHAR(20) DEFAULT 'in-app',
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -290,8 +287,8 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `content` TEXT NOT NULL,
   `read` BOOLEAN DEFAULT FALSE,
   `read_at` DATETIME,
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -306,8 +303,8 @@ CREATE TABLE IF NOT EXISTS `channels` (
   `avatar` VARCHAR(500),
   `creator_id` INTEGER NOT NULL,
   `status` VARCHAR(20) DEFAULT 'active',
-  `created_at` DATETIME,
-  `updated_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
@@ -318,7 +315,7 @@ CREATE TABLE IF NOT EXISTS `channel_subscribers` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `channel_id` INTEGER NOT NULL,
   `user_id` INTEGER NOT NULL,
-  `joined_at` DATETIME
+  `joined_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS `idx_channel_user` ON `channel_subscribers`(`channel_id`, `user_id`);
@@ -332,7 +329,7 @@ CREATE TABLE IF NOT EXISTS `channel_messages` (
   `sender_id` INTEGER NOT NULL,
   `content` TEXT NOT NULL,
   `type` VARCHAR(20) NOT NULL DEFAULT 'text',
-  `created_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 

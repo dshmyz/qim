@@ -1,0 +1,108 @@
+/* ========================================
+   导入设计系统 - Import Design System
+   ======================================== */
+@import url('../design-tokens.css');
+
+/* ========================================
+   计算器样式 - Calculator Styles
+   ======================================== */
+.calculator-app {
+  max-width: 350px;
+}
+
+.calculator-container {
+  width: 100%;
+}
+
+.calculator-display {
+  background: var(--content-bg);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.calculator-result {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
+  text-align: right;
+  margin-bottom: var(--spacing-2);
+}
+
+.calculator-input {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-align: right;
+  min-height: 18px;
+}
+
+.calculator-buttons {
+  display: grid;
+  grid-gap: var(--spacing-2);
+}
+
+.calculator-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: var(--spacing-2);
+}
+
+.calculator-btn {
+  padding: var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.calculator-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.calculator-btn:active {
+  transform: translateY(0);
+}
+
+.calculator-btn-number {
+  background: var(--content-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.calculator-btn-number:hover {
+  background: var(--hover-color);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.calculator-btn-operator {
+  background: var(--primary-color);
+  color: white;
+}
+
+.calculator-btn-operator:hover {
+  background: var(--primary-dark);
+}
+
+.calculator-btn-clear {
+  background: var(--error-color);
+  color: white;
+}
+
+.calculator-btn-clear:hover {
+  opacity: 0.9;
+}
+
+.calculator-btn-equals {
+  background: var(--success-color);
+  color: white;
+  grid-column: span 2;
+}
+
+.calculator-btn-equals:hover {
+  opacity: 0.9;
+}

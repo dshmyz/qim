@@ -1,21 +1,43 @@
 <template>
   <div class="message-content-image">
-    <img :src="src" class="message-image" @click="previewImage" @dblclick="previewImage" />
+    <img :src="imageUrl" class="message-image" @click="previewImage" @dblclick="previewImage" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
   src: string
   isSelf?: boolean
+  serverUrl: string
 }>()
 
 const emit = defineEmits<{
   preview: [url: string]
 }>()
 
+// 解析图片数据
+const imageData = computed(() => {
+  try {
+    return JSON.parse(props.src)
+  } catch {
+    return { url: props.src }
+  }
+})
+
+// 获取图片URL
+const imageUrl = computed(() => {
+  const url = imageData.value.url || props.src
+  if (url.startsWith('http')) {
+    return url
+  } else {
+    return props.serverUrl + url
+  }
+})
+
 const previewImage = () => {
-  emit('preview', props.src)
+  emit('preview', imageUrl.value)
 }
 </script>
 

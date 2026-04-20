@@ -1,0 +1,199 @@
+/* ========================================
+   导入设计系统 - Import Design System
+   ======================================== */
+@import url('../design-tokens.css');
+
+/* ========================================
+   短链接生成器样式 - Short Link Styles
+   ======================================== */
+.short-link-app {
+  max-width: 500px;
+}
+
+.short-link-container {
+  width: 100%;
+}
+
+.short-link-input-section {
+  margin-bottom: var(--spacing-5);
+}
+
+.short-link-input-section label {
+  display: block;
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color);
+}
+
+.original-url-input {
+  width: 100%;
+  height: 100px;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  transition: all var(--transition-base);
+}
+
+.original-url-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.short-link-result {
+  margin: var(--spacing-5) 0;
+  padding: var(--spacing-4);
+  background: var(--content-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.short-link-result label {
+  display: block;
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color);
+}
+
+.short-link-output {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.short-url-input {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  transition: all var(--transition-base);
+}
+
+.short-url-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.copy-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-md);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-base);
+}
+
+.copy-btn:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.short-link-list-section {
+  margin-top: var(--spacing-8);
+}
+
+.short-link-list-section h3 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-4);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
+}
+
+.short-link-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--content-bg);
+}
+
+.short-link-item {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--border-color);
+  transition: background var(--transition-fast);
+}
+
+.short-link-item:hover {
+  background: var(--hover-color);
+}
+
+.short-link-item:last-child {
+  border-bottom: none;
+}
+
+.short-link-item-original {
+  font-size: var(--font-size-sm);
+  color: var(--text-color);
+  margin-bottom: var(--spacing-2);
+  word-break: break-all;
+  line-height: var(--line-height-normal);
+}
+
+.short-link-item-short {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.short-link-item-short a {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  color: var(--primary-color);
+  text-decoration: none;
+  word-break: break-all;
+  transition: color var(--transition-fast);
+}
+
+.short-link-item-short a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+}
+
+.copy-item-btn {
+  padding: var(--spacing-1) var(--spacing-2);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-base);
+}
+
+.copy-item-btn:hover {
+  background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+.short-link-item-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  padding: var(--spacing-10) var(--spacing-5);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}

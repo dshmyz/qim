@@ -111,8 +111,9 @@ CREATE TABLE users (
     phone VARCHAR(20),
     email VARCHAR(100),
     status VARCHAR(20) DEFAULT 'offline', -- online/offline/busy
-    last_active_at TIMESTAMP,
     ip VARCHAR(50),
+    two_factor_enabled BOOLEAN DEFAULT FALSE,
+    last_active_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP

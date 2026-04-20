@@ -219,27 +219,32 @@ onMounted(() => {
 
 <style scoped>
 .channel-list {
-  height: 100%;
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  margin: 8px 8px;
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  /* background: var(--list-bg); */
 }
 
 .channel-header {
-  padding: 20px;
+  padding: 16px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  background: var(--sidebar-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .channel-header h3 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-color);
 }
 
 .create-channel-btn {
@@ -258,7 +263,7 @@ onMounted(() => {
 }
 
 .create-channel-btn:hover {
-  background: var(--primary-hover);
+  background: var(--primary-dark);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
@@ -266,7 +271,7 @@ onMounted(() => {
 .channel-list-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
 }
 
 .loading {
@@ -314,7 +319,7 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-color);
 }
 
 .empty p {
@@ -330,7 +335,7 @@ onMounted(() => {
 }
 
 .channel-card {
-  background: white;
+  background: var(--card-bg);
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -370,7 +375,7 @@ onMounted(() => {
   padding: 8px 16px;
   border: 1px solid var(--primary-color);
   border-radius: 20px;
-  background: white;
+  background: var(--secondary-color);
   color: var(--primary-color);
   cursor: pointer;
   font-size: 12px;
@@ -395,8 +400,8 @@ onMounted(() => {
 }
 
 .subscribe-btn.subscribed:hover {
-  background: var(--primary-hover);
-  border-color: var(--primary-hover);
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
 }
 
 .channel-card-body {
@@ -407,7 +412,7 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-color);
   line-height: 1.3;
 }
 
@@ -450,7 +455,7 @@ onMounted(() => {
 }
 
 .modal-content {
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
@@ -480,7 +485,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px 16px 0 0;
 }
 
@@ -502,7 +507,7 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-color);
 }
 
 .close-btn {
@@ -549,8 +554,8 @@ onMounted(() => {
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.3s ease;
-  background: white;
-  color: var(--text-primary);
+  background: var(--input-bg);
+  color: var(--text-color);
 }
 
 .form-input:focus,
@@ -572,7 +577,7 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  background: white;
+  background: var(--card-bg);
   border-radius: 0 0 16px 16px;
 }
 
@@ -607,7 +612,7 @@ onMounted(() => {
 }
 
 .btn-primary:hover {
-  background: var(--primary-hover);
+  background: var(--primary-dark);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
@@ -697,7 +702,7 @@ onMounted(() => {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 20px;
-  background: white;
+  background: var(--card-bg);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
@@ -745,7 +750,7 @@ onMounted(() => {
 .message-sender {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-color);
 }
 
 .message-time {
@@ -755,7 +760,7 @@ onMounted(() => {
 
 .message-text {
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--text-color);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -779,8 +784,8 @@ onMounted(() => {
   font-family: inherit;
   font-size: 14px;
   transition: all 0.3s ease;
-  background: white;
-  color: var(--text-primary);
+  background: var(--input-bg);
+  color: var(--text-color);
 }
 
 .message-textarea:focus {
@@ -804,7 +809,7 @@ onMounted(() => {
 }
 
 .send-btn:hover {
-  background: var(--primary-hover);
+  background: var(--primary-dark);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }

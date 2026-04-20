@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.db
 qim-server/qim-server
+.DS_Store
+.trae

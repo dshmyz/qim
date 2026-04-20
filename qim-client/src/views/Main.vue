@@ -1,5 +1,12 @@
 <template>
   <div class="im-container">
+    <!-- 加载过渡动画 -->
+    <div v-if="isLoading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">加载中...</div>
+      </div>
+    </div>
     <!-- 网络连接状态提示 -->
     <div v-if="showNetworkError" class="network-error">
       <div class="network-error-content">
@@ -123,7 +130,50 @@
         <div class="sidebar-content">
           <!-- 最近联系人 -->
           <div v-if="activeOption === 'recent'" class="content-section">
+            <!-- 搜索结果悬浮窗 -->
+            <div v-if="searchQuery && searchResults.length > 0" class="search-popup">
+              <div class="search-popup-content">
+                <div class="search-popup-header">
+                  <span>搜索结果</span>
+                  <span class="search-popup-count">{{ searchResults.length }} 个结果</span>
+                </div>
+                <div class="search-popup-list">
+                  <div
+                    v-for="item in searchResults"
+                    :key="item.id + item.type"
+                    class="search-popup-item"
+                    @click="handleSearchItemClick(item)"
+                  >
+                    <div class="search-popup-avatar">
+                      <img :src="item.avatar || generateAvatar(item.name)" :alt="item.name" />
+                      <span v-if="item.type === 'group'" class="group-badge">群</span>
+                      <span v-if="item.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
+                    </div>
+                    <div class="search-popup-info">
+                      <div class="search-popup-name">{{ item.name }}</div>
+                      <div class="search-popup-meta">
+                        <span v-if="item.type === 'user'" class="search-popup-username">{{ item.username }}</span>
+                        <span v-if="item.type === 'group'" class="search-popup-type">群聊</span>
+                        <span v-if="item.type === 'discussion'" class="search-popup-type">讨论组</span>
+                        <span v-if="item.type === 'user' && item.status === 'online'" class="search-popup-status online">在线</span>
+                        <span v-if="item.type === 'user' && item.status !== 'online'" class="search-popup-status offline">离线</span>
+                        <span v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-status online">已加入</span>
+                        <span v-if="(item.type === 'group' || item.type === 'discussion') && !item.isMember" class="search-popup-status offline">未加入</span>
+                      </div>
+                    </div>
+                    <button v-if="item.type === 'user'" class="search-popup-btn" @click.stop="startPrivateChat(item)">
+                      <i class="fas fa-comment"></i>
+                    </button>
+                    <button v-if="item.type === 'group' || item.type === 'discussion'" class="search-popup-btn" @click.stop="handleSearchItemClick(item)">
+                      <i class="fas fa-arrow-right"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <div class="conversation-list">
+              <!-- 会话列表 -->
               <div
                 v-for="conversation in filteredConversations"
                 :key="conversation.id"
@@ -135,6 +185,7 @@
                 <div class="conversation-avatar">
                   <img :src="conversation.avatar" :alt="conversation.name" />
                   <span v-if="conversation.type === 'group'" class="group-badge">群</span>
+                  <span v-if="conversation.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
                   <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
                 </div>
                 <div class="conversation-info">
@@ -394,12 +445,24 @@
             <button class="btn btn-primary send-btn" @click="sendChannelMessage(selectedChannel)" :disabled="!channelMessage.trim()">发送</button>
           </div>
         </div>
-        <div v-else class="channels-content">
+         <div v-else class="right-content">
+        <div class="right-content-header">
+            <h2>频道</h2>
+        </div>
+        <div class="right-content-body">
+            <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
+            <p>选择一个频道查看详情</p>
+            </div>
+      </div>
+        <!-- <div v-else class="channels-content">
+           <div class="right-content-header">
+            <h2>频道</h2>
+          </div>
           <div class="channels-empty-state">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
             <p>选择一个频道查看详情</p>
           </div>
-        </div>
+        </div> -->
       </div>
       
       <!-- 组织架构用户信息 -->
@@ -664,7 +727,7 @@
       <div class="context-menu-item" @click="handleMute(selectedConversation)">
         {{ selectedConversation.muted ? '取消免打扰' : '免打扰' }}
       </div>
-      <div v-if="selectedConversation.type === 'group'" class="context-menu-item" @click="handleExitGroup(selectedConversation)">
+      <div v-if="selectedConversation.type === 'group' || selectedConversation.type === 'discussion'" class="context-menu-item" @click="handleExitGroup(selectedConversation)">
         退出群聊
       </div>
       <div class="context-menu-item divider"></div>
@@ -1096,33 +1159,33 @@
     
     <!-- 主题菜单 -->
     <div v-if="showThemeMenuFlag" class="context-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="setTheme('light')">
+      <div class="context-menu-item" @click="setTheme('modern-light')">
         <span class="context-menu-icon theme-icon light-theme"></span>
         <span>清新白</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('dark')">
-        <span class="context-menu-icon theme-icon dark-theme"></span>
+      <div class="context-menu-item" @click="setTheme('elegant-dark')">
+        <span class="context-menu-icon theme-icon elegant-dark-theme"></span>
         <span>炫酷黑</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('netblue')">
-        <span class="context-menu-icon theme-icon netblue-theme"></span>
-        <span>天青蓝</span>
+      <div class="context-menu-item" @click="setTheme('ocean-blue')">
+        <span class="context-menu-icon theme-icon ocean-blue-theme"></span>
+        <span>海洋蓝</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('elegantpurple')">
-        <span class="context-menu-icon theme-icon elegantpurple-theme"></span>
+      <div class="context-menu-item" @click="setTheme('elegant-purple')">
+        <span class="context-menu-icon theme-icon elegant-purple-theme"></span>
         <span>高雅紫</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('sacredyellow')">
-        <span class="context-menu-icon theme-icon sacredyellow-theme"></span>
-        <span>月牙黄</span>
+      <div class="context-menu-item" @click="setTheme('warm-amber')">
+        <span class="context-menu-icon theme-icon warm-amber-theme"></span>
+        <span>琥珀黄</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('chinesered')">
-        <span class="context-menu-icon theme-icon chinesered-theme"></span>
+      <div class="context-menu-item" @click="setTheme('crimson-red')">
+        <span class="context-menu-icon theme-icon crimson-red-theme"></span>
         <span>中国红</span>
       </div>
-      <div class="context-menu-item" @click="setTheme('grassgreen')">
-        <span class="context-menu-icon theme-icon grassgreen-theme"></span>
-        <span>青草绿</span>
+      <div class="context-menu-item" @click="setTheme('emerald-green')">
+        <span class="context-menu-icon theme-icon emerald-green-theme"></span>
+        <span>翡翠绿</span>
       </div>
     </div>
     
@@ -1390,59 +1453,59 @@
               <div class="theme-selector">
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'light' }" 
-                  @click="appearanceSettings.theme = 'light'"
+                  :class="{ active: appearanceSettings.theme === 'modern-light' }" 
+                  @click="appearanceSettings.theme = 'modern-light'"
                 >
                   <div class="theme-preview light-theme"></div>
                   <span>清新白</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'dark' }" 
-                  @click="appearanceSettings.theme = 'dark'"
+                  :class="{ active: appearanceSettings.theme === 'elegant-dark' }" 
+                  @click="appearanceSettings.theme = 'elegant-dark'"
                 >
                   <div class="theme-preview dark-theme"></div>
                   <span>炫酷黑</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'netblue' }" 
-                  @click="appearanceSettings.theme = 'netblue'"
+                  :class="{ active: appearanceSettings.theme === 'ocean-blue' }" 
+                  @click="appearanceSettings.theme = 'ocean-blue'"
                 >
                   <div class="theme-preview netblue-theme"></div>
-                  <span>天青蓝</span>
+                  <span>海洋蓝</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'elegantpurple' }" 
-                  @click="appearanceSettings.theme = 'elegantpurple'"
+                  :class="{ active: appearanceSettings.theme === 'elegant-purple' }" 
+                  @click="appearanceSettings.theme = 'elegant-purple'"
                 >
-                  <div class="theme-preview elegantpurple-theme"></div>
+                  <div class="theme-preview elegant-purple-theme"></div>
                   <span>高雅紫</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'sacredyellow' }" 
-                  @click="appearanceSettings.theme = 'sacredyellow'"
+                  :class="{ active: appearanceSettings.theme === 'warm-amber' }" 
+                  @click="appearanceSettings.theme = 'warm-amber'"
                 >
-                  <div class="theme-preview sacredyellow-theme"></div>
-                  <span>月牙黄</span>
+                  <div class="theme-preview warm-amber-theme"></div>
+                  <span>琥珀黄</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'chinesered' }" 
-                  @click="appearanceSettings.theme = 'chinesered'"
+                  :class="{ active: appearanceSettings.theme === 'crimson-red' }" 
+                  @click="appearanceSettings.theme = 'crimson-red'"
                 >
-                  <div class="theme-preview chinesered-theme"></div>
+                  <div class="theme-preview crimson-red-theme"></div>
                   <span>中国红</span>
                 </div>
                 <div 
                   class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'grassgreen' }" 
-                  @click="appearanceSettings.theme = 'grassgreen'"
+                  :class="{ active: appearanceSettings.theme === 'emerald-green' }" 
+                  @click="appearanceSettings.theme = 'emerald-green'"
                 >
-                  <div class="theme-preview grassgreen-theme"></div>
-                  <span>青草绿</span>
+                  <div class="theme-preview emerald-green-theme"></div>
+                  <span>翡翠绿</span>
                 </div>
               </div>
             </div>
@@ -1553,15 +1616,15 @@ import { ref, computed, defineComponent, onMounted, onUnmounted, watch } from 'v
 import type { Conversation, Message, User } from '../types'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
-import CalendarApp from './apps/CalendarApp.vue'
-import StatisticsApp from './apps/StatisticsApp.vue'
-import StickyNotesApp from './apps/StickyNotesApp.vue'
-import NotesApp from './apps/NotesApp.vue'
-import TaskManagementApp from './apps/TaskManagementApp.vue'
-import FileManagementApp from './apps/FileManagementApp.vue'
-import AppManagementApp from './apps/AppManagementApp.vue'
-import AIAssistantApp from './apps/AIAssistantApp.vue'
-import ShortLinkManager from './apps/ShortLinkManager.vue'
+import CalendarApp from '../components/apps/CalendarApp.vue'
+import StatisticsApp from '../components/apps/StatisticsApp.vue'
+import StickyNotesApp from '../components/apps/StickyNotesApp.vue'
+import NotesApp from '../components/apps/NotesApp.vue'
+import TaskManagementApp from '../components/apps/TaskManagementApp.vue'
+import FileManagementApp from '../components/apps/FileManagementApp.vue'
+import AppManagementApp from '../components/apps/AppManagementApp.vue'
+import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
+import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
 
 // 声明 window.electron 变量
 declare global {
@@ -1573,20 +1636,23 @@ declare global {
     } | undefined
   }
 }
-import Sidebar from './Sidebar.vue'
-import ChatWindow from './ChatWindow.vue'
-import GroupList from './GroupList.vue'
-import GroupDetail from './GroupDetail.vue'
-import ShareModal from '../common/ShareModal.vue'
-import UserProfile from '../common/UserProfile.vue'
-import NotificationCenter from '../common/NotificationCenter.vue'
-import ChannelList from '../common/ChannelList.vue'
-import CreateGroupModal from '../common/CreateGroupModal.vue'
+import Sidebar from '../components/Sidebar.vue'
+import ChatWindow from '../components/ChatWindow.vue'
+import GroupList from '../components/GroupList.vue'
+import GroupDetail from '../components/GroupDetail.vue'
+import ShareModal from '../components/ShareModal.vue'
+import UserProfile from '../components/UserProfile.vue'
+import NotificationCenter from '../components/NotificationCenter.vue'
+import ChannelList from '../components/ChannelList.vue'
+import CreateGroupModal from '../components/CreateGroupModal.vue'
 import { API_BASE_URL } from '../config'
 import { generateAvatar } from '../utils/avatar'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+
+// 加载状态
+const isLoading = ref(true)
 
 // 获取群聊群主
 const getGroupOwner = (group: Conversation | null) => {
@@ -1846,6 +1912,8 @@ const request = async (url: string, options?: RequestInit) => {
   
   const fullUrl = `${serverUrl.value}${url}`
   console.log('发送请求:', fullUrl, options)
+  console.log('请求头:', headers)
+  console.log('Token存在:', !!token)
   
   try {
     const response = await fetch(fullUrl, {
@@ -1857,6 +1925,7 @@ const request = async (url: string, options?: RequestInit) => {
     })
     
     console.log('响应状态:', response.status, response.statusText)
+    console.log('响应头:', Object.fromEntries(response.headers.entries()))
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -1882,7 +1951,7 @@ const selectedGroup = ref(null)
 
 // 会话数据
 const conversations = ref<Conversation[]>([])
-const isLoading = ref(false)
+
 
 // 用户资料弹窗
 const showUserProfile = ref(false)
@@ -2151,7 +2220,7 @@ const processConversation = (conv: any) => {
     } : undefined,
     unreadCount: unreadCount,
     timestamp: conv.last_message_at ? new Date(conv.last_message_at).getTime() : (conv.created_at ? new Date(conv.created_at).getTime() : Date.now()),
-    type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP' || conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'group' : (conv.type === 'bot' ? 'bot' : 'single'),
+    type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP') ? 'group' : (conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'discussion' : (conv.type === 'bot' ? 'bot' : 'single'),
     members: members,
     pinned: conv.is_pinned || false,
     muted: conv.muted || false
@@ -2181,7 +2250,6 @@ const processConversation = (conv: any) => {
 
 // 加载会话列表
 const loadConversations = async () => {
-  isLoading.value = true
   try {
     // 从服务器获取最新会话
     const response = await request('/api/v1/conversations')
@@ -2195,8 +2263,6 @@ const loadConversations = async () => {
   } catch (error) {
     console.error('加载会话失败:', error)
     conversations.value = []
-  } finally {
-    isLoading.value = false
   }
 }
 
@@ -2269,13 +2335,22 @@ let messagePollingInterval: number | null = null
 
 // 初始化数据
 onMounted(async () => {
-  loadConversations()
-  loadOrganizationTree()
+  isLoading.value = true
+  try {
+    // 并行加载数据
+    await Promise.all([
+      loadConversations(),
+      loadOrganizationTree(),
+      loadUserApps()
+    ])
+  } catch (error) {
+    console.error('加载数据失败:', error)
+  } finally {
+    isLoading.value = false
+  }
+  
   // 连接WebSocket（不再使用轮询，完全依赖WebSocket）
   connectWebSocket()
-  
-  // 加载用户创建的应用
-  await loadUserApps()
   
   // 监听分享便签事件
   window.addEventListener('shareStickyNote', (event: CustomEvent) => {
@@ -2904,6 +2979,28 @@ const handleNewMessage = (data: any) => {
     
     // 强制触发响应式更新
     conversations.value = [...conversations.value]
+  } else {
+    // 会话不存在于列表中，可能是被移除后又有新消息
+    // 重新加载会话列表以获取最新状态
+    console.log('收到已移除会话的消息，重新加载会话列表:', conversationId)
+    loadConversations().then(() => {
+      // 重新加载后，检查会话是否存在，如果是新消息且不是当前会话，确保未读计数正确
+      const newConversationIndex = conversations.value.findIndex(c => c.id === conversationId)
+      if (newConversationIndex !== -1 && currentConversationId.value !== conversationId) {
+        // 确保未读计数至少为1
+        const conversation = conversations.value[newConversationIndex]
+        if (!conversation.unreadCount || conversation.unreadCount === 0) {
+          const updatedConversation = {
+            ...conversation,
+            unreadCount: 1
+          }
+          conversations.value.splice(newConversationIndex, 1, updatedConversation)
+          // 重新排序并强制更新
+          conversations.value.sort((a, b) => b.timestamp - a.timestamp)
+          conversations.value = [...conversations.value]
+        }
+      }
+    })
   }
   
   // 如果是当前会话的消息，添加到消息列表
@@ -2989,6 +3086,54 @@ const filteredConversations = computed(() => {
     if (!a.pinned && b.pinned) return 1
     return b.timestamp - a.timestamp
   })
+})
+
+// 搜索结果
+const searchResults = ref([])
+const isSearching = ref(false)
+
+// 处理搜索
+const handleSearch = async (query) => {
+  if (!query.trim()) {
+    searchResults.value = []
+    return
+  }
+  
+  isSearching.value = true
+  try {
+    const response = await request(`/api/v1/users/search?q=${encodeURIComponent(query)}`)
+    if (response.code === 0) {
+      searchResults.value = response.data || []
+    }
+  } catch (error) {
+    console.error('搜索失败:', error)
+  } finally {
+    isSearching.value = false
+  }
+}
+
+// 处理搜索项点击
+const handleSearchItemClick = (item) => {
+  if (item.type === 'user') {
+    startPrivateChat(item)
+  } else if (item.type === 'group' || item.type === 'discussion') {
+    // 如果是群聊或讨论组，选中该会话
+    currentConversationId.value = item.id.toString()
+    activeOption.value = 'recent'
+    loadMessages(item.id.toString())
+    // 关闭搜索悬浮框
+    searchQuery.value = ''
+    searchResults.value = []
+  }
+}
+
+// 监听搜索输入变化
+watch(searchQuery, (newQuery) => {
+  // 简单的防抖实现
+  clearTimeout(window.searchTimeout)
+  window.searchTimeout = setTimeout(() => {
+    handleSearch(newQuery)
+  }, 300)
 })
 
 // 当前选中的会话
@@ -3705,6 +3850,10 @@ const getPageTitle = (): string => {
 
 // 开始私聊
 const startPrivateChat = async (user: any) => {
+  // 关闭搜索悬浮框
+  searchQuery.value = ''
+  searchResults.value = []
+  
   try {
     // 检查用户ID格式
     let userId = user.id
@@ -6104,7 +6253,7 @@ const applyFontSize = (fontSize: number) => {
 
 // 初始化主题和字体大小
 const initTheme = () => {
-  const savedTheme = localStorage.getItem('theme') || 'light'
+  const savedTheme = localStorage.getItem('theme') || 'modern-light'
   currentTheme.value = savedTheme
   document.documentElement.setAttribute('data-theme', savedTheme)
   
@@ -6229,8 +6378,12 @@ const handleNewNotification = (notification: any) => {
 </script>
 
 <style>
+@import url('../assets/styles/design-tokens.css');
+/* @import url('../assets/styles/components.css'); */
+
+
 /* 主题样式 */
-:root {
+/* :root {
   --primary-color: #3b82f6;
   --primary-light: #eff6ff;
   --secondary-color: #f9fafb;
@@ -6252,10 +6405,34 @@ const handleNewNotification = (notification: any) => {
   --card-bg: #ffffff;
   --header-panel-bg: #f8fafc;
   --font-size-base: 14px;
+} */
+
+/* 现代浅色主题 */
+[data-theme="modern-light"] {
+  --primary-color: #3b82f6;
+  --primary-light: #eff6ff;
+  --secondary-color: #f9fafb;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+  --hover-color: #eff6ff;
+  --active-color: #2563eb;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #f3f4f6;
+  --accent-color: #60a5fa;
+  --text-secondary: #6b7280;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #fafafa;
+  --card-bg: #ffffff;
+  --header-panel-bg: #f8fafc;
+  --content-bg: #f9fafb;
 }
 
-/* 炫酷黑主题 */
-[data-theme="dark"] {
+/* 优雅深色主题 */
+[data-theme="elegant-dark"] {
   --primary-color: #4b5563;
   --primary-light: #374151;
   --secondary-color: #0a0a0a;
@@ -6278,48 +6455,48 @@ const handleNewNotification = (notification: any) => {
   --content-bg: #0a0a0a;
 }
 
-/* 炫酷黑主题 - 侧边栏内容区域 */
-[data-theme="dark"] .sidebar-content {
+/* 优雅深色主题 - 侧边栏内容区域 */
+[data-theme="elegant-dark"] .sidebar-content {
   background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .conversation-list {
+[data-theme="elegant-dark"] .conversation-list {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .conversation-item {
+[data-theme="elegant-dark"] .conversation-item {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .groups-list {
+[data-theme="elegant-dark"] .groups-list {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .group-item {
+[data-theme="elegant-dark"] .group-item {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .tree-container {
+[data-theme="elegant-dark"] .tree-container {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .apps-container {
+[data-theme="elegant-dark"] .apps-container {
   background: var(--list-bg) !important;
 }
 
-[data-theme="dark"] .search-input {
+[data-theme="elegant-dark"] .search-input {
   background: var(--sidebar-bg) !important;
 }
 
-/* 炫酷黑主题 - 搜索框背景 */
-[data-theme="dark"] .search-box {
+/* 优雅深色主题 - 搜索框背景 */
+[data-theme="elegant-dark"] .search-box {
   background: var(--sidebar-bg) !important;
   border-top-color: var(--border-color) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
-/* 天青蓝主题 */
-[data-theme="netblue"] {
+/* 海洋蓝主题 */
+[data-theme="ocean-blue"] {
   --primary-color: #49bccf;
   --primary-light: #e0f2fe;
   --secondary-color: #f0f9ff;
@@ -6341,169 +6518,169 @@ const handleNewNotification = (notification: any) => {
   --header-panel-bg: #e0f2fe;
 }
 
-/* 天青蓝主题 - 左边侧边栏 */
-[data-theme="netblue"] .side-options {
+/* 海洋蓝主题 - 左边侧边栏 */
+[data-theme="ocean-blue"] .side-options {
   background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
 }
 
-/* 天青蓝主题 - 文本颜色 */
-[data-theme="netblue"] .window-title,
-[data-theme="netblue"] .option-item,
-[data-theme="netblue"] .option-item.active {
+/* 海洋蓝主题 - 文本颜色 */
+[data-theme="ocean-blue"] .window-title,
+[data-theme="ocean-blue"] .option-item,
+[data-theme="ocean-blue"] .option-item.active {
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-/* 天青蓝主题 - 窗口控制栏左侧 */
-[data-theme="netblue"] .window-controls-left {
+/* 海洋蓝主题 - 窗口控制栏左侧 */
+[data-theme="ocean-blue"] .window-controls-left {
   background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
 }
 
-/* 天青蓝主题 - 侧边栏头部 */
-[data-theme="netblue"] .sidebar-header {
+/* 海洋蓝主题 - 侧边栏头部 */
+[data-theme="ocean-blue"] .sidebar-header {
   background: #ffffff;
   box-shadow: var(--shadow-md);
 }
 
-[data-theme="netblue"] .sidebar-header .user-name {
+[data-theme="ocean-blue"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
-/* 炫酷黑主题 - 侧边栏头部 */
-[data-theme="dark"] .sidebar-header {
+/* 优雅深色主题 - 侧边栏头部 */
+[data-theme="elegant-dark"] .sidebar-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .sidebar-header .user-name {
+[data-theme="elegant-dark"] .sidebar-header .user-name {
   color: var(--text-color) !important;
 }
 
-/* 炫酷黑主题 - 窗口控制栏左侧 */
-/* [data-theme="dark"] .window-controls-left {
+/* 优雅深色主题 - 窗口控制栏左侧 */
+/* [data-theme="elegant-dark"] .window-controls-left {
   background: var(--sidebar-bg) !important;
   border-right: 1px solid var(--border-color) !important;
 } */
 
-/* 炫酷黑主题 - 组织架构树 */
-[data-theme="dark"] .org-content {
+/* 优雅深色主题 - 组织架构树 */
+[data-theme="elegant-dark"] .org-content {
   background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .employee-node .tree-node-content {
+[data-theme="elegant-dark"] .employee-node .tree-node-content {
   background: transparent !important;
   opacity: 1 !important;
 }
 
-[data-theme="dark"] .employee-node .tree-node-content:hover {
+[data-theme="elegant-dark"] .employee-node .tree-node-content:hover {
   background: var(--hover-color) !important;
   opacity: 1 !important;
 }
 
-/* 炫酷黑主题 - 图标颜色 */
-[data-theme="dark"] .option-icon {
+/* 优雅深色主题 - 图标颜色 */
+[data-theme="elegant-dark"] .option-icon {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .option-item:hover .option-icon,
-[data-theme="dark"] .option-item.active .option-icon {
+[data-theme="elegant-dark"] .option-item:hover .option-icon,
+[data-theme="elegant-dark"] .option-item.active .option-icon {
   color: rgba(229, 231, 235, 1) !important;
 }
 
-[data-theme="dark"] .app-icon,
-[data-theme="dark"] .recent-app-grid-icon,
-[data-theme="dark"] .category-app-icon,
-[data-theme="dark"] .management-icon,
-[data-theme="dark"] .empty-icon,
-[data-theme="dark"] .file-icon,
-[data-theme="dark"] .context-menu-icon,
-[data-theme="dark"] .action-menu-icon,
-[data-theme="dark"] .user-context-menu-icon,
-[data-theme="dark"] .muted-icon,
-[data-theme="dark"] .toggle-icon,
-[data-theme="dark"] .tab-icon,
-[data-theme="dark"] .category-icon,
-[data-theme="dark"] .recent-app-icon {
+[data-theme="elegant-dark"] .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-icon,
+[data-theme="elegant-dark"] .management-icon,
+[data-theme="elegant-dark"] .empty-icon,
+[data-theme="elegant-dark"] .file-icon,
+[data-theme="elegant-dark"] .context-menu-icon,
+[data-theme="elegant-dark"] .action-menu-icon,
+[data-theme="elegant-dark"] .user-context-menu-icon,
+[data-theme="elegant-dark"] .muted-icon,
+[data-theme="elegant-dark"] .toggle-icon,
+[data-theme="elegant-dark"] .tab-icon,
+[data-theme="elegant-dark"] .category-icon,
+[data-theme="elegant-dark"] .recent-app-icon {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .app-item:hover .app-icon,
-[data-theme="dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
-[data-theme="dark"] .category-app-item:hover .category-app-icon,
+[data-theme="elegant-dark"] .app-item:hover .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-item:hover .category-app-icon,
 
 
-[data-theme="dark"] .app-item:hover .app-icon {
+[data-theme="elegant-dark"] .app-item:hover .app-icon {
   transform: scale(1.05);
   background: grey!important;
   /* color: #fff; */
 }
 
 
-/* 炫酷黑主题 - 侧边栏按钮样式 */
-[data-theme="dark"] .option-item {
+/* 优雅深色主题 - 侧边栏按钮样式 */
+[data-theme="elegant-dark"] .option-item {
   color: rgba(229, 231, 235, 0.7) !important;
 }
 
-[data-theme="dark"] .option-item:hover {
+[data-theme="elegant-dark"] .option-item:hover {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 
-[data-theme="dark"] .option-item.active {
+[data-theme="elegant-dark"] .option-item.active {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
   box-shadow: var(--shadow-md) !important;
 }
 
-/* 炫酷黑主题 - 应用管理tab样式 */
-[data-theme="dark"] .app-tab-item {
+/* 优雅深色主题 - 应用管理tab样式 */
+[data-theme="elegant-dark"] .app-tab-item {
   color: rgba(229, 231, 235, 0.7) !important;
   border-bottom-color: transparent !important;
 }
 
-[data-theme="dark"] .app-tab-item:hover {
+[data-theme="elegant-dark"] .app-tab-item:hover {
   background: var(--hover-color) !important;
   color: rgba(229, 231, 235, 1) !important;
 }
 
-[data-theme="dark"] .app-tab-item.active {
+[data-theme="elegant-dark"] .app-tab-item.active {
   border-bottom-color: rgba(229, 231, 235, 1) !important;
   color: rgba(229, 231, 235, 1) !important;
 }
 
-/* 炫酷黑主题 - 群聊徽章样式 */
-[data-theme="dark"] .group-badge {
+/* 优雅深色主题 - 群聊徽章样式 */
+[data-theme="elegant-dark"] .group-badge {
   background: #2d3748 !important;
   color: rgba(229, 231, 235, 1) !important;
   border: 1px solid rgba(229, 231, 235, 0.3) !important;
 }
 
-/* 炫酷黑主题 - 右边面板 */
-[data-theme="dark"] .right-content {
+/* 优雅深色主题 - 右边面板 */
+[data-theme="elegant-dark"] .right-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .right-content-header {
+[data-theme="elegant-dark"] .right-content-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .right-content-body {
+[data-theme="elegant-dark"] .right-content-body {
   background: var(--secondary-color) !important;
   color: var(--text-color) !important;
 }
 
-/* 炫酷黑主题 - 应用内容 */
-[data-theme="dark"] .apps-content {
+/* 优雅深色主题 - 应用内容 */
+[data-theme="elegant-dark"] .apps-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .recent-apps-section,
-[data-theme="dark"] .all-apps-section {
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
   background: var(--secondary-color) !important;
 }
 
@@ -6511,13 +6688,13 @@ const handleNewNotification = (notification: any) => {
 
 
 
-/* 炫酷黑主题 - 应用分类 */
-[data-theme="dark"] .app-category-item {
+/* 优雅深色主题 - 应用分类 */
+[data-theme="elegant-dark"] .app-category-item {
   background: transparent !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .category-header {
+[data-theme="elegant-dark"] .category-header {
   background: transparent !important;
 }
 
@@ -6711,6 +6888,163 @@ const handleNewNotification = (notification: any) => {
   background-color: #f5f5f5;
 }
 
+/* 搜索结果悬浮窗 */
+.search-popup {
+  position: relative;
+  width: 100%;
+  max-height: 300px;
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.search-popup-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.search-popup-count {
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.search-popup-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.search-popup-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.search-popup-item:hover {
+  background-color: var(--hover-color);
+}
+
+.search-popup-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.search-popup-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.search-popup-info {
+  flex: 1;
+  margin-left: 12px;
+  min-width: 0;
+}
+
+.search-popup-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-popup-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.search-popup-username {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.search-popup-type {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.search-popup-status {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.search-popup-status.online {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.search-popup-status.offline {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+.search-popup-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.search-popup-btn:hover {
+  background: var(--active-color);
+  transform: scale(1.05);
+}
+
+/* 深色主题适配 */
+[data-theme="elegant-dark"] .search-popup {
+  background: var(--sidebar-bg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="elegant-dark"] .search-popup-item:hover {
+  background-color: var(--hover-color);
+}
+
+[data-theme="elegant-dark"] .search-popup-status.online {
+  background-color: #166534;
+  color: #bbf7d0;
+}
+
+[data-theme="elegant-dark"] .search-popup-status.offline {
+  background-color: #7f1d1d;
+  color: #fecaca;
+}
+
 /* 按钮样式优化 */
 button {
   transition: all 0.2s ease;
@@ -6800,47 +7134,47 @@ button:active {
 }
 
 /* 主题切换样式 - 深色主题下的Markdown样式 */
-[data-theme="dark"] .markdown-code {
+[data-theme="elegant-dark"] .markdown-code {
   background: #2d2d30;
   border-color: #3e3e42;
   color: #e0e0e0;
 }
 
-[data-theme="dark"] .markdown-link {
+[data-theme="elegant-dark"] .markdown-link {
   color: #90caf9;
 }
 
-[data-theme="dark"] .markdown-link:hover {
+[data-theme="elegant-dark"] .markdown-link:hover {
   color: #bbdefb;
 }
 
-[data-theme="dark"] .preview-content {
+[data-theme="elegant-dark"] .preview-content {
   color: #e0e0e0;
 }
 
-[data-theme="dark"] .note-content-input {
+[data-theme="elegant-dark"] .note-content-input {
   background: #2d2d30;
   color: #e0e0e0;
   border-color: #3e3e42;
 }
 
-[data-theme="dark"] .file-item:hover {
+[data-theme="elegant-dark"] .file-item:hover {
   background-color: #2d2d30;
 }
 
-[data-theme="dark"] .app-item:hover {
+[data-theme="elegant-dark"] .app-item:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-[data-theme="dark"] .tree-node-content:hover {
+[data-theme="elegant-dark"] .tree-node-content:hover {
   background-color: #2d2d30;
 }
 
-[data-theme="dark"] .conversation-item:hover {
+[data-theme="elegant-dark"] .conversation-item:hover {
   background-color: #2d2d30;
 }
 
-/* 主题切换样式 - 天青蓝主题下的Markdown样式 */
+/* 主题切换样式 - 海洋蓝主题下的Markdown样式 */
 [data-theme="netblue"] .markdown-code {
   background: #e0f2fe;
   border-color: #bae6fd;
@@ -6855,60 +7189,60 @@ button:active {
   color: #0284c7;
 }
 
-/* 炫酷黑主题 - 分类标题悬停样式 */
-[data-theme="dark"] .category-header:hover {
+/* 优雅深色主题 - 分类标题悬停样式 */
+[data-theme="elegant-dark"] .category-header:hover {
   background: var(--hover-color) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-/* 炫酷黑主题 - 分类应用样式 */
-[data-theme="dark"] .category-apps {
+/* 优雅深色主题 - 分类应用样式 */
+[data-theme="elegant-dark"] .category-apps {
   background: transparent !important;
 }
 
-[data-theme="dark"] .category-app-item {
+[data-theme="elegant-dark"] .category-app-item {
   background: transparent !important;
 }
 
-[data-theme="dark"] .category-app-item:hover {
+[data-theme="elegant-dark"] .category-app-item:hover {
   background: var(--hover-color) !important;
 }
 
 
 
-/* 炫酷黑主题 - 应用网格项 */
-[data-theme="dark"] .recent-app-grid-item {
+/* 优雅深色主题 - 应用网格项 */
+[data-theme="elegant-dark"] .recent-app-grid-item {
   background: var(--sidebar-bg) !important;
   border: 1px solid var(--border-color) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
 }
 
-[data-theme="dark"] .recent-app-grid-item:hover {
+[data-theme="elegant-dark"] .recent-app-grid-item:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
 }
 
-/* 炫酷黑主题 - 主内容区域 */
-[data-theme="dark"] .main-content {
+/* 优雅深色主题 - 主内容区域 */
+[data-theme="elegant-dark"] .main-content {
   background: var(--secondary-color) !important;
 }
 
-/* 炫酷黑主题 - 无会话状态 */
-[data-theme="dark"] .no-conversation {
+/* 优雅深色主题 - 无会话状态 */
+[data-theme="elegant-dark"] .no-conversation {
   background: var(--secondary-color) !important;
   color: var(--text-color) !important;
 }
 
-/* 炫酷黑主题 - 应用内容区域 */
-[data-theme="dark"] .apps-content {
+/* 优雅深色主题 - 应用内容区域 */
+[data-theme="elegant-dark"] .apps-content {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .recent-apps-section,
-[data-theme="dark"] .all-apps-section {
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
   background: var(--secondary-color) !important;
 }
 
-/* 天青蓝主题 - 选项项样式调整 */
+/* 海洋蓝主题 - 选项项样式调整 */
 [data-theme="netblue"] .option-item {
   color: rgba(255, 255, 255, 0.8);
 }
@@ -7410,6 +7744,67 @@ button:active {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* 加载过渡动画 */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--content-bg);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  animation: spin 1s ease-in-out infinite;
+}
+
+.loading-text {
+  font-size: 16px;
+  color: var(--text-color);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
 /* 自定义窗口控制栏 */
 .window-controls {
   display: flex;
@@ -7558,12 +7953,55 @@ button:active {
 
 /* 主题图标样式 */
 .theme-icon {
-  width: 16px;
-  height: 16px;
+  width: 16px !important;
+  height: 16px !important;
   border-radius: 50%;
   display: inline-block;
   margin-right: 8px;
   box-shadow: var(--shadow-sm);
+}
+
+/* ========================================
+   主题图标样式 - Theme Icon Styles
+   ======================================== */
+.modern-light-theme {
+  background: #3b82f6;
+  border: 1px solid #2563eb;
+}
+
+.elegant-dark-theme {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+
+.ocean-blue-theme {
+  background: #0ea5e9;
+  border: 1px solid #0284c7;
+}
+
+.elegant-purple-theme {
+  background: #8b5cf6;
+  border: 1px solid #7c3aed;
+}
+
+.warm-amber-theme {
+  background: #f59e0b;
+  border: 1px solid #d97706;
+}
+
+.crimson-red-theme {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+}
+
+.emerald-green-theme {
+  background: #10b981;
+  border: 1px solid #059669;
+}
+
+.green-theme {
+  background: #10b981;
+  border: 1px solid #059669;
 }
 
 .light-theme {
@@ -8391,7 +8829,7 @@ button:active {
   height: 72px;
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .user-info {
@@ -8924,7 +9362,7 @@ button:active {
 .apps-grid {
   flex: 1;
   padding: 16px;
-  background: var(--content-bg);
+  /* background: var(--content-bg); */
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -9062,6 +9500,7 @@ button:active {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  background: var(--right-content-bg);
 }
 
 .section-header {
@@ -9457,7 +9896,7 @@ button:active {
   left: 0;
   right: 0;
   height: 80px;
-  background: linear-gradient(135deg, var(--primary-color), var(--active-color));
+  background: linear-gradient(135deg, var(--primary-light), var(--active-color));
   border-radius: 8px 8px 0 0;
   z-index: 1;
 }
@@ -9568,7 +10007,7 @@ button:active {
   background: var(--list-bg);
   border-radius: 8px;
   padding: 16px;
-  border: 1px solid var(--border-color);
+  /* border: 1px solid var(--border-color); */
   transition: all 0.3s ease;
 }
 
@@ -9623,7 +10062,7 @@ button:active {
   color: var(--text-color);
   font-weight: 500;
   padding: 5px 8px;
-  background: white;
+  background: var(--input-bg);
   border-radius: 4px;
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
@@ -9672,7 +10111,7 @@ button:active {
 }
 
 .action-btn.secondary {
-  background: white;
+  background: var(--primary-light);
   border-color: var(--border-color);
   color: var(--text-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -10008,7 +10447,7 @@ button:active {
   height: 72px;
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .right-content-header h2 {
@@ -10024,6 +10463,7 @@ button:active {
   align-items: center;
   justify-content: center;
   color: var(--text-color);
+  background: var(--right-content-bg);
   font-size: 14px;
   opacity: 0.7;
 }
@@ -10061,41 +10501,15 @@ button:active {
   background: #e0e0e0;
 }
 
-/* 主题图标样式 */
-.theme-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 8px;
-}
-
-.light-theme {
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
-}
-
-.dark-theme {
-  background: #333;
-  border: 1px solid #555;
-}
-
-.blue-theme {
-  background: #1976d2;
-  border: 1px solid #1565c0;
-}
-
-.green-theme {
-  background: #4caf50;
-  border: 1px solid #388e3c;
-}
 
 .empty-state {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--content-bg);
+  /* background: var(--content-bg); */
+  background: var(--right-content-bg);
+  opacity: 0.7;
 }
 
 .empty-content {
@@ -10988,85 +11402,85 @@ input:checked + .slider:before {
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
 }
 
-/* 炫酷黑主题 - 系统设置 */
-[data-theme="dark"] .settings-content {
+/* 优雅深色主题 - 系统设置 */
+[data-theme="elegant-dark"] .settings-content {
   background: var(--sidebar-bg) !important;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-header {
+[data-theme="elegant-dark"] .settings-header {
   background: var(--sidebar-bg) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-header h3 {
+[data-theme="elegant-dark"] .settings-header h3 {
   color: var(--text-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar {
+[data-theme="elegant-dark"] .settings-sidebar {
   background: var(--sidebar-bg) !important;
   border-right: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar-item:hover {
+[data-theme="elegant-dark"] .settings-sidebar-item:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .settings-sidebar-item.active {
+[data-theme="elegant-dark"] .settings-sidebar-item.active {
   background: var(--hover-color) !important;
   border-left-color: var(--primary-color) !important;
   color: var(--primary-color) !important;
 }
 
-[data-theme="dark"] .save-btn {
+[data-theme="elegant-dark"] .save-btn {
   background: var(--hover-color);
   color: white;
 }
 
-[data-theme="dark"] .settings-main {
+[data-theme="elegant-dark"] .settings-main {
   background: var(--secondary-color) !important;
 }
 
-[data-theme="dark"] .settings-section-header h4 {
+[data-theme="elegant-dark"] .settings-section-header h4 {
   color: var(--text-color) !important;
 }
 
-[data-theme="dark"] icon-btn:hover {
+[data-theme="elegant-dark"] icon-btn:hover {
   background: var(--hover-color)!important;
 }
 
-[data-theme="dark"] .settings-item label {
+[data-theme="elegant-dark"] .settings-item label {
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .settings-input,
-[data-theme="dark"] .settings-textarea,
-[data-theme="dark"] .settings-select {
+[data-theme="elegant-dark"] .settings-input,
+[data-theme="elegant-dark"] .settings-textarea,
+[data-theme="elegant-dark"] .settings-select {
   background: var(--input-bg) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-[data-theme="dark"] .settings-input:focus,
-[data-theme="dark"] .settings-textarea:focus,
-[data-theme="dark"] .settings-select:focus {
+[data-theme="elegant-dark"] .settings-input:focus,
+[data-theme="elegant-dark"] .settings-textarea:focus,
+[data-theme="elegant-dark"] .settings-select:focus {
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2) !important;
 }
 
-[data-theme="dark"] .theme-option:hover {
+[data-theme="elegant-dark"] .theme-option:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .theme-option.active {
+[data-theme="elegant-dark"] .theme-option.active {
   border-color: var(--primary-color) !important;
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .clear-cache-btn,
-[data-theme="dark"] .security-btn {
+[data-theme="elegant-dark"] .clear-cache-btn,
+[data-theme="elegant-dark"] .security-btn {
   background: var(--input-bg) !important;
   color: var(--text-color) !important;
 }
@@ -11077,7 +11491,7 @@ input:checked + .slider:before {
   display: flex;
   flex-direction: column;
   background: white;
-  border-radius: 12px;
+  /* border-radius: 12px; */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
@@ -11400,7 +11814,7 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   background: white;
-  border-radius: 12px;
+  /* border-radius: 12px; */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
@@ -11534,16 +11948,16 @@ input:checked + .slider:before {
 .message-item:nth-child(5) { animation-delay: 0.25s; }
 
 
-[data-theme="dark"] .clear-cache-btn:hover,
-[data-theme="dark"] .security-btn:hover {
+[data-theme="elegant-dark"] .clear-cache-btn:hover,
+[data-theme="elegant-dark"] .security-btn:hover {
   background: var(--hover-color) !important;
 }
 
-[data-theme="dark"] .about-info {
+[data-theme="elegant-dark"] .about-info {
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .settings-footer {
+[data-theme="elegant-dark"] .settings-footer {
   background: var(--sidebar-bg) !important;
   border-top: 1px solid var(--border-color) !important;
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.3) !important;
