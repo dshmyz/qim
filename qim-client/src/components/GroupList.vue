@@ -60,11 +60,15 @@ const getAvatarUrl = (conversation: Conversation) => {
 
 <style scoped>
 .groups-list {
-  width: 300px;
   flex-shrink: 0;
-  border-right: 1px solid #e8e8e8;
+  /* border-right: 1px solid #e8e8e8; */
   overflow-y: auto;
   padding: 16px;
+  margin: 8px 8px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: #fafafa;
+  max-height: calc(100vh - 200px);
 }
 
 .group-item {
@@ -78,11 +82,11 @@ const getAvatarUrl = (conversation: Conversation) => {
 }
 
 .group-item:hover {
-  background: #e3f2fd;
+  background: var(--hover-color);
 }
 
 .group-item.active {
-  background: #bbdefb;
+  background: var(--hover-color);
 }
 
 .group-avatar {
@@ -129,7 +133,7 @@ const getAvatarUrl = (conversation: Conversation) => {
 
 .group-name {
   font-weight: 500;
-  color: #333;
+  color: var(--text-color);
   margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -138,14 +142,14 @@ const getAvatarUrl = (conversation: Conversation) => {
 
 .member-count {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   margin-left: 6px;
   font-weight: normal;
 }
 
 .unread-badge {
   display: inline-block;
-  background: #f44336;
+  background: var(--error-color);
   color: white;
   font-size: 12px;
   min-width: 18px;

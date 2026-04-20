@@ -1,0 +1,102 @@
+/* ========================================
+   导入设计系统 - Import Design System
+   ======================================== */
+@import url('../design-tokens.css');
+
+/* ========================================
+   待办事项样式 - Todo Styles
+   ======================================== */
+.todo-app {
+  max-width: 400px;
+}
+
+.todo-input-container {
+  display: flex;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-5);
+}
+
+.todo-input {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-base);
+}
+
+.todo-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.add-todo-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-base);
+}
+
+.add-todo-btn:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.add-todo-btn:active {
+  transform: translateY(0);
+}
+
+.todo-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-bottom: 1px solid var(--border-color);
+  transition: background var(--transition-fast);
+}
+
+.todo-item:hover {
+  background: var(--hover-color);
+}
+
+.todo-item.completed .todo-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.todo-text {
+  flex: 1;
+  color: var(--text-color);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.todo-delete {
+  background: none;
+  border: none;
+  color: var(--error-color);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.todo-delete:hover {
+  background: var(--color-error-100);
+  transform: scale(1.1);
+}

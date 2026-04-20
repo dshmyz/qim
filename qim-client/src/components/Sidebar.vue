@@ -1,16 +1,22 @@
 <template>
   <div class="sidebar">
     <div class="sidebar-header">
-      <div class="user-info">
-        <img
-          src="https://api.dicebear.com/7.x/avataaars/svg?seed=me"
-          alt="avatar"
+      <div class="user-info" @click="$emit('showUserProfile')">
+        <img style="width: 55px; height: 55px;"
+          :src="userAvatar"
+          :alt="userName"
           class="user-avatar"
         />
-        <span class="user-name">我的账号</span>
+        <span class="user-name">{{ userName }}</span>
       </div>
       <div class="header-actions">
-        <button class="icon-btn">+</button>
+        <button class="icon-btn" @click="$emit('showNotification', $event)" title="通知">
+          <i class="fas fa-bell"></i>
+          <span v-if="unreadNotificationCount > 0" class="notification-badge">{{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}</span>
+        </button>
+        <button class="icon-btn" @click="$emit('showActionMenu', $event)">
+          <i class="fas fa-plus"></i>
+        </button>
       </div>
     </div>
 
@@ -18,99 +24,53 @@
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="搜索会话..."
+        :placeholder="searchPlaceholder"
         class="search-input"
+        @input="$emit('update:searchQuery', searchQuery)"
       />
     </div>
 
-    <div class="conversation-list">
-      <div
-          v-for="conversation in filteredConversations"
-          :key="conversation.id"
-          class="conversation-item"
-          :class="{ active: conversation.id === currentId }"
-          @click="$emit('select', conversation)"
-          @contextmenu.prevent="showContextMenu($event, conversation)"
-        >
-        <div class="conversation-avatar">
-          <img :src="conversation.avatar" :alt="conversation.name" />
-          <span v-if="conversation.type === 'group'" class="group-badge">群</span>
-        </div>
-        <div class="conversation-info">
-          <div class="conversation-name">
-            {{ conversation.name }}
-            <span v-if="conversation.type === 'group' && conversation.members" class="member-count">
-              ({{ conversation.members.length }}人)
-            </span>
-            <span v-if="conversation.muted" class="muted-icon" title="免打扰">🔕</span>
-          </div>
-          <div class="conversation-preview">
-            {{ conversation.lastMessage?.content || '暂无消息' }}
-          </div>
-        </div>
-        <div class="conversation-meta">
-          <div class="conversation-time">{{ formatTime(conversation.timestamp) }}</div>
-          <div v-if="conversation.unreadCount > 99" class="unread-badge">
-            {{ conversation.unreadCount > 99 ? '99+' : conversation.unreadCount }}
-          </div>
-        </div>
+    <div class="sidebar-content">
+      <div v-if="activeOption === 'recent'" class="content-section">
+        <ConversationList
+          :conversations="filteredConversations"
+          :currentConversationId="currentConversationId"
+          @select="(conv) => $emit('selectConversation', conv)"
+          @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
+        />
       </div>
-    </div>
-    <div class="sidebar-footer">
-      <button class="settings-btn" @click="showSettingsMenu($event)">
-        <i class="fas fa-cog"></i>
-      </button>
-    </div>
 
-    <!-- 右键菜单 -->
-    <div
-      v-if="showMenu"
-      class="context-menu"
-      :style="{
-        left: menuPosition.x + 'px',
-        top: menuPosition.y + 'px'
-      }"
-    >
-      <div class="menu-item" @click="handleMute">
-        <span class="menu-icon">🔇</span>
-        <span>免打扰</span>
+      <div v-else-if="activeOption === 'org'" class="content-section">
+        <OrgTree
+          :orgStructure="orgStructure"
+          @selectUser="(user) => $emit('selectUser', user)"
+          @startPrivateChat="(user) => $emit('startPrivateChat', user)"
+          @userContextMenu="(event, user) => $emit('userContextMenu', event, user)"
+        />
       </div>
-      <div class="menu-divider"></div>
-      <div v-if="selectedConversation?.type === 'group'" class="menu-item" @click="handleExitGroup">
-        <span class="menu-icon">🚪</span>
-        <span>退出群聊</span>
+
+      <div v-else-if="activeOption === 'groups'" class="content-section">
+        <GroupList
+          :conversations="conversations"
+          :selectedGroup="selectedGroup"
+          @select="(group) => $emit('selectGroup', group)"
+          @enter="$emit('enterGroup', $event)"
+          @invite="$emit('inviteMembers', $event)"
+          @showContextMenu="(event, conv) => $emit('groupContextMenu', event, conv)"
+        />
       </div>
-      <div class="menu-item" @click="handleRemove">
-        <span class="menu-icon">🗑️</span>
-        <span>移除会话</span>
+
+      <div v-else-if="activeOption === 'channels'" class="content-section">
+        <ChannelList :currentUser="currentUser!" @select-channel="$emit('selectChannel', $event)" />
       </div>
-    </div>
-    
-    <!-- 设置菜单 -->
-    <div
-      v-if="showSettingsMenuFlag"
-      class="context-menu"
-      :style="{
-        left: settingsMenuPosition.x + 'px',
-        top: settingsMenuPosition.y + 'px'
-      }"
-    >
-      <div class="menu-item" @click="openSettings">
-        <span class="menu-icon"><i class="fas fa-sliders"></i></span>
-        <span>设置</span>
-      </div>
-      <div class="menu-item" @click="checkForUpdates">
-        <span class="menu-icon"><i class="fas fa-sync"></i></span>
-        <span>检查更新</span>
-      </div>
-      <div class="menu-item" @click="aboutApp">
-        <span class="menu-icon"><i class="fas fa-info-circle"></i></span>
-        <span>关于</span>
-      </div>
-      <div class="menu-divider"></div>
-      <div class="menu-item" @click="logout">
-        <span class="menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-        <span>退出登录</span>
+
+      <div v-else-if="activeOption === 'apps'" class="content-section">
+        <AppPanel
+          :appCategories="appCategories"
+          @openApp="(appId) => $emit('openApp', appId)"
+          @openExternalApp="(url) => $emit('openExternalApp', url)"
+          @resetApp="() => $emit('resetApp')"
+        />
       </div>
     </div>
   </div>
@@ -118,202 +78,134 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import ConversationList from './ConversationList.vue'
+import GroupList from './GroupList.vue'
+import ChannelList from './ChannelList.vue'
+import OrgTree from './OrgTree.vue'
+import AppPanel from './AppPanel.vue'
 import type { Conversation } from '../types'
-import { ElMessage } from 'element-plus'
+
+interface User {
+  id?: string
+  username?: string
+  nickname?: string
+  avatar?: string
+}
+
+interface OrgDepartment {
+  id: string
+  name: string
+  subDepartments: OrgDepartment[]
+  employees?: any[]
+}
+
+interface AppCategory {
+  id: string
+  name: string
+  icon?: string
+  expanded: boolean
+  apps: any[]
+}
 
 interface Props {
+  currentUser: User
+  activeOption: string
+  searchQuery: string
   conversations: Conversation[]
-  currentId: string | null
+  currentConversationId: string | null
+  unreadNotificationCount: number
+  serverUrl: string
+  orgStructure: OrgDepartment[]
+  selectedGroup: any
+  selectedChannel: any
+  appCategories: AppCategory[]
 }
 
 const props = defineProps<Props>()
-defineEmits<{
-  select: [conversation: Conversation]
+
+const emit = defineEmits<{
+  (e: 'update:searchQuery', query: string): void
+  (e: 'showUserProfile'): void
+  (e: 'showNotification', event: MouseEvent): void
+  (e: 'showActionMenu', event: MouseEvent): void
+  (e: 'selectConversation', conversation: Conversation): void
+  (e: 'conversationContextMenu', event: MouseEvent, conversation: Conversation): void
+  (e: 'selectUser', user: any): void
+  (e: 'startPrivateChat', user: any): void
+  (e: 'userContextMenu', event: MouseEvent, user: any): void
+  (e: 'selectGroup', group: any): void
+  (e: 'enterGroup', conversation: Conversation): void
+  (e: 'inviteMembers', conversation: Conversation): void
+  (e: 'groupContextMenu', event: MouseEvent, conversation: Conversation): void
+  (e: 'selectChannel', channel: any): void
+  (e: 'openApp', appId: string): void
+  (e: 'openExternalApp', url: string): void
+  (e: 'resetApp'): void
 }>()
 
-const searchQuery = ref('')
-const showMenu = ref(false)
-const menuPosition = ref({ x: 0, y: 0 })
-const selectedConversation = ref<Conversation | null>(null)
-
-// 设置菜单
-const showSettingsMenuFlag = ref(false)
-const settingsMenuPosition = ref({ x: 0, y: 0 })
-
-const filteredConversations = computed(() => {
-  if (!searchQuery.value) return props.conversations
-  const query = searchQuery.value.toLowerCase()
-  return props.conversations.filter(
-    c =>
-      c.name.toLowerCase().includes(query) ||
-      c.lastMessage?.content.toLowerCase().includes(query)
-  )
+const searchQuery = computed({
+  get: () => props.searchQuery,
+  set: (val) => emit('update:searchQuery', val)
 })
 
-const showContextMenu = (event: MouseEvent, conversation: Conversation) => {
-  event.preventDefault()
-  showMenu.value = true
-  menuPosition.value = {
-    x: event.clientX,
-    y: event.clientY
+const userAvatar = computed(() => {
+  if (!props.currentUser) return 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+  if (props.currentUser.avatar?.startsWith('http')) return props.currentUser.avatar
+  if (props.currentUser.avatar) return props.serverUrl + props.currentUser.avatar
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${props.currentUser.username || 'user'}`
+})
+
+const userName = computed(() => {
+  return props.currentUser?.nickname || props.currentUser?.username || '我的账号'
+})
+
+const searchPlaceholder = computed(() => {
+  switch (props.activeOption) {
+    case 'recent': return '搜索聊天记录...'
+    case 'org': return '搜索联系人...'
+    case 'groups': return '搜索群聊...'
+    case 'channels': return '搜索频道...'
+    case 'apps': return '搜索应用...'
+    default: return '搜索...'
   }
-  selectedConversation.value = conversation
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeContextMenu)
-  }, 0)
-}
+})
 
-const closeContextMenu = () => {
-  showMenu.value = false
-  selectedConversation.value = null
-  document.removeEventListener('click', closeContextMenu)
-}
-
-const handleMute = async () => {
-  if (selectedConversation.value) {
-    // 切换免打扰状态
-    selectedConversation.value.muted = !selectedConversation.value.muted
-    console.log(selectedConversation.value.muted ? '设置为免打扰:' : '取消免打扰:', selectedConversation.value.name)
-    
-    // 保存免打扰状态到服务器
-    try {
-      const response = await fetch('/api/v1/conversations/mute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          conversation_id: selectedConversation.value.id,
-          muted: selectedConversation.value.muted
-        })
-      })
-      const data = await response.json()
-      if (data.code !== 0) {
-        console.error('保存免打扰状态失败:', data.message)
-        // 保存失败时恢复原来的状态
-        selectedConversation.value.muted = !selectedConversation.value.muted
-      }
-    } catch (error) {
-      console.error('保存免打扰状态失败:', error)
-      // 保存失败时恢复原来的状态
-      selectedConversation.value.muted = !selectedConversation.value.muted
-    }
-  }
-  closeContextMenu()
-}
-
-const handleRemove = () => {
-  if (selectedConversation.value) {
-    // 这里可以实现移除会话逻辑
-    console.log('移除:', selectedConversation.value.name)
-  }
-  closeContextMenu()
-}
-
-const handleExitGroup = () => {
-  if (selectedConversation.value) {
-    // 这里可以实现退出群聊逻辑
-    console.log('退出群聊:', selectedConversation.value.name)
-  }
-  closeContextMenu()
-}
-
-const showSettingsMenu = (event) => {
-  event.stopPropagation()
-  settingsMenuPosition.value = {
-    x: event.clientX,
-    y: event.clientY
-  }
-  showSettingsMenuFlag.value = true
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeSettingsMenu)
-  }, 0)
-}
-
-const closeSettingsMenu = () => {
-  showSettingsMenuFlag.value = false
-  document.removeEventListener('click', closeSettingsMenu)
-}
-
-const openSettings = () => {
-  console.log('打开设置')
-  // 这里可以实现打开设置页面的逻辑
-  ElMessage.info('打开设置')
-  closeSettingsMenu()
-}
-
-const checkForUpdates = () => {
-  console.log('检查更新')
-  // 这里可以实现检查更新的逻辑
-  ElMessage.info('检查更新中...')
-  setTimeout(() => {
-    ElMessage.success('当前已是最新版本')
-  }, 1000)
-  closeSettingsMenu()
-}
-
-const aboutApp = () => {
-  console.log('关于应用')
-  // 这里可以实现打开关于页面的逻辑
-  ElMessage.info('关于应用\n版本: 1.0.0\n© 2026 QIM')
-  closeSettingsMenu()
-}
-
-const logout = () => {
-  console.log('退出登录')
-  // 这里可以实现退出登录的逻辑
-  if (confirm('确定要退出登录吗？')) {
-    ElMessage.success('已退出登录')
-  }
-  closeSettingsMenu()
-}
-
-function formatTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-
-  if (diff < minute) {
-    return '刚刚'
-  } else if (diff < hour) {
-    return `${Math.floor(diff / minute)}分钟前`
-  } else if (diff < day) {
-    return `${Math.floor(diff / hour)}小时前`
-  } else {
-    const date = new Date(timestamp)
-    return `${date.getMonth() + 1}/${date.getDate()}`
-  }
-}
+const filteredConversations = computed(() => {
+  if (!props.searchQuery) return props.conversations
+  const query = props.searchQuery.toLowerCase()
+  return props.conversations.filter(conv =>
+    conv.name.toLowerCase().includes(query) ||
+    conv.lastMessage?.content?.toLowerCase().includes(query)
+  )
+})
 </script>
 
 <style scoped>
 .sidebar {
-  width: 300px;
-  height: 100%;
-  background: #f8f9fa;
-  border-right: 1px solid #e8e8e8;
+  width: 320px;
+  background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.05);
+  z-index: 5;
 }
 
 .sidebar-header {
-  padding: 16px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e8e8e8;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--sidebar-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.search-box {
+  padding: 12px 8px;
+  background: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .user-avatar {
@@ -323,219 +215,94 @@ function formatTime(timestamp: number): string {
   object-fit: cover;
 }
 
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .user-name {
   font-weight: 500;
-  color: #333;
+  color: var(--text-color);
+  font-size: 14px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: #e3f2fd;
-  color: #1976d2;
-  font-size: 20px;
+  background: none;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 14px;
   transition: background 0.2s;
+  color: var(--text-color);
+  position: relative;
+  opacity: 0.7;
+}
+
+.icon-btn .notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
 }
 
 .icon-btn:hover {
-  background: #bbdefb;
+  background: var(--hover-color);
+  opacity: 1;
 }
 
 .search-box {
-  padding: 12px 16px;
-  background: #fff;
-  border-bottom: 1px solid #e8e8e8;
+  padding: 12px 8px;
+  background: transparent;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .search-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 20px;
-  font-size: 14px;
+  border-radius: 6px;
+  font-size: 13px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.2s;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
 }
 
 .search-input:focus {
-  border-color: #1976d2;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
 }
 
-.conversation-list {
+.sidebar-content {
   flex: 1;
   overflow-y: auto;
+  background: var(--sidebar-bg);
 }
 
-.conversation-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.conversation-item:hover {
-  background: #e3f2fd;
-}
-
-.conversation-item.active {
-  background: #bbdefb;
-}
-
-.conversation-avatar {
-  position: relative;
-  margin-right: 12px;
-}
-
-.conversation-avatar img {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.group-badge {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background: #1976d2;
-  color: white;
-  font-size: 10px;
-  padding: 2px 4px;
-  border-radius: 4px;
-}
-
-.conversation-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.conversation-name {
-  font-weight: 500;
-  color: #333;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.conversation-preview {
-  font-size: 13px;
-  color: #666;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.conversation-meta {
-  text-align: right;
-  margin-left: 8px;
-}
-
-.conversation-time {
-  font-size: 12px;
-  color: #999;
-  margin-bottom: 4px;
-}
-
-.unread-badge {
-  display: inline-block;
-  background: #f44336;
-  color: white;
-  font-size: 12px;
-  min-width: 18px;
-  height: 18px;
-  line-height: 18px;
-  text-align: center;
-  border-radius: 9px;
-  padding: 0 6px;
-}
-
-.member-count {
-  font-size: 12px;
-  color: #666;
-  margin-left: 6px;
-  font-weight: normal;
-}
-
-.muted-icon {
-  font-size: 12px;
-  margin-left: 6px;
-  color: #999;
-  vertical-align: middle;
-}
-
-/* 右键菜单样式 */
-.context-menu {
-  position: fixed;
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  min-width: 160px;
-  overflow: hidden;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-size: 14px;
-  color: #333;
-}
-
-.menu-item:hover {
-  background: #f5f5f5;
-}
-
-.menu-icon {
-  margin-right: 10px;
-  font-size: 16px;
-  width: 20px;
-  text-align: center;
-}
-
-.menu-divider {
-  height: 1px;
-  background: #e8e8e8;
-  margin: 4px 0;
-}
-
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid #e8e8e8;
-  background: #f8f9fa;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.settings-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: #666;
-  transition: all 0.2s;
-}
-
-.settings-btn:hover {
-  background: #e0e0e0;
-  color: #333;
+.content-section {
+  height: 100%;
+  overflow-y: auto;
 }
 </style>

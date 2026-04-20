@@ -102,13 +102,13 @@
               <template v-else-if="message.type === 'image'">
                 <div class="message-file-link" @click.stop="previewImage(message)">
                   <i class="fas fa-image"></i>
-                  <span>{{ message.file_name || message.content.split('/').pop() }}</span>
+                  <span>{{ getFileName(message) }}</span>
                 </div>
               </template>
               <template v-else-if="message.type === 'file'">
                 <div class="message-file-link" @click.stop="downloadFile(message)">
                   <i class="fas fa-file"></i>
-                  <span>{{ message.file_name || message.content.split('/').pop() }}</span>
+                  <span>{{ getFileName(message) }}</span>
                 </div>
               </template>
               <template v-else-if="message.type === 'miniApp'">
@@ -199,6 +199,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { API_BASE_URL } from '../config'
 
 const props = defineProps<{
   visible: boolean
@@ -262,7 +263,7 @@ const loadMessages = async (page: number = 1) => {
 
   try {
     const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || ''
+    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
     const params = new URLSearchParams()
     params.append('conversation_id', props.conversationId)
     params.append('page', page.toString())
@@ -388,7 +389,7 @@ const handleMessageClick = (messageId: string) => {
 const downloadFile = (message: any) => {
   const link = document.createElement('a')
   link.href = message.content
-  link.download = message.file_name || message.content.split('/').pop() || 'file'
+  link.download = getFileName(message)
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -396,7 +397,34 @@ const downloadFile = (message: any) => {
 
 // 预览图片
 const previewImage = (message: any) => {
-  previewImageUrl.value = message.content
+  const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+  try {
+    // 尝试解析content为JSON
+    const contentObj = JSON.parse(message.content)
+    if (contentObj.url) {
+      let imageUrl = contentObj.url
+      // 确保图片URL包含服务器地址
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        imageUrl = serverUrl + imageUrl
+      }
+      previewImageUrl.value = imageUrl
+    } else {
+      let imageUrl = message.content
+      // 确保图片URL包含服务器地址
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        imageUrl = serverUrl + imageUrl
+      }
+      previewImageUrl.value = imageUrl
+    }
+  } catch (e) {
+    // 解析失败，直接使用content
+    let imageUrl = message.content
+    // 确保图片URL包含服务器地址
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      imageUrl = serverUrl + imageUrl
+    }
+    previewImageUrl.value = imageUrl
+  }
   showImagePreview.value = true
 }
 
@@ -404,6 +432,22 @@ const previewImage = (message: any) => {
 const closeImagePreview = () => {
   showImagePreview.value = false
   previewImageUrl.value = ''
+}
+
+// 获取文件名
+const getFileName = (message: any): string => {
+  try {
+    // 尝试解析content为JSON
+    const contentObj = JSON.parse(message.content)
+    if (contentObj.name) {
+      return contentObj.name
+    } else if (contentObj.fileName) {
+      return contentObj.fileName
+    }
+  } catch (e) {
+    // 解析失败，从content字符串中提取文件名
+  }
+  return message.content.split('/').pop() || '文件'
 }
 
 // 格式化时间

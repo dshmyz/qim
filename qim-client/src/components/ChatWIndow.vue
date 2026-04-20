@@ -6,18 +6,23 @@
         <div class="header-text">
           <div class="header-name" @dblclick="editGroupInfo">{{ conversation?.name || '未知会话' }}</div>
           <div class="header-status">
-            {{ conversation?.type === 'group' ? '群聊' : '在线' }}
-            <span v-if="conversation?.type === 'group' && conversation?.members" class="member-count">
+            {{ conversation?.type === 'group' ? '群聊' : conversation?.type === 'discussion' ? '讨论组' : '在线' }}
+            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.members" class="member-count">
               ({{ conversation.members.length }}人)
             </span>
             <span v-if="conversation?.type === 'single' && conversation?.ip" class="ip-info">
               {{ conversation.ip }}
             </span>
           </div>
+          <!-- 群公告展示 -->
+          <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement">
+            <i class="fas fa-bullhorn"></i>
+            <span class="announcement-text">{{ conversation.announcement }}</span>
+          </div>
         </div>
       </div>
       <div class="header-actions">
-        <span v-if="conversation?.type === 'group'" class="header-icon" title="邀请成员" @click="handleInviteMembers"><i class="fas fa-user-plus"></i></span>
+        <span v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="header-icon" title="邀请成员" @click="handleInviteMembers"><i class="fas fa-user-plus"></i></span>
         <span class="header-icon" @click="toggleHeaderMenu">
           <i class="fas fa-ellipsis-v"></i>
           <!-- 头部下拉菜单 -->
@@ -25,7 +30,7 @@
             <div v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="menu-item" @click="editGroupInfo">
               <i class="fas fa-edit"></i> 修改群名称
             </div>
-            <div v-if="conversation?.type === 'group'" class="menu-item" @click="editGroupAnnouncement">
+            <div v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="menu-item" @click="editGroupAnnouncement">
               <i class="fas fa-bullhorn"></i> 编辑群公告
             </div>
           </div>
@@ -108,7 +113,7 @@
       </div>
 
       <!-- 群成员侧边栏 -->
-      <div v-if="conversation?.type === 'group' && conversation?.members" class="members-sidebar" :class="{ 'collapsed': !isMembersSidebarExpanded }">
+      <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.members" class="members-sidebar" :class="{ 'collapsed': !isMembersSidebarExpanded }">
         <div class="sidebar-header-container">
           <div v-if="isMembersSidebarExpanded" class="members-header">
             <div class="header-content">
@@ -240,30 +245,17 @@
         <button class="close-search-btn" @click="showSearch = false">×</button>
       </div>
       <!-- 引用消息 -->
-      <div v-if="quotedMessage" class="quoted-message">
-        <div class="quoted-message-header">
-          <span class="quoted-message-sender">{{ quotedMessage.sender?.name || quotedMessage.name || '未知用户' }}</span>
-          <button class="quoted-message-remove" @click="quotedMessage = null">×</button>
-        </div>
-        <div class="quoted-message-content">
-          <template v-if="quotedMessage.type === 'text'">
-            {{ quotedMessage.content || '无内容' }}
-          </template>
-          <template v-else-if="quotedMessage.type === 'image'">
-            [图片]
-          </template>
-          <template v-else-if="quotedMessage.type === 'file'">
-            [文件]
-          </template>
-          <template v-else-if="quotedMessage.type === 'mini-app' || quotedMessage.type === 'miniApp'">
-            [小程序]
-          </template>
-          <template v-else-if="quotedMessage.type === 'share'">
-            [分享]
-          </template>
-          <template v-else>
-            {{ quotedMessage.content || '无内容' }}
-          </template>
+      <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="quotedMessage = null" />
+
+
+      <!-- 待发送文件预览 -->
+      <div v-if="pendingFiles.length > 0" class="pending-files">
+        <div v-for="(file, index) in pendingFiles" :key="index" class="pending-file-item">
+          <span class="pending-file-icon">
+            <i :class="getFileIcon(file.name)"></i>
+          </span>
+          <span class="pending-file-name">{{ file.name }}</span>
+          <button class="pending-file-remove" @click="removePendingFile(index)">×</button>
         </div>
       </div>
       <textarea
@@ -278,7 +270,7 @@
       />
       <div class="input-actions">
         <span class="input-tip">按 Enter 发送，Shift+Enter 换行</span>
-        <button class="send-btn" :disabled="!inputMessage.trim()" @click="handleSend">
+        <button class="send-btn" :disabled="!inputMessage.trim() && pendingFiles.length === 0" @click="handleSend">
           发送
         </button>
       </div>
@@ -631,15 +623,21 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../types'
 import { ElMessage } from 'element-plus'
-import UserProfile from '../common/UserProfile.vue'
+import UserProfile from './UserProfile.vue'
 import MiniAppManager from './apps/MiniAppManager.vue'
 import MessageItem from './message/MessageItem.vue'
+import QuotedMessageInput from './message/QuotedMessageInput.vue'
 import MessageManager from './MessageManager.vue'
 import { openMiniApp } from '../utils/miniAppUtils'
 import { API_BASE_URL } from '../config'
 import { generateAvatar } from '../utils/avatar'
 import { getCurrentUser } from '../utils/user'
-import '../styles/mini-app.css'
+import '../assets/styles/modal.css'
+import '../assets/styles/apps/calculator.css'
+import '../assets/styles/apps/notepad.css'
+import '../assets/styles/apps/password-generator.css'
+import '../assets/styles/apps/todo.css'
+import '../assets/styles/apps/short-link.css'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -725,6 +723,13 @@ const searchQuery = ref('')
 const searchResults = ref<Message[]>([])
 const isSearching = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// 待发送文件
+interface PendingFile {
+  file: File
+  name: string
+}
+const pendingFiles = ref<PendingFile[]>([])
 
 // 成员上下文菜单
 const showMemberContextMenuFlag = ref(false)
@@ -1099,10 +1104,23 @@ const handlePaste = async (event: ClipboardEvent) => {
       event.preventDefault()
       const file = item.getAsFile()
       if (file) {
-        await uploadAndSendFile(file)
+        addPendingFile(file)
       }
     }
   }
+}
+
+// 添加待发送文件
+const addPendingFile = (file: File) => {
+  pendingFiles.value.push({
+    file: file,
+    name: file.name
+  })
+}
+
+// 移除待发送文件
+const removePendingFile = (index: number) => {
+  pendingFiles.value.splice(index, 1)
 }
 
 // 上传文件并发送
@@ -1124,15 +1142,15 @@ const uploadAndSendFile = async (file: File) => {
       const data = await response.json()
       if (data.code === 0) {
         const fileUrl = data.data.url
-        const fileName = data.data.name
-        const fileSize = data.data.size
+        // 使用服务器返回的文件名,如果没有则使用原始文件名
+        const fileName = data.data.name || file.name
+        // 使用服务器返回的文件大小,如果没有则使用原始文件大小
+        const fileSize = data.data.size || file.size
         
         // 构建消息对象，包含引用信息
         const messageData = {
-          content: fileUrl,
+          content: JSON.stringify({ url: fileUrl, name: fileName, size: fileSize }),
           type: file.type.startsWith('image/') ? 'image' : 'file',
-          file_name: fileName,
-          file_size: fileSize,
           quotedMessage: quotedMessage.value
         }
         
@@ -1148,6 +1166,8 @@ const uploadAndSendFile = async (file: File) => {
     $message.error('上传文件失败')
   }
 }
+
+
 
 // 选择 @ 成员
 const selectAtMember = (member: { id: string; name: string; avatar: string }) => {
@@ -1274,36 +1294,43 @@ const clearSearch = () => {
   isSearching.value = false
 }
 
-const handleSend = () => {
+const handleSend = async () => {
+  // 先处理待发送文件
+  for (const pendingFile of [...pendingFiles.value]) {
+    await uploadAndSendFile(pendingFile.file)
+  }
+  pendingFiles.value = []
+  
+  // 再处理文本消息
   const content = inputMessage.value.trim()
-  if (!content) return
-  
-  // 构建消息对象，包含引用信息
-  const messageData = {
-    content: content,
-    type: 'text',
-    quotedMessage: quotedMessage.value
+  if (content) {
+    // 构建消息对象，包含引用信息
+    const messageData = {
+      content: content,
+      type: 'text',
+      quotedMessage: quotedMessage.value
+    }
+    
+    // 检测消息中是否包含@用户
+    const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
+    if (atUsers && props.conversation?.members) {
+      // 提取@的用户名
+      const atUsernames = atUsers.map(atUser => atUser.substring(1))
+      // 查找对应的用户
+      const mentionedUsers = props.conversation.members.filter(member => 
+        atUsernames.includes(member.name)
+      )
+      // 为@提到的用户发送通知
+      mentionedUsers.forEach(user => {
+        console.log('发送通知给用户:', user.name)
+        // 这里可以实现通知逻辑，例如调用API发送通知
+      })
+    }
+    
+    emit('send', messageData)
+    inputMessage.value = ''
+    quotedMessage.value = null
   }
-  
-  // 检测消息中是否包含@用户
-  const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
-  if (atUsers && props.conversation?.members) {
-    // 提取@的用户名
-    const atUsernames = atUsers.map(atUser => atUser.substring(1))
-    // 查找对应的用户
-    const mentionedUsers = props.conversation.members.filter(member => 
-      atUsernames.includes(member.name)
-    )
-    // 为@提到的用户发送通知
-    mentionedUsers.forEach(user => {
-      console.log('发送通知给用户:', user.name)
-      // 这里可以实现通知逻辑，例如调用API发送通知
-    })
-  }
-  
-  emit('send', messageData)
-  inputMessage.value = ''
-  quotedMessage.value = null
 }
 
 const handleKeydown = (event) => {
@@ -2419,58 +2446,16 @@ const selectImage = () => {
   imageInput.multiple = true
   
   // 监听文件选择事件
-  imageInput.addEventListener('change', async (event) => {
+  imageInput.addEventListener('change', (event) => {
     const target = event.target as HTMLInputElement
     const files = target.files
     
     if (files && files.length > 0) {
-      // 处理选中的图片文件
+      // 添加到待发送文件列表,而不是直接发送
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         console.log('选中的图片:', file.name, file.size)
-        
-        try {
-          // 上传文件
-          const formData = new FormData()
-          formData.append('file', file)
-          
-          const response = await fetch(`${serverUrl.value}/api/v1/upload`, {
-            method: 'POST',
-            headers: {
-              ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-            },
-            body: formData
-          })
-          
-          if (response.ok) {
-            const data = await response.json()
-            if (data.code === 0) {
-              // 上传成功，获取文件URL
-              const fileUrl = data.data.url
-              // 构建完整的文件URL
-              const fullFileUrl = fileUrl.startsWith('http') ? fileUrl : `${serverUrl.value}${fileUrl}`
-              console.log('图片上传成功:', fullFileUrl)
-              
-              // 构建图片消息并直接发送
-              const messageData = {
-                content: fullFileUrl,
-                type: 'image',
-                fileSize: file.size,
-                fileName: file.name
-              }
-              
-              // 发送消息
-              emit('send', messageData)
-            } else {
-              $message.error('图片上传失败: ' + data.message)
-            }
-          } else {
-            $message.error('图片上传失败: 服务器错误')
-          }
-        } catch (error) {
-          console.error('图片上传失败:', error)
-          $message.error('图片上传失败: 网络错误')
-        }
+        addPendingFile(file)
       }
     }
   })
@@ -2479,62 +2464,16 @@ const selectImage = () => {
   imageInput.click()
 }
 
-const handleFileSelect = async (event: Event) => {
+const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   const files = target.files
   
   if (files && files.length > 0) {
-    // 处理选中的文件
+    // 添加到待发送文件列表,而不是直接发送
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       console.log('选中的文件:', file.name, file.size)
-      
-      try {
-        // 上传文件
-        const formData = new FormData()
-        formData.append('file', file)
-        
-        const response = await fetch(`${serverUrl.value}/api/v1/upload`, {
-          method: 'POST',
-          headers: {
-            ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-          },
-          body: formData
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          if (data.code === 0) {
-            // 上传成功，获取文件URL
-            const fileUrl = data.data.url
-            // 构建完整的文件URL
-            const fullFileUrl = fileUrl.startsWith('http') ? fileUrl : `${serverUrl.value}${fileUrl}`
-            console.log('文件上传成功:', fullFileUrl)
-            
-            // 判断文件类型
-            const isImage = file.type.startsWith('image/')
-            const messageType = isImage ? 'image' : 'file'
-            
-            // 构建消息并直接发送
-            const messageData = {
-              content: fullFileUrl,
-              type: messageType,
-              fileSize: file.size,
-              fileName: file.name
-            }
-            
-            // 发送消息
-            emit('send', messageData)
-          } else {
-            $message.error('文件上传失败: ' + data.message)
-          }
-        } else {
-          $message.error('文件上传失败: 服务器错误')
-        }
-      } catch (error) {
-        console.error('文件上传失败:', error)
-        $message.error('文件上传失败: 网络错误')
-      }
+      addPendingFile(file)
     }
     
     // 清空文件输入，以便可以重复选择同一个文件
@@ -2617,8 +2556,14 @@ const closeSharePreview = () => {
 const showImagePreview = ref(false)
 const previewImageUrl = ref('')
 
-const previewImage = (imageUrl: string) => {
-  console.log('预览图片:', imageUrl)
+const previewImage = (imageData: string | any) => {
+  console.log('预览图片:', imageData)
+  // 处理可能是字符串或对象的情况
+  let imageUrl = typeof imageData === 'string' ? imageData : (imageData.url || '')
+  // 确保图片URL包含服务器地址
+  if (imageUrl && !imageUrl.startsWith('http')) {
+    imageUrl = serverUrl.value + imageUrl
+  }
   previewImageUrl.value = imageUrl
   showImagePreview.value = true
 }
@@ -2876,6 +2821,8 @@ const canEditGroupName = computed(() => {
 
 // 编辑群信息
 const editGroupInfo = () => {
+  console.log('编辑群信息:', props.conversation)
+  console.log('当前用户角色:', currentUserRole.value)
   if (props.conversation && canEditGroupName.value) {
     editGroupName.value = props.conversation.name || ''
     showEditGroupInfoModal.value = true
@@ -2968,9 +2915,11 @@ const saveGroupInfo = async () => {
 
 // 编辑群公告
 const editGroupAnnouncement = () => {
+  console.log('编辑群公告:', props.conversation)
   if (props.conversation) {
     editAnnouncementContent.value = props.conversation.announcement || ''
     showEditAnnouncementModal.value = true
+    console.log('弹窗已显示')
   }
   closeHeaderMenu()
 }
@@ -3034,7 +2983,7 @@ const saveAnnouncement = async () => {
   flex: 1;
   display: flex;
   overflow: hidden;
-  background: var(--content-bg);
+  /* background: var(--content-bg); */
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
 }
 
@@ -3049,7 +2998,7 @@ const saveAnnouncement = async () => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   margin: 0;
   border-radius: 0;
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .header-info {
@@ -3124,8 +3073,8 @@ const saveAnnouncement = async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-  background: var(--content-bg);
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.03);
+  /* background: var(--content-bg); */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 
@@ -4081,21 +4030,6 @@ const saveAnnouncement = async () => {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-/* 引用消息预览样式 */
-.quoted-message-preview {
-  background: var(--hover-color);
-  border-left: 3px solid var(--primary-color);
-  padding: 10px 14px;
-  margin-bottom: 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  max-width: 100%;
-  overflow: hidden;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  cursor: pointer;
-}
-
 /* 被高亮的消息 */
 .highlighted-message {
   animation: highlight 2s ease;
@@ -4108,68 +4042,6 @@ const saveAnnouncement = async () => {
   100% {
     background-color: transparent;
   }
-}
-
-.quoted-message-preview:hover {
-  background: var(--hover-color);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
-}
-
-.quoted-message-preview-header {
-  font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: 6px;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.quoted-message-preview-content {
-  color: var(--text-color);
-  opacity: 0.9;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  padding-left: 12px;
-  position: relative;
-}
-
-.quoted-message-preview-content::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
-  background: var(--primary-color);
-  opacity: 0.3;
-  border-radius: 1px;
-}
-
-/* 自己发送的消息的引用样式 */
-.message-item.self .quoted-message-preview {
-  background: rgba(59, 130, 246, 0.15);
-  border-left-color: var(--primary-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.message-item.self .quoted-message-preview:hover {
-  background: rgba(59, 130, 246, 0.2);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
-}
-
-.message-item.self .quoted-message-preview-header,
-.message-item.self .quoted-message-preview-content {
-  color: var(--text-color);
-}
-
-.message-item.self .quoted-message-preview-content::before {
-  background: var(--primary-color);
-  opacity: 0.5;
 }
 
 .message-meta {
@@ -4265,8 +4137,7 @@ const saveAnnouncement = async () => {
   gap: 10px;
   min-height: 150px;
   position: relative;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
-  border-top: 1px solid var(--border-color);
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .input-toolbar {
@@ -4368,54 +4239,7 @@ const saveAnnouncement = async () => {
   background: var(--hover-color);
 }
 
-/* 引用消息样式 */
-.quoted-message {
-  background: var(--hover-color);
-  border-left: 4px solid var(--primary-color);
-  padding: 10px;
-  margin-bottom: 10px;
-  border-radius: 4px;
-}
 
-.quoted-message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
-.quoted-message-sender {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.quoted-message-remove {
-  background: none;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  padding: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-
-.quoted-message-remove:hover {
-  background: rgba(0, 0, 0, 0.1);
-  color: var(--text-color);
-}
-
-.quoted-message-content {
-  font-size: 14px;
-  color: var(--text-color);
-  line-height: 1.4;
-}
 
 .message-input {
   width: 100%;
@@ -4552,7 +4376,7 @@ const saveAnnouncement = async () => {
   flex-direction: column;
   overflow: hidden;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
-  border-left: 1px solid var(--border-color);
+  /* border-left: 1px solid var(--border-color); */
   transition: width 0.3s ease;
 }
 
@@ -4566,7 +4390,7 @@ const saveAnnouncement = async () => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px;
-  background: var(--sidebar-bg);
+  /* background: var(--sidebar-bg); */
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -5604,24 +5428,7 @@ const saveAnnouncement = async () => {
   border-left: 1px solid var(--border-color) !important;
 }
 
-/* 暗黑主题下的引用消息样式 */
-[data-theme="dark"] .quoted-message-preview {
-  background: rgba(255, 255, 255, 0.05) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-}
 
-[data-theme="dark"] .quoted-message-preview:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4) !important;
-}
-
-[data-theme="dark"] .message-item.self .quoted-message-preview {
-  background: rgba(59, 130, 246, 0.2) !important;
-}
-
-[data-theme="dark"] .message-item.self .quoted-message-preview:hover {
-  background: rgba(59, 130, 246, 0.3) !important;
-}
 
 /* 暗黑主题下的文件消息样式 */
 [data-theme="dark"] .file-message {
@@ -6325,14 +6132,7 @@ const saveAnnouncement = async () => {
 }
 
 /* 炫酷黑主题 - 引用消息移除按钮 */
-[data-theme="dark"] .quoted-message-remove {
-  color: var(--text-secondary) !important;
-}
 
-[data-theme="dark"] .quoted-message-remove:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: var(--text-color) !important;
-}
 
 /* 截图预览对话框样式 */
 .screenshot-preview-modal {
@@ -6459,13 +6259,13 @@ const saveAnnouncement = async () => {
   background: var(--primary-color);
   color: #fff;
   border-color: var(--primary-color);
-  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .send-btn:hover {
-  background: #40a9ff;
-  border-color: #40a9ff;
-  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   transform: translateY(-1px);
 }
 
@@ -6947,5 +6747,106 @@ const saveAnnouncement = async () => {
   font-size: 14px;
   border-bottom: 1px solid #eee;
   margin-bottom: 10px;
+}
+
+/* 待发送文件样式 */
+.pending-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--list-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.pending-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--content-bg);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.pending-file-item:hover {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.pending-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--primary-light);
+  border-radius: 4px;
+  color: var(--primary-color);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.pending-file-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pending-file-remove {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.pending-file-remove:hover {
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+}
+
+/* 暗黑主题下的待发送文件样式 */
+[data-theme="dark"] .pending-files {
+  background: var(--secondary-color);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .pending-file-item {
+  background: var(--sidebar-bg);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .pending-file-item:hover {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+[data-theme="dark"] .pending-file-icon {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .pending-file-name {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .pending-file-remove:hover {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
 }
 </style>

@@ -200,7 +200,7 @@ const isGroupOwner = (group: Conversation | null) => {
   left: 0;
   right: 0;
   height: 80px;
-  background: linear-gradient(135deg, var(--primary-color), var(--active-color));
+  background: linear-gradient(135deg, var(--primary-light), var(--active-color));
   border-radius: 8px 8px 0 0;
   z-index: 1;
 }
@@ -282,7 +282,7 @@ const isGroupOwner = (group: Conversation | null) => {
   background: var(--list-bg);
   border-radius: 8px;
   padding: 16px;
-  border: 1px solid var(--border-color);
+  /* border: 1px solid var(--border-color); */
   transition: all 0.3s ease;
 }
 
@@ -341,7 +341,7 @@ const isGroupOwner = (group: Conversation | null) => {
   color: var(--text-color);
   font-weight: 500;
   padding: 5px 8px;
-  background: white;
+  background: var(--input-bg);
   border-radius: 4px;
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
@@ -357,7 +357,7 @@ const isGroupOwner = (group: Conversation | null) => {
   align-items: flex-start;
   gap: 8px;
   padding: 5px 8px;
-  background: white;
+  background: var(--input-bg);
   border-radius: 4px;
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
@@ -429,7 +429,7 @@ const isGroupOwner = (group: Conversation | null) => {
 }
 
 .action-btn.secondary {
-  background: white;
+  background: var(--input-bg);
   border-color: var(--border-color);
   color: var(--text-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

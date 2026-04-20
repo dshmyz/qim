@@ -88,9 +88,6 @@ type Message struct {
 	SenderID        uint           `json:"sender_id" gorm:"not null;index"`
 	Type            string         `json:"type" gorm:"size:20;not null"`
 	Content         string         `json:"content" gorm:"type:text;not null"`
-	FileID          *uint          `json:"file_id"`
-	FileName        string         `json:"file_name" gorm:"size:255"`
-	FileSize        int64          `json:"file_size"`
 	QuotedMessageID *uint          `json:"quoted_message_id"`
 	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
 	IsRead          bool           `json:"is_read" gorm:"default:false"`

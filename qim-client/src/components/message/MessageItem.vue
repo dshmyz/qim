@@ -35,10 +35,10 @@
                 {{ message.quotedMessage.content || '无内容' }}
               </template>
               <template v-else-if="message.quotedMessage.type === 'image'">
-                [图片]
+                [图片] {{ getFileName(message.quotedMessage.content) }}
               </template>
               <template v-else-if="message.quotedMessage.type === 'file'">
-                [文件]
+                [文件] {{ getFileName(message.quotedMessage.content) }}
               </template>
               <template v-else-if="message.quotedMessage.type === 'mini-app' || message.quotedMessage.type === 'miniApp'">
                 [小程序]
@@ -47,7 +47,13 @@
                 [分享]
               </template>
               <template v-else>
-                {{ message.quotedMessage.content || '无内容' }}
+                <!-- 尝试检测内容是否为JSON格式的文件数据 -->
+                <template v-if="isFileContent(message.quotedMessage.content)">
+                  [文件]
+                </template>
+                <template v-else>
+                  {{ message.quotedMessage.content || '无内容' }}
+                </template>
               </template>
             </div>
           </div>
@@ -60,6 +66,7 @@
             v-else-if="message.type === 'image'"
             :src="message.content"
             :is-self="isSelf"
+            :server-url="serverUrl"
             @preview="$emit('previewImage', message.content)"
           />
 
@@ -67,11 +74,10 @@
           <FileMessage
             v-else-if="message.type === 'file'"
             :content="message.content"
-            :file-name="message.file_name"
-            :file-size="message.file_size"
             :is-self="isSelf"
-            @download="$emit('downloadFile', message.content, message.file_name)"
-            @saveAs="$emit('saveFileAs', message.content, message.file_name)"
+            :server-url="serverUrl"
+            @download="$emit('downloadFile', message.content)"
+            @saveAs="$emit('saveFileAs', message.content)"
           />
 
           <!-- 分享消息 -->
@@ -218,6 +224,32 @@ const convertUrlsToLinks = (text: string): string => {
   
   return result
 }
+
+// 获取文件名
+const getFileName = (content: string): string => {
+  try {
+    // 尝试解析content为JSON
+    const contentObj = JSON.parse(content)
+    if (contentObj.name) {
+      return contentObj.name
+    } else if (contentObj.fileName) {
+      return contentObj.fileName
+    }
+  } catch (e) {
+    // 解析失败，从content字符串中提取文件名
+  }
+  return content.split('/').pop() || ''
+}
+
+// 检测内容是否为JSON格式的文件数据
+const isFileContent = (content: string): boolean => {
+  try {
+    const contentObj = JSON.parse(content)
+    return contentObj.url && (contentObj.name || contentObj.fileName) && (contentObj.size || contentObj.fileSize)
+  } catch (e) {
+    return false
+  }
+}
 </script>
 
 <style scoped>
@@ -281,31 +313,54 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 .quoted-message-preview {
-  background: var(--sidebar-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  background: var(--hover-color);
+  border-left: 4px solid var(--primary-color);
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .quoted-message-preview:hover {
   background: var(--hover-color);
-  border-color: var(--primary-color);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
 }
 
 .quoted-message-preview-header {
-  color: var(--primary-color);
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 5px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .quoted-message-preview-content {
-  color: var(--text-secondary);
-  word-break: break-all;
+  color: var(--text-color);
+  opacity: 0.9;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  padding-left: 12px;
+  position: relative;
+}
+
+.quoted-message-preview-content::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--primary-color);
+  opacity: 0.3;
+  border-radius: 1px;
 }
 
 .recalled-message {
@@ -323,7 +378,7 @@ const convertUrlsToLinks = (text: string): string => {
   gap: 8px;
   margin-top: 4px;
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .message-item.self .message-meta {
@@ -401,98 +456,98 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 /* 为其他主题保留原来的样式 */
-[data-theme="dark"] .message-item.self .message-bubble {
+[data-theme="elegant-dark"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="dark"] .message-item.self .file-message {
+[data-theme="elegant-dark"] .message-item.self .file-message {
   background: var(--primary-color);
   color: var(--secondary-color);
 }
 
-[data-theme="dark"] .message-item.self .recalled-message {
+[data-theme="elegant-dark"] .message-item.self .recalled-message {
   background: rgba(255, 255, 255, 0.1) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="netblue"] .message-item.self .message-bubble {
+[data-theme="ocean-blue"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="netblue"] .message-item.self .file-message {
+[data-theme="ocean-blue"] .message-item.self .file-message {
   background: var(--primary-color);
   color: #fff;
 }
 
-[data-theme="netblue"] .message-item.self .recalled-message {
+[data-theme="ocean-blue"] .message-item.self .recalled-message {
   background: rgba(66, 153, 225, 0.8) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="elegantpurple"] .message-item.self .message-bubble {
+[data-theme="elegant-purple"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="elegantpurple"] .message-item.self .file-message {
+[data-theme="elegant-purple"] .message-item.self .file-message {
   background: var(--primary-color);
   color: #fff;
 }
 
-[data-theme="elegantpurple"] .message-item.self .recalled-message {
+[data-theme="elegant-purple"] .message-item.self .recalled-message {
   background: rgba(139, 92, 246, 0.8) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="sacredyellow"] .message-item.self .message-bubble {
+[data-theme="warm-amber"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="sacredyellow"] .message-item.self .file-message {
+[data-theme="warm-amber"] .message-item.self .file-message {
   background: var(--primary-color);
   color: #fff;
 }
 
-[data-theme="sacredyellow"] .message-item.self .recalled-message {
+[data-theme="warm-amber"] .message-item.self .recalled-message {
   background: rgba(217, 119, 6, 0.8) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="chinesered"] .message-item.self .message-bubble {
+[data-theme="crimson-red"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="chinesered"] .message-item.self .file-message {
+[data-theme="crimson-red"] .message-item.self .file-message {
   background: var(--primary-color);
   color: #fff;
 }
 
-[data-theme="chinesered"] .message-item.self .recalled-message {
+[data-theme="crimson-red"] .message-item.self .recalled-message {
   background: rgba(220, 38, 38, 0.8) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="grassgreen"] .message-item.self .message-bubble {
+[data-theme="emerald-green"] .message-item.self .message-bubble {
   background: var(--primary-color);
   color: #fff;
   border: none;
 }
 
-[data-theme="grassgreen"] .message-item.self .file-message {
+[data-theme="emerald-green"] .message-item.self .file-message {
   background: var(--primary-color);
   color: #fff;
 }
 
-[data-theme="grassgreen"] .message-item.self .recalled-message {
+[data-theme="emerald-green"] .message-item.self .recalled-message {
   background: rgba(16, 185, 129, 0.8) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
@@ -529,22 +584,48 @@ const convertUrlsToLinks = (text: string): string => {
 
 /* 引用消息主题样式 */
 .message-item.self .quoted-message-preview {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(59, 130, 246, 0.15);
+  border-left-color: var(--primary-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .message-item.self .quoted-message-preview:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(59, 130, 246, 0.2);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 .message-item.self .quoted-message-preview-header,
 .message-item.self .quoted-message-preview-content {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-color);
 }
 
 .message-item.self .quoted-message-preview-content::before {
-  color: rgba(255, 255, 255, 0.5);
+  background: var(--primary-color);
+  opacity: 0.5;
+}
+
+
+
+
+
+/* 暗黑主题下的引用消息样式 */
+[data-theme="elegant-dark"] .quoted-message-preview {
+  background: rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="elegant-dark"] .quoted-message-preview:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="elegant-dark"] .message-item.self .quoted-message-preview {
+  background: rgba(59, 130, 246, 0.2) !important;
+}
+
+[data-theme="elegant-dark"] .message-item.self .quoted-message-preview:hover {
+  background: rgba(59, 130, 246, 0.3) !important;
 }
 
 /* 消息链接样式 */

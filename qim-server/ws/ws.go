@@ -29,8 +29,11 @@ type Hub struct {
 	register    chan *Client
 	unregister  chan *Client
 	broadcast   chan []byte
+	Broadcast   chan []byte
 	userClients map[uint][]*Client
 	mu          sync.RWMutex
+	nodes       []string
+	nodeID      string
 }
 
 type Client struct {
@@ -47,16 +50,48 @@ type WSMessage struct {
 }
 
 func NewHub() *Hub {
+	// 生成节点 ID
+	nodeID := generateNodeID()
+
+	// 初始化节点列表（这里可以从配置文件或环境变量中读取）
+	nodes := []string{}
+
+	// 初始化广播通道
+	broadcastChan := make(chan []byte)
+
+	log.Printf("节点 %s 初始化完成，将使用基于 HTTP 的多节点模式", nodeID)
+
 	return &Hub{
 		clients:     make(map[*Client]bool),
 		register:    make(chan *Client),
 		unregister:  make(chan *Client),
-		broadcast:   make(chan []byte),
+		broadcast:   broadcastChan,
+		Broadcast:   broadcastChan,
 		userClients: make(map[uint][]*Client),
+		nodes:       nodes,
+		nodeID:      nodeID,
 	}
 }
 
+// generateNodeID 生成唯一的节点 ID
+func generateNodeID() string {
+	return time.Now().Format("20060102150405") + "-" + randomString(8)
+}
+
+// randomString 生成指定长度的随机字符串
+func randomString(n int) string {
+	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[time.Now().UnixNano()%int64(len(letterBytes))]
+	}
+	return string(b)
+}
+
 func (h *Hub) Run() {
+	// 启动节点间通信服务
+	go h.startNodeCommunication()
+
 	for {
 		select {
 		case client := <-h.register:
@@ -96,6 +131,7 @@ func (h *Hub) Run() {
 			log.Printf("用户 %d 断开连接", client.userID)
 
 		case message := <-h.broadcast:
+			// 广播给本地客户端
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
@@ -106,25 +142,89 @@ func (h *Hub) Run() {
 				}
 			}
 			h.mu.RUnlock()
+
+			// 通过 HTTP 广播给其他节点
+			h.broadcastToOtherNodes(message)
 		}
 	}
 }
 
+// startNodeCommunication 启动节点间通信服务
+func (h *Hub) startNodeCommunication() {
+	// 这里可以实现节点发现和心跳检测
+	log.Println("节点间通信服务启动")
+}
+
+// broadcastToOtherNodes 通过 HTTP 向其他节点广播消息
+func (h *Hub) broadcastToOtherNodes(message []byte) {
+	for _, node := range h.nodes {
+		if node == h.nodeID {
+			continue // 跳过自身节点
+		}
+
+		// 构建其他节点的 URL
+		nodeURL := "http://" + node + "/api/v1/node/broadcast"
+
+		// 发送 HTTP 请求
+		go func(url string) {
+			resp, err := http.Post(url, "application/json", nil)
+			if err != nil {
+				log.Printf("向节点 %s 广播失败: %v", url, err)
+				return
+			}
+			defer resp.Body.Close()
+		}(nodeURL)
+	}
+}
+
 func (h *Hub) SendToUser(userID uint, message []byte) {
+	// 向本地客户端发送消息
 	h.mu.RLock()
 	clients := h.userClients[userID]
 	h.mu.RUnlock()
 
-	log.Printf("找到用户 %d 的WebSocket连接数量: %d", userID, len(clients))
+	log.Printf("找到用户 %d 的本地WebSocket连接数量: %d", userID, len(clients))
 
 	for i, client := range clients {
-		log.Printf("向用户 %d 的第 %d 个连接发送WebSocket消息", userID, i+1)
+		log.Printf("向用户 %d 的第 %d 个本地连接发送WebSocket消息", userID, i+1)
 		select {
 		case client.send <- message:
 			log.Printf("消息发送成功")
 		default:
 			log.Printf("消息发送失败，连接可能已关闭")
 		}
+	}
+
+	// 通过 HTTP 向其他节点发送消息
+	h.sendToUserToOtherNodes(userID, message)
+}
+
+// sendToUserToOtherNodes 通过 HTTP 向其他节点发送用户特定消息
+func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
+	for _, node := range h.nodes {
+		if node == h.nodeID {
+			continue // 跳过自身节点
+		}
+
+		// 构建其他节点的 URL
+		nodeURL := "http://" + node + "/api/v1/node/send-to-user"
+
+		// 构建请求体
+		reqBody := map[string]interface{}{
+			"user_id": userID,
+			"message": string(message),
+		}
+		jsonBody, _ := json.Marshal(reqBody)
+
+		// 发送 HTTP 请求
+		go func(url string, body []byte) {
+			resp, err := http.Post(url, "application/json", nil)
+			if err != nil {
+				log.Printf("向节点 %s 发送用户消息失败: %v", url, err)
+				return
+			}
+			defer resp.Body.Close()
+		}(nodeURL, jsonBody)
 	}
 }
 

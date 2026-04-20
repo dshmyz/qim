@@ -142,6 +142,32 @@ export const showMiniAppModal = (miniApp: any) => {
         </div>
       </div>
     `
+  } else if (miniApp.id === 'short-link') {
+    // 短链接生成器小程序
+    content = `
+      <div class="mini-app-modal-content short-link-app">
+        <div class="mini-app-modal-header">
+          <div class="mini-app-modal-title">${miniApp.name}</div>
+          <button class="mini-app-modal-close">×</button>
+        </div>
+        <div class="mini-app-modal-body">
+          <div class="short-link-container">
+            <div class="short-link-input-section">
+              <label>原始URL</label>
+              <textarea id="short-link-input" class="original-url-input" placeholder="请输入要缩短的URL" rows="3"></textarea>
+            </div>
+            <button id="generate-short-link" class="generate-btn">生成短链接</button>
+            <div id="short-link-result" class="short-link-result" style="display: none;">
+              <label>生成的短链接</label>
+              <div class="short-link-output">
+                <input type="text" id="short-link-output-input" class="short-url-input" readonly />
+                <button id="copy-short-link" class="copy-btn">复制</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `
   } else {
     // 其他小程序
     content = `
@@ -515,6 +541,76 @@ export const showMiniAppModal = (miniApp: any) => {
     
     // 初始加载
     loadTodos()
+  } else if (miniApp.id === 'short-link') {
+    // 短链接生成器功能
+    const shortLinkInput = document.getElementById('short-link-input') as HTMLTextAreaElement
+    const generateBtn = document.getElementById('generate-short-link')
+    const resultDiv = document.getElementById('short-link-result')
+    const outputInput = document.getElementById('short-link-output-input') as HTMLInputElement
+    const copyBtn = document.getElementById('copy-short-link')
+    const serverUrl = localStorage.getItem('serverUrl') || 'https://qim.buaa.edu.cn'
+
+    // 生成短链接
+    const generateShortLink = async () => {
+      const url = shortLinkInput?.value.trim()
+      if (!url) {
+        ElMessage.warning('请输入要缩短的URL')
+        return
+      }
+
+      try {
+        const token = localStorage.getItem('token')
+        const response = await fetch(`${serverUrl}/api/v1/shortlinks`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ original_url: url })
+        })
+
+        if (!response.ok) {
+          throw new Error('生成短链接失败')
+        }
+
+        const data = await response.json()
+        if (data.code === 0 && data.data) {
+          if (outputInput) {
+            outputInput.value = data.data.short_url
+          }
+          if (resultDiv) {
+            resultDiv.style.display = 'block'
+          }
+          ElMessage.success('短链接生成成功')
+        }
+      } catch (error) {
+        console.error('生成短链接失败:', error)
+        ElMessage.error('生成短链接失败')
+      }
+    }
+
+    // 复制短链接
+    const copyShortLink = async () => {
+      if (outputInput && outputInput.value) {
+        try {
+          await navigator.clipboard.writeText(outputInput.value)
+          ElMessage.success('短链接已复制到剪贴板')
+        } catch (error) {
+          console.error('复制失败:', error)
+          ElMessage.error('复制失败，请手动复制')
+        }
+      }
+    }
+
+    // 绑定生成按钮
+    if (generateBtn) {
+      generateBtn.addEventListener('click', generateShortLink)
+    }
+
+    // 绑定复制按钮
+    if (copyBtn) {
+      copyBtn.addEventListener('click', copyShortLink)
+    }
   }
 }
 

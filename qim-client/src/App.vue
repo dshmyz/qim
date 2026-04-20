@@ -18,9 +18,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import Main from './components/Main.vue'
-import Login from './components/Login.vue'
-import VersionUpdateDialog from './common/VersionUpdateDialog.vue'
+import Main from './views/Main.vue'
+import Login from './views/Login.vue'
+import VersionUpdateDialog from './components/VersionUpdateDialog.vue'
 import { checkVersionUpdate, getCurrentVersion } from './utils/version'
 
 const isLoggedIn = ref(false)

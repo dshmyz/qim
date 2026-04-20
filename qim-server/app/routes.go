@@ -181,6 +181,17 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 短链接管理
 			authed.POST("/shortlinks", handler.CreateShortLink)
 			authed.GET("/shortlinks", handler.GetShortLinks)
+
+			// 用户搜索
+			authed.GET("/users/search", handler.SearchUsers)
+
+			// 节点间通信
+			authed.POST("/node/broadcast", handler.BroadcastMessage)
+			authed.POST("/node/send-to-user", handler.SendToUserMessage)
+
+			// 用户角色管理
+			authed.POST("/users/:id/roles", middleware.RequireRole("system_admin"), handler.AddUserRole)
+			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole("system_admin"), handler.RemoveUserRole)
 		}
 	}
 

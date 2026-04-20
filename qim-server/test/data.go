@@ -142,6 +142,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "测试用户",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=test",
+				Signature:    "这是一个测试用户",
+				Phone:        "13800000000",
+				Email:        "test@example.com",
 				Status:       "online",
 			},
 			{
@@ -149,6 +152,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户一",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user1",
+				Signature:    "专注技术，热爱开源",
+				Phone:        "13800000001",
+				Email:        "user1@example.com",
 				Status:       "online",
 			},
 			{
@@ -156,6 +162,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户二",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user2",
+				Signature:    "产品经理一枚",
+				Phone:        "13800000002",
+				Email:        "user2@example.com",
 				Status:       "online",
 			},
 			{
@@ -163,6 +172,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户三",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user3",
+				Signature:    "前端开发工程师",
+				Phone:        "13800000003",
+				Email:        "user3@example.com",
 				Status:       "online",
 			},
 			{
@@ -170,6 +182,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户四",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user4",
+				Signature:    "后端开发工程师",
+				Phone:        "13800000004",
+				Email:        "user4@example.com",
 				Status:       "online",
 			},
 			{
@@ -177,6 +192,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户五",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user5",
+				Signature:    "UI设计师",
+				Phone:        "13800000005",
+				Email:        "user5@example.com",
 				Status:       "online",
 			},
 			{
@@ -184,6 +202,9 @@ func InitTestData(db *gorm.DB) {
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户六",
 				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user6",
+				Signature:    "测试工程师",
+				Phone:        "13800000006",
+				Email:        "user6@example.com",
 				Status:       "online",
 			},
 		}

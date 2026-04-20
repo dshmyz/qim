@@ -26,7 +26,12 @@
 import { ref, onMounted } from 'vue'
 import { showMiniAppModal } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
-import '../../styles/mini-app.css'
+import '../../assets/styles/modal.css'
+import '../../assets/styles/apps/calculator.css'
+import '../../assets/styles/apps/notepad.css'
+import '../../assets/styles/apps/password-generator.css'
+import '../../assets/styles/apps/todo.css'
+import '../../assets/styles/apps/short-link.css'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
