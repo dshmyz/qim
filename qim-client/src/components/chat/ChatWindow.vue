@@ -180,28 +180,18 @@
   </div>
   
   <!-- 成员上下文菜单 -->
-  <div v-if="showMemberContextMenuFlag" class="context-menu" :style="{ left: memberContextMenuPosition.x + 'px', top: memberContextMenuPosition.y + 'px' }">
-    <div v-if="canRemoveMember" class="context-menu-item" @click.stop="removeMemberFromGroup">
-      <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
-      <span>移除群聊</span>
-    </div>
-    <div class="context-menu-item" @click.stop="viewMemberInfo">
-      <span class="context-menu-icon"><i class="fas fa-user"></i></span>
-      <span>查看资料</span>
-    </div>
-    <div v-if="canSetAdmin" class="context-menu-item" @click.stop="setAsAdmin">
-      <span class="context-menu-icon"><i class="fas fa-star"></i></span>
-      <span>{{ isSelectedMemberAdmin ? '取消管理员' : '设为管理员' }}</span>
-    </div>
-    <div v-if="canTransferOwner" class="context-menu-item" @click.stop="transferOwner">
-      <span class="context-menu-icon"><i class="fas fa-crown"></i></span>
-      <span>转让群主</span>
-    </div>
-    <div class="context-menu-item" @click.stop="sendPrivateMessage">
-      <span class="context-menu-icon"><i class="fas fa-comment"></i></span>
-      <span>发起私聊</span>
-    </div>
-  </div>
+  <MemberContextMenu
+    :visible="showMemberContextMenuFlag"
+    :position="memberContextMenuPosition"
+    :member="selectedMember"
+    :currentUserId="currentUserId"
+    :conversation="conversation"
+    @remove-member="removeMemberFromGroup"
+    @view-member-info="viewMemberInfo"
+    @set-admin="setAsAdmin"
+    @transfer-owner="transferOwner"
+    @send-private-message="sendPrivateMessage"
+  />
   
   <!-- 用户资料弹窗 -->
   <UserProfile 
@@ -251,57 +241,20 @@
 
 
   <!-- 消息上下文菜单 -->
-  <div v-if="showMessageContextMenuFlag" class="context-menu" :style="{ left: messageContextMenuPosition.x + 'px', top: messageContextMenuPosition.y + 'px' }">
-    <!-- 图片消息选项 -->
-    <div v-if="selectedMessage && selectedMessage.type === 'image'" class="context-menu-item" @click="previewImage(selectedMessage.content)">
-      <span class="context-menu-icon"><i class="fas fa-eye"></i></span>
-      <span>预览</span>
-    </div>
-    <div v-if="selectedMessage && selectedMessage.type === 'image'" class="context-menu-item" @click="saveFileAs(selectedMessage.content)">
-      <span class="context-menu-icon"><i class="fas fa-save"></i></span>
-      <span>保存图片</span>
-    </div>
-    <!-- 文件消息选项 -->
-    <div v-if="selectedMessage && selectedMessage.type === 'file'" class="context-menu-item" @click="downloadFile(selectedMessage.content)">
-      <span class="context-menu-icon"><i class="fas fa-download"></i></span>
-      <span>下载</span>
-    </div>
-    <div v-if="selectedMessage && selectedMessage.type === 'file'" class="context-menu-item" @click="saveFileAs(selectedMessage.content)">
-      <span class="context-menu-icon"><i class="fas fa-save"></i></span>
-      <span>另存为</span>
-    </div>
-    <!-- 分隔线 -->
-    <div v-if="selectedMessage && (selectedMessage.type === 'image' || selectedMessage.type === 'file')" class="context-menu-divider"></div>
-    <!-- 通用选项 -->
-    <div v-if="selectedMessage && (selectedMessage.type === 'text' || selectedMessage.type === 'image')" class="context-menu-item" @click="copyMessage">
-      <span class="context-menu-icon"><i class="fas fa-copy"></i></span>
-      <span>复制</span>
-    </div>
-    <div class="context-menu-item" @click="forwardMessage">
-      <span class="context-menu-icon"><i class="fas fa-share-alt"></i></span>
-      <span>转发</span>
-    </div>
-    <div class="context-menu-item" @click="quoteMessage">
-      <span class="context-menu-icon"><i class="fas fa-quote-right"></i></span>
-      <span>引用</span>
-    </div>
-    <div v-if="selectedMessage.type === 'text'" class="context-menu-item" @click="addToNote">
-      <span class="context-menu-icon"><i class="fas fa-sticky-note"></i></span>
-      <span>添加到便签</span>
-    </div>
-    <!-- <div class="context-menu-item" @click="deleteMessage">
-      <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
-      <span>删除</span>
-    </div> -->
-    <div v-if="selectedMessage.isSelf" class="context-menu-item" @click="recallMessage">
-      <span class="context-menu-icon"><i class="fas fa-undo"></i></span>
-      <span>撤回</span>
-    </div>
-    <div v-if="selectedMessage.isSelf && canSendReminder(selectedMessage)" class="context-menu-item" @click="sendMessageReminder">
-      <span class="context-menu-icon"><i class="fas fa-bell"></i></span>
-      <span>发送提醒</span>
-    </div>
-  </div>
+  <MessageContextMenu
+    :visible="showMessageContextMenuFlag"
+    :position="messageContextMenuPosition"
+    :message="selectedMessage"
+    @preview-image="previewImage"
+    @save-file-as="saveFileAs"
+    @download-file="downloadFile"
+    @copy-message="copyMessage"
+    @forward-message="forwardMessage"
+    @quote-message="quoteMessage"
+    @add-to-note="addToNote"
+    @recall-message="recallMessage"
+    @send-message-reminder="sendMessageReminder"
+  />
   
 
   
@@ -475,6 +428,8 @@ import MessageManager from './MessageManager.vue'
 import MessageInputArea from './MessageInputArea.vue'
 import MemberSidebar from './MemberSidebar.vue'
 import GroupManagementPanel from './GroupManagementPanel.vue'
+import MessageContextMenu from './MessageContextMenu.vue'
+import MemberContextMenu from './MemberContextMenu.vue'
 import { openMiniApp } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
 import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
@@ -2289,6 +2244,12 @@ const addToNote = () => {
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
 const currentUser = ref(getCurrentUser())
+
+// 当前用户ID
+const currentUserId = computed((): string | number => {
+  const user = currentUser.value || props.currentUser
+  return user?.id ?? ''
+})
 
 // 获取对方用户ID（单聊）
 const otherUserId = computed(() => {
