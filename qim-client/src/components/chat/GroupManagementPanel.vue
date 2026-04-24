@@ -100,7 +100,6 @@ interface GroupConversation extends Conversation {
 interface Props {
   conversation: Conversation | null
   currentUser: any
-  updateConversation?: (conversation: Conversation) => void
   showHeaderMenu: boolean
   showEditGroupInfoModal: boolean
   showEditAnnouncementModal: boolean

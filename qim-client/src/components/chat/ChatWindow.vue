@@ -36,7 +36,6 @@
       <GroupManagementPanel
         :conversation="conversation"
         :current-user="currentUser"
-        :update-conversation="updateConversation"
         v-model:showHeaderMenu="showHeaderMenu"
         v-model:showEditGroupInfoModal="showEditGroupInfoModal"
         v-model:showEditAnnouncementModal="showEditAnnouncementModal"
@@ -314,7 +313,24 @@
     @scroll-to-message="scrollToMessage"
   />
   
-  <!-- 确认对话框、编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
+  <!-- 确认对话框 -->
+  <div v-if="showConfirmDialog" class="confirm-dialog-modal" @click="closeConfirmDialog">
+    <div class="confirm-dialog-content" @click.stop>
+      <div class="confirm-dialog-header">
+        <h3>{{ confirmDialogTitle }}</h3>
+        <button class="close-btn" @click="closeConfirmDialog">&times;</button>
+      </div>
+      <div class="confirm-dialog-body">
+        <p>{{ confirmDialogMessage }}</p>
+      </div>
+      <div class="confirm-dialog-footer">
+        <button class="cancel" @click="closeConfirmDialog">取消</button>
+        <button class="confirm" @click="handleConfirmAction">确定</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
   
   <!-- 截图预览对话框 -->
   <div v-if="showScreenshotPreview" class="screenshot-preview-modal" @click="cancelScreenshot">
