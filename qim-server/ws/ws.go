@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"qim-server/database"
 	"qim-server/model"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,15 +26,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type Hub struct {
-	clients     map[*Client]bool
-	register    chan *Client
-	unregister  chan *Client
-	broadcast   chan []byte
-	Broadcast   chan []byte
-	userClients map[uint][]*Client
-	mu          sync.RWMutex
-	nodes       []string
-	nodeID      string
+	clients             map[*Client]bool
+	register            chan *Client
+	unregister          chan *Client
+	broadcast           chan []byte
+	Broadcast           chan []byte
+	userClients         map[uint][]*Client
+	conversationMembers map[uint][]uint // 缓存会话成员用户ID
+	mu                  sync.RWMutex
+	nodes               []string
+	nodeID              string
 }
 
 type Client struct {
@@ -62,14 +64,15 @@ func NewHub() *Hub {
 	log.Printf("节点 %s 初始化完成，将使用基于 HTTP 的多节点模式", nodeID)
 
 	return &Hub{
-		clients:     make(map[*Client]bool),
-		register:    make(chan *Client),
-		unregister:  make(chan *Client),
-		broadcast:   broadcastChan,
-		Broadcast:   broadcastChan,
-		userClients: make(map[uint][]*Client),
-		nodes:       nodes,
-		nodeID:      nodeID,
+		clients:             make(map[*Client]bool),
+		register:            make(chan *Client),
+		unregister:          make(chan *Client),
+		broadcast:           broadcastChan,
+		Broadcast:           broadcastChan,
+		userClients:         make(map[uint][]*Client),
+		conversationMembers: make(map[uint][]uint),
+		nodes:               nodes,
+		nodeID:              nodeID,
 	}
 }
 
@@ -199,6 +202,30 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 	h.sendToUserToOtherNodes(userID, message)
 }
 
+// UpdateConversationMembers 更新会话成员缓存
+func (h *Hub) UpdateConversationMembers(convID uint) {
+	// 从数据库查询最新的会话成员
+	db := database.GetDB()
+	var members []model.ConversationMember
+	result := db.Where("conversation_id = ?", convID).Find(&members)
+	if result.Error != nil {
+		log.Printf("更新会话成员缓存失败: %v", result.Error)
+		return
+	}
+
+	// 提取用户ID
+	memberIDs := make([]uint, len(members))
+	for i, member := range members {
+		memberIDs[i] = member.UserID
+	}
+
+	// 更新缓存
+	h.mu.Lock()
+	h.conversationMembers[convID] = memberIDs
+	h.mu.Unlock()
+	log.Printf("更新会话 %d 成员缓存，成员数量: %d", convID, len(memberIDs))
+}
+
 // sendToUserToOtherNodes 通过 HTTP 向其他节点发送用户特定消息
 func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 	for _, node := range h.nodes {
@@ -231,26 +258,47 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 func (h *Hub) SendToConversation(convID uint, excludeUserID uint, message []byte) {
 	log.Printf("开始向会话 %d 发送WebSocket消息，排除用户 %d", convID, excludeUserID)
 
-	db := database.GetDB()
-	var members []model.ConversationMember
-	result := db.Where("conversation_id = ?", convID).Find(&members)
-	log.Printf("找到会话 %d 的成员数量: %d", convID, len(members))
-	if result.Error != nil {
-		log.Printf("查询会话成员失败: %v", result.Error)
-		return
+	// 先尝试从缓存获取会话成员
+	h.mu.RLock()
+	memberIDs, found := h.conversationMembers[convID]
+	h.mu.RUnlock()
+
+	if !found {
+		// 缓存未命中，从数据库查询
+		db := database.GetDB()
+		var members []model.ConversationMember
+		result := db.Where("conversation_id = ?", convID).Find(&members)
+		log.Printf("找到会话 %d 的成员数量: %d", convID, len(members))
+		if result.Error != nil {
+			log.Printf("查询会话成员失败: %v", result.Error)
+			return
+		}
+
+		// 提取用户ID
+		memberIDs = make([]uint, len(members))
+		for i, member := range members {
+			memberIDs[i] = member.UserID
+		}
+
+		// 更新缓存
+		h.mu.Lock()
+		h.conversationMembers[convID] = memberIDs
+		h.mu.Unlock()
 	}
 
-	for _, member := range members {
-		if member.UserID != excludeUserID {
-			log.Printf("向用户 %d 发送WebSocket消息", member.UserID)
-			h.SendToUser(member.UserID, message)
+	// 向所有成员发送消息（排除指定用户）
+	for _, userID := range memberIDs {
+		if userID != excludeUserID {
+			log.Printf("向用户 %d 发送WebSocket消息", userID)
+			h.SendToUser(userID, message)
 		} else {
-			log.Printf("排除用户 %d，不发送消息", member.UserID)
+			log.Printf("排除用户 %d，不发送消息", userID)
 		}
 	}
 }
 
 func (c *Client) readPump() {
+
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -266,6 +314,8 @@ func (c *Client) readPump() {
 			break
 		}
 
+		log.Printf("收到客户端消息: 类型=%s", msg.Type)
+
 		switch msg.Type {
 		case "heartbeat":
 			// 心跳，无需处理
@@ -279,6 +329,18 @@ func (c *Client) readPump() {
 			handleWebRTCSignal(c, msg.Data, "webrtc_answer")
 		case "webrtc_ice_candidate":
 			handleWebRTCSignal(c, msg.Data, "webrtc_ice_candidate")
+		case "screen-share-start":
+			handleScreenShareStart(c, msg.Data)
+		case "screen-share-stop":
+			handleScreenShareStop(c, msg.Data)
+		case "screen-share-data":
+			handleScreenShareData(c, msg.Data)
+		case "screen-share-request":
+			handleScreenShareRequest(c, msg.Data)
+		case "screen-share-response":
+			handleScreenShareResponse(c, msg.Data)
+		default:
+			log.Printf("未知消息类型: %s", msg.Type)
 		}
 	}
 }
@@ -443,12 +505,22 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 	if !ok {
 		return
 	}
+	log.Printf("收到 %s 消息: %v", signalType, msgData)
+	var targetUserID uint
 
-	targetUserIDFloat, ok := msgData["target_user_id"].(float64)
-	if !ok {
+	// 尝试将 target_user_id 转换为 float64 (数字类型)
+	if targetUserIDFloat, ok := msgData["target_user_id"].(float64); ok {
+		targetUserID = uint(targetUserIDFloat)
+	} else if targetUserIDStr, ok := msgData["target_user_id"].(string); ok {
+		// 尝试将 target_user_id 转换为 string 类型，然后转换为 uint
+		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
+			targetUserID = uint(id)
+		} else {
+			return
+		}
+	} else {
 		return
 	}
-	targetUserID := uint(targetUserIDFloat)
 
 	// 构建转发的信令消息
 	signalMsg := WSMessage{
@@ -481,4 +553,368 @@ func ServeWs(hub *Hub, c *gin.Context) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+// ServeScreenShare 处理屏幕共享的 WebSocket 连接
+func ServeScreenShare(hub *Hub, c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userID: userID.(uint)}
+	client.hub.register <- client
+
+	go client.writePump()
+	go client.readPump()
+}
+
+// 处理屏幕共享开始
+func handleScreenShareStart(c *Client, data interface{}) {
+	db := database.GetDB()
+
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// 支持两种命名格式：下划线和驼峰
+	var convIDFloat float64
+	if val, ok := msgData["conversation_id"].(float64); ok {
+		convIDFloat = val
+	} else if val, ok := msgData["conversationId"].(float64); ok {
+		convIDFloat = val
+	} else {
+		return
+	}
+	convID := uint(convIDFloat)
+
+	// 支持两种命名格式：下划线和驼峰
+	var userIdFloat float64
+	if val, ok := msgData["user_id"].(float64); ok {
+		userIdFloat = val
+	} else if val, ok := msgData["userId"].(float64); ok {
+		userIdFloat = val
+	} else {
+		// 如果没有提供userId，使用当前用户ID
+		userIdFloat = float64(c.userID)
+	}
+	userId := uint(userIdFloat)
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		return
+	}
+
+	// 构建屏幕共享开始消息
+	wsMsg := WSMessage{
+		Type: "screen-share-start",
+		Data: map[string]interface{}{
+			"conversation_id": convID,
+			"user_id":         userId,
+			"timestamp":       time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(wsMsg)
+
+	// 推送给会话其他成员
+	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	log.Printf("用户 %d 开始屏幕共享，会话 %d", c.userID, convID)
+}
+
+// 处理屏幕共享停止
+func handleScreenShareStop(c *Client, data interface{}) {
+	db := database.GetDB()
+
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// 支持两种命名格式：下划线和驼峰
+	var convIDFloat float64
+	if val, ok := msgData["conversation_id"].(float64); ok {
+		convIDFloat = val
+	} else if val, ok := msgData["conversationId"].(float64); ok {
+		convIDFloat = val
+	} else {
+		return
+	}
+	convID := uint(convIDFloat)
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		return
+	}
+
+	// 构建屏幕共享停止消息
+	wsMsg := WSMessage{
+		Type: "screen-share-stop",
+		Data: map[string]interface{}{
+			"conversation_id": convID,
+			"user_id":         c.userID,
+			"timestamp":       time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(wsMsg)
+
+	// 推送给会话其他成员
+	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	log.Printf("用户 %d 停止屏幕共享，会话 %d", c.userID, convID)
+}
+
+// 处理屏幕共享数据
+func handleScreenShareData(c *Client, data interface{}) {
+	db := database.GetDB()
+
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("屏幕共享数据格式错误: %v", data)
+		return
+	}
+
+	// 支持两种命名格式：下划线和驼峰
+	var convID uint
+	var found bool
+
+	// 尝试从 conversation_id 获取
+	if val, ok := msgData["conversation_id"]; ok {
+		switch v := val.(type) {
+		case float64:
+			convID = uint(v)
+			found = true
+		case int:
+			convID = uint(v)
+			found = true
+		case int64:
+			convID = uint(v)
+			found = true
+		case string:
+			if id, err := strconv.Atoi(v); err == nil {
+				convID = uint(id)
+				found = true
+			}
+		}
+	}
+
+	// 尝试从 conversationId 获取
+	if !found && msgData["conversationId"] != nil {
+		val := msgData["conversationId"]
+		switch v := val.(type) {
+		case float64:
+			convID = uint(v)
+			found = true
+		case int:
+			convID = uint(v)
+			found = true
+		case int64:
+			convID = uint(v)
+			found = true
+		case string:
+			if id, err := strconv.Atoi(v); err == nil {
+				convID = uint(id)
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		log.Printf("屏幕共享数据缺少会话ID: %v", msgData)
+		return
+	}
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		return
+	}
+
+	// 构建屏幕共享数据消息
+	wsMsg := WSMessage{
+		Type: "screen-share-data",
+		Data: map[string]interface{}{
+			"conversation_id": convID,
+			"user_id":         c.userID,
+			"data":            msgData["data"],
+		},
+	}
+	jsonMsg, _ := json.Marshal(wsMsg)
+
+	// 推送给会话其他成员
+	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+}
+
+// 处理屏幕共享请求
+func handleScreenShareRequest(c *Client, data interface{}) {
+	db := database.GetDB()
+
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("屏幕共享请求数据格式错误: %v", data)
+		return
+	}
+
+	// 支持两种命名格式：下划线和驼峰
+	var convID uint
+	var found bool
+
+	// 尝试从 conversation_id 获取
+	if val, ok := msgData["conversation_id"]; ok {
+		switch v := val.(type) {
+		case float64:
+			convID = uint(v)
+			found = true
+		case int:
+			convID = uint(v)
+			found = true
+		case int64:
+			convID = uint(v)
+			found = true
+		case string:
+			if id, err := strconv.Atoi(v); err == nil {
+				convID = uint(id)
+				found = true
+			}
+		}
+	}
+
+	// 尝试从 conversationId 获取
+	if !found && msgData["conversationId"] != nil {
+		val := msgData["conversationId"]
+		switch v := val.(type) {
+		case float64:
+			convID = uint(v)
+			found = true
+		case int:
+			convID = uint(v)
+			found = true
+		case int64:
+			convID = uint(v)
+			found = true
+		case string:
+			if id, err := strconv.Atoi(v); err == nil {
+				convID = uint(id)
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		log.Printf("屏幕共享请求缺少会话ID: %v", msgData)
+		return
+	}
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		log.Printf("用户 %d 不是会话 %d 的成员", c.userID, convID)
+		return
+	}
+
+	// 构建屏幕共享请求消息
+	wsMsg := WSMessage{
+		Type: "screen-share-request",
+		Data: map[string]interface{}{
+			"conversation_id": convID,
+			"user_id":         c.userID,
+			"timestamp":       time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(wsMsg)
+
+	// 推送给会话其他成员
+	log.Printf("准备向会话 %d 的其他成员推送屏幕共享请求，发送者: %d", convID, c.userID)
+	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	log.Printf("用户 %d 请求屏幕共享，会话 %d", c.userID, convID)
+}
+
+// 处理屏幕共享响应
+func handleScreenShareResponse(c *Client, data interface{}) {
+	db := database.GetDB()
+
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// 支持两种命名格式：下划线和驼峰
+	var convIDFloat float64
+	if val, ok := msgData["conversation_id"].(float64); ok {
+		convIDFloat = val
+	} else if val, ok := msgData["conversationId"].(float64); ok {
+		convIDFloat = val
+	} else {
+		return
+	}
+	convID := uint(convIDFloat)
+
+	// 获取请求者ID
+	var requesterIDFloat float64
+	if val, ok := msgData["requester_id"].(float64); ok {
+		requesterIDFloat = val
+	} else if val, ok := msgData["requesterId"].(float64); ok {
+		requesterIDFloat = val
+	} else {
+		return
+	}
+	requesterID := uint(requesterIDFloat)
+
+	// 获取响应状态
+	status, ok := msgData["status"].(string)
+	if !ok {
+		return
+	}
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		return
+	}
+	log.Printf("用户 %d 响应屏幕共享请求, 会话 %d, 请求者 %d, 状态 %s", c.userID, convID, requesterID, status)
+	if status == "accepted" {
+		// 向请求者发送接受消息
+		acceptMsg := WSMessage{
+			Type: "screen-share-accepted",
+			Data: map[string]interface{}{
+				"conversation_id": convID,
+				"user_id":         c.userID,
+				"timestamp":       time.Now().Unix(),
+			},
+		}
+		acceptJson, _ := json.Marshal(acceptMsg)
+		c.hub.SendToUser(requesterID, acceptJson)
+
+		// 向响应者发送开始消息
+		startMsg := WSMessage{
+			Type: "screen-share-start",
+			Data: map[string]interface{}{
+				"conversation_id": convID,
+				"user_id":         requesterID,
+				"timestamp":       time.Now().Unix(),
+			},
+		}
+		startJson, _ := json.Marshal(startMsg)
+		c.hub.SendToUser(c.userID, startJson)
+
+		log.Printf("用户 %d 接受了屏幕共享请求，会话 %d", c.userID, convID)
+	} else if status == "rejected" {
+		// 向请求者发送拒绝消息
+		rejectMsg := WSMessage{
+			Type: "screen-share-rejected",
+			Data: map[string]interface{}{
+				"conversation_id": convID,
+				"user_id":         c.userID,
+				"timestamp":       time.Now().Unix(),
+			},
+		}
+		rejectJson, _ := json.Marshal(rejectMsg)
+		c.hub.SendToUser(requesterID, rejectJson)
+
+		log.Printf("用户 %d 拒绝了屏幕共享请求，会话 %d", c.userID, convID)
+	}
 }

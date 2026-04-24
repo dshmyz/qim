@@ -2,22 +2,34 @@
   <div class="chat-window">
     <div class="chat-header">
       <div class="header-info">
-        <img :src="(conversation?.avatar && conversation.avatar.startsWith('http')) ? conversation.avatar : (conversation?.avatar ? serverUrl + conversation.avatar : generateAvatar(conversation?.name || '用户'))" :alt="conversation?.name || '未知'" class="header-avatar" />
+        <img :src="getAvatarUrl(conversation?.avatar, conversation?.name || '用户', serverUrl.value)" :alt="conversation?.name || '未知'" class="header-avatar" />
         <div class="header-text">
-          <div class="header-name" @dblclick="editGroupInfo">{{ conversation?.name || '未知会话' }}</div>
+          <div class="header-name" @dblclick="(conversation?.type === 'group' || conversation?.type === 'discussion') && editGroupInfo()">{{ conversation?.name || '未知会话' }}</div>
           <div class="header-status">
-            {{ conversation?.type === 'group' ? '群聊' : conversation?.type === 'discussion' ? '讨论组' : '在线' }}
-            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.members" class="member-count">
-              ({{ conversation.members.length }}人)
-            </span>
+            <template v-if="conversation?.type === 'group' || conversation?.type === 'discussion'">
+              {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
+              <span v-if="conversation?.members" class="member-count">
+                ({{ conversation.members.length }}人)
+              </span>
+            </template>
+            <template v-else-if="conversation?.type === 'single'">
+              <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
+                {{ conversation?.status === 'online' ? '在线' : '离线' }}
+              </span>
+              <span v-if="conversation?.signature" class="signature-info">
+                {{ conversation.signature }}
+              </span>
+            </template>
+            <template v-else>
+              在线
+            </template>
             <span v-if="conversation?.type === 'single' && conversation?.ip" class="ip-info">
               {{ conversation.ip }}
             </span>
-          </div>
-          <!-- 群公告展示 -->
-          <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement">
-            <i class="fas fa-bullhorn"></i>
-            <span class="announcement-text">{{ conversation.announcement }}</span>
+            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement-inline">
+              <i class="fas fa-bullhorn"></i>
+              {{ conversation.announcement }}
+            </span>
           </div>
         </div>
       </div>
@@ -32,6 +44,9 @@
             </div>
             <div v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="menu-item" @click="editGroupAnnouncement">
               <i class="fas fa-bullhorn"></i> 编辑群公告
+            </div>
+            <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && isGroupOwner(conversation)" class="menu-item" @click="confirmDeleteConversation">
+              <i class="fas fa-trash"></i> 解散群聊
             </div>
           </div>
         </span>
@@ -198,7 +213,7 @@
       </div>
       
       <!-- @成员面板 -->
-      <div v-if="showAtMembersPanel && conversation?.type === 'group'" class="at-members-panel-container">
+      <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" class="at-members-panel-container">
         <div class="at-members-panel-backdrop" @click="closeAtMembersPanel"></div>
         <div class="at-members-panel">
           <div class="at-members-header">
@@ -213,6 +228,12 @@
             />
           </div>
           <div class="at-members-list">
+            <!-- @所有人选项 -->
+            <div class="at-member-item" @click="selectAtAll">
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=all" alt="所有人" class="at-member-avatar" />
+              <span class="at-member-name">所有人</span>
+            </div>
+            <!-- 成员列表 -->
             <div v-for="member in filteredAtMembers" :key="member.id" class="at-member-item" @click="selectAtMember(member)">
               <img :src="member.avatar" :alt="member.name || '未知用户'" class="at-member-avatar" />
               <span class="at-member-name">{{ member.name || '未知用户' }}</span>
@@ -332,6 +353,21 @@
       </div>
     </div>
   </div>
+
+  <!-- 屏幕共享组件 -->
+  <ScreenShare
+    :receiverId="otherUserId"
+    :senderId="remoteScreenUserId"
+    :senderName="conversation?.name"
+    :conversationId="conversation?.id"
+    ref="screenShareComponent"
+    @screen-share-start="handleScreenShareStartFromComponent"
+    @screen-share-stop="handleScreenShareStopFromComponent"
+    @screen-share-join="handleScreenShareJoinFromComponent"
+    @screen-share-leave="handleScreenShareLeaveFromComponent"
+  />
+
+
 
   <!-- 消息上下文菜单 -->
   <div v-if="showMessageContextMenuFlag" class="context-menu" :style="{ left: messageContextMenuPosition.x + 'px', top: messageContextMenuPosition.y + 'px' }">
@@ -481,50 +517,10 @@
           <i class="fas fa-phone-slash"></i>
           <span>结束通话</span>
         </button>
-        <button v-if="isScreenSharing" class="call-btn screen-share-btn" @click="stopScreenShare">
-          <i class="fas fa-stop"></i>
-          <span>停止屏幕共享</span>
-        </button>
       </div>
     </div>
   </div>
   
-  <!-- 屏幕共享模态框 -->
-  <div v-if="isScreenSharing" class="call-modal" @click="stopScreenShare">
-    <div class="call-modal-content" @click.stop>
-      <div class="call-modal-header">
-        <h3>屏幕共享</h3>
-      </div>
-      <div class="call-modal-body">
-        <div class="call-info">
-          <div class="call-avatar">
-            <img :src="props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'" :alt="props.conversation?.name || '未知'" />
-          </div>
-          <div class="call-name">{{ props.conversation?.name || '未知' }}</div>
-          <div class="call-status">
-            <span class="status-answered">屏幕共享中</span>
-          </div>
-        </div>
-        
-        <!-- 屏幕共享区域 -->
-        <div class="video-container">
-          <div class="remote-video">
-            <div class="video-placeholder">
-              <i class="fas fa-desktop"></i>
-              <span>屏幕共享中</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="call-modal-footer">
-        <button class="call-btn end-btn" @click="stopScreenShare">
-          <i class="fas fa-stop"></i>
-          <span>停止屏幕共享</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
   <!-- 图片预览弹窗 -->
   <div v-if="showImagePreview" class="image-preview-modal" @click="closeImagePreview">
     <div class="image-preview-content" @click.stop>
@@ -541,7 +537,7 @@
   
   <!-- 分享内容预览弹窗 -->
   <div v-if="showSharePreview" class="share-preview-modal" @click="closeSharePreview">
-    <div class="share-preview-content" @click.stop>
+    <div class="share-preview-content" @click.stop :class="{ 'sticky-note-preview': sharePreviewData.type === 'sticky' }">
       <div class="share-preview-header">
         <h3>{{ sharePreviewData.type === 'file' ? '文件详情' : (sharePreviewData.type === 'note' ? '笔记详情' : '便签详情') }}</h3>
         <button class="close-btn" @click="closeSharePreview">
@@ -559,10 +555,15 @@
             <div class="share-file-size" v-if="sharePreviewData.size">{{ formatFileSize(sharePreviewData.size) }}</div>
           </div>
         </div>
-        <!-- 笔记和便签类型 -->
-        <div v-else>
+        <!-- 笔记类型 -->
+        <div v-else-if="sharePreviewData.type === 'note'">
           <div class="share-preview-title">{{ sharePreviewData.name }}</div>
-          <div class="share-preview-content-text" v-if="sharePreviewData.content">{{ sharePreviewData.content }}</div>
+          <div class="share-preview-content-text" v-if="sharePreviewData.content" v-html="renderMarkdown(sharePreviewData.content)"></div>
+        </div>
+        <!-- 便签类型 -->
+        <div v-else-if="sharePreviewData.type === 'sticky'" class="sticky-note-content">
+          <div class="sticky-note-title">{{ sharePreviewData.name }}</div>
+          <div class="sticky-note-body" v-if="sharePreviewData.content">{{ sharePreviewData.content }}</div>
         </div>
         <div class="share-preview-meta">
           <span class="share-preview-type">{{ sharePreviewData.type === 'file' ? '文件' : (sharePreviewData.type === 'note' ? '笔记' : '便签') }}</span>
@@ -622,7 +623,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../types'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import UserProfile from './UserProfile.vue'
 import MiniAppManager from './apps/MiniAppManager.vue'
 import MessageItem from './message/MessageItem.vue'
@@ -630,8 +631,12 @@ import QuotedMessageInput from './message/QuotedMessageInput.vue'
 import MessageManager from './MessageManager.vue'
 import { openMiniApp } from '../utils/miniAppUtils'
 import { API_BASE_URL } from '../config'
-import { generateAvatar } from '../utils/avatar'
+import { generateAvatar, getAvatarUrl } from '../utils/avatar'
 import { getCurrentUser } from '../utils/user'
+// @ts-ignore - WebRTC module has no type declarations
+import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
+import { addMessageHandler } from '../utils/websocketManager'
+import ScreenShare from './ScreenShare.vue'
 import '../assets/styles/modal.css'
 import '../assets/styles/apps/calculator.css'
 import '../assets/styles/apps/notepad.css'
@@ -639,8 +644,17 @@ import '../assets/styles/apps/password-generator.css'
 import '../assets/styles/apps/todo.css'
 import '../assets/styles/apps/short-link.css'
 
+// 流式消息状态管理
+const streamingMessages = ref(new Map<string, { content: string, isStreaming: boolean }>())
+
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+
+// 屏幕共享相关
+const showScreenShareModal = ref(false)
+const screenSources = ref([])
+const screenShareComponent = ref(null) // 屏幕共享组件引用
+const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
 
 // 获取token
 const getToken = () => {
@@ -683,6 +697,9 @@ const request = async (url: string, options?: RequestInit) => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       console.error('请求失败:', errorData)
+      if (response.status === 403) {
+        throw new Error(errorData.message || '权限不足，请检查您的权限')
+      }
       throw new Error(errorData.message || '请求失败')
     }
     
@@ -702,6 +719,9 @@ interface Props {
   currentUser: any
   hasMoreMessages: boolean
   updateConversation?: (conversation: Conversation) => void
+  remoteScreenSharing?: boolean
+  remoteScreenUserId?: number | null
+  remoteScreenData?: string | null
 }
 
 const props = defineProps<Props>()
@@ -714,7 +734,32 @@ const emit = defineEmits<{
   'loadMore': [messages: any[]]
   'switchConversation': [conversationId: string]
   'retry-send': [message: any]
+  'send-screen-share-start': [data: { conversationId: number; requester_id: number }]
+  'send-screen-share-stop': [data: { conversationId: number }]
+  'send-screen-share-data': [data: { conversationId: number; data: string }]
 }>()
+
+// 监听远程屏幕共享
+watch(() => props.remoteScreenSharing, (newVal) => {
+  if (newVal && props.remoteScreenData === null) {
+    // 开始接收远程屏幕共享
+    console.log('开始接收远程屏幕共享')
+  } else if (!newVal) {
+    // 停止接收远程屏幕共享
+    console.log('停止接收远程屏幕共享')
+    if (screenShareComponent.value) {
+      screenShareComponent.value.stopReceiving()
+    }
+  }
+})
+
+// 监听远程屏幕共享数据
+watch(() => props.remoteScreenData, (newVal) => {
+  if (newVal) {
+    console.log('收到远程屏幕共享数据')
+  }
+})
+
 const inputMessage = ref('')
 const messageListRef = ref<HTMLDivElement>()
 const messageInputRef = ref<HTMLTextAreaElement>()
@@ -902,6 +947,33 @@ const handleConfirmAction = () => {
     confirmDialogCallback.value()
   }
   closeConfirmDialog()
+}
+
+// 确认解散群聊
+const confirmDeleteConversation = () => {
+  if (!props.conversation) return
+  
+  openConfirmDialog(
+    '确认解散群聊',
+    '确定要解散此群聊吗？解散后所有消息和成员数据将被删除。',
+    async () => {
+      try {
+        const response = await request(`/api/v1/conversations/${props.conversation.id}`, {
+          method: 'DELETE'
+        })
+        if (response.code === 0) {
+          $message.success('群聊解散成功')
+          // 触发切换会话事件，回到会话列表
+          emit('switchConversation', '')
+        } else {
+          $message.error('解散群聊失败: ' + response.message)
+        }
+      } catch (error) {
+        console.error('解散群聊失败:', error)
+        $message.error('解散群聊失败，请重试')
+      }
+    }
+  )
 }
 
 // 显示消息提示
@@ -1204,6 +1276,41 @@ const selectAtMember = (member: { id: string; name: string; avatar: string }) =>
   }
 }
 
+// 选择 @ 所有人
+const selectAtAll = () => {
+  const textarea = messageInputRef.value
+  if (!textarea) return
+  
+  const cursorPos = textarea.selectionStart
+  const value = inputMessage.value
+  
+  // 找到 @ 符号的位置
+  let atPosition = cursorPos - 1
+  while (atPosition >= 0 && value.charAt(atPosition) !== '@') {
+    atPosition--
+  }
+  
+  if (atPosition >= 0) {
+    // 替换 @ 符号及其后的内容为 @所有人
+    const newText = value.substring(0, atPosition) + `@所有人 ` + value.substring(cursorPos)
+    inputMessage.value = newText
+    
+    // 自动调整输入框高度
+    autoResizeTextarea()
+    
+    // 关闭 @ 成员面板
+    showAtMembersPanel.value = false
+    
+    // 设置光标位置到 @所有人 后面
+    nextTick(() => {
+      if (textarea) {
+        textarea.selectionStart = textarea.selectionEnd = atPosition + 4 + 1 // +4 是 "所有人" 的长度，+1 是空格的长度
+        textarea.focus()
+      }
+    })
+  }
+}
+
 // 关闭 @ 成员面板
 const closeAtMembersPanel = () => {
   showAtMembersPanel.value = false
@@ -1320,11 +1427,21 @@ const handleSend = async () => {
       const mentionedUsers = props.conversation.members.filter(member => 
         atUsernames.includes(member.name)
       )
-      // 为@提到的用户发送通知
-      mentionedUsers.forEach(user => {
-        console.log('发送通知给用户:', user.name)
-        // 这里可以实现通知逻辑，例如调用API发送通知
-      })
+      
+      // 检查是否@了所有人
+      if (atUsernames.includes('所有人')) {
+        // @所有人时，通知所有成员
+        props.conversation.members.forEach(user => {
+          console.log('发送通知给用户:', user.name)
+          // 这里可以实现通知逻辑，例如调用API发送通知
+        })
+      } else {
+        // 为@提到的用户发送通知
+        mentionedUsers.forEach(user => {
+          console.log('发送通知给用户:', user.name)
+          // 这里可以实现通知逻辑，例如调用API发送通知
+        })
+      }
     }
     
     emit('send', messageData)
@@ -1523,6 +1640,8 @@ onMounted(async () => {
   await loadReadUsersForMessages()
   // 加载小程序列表
   loadMiniApps()
+  // 初始化 WebSocket 消息处理
+  initWebSocketMessageHandler()
   // 添加转发笔记事件监听器
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   // 添加分享文件事件监听器
@@ -1530,6 +1649,239 @@ onMounted(async () => {
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+// 初始化 WebSocket 消息处理
+const initWebSocketMessageHandler = () => {
+  // 为每种屏幕共享相关的消息类型添加专门的处理器
+  const screenShareMessageTypes = [
+    'webrtc_offer',
+    'webrtc_answer',
+    'webrtc_ice_candidate',
+    'screen-share-request',
+    'screen-share-accepted',
+    'screen-share-rejected',
+    'screen-share-start',
+    'screen-share-stop'
+  ];
+  
+  // 为每种消息类型添加处理器
+  screenShareMessageTypes.forEach(type => {
+    addMessageHandler((message) => {
+      console.log('收到屏幕共享消息:', message);
+      handleScreenShareMessage(type, message.data);
+      return true;
+    }, type);
+  });
+  
+  // 回退到 IPC 方式
+  if (window.electron && window.electron.websocket) {
+    window.electron.websocket.onMessage((message) => {
+      console.log('收到 WebSocket 消息（通过 IPC）:', message.type);
+      if (screenShareMessageTypes.includes(message.type)) {
+        handleScreenShareMessage(message.type, message.data);
+      }
+    });
+  }
+};
+
+// 处理屏幕共享消息
+const handleScreenShareMessage = (type, data) => {
+  switch (type) {
+    case 'webrtc_offer':
+      handleWebRTCOffer(data);
+      break;
+    case 'webrtc_answer':
+      handleWebRTCAnswer(data);
+      break;
+    case 'webrtc_ice_candidate':
+      handleWebRTCIceCandidate(data);
+      break;
+    case 'screen-share-request':
+      handleScreenShareRequest(data);
+      break;
+    case 'screen-share-accepted':
+      handleScreenShareAccepted(data);
+      break;
+    case 'screen-share-rejected':
+      handleScreenShareRejected(data);
+      break;
+    case 'screen-share-start':
+      handleScreenShareStart(data);
+      break;
+    case 'screen-share-stop':
+      handleScreenShareStop(data);
+      break;
+  }
+};
+
+// 处理 WebRTC offer
+const handleWebRTCOffer = async (data) => {
+  try {
+    console.log('处理 WebRTC offer:', data.from_user_id)
+    
+    // 先设置远程屏幕共享用户ID，触发ScreenShare组件的渲染
+    remoteScreenUserId.value = data.from_user_id
+    console.log('设置 remoteScreenUserId:', data.from_user_id)
+    
+    // 等待组件渲染
+    await nextTick()
+    console.log('等待组件渲染完成')
+    
+    // 显示屏幕共享请求对话框
+    ElMessage({
+      message: '收到屏幕共享请求',
+      type: 'info',
+      showClose: true,
+      duration: 5000
+    })
+    
+    // 调用 ScreenShare 组件的方法处理 offer
+    if (screenShareComponent.value) {
+      console.log('调用 ScreenShare 组件的 handleOffer 方法')
+      await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
+    }
+  } catch (error) {
+    console.error('处理 WebRTC offer 失败:', error)
+  }
+}
+
+// 处理 WebRTC answer
+const handleWebRTCAnswer = (data) => {
+  try {
+    console.log('处理 WebRTC answer')
+    screenShareSender.handleAnswer(data.signal)
+  } catch (error) {
+    console.error('处理 WebRTC answer 失败:', error)
+  }
+}
+
+// 处理 WebRTC ICE 候选者
+const handleWebRTCIceCandidate = (data) => {
+  try {
+    console.log('处理 WebRTC ICE 候选者:', data)
+    
+    // 验证 data.signal 是否有效
+    // if (!data || !data.signal) {
+    //   console.warn('无效的 ICE 候选者数据:', data)
+    //   return
+    // }
+    
+    // 根据当前状态判断是发送者还是接收者
+    if (screenShareSender.getIsSharing()) {
+      screenShareSender.addIceCandidate(data.signal)
+    } else {
+      // 调用 ScreenShare 组件的方法处理 ICE 候选者
+      if (screenShareComponent.value) {
+        console.log('调用 ScreenShare 组件的 handleIceCandidate 方法')
+        screenShareComponent.value.handleIceCandidate(data.signal)
+      } else {
+        console.log('调用 ScreenShareReceiver 组件的 handleIceCandidate 方法')
+        screenShareReceiver.handleIceCandidate(data.signal)
+      }
+    }
+  } catch (error) {
+    console.error('处理 WebRTC ICE 候选者失败:', error)
+  }
+}
+
+// 处理屏幕共享请求
+const handleScreenShareRequest = (data) => {
+  console.log('收到屏幕共享请求，完整数据:', data)
+  console.log('收到屏幕共享请求:', data.requester_id || data.userId || data.user_id)
+  
+  // 获取请求者ID，支持多种字段名
+  const requesterId = data.requester_id || data.userId || data.user_id
+  const conversationId = data.conversation_id || data.conversationId
+  
+  if (!requesterId) {
+    console.error('屏幕共享请求缺少请求者ID:', data)
+    return
+  }
+  
+  if (!conversationId) {
+    console.error('屏幕共享请求缺少会话ID:', data)
+    return
+  }
+  
+  // 使用 screenShareReceiver 处理屏幕共享请求
+  screenShareReceiver.handleShareRequest(data)
+  
+  // 显示确认对话框
+  ElMessageBox.confirm(
+    '是否接受屏幕共享请求？',
+    '屏幕共享请求',
+    {
+      confirmButtonText: '接受',
+      cancelButtonText: '拒绝',
+      type: 'question'
+    }
+  ).then(async () => {
+    // 发送接受消息
+    await screenShareReceiver.acceptShareRequest(conversationId)
+    console.log('发送屏幕共享接受响应:', { conversation_id: conversationId, requester_id: requesterId })
+    
+    // 立即显示浮窗，让接收者可以看到共享即将开始
+    if (screenShareComponent.value) {
+      screenShareComponent.value.showViewer()
+    }
+  }).catch(() => {
+    // 发送拒绝消息
+    screenShareReceiver.rejectShareRequest(conversationId)
+    console.log('发送屏幕共享拒绝响应:', { conversation_id: conversationId, requester_id: requesterId })
+  })
+}
+
+// 处理屏幕共享接受
+const handleScreenShareAccepted = (data) => {
+  console.log('屏幕共享请求已被接受')
+  ElMessage({
+    message: '屏幕共享请求已被接受',
+    type: 'success',
+    duration: 3000
+  })
+  
+  // 调用 ScreenShare 组件的 establishConnection 方法，开始建立 WebRTC 连接
+  if (screenShareComponent.value) {
+    console.log('调用 ScreenShare 组件的 establishConnection 方法')
+    screenShareComponent.value.establishConnection()
+  }
+}
+
+// 处理屏幕共享拒绝
+const handleScreenShareRejected = (data) => {
+  console.log('屏幕共享请求被拒绝')
+  ElMessage({
+    message: '屏幕共享请求被拒绝',
+    type: 'error',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享开始
+const handleScreenShareStart = (data) => {
+  console.log('屏幕共享已开始')
+  ElMessage({
+    message: '屏幕共享已开始',
+    type: 'success',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享停止
+const handleScreenShareStop = (data) => {
+  console.log('屏幕共享已停止')
+  ElMessage({
+    message: '屏幕共享已停止',
+    type: 'info',
+    duration: 3000
+  })
+  
+  // 清理屏幕共享资源
+  if (screenShareComponent.value) {
+    screenShareComponent.value.stopReceiving()
+  }
+  showScreenShareViewer.value = false
+}
 
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
@@ -1750,7 +2102,7 @@ const closeMemberContextMenu = () => {
 // 开始与成员的私聊
 const startPrivateChat = (member: any) => {
   if (member && member.id) {
-    emit('switchConversation', member.id)
+    handleSendPrivateMessage(member.id)
   }
 }
 
@@ -1801,31 +2153,34 @@ const isSelectedMemberAdmin = computed(() => {
 })
 
 const removeMemberFromGroup = async () => {
-  if (!selectedMember.value) {
+  if (!selectedMember.value || !props.conversation) {
     closeMemberContextMenu()
     return
   }
-  openConfirmDialog('确认移除', `确定要移除成员 ${selectedMember.value.name} 吗？`, async () => {
+
+  const memberId = selectedMember.value.id
+  const memberName = selectedMember.value.name
+  const conversationId = props.conversation.id
+
+  openConfirmDialog('确认移除', `确定要移除成员 ${memberName} 吗？`, async () => {
     try {
-      console.log("dddddddddd",selectedMember.value)
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${selectedMember.value.id}`, {
+      console.log("dddddddddd", memberId)
+      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (response.code === 0) {
         ElMessage.success('移除成员成功')
-        emit('switchConversation', props.conversation.id)
+        emit('switchConversation', conversationId)
       } else {
         ElMessage.error('移除成员失败: ' + response.message)
       }
     } catch (error: any) {
       console.error('移除成员失败:', error)
       ElMessage.error('移除成员失败: ' + error.message)
-    } finally {
-      closeMemberContextMenu()
     }
   })
 }
@@ -1839,27 +2194,31 @@ const viewMemberInfo = () => {
 }
 
 const setAsAdmin = async () => {
-  if (!selectedMember.value) {
+  if (!selectedMember.value || !props.conversation) {
     closeMemberContextMenu()
     return
   }
-  
-  const newRole = isSelectedMemberAdmin.value ? 'member' : 'admin'
-  const action = isSelectedMemberAdmin.value ? '取消管理员' : '设为管理员'
-  
-  openConfirmDialog('确认操作', `确定要${action}成员 ${selectedMember.value.name} 吗？`, async () => {
+
+  const memberId = selectedMember.value.id
+  const memberName = selectedMember.value.name
+  const conversationId = props.conversation.id
+  const currentIsAdmin = isSelectedMemberAdmin.value
+  const newRole = currentIsAdmin ? 'member' : 'admin'
+  const action = currentIsAdmin ? '取消管理员' : '设为管理员'
+
+  openConfirmDialog('确认操作', `确定要${action}成员 ${memberName} 吗？`, async () => {
     try {
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${selectedMember.value.id}/role`, {
+      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}/role`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ role: newRole })
       })
-      
+
       if (response.code === 0) {
         ElMessage.success(`${action}成功`)
-        emit('switchConversation', props.conversation.id)
+        emit('switchConversation', conversationId)
       } else {
         ElMessage.error(`${action}失败: ` + response.message)
       }
@@ -1872,23 +2231,27 @@ const setAsAdmin = async () => {
 }
 
 const transferOwner = async () => {
-  if (!selectedMember.value) {
+  if (!selectedMember.value || !props.conversation) {
     closeMemberContextMenu()
     return
   }
-  
-  openConfirmDialog('确认转让群主', `确定要将群主转让给 ${selectedMember.value.name} 吗？转让后您将成为管理员。`, async () => {
+
+  const memberId = selectedMember.value.id
+  const memberName = selectedMember.value.name
+  const conversationId = props.conversation.id
+
+  openConfirmDialog('确认转让群主', `确定要将群主转让给 ${memberName} 吗？转让后您将成为管理员。`, async () => {
     try {
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${selectedMember.value.id}/transfer-owner`, {
+      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}/transfer-owner`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (response.code === 0) {
         ElMessage.success('群主转让成功')
-        emit('switchConversation', props.conversation.id)
+        emit('switchConversation', conversationId)
       } else {
         ElMessage.error('群主转让失败: ' + response.message)
       }
@@ -2152,6 +2515,15 @@ const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
 const currentUser = ref(getCurrentUser())
 
+// 获取对方用户ID（单聊）
+const otherUserId = computed(() => {
+  if (props.conversation?.type === 'single' && props.conversation?.members && props.conversation.members.length === 2) {
+    const currentUserId = currentUser.value?.id?.toString() || ''
+    return props.conversation.members.find(member => String(member.id) !== currentUserId)?.id
+  }
+  return null
+})
+
 // 检测是否在Electron环境中
 const isElectron = computed(() => {
   // 开发环境中也返回true，让用户能看到截图按钮
@@ -2162,17 +2534,26 @@ const isElectron = computed(() => {
 const takeScreenshot = () => {
   // 检查是否在Electron环境中，并且ipcRenderer有once方法
   if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.once === 'function') {
+
+    console.log('触发截图功能')
     // 发送截图请求到主进程
     window.electron.ipcRenderer.send('take-screenshot')
     
     // 监听截图结果
     window.electron.ipcRenderer.once('screenshot-taken', async (event, imageData) => {
       // 处理截图结果
-      console.log('截图成功:', imageData)
+      console.log('截图结果:', imageData)
       if (imageData) {
-        // 显示截图预览
-        screenshotImageData.value = imageData
-        showScreenshotPreview.value = true
+        // 将base64转换为File对象并添加到待发送文件列表
+        const file = await base64ToFile(imageData, 'screenshot.png')
+        pendingFiles.value.push({
+          file,
+          name: 'screenshot.png'
+        })
+        console.log('截图已添加到待发送列表')
+      } else {
+        // 用户取消了截图
+        console.log('用户取消了截图')
       }
     })
   } else {
@@ -2181,6 +2562,13 @@ const takeScreenshot = () => {
     // 模拟截图功能
     simulateScreenshot()
   }
+}
+
+// base64转File对象的辅助函数
+const base64ToFile = async (base64: string, filename: string): Promise<File> => {
+  const response = await fetch(base64)
+  const blob = await response.blob()
+  return new File([blob], filename, { type: blob.type })
 }
 
 // 模拟截图功能（用于非Electron环境）
@@ -2286,8 +2674,6 @@ const isScreenSharing = ref(false) // 是否正在共享屏幕
 // 小程序列表
 const showMiniAppList = ref(false)
 
-const screenStream = ref(null) // 屏幕共享流
-
 // 开始语音通话
 const startVoiceCall = () => {
   if (!props.conversation) return
@@ -2328,6 +2714,129 @@ const startVideoCall = () => {
   simulateCallRequest('video')
 }
 
+// 开始屏幕共享
+const startScreenShare = () => {
+  console.log('startScreenShare函数被调用')
+  if (!props.conversation) {
+    console.log('没有选择会话')
+    return
+  }
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    console.log('已经在通话中')
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 检查是否已经在共享
+  if (screenShareSender.getIsSharing()) {
+    console.log('已经在共享屏幕')
+    $message.warning('您已经在共享屏幕')
+    return
+  }
+  
+  // 调用ScreenShare组件的startScreenShare方法
+  if (screenShareComponent.value) {
+    console.log('调用ScreenShare组件的startScreenShare方法')
+    screenShareComponent.value.startScreenShare()
+  } else {
+    console.log('screenShareComponent.value为null')
+  }
+}
+
+const handleScreenShareStartFromComponent = (data: { conversationId: string | number }) => {
+  console.log('屏幕共享开始:', data)
+  // 只发送屏幕共享开始事件，不立即建立连接
+  // 连接会在对方接受后通过 handleScreenShareAccepted 方法建立
+  emit('send-screen-share-start', { conversationId: props.conversation?.id || 0, requester_id: currentUser?.id || 0 })
+  
+  console.log('已发送屏幕共享请求，等待对方接受...')
+}
+
+const handleScreenShareStopFromComponent = () => {
+  console.log('屏幕共享停止')
+  emit('send-screen-share-stop', { conversationId: props.conversation?.id || 0 })
+}
+
+const handleScreenShareJoinFromComponent = () => {
+  console.log('用户加入屏幕共享观看')
+}
+
+const handleScreenShareLeaveFromComponent = () => {
+  console.log('用户退出屏幕共享观看')
+}
+
+// 处理屏幕共享流
+const receiveScreenShareStream = (data: any) => {
+  console.log('接收屏幕共享流:', data)
+  if (screenShareComponent.value) {
+    console.log('调用ScreenShare组件的接收流方法')
+    screenShareComponent.value.receiveScreenShareStream(data)
+  } else {
+    console.log('screenShareComponent.value为null')
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 增强接收端错误处理
+const enhanceErrorHandling = () => {
+  // 视频元素错误处理
+  if (remoteVideoElement) {
+    remoteVideoElement.onerror = (event) => {
+      console.error('视频元素错误:', event)
+      console.error('视频错误码:', remoteVideoElement.error?.code)
+      console.error('视频错误消息:', remoteVideoElement.error?.message)
+      
+      // 尝试恢复播放
+      setTimeout(() => {
+        if (remoteVideoElement) {
+          remoteVideoElement.play().catch(err => {
+            console.error('尝试恢复播放失败:', err)
+          })
+        }
+      }, 1000)
+    }
+  }
+  
+  // MediaSource 错误处理
+  if (mediaSource) {
+    mediaSource.addEventListener('error', (event) => {
+      console.error('MediaSource 错误:', event)
+      // 尝试重新初始化 MediaSource
+      setTimeout(() => {
+        cleanupScreenShare()
+        receiveScreenShareStream({})
+      }, 1000)
+    })
+  }
+  
+  // SourceBuffer 错误处理
+  if (sourceBuffer) {
+    sourceBuffer.addEventListener('error', (event) => {
+      console.error('SourceBuffer 错误:', event)
+      // 尝试重新初始化 SourceBuffer
+      setTimeout(() => {
+        cleanupScreenShare()
+        receiveScreenShareStream({})
+      }, 1000)
+    })
+  }
+}
+
+
+
 // 模拟通话请求
 const simulateCallRequest = (type) => {
   // 模拟对方接听
@@ -2345,7 +2854,8 @@ const endCall = () => {
   
   // 停止屏幕共享
   if (isScreenSharing.value) {
-    stopScreenShare()
+    screenShareSender.stopScreenShare()
+    isScreenSharing.value = false
   }
   
   // 模拟通话结束
@@ -2378,60 +2888,9 @@ const answerCall = () => {
   $message.success('已接听通话')
 }
 
-// 开始屏幕共享
-const startScreenShare = async () => {
-	if (!props.conversation) return
-	
-	try {
-		// 检查浏览器是否支持屏幕共享
-		if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-			$message.error('您的浏览器不支持屏幕共享功能，请使用Chrome、Firefox或Edge浏览器')
-			return
-		}
-		
-		// 请求屏幕共享权限
-		const stream = await navigator.mediaDevices.getDisplayMedia({
-			video: {
-				cursor: 'always'
-			},
-			audio: false
-		})
-		
-		// 保存屏幕共享流
-		screenStream.value = stream
-		isScreenSharing.value = true
-		
-		// 显示屏幕共享开始消息
-		$message.success('屏幕共享已开始')
-		
-		// 监听屏幕共享结束
-		stream.getVideoTracks()[0].onended = () => {
-			stopScreenShare()
-		}
-	} catch (error) {
-		console.error('屏幕共享失败:', error)
-		if (error.name === 'NotSupportedError') {
-			$message.error('屏幕共享功能在当前环境中不支持，请使用支持屏幕共享的浏览器')
-		} else if (error.name === 'NotAllowedError') {
-			$message.error('屏幕共享权限被拒绝，请允许浏览器访问您的屏幕')
-		} else if (error.name === 'AbortError') {
-			// 用户取消了屏幕共享选择
-			$message.info('屏幕共享已取消')
-		} else {
-			$message.error('屏幕共享失败，请稍后重试')
-		}
-	}
-}
 
-// 停止屏幕共享
-const stopScreenShare = () => {
-  if (screenStream.value) {
-    screenStream.value.getTracks().forEach(track => track.stop())
-    screenStream.value = null
-  }
-  isScreenSharing.value = false
-  $message.info('屏幕共享已结束')
-}
+
+
 
 const selectFile = () => {
   // 触发文件选择对话框
@@ -2484,13 +2943,36 @@ const handleFileSelect = (event: Event) => {
 }
 
 const saveFileAs = async (fileContent: string, fileName?: string) => {
-  // 优先使用传入的文件名，否则从fileContent中提取
-  const finalFileName = fileName || fileContent.split('/').pop() || fileContent
-  console.log('另存为文件:', finalFileName)
-  
   try {
-    // 构建完整的文件下载URL
-    const fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    let finalFileName: string
+    let fileUrl: string
+    
+    // 检查fileContent是否为JSON字符串
+    if (fileContent.startsWith('{') && fileContent.endsWith('}')) {
+      try {
+        // 尝试解析fileContent为JSON
+        const parsedContent = JSON.parse(fileContent)
+        // 使用解析后的数据
+        finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+        fileUrl = parsedContent.url.startsWith('http') ? parsedContent.url : `${serverUrl.value}${parsedContent.url}`
+      } catch (parseError) {
+        // 解析失败，将fileContent视为URL
+        finalFileName = fileName || fileContent.split('/').pop() || '文件'
+        fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+      }
+    } else {
+      // fileContent不是JSON，视为URL
+      finalFileName = fileName || fileContent.split('/').pop() || '文件'
+      fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    }
+    
+    console.log('保存文件:', finalFileName, 'URL:', fileUrl)
+    
+    // 检查URL是否为空
+    if (!fileUrl) {
+      $message.error('文件URL为空，无法保存')
+      return
+    }
     
     // 发起下载请求
     const response = await fetch(fileUrl, {
@@ -2514,7 +2996,9 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
       
-      $message.success(`文件 ${finalFileName} 保存成功`)
+      // $message.success(`文件 ${finalFileName} 保存成功`)
+    } else if (response.status === 403) {
+      $message.error('文件保存失败: 权限不足，请检查您的权限')
     } else {
       $message.error('文件保存失败: 服务器错误')
     }
@@ -2529,6 +3013,41 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
 const showSharePreview = ref(false)
 const sharePreviewData = ref<any>(null)
 
+// 渲染 Markdown
+const renderMarkdown = (content: string): string => {
+  // 简单的 Markdown 渲染
+  let html = content
+  
+  // 标题
+  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>')
+  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>')
+  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>')
+  
+  // 粗体
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+  
+  // 斜体
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
+  
+  // 代码块
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  
+  // 行内代码
+  html = html.replace(/`(.*?)`/g, '<code>$1</code>')
+  
+  // 列表
+  html = html.replace(/^- (.*$)/gm, '<li>$1</li>')
+  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+  
+  // 链接
+  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+  
+  // 换行
+  html = html.replace(/\n/g, '<br>')
+  
+  return html
+}
+
 const viewSharedContent = (content: string) => {
   if (!content || content === '[消息已撤回]') return
   
@@ -2537,6 +3056,10 @@ const viewSharedContent = (content: string) => {
     // 根据分享的类型和ID，跳转到对应的应用或页面
     if (shareData.type === 'file' || shareData.type === 'note' || shareData.type === 'sticky') {
       // 对于文件、笔记和便签，在当前页展示
+      // 如果是便签，使用originalContent作为实际内容
+      if (shareData.type === 'sticky' && shareData.originalContent) {
+        shareData.content = shareData.originalContent
+      }
       sharePreviewData.value = shareData
       showSharePreview.value = true
     } else {
@@ -2559,11 +3082,30 @@ const previewImageUrl = ref('')
 const previewImage = (imageData: string | any) => {
   console.log('预览图片:', imageData)
   // 处理可能是字符串或对象的情况
-  let imageUrl = typeof imageData === 'string' ? imageData : (imageData.url || '')
+  let imageUrl = ''
+  
+  if (typeof imageData === 'string') {
+    try {
+      // 尝试解析为JSON
+      const parsedData = JSON.parse(imageData)
+      imageUrl = parsedData.url || ''
+    } catch {
+      // 如果不是JSON，直接使用
+      imageUrl = imageData
+    }
+  } else {
+    // 已经是对象
+    imageUrl = imageData.url || ''
+  }
+  
   // 确保图片URL包含服务器地址
   if (imageUrl && !imageUrl.startsWith('http')) {
-    imageUrl = serverUrl.value + imageUrl
+    // 确保serverUrl末尾没有斜杠，imageUrl开头没有斜杠
+    const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
+    const cleanImageUrl = imageUrl.replace(/^\//, '')
+    imageUrl = `${cleanServerUrl}/${cleanImageUrl}`
   }
+  console.log('最终图片URL:', imageUrl)
   previewImageUrl.value = imageUrl
   showImagePreview.value = true
 }
@@ -2574,13 +3116,28 @@ const closeImagePreview = () => {
 }
 
 const downloadFile = async (fileContent: string, fileName?: string) => {
-  // 优先使用传入的文件名，否则从fileContent中提取
-  const finalFileName = fileName || fileContent.split('/').pop() || fileContent
-  console.log('下载文件:', finalFileName)
-  
   try {
-    // 构建完整的文件下载URL
-    const fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    // 尝试解析fileContent为JSON
+    const parsedContent = JSON.parse(fileContent)
+    // 使用解析后的数据
+    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+    let fileUrl = parsedContent.url
+    
+    // 确保文件URL包含服务器地址
+    if (fileUrl && !fileUrl.startsWith('http')) {
+      // 确保serverUrl末尾没有斜杠，fileUrl开头没有斜杠
+      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
+      const cleanFileUrl = fileUrl.replace(/^\//, '')
+      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
+    }
+    
+    console.log('下载文件:', finalFileName, 'URL:', fileUrl)
+    
+    // 检查URL是否为空
+    if (!fileUrl) {
+      $message.error('文件URL为空，无法下载')
+      return
+    }
     
     // 发起下载请求
     const response = await fetch(fileUrl, {
@@ -2604,13 +3161,51 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
       
-      $message.success(`文件 ${finalFileName} 下载成功`)
+      // $message.success(`文件 ${finalFileName} 下载成功`)
+    } else if (response.status === 403) {
+      $message.error('文件下载失败: 权限不足，请检查您的权限')
     } else {
       $message.error('文件下载失败: 服务器错误')
     }
   } catch (error) {
-    console.error('文件下载失败:', error)
-    $message.error('文件下载失败: 网络错误')
+    // 解析失败，将fileContent视为字符串
+    const finalFileName = fileName || fileContent.split('/').pop() || fileContent
+    const fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    console.log('下载文件:', finalFileName)
+    
+    try {
+      // 发起下载请求
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers: {
+          ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+        }
+      })
+      
+      if (response.ok) {
+        // 创建Blob对象
+        const blob = await response.blob()
+        
+        // 创建下载链接
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = finalFileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        
+        $message.success(`文件 ${finalFileName} 下载成功`)
+      } else if (response.status === 403) {
+        $message.error('文件下载失败: 权限不足，请检查您的权限')
+      } else {
+        $message.error('文件下载失败: 服务器错误')
+      }
+    } catch (fetchError) {
+      console.error('文件下载失败:', fetchError)
+      $message.error('文件下载失败: 网络错误')
+    }
   }
 }
 
@@ -2801,6 +3396,16 @@ const closeHeaderMenu = () => {
   document.removeEventListener('click', closeHeaderMenu)
 }
 
+// 检查当前用户是否是群主
+const isGroupOwner = (conversation: Conversation | null): boolean => {
+  if (!conversation || !conversation.members) return false
+  const currentUser = getCurrentUser()
+  if (!currentUser) return false
+  const currentUserId = currentUser.id?.toString() || ''
+  const owner = conversation.members.find((member: any) => String(member.id) === currentUserId)
+  return owner ? owner.role === 'owner' : false
+}
+
 // 检查是否有权限修改群名称
 const canEditGroupName = computed(() => {
   if (!props.conversation) return false
@@ -2965,9 +3570,50 @@ const saveAnnouncement = async () => {
   }
   showEditAnnouncementModal.value = false
 }
+// 暴露方法
+defineExpose({
+  startScreenShare,
+  receiveScreenShareStream,
+  handleScreenShareAccepted
+})
 </script>
 
 <style scoped>
+/* 便签预览样式 */
+.sticky-note-preview {
+  background: #fff9c4;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.sticky-note-preview .share-preview-header {
+  background: rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+.sticky-note-preview .sticky-note-content {
+  font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+.sticky-note-preview .sticky-note-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
+}
+.sticky-note-preview .sticky-note-body {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sticky-note-preview .share-preview-meta {
+  color: #666;
+  border-top: 1px dashed rgba(0, 0, 0, 0.2);
+  padding-top: 8px;
+  margin-top: 12px;
+}
+
 .chat-window {
   flex: 1;
   display: flex;
@@ -2997,6 +3643,7 @@ const saveAnnouncement = async () => {
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   margin: 0;
+  margin-bottom: 1px;
   border-radius: 0;
   /* border-bottom: 1px solid var(--border-color); */
 }
@@ -3043,6 +3690,113 @@ const saveAnnouncement = async () => {
   border-radius: 3px;
 }
 
+.online-status {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
+.online-status.online {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.online-status.offline {
+  color: #999;
+  background: rgba(153, 153, 153, 0.1);
+}
+
+.signature-info {
+  color: var(--text-color);
+  opacity: 0.6;
+  font-size: 12px;
+  font-style: italic;
+  margin-left: 8px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 群聊公告样式 */
+.header-announcement {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--primary-light);
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color);
+  font-size: 12px;
+  color: var(--primary-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.header-announcement:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.header-announcement:hover::after {
+  content: attr(data-announcement);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--primary-color);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  white-space: normal;
+  z-index: 100;
+  margin-top: 4px;
+  max-width: 500px;
+  word-wrap: break-word;
+}
+
+.header-announcement i {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.announcement-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.header-announcement-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: var(--input-bg);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-announcement-inline i {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
@@ -3073,8 +3827,9 @@ const saveAnnouncement = async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-  /* background: var(--content-bg); */
+  /* background: var(--secondary-color); */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  opacity: 0.95;
 }
 
 
@@ -5269,7 +6024,7 @@ const saveAnnouncement = async () => {
   box-shadow: var(--shadow-md) !important;
 }
 
-[data-theme="dark"] .message-list {
+[data-theme="elegant-dark"] .message-list {
   background: var(--secondary-color) !important;
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1) !important;
 }
@@ -6618,7 +7373,10 @@ const saveAnnouncement = async () => {
   text-align: center;
   font-weight: 400;
 }
-
+[data-theme="elegant-dark"] .time-divider-text {
+  background-color: var(--sidebar-bg);
+  color: #666;
+}
 /* 深色主题下的时间分隔线样式 */
 .dark-theme .time-divider-text {
   background-color: #333;
@@ -6830,6 +7588,7 @@ const saveAnnouncement = async () => {
   background: var(--sidebar-bg);
   border-color: var(--border-color);
 }
+
 
 [data-theme="dark"] .pending-file-item:hover {
   border-color: var(--primary-color);

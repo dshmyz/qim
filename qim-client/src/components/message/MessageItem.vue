@@ -43,8 +43,14 @@
               <template v-else-if="message.quotedMessage.type === 'mini-app' || message.quotedMessage.type === 'miniApp'">
                 [小程序]
               </template>
-              <template v-else-if="message.quotedMessage.type === 'share'">
-                [分享]
+              <template v-else-if="message.quotedMessage.type === 'news'">
+                [资讯]
+              </template>
+              <template v-else-if="message.quotedMessage.type === 'markdown'">
+                [Markdown]
+              </template>
+              <template v-else-if="message.quotedMessage.type === 'streaming'">
+                [流式消息]
               </template>
               <template v-else>
                 <!-- 尝试检测内容是否为JSON格式的文件数据 -->
@@ -77,7 +83,7 @@
             :is-self="isSelf"
             :server-url="serverUrl"
             @download="$emit('downloadFile', message.content)"
-            @saveAs="$emit('saveFileAs', message.content)"
+            @save-as="$emit('saveAs', message.content)"
           />
 
           <!-- 分享消息 -->
@@ -103,6 +109,21 @@
             :news-data="message.newsData"
             :is-self="isSelf"
             @open="$emit('openNewsLink', message.newsData?.url)"
+          />
+
+          <!-- Markdown消息 -->
+          <MarkdownMessage
+            v-else-if="message.type === 'markdown'"
+            :content="message.content"
+            :is-self="isSelf"
+          />
+
+          <!-- 流式消息 -->
+          <StreamingMessage
+            v-else-if="message.type === 'streaming'"
+            :content="message.content"
+            :is-self="isSelf"
+            :is-streaming="message.isStreaming || false"
           />
         </template>
 
@@ -133,6 +154,8 @@ import ShareMessage from './ShareMessage.vue'
 import MiniAppMessage from './MiniAppMessage.vue'
 import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
+import MarkdownMessage from './MarkdownMessage.vue'
+import StreamingMessage from './StreamingMessage.vue'
 
 const props = defineProps<{
   message: any
@@ -149,7 +172,7 @@ const emit = defineEmits<{
   scrollToQuotedMessage: [messageId: string]
   previewImage: [url: string]
   downloadFile: [url: string, fileName?: string]
-  saveFileAs: [url: string, fileName?: string]
+  saveAs: [url: string, fileName?: string]
   viewSharedContent: [content: string]
   openMiniApp: [data: any]
   openNewsLink: [url: string]

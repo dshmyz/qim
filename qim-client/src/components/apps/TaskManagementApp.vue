@@ -9,7 +9,12 @@
           <h2>任务管理</h2>
         </div>
       </div>
-      <button class="create-task-btn" @click="showCreateTaskModal = true">+ 新建任务</button>
+      <div class="header-right">
+        <button class="toggle-board-btn" @click="emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
+        </button>
+        <button class="create-task-btn" @click="showCreateTaskModal = true">+ 新建任务</button>
+      </div>
     </div>
     <div class="tasks-content">
       <div class="tasks-search-box">
@@ -161,7 +166,7 @@ import { API_BASE_URL } from '../../config'
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 // 定义事件
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 // 任务管理相关状态
 const tasks = ref<any[]>([])
@@ -333,6 +338,7 @@ const closeCreateTaskModal = () => {
 
 // 格式化任务日期
 const formatTaskDate = (dateString: string) => {
+  if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -356,6 +362,7 @@ onMounted(async () => {
   overflow: hidden;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  min-width: 0;
 }
 
 .tasks-header {
@@ -430,17 +437,46 @@ onMounted(async () => {
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toggle-board-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--text-color);
+}
+
+.toggle-board-btn:hover {
+  background: var(--hover-color);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
 .tasks-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 24px;
+  padding: 16px;
 }
 
 .tasks-search-box {
   position: relative;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
 .tasks-search-input {
@@ -452,12 +488,13 @@ onMounted(async () => {
   background: var(--input-bg);
   color: var(--text-color);
   transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
 .tasks-search-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .tasks-search-icon {
@@ -475,11 +512,15 @@ onMounted(async () => {
   gap: 16px;
   overflow-x: auto;
   padding-bottom: 16px;
+  min-height: 0;
+  max-width: 100%;
+  transition: all 0.3s ease;
 }
 
 .task-column {
   flex: 1;
-  min-width: 280px;
+  min-width: 240px;
+  max-width: 320px;
   background: var(--card-bg);
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -529,16 +570,18 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .task-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 16px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  animation: fadeIn 0.3s ease;
 }
 
 .task-card:hover {
@@ -559,10 +602,13 @@ onMounted(async () => {
   color: var(--text-color);
   margin-bottom: 8px;
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-description {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 12px;
   line-height: 1.4;
@@ -578,7 +624,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .task-due-date {
@@ -599,6 +645,7 @@ onMounted(async () => {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-size: 11px;
 }
 
 .task-priority.low {
@@ -623,21 +670,23 @@ onMounted(async () => {
 }
 
 .task-action-btn {
-  padding: 4px 8px;
+  padding: 6px 12px;
   border: 1px solid var(--border-color);
   background: var(--card-bg);
   color: var(--text-color);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 .task-action-btn:hover {
   background: var(--hover-bg);
   border-color: var(--primary-color);
   color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .task-action-btn.delete-btn:hover {
@@ -694,9 +743,12 @@ onMounted(async () => {
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 .modal-close:hover {
+  background: var(--hover-color);
   color: var(--text-color);
 }
 
@@ -720,13 +772,13 @@ onMounted(async () => {
 .form-textarea,
 .form-select {
   width: 100%;
-  padding: 10px;
+  padding: 10px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 14px;
   background: var(--input-bg);
   color: var(--text-color);
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   box-sizing: border-box;
 }
 
@@ -735,7 +787,8 @@ onMounted(async () => {
 .form-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  transform: translateY(-1px);
 }
 
 .form-textarea {
@@ -755,11 +808,11 @@ onMounted(async () => {
 .modal-btn {
   padding: 8px 16px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 .modal-btn.cancel-btn {
@@ -769,6 +822,7 @@ onMounted(async () => {
 
 .modal-btn.cancel-btn:hover {
   background: var(--hover-bg);
+  transform: translateY(-1px);
 }
 
 .modal-btn.confirm-btn {
@@ -779,15 +833,19 @@ onMounted(async () => {
 
 .modal-btn.confirm-btn:hover {
   background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 /* 动画效果 */
 @keyframes fadeIn {
   from {
     opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -824,5 +882,51 @@ onMounted(async () => {
     width: 95%;
     margin: 20px;
   }
+  
+  .tasks-search-input {
+    padding: 8px 32px 8px 12px;
+  }
+  
+  .task-action-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
+
+/* 滚动条样式 */
+.task-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.task-list::-webkit-scrollbar-track {
+  background: var(--content-bg);
+  border-radius: 3px;
+}
+
+.task-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.task-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+.tasks-board::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tasks-board::-webkit-scrollbar-track {
+  background: var(--content-bg);
+  border-radius: 3px;
+}
+
+.tasks-board::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.tasks-board::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 </style>

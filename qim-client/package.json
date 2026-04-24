@@ -1,5 +1,6 @@
 {
   "name": "qim",
+  "author": "QIM Team <huangqun@buaa.edu.cn>",
   "version": "1.0.0",
   "description": "即时通讯 UI 组件库",
   "type": "module",
@@ -11,12 +12,18 @@
     "lint": "eslint . --ext .vue,.ts,.tsx",
     "typecheck": "vue-tsc --noEmit",
     "electron:dev": "electron --no-sandbox .",
-    "electron:build": "electron-builder"
+    "electron:build": "electron-builder",
+    "electron:build:win7": "electron-builder --win --x64 -c.win7",
+    "electron:build:win10": "electron-builder --win --x64 -c.win10",
+    "electron:build:linux": "electron-builder --linux"
   },
   "build": {
     "appId": "com.qim.app",
     "productName": "QIM",
-    "electronVersion": "28.0.0",
+    "author": {
+      "name": "QIM Team",
+      "email": "huangqun@buaa.edu.cn"
+    },
     "files": [
       "dist/**/*",
       "electron/**/*"
@@ -24,17 +31,31 @@
     "directories": {
       "output": "electron-dist"
     },
-    "mac": {
+    "win7": {
       "target": [
-        "dmg",
-        "zip"
-      ]
+        {
+          "name": "nsis",
+          "artifactName": "${productName}-Setup-${version}-Win7.${ext}"
+        },
+        {
+          "name": "portable",
+          "artifactName": "${productName}-${version}-Win7.${ext}"
+        }
+      ],
+      "electronVersion": "22.3.27"
     },
-    "win": {
+    "win10": {
       "target": [
-        "nsis",
-        "portable"
-      ]
+        {
+          "name": "nsis",
+          "artifactName": "${productName}-Setup-${version}-Win10.${ext}"
+        },
+        {
+          "name": "portable",
+          "artifactName": "${productName}-${version}-Win10.${ext}"
+        }
+      ],
+      "electronVersion": "41.2.0"
     },
     "linux": {
       "target": [
@@ -42,6 +63,24 @@
         "rpm",
         "AppImage"
       ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://update.example.com/"
     }
   },
   "dependencies": {
@@ -49,6 +88,7 @@
     "axios": "^1.15.0",
     "electron-updater": "^6.8.3",
     "element-plus": "^2.13.7",
+    "marked": "^18.0.2",
     "pinia": "^3.0.4",
     "vue": "^3.4.0",
     "vue-router": "^5.0.4"
@@ -58,6 +98,7 @@
     "@vue/tsconfig": "^0.5.0",
     "electron": "^41.2.0",
     "electron-builder": "^26.8.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.3.0",
     "vite": "^5.0.0",
     "vue-tsc": "^2.0.21"

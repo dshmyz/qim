@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"qim-server/ai"
+	"qim-server/config"
 	"qim-server/database"
 	"qim-server/middleware"
 	"qim-server/model"
@@ -21,6 +23,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+var cfg *config.Config
+var aiService *ai.AIService
+
+// SetConfig 设置配置
+func SetConfig(c *config.Config) {
+	cfg = c
+	aiService = ai.NewAIService(&c.AI)
+}
 
 // 登录
 func Login(c *gin.Context) {
@@ -86,8 +97,9 @@ func Login(c *gin.Context) {
 	// 生成JWT
 	token := generateToken(user.ID, user.Username)
 
-	// 更新用户状态
+	// 更新用户状态和IP
 	user.Status = "online"
+	user.IP = ip
 	db.Save(&user)
 
 	// 登录成功日志
@@ -440,6 +452,166 @@ func UpdateUser(c *gin.Context) {
 	})
 }
 
+// 获取AI配置
+func GetAIConfig(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	db := database.GetDB()
+	var aiConfig model.AIConfig
+	if err := db.Where("user_id = ?", userID).First(&aiConfig).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusOK, gin.H{
+				"code": 0,
+				"data": nil,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": aiConfig,
+	})
+}
+
+// 更新AI配置
+func UpdateAIConfig(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req struct {
+		Provider         string  `json:"provider"`
+		OpenAIAPIKey     string  `json:"openai_api_key"`
+		OpenAIModel      string  `json:"openai_model"`
+		OpenAIBaseURL    string  `json:"openai_base_url"`
+		BaiduAPIKey      string  `json:"baidu_api_key"`
+		BaiduSecretKey   string  `json:"baidu_secret_key"`
+		BaiduModel       string  `json:"baidu_model"`
+		BaiduBaseURL     string  `json:"baidu_base_url"`
+		AlibabaAPIKey    string  `json:"alibaba_api_key"`
+		AlibabaModel     string  `json:"alibaba_model"`
+		AlibabaBaseURL   string  `json:"alibaba_base_url"`
+		TencentSecretID  string  `json:"tencent_secret_id"`
+		TencentSecretKey string  `json:"tencent_secret_key"`
+		TencentModel     string  `json:"tencent_model"`
+		TencentBaseURL   string  `json:"tencent_base_url"`
+		BytedanceAPIKey  string  `json:"bytedance_api_key"`
+		BytedanceModel   string  `json:"bytedance_model"`
+		BytedanceBaseURL string  `json:"bytedance_base_url"`
+		AnthropicAPIKey  string  `json:"anthropic_api_key"`
+		AnthropicModel   string  `json:"anthropic_model"`
+		AnthropicBaseURL string  `json:"anthropic_base_url"`
+		MaxTokens        int     `json:"max_tokens"`
+		Temperature      float64 `json:"temperature"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+	var aiConfig model.AIConfig
+	if err := db.Where("user_id = ?", userID).First(&aiConfig).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			aiConfig = model.AIConfig{
+				UserID: userID.(uint),
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询失败"})
+			return
+		}
+	}
+
+	if req.Provider != "" {
+		aiConfig.Provider = req.Provider
+	}
+	if req.OpenAIAPIKey != "" {
+		aiConfig.OpenAIAPIKey = req.OpenAIAPIKey
+	}
+	if req.OpenAIModel != "" {
+		aiConfig.OpenAIModel = req.OpenAIModel
+	}
+	if req.OpenAIBaseURL != "" {
+		aiConfig.OpenAIBaseURL = req.OpenAIBaseURL
+	}
+	if req.BaiduAPIKey != "" {
+		aiConfig.BaiduAPIKey = req.BaiduAPIKey
+	}
+	if req.BaiduSecretKey != "" {
+		aiConfig.BaiduSecretKey = req.BaiduSecretKey
+	}
+	if req.BaiduModel != "" {
+		aiConfig.BaiduModel = req.BaiduModel
+	}
+	if req.BaiduBaseURL != "" {
+		aiConfig.BaiduBaseURL = req.BaiduBaseURL
+	}
+	if req.AlibabaAPIKey != "" {
+		aiConfig.AlibabaAPIKey = req.AlibabaAPIKey
+	}
+	if req.AlibabaModel != "" {
+		aiConfig.AlibabaModel = req.AlibabaModel
+	}
+	if req.AlibabaBaseURL != "" {
+		aiConfig.AlibabaBaseURL = req.AlibabaBaseURL
+	}
+	if req.TencentSecretID != "" {
+		aiConfig.TencentSecretID = req.TencentSecretID
+	}
+	if req.TencentSecretKey != "" {
+		aiConfig.TencentSecretKey = req.TencentSecretKey
+	}
+	if req.TencentModel != "" {
+		aiConfig.TencentModel = req.TencentModel
+	}
+	if req.TencentBaseURL != "" {
+		aiConfig.TencentBaseURL = req.TencentBaseURL
+	}
+	if req.BytedanceAPIKey != "" {
+		aiConfig.BytedanceAPIKey = req.BytedanceAPIKey
+	}
+	if req.BytedanceModel != "" {
+		aiConfig.BytedanceModel = req.BytedanceModel
+	}
+	if req.BytedanceBaseURL != "" {
+		aiConfig.BytedanceBaseURL = req.BytedanceBaseURL
+	}
+	if req.AnthropicAPIKey != "" {
+		aiConfig.AnthropicAPIKey = req.AnthropicAPIKey
+	}
+	if req.AnthropicModel != "" {
+		aiConfig.AnthropicModel = req.AnthropicModel
+	}
+	if req.AnthropicBaseURL != "" {
+		aiConfig.AnthropicBaseURL = req.AnthropicBaseURL
+	}
+	if req.MaxTokens > 0 {
+		aiConfig.MaxTokens = req.MaxTokens
+	}
+	if req.Temperature > 0 {
+		aiConfig.Temperature = req.Temperature
+	}
+
+	if aiConfig.ID == 0 {
+		if err := db.Create(&aiConfig).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建失败"})
+			return
+		}
+	} else {
+		if err := db.Save(&aiConfig).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": aiConfig,
+	})
+}
+
 // 获取组织架构树
 func GetOrganizationTree(c *gin.Context) {
 	db := database.GetDB()
@@ -630,11 +802,15 @@ func GetConversations(c *gin.Context) {
 	var convMembers []model.ConversationMember
 	db.Where("user_id = ?", userID).Preload("Conversation").Preload("Conversation.LastMessage").Preload("Conversation.Members").Preload("Conversation.Members.User").Find(&convMembers)
 
-	// 构建包含置顶状态和IP信息的会话列表
+	// 构建包含置顶状态和用户信息的会话列表
 	type ConversationWithPin struct {
 		model.Conversation
-		IsPinned bool   `json:"is_pinned"`
-		IP       string `json:"ip,omitempty"`
+		IsPinned        bool   `json:"is_pinned"`
+		IP              string `json:"ip,omitempty"`
+		Status          string `json:"status,omitempty"`
+		Signature       string `json:"signature,omitempty"`
+		OtherMemberID   uint   `json:"other_member_id,omitempty"`
+		OtherMemberName string `json:"other_member_name,omitempty"`
 	}
 
 	var conversations []ConversationWithPin
@@ -652,13 +828,19 @@ func GetConversations(c *gin.Context) {
 			IsPinned:     session.IsPinned,
 		}
 
-		// 对于单聊会话，获取对方用户的IP
-		if cm.Conversation.Type == "single" && len(cm.Conversation.Members) > 0 {
-			for _, member := range cm.Conversation.Members {
-				if member.UserID != userID.(uint) {
-					convWithPin.IP = member.User.IP
-					break
-				}
+		// 对于单聊会话，获取对方用户的IP、状态和个性签名
+		if cm.Conversation.Type == "single" {
+			// 单独查询对方用户信息
+			var otherMember model.ConversationMember
+			db.Where("conversation_id = ? AND user_id != ?", cm.Conversation.ID, userID).First(&otherMember)
+			if otherMember.UserID > 0 {
+				var otherUser model.User
+				db.First(&otherUser, otherMember.UserID)
+				convWithPin.IP = otherUser.IP
+				convWithPin.Status = otherUser.Status
+				convWithPin.Signature = otherUser.Signature
+				convWithPin.OtherMemberID = otherUser.ID
+				convWithPin.OtherMemberName = otherUser.Nickname
 			}
 		}
 
@@ -717,6 +899,9 @@ func CreateSingleConversation(c *gin.Context) {
 		// 添加成员（只有自己一个成员）
 		db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
 
+		// 预加载成员信息
+		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
+
 		c.JSON(http.StatusOK, gin.H{"code": 0, "data": conv})
 		return
 	}
@@ -735,6 +920,9 @@ func CreateSingleConversation(c *gin.Context) {
 	// 添加成员
 	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
 	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: req.UserID, Role: "member"})
+
+	// 预加载成员信息
+	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": conv})
 }
@@ -802,8 +990,8 @@ func CreateDiscussionConversation(c *gin.Context) {
 	}
 	db.Create(&conv)
 
-	// 添加创建者
-	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
+	// 添加创建者（作为群主）
+	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"})
 
 	// 添加其他成员
 	for _, mid := range req.MemberIDs {
@@ -1146,6 +1334,184 @@ func SendMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": responseData})
+}
+
+// 流式发送消息（用于机器人会话）
+func StreamMessage(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convID := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
+
+	var req struct {
+		Type            string                 `json:"type" binding:"required"`
+		Content         string                 `json:"content" binding:"required"`
+		QuotedMessageID *uint                  `json:"quoted_message_id"`
+		ShareData       map[string]interface{} `json:"share_data"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	// 验证是否为会话成员
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发送消息"})
+		return
+	}
+
+	// 检查是否为机器人会话
+	var conv model.Conversation
+	if err := db.First(&conv, convID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	if conv.Type != "bot" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "仅支持机器人会话的流式消息"})
+		return
+	}
+
+	// 创建用户消息
+	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
+
+	// 处理分享数据
+	content := req.Content
+
+	msg := model.Message{
+		ConversationID:  uint(convIDUint),
+		SenderID:        userID.(uint),
+		Type:            req.Type,
+		Content:         content,
+		QuotedMessageID: req.QuotedMessageID,
+		IsRead:          false,
+	}
+	db.Create(&msg)
+
+	// 更新会话最后消息
+	now := time.Now()
+	conv.LastMessageID = &msg.ID
+	conv.LastMessageAt = &now
+	db.Save(&conv)
+
+	// 设置SSE响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	// 创建通道用于接收AI返回的文本
+	responseChan := make(chan ai.StreamChunk)
+	doneChan := make(chan bool)
+
+	// 异步处理机器人回复并流式返回
+	go func() {
+		// 查找机器人会话关联
+		var botConv model.BotConversation
+		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
+			log.Printf("[StreamMessage] 查找机器人会话关联失败: %v", err)
+			close(responseChan)
+			doneChan <- true
+			return
+		}
+
+		// 查找机器人信息
+		var bot model.Bot
+		if err := db.First(&bot, botConv.BotID).Error; err != nil {
+			log.Printf("[StreamMessage] 查找机器人信息失败: %v", err)
+			close(responseChan)
+			doneChan <- true
+			return
+		}
+
+		// 获取会话的历史消息，构建上下文
+		var messages []model.Message
+		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
+
+		// 构建AI聊天消息格式
+		var aiMessages []ai.Message
+		for _, msg := range messages {
+			role := "user"
+			if msg.SenderID == 0 {
+				role = "assistant"
+			}
+			aiMessages = append(aiMessages, ai.Message{
+				Role:    role,
+				Content: msg.Content,
+			})
+		}
+
+		// 调用AI接口获取回复（流式）
+		var fullResponse string
+		err := aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+			// 发送当前字符
+			responseChan <- chunk
+			fullResponse += chunk.Content
+			return nil
+		})
+
+		if err != nil {
+			log.Printf("[StreamMessage] AI API 调用失败: %v", err)
+			// 发送错误信息
+			errorMsg := "抱歉，AI 服务暂时不可用，请稍后再试。"
+			responseChan <- ai.StreamChunk{Content: errorMsg}
+			fullResponse = errorMsg
+		}
+
+		// 发送完成信号
+		close(responseChan)
+		doneChan <- true
+
+		// 保存机器人回复
+		botReply := model.Message{
+			ConversationID: uint(convIDUint),
+			SenderID:       0, // 0表示机器人
+			Type:           "markdown",
+			Content:        fullResponse,
+		}
+		db.Create(&botReply)
+
+		// 限制日志长度
+		logLength := 100
+		if len(fullResponse) < logLength {
+			logLength = len(fullResponse)
+		}
+		log.Printf("[StreamMessage] 机器人回复保存成功: %s", fullResponse[:logLength])
+	}()
+
+	// 主函数中持续发送SSE事件
+	c.Writer.Write([]byte("data: \n\n"))
+	c.Writer.Flush()
+
+	for {
+		select {
+		case chunk, ok := <-responseChan:
+			if !ok {
+				// 流式结束
+				finish := "stop"
+				doneData, _ := json.Marshal(ai.StreamChunk{Finish: &finish})
+				c.Writer.Write([]byte("data: " + string(doneData) + "\n\n"))
+				c.Writer.Flush()
+				return
+			}
+			// 发送当前字符（JSON 格式）
+			data, _ := json.Marshal(chunk)
+			c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+			c.Writer.Flush()
+		case <-doneChan:
+			return
+		case <-c.Request.Context().Done():
+			// 请求被取消
+			return
+		}
+	}
 }
 
 // 撤回消息
@@ -1540,6 +1906,17 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
+	// 群聊邀请权限检查
+	if conv.Type == "group" {
+		// 根据邀请权限设置决定谁可以邀请
+		if conv.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主和管理员可以邀请成员"})
+			return
+		}
+		// 如果设置为"all"，所有成员都可以邀请
+	}
+	// 讨论组：所有成员都可以邀请
+
 	// 添加新成员
 	var addedMembers []model.User
 	for _, memberID := range req.MemberIDs {
@@ -1750,6 +2127,9 @@ func AddMemberToGroup(c *gin.Context) {
 			// 发送给被添加的用户
 			ws.GlobalHub.SendToUser(member.ID, jsonMsg)
 		}
+
+		// 更新会话成员缓存
+		ws.GlobalHub.UpdateConversationMembers(uint(convIDUint))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1818,6 +2198,9 @@ func ExitGroup(c *gin.Context) {
 
 		// 发送给会话中的所有成员
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
+
+		// 更新会话成员缓存
+		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "退出群聊成功"})
@@ -1907,6 +2290,9 @@ func RemoveMemberFromGroup(c *gin.Context) {
 
 		// 发送给会话中的所有成员
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
+
+		// 更新会话成员缓存
+		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2048,8 +2434,64 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 		// 系统机器人简单回复
 		reply = getSystemBotReply(content)
 	case "ai":
-		// AI机器人回复（这里使用模拟回复，实际应该调用API）
-		reply = getAIBotReply(content)
+		// AI机器人回复（调用真实AI API）
+		if aiService != nil && aiService.IsConfigured() {
+			// 构建对话历史
+			var messages []ai.Message
+
+			// 解析机器人配置
+			systemPrompt := "你是一个智能助手，帮助用户解决问题。"
+			if bot.Config != "" {
+				var botConfig map[string]interface{}
+				if err := json.Unmarshal([]byte(bot.Config), &botConfig); err == nil {
+					if prompt, ok := botConfig["system_prompt"].(string); ok {
+						systemPrompt = prompt
+					}
+				}
+			}
+
+			messages = append(messages, ai.Message{
+				Role:    "system",
+				Content: systemPrompt,
+			})
+
+			// 获取最近的对话历史（最多10条消息）
+			var historyMessages []model.Message
+			db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(10).Find(&historyMessages)
+
+			// 反转消息顺序，使最早的消息在前
+			for i, j := 0, len(historyMessages)-1; i < j; i, j = i+1, j-1 {
+				historyMessages[i], historyMessages[j] = historyMessages[j], historyMessages[i]
+			}
+
+			// 添加历史消息到对话上下文
+			for _, msg := range historyMessages {
+				role := "user"
+				if msg.SenderID == 0 {
+					role = "assistant"
+				}
+				messages = append(messages, ai.Message{
+					Role:    role,
+					Content: msg.Content,
+				})
+			}
+
+			// 添加当前用户消息
+			messages = append(messages, ai.Message{
+				Role:    "user",
+				Content: content,
+			})
+
+			// 调用AI API
+			var err error
+			reply, err = aiService.GetCompletion(messages)
+			if err != nil {
+				log.Printf("AI API error: %v", err)
+				reply = "抱歉，AI服务暂时不可用，请稍后再试。"
+			}
+		} else {
+			reply = "AI服务未配置，请联系管理员。"
+		}
 	default:
 		reply = "我是一个机器人，有什么可以帮你的吗？"
 	}
@@ -2058,7 +2500,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 	msg := model.Message{
 		ConversationID: convID,
 		SenderID:       0, // 0表示机器人
-		Type:           "text",
+		Type:           "markdown",
 		Content:        reply,
 	}
 	db.Create(&msg)
@@ -2134,8 +2576,9 @@ func UpdateGroupInfo(c *gin.Context) {
 	}
 
 	var req struct {
-		Name   string `json:"name"`
-		Avatar string `json:"avatar"`
+		Name             string `json:"name"`
+		Avatar           string `json:"avatar"`
+		InvitePermission string `json:"invite_permission"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2179,6 +2622,12 @@ func UpdateGroupInfo(c *gin.Context) {
 	if req.Avatar != "" {
 		conv.Avatar = req.Avatar
 	}
+	if req.InvitePermission != "" {
+		// 只允许设置为有效的值
+		if req.InvitePermission == "owner_admin" || req.InvitePermission == "all" {
+			conv.InvitePermission = req.InvitePermission
+		}
+	}
 	db.Save(&conv)
 
 	// 发送WebSocket通知给群成员
@@ -2212,49 +2661,73 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// 确保上传目录存在
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建上传目录失败"})
-		return
-	}
-
 	// 生成唯一的文件名
 	ext := filepath.Ext(file.Filename)
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
-	filePath := filepath.Join(uploadDir, filename)
+	var storagePath string
 
-	// 保存文件
-	if err := c.SaveUploadedFile(file, filePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存文件失败"})
+	// 根据配置决定存储方式
+	if cfg.Storage.Type == "s3" {
+		// S3存储逻辑
+		// 这里需要使用AWS SDK for Go实现S3上传
+		// 暂时使用本地存储作为占位符
+		storagePath = "/s3/" + filename
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "S3存储功能暂未实现",
+			"data": gin.H{
+				"id":   0,
+				"url":  storagePath,
+				"name": file.Filename,
+				"size": file.Size,
+			},
+		})
 		return
-	}
+	} else {
+		// 本地存储
+		// 确保上传目录存在
+		uploadDir := cfg.Storage.Local.Path
+		if uploadDir == "" {
+			uploadDir = "./uploads"
+		}
+		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建上传目录失败"})
+			return
+		}
 
-	// 创建文件记录
-	db := database.GetDB()
-	fileRecord := model.File{
-		Name:         file.Filename,
-		OriginalName: file.Filename,
-		StoragePath:  "/uploads/" + filename,
-		Size:         file.Size,
-		UserID:       userID.(uint),
-		CreatedAt:    time.Now(),
-	}
-	if err := db.Create(&fileRecord).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
-		return
-	}
+		// 保存文件
+		filePath := filepath.Join(uploadDir, filename)
+		if err := c.SaveUploadedFile(file, filePath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存文件失败"})
+			return
+		}
 
-	// 返回文件URL
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"id":   fileRecord.ID,
-			"url":  fileRecord.StoragePath,
-			"name": fileRecord.Name,
-			"size": fileRecord.Size,
-		},
-	})
+		// 创建文件记录
+		db := database.GetDB()
+		fileRecord := model.File{
+			Name:         file.Filename,
+			OriginalName: file.Filename,
+			StoragePath:  "/uploads/" + filename,
+			Size:         file.Size,
+			UserID:       userID.(uint),
+			CreatedAt:    time.Now(),
+		}
+		if err := db.Create(&fileRecord).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
+			return
+		}
+
+		// 返回文件URL
+		c.JSON(http.StatusOK, gin.H{
+			"code": 0,
+			"data": gin.H{
+				"id":   fileRecord.ID,
+				"url":  fileRecord.StoragePath,
+				"name": fileRecord.Name,
+				"size": fileRecord.Size,
+			},
+		})
+	}
 }
 
 // 获取文件列表
@@ -2320,6 +2793,57 @@ func CreateSystemMessage(c *gin.Context) {
 
 	// 预加载发送者信息
 	db.Preload("Sender").First(&systemMessage, systemMessage.ID)
+
+	// 根据 TargetType 确定需要通知的用户并发送通知
+	var usersToNotify []uint
+
+	switch req.TargetType {
+	case "all":
+		// 通知所有用户
+		var allUsers []model.User
+		db.Find(&allUsers)
+		for _, u := range allUsers {
+			usersToNotify = append(usersToNotify, u.ID)
+		}
+	case "department":
+		// 通知指定部门的所有用户
+		if req.TargetID != nil {
+			var deptEmployees []model.DepartmentEmployee
+			db.Where("department_id = ?", *req.TargetID).Find(&deptEmployees)
+			for _, de := range deptEmployees {
+				usersToNotify = append(usersToNotify, de.UserID)
+			}
+		}
+	case "user":
+		// 通知指定用户
+		if req.TargetID != nil {
+			usersToNotify = append(usersToNotify, *req.TargetID)
+		}
+	default:
+		// 默认只通知发送者自己
+		usersToNotify = append(usersToNotify, userID.(uint))
+	}
+
+	// 为每个目标用户创建通知
+	for _, notifyUserID := range usersToNotify {
+		notification := model.Notification{
+			UserID:  notifyUserID,
+			Type:    "system_message",
+			Title:   req.Title,
+			Content: req.Content,
+		}
+		db.Create(&notification)
+
+		// 通过WebSocket实时通知
+		if ws.GlobalHub != nil {
+			notificationMsg := ws.WSMessage{
+				Type: "notification",
+				Data: notification,
+			}
+			jsonMsg, _ := json.Marshal(notificationMsg)
+			ws.GlobalHub.SendToUser(notifyUserID, jsonMsg)
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -2684,17 +3208,30 @@ func DownloadFile(c *gin.Context) {
 		return
 	}
 
-	// 构建文件路径
-	filePath := "." + file.StoragePath
-
-	// 检查文件是否存在
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+	// 检查是否是S3存储的文件
+	if strings.HasPrefix(file.StoragePath, "/s3/") {
+		// S3存储文件下载逻辑
+		// 这里需要使用AWS SDK for Go实现S3下载
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "S3存储文件下载功能暂未实现",
+			"data":    gin.H{"file_id": file.ID},
+		})
 		return
-	}
+	} else {
+		// 本地存储文件下载
+		// 构建文件路径
+		filePath := "." + file.StoragePath
 
-	// 下载文件
-	c.FileAttachment(filePath, file.Name)
+		// 检查文件是否存在
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+			return
+		}
+
+		// 下载文件
+		c.FileAttachment(filePath, file.Name)
+	}
 }
 
 // 删除文件
@@ -2716,20 +3253,37 @@ func DeleteFile(c *gin.Context) {
 		return
 	}
 
-	// 删除物理文件
-	filePath := "." + file.StoragePath
-	os.Remove(filePath)
-
-	// 删除数据库记录
-	if err := db.Delete(&file).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
+	// 检查是否是S3存储的文件
+	if strings.HasPrefix(file.StoragePath, "/s3/") {
+		// S3存储文件删除逻辑
+		// 这里需要使用AWS SDK for Go实现S3删除
+		// 直接删除数据库记录
+		if err := db.Delete(&file).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "S3存储文件删除功能暂未完全实现，仅删除了文件记录",
+		})
 		return
-	}
+	} else {
+		// 本地存储文件删除
+		// 删除物理文件
+		filePath := "." + file.StoragePath
+		os.Remove(filePath)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "删除文件成功",
-	})
+		// 删除数据库记录
+		if err := db.Delete(&file).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "删除文件成功",
+		})
+	}
 }
 
 // 获取笔记列表
@@ -3197,6 +3751,55 @@ func CreateEvent(c *gin.Context) {
 	}
 	db.Create(&event)
 
+	// 如果设置了提醒时间，启动定时通知
+	if req.Reminder > 0 {
+		go func() {
+			// 计算提醒时间（事件开始时间减去提醒分钟数）
+			reminderTime := req.Start.Add(-time.Duration(req.Reminder) * time.Minute)
+			now := time.Now()
+
+			// 如果提醒时间已过，不发送通知
+			if reminderTime.Before(now) {
+				return
+			}
+
+			// 等待到提醒时间
+			waitDuration := reminderTime.Sub(now)
+			timer := time.NewTimer(waitDuration)
+			<-timer.C
+
+			// 重新查询事件，确保事件仍然存在且未开始
+			var currentEvent model.Event
+			if err := db.First(&currentEvent, event.ID).Error; err != nil {
+				return
+			}
+
+			// 检查事件是否已结束
+			if time.Now().After(currentEvent.End) {
+				return
+			}
+
+			// 创建事件提醒通知
+			notification := model.Notification{
+				UserID:  userID.(uint),
+				Type:    "event_reminder",
+				Title:   "事件提醒",
+				Content: fmt.Sprintf("您设置的事件「%s」即将开始", currentEvent.Title),
+			}
+			db.Create(&notification)
+
+			// 通过WebSocket实时通知
+			if ws.GlobalHub != nil {
+				notificationMsg := ws.WSMessage{
+					Type: "notification",
+					Data: notification,
+				}
+				jsonMsg, _ := json.Marshal(notificationMsg)
+				ws.GlobalHub.SendToUser(userID.(uint), jsonMsg)
+			}
+		}()
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": event,
@@ -3296,6 +3899,201 @@ func DeleteEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "删除事件成功",
+	})
+}
+
+// 获取任务列表
+func GetTasks(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	db := database.GetDB()
+	var tasks []model.Task
+	db.Where("user_id = ?", userID).Order("created_at DESC").Find(&tasks)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": tasks,
+	})
+}
+
+// 创建任务
+func CreateTask(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req struct {
+		Title       string `json:"title" binding:"required"`
+		Description string `json:"description"`
+		DueDate     string `json:"due_date"`
+		Priority    string `json:"priority"`
+		Status      string `json:"status"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var dueDate *time.Time
+	if req.DueDate != "" {
+		parsedDate, err := time.Parse("2006-01-02", req.DueDate)
+		if err == nil {
+			dueDate = &parsedDate
+		}
+	}
+
+	priority := req.Priority
+	if priority == "" {
+		priority = "medium"
+	}
+
+	status := req.Status
+	if status == "" {
+		status = "todo"
+	}
+
+	task := model.Task{
+		UserID:      userID.(uint),
+		Title:       req.Title,
+		Description: req.Description,
+		DueDate:     dueDate,
+		Priority:    priority,
+		Status:      status,
+	}
+
+	if err := db.Create(&task).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建任务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": task,
+	})
+}
+
+// 更新任务
+func UpdateTask(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	taskIDStr := c.Param("id")
+
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		return
+	}
+
+	var req struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		DueDate     string `json:"due_date"`
+		Priority    string `json:"priority"`
+		Status      string `json:"status"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+	var task model.Task
+	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).First(&task).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
+		return
+	}
+
+	if req.Title != "" {
+		task.Title = req.Title
+	}
+	if req.Description != "" {
+		task.Description = req.Description
+	}
+	if req.DueDate != "" {
+		parsedDate, err := time.Parse("2006-01-02", req.DueDate)
+		if err == nil {
+			task.DueDate = &parsedDate
+		}
+	}
+	if req.Priority != "" {
+		task.Priority = req.Priority
+	}
+	if req.Status != "" {
+		task.Status = req.Status
+	}
+
+	if err := db.Save(&task).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新任务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": task,
+	})
+}
+
+// 删除任务
+func DeleteTask(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	taskIDStr := c.Param("id")
+
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		return
+	}
+
+	db := database.GetDB()
+	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).Delete(&model.Task{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除任务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除任务成功",
+	})
+}
+
+// 更新任务状态
+func UpdateTaskStatus(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	taskIDStr := c.Param("id")
+
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		return
+	}
+
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+	var task model.Task
+	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).First(&task).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
+		return
+	}
+
+	task.Status = req.Status
+
+	if err := db.Save(&task).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新任务状态失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": task,
 	})
 }
 
@@ -4370,12 +5168,19 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	// 发送WebSocket通知给群成员
 	if ws.GlobalHub != nil {
+		// 获取更新者的名称
+		updaterName := currentUser.Nickname
+		if updaterName == "" {
+			updaterName = currentUser.Username
+		}
+
 		// 构建公告更新通知
 		announcementMsg := ws.WSMessage{
 			Type: "group_announcement_updated",
 			Data: gin.H{
 				"conversation_id": conv.ID,
 				"announcement":    req.Announcement,
+				"updater_name":    updaterName,
 			},
 		}
 		jsonMsg, _ := json.Marshal(announcementMsg)
@@ -4393,4 +5198,96 @@ func UpdateAnnouncement(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": conv})
+}
+
+// 解散群聊或讨论组
+func DeleteConversation(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convID := c.Param("id")
+
+	// 处理带有 conv_ 前缀的会话ID
+	if strings.HasPrefix(convID, "conv_") {
+		convID = strings.TrimPrefix(convID, "conv_")
+	}
+
+	db := database.GetDB()
+
+	// 转换会话ID为uint
+	convIDUint, err := strconv.ParseUint(convID, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		return
+	}
+
+	// 验证会话是否存在
+	var conv model.Conversation
+	if err := db.First(&conv, uint(convIDUint)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	// 验证是否为群聊或讨论组
+	if conv.Type != "group" && conv.Type != "discussion" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能解散群聊或讨论组"})
+		return
+	}
+
+	// 验证当前用户是否为群主
+	var currentMember model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convIDUint), userID).First(&currentMember).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限操作"})
+		return
+	}
+
+	// 只有群主可以解散
+	if currentMember.Role != "owner" {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主可以解散群聊"})
+		return
+	}
+
+	// 开始事务
+	tx := db.Begin()
+
+	// 删除会话相关的所有成员
+	if err := tx.Where("conversation_id = ?", uint(convIDUint)).Delete(&model.ConversationMember{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除成员失败"})
+		return
+	}
+
+	// 删除会话相关的所有通知（非必需，失败不影响主流程）
+	if err := tx.Where("data->>'conversation_id' = ?", strconv.FormatUint(convIDUint, 10)).Delete(&model.Notification{}).Error; err != nil {
+		// 记录错误但不回滚事务
+		log.Printf("删除通知失败: %v", err)
+	}
+
+	// 标记会话为已解散状态，而不是删除会话
+	conv.Name = "[已解散] " + conv.Name
+	conv.IsDeleted = true
+	if err := tx.Save(&conv).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新会话状态失败"})
+		return
+	}
+
+	// 提交事务
+	tx.Commit()
+
+	// 发送WebSocket通知给所有成员
+	if ws.GlobalHub != nil {
+		// 构建解散通知
+		dissolveMsg := ws.WSMessage{
+			Type: "conversation_deleted",
+			Data: gin.H{
+				"conversation_id": conv.ID,
+				"message":         "群聊已被解散",
+			},
+		}
+		jsonMsg, _ := json.Marshal(dissolveMsg)
+
+		// 发送给会话中的所有成员
+		ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群聊解散成功"})
 }

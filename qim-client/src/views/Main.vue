@@ -15,7 +15,7 @@
           <p>{{ networkErrorMsg }}</p>
           <div class="error-actions">
             <button class="retry-btn" @click="reconnect">重新连接</button>
-            <button class="login-btn" @click="gotoLogin" v-if="sessionExpired">重新登录</button>
+            <button class="login-btn" @click="gotoLogin">重新登录</button>
           </div>
         </div>
       </div>
@@ -49,7 +49,7 @@
         <div 
           class="option-item" 
           :class="{ active: activeOption === 'recent' }"
-          @click="activeOption = 'recent'"
+          @click="handleSidebarOptionClick('recent')"
           title="最近联系人"
         >
           <span class="option-icon"><i class="fas fa-comment-dots"></i></span>
@@ -57,7 +57,7 @@
         <div 
           class="option-item" 
           :class="{ active: activeOption === 'org' }"
-          @click="activeOption = 'org'"
+          @click="handleSidebarOptionClick('org')"
           title="组织架构"
         >
           <span class="option-icon"><i class="fas fa-sitemap"></i></span>
@@ -65,7 +65,7 @@
         <div 
           class="option-item" 
           :class="{ active: activeOption === 'groups' }"
-          @click="activeOption = 'groups'"
+          @click="handleSidebarOptionClick('groups')"
           title="群聊"
         >
           <span class="option-icon"><i class="fas fa-user-friends"></i></span>
@@ -73,7 +73,7 @@
         <div 
           class="option-item" 
           :class="{ active: activeOption === 'apps' }"
-          @click="activeOption = 'apps'"
+          @click="handleSidebarOptionClick('apps')"
           title="应用"
         >
           <span class="option-icon"><i class="fas fa-cube"></i></span>
@@ -97,7 +97,7 @@
       <!-- 主内容区域 -->
       <div class="main-content">
       <!-- 侧边栏（包含我的账号和搜索） -->
-      <div class="sidebar">
+      <div class="sidebar" :class="{ collapsed: sidebarCollapsed }">
         <div class="sidebar-header">
           <div class="user-info" @click="showUserProfile = true">
             <img style="width: 55px; height: 55px;"
@@ -172,6 +172,8 @@
               </div>
             </div>
             
+
+            
             <div class="conversation-list">
               <!-- 会话列表 -->
               <div
@@ -183,7 +185,7 @@
                 @contextmenu.prevent="showContextMenu($event, conversation)"
               >
                 <div class="conversation-avatar">
-                  <img :src="conversation.avatar" :alt="conversation.name" />
+                  <img :src="getAvatarUrl(conversation.avatar, conversation.name || '用户', serverUrl.value)" :alt="conversation.name" />
                   <span v-if="conversation.type === 'group'" class="group-badge">群</span>
                   <span v-if="conversation.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
                   <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
@@ -330,7 +332,7 @@
                         v-for="app in category.apps"
                         :key="app.id"
                         class="category-app-item"
-                        @click="app.url ? openExternalApp(app.url) : openApp(app.id)"
+                        @click.stop="app.url ? openExternalApp(app.url) : openApp(app.id)"
                       >
                         <div class="category-app-icon"><i :class="app.icon"></i></div>
                         <span class="category-app-name">{{ app.name }}</span>
@@ -350,12 +352,16 @@
       
       <!-- 聊天窗口 -->
       <ChatWindow
+        ref="chatWindowRef"
         v-if="currentConversation && activeOption === 'recent'"
         :conversation="currentConversation"
         :messages="messages"
         :getReadUsers="getMessageReadUsers"
         :currentUser="currentUser.value"
         :hasMoreMessages="hasMoreMessages"
+        :remoteScreenSharing="remoteScreenSharing"
+        :remoteScreenUserId="remoteScreenUserId"
+        :remoteScreenData="remoteScreenData"
         @send="handleSendMessage"
         @recall="handleRecallMessage"
         @inviteMembers="handleInviteMembers"
@@ -363,10 +369,16 @@
         @switch-app="handleSwitchApp"
         @loadMore="handleLoadMore"
         @retry-send="handleRetrySendMessage"
+        @send-screen-share-start="handleScreenShareStart"
+        @send-screen-share-stop="handleScreenShareStop"
+        @send-screen-share-data="handleScreenShareData"
       />
       <div v-else-if="activeOption === 'recent'" class="right-content">
         <div class="right-content-header">
           <h2>{{ getPageTitle() }}</h2>
+          <button class="toggle-sidebar-btn" @click="toggleSidebar">
+            <i class="fas fa-compress"></i>
+          </button>
         </div>
         <div class="empty-state">
           <div class="empty-content">
@@ -381,6 +393,9 @@
         <div v-if="selectedChannel" class="channel-detail-content">
           <div class="right-content-header">
             <h2>{{ selectedChannel.name }}</h2>
+            <button class="toggle-sidebar-btn" @click="toggleSidebar">
+              <i class="fas fa-compress"></i>
+            </button>
           </div>
           <div class="channel-detail-info">
             <div class="channel-header-info">
@@ -448,6 +463,9 @@
          <div v-else class="right-content">
         <div class="right-content-header">
             <h2>频道</h2>
+            <button class="toggle-sidebar-btn" @click="toggleSidebar">
+              <i class="fas fa-compress"></i>
+            </button>
         </div>
         <div class="right-content-body">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
@@ -469,6 +487,9 @@
       <div v-else-if="activeOption === 'org' && selectedUser" class="right-content">
         <div class="right-content-header">
           <h2>用户资料</h2>
+          <button class="toggle-sidebar-btn" @click="toggleSidebar">
+            <i class="fas fa-compress"></i>
+          </button>
         </div>
         <div class="user-profile-container">
           <!-- 顶部背景 -->
@@ -559,6 +580,9 @@
       <div v-else-if="activeOption === 'apps' && !selectedAppId" class="right-content">
         <div class="right-content-header">
           <h2>{{ getPageTitle() }}</h2>
+          <button class="toggle-sidebar-btn" @click="toggleSidebar">
+            <i class="fas fa-compress"></i>
+          </button>
         </div>
         <div class="apps-content">
           <!-- 最近使用的应用 -->
@@ -617,7 +641,7 @@
       
       <!-- 任务管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '5'" class="right-content">
-        <TaskManagementApp @back="backToAppList" />
+        <TaskManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       <!-- 统计报表应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '1'" class="right-content">
@@ -645,6 +669,9 @@
             </button>
             <h2>{{ currentUserApp.name }}</h2>
           </div>
+          <button class="toggle-sidebar-btn" @click="toggleSidebar">
+            <i class="fas fa-compress"></i>
+          </button>
         </div>
         <div class="user-app-content">
           <div v-if="currentUserApp.url" class="user-app-iframe-container">
@@ -672,6 +699,11 @@
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-assistant'" class="right-content">
         <AIAssistantApp @back="backToAppList" />
       </div>
+
+      <!-- AI 大模型配置 -->
+      <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-config'" class="right-content">
+        <AIConfigApp @back="backToAppList" />
+      </div>
       
       <!-- 短链接管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'short-link'" class="right-content">
@@ -681,9 +713,10 @@
       <!-- 群聊详情 -->
       <div v-else-if="activeOption === 'groups' && selectedGroup" class="right-content">
         <div class="right-content-header">
-          <h2></h2>
-
-          <!-- <h2>{{ selectedGroup.name }}</h2> -->
+          <h2>{{ selectedGroup.name }}</h2>
+          <button class="toggle-sidebar-btn" @click="toggleSidebar">
+            <i class="fas fa-compress"></i>
+          </button>
         </div>
         <GroupDetail
           :group="selectedGroup"
@@ -691,6 +724,7 @@
           @invite="handleInviteMembers($event)"
           @editAnnouncement="editAnnouncement"
           @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
+          @startPrivateChat="startPrivateChat"
         />
       </div>
       
@@ -1158,7 +1192,7 @@
     </div>
     
     <!-- 主题菜单 -->
-    <div v-if="showThemeMenuFlag" class="context-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
+    <div v-if="showThemeMenuFlag" class="context-menu theme-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
       <div class="context-menu-item" @click="setTheme('modern-light')">
         <span class="context-menu-icon theme-icon light-theme"></span>
         <span>清新白</span>
@@ -1187,11 +1221,27 @@
         <span class="context-menu-icon theme-icon emerald-green-theme"></span>
         <span>翡翠绿</span>
       </div>
+      <div class="context-menu-item" @click="setTheme('urban-jungle')">
+        <span class="context-menu-icon theme-icon urban-jungle-theme"></span>
+        <span>都市丛林</span>
+      </div>
+      <div class="context-menu-item" @click="setTheme('mediterranean-dream')">
+        <span class="context-menu-icon theme-icon mediterranean-dream-theme"></span>
+        <span>地中海</span>
+      </div>
+      <div class="context-menu-item" @click="setTheme('monochrome-elegance')">
+        <span class="context-menu-icon theme-icon monochrome-elegance-theme"></span>
+        <span>单色雅</span>
+      </div>
+      <div class="context-menu-item" @click="setTheme('spring-blossom')">
+        <span class="context-menu-icon theme-icon spring-blossom-theme"></span>
+        <span>春日花</span>
+      </div>
     </div>
     
     <!-- 更多菜单 -->
     <div v-if="showMoreMenuFlag" class="context-menu" :style="{ left: moreMenuPosition.x + 'px', top: moreMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="activeOption = 'channels'; closeMoreMenu()">
+      <div class="context-menu-item" @click="handleSidebarOptionClick('channels'); closeMoreMenu()">
         <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
         <span>频道</span>
       </div>
@@ -1507,6 +1557,38 @@
                   <div class="theme-preview emerald-green-theme"></div>
                   <span>翡翠绿</span>
                 </div>
+                <div 
+                  class="theme-option" 
+                  :class="{ active: appearanceSettings.theme === 'urban-jungle' }" 
+                  @click="appearanceSettings.theme = 'urban-jungle'"
+                >
+                  <div class="theme-preview urban-jungle-theme"></div>
+                  <span>都市丛林</span>
+                </div>
+                <div 
+                  class="theme-option" 
+                  :class="{ active: appearanceSettings.theme === 'mediterranean-dream' }" 
+                  @click="appearanceSettings.theme = 'mediterranean-dream'"
+                >
+                  <div class="theme-preview mediterranean-dream-theme"></div>
+                  <span>地中海</span>
+                </div>
+                <div 
+                  class="theme-option" 
+                  :class="{ active: appearanceSettings.theme === 'monochrome-elegance' }" 
+                  @click="appearanceSettings.theme = 'monochrome-elegance'"
+                >
+                  <div class="theme-preview monochrome-elegance-theme"></div>
+                  <span>单色雅</span>
+                </div>
+                <div 
+                  class="theme-option" 
+                  :class="{ active: appearanceSettings.theme === 'spring-blossom' }" 
+                  @click="appearanceSettings.theme = 'spring-blossom'"
+                >
+                  <div class="theme-preview spring-blossom-theme"></div>
+                  <span>春日花</span>
+                </div>
               </div>
             </div>
             <div class="settings-item">
@@ -1614,7 +1696,7 @@
 <script setup lang="ts">
 import { ref, computed, defineComponent, onMounted, onUnmounted, watch } from 'vue'
 import type { Conversation, Message, User } from '../types'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import CalendarApp from '../components/apps/CalendarApp.vue'
 import StatisticsApp from '../components/apps/StatisticsApp.vue'
@@ -1625,6 +1707,7 @@ import FileManagementApp from '../components/apps/FileManagementApp.vue'
 import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
+import AIConfigApp from '../components/apps/AIConfigApp.vue'
 
 // 声明 window.electron 变量
 declare global {
@@ -1646,7 +1729,9 @@ import NotificationCenter from '../components/NotificationCenter.vue'
 import ChannelList from '../components/ChannelList.vue'
 import CreateGroupModal from '../components/CreateGroupModal.vue'
 import { API_BASE_URL } from '../config'
-import { generateAvatar } from '../utils/avatar'
+import { generateAvatar, getAvatarUrl } from '../utils/avatar'
+// @ts-ignore - WebRTC module has no type declarations
+import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -1675,7 +1760,16 @@ const dissolveGroup = async () => {
     return
   }
   
-  openConfirmDialog('确认解散群聊', `确定要解散群聊 "${selectedGroup.value.name}" 吗？此操作不可恢复。`, async () => {
+  ElMessageBox.confirm(
+    `确定要解散群聊 "${selectedGroup.value.name}" 吗？此操作不可恢复。`,
+    '确认解散群聊',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+  .then(async () => {
     try {
       const response = await request(`/api/v1/conversations/${selectedGroup.value.id}`, {
         method: 'DELETE',
@@ -1700,6 +1794,9 @@ const dissolveGroup = async () => {
       console.error('解散群聊失败:', error)
       ElMessage.error('网络错误，解散群聊失败')
     }
+    closeGroupContextMenu()
+  })
+  .catch(() => {
     closeGroupContextMenu()
   })
 }
@@ -1944,10 +2041,31 @@ const request = async (url: string, options?: RequestInit) => {
 
 const currentConversationId = ref<string | null>(null)
 const activeOption = ref('recent')
+const sidebarCollapsed = ref(false)
 const searchQuery = ref('')
 const unreadNotificationCount = ref(0)
 const selectedChannel = ref(null)
 const selectedGroup = ref(null)
+
+// 远程屏幕共享状态
+const remoteScreenSharing = ref(false)
+const remoteScreenUserId = ref<number | null>(null)
+const remoteScreenData = ref<string | null>(null)
+
+// 切换左侧边栏收缩状态
+const toggleSidebar = () => {
+  console.log('toggleSidebar called, current value:', sidebarCollapsed.value)
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  console.log('toggleSidebar new value:', sidebarCollapsed.value)
+}
+
+// 处理侧边栏选项按钮点击
+const handleSidebarOptionClick = (option: string) => {
+  activeOption.value = option
+  if (sidebarCollapsed.value) {
+    sidebarCollapsed.value = false
+  }
+}
 
 // 会话数据
 const conversations = ref<Conversation[]>([])
@@ -1980,7 +2098,8 @@ const channelMessage = ref('')
 
 // 检查当前用户是否是频道创建者
 const isChannelCreator = (channel) => {
-  return currentUser.value?.id === channel.creator_id?.toString()
+  if (!currentUser.value?.id || !channel.creator_id) return false
+  return currentUser.value.id === channel.creator_id || currentUser.value.id.toString() === channel.creator_id.toString()
 }
 
 // 订阅频道
@@ -2127,8 +2246,16 @@ const processConversation = (conv: any) => {
   // 为单聊会话设置对方用户的头像和名称
   let avatar = conv.avatar || ''
   let name = conv.name || ''
-  if ((conv.type !== 'group' && conv.type !== 'discussion') && members.length > 1) {
-    const currentUserId = currentUser.value?.id?.toString() || ''
+  const currentUserId = currentUser.value?.id?.toString() || ''
+  
+  // 检查是否是与自己的单聊（只有自己一个成员，且名称包含"自己"）
+  const isSelfChat = (conv.type !== 'group' && conv.type !== 'discussion') && members.length === 1 && members[0].id === currentUserId
+  
+  if (isSelfChat) {
+    // 与自己聊天的会话，显示自己的信息
+    avatar = members[0].avatar || avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=self'
+    name = members[0].name || currentUser.value?.nickname || currentUser.value?.username || '自己'
+  } else if ((conv.type !== 'group' && conv.type !== 'discussion') && members.length > 1) {
     const otherMember = members.find((m: any) => m.id !== currentUserId)
     if (otherMember) {
       avatar = otherMember.avatar || ''
@@ -2172,6 +2299,11 @@ const processConversation = (conv: any) => {
     id: conv.id ? conv.id.toString() : (conv.ID ? conv.ID.toString() : ''),
     name: name || '',
     avatar: avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user',
+    ip: conv.ip || '',
+    status: conv.status || 'offline',
+    signature: conv.signature || '',
+    otherMemberId: conv.other_member_id || conv.OtherMemberID || '',
+    otherMemberName: conv.other_member_name || conv.OtherMemberName || '',
     lastMessage: conv.lastMessage || conv.last_message ? {
       id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
       content: conv.lastMessage?.content || conv.last_message?.content || '',
@@ -2223,7 +2355,8 @@ const processConversation = (conv: any) => {
     type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP') ? 'group' : (conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'discussion' : (conv.type === 'bot' ? 'bot' : 'single'),
     members: members,
     pinned: conv.is_pinned || false,
-    muted: conv.muted || false
+    muted: conv.muted || false,
+    announcement: conv.announcement || ''
   }
   
   // 如果是群聊，并且 lastMessage 存在，但 sender.name 为空，尝试从 members 中获取发送人信息
@@ -2299,12 +2432,12 @@ const loadOrganizationTree = async () => {
 }
 
 // 点击组织架构中的用户
-const handleUserClick = (employee) => {
+const handleUserClick = (employee: any) => {
   selectedUser.value = employee
 }
 
 // 计算部门人数和在线人数
-const getDepartmentStats = (department) => {
+const getDepartmentStats = (department: any) => {
   let totalCount = 0
   let onlineCount = 0
 
@@ -2339,6 +2472,7 @@ onMounted(async () => {
   try {
     // 并行加载数据
     await Promise.all([
+      console.log('开始加载数据.......'),
       loadConversations(),
       loadOrganizationTree(),
       loadUserApps()
@@ -2378,14 +2512,19 @@ onMounted(async () => {
   })
 })
 
+// 导入WebSocket管理器
+import { connectWebSocket as connectWS, addMessageHandler, sendWebSocketMessage, getWebSocket } from '../utils/websocketManager'
+
+// 暴露sendWebSocketMessage到全局，供screenShareManager使用
+if (typeof window !== 'undefined') {
+  window.sendWebSocketMessage = sendWebSocketMessage
+}
+
 // WebSocket连接
-let ws: WebSocket | null = null
 const baseReconnectDelay = 1000 // 1秒
 
 // 连接WebSocket
 const connectWebSocket = () => {
-  if (ws && ws.readyState === WebSocket.OPEN) return
-  
   // 获取token
   const token = localStorage.getItem('token')
   if (!token) return
@@ -2395,126 +2534,83 @@ const connectWebSocket = () => {
   networkErrorMsg.value = '网络连接失败，正在尝试重新连接...'
   sessionExpired.value = false
   
-  // 连接WebSocket
-  ws = new WebSocket(`ws://${serverUrl.value.replace('http://', '')}/api/v1/ws?token=${token}`)
+  // 使用WebSocket管理器连接
+  connectWS(serverUrl.value, token)
   
-  ws.onopen = () => {
-    console.log('WebSocket连接成功')
-    // 重置重连尝试次数
-    reconnectAttempts.value = 0
+  // 为每种消息类型添加专门的处理器
+  const messageHandlers = {
+    'message_read': handleReadReceipt,
+    'new_message': handleNewMessage,
+    'message_recalled': handleMessageRecalled,
+    'message_deleted': handleMessageDeleted,
+    'group_invitation': handleGroupInvitation,
+    'added_to_group': handleAddedToGroup,
+    'group_member_left': handleGroupMemberLeft,
+    'group_member_joined': handleGroupMemberJoined,
+    'group_member_role_updated': handleGroupMemberRoleUpdated,
+    'group_owner_transferred': handleGroupOwnerTransferred,
+    'conversation_updated': handleConversationUpdated,
+    'group_announcement_updated': handleGroupAnnouncementUpdated,
+    'notification': handleNotification,
+    'new_notification': handleNewNotification,
+    'system_message': handleSystemMessage,
+    'screen-share-start': handleRemoteScreenShareStart,
+    'screen-share-stop': handleRemoteScreenShareStop,
+    'screen-share-data': handleRemoteScreenShareData,
+    'screen-share-request': handleScreenShareRequest,
+    'screen-share-accepted': handleScreenShareAccepted,
+    'screen-share-rejected': handleScreenShareRejected
   }
   
-  ws.onmessage = (event) => {
-    try {
-      const message = JSON.parse(event.data)
-      handleWebSocketMessage(message)
-    } catch (error) {
-      console.error('解析WebSocket消息失败:', error)
+  // 注册所有消息处理器
+  Object.entries(messageHandlers).forEach(([type, handler]) => {
+    addMessageHandler((message) => {
+      handler(message.data)
+      return true
+    }, type)
+  })
+  
+  // 尝试重连逻辑
+  const ws = getWebSocket()
+  if (ws) {
+    ws.onclose = () => {
+      console.log('WebSocket连接关闭')
+      // 尝试重连
+      if (reconnectAttempts.value < maxReconnectAttempts) {
+        // 指数退避策略
+        const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts.value)
+        console.log(`WebSocket重连尝试 ${reconnectAttempts.value + 1}/${maxReconnectAttempts}，延迟 ${delay}ms`)
+        
+        // 显示网络错误提示
+        showNetworkError.value = true
+        networkErrorMsg.value = `网络连接失败，正在尝试重新连接... (${reconnectAttempts.value + 1}/${maxReconnectAttempts})`
+        
+        reconnectTimer.value = window.setTimeout(() => {
+          reconnectAttempts.value++
+          connectWebSocket()
+        }, delay)
+      } else {
+        console.log('WebSocket重连失败，已达到最大重试次数')
+        // 显示最终错误提示
+        showNetworkError.value = true
+        networkErrorMsg.value = '网络连接失败，请检查网络设置或稍后重试'
+      }
     }
-  }
-  
-  ws.onclose = () => {
-    console.log('WebSocket连接关闭')
-    // 尝试重连
-    if (reconnectAttempts.value < maxReconnectAttempts) {
-      // 指数退避策略
-      const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts.value)
-      console.log(`WebSocket重连尝试 ${reconnectAttempts.value + 1}/${maxReconnectAttempts}，延迟 ${delay}ms`)
-      
-      // 显示网络错误提示
-      showNetworkError.value = true
-      networkErrorMsg.value = `网络连接失败，正在尝试重新连接... (${reconnectAttempts.value + 1}/${maxReconnectAttempts})`
-      
-      reconnectTimer.value = window.setTimeout(() => {
-        reconnectAttempts.value++
-        connectWebSocket()
-      }, delay)
-    } else {
-      console.log('WebSocket重连失败，已达到最大重试次数')
-      // 显示最终错误提示
-      showNetworkError.value = true
-      networkErrorMsg.value = '网络连接失败，请检查网络设置或稍后重试'
-    }
-  }
-  
-  ws.onerror = (error) => {
-    console.error('WebSocket错误:', error)
-    // 检查是否是会话过期错误
-    if (error.message && error.message.includes('401')) {
-      sessionExpired.value = true
-      showNetworkError.value = true
-      networkErrorMsg.value = '会话已过期，请重新登录'
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket错误:', error)
+      // 检查是否是会话过期错误
+      if (error.message && error.message.includes('401')) {
+        sessionExpired.value = true
+        showNetworkError.value = true
+        networkErrorMsg.value = '会话已过期，请重新登录'
+      }
     }
   }
 }
 
-// 处理WebSocket消息
-const handleWebSocketMessage = (message: any) => {
-  switch (message.type) {
-    case 'message_read':
-      // 处理已读回执
-      handleReadReceipt(message.data)
-      break
-    case 'new_message':
-      // 处理新消息
-      handleNewMessage(message.data)
-      break
-    case 'message_recalled':
-      // 处理消息撤回
-      handleMessageRecalled(message.data)
-      break
-    case 'message_deleted':
-      // 处理消息删除
-      handleMessageDeleted(message.data)
-      break
-    case 'group_invitation':
-      // 处理群聊邀请
-      handleGroupInvitation(message.data)
-      break
-    case 'added_to_group':
-      // 处理被添加到群聊
-      handleAddedToGroup(message.data)
-      break
-    case 'group_member_left':
-      // 处理成员退出群聊
-      handleGroupMemberLeft(message.data)
-      break
-    case 'group_member_joined':
-      // 处理成员加入群聊
-      handleGroupMemberJoined(message.data)
-      break
-    case 'group_member_role_updated':
-      // 处理群成员角色更新
-      handleGroupMemberRoleUpdated(message.data)
-      break
-    case 'group_owner_transferred':
-      // 处理群主转让
-      handleGroupOwnerTransferred(message.data)
-      break
-    case 'conversation_updated':
-      // 处理会话更新
-      handleConversationUpdated(message.data)
-      break
-    case 'group_announcement_updated':
-      // 处理群公告更新
-      handleGroupAnnouncementUpdated(message.data)
-      break
-    case 'notification':
-      // 处理通知
-      handleNotification(message.data)
-      break
-    case 'new_notification':
-      // 处理新通知
-      handleNewNotification(message.data)
-      break
-    case 'system_message':
-      // 处理系统消息
-      handleSystemMessage(message.data)
-      break
-    default:
-      break
-  }
-}
+// 注意：由于我们现在使用了按消息类型分类的处理器，这个函数不再需要
+// 所有消息处理都通过addMessageHandler注册的专门处理器来完成
 
 // 处理群聊邀请
 const handleGroupInvitation = (data: any) => {
@@ -2709,6 +2805,130 @@ const handleSystemMessage = (data: any) => {
   // 例如，重新加载系统消息列表
   // loadSystemMessages()
 }
+
+// 处理远程屏幕共享开始
+const handleRemoteScreenShareStart = (data: any) => {
+  console.log('收到远程屏幕共享开始:', data)
+  
+  // 设置远程屏幕共享状态
+  remoteScreenSharing.value = true
+  remoteScreenUserId.value = data.user_id
+  remoteScreenData.value = null
+  
+  // 调用 ChatWindow 组件的 receiveScreenShareStream 函数，初始化视频元素
+  if (chatWindowRef.value) {
+    chatWindowRef.value.receiveScreenShareStream(data)
+  }
+  
+  showMessage({
+    message: `用户 ${data.user_id} 开始共享屏幕`,
+    type: 'info',
+    duration: 3000
+  })
+}
+
+// 处理远程屏幕共享停止
+const handleRemoteScreenShareStop = (data: any) => {
+  console.log('收到远程屏幕共享停止:', data)
+  
+  // 重置远程屏幕共享状态
+  remoteScreenSharing.value = false
+  remoteScreenUserId.value = null
+  remoteScreenData.value = null
+  
+  showMessage({
+    message: `用户 ${data.user_id} 停止了屏幕共享`,
+    type: 'info',
+    duration: 3000
+  })
+}
+
+// 聊天窗口引用
+const chatWindowRef = ref(null)
+
+// 处理远程屏幕共享数据
+const handleRemoteScreenShareData = (data: any) => {
+  console.log('收到远程屏幕共享数据:', data)
+  
+  // 更新远程屏幕共享数据
+  if (data.data) {
+    remoteScreenData.value = data.data
+    // 将屏幕共享数据传递给 ChatWindow 组件
+    if (chatWindowRef.value) {
+      chatWindowRef.value.handleRemoteScreenShareData(data.data)
+    }
+  }
+}
+
+
+
+// 处理屏幕共享请求
+const handleScreenShareRequest = (data: any) => {
+  console.log('收到屏幕共享请求:', data)
+  
+  // 显示确认对话框
+  ElMessageBox.confirm(
+    `用户 ${data.user_id} 请求共享屏幕，是否接受？`,
+    '屏幕共享请求',
+    {
+      confirmButtonText: '接受',
+      cancelButtonText: '拒绝',
+      type: 'warning'
+    }
+  )
+  .then(() => {
+    // 发送接受响应
+    sendScreenShareResponse(data.conversation_id, data.user_id, 'accepted')
+  })
+  .catch(() => {
+    // 发送拒绝响应
+    sendScreenShareResponse(data.conversation_id, data.user_id, 'rejected')
+  })
+}
+
+// 发送屏幕共享响应
+const sendScreenShareResponse = (conversationId: number, requesterId: number, status: string) => {
+  const wsMsg = {
+    type: 'screen-share-response',
+    data: {
+      conversation_id: conversationId,
+      requester_id: requesterId,
+      status: status
+    }
+  }
+  // 发送WebSocket消息
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(wsMsg))
+  }
+}
+
+// 处理屏幕共享接受
+const handleScreenShareAccepted = (data: any) => {
+  console.log('屏幕共享请求被接受:', data)
+  showMessage({
+    message: '对方接受了屏幕共享请求',
+    type: 'success',
+    duration: 3000
+  })
+  // 调用ChatWindow组件的handleScreenShareAccepted方法，开始建立WebRTC连接
+  if (chatWindowRef.value) {
+    console.log('调用ChatWindow组件的handleScreenShareAccepted方法')
+    chatWindowRef.value.handleScreenShareAccepted(data)
+  }
+  console.log('对方已接受屏幕共享请求，开始建立连接...')
+}
+
+// 处理屏幕共享拒绝
+const handleScreenShareRejected = (data: any) => {
+  console.log('屏幕共享请求被拒绝:', data)
+  showMessage({
+    message: '对方拒绝了屏幕共享请求',
+    type: 'info',
+    duration: 3000
+  })
+}
+
+
 
 // 处理消息删除
 const handleMessageDeleted = (data: any) => {
@@ -2969,6 +3189,44 @@ const handleNewMessage = (data: any) => {
     // 更新未读计数（如果不是当前会话）
     if (currentConversationId.value !== conversationId) {
       updatedConversation.unreadCount = (updatedConversation.unreadCount || 0) + 1
+      
+      // 发送消息通知
+      if (messageSettings.value.notificationsEnabled) {
+        showMessage({
+          message: `收到来自 ${newMessage.sender.name} 的新消息`,
+          type: 'info',
+          duration: 3000
+        })
+        
+        // 播放消息提示音
+        if (messageSettings.value.soundEnabled) {
+          playMessageSound()
+        }
+
+        // 托盘图标闪动
+        if (window.electron?.tray) {
+          window.electron.tray.flash()
+        }
+        
+        // 显示桌面通知
+        if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            new Notification('新消息', {
+              body: newMessage.content,
+              icon: newMessage.sender.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+            })
+          } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+              if (permission === 'granted') {
+                new Notification('新消息', {
+                  body: newMessage.content,
+                  icon: newMessage.sender.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+                })
+              }
+            })
+          }
+        }
+      }
     }
     
     // 替换会话对象，触发响应式更新
@@ -2999,6 +3257,20 @@ const handleNewMessage = (data: any) => {
           conversations.value.sort((a, b) => b.timestamp - a.timestamp)
           conversations.value = [...conversations.value]
         }
+        
+        // 发送消息通知
+        if (messageSettings.value.notificationsEnabled) {
+          showMessage({
+            message: `收到来自 ${newMessage.sender.name} 的新消息`,
+            type: 'info',
+            duration: 3000
+          })
+          
+          // 播放消息提示音
+          if (messageSettings.value.soundEnabled) {
+            playMessageSound()
+          }
+        }
       }
     })
   }
@@ -3020,6 +3292,36 @@ const handleNewMessage = (data: any) => {
         }
       })
     }
+  }
+}
+
+// 播放消息提示音
+const playMessageSound = () => {
+  try {
+    // 创建音频上下文
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    
+    // 创建 oscillator 节点
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    
+    // 连接节点
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    
+    // 设置参数
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1)
+    
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
+    
+    // 播放
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.1)
+  } catch (error) {
+    console.error('播放消息提示音失败:', error)
   }
 }
 
@@ -3472,95 +3774,105 @@ const handleSendMessage = async (messageData: any) => {
       return
     }
     
-    const response = await request(`/api/v1/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify(requestData)
-    })
+    // 检查是否是机器人会话
+    const currentConv = currentConversation.value
+    const isBotConversation = currentConv && (currentConv.type === 'bot' || currentConv.isBot)
     
-    console.log('发送消息的响应:', response)
-    
-    if (response.code === 0) {
-      // 直接使用客户端的引用消息数据，确保引用消息能正确显示
-      const newMessage = {
-        id: response.data.id?.toString() || Date.now().toString(),
-        content: response.data.content,
-        file_name: response.data.file_name || messageData.fileName,
-        file_size: response.data.file_size || messageData.fileSize,
-        sender: {
-          id: response.data.sender?.id?.toString() || currentUser.value?.id?.toString() || '',
-          name: response.data.sender?.nickname || response.data.sender?.username || currentUser.value?.nickname || currentUser.value?.username || '',
-          avatar: response.data.sender?.avatar || currentUser.value?.avatar || ''
-        },
-        timestamp: new Date().getTime(),
-        type: response.data.type || messageType,
-        isSelf: true,
-        isRead: false,
-        quotedMessage: messageData.quotedMessage,
-        miniAppData: miniAppData,
-        newsData: newsData
-      }
-      
-      console.log('添加到消息列表的新消息:', newMessage)
-      
-      messages.value.push(newMessage)
-      
-      // 保存消息到本地存储
-      storage.saveMessages(conversationId, messages.value)
-      
-      // 更新会话列表中的最后消息
-      const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
-      if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].lastMessage = newMessage
-        conversations.value[conversationIndex].timestamp = newMessage.timestamp
-        
-        // 保存会话到本地存储
-        storage.saveConversations(conversations.value)
-      }
-      
-      // 播放消息发送成功的提示音
-      // playMessageSound() // 暂时注释掉，因为该函数未定义
+    if (isBotConversation) {
+      // 机器人会话使用流式API
+      await handleStreamMessage(conversationId, requestData, messageData, miniAppData, newsData)
     } else {
-      console.error('发送消息失败:', response.message)
-      showMessage({ message: '消息发送失败: ' + response.message, type: 'error' })
+      // 普通会话使用普通API
+      const response = await request(`/api/v1/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(requestData)
+      })
       
-      // 创建发送失败的消息对象
-      const failedMessage = {
-        id: Date.now().toString(),
-        content: messageContent,
-        file_name: messageData.fileName,
-        file_size: messageData.fileSize,
-        sender: {
-          id: currentUser.value?.id?.toString() || '',
-          name: currentUser.value?.nickname || currentUser.value?.username || '',
-          avatar: currentUser.value?.avatar || ''
-        },
-        timestamp: new Date().getTime(),
-        type: messageType,
-        isSelf: true,
-        isRead: false,
-        isFailed: true,
-        quotedMessage: messageData.quotedMessage,
-        miniAppData: miniAppData,
-        newsData: newsData,
-        originalData: messageData // 保存原始消息数据，用于重新发送
-      }
+      console.log('发送消息的响应:', response)
       
-      console.log('添加发送失败的消息:', failedMessage)
-      
-      // 添加到消息列表
-      messages.value.push(failedMessage)
-      
-      // 保存消息到本地存储
-      storage.saveMessages(String(currentConversationId.value), messages.value)
-      
-      // 更新会话列表中的最后消息
-      const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
-      if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].lastMessage = failedMessage
-        conversations.value[conversationIndex].timestamp = failedMessage.timestamp
+      if (response.code === 0) {
+        // 直接使用客户端的引用消息数据，确保引用消息能正确显示
+        const newMessage = {
+          id: response.data.id?.toString() || Date.now().toString(),
+          content: response.data.content,
+          file_name: response.data.file_name || messageData.fileName,
+          file_size: response.data.file_size || messageData.fileSize,
+          sender: {
+            id: response.data.sender?.id?.toString() || currentUser.value?.id?.toString() || '',
+            name: response.data.sender?.nickname || response.data.sender?.username || currentUser.value?.nickname || currentUser.value?.username || '',
+            avatar: response.data.sender?.avatar || currentUser.value?.avatar || ''
+          },
+          timestamp: new Date().getTime(),
+          type: response.data.type || messageType,
+          isSelf: true,
+          isRead: false,
+          quotedMessage: messageData.quotedMessage,
+          miniAppData: miniAppData,
+          newsData: newsData
+        }
         
-        // 保存会话到本地存储
-        storage.saveConversations(conversations.value)
+        console.log('添加到消息列表的新消息:', newMessage)
+        
+        messages.value.push(newMessage)
+        
+        // 保存消息到本地存储
+        storage.saveMessages(conversationId, messages.value)
+        
+        // 更新会话列表中的最后消息
+        const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
+        if (conversationIndex !== -1) {
+          conversations.value[conversationIndex].lastMessage = newMessage
+          conversations.value[conversationIndex].timestamp = newMessage.timestamp
+          
+          // 保存会话到本地存储
+          storage.saveConversations(conversations.value)
+        }
+        
+        // 播放消息发送成功的提示音
+        // playMessageSound() // 暂时注释掉，因为该函数未定义
+      } else {
+        console.error('发送消息失败:', response.message)
+        showMessage({ message: '消息发送失败: ' + response.message, type: 'error' })
+        
+        // 创建发送失败的消息对象
+        const failedMessage = {
+          id: Date.now().toString(),
+          content: messageContent,
+          file_name: messageData.fileName,
+          file_size: messageData.fileSize,
+          sender: {
+            id: currentUser.value?.id?.toString() || '',
+            name: currentUser.value?.nickname || currentUser.value?.username || '',
+            avatar: currentUser.value?.avatar || ''
+          },
+          timestamp: new Date().getTime(),
+          type: messageType,
+          isSelf: true,
+          isRead: false,
+          isFailed: true,
+          quotedMessage: messageData.quotedMessage,
+          miniAppData: miniAppData,
+          newsData: newsData,
+          originalData: messageData // 保存原始消息数据，用于重新发送
+        }
+        
+        console.log('添加发送失败的消息:', failedMessage)
+        
+        // 添加到消息列表
+        messages.value.push(failedMessage)
+        
+        // 保存消息到本地存储
+        storage.saveMessages(String(currentConversationId.value), messages.value)
+        
+        // 更新会话列表中的最后消息
+        const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
+        if (conversationIndex !== -1) {
+          conversations.value[conversationIndex].lastMessage = failedMessage
+          conversations.value[conversationIndex].timestamp = failedMessage.timestamp
+          
+          // 保存会话到本地存储
+          storage.saveConversations(conversations.value)
+        }
       }
     }
   } catch (error) {
@@ -3654,37 +3966,125 @@ const handleRecallMessage = async (messageId: number) => {
         storage.saveMessages(currentConversationId.value, messages.value)
       }
     }
+  } catch (error) {
+    console.error('撤回消息失败:', error)
+  }
+}
+
+// 处理流式消息
+const handleStreamMessage = async (conversationId: string, requestData: any, messageData: any, miniAppData: any, newsData: any) => {
+  try {
+    // 创建一个唯一的消息ID用于流式消息
+    const streamMessageId = `stream_${Date.now()}`
     
-    // 更新会话列表中的最后消息
-    if (currentConversationId.value) {
-      const conversationIndex = conversations.value.findIndex(c => c.id === currentConversationId.value)
-      if (conversationIndex !== -1) {
-        const conversation = conversations.value[conversationIndex]
-        if (conversation.lastMessage && conversation.lastMessage.id === messageId.toString()) {
-          // 创建新的会话对象，确保响应式更新
-          const updatedConversation = {
-            ...conversation,
-            lastMessage: {
-              ...conversation.lastMessage,
-              content: '[消息已撤回]',
-              isRecalled: true
+    // 创建初始的流式消息对象
+    const streamMessage = {
+      id: streamMessageId,
+      content: '',
+      sender: {
+        id: '0', // 机器人ID
+        name: 'AI助手',
+        avatar: ''
+      },
+      timestamp: new Date().getTime(),
+      type: 'streaming',
+      isSelf: false,
+      isRead: false,
+      isStreaming: true
+    }
+    
+    // 添加到消息列表
+    messages.value.push(streamMessage)
+    
+    // 保存消息到本地存储
+    storage.saveMessages(conversationId, messages.value)
+    
+    // 发送流式请求
+    const response = await fetch(`${serverUrl.value}/api/v1/conversations/${conversationId}/messages/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+      },
+      body: JSON.stringify(requestData)
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+    
+    let accumulatedContent = ''
+    let buffer = ''
+    
+    // 处理流式响应
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      
+      // 解码字节流
+      const chunk = new TextDecoder('utf-8').decode(value)
+      buffer += chunk
+      
+      // 处理SSE格式数据
+      // SSE格式: data: {json}\n\n
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留不完整的行
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim()
+          if (!data) continue
+          
+          try {
+            // 解析统一 JSON 格式的 StreamChunk
+            const chunk = JSON.parse(data)
+            
+            if (chunk.content) {
+              accumulatedContent += chunk.content
             }
+            
+            if (chunk.finish === 'stop') {
+              // 流式结束
+              break
+            }
+          } catch (e) {
+            // 兼容旧格式：直接作为纯文本
+            accumulatedContent += data
           }
-          
-          // 替换会话对象，触发响应式更新
-          conversations.value.splice(conversationIndex, 1, updatedConversation)
-          
-          // 强制触发响应式更新
-          conversations.value = [...conversations.value]
-          
-          // 保存会话到本地存储
-          storage.saveConversations(conversations.value)
         }
       }
+      
+      // 更新消息内容
+      const messageIndex = messages.value.findIndex(m => m.id === streamMessageId)
+      if (messageIndex !== -1) {
+        messages.value[messageIndex].content = accumulatedContent
+        messages.value[messageIndex].isStreaming = true
+        
+        // 保存消息到本地存储
+        storage.saveMessages(conversationId, messages.value)
+      }
     }
+    
+    // 流式结束，更新消息状态
+    const messageIndex = messages.value.findIndex(m => m.id === streamMessageId)
+    if (messageIndex !== -1) {
+      messages.value[messageIndex].isStreaming = false
+      messages.value[messageIndex].type = 'markdown' // 流式结束后转换为markdown类型
+      
+      // 保存消息到本地存储
+      storage.saveMessages(conversationId, messages.value)
+    }
+    
   } catch (error) {
-    console.error('消息撤回失败:', error)
-    showMessage({ message: '消息撤回失败，请稍后重试', type: 'error' })
+    console.error('流式消息处理失败:', error)
+    showMessage({ message: '消息发送失败: ' + (error as Error).message, type: 'error' })
   }
 }
 
@@ -3708,15 +4108,51 @@ const handleRetrySendMessage = (failedMessage: any) => {
     }
   }
   
-  // 显示重新发送的提示
-  showMessage({ message: '正在重新发送消息...', type: 'info' })
-  
-  // 使用原始消息数据重新发送
+  // 重新发送消息
   if (failedMessage.originalData) {
     handleSendMessage(failedMessage.originalData)
   } else {
-    // 如果没有原始数据，使用当前消息数据重新发送
-    handleSendMessage(failedMessage)
+    handleSendMessage(failedMessage.content)
+  }
+}
+
+// 处理屏幕共享开始
+const handleScreenShareStart = (data: { conversationId: number; userId: number }) => {
+  console.log('===== 发送屏幕共享请求 =====', data)
+  
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const wsMsg = {
+      type: 'screen-share-request',
+      data: data
+    }
+    console.log('发送的WebSocket消息:', wsMsg)
+    ws.send(JSON.stringify(wsMsg))
+  } else {
+    console.error('WebSocket未连接，无法发送屏幕共享请求')
+  }
+}
+
+// 处理屏幕共享停止
+const handleScreenShareStop = (data: { conversationId: number }) => {
+  console.log('发送屏幕共享停止:', data)
+  
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'screen-share-stop',
+      data: data
+    }))
+  }
+}
+
+// 处理屏幕共享数据
+const handleScreenShareData = (data: { conversationId: number; data: string }) => {
+  // console.log('发送屏幕共享数据:', data)
+  
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'screen-share-data',
+      data: data
+    }))
   }
 }
 
@@ -3730,6 +4166,11 @@ const handleConversationSelect = (conversation: Conversation) => {
   const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
   if (conversationIndex !== -1) {
     conversations.value[conversationIndex].unreadCount = 0
+  }
+
+  // 停止托盘图标闪动
+  if (window.electron?.tray) {
+    window.electron.tray.stopFlash()
   }
 }
 
@@ -3765,17 +4206,30 @@ const formatMessagePreview = (message: any, conversation: any): string => {
   }
   
   let previewText = ''
-  
+  console.log('Message type:', message)
   switch (message.type) {
     case 'text':
       previewText = message.content || '无内容'
       break
     case 'image':
-      const imageName = message.file_name || message.content.split('/').pop() || '图片'
+      let imageName = '图片'
+      try {
+        const imageData = JSON.parse(message.content)
+        imageName = imageData.name || imageData.fileName || message.file_name || (imageData.url ? imageData.url.split('/').pop() : '图片')
+      } catch (e) {
+        imageName = message.file_name || message.content.split('/').pop() || '图片'
+      }
       previewText = `[图片] ${imageName}`
       break
     case 'file':
-      const fileName = message.file_name || message.content.split('/').pop() || '文件'
+      let fileName = '文件'
+      try {
+        const fileData = JSON.parse(message.content)
+        fileName = fileData.name || fileData.fileName || message.file_name || (fileData.url ? fileData.url.split('/').pop() : '文件')
+      } catch (e) {
+        fileName = message.file_name || message.content.split('/').pop() || '文件'
+      }
+      console.log('File name:', fileName)
       previewText = `[文件] ${fileName}`
       break
     case 'miniApp':
@@ -3810,7 +4264,7 @@ const formatMessagePreview = (message: any, conversation: any): string => {
       }
     }
   }
-  
+  console.log('Preview text:', previewText)
   return previewText
 }
 
@@ -4362,6 +4816,7 @@ const appCategories = ref([
       { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
       { id: '7', name: '笔记', icon: 'fas fa-book' },
       { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' },
+      { id: 'ai-config', name: '大模型配置', icon: 'fas fa-cogs' },
       { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' }
     ]
   },
@@ -4370,7 +4825,7 @@ const appCategories = ref([
     name: '外链应用',
     expanded: false,
     apps: [
-      { id: '10', name: 'GitHub', icon: 'fab fa-github', url: 'https://github.com' }
+      // 外链应用列表
     ]
   },
   {
@@ -5240,7 +5695,7 @@ const handleShareConfirm = async (selection) => {
   try {
     const { users, groups } = selection
     const shareData = window.shareData
-    
+    console.log('分享数据:', shareData)
     // 构建分享消息内容
     let shareContent = ''
     let shareName = ''
@@ -5280,6 +5735,7 @@ const handleShareConfirm = async (selection) => {
       id: shareData.id || shareData.messageId,
       name: shareName,
       content: shareContent,
+      originalContent: shareData.content, // 存储原始内容
       originalMessage: shareType.value === 'message' ? shareData : undefined // 存储原始消息数据
     }
     
@@ -5297,17 +5753,27 @@ const handleShareConfirm = async (selection) => {
           type: 'share',
           content: JSON.stringify(shareDataObj)
         }
-        
-        // 如果是转发消息，根据原始消息类型发送相应的消息
-        if (shareType.value === 'message' && shareDataObj.originalMessage) {
+
+        // 如果是文件分享，直接生成文件消息（将文件信息存储在content中）
+        if (shareType.value === 'file' && shareData) {
+          messageData = {
+            type: 'file',
+            content: JSON.stringify({
+              url: shareData.url || shareData.content,
+              name: shareData.name,
+              size: shareData.size
+            })
+          }
+        } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
+          // 如果是转发消息，根据原始消息类型发送相应的消息
           const originalMessage = shareDataObj.originalMessage
           if (originalMessage.type === 'text') {
             messageData = {
               type: 'text',
               content: `[转发] ${originalMessage.content}`
             }
-          } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp') {
-            // 对于图片、文件和小程序，直接复制消息类型和内容
+          } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp' || originalMessage.type === 'share') {
+            // 对于图片、文件、小程序和分享消息，直接复制消息类型和内容
             messageData = {
               type: originalMessage.type,
               content: originalMessage.content
@@ -5347,17 +5813,27 @@ const handleShareConfirm = async (selection) => {
         type: 'share',
         content: JSON.stringify(shareDataObj)
       }
-      
-      // 如果是转发消息，根据原始消息类型发送相应的消息
-      if (shareType.value === 'message' && shareDataObj.originalMessage) {
+
+      // 如果是文件分享，直接生成文件消息（将文件信息存储在content中）
+      if (shareType.value === 'file' && shareData) {
+        messageData = {
+          type: 'file',
+          content: JSON.stringify({
+            url: shareData.url || shareData.content,
+            name: shareData.name,
+            size: shareData.size
+          })
+        }
+      } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
+        // 如果是转发消息，根据原始消息类型发送相应的消息
         const originalMessage = shareDataObj.originalMessage
         if (originalMessage.type === 'text') {
           messageData = {
             type: 'text',
             content: `[转发] ${originalMessage.content}`
           }
-        } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp') {
-          // 对于图片、文件和小程序，直接复制消息类型和内容
+        } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp' || originalMessage.type === 'share') {
+          // 对于图片、文件、小程序和分享消息，直接复制消息类型和内容
           messageData = {
             type: originalMessage.type,
             content: originalMessage.content
@@ -6026,13 +6502,13 @@ const showThemeMenu = (event: MouseEvent) => {
     
     // 菜单宽度和高度
     const menuWidth = 180
-    const menuHeight = 160
+    const menuHeight = 400
     const windowWidth = window.innerWidth
     const windowHeight = window.innerHeight
     
-    // 计算菜单位置：按钮右侧2px，底部与鼠标点击位置对齐
+    // 计算菜单位置：按钮下方显示
     let x = rect.right + 2
-    let y = event.clientY - menuHeight
+    let y = rect.top
     
     // 调整x坐标，确保菜单不超出屏幕右侧
     if (x + menuWidth > windowWidth) {
@@ -6040,12 +6516,12 @@ const showThemeMenu = (event: MouseEvent) => {
     }
     
     // 调整y坐标，确保菜单不超出屏幕底部
-    if (y + menuHeight > windowHeight) {
+    if (y + menuHeight > windowHeight - 10) {
       y = windowHeight - menuHeight - 10
     }
     
     // 确保y坐标不小于0
-    if (y < 0) {
+    if (y < 10) {
       y = 10
     }
     
@@ -6490,7 +6966,7 @@ const handleNewNotification = (notification: any) => {
 
 /* 优雅深色主题 - 搜索框背景 */
 [data-theme="elegant-dark"] .search-box {
-  background: var(--sidebar-bg) !important;
+  /* background: var(--sidebar-bg) !important; */
   border-top-color: var(--border-color) !important;
   box-shadow: var(--shadow-sm) !important;
 }
@@ -6551,7 +7027,7 @@ const handleNewNotification = (notification: any) => {
 [data-theme="elegant-dark"] .sidebar-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
-  border-bottom: 1px solid var(--border-color) !important;
+  /* border-bottom: 1px solid var(--border-color) !important; */
 }
 
 [data-theme="elegant-dark"] .sidebar-header .user-name {
@@ -6666,7 +7142,7 @@ const handleNewNotification = (notification: any) => {
 [data-theme="elegant-dark"] .right-content-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
-  border-bottom: 1px solid var(--border-color) !important;
+  /* border-bottom: 1px solid var(--border-color) !important; */
 }
 
 [data-theme="elegant-dark"] .right-content-body {
@@ -7465,6 +7941,117 @@ button:active {
   background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
 
+/* 都市丛林主题 - 左边侧边栏 */
+[data-theme="urban-jungle"] .side-options {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+/* 都市丛林主题 - 文本颜色 */
+[data-theme="urban-jungle"] .window-title,
+[data-theme="urban-jungle"] .option-item,
+[data-theme="urban-jungle"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 都市丛林主题 - 侧边栏头部 */
+[data-theme="urban-jungle"] .sidebar-header {
+  background: #ffffff;
+}
+
+/* 都市丛林主题 - 窗口控制栏左侧 */
+[data-theme="urban-jungle"] .window-controls-left {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+/* 琥珀黄主题 - 左边侧边栏 */
+[data-theme="warm-amber"] .side-options {
+  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
+}
+
+/* 琥珀黄主题 - 文本颜色 */
+[data-theme="warm-amber"] .window-title,
+[data-theme="warm-amber"] .option-item,
+[data-theme="warm-amber"] .option-item.active {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 琥珀黄主题 - 侧边栏头部 */
+[data-theme="warm-amber"] .sidebar-header {
+  background: #ffffff;
+}
+
+/* 琥珀黄主题 - 窗口控制栏左侧 */
+[data-theme="warm-amber"] .window-controls-left {
+  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
+}
+
+/* 地中海主题 - 左边侧边栏 */
+[data-theme="mediterranean-dream"] .side-options {
+  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+}
+
+/* 地中海主题 - 文本颜色 */
+[data-theme="mediterranean-dream"] .window-title,
+[data-theme="mediterranean-dream"] .option-item,
+[data-theme="mediterranean-dream"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 地中海主题 - 侧边栏头部 */
+[data-theme="mediterranean-dream"] .sidebar-header {
+  background: #ffffff;
+}
+
+/* 地中海主题 - 窗口控制栏左侧 */
+[data-theme="mediterranean-dream"] .window-controls-left {
+  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+}
+
+/* 单色雅主题 - 左边侧边栏 */
+[data-theme="monochrome-elegance"] .side-options {
+  background: linear-gradient(135deg, #333333 0%, #666666 100%);
+}
+
+/* 单色雅主题 - 文本颜色 */
+[data-theme="monochrome-elegance"] .window-title,
+[data-theme="monochrome-elegance"] .option-item,
+[data-theme="monochrome-elegance"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 单色雅主题 - 侧边栏头部 */
+[data-theme="monochrome-elegance"] .sidebar-header {
+  background: #ffffff;
+}
+
+/* 单色雅主题 - 窗口控制栏左侧 */
+[data-theme="monochrome-elegance"] .window-controls-left {
+  background: linear-gradient(135deg, #333333 0%, #666666 100%);
+}
+
+/* 春日花主题 - 左边侧边栏 */
+[data-theme="spring-blossom"] .side-options {
+  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+}
+
+/* 春日花主题 - 文本颜色 */
+[data-theme="spring-blossom"] .window-title,
+[data-theme="spring-blossom"] .option-item,
+[data-theme="spring-blossom"] .option-item.active {
+  color: #4a148c;
+}
+
+/* 春日花主题 - 侧边栏头部 */
+[data-theme="spring-blossom"] .sidebar-header {
+  background: #ffffff;
+}
+
+/* 春日花主题 - 窗口控制栏左侧 */
+[data-theme="spring-blossom"] .window-controls-left {
+  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+}
+
 /* 语音通话模态框样式 */
 .voice-call-modal {
   position: fixed;
@@ -7985,8 +8572,8 @@ button:active {
 }
 
 .warm-amber-theme {
-  background: #f59e0b;
-  border: 1px solid #d97706;
+  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
+  border: 1px solid #f4a900;
 }
 
 .crimson-red-theme {
@@ -7997,6 +8584,26 @@ button:active {
 .emerald-green-theme {
   background: #10b981;
   border: 1px solid #059669;
+}
+
+.urban-jungle-theme {
+  background: #27ae60;
+  border: 1px solid #d35400;
+}
+
+.mediterranean-dream-theme {
+  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+  border: 1px solid #c0392b;
+}
+
+.monochrome-elegance-theme {
+  background: #333333;
+  border: 1px solid #666666;
+}
+
+.spring-blossom-theme {
+  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 50%, #c8e6c9 100%);
+  border: 1px solid #f8bbd9;
 }
 
 .green-theme {
@@ -8767,6 +9374,8 @@ button:active {
   font-size: 10px;
   padding: 2px 4px;
   border-radius: 4px;
+  width: 18px;
+  height: 18px;
 }
 
 .group-info {
@@ -8817,6 +9426,13 @@ button:active {
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s ease;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 0;
   overflow: hidden;
 }
 
@@ -8918,7 +9534,7 @@ button:active {
   font-size: 13px;
   outline: none;
   transition: all 0.2s;
-  background: var(--panel-bg);
+  background: var(--input-bg);
   color: var(--text-color);
   border: 1px solid var(--border-color);
 }
@@ -9500,7 +10116,8 @@ button:active {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  background: var(--right-content-bg);
+  /* background: var(--right-content-bg); */
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .section-header {
@@ -9625,7 +10242,22 @@ button:active {
   margin-bottom: 8px;
   border-radius: 4px;
   overflow: hidden;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
 
+.app-category-item:hover {
+  border-color: var(--border-color);
+  background: var(--hover-color);
+}
+
+.app-category-item.active {
+  border-color: var(--primary-color);
+  background: var(--primary-light);
+}
+
+.app-category-item.active .category-header {
+  color: var(--primary-color);
 }
 
 .category-header {
@@ -10442,6 +11074,9 @@ button:active {
 }
 
 .right-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 16px 20px;
   background: var(--sidebar-bg);
   height: 72px;
@@ -10455,6 +11090,28 @@ button:active {
   font-size: 20px;
   font-weight: 500;
   color: var(--text-color);
+}
+
+.toggle-sidebar-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--text-color);
+}
+
+.toggle-sidebar-btn:hover {
+  background: var(--hover-color);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
 }
 
 .right-content-body {
@@ -10475,6 +11132,31 @@ button:active {
   border-radius: 6px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
   z-index: 1000;
+}
+
+/* 主题菜单滚动样式 */
+.theme-menu {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 主题菜单滚动条样式 */
+.theme-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.theme-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-menu::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.theme-menu::-webkit-scrollbar-thumb:hover {
+  background: #999;
 }
 
 .context-menu-item {
@@ -10537,7 +11219,7 @@ button:active {
 }
 
 .add-members-content {
-  background-color: #fff;
+  background-color: var(--card-bg, #fff);
   border-radius: 12px;
   width: 600px;
   max-width: 90%;
@@ -10550,18 +11232,18 @@ button:active {
 
 .add-members-header {
   padding: 24px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fafafa;
+  background-color: var(--secondary-color, #fafafa);
 }
 
 .add-members-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .add-members-header .close-btn {
@@ -10594,7 +11276,7 @@ button:active {
   gap: 16px;
   margin-bottom: 24px;
   padding: 16px;
-  background-color: #f8f9fa;
+  background-color: var(--secondary-color, #f8f9fa);
   border-radius: 8px;
 }
 
@@ -10619,13 +11301,13 @@ button:active {
 .group-name {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
   margin-bottom: 4px;
 }
 
 .group-members-count {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary, #666);
 }
 
 .search-section {
@@ -10639,16 +11321,23 @@ button:active {
 .search-input {
   width: 100%;
   padding: 10px 16px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.3s;
+  background-color: var(--input-color, #fff);
+  color: var(--text-color, #333);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  border-color: var(--primary-color, #1890ff);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  background-color: var(--card-bg, #fff);
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary, #999);
 }
 
 .members-section {
@@ -10661,26 +11350,27 @@ button:active {
   align-items: center;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
 }
 
 .section-header span:first-child {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .selected-count {
   font-size: 14px;
-  color: #1890ff;
+  color: var(--primary-color, #1890ff);
   font-weight: 500;
 }
 
 .members-list {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color, #e8e8e8);
   border-radius: 8px;
+  background-color: var(--secondary-color, #fff);
 }
 
 .member-item {
@@ -10690,7 +11380,8 @@ button:active {
   gap: 12px;
   cursor: pointer;
   transition: all 0.2s;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  background-color: var(--card-bg, #fff);
 }
 
 .member-item:last-child {
@@ -10698,11 +11389,11 @@ button:active {
 }
 
 .member-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--hover-color, #f5f5f5);
 }
 
 .member-item.selected {
-  background-color: #e6f7ff;
+  background-color: var(--primary-light, #e6f7ff);
 }
 
 .member-avatar {
@@ -10727,7 +11418,7 @@ button:active {
 .member-name {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-color, #333);
   margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
@@ -10736,7 +11427,7 @@ button:active {
 
 .member-position {
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary, #999);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10776,35 +11467,37 @@ button:active {
 .empty-state {
   padding: 40px 20px;
   text-align: center;
-  color: #999;
+  color: var(--text-secondary, #999);
   font-size: 14px;
+  background-color: var(--card-bg, #fff);
+  border-radius: 8px;
 }
 
 .add-members-footer {
   padding: 20px 24px;
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid var(--border-color, #e8e8e8);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  background-color: #fafafa;
+  background-color: var(--secondary-color, #fafafa);
 }
 
 .add-members-footer .cancel-btn {
   padding: 10px 24px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s;
-  background-color: #fff;
-  color: #333;
+  background-color: var(--card-bg, #fff);
+  color: var(--text-color, #333);
   font-weight: 500;
 }
 
 .add-members-footer .cancel-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
-  background-color: #f0f9ff;
+  border-color: var(--primary-color, #1890ff);
+  color: var(--primary-color, #1890ff);
+  background-color: var(--primary-light, #f0f9ff);
 }
 
 .confirm-btn {
@@ -10814,28 +11507,28 @@ button:active {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s;
-  background-color: #1890ff;
+  background-color: var(--primary-color, #1890ff);
   color: #fff;
   font-weight: 500;
-  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
 }
 
 .confirm-btn:hover {
-  background-color: #40a9ff;
-  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+  background-color: var(--active-color, #40a9ff);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
   transform: translateY(-1px);
 }
 
 .confirm-btn:disabled {
-  background-color: #f0f0f0;
-  color: #999;
+  background-color: var(--secondary-color, #f0f0f0);
+  color: var(--text-secondary, #999);
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
 }
 
 .confirm-btn:disabled:hover {
-  background-color: #f0f0f0;
+  background-color: var(--secondary-color, #f0f0f0);
   box-shadow: none;
   transform: none;
 }
@@ -10888,6 +11581,8 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 18px;
+  width: 18px;
 }
 
 .bot-badge i {
@@ -11324,6 +12019,26 @@ input:checked + .slider:before {
   border: 1px solid #247048;
 }
 
+.theme-preview.urban-jungle-theme {
+  background: linear-gradient(135deg, #f8f8f8 0%, #ecf0f1 100%);
+  border: 1px solid #27ae60;
+}
+
+.theme-preview.mediterranean-dream-theme {
+  background: linear-gradient(135deg, #fffef5 0%, #f5deb3 100%);
+  border: 1px solid #c0392b;
+}
+
+.theme-preview.monochrome-elegance-theme {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+  border: 1px solid #333333;
+}
+
+.theme-preview.spring-blossom-theme {
+  background: linear-gradient(135deg, #fffef5 0%, #fff9c4 100%);
+  border: 1px solid #f8bbd9;
+}
+
 /* 字体大小滑块 */
 .font-size-slider {
   flex: 1;
@@ -11490,7 +12205,7 @@ input:checked + .slider:before {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: white;
+  background: var(--card-bg, white);
   /* border-radius: 12px; */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
@@ -11589,7 +12304,7 @@ input:checked + .slider:before {
 }
 
 .channel-header-actions .btn-secondary {
-  background: white;
+  background: var(--card-bg, white);
   color: var(--primary-color);
   border: 1px solid var(--primary-color);
 }
@@ -11634,7 +12349,7 @@ input:checked + .slider:before {
   padding: 60px 20px;
   color: var(--text-secondary);
   text-align: center;
-  background: white;
+  background: var(--card-bg, white);
   border-radius: 12px;
   border: 2px dashed var(--border-color);
   transition: all 0.3s ease;
@@ -11666,10 +12381,15 @@ input:checked + .slider:before {
 }
 
 .message-list {
-  background: white;
+  background: var(--card-bg, white);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+}
+
+[data-theme="elegant-dark"] .message-list {
+  background: var(--secondary-color) !important;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1) !important;
 }
 
 .message-item {
@@ -11767,7 +12487,7 @@ input:checked + .slider:before {
   font-family: inherit;
   font-size: 14px;
   transition: all 0.3s ease;
-  background: white;
+  background: var(--card-bg, white);
   color: var(--text-primary);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
@@ -11813,7 +12533,7 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
+  background: var(--card-bg, white);
   /* border-radius: 12px; */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;

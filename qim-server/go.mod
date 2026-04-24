@@ -1,6 +1,6 @@
 module qim-server
 
-go 1.21.0
+go 1.23
 
 require (
 	github.com/gin-contrib/cors v1.5.0
@@ -41,6 +41,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
+	github.com/yuin/gopher-lua v1.1.2 // indirect
 	golang.org/x/arch v0.5.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect

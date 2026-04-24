@@ -2,7 +2,7 @@
   <div class="groups-list">
     <div v-for="conversation in filteredConversations" :key="conversation.id" class="group-item" :class="{ active: selectedGroup && selectedGroup.id === conversation.id }" @contextmenu.prevent="$emit('showContextMenu', $event, conversation)" @click="$emit('select', conversation)" @dblclick="$emit('enter', conversation)">
       <div class="group-avatar">
-        <img :src="getAvatarUrl(conversation)" :alt="conversation.name" />
+        <img :src="getConversationAvatarUrl(conversation)" :alt="conversation.name" />
         <span class="group-badge" :class="conversation.type === 'discussion' ? 'discussion-badge' : ''">{{ conversation.type === 'group' ? '群' : '讨' }}</span>
       </div>
       <div class="group-info">
@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { generateAvatar } from '../utils/avatar'
+import { generateAvatar, getAvatarUrl } from '../utils/avatar'
 import { API_BASE_URL } from '../config'
 import type { Conversation, User } from '../types'
 
@@ -47,14 +47,8 @@ const filteredConversations = computed(() => {
   return filtered
 })
 
-const getAvatarUrl = (conversation: Conversation) => {
-  if (conversation.avatar && conversation.avatar.startsWith('http')) {
-    return conversation.avatar
-  }
-  if (conversation.avatar) {
-    return serverUrl.value + conversation.avatar
-  }
-  return generateAvatar(conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组'))
+const getConversationAvatarUrl = (conversation: Conversation) => {
+  return getAvatarUrl(conversation.avatar, conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组'), serverUrl.value)
 }
 </script>
 

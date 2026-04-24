@@ -7,7 +7,7 @@
       </div>
       <div class="user-profile-body">
         <div class="profile-avatar">
-                                                                                                              ，          <img :src="getAvatarUrl" :alt="user.name" />
+          <img :src="avatarUrl" :alt="user.name" />
         </div>
         <div class="profile-info">
           <div class="info-item">
@@ -86,7 +86,8 @@ const handleSendPrivateMessage = () => {
 
 const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
 
-const getAvatarUrl = computed(() => {
+// 头像 URL
+const avatarUrl = computed(() => {
   if (!props.user.avatar) {
     return 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
   }

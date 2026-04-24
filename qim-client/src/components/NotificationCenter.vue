@@ -299,19 +299,22 @@ const clearAll = async () => {
   }
 }
 
-const formatTime = (timestamp: number): string => {
+const formatTime = (timestamp: number | string): string => {
+  const timestampNum = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp
   const now = Date.now()
-  const diff = now - timestamp
+  const diff = now - timestampNum
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(diff / 86400000)
   
+  if (isNaN(diff)) return ''
   if (minutes < 1) return '刚刚'
   if (minutes < 60) return `${minutes}分钟前`
   if (hours < 24) return `${hours}小时前`
   if (days < 7) return `${days}天前`
   
-  const date = new Date(timestamp)
+  const date = new Date(timestampNum)
+  if (isNaN(date.getTime())) return ''
   return `${date.getMonth() + 1}-${date.getDate()}`
 }
 

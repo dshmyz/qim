@@ -35,6 +35,7 @@
               <option value="miniApp">小程序</option>
               <option value="share">分享</option>
               <option value="news">资讯</option>
+              <option value="markdown">Markdown</option>
             </select>
           </div>
           <div class="filter-group">
@@ -89,7 +90,8 @@
                 <i v-else-if="message.type === 'miniApp'" class="fas fa-th-large"></i>
                 <i v-else-if="message.type === 'share'" class="fas fa-share-alt"></i>
                 <i v-else-if="message.type === 'news'" class="fas fa-newspaper"></i>
-                {{ message.type === 'text' ? '文本' : message.type === 'image' ? '图片' : message.type === 'file' ? '文件' : message.type === 'miniApp' ? '小程序' : message.type === 'share' ? '分享' : message.type === 'news' ? '资讯' : '其他' }}
+                <i v-else-if="message.type === 'markdown'" class="fas fa-code"></i>
+                {{ message.type === 'text' ? '文本' : message.type === 'image' ? '图片' : message.type === 'file' ? '文件' : message.type === 'miniApp' ? '小程序' : message.type === 'share' ? '分享' : message.type === 'news' ? '资讯' : message.type === 'markdown' ? 'Markdown' : '其他' }}
               </span>
             </div>
             <div class="message-manager-item-content" :class="[`message-content-${message.type}`, { 'is-recalled': message.isRecalled }]">
@@ -100,13 +102,13 @@
                 {{ message.content }}
               </template>
               <template v-else-if="message.type === 'image'">
-                <div class="message-file-link" @click.stop="previewImage(message)">
+                <div class="message-file-link" @click.stop="handleMediaClick(message, $event)">
                   <i class="fas fa-image"></i>
                   <span>{{ getFileName(message) }}</span>
                 </div>
               </template>
               <template v-else-if="message.type === 'file'">
-                <div class="message-file-link" @click.stop="downloadFile(message)">
+                <div class="message-file-link" @click.stop="handleMediaClick(message, $event)">
                   <i class="fas fa-file"></i>
                   <span>{{ getFileName(message) }}</span>
                 </div>
@@ -191,6 +193,11 @@
       <div class="image-preview-content" @click.stop>
         <button class="image-preview-close" @click="closeImagePreview">×</button>
         <img :src="previewImageUrl" alt="预览图片" class="image-preview-img" />
+        <div class="image-preview-actions">
+          <button class="image-preview-download" @click="downloadImage">
+            <i class="fas fa-download"></i> 下载图片
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -198,7 +205,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { API_BASE_URL } from '../config'
 
 const props = defineProps<{
@@ -387,8 +394,27 @@ const handleMessageClick = (messageId: string) => {
 
 // 下载文件
 const downloadFile = (message: any) => {
+  const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+  let fileUrl = message.content
+  try {
+    // 尝试解析content为JSON
+    const contentObj = JSON.parse(message.content)
+    if (contentObj.url) {
+      fileUrl = contentObj.url
+      // 确保文件URL包含服务器地址
+      if (fileUrl && !fileUrl.startsWith('http')) {
+        fileUrl = serverUrl + fileUrl
+      }
+    }
+  } catch (e) {
+    // 解析失败，直接使用content
+    // 确保文件URL包含服务器地址
+    if (fileUrl && !fileUrl.startsWith('http')) {
+      fileUrl = serverUrl + fileUrl
+    }
+  }
   const link = document.createElement('a')
-  link.href = message.content
+  link.href = fileUrl
   link.download = getFileName(message)
   document.body.appendChild(link)
   link.click()
@@ -432,6 +458,155 @@ const previewImage = (message: any) => {
 const closeImagePreview = () => {
   showImagePreview.value = false
   previewImageUrl.value = ''
+}
+
+// 管理菜单实例
+let currentMenu: HTMLElement | null = null
+let currentCloseMenuListener: ((e: MouseEvent) => void) | null = null
+
+// 关闭当前菜单
+const closeCurrentMenu = () => {
+  if (currentMenu && document.body.contains(currentMenu)) {
+    document.body.removeChild(currentMenu)
+  }
+  if (currentCloseMenuListener) {
+    document.removeEventListener('click', currentCloseMenuListener)
+  }
+  currentMenu = null
+  currentCloseMenuListener = null
+}
+
+// 处理媒体文件点击
+const handleMediaClick = (message: any, event?: MouseEvent) => {
+  // 先关闭当前打开的菜单
+  closeCurrentMenu()
+  
+  // 创建轻量级的弹出菜单，类似右键菜单
+  const menu = document.createElement('div')
+  menu.className = 'media-action-menu'
+  menu.style.position = 'fixed'
+  menu.style.zIndex = '9999'
+  menu.style.background = '#ffffff'
+  menu.style.border = '1px solid #e0e0e0'
+  menu.style.borderRadius = '4px'
+  menu.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.15)'
+  menu.style.padding = '2px'
+  menu.style.minWidth = '120px'
+  menu.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  menu.style.fontSize = '14px'
+  menu.style.lineHeight = '1.4'
+  menu.style.color = '#333333'
+  
+  // 设置菜单位置（基于鼠标点击位置）
+  if (event) {
+    menu.style.left = `${event.clientX}px`
+    menu.style.top = `${event.clientY}px`
+    
+    // 检查菜单是否会超出屏幕
+    const menuWidth = 120
+    const menuHeight = 70 // 两个菜单项的高度
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+    
+    // 如果菜单右侧超出屏幕，调整左侧位置
+    if (event.clientX + menuWidth > windowWidth) {
+      menu.style.left = `${windowWidth - menuWidth - 10}px`
+    }
+    
+    // 如果菜单底部超出屏幕，调整顶部位置
+    if (event.clientY + menuHeight > windowHeight) {
+      menu.style.top = `${windowHeight - menuHeight - 10}px`
+    }
+  }
+  
+  // 添加菜单项
+  const createMenuItem = (icon: string, text: string, callback: () => void) => {
+    const item = document.createElement('div')
+    item.className = 'menu-item'
+    item.style.padding = '6px 12px'
+    item.style.cursor = 'pointer'
+    item.style.borderRadius = '2px'
+    item.style.display = 'flex'
+    item.style.alignItems = 'center'
+    item.style.gap = '8px'
+    item.innerHTML = `<i class="fas ${icon}" style="width: 16px; text-align: center;"></i> ${text}`
+    
+    // 添加悬停效果
+    item.addEventListener('mouseenter', () => {
+      item.style.background = '#f5f5f5'
+    })
+    item.addEventListener('mouseleave', () => {
+      item.style.background = 'transparent'
+    })
+    
+    // 添加点击事件
+    item.addEventListener('click', () => {
+      callback()
+      closeCurrentMenu()
+    })
+    
+    return item
+  }
+  
+  // 创建菜单项
+  const jumpItem = createMenuItem('fa-chevron-right', '跳转', () => {
+    handleMessageClick(message.id)
+  })
+  
+  const downloadItem = createMenuItem('fa-download', '下载', () => {
+    if (message.type === 'image') {
+      previewImage(message)
+    } else {
+      downloadFile(message)
+    }
+  })
+  
+  // 组装菜单
+  menu.appendChild(jumpItem)
+  menu.appendChild(downloadItem)
+  
+  // 添加到文档
+  document.body.appendChild(menu)
+  
+  // 保存当前菜单实例
+  currentMenu = menu
+  
+  // 点击其他地方关闭菜单
+  const closeMenu = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      closeCurrentMenu()
+    }
+  }
+  
+  // 保存监听器
+  currentCloseMenuListener = closeMenu
+  document.addEventListener('click', closeMenu)
+}
+
+// 下载图片
+const downloadImage = async () => {
+  if (!previewImageUrl.value) return
+  
+  try {
+    const response = await fetch(previewImageUrl.value)
+    if (response.ok) {
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'image.png'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      ElMessage.success('图片下载成功')
+    } else {
+      ElMessage.error('图片下载失败')
+    }
+  } catch (error) {
+    console.error('图片下载失败:', error)
+    ElMessage.error('图片下载失败')
+  }
 }
 
 // 获取文件名
@@ -1056,9 +1231,37 @@ onMounted(() => {
 
 .image-preview-img {
   max-width: 100%;
-  max-height: 90vh;
+  max-height: 80vh;
   object-fit: contain;
   border-radius: 8px;
+}
+
+.image-preview-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.image-preview-download {
+  padding: 8px 16px;
+  border: 1px solid var(--primary-color);
+  border-radius: 6px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.image-preview-download:hover {
+  background: var(--active-color);
+  border-color: var(--active-color);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 /* 响应式设计 */

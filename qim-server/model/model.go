@@ -53,18 +53,20 @@ type DepartmentEmployee struct {
 
 // 会话
 type Conversation struct {
-	ID            uint                 `json:"id" gorm:"primarykey"`
-	Type          string               `json:"type" gorm:"size:20;not null"`
-	Name          string               `json:"name" gorm:"size:200"`
-	Avatar        string               `json:"avatar" gorm:"size:500"`
-	CreatorID     uint                 `json:"creator_id"`
-	Announcement  string               `json:"announcement" gorm:"type:text"`
-	LastMessageID *uint                `json:"last_message_id"`
-	LastMessageAt *time.Time           `json:"last_message_at"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	Members       []ConversationMember `json:"members,omitempty" gorm:"foreignkey:ConversationID"`
-	LastMessage   *Message             `json:"last_message,omitempty" gorm:"foreignkey:LastMessageID"`
+	ID               uint                 `json:"id" gorm:"primarykey"`
+	Type             string               `json:"type" gorm:"size:20;not null"`
+	Name             string               `json:"name" gorm:"size:200"`
+	Avatar           string               `json:"avatar" gorm:"size:500"`
+	CreatorID        uint                 `json:"creator_id"`
+	Announcement     string               `json:"announcement" gorm:"type:text"`
+	InvitePermission string               `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
+	IsDeleted        bool                 `json:"is_deleted" gorm:"default:false"`
+	LastMessageID    *uint                `json:"last_message_id"`
+	LastMessageAt    *time.Time           `json:"last_message_at"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	Members          []ConversationMember `json:"members,omitempty" gorm:"foreignkey:ConversationID"`
+	LastMessage      *Message             `json:"last_message,omitempty" gorm:"foreignkey:LastMessageID"`
 }
 
 // 会话成员
@@ -222,6 +224,21 @@ type SystemMessage struct {
 	Sender     User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
 }
 
+// 任务
+type Task struct {
+	ID          uint           `json:"id" gorm:"primarykey"`
+	UserID      uint           `json:"user_id" gorm:"not null;index"`
+	Title       string         `json:"title" gorm:"size:500;not null"`
+	Description string         `json:"description" gorm:"type:text"`
+	DueDate     *time.Time     `json:"due_date"`
+	Priority    string         `json:"priority" gorm:"size:20;default:'medium'"` // low, medium, high
+	Status      string         `json:"status" gorm:"size:20;default:'todo'"`     // todo, in_progress, completed
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	User        User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
 // 小程序
 type MiniApp struct {
 	ID          uint           `json:"id" gorm:"primarykey"`
@@ -315,4 +332,36 @@ type ShortLink struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 	User        User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
+// AI配置
+type AIConfig struct {
+	ID                uint      `json:"id" gorm:"primarykey"`
+	UserID            uint      `json:"user_id" gorm:"not null;uniqueIndex"`
+	Provider          string    `json:"provider" gorm:"size:50;default:'openai'"`
+	OpenAIAPIKey      string    `json:"openai_api_key" gorm:"size:500"`
+	OpenAIModel       string    `json:"openai_model" gorm:"size:100"`
+	OpenAIBaseURL     string    `json:"openai_base_url" gorm:"size:500"`
+	BaiduAPIKey       string    `json:"baidu_api_key" gorm:"size:500"`
+	BaiduSecretKey    string    `json:"baidu_secret_key" gorm:"size:500"`
+	BaiduModel        string    `json:"baidu_model" gorm:"size:100"`
+	BaiduBaseURL      string    `json:"baidu_base_url" gorm:"size:500"`
+	AlibabaAPIKey     string    `json:"alibaba_api_key" gorm:"size:500"`
+	AlibabaModel      string    `json:"alibaba_model" gorm:"size:100"`
+	AlibabaBaseURL    string    `json:"alibaba_base_url" gorm:"size:500"`
+	TencentSecretID   string    `json:"tencent_secret_id" gorm:"size:500"`
+	TencentSecretKey  string    `json:"tencent_secret_key" gorm:"size:500"`
+	TencentModel      string    `json:"tencent_model" gorm:"size:100"`
+	TencentBaseURL    string    `json:"tencent_base_url" gorm:"size:500"`
+	BytedanceAPIKey   string    `json:"bytedance_api_key" gorm:"size:500"`
+	BytedanceModel    string    `json:"bytedance_model" gorm:"size:100"`
+	BytedanceBaseURL  string    `json:"bytedance_base_url" gorm:"size:500"`
+	AnthropicAPIKey   string    `json:"anthropic_api_key" gorm:"size:500"`
+	AnthropicModel    string    `json:"anthropic_model" gorm:"size:100"`
+	AnthropicBaseURL  string    `json:"anthropic_base_url" gorm:"size:500"`
+	MaxTokens         int       `json:"max_tokens" gorm:"default:1000"`
+	Temperature       float64   `json:"temperature" gorm:"default:0.7"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	User              User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }

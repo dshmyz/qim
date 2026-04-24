@@ -264,7 +264,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
   background: var(--card-bg);
   height: 72px;
   box-sizing: border-box;

@@ -49,6 +49,26 @@
               </div>
             </div>
           </div>
+          
+          <!-- 权限设置 -->
+          <div class="info-section" v-if="group.type === 'group'">
+            <div class="section-title">
+              <i class="fas fa-shield-alt"></i>
+              <h3>权限设置</h3>
+            </div>
+            <div class="info-grid">
+              <div class="info-item full-width">
+                <span class="info-label">邀请权限</span>
+                <div class="permission-setting" v-if="isGroupOwner(group)">
+                  <select v-model="invitePermission" @change="updateInvitePermission" class="permission-select">
+                    <option value="owner_admin">群主和管理员</option>
+                    <option value="all">所有成员</option>
+                  </select>
+                </div>
+                <span v-else class="info-value">{{ getInvitePermissionText(group.invite_permission) }}</span>
+              </div>
+            </div>
+          </div>
         </div>
         
         <!-- 操作按钮 -->
@@ -70,7 +90,7 @@
             <h3>群成员列表</h3>
           </div>
           <div class="members-grid">
-            <div v-for="member in group.members" :key="member.id" class="member-item" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
+            <div v-for="member in group.members" :key="member.id" class="member-item" @click="$emit('startPrivateChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
               <img :src="getMemberAvatar(member)" :alt="member.name" class="member-avatar" />
               <span class="member-name">{{ member.name }}</span>
               <span v-if="member.role === 'owner'" class="member-role owner">群主</span>
@@ -91,8 +111,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { generateAvatar } from '../utils/avatar'
+import { computed, ref, watch } from 'vue'
+import { generateAvatar, getAvatarUrl } from '../utils/avatar'
 import { API_BASE_URL } from '../config'
 import type { Conversation, User } from '../types'
 
@@ -109,24 +129,12 @@ defineEmits<{
   invite: [conversation: Conversation]
   editAnnouncement: []
   showMemberContextMenu: [event: MouseEvent, member: any]
+  startPrivateChat: [user: any]
 }>()
 
 // 获取群聊头像
 const getGroupAvatar = (group: Conversation) => {
-  if (group.avatar && group.avatar.startsWith('http')) {
-    return group.avatar
-  }
-  if (group.avatar) {
-    return serverUrl + group.avatar
-  }
-  return generateAvatar(group.name || '群聊')
-}
-
-// 获取群聊群主
-const getGroupOwner = (group: Conversation | null) => {
-  if (!group || !group.members) return ''
-  const owner = group.members.find((member: User) => member.role === 'owner')
-  return owner ? owner.name : ''
+  return getAvatarUrl(group.avatar, group.name || '群聊', serverUrl)
 }
 
 // 获取成员头像
@@ -141,12 +149,79 @@ const getMemberAvatar = (member: User) => {
   return generateAvatar(member.name || '成员')
 }
 
+// 获取群聊群主
+const getGroupOwner = (group: Conversation | null) => {
+  if (!group || !group.members) return ''
+  const owner = group.members.find((member: User) => member.role === 'owner')
+  return owner ? owner.name : ''
+}
+
 // 检查当前用户是否是群主
 const isGroupOwner = (group: Conversation | null) => {
   if (!group || !group.members) return false
   const currentUserId = localStorage.getItem('userId') || ''
   const owner = group.members.find((member: User) => member.role === 'owner')
   return owner ? owner.id === currentUserId : false
+}
+
+// 邀请权限
+const invitePermission = ref('owner_admin')
+
+// 监听group变化，更新邀请权限
+watch(
+  () => props.group,
+  (newGroup) => {
+    if (newGroup) {
+      invitePermission.value = newGroup.invite_permission || 'owner_admin'
+    }
+  },
+  { immediate: true }
+)
+
+// 获取邀请权限文本
+const getInvitePermissionText = (permission: string | undefined) => {
+  switch (permission) {
+    case 'all':
+      return '所有成员'
+    case 'owner_admin':
+    default:
+      return '群主和管理员'
+  }
+}
+
+// 更新邀请权限
+const updateInvitePermission = async () => {
+  if (!props.group) return
+  
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/conversations/${props.group.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        invite_permission: invitePermission.value
+      })
+    })
+    
+    if (response.ok) {
+      // 更新成功
+      console.log('邀请权限更新成功')
+    } else {
+      // 恢复原设置
+      if (props.group) {
+        invitePermission.value = props.group.invite_permission || 'owner_admin'
+      }
+      console.error('邀请权限更新失败')
+    }
+  } catch (error) {
+    console.error('更新邀请权限时出错:', error)
+    // 恢复原设置
+    if (props.group) {
+      invitePermission.value = props.group.invite_permission || 'owner_admin'
+    }
+  }
 }
 </script>
 
@@ -508,5 +583,37 @@ const isGroupOwner = (group: Conversation | null) => {
   background: linear-gradient(135deg, #4facfe, #00f2fe);
   color: #fff;
   box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+}
+
+/* 权限设置样式 */
+.permission-setting {
+  padding: 5px 8px;
+  background: var(--input-bg);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.permission-setting:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.permission-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-color);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+}
+
+.permission-select option {
+  background: var(--card-bg);
+  color: var(--text-color);
+  padding: 8px;
 }
 </style>

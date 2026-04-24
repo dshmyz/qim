@@ -1,6 +1,7 @@
 package app
 
 import (
+	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/handler"
 	"qim-server/middleware"
@@ -12,17 +13,41 @@ import (
 
 // SetupRoutes 设置 API 路由
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
+	// 设置配置
+	handler.SetConfig(cfg)
+
+	// 初始化AI服务
+	aiService := ai.NewAIService(&cfg.AI)
+
+	// 初始化MCP服务器
+	mcpServer := ai.NewMCPServer(false)
+
+	// 启动MCP服务器（在后台运行）
+	go func() {
+		if err := mcpServer.Start(":8081"); err != nil {
+			// 仅记录错误，不影响主服务启动
+			// log.Printf("MCP server start error: %v", err)
+		}
+	}()
+
+	// 初始化AI处理器
+	aiHandler := handler.NewAIHandler(aiService, mcpServer)
+
+	// 自定义CORS中间件，确保所有响应都包含CORS头
 	// CORS配置
-	r.Use(cors.New(cors.Config{
+	corsMiddleware := cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-	}))
+	})
 
+	// 全局应用CORS中间件
+	r.Use(corsMiddleware)
 	// 静态文件服务
 	r.Static("/uploads", "./uploads")
+	// 使用静态文件处理函数，并确保CORS中间件应用
 
 	// API路由
 	api := r.Group("/api/v1")
@@ -52,6 +77,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户
 			authed.GET("/users/me", handler.GetCurrentUser)
 			authed.PUT("/users/me", handler.UpdateUser)
+			// AI配置
+			authed.GET("/ai/config", handler.GetAIConfig)
+			authed.PUT("/ai/config", handler.UpdateAIConfig)
 
 			// 组织架构
 			authed.GET("/organization/tree", handler.GetOrganizationTree)
@@ -72,11 +100,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/conversations/:id/pin", handler.PinConversation)
 			// 设置免打扰
 			authed.PUT("/conversations/:id/mute", handler.SetConversationMute)
+			// 解散群聊
+			authed.DELETE("/conversations/:id", handler.DeleteConversation)
 
 			// 消息
-			authed.GET("/conversations/:id/messages", handler.GetMessages)
-			authed.POST("/conversations/:id/messages", handler.SendMessage)
-			authed.POST("/conversations/:id/read", handler.MarkConversationAsRead)
+				authed.GET("/conversations/:id/messages", handler.GetMessages)
+				authed.POST("/conversations/:id/messages", handler.SendMessage)
+				authed.POST("/conversations/:id/messages/stream", handler.StreamMessage)
+				authed.POST("/conversations/:id/read", handler.MarkConversationAsRead)
 			authed.GET("/messages/:id/read-users", handler.GetMessageReadUsers)
 			// 消息撤回
 			authed.POST("/messages/:id/recall", handler.RecallMessage)
@@ -109,6 +140,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// WebSocket
 			authed.GET("/ws", func(c *gin.Context) {
 				ws.ServeWs(hub, c)
+			})
+
+			// 屏幕共享 WebSocket
+			authed.GET("/screen-share", func(c *gin.Context) {
+				ws.ServeScreenShare(hub, c)
 			})
 
 			// 文件上传
@@ -178,6 +214,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/notifications/:id/read", handler.MarkNotificationAsRead)
 			authed.PUT("/notifications/read-all", handler.MarkAllNotificationsAsRead)
 
+			// 任务管理
+			authed.GET("/tasks", handler.GetTasks)
+			authed.POST("/tasks", handler.CreateTask)
+			authed.PUT("/tasks/:id", handler.UpdateTask)
+			authed.DELETE("/tasks/:id", handler.DeleteTask)
+			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
+
 			// 短链接管理
 			authed.POST("/shortlinks", handler.CreateShortLink)
 			authed.GET("/shortlinks", handler.GetShortLinks)
@@ -192,6 +235,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户角色管理
 			authed.POST("/users/:id/roles", middleware.RequireRole("system_admin"), handler.AddUserRole)
 			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole("system_admin"), handler.RemoveUserRole)
+
+			// AI相关路由
+			aiHandler.RegisterRoutes(authed)
 		}
 	}
 

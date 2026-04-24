@@ -434,9 +434,14 @@ const closeFilePreview = () => {
 
 // 分享文件
 const shareFile = (file: any) => {
+  // 确保文件对象包含URL属性
+  const fileWithUrl = {
+    ...file,
+    url: `${file.storage_path}`||`${file.url}`
+  }
   // 触发全局分享事件，复用Main.vue中的分享功能
   window.dispatchEvent(new CustomEvent('openShareModal', {
-    detail: { type: 'file', data: file }
+    detail: { type: 'file', data: fileWithUrl }
   }))
 }
 
@@ -790,44 +795,54 @@ onMounted(async () => {
   justify-content: center;
   border-radius: 8px;
   margin-bottom: 12px;
-  font-size: 24px;
-  color: white;
+  font-size: 28px;
+  color: var(--text-color);
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  transition: all 0.2s ease;
 }
 
-.file-icon-image {
-  background: var(--primary-color);
+.file-icon:hover {
+  transform: scale(1.05);
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.file-icon-video {
-  background: var(--danger-color);
+/* 文件类型图标颜色 */
+.file-icon-image i {
+  color: var(--primary-color);
 }
 
-.file-icon-audio {
-  background: var(--warning-color);
+.file-icon-video i {
+  color: var(--error-color);
 }
 
-.file-icon-pdf {
-  background: var(--danger-color);
+.file-icon-audio i {
+  color: var(--warning-color);
 }
 
-.file-icon-word {
-  background: var(--primary-color);
+.file-icon-pdf i {
+  color: var(--error-color);
 }
 
-.file-icon-excel {
-  background: var(--success-color);
+.file-icon-word i {
+  color: var(--primary-color);
 }
 
-.file-icon-powerpoint {
-  background: var(--warning-color);
+.file-icon-excel i {
+  color: var(--success-color);
 }
 
-.file-icon-text {
-  background: var(--text-secondary);
+.file-icon-powerpoint i {
+  color: var(--warning-color);
 }
 
-.file-icon-other {
-  background: var(--text-tertiary);
+.file-icon-text i {
+  color: var(--text-secondary);
+}
+
+.file-icon-other i {
+  color: var(--text-tertiary);
 }
 
 .file-info {

@@ -7,19 +7,40 @@
       </button>
     </div>
     
+    <!-- 频道分类标签 -->
+    <div class="channel-tabs">
+      <button 
+        class="tab-button" 
+        :class="{ active: activeTab === 'subscribed' }" 
+        @click="activeTab = 'subscribed'"
+      >
+        订阅频道
+      </button>
+      <button 
+        class="tab-button" 
+        :class="{ active: activeTab === 'discover' }" 
+        @click="activeTab = 'discover'"
+      >
+        频道广场
+      </button>
+    </div>
+    
     <div class="channel-list-content">
       <div v-if="loading" class="loading">
         <div class="loading-spinner"></div>
         <span>加载中...</span>
       </div>
-      <div v-else-if="channels.length === 0" class="empty">
+      <div v-else-if="filteredChannels.length === 0" class="empty">
         <i class="fas fa-bullhorn empty-icon"></i>
-        <h4>暂无频道</h4>
-        <p>成为第一个创建频道的人吧！</p>
+        <h4>{{ activeTab === 'subscribed' ? '暂无订阅频道' : '暂无频道' }}</h4>
+        <p>{{ activeTab === 'subscribed' ? '去频道广场订阅感兴趣的频道吧！' : '成为第一个创建频道的人吧！' }}</p>
+        <button v-if="activeTab === 'subscribed'" class="switch-to-discover-btn" @click="activeTab = 'discover'">
+          浏览频道广场
+        </button>
       </div>
       <div v-else class="channels-grid">
         <div 
-          v-for="channel in channels" 
+          v-for="channel in filteredChannels" 
           :key="channel.id" 
           class="channel-card"
           @click="selectChannel(channel)"
@@ -44,6 +65,7 @@
           <div class="channel-card-body">
             <h4 class="channel-name">{{ channel.name }}</h4>
             <p class="channel-description">{{ channel.description }}</p>
+            <span v-if="channel.status === 'pending'" class="channel-status pending">待审批</span>
           </div>
           <div class="channel-card-footer">
             <span class="channel-creator">创建者: {{ channel.creator?.name || '未知' }}</span>
@@ -101,6 +123,7 @@ const emit = defineEmits<{
 const channels = ref<Channel[]>([])
 const loading = ref(false)
 const showCreateChannelModal = ref(false)
+const activeTab = ref('subscribed')
 
 const createChannelForm = ref({
   name: '',
@@ -108,8 +131,17 @@ const createChannelForm = ref({
   avatar: ''
 })
 
+// 过滤后的频道列表
+const filteredChannels = computed(() => {
+  if (activeTab.value === 'subscribed') {
+    return channels.value.filter(channel => channel.is_subscribed)
+  } else {
+    return channels.value
+  }
+})
+
 const hasAdminPermission = computed(() => {
-  return props.currentUser.roles?.includes('system_admin')
+  return props.currentUser.isAdmin || props.currentUser.roles?.includes('system_admin')
 })
 
 const loadChannels = async () => {
@@ -149,6 +181,8 @@ const createChannel = async () => {
       showCreateChannelModal.value = false
       createChannelForm.value = { name: '', description: '', avatar: '' }
       await loadChannels()
+      // 显示审批提示
+      alert('频道创建成功，等待管理员审批')
     }
   } catch (error) {
     console.error('创建频道失败:', error)
@@ -238,6 +272,71 @@ onMounted(() => {
   align-items: center;
   background: var(--sidebar-bg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 频道分类标签 */
+.channel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-button:hover {
+  color: var(--primary-color);
+  background: var(--hover-color);
+}
+
+.tab-button.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  background: var(--card-bg);
+}
+
+/* 频道状态标签 */
+.channel-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.channel-status.pending {
+  background: #FFF8E1;
+  color: #FF9800;
+}
+
+/* 切换到频道广场按钮 */
+.switch-to-discover-btn {
+  margin-top: 20px;
+  padding: 10px 20px;
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.switch-to-discover-btn:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .channel-header h3 {

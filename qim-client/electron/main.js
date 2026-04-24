@@ -1,37 +1,90 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-// 暂时注释掉electron-updater，避免开发环境中的错误
-// import { autoUpdater } from 'electron-updater'
-
-// 模拟autoUpdater对象，用于开发环境
-const autoUpdater = {
-  checkForUpdates: () => {
-    return new Promise((resolve) => {
-      console.log('模拟检查更新')
-      resolve()
-    })
-  },
-  on: (event, callback) => {
-    console.log(`注册事件监听器: ${event}`)
-  },
-  quitAndInstall: () => {
-    console.log('模拟退出并安装更新')
-  },
-  // 添加missing方法
-  setFeedURL: () => {
-    console.log('模拟设置更新源')
-  }
-}
+import { execSync } from 'child_process'
+import fs from 'fs'
+import os from 'os'
+import crypto from 'crypto'
+import pkg from 'electron-updater'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const screenshots = require('./screenshots/lib/index.cjs').default
+const { autoUpdater } = pkg
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+function getIconPath(size = 512) {
+  const iconDir = path.join(__dirname, 'icons')
+  const iconPath = path.join(iconDir, `icon-v2_${size}x${size}.png`)
+  if (fs.existsSync(iconPath)) {
+    return iconPath
+  }
+  return path.join(iconDir, `icon_${size}x${size}.png`)
+}
+
+function loadIcon(size = 512) {
+  const iconPath = getIconPath(size)
+  try {
+    const iconImage = fs.readFileSync(iconPath)
+    return nativeImage.createFromBuffer(iconImage)
+  } catch (error) {
+    console.error('Error loading icon:', error)
+    return null
+  }
+}
+
+function getIconDataURL(size = 512) {
+  const iconPath = getIconPath(size)
+  try {
+    const iconImage = fs.readFileSync(iconPath)
+    const base64 = iconImage.toString('base64')
+    return `data:image/png;base64,${base64}`
+  } catch (error) {
+    console.error('Error creating icon data URL:', error)
+    return null
+  }
+}
+
+const autoUpdaterConfig = {
+  win7: {
+    version: '22.3.27',
+    feedUrl: 'https://update.example.com/win7'
+  },
+  win10: {
+    version: '41.2.0',
+    feedUrl: 'https://update.example.com/win10'
+  }
+}
+
+function getWindowsVersion() {
+  const platform = process.platform
+  if (platform !== 'win32') return null
+
+  const userAgent = app.getUserAgent()
+  const match = userAgent.match(/Windows NT (\d+)/)
+  if (match) {
+    return parseInt(match[1], 10)
+  }
+  return 10
+}
+
+function getAutoUpdaterConfig() {
+  const platform = process.platform
+  if (platform === 'win32') {
+    const winVersion = getWindowsVersion()
+    if (winVersion && winVersion < 10) {
+      return autoUpdaterConfig.win7
+    }
+    return autoUpdaterConfig.win10
+  }
+  return null
+}
 
 let mainWindow
 let tray
 
 function createWindow() {
-  // 如果已经存在窗口，就显示它，而不是创建一个新的窗口
   if (mainWindow) {
     console.log('Window already exists, showing it')
     mainWindow.show()
@@ -39,11 +92,9 @@ function createWindow() {
   }else {
     console.log('Creating new window')
   }
-  
-  // 使用 base64 编码的 PNG 图标
-  const iconData = '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'
-  const icon = nativeImage.createFromDataURL('data:image/png;base64,' + iconData)
-  
+
+  const icon = loadIcon(256)
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -52,147 +103,47 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     sandbox: false,
-    frame: false, // 去掉默认窗口边框
-    titleBarStyle: 'customButtonsOnHover', // 仅在悬停时显示按钮
+    frame: false,
+    titleBarStyle: 'customButtonsOnHover',
     titleBarOverlay: {
-      visible: false, // 禁用标题栏覆盖
-      height: 0 // 设置高度为 0
+      visible: false,
+      height: 0
     },
-    trafficLightPosition: { x: -100, y: -100 } // 将控制按钮移到屏幕外
+    trafficLightPosition: { x: -100, y: -100 }
   })
 
-  // 在开发模式下，加载 Vite 开发服务器
-  // 在生产模式下，加载本地文件
   const isDev = process.env.NODE_ENV !== 'production'
-  const url = isDev 
-    ? 'http://localhost:3000' 
+  const url = isDev
+    ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../dist/index.html')}`
-  
+
   mainWindow.loadURL(url)
   console.log(`Loading URL: ${url}`)
-  
-  // 当渲染进程加载完成后，注入必要的代码
+
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Render process loaded')
-    // 直接注入窗口控制函数到渲染进程
-    // mainWindow.webContents.executeJavaScript(`
-    //   // 注入窗口控制函数
-    //   window.minimizeWindow = function() {
-    //     console.log('Minimize window function called')
-    //     // 发送消息到主进程
-    //     window.postMessage({ type: 'MINIMIZE_WINDOW' }, '*')
-    //   }
-    //   
-    //   window.maximizeWindow = function() {
-    //     console.log('Maximize window function called')
-    //     // 发送消息到主进程
-    //     window.postMessage({ type: 'MAXIMIZE_WINDOW' }, '*')
-    //   }
-    //   
-    //   window.closeWindow = function() {
-    //     console.log('Close window function called')
-    //     // 发送消息到主进程
-    //     window.postMessage({ type: 'CLOSE_WINDOW' }, '*')
-    //   }
-    //   
-    //   // 注入electron对象
-    //   window.electron = {
-    //     ipcRenderer: {
-    //       send: (channel, data) => {
-    //         console.log('Sending IPC message:', channel, data)
-    //          window.postMessage({ type: 'ELECTRON_IPC', channel, data }, '*')
-    //       }
-    //     }
-    //   }
-    //   
-    //   console.log('Window control functions and electron object injected')
-    // `)
-    // 在开发者模式下打开开发者工具
     if (process.env.NODE_ENV !== 'production') {
       console.log('Opening DevTools in development mode')
       mainWindow.webContents.openDevTools()
     }
   })
-  
-  // 监听窗口事件
-  // const handleMessage = (event, message) => {
-  //   console.log('Received message from renderer:', message)
-  //   if (message.type === 'MINIMIZE_WINDOW') {
-  //     console.log('Minimizing window')
-  //     mainWindow.minimize()
-  //   } else if (message.type === 'MAXIMIZE_WINDOW') {
-  //     console.log('Maximizing window')
-  //     if (mainWindow.isMaximized()) {
-  //       console.log('Window is maximized, unmaximizing')
-  //       mainWindow.unmaximize()
-  //     } else {
-  //       console.log('Window is not maximized, maximizing')
-  //       mainWindow.maximize()
-  //     }
-  //   } else if (message.type === 'CLOSE_WINDOW') {
-  //     console.log('Hiding window instead of closing')
-  //     mainWindow.hide()
-  //   } else if (message.type === 'ELECTRON_IPC') {
-  //     console.log(`Received ELECTRON_IPC message: ${message.channel}`, message.data)
-  //     if (message.channel === 'minimize-window') {
-  //       console.log('Minimizing window')
-  //       mainWindow.minimize()
-  //     } else if (message.channel === 'maximize-window') {
-  //       console.log('Maximizing window')
-  //       if (mainWindow.isMaximized()) {
-  //         console.log('Window is maximized, unmaximizing')
-  //         mainWindow.unmaximize()
-  //       } else {
-  //         console.log('Window is not maximized, maximizing')
-  //         mainWindow.maximize()
-  //       }
-  //     } else if (message.channel === 'close-window') {
-  //       console.log('Hiding window instead of closing')
-  //       mainWindow.hide()
-  //     }
-  //   }
-  // }
-  
-  // mainWindow.webContents.on('message', handleMessage)
-  
-  // 当窗口关闭时，隐藏窗口而不是销毁它
-  mainWindow.on('close', function (event) {
-    // 移除事件监听器
-    try {
-      if (mainWindow && mainWindow.webContents) {
-        // ipcMain.removeAllListeners('minimize-window')
-        // ipcMain.removeAllListeners('maximize-window')
-        // ipcMain.removeAllListeners('close-window')
-        // mainWindow.webContents.removeListener('message', handleMessage)
-      }
-    } catch (error) {
-      console.log('Error removing listener:', error)
-    }
-    
-    // 阻止默认的关闭行为
-    event.preventDefault()
-    // 隐藏窗口
-    mainWindow.hide()
-    console.log('Window hidden instead of closed')
+
+  mainWindow.on('close', function () {
+    mainWindow = null
   })
-  
-  // 当窗口真正销毁时，才将mainWindow设置为null
+
   mainWindow.on('destroyed', function () {
     console.log('Window destroyed event triggered')
     mainWindow = null
   })
-  
-  // 监听窗口控制事件
-  
+
   console.log('Setting up window control event listeners')
-  
-  // 添加全局快捷键测试
-  
+
   globalShortcut.register('CommandOrControl+M', () => {
     console.log('Global shortcut: CommandOrControl+M pressed')
     mainWindow.minimize()
   })
-  
+
   globalShortcut.register('CommandOrControl+K', () => {
     console.log('Global shortcut: CommandOrControl+K pressed')
     if (mainWindow.isMaximized()) {
@@ -201,25 +152,98 @@ function createWindow() {
       mainWindow.maximize()
     }
   })
-  
+
   globalShortcut.register('CommandOrControl+W', () => {
     console.log('Global shortcut: CommandOrControl+W pressed')
     mainWindow.hide()
   })
-  
-  // 添加退出快捷键
+
   globalShortcut.register('CommandOrControl+Q', () => {
     console.log('Global shortcut: CommandOrControl+Q pressed')
     app.quit()
   })
-  
-  // 监听窗口控制事件
-  // 这些事件已经在handleMessage函数中处理了，不需要重复添加
+
+  // 初始化截图功能
+  let screenshotInstance = null
+  let screenshotInitError = null
+
+  try {
+    console.log('Initializing screenshots...')
+    screenshotInstance = new screenshots({ singleWindow: true })
+
+    screenshotInstance.on('ok', (e, buffer, data) => {
+      console.log('[screenshot] Captured, buffer length:', buffer.length)
+      if (mainWindow) {
+        mainWindow.show()
+        const img = nativeImage.createFromBuffer(buffer)
+        const dataUrl = img.toDataURL()
+        console.log('[screenshot] DataURL created, length:', dataUrl.length)
+        mainWindow.webContents.send('screenshot-taken', dataUrl)
+      }
+    })
+
+    screenshotInstance.on('cancel', (e) => {
+      console.log('[screenshot] Cancelled')
+      if (mainWindow) {
+        mainWindow.show()
+      }
+    })
+
+    screenshotInstance.on('save', (e, buffer, data) => {
+      console.log('[screenshot] Save triggered, buffer length:', buffer.length)
+    })
+
+    screenshotInstance.on('ready', () => {
+      console.log('[screenshot] Tool ready')
+    })
+
+    screenshotInstance.on('error', (err) => {
+      console.error('[screenshot] Error:', err)
+      screenshotInitError = err
+    })
+
+    console.log('[screenshot] Instance created successfully')
+    
+    // 注册截图快捷键
+    globalShortcut.register('CommandOrControl+Shift+A', () => {
+      console.log('Global shortcut: CommandOrControl+Shift+A pressed, starting screenshot')
+      if (screenshotInstance) {
+        try {
+          screenshotInstance.startCapture()
+        } catch (error) {
+          console.error('[screenshot] Error starting capture:', error)
+        }
+      } else {
+        console.error('[screenshot] Cannot capture: instance not initialized')
+      }
+    })
+  } catch (error) {
+    console.error('[screenshot] Failed to initialize:', error)
+    screenshotInitError = error
+  }
+
+  ipcMain.on('take-screenshot', async () => {
+    console.log('[screenshot] Received take-screenshot event')
+    console.log('[screenshot] Instance exists:', !!screenshotInstance)
+    console.log('[screenshot] Init error:', screenshotInitError)
+
+    if (screenshotInstance) {
+      try {
+        console.log('[screenshot] Starting capture...')
+        screenshotInstance.startCapture()
+      } catch (error) {
+        console.error('[screenshot] Error starting capture:', error)
+      }
+    } else {
+      console.error('[screenshot] Cannot capture: instance not initialized')
+    }
+  })
+
   ipcMain.on('minimize-window', () => {
     console.log('Received minimize-window event')
     mainWindow.minimize()
   })
-  
+
   ipcMain.on('maximize-window', () => {
     console.log('Received maximize-window event')
     if (mainWindow.isMaximized()) {
@@ -230,77 +254,113 @@ function createWindow() {
       mainWindow.maximize()
     }
   })
-  
+
   ipcMain.on('close-window', () => {
     console.log('Received close-window event')
-    // mainWindow.hide()
-    mainWindow.close()
-    // mainWindow = null
-  })
-  
-  // 处理截图请求
-  ipcMain.on('take-screenshot', async (event) => {
-    console.log('Received take-screenshot event')
-    try {
-      // 尝试使用desktopCapturer实现真正的截图功能
-      const { desktopCapturer } = require('electron')
-      
-      // 获取所有屏幕源
-      const sources = await desktopCapturer.getSources({ types: ['screen'] })
-      
-      if (sources.length === 0) {
-        console.log('No screen sources found')
-        // 如果没有找到屏幕源，返回模拟数据
-        const screenshotData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-        event.sender.send('screenshot-taken', screenshotData)
-        return
-      }
-      
-      // 选择第一个屏幕源
-      const source = sources[0]
-      console.log('Selected screen source:', source.name)
-      
-      // 使用navigator.mediaDevices.getDisplayMedia来捕获屏幕
-      // 注意：这在Electron的主进程中可能无法直接使用
-      // 所以我们仍然使用模拟数据作为备用
-      
-      // 模拟截图结果（实际生产环境中应该使用真正的截图数据）
-      const screenshotData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-      
-      // 发送截图结果回渲染进程
-      event.sender.send('screenshot-taken', screenshotData)
-      console.log('Screenshot taken and sent to renderer')
-    } catch (error) {
-      console.error('Error taking screenshot:', error)
-      // 即使出错也返回一个模拟的截图数据，确保前端能正常显示
-      const screenshotData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-      event.sender.send('screenshot-taken', screenshotData)
+    if (mainWindow) {
+      mainWindow.hide()
     }
   })
-  
+
+  let trayFlashInterval = null
+  let isTrayFlashing = false
+  let normalTrayIcon = null
+  let hasUnread = false
+
+  ipcMain.on('flash-tray', () => {
+    console.log('Received flash-tray event')
+    if (!tray) return
+
+    hasUnread = true
+
+    // 使用 flashFrame 让任务栏/停靠图标闪烁（跨平台支持）
+    if (mainWindow) {
+      mainWindow.flashFrame(true)
+    }
+
+    if (process.platform === 'darwin') {
+      app.dock?.bounce('informational')
+      // 设置 Dock 徽章
+      app.dock?.setBadge('!')
+    }
+
+    // 对于所有平台，更新托盘工具提示
+    tray.setToolTip('QIM 应用 - 有新消息!')
+
+    if (isTrayFlashing) return
+
+    isTrayFlashing = true
+    normalTrayIcon = tray.getImage()
+    let flashCount = 0
+    const maxFlashCount = 20
+
+    trayFlashInterval = setInterval(() => {
+      flashCount++
+      if (flashCount > maxFlashCount) {
+        clearInterval(trayFlashInterval)
+        trayFlashInterval = null
+        isTrayFlashing = false
+        if (normalTrayIcon) {
+          tray.setImage(normalTrayIcon)
+        }
+        return
+      }
+
+      if (flashCount % 2 === 0) {
+        if (normalTrayIcon) {
+          tray.setImage(normalTrayIcon)
+        }
+      } else {
+        // 可以创建一个带有徽章的图标，但为了简单，这里我们切换到一个视觉上有区别的状态
+        tray.setImage(normalTrayIcon)
+      }
+    }, 500)
+  })
+
+  ipcMain.on('stop-tray-flash', () => {
+    console.log('Received stop-tray-flash event')
+    hasUnread = false
+
+    if (trayFlashInterval) {
+      clearInterval(trayFlashInterval)
+      trayFlashInterval = null
+    }
+    isTrayFlashing = false
+
+    if (normalTrayIcon && tray) {
+      tray.setImage(normalTrayIcon)
+    }
+
+    if (process.platform === 'darwin') {
+      app.dock?.setBadge('')
+    }
+
+    if (mainWindow) {
+      mainWindow.flashFrame(false)
+    }
+
+    if (tray) {
+      tray.setToolTip('QIM 应用')
+    }
+  })
+
   console.log('Global shortcuts registered')
 }
 
 function createTray() {
-  // 如果已经存在托盘图标，就返回，而不是创建一个新的托盘图标
   if (tray) {
     console.log('Tray already exists, returning')
     return
   }
-  
+
   try {
     console.log('开始创建托盘图标')
-    
-    // 使用 base64 编码的 PNG 图标
-    const iconData = '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'
-    
-    console.log('创建图标数据')
-    const image = nativeImage.createFromDataURL('data:image/png;base64,' + iconData)
-    
+
+    const image = loadIcon(22)
     console.log('创建托盘实例')
     tray = new Tray(image)
     console.log('托盘实例创建成功')
-    
+
     const contextMenu = Menu.buildFromTemplate([
       {
         label: '显示应用',
@@ -321,14 +381,13 @@ function createTray() {
         }
       }
     ])
-    
+
     console.log('设置托盘工具提示')
     tray.setToolTip('QIM 应用')
-    
+
     console.log('设置托盘上下文菜单')
     tray.setContextMenu(contextMenu)
-    
-    // 点击托盘图标显示/隐藏窗口
+
     tray.on('click', () => {
       console.log('点击托盘图标')
       if (mainWindow) {
@@ -341,36 +400,41 @@ function createTray() {
         createWindow()
       }
     })
-    
+
     console.log('托盘图标创建成功')
   } catch (error) {
     console.error('创建托盘图标时出错:', error)
   }
 }
 
-// 当 Electron 完成初始化并准备创建浏览器窗口时调用此方法
 app.whenReady().then(() => {
   console.log('App ready')
   createWindow()
   createTray()
-  
-  // 设置 Dock 图标（仅 macOS）
-  if (app.dock) {
-    const iconData = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAM1BMVEUAAAAA//8AwMD///////////////////////////////////////////8G2HTVAAAAD3RSTlMAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAvEOwtAAAFVklEQVR4XpWWB67c2BUFb3g557T/hRo9/WUMZHlgr4Bg8Z4qQgQJlHI4A8SzFVrapvmTF9O7dmYRFZ60YiBhJRCgh1FYhiLAmdvX0CzTOpNE77ME0Zty/nWWzchDtiqrmQDeuv3powQ5ta2eN0FY0InkqDD73lT9c9lEzwUNqgFHs9VQce3TVClFCQrSTfOiYkVJQBmpbq2L6iZavPnAPcoU0dSw0SUTqz/GtrGuXfbyyBniKykOWQWGqwwMA7QiYAxi+IlPdqo+hYHnUt5ZPfnsHJyNiDtnpJyayNBkF6cWoYGAMY92U2hXHF/C1M8uP/ZtYdiuj26UdAdQQSXQErwSOMzt/XWRWAz5GuSBIkwG1H3FabJ2OsUOUhGC6tK4EMtJO0ttC6IBD3kM0ve0tJwMdSfjZo+EEISaeTr9P3wYrGjXqyC1krcKdhMpxEnt5JetoulscpyzhXN5FRpuPHvbeQaKxFAEB6EN+cYN6xD7RYGpXpNndMmZgM5Dcs3YSNFDHUo2LGfZuukSWyUYirJAdYbF3MfqEKmjM+I2EfhA94iG3L7uKrR+GdWD73ydlIB+6hgref1QTlmgmbM3/LeX5GI1Ux1RWpgxpLuZ2+I+IjzZ8wqE4nilvQdkUdfhzI5QDWy+kw5Wgg2pGpeEVeCCA7b85BO3F9DzxB3cdqvBzWcmzbyMiqhzuYqtHRVG2y4x+KOlnyqla8AoWWpuBoYRxzXrfKuILl6SfiWCbjxoZJUaCBj1CjH7GIaDbc9kqBY3W/Rgjda1iqQcOJu2WW+76pZC9QG7M00dffe9hNnseupFL53r8F7YHSwJWUKP2q+k7RdsxyOB11n0xtOvnW4irMMFNV4H0uqwS5ExsmP9AxbDTc9JwgneAT5vTiUSm1E7BSflSt3bfa1tv8Di3R8n3Af7MNWzs49hmauE2wP+ttrq+AsWpFG2awvsuOqbipWHgtuvuaAE+A1Z/7gC9hesnr+7wqCwG8c5yAg3AL1fm8T9AZtp/bbJGwl1pNrE7RuOX7PeMRUERVaPpEs+yqeoSmuOlokqw49pgomjLeh7icHNlG19yjs6XXOMedYm5xH2YxpV2tc0Ro2jJfxC50ApuxGob7lMsxfTbeUv07TyYxpeLucEH1gNd4IKH2LAg5TdVhlCafZvpskfncCfx8pOhJzd76bJWeYFnFciwcYfubRc12Ip/ppIhA1/mSZ/RxjFDrJC5xifFjJpY2Xl5zXdguFqYyTR1zSp1Y9p+tktDYYSNflcxI0iyO4TPBdlRcpeqjK/piF5bklq77VSEaA+z8qmJTFzIWiitbnzR794USKBUaT0NTEsVjZqLaFVqJoPN9ODG70IPbfBHKK+/q/AWR0tJzYHRULOa4MP+W/HfGadZUbfw177G7j/OGbIs8TahLyynl4X4RinF793Oz+BU0saXtUHrVBFT/DnA3ctNPoGbs4hRIjTok8i+algT1lTHi4SxFvONKNrgQFAq2/gFnWMXgwffgYMJpiKYkmW3tTg3ZQ9Jq+f8XN+A5eeUKHWvJWJ2sgJ1Sop+wwhqFVijqWaJhwtD8MNlSBeWNNWTa5Z5kPZw5+LbVT99wqTdx29lMUH4OIG/D86ruKEauBjvH5xy6um/Sfj7ei6UUVk4AIl3MyD4MSSTOFgSwsH/QJWaQ5as7ZcmgBZkzjjU1UrQ74ci1gWBCSGHtuV1H2mhSnO3Wp/3fEV5a+4wz//6qy8JxjZsmxxy5+4w9CDNJY09T072iKG0EnOS0arEYgXqYnXcYHwjTtUNAcMelOd4xpkoqiTYICWFq0JSiPfPDQdnt+4/wuqcXY47QILbgAAAABJRU5ErkJggg=='
-    const image = nativeImage.createFromDataURL('data:image/png;base64,' + iconData)
-    app.dock.setIcon(image)
-  }
 
-  app.on('activate', function () {
-    console.log('activate event triggered')
-    createWindow()
-    // if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  if (app.dock) {
+    const image = loadIcon(512)
+    if (image) {
+      app.dock.setIcon(image)
+    }
+  }
 })
 
-// 自动更新配置
+  app.on('activate', function () {
+    if (!mainWindow) {
+      console.log('activate event triggered')
+      createWindow()
+    }
+  })
+
+
 function setupAutoUpdater() {
-  // 监听更新事件
+  const config = getAutoUpdaterConfig()
+  if (config) {
+    console.log(`配置自动更新: Windows 版本对应的更新服务器: ${config.feedUrl}`)
+    autoUpdater.setFeedURL({ provider: 'generic', url: config.feedUrl })
+  }
+
   autoUpdater.on('checking-for-update', () => {
     console.log('正在检查更新...')
     if (mainWindow) {
@@ -411,12 +475,10 @@ function setupAutoUpdater() {
     if (mainWindow) {
       mainWindow.webContents.send('update-downloaded', info)
     }
-    
-    // 下载完成后自动安装
+
     autoUpdater.quitAndInstall()
   })
 
-  // 应用启动时检查更新
   if (app.isPackaged) {
     autoUpdater.checkForUpdates().catch(error => {
       console.error('检查更新失败:', error)
@@ -424,7 +486,6 @@ function setupAutoUpdater() {
   }
 }
 
-// 监听渲染进程的检查更新请求
 ipcMain.on('check-for-updates', () => {
   console.log('收到检查更新请求')
   autoUpdater.checkForUpdates().catch(error => {
@@ -435,25 +496,181 @@ ipcMain.on('check-for-updates', () => {
   })
 })
 
-// 监听渲染进程的下载更新请求
 ipcMain.on('download-update', () => {
-  console.log('收到下载更新请求')
-  // 自动更新器会在发现更新后自动下载
-  // 这里只是触发检查更新
-  autoUpdater.checkForUpdates().catch(error => {
-    console.error('检查更新失败:', error)
-    if (mainWindow) {
-      mainWindow.webContents.send('update-error', error.message)
+    console.log('收到下载更新请求')
+    autoUpdater.checkForUpdates().catch(error => {
+      console.error('检查更新失败:', error)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', error.message)
+      }
+    })
+  })
+
+  // 屏幕共享相关
+  ipcMain.on('start-screen-share', async () => {
+    try {
+      console.log('启动屏幕共享')
+      // 获取可用的屏幕和窗口，指定较大的缩略图尺寸
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: {
+          width: 640,
+          height: 360
+        }
+      })
+      
+      // 转换缩略图为base64
+      const sourcesWithThumbnails = sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL()
+      }))
+      
+      // 发送屏幕源信息到渲染进程
+      if (mainWindow) {
+        mainWindow.webContents.send('screen-sources', sourcesWithThumbnails)
+      }
+    } catch (error) {
+      console.error('获取屏幕源失败:', error)
     }
   })
-})
 
-// 当所有窗口都关闭时退出应用（Windows & Linux）
+  // 处理WebSocket消息发送
+  ipcMain.on('send-websocket-message', (event, message) => {
+    console.log('发送WebSocket消息:', message.type)
+    // 这里需要实现WebSocket消息发送逻辑
+    // 实际项目中，应该通过WebSocket连接发送消息
+    // 这里只是模拟发送
+    setTimeout(() => {
+      // 模拟接收方收到消息
+      if (mainWindow) {
+        mainWindow.webContents.send('websocket-message', {
+          type: message.type,
+          data: {
+            ...message.data,
+            from_user_id: 1 // 模拟发送者ID
+          }
+        })
+      }
+    }, 100)
+  })
+
+  // 处理WebRTC相关消息
+  ipcMain.on('webrtc-message', (event, message) => {
+    console.log('处理WebRTC消息:', message.type)
+    // 这里需要实现WebRTC消息处理逻辑
+    if (mainWindow) {
+      mainWindow.webContents.send('webrtc-message', message)
+    }
+  })
+
+  // 处理头像缓存请求
+  ipcMain.on('cache-avatar', async (event, avatarUrl) => {
+    console.log('Received cache-avatar event for:', avatarUrl)
+    try {
+      const cachedUrl = await cacheAvatar(avatarUrl)
+      event.sender.send('avatar-cached', cachedUrl || avatarUrl)
+    } catch (error) {
+      console.error('Error caching avatar:', error)
+      event.sender.send('avatar-cached', avatarUrl)
+    }
+  })
+
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit()
+
+  globalShortcut.unregisterAll()
 })
 
-// 应用就绪后设置自动更新
+// 获取缓存目录
+function getCacheDir() {
+  const appDataPath = app.getPath('userData')
+  const cacheDir = path.join(appDataPath, 'avatar-cache')
+  
+  // 确保缓存目录存在
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true })
+  }
+  
+  return cacheDir
+}
+
+// 生成头像缓存文件名
+function generateCacheFileName(avatarUrl) {
+  // 使用URL的哈希作为文件名
+  const hash = crypto.createHash('md5').update(avatarUrl).digest('hex')
+  // 根据URL确定文件类型，处理特殊情况
+  let ext = 'png'
+  
+  // 检查URL是否包含文件扩展名
+  const extMatch = avatarUrl.match(/\.([^.]+)(?:\?|$)/)
+  if (extMatch && extMatch[1]) {
+    // 获取扩展名并移除可能的查询参数
+    ext = extMatch[1].split('?')[0].split('/')[0]
+    // 限制扩展名长度，防止恶意URL
+    if (ext.length > 10) {
+      ext = 'png'
+    }
+  }
+  
+  return `${hash}.${ext}`
+}
+
+// 缓存头像
+async function cacheAvatar(avatarUrl) {
+  try {
+    const cacheDir = getCacheDir()
+    const cacheFileName = generateCacheFileName(avatarUrl)
+    const cacheFilePath = path.join(cacheDir, cacheFileName)
+    
+    // 检查是否已缓存
+    if (fs.existsSync(cacheFilePath)) {
+      return `file://${cacheFilePath}`
+    }
+    
+    // 下载并缓存头像
+    const response = await fetch(avatarUrl)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch avatar: ${response.status}`)
+    }
+    
+    const buffer = await response.arrayBuffer()
+    fs.writeFileSync(cacheFilePath, Buffer.from(buffer))
+    
+    return `file://${cacheFilePath}`
+  } catch (error) {
+    console.error('Error caching avatar:', error)
+    return null
+  }
+}
+
+// 清理过期的头像缓存
+function cleanupAvatarCache(maxAge = 7 * 24 * 60 * 60 * 1000) {
+  try {
+    const cacheDir = getCacheDir()
+    const now = Date.now()
+    
+    fs.readdirSync(cacheDir).forEach(file => {
+      const filePath = path.join(cacheDir, file)
+      const stats = fs.statSync(filePath)
+      
+      if (now - stats.mtime.getTime() > maxAge) {
+        fs.unlinkSync(filePath)
+      }
+    })
+  } catch (error) {
+    console.error('Error cleaning up avatar cache:', error)
+  }
+}
+
 app.whenReady().then(() => {
   setupAutoUpdater()
+  
+  // 启动时清理一次
+  cleanupAvatarCache()
+  
+  // 每天清理一次
+  setInterval(() => {
+    cleanupAvatarCache()
+  }, 24 * 60 * 60 * 1000)
 })
