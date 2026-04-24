@@ -25,19 +25,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Conversation } from '../../types'
-
-interface Member {
-  id: string | number
-  name: string
-  avatar?: string
-  role?: string
-}
+import type { Conversation, User } from '../../types'
 
 interface Props {
   visible: boolean
   position: { x: number; y: number }
-  member: Member | null
+  member: User | null
   currentUserId: string | number
   conversation: Conversation | undefined
 }

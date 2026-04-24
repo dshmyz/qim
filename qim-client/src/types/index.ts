@@ -14,6 +14,7 @@ export interface User {
   createdAt?: number
   lastOnline?: number
   role?: 'admin' | 'user' | 'guest'
+  isBot?: boolean
   tags?: string[]
   preferences?: {
     theme?: 'light' | 'dark' | 'system'

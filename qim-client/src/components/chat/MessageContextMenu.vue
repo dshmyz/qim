@@ -79,7 +79,7 @@ const emit = defineEmits<Emits>()
 
 const canSendReminder = computed((): boolean => {
   if (!props.message || !props.message.timestamp || props.message.isRead) return false
-  if (props.message.sender && props.message.sender.isBot) return false
+  if (props.message.sender?.isBot) return false
 
   const now = Date.now()
   const messageTime = new Date(props.message.timestamp).getTime()
