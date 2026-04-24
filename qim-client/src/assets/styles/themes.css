@@ -348,15 +348,15 @@
 
 /* 月牙黄主题 - 左边侧边栏 */
 [data-theme="warm-amber"] .side-options {
-  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
 }
 
 /* 月牙黄主题 - 文本颜色 */
 [data-theme="warm-amber"] .window-title,
 [data-theme="warm-amber"] .option-item,
 [data-theme="warm-amber"] .option-item.active {
-  color: #5a4a25;
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 月牙黄主题 - 侧边栏头部 */
@@ -372,7 +372,7 @@
 
 /* 月牙黄主题 - 窗口控制栏左侧 */
 [data-theme="warm-amber"] .window-controls-left {
-  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
 }
 
 /* 中国红主题 */

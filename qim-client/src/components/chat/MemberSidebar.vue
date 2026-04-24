@@ -3,18 +3,18 @@
     <div class="sidebar-header-container">
       <div v-if="isExpanded" class="members-header">
         <div class="header-content">
-          <button class="toggle-sidebar-btn" @click="$emit('toggle-expanded')">
+          <button class="toggle-sidebar-btn" @click="handleToggleExpanded">
             <i class="fas fa-chevron-left"></i>
           </button>
           <h3>群成员 ({{ members.length }})</h3>
         </div>
         <div class="header-actions">
-          <button class="search-toggle-btn" @click="$emit('toggle-member-search')">
+          <button class="search-toggle-btn" @click="handleToggleMemberSearch">
             <i class="fas fa-search"></i>
           </button>
         </div>
       </div>
-      <button v-else class="collapsed-toggle-btn" @click="$emit('toggle-expanded')">
+      <button v-else class="collapsed-toggle-btn" @click="handleToggleExpanded">
         <i class="fas fa-user"></i>
       </button>
     </div>
@@ -24,11 +24,11 @@
         type="text"
         placeholder="搜索群成员..."
         class="member-search-input"
-        @focus="$emit('search-focus')"
+        @focus="handleSearchFocus"
       />
     </div>
     <div v-if="isExpanded" class="members-content">
-      <div v-for="member in filteredMembers" :key="member.id" class="member-item" @contextmenu.prevent="$emit('show-member-context-menu', $event, member)" @dblclick="$emit('start-private-chat', member)">
+      <div v-for="member in filteredMembers" :key="member.id" class="member-item" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="handleStartPrivateChat(member)">
         <img :src="member.avatar" :alt="member.name || '未知用户'" class="member-avatar" />
         <div class="member-info">
           <span class="member-name">{{ member.name || '未知用户' }}</span>
@@ -73,11 +73,12 @@ const searchQueryLocal = computed({
   set: (val) => emit('update:searchQuery', val)
 })
 
+const rolePriority: Record<string, number> = { owner: 3, admin: 2, member: 1 }
+
 const filteredMembers = computed(() => {
   let members = props.members || []
   
   members = [...members].sort((a, b) => {
-    const rolePriority = { owner: 3, admin: 2, member: 1 }
     const aPriority = rolePriority[a.role || 'member'] || 1
     const bPriority = rolePriority[b.role || 'member'] || 1
     
@@ -91,10 +92,30 @@ const filteredMembers = computed(() => {
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase()
     members = members.filter(member => 
-      member.name.toLowerCase().includes(query)
+      (member.name || '').toLowerCase().includes(query)
     )
   }
   
   return members
 })
+
+const handleToggleExpanded = () => {
+  emit('toggle-expanded')
+}
+
+const handleToggleMemberSearch = () => {
+  emit('toggle-member-search')
+}
+
+const handleSearchFocus = () => {
+  emit('search-focus')
+}
+
+const handleMemberContextMenu = (event: MouseEvent, member: Member) => {
+  emit('show-member-context-menu', event, member)
+}
+
+const handleStartPrivateChat = (member: Member) => {
+  emit('start-private-chat', member)
+}
 </script>
