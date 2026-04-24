@@ -21,9 +21,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { generateAvatar, getAvatarUrl } from '../utils/avatar'
-import { API_BASE_URL } from '../config'
-import type { Conversation, User } from '../types'
+import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
+import type { Conversation, User } from '../../types'
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 

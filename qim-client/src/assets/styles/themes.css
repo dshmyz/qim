@@ -1,0 +1,480 @@
+/* ========================================
+   主题样式 - Theme Styles
+   从 main.css 拆分
+   ======================================== */
+
+/* 炫酷黑主题 */
+[data-theme="elegant-dark"] {
+  --primary-color: #4b5563;
+  --primary-light: #374151;
+  --secondary-color: #0a0a0a;
+  --text-color: #e5e7eb;
+  --border-color: #374151;
+  --hover-color: #2d3748;
+  --active-color: #6b7280;
+  --sidebar-bg: #0f0f0f;
+  --window-controls-bg: #0f0f0f;
+  --context-menu-bg: #1f2937;
+  --context-menu-hover: #374151;
+  --accent-color: #4b5563;
+  --text-secondary: #9ca3af;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --panel-bg: #121212;
+  --list-bg: #1a1a1a;
+  --card-bg: #161616;
+  --header-panel-bg: #0f0f0f;
+  --content-bg: #0a0a0a;
+}
+
+/* 炫酷黑主题 - 侧边栏内容区域 */
+[data-theme="elegant-dark"] .sidebar-content {
+  background: var(--sidebar-bg) !important;
+}
+
+[data-theme="elegant-dark"] .conversation-list {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .conversation-item {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .groups-list {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .group-item {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .tree-container {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .apps-container {
+  background: var(--list-bg) !important;
+}
+
+[data-theme="elegant-dark"] .search-input {
+  background: var(--sidebar-bg) !important;
+}
+
+/* 炫酷黑主题 - 搜索框背景 */
+[data-theme="elegant-dark"] .search-box {
+  background: var(--sidebar-bg) !important;
+  border-top-color: var(--border-color) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 天青蓝主题 */
+[data-theme="ocean-blue"] {
+  --primary-color: #49bccf;
+  --primary-light: #e0f2fe;
+  --secondary-color: #f0f9ff;
+  --text-color: #0c4a6e;
+  --border-color: #bae6fd;
+  --hover-color: #dbeafe;
+  --active-color: #3aa8b9;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #e0f2fe;
+  --accent-color: #68d8e8;
+  --text-secondary: #475569;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  --panel-bg: #ffffff;
+  --list-bg: #f0f9ff;
+  --card-bg: #ffffff;
+  --header-panel-bg: #e0f2fe;
+}
+
+/* 天青蓝主题 - 左边侧边栏 */
+[data-theme="ocean-blue"] .side-options {
+  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
+}
+
+/* 天青蓝主题 - 文本颜色 */
+[data-theme="ocean-blue"] .window-title,
+[data-theme="ocean-blue"] .option-item,
+[data-theme="ocean-blue"] .option-item.active {
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 天青蓝主题 - 窗口控制栏左侧 */
+[data-theme="ocean-blue"] .window-controls-left {
+  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
+}
+
+/* 天青蓝主题 - 侧边栏头部 */
+[data-theme="ocean-blue"] .sidebar-header {
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="ocean-blue"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 炫酷黑主题 - 侧边栏头部 */
+[data-theme="elegant-dark"] .sidebar-header {
+  background: var(--sidebar-bg) !important;
+  box-shadow: var(--shadow-md) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .sidebar-header .user-name {
+  color: var(--text-color) !important;
+}
+
+/* 炫酷黑主题 - 组织架构树 */
+[data-theme="elegant-dark"] .org-content {
+  background: var(--sidebar-bg) !important;
+}
+
+[data-theme="elegant-dark"] .employee-node .tree-node-content {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+[data-theme="elegant-dark"] .employee-node .tree-node-content:hover {
+  background: var(--hover-color) !important;
+  opacity: 1 !important;
+}
+
+/* 炫酷黑主题 - 图标颜色 */
+[data-theme="elegant-dark"] .option-icon {
+  color: rgba(229, 231, 235, 0.7) !important;
+}
+
+[data-theme="elegant-dark"] .option-item:hover .option-icon,
+[data-theme="elegant-dark"] .option-item.active .option-icon {
+  color: rgba(229, 231, 235, 1) !important;
+}
+
+[data-theme="elegant-dark"] .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-icon,
+[data-theme="elegant-dark"] .management-icon,
+[data-theme="elegant-dark"] .empty-icon,
+[data-theme="elegant-dark"] .file-icon,
+[data-theme="elegant-dark"] .context-menu-icon,
+[data-theme="elegant-dark"] .action-menu-icon,
+[data-theme="elegant-dark"] .user-context-menu-icon,
+[data-theme="elegant-dark"] .muted-icon,
+[data-theme="elegant-dark"] .toggle-icon,
+[data-theme="elegant-dark"] .tab-icon,
+[data-theme="elegant-dark"] .category-icon,
+[data-theme="elegant-dark"] .recent-app-icon {
+  color: rgba(229, 231, 235, 0.7) !important;
+}
+
+[data-theme="elegant-dark"] .app-item:hover .app-icon,
+[data-theme="elegant-dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
+[data-theme="elegant-dark"] .category-app-item:hover .category-app-icon,
+[data-theme="elegant-dark"] .app-item:hover .app-icon {
+  transform: scale(1.05);
+  background: grey!important;
+}
+
+/* 炫酷黑主题 - 侧边栏按钮样式 */
+[data-theme="elegant-dark"] .option-item {
+  color: rgba(229, 231, 235, 0.7) !important;
+}
+
+[data-theme="elegant-dark"] .option-item:hover {
+  background: var(--hover-color) !important;
+  color: rgba(229, 231, 235, 1) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-theme="elegant-dark"] .option-item.active {
+  background: var(--hover-color) !important;
+  color: rgba(229, 231, 235, 1) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* 炫酷黑主题 - 应用管理tab样式 */
+[data-theme="elegant-dark"] .app-tab-item {
+  color: rgba(229, 231, 235, 0.7) !important;
+  border-bottom-color: transparent !important;
+}
+
+[data-theme="elegant-dark"] .app-tab-item:hover {
+  background: var(--hover-color) !important;
+  color: rgba(229, 231, 235, 1) !important;
+}
+
+[data-theme="elegant-dark"] .app-tab-item.active {
+  border-bottom-color: rgba(229, 231, 235, 1) !important;
+  color: rgba(229, 231, 235, 1) !important;
+}
+
+/* 炫酷黑主题 - 群聊徽章样式 */
+[data-theme="elegant-dark"] .group-badge {
+  background: #2d3748 !important;
+  color: rgba(229, 231, 235, 1) !important;
+  border: 1px solid rgba(229, 231, 235, 0.3) !important;
+}
+
+/* 炫酷黑主题 - 右边面板 */
+[data-theme="elegant-dark"] .right-content {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .right-content-header {
+  background: var(--sidebar-bg) !important;
+  box-shadow: var(--shadow-md) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .right-content-body {
+  background: var(--secondary-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* 炫酷黑主题 - 应用内容 */
+[data-theme="elegant-dark"] .apps-content {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
+  background: var(--secondary-color) !important;
+}
+
+/* 炫酷黑主题 - 应用分类 */
+[data-theme="elegant-dark"] .app-category-item {
+  background: transparent !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .category-header {
+  background: transparent !important;
+}
+
+/* 天青蓝主题 - 选项项样式调整 */
+[data-theme="ocean-blue"] .option-item {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="ocean-blue"] .option-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+[data-theme="ocean-blue"] .option-item.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* 高雅紫主题 */
+[data-theme="elegantpurple"] {
+  --primary-color: #7e22ce;
+  --primary-light: #f3e8ff;
+  --secondary-color: #faf5ff;
+  --text-color: #5b21b6;
+  --border-color: #e9d5ff;
+  --hover-color: #ebd6fa;
+  --active-color: #6b21a8;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #f3e8ff;
+  --accent-color: #a855f7;
+  --text-secondary: #7e22ce;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #faf5ff;
+  --card-bg: #ffffff;
+  --header-panel-bg: #f3e8ff;
+}
+
+/* 高雅紫主题 - 左边侧边栏 */
+[data-theme="elegantpurple"] .side-options {
+  background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+}
+
+/* 高雅紫主题 - 文本颜色 */
+[data-theme="elegantpurple"] .window-title,
+[data-theme="elegantpurple"] .option-item,
+[data-theme="elegantpurple"] .option-item.active {
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 高雅紫主题 - 侧边栏头部 */
+[data-theme="elegantpurple"] .sidebar-header {
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="elegantpurple"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 高雅紫主题 - 窗口控制栏左侧 */
+[data-theme="elegantpurple"] .window-controls-left {
+  background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+}
+
+/* 月牙黄主题 */
+[data-theme="warm-amber"] {
+  --primary-color: #d4b85f;
+  --primary-light: #fffef8;
+  --secondary-color: #fffef8;
+  --text-color: #6b5a2f;
+  --border-color: #f0e6c8;
+  --hover-color: #f5ecd5;
+  --active-color: #c9a85a;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #fffef8;
+  --accent-color: #e8d4a0;
+  --text-secondary: #8b7a50;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --panel-bg: #ffffff;
+  --list-bg: #fffef8;
+  --card-bg: #ffffff;
+  --header-panel-bg: #fffef8;
+}
+
+/* 月牙黄主题 - 左边侧边栏 */
+[data-theme="warm-amber"] .side-options {
+  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+}
+
+/* 月牙黄主题 - 文本颜色 */
+[data-theme="warm-amber"] .window-title,
+[data-theme="warm-amber"] .option-item,
+[data-theme="warm-amber"] .option-item.active {
+  color: #5a4a25;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+/* 月牙黄主题 - 侧边栏头部 */
+[data-theme="warm-amber"] .sidebar-header {
+  background: #fffef8;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="warm-amber"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 月牙黄主题 - 窗口控制栏左侧 */
+[data-theme="warm-amber"] .window-controls-left {
+  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+}
+
+/* 中国红主题 */
+[data-theme="chinesered"] {
+  --primary-color: #c41e3a;
+  --primary-light: #fff5f5;
+  --secondary-color: #fff5f5;
+  --text-color: #5c1a1a;
+  --border-color: #f5c6c6;
+  --hover-color: #ffe8e8;
+  --active-color: #a01830;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #fff5f5;
+  --accent-color: #e85c6c;
+  --text-secondary: #8b3a3a;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --panel-bg: #ffffff;
+  --list-bg: #fff5f5;
+  --card-bg: #ffffff;
+  --header-panel-bg: #fff5f5;
+}
+
+/* 中国红主题 - 左边侧边栏 */
+[data-theme="chinesered"] .side-options {
+  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
+}
+
+/* 中国红主题 - 文本颜色 */
+[data-theme="chinesered"] .window-title,
+[data-theme="chinesered"] .option-item,
+[data-theme="chinesered"] .option-item.active {
+  color: #fff5f5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 中国红主题 - 侧边栏头部 */
+[data-theme="chinesered"] .sidebar-header {
+  background: #fff5f5;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="chinesered"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 中国红主题 - 窗口控制栏左侧 */
+[data-theme="chinesered"] .window-controls-left {
+  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
+}
+
+/* 青草绿主题 */
+[data-theme="grassgreen"] {
+  --primary-color: #2e8b57;
+  --primary-light: #f0fff4;
+  --secondary-color: #f0fff4;
+  --text-color: #1a4a2e;
+  --border-color: #c6e6d5;
+  --hover-color: #dcf5e8;
+  --active-color: #247048;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #f0fff4;
+  --accent-color: #5cb88a;
+  --text-secondary: #2e6b4a;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --panel-bg: #ffffff;
+  --list-bg: #f0fff4;
+  --card-bg: #ffffff;
+  --header-panel-bg: #f0fff4;
+}
+
+/* 青草绿主题 - 左边侧边栏 */
+[data-theme="grassgreen"] .side-options {
+  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
+}
+
+/* 青草绿主题 - 文本颜色 */
+[data-theme="grassgreen"] .window-title,
+[data-theme="grassgreen"] .option-item,
+[data-theme="grassgreen"] .option-item.active {
+  color: #f0fff4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* 青草绿主题 - 侧边栏头部 */
+[data-theme="grassgreen"] .sidebar-header {
+  background: #f0fff4;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="grassgreen"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 青草绿主题 - 窗口控制栏左侧 */
+[data-theme="grassgreen"] .window-controls-left {
+  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
+}

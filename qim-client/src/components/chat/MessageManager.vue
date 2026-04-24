@@ -206,7 +206,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { API_BASE_URL } from '../config'
+import { API_BASE_URL } from '../../config'
 
 const props = defineProps<{
   visible: boolean

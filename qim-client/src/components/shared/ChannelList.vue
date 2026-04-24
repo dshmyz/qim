@@ -106,8 +106,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { Channel, User } from '../types'
-import { API_BASE_URL } from '../config'
+import type { Channel, User } from '../../types'
+import { API_BASE_URL } from '../../config'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)

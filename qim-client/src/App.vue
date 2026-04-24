@@ -20,7 +20,7 @@
 import { ref, onMounted } from 'vue'
 import Main from './views/Main.vue'
 import Login from './views/Login.vue'
-import VersionUpdateDialog from './components/VersionUpdateDialog.vue'
+import VersionUpdateDialog from './components/modals/VersionUpdateDialog.vue'
 import { checkVersionUpdate, getCurrentVersion } from './utils/version'
 
 const isLoggedIn = ref(false)

@@ -1,0 +1,223 @@
+/* ========================================
+   应用管理样式 - App Management Styles
+   从 main.css 拆分
+   ======================================== */
+
+.apps-content {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--list-bg);
+}
+
+.recent-apps-section {
+  padding: 16px;
+  background: var(--list-bg);
+}
+
+.recent-apps-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 12px;
+}
+
+.recent-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 12px;
+}
+
+.recent-app-grid-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 6px;
+}
+
+.recent-app-grid-item:hover {
+  background: var(--hover-color);
+  transform: translateY(-2px);
+}
+
+.recent-app-grid-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--primary-color);
+}
+
+.recent-app-name {
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+/* 所有应用区域 */
+.all-apps-section {
+  padding: 16px;
+  background: var(--list-bg);
+}
+
+.all-apps-search {
+  margin-bottom: 16px;
+}
+
+.all-apps-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-color);
+  background: var(--context-menu-bg);
+}
+
+.all-apps-search input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+/* 应用分类 */
+.app-category-section {
+  margin-bottom: 20px;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.category-apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  padding: 0 12px;
+}
+
+.category-app-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 6px;
+}
+
+.category-app-item:hover {
+  background: var(--hover-color);
+  transform: translateY(-2px);
+}
+
+.category-app-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--primary-color);
+}
+
+.category-app-name {
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+/* 应用管理标签 */
+.app-tab-list {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--header-panel-bg);
+}
+
+.app-tab-item {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.app-tab-item:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.app-tab-item.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* 空状态 */
+.app-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+}
+
+.app-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.app-empty-text {
+  font-size: 14px;
+  text-align: center;
+}
+
+/* 主题样式 */
+[data-theme="elegant-dark"] .apps-content {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .category-header {
+  background: transparent !important;
+}
+
+[data-theme="elegant-dark"] .app-category-item {
+  background: transparent !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .recent-app-grid-item:hover {
+  background: var(--hover-color) !important;
+}
+
+[data-theme="elegant-dark"] .category-app-item:hover {
+  background: var(--hover-color) !important;
+}

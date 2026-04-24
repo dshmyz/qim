@@ -1,0 +1,827 @@
+/* ========================================
+   对话框/弹窗样式 - Dialog/Modal Styles
+   从 main.css 拆分
+   ======================================== */
+
+/* 语音通话模态框样式 */
+.voice-call-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.voice-call-content {
+  width: 360px;
+  max-width: 90vw;
+  background-color: var(--context-menu-bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.voice-call-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--list-bg);
+  text-align: center;
+}
+
+.voice-call-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.voice-call-body {
+  flex: 1;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-status-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+
+.call-status-text i {
+  font-size: 48px;
+  color: var(--primary-color);
+  margin-bottom: 16px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.call-duration {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-top: 12px;
+}
+
+.voice-call-footer {
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+}
+
+.end-call-btn {
+  padding: 12px 32px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
+}
+
+.end-call-btn:hover {
+  background-color: #d32f2f;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.6);
+}
+
+.end-call-btn i {
+  margin-right: 8px;
+  font-size: 18px;
+}
+
+/* 网络错误提示 */
+.network-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.network-error-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(254, 240, 240, 0.9);
+  border: none;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 100%;
+  width: 95%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-height: 120px;
+  max-height: 200px;
+}
+
+.error-icon {
+  color: #f56c6c;
+  font-size: 32px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.error-message {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.error-message p {
+  margin: 0 0 8px 0;
+  color: #f56c6c;
+  font-size: 16px;
+}
+
+.error-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.retry-btn, .login-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.retry-btn {
+  background: rgba(255, 255, 255, 0.8);
+  color: #f56c6c;
+}
+
+.retry-btn:hover {
+  background: #f56c6c;
+  color: white;
+}
+
+.login-btn {
+  background: #f56c6c;
+  color: white;
+}
+
+.login-btn:hover {
+  background: #f5222d;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 关于对话框样式 */
+.about-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.about-dialog {
+  background: var(--context-menu-bg);
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.about-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: var(--list-bg);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+.about-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.about-dialog-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.about-dialog-close:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+  transform: scale(1.05);
+}
+
+.about-dialog-content {
+  padding: 32px 24px;
+  text-align: center;
+  background: var(--context-menu-bg);
+}
+
+.about-dialog-logo {
+  margin-bottom: 16px;
+  color: var(--primary-color);
+  font-size: 24px;
+}
+
+.about-dialog-content h2 {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.about-dialog-content .version {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.about-dialog-content .date {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.about-dialog-content .author {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.about-dialog-content .copyright {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.about-dialog-content .description {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.about-dialog-footer {
+  padding: 0 24px 24px;
+  display: flex;
+  justify-content: center;
+  background: var(--context-menu-bg);
+}
+
+.about-dialog-button {
+  padding: 10px 28px;
+  background: var(--list-bg);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text-color);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid transparent;
+}
+
+.about-dialog-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* 退出登录对话框样式 */
+.logout-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.logout-dialog {
+  background: white;
+  border-radius: 8px;
+  width: 360px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.logout-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+}
+
+.logout-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.logout-dialog-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.logout-dialog-close:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+  transform: scale(1.05);
+}
+
+.logout-dialog-content {
+  padding: 32px 20px;
+  text-align: center;
+}
+
+.logout-dialog-message {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.logout-dialog-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.logout-dialog-button {
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-sm);
+}
+
+.logout-dialog-button.cancel-button {
+  background: var(--list-bg);
+  color: var(--text-color);
+}
+
+.logout-dialog-button.cancel-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.logout-dialog-button.confirm-button {
+  background: #ff4d4f;
+  border-color: #ff4d4f;
+  color: white;
+}
+
+.logout-dialog-button.confirm-button:hover {
+  background: #ff7875;
+  border-color: #ff7875;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* 检查更新对话框样式 */
+.update-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.update-dialog {
+  background: white;
+  border-radius: 8px;
+  width: 360px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.update-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+}
+
+.update-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.update-dialog-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.update-dialog-close:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+  transform: scale(1.05);
+}
+
+.update-dialog-content {
+  padding: 32px 20px;
+  text-align: center;
+}
+
+.update-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #1890ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.update-downloading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.download-icon {
+  font-size: 48px;
+  color: #1890ff;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.download-text {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.download-progress {
+  width: 100%;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1890ff, #40a9ff);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  margin: 0;
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+}
+
+.update-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.result-icon {
+  font-size: 48px;
+  color: #52c41a;
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+}
+
+.result-icon.new-version {
+  color: #faad14;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.result-text {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+}
+
+.version-info {
+  margin: 0;
+  font-size: 14px;
+  color: #999;
+}
+
+.update-dialog-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.update-dialog-button {
+  padding: 10px 28px;
+  background: var(--list-bg);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+  border: 1px solid transparent;
+  color: var(--text-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.update-dialog-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.update-dialog-button.update-button {
+  background: #1890ff;
+  border-color: #1890ff;
+  color: white;
+}
+
+.update-dialog-button.update-button:hover {
+  background: #40a9ff;
+  border-color: #40a9ff;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* 添加成员模态框样式 */
+.add-members-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.add-members-content {
+  background-color: var(--right-content-bg);
+  border-radius: 12px;
+  width: 600px;
+  max-width: 90%;
+  max-height: 85vh;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+}
+
+.add-members-header {
+  padding: 24px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--right-content-header-bg);
+}
+
+.add-members-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.add-members-header .close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-color);
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0.6;
+}
+
+.add-members-header .close-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+  opacity: 1;
+}
+
+.add-members-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.add-members-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background-color: var(--right-content-header-bg);
+}
+
+.add-members-footer .cancel-btn {
+  padding: 10px 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.add-members-footer .cancel-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background-color: var(--primary-light);
+}
+
+.confirm-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background-color: #1890ff;
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+}
+
+.confirm-btn:hover {
+  background-color: #40a9ff;
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.confirm-btn:disabled {
+  background-color: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.confirm-btn:disabled:hover {
+  background-color: #f0f0f0;
+  box-shadow: none;
+  transform: none;
+}

@@ -1,0 +1,266 @@
+/* ========================================
+   布局样式 - Layout Styles
+   从 main.css 拆分：主容器、侧边栏、窗口控制、选项栏、内容区域、右侧内容
+   ======================================== */
+
+/* ========================================
+   主容器样式 - Main Container Styles
+   ======================================== */
+.im-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--content-bg);
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 自定义窗口控制栏 */
+.window-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+  background: var(--window-controls-bg);
+  padding: 0 20px;
+  user-select: none;
+  -webkit-app-region: drag;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.window-controls-left {
+  display: flex;
+  align-items: center;
+  width: 72px;
+  height: 100%;
+  justify-content: center;
+  background: var(--list-bg);
+  margin: 0 -20px;
+  padding: 0 20px;
+}
+
+.window-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  letter-spacing: 0.5px;
+}
+
+.window-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+}
+
+.minimize-btn {
+  background: #ffbd2e;
+  color: white;
+}
+
+.maximize-btn {
+  background: #27c93f;
+  color: white;
+}
+
+.close-btn {
+  background: #ff5f56;
+  color: white;
+}
+
+.window-control-btn:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
+/* 主内容区域 */
+.main-content-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 左侧垂直选项栏样式 */
+.side-options {
+  width: 72px;
+  background: var(--list-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 20px;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.side-options:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.option-spacer {
+  flex: 0.9;
+}
+
+.settings-option {
+  transition: none;
+  position: relative;
+}
+
+.settings-option:hover {
+  transform: translateY(-24px);
+  transition: none;
+  box-shadow: none;
+  background: var(--hover-color);
+  color: var(--primary-color);
+  position: relative;
+}
+
+/* 选项项样式 */
+.option-item {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.option-item:hover {
+  background: var(--hover-color);
+  color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+
+.option-item.active {
+  background: var(--primary-color);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.option-icon {
+  font-size: 20px;
+  position: relative;
+}
+
+.option-item:hover .option-icon,
+.option-item.active .option-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* 主内容区域 */
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 内容区域样式 */
+.content-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.content-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 右侧内容样式 */
+.right-content {
+  flex: 1;
+  background: var(--right-content-bg);
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+}
+
+.right-content-header {
+  padding: 16px 20px;
+  background: var(--right-content-header-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.right-content-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.right-content-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--right-content-bg);
+}
+
+.empty-content {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+/* 炫酷黑主题 - 主内容区域 */
+[data-theme="elegant-dark"] .main-content {
+  background: var(--secondary-color) !important;
+}
+
+/* 炫酷黑主题 - 无会话状态 */
+[data-theme="elegant-dark"] .no-conversation {
+  background: var(--secondary-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* 炫酷黑主题 - 应用内容区域 */
+[data-theme="elegant-dark"] .apps-content {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .recent-apps-section,
+[data-theme="elegant-dark"] .all-apps-section {
+  background: var(--secondary-color) !important;
+}

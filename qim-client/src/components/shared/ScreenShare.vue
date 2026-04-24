@@ -143,7 +143,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 // @ts-ignore - WebRTC module has no type declarations
 // @ts-ignore - WebRTC module has no type declarations
-import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
+import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 
 interface ScreenSource {
   id: string

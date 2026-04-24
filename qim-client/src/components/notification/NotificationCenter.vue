@@ -72,7 +72,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-import { API_BASE_URL } from '../config'
+import { API_BASE_URL } from '../../config'
 
 interface Notification {
   id: string

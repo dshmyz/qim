@@ -51,7 +51,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { API_BASE_URL } from '../config'
+import { API_BASE_URL } from '../../config'
 
 interface User {
   id: string | number

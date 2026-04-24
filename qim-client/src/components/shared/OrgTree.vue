@@ -106,7 +106,7 @@ const toggleSubDepartment = (parentId: string, subId: string) => {
 
 <style scoped>
 .tree-container {
-  background: #fafafa;
+  background: var(--panel-bg);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;

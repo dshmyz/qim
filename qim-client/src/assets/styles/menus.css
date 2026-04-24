@@ -1,0 +1,123 @@
+/* ========================================
+   菜单样式 - Menu Styles
+   从 main.css 拆分：右键菜单、动作菜单、用户上下文菜单
+   ======================================== */
+
+/* 右键菜单样式 */
+.context-menu {
+  position: fixed;
+  background: var(--context-menu-bg);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-color);
+  transition: background 0.2s;
+}
+
+.context-menu-item:hover {
+  background: var(--context-menu-hover);
+}
+
+.context-menu-item.divider {
+  height: 1px;
+  background: #e0e0e0;
+  padding: 0;
+  margin: 4px 0;
+  cursor: default;
+}
+
+.context-menu-item.divider:hover {
+  background: #e0e0e0;
+}
+
+/* 成员上下文菜单样式 */
+.context-menu-icon {
+  margin-right: 10px;
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+/* 群聊上下文菜单样式 */
+.context-menu-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 0;
+  cursor: default;
+}
+
+.context-menu-divider:hover {
+  background: #e0e0e0;
+}
+
+/* 动作菜单样式 */
+.action-menu {
+  position: fixed;
+  background: var(--context-menu-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.action-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.action-menu-item:hover {
+  background: var(--context-menu-hover);
+}
+
+.action-menu-icon {
+  margin-right: 10px;
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: var(--primary-color);
+}
+
+/* 用户右键菜单样式 */
+.user-context-menu {
+  position: fixed;
+  background: var(--context-menu-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.user-context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 13px;
+  color: var(--text-color);
+}
+
+.user-context-menu-item:hover {
+  background: var(--context-menu-hover);
+}
+
+.user-context-menu-icon {
+  margin-right: 10px;
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: var(--primary-color);
+}

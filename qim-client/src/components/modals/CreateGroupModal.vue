@@ -104,8 +104,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { API_BASE_URL } from '../config'
-import { generateAvatar } from '../utils/avatar'
+import { API_BASE_URL } from '../../config'
+import { generateAvatar } from '../../utils/avatar'
 
 // Props
 const props = defineProps({
