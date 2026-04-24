@@ -33,24 +33,20 @@
           </div>
         </div>
       </div>
-      <div class="header-actions">
-        <span v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="header-icon" title="邀请成员" @click="handleInviteMembers"><i class="fas fa-user-plus"></i></span>
-        <span class="header-icon" @click="toggleHeaderMenu">
-          <i class="fas fa-ellipsis-v"></i>
-          <!-- 头部下拉菜单 -->
-          <div v-if="showHeaderMenu" class="header-menu" @click.stop>
-            <div v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="menu-item" @click="editGroupInfo">
-              <i class="fas fa-edit"></i> 修改群名称
-            </div>
-            <div v-if="conversation?.type === 'group' || conversation?.type === 'discussion'" class="menu-item" @click="editGroupAnnouncement">
-              <i class="fas fa-bullhorn"></i> 编辑群公告
-            </div>
-            <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && isGroupOwner(conversation)" class="menu-item" @click="confirmDeleteConversation">
-              <i class="fas fa-trash"></i> 解散群聊
-            </div>
-          </div>
-        </span>
-      </div>
+      <GroupManagementPanel
+        :conversation="conversation"
+        :current-user="currentUser"
+        :update-conversation="updateConversation"
+        v-model:showHeaderMenu="showHeaderMenu"
+        v-model:showEditGroupInfoModal="showEditGroupInfoModal"
+        v-model:showEditAnnouncementModal="showEditAnnouncementModal"
+        v-model:editGroupName="editGroupName"
+        v-model:editAnnouncement="editAnnouncementContent"
+        @invite-members="handleInviteMembers"
+        @delete-group="confirmDeleteConversation"
+        @save-group-info="saveGroupInfo"
+        @save-group-announcement="saveAnnouncement"
+      />
     </div>
 
     <div class="chat-main">
@@ -318,22 +314,7 @@
     @scroll-to-message="scrollToMessage"
   />
   
-  <!-- 确认对话框 -->
-  <div v-if="showConfirmDialog" class="confirm-dialog-modal" @click="closeConfirmDialog">
-    <div class="confirm-dialog-content" @click.stop>
-      <div class="confirm-dialog-header">
-        <h3>{{ confirmDialogTitle }}</h3>
-        <button class="close-btn" @click="closeConfirmDialog">×</button>
-      </div>
-      <div class="confirm-dialog-body">
-        <p>{{ confirmDialogMessage }}</p>
-      </div>
-      <div class="confirm-dialog-footer">
-        <button class="cancel" @click="closeConfirmDialog">取消</button>
-        <button class="confirm" @click="handleConfirmAction">确定</button>
-      </div>
-    </div>
-  </div>
+  <!-- 确认对话框、编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
   
   <!-- 截图预览对话框 -->
   <div v-if="showScreenshotPreview" class="screenshot-preview-modal" @click="cancelScreenshot">
@@ -464,46 +445,7 @@
     </div>
   </div>
   
-  <!-- 编辑群信息模态框 -->
-  <div v-if="showEditGroupInfoModal" class="modal-overlay" @click="showEditGroupInfoModal = false">
-    <div class="modal-content" @click.stop>
-      <div class="modal-header">
-        <h3>修改群名称</h3>
-        <button class="close-btn" @click="showEditGroupInfoModal = false">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>群名称</label>
-          <input type="text" v-model="editGroupName" class="form-input" placeholder="请输入新的群名称" />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" @click="showEditGroupInfoModal = false">取消</button>
-        <button class="btn btn-primary" @click="saveGroupInfo">保存</button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- 编辑群公告模态框 -->
-  <div v-if="showEditAnnouncementModal" class="modal-overlay" @click="showEditAnnouncementModal = false">
-    <div class="modal-content" @click.stop>
-      <div class="modal-header">
-        <h3>编辑群公告</h3>
-        <button class="close-btn" @click="showEditAnnouncementModal = false">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>群公告内容</label>
-          <textarea v-model="editAnnouncementContent" class="form-textarea" placeholder="输入群公告内容..." rows="5"></textarea>
-          <p class="form-tip">群公告将对所有群成员可见</p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" @click="showEditAnnouncementModal = false">取消</button>
-        <button class="btn btn-primary" @click="saveAnnouncement">保存</button>
-      </div>
-    </div>
-  </div>
+
 </template>
 
 <script setup lang="ts">
@@ -516,6 +458,7 @@ import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
 import MessageInputArea from './MessageInputArea.vue'
 import MemberSidebar from './MemberSidebar.vue'
+import GroupManagementPanel from './GroupManagementPanel.vue'
 import { openMiniApp } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
 import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
@@ -823,31 +766,25 @@ const handleConfirmAction = () => {
   closeConfirmDialog()
 }
 
-// 确认解散群聊
-const confirmDeleteConversation = () => {
+// 确认解散群聊（由 GroupManagementPanel 组件的确认对话框触发）
+const confirmDeleteConversation = async () => {
   if (!props.conversation) return
   
-  openConfirmDialog(
-    '确认解散群聊',
-    '确定要解散此群聊吗？解散后所有消息和成员数据将被删除。',
-    async () => {
-      try {
-        const response = await request(`/api/v1/conversations/${props.conversation.id}`, {
-          method: 'DELETE'
-        })
-        if (response.code === 0) {
-          $message.success('群聊解散成功')
-          // 触发切换会话事件，回到会话列表
-          emit('switchConversation', '')
-        } else {
-          $message.error('解散群聊失败: ' + response.message)
-        }
-      } catch (error) {
-        console.error('解散群聊失败:', error)
-        $message.error('解散群聊失败，请重试')
-      }
+  try {
+    const response = await request(`/api/v1/conversations/${props.conversation.id}`, {
+      method: 'DELETE'
+    })
+    if (response.code === 0) {
+      $message.success('群聊解散成功')
+      // 触发切换会话事件，回到会话列表
+      emit('switchConversation', '')
+    } else {
+      $message.error('解散群聊失败: ' + response.message)
     }
-  )
+  } catch (error) {
+    console.error('解散群聊失败:', error)
+    $message.error('解散群聊失败，请重试')
+  }
 }
 
 // 显示消息提示
