@@ -95,7 +95,7 @@
           
           <div v-for="(message, index) in messages" :key="message.id">
             <!-- 显示时间分隔线 -->
-            <div v-if="shouldShowTimeDivider(index, message)" class="time-divider">
+            <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
               <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
             </div>
             
