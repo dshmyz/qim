@@ -5976,7 +5976,7 @@ const setTheme = (theme: string) => {
   localStorage.setItem('theme', theme)
   // 应用主题到页面
   document.documentElement.setAttribute('data-theme', theme)
-  closeThemeMenu()
+  hideThemeMenu()
 }
 
 // 应用字体大小设置
