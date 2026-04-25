@@ -1992,6 +1992,19 @@ const {
 const notificationCenterRef = ref<any>(null)
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
+const handleConversationSelect = (conversation: Conversation) => {
+  _handleConversationSelect(conversation)
+  activeOption.value = 'recent'
+  loadMessages(conversation.id)
+  const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
+  if (conversationIndex !== -1) {
+    conversations.value[conversationIndex].unreadCount = 0
+  }
+  if (window.electron?.tray) {
+    window.electron.tray.stopFlash()
+  }
+}
+
 // 重写通知点击处理，包含 Main.vue 的特定逻辑
 const handleNotificationClick = (notification: any) => {
   _handleNotificationClick(notification)
