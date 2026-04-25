@@ -2483,6 +2483,20 @@ if (typeof window !== 'undefined') {
   window.sendWebSocketMessage = sendWebSocketMessage
 }
 
+// WebSocket 实例代理变量（用于兼容旧代码）
+const ws = {
+  get readyState() { return getWebSocket()?.readyState ?? WebSocket.CLOSED },
+  send: (data: string) => sendWebSocketMessage(data),
+  close: () => {
+    const ws = getWebSocket()
+    if (ws) ws.close()
+  },
+  onclose: null as ((event: CloseEvent) => void) | null,
+  onerror: null as ((event: Event) => void) | null,
+  onopen: null as ((event: Event) => void) | null,
+  onmessage: null as ((event: MessageEvent) => void) | null
+}
+
 // WebSocket连接
 const baseReconnectDelay = 1000 // 1秒
 
@@ -3396,9 +3410,6 @@ watch(searchQuery, (newQuery) => {
     handleSearch(newQuery)
   }, 300)
 })
-
-// 当前选中的会话
-)
 
 // 消息数据
 // 已处理的已读回执，用于避免重复处理
