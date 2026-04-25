@@ -17,6 +17,14 @@ type Config struct {
 	Storage  StorageConfig
 	AI       ai.AIConfig
 	CORS     CORSConfig
+	App      AppConfig
+}
+
+type AppConfig struct {
+	Version      string `yaml:"version"`
+	UpdateURL    string `yaml:"update_url"`
+	ForceUpdate  bool   `yaml:"force_update"`
+	ReleaseNotes string `yaml:"release_notes"`
 }
 
 type CORSConfig struct {
@@ -79,6 +87,7 @@ type yamlConfig struct {
 	Storage StorageConfig  `yaml:"storage"`
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
+	App     AppConfig      `yaml:"app"`
 }
 
 func Load() *Config {
@@ -211,6 +220,7 @@ func Load() *Config {
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
+		App:      cfg.App,
 	}
 }
 
@@ -286,6 +296,12 @@ func getDefaultConfig() yamlConfig {
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: []string{"http://localhost:5173", "app://localhost"},
+		},
+		App: AppConfig{
+			Version:      "1.0.0",
+			UpdateURL:    "",
+			ForceUpdate:  false,
+			ReleaseNotes: "",
 		},
 	}
 }
