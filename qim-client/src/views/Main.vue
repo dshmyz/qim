@@ -7999,12 +7999,12 @@ button:active {
 }
 
 .unread-badge {
-  background: #f44336;
+  background: var(--primary-color);
   color: white;
-  font-size: 11px;
+  font-size: 10px;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8267,7 +8267,7 @@ button:active {
 }
 
 .app-icon {
-  font-size: 28px;
+  font-size: 32px;
   margin-bottom: 8px;
   width: 48px;
   height: 48px;
@@ -9673,12 +9673,12 @@ button:active {
 /* 机器人徽章 */
 .bot-badge {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  background: var(--primary-color);
+  bottom: -2px;
+  right: -2px;
+  background: #9c27b0;
   color: white;
   font-size: 10px;
-  padding: 2px 4px;
+  padding: 1px 3px;
   border-radius: 4px;
   display: flex;
   align-items: center;
