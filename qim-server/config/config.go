@@ -9,6 +9,11 @@ import (
 	"qim-server/ai"
 )
 
+type UploadConfig struct {
+	MaxSizeMB    int      `yaml:"max_size_mb"`
+	AllowedTypes []string `yaml:"allowed_types"`
+}
+
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
@@ -18,6 +23,7 @@ type Config struct {
 	AI       ai.AIConfig
 	CORS     CORSConfig
 	App      AppConfig
+	Upload   UploadConfig
 }
 
 type AppConfig struct {
@@ -88,6 +94,7 @@ type yamlConfig struct {
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
 	App     AppConfig      `yaml:"app"`
+	Upload  UploadConfig   `yaml:"upload"`
 }
 
 func Load() *Config {
@@ -221,6 +228,7 @@ func Load() *Config {
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
 		App:      cfg.App,
+		Upload:   cfg.Upload,
 	}
 }
 
