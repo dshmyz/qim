@@ -3456,3 +3456,80 @@ jobs:
             python3 -c "import sys,json;print(json.load(sys.stdin)['data']['token'])")
           bash test-all.sh
 ```
+
+---
+
+## 23. 前端自动化测试
+
+### 23.1 测试框架配置
+
+QIM 前端项目使用以下测试框架：
+
+| 框架 | 用途 | 说明 |
+|------|------|------|
+| Vitest | 单元测试引擎 | 与 Vite 集成，快速执行 |
+| Vue Test Utils | Vue 组件测试 | 挂载、交互、断言 |
+| Playwright | E2E 测试 | 多浏览器端到端测试 |
+| happy-dom | 轻量 DOM 环境 | 替代 jsdom，性能更好 |
+
+### 23.2 单元测试
+
+#### Composables 测试
+
+| 测试文件 | 覆盖内容 | 用例数 |
+|----------|----------|--------|
+| [useRequest.test.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/unit/composables/useRequest.test.ts) | getToken、serverUrl、request 函数 | 9 |
+| [useImageCache.test.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/unit/composables/useImageCache.test.ts) | 图片缓存获取、预加载、清除 | 3 |
+| [useConversation.test.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/unit/composables/useConversation.test.ts) | 会话选择、更新、消息管理 | 6 |
+
+#### 组件测试
+
+| 测试文件 | 覆盖内容 | 用例数 |
+|----------|----------|--------|
+| [TextMessage.test.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/unit/components/TextMessage.test.ts) | 渲染、URL 转换、@用户高亮 | 9 |
+| [Login.test.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/unit/views/Login.test.ts) | 登录页面渲染、窗口控制、服务器设置 | 6 |
+
+### 23.3 E2E 测试
+
+| 测试文件 | 覆盖内容 |
+|----------|----------|
+| [login.spec.ts](file:///Users/gracegaoya/work/project/qim/qim-client/tests/e2e/login.spec.ts) | 登录流程、会话管理、聊天功能、应用中心 |
+
+### 23.4 运行前端测试
+
+```bash
+# 运行完整前端测试（单元测试 + 类型检查）
+bash test-frontend.sh
+
+# 单独运行单元测试
+cd qim-client && npm run test:unit
+
+# 监听模式（开发时推荐）
+cd qim-client && npm run test:watch
+
+# 生成覆盖率报告
+cd qim-client && npm run test:coverage
+
+# 运行 E2E 测试（需要前端开发服务器运行中）
+cd qim-client && npm run test:e2e
+
+# E2E 测试 UI 模式
+cd qim-client && npm run test:e2e:ui
+```
+
+### 23.5 测试结果
+
+| 轮次 | 单元测试 | TypeScript 类型检查 | 备注 |
+|------|----------|---------------------|------|
+| 第 1 轮 | 28/28 通过 | 3 个错误 | 初始运行 |
+| 修复后 | 34/34 通过 | 5 个既有错误 | 修复后全部通过 |
+
+**已修复的问题：**
+1. 窗口控制 mock 从 `window.api.invoke` 改为 `window.electron.ipcRenderer.send`
+2. 测试脚本 macOS grep 兼容性修复（`-oP` → `-o`）
+3. TypeScript 类型定义完善（添加 `removeListener` 方法）
+4. 错误处理类型收窄（`error.message` → `error instanceof Error`）
+5. Electron IPC 回调参数类型标注（`_event`、`info: any`）
+
+**既有类型问题（非测试相关）：**
+- Main.vue 中 `selectedGroup.value` 类型收窄问题，属于既有代码类型定义不足

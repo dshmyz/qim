@@ -345,6 +345,9 @@ import '../../assets/styles/apps/notepad.css'
 import '../../assets/styles/apps/password-generator.css'
 import '../../assets/styles/apps/todo.css'
 import '../../assets/styles/apps/short-link.css'
+import { useChatRequest } from '../../composables/useChatRequest'
+import { useChatUtils } from '../../composables/useChatUtils'
+import { useChatState } from '../../composables/useChatState'
 
 // 流式消息状态管理
 const streamingMessages = ref(new Map<string, { content: string, isStreaming: boolean }>())
@@ -352,67 +355,16 @@ const streamingMessages = ref(new Map<string, { content: string, isStreaming: bo
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
+// 初始化 composables
+const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
+const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
+const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
+
 // 屏幕共享相关
 const showScreenShareModal = ref(false)
 const screenSources = ref([])
 const screenShareComponent = ref(null) // 屏幕共享组件引用
 const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
-
-// 获取token
-const getToken = () => {
-  return localStorage.getItem('token')
-}
-
-// 格式化日期为YYYY-MM-DD格式（本地时间）
-const formatDate = (date: Date): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-// 通用请求方法
-const request = async (url: string, options?: RequestInit) => {
-  const token = getToken()
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-  }
-  
-  const fullUrl = `${serverUrl.value}${url}`
-  const requestHeaders = {
-    ...headers,
-    ...options?.headers
-  }
-  console.log('发送请求:', fullUrl, options)
-  console.log('请求头:', requestHeaders)
-  console.log('Token:', token)
-  
-  try {
-    const response = await fetch(fullUrl, {
-      ...options,
-      headers: requestHeaders
-    })
-    
-    console.log('响应状态:', response.status, response.statusText)
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('请求失败:', errorData)
-      if (response.status === 403) {
-        throw new Error(errorData.message || '权限不足，请检查您的权限')
-      }
-      throw new Error(errorData.message || '请求失败')
-    }
-    
-    const data = await response.json()
-    console.log('响应数据:', data)
-    return data
-  } catch (error) {
-    console.error('网络错误:', error)
-    throw error
-  }
-}
 
 interface Props {
   conversation: Conversation
@@ -610,34 +562,6 @@ const handleSendMiniAppMessage = (miniApp: any) => {
 // 打开小程序 - 使用MiniAppHandler组件中的函数
 // 函数已移至MiniAppHandler.vue组件中
 
-// 确认对话框
-const showConfirmDialog = ref(false)
-const confirmDialogTitle = ref('确认操作')
-const confirmDialogMessage = ref('')
-const confirmDialogCallback = ref<(() => void) | null>(null)
-
-// 打开确认对话框
-const openConfirmDialog = (title: string, message: string, callback: () => void) => {
-  confirmDialogTitle.value = title
-  confirmDialogMessage.value = message
-  confirmDialogCallback.value = callback
-  showConfirmDialog.value = true
-}
-
-// 关闭确认对话框
-const closeConfirmDialog = () => {
-  showConfirmDialog.value = false
-  confirmDialogCallback.value = null
-}
-
-// 处理确认操作
-const handleConfirmAction = () => {
-  if (confirmDialogCallback.value) {
-    confirmDialogCallback.value()
-  }
-  closeConfirmDialog()
-}
-
 // 确认解散群聊（由 GroupManagementPanel 组件的确认对话框触发）
 const confirmDeleteConversation = async () => {
   if (!props.conversation) return
@@ -660,143 +584,6 @@ const confirmDeleteConversation = async () => {
 }
 
 // 显示消息提示
-const showMessage = (options: { message: string, type?: 'success' | 'warning' | 'error' | 'info', duration?: number }) => {
-  const { message, type = 'info', duration = 3000 } = options
-  console.log('显示消息:', message, type)
-  
-  // 创建消息容器
-  const messageElement = document.createElement('div')
-  
-  // 根据类型设置样式
-  const typeStyles = {
-    success: {
-      background: '#f0f9eb',
-      color: '#67c23a',
-      border: '1px solid #e1f3d8'
-    },
-    warning: {
-      background: '#fdf6ec',
-      color: '#e6a23c',
-      border: '1px solid #faecd8'
-    },
-    error: {
-      background: '#fef0f0',
-      color: '#f56c6c',
-      border: '1px solid #fbc4c4'
-    },
-    info: {
-      background: '#f4f4f5',
-      color: '#909399',
-      border: '1px solid #ebeef5'
-    }
-  }
-  
-  const style = typeStyles[type]
-  
-  // 设置样式
-  messageElement.style.position = 'fixed'
-  messageElement.style.top = '20px'
-  messageElement.style.left = '50%'
-  messageElement.style.transform = 'translateX(-50%)'
-  messageElement.style.background = style.background
-  messageElement.style.color = style.color
-  messageElement.style.border = style.border
-  messageElement.style.borderRadius = '4px'
-  messageElement.style.padding = '12px 20px'
-  messageElement.style.boxShadow = '0 2px 12px 0 rgba(0, 0, 0, 0.1)'
-  messageElement.style.fontSize = '14px'
-  messageElement.style.zIndex = '9999'
-  messageElement.style.animation = 'messageFadeIn 0.3s ease'
-  messageElement.style.pointerEvents = 'none'
-  messageElement.style.minWidth = '300px'
-  messageElement.style.maxWidth = '500px'
-  messageElement.style.textAlign = 'center'
-  
-  // 添加图标
-  const icon = document.createElement('span')
-  icon.style.marginRight = '8px'
-  
-  switch (type) {
-    case 'success':
-      icon.innerHTML = '✓'
-      icon.style.fontWeight = 'bold'
-      break
-    case 'warning':
-      icon.innerHTML = '⚠️'
-      break
-    case 'error':
-      icon.innerHTML = '✗'
-      icon.style.fontWeight = 'bold'
-      break
-    case 'info':
-      icon.innerHTML = 'ℹ️'
-      break
-  }
-  
-  messageElement.appendChild(icon)
-  
-  // 添加消息文本
-  const text = document.createElement('span')
-  text.textContent = message
-  messageElement.appendChild(text)
-  
-  // 添加到DOM
-  document.body.appendChild(messageElement)
-  console.log('消息已添加到DOM', messageElement)
-  
-  // 添加动画样式
-  const animationStyle = document.createElement('style')
-  animationStyle.textContent = `
-    @keyframes messageFadeIn {
-      from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(-10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-      }
-    }
-  `
-  document.head.appendChild(animationStyle)
-  
-  // 自动移除
-  setTimeout(() => {
-    messageElement.style.animation = 'messageFadeOut 0.3s ease'
-    
-    // 添加淡出动画
-    const fadeOutStyle = document.createElement('style')
-    fadeOutStyle.textContent = `
-      @keyframes messageFadeOut {
-        from {
-          opacity: 1;
-          transform: translateX(-50%) translateY(0);
-        }
-        to {
-          opacity: 0;
-          transform: translateX(-50%) translateY(-10px);
-        }
-      }
-    `
-    document.head.appendChild(fadeOutStyle)
-    
-    // 动画结束后移除元素
-    setTimeout(() => {
-      messageElement.remove()
-      animationStyle.remove()
-      fadeOutStyle.remove()
-      console.log('消息已移除')
-    }, 300)
-  }, duration)
-}
-
-// 便捷方法
-const $message = {
-  success: (message: string, duration?: number) => showMessage({ message, type: 'success', duration }),
-  warning: (message: string, duration?: number) => showMessage({ message, type: 'warning', duration }),
-  error: (message: string, duration?: number) => showMessage({ message, type: 'error', duration }),
-  info: (message: string, duration?: number) => showMessage({ message, type: 'info', duration })
-}
 
 // 切换表情面板
 const toggleEmojiPanel = () => {
@@ -1617,77 +1404,6 @@ const autoResizeTextarea = () => {
 }
 
 
-
-function formatTime(timestamp: number | string | null | undefined): string {
-  // 检查 timestamp 是否有效
-  if (!timestamp || (typeof timestamp !== 'number' && typeof timestamp !== 'string')) {
-    return '未知时间'
-  }
-  
-  const date = new Date(timestamp)
-  
-  // 检查日期是否有效
-  if (isNaN(date.getTime())) {
-    return '未知时间'
-  }
-  
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const diffDays = Math.floor((today.getTime() - messageDate.getTime()) / (24 * 60 * 60 * 1000))
-  
-  if (diffDays === 0) {
-    // 今天的消息，显示具体时间
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  } else if (diffDays === 1) {
-    // 昨天的消息，显示"昨天 时间"
-    return `昨天 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
-  } else if (diffDays < 7) {
-    // 本周的消息，显示星期几和时间
-    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    const weekday = weekdays[date.getDay()]
-    return `${weekday} ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
-  } else {
-    // 更早的消息，显示具体日期和时间
-    return date.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  }
-}
-
-// 判断是否应该显示时间分隔线
-function shouldShowTimeDivider(index: number, currentMessage: Message): boolean {
-  // 第一条消息总是显示时间
-  if (index === 0) {
-    return true
-  }
-  
-  // 获取前一条消息
-  const previousMessage = props.messages[index - 1]
-  if (!previousMessage) {
-    return true
-  }
-  
-  // 计算时间差（毫秒）
-  const timeDiff = currentMessage.timestamp - previousMessage.timestamp
-  
-  // 如果时间差超过5分钟，显示时间分隔线
-  if (timeDiff > 5 * 60 * 1000) {
-    return true
-  }
-  
-  // 如果是不同的日期，显示时间分隔线
-  const currentDate = new Date(currentMessage.timestamp)
-  const previousDate = new Date(previousMessage.timestamp)
-  
-  if (
-    currentDate.getFullYear() !== previousDate.getFullYear() ||
-    currentDate.getMonth() !== previousDate.getMonth() ||
-    currentDate.getDate() !== previousDate.getDate()
-  ) {
-    return true
-  }
-  
-  return false
-}
 
 const showMemberContextMenu = (event: MouseEvent, member: any) => {
   event.stopPropagation()
@@ -2650,41 +2366,6 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
 const showSharePreview = ref(false)
 const sharePreviewData = ref<any>(null)
 
-// 渲染 Markdown
-const renderMarkdown = (content: string): string => {
-  // 简单的 Markdown 渲染
-  let html = content
-  
-  // 标题
-  html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>')
-  html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>')
-  html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>')
-  
-  // 粗体
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  
-  // 斜体
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  
-  // 代码块
-  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-  
-  // 行内代码
-  html = html.replace(/`(.*?)`/g, '<code>$1</code>')
-  
-  // 列表
-  html = html.replace(/^- (.*$)/gm, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-  
-  // 链接
-  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
-  
-  // 换行
-  html = html.replace(/\n/g, '<br>')
-  
-  return html
-}
-
 const viewSharedContent = (content: string) => {
   if (!content || content === '[消息已撤回]') return
   
@@ -2844,103 +2525,6 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
       $message.error('文件下载失败: 网络错误')
     }
   }
-}
-
-// 根据文件扩展名获取对应的Font Awesome图标
-const getFileIcon = (fileUrl: string): string => {
-  const fileName = fileUrl.split('/').pop() || fileUrl
-  const extension = fileName.split('.').pop()?.toLowerCase() || ''
-  
-  switch (extension) {
-    // 文档类
-    case 'doc':
-    case 'docx':
-      return 'fas fa-file-word'
-    case 'xls':
-    case 'xlsx':
-      return 'fas fa-file-excel'
-    case 'ppt':
-    case 'pptx':
-      return 'fas fa-file-powerpoint'
-    case 'pdf':
-      return 'fas fa-file-pdf'
-    case 'txt':
-      return 'fas fa-file-alt'
-    case 'md':
-      return 'fas fa-file-markdown'
-    
-    // 图片类
-    case 'jpg':
-    case 'jpeg':
-    case 'png':
-    case 'gif':
-    case 'webp':
-    case 'bmp':
-      return 'fas fa-file-image'
-    
-    // 音频类
-    case 'mp3':
-    case 'wav':
-    case 'ogg':
-    case 'flac':
-      return 'fas fa-file-audio'
-    
-    // 视频类
-    case 'mp4':
-    case 'avi':
-    case 'mov':
-    case 'wmv':
-    case 'flv':
-      return 'fas fa-file-video'
-    
-    // 压缩包类
-    case 'zip':
-    case 'rar':
-    case '7z':
-    case 'tar':
-    case 'gz':
-      return 'fas fa-file-archive'
-    
-    // 代码类
-    case 'js':
-    case 'ts':
-    case 'jsx':
-    case 'tsx':
-    case 'html':
-    case 'css':
-    case 'scss':
-    case 'less':
-    case 'json':
-    case 'xml':
-    case 'yaml':
-    case 'yml':
-    case 'py':
-    case 'java':
-    case 'c':
-    case 'cpp':
-    case 'cs':
-    case 'go':
-    case 'php':
-    case 'rb':
-    case 'swift':
-    case 'kt':
-      return 'fas fa-file-code'
-    
-    // 其他
-    default:
-      return 'fas fa-file'
-  }
-}
-
-// 格式化文件大小
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B'
-  
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 // 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示

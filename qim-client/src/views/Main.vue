@@ -6097,7 +6097,7 @@ if (window.electron) {
   })
   
   // 发现新版本
-  window.electron.ipcRenderer.on('update-available', (event, info) => {
+  window.electron.ipcRenderer.on('update-available', (_event, info: any) => {
     isCheckingUpdate.value = false
     hasNewVersion.value = true
     updateResult.value = `发现新版本 v${info.version}`
@@ -6111,19 +6111,19 @@ if (window.electron) {
   })
   
   // 更新错误
-  window.electron.ipcRenderer.on('update-error', (event, error) => {
+  window.electron.ipcRenderer.on('update-error', (_event, error: any) => {
     isCheckingUpdate.value = false
     updateResult.value = `更新错误: ${error}`
   })
   
   // 下载进度
-  window.electron.ipcRenderer.on('update-progress', (event, progressObj) => {
+  window.electron.ipcRenderer.on('update-progress', (_event, progressObj: any) => {
     isDownloading.value = true
     downloadProgress.value = progressObj.percent
   })
   
   // 更新下载完成
-  window.electron.ipcRenderer.on('update-downloaded', (event, info) => {
+  window.electron.ipcRenderer.on('update-downloaded', (_event, _info: any) => {
     isDownloading.value = false
     updateResult.value = '下载完成，正在安装...'
     setTimeout(() => {
@@ -6393,7 +6393,8 @@ const saveSettings = async () => {
     }
   } catch (error) {
     console.error('保存设置失败:', error)
-    ElMessage.error('保存失败: ' + error.message)
+    const errorMessage = error instanceof Error ? error.message : '未知错误'
+    ElMessage.error('保存失败: ' + errorMessage)
   }
 }
 
@@ -6434,19 +6435,18 @@ const saveTwoFactorSetting = async () => {
 
 // 浏览默认保存目录
 const browseDefaultSaveDirectory = () => {
-  // 在Electron环境中，使用dialog.showOpenDialog
   if (window.electron && window.electron.ipcRenderer) {
     window.electron.ipcRenderer.send('open-file-dialog', { properties: ['openDirectory'] })
     
-    // 监听选择结果
-    window.electron.ipcRenderer.once('file-dialog-result', (event, result) => {
+    const handleResult = (result: any) => {
+      window.electron.ipcRenderer.removeListener('file-dialog-result', handleResult)
       if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
         fileSettings.value.defaultSaveDirectory = result.filePaths[0]
         showMessage({ message: '目录已选择', type: 'success' })
       }
-    })
+    }
+    window.electron.ipcRenderer.on('file-dialog-result', handleResult)
   } else {
-    // 非Electron环境，使用模拟路径
     fileSettings.value.defaultSaveDirectory = '/Users/yourname/Downloads'
     showMessage({ message: '非Electron环境，已设置默认路径', type: 'info' })
   }

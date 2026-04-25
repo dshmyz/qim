@@ -34,11 +34,11 @@ echo ""
 UNIT_OUTPUT=$(npm run test:unit 2>&1)
 UNIT_EXIT=$?
 
-echo "$UNIT_OUTPUT" | grep -E "(PASS|FAIL|✓|✗|passed|failed|Tests)"
+echo "$UNIT_OUTPUT" | grep -E "(passed|failed|Tests|PASS|FAIL)"
 
 # 提取测试结果
-PASS_COUNT=$(echo "$UNIT_OUTPUT" | grep -oP '\d+(?= passed)' | head -1)
-FAIL_COUNT=$(echo "$UNIT_OUTPUT" | grep -oP '\d+(?= failed)' | head -1)
+PASS_COUNT=$(echo "$UNIT_OUTPUT" | grep -o '[0-9]* passed' | head -1 | grep -o '[0-9]*')
+FAIL_COUNT=$(echo "$UNIT_OUTPUT" | grep -o '[0-9]* failed' | head -1 | grep -o '[0-9]*')
 
 if [ -z "$PASS_COUNT" ]; then
     PASS_COUNT=0
