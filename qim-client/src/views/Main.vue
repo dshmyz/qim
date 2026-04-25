@@ -6222,7 +6222,7 @@ initTheme()
 }
 
 .file-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--hover-color);
 }
 
 .file-action-btn.delete-btn {
@@ -6250,7 +6250,7 @@ initTheme()
 }
 
 .tree-node-content:hover {
-  background-color: #f5f5f5;
+  background-color: var(--hover-color);
 }
 
 /* 会话列表样式优化 */
@@ -6259,7 +6259,7 @@ initTheme()
 }
 
 .conversation-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--hover-color);
 }
 
 /* 搜索结果悬浮窗 */
@@ -7806,7 +7806,7 @@ button:active {
 }
 
 .sub-department-header:hover {
-  background: #f5f5f5;
+  background: var(--hover-color);
 }
 
 .employees {
@@ -8154,7 +8154,7 @@ button:active {
 }
 
 .employee-node .tree-node-content:hover {
-  background: var(--hover-color);
+  /* background: var(--hover-color); */
   opacity: 1;
 }
 
