@@ -203,8 +203,46 @@ export function useUI() {
   // 显示主题菜单
   const showThemeMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    showThemeMenuFlag.value = true
-    themeMenuPosition.value = { x: event.clientX, y: event.clientY }
+    
+    // 获取皮肤按钮的DOM元素
+    const themeButton = event.currentTarget as HTMLElement
+    if (themeButton) {
+      // 计算按钮的位置
+      const rect = themeButton.getBoundingClientRect()
+      
+      // 菜单宽度和高度
+      const menuWidth = 180
+      const menuHeight = 400
+      const windowWidth = window.innerWidth
+      const windowHeight = window.innerHeight
+      
+      // 计算菜单位置：按钮右侧显示
+      let x = rect.right + 2
+      let y = rect.top
+      
+      // 调整x坐标，确保菜单不超出屏幕右侧
+      if (x + menuWidth > windowWidth) {
+        x = rect.left - menuWidth - 10
+      }
+      
+      // 调整y坐标，确保菜单不超出屏幕底部
+      if (y + menuHeight > windowHeight - 10) {
+        y = windowHeight - menuHeight - 10
+      }
+      
+      // 确保y坐标不小于0
+      if (y < 10) {
+        y = 10
+      }
+      
+      themeMenuPosition.value = { x, y }
+      showThemeMenuFlag.value = true
+      
+      // 点击其他地方关闭菜单
+      setTimeout(() => {
+        document.addEventListener('click', hideThemeMenu)
+      }, 0)
+    }
   }
 
   // 隐藏主题菜单
