@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'
+import { sanitizeMarkdown } from '../../utils/sanitize'
 
 const props = defineProps<{
   content: string
@@ -21,14 +22,16 @@ const props = defineProps<{
   isStreaming: boolean
 }>()
 
-// 使用marked库渲染markdown
+// 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
   if (!props.content) {
     return ''
   }
   try {
     const result = marked(props.content)
-    return typeof result === 'string' ? result : String(result)
+    const html = typeof result === 'string' ? result : String(result)
+    // 使用 DOMPurify 进行消毒，防止 XSS 攻击
+    return sanitizeMarkdown(html)
   } catch (e) {
     console.error('Markdown render error:', e)
     return props.content

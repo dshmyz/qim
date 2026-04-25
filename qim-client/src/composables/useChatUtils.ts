@@ -1,4 +1,5 @@
 import type { Message } from '../types'
+import { sanitizeMarkdown } from '../utils/sanitize'
 
 /**
  * 聊天工具函数 composable
@@ -211,7 +212,8 @@ export function useChatUtils() {
     // 换行
     html = html.replace(/\n/g, '<br>')
 
-    return html
+    // 使用 DOMPurify 进行消毒，防止 XSS 攻击
+    return sanitizeMarkdown(html)
   }
 
   return {

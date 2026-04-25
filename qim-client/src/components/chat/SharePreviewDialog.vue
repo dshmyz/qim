@@ -21,7 +21,7 @@
         <!-- 笔记类型 -->
         <div v-else-if="previewData.type === 'note'">
           <div class="share-preview-title">{{ previewData.name }}</div>
-          <div class="share-preview-content-text" v-if="previewData.content" v-html="renderMarkdown(previewData.content)"></div>
+          <div class="share-preview-content-text" v-if="previewData.content" v-html="sanitizeMarkdown(renderMarkdown(previewData.content))"></div>
         </div>
         <!-- 便签类型 -->
         <div v-else-if="previewData.type === 'sticky'" class="sticky-note-content">
@@ -43,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeMarkdown } from '../../utils/sanitize'
 interface SharePreviewData {
   type: 'file' | 'note' | 'sticky'
   name: string

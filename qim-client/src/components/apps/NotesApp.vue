@@ -87,8 +87,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import { logger } from '../../utils/logger';
+import { sanitizeMarkdown } from '../../utils/sanitize';
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -139,7 +141,7 @@ const loadNotes = async () => {
     }
   } catch (error) {
     console.error('加载笔记失败:', error)
-    ElMessage.error('加载笔记失败，请稍后重试')
+    QMessage.error('加载笔记失败，请稍后重试')
   }
 }
 
@@ -162,7 +164,7 @@ const createNote = async () => {
     selectedNoteId.value = newNote.id ? newNote.id.toString() : ''
   } catch (error) {
     console.error('创建笔记失败:', error)
-    ElMessage.error('创建笔记失败，请稍后重试')
+    QMessage.error('创建笔记失败，请稍后重试')
   }
 }
 
@@ -184,7 +186,7 @@ const saveNote = async (note: any) => {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
-    console.log('保存笔记成功:', response.data)
+    logger.log('保存笔记成功:', response.data)
   } catch (error) {
     console.error('保存笔记失败:', error)
   }
@@ -253,7 +255,8 @@ const renderMarkdown = (content: string): string => {
   // 换行
   html = html.replace(/\n/g, '<br>')
   
-  return html
+  // 使用 DOMPurify 进行消毒，防止 XSS 攻击
+  return sanitizeMarkdown(html)
 }
 
 // 格式化日期

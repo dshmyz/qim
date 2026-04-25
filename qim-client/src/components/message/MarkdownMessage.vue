@@ -5,15 +5,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'
+import { sanitizeMarkdown } from '../../utils/sanitize'
 
 const props = defineProps<{
   content: string
   isSelf: boolean
 }>()
 
-// 使用marked库渲染markdown
+// 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
-  return marked(props.content)
+  const html = marked(props.content)
+  const htmlString = typeof html === 'string' ? html : String(html)
+  // 使用 DOMPurify 进行消毒，防止 XSS 攻击
+  return sanitizeMarkdown(htmlString)
 })
 </script>
 

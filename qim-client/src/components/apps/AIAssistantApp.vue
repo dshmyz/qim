@@ -313,6 +313,8 @@ import { ref, computed, onMounted, nextTick, reactive } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
 import { marked } from 'marked'
+import { sanitizeMarkdown } from '../../utils/sanitize'
+import { logger } from '../../utils/logger';
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -523,7 +525,7 @@ const processEventData = (eventData: string, streamMessage: any) => {
   if (eventData.startsWith("data: ")) {
     eventData = eventData.substring(eventData.indexOf('data: ') + 6)
   }
-  console.log('处理事件数据:', eventData)
+  logger.log('处理事件数据:', eventData)
   
   try {
     const chunk = JSON.parse(eventData)
@@ -548,7 +550,7 @@ const processEventData = (eventData: string, streamMessage: any) => {
       const errorObj = JSON.parse(eventData)
       throw new Error(errorObj.error)
     }
-    console.log('解析JSON失败，直接使用原始数据:', eventData)
+    logger.log('解析JSON失败，直接使用原始数据:', eventData)
     streamMessage.content += eventData
     scrollToBottom()
     return false
@@ -569,7 +571,7 @@ const sendStreamingRequest = async (message: string, token: string, maxRetries =
         timestamp: new Date()
       })
       botMessages.value.push(streamMessage)
-      console.log('开始流式请求 (尝试 ' + attempt + '/' + maxRetries + '):', message)
+      logger.log('开始流式请求 (尝试 ' + attempt + '/' + maxRetries + '):', message)
 
       const response = await fetch(`${serverUrl.value}/api/v1/ai/completion/stream`, {
         method: 'POST',
@@ -621,7 +623,7 @@ const sendStreamingRequest = async (message: string, token: string, maxRetries =
 
       if (attempt < maxRetries) {
         const delay = Math.pow(2, attempt - 1) * 1000
-        console.log('等待 ' + delay + 'ms 后重试...')
+        logger.log('等待 ' + delay + 'ms 后重试...')
         await new Promise(resolve => setTimeout(resolve, delay))
       }
     }
@@ -892,22 +894,19 @@ const formatTime = (date: Date) => {
 const renderMarkdown = (content: string): string => {
   if (!content) return ''
 
-  // 处理所有类型的换行符：\r\n (Windows)、\n (Unix)、\r (旧Mac)
-  const contentWithBreaks = content.replace(/\r\n|\n|\r/g, '<br>')
-
   try {
     const result = marked.parse(content)
     if (result instanceof Promise) {
-      // 流式内容不完整时，返回已处理换行符的原始内容
-      return contentWithBreaks
+      // 流式内容不完整时，返回原始内容
+      return sanitizeMarkdown(content.replace(/\r\n|\n|\r/g, '<br>'))
     }
-    // marked解析后的内容可能还包含\n，需要再次处理
-    const resultWithBreaks = result.replace(/\r\n|\n|\r/g, '<br>')
-    // console.log('处理换行符后的结果:', resultWithBreaks)
-    return resultWithBreaks
+    // marked解析后的内容可能还包含换行符，需要再次处理
+    // 然后使用 DOMPurify 进行消毒，防止 XSS 攻击
+    const resultWithBreaks = (result as string).replace(/\r\n|\n|\r/g, '<br>')
+    return sanitizeMarkdown(resultWithBreaks)
   } catch (parseError) {
-    // 解析失败时返回已处理换行符的原始内容
-    return contentWithBreaks
+    // 解析失败时返回已处理换行符的原始内容（已消毒）
+    return sanitizeMarkdown(content.replace(/\r\n|\n|\r/g, '<br>'))
   }
 }
 

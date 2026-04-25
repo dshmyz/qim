@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { escapeHTML, sanitizeHTML } from '../../utils/sanitize'
 
 const props = defineProps<{
   content: string
@@ -11,20 +12,24 @@ const props = defineProps<{
 }>()
 
 // 转换URL为链接的函数
+// 注意：必须先对内容进行 HTML 转义，然后再插入链接，防止 XSS 攻击
 const convertUrlsToLinks = (text: string): string => {
-  // 正则表达式匹配URL
+  // 先对用户输入进行 HTML 转义，防止 XSS 攻击
+  const escapedText = escapeHTML(text)
+  
+  // 正则表达式匹配URL（在转义后的文本中）
   const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
   // 正则表达式匹配@用户
   const atRegex = /@([\u4e00-\u9fa5\w]+)/g
   
-  let result = text
+  let result = escapedText
   
-  // 先处理URL
+  // 处理URL - 注意转义后的 URL 中的特殊字符已被转义
   result = result.replace(urlRegex, (url) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
   })
   
-  // 再处理@用户
+  // 处理@用户
   result = result.replace(atRegex, (match, username) => {
     return `<span class="at-user">@${username}</span>`
   })
@@ -33,7 +38,8 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 const convertedContent = computed(() => {
-  return convertUrlsToLinks(props.content)
+  // 使用 sanitizeHTML 确保输出安全
+  return sanitizeHTML(convertUrlsToLinks(props.content))
 })
 </script>
 

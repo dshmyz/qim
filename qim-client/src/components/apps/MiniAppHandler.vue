@@ -3,7 +3,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
+import { logger } from '../../utils/logger';
+import { escapeHTML } from '../../utils/sanitize';
 // 小程序处理组件，用于处理小程序相关的逻辑
 
 // 显示小程序模态框
@@ -19,7 +21,7 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content calculator-app">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
           <button class="mini-app-modal-close">×</button>
         </div>
         <div class="mini-app-modal-body">
@@ -68,7 +70,7 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content notepad-app">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
           <button class="mini-app-modal-close">×</button>
         </div>
         <div class="mini-app-modal-body">
@@ -88,7 +90,7 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content password-generator-app">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
           <button class="mini-app-modal-close">×</button>
         </div>
         <div class="mini-app-modal-body">
@@ -126,8 +128,8 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content todo-app">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
-          <button class="mini-app-modal-close">×</button>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
+          <button class="mini-app-modal-close">\u00d7</button>
         </div>
         <div class="mini-app-modal-body">
           <div class="todo-container">
@@ -147,8 +149,8 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content short-link-app">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
-          <button class="mini-app-modal-close">×</button>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
+          <button class="mini-app-modal-close">\u00d7</button>
         </div>
         <div class="mini-app-modal-body">
           <div class="short-link-container">
@@ -173,14 +175,14 @@ export const showMiniAppModal = (miniApp: any) => {
     content = `
       <div class="mini-app-modal-content">
         <div class="mini-app-modal-header">
-          <div class="mini-app-modal-title">${miniApp.name}</div>
-          <button class="mini-app-modal-close">×</button>
+          <div class="mini-app-modal-title">${escapeHTML(miniApp.name)}</div>
+          <button class="mini-app-modal-close">\u00d7</button>
         </div>
         <div class="mini-app-modal-body">
           <div class="mini-app-modal-icon">
-            <img src="${miniApp.icon}" alt="${miniApp.name}" />
+            <img src="${escapeHTML(miniApp.icon || '')}" alt="${escapeHTML(miniApp.name)}" />
           </div>
-          <div class="mini-app-modal-description">${miniApp.description}</div>
+          <div class="mini-app-modal-description">${escapeHTML(miniApp.description || '')}</div>
           <div class="mini-app-modal-content-area">
             <p>小程序功能正在开发中...</p>
           </div>
@@ -343,7 +345,7 @@ export const showMiniAppModal = (miniApp: any) => {
           timestamp: Date.now()
         }
         localStorage.setItem('notepad-note', JSON.stringify(note))
-        ElMessage.success('笔记保存成功')
+        QMessage.success('笔记保存成功')
       })
     }
     
@@ -354,7 +356,7 @@ export const showMiniAppModal = (miniApp: any) => {
           if (titleInput) titleInput.value = ''
           if (contentInput) contentInput.value = ''
           localStorage.removeItem('notepad-note')
-          ElMessage.success('笔记已清空')
+          QMessage.success('笔记已清空')
         }
       })
     }
@@ -392,7 +394,7 @@ export const showMiniAppModal = (miniApp: any) => {
       if (includeSymbols) charset += '!@#$%^&*()_+[]{}|;:,.<>?'
       
       if (charset === '') {
-        ElMessage.warning('请至少选择一种字符类型')
+        QMessage.warning('请至少选择一种字符类型')
         return
       }
       
@@ -418,11 +420,11 @@ export const showMiniAppModal = (miniApp: any) => {
         if (resultInput && resultInput.value) {
           navigator.clipboard.writeText(resultInput.value)
             .then(() => {
-              ElMessage.success('密码已复制到剪贴板')
+              QMessage.success('密码已复制到剪贴板')
             })
             .catch(err => {
               console.error('复制失败:', err)
-              ElMessage.error('复制失败，请手动复制')
+              QMessage.error('复制失败，请手动复制')
             })
         }
       })
@@ -456,11 +458,25 @@ export const showMiniAppModal = (miniApp: any) => {
       todos.forEach((todo, index) => {
         const todoItem = document.createElement('div')
         todoItem.className = `todo-item ${todo.completed ? 'completed' : ''}`
-        todoItem.innerHTML = `
-          <input type="checkbox" ${todo.completed ? 'checked' : ''} data-index="${index}">
-          <span class="todo-text">${todo.text}</span>
-          <button class="todo-delete" data-index="${index}">×</button>
-        `
+
+        // 使用 DOM API 安全地创建元素，避免 innerHTML 注入风险
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = todo.completed
+        checkbox.setAttribute('data-index', String(index))
+        todoItem.appendChild(checkbox)
+
+        const todoText = document.createElement('span')
+        todoText.className = 'todo-text'
+        todoText.textContent = todo.text // 使用 textContent 而非 innerHTML
+        todoItem.appendChild(todoText)
+
+        const deleteBtn = document.createElement('button')
+        deleteBtn.className = 'todo-delete'
+        deleteBtn.setAttribute('data-index', String(index))
+        deleteBtn.textContent = '\u00d7'
+        todoItem.appendChild(deleteBtn)
+
         todoList.appendChild(todoItem)
       })
       
@@ -554,7 +570,7 @@ export const showMiniAppModal = (miniApp: any) => {
     const generateShortLink = async () => {
       const url = shortLinkInput?.value.trim()
       if (!url) {
-        ElMessage.warning('请输入要缩短的URL')
+        QMessage.warning('请输入要缩短的URL')
         return
       }
 
@@ -581,11 +597,11 @@ export const showMiniAppModal = (miniApp: any) => {
           if (resultDiv) {
             resultDiv.style.display = 'block'
           }
-          ElMessage.success('短链接生成成功')
+          QMessage.success('短链接生成成功')
         }
       } catch (error) {
         console.error('生成短链接失败:', error)
-        ElMessage.error('生成短链接失败')
+        QMessage.error('生成短链接失败')
       }
     }
 
@@ -594,10 +610,10 @@ export const showMiniAppModal = (miniApp: any) => {
       if (outputInput && outputInput.value) {
         try {
           await navigator.clipboard.writeText(outputInput.value)
-          ElMessage.success('短链接已复制到剪贴板')
+          QMessage.success('短链接已复制到剪贴板')
         } catch (error) {
           console.error('复制失败:', error)
-          ElMessage.error('复制失败，请手动复制')
+          QMessage.error('复制失败，请手动复制')
         }
       }
     }
@@ -616,10 +632,10 @@ export const showMiniAppModal = (miniApp: any) => {
 
 // 打开小程序
 export const openMiniApp = (miniAppData: any) => {
-  console.log('打开小程序:', miniAppData)
+  logger.log('打开小程序:', miniAppData)
   // 这里实现打开小程序的逻辑
   if (miniAppData) {
-    console.log(`打开${miniAppData.name}小程序`)
+    logger.log(`打开${miniAppData.name}小程序`)
     // 调用showMiniAppModal函数打开小程序
     showMiniAppModal(miniAppData)
   }
