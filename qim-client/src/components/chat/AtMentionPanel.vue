@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type Ref } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 
 export interface MemberItem {
   id: string

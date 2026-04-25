@@ -1,34 +1,62 @@
 <template>
   <div class="chat-window">
-    <ChatHeader
-      :conversation="conversation"
-      :server-url="serverUrl.value"
-      @edit-group-name="editGroupInfo"
-    >
-      <template #group-panel>
-        <GroupPanel
-          :conversation="conversation"
-          :current-user="currentUser"
-          v-model:showHeaderMenu="showHeaderMenu"
-          v-model:showEditGroupInfoModal="showEditGroupInfoModal"
-          v-model:showEditAnnouncementModal="showEditAnnouncementModal"
-          v-model:editGroupName="editGroupName"
-          v-model:editAnnouncement="editAnnouncementContent"
-          @invite-members="handleInviteMembers"
-          @delete-group="confirmDeleteConversation"
-          @save-group-info="saveGroupInfo"
-          @save-group-announcement="saveAnnouncement"
-          @switch-conversation="handleSwitchConversation"
-          @show-user-profile="showUserProfile"
-          @remove-member="handleRemoveMember"
-          @set-admin="handleSetAdmin"
-          @transfer-owner="handleTransferOwner"
-          @start-private-chat="handleStartPrivateChat"
-        />
-      </template>
-    </ChatHeader>
+    <div class="chat-header">
+      <div class="header-info">
+        <img :src="getAvatarUrl(conversation?.avatar, conversation?.name || '用户', serverUrl.value)" :alt="conversation?.name || '未知'" class="header-avatar" />
+        <div class="header-text">
+          <div class="header-name" @dblclick="(conversation?.type === 'group' || conversation?.type === 'discussion') && editGroupInfo()">{{ conversation?.name || '未知会话' }}</div>
+          <div class="header-status">
+            <template v-if="conversation?.type === 'group' || conversation?.type === 'discussion'">
+              {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
+              <span v-if="conversation?.members" class="member-count">
+                ({{ conversation.members.length }}人)
+              </span>
+            </template>
+            <template v-else-if="conversation?.type === 'single'">
+              <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
+                {{ conversation?.status === 'online' ? '在线' : '离线' }}
+              </span>
+              <span v-if="conversation?.signature" class="signature-info">
+                {{ conversation.signature }}
+              </span>
+            </template>
+            <template v-else>
+              在线
+            </template>
+            <span v-if="conversation?.type === 'single' && conversation?.ip" class="ip-info">
+              {{ conversation.ip }}
+            </span>
+            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement-inline">
+              <i class="fas fa-bullhorn"></i>
+              {{ conversation.announcement }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <GroupPanel
+        :conversation="conversation"
+        :current-user="currentUser"
+        v-model:showHeaderMenu="showHeaderMenu"
+        v-model:showEditGroupInfoModal="showEditGroupInfoModal"
+        v-model:showEditAnnouncementModal="showEditAnnouncementModal"
+        v-model:editGroupName="editGroupName"
+        v-model:editAnnouncement="editAnnouncementContent"
+        @invite-members="handleInviteMembers"
+        @delete-group="confirmDeleteConversation"
+        @save-group-info="saveGroupInfo"
+        @save-group-announcement="saveAnnouncement"
+        @switch-conversation="handleSwitchConversation"
+        @show-user-profile="showUserProfile"
+        @remove-member="handleRemoveMember"
+        @set-admin="handleSetAdmin"
+        @transfer-owner="handleTransferOwner"
+        @start-private-chat="handleStartPrivateChat"
+      />
+    </div>
 
       <div class="chat-main">
+        <div ref="messageListRef" class="message-list">
         <!-- 搜索结果 -->
         <MessageSearch
           v-if="showSearch"
@@ -51,28 +79,40 @@
         />
 
         <!-- 正常消息列表 -->
-        <MessageList
-          v-else
-          ref="messageListRef"
-          :messages="messages"
-          :has-more-messages="hasMoreMessages"
-          :conversation-type="conversation?.type || 'single'"
-          :read-users-map="readUsersMap"
-          :server-url="serverUrl"
-          :should-show-time-divider="shouldShowTimeDivider"
-          :format-time="formatTime"
-          @message-context-menu="showMessageContextMenu"
-          @show-user-profile="showUserProfile"
-          @preview-image="previewImage"
-          @download-file="downloadFile"
-          @save-as="saveFileAs"
-          @view-shared-content="viewSharedContent"
-          @retry-send-message="retrySendMessage"
-          @show-read-users="showReadUsers"
-          @scroll-to-quoted-message="scrollToQuotedMessage"
-          @open-mini-app="openMiniApp"
-          @open-news-link="openNewsLink"
-        />
+        <div v-else>
+          <!-- 没有更多消息提示 -->
+          <div v-if="!hasMoreMessages" class="no-more-messages">
+            <span>没有更多消息了</span>
+          </div>
+          
+          <div v-for="(message, index) in messages" :key="message.id">
+            <!-- 显示时间分隔线 -->
+            <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
+              <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
+            </div>
+            
+            <MessageItem
+              :message="message"
+              :is-self="message.isSelf"
+              :is-recalled="message.isRecalled"
+              :conversation-type="conversation?.type || 'single'"
+              :read-users-map="readUsersMap"
+              :server-url="serverUrl"
+              @contextmenu="showMessageContextMenu"
+              @show-user-profile="showUserProfile"
+              @scroll-to-quoted-message="scrollToQuotedMessage"
+              @preview-image="previewImage"
+              @download-file="downloadFile"
+              @save-as="saveFileAs"
+              @view-shared-content="viewSharedContent"
+              @open-mini-app="openMiniApp"
+              @open-news-link="openNewsLink"
+              @retry-send-message="retrySendMessage"
+              @show-read-users="showReadUsers"
+            />
+          </div>
+        </div>
+      </div>
 
       <!-- 群成员侧边栏 -->
       <MemberSidebar
@@ -269,8 +309,7 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import UserProfile from '../modals/UserProfile.vue'
-import ChatHeader from './ChatHeader.vue'
-import MessageList from './MessageList.vue'
+import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
 import MessageInput from './MessageInput.vue'
 import MessageSearch from './MessageSearch.vue'
@@ -295,9 +334,6 @@ import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
-import { useMessageOperations } from '../../composables/useMessageOperations'
-import { useScreenShare } from '../../composables/useScreenShare'
-import { useCallManagement } from '../../composables/useCallManagement'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -306,6 +342,10 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
 const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
+
+// 屏幕共享相关
+const screenShareComponent = ref(null) // 屏幕共享组件引用
+const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
 
 interface Props {
   conversation: Conversation
@@ -333,45 +373,6 @@ const emit = defineEmits<{
   'send-screen-share-stop': [data: { conversationId: number }]
   'send-screen-share-data': [data: { conversationId: number; data: string }]
 }>()
-
-// 使用 message operations composable
-const {
-  showMessageContextMenuFlag,
-  messageContextMenuPosition,
-  selectedMessage,
-  quotedMessage,
-  showMessageContextMenu,
-  closeMessageContextMenu,
-  copyMessage,
-  forwardMessage,
-  quoteMessage,
-  addToNote,
-  recallMessage,
-  canSendReminder,
-  sendMessageReminder
-} = useMessageOperations(props.conversation as any, emit)
-
-// 使用 screen share composable
-const {
-  screenShareComponent,
-  remoteScreenUserId: screenShareRemoteUserId,
-  initWebSocketMessageHandler: initScreenShareHandler,
-  startScreenShare: startScreenShareFromComposable
-} = useScreenShare(props.conversation as any, emit)
-
-// 使用 call management composable
-const {
-  isInCall,
-  callType,
-  callStatus,
-  showCallModal,
-  isScreenSharing,
-  startVoiceCall,
-  startVideoCall,
-  endCall,
-  rejectCall,
-  answerCall
-} = useCallManagement(props.conversation as any)
 
 // 监听远程屏幕共享
 watch(() => props.remoteScreenSharing, (newVal) => {
@@ -416,6 +417,12 @@ const selectedMember = ref(null)
 // 用户资料弹窗
 const showUserProfileFlag = ref(false)
 const selectedUser = ref({})
+
+// 消息上下文菜单
+const showMessageContextMenuFlag = ref(false)
+const messageContextMenuPosition = ref({ x: 0, y: 0 })
+const selectedMessage = ref(null)
+const quotedMessage = ref(null)
 
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
@@ -1041,8 +1048,8 @@ onMounted(async () => {
   await loadReadUsersForMessages()
   // 加载小程序列表
   loadMiniApps()
-  // 初始化 WebSocket 消息处理（使用 composable 提供的函数）
-  initScreenShareHandler()
+  // 初始化 WebSocket 消息处理
+  initWebSocketMessageHandler()
   // 添加转发笔记事件监听器
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   // 添加分享文件事件监听器
@@ -1050,6 +1057,213 @@ onMounted(async () => {
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+// 初始化 WebSocket 消息处理
+const initWebSocketMessageHandler = () => {
+  const webrtcMessageTypes = [
+    'webrtc_offer',
+    'webrtc_ice_candidate',
+    'webrtc_answer'
+  ];
+  
+  webrtcMessageTypes.forEach(type => {
+    const handler = (message: any) => {
+      handleScreenShareMessage(type, message.data);
+    };
+    addWsHandler(handler, type);
+    registeredScreenShareHandlers.push({ handler, type });
+  });
+  
+  if (window.electron && window.electron.websocket) {
+    window.electron.websocket.onMessage((message) => {
+      if (webrtcMessageTypes.includes(message.type)) {
+        handleScreenShareMessage(message.type, message.data);
+      }
+    });
+  }
+};
+
+// 处理屏幕共享消息
+const handleScreenShareMessage = (type, data) => {
+  switch (type) {
+    case 'webrtc_offer':
+      handleWebRTCOffer(data);
+      break;
+    case 'webrtc_answer':
+      handleWebRTCAnswer(data);
+      break;
+    case 'webrtc_ice_candidate':
+      handleWebRTCIceCandidate(data);
+      break;
+    case 'screen-share-request':
+      handleScreenShareRequest(data);
+      break;
+    case 'screen-share-accepted':
+      handleScreenShareAccepted(data);
+      break;
+    case 'screen-share-rejected':
+      handleScreenShareRejected(data);
+      break;
+    case 'screen-share-start':
+      handleScreenShareStart(data);
+      break;
+    case 'screen-share-stop':
+      handleScreenShareStop(data);
+      break;
+  }
+};
+
+// 处理 WebRTC offer
+const handleWebRTCOffer = async (data) => {
+  try {
+    
+    // 先设置远程屏幕共享用户ID，触发ScreenShare组件的渲染
+    remoteScreenUserId.value = data.from_user_id
+    
+    // 等待组件渲染
+    await nextTick()
+    
+    // 显示屏幕共享请求对话框
+    ElMessage({
+      message: '收到屏幕共享请求',
+      type: 'info',
+      showClose: true,
+      duration: 5000
+    })
+    
+    // 调用 ScreenShare 组件的方法处理 offer
+    if (screenShareComponent.value) {
+      await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
+    }
+  } catch (error) {
+    console.error('处理 WebRTC offer 失败:', error)
+  }
+}
+
+// 处理 WebRTC answer
+const handleWebRTCAnswer = (data) => {
+  try {
+    screenShareSender.handleAnswer(data.signal)
+  } catch (error) {
+    console.error('处理 WebRTC answer 失败:', error)
+  }
+}
+
+// 处理 WebRTC ICE 候选者
+const handleWebRTCIceCandidate = (data) => {
+  try {
+    
+    // 验证 data.signal 是否有效
+    // if (!data || !data.signal) {
+    //   console.warn('无效的 ICE 候选者数据:', data)
+    //   return
+    // }
+    
+    // 根据当前状态判断是发送者还是接收者
+    if (screenShareSender.getIsSharing()) {
+      screenShareSender.addIceCandidate(data.signal)
+    } else {
+      // 调用 ScreenShare 组件的方法处理 ICE 候选者
+      if (screenShareComponent.value) {
+        screenShareComponent.value.handleIceCandidate(data.signal)
+      } else {
+        screenShareReceiver.handleIceCandidate(data.signal)
+      }
+    }
+  } catch (error) {
+    console.error('处理 WebRTC ICE 候选者失败:', error)
+  }
+}
+
+// 处理屏幕共享请求
+const handleScreenShareRequest = (data) => {
+  
+  // 获取请求者ID，支持多种字段名
+  const requesterId = data.requester_id || data.userId || data.user_id
+  const conversationId = data.conversation_id || data.conversationId
+  
+  if (!requesterId) {
+    console.error('屏幕共享请求缺少请求者ID:', data)
+    return
+  }
+  
+  if (!conversationId) {
+    console.error('屏幕共享请求缺少会话ID:', data)
+    return
+  }
+  
+  // 使用 screenShareReceiver 处理屏幕共享请求
+  screenShareReceiver.handleShareRequest(data)
+  
+  // 显示确认对话框
+  ElMessageBox.confirm(
+    '是否接受屏幕共享请求？',
+    '屏幕共享请求',
+    {
+      confirmButtonText: '接受',
+      cancelButtonText: '拒绝',
+      type: 'question'
+    }
+  ).then(async () => {
+    // 发送接受消息
+    await screenShareReceiver.acceptShareRequest(conversationId)
+    
+    // 立即显示浮窗，让接收者可以看到共享即将开始
+    if (screenShareComponent.value) {
+      screenShareComponent.value.showViewer()
+    }
+  }).catch(() => {
+    // 发送拒绝消息
+    screenShareReceiver.rejectShareRequest(conversationId)
+  })
+}
+
+// 处理屏幕共享接受
+const handleScreenShareAccepted = (data) => {
+  ElMessage({
+    message: '屏幕共享请求已被接受',
+    type: 'success',
+    duration: 3000
+  })
+  
+  // 调用 ScreenShare 组件的 establishConnection 方法，开始建立 WebRTC 连接
+  if (screenShareComponent.value) {
+    screenShareComponent.value.establishConnection()
+  }
+}
+
+// 处理屏幕共享拒绝
+const handleScreenShareRejected = (data) => {
+  ElMessage({
+    message: '屏幕共享请求被拒绝',
+    type: 'error',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享开始
+const handleScreenShareStart = (data) => {
+  ElMessage({
+    message: '屏幕共享已开始',
+    type: 'success',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享停止
+const handleScreenShareStop = (data) => {
+  ElMessage({
+    message: '屏幕共享已停止',
+    type: 'info',
+    duration: 3000
+  })
+  
+  // 清理屏幕共享资源
+  if (screenShareComponent.value) {
+    screenShareComponent.value.stopReceiving()
+  }
+  showScreenShareViewer.value = false
+}
 
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
@@ -1064,6 +1278,12 @@ onUnmounted(() => {
   window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   window.removeEventListener('shareFileToChat', handleShareFile as EventListener)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  
+  // 移除 WebSocket 消息处理器
+  registeredScreenShareHandlers.forEach(({ handler, type }) => {
+    removeWsHandler(handler as any, type)
+  })
+  registeredScreenShareHandlers.length = 0
   
   // 清理截图 IPC 监听器
   if (screenshotCleanup) {
@@ -1535,6 +1755,172 @@ const handleStartPrivateChat = (memberId: string) => {
   handleSendPrivateMessage(memberId)
 }
 
+const closeMessageContextMenu = () => {
+  showMessageContextMenuFlag.value = false
+  selectedMessage.value = null
+  document.removeEventListener('click', closeMessageContextMenu)
+}
+
+const copyMessage = () => {
+  if (selectedMessage.value && selectedMessage.value.content) {
+    navigator.clipboard.writeText(selectedMessage.value.content)
+      .then(() => {
+      })
+      .catch(err => {
+        console.error('复制失败:', err)
+      })
+  }
+  closeMessageContextMenu()
+}
+
+const forwardMessage = () => {
+  if (selectedMessage.value) {
+    // 触发全局事件，打开分享弹窗并传递消息数据
+    window.dispatchEvent(new CustomEvent('forwardMessage', {
+      detail: {
+        message: selectedMessage.value
+      }
+    }))
+  }
+  closeMessageContextMenu()
+}
+
+const deleteMessage = () => {
+  if (selectedMessage.value) {
+    ElMessage.info('暂时不支持删除消息，因为目前没计划删除。')
+  }
+  closeMessageContextMenu()
+}
+
+// 消息撤回
+const recallMessage = async () => {
+  if (!selectedMessage.value) {
+    closeMessageContextMenu()
+    return
+  }
+  
+  const messageToRecall = selectedMessage.value
+  
+  if (messageToRecall.isSelf) {
+    openConfirmDialog('确认撤回', '确定要撤回这条消息吗？', async () => {
+      try {
+        const response = await request(`/api/v1/messages/${messageToRecall.id}/recall`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (response.code === 0) {
+          // 通知父组件更新消息状态
+          emit('recall', messageToRecall.id)
+          closeMessageContextMenu()
+          $message.success('消息撤回成功')
+        } else {
+          $message.error('消息撤回失败: ' + response.message)
+        }
+      } catch (error) {
+        console.error('消息撤回失败:', error)
+        $message.error('消息撤回失败: ' + error.message)
+      }
+    })
+  } else {
+    closeMessageContextMenu()
+  }
+}
+
+// 判断是否可以发送提醒
+const canSendReminder = (message: any): boolean => {
+  if (!message.timestamp || message.isRead) return false
+  
+  // 群聊不支持提醒
+  if (props.conversation.type === 'group') return false
+  
+  // 机器人消息不支持提醒
+  if (message.sender && message.sender.isBot) return false
+  
+  const now = Date.now()
+  const messageTime = new Date(message.timestamp).getTime()
+  const oneHour = 60 * 60 * 1000
+  
+  return now - messageTime > oneHour
+}
+
+// 发送消息提醒
+const sendMessageReminder = async () => {
+  if (!selectedMessage.value) {
+    closeMessageContextMenu()
+    return
+  }
+  
+  const message = selectedMessage.value
+  
+  try {
+    const response = await request(`/api/v1/messages/${message.id}/remind`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (response.code === 0) {
+      $message.success('提醒已发送')
+    } else {
+      $message.error('发送提醒失败: ' + response.message)
+    }
+  } catch (error) {
+    console.error('发送提醒失败:', error)
+    $message.error('发送提醒失败: ' + error.message)
+  }
+  
+  closeMessageContextMenu()
+}
+
+// 消息引用
+const quoteMessage = () => {
+  if (selectedMessage.value) {
+    // 设置引用消息
+    quotedMessage.value = selectedMessage.value
+    // 聚焦到输入框
+    const input = document.querySelector('.message-input') as HTMLTextAreaElement
+    if (input) {
+      input.focus()
+    }
+  }
+  closeMessageContextMenu()
+}
+
+// 将消息添加到便签
+const addToNote = () => {
+  if (selectedMessage.value) {
+    const message = selectedMessage.value
+    
+    // 检查消息类型，仅支持文本类型
+    if (message.type !== 'text') {
+      $message.warning('仅支持文本类型的消息添加到便签')
+      closeMessageContextMenu()
+      return
+    }
+    
+    // 构建便签内容
+    const noteContent = `【聊天记录】
+发送者：${message.sender.name}
+时间：${formatTime(message.timestamp)}
+内容：${message.content}`
+    
+    // 触发全局事件，通知便签应用接收内容
+    window.dispatchEvent(new CustomEvent('addToNote', {
+      detail: { 
+        title: `聊天记录 ${formatTime(message.timestamp)}`,
+        content: noteContent 
+      }
+    }))
+    
+    $message.success('消息已添加到便签')
+  }
+  closeMessageContextMenu()
+}
+
 // 截图相关状态
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
@@ -1715,8 +2101,180 @@ const retakeScreenshot = () => {
   takeScreenshot()
 }
 
+// 通话相关状态
+const isInCall = ref(false)
+const callType = ref('') // 'voice' 或 'video'
+const callStatus = ref('') // 'ringing', 'answered', 'ended'
+const showCallModal = ref(false)
+const isScreenSharing = ref(false) // 是否正在共享屏幕
+
 // 小程序列表
 const showMiniAppList = ref(false)
+
+// 开始语音通话
+const startVoiceCall = () => {
+  if (!props.conversation) return
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 开始语音通话
+  callType.value = 'voice'
+  callStatus.value = 'ringing'
+  isInCall.value = true
+  showCallModal.value = true
+  
+  // 模拟通话请求
+  simulateCallRequest('voice')
+}
+
+// 开始视频通话
+const startVideoCall = () => {
+  if (!props.conversation) return
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 开始视频通话
+  callType.value = 'video'
+  callStatus.value = 'ringing'
+  isInCall.value = true
+  showCallModal.value = true
+  
+  // 模拟通话请求
+  simulateCallRequest('video')
+}
+
+// 开始屏幕共享
+const startScreenShare = () => {
+  if (!props.conversation) {
+    return
+  }
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 检查是否已经在共享
+  if (screenShareSender.getIsSharing()) {
+    $message.warning('您已经在共享屏幕')
+    return
+  }
+  
+  // 调用ScreenShare组件的startScreenShare方法
+  if (screenShareComponent.value) {
+    screenShareComponent.value.startScreenShare()
+  } else {
+  }
+}
+
+const handleScreenShareStartFromComponent = (data: { conversationId: string | number }) => {
+  // 只发送屏幕共享开始事件，不立即建立连接
+  // 连接会在对方接受后通过 handleScreenShareAccepted 方法建立
+  emit('send-screen-share-start', { conversationId: props.conversation?.id || 0, requester_id: currentUser?.id || 0 })
+  
+}
+
+const handleScreenShareStopFromComponent = () => {
+  emit('send-screen-share-stop', { conversationId: props.conversation?.id || 0 })
+}
+
+const handleScreenShareJoinFromComponent = () => {
+}
+
+const handleScreenShareLeaveFromComponent = () => {
+}
+
+// 处理屏幕共享流
+const receiveScreenShareStream = (data: any) => {
+  if (screenShareComponent.value) {
+    screenShareComponent.value.receiveScreenShareStream(data)
+  } else {
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 增强接收端错误处理
+// 注意：此函数已移至 ScreenShare 组件中，此处保留空实现以避免引用错误
+const enhanceErrorHandling = () => {
+  console.warn('enhanceErrorHandling 已废弃，错误处理逻辑已移至 ScreenShare 组件')
+}
+
+
+
+// 模拟通话请求
+const simulateCallRequest = (type) => {
+  // 模拟对方接听
+  setTimeout(() => {
+    callStatus.value = 'answered'
+    $message.success('对方已接听')
+  }, 3000)
+}
+
+// 结束通话
+const endCall = () => {
+  callStatus.value = 'ended'
+  isInCall.value = false
+  showCallModal.value = false
+  
+  // 停止屏幕共享
+  if (isScreenSharing.value) {
+    screenShareSender.stopScreenShare()
+    isScreenSharing.value = false
+  }
+  
+  // 模拟通话结束
+  setTimeout(() => {
+    callType.value = ''
+    callStatus.value = ''
+  }, 1000)
+  
+  $message.info('通话已结束')
+}
+
+// 拒绝通话
+const rejectCall = () => {
+  callStatus.value = 'ended'
+  isInCall.value = false
+  showCallModal.value = false
+  
+  // 模拟通话结束
+  setTimeout(() => {
+    callType.value = ''
+    callStatus.value = ''
+  }, 1000)
+  
+  $message.info('已拒绝通话')
+}
+
+// 接听通话
+const answerCall = () => {
+  callStatus.value = 'answered'
+  $message.success('已接听通话')
+}
+
+
+
+
 
 const selectFile = () => {
   // 触发文件选择对话框
@@ -2019,6 +2577,49 @@ const convertUrlsToLinks = (text: string): string => {
   })
   
   return result
+}
+
+// 消息右键菜单添加文件相关选项
+const showMessageContextMenu = (event: MouseEvent, message: Message) => {
+  event.stopPropagation()
+  
+  // 已撤回的消息不显示右键菜单
+  if (message.isRecalled) {
+    return
+  }
+  
+  // 计算菜单位置，确保在屏幕内显示
+  const menuWidth = 180 // 菜单宽度
+  const menuHeight = 120 // 菜单高度
+  const windowWidth = window.innerWidth
+  const windowHeight = window.innerHeight
+  
+  let x = event.clientX
+  let y = event.clientY
+  
+  // 调整x坐标，确保菜单不超出屏幕右侧
+  if (x + menuWidth > windowWidth) {
+    x = windowWidth - menuWidth - 10
+  }
+  
+  // 调整y坐标，确保菜单不超出屏幕底部
+  if (y + menuHeight > windowHeight) {
+    y = windowHeight - menuHeight - 10
+  }
+  
+  messageContextMenuPosition.value = { x, y }
+  showMessageContextMenuFlag.value = true
+  selectedMessage.value = message
+  
+  // 检查消息类型
+  if (message.type === 'file' || message.type === 'image') {
+    // 可以在这里添加文件或图片特定的菜单选项
+  }
+  
+  // 点击其他地方关闭菜单
+  setTimeout(() => {
+    document.addEventListener('click', closeMessageContextMenu)
+  }, 0)
 }
 
 // 处理邀请成员
@@ -4541,21 +5142,6 @@ defineExpose({
 .sacredyellow-theme .time-divider-text {
   background-color: var(--color-warning-50);
   color: var(--color-warning-600);
-}
-
-/* 没有更多消息提示 */
-.no-more-messages {
-  text-align: center;
-  padding: 20px 0;
-  color: var(--color-gray-500);
-  font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-200);
-  margin-bottom: 10px;
-}
-
-/* 消息列表系统提示样式 */
-</style>
-lor: var(--color-warning-600);
 }
 
 /* 没有更多消息提示 */

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { request, getToken } from '@/utils/request'
 
 export function useChannel(serverUrl: any, currentUser: any) {
   const channelMessage = ref('')
@@ -11,19 +12,16 @@ export function useChannel(serverUrl: any, currentUser: any) {
 
   const subscribeChannel = async (channel: any) => {
     try {
-      const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/subscribe`, {
+      const response: any = await request(`/api/v1/channels/${channel.id}/subscribe`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+        customBaseUrl: serverUrl.value
       })
       
-      if (response.ok) {
+      if (response.code === 0) {
         channel.is_subscribed = true
         ElMessage.success('订阅成功')
       } else {
-        ElMessage.error('订阅失败')
+        ElMessage.error(response.message || '订阅失败')
       }
     } catch (error) {
       console.error('订阅频道失败:', error)
@@ -33,19 +31,16 @@ export function useChannel(serverUrl: any, currentUser: any) {
 
   const unsubscribeChannel = async (channel: any) => {
     try {
-      const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/unsubscribe`, {
+      const response: any = await request('/api/v1/channels/${channel.id}/unsubscribe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+        customBaseUrl: serverUrl.value
       })
       
-      if (response.ok) {
+      if (response.code === 0) {
         channel.is_subscribed = false
         ElMessage.success('取消订阅成功')
       } else {
-        ElMessage.error('取消订阅失败')
+        ElMessage.error(response.message || '取消订阅失败')
       }
     } catch (error) {
       console.error('取消订阅频道失败:', error)
@@ -57,19 +52,16 @@ export function useChannel(serverUrl: any, currentUser: any) {
     if (!channelMessage.value.trim()) return
     
     try {
-      const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/messages`, {
+      const response: any = await request('/api/v1/channels/${channel.id}/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
+        data: {
           content: channelMessage.value
-        })
+        },
+        customBaseUrl: serverUrl.value
       })
       
-      if (response.ok) {
-        const newMessage = await response.json()
+      if (response.code === 0) {
+        const newMessage = response.data
         if (!channel.messages) {
           channel.messages = []
         }
@@ -77,7 +69,7 @@ export function useChannel(serverUrl: any, currentUser: any) {
         channelMessage.value = ''
         ElMessage.success('发送成功')
       } else {
-        ElMessage.error('发送失败')
+        ElMessage.error(response.message || '发送失败')
       }
     } catch (error) {
       console.error('发送频道消息失败:', error)

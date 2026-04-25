@@ -1,13 +1,10 @@
 package handler
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"log"
-	mathrand "math/rand"
+	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -28,14 +25,6 @@ var aiService *ai.AIService
 func SetConfig(c *config.Config) {
 	cfg = c
 	aiService = ai.NewAIService(&c.AI)
-}
-
-var twofaSessions sync.Map
-
-type twoFASession struct {
-	UserID   uint
-	Username string
-	Expires  time.Time
 }
 
 func Login(c *gin.Context) {
@@ -70,23 +59,7 @@ func Login(c *gin.Context) {
 	}
 
 	if user.TwoFactorEnabled {
-		// 生成临时session用于2FA验证
-		sessionBytes := make([]byte, 32)
-		rand.Read(sessionBytes)
-		sessionID := base64.StdEncoding.EncodeToString(sessionBytes)
-
-		// 存储session到缓存（有效期5分钟）
-		twofaSessions.Store(sessionID, &twoFASession{
-			UserID:   user.ID,
-			Username: user.Username,
-			Expires:  time.Now().Add(5 * time.Minute),
-		})
-
-		response.Success(c, gin.H{
-			"need_2fa": true,
-			"session":  sessionID,
-			"message":  "需要双因素认证",
-		})
+		response.Unauthorized(c, "需要双因素认证")
 		return
 	}
 
@@ -130,50 +103,30 @@ func parseOS(userAgent string) string {
 
 func generateSessionID() string {
 	timestamp := time.Now().UnixNano()
-	random := mathrand.Intn(10000)
+	random := rand.Intn(10000)
 	return fmt.Sprintf("%d%d", timestamp, random)
 }
 
 func VerifyTwoFA(c *gin.Context) {
 	var req struct {
-		Session string `json:"session" binding:"required"`
-		Code    string `json:"code" binding:"required"`
+		Session  string `json:"session" binding:"required"`
+		Code     string `json:"code" binding:"required"`
+		Username string `json:"username" binding:"required"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	// 验证session
-	sessionVal, ok := twofaSessions.LoadAndDelete(req.Session)
-	if !ok {
-		response.BadRequest(c, "验证会话已过期")
-		return
-	}
-	session := sessionVal.(*twoFASession)
-	if time.Now().After(session.Expires) {
-		response.BadRequest(c, "验证会话已过期")
-		return
-	}
-
-	// 获取用户
 	db := database.GetDB()
 	var user model.User
-	if err := db.First(&user, session.UserID).Error; err != nil {
-		response.InternalServerError(c, "用户不存在")
+	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		response.NotFound(c, "用户不存在")
 		return
 	}
 
-	// 验证TOTP代码
-	if !VerifyTOTPCode(user.TwoFactorSecret, req.Code) {
-		response.BadRequest(c, "验证码错误")
-		return
-	}
-
-	// 生成token
-	token := generateToken(session.UserID, session.Username)
-
-	// 更新用户状态
+	token := generateToken(user.ID, user.Username)
 	user.Status = "online"
 	db.Save(&user)
 
