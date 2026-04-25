@@ -1110,10 +1110,10 @@
     <!-- 通知中心 -->
     <NotificationCenter 
       ref="notificationCenterRef"
-      :show="showNotificationCenterFlag" 
+      :show="showNotificationCenter" 
       :position="notificationCenterPosition"
       @close="closeNotificationCenter"
-      @notification-click="handleNotificationCenterClick"
+      @notification-click="handleNotificationClick"
     />
 
     <!-- 语音通话模态框 -->
@@ -1513,9 +1513,6 @@ import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
-// 加载状态
-const isLoading = ref(true)
-
 // 获取群聊群主
 const getGroupOwner = (group: Conversation | null) => {
   if (!group || !group.members) return ''
@@ -1639,8 +1636,6 @@ const getMemberAvatar = (member: User) => {
 }
 
 // 网络连接状态
-const showNetworkError = ref(false)
-const networkErrorMsg = ref('网络连接失败，正在尝试重新连接...')
 const sessionExpired = ref(false)
 const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
@@ -1816,25 +1811,89 @@ const request = async (url: string, options?: RequestInit) => {
   }
 }
 
+// 使用 composable
+const {
+  notifications,
+  unreadNotificationCount,
+  showNotificationCenter,
+  notificationCenterPosition,
+  handleNotificationCenter,
+  closeNotificationCenter,
+  handleNotificationClick: _handleNotificationClick,
+  handleNewNotification: _handleNewNotification,
+  markAllNotificationsAsRead
+} = useNotifications()
+
+const {
+  activeOption,
+  selectedAppId,
+  searchQuery,
+  searchResults,
+  isLoading,
+  showNetworkError,
+  networkErrorMsg,
+  sidebarCollapsed,
+  toggleSidebar,
+  setLoading,
+  setNetworkError
+} = useAppState()
+
 const currentConversationId = ref<string | null>(null)
-const activeOption = ref('recent')
-const sidebarCollapsed = ref(false)
-const searchQuery = ref('')
-const unreadNotificationCount = ref(0)
 const selectedChannel = ref(null)
 const selectedGroup = ref(null)
+
+// 通知中心组件 ref
+const notificationCenterRef = ref<any>(null)
+
+// 重写通知点击处理，包含 Main.vue 的特定逻辑
+const handleNotificationClick = (notification: any) => {
+  _handleNotificationClick(notification)
+  if (notification.type === 'message' && notification.data?.conversationId) {
+    activeOption.value = 'recent'
+    currentConversationId.value = notification.data.conversationId
+    loadMessages(notification.data.conversationId)
+  } else if (notification.type === 'group' && notification.data?.groupId) {
+    activeOption.value = 'groups'
+  }
+}
+
+// 重写新通知处理，包含 Main.vue 的特定逻辑
+const handleNewNotification = (notification: any) => {
+  _handleNewNotification(notification)
+  console.log('收到新通知:', notification)
+
+  // 显示通知提示
+  showMessage({
+    message: notification.content || notification.title || '您有一条新通知',
+    type: 'info',
+    duration: 5000
+  })
+
+  // 将通知添加到通知中心
+  if (notificationCenterRef.value) {
+    const newNotification = {
+      id: notification.id || Date.now().toString(),
+      title: notification.title || '新通知',
+      content: notification.content || '',
+      timestamp: notification.timestamp || Date.now(),
+      read: false,
+      type: notification.type || 'system',
+      data: notification.data || {}
+    }
+
+    // 获取当前通知列表
+    const currentNotifications = notificationCenterRef.value.notifications || []
+    // 添加新通知到列表开头
+    notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
+    // 重新过滤通知
+    notificationCenterRef.value.filterNotifications()
+  }
+}
 
 // 远程屏幕共享状态
 const remoteScreenSharing = ref(false)
 const remoteScreenUserId = ref<number | null>(null)
 const remoteScreenData = ref<string | null>(null)
-
-// 切换左侧边栏收缩状态
-const toggleSidebar = () => {
-  console.log('toggleSidebar called, current value:', sidebarCollapsed.value)
-  sidebarCollapsed.value = !sidebarCollapsed.value
-  console.log('toggleSidebar new value:', sidebarCollapsed.value)
-}
 
 // 处理侧边栏选项按钮点击
 const handleSidebarOptionClick = (option: string) => {
@@ -2289,7 +2348,9 @@ onMounted(async () => {
   })
 })
 
-// 导入WebSocket管理器
+// 导入 composables
+import { useNotifications } from '../composables/useNotifications'
+import { useAppState } from '../composables/useAppState'
 import { connectWebSocket as connectWS, addMessageHandler, sendWebSocketMessage, getWebSocket } from '../utils/websocketManager'
 
 // 暴露sendWebSocketMessage到全局，供screenShareManager使用
@@ -3165,8 +3226,6 @@ const filteredConversations = computed(() => {
   })
 })
 
-// 搜索结果
-const searchResults = ref([])
 const isSearching = ref(false)
 
 // 处理搜索
@@ -4751,9 +4810,6 @@ const toggleCategory = (categoryId: string) => {
     category.expanded = !category.expanded
   }
 }
-
-// 选中的应用ID
-const selectedAppId = ref('')
 
 // 当前打开的用户应用
 const currentUserApp = ref<any>(null)
@@ -6491,114 +6547,6 @@ const initTheme = () => {
 
 // 初始化主题
 initTheme()
-
-// 通知中心相关
-const showNotificationCenterFlag = ref(false)
-const notificationCenterPosition = ref({ x: 0, y: 0 })
-const notificationCenterRef = ref<any>(null)
-
-const showNotificationCenter = (event: MouseEvent) => {
-  event.stopPropagation()
-
-  // 切换通知中心显示状态
-  if (showNotificationCenterFlag.value) {
-    closeNotificationCenter()
-    return
-  }
-
-  closeActionMenu()
-  closeSettingsMenu()
-  closeThemeMenu()
-
-  const notificationButton = event.currentTarget as HTMLElement
-  if (notificationButton) {
-    const rect = notificationButton.getBoundingClientRect()
-
-    const menuWidth = 380
-    const menuHeight = 480
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-
-    let x = rect.right + 2
-    let y = rect.top
-
-    if (x + menuWidth > windowWidth) {
-      x = rect.left - menuWidth - 10
-    }
-
-    if (y + menuHeight > windowHeight) {
-      y = windowHeight - menuHeight - 10
-    }
-    
-    if (y < 0) {
-      y = 10
-    }
-    
-    notificationCenterPosition.value = {
-      x,
-      y
-    }
-    showNotificationCenterFlag.value = true
-
-    // 加载通知列表
-    if (notificationCenterRef.value) {
-      notificationCenterRef.value.loadNotifications()
-    }
-
-    setTimeout(() => {
-      document.addEventListener('click', closeNotificationCenter)
-    }, 0)
-  }
-}
-
-const closeNotificationCenter = () => {
-  showNotificationCenterFlag.value = false
-  document.removeEventListener('click', closeNotificationCenter)
-}
-
-const handleNotificationCenterClick = (notification: any) => {
-  if (notification.type === 'message' && notification.data?.conversationId) {
-    activeOption.value = 'recent'
-    currentConversationId.value = notification.data.conversationId
-    loadMessages(notification.data.conversationId)
-  } else if (notification.type === 'group' && notification.data?.groupId) {
-    activeOption.value = 'groups'
-  }
-}
-
-const handleNewNotification = (notification: any) => {
-  console.log('收到新通知:', notification)
-
-  // 显示通知提示
-  showMessage({
-    message: notification.content || notification.title || '您有一条新通知',
-    type: 'info',
-    duration: 5000
-  })
-
-  // 将通知添加到通知中心
-  if (notificationCenterRef.value) {
-    const newNotification = {
-      id: notification.id || Date.now().toString(),
-      title: notification.title || '新通知',
-      content: notification.content || '',
-      timestamp: notification.timestamp || Date.now(),
-      read: false,
-      type: notification.type || 'system',
-      data: notification.data || {}
-    }
-
-    // 获取当前通知列表
-    const currentNotifications = notificationCenterRef.value.notifications || []
-    // 添加新通知到列表开头
-    notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
-    // 重新过滤通知
-    notificationCenterRef.value.filterNotifications()
-
-    // 更新未读通知计数
-    unreadNotificationCount.value++
-  }
-}
 </script>
 
 <style>
