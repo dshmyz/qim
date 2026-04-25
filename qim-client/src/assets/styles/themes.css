@@ -478,3 +478,234 @@
 [data-theme="grassgreen"] .window-controls-left {
   background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
+
+/* 现代浅色主题 */
+[data-theme="modern-light"] {
+  --primary-color: #3b82f6;
+  --primary-light: #eff6ff;
+  --secondary-color: #f9fafb;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+  --hover-color: #eff6ff;
+  --active-color: #2563eb;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #f3f4f6;
+  --accent-color: #60a5fa;
+  --text-secondary: #6b7280;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #fafafa;
+  --card-bg: #ffffff;
+  --header-panel-bg: #f8fafc;
+  --content-bg: #f9fafb;
+}
+
+/* 神圣黄主题（月牙黄） */
+[data-theme="sacredyellow"] {
+  --primary-color: #d4b85f;
+  --primary-light: #fffef8;
+  --secondary-color: #fffef8;
+  --text-color: #6b5a2f;
+  --border-color: #f0e6c8;
+  --hover-color: #f5ecd5;
+  --active-color: #c9a85a;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #fffef8;
+  --accent-color: #e8d4a0;
+  --text-secondary: #8b7a50;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --panel-bg: #ffffff;
+  --list-bg: #fffef8;
+  --card-bg: #ffffff;
+  --header-panel-bg: #fffef8;
+}
+
+/* 神圣黄主题（月牙黄） - 左边侧边栏 */
+[data-theme="sacredyellow"] .side-options {
+  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+}
+
+/* 神圣黄主题（月牙黄） - 文本颜色 */
+[data-theme="sacredyellow"] .window-title,
+[data-theme="sacredyellow"] .option-item,
+[data-theme="sacredyellow"] .option-item.active {
+  color: #5a4a25;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+/* 神圣黄主题（月牙黄） - 侧边栏头部 */
+[data-theme="sacredyellow"] .sidebar-header .user-name {
+  color: var(--text-color);
+  text-shadow: none;
+}
+
+/* 神圣黄主题（月牙黄） - 窗口控制栏左侧 */
+[data-theme="sacredyellow"] .window-controls-left {
+  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+}
+
+/* 都市丛林主题 */
+[data-theme="urban-jungle"] {
+  --primary-color: #27ae60;
+  --primary-light: #e8f8f0;
+  --secondary-color: #f0fff4;
+  --text-color: #1a4a2e;
+  --border-color: #c6e6d5;
+  --hover-color: #dcf5e8;
+  --active-color: #219150;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #e8f8f0;
+  --accent-color: #2ecc71;
+  --text-secondary: #2e6b4a;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  --panel-bg: #ffffff;
+  --list-bg: #f0fff4;
+  --card-bg: #ffffff;
+  --header-panel-bg: #e8f8f0;
+}
+
+/* 都市丛林主题 - 左边侧边栏 */
+[data-theme="urban-jungle"] .side-options {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+/* 都市丛林主题 - 文本颜色 */
+[data-theme="urban-jungle"] .window-title,
+[data-theme="urban-jungle"] .option-item,
+[data-theme="urban-jungle"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 都市丛林主题 - 窗口控制栏左侧 */
+[data-theme="urban-jungle"] .window-controls-left {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+/* 地中海主题 */
+[data-theme="mediterranean-dream"] {
+  --primary-color: #c0392b;
+  --primary-light: #fde8e8;
+  --secondary-color: #f0f9ff;
+  --text-color: #1e3a5f;
+  --border-color: #bae6fd;
+  --hover-color: #dbeafe;
+  --active-color: #e74c3c;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #fde8e8;
+  --accent-color: #3498db;
+  --text-secondary: #475569;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #f0f9ff;
+  --card-bg: #ffffff;
+  --header-panel-bg: #fde8e8;
+}
+
+/* 地中海主题 - 左边侧边栏 */
+[data-theme="mediterranean-dream"] .side-options {
+  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+}
+
+/* 地中海主题 - 文本颜色 */
+[data-theme="mediterranean-dream"] .window-title,
+[data-theme="mediterranean-dream"] .option-item,
+[data-theme="mediterranean-dream"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 地中海主题 - 窗口控制栏左侧 */
+[data-theme="mediterranean-dream"] .window-controls-left {
+  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+}
+
+/* 单色雅主题 */
+[data-theme="monochrome-elegance"] {
+  --primary-color: #333333;
+  --primary-light: #f5f5f5;
+  --secondary-color: #fafafa;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+  --hover-color: #f3f4f6;
+  --active-color: #4b5563;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #f5f5f5;
+  --accent-color: #666666;
+  --text-secondary: #6b7280;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #fafafa;
+  --card-bg: #ffffff;
+  --header-panel-bg: #f5f5f5;
+}
+
+/* 单色雅主题 - 左边侧边栏 */
+[data-theme="monochrome-elegance"] .side-options {
+  background: linear-gradient(135deg, #333333 0%, #666666 100%);
+}
+
+/* 单色雅主题 - 文本颜色 */
+[data-theme="monochrome-elegance"] .window-title,
+[data-theme="monochrome-elegance"] .option-item,
+[data-theme="monochrome-elegance"] .option-item.active {
+  color: #ffffff;
+}
+
+/* 单色雅主题 - 窗口控制栏左侧 */
+[data-theme="monochrome-elegance"] .window-controls-left {
+  background: linear-gradient(135deg, #333333 0%, #666666 100%);
+}
+
+/* 春日花主题 */
+[data-theme="spring-blossom"] {
+  --primary-color: #f8bbd9;
+  --primary-light: #fce4ec;
+  --secondary-color: #f3e5f5;
+  --text-color: #4a148c;
+  --border-color: #f8bbd9;
+  --hover-color: #fce4ec;
+  --active-color: #e1bee7;
+  --sidebar-bg: #ffffff;
+  --window-controls-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-hover: #fce4ec;
+  --accent-color: #e1bee7;
+  --text-secondary: #7b1fa2;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --panel-bg: #ffffff;
+  --list-bg: #fce4ec;
+  --card-bg: #ffffff;
+  --header-panel-bg: #fce4ec;
+}
+
+/* 春日花主题 - 左边侧边栏 */
+[data-theme="spring-blossom"] .side-options {
+  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+}
+
+/* 春日花主题 - 文本颜色 */
+[data-theme="spring-blossom"] .window-title,
+[data-theme="spring-blossom"] .option-item,
+[data-theme="spring-blossom"] .option-item.active {
+  color: #4a148c;
+}
+
+/* 春日花主题 - 窗口控制栏左侧 */
+[data-theme="spring-blossom"] .window-controls-left {
+  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+}

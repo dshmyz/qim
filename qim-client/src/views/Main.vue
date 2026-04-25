@@ -435,7 +435,6 @@
       </div>
       
 
-      
       <!-- 便签应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '6'" class="right-content">
         <StickyNotesApp @back="backToAppList" />
@@ -521,9 +520,6 @@
       <div style="display: none">
         <StickyNotesApp />
       </div>
-
-
-      
 
 
     </div>
@@ -2642,7 +2638,6 @@ const handleRemoteScreenShareData = (data: any) => {
 }
 
 
-
 // 处理屏幕共享请求
 const handleScreenShareRequest = (data: any) => {
   console.log('收到屏幕共享请求:', data)
@@ -2708,7 +2703,6 @@ const handleScreenShareRejected = (data: any) => {
     duration: 3000
   })
 }
-
 
 
 // 处理消息删除
@@ -4206,7 +4200,6 @@ const formatCallDuration = (seconds: number): string => {
 }
 
 
-
 // 右键菜单相关
 const showMenu = ref(false)
 const menuPosition = ref({ x: 0, y: 0 })
@@ -4231,13 +4224,9 @@ const closeContextMenu = () => {
 }
 
 
-
-
-
 // 动作菜单
 const showActionMenuFlag = ref(false)
 const actionMenuPosition = ref({ x: 0, y: 0 })
-
 
 
 // 用户右键菜单
@@ -4374,13 +4363,6 @@ const saveUserProfile = async () => {
     showMessage({ message: '保存失败: ' + error.message, type: 'error' })
   }
 }
-
-
-
-
-
-
-
 
 
 // 切换部门展开/折叠
@@ -4626,7 +4608,6 @@ const appCategories = ref([
     ]
   }
 ])
-
 
 
 // 应用管理相关状态
@@ -4952,17 +4933,7 @@ const backToAppList = () => {
 }
 
 
-
 // 打开应用管理
-
-
-
-
-
-
-
-
-
 
 
 // 获取所有员工
@@ -5187,9 +5158,6 @@ const sendSystemMessage = async () => {
     showMessage({ message: '系统消息发布失败', type: 'error' })
   }
 }
-
-
-
 
 
 const createChannel = () => {
@@ -5967,7 +5935,6 @@ const closeWindow = () => {
 }
 
 
-
 const showSettingsMenu = (event: MouseEvent) => {
   event.stopPropagation()
   
@@ -6663,237 +6630,42 @@ const handleNewNotification = (notification: any) => {
   --font-size-base: 14px;
 } */
 
-/* 现代浅色主题 */
-[data-theme="modern-light"] {
-  --primary-color: #3b82f6;
-  --primary-light: #eff6ff;
-  --secondary-color: #f9fafb;
-  --text-color: #1f2937;
-  --border-color: #e5e7eb;
-  --hover-color: #eff6ff;
-  --active-color: #2563eb;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #f3f4f6;
-  --accent-color: #60a5fa;
-  --text-secondary: #6b7280;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --panel-bg: #ffffff;
-  --list-bg: #fafafa;
-  --card-bg: #ffffff;
-  --header-panel-bg: #f8fafc;
-  --content-bg: #f9fafb;
-}
-
-/* 优雅深色主题 */
-[data-theme="elegant-dark"] {
-  --primary-color: #4b5563;
-  --primary-light: #374151;
-  --secondary-color: #0a0a0a;
-  --text-color: #e5e7eb;
-  --border-color: #374151;
-  --hover-color: #2d3748;
-  --active-color: #6b7280;
-  --sidebar-bg: #0f0f0f;
-  --window-controls-bg: #0f0f0f;
-  --context-menu-bg: #1f2937;
-  --context-menu-hover: #374151;
-  --accent-color: #4b5563;
-  --text-secondary: #9ca3af;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --panel-bg: #121212;
-  --list-bg: #1a1a1a;
-  --card-bg: #161616;
-  --header-panel-bg: #0f0f0f;
-  --content-bg: #0a0a0a;
-}
-
-/* 优雅深色主题 - 侧边栏内容区域 */
-
-[data-theme="elegant-dark"] .apps-container {
-  background: var(--list-bg) !important;
-}
-
-[data-theme="elegant-dark"] .search-input {
-  background: var(--sidebar-bg) !important;
-}
-
-/* 优雅深色主题 - 搜索框背景 */
-[data-theme="elegant-dark"] .search-box {
-  /* background: var(--sidebar-bg) !important; */
-  border-top-color: var(--border-color) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
 
 /* 海洋蓝主题 */
-[data-theme="ocean-blue"] {
-  --primary-color: #49bccf;
-  --primary-light: #e0f2fe;
-  --secondary-color: #f0f9ff;
-  --text-color: #0c4a6e;
-  --border-color: #bae6fd;
-  --hover-color: #dbeafe;
-  --active-color: #3aa8b9;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #e0f2fe;
-  --accent-color: #68d8e8;
-  --text-secondary: #475569;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
-  --panel-bg: #ffffff;
-  --list-bg: #f0f9ff;
-  --card-bg: #ffffff;
-  --header-panel-bg: #e0f2fe;
-}
 
 /* 海洋蓝主题 - 左边侧边栏 */
-[data-theme="ocean-blue"] .side-options {
-  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
-}
 
 /* 海洋蓝主题 - 文本颜色 */
-[data-theme="ocean-blue"] .window-title,
-[data-theme="ocean-blue"] .option-item,
-[data-theme="ocean-blue"] .option-item.active {
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* 海洋蓝主题 - 窗口控制栏左侧 */
-[data-theme="ocean-blue"] .window-controls-left {
-  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
-}
 
 /* 海洋蓝主题 - 侧边栏头部 */
 
-[data-theme="ocean-blue"] .sidebar-header .user-name {
-  color: var(--text-color);
-  text-shadow: none;
-}
 
 /* 优雅深色主题 - 侧边栏头部 */
 
-[data-theme="elegant-dark"] .sidebar-header .user-name {
-  color: var(--text-color) !important;
-}
 
 /* 优雅深色主题 - 窗口控制栏左侧 */
-/* [data-theme="elegant-dark"] .window-controls-left {
-  background: var(--sidebar-bg) !important;
-  border-right: 1px solid var(--border-color) !important;
-} */
 
 /* 优雅深色主题 - 组织架构树 */
 
-[data-theme="elegant-dark"] .employee-node .tree-node-content {
-  background: transparent !important;
-  opacity: 1 !important;
-}
-
-[data-theme="elegant-dark"] .employee-node .tree-node-content:hover {
-  background: var(--hover-color) !important;
-  opacity: 1 !important;
-}
 
 /* 优雅深色主题 - 图标颜色 */
-[data-theme="elegant-dark"] .option-icon {
-  color: rgba(229, 231, 235, 0.7) !important;
-}
 
-[data-theme="elegant-dark"] .option-item:hover .option-icon,
-[data-theme="elegant-dark"] .option-item.active .option-icon {
-  color: rgba(229, 231, 235, 1) !important;
-}
-
-[data-theme="elegant-dark"] .app-icon,
-[data-theme="elegant-dark"] .recent-app-grid-icon,
-[data-theme="elegant-dark"] .category-app-icon,
-[data-theme="elegant-dark"] .management-icon,
-[data-theme="elegant-dark"] .empty-icon,
-[data-theme="elegant-dark"] .file-icon,
-[data-theme="elegant-dark"] .context-menu-icon,
-[data-theme="elegant-dark"] .action-menu-icon,
-[data-theme="elegant-dark"] .user-context-menu-icon,
-[data-theme="elegant-dark"] .muted-icon,
-[data-theme="elegant-dark"] .toggle-icon,
-[data-theme="elegant-dark"] .tab-icon,
-[data-theme="elegant-dark"] .category-icon,
-
-[data-theme="elegant-dark"] .app-item:hover .app-icon,
-[data-theme="elegant-dark"] .recent-app-grid-item:hover .recent-app-grid-icon,
-[data-theme="elegant-dark"] .category-app-item:hover .category-app-icon,
-
-[data-theme="elegant-dark"] .app-item:hover .app-icon {
-  transform: scale(1.05);
-  background: grey!important;
-  /* color: #fff; */
-}
 
 /* 优雅深色主题 - 侧边栏按钮样式 */
-[data-theme="elegant-dark"] .option-item {
-  color: rgba(229, 231, 235, 0.7) !important;
-}
 
-[data-theme="elegant-dark"] .option-item:hover {
-  background: var(--hover-color) !important;
-  color: rgba(229, 231, 235, 1) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-
-[data-theme="elegant-dark"] .option-item.active {
-  background: var(--hover-color) !important;
-  color: rgba(229, 231, 235, 1) !important;
-  box-shadow: var(--shadow-md) !important;
-}
 
 /* 优雅深色主题 - 应用管理tab样式 */
-[data-theme="elegant-dark"] .app-tab-item {
-  color: rgba(229, 231, 235, 0.7) !important;
-  border-bottom-color: transparent !important;
-}
 
-[data-theme="elegant-dark"] .app-tab-item:hover {
-  background: var(--hover-color) !important;
-  color: rgba(229, 231, 235, 1) !important;
-}
-
-[data-theme="elegant-dark"] .app-tab-item.active {
-  border-bottom-color: rgba(229, 231, 235, 1) !important;
-  color: rgba(229, 231, 235, 1) !important;
-}
 
 /* 优雅深色主题 - 群聊徽章样式 */
 
 /* 优雅深色主题 - 右边面板 */
-[data-theme="elegant-dark"] .right-content {
-  background: var(--secondary-color) !important;
-}
 
-[data-theme="elegant-dark"] .right-content-header {
-  background: var(--sidebar-bg) !important;
-  box-shadow: var(--shadow-md) !important;
-  /* border-bottom: 1px solid var(--border-color) !important; */
-}
-
-[data-theme="elegant-dark"] .right-content-body {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-}
 
 /* 优雅深色主题 - 应用内容 */
-[data-theme="elegant-dark"] .apps-content {
-  background: var(--secondary-color) !important;
-}
 
-[data-theme="elegant-dark"] .recent-apps-section,
-[data-theme="elegant-dark"] .all-apps-section {
-  background: var(--secondary-color) !important;
-}
 
 /* 优雅深色主题 - 应用分类 */
 
@@ -7224,19 +6996,6 @@ const handleNewNotification = (notification: any) => {
 
 /* 深色主题适配 */
 
-[data-theme="elegant-dark"] .search-popup-item:hover {
-  background-color: var(--hover-color);
-}
-
-[data-theme="elegant-dark"] .search-popup-status.online {
-  background-color: #166534;
-  color: #bbf7d0;
-}
-
-[data-theme="elegant-dark"] .search-popup-status.offline {
-  background-color: #7f1d1d;
-  color: #fecaca;
-}
 
 /* 按钮样式优化 */
 button {
@@ -7328,361 +7087,111 @@ button:active {
 
 /* 主题切换样式 - 深色主题下的Markdown样式 */
 
-[data-theme="elegant-dark"] .markdown-link:hover {
-  color: #bbdefb;
-}
-
-[data-theme="elegant-dark"] .preview-content {
-  color: #e0e0e0;
-}
-
-[data-theme="elegant-dark"] .app-item:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
 
 /* 主题切换样式 - 海洋蓝主题下的Markdown样式 */
 
-[data-theme="netblue"] .markdown-link:hover {
-  color: #0284c7;
-}
 
 /* 优雅深色主题 - 分类标题悬停样式 */
 
 /* 优雅深色主题 - 分类应用样式 */
 
-[data-theme="elegant-dark"] .category-app-item:hover {
-  background: var(--hover-color) !important;
-}
 
 /* 优雅深色主题 - 应用网格项 */
 
-[data-theme="elegant-dark"] .recent-app-grid-item:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
-}
 
 /* 优雅深色主题 - 主内容区域 */
-[data-theme="elegant-dark"] .main-content {
-  background: var(--secondary-color) !important;
-}
 
 /* 优雅深色主题 - 无会话状态 */
-[data-theme="elegant-dark"] .no-conversation {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-}
 
 /* 优雅深色主题 - 应用内容区域 */
-[data-theme="elegant-dark"] .apps-content {
-  background: var(--secondary-color) !important;
-}
 
-[data-theme="elegant-dark"] .recent-apps-section,
-[data-theme="elegant-dark"] .all-apps-section {
-  background: var(--secondary-color) !important;
-}
 
 /* 海洋蓝主题 - 选项项样式调整 */
-[data-theme="netblue"] .option-item {
-  color: rgba(255, 255, 255, 0.8);
-}
 
-[data-theme="netblue"] .option-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-[data-theme="netblue"] .option-item.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
 
 /* 高雅紫主题 */
-[data-theme="elegantpurple"] {
-  --primary-color: #7e22ce;
-  --primary-light: #f3e8ff;
-  --secondary-color: #faf5ff;
-  --text-color: #5b21b6;
-  --border-color: #e9d5ff;
-  --hover-color: #f3e8ff;
-  --active-color: #6b21a8;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #f3e8ff;
-  --accent-color: #a855f7;
-  --text-secondary: #7e22ce;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --panel-bg: #ffffff;
-  --list-bg: #faf5ff;
-  --card-bg: #ffffff;
-  --header-panel-bg: #f3e8ff;
-}
 
 /* 高雅紫主题 - 左边侧边栏 */
-[data-theme="elegantpurple"] .side-options {
-  background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
-}
 
 /* 高雅紫主题 - 文本颜色 */
-[data-theme="elegantpurple"] .window-title,
-[data-theme="elegantpurple"] .option-item,
-[data-theme="elegantpurple"] .option-item.active {
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* 高雅紫主题 - 侧边栏头部 */
 
-[data-theme="elegantpurple"] .sidebar-header .user-name {
-  color: var(--text-color);
-  text-shadow: none;
-}
 
 /* 高雅紫主题 - 窗口控制栏左侧 */
-[data-theme="elegantpurple"] .window-controls-left {
-  background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
-}
 
 /* 月牙黄主题 */
-[data-theme="sacredyellow"] {
-  --primary-color: #d4b85f;
-  --primary-light: #fffef8;
-  --secondary-color: #fffef8;
-  --text-color: #6b5a2f;
-  --border-color: #f0e6c8;
-  --hover-color: #fffef8;
-  --active-color: #c9a85a;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #fffef8;
-  --accent-color: #e8d4a0;
-  --text-secondary: #8b7a50;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  --panel-bg: #ffffff;
-  --list-bg: #fffef8;
-  --card-bg: #ffffff;
-  --header-panel-bg: #fffef8;
-}
 
 /* 月牙黄主题 - 左边侧边栏 */
-[data-theme="sacredyellow"] .side-options {
-  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
-}
 
 /* 月牙黄主题 - 文本颜色 */
-[data-theme="sacredyellow"] .window-title,
-[data-theme="sacredyellow"] .option-item,
-[data-theme="sacredyellow"] .option-item.active {
-  color: #5a4a25;
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.6);
-}
 
 /* 月牙黄主题 - 侧边栏头部 */
 
-[data-theme="sacredyellow"] .sidebar-header .user-name {
-  color: var(--text-color);
-  text-shadow: none;
-}
 
 /* 月牙黄主题 - 窗口控制栏左侧 */
-[data-theme="sacredyellow"] .window-controls-left {
-  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
-}
 
 /* 中国红主题 */
-[data-theme="chinesered"] {
-  --primary-color: #c41e3a;
-  --primary-light: #fff5f5;
-  --secondary-color: #fff5f5;
-  --text-color: #5c1a1a;
-  --border-color: #f5c6c6;
-  --hover-color: #fff5f5;
-  --active-color: #a01830;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #fff5f5;
-  --accent-color: #e85c6c;
-  --text-secondary: #8b3a3a;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  --panel-bg: #ffffff;
-  --list-bg: #fff5f5;
-  --card-bg: #ffffff;
-  --header-panel-bg: #fff5f5;
-}
 
 /* 中国红主题 - 左边侧边栏 */
-[data-theme="chinesered"] .side-options {
-  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
-}
 
 /* 中国红主题 - 文本颜色 */
-[data-theme="chinesered"] .window-title,
-[data-theme="chinesered"] .option-item,
-[data-theme="chinesered"] .option-item.active {
-  color: #fff5f5;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* 中国红主题 - 侧边栏头部 */
 
-[data-theme="chinesered"] .sidebar-header .user-name {
-  color: var(--text-color);
-  text-shadow: none;
-}
 
 /* 中国红主题 - 窗口控制栏左侧 */
-[data-theme="chinesered"] .window-controls-left {
-  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
-}
 
 /* 青草绿主题 */
-[data-theme="grassgreen"] {
-  --primary-color: #2e8b57;
-  --primary-light: #f0fff4;
-  --secondary-color: #f0fff4;
-  --text-color: #1a4a2e;
-  --border-color: #c6e6d5;
-  --hover-color: #f0fff4;
-  --active-color: #247048;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #f0fff4;
-  --accent-color: #5cb88a;
-  --text-secondary: #2e6b4a;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  --panel-bg: #ffffff;
-  --list-bg: #f0fff4;
-  --card-bg: #ffffff;
-  --header-panel-bg: #f0fff4;
-}
 
 /* 青草绿主题 - 左边侧边栏 */
-[data-theme="grassgreen"] .side-options {
-  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
-}
 
 /* 青草绿主题 - 文本颜色 */
-[data-theme="grassgreen"] .window-title,
-[data-theme="grassgreen"] .option-item,
-[data-theme="grassgreen"] .option-item.active {
-  color: #f0fff4;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* 青草绿主题 - 侧边栏头部 */
 
-[data-theme="grassgreen"] .sidebar-header .user-name {
-  color: var(--text-color);
-  text-shadow: none;
-}
 
 /* 青草绿主题 - 窗口控制栏左侧 */
-[data-theme="grassgreen"] .window-controls-left {
-  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
-}
 
 /* 都市丛林主题 - 左边侧边栏 */
-[data-theme="urban-jungle"] .side-options {
-  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-}
 
 /* 都市丛林主题 - 文本颜色 */
-[data-theme="urban-jungle"] .window-title,
-[data-theme="urban-jungle"] .option-item,
-[data-theme="urban-jungle"] .option-item.active {
-  color: #ffffff;
-}
 
 /* 都市丛林主题 - 侧边栏头部 */
 
 /* 都市丛林主题 - 窗口控制栏左侧 */
-[data-theme="urban-jungle"] .window-controls-left {
-  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-}
 
 /* 琥珀黄主题 - 左边侧边栏 */
-[data-theme="warm-amber"] .side-options {
-  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
-}
 
 /* 琥珀黄主题 - 文本颜色 */
-[data-theme="warm-amber"] .window-title,
-[data-theme="warm-amber"] .option-item,
-[data-theme="warm-amber"] .option-item.active {
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* 琥珀黄主题 - 侧边栏头部 */
 
 /* 琥珀黄主题 - 窗口控制栏左侧 */
-[data-theme="warm-amber"] .window-controls-left {
-  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
-}
 
 /* 地中海主题 - 左边侧边栏 */
-[data-theme="mediterranean-dream"] .side-options {
-  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
-}
 
 /* 地中海主题 - 文本颜色 */
-[data-theme="mediterranean-dream"] .window-title,
-[data-theme="mediterranean-dream"] .option-item,
-[data-theme="mediterranean-dream"] .option-item.active {
-  color: #ffffff;
-}
 
 /* 地中海主题 - 侧边栏头部 */
 
 /* 地中海主题 - 窗口控制栏左侧 */
-[data-theme="mediterranean-dream"] .window-controls-left {
-  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
-}
 
 /* 单色雅主题 - 左边侧边栏 */
-[data-theme="monochrome-elegance"] .side-options {
-  background: linear-gradient(135deg, #333333 0%, #666666 100%);
-}
 
 /* 单色雅主题 - 文本颜色 */
-[data-theme="monochrome-elegance"] .window-title,
-[data-theme="monochrome-elegance"] .option-item,
-[data-theme="monochrome-elegance"] .option-item.active {
-  color: #ffffff;
-}
 
 /* 单色雅主题 - 侧边栏头部 */
 
 /* 单色雅主题 - 窗口控制栏左侧 */
-[data-theme="monochrome-elegance"] .window-controls-left {
-  background: linear-gradient(135deg, #333333 0%, #666666 100%);
-}
 
 /* 春日花主题 - 左边侧边栏 */
-[data-theme="spring-blossom"] .side-options {
-  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
-}
 
 /* 春日花主题 - 文本颜色 */
-[data-theme="spring-blossom"] .window-title,
-[data-theme="spring-blossom"] .option-item,
-[data-theme="spring-blossom"] .option-item.active {
-  color: #4a148c;
-}
 
 /* 春日花主题 - 侧边栏头部 */
 
 /* 春日花主题 - 窗口控制栏左侧 */
-[data-theme="spring-blossom"] .window-controls-left {
-  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
-}
 
 /* 语音通话模态框样式 */
 .voice-call-modal {
@@ -11293,87 +10802,7 @@ input:checked + .slider:before {
 }
 
 /* 优雅深色主题 - 系统设置 */
-[data-theme="elegant-dark"] .settings-content {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5) !important;
-  border: 1px solid var(--border-color) !important;
-}
 
-[data-theme="elegant-dark"] .settings-header {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-header h3 {
-  color: var(--text-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-sidebar {
-  background: var(--sidebar-bg) !important;
-  border-right: 1px solid var(--border-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-sidebar-item:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-sidebar-item.active {
-  background: var(--hover-color) !important;
-  border-left-color: var(--primary-color) !important;
-  color: var(--primary-color) !important;
-}
-
-[data-theme="elegant-dark"] .save-btn {
-  background: var(--hover-color);
-  color: white;
-}
-
-[data-theme="elegant-dark"] .settings-main {
-  background: var(--secondary-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-section-header h4 {
-  color: var(--text-color) !important;
-}
-
-[data-theme="elegant-dark"] icon-btn:hover {
-  background: var(--hover-color)!important;
-}
-
-[data-theme="elegant-dark"] .settings-item label {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="elegant-dark"] .settings-input,
-[data-theme="elegant-dark"] .settings-textarea,
-[data-theme="elegant-dark"] .settings-select {
-  background: var(--input-bg) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="elegant-dark"] .settings-input:focus,
-[data-theme="elegant-dark"] .settings-textarea:focus,
-[data-theme="elegant-dark"] .settings-select:focus {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2) !important;
-}
-
-[data-theme="elegant-dark"] .theme-option:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="elegant-dark"] .theme-option.active {
-  border-color: var(--primary-color) !important;
-  background: var(--hover-color) !important;
-}
-
-[data-theme="elegant-dark"] .clear-cache-btn,
-[data-theme="elegant-dark"] .security-btn {
-  background: var(--input-bg) !important;
-  color: var(--text-color) !important;
-}
 
 /* 频道详情样式 */
 .channel-detail-content {
@@ -11562,10 +10991,6 @@ input:checked + .slider:before {
   overflow: hidden;
 }
 
-[data-theme="elegant-dark"] .message-list {
-  background: var(--secondary-color) !important;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1) !important;
-}
 
 .message-item {
   display: flex;
@@ -11842,20 +11267,6 @@ input:checked + .slider:before {
 .message-item:nth-child(4) { animation-delay: 0.2s; }
 .message-item:nth-child(5) { animation-delay: 0.25s; }
 
-[data-theme="elegant-dark"] .clear-cache-btn:hover,
-[data-theme="elegant-dark"] .security-btn:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="elegant-dark"] .about-info {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="elegant-dark"] .settings-footer {
-  background: var(--sidebar-bg) !important;
-  border-top: 1px solid var(--border-color) !important;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.3) !important;
-}
 
 /* 统计报表应用样式 */
 

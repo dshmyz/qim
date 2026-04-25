@@ -202,28 +202,12 @@
   />
 
   <!-- 已读用户列表弹窗 -->
-  <div v-if="showReadUsersModal" class="read-users-modal" @click="showReadUsersModal = false">
-    <div class="read-users-content" @click.stop>
-      <div class="read-users-header">
-        <h3>已读用户 ({{ currentReadUsers.read_users?.length || 0 }}/{{ Math.max(0, (currentReadUsers.total_members || 0) - 1) }})</h3>
-        <button class="close-btn" @click="showReadUsersModal = false">×</button>
-      </div>
-      <div class="read-users-body">
-        <div v-if="currentReadUsers.read_users?.length === 0" class="empty-read">
-          暂无已读用户
-        </div>
-        <div v-else class="read-users-list">
-          <div v-for="user in currentReadUsers.read_users" :key="user.id" class="read-user-item">
-            <img :src="(user.avatar && user.avatar.startsWith('http')) ? user.avatar : (user.avatar ? serverUrl + user.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.id)" :alt="user.name" class="read-user-avatar" />
-            <div class="read-user-info">
-              <span class="read-user-name">{{ user.name || user.username }}</span>
-            </div>
-            <i class="fas fa-check read-icon"></i>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <ReadUsersModal
+    :visible="showReadUsersModal"
+    :read-users="currentReadUsers"
+    :server-url="serverUrl"
+    @close="showReadUsersModal = false"
+  />
 
   <!-- 屏幕共享组件 -->
   <ScreenShare
@@ -286,133 +270,45 @@
   <!-- 编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
   
   <!-- 截图预览对话框 -->
-  <div v-if="showScreenshotPreview" class="screenshot-preview-modal" @click="cancelScreenshot">
-    <div class="screenshot-preview-content" @click.stop>
-      <div class="screenshot-preview-header">
-        <h3>截图预览</h3>
-        <button class="close-btn" @click="cancelScreenshot">×</button>
-      </div>
-      <div class="screenshot-preview-body">
-        <div class="screenshot-image-container">
-          <img :src="screenshotImageData" class="screenshot-image" alt="截图" />
-        </div>
-      </div>
-      <div class="screenshot-preview-footer">
-        <button class="screenshot-btn retake-btn" @click="retakeScreenshot">重新截图</button>
-        <button class="screenshot-btn cancel-btn" @click="cancelScreenshot">取消</button>
-        <button class="screenshot-btn send-btn" @click="uploadScreenshot">发送</button>
-      </div>
-    </div>
-  </div>
+  <ScreenshotPreviewDialog
+    :visible="showScreenshotPreview"
+    :image-data="screenshotImageData"
+    @cancel="cancelScreenshot"
+    @retake="retakeScreenshot"
+    @send="uploadScreenshot"
+  />
   
   <!-- 通话模态框 -->
-  <div v-if="showCallModal" class="call-modal" @click="endCall">
-    <div class="call-modal-content" @click.stop>
-      <div class="call-modal-header">
-        <h3>{{ callType === 'voice' ? '语音通话' : '视频通话' }}</h3>
-      </div>
-      <div class="call-modal-body">
-        <div class="call-info">
-          <div class="call-avatar">
-            <img :src="props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'" :alt="props.conversation?.name || '未知'" />
-          </div>
-          <div class="call-name">{{ props.conversation?.name || '未知' }}</div>
-          <div class="call-status">
-            <span v-if="callStatus === 'ringing'" class="status-ringing">正在呼叫...</span>
-            <span v-else-if="callStatus === 'answered'" class="status-answered">通话中</span>
-            <span v-else-if="callStatus === 'ended'" class="status-ended">通话结束</span>
-          </div>
-        </div>
-        
-        <!-- 视频通话区域 -->
-        <div v-if="callType === 'video' && callStatus === 'answered'" class="video-container">
-          <div class="local-video">
-            <div class="video-placeholder">
-              <i class="fas fa-user"></i>
-              <span>您</span>
-            </div>
-          </div>
-          <div class="remote-video">
-            <div class="video-placeholder">
-              <i class="fas fa-user"></i>
-              <span>{{ props.conversation?.name || '对方' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="call-modal-footer">
-        <button v-if="callStatus === 'ringing'" class="call-btn reject-btn" @click="rejectCall">
-          <i class="fas fa-phone-slash"></i>
-          <span>拒绝</span>
-        </button>
-        <button v-if="callStatus === 'ringing'" class="call-btn answer-btn" @click="answerCall">
-          <i class="fas fa-phone"></i>
-          <span>接听</span>
-        </button>
-        <button v-else class="call-btn end-btn" @click="endCall">
-          <i class="fas fa-phone-slash"></i>
-          <span>结束通话</span>
-        </button>
-      </div>
-    </div>
-  </div>
+  <CallModal
+    :visible="showCallModal"
+    :call-type="callType"
+    :status="callStatus"
+    :avatar="props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
+    :name="props.conversation?.name || '未知'"
+    @reject-call="rejectCall"
+    @answer-call="answerCall"
+    @end-call="endCall"
+  />
   
   <!-- 图片预览弹窗 -->
-  <div v-if="showImagePreview" class="image-preview-modal" @click="closeImagePreview">
-    <div class="image-preview-content" @click.stop>
-      <div class="image-preview-header">
-        <button class="close-btn" @click="closeImagePreview">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="image-preview-body">
-        <img :src="previewImageUrl" alt="预览图片" />
-      </div>
-    </div>
-  </div>
+  <ImagePreviewDialog
+    :visible="showImagePreview"
+    :image-url="previewImageUrl"
+    @close="closeImagePreview"
+  />
   
   <!-- 分享内容预览弹窗 -->
-  <div v-if="showSharePreview" class="share-preview-modal" @click="closeSharePreview">
-    <div class="share-preview-content" @click.stop :class="{ 'sticky-note-preview': sharePreviewData.type === 'sticky' }">
-      <div class="share-preview-header">
-        <h3>{{ sharePreviewData.type === 'file' ? '文件详情' : (sharePreviewData.type === 'note' ? '笔记详情' : '便签详情') }}</h3>
-        <button class="close-btn" @click="closeSharePreview">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="share-preview-body">
-        <!-- 文件类型 -->
-        <div v-if="sharePreviewData.type === 'file'" class="share-file-content">
-          <div class="share-file-icon">
-            <i :class="getFileIcon(sharePreviewData.url || sharePreviewData.path)"></i>
-          </div>
-          <div class="share-file-info">
-            <div class="share-preview-title">{{ sharePreviewData.name }}</div>
-            <div class="share-file-size" v-if="sharePreviewData.size">{{ formatFileSize(sharePreviewData.size) }}</div>
-          </div>
-        </div>
-        <!-- 笔记类型 -->
-        <div v-else-if="sharePreviewData.type === 'note'">
-          <div class="share-preview-title">{{ sharePreviewData.name }}</div>
-          <div class="share-preview-content-text" v-if="sharePreviewData.content" v-html="renderMarkdown(sharePreviewData.content)"></div>
-        </div>
-        <!-- 便签类型 -->
-        <div v-else-if="sharePreviewData.type === 'sticky'" class="sticky-note-content">
-          <div class="sticky-note-title">{{ sharePreviewData.name }}</div>
-          <div class="sticky-note-body" v-if="sharePreviewData.content">{{ sharePreviewData.content }}</div>
-        </div>
-        <div class="share-preview-meta">
-          <span class="share-preview-type">{{ sharePreviewData.type === 'file' ? '文件' : (sharePreviewData.type === 'note' ? '笔记' : '便签') }}</span>
-          <span class="share-preview-time" v-if="sharePreviewData.created_at">{{ formatTime(new Date(sharePreviewData.created_at).getTime()) }}</span>
-        </div>
-      </div>
-      <!-- 文件操作按钮 -->
-      <div v-if="sharePreviewData.type === 'file'" class="share-preview-footer">
-        <button class="share-file-action-btn" @click="downloadFile(sharePreviewData.url || sharePreviewData.path, sharePreviewData.name)">下载</button>
-        <button class="share-file-action-btn" @click="saveFileAs(sharePreviewData.url || sharePreviewData.path, sharePreviewData.name)">另存为</button>
-      </div>
-    </div>
-  </div>
+  <SharePreviewDialog
+    :visible="showSharePreview"
+    :preview-data="sharePreviewData"
+    :get-file-icon="getFileIcon"
+    :format-file-size="formatFileSize"
+    :render-markdown="renderMarkdown"
+    :format-time="formatTime"
+    @close="closeSharePreview"
+    @download-file="downloadFile"
+    @save-file-as="saveFileAs"
+  />
   
 
 </template>
@@ -430,6 +326,11 @@ import MemberSidebar from './MemberSidebar.vue'
 import GroupManagementPanel from './GroupManagementPanel.vue'
 import MessageContextMenu from './MessageContextMenu.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
+import ReadUsersModal from './ReadUsersModal.vue'
+import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
+import ImagePreviewDialog from './ImagePreviewDialog.vue'
+import SharePreviewDialog from './SharePreviewDialog.vue'
+import CallModal from './CallModal.vue'
 import { openMiniApp } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
 import { generateAvatar, getAvatarUrl } from '../../utils/avatar'

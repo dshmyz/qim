@@ -332,7 +332,7 @@
 **前置条件：** 已有有效 token
 
 **测试步骤：**
-1. GET `/api/v1/users/search?keyword=admin`
+1. GET `/api/v1/users/search?q=关键词`
 
 **预期结果：** 返回匹配的用户列表
 

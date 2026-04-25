@@ -43,7 +43,7 @@ assert_eq "0" "$CODE" "更新用户资料"
 
 # USER-005: 搜索用户
 echo "--- USER-005: 搜索用户 ---"
-RESP=$(curl -s "$BASE_URL/api/v1/users/search?keyword=admin" -H "Authorization: Bearer $TOKEN")
+RESP=$(curl -s "$BASE_URL/api/v1/users/search?q=admin" -H "Authorization: Bearer $TOKEN")
 CODE=$(echo "$RESP" | python3 -c "import sys,json;print(json.load(sys.stdin)['code'])" 2>/dev/null)
 assert_eq "0" "$CODE" "搜索用户"
 
