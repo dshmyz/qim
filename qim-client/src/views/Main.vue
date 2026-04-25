@@ -1964,12 +1964,44 @@ const {
   switchSettingsTab
 } = ui
 
-const currentConversationId = ref<string | null>(null)
-const selectedChannel = ref(null)
-const selectedGroup = ref(null)
+// 使用 useConversation composable
+const conversation = useConversation()
+
+// 解构会话状态
+const {
+  conversations,
+  currentConversationId,
+  messages,
+  hasMoreMessages,
+  selectedConversation: _selectedConversation,
+  selectedGroup,
+  selectedChannel,
+  groups,
+  currentConversation,
+  handleConversationSelect: _handleConversationSelect,
+  handleGroupChatSelect,
+  handleChannelSelect,
+  handlePin,
+  handleMute,
+  handleRemove,
+  handleMarkRead,
+  updateConversation: _updateConversation,
+  addMessage: _addMessage,
+  clearMessages: _clearMessages,
+  addConversation,
+  handleExitGroup,
+  loadGroups,
+  resetState: _resetConversationState
+} = conversation
 
 // 通知中心组件 ref
 const notificationCenterRef = ref<any>(null)
+
+// 重写会话选择处理，包含 Main.vue 的特定逻辑
+const handleConversationSelect = (conversationItem: any) => {
+  _handleConversationSelect(conversationItem)
+  loadMessages(conversationItem.id)
+}
 
 // 重写通知点击处理，包含 Main.vue 的特定逻辑
 const handleNotificationClick = (notification: any) => {
@@ -2029,18 +2061,7 @@ const handleSidebarOptionClick = (option: string) => {
   }
 }
 
-// 会话数据
-const conversations = ref<Conversation[]>([])
-
-
-// 用户资料弹窗
-const showUserProfile = ref(false)
-const selectedUser = ref(null)
-
-// 处理频道选择
-const handleChannelSelect = (channel) => {
-  selectedChannel.value = channel
-}
+// 会话数据已从 useConversation composable 导入
 
 // 频道相关状态
 const channelMessage = ref('')
@@ -2465,6 +2486,7 @@ onMounted(async () => {
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
 import { useUI } from '../composables/useUI'
+import { useConversation } from '../composables/useConversation'
 import { connectWebSocket as connectWS, addMessageHandler, sendWebSocketMessage, getWebSocket } from '../utils/websocketManager'
 
 // 暴露sendWebSocketMessage到全局，供screenShareManager使用
