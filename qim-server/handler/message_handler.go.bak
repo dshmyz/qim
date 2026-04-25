@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
-	"qim-server/pkg/response"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +52,7 @@ func GetMessages(c *gin.Context) {
 		var count int64
 		db.Model(&model.Message{}).Where("conversation_id = ? AND sender_id = ?", convID, userID).Count(&count)
 		if count == 0 {
-			response.Forbidden(c, "无权限访问")
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 			return
 		}
 	}
@@ -98,7 +98,8 @@ func GetMessages(c *gin.Context) {
 		responseMessages = append(responseMessages, responseMsg)
 	}
 
-	response.Success(c, gin.H{
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
 		"data": responseMessages,
 		"pagination": gin.H{
 			"current_page": page,
@@ -120,14 +121,14 @@ func GetMessagesByFilter(c *gin.Context) {
 	endDate := c.Query("end_date")
 
 	if convID == "" {
-		response.BadRequest(c, "会话ID不能为空")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "会话ID不能为空"})
 		return
 	}
 
 	db := database.GetDB()
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 		return
 	}
 
@@ -178,9 +179,12 @@ func GetMessagesByFilter(c *gin.Context) {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
-	response.Success(c, gin.H{
-		"messages": messages,
-		"total":    total,
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": map[string]interface{}{
+			"messages": messages,
+			"total":    total,
+		},
 	})
 }
 
@@ -200,7 +204,7 @@ func SendMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
 		return
 	}
 
@@ -208,7 +212,7 @@ func SendMessage(c *gin.Context) {
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限发送消息")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发送消息"})
 		return
 	}
 
@@ -273,7 +277,7 @@ func SendMessage(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, responseData)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": responseData})
 }
 
 func StreamMessage(c *gin.Context) {
@@ -292,7 +296,7 @@ func StreamMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
 		return
 	}
 
@@ -300,18 +304,18 @@ func StreamMessage(c *gin.Context) {
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限发送消息")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发送消息"})
 		return
 	}
 
 	var conv model.Conversation
 	if err := db.First(&conv, convID).Error; err != nil {
-		response.NotFound(c, "会话不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
 
 	if conv.Type != "bot" {
-		response.BadRequest(c, "仅支持机器人会话的流式消息")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "仅支持机器人会话的流式消息"})
 		return
 	}
 
@@ -436,7 +440,7 @@ func RecallMessage(c *gin.Context) {
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的消息ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
 		return
 	}
 
@@ -444,23 +448,17 @@ func RecallMessage(c *gin.Context) {
 
 	var msg model.Message
 	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
-		return
-	}
-
-	// 检查是否在2分钟内可撤回
-	if time.Since(msg.CreatedAt) > 2*time.Minute {
-		response.BadRequest(c, "消息已超过2分钟，无法撤回")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
 		return
 	}
 
 	if msg.SenderID != userID.(uint) {
-		response.Forbidden(c, "只能撤回自己发送的消息")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只能撤回自己发送的消息"})
 		return
 	}
 
 	if msg.IsRecalled {
-		response.BadRequest(c, "消息已经被撤回")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "消息已经被撤回"})
 		return
 	}
 
@@ -480,7 +478,7 @@ func RecallMessage(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 	}
 
-	response.Success(c, gin.H{"message": "消息撤回成功", "data": msg})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "消息撤回成功", "data": msg})
 }
 
 func RemindMessage(c *gin.Context) {
@@ -489,7 +487,7 @@ func RemindMessage(c *gin.Context) {
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的消息ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
 		return
 	}
 
@@ -497,16 +495,17 @@ func RemindMessage(c *gin.Context) {
 
 	var msg model.Message
 	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
 		return
 	}
 
 	if msg.SenderID != userID.(uint) {
-		response.Forbidden(c, "无权限发送提醒")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发送提醒"})
 		return
 	}
 
-	response.Success(c, gin.H{
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
 		"message": "提醒已发送",
 	})
 }
@@ -517,7 +516,7 @@ func DeleteMessage(c *gin.Context) {
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的消息ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
 		return
 	}
 
@@ -525,17 +524,17 @@ func DeleteMessage(c *gin.Context) {
 
 	var msg model.Message
 	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
 		return
 	}
 
 	if msg.SenderID != userID.(uint) {
-		response.Forbidden(c, "只能删除自己发送的消息")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只能删除自己发送的消息"})
 		return
 	}
 
 	if err := db.Delete(&msg).Error; err != nil {
-		response.InternalServerError(c, "删除消息失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除消息失败"})
 		return
 	}
 
@@ -552,7 +551,8 @@ func DeleteMessage(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 	}
 
-	response.Success(c, gin.H{
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
 		"message": "消息删除成功",
 	})
 }
@@ -563,7 +563,7 @@ func GetMessageReadUsers(c *gin.Context) {
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的消息ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
 		return
 	}
 
@@ -571,13 +571,13 @@ func GetMessageReadUsers(c *gin.Context) {
 
 	var msg model.Message
 	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
 		return
 	}
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 		return
 	}
 
@@ -603,9 +603,12 @@ func GetMessageReadUsers(c *gin.Context) {
 	var totalMembers int64
 	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", msg.ConversationID).Count(&totalMembers)
 
-	response.Success(c, gin.H{
-		"read_users":    readUsers,
-		"total_members": totalMembers,
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": map[string]interface{}{
+			"read_users":    readUsers,
+			"total_members": totalMembers,
+		},
 	})
 }
 
@@ -619,7 +622,7 @@ func MarkConversationAsRead(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的会话ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
 		return
 	}
 
@@ -627,7 +630,7 @@ func MarkConversationAsRead(c *gin.Context) {
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 		return
 	}
 
@@ -704,9 +707,7 @@ func MarkConversationAsRead(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, gin.H{
-		"message": "标记已读成功",
-	})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "标记已读成功"})
 }
 
 func SearchMessages(c *gin.Context) {
@@ -745,7 +746,10 @@ func SearchMessages(c *gin.Context) {
 	var messages []model.Message
 	query.Preload("Sender").Preload("Conversation").Order("messages.created_at DESC").Find(&messages)
 
-	response.Success(c, messages)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": messages,
+	})
 }
 
 func GetMessageQuoteChain(c *gin.Context) {
@@ -754,7 +758,7 @@ func GetMessageQuoteChain(c *gin.Context) {
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的消息ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
 		return
 	}
 
@@ -762,13 +766,13 @@ func GetMessageQuoteChain(c *gin.Context) {
 
 	var msg model.Message
 	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
 		return
 	}
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 		return
 	}
 
@@ -785,7 +789,10 @@ func GetMessageQuoteChain(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, gin.H{
-		"messages": quoteChain,
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"messages": quoteChain,
+		},
 	})
 }

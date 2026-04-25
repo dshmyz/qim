@@ -292,3 +292,31 @@ export function useWebSocket(wsUrl: string) {
 // 导出模块级函数，供外部使用
 export const getWebSocketInstance = () => ws
 export const isWebSocketConnected = () => isConnected.value
+
+export const addWsHandler = (handler: MessageHandler, messageType?: string) => {
+  if (messageType) {
+    if (!handlers.has(messageType)) {
+      handlers.set(messageType, [])
+    }
+    handlers.get(messageType)!.push(handler)
+  } else {
+    generalHandlers.push(handler)
+  }
+}
+
+export const removeWsHandler = (handler: MessageHandler, messageType?: string) => {
+  if (messageType) {
+    const typeHandlers = handlers.get(messageType)
+    if (typeHandlers) {
+      const index = typeHandlers.indexOf(handler)
+      if (index !== -1) {
+        typeHandlers.splice(index, 1)
+      }
+    }
+  } else {
+    const index = generalHandlers.indexOf(handler)
+    if (index !== -1) {
+      generalHandlers.splice(index, 1)
+    }
+  }
+}

@@ -26,13 +26,13 @@ var upgrader = websocket.Upgrader{
 }
 
 type Hub struct {
-	clients             map[*Client]bool
+	clients             sync.Map
 	register            chan *Client
 	unregister          chan *Client
 	broadcast           chan []byte
 	Broadcast           chan []byte
-	userClients         map[uint][]*Client
-	conversationMembers map[uint][]uint // 缓存会话成员用户ID
+	userClients         sync.Map
+	conversationMembers map[uint][]uint
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
@@ -64,12 +64,12 @@ func NewHub() *Hub {
 	log.Printf("节点 %s 初始化完成，将使用基于 HTTP 的多节点模式", nodeID)
 
 	return &Hub{
-		clients:             make(map[*Client]bool),
+		clients:             sync.Map{},
 		register:            make(chan *Client),
 		unregister:          make(chan *Client),
 		broadcast:           broadcastChan,
 		Broadcast:           broadcastChan,
-		userClients:         make(map[uint][]*Client),
+		userClients:         sync.Map{},
 		conversationMembers: make(map[uint][]uint),
 		nodes:               nodes,
 		nodeID:              nodeID,
@@ -98,10 +98,14 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.mu.Lock()
-			h.clients[client] = true
-			h.userClients[client.userID] = append(h.userClients[client.userID], client)
-			h.mu.Unlock()
+			h.clients.Store(client, true)
+			if existingClients, ok := h.userClients.Load(client.userID); ok {
+				clients := existingClients.([]*Client)
+				clients = append(clients, client)
+				h.userClients.Store(client.userID, clients)
+			} else {
+				h.userClients.Store(client.userID, []*Client{client})
+			}
 			log.Printf("用户 %d 连接", client.userID)
 
 			// 更新用户在线状态
@@ -109,44 +113,46 @@ func (h *Hub) Run() {
 			db.Model(&model.User{}).Where("id = ?", client.userID).Update("status", "online")
 
 		case client := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
+			if _, ok := h.clients.Load(client); ok {
+				h.clients.Delete(client)
 				close(client.send)
 
-				// 从userClients中移除
-				clients := h.userClients[client.userID]
-				for i, c := range clients {
-					if c == client {
-						h.userClients[client.userID] = append(clients[:i], clients[i+1:]...)
-						break
+				if existingClients, ok := h.userClients.Load(client.userID); ok {
+					clients := existingClients.([]*Client)
+					for i, c := range clients {
+						if c == client {
+							clients = append(clients[:i], clients[i+1:]...)
+							break
+						}
+					}
+
+					if len(clients) == 0 {
+						h.userClients.Delete(client.userID)
+						db := database.GetDB()
+						db.Model(&model.User{}).Where("id = ?", client.userID).Update("status", "offline")
+					} else {
+						h.userClients.Store(client.userID, clients)
 					}
 				}
-
-				// 如果没有其他连接，更新为离线
-				if len(h.userClients[client.userID]) == 0 {
-					db := database.GetDB()
-					db.Model(&model.User{}).Where("id = ?", client.userID).Update("status", "offline")
-					delete(h.userClients, client.userID)
-				}
 			}
-			h.mu.Unlock()
 			log.Printf("用户 %d 断开连接", client.userID)
 
 		case message := <-h.broadcast:
-			// 广播给本地客户端
-			h.mu.RLock()
-			for client := range h.clients {
+			var toDelete []*Client
+			h.clients.Range(func(key, value interface{}) bool {
+				client := key.(*Client)
 				select {
 				case client.send <- message:
 				default:
 					close(client.send)
-					delete(h.clients, client)
+					toDelete = append(toDelete, client)
 				}
+				return true
+			})
+			for _, client := range toDelete {
+				h.clients.Delete(client)
 			}
-			h.mu.RUnlock()
 
-			// 通过 HTTP 广播给其他节点
 			h.broadcastToOtherNodes(message)
 		}
 	}
@@ -181,24 +187,21 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 }
 
 func (h *Hub) SendToUser(userID uint, message []byte) {
-	// 向本地客户端发送消息
-	h.mu.RLock()
-	clients := h.userClients[userID]
-	h.mu.RUnlock()
+	if existingClients, ok := h.userClients.Load(userID); ok {
+		clients := existingClients.([]*Client)
+		log.Printf("找到用户 %d 的本地WebSocket连接数量: %d", userID, len(clients))
 
-	log.Printf("找到用户 %d 的本地WebSocket连接数量: %d", userID, len(clients))
-
-	for i, client := range clients {
-		log.Printf("向用户 %d 的第 %d 个本地连接发送WebSocket消息", userID, i+1)
-		select {
-		case client.send <- message:
-			log.Printf("消息发送成功")
-		default:
-			log.Printf("消息发送失败，连接可能已关闭")
+		for i, client := range clients {
+			log.Printf("向用户 %d 的第 %d 个本地连接发送WebSocket消息", userID, i+1)
+			select {
+			case client.send <- message:
+				log.Printf("消息发送成功")
+			default:
+				log.Printf("消息发送失败，连接可能已关闭")
+			}
 		}
 	}
 
-	// 通过 HTTP 向其他节点发送消息
 	h.sendToUserToOtherNodes(userID, message)
 }
 
@@ -548,7 +551,7 @@ func ServeWs(hub *Hub, c *gin.Context) {
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userID: userID.(uint)}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
 	client.hub.register <- client
 
 	go client.writePump()
@@ -565,7 +568,7 @@ func ServeScreenShare(hub *Hub, c *gin.Context) {
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userID: userID.(uint)}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
 	client.hub.register <- client
 
 	go client.writePump()

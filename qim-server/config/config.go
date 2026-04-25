@@ -9,11 +9,6 @@ import (
 	"qim-server/ai"
 )
 
-type UploadConfig struct {
-	MaxSizeMB    int      `yaml:"max_size_mb"`
-	AllowedTypes []string `yaml:"allowed_types"`
-}
-
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
@@ -22,15 +17,12 @@ type Config struct {
 	Storage  StorageConfig
 	AI       ai.AIConfig
 	CORS     CORSConfig
-	App      AppConfig
 	Upload   UploadConfig
 }
 
-type AppConfig struct {
-	Version      string `yaml:"version"`
-	UpdateURL    string `yaml:"update_url"`
-	ForceUpdate  bool   `yaml:"force_update"`
-	ReleaseNotes string `yaml:"release_notes"`
+type UploadConfig struct {
+	MaxSizeMB    int      `yaml:"max_size_mb"`
+	AllowedTypes []string `yaml:"allowed_types"`
 }
 
 type CORSConfig struct {
@@ -93,7 +85,6 @@ type yamlConfig struct {
 	Storage StorageConfig  `yaml:"storage"`
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
-	App     AppConfig      `yaml:"app"`
 	Upload  UploadConfig   `yaml:"upload"`
 }
 
@@ -227,7 +218,6 @@ func Load() *Config {
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
-		App:      cfg.App,
 		Upload:   cfg.Upload,
 	}
 }
@@ -305,11 +295,9 @@ func getDefaultConfig() yamlConfig {
 		CORS: CORSConfig{
 			AllowedOrigins: []string{"http://localhost:5173", "app://localhost"},
 		},
-		App: AppConfig{
-			Version:      "1.0.0",
-			UpdateURL:    "",
-			ForceUpdate:  false,
-			ReleaseNotes: "",
+		Upload: UploadConfig{
+			MaxSizeMB:    50,
+			AllowedTypes: []string{},
 		},
 	}
 }

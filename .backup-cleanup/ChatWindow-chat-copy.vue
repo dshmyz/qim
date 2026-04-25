@@ -1,34 +1,62 @@
 <template>
   <div class="chat-window">
-    <ChatHeader
-      :conversation="conversation"
-      :server-url="serverUrl.value"
-      @edit-group-name="editGroupInfo"
-    >
-      <template #group-panel>
-        <GroupPanel
-          :conversation="conversation"
-          :current-user="currentUser"
-          v-model:showHeaderMenu="showHeaderMenu"
-          v-model:showEditGroupInfoModal="showEditGroupInfoModal"
-          v-model:showEditAnnouncementModal="showEditAnnouncementModal"
-          v-model:editGroupName="editGroupName"
-          v-model:editAnnouncement="editAnnouncementContent"
-          @invite-members="handleInviteMembers"
-          @delete-group="confirmDeleteConversation"
-          @save-group-info="saveGroupInfo"
-          @save-group-announcement="saveAnnouncement"
-          @switch-conversation="handleSwitchConversation"
-          @show-user-profile="showUserProfile"
-          @remove-member="handleRemoveMember"
-          @set-admin="handleSetAdmin"
-          @transfer-owner="handleTransferOwner"
-          @start-private-chat="handleStartPrivateChat"
-        />
-      </template>
-    </ChatHeader>
+    <div class="chat-header">
+      <div class="header-info">
+        <img :src="getAvatarUrl(conversation?.avatar, conversation?.name || '用户', serverUrl.value)" :alt="conversation?.name || '未知'" class="header-avatar" />
+        <div class="header-text">
+          <div class="header-name" @dblclick="(conversation?.type === 'group' || conversation?.type === 'discussion') && editGroupInfo()">{{ conversation?.name || '未知会话' }}</div>
+          <div class="header-status">
+            <template v-if="conversation?.type === 'group' || conversation?.type === 'discussion'">
+              {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
+              <span v-if="conversation?.members" class="member-count">
+                ({{ conversation.members.length }}人)
+              </span>
+            </template>
+            <template v-else-if="conversation?.type === 'single'">
+              <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
+                {{ conversation?.status === 'online' ? '在线' : '离线' }}
+              </span>
+              <span v-if="conversation?.signature" class="signature-info">
+                {{ conversation.signature }}
+              </span>
+            </template>
+            <template v-else>
+              在线
+            </template>
+            <span v-if="conversation?.type === 'single' && conversation?.ip" class="ip-info">
+              {{ conversation.ip }}
+            </span>
+            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement-inline">
+              <i class="fas fa-bullhorn"></i>
+              {{ conversation.announcement }}
+            </span>
+          </div>
+        </div>
+      </div>
 
-      <div class="chat-main">
+      <GroupPanel
+        :conversation="conversation"
+        :current-user="currentUser"
+        v-model:showHeaderMenu="showHeaderMenu"
+        v-model:showEditGroupInfoModal="showEditGroupInfoModal"
+        v-model:showEditAnnouncementModal="showEditAnnouncementModal"
+        v-model:editGroupName="editGroupName"
+        v-model:editAnnouncement="editAnnouncementContent"
+        @invite-members="handleInviteMembers"
+        @delete-group="confirmDeleteConversation"
+        @save-group-info="saveGroupInfo"
+        @save-group-announcement="saveAnnouncement"
+        @switch-conversation="handleSwitchConversation"
+        @show-user-profile="showUserProfile"
+        @remove-member="handleRemoveMember"
+        @set-admin="handleSetAdmin"
+        @transfer-owner="handleTransferOwner"
+        @start-private-chat="handleStartPrivateChat"
+      />
+    </div>
+
+    <div class="chat-main">
+      <div ref="messageListRef" class="message-list">
         <!-- 搜索结果 -->
         <MessageSearch
           v-if="showSearch"
@@ -51,57 +79,94 @@
         />
 
         <!-- 正常消息列表 -->
-        <MessageList
-          v-else
-          ref="messageListRef"
-          :messages="messages"
-          :has-more-messages="hasMoreMessages"
-          :conversation-type="conversation?.type || 'single'"
-          :read-users-map="readUsersMap"
-          :server-url="serverUrl"
-          :should-show-time-divider="shouldShowTimeDivider"
-          :format-time="formatTime"
-          @message-context-menu="showMessageContextMenu"
-          @show-user-profile="showUserProfile"
-          @preview-image="previewImage"
-          @download-file="downloadFile"
-          @save-as="saveFileAs"
-          @view-shared-content="viewSharedContent"
-          @retry-send-message="retrySendMessage"
-          @show-read-users="showReadUsers"
-          @scroll-to-quoted-message="scrollToQuotedMessage"
-          @open-mini-app="openMiniApp"
-          @open-news-link="openNewsLink"
-        />
+        <div v-else>
+          <!-- 没有更多消息提示 -->
+          <div v-if="!hasMoreMessages" class="no-more-messages">
+            <span>没有更多消息了</span>
+          </div>
+
+          <div v-for="(message, index) in messages" :key="message.id">
+            <!-- 显示时间分隔线 -->
+            <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
+              <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
+            </div>
+
+            <MessageItem
+              :message="message"
+              :is-self="message.isSelf"
+              :is-recalled="message.isRecalled"
+              :conversation-type="conversation?.type || 'single'"
+              :read-users-map="readUsersMap"
+              :server-url="serverUrl"
+              @contextmenu="showMessageContextMenu"
+              @show-user-profile="showUserProfile"
+              @scroll-to-quoted-message="scrollToQuotedMessage"
+              @preview-image="previewImage"
+              @download-file="downloadFile"
+              @save-as="saveFileAs"
+              @view-shared-content="viewSharedContent"
+              @open-mini-app="openMiniApp"
+              @open-news-link="openNewsLink"
+              @retry-send-message="retrySendMessage"
+              @show-read-users="showReadUsers"
+            />
+          </div>
+        </div>
+      </div>
 
       <!-- 群成员侧边栏 -->
-      <MemberSidebar
-        v-if="conversation?.type === 'group' || conversation?.type === 'discussion'"
-        :members="conversation?.members || []"
-        :isExpanded="isMembersSidebarExpanded"
-        :showSearch="showMemberSearch"
-        v-model:searchQuery="memberSearchQuery"
-        @toggle-expanded="toggleMembersSidebar"
-        @toggle-member-search="toggleMemberSearch"
-        @search-focus="showMemberSearch = true"
-        @show-member-context-menu="handleShowMemberContextMenu"
-        @start-private-chat="handleStartPrivateChat"
-      />
-    </div>
+      <div v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.members" class="members-sidebar" :class="{ 'collapsed': !isMembersSidebarExpanded }">
+        <div class="sidebar-header-container">
+          <div v-if="isMembersSidebarExpanded" class="members-header">
+            <div class="header-content">
+              <button class="toggle-sidebar-btn" @click="toggleMembersSidebar">
+                <i class="fas fa-chevron-left"></i>
+              </button>
+              <h3>群成员 ({{ conversation.members.length }})</h3>
+            </div>
+          </div>
+          <div v-else class="collapsed-header">
+            <button class="toggle-sidebar-btn collapsed" @click="toggleMembersSidebar">
+              <i class="fas fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
 
-    <!-- 成员右键菜单 -->
-    <MemberContextMenu
-      :visible="showMemberContextMenuFlag"
-      :position="memberContextMenuPosition"
-      :member="selectedMember"
-      :currentUserId="currentUserId"
-      :conversation="conversation"
-      @close="showMemberContextMenuFlag = false"
-      @remove-member="handleRemoveMember"
-      @set-admin="handleSetAdmin"
-      @transfer-owner="handleTransferOwner"
-      @start-private-chat="handleStartPrivateChat"
-    />
+        <div v-if="isMembersSidebarExpanded" class="members-content">
+          <!-- 搜索 -->
+          <div v-if="showMemberSearch" class="member-search">
+            <input
+              v-model="memberSearchQuery"
+              type="text"
+              placeholder="搜索群成员..."
+              class="member-search-input"
+              @blur="handleMemberSearchBlur"
+            />
+          </div>
+
+          <!-- 成员列表 -->
+          <div class="members-list">
+            <div
+              v-for="member in filteredMembers"
+              :key="member.userId"
+              class="member-item"
+              @contextmenu.prevent="handleShowMemberContextMenu($event, member)"
+              @click="handleMemberClick(member)"
+            >
+              <img :src="getAvatarUrl(member.avatar, member.name || '用户', serverUrl)" :alt="member.name" class="member-avatar" />
+              <div class="member-info">
+                <div class="member-name">
+                  {{ member.name }}
+                  <span v-if="isGroupOwner(conversation) && member.userId === conversation?.ownerId" class="owner-badge">群主</span>
+                  <span v-else-if="isGroupAdmin(conversation) && member.role === 'admin'" class="admin-badge">管理员</span>
+                </div>
+                <div v-if="member.signature" class="member-signature">{{ member.signature }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <MessageInput
       ref="messageInputAreaRef"
@@ -144,6 +209,22 @@
       @close-search="showSearch = false"
       @send-mini-app-message="handleSendMiniAppMessage"
     />
+
+    <!-- 成员右键菜单 -->
+    <MemberContextMenu
+      :visible="showMemberContextMenuFlag"
+      :position="memberContextMenuPosition"
+      :member="selectedMember"
+      :currentUserId="currentUserId"
+      :conversation="conversation"
+      @close="showMemberContextMenuFlag = false"
+      @remove-member="handleRemoveMember"
+      @set-admin="handleSetAdmin"
+      @transfer-owner="handleTransferOwner"
+      @start-private-chat="handleStartPrivateChat"
+    />
+  </div>
+
   <!-- 用户资料弹窗 -->
   <UserProfile 
     :visible="showUserProfileFlag" 
@@ -260,7 +341,6 @@
     @download-file="downloadFile"
     @save-file-as="saveFileAs"
   />
-  </div>
 
 </template>
 
@@ -269,8 +349,7 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import UserProfile from '../modals/UserProfile.vue'
-import ChatHeader from './ChatHeader.vue'
-import MessageList from './MessageList.vue'
+import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
 import MessageInput from './MessageInput.vue'
 import MessageSearch from './MessageSearch.vue'
@@ -289,15 +368,12 @@ import { getAvatarUrl } from '../../utils/avatar'
 import { getCurrentUser } from '../../utils/user'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
-import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
+import { addMessageHandler } from '../../utils/websocketManager'
 import ScreenShare from '../shared/ScreenShare.vue'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
-import { useMessageOperations } from '../../composables/useMessageOperations'
-import { useScreenShare } from '../../composables/useScreenShare'
-import { useCallManagement } from '../../composables/useCallManagement'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -306,6 +382,10 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
 const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
+
+// 屏幕共享相关
+const screenShareComponent = ref(null) // 屏幕共享组件引用
+const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
 
 interface Props {
   conversation: Conversation
@@ -334,51 +414,14 @@ const emit = defineEmits<{
   'send-screen-share-data': [data: { conversationId: number; data: string }]
 }>()
 
-// 使用 message operations composable
-const {
-  showMessageContextMenuFlag,
-  messageContextMenuPosition,
-  selectedMessage,
-  quotedMessage,
-  showMessageContextMenu,
-  closeMessageContextMenu,
-  copyMessage,
-  forwardMessage,
-  quoteMessage,
-  addToNote,
-  recallMessage,
-  canSendReminder,
-  sendMessageReminder
-} = useMessageOperations(props.conversation as any, emit)
-
-// 使用 screen share composable
-const {
-  screenShareComponent,
-  remoteScreenUserId: screenShareRemoteUserId,
-  initWebSocketMessageHandler: initScreenShareHandler,
-  startScreenShare: startScreenShareFromComposable
-} = useScreenShare(props.conversation as any, emit)
-
-// 使用 call management composable
-const {
-  isInCall,
-  callType,
-  callStatus,
-  showCallModal,
-  isScreenSharing,
-  startVoiceCall,
-  startVideoCall,
-  endCall,
-  rejectCall,
-  answerCall
-} = useCallManagement(props.conversation as any)
-
 // 监听远程屏幕共享
 watch(() => props.remoteScreenSharing, (newVal) => {
   if (newVal && props.remoteScreenData === null) {
     // 开始接收远程屏幕共享
+    console.log('开始接收远程屏幕共享')
   } else if (!newVal) {
     // 停止接收远程屏幕共享
+    console.log('停止接收远程屏幕共享')
     if (screenShareComponent.value) {
       screenShareComponent.value.stopReceiving()
     }
@@ -388,6 +431,7 @@ watch(() => props.remoteScreenSharing, (newVal) => {
 // 监听远程屏幕共享数据
 watch(() => props.remoteScreenData, (newVal) => {
   if (newVal) {
+    console.log('收到远程屏幕共享数据')
   }
 })
 
@@ -417,6 +461,12 @@ const selectedMember = ref(null)
 const showUserProfileFlag = ref(false)
 const selectedUser = ref({})
 
+// 消息上下文菜单
+const showMessageContextMenuFlag = ref(false)
+const messageContextMenuPosition = ref({ x: 0, y: 0 })
+const selectedMessage = ref(null)
+const quotedMessage = ref(null)
+
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
 
@@ -430,15 +480,19 @@ const editAnnouncementContent = ref('')
 
 // 监听状态变化
 watch(showEditGroupInfoModal, (newValue) => {
+  console.log('showEditGroupInfoModal changed:', newValue)
 })
 
 watch(showEditAnnouncementModal, (newValue) => {
+  console.log('showEditAnnouncementModal changed:', newValue)
 })
 
 watch(editGroupName, (newValue) => {
+  console.log('editGroupName changed:', newValue)
 })
 
 watch(editAnnouncementContent, (newValue) => {
+  console.log('editAnnouncementContent changed:', newValue)
 })
 
 // 已读用户列表
@@ -454,6 +508,7 @@ const fetchReadUsers = async (messageId: string) => {
   if (props.getReadUsers) {
     try {
       const data = await props.getReadUsers(messageId)
+      console.log('获取已读用户列表成功:', messageId, data)
       if (isMounted.value) {
         // 对已读用户列表进行去重处理，确保一个用户只出现一次
         const uniqueReadUsers = []
@@ -519,6 +574,7 @@ const closeMessageManager = () => {
 // 打开资讯链接
 const openNewsLink = (url: string) => {
   if (!url) return
+  console.log('打开资讯链接:', url)
   // 这里可以实现打开链接的逻辑
   window.open(url, '_blank')
 }
@@ -537,6 +593,7 @@ const closeMiniAppList = () => {
 
 // 处理发送小程序消息
 const handleSendMiniAppMessage = (miniApp: any) => {
+  console.log('发送小程序消息:', miniApp)
   // 这里可以实现发送小程序消息的逻辑
   emit('send', JSON.stringify({ type: 'miniApp', data: miniApp }))
 }
@@ -804,17 +861,10 @@ const clearSearch = () => {
 
 const handleSend = async () => {
   // 先处理待发送文件
-  const filesToSend = [...pendingFiles.value]
-  pendingFiles.value = []
-  
-  for (const pendingFile of filesToSend) {
-    try {
-      await uploadAndSendFile(pendingFile.file)
-    } catch (error) {
-      console.error('发送文件失败:', error)
-      $message.error(`文件 ${pendingFile.name} 发送失败`)
-    }
+  for (const pendingFile of [...pendingFiles.value]) {
+    await uploadAndSendFile(pendingFile.file)
   }
+  pendingFiles.value = []
   
   // 再处理文本消息
   const content = inputMessage.value.trim()
@@ -828,7 +878,7 @@ const handleSend = async () => {
     
     // 检测消息中是否包含@用户
     const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
-    if (atUsers && props.conversation?.members?.length) {
+    if (atUsers && props.conversation?.members) {
       // 提取@的用户名
       const atUsernames = atUsers.map(atUser => atUser.substring(1))
       // 查找对应的用户
@@ -840,11 +890,13 @@ const handleSend = async () => {
       if (atUsernames.includes('所有人')) {
         // @所有人时，通知所有成员
         props.conversation.members.forEach(user => {
+          console.log('发送通知给用户:', user.name)
           // 这里可以实现通知逻辑，例如调用API发送通知
         })
       } else {
         // 为@提到的用户发送通知
         mentionedUsers.forEach(user => {
+          console.log('发送通知给用户:', user.name)
           // 这里可以实现通知逻辑，例如调用API发送通知
         })
       }
@@ -856,15 +908,10 @@ const handleSend = async () => {
   }
 }
 
-const handleKeydown = (event: KeyboardEvent) => {
+const handleKeydown = (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
-    try {
-      handleSend()
-    } catch (error) {
-      console.error('发送消息失败:', error)
-      $message.error('发送消息失败，请重试')
-    }
+    handleSend()
   }
   // Shift+Enter 会默认换行，不需要额外处理
 }
@@ -898,6 +945,7 @@ const markMessagesAsRead = async () => {
     })
     
     if (response.code === 0) {
+      console.log('消息已标记为已读')
       // 重新获取已读用户列表
       await loadReadUsersForMessages()
       // 这里可以触发父组件更新消息状态
@@ -957,13 +1005,6 @@ const loadMoreMessages = async () => {
 
 // 组件是否挂载
 const isMounted = ref(true)
-// 跟踪 WebSocket 消息处理器以便在卸载时清理
-const registeredScreenShareHandlers: { handler: Function; type: string }[] = []
-// 跟踪 context menu 的 setTimeout ID 以便清理
-let memberContextMenuTimeoutId: number | null = null
-let messageContextMenuTimeoutId: number | null = null
-// 跟踪 IPC 截图监听器的清理函数
-let screenshotCleanup: (() => void) | null = null
 
 // 加载消息后获取已读用户列表，使用 Promise.all 并行请求
 const loadReadUsersForMessages = async () => {
@@ -996,6 +1037,7 @@ watch(
       return oldMsg && newMsg.isRead !== oldMsg.isRead
     })
     if (hasReadStatusChanged) {
+      console.log('消息已读状态发生变化，重新获取已读用户列表')
       // 当消息的已读状态变化时，重新获取已读用户列表
       await loadReadUsersForMessages()
     }
@@ -1008,6 +1050,7 @@ const handleForwardNote = (event: CustomEvent) => {
   const { content } = event.detail
   inputMessage.value = content
   autoResizeTextarea()
+  console.log('收到转发笔记:', content)
 }
 
 // 监听分享文件事件
@@ -1015,6 +1058,7 @@ const handleShareFile = (event: CustomEvent) => {
   const { file } = event.detail
   // 直接发送文件消息
   emit('send', file)
+  console.log('收到分享文件:', file)
 }
 
 // 处理全局键盘事件
@@ -1041,8 +1085,8 @@ onMounted(async () => {
   await loadReadUsersForMessages()
   // 加载小程序列表
   loadMiniApps()
-  // 初始化 WebSocket 消息处理（使用 composable 提供的函数）
-  initScreenShareHandler()
+  // 初始化 WebSocket 消息处理
+  initWebSocketMessageHandler()
   // 添加转发笔记事件监听器
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   // 添加分享文件事件监听器
@@ -1051,41 +1095,256 @@ onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeydown)
 })
 
-// 组件卸载时移除事件监听器
-onUnmounted(() => {
-  isMounted.value = false
+// 初始化 WebSocket 消息处理
+const initWebSocketMessageHandler = () => {
+  // 为每种屏幕共享相关的消息类型添加专门的处理器
+  const screenShareMessageTypes = [
+    'webrtc_offer',
+    'webrtc_answer',
+    'webrtc_ice_candidate',
+    'screen-share-request',
+    'screen-share-accepted',
+    'screen-share-rejected',
+    'screen-share-start',
+    'screen-share-stop'
+  ];
   
-  // 移除滚动事件监听器
-  if (messageListRef.value) {
-    messageListRef.value.removeEventListener('scroll', handleScroll)
+  // 为每种消息类型添加处理器
+  screenShareMessageTypes.forEach(type => {
+    addMessageHandler((message) => {
+      console.log('收到屏幕共享消息:', message);
+      handleScreenShareMessage(type, message.data);
+      return true;
+    }, type);
+  });
+  
+  // 回退到 IPC 方式
+  if (window.electron && window.electron.websocket) {
+    window.electron.websocket.onMessage((message) => {
+      console.log('收到 WebSocket 消息（通过 IPC）:', message.type);
+      if (screenShareMessageTypes.includes(message.type)) {
+        handleScreenShareMessage(message.type, message.data);
+      }
+    });
+  }
+};
+
+// 处理屏幕共享消息
+const handleScreenShareMessage = (type, data) => {
+  switch (type) {
+    case 'webrtc_offer':
+      handleWebRTCOffer(data);
+      break;
+    case 'webrtc_answer':
+      handleWebRTCAnswer(data);
+      break;
+    case 'webrtc_ice_candidate':
+      handleWebRTCIceCandidate(data);
+      break;
+    case 'screen-share-request':
+      handleScreenShareRequest(data);
+      break;
+    case 'screen-share-accepted':
+      handleScreenShareAccepted(data);
+      break;
+    case 'screen-share-rejected':
+      handleScreenShareRejected(data);
+      break;
+    case 'screen-share-start':
+      handleScreenShareStart(data);
+      break;
+    case 'screen-share-stop':
+      handleScreenShareStop(data);
+      break;
+  }
+};
+
+// 处理 WebRTC offer
+const handleWebRTCOffer = async (data) => {
+  try {
+    console.log('处理 WebRTC offer:', data.from_user_id)
+    
+    // 先设置远程屏幕共享用户ID，触发ScreenShare组件的渲染
+    remoteScreenUserId.value = data.from_user_id
+    console.log('设置 remoteScreenUserId:', data.from_user_id)
+    
+    // 等待组件渲染
+    await nextTick()
+    console.log('等待组件渲染完成')
+    
+    // 显示屏幕共享请求对话框
+    ElMessage({
+      message: '收到屏幕共享请求',
+      type: 'info',
+      showClose: true,
+      duration: 5000
+    })
+    
+    // 调用 ScreenShare 组件的方法处理 offer
+    if (screenShareComponent.value) {
+      console.log('调用 ScreenShare 组件的 handleOffer 方法')
+      await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
+    }
+  } catch (error) {
+    console.error('处理 WebRTC offer 失败:', error)
+  }
+}
+
+// 处理 WebRTC answer
+const handleWebRTCAnswer = (data) => {
+  try {
+    console.log('处理 WebRTC answer')
+    screenShareSender.handleAnswer(data.signal)
+  } catch (error) {
+    console.error('处理 WebRTC answer 失败:', error)
+  }
+}
+
+// 处理 WebRTC ICE 候选者
+const handleWebRTCIceCandidate = (data) => {
+  try {
+    console.log('处理 WebRTC ICE 候选者:', data)
+    
+    // 验证 data.signal 是否有效
+    // if (!data || !data.signal) {
+    //   console.warn('无效的 ICE 候选者数据:', data)
+    //   return
+    // }
+    
+    // 根据当前状态判断是发送者还是接收者
+    if (screenShareSender.getIsSharing()) {
+      screenShareSender.addIceCandidate(data.signal)
+    } else {
+      // 调用 ScreenShare 组件的方法处理 ICE 候选者
+      if (screenShareComponent.value) {
+        console.log('调用 ScreenShare 组件的 handleIceCandidate 方法')
+        screenShareComponent.value.handleIceCandidate(data.signal)
+      } else {
+        console.log('调用 ScreenShareReceiver 组件的 handleIceCandidate 方法')
+        screenShareReceiver.handleIceCandidate(data.signal)
+      }
+    }
+  } catch (error) {
+    console.error('处理 WebRTC ICE 候选者失败:', error)
+  }
+}
+
+// 处理屏幕共享请求
+const handleScreenShareRequest = (data) => {
+  console.log('收到屏幕共享请求，完整数据:', data)
+  console.log('收到屏幕共享请求:', data.requester_id || data.userId || data.user_id)
+  
+  // 获取请求者ID，支持多种字段名
+  const requesterId = data.requester_id || data.userId || data.user_id
+  const conversationId = data.conversation_id || data.conversationId
+  
+  if (!requesterId) {
+    console.error('屏幕共享请求缺少请求者ID:', data)
+    return
   }
   
-  // 移除全局事件监听器
-  window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  window.removeEventListener('shareFileToChat', handleShareFile as EventListener)
-  window.removeEventListener('keydown', handleGlobalKeydown)
-  
-  // 清理截图 IPC 监听器
-  if (screenshotCleanup) {
-    screenshotCleanup()
-    screenshotCleanup = null
+  if (!conversationId) {
+    console.error('屏幕共享请求缺少会话ID:', data)
+    return
   }
   
-  // 清理 context menu 监听器和定时器
-  if (memberContextMenuTimeoutId !== null) {
-    clearTimeout(memberContextMenuTimeoutId)
-    memberContextMenuTimeoutId = null
-  }
-  document.removeEventListener('click', closeMemberContextMenu)
+  // 使用 screenShareReceiver 处理屏幕共享请求
+  screenShareReceiver.handleShareRequest(data)
   
-  // 停止屏幕共享
+  // 显示确认对话框
+  ElMessageBox.confirm(
+    '是否接受屏幕共享请求？',
+    '屏幕共享请求',
+    {
+      confirmButtonText: '接受',
+      cancelButtonText: '拒绝',
+      type: 'question'
+    }
+  ).then(async () => {
+    // 发送接受消息
+    await screenShareReceiver.acceptShareRequest(conversationId)
+    console.log('发送屏幕共享接受响应:', { conversation_id: conversationId, requester_id: requesterId })
+    
+    // 立即显示浮窗，让接收者可以看到共享即将开始
+    if (screenShareComponent.value) {
+      screenShareComponent.value.showViewer()
+    }
+  }).catch(() => {
+    // 发送拒绝消息
+    screenShareReceiver.rejectShareRequest(conversationId)
+    console.log('发送屏幕共享拒绝响应:', { conversation_id: conversationId, requester_id: requesterId })
+  })
+}
+
+// 处理屏幕共享接受
+const handleScreenShareAccepted = (data) => {
+  console.log('屏幕共享请求已被接受')
+  ElMessage({
+    message: '屏幕共享请求已被接受',
+    type: 'success',
+    duration: 3000
+  })
+  
+  // 调用 ScreenShare 组件的 establishConnection 方法，开始建立 WebRTC 连接
+  if (screenShareComponent.value) {
+    console.log('调用 ScreenShare 组件的 establishConnection 方法')
+    screenShareComponent.value.establishConnection()
+  }
+}
+
+// 处理屏幕共享拒绝
+const handleScreenShareRejected = (data) => {
+  console.log('屏幕共享请求被拒绝')
+  ElMessage({
+    message: '屏幕共享请求被拒绝',
+    type: 'error',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享开始
+const handleScreenShareStart = (data) => {
+  console.log('屏幕共享已开始')
+  ElMessage({
+    message: '屏幕共享已开始',
+    type: 'success',
+    duration: 3000
+  })
+}
+
+// 处理屏幕共享停止
+const handleScreenShareStop = (data) => {
+  console.log('屏幕共享已停止')
+  ElMessage({
+    message: '屏幕共享已停止',
+    type: 'info',
+    duration: 3000
+  })
+  
+  // 清理屏幕共享资源
   if (screenShareComponent.value) {
     screenShareComponent.value.stopReceiving()
   }
+  showScreenShareViewer.value = false
+}
+
+// 组件卸载时移除事件监听器
+onUnmounted(() => {
+  isMounted.value = false
+  if (messageListRef.value) {
+    messageListRef.value.removeEventListener('scroll', handleScroll)
+  }
+  // 移除转发笔记事件监听器
+  window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
+  // 移除分享文件事件监听器
+  window.removeEventListener('shareFileToChat', handleShareFile as EventListener)
+  // 移除键盘事件监听器
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 
 // 加载小程序列表
 const loadMiniApps = () => {
+  console.log('加载小程序列表')
   // 这里可以从服务器获取小程序列表，现在使用硬编码的列表
   // 实际项目中应该调用API获取
   const miniAppsList = [
@@ -1118,16 +1377,16 @@ const loadMiniApps = () => {
       path: '/password-generator'
     }
   ]
+  console.log('小程序列表:', miniAppsList)
   // 这里可以将小程序列表存储到某个状态中，以便在需要时使用
 }
 
 // 滚动到引用的消息位置
-const scrollToQuotedMessage = (quotedMessageId: string) => {
-  if (!quotedMessageId) return
-  
+const scrollToQuotedMessage = (quotedMessageId) => {
+  console.log('滚动到引用消息:', quotedMessageId)
   nextTick(() => {
     const messageElement = document.querySelector(`.message-item[data-message-id="${quotedMessageId}"]`)
-    if (messageElement instanceof HTMLElement) {
+    if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
       // 给消息添加高亮效果
       messageElement.classList.add('highlighted-message')
@@ -1139,12 +1398,11 @@ const scrollToQuotedMessage = (quotedMessageId: string) => {
 }
 
 // 滚动到指定消息位置
-const scrollToMessage = (messageId: string) => {
-  if (!messageId) return
-  
+const scrollToMessage = (messageId) => {
+  console.log('滚动到消息:', messageId)
   nextTick(() => {
     const messageElement = document.querySelector(`.message-item[data-message-id="${messageId}"]`)
-    if (messageElement instanceof HTMLElement) {
+    if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
       // 给消息添加高亮效果
       messageElement.classList.add('highlighted-message')
@@ -1200,12 +1458,8 @@ const showMemberContextMenu = (event: MouseEvent, member: any) => {
   showMemberContextMenuFlag.value = true
   
   // 点击其他地方关闭菜单
-  // 先清理之前可能存在的监听器
-  document.removeEventListener('click', closeMemberContextMenu)
-  memberContextMenuTimeoutId = window.setTimeout(() => {
-    if (isMounted.value) {
-      document.addEventListener('click', closeMemberContextMenu)
-    }
+  setTimeout(() => {
+    document.addEventListener('click', closeMemberContextMenu)
   }, 0)
 }
 
@@ -1224,14 +1478,19 @@ const startPrivateChat = (member: any) => {
 
 // 计算当前用户在群中的角色
 const currentUserRole = computed(() => {
+  console.log('currentUserRole22', props.currentUser)
   var currentUser = props.currentUser
   if (!currentUser){
     currentUser = getCurrentUser()
   }
+    console.log('currentUserRole33', currentUser)
   if (!props.conversation?.members || !currentUser) return 'member'
   const member = props.conversation.members.find((m: any) => {
+    console.log('m.id', m.id, 'currentUser.id', currentUser.id, 'm.id === currentUser.id', String(m.id) === String(currentUser.id))
     return String(m.id) === String(currentUser.id)
   })
+   console.log('currentUserRole44', props.conversation.members)
+  console.log('currentUserRole44', member)
   return member?.role || 'member'
 })
 
@@ -1275,6 +1534,7 @@ const removeMemberFromGroup = async () => {
 
   openConfirmDialog('确认移除', `确定要移除成员 ${memberName} 吗？`, async () => {
     try {
+      console.log("dddddddddd", memberId)
       const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}`, {
         method: 'DELETE',
         headers: {
@@ -1298,6 +1558,7 @@ const removeMemberFromGroup = async () => {
 const viewMemberInfo = () => {
   if (selectedMember.value) {
     showUserProfile(selectedMember.value)
+    console.log('查看资料:', selectedMember.value)
   }
   closeMemberContextMenu()
 }
@@ -1375,6 +1636,7 @@ const transferOwner = async () => {
 const sendPrivateMessage = () => {
   if (selectedMember.value) {
     sendPrivateMessageToUser()
+    console.log('发起私聊:', selectedMember.value)
   }
   closeMemberContextMenu()
 }
@@ -1391,6 +1653,7 @@ const closeUserProfile = () => {
 
 // 重新发送失败的消息
 const retrySendMessage = (message: any) => {
+  console.log('重新发送消息:', message)
   emit('retry-send', message)
 }
 
@@ -1535,6 +1798,175 @@ const handleStartPrivateChat = (memberId: string) => {
   handleSendPrivateMessage(memberId)
 }
 
+const closeMessageContextMenu = () => {
+  showMessageContextMenuFlag.value = false
+  selectedMessage.value = null
+  document.removeEventListener('click', closeMessageContextMenu)
+}
+
+const copyMessage = () => {
+  if (selectedMessage.value && selectedMessage.value.content) {
+    navigator.clipboard.writeText(selectedMessage.value.content)
+      .then(() => {
+        console.log('消息已复制:', selectedMessage.value.content)
+      })
+      .catch(err => {
+        console.error('复制失败:', err)
+      })
+  }
+  closeMessageContextMenu()
+}
+
+const forwardMessage = () => {
+  if (selectedMessage.value) {
+    // 触发全局事件，打开分享弹窗并传递消息数据
+    window.dispatchEvent(new CustomEvent('forwardMessage', {
+      detail: {
+        message: selectedMessage.value
+      }
+    }))
+  }
+  closeMessageContextMenu()
+}
+
+const deleteMessage = () => {
+  if (selectedMessage.value) {
+    ElMessage.info('暂时不支持删除消息，因为目前没计划删除。')
+  }
+  closeMessageContextMenu()
+}
+
+// 消息撤回
+const recallMessage = async () => {
+  if (!selectedMessage.value) {
+    closeMessageContextMenu()
+    return
+  }
+  
+  const messageToRecall = selectedMessage.value
+  
+  if (messageToRecall.isSelf) {
+    openConfirmDialog('确认撤回', '确定要撤回这条消息吗？', async () => {
+      try {
+        const response = await request(`/api/v1/messages/${messageToRecall.id}/recall`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (response.code === 0) {
+          // 通知父组件更新消息状态
+          emit('recall', messageToRecall.id)
+          closeMessageContextMenu()
+          $message.success('消息撤回成功')
+        } else {
+          $message.error('消息撤回失败: ' + response.message)
+        }
+      } catch (error) {
+        console.error('消息撤回失败:', error)
+        $message.error('消息撤回失败: ' + error.message)
+      }
+    })
+  } else {
+    closeMessageContextMenu()
+  }
+}
+
+// 判断是否可以发送提醒
+const canSendReminder = (message: any): boolean => {
+  if (!message.timestamp || message.isRead) return false
+  
+  // 群聊不支持提醒
+  if (props.conversation.type === 'group') return false
+  
+  // 机器人消息不支持提醒
+  if (message.sender && message.sender.isBot) return false
+  
+  const now = Date.now()
+  const messageTime = new Date(message.timestamp).getTime()
+  const oneHour = 60 * 60 * 1000
+  
+  return now - messageTime > oneHour
+}
+
+// 发送消息提醒
+const sendMessageReminder = async () => {
+  if (!selectedMessage.value) {
+    closeMessageContextMenu()
+    return
+  }
+  
+  const message = selectedMessage.value
+  
+  try {
+    const response = await request(`/api/v1/messages/${message.id}/remind`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (response.code === 0) {
+      $message.success('提醒已发送')
+    } else {
+      $message.error('发送提醒失败: ' + response.message)
+    }
+  } catch (error) {
+    console.error('发送提醒失败:', error)
+    $message.error('发送提醒失败: ' + error.message)
+  }
+  
+  closeMessageContextMenu()
+}
+
+// 消息引用
+const quoteMessage = () => {
+  if (selectedMessage.value) {
+    // 设置引用消息
+    console.log('设置引用消息:', selectedMessage.value)
+    quotedMessage.value = selectedMessage.value
+    // 聚焦到输入框
+    const input = document.querySelector('.message-input') as HTMLTextAreaElement
+    if (input) {
+      input.focus()
+    }
+  }
+  closeMessageContextMenu()
+}
+
+// 将消息添加到便签
+const addToNote = () => {
+  if (selectedMessage.value) {
+    const message = selectedMessage.value
+    
+    // 检查消息类型，仅支持文本类型
+    if (message.type !== 'text') {
+      $message.warning('仅支持文本类型的消息添加到便签')
+      closeMessageContextMenu()
+      return
+    }
+    
+    // 构建便签内容
+    const noteContent = `【聊天记录】
+发送者：${message.sender.name}
+时间：${formatTime(message.timestamp)}
+内容：${message.content}`
+    
+    // 触发全局事件，通知便签应用接收内容
+    window.dispatchEvent(new CustomEvent('addToNote', {
+      detail: { 
+        title: `聊天记录 ${formatTime(message.timestamp)}`,
+        content: noteContent 
+      }
+    }))
+    
+    $message.success('消息已添加到便签')
+    console.log('添加消息到便签:', message)
+  }
+  closeMessageContextMenu()
+}
+
 // 截图相关状态
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
@@ -1565,52 +1997,31 @@ const isElectron = computed(() => {
 const takeScreenshot = () => {
   // 检查是否在Electron环境中，并且ipcRenderer有once方法
   if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.once === 'function') {
-    // 清理之前可能存在的监听器
-    if (screenshotCleanup) {
-      screenshotCleanup()
-      screenshotCleanup = null
-    }
 
-    try {
-      // 发送截图请求到主进程
-      window.electron.ipcRenderer.send('take-screenshot')
-      
-      // 定义处理函数以便后续清理
-      const screenshotHandler = async (_event: any, imageData: string) => {
-        // 确保组件仍然挂载
-        if (!isMounted.value) return
-        
-        try {
-          // 处理截图结果
-          if (imageData) {
-            // 将base64转换为File对象并添加到待发送文件列表
-            const file = await base64ToFile(imageData, 'screenshot.png')
-            pendingFiles.value.push({
-              file,
-              name: 'screenshot.png'
-            })
-          } else {
-            // 用户取消了截图
-          }
-        } catch (error) {
-          console.error('处理截图结果失败:', error)
-          $message.error('处理截图失败')
-        }
+    console.log('触发截图功能')
+    // 发送截图请求到主进程
+    window.electron.ipcRenderer.send('take-screenshot')
+    
+    // 监听截图结果
+    window.electron.ipcRenderer.once('screenshot-taken', async (event, imageData) => {
+      // 处理截图结果
+      console.log('截图结果:', imageData)
+      if (imageData) {
+        // 将base64转换为File对象并添加到待发送文件列表
+        const file = await base64ToFile(imageData, 'screenshot.png')
+        pendingFiles.value.push({
+          file,
+          name: 'screenshot.png'
+        })
+        console.log('截图已添加到待发送列表')
+      } else {
+        // 用户取消了截图
+        console.log('用户取消了截图')
       }
-      
-      // 监听截图结果
-      window.electron.ipcRenderer.once('screenshot-taken', screenshotHandler)
-      
-      // 保存清理函数
-      screenshotCleanup = () => {
-        window.electron.ipcRenderer.removeListener?.('screenshot-taken', screenshotHandler)
-      }
-    } catch (error) {
-      console.error('触发截图失败:', error)
-      $message.error('截图功能不可用')
-    }
+    })
   } else {
     // 非Electron环境或ipcRenderer不完整的模拟实现
+    console.log('截图功能仅在完整的Electron环境中可用')
     // 模拟截图功能
     simulateScreenshot()
   }
@@ -1675,6 +2086,7 @@ const uploadScreenshot = async () => {
       if (data.code === 0) {
         // 上传成功，获取文件URL
         const fileUrl = data.data.url
+        console.log('截图上传成功:', fileUrl)
         
         // 构建图片消息
         const messageData = {
@@ -1715,8 +2127,233 @@ const retakeScreenshot = () => {
   takeScreenshot()
 }
 
+// 通话相关状态
+const isInCall = ref(false)
+const callType = ref('') // 'voice' 或 'video'
+const callStatus = ref('') // 'ringing', 'answered', 'ended'
+const showCallModal = ref(false)
+const isScreenSharing = ref(false) // 是否正在共享屏幕
+
 // 小程序列表
 const showMiniAppList = ref(false)
+
+// 开始语音通话
+const startVoiceCall = () => {
+  if (!props.conversation) return
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 开始语音通话
+  callType.value = 'voice'
+  callStatus.value = 'ringing'
+  isInCall.value = true
+  showCallModal.value = true
+  
+  // 模拟通话请求
+  simulateCallRequest('voice')
+}
+
+// 开始视频通话
+const startVideoCall = () => {
+  if (!props.conversation) return
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 开始视频通话
+  callType.value = 'video'
+  callStatus.value = 'ringing'
+  isInCall.value = true
+  showCallModal.value = true
+  
+  // 模拟通话请求
+  simulateCallRequest('video')
+}
+
+// 开始屏幕共享
+const startScreenShare = () => {
+  console.log('startScreenShare函数被调用')
+  if (!props.conversation) {
+    console.log('没有选择会话')
+    return
+  }
+  
+  // 检查是否在通话中
+  if (isInCall.value) {
+    console.log('已经在通话中')
+    $message.warning('您已经在通话中')
+    return
+  }
+  
+  // 检查是否已经在共享
+  if (screenShareSender.getIsSharing()) {
+    console.log('已经在共享屏幕')
+    $message.warning('您已经在共享屏幕')
+    return
+  }
+  
+  // 调用ScreenShare组件的startScreenShare方法
+  if (screenShareComponent.value) {
+    console.log('调用ScreenShare组件的startScreenShare方法')
+    screenShareComponent.value.startScreenShare()
+  } else {
+    console.log('screenShareComponent.value为null')
+  }
+}
+
+const handleScreenShareStartFromComponent = (data: { conversationId: string | number }) => {
+  console.log('屏幕共享开始:', data)
+  // 只发送屏幕共享开始事件，不立即建立连接
+  // 连接会在对方接受后通过 handleScreenShareAccepted 方法建立
+  emit('send-screen-share-start', { conversationId: props.conversation?.id || 0, requester_id: currentUser?.id || 0 })
+  
+  console.log('已发送屏幕共享请求，等待对方接受...')
+}
+
+const handleScreenShareStopFromComponent = () => {
+  console.log('屏幕共享停止')
+  emit('send-screen-share-stop', { conversationId: props.conversation?.id || 0 })
+}
+
+const handleScreenShareJoinFromComponent = () => {
+  console.log('用户加入屏幕共享观看')
+}
+
+const handleScreenShareLeaveFromComponent = () => {
+  console.log('用户退出屏幕共享观看')
+}
+
+// 处理屏幕共享流
+const receiveScreenShareStream = (data: any) => {
+  console.log('接收屏幕共享流:', data)
+  if (screenShareComponent.value) {
+    console.log('调用ScreenShare组件的接收流方法')
+    screenShareComponent.value.receiveScreenShareStream(data)
+  } else {
+    console.log('screenShareComponent.value为null')
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 增强接收端错误处理
+const enhanceErrorHandling = () => {
+  // 视频元素错误处理
+  if (remoteVideoElement) {
+    remoteVideoElement.onerror = (event) => {
+      console.error('视频元素错误:', event)
+      console.error('视频错误码:', remoteVideoElement.error?.code)
+      console.error('视频错误消息:', remoteVideoElement.error?.message)
+      
+      // 尝试恢复播放
+      setTimeout(() => {
+        if (remoteVideoElement) {
+          remoteVideoElement.play().catch(err => {
+            console.error('尝试恢复播放失败:', err)
+          })
+        }
+      }, 1000)
+    }
+  }
+  
+  // MediaSource 错误处理
+  if (mediaSource) {
+    mediaSource.addEventListener('error', (event) => {
+      console.error('MediaSource 错误:', event)
+      // 尝试重新初始化 MediaSource
+      setTimeout(() => {
+        cleanupScreenShare()
+        receiveScreenShareStream({})
+      }, 1000)
+    })
+  }
+  
+  // SourceBuffer 错误处理
+  if (sourceBuffer) {
+    sourceBuffer.addEventListener('error', (event) => {
+      console.error('SourceBuffer 错误:', event)
+      // 尝试重新初始化 SourceBuffer
+      setTimeout(() => {
+        cleanupScreenShare()
+        receiveScreenShareStream({})
+      }, 1000)
+    })
+  }
+}
+
+
+
+// 模拟通话请求
+const simulateCallRequest = (type) => {
+  // 模拟对方接听
+  setTimeout(() => {
+    callStatus.value = 'answered'
+    $message.success('对方已接听')
+  }, 3000)
+}
+
+// 结束通话
+const endCall = () => {
+  callStatus.value = 'ended'
+  isInCall.value = false
+  showCallModal.value = false
+  
+  // 停止屏幕共享
+  if (isScreenSharing.value) {
+    screenShareSender.stopScreenShare()
+    isScreenSharing.value = false
+  }
+  
+  // 模拟通话结束
+  setTimeout(() => {
+    callType.value = ''
+    callStatus.value = ''
+  }, 1000)
+  
+  $message.info('通话已结束')
+}
+
+// 拒绝通话
+const rejectCall = () => {
+  callStatus.value = 'ended'
+  isInCall.value = false
+  showCallModal.value = false
+  
+  // 模拟通话结束
+  setTimeout(() => {
+    callType.value = ''
+    callStatus.value = ''
+  }, 1000)
+  
+  $message.info('已拒绝通话')
+}
+
+// 接听通话
+const answerCall = () => {
+  callStatus.value = 'answered'
+  $message.success('已接听通话')
+}
+
+
+
+
 
 const selectFile = () => {
   // 触发文件选择对话框
@@ -1730,25 +2367,20 @@ const selectImage = () => {
   imageInput.accept = 'image/*'
   imageInput.multiple = true
   
-  // 监听文件选择事件（使用一次性监听避免内存泄漏）
-  const handleChange = (event: Event) => {
+  // 监听文件选择事件
+  imageInput.addEventListener('change', (event) => {
     const target = event.target as HTMLInputElement
     const files = target.files
-    
-    // 清理事件监听器和 DOM 引用
-    imageInput.removeEventListener('change', handleChange)
-    imageInput.remove()
     
     if (files && files.length > 0) {
       // 添加到待发送文件列表,而不是直接发送
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
+        console.log('选中的图片:', file.name, file.size)
         addPendingFile(file)
       }
     }
-  }
-  
-  imageInput.addEventListener('change', handleChange)
+  })
   
   // 触发图片选择对话框
   imageInput.click()
@@ -1762,6 +2394,7 @@ const handleFileSelect = (event: Event) => {
     // 添加到待发送文件列表,而不是直接发送
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
+      console.log('选中的文件:', file.name, file.size)
       addPendingFile(file)
     }
     
@@ -1796,6 +2429,7 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
       fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
     }
     
+    console.log('保存文件:', finalFileName, 'URL:', fileUrl)
     
     // 检查URL是否为空
     if (!fileUrl) {
@@ -1874,6 +2508,7 @@ const showImagePreview = ref(false)
 const previewImageUrl = ref('')
 
 const previewImage = (imageData: string | any) => {
+  console.log('预览图片:', imageData)
   // 处理可能是字符串或对象的情况
   let imageUrl = ''
   
@@ -1898,6 +2533,7 @@ const previewImage = (imageData: string | any) => {
     const cleanImageUrl = imageUrl.replace(/^\//, '')
     imageUrl = `${cleanServerUrl}/${cleanImageUrl}`
   }
+  console.log('最终图片URL:', imageUrl)
   previewImageUrl.value = imageUrl
   showImagePreview.value = true
 }
@@ -1923,6 +2559,7 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
       fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
     }
     
+    console.log('下载文件:', finalFileName, 'URL:', fileUrl)
     
     // 检查URL是否为空
     if (!fileUrl) {
@@ -1962,6 +2599,7 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
     // 解析失败，将fileContent视为字符串
     const finalFileName = fileName || fileContent.split('/').pop() || fileContent
     const fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    console.log('下载文件:', finalFileName)
     
     try {
       // 发起下载请求
@@ -2021,6 +2659,50 @@ const convertUrlsToLinks = (text: string): string => {
   return result
 }
 
+// 消息右键菜单添加文件相关选项
+const showMessageContextMenu = (event: MouseEvent, message: Message) => {
+  event.stopPropagation()
+  
+  // 已撤回的消息不显示右键菜单
+  if (message.isRecalled) {
+    return
+  }
+  
+  // 计算菜单位置，确保在屏幕内显示
+  const menuWidth = 180 // 菜单宽度
+  const menuHeight = 120 // 菜单高度
+  const windowWidth = window.innerWidth
+  const windowHeight = window.innerHeight
+  
+  let x = event.clientX
+  let y = event.clientY
+  
+  // 调整x坐标，确保菜单不超出屏幕右侧
+  if (x + menuWidth > windowWidth) {
+    x = windowWidth - menuWidth - 10
+  }
+  
+  // 调整y坐标，确保菜单不超出屏幕底部
+  if (y + menuHeight > windowHeight) {
+    y = windowHeight - menuHeight - 10
+  }
+  
+  messageContextMenuPosition.value = { x, y }
+  showMessageContextMenuFlag.value = true
+  selectedMessage.value = message
+  
+  // 检查消息类型
+  if (message.type === 'file' || message.type === 'image') {
+    // 可以在这里添加文件或图片特定的菜单选项
+    console.log('显示文件/图片消息的右键菜单')
+  }
+  
+  // 点击其他地方关闭菜单
+  setTimeout(() => {
+    document.addEventListener('click', closeMessageContextMenu)
+  }, 0)
+}
+
 // 处理邀请成员
 const handleInviteMembers = () => {
   if (props.conversation?.id) {
@@ -2075,6 +2757,8 @@ const canEditGroupName = computed(() => {
 
 // 编辑群信息
 const editGroupInfo = () => {
+  console.log('编辑群信息:', props.conversation)
+  console.log('当前用户角色:', currentUserRole.value)
   if (props.conversation && canEditGroupName.value) {
     editGroupName.value = props.conversation.name || ''
     showEditGroupInfoModal.value = true
@@ -2167,9 +2851,11 @@ const saveGroupInfo = async () => {
 
 // 编辑群公告
 const editGroupAnnouncement = () => {
+  console.log('编辑群公告:', props.conversation)
   if (props.conversation) {
     editAnnouncementContent.value = props.conversation.announcement || ''
     showEditAnnouncementModal.value = true
+    console.log('弹窗已显示')
   }
   closeHeaderMenu()
 }
@@ -2197,6 +2883,7 @@ const saveAnnouncement = async () => {
         props.updateConversation({ ...props.conversation, announcement: editAnnouncementContent.value })
       }
     } else {
+      console.log(response.message || '更新群公告失败')
       ElMessage.error(response.message || '更新群公告失败')
     }
   } catch (error: any) {
@@ -2237,6 +2924,7 @@ defineExpose({
 .chat-main {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   /* background: var(--content-bg); */
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
@@ -2289,7 +2977,7 @@ defineExpose({
 
 .header-status {
   font-size: 12px;
-  color: var(--color-success-500);
+  color: #4caf50;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2313,12 +3001,12 @@ defineExpose({
 }
 
 .online-status.online {
-  color: var(--color-success-500);
+  color: #52c41a;
   background: rgba(82, 196, 26, 0.1);
 }
 
 .online-status.offline {
-  color: var(--color-gray-500);
+  color: #999;
   background: rgba(153, 153, 153, 0.1);
 }
 
@@ -2500,7 +3188,7 @@ defineExpose({
 .message-manager-search .search-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
 .message-manager-filters {
@@ -2538,7 +3226,7 @@ defineExpose({
 .filter-select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
 /* 日期范围选择器样式 */
@@ -2567,7 +3255,7 @@ defineExpose({
 .date-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
 .date-range-separator {
@@ -2663,7 +3351,7 @@ defineExpose({
 .page-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
 .jump-btn {
@@ -2823,13 +3511,13 @@ defineExpose({
 .message-file-link {
   display: flex;
   align-items: center;
-  color: var(--color-primary-300);
+  color: #64b5f6;
   text-decoration: none;
   transition: all 0.3s ease;
 }
 
 .message-file-link:hover {
-  color: var(--color-primary-400);
+  color: #42a5f5;
   text-decoration: underline;
 }
 
@@ -2848,18 +3536,18 @@ defineExpose({
 }
 
 .message-type-text {
-  background-color: var(--color-primary-100);
-  color: var(--color-primary-600);
+  background-color: #e3f2fd;
+  color: #1976d2;
 }
 
 .message-type-image {
-  background-color: var(--color-success-100);
-  color: var(--color-success-600);
+  background-color: #e8f5e8;
+  color: #388e3c;
 }
 
 .message-type-file {
-  background-color: var(--color-warning-100);
-  color: var(--color-warning-500);
+  background-color: #fff3e0;
+  color: #f57c00;
 }
 
 /* 分享消息样式 */
@@ -2956,13 +3644,13 @@ defineExpose({
   background-color: var(--primary-color);
   color: #fff;
   border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
   transform: translateY(-1px);
 }
 
 .share-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(51, 133, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
 }
 
 /* 自己发送的分享消息 */
@@ -3016,7 +3704,7 @@ defineExpose({
 
 .message-manager-header h3 i {
   margin-right: 8px;
-  color: var(--color-primary-300);
+  color: #64b5f6;
 }
 
 .empty-message {
@@ -3090,20 +3778,20 @@ defineExpose({
 }
 
 .message-link {
-  color: var(--color-primary-500);
+  color: #3b82f6;
   text-decoration: none;
   font-weight: 500;
   transition: all 0.3s ease;
 }
 
 .message-link:hover {
-  color: var(--color-primary-600);
+  color: #2563eb;
   text-decoration: underline;
   transform: translateY(-1px);
 }
 
 .at-user {
-  color: var(--color-primary-500);
+  color: #3b82f6;
   font-weight: 600;
   background-color: rgba(59, 130, 246, 0.1);
   padding: 2px 6px;
@@ -3413,7 +4101,7 @@ defineExpose({
 
 .message-read-status {
   font-size: 10px;
-  color: var(--color-gray-500);
+  color: #999;
   opacity: 0.8;
 }
 
@@ -3428,12 +4116,12 @@ defineExpose({
 }
 
 .message-read-status.read {
-  color: var(--color-success-500);
+  color: #4caf50;
   opacity: 1;
 }
 
 .message-read-status.failed {
-  color: var(--color-error-500);
+  color: #f56c6c;
   opacity: 1;
   display: flex;
   align-items: center;
@@ -3446,19 +4134,19 @@ defineExpose({
 }
 
 .message-read-status.failed .retry-btn:hover {
-  color: var(--color-error-400);
+  color: #f78989;
   transform: scale(1.1);
 }
 
 /* 发送失败的消息气泡样式 */
 .message-item.self.failed .message-bubble {
-  background-color: var(--color-error-500);
+  background-color: #f56c6c;
 }
 
 /* 撤回消息样式 */
 .message-item.recalled .message-bubble {
   background: var(--sidebar-bg);
-  color: var(--color-gray-500);
+  color: #999;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3466,7 +4154,7 @@ defineExpose({
 
 .message-item.self.recalled .message-bubble {
   background: var(--sidebar-bg);
-  color: var(--color-gray-500);
+  color: #999;
 }
 
 .recalled-message span {
@@ -3547,211 +4235,12 @@ defineExpose({
   color: var(--text-color);
 }
 
-.members-sidebar {
-  width: 180px;
-  background: var(--sidebar-bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
-  transition: width 0.3s ease;
-}
-
-.members-sidebar.collapsed {
-  width: 30px;
-  border-left: none;
-}
-
-.sidebar-header-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.members-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.header-content .toggle-sidebar-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.header-content .toggle-sidebar-btn:hover {
-  background: var(--hover-color);
-}
-
-.collapsed-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-}
-
-.toggle-sidebar-btn.collapsed {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.members-sidebar .members-header {
-  padding: 8px 12px;
-  background: var(--sidebar-bg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.members-sidebar .members-header h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.search-toggle-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--text-color);
-  transition: all 0.2s;
-}
-
-.search-toggle-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.members-search {
-  padding: 6px 8px;
-  background: var(--sidebar-bg);
-}
-
-.member-search-input {
-  width: 100%;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  outline: none;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.member-search-input:focus {
-  border-color: var(--primary-color);
-}
-
-.members-sidebar .members-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 8px;
-}
-
-.members-sidebar .member-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 6px;
-  padding: 6px 10px;
-  transition: all 0.2s ease;
-  margin-bottom: 1px;
-  cursor: pointer;
-}
-
-.members-sidebar .member-item:hover {
-  background: var(--hover-color);
-  transform: translateY(-1px);
-}
-
-.members-sidebar .member-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.members-sidebar .member-name {
-  font-size: 13px;
-}
-
-.member-signature {
-  font-size: 11px;
-  color: var(--text-secondary, var(--color-gray-500));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100px;
-}
-
-.owner-badge {
-  font-size: 10px;
-  background: var(--color-warning-500);
-  color: white;
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 4px;
-}
-
-.admin-badge {
-  font-size: 10px;
-  background: var(--color-primary-500);
-  color: white;
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 4px;
-}
-
-.member-info {
-  flex: 1;
-  min-width: 0;
-}
-
 .search-status {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: var(--color-gray-700);
+  color: #666;
   font-size: 14px;
 }
 
@@ -3765,8 +4254,8 @@ defineExpose({
   content: '';
   width: 16px;
   height: 16px;
-  border: 2px solid var(--color-gray-300);
-  border-top: 2px solid var(--color-primary-600);
+  border: 2px solid #e0e0e0;
+  border-top: 2px solid #1976d2;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -3787,13 +4276,13 @@ defineExpose({
   margin-bottom: 16px;
   padding-bottom: 8px;
   font-size: 14px;
-  color: var(--color-gray-800);
+  color: #333;
 }
 
 .clear-search-btn {
   padding: 4px 12px;
   background: transparent;
-  color: var(--color-primary-600);
+  color: #1976d2;
   border-radius: 12px;
   font-size: 12px;
   cursor: pointer;
@@ -3801,12 +4290,12 @@ defineExpose({
 }
 
 .clear-search-btn:hover {
-  background: var(--color-primary-100);
+  background: #e3f2fd;
 }
 
 .message-sender {
   font-size: 12px;
-  color: var(--color-gray-700);
+  color: #666;
   margin-bottom: 4px;
   font-weight: 500;
 }
@@ -3834,14 +4323,14 @@ defineExpose({
 
 .context-menu-item.divider {
   height: 1px;
-  background: var(--color-gray-300);
+  background: #e0e0e0;
   padding: 0;
   margin: 4px 0;
   cursor: default;
 }
 
 .context-menu-item.divider:hover {
-  background: var(--color-gray-300);
+  background: #e0e0e0;
 }
 
 
@@ -3854,12 +4343,12 @@ defineExpose({
 
 .context-menu-divider {
   height: 1px;
-  background-color: var(--color-gray-200);
+  background-color: #e8e8e8;
   margin: 4px 0;
 }
 
 .file-link {
-  color: var(--color-primary-500);
+  color: #1890ff;
   text-decoration: none;
   cursor: pointer;
 }
@@ -3978,13 +4467,13 @@ defineExpose({
   background-color: var(--primary-color);
   color: #fff;
   border-color: var(--primary-color);
-  box-shadow: 0 4px 12px var(--color-primary-100);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
   transform: translateY(-1px);
 }
 
 .file-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px var(--color-primary-100);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
 }
 
 /* 自己发送的文件消息 */
@@ -4212,42 +4701,42 @@ defineExpose({
 
 [data-theme="dark"] .file-action-btn:hover {
   background-color: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
-  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.4) !important;
+  color: #0a0a0a !important;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4) !important;
 }
 
 /* 暗黑主题下自己发送的文件消息样式 */
 [data-theme="dark"] .message-item.self .file-message {
   background: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
+  color: #0a0a0a !important;
   border: none;
   /* border: 1px solid rgba(24, 144, 255, 0.3) !important; */
 }
 
 [data-theme="dark"] .message-item.self .file-name {
-  color: var(--color-gray-900) !important;
+  color: #0a0a0a !important;
 }
 
 [data-theme="dark"] .message-item.self .file-size {
-  color: rgba(32, 32, 32, 0.8) !important;
+  color: rgba(10, 10, 10, 0.8) !important;
 }
 
 [data-theme="dark"] .message-item.self .file-icon {
-  background-color: rgba(32, 32, 32, 0.2) !important;
-  color: var(--color-gray-900) !important;
-  border: 1px solid rgba(32, 32, 32, 0.3) !important;
+  background-color: rgba(10, 10, 10, 0.2) !important;
+  color: #0a0a0a !important;
+  border: 1px solid rgba(10, 10, 10, 0.3) !important;
 }
 
 [data-theme="dark"] .message-item.self .file-action-btn {
-  background-color: rgba(32, 32, 32, 0.2) !important;
+  background-color: rgba(10, 10, 10, 0.2) !important;
   color: rgba(255, 255, 255, 0.8) !important;
   border: none;
 }
 
 [data-theme="dark"] .message-item.self .file-action-btn:hover {
-  background-color: rgba(32, 32, 32, 0.3) !important;
+  background-color: rgba(10, 10, 10, 0.3) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(32, 32, 32, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(10, 10, 10, 0.3) !important;
 }
 
 [data-theme="dark"] .search-status {
@@ -4309,7 +4798,7 @@ defineExpose({
 
 [data-theme="dark"] .file-action-btn:hover {
   background-color: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
+  color: #0a0a0a !important;
 }
 
 [data-theme="dark"] .message-manager-content {
@@ -4440,7 +4929,7 @@ defineExpose({
   position: fixed;
   top: 20px;
   right: 20px;
-  background: var(--color-success-500);
+  background: #52c41a;
   color: #fff;
   padding: 12px 20px;
   border-radius: 6px;
@@ -4507,8 +4996,8 @@ defineExpose({
 }
 
 .time-divider-text {
-  background-color: var(--color-gray-200);
-  color: var(--color-gray-500);
+  background-color: #f0f0f0;
+  color: #999;
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 12px;
@@ -4517,54 +5006,39 @@ defineExpose({
 }
 [data-theme="elegant-dark"] .time-divider-text {
   background-color: var(--sidebar-bg);
-  color: var(--color-gray-700);
+  color: #666;
 }
 /* 深色主题下的时间分隔线样式 */
 .dark-theme .time-divider-text {
-  background-color: var(--color-gray-800);
-  color: var(--color-gray-700);
+  background-color: #333;
+  color: #666;
 }
 
 /* 网络蓝主题下的时间分隔线样式 */
 .netblue-theme .time-divider-text {
-  background-color: var(--color-primary-50);
-  color: var(--color-primary-500);
+  background-color: #e6f7ff;
+  color: #1890ff;
 }
 
 /* 高雅紫主题下的时间分隔线样式 */
 .elegantpurple-theme .time-divider-text {
-  background-color: var(--color-primary-50);
-  color: var(--color-primary-700);
+  background-color: #f9f0ff;
+  color: #722ed1;
 }
 
 /* 神圣黄主题下的时间分隔线样式 */
 .sacredyellow-theme .time-divider-text {
-  background-color: var(--color-warning-50);
-  color: var(--color-warning-600);
+  background-color: #fffbe6;
+  color: #d48806;
 }
 
 /* 没有更多消息提示 */
 .no-more-messages {
   text-align: center;
   padding: 20px 0;
-  color: var(--color-gray-500);
+  color: #999;
   font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-200);
-  margin-bottom: 10px;
-}
-
-/* 消息列表系统提示样式 */
-</style>
-lor: var(--color-warning-600);
-}
-
-/* 没有更多消息提示 */
-.no-more-messages {
-  text-align: center;
-  padding: 20px 0;
-  color: var(--color-gray-500);
-  font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-200);
+  border-bottom: 1px solid #eee;
   margin-bottom: 10px;
 }
 

@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,7 +10,6 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
-	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,61 +17,26 @@ import (
 func UploadFile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	form, err := c.FormFile("file")
+	file, err := c.FormFile("file")
 	if err != nil {
-		response.BadRequest(c, "文件上传失败")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件上传失败"})
 		return
 	}
 
-	// 检查文件大小
-	maxSize := int64(cfg.Upload.MaxSizeMB) * 1024 * 1024
-	if cfg.Upload.MaxSizeMB > 0 && form.Size > maxSize {
-		response.BadRequest(c, fmt.Sprintf("文件大小超过限制(%dMB)", cfg.Upload.MaxSizeMB))
-		return
-	}
-
-	// 打开文件读取头部用于MIME类型检测
-	file, err := form.Open()
-	if err != nil {
-		response.BadRequest(c, "文件打开失败")
-		return
-	}
-	defer file.Close()
-
-	// 只读取前512字节用于MIME检测
-	header := make([]byte, 512)
-	n, _ := file.Read(header)
-	mimeType := http.DetectContentType(header[:n])
-
-	// 检查MIME类型是否在允许列表中
-	allowedMap := make(map[string]bool)
-	for _, t := range cfg.Upload.AllowedTypes {
-		allowedMap[t] = true
-	}
-
-	// 允许image/*类型，或者在明确允许的列表中
-	isAllowed := allowedMap[mimeType] || strings.HasPrefix(mimeType, "image/")
-	if len(cfg.Upload.AllowedTypes) > 0 && !isAllowed {
-		response.BadRequest(c, fmt.Sprintf("不支持的文件类型: %s", mimeType))
-		return
-	}
-
-	// 重置文件指针回到开头
-	file.Seek(0, io.SeekStart)
-
-	ext := filepath.Ext(form.Filename)
+	ext := filepath.Ext(file.Filename)
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
 	var storagePath string
 
 	if cfg.Storage.Type == "s3" {
 		storagePath = "/s3/" + filename
-		response.Success(c, gin.H{
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
 			"message": "S3存储功能暂未实现",
 			"data": gin.H{
 				"id":   0,
 				"url":  storagePath,
-				"name": form.Filename,
-				"size": form.Size,
+				"name": file.Filename,
+				"size": file.Size,
 			},
 		})
 		return
@@ -84,35 +46,38 @@ func UploadFile(c *gin.Context) {
 			uploadDir = "./uploads"
 		}
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
-			response.InternalServerError(c, "创建上传目录失败")
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建上传目录失败"})
 			return
 		}
 
 		filePath := filepath.Join(uploadDir, filename)
-		if err := c.SaveUploadedFile(form, filePath); err != nil {
-			response.InternalServerError(c, "保存文件失败")
+		if err := c.SaveUploadedFile(file, filePath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存文件失败"})
 			return
 		}
 
 		db := database.GetDB()
 		fileRecord := model.File{
-			Name:         form.Filename,
-			OriginalName: form.Filename,
+			Name:         file.Filename,
+			OriginalName: file.Filename,
 			StoragePath:  "/uploads/" + filename,
-			Size:         form.Size,
+			Size:         file.Size,
 			UserID:       userID.(uint),
 			CreatedAt:    time.Now(),
 		}
 		if err := db.Create(&fileRecord).Error; err != nil {
-			response.InternalServerError(c, "创建文件记录失败")
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
 			return
 		}
 
-		response.Success(c, gin.H{
-			"id":   fileRecord.ID,
-			"url":  fileRecord.StoragePath,
-			"name": fileRecord.Name,
-			"size": fileRecord.Size,
+		c.JSON(http.StatusOK, gin.H{
+			"code": 0,
+			"data": gin.H{
+				"id":   fileRecord.ID,
+				"url":  fileRecord.StoragePath,
+				"name": fileRecord.Name,
+				"size": fileRecord.Size,
+			},
 		})
 	}
 }
@@ -135,7 +100,10 @@ func GetFiles(c *gin.Context) {
 
 	query.Order("created_at DESC").Find(&files)
 
-	response.Success(c, files)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": files,
+	})
 }
 
 func DownloadFile(c *gin.Context) {
@@ -144,19 +112,20 @@ func DownloadFile(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的文件ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
 		return
 	}
 
 	db := database.GetDB()
 	var file model.File
 	if err := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; err != nil {
-		response.NotFound(c, "文件不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 		return
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		response.Success(c, gin.H{
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
 			"message": "S3存储文件下载功能暂未实现",
 			"data":    gin.H{"file_id": file.ID},
 		})
@@ -165,7 +134,7 @@ func DownloadFile(c *gin.Context) {
 		filePath := "." + file.StoragePath
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			response.NotFound(c, "文件不存在")
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 			return
 		}
 
@@ -179,23 +148,24 @@ func DeleteFile(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的文件ID")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
 		return
 	}
 
 	db := database.GetDB()
 	var file model.File
 	if err := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; err != nil {
-		response.NotFound(c, "文件不存在")
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 		return
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
 		if err := db.Delete(&file).Error; err != nil {
-			response.InternalServerError(c, "删除文件失败")
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
 			return
 		}
-		response.Success(c, gin.H{
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
 			"message": "S3存储文件删除功能暂未完全实现，仅删除了文件记录",
 		})
 		return
@@ -204,11 +174,12 @@ func DeleteFile(c *gin.Context) {
 		os.Remove(filePath)
 
 		if err := db.Delete(&file).Error; err != nil {
-			response.InternalServerError(c, "删除文件失败")
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
 			return
 		}
 
-		response.Success(c, gin.H{
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
 			"message": "删除文件成功",
 		})
 	}
@@ -223,7 +194,7 @@ func CreateFolder(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
 		return
 	}
 
@@ -235,7 +206,10 @@ func CreateFolder(c *gin.Context) {
 	}
 	db.Create(&folder)
 
-	response.Success(c, folder)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": folder,
+	})
 }
 
 func GetFolderTree(c *gin.Context) {
@@ -262,5 +236,8 @@ func GetFolderTree(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, folders)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": folders,
+	})
 }

@@ -263,14 +263,22 @@ func CheckVersion(c *gin.Context) {
 		return
 	}
 
+	latestVersion := "1.0.0"
+	forceUpdate := true
+	needUpdate := compareVersions(req.Version, latestVersion)
+
 	response.Success(c, gin.H{
-		"latest_version":  cfg.App.Version,
+		"latest_version":  latestVersion,
 		"current_version": req.Version,
-		"need_update":     req.Version != cfg.App.Version,
-		"force_update":    cfg.App.ForceUpdate,
-		"update_url":      cfg.App.UpdateURL,
-		"release_notes":   cfg.App.ReleaseNotes,
+		"need_update":     needUpdate,
+		"force_update":    forceUpdate,
+		"update_url":      "https://example.com/download/qim-latest",
+		"release_notes":   "\n1. 修复了消息发送失败的问题\n2. 优化了系统性能\n3. 增加了版本更新提示功能\n",
 	})
+}
+
+func compareVersions(current, latest string) bool {
+	return current != latest
 }
 
 func generateToken(userID uint, username string) string {

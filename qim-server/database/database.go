@@ -16,19 +16,19 @@ var DB *gorm.DB
 func Init(cfg *config.Config) *gorm.DB {
 	var err error
 
-	if cfg.DB.Type == "mysql" {
+	if cfg.Database.Type == "mysql" {
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-			cfg.DB.Username,
-			cfg.DB.Password,
-			cfg.DB.Host,
-			cfg.DB.Port,
-			cfg.DB.Database,
+			cfg.Database.Username,
+			cfg.Database.Password,
+			cfg.Database.Host,
+			cfg.Database.Port,
+			cfg.Database.Database,
 		)
 		DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Info),
 		})
 	} else {
-		DB, err = gorm.Open(sqlite.Open(cfg.DB.Path), &gorm.Config{
+		DB, err = gorm.Open(sqlite.Open(cfg.Database.Path), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Info),
 		})
 	}

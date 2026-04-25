@@ -35,29 +35,3 @@ ai:
     api_key: ""
     model: "gpt-3.5-turbo"
     base_url: "https://api.openai.com/v1"
-
-app:
-  version: "1.0.0"
-  update_url: ""
-  force_update: false
-  release_notes: ""
-
-upload:
-  max_size_mb: 100
-  allowed_types:
-    - "image/jpeg"
-    - "image/png"
-    - "image/gif"
-    - "image/webp"
-    - "application/pdf"
-    - "application/zip"
-    - "application/x-zip-compressed"
-    - "application/msword"
-    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    - "application/vnd.ms-excel"
-    - "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    - "text/plain"
-    - "video/mp4"
-    - "audio/mpeg"
-    - "audio/wav"
-    - "application/octet-stream"

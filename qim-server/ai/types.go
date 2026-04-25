@@ -1,12 +1,10 @@
 package ai
 
-// Message 聊天消息
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// ChatCompletionRequest 聊天完成请求
 type ChatCompletionRequest struct {
 	Model       string    `json:"model"`
 	Messages    []Message `json:"messages"`
@@ -14,7 +12,6 @@ type ChatCompletionRequest struct {
 	Temperature float64   `json:"temperature,omitempty"`
 }
 
-// ChatCompletionResponse 聊天完成响应
 type ChatCompletionResponse struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -23,7 +20,7 @@ type ChatCompletionResponse struct {
 	Choices []struct {
 		Index   int     `json:"index"`
 		Message Message `json:"message"`
-		Finish  string  `json:"finish_reason"`
+		Finish  string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -32,21 +29,65 @@ type ChatCompletionResponse struct {
 	} `json:"usage"`
 }
 
-// StreamChunk 流式响应块（统一 JSON 格式）
 type StreamChunk struct {
-	// Content 当前 chunk 的文本内容（包含换行符）
-	Content string `json:"content"`
-
-	// Finish 是否结束（stop 表示完成，null 表示还在流式输出）
-	Finish *string `json:"finish,omitempty"`
-
-	// Usage token 用量信息（仅在最后一条返回）
-	Usage *StreamUsage `json:"usage,omitempty"`
+	Content string       `json:"content"`
+	Finish  *string      `json:"finish,omitempty"`
+	Usage   *StreamUsage `json:"usage,omitempty"`
 }
 
-// StreamUsage token 用量信息
 type StreamUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+}
+
+type AIConfig struct {
+	Provider    string          `yaml:"provider"`
+	MaxTokens   int             `yaml:"max_tokens"`
+	Temperature float64         `yaml:"temperature"`
+	OpenAI      OpenAIConfig    `yaml:"openai"`
+	Baidu       BaiduConfig     `yaml:"baidu"`
+	Alibaba     AlibabaConfig   `yaml:"alibaba"`
+	Tencent     TencentConfig   `yaml:"tencent"`
+	Bytedance   BytedanceConfig `yaml:"bytedance"`
+	Anthropic   AnthropicConfig `yaml:"anthropic"`
+}
+
+type OpenAIConfig struct {
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+}
+
+type BaiduConfig struct {
+	APIKey    string `yaml:"api_key"`
+	SecretKey string `yaml:"secret_key"`
+	Model     string `yaml:"model"`
+	BaseURL   string `yaml:"base_url"`
+}
+
+type AlibabaConfig struct {
+	APIKey    string `yaml:"api_key"`
+	APISecret string `yaml:"api_secret"`
+	Model     string `yaml:"model"`
+	BaseURL   string `yaml:"base_url"`
+}
+
+type TencentConfig struct {
+	SecretID  string `yaml:"secret_id"`
+	SecretKey string `yaml:"secret_key"`
+	Model     string `yaml:"model"`
+	BaseURL   string `yaml:"base_url"`
+}
+
+type BytedanceConfig struct {
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+}
+
+type AnthropicConfig struct {
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
 }

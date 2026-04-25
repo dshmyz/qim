@@ -3,18 +3,17 @@ package ai
 import (
 	"fmt"
 	"log"
-	"qim-server/config"
 	"sync"
 )
 
 type AIService struct {
-	config   *config.AIConfig
+	config   *AIConfig
 	factory  *ProviderFactory
 	provider Provider
 	mu       sync.RWMutex
 }
 
-func NewAIService(cfg *config.AIConfig) *AIService {
+func NewAIService(cfg *AIConfig) *AIService {
 	svc := &AIService{
 		config:  cfg,
 		factory: NewProviderFactory(),
@@ -27,7 +26,7 @@ func NewAIService(cfg *config.AIConfig) *AIService {
 	return svc
 }
 
-func (s *AIService) UpdateConfig(cfg *config.AIConfig) {
+func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.config = cfg
@@ -37,7 +36,7 @@ func (s *AIService) UpdateConfig(cfg *config.AIConfig) {
 	}
 }
 
-func (s *AIService) updateProvider(cfg *config.AIConfig) error {
+func (s *AIService) updateProvider(cfg *AIConfig) error {
 	provider, err := s.factory.CreateProvider(cfg)
 	if err != nil {
 		return err
@@ -46,7 +45,7 @@ func (s *AIService) updateProvider(cfg *config.AIConfig) error {
 	return nil
 }
 
-func (s *AIService) GetConfig() *config.AIConfig {
+func (s *AIService) GetConfig() *AIConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.config
