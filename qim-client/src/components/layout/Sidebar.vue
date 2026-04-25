@@ -219,8 +219,15 @@ const filteredConversations = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.3s ease;
+  flex-shrink: 0;
   box-shadow: var(--shadow-sm);
   z-index: 5;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  overflow: hidden;
 }
 
 .sidebar-header {

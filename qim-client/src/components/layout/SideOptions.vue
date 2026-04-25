@@ -64,50 +64,73 @@ defineEmits<{
 
 <style scoped>
 .side-options {
-  width: 60px;
-  background: var(--sidebar-bg);
+  width: 72px;
+  background: var(--list-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 10px;
+  padding: 20px 0;
+  gap: 20px;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
 }
 
+.side-options:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.option-spacer {
+  flex: 0.9;
+}
+
+.settings-option {
+  transition: none;
+  position: relative;
+}
+
+.settings-option:hover {
+  transform: translateY(-24px);
+  transition: none;
+  box-shadow: none;
+  background: var(--hover-color);
+  color: var(--primary-color);
+  position: relative;
+}
+
+/* 选项项样式 */
 .option-item {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 8px;
-  margin-bottom: 4px;
-  transition: all 0.2s ease;
-  position: relative;
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
 }
 
 .option-item:hover {
-  background: var(--hover-bg);
+  background: var(--hover-color);
+  color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
 }
 
 .option-item.active {
   background: var(--primary-color);
-}
-
-.option-item.active .option-icon {
   color: white;
+  box-shadow: var(--shadow-md);
 }
 
 .option-icon {
-  font-size: 18px;
-  color: var(--text-secondary);
+  font-size: 20px;
+  position: relative;
 }
 
-.option-spacer {
-  flex: 1;
-}
-
-.settings-option {
-  margin-top: auto;
-  margin-bottom: 10px;
+.option-item:hover .option-icon,
+.option-item.active .option-icon {
+  opacity: 1;
+  transform: scale(1.1);
 }
 </style>
