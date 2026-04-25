@@ -1838,6 +1838,132 @@ const {
   setNetworkError
 } = useAppState()
 
+const ui = useUI()
+
+// 解构 UI 状态
+const {
+  // 右键菜单
+  showMenu,
+  menuPosition,
+  selectedConversation,
+  showContextMenu,
+  hideContextMenu,
+  // 动作菜单
+  showActionMenuFlag,
+  actionMenuPosition,
+  showActionMenu,
+  hideActionMenu,
+  // 用户右键菜单
+  showUserContextMenuFlag,
+  userContextMenuPosition,
+  selectedEmployee,
+  showUserContextMenu,
+  hideUserContextMenu,
+  // 群聊右键菜单
+  showGroupContextMenuFlag,
+  groupContextMenuPosition,
+  showGroupContextMenu,
+  closeGroupContextMenu,
+  // 成员右键菜单
+  showMemberContextMenuFlag,
+  memberContextMenuPosition,
+  selectedMember,
+  showMemberContextMenu,
+  hideMemberContextMenu,
+  // 设置菜单
+  showSettingsMenuFlag,
+  settingsMenuPosition,
+  showSettingsMenu,
+  hideSettingsMenu,
+  // 主题菜单
+  showThemeMenuFlag,
+  themeMenuPosition,
+  showThemeMenu,
+  hideThemeMenu,
+  // 更多菜单
+  showMoreMenuFlag,
+  moreMenuPosition,
+  showMoreMenu,
+  closeMoreMenu,
+  // 分享模态框
+  showShareModal,
+  shareType,
+  shareUsers,
+  shareGroups,
+  openShareModal,
+  closeShareModal,
+  // 用户资料
+  showUserProfile,
+  selectedUser,
+  openUserProfile,
+  closeUserProfile,
+  // 创建会话
+  showCreateConversationModal,
+  createConversationType,
+  createConversationTitle,
+  openCreateGroupModal,
+  closeCreateConversationModal,
+  // 系统消息
+  showSystemMessageModal,
+  systemMessage,
+  openSystemMessageModal,
+  closeSystemMessageModal,
+  // 群成员
+  showGroupMembersModal,
+  groupMembers,
+  openGroupMembersModal,
+  closeGroupMembersModal,
+  // 邀请成员
+  showInviteMembersModal,
+  openInviteMembersModal,
+  closeInviteMembersModal,
+  // 添加成员
+  showAddMembersModal,
+  addMembersSearchQuery,
+  selectedAddMembers,
+  openAddMembersModal,
+  closeAddMembersModal,
+  // 编辑群公告
+  showEditAnnouncementModal,
+  editAnnouncementContent,
+  openEditAnnouncementModal,
+  closeEditAnnouncementModal,
+  // 群资料
+  showGroupInfoModal,
+  openGroupInfoModal,
+  closeGroupInfoModal,
+  // 关于对话框
+  showAboutDialog,
+  openAboutDialog,
+  closeAboutDialog,
+  // 退出登录
+  showLogoutDialog,
+  openLogoutDialog,
+  cancelLogout,
+  confirmLogout,
+  // 更新对话框
+  showUpdateDialog,
+  isCheckingUpdate,
+  isDownloading,
+  downloadProgress,
+  updateResult,
+  hasNewVersion,
+  openUpdateDialog,
+  closeUpdateDialog,
+  // 语音通话
+  showVoiceCallModal,
+  voiceCallStatus,
+  voiceCallDuration,
+  openVoiceCall,
+  closeVoiceCall,
+  // 设置
+  showSettingsModal,
+  activeSettingsTab,
+  openSettings,
+  closeSettingsModal,
+  switchSettingsTab
+} = ui
+
 const currentConversationId = ref<string | null>(null)
 const selectedChannel = ref(null)
 const selectedGroup = ref(null)
@@ -1911,23 +2037,10 @@ const conversations = ref<Conversation[]>([])
 const showUserProfile = ref(false)
 const selectedUser = ref(null)
 
-// 关闭用户资料弹窗
-const closeUserProfile = () => {
-  showUserProfile.value = false
-  selectedUser.value = null
-}
-
 // 处理频道选择
 const handleChannelSelect = (channel) => {
   selectedChannel.value = channel
 }
-
-// 分享相关状态
-const showShareModal = ref(false)
-const shareType = ref('')
-
-const shareUsers = ref<any[]>([])
-const shareGroups = ref<any[]>([])
 
 // 频道相关状态
 const channelMessage = ref('')
@@ -2351,6 +2464,7 @@ onMounted(async () => {
 // 导入 composables
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
+import { useUI } from '../composables/useUI'
 import { connectWebSocket as connectWS, addMessageHandler, sendWebSocketMessage, getWebSocket } from '../utils/websocketManager'
 
 // 暴露sendWebSocketMessage到全局，供screenShareManager使用
@@ -4258,67 +4372,6 @@ const formatCallDuration = (seconds: number): string => {
   return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
 }
 
-
-// 右键菜单相关
-const showMenu = ref(false)
-const menuPosition = ref({ x: 0, y: 0 })
-const selectedConversation = ref<Conversation | null>(null)
-
-const showContextMenu = (event: MouseEvent, conversation: Conversation) => {
-  event.preventDefault()
-  showMenu.value = true
-  menuPosition.value = { x: event.clientX, y: event.clientY }
-  selectedConversation.value = conversation
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeContextMenu)
-  }, 0)
-}
-
-const closeContextMenu = () => {
-  showMenu.value = false
-  selectedConversation.value = null
-  document.removeEventListener('click', closeContextMenu)
-}
-
-
-// 动作菜单
-const showActionMenuFlag = ref(false)
-const actionMenuPosition = ref({ x: 0, y: 0 })
-
-
-// 用户右键菜单
-const showUserContextMenuFlag = ref(false)
-const userContextMenuPosition = ref({ x: 0, y: 0 })
-const selectedEmployee = ref<any>(null)
-
-const showUserContextMenu = (event: MouseEvent, employee: any) => {
-  event.preventDefault()
-  showUserContextMenuFlag.value = true
-  userContextMenuPosition.value = { x: event.clientX, y: event.clientY }
-  selectedEmployee.value = employee
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeUserContextMenu)
-  }, 0)
-}
-
-const closeUserContextMenu = () => {
-  showUserContextMenuFlag.value = false
-  selectedEmployee.value = null
-  document.removeEventListener('click', closeUserContextMenu)
-}
-
-const viewUserProfile = () => {
-  if (selectedEmployee.value) {
-    selectedUser.value = selectedEmployee.value
-    showUserProfile.value = true
-    console.log('查看用户资料:', selectedEmployee.value)
-  }
-  closeUserContextMenu()
-}
 
 // 触发头像选择
 const triggerAvatarInput = () => {
