@@ -258,30 +258,55 @@ func CreateFolder(c *gin.Context) {
 
 func GetFolderTree(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-
 	db := database.GetDB()
 
 	var folders []model.Folder
-	db.Where("user_id = ?", userID).Find(&folders)
+	db.Where("user_id = ?", userID).Order("created_at ASC").Find(&folders)
 
-	folderMap := make(map[uint]*model.Folder)
-	var rootFolders []model.Folder
-
-	for i := range folders {
-		folderMap[folders[i].ID] = &folders[i]
+	// 定义带子节点的树结构
+	type FolderNode struct {
+		ID        uint         `json:"id"`
+		ParentID  *uint        `json:"parent_id,omitempty"`
+		Name      string       `json:"name"`
+		CreatedAt time.Time    `json:"created_at"`
+		UpdatedAt time.Time    `json:"updated_at"`
+		Children  []FolderNode `json:"children,omitempty"`
 	}
 
+	// 构建 ID -> FolderNode 映射
+	nodeMap := make(map[uint]*FolderNode)
 	for i := range folders {
-		if folders[i].ParentID == nil {
-			rootFolders = append(rootFolders, folders[i])
+		f := &folders[i]
+		node := &FolderNode{
+			ID:        f.ID,
+			ParentID:  f.ParentID,
+			Name:      f.Name,
+			CreatedAt: f.CreatedAt,
+			UpdatedAt: f.UpdatedAt,
+			Children:  nil,
+		}
+		nodeMap[f.ID] = node
+	}
+
+	// 组装父子关系，根节点单独收集
+	var roots []FolderNode
+	for i := range folders {
+		f := &folders[i]
+		node := nodeMap[f.ID]
+		if f.ParentID == nil {
+			roots = append(roots, *node)
 		} else {
-			if _, exists := folderMap[*folders[i].ParentID]; exists {
+			if parent, exists := nodeMap[*f.ParentID]; exists {
+				parent.Children = append(parent.Children, *node)
+			} else {
+				// 父节点不存在（可能是历史数据），作为根节点处理
+				roots = append(roots, *node)
 			}
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": folders,
+		"data": roots,
 	})
 }
