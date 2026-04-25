@@ -6,7 +6,7 @@
 .apps-content {
   flex: 1;
   overflow-y: auto;
-  background: var(--list-bg);
+  background: var(--sidebar-bg);
 }
 
 .recent-apps-section {

@@ -1,40 +1,7 @@
 /* ========================================
    菜单样式 - Menu Styles
-   从 main.css 拆分：右键菜单、动作菜单、用户上下文菜单
-   ======================================== */
-
-/* 右键菜单样式 */
-.context-menu {
-  position: fixed;
-  background: var(--context-menu-bg);
-  border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
-}
-
-.context-menu-item {
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-color);
-  transition: background 0.2s;
-}
-
-.context-menu-item:hover {
-  background: var(--context-menu-hover);
-}
-
-.context-menu-item.divider {
-  height: 1px;
-  background: #e0e0e0;
-  padding: 0;
-  margin: 4px 0;
-  cursor: default;
-}
-
-.context-menu-item.divider:hover {
-  background: #e0e0e0;
-}
+   从 Main.vue 迁移
+   ======================================= */
 
 /* 成员上下文菜单样式 */
 .context-menu-icon {
@@ -120,4 +87,63 @@
   width: 20px;
   text-align: center;
   color: var(--primary-color);
+}
+
+/* 右键菜单样式 */
+.context-menu {
+  position: fixed;
+  background: var(--context-menu-bg);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+}
+
+/* 主题菜单滚动样式 */
+.theme-menu {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 主题菜单滚动条样式 */
+.theme-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.theme-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-menu::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.theme-menu::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-color);
+  transition: background 0.2s;
+}
+
+.context-menu-item:hover {
+  background: var(--context-menu-hover);
+}
+
+.context-menu-item.divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 0;
+  cursor: default;
+  padding: 0;
+}
+
+.context-menu-item.divider:hover {
+  background: #e0e0e0;
+  cursor: default;
 }

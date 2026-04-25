@@ -1,0 +1,10 @@
+# 可以在 Main.vue 中移除的样式类 (已在 CSS 文件中定义)
+delete-btn
+file-action-btn
+login-btn
+main-content
+modal-content
+offline
+online
+right-content
+sidebar

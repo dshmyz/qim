@@ -5,15 +5,22 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"qim-server/ai"
 )
 
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	JWT     JWTConfig     `yaml:"jwt"`
-	DB      DBConfig      `yaml:"database"`
-	Cluster ClusterConfig `yaml:"cluster"`
-	Storage StorageConfig `yaml:"storage"`
-	AI      AIConfig      `yaml:"ai"`
+	Server   ServerConfig
+	Database DatabaseConfig
+	JWT      JWTConfig
+	Cluster  ClusterConfig
+	Storage  StorageConfig
+	AI       ai.AIConfig
+	CORS     CORSConfig
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 type ServerConfig struct {
@@ -47,78 +54,31 @@ type S3StorageConfig struct {
 
 type JWTConfig struct {
 	Secret            string `yaml:"secret"`
-	ExpireHours       int    `yaml:"expire_hours"`
+	Expire            int    `yaml:"expire"`
 	RefreshExpireDays int    `yaml:"refresh_expire_days"`
 }
 
-type DBConfig struct {
-	Type     string `yaml:"type"`
-	Path     string `yaml:"path"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	Database string `yaml:"database"`
-}
-
-type AIConfig struct {
-	Provider    string          `yaml:"provider"`
-	MaxTokens   int             `yaml:"max_tokens"`
-	Temperature float64         `yaml:"temperature"`
-	OpenAI      OpenAIConfig    `yaml:"openai"`
-	Baidu       BaiduConfig     `yaml:"baidu"`
-	Alibaba     AlibabaConfig   `yaml:"alibaba"`
-	Tencent     TencentConfig   `yaml:"tencent"`
-	Bytedance   BytedanceConfig `yaml:"bytedance"`
-	Anthropic   AnthropicConfig `yaml:"anthropic"`
-}
-
-type OpenAIConfig struct {
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"base_url"`
-}
-
-type BaiduConfig struct {
-	APIKey    string `yaml:"api_key"`
-	SecretKey string `yaml:"secret_key"`
-	Model     string `yaml:"model"`
-	BaseURL   string `yaml:"base_url"`
-}
-
-type AlibabaConfig struct {
-	APIKey    string `yaml:"api_key"`
-	APISecret string `yaml:"api_secret"`
-	Model     string `yaml:"model"`
-	BaseURL   string `yaml:"base_url"`
-}
-
-type TencentConfig struct {
-	SecretID  string `yaml:"secret_id"`
-	SecretKey string `yaml:"secret_key"`
-	Model     string `yaml:"model"`
-	BaseURL   string `yaml:"base_url"`
-}
-
-type BytedanceConfig struct {
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"base_url"`
-}
-
-type AnthropicConfig struct {
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"base_url"`
+type DatabaseConfig struct {
+	Type         string `yaml:"type"`
+	Path         string `yaml:"path"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
+	Database     string `yaml:"database"`
+	MaxOpenConns int    `yaml:"max_open_conns"`
+	MaxIdleConns int    `yaml:"max_idle_conns"`
+	MaxLifetime  int    `yaml:"max_lifetime"`
 }
 
 type yamlConfig struct {
-	Server  ServerConfig  `yaml:"server"`
-	JWT     JWTConfig     `yaml:"jwt"`
-	DB      DBConfig      `yaml:"database"`
-	Cluster ClusterConfig `yaml:"cluster"`
-	Storage StorageConfig `yaml:"storage"`
-	AI      AIConfig      `yaml:"ai"`
+	Server  ServerConfig   `yaml:"server"`
+	JWT     JWTConfig      `yaml:"jwt"`
+	DB      DatabaseConfig `yaml:"database"`
+	Cluster ClusterConfig  `yaml:"cluster"`
+	Storage StorageConfig  `yaml:"storage"`
+	AI      ai.AIConfig    `yaml:"ai"`
+	CORS    CORSConfig     `yaml:"cors"`
 }
 
 func Load() *Config {
@@ -244,12 +204,13 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Server:  cfg.Server,
-		JWT:     cfg.JWT,
-		DB:      cfg.DB,
-		Cluster: cfg.Cluster,
-		Storage: cfg.Storage,
-		AI:      cfg.AI,
+		Server:   cfg.Server,
+		Database: cfg.DB,
+		JWT:      cfg.JWT,
+		Cluster:  cfg.Cluster,
+		Storage:  cfg.Storage,
+		AI:       cfg.AI,
+		CORS:     cfg.CORS,
 	}
 }
 
@@ -260,11 +221,11 @@ func getDefaultConfig() yamlConfig {
 			Mode: "debug",
 		},
 		JWT: JWTConfig{
-			Secret:            "your-secret-key-change-in-production",
-			ExpireHours:       2,
+			Secret:            "${QIM_JWT_SECRET:change-me-to-random-string}",
+			Expire:            7200,
 			RefreshExpireDays: 7,
 		},
-		DB: DBConfig{
+		DB: DatabaseConfig{
 			Path: "./qim.db",
 		},
 		Cluster: ClusterConfig{
@@ -285,43 +246,46 @@ func getDefaultConfig() yamlConfig {
 				UseSSL:    true,
 			},
 		},
-		AI: AIConfig{
+		AI: ai.AIConfig{
 			Provider:    "openai",
 			MaxTokens:   1000,
 			Temperature: 0.7,
-			OpenAI: OpenAIConfig{
+			OpenAI: ai.OpenAIConfig{
 				APIKey:  "",
 				Model:   "gpt-3.5-turbo",
 				BaseURL: "https://api.openai.com/v1",
 			},
-			Baidu: BaiduConfig{
+			Baidu: ai.BaiduConfig{
 				APIKey:    "",
 				SecretKey: "",
 				Model:     "ERNIE-Bot-4.0",
 				BaseURL:   "https://aip.baidubce.com",
 			},
-			Alibaba: AlibabaConfig{
+			Alibaba: ai.AlibabaConfig{
 				APIKey:    "",
 				APISecret: "",
 				Model:     "qwen-plus",
 				BaseURL:   "https://dashscope.aliyuncs.com/api/v1",
 			},
-			Tencent: TencentConfig{
+			Tencent: ai.TencentConfig{
 				SecretID:  "",
 				SecretKey: "",
 				Model:     "hunyuan-pro",
 				BaseURL:   "https://hunyuan.tencentcloudapi.com",
 			},
-			Bytedance: BytedanceConfig{
+			Bytedance: ai.BytedanceConfig{
 				APIKey:  "",
 				Model:   "doubao-pro-1.0",
 				BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
 			},
-			Anthropic: AnthropicConfig{
+			Anthropic: ai.AnthropicConfig{
 				APIKey:  "",
 				Model:   "claude-3-5-sonnet-20241022",
 				BaseURL: "https://api.anthropic.com/v1",
 			},
+		},
+		CORS: CORSConfig{
+			AllowedOrigins: []string{"http://localhost:5173", "app://localhost"},
 		},
 	}
 }

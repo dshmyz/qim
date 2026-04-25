@@ -189,13 +189,59 @@ export function useUI() {
   // 显示设置菜单
   const showSettingsMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    showSettingsMenuFlag.value = true
-    settingsMenuPosition.value = { x: event.clientX, y: event.clientY }
+    
+    // 关闭主题菜单和更多菜单
+    hideThemeMenu()
+    closeMoreMenu()
+    
+    // 获取设置按钮的DOM元素
+    const settingsButton = event.currentTarget as HTMLElement
+    if (settingsButton) {
+      // 计算按钮的位置
+      const rect = settingsButton.getBoundingClientRect()
+      
+      // 菜单宽度和高度
+      const menuWidth = 180
+      const menuHeight = 160
+      const windowWidth = window.innerWidth
+      const windowHeight = window.innerHeight
+      
+      // 计算菜单位置：按钮右侧2px，底部与鼠标点击位置对齐
+      let x = rect.right + 2
+      let y = event.clientY - menuHeight
+      
+      // 调整x坐标，确保菜单不超出屏幕右侧
+      if (x + menuWidth > windowWidth) {
+        x = rect.left - menuWidth - 10
+      }
+      
+      // 调整y坐标，确保菜单不超出屏幕底部
+      if (y + menuHeight > windowHeight) {
+        y = windowHeight - menuHeight - 10
+      }
+      
+      // 确保y坐标不小于0
+      if (y < 0) {
+        y = 10
+      }
+      
+      settingsMenuPosition.value = {
+        x,
+        y
+      }
+      showSettingsMenuFlag.value = true
+      
+      // 点击其他地方关闭菜单
+      setTimeout(() => {
+        document.addEventListener('click', hideSettingsMenu)
+      }, 0)
+    }
   }
 
   // 隐藏设置菜单
   const hideSettingsMenu = () => {
     showSettingsMenuFlag.value = false
+    document.removeEventListener('click', hideSettingsMenu)
   }
 
   // ========== 主题菜单操作 ==========
@@ -296,9 +342,9 @@ export function useUI() {
   // ========== 创建会话模态框操作 ==========
 
   // 打开创建群聊模态框
-  const openCreateGroupModal = () => {
-    createConversationType.value = 'group'
-    createConversationTitle.value = '创建群聊'
+  const openCreateGroupModal = (type: string = 'group') => {
+    createConversationType.value = type
+    createConversationTitle.value = type === 'discussion' ? '创建讨论组' : '创建群聊'
     showCreateConversationModal.value = true
     hideActionMenu()
   }

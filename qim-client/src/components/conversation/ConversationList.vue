@@ -49,6 +49,7 @@ interface LastMessage {
   content?: string
   senderId?: string
   type?: string
+  title?: string
 }
 
 interface Conversation {
@@ -102,6 +103,15 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
   if (lastMessage.type === 'image') return '[图片]'
   if (lastMessage.type === 'file') return '[文件]'
   if (lastMessage.type === 'system') return lastMessage.content || '[系统消息]'
+  if (lastMessage.type === 'mini_app' || lastMessage.type === 'miniApp') {
+    try {
+      const data = JSON.parse(lastMessage.content || '{}')
+      const miniAppName = data.data?.name || data.name || '小程序'
+      return `[小程序] ${miniAppName}`
+    } catch {
+      return '[小程序]'
+    }
+  }
   
   return lastMessage.content || '暂无消息'
 }

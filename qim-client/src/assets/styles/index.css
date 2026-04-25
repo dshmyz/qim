@@ -3,7 +3,6 @@
    ======================================== */
 @import url('./design-tokens.css');
 @import url('./components.css');
-@import url('./modal.css');
 
 /* ========================================
    导入主题样式 - Import Theme Styles
@@ -26,11 +25,6 @@
 @import url('./menus.css');
 
 /* ========================================
-   导入对话框样式 - Import Dialog Styles
-   ======================================== */
-@import url('./dialogs.css');
-
-/* ========================================
    导入群组样式 - Import Group Styles
    ======================================== */
 @import url('./groups.css');
@@ -49,6 +43,13 @@
    导入主样式 - Import Main Styles
    ======================================== */
 @import url('./main.css');
+
+/* ========================================
+   导入模块化样式 - Import Module Styles
+   ======================================== */
+@import url('./modules/conversation.css');
+@import url('./modules/chat.css');
+@import url('./modules/modals.css');
 
 /* ========================================
    基础重置 - Base Reset

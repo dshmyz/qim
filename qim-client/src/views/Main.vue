@@ -30,70 +30,29 @@
       @close="closeShareModal"
       @confirm="handleShareConfirm"
     />
-    <!-- 自定义窗口控制栏 -->
-    <div class="window-controls">
-      <div class="window-controls-left">
-        <div class="window-title">QIM</div>
-      </div>
-      <div class="window-controls-right">
-        <button class="window-control-btn minimize-btn" @click="minimizeWindow">—</button>
-        <button class="window-control-btn maximize-btn" @click="maximizeWindow">☐</button>
-        <button class="window-control-btn close-btn" @click="closeWindow">×</button>
+    <!-- 顶部区域：窗口控制栏 -->
+    <div class="top-bar">
+      <div class="top-bar-left"></div>
+      <div class="window-controls">
+        <div class="window-controls-spacer"></div>
+        <div class="window-controls-right">
+          <button class="window-control-btn minimize-btn" @click="minimizeWindow">—</button>
+          <button class="window-control-btn maximize-btn" @click="maximizeWindow">☐</button>
+          <button class="window-control-btn close-btn" @click="closeWindow">×</button>
+        </div>
       </div>
     </div>
     
+    <!-- 左侧垂直选项栏（固定定位，从顶部延伸到底部） -->
+    <SideOptions 
+      v-model:activeOption="activeOption"
+      @showMoreMenu="showMoreMenu"
+      @showThemeMenu="showThemeMenu"
+      @showSettingsMenu="showSettingsMenu"
+    />
+    
     <!-- 主内容区域 -->
     <div class="main-content-area">
-      <!-- 左侧垂直选项栏 -->
-      <div class="side-options">
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'recent' }"
-          @click="handleSidebarOptionClick('recent')"
-          title="最近联系人"
-        >
-          <span class="option-icon"><i class="fas fa-comment-dots"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'org' }"
-          @click="handleSidebarOptionClick('org')"
-          title="组织架构"
-        >
-          <span class="option-icon"><i class="fas fa-sitemap"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'groups' }"
-          @click="handleSidebarOptionClick('groups')"
-          title="群聊"
-        >
-          <span class="option-icon"><i class="fas fa-user-friends"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          :class="{ active: activeOption === 'apps' }"
-          @click="handleSidebarOptionClick('apps')"
-          title="应用"
-        >
-          <span class="option-icon"><i class="fas fa-cube"></i></span>
-        </div>
-        <div 
-          class="option-item" 
-          @click="showMoreMenu($event)"
-          title="更多"
-        >
-          <span class="option-icon"><i class="fas fa-ellipsis-v"></i></span>
-        </div>
-        <div class="option-spacer"></div>
-        <div class="option-item" @click="showThemeMenu($event)" title="皮肤">
-          <span class="option-icon"><i class="fas fa-palette"></i></span>
-        </div>
-        <div class="option-item settings-option" @click="showSettingsMenu($event)" title="设置">
-          <span class="option-icon"><i class="fas fa-cog"></i></span>
-        </div>
-      </div>
-      
       <!-- 主内容区域 -->
       <div class="main-content">
       <!-- 侧边栏 -->
@@ -110,9 +69,10 @@
         :selectedChannel="selectedChannel"
         :appCategories="appCategories"
         :searchResults="searchResults"
+        :collapsed="sidebarCollapsed"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showUserProfile = true"
-        @showNotification="showNotificationCenter"
+        @showNotification="handleNotificationCenter"
         @showActionMenu="showActionMenu"
         @selectConversation="handleConversationSelect"
         @conversationContextMenu="showContextMenu"
@@ -170,78 +130,18 @@
       </div>
       
       <!-- 频道页面的右侧内容 -->
-      <div v-else-if="activeOption === 'channels'" class="right-content">
-        <div v-if="selectedChannel" class="channel-detail-content">
-          <div class="right-content-header">
-            <h2>{{ selectedChannel.name }}</h2>
-            <button class="toggle-sidebar-btn" @click="toggleSidebar">
-              <i class="fas fa-compress"></i>
-            </button>
-          </div>
-          <div class="channel-detail-info">
-            <div class="channel-header-info">
-              <img :src="selectedChannel.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=channel'" :alt="selectedChannel.name" class="channel-header-avatar" />
-              <div class="channel-header-text">
-                <p class="channel-description">{{ selectedChannel.description }}</p>
-                <div class="channel-meta">
-                  <span>创建者: {{ selectedChannel.creator?.name || '未知' }}</span>
-                  <span v-if="selectedChannel.created_at">创建时间: {{ formatTime(selectedChannel.created_at) }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="channel-header-actions">
-              <button 
-                v-if="selectedChannel.is_subscribed" 
-                class="btn btn-secondary subscribed" 
-                @click="unsubscribeChannel(selectedChannel)"
-              >
-                <i class="fas fa-check"></i> 已订阅
-              </button>
-              <button 
-                v-else 
-                class="btn btn-primary" 
-                @click="subscribeChannel(selectedChannel)"
-              >
-                <i class="fas fa-plus"></i> 订阅
-              </button>
-            </div>
-          </div>
-          
-          <div class="channel-messages">
-            <h3>最新消息</h3>
-            <div v-if="!selectedChannel.messages || selectedChannel.messages.length === 0" class="empty-messages">
-              <i class="fas fa-comment-alt"></i>
-              <p>暂无消息</p>
-            </div>
-            <div v-else class="message-list">
-              <div 
-                v-for="message in selectedChannel.messages" 
-                :key="message.id" 
-                class="message-item"
-              >
-                <img :src="message.sender?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'" :alt="message.sender?.name" class="message-avatar" />
-                <div class="message-content">
-                  <div class="message-header">
-                    <span class="message-sender">{{ message.sender?.name || '未知' }}</span>
-                    <span class="message-time">{{ formatTime(message.created_at) }}</span>
-                  </div>
-                  <div class="message-text">{{ message.content }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div v-if="isChannelCreator(selectedChannel)" class="message-input-area">
-            <textarea 
-              v-model="channelMessage" 
-              placeholder="输入消息..." 
-              rows="2"
-              class="message-textarea"
-            ></textarea>
-            <button class="btn btn-primary send-btn" @click="sendChannelMessage(selectedChannel)" :disabled="!channelMessage.trim()">发送</button>
-          </div>
-        </div>
-         <div v-else class="right-content">
+      <ChannelDetail
+        v-else-if="activeOption === 'channels' && selectedChannel"
+        :channel="selectedChannel"
+        :isCreator="isChannelCreator(selectedChannel)"
+        :formatTime="formatTime"
+        :initialMessage="channelMessage"
+        @toggleSidebar="toggleSidebar"
+        @subscribe="subscribeChannel"
+        @unsubscribe="unsubscribeChannel"
+        @sendMessage="sendChannelMessage"
+      />
+      <div v-else-if="activeOption === 'channels' && !selectedChannel" class="right-content">
         <div class="right-content-header">
             <h2>频道</h2>
             <button class="toggle-sidebar-btn" @click="toggleSidebar">
@@ -251,164 +151,29 @@
         <div class="right-content-body">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
             <p>选择一个频道查看详情</p>
-            </div>
-      </div>
-        <!-- <div v-else class="channels-content">
-           <div class="right-content-header">
-            <h2>频道</h2>
-          </div>
-          <div class="channels-empty-state">
-            <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
-            <p>选择一个频道查看详情</p>
-          </div>
-        </div> -->
+        </div>
       </div>
       
       <!-- 组织架构用户信息 -->
-      <div v-else-if="activeOption === 'org' && selectedUser" class="right-content">
-        <div class="right-content-header">
-          <h2>用户资料</h2>
-          <button class="toggle-sidebar-btn" @click="toggleSidebar">
-            <i class="fas fa-compress"></i>
-          </button>
-        </div>
-        <div class="user-profile-container">
-          <!-- 顶部背景 -->
-          <div class="user-profile-header-bg"></div>
-          
-          <!-- 用户信息卡片 -->
-          <div class="user-profile-card">
-            <!-- 头像和基本信息 -->
-            <div class="user-profile-avatar-section">
-              <div class="user-avatar-container">
-                <img
-                  :src="(selectedUser?.avatar && selectedUser.avatar.startsWith('http')) ? selectedUser.avatar : (selectedUser?.avatar ? serverUrl + selectedUser.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=user')"
-                  :alt="selectedUser?.name"
-                  class="user-avatar"
-                />
-                <div class="online-status-indicator"></div>
-              </div>
-              <div class="user-basic-info">
-                <h2 class="user-full-name">{{ selectedUser.name }}</h2>
-                <p class="user-department">{{ selectedUser.department || '暂无部门' }}</p>
-                <p class="user-position">{{ selectedUser.position || '暂无职位' }}</p>
-              </div>
-            </div>
-            
-            <!-- 信息分组 -->
-            <div class="user-info-sections">
-              <!-- 基本信息 -->
-              <div class="info-section">
-                <div class="section-title">
-                  <i class="fas fa-user-circle"></i>
-                  <h3>基本信息</h3>
-                </div>
-                <div class="info-grid">
-                  <div class="info-item">
-                    <span class="info-label">姓名</span>
-                    <span class="info-value">{{ selectedUser.name }}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">账号</span>
-                    <span class="info-value">{{ selectedUser.username || '暂无' }}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">邮箱</span>
-                    <span class="info-value">{{ selectedUser.email || '暂无' }}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">手机</span>
-                    <span class="info-value">{{ selectedUser.mobile || '暂无' }}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 工作信息 -->
-              <div class="info-section">
-                <div class="section-title">
-                  <i class="fas fa-briefcase"></i>
-                  <h3>工作信息</h3>
-                </div>
-                <div class="info-grid">
-                  <div class="info-item">
-                    <span class="info-label">部门</span>
-                    <span class="info-value">{{ selectedUser.department || '暂无' }}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">IP</span>
-                    <span class="info-value">{{ selectedUser.ip || '暂无' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 操作按钮 -->
-            <div class="user-action-buttons">
-              <button class="action-btn primary" @click="startPrivateChat(selectedUser)">
-                <i class="fas fa-comment"></i>
-                <span>发起私聊</span>
-              </button>
-              <button class="action-btn secondary" @click="showUserProfile = true">
-                <i class="fas fa-id-card"></i>
-                <span>详细资料</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <UserDetailPanel
+        v-else-if="activeOption === 'org' && selectedUser"
+        :user="selectedUser"
+        :serverUrl="serverUrl"
+        :getAvatarUrl="getAvatarUrl"
+        @toggleSidebar="toggleSidebar"
+        @privateChat="startPrivateChat"
+        @showProfile="showUserProfile = true"
+      />
       
-      <!-- 其他页面的右侧内容 -->
-      <div v-else-if="activeOption === 'apps' && !selectedAppId" class="right-content">
-        <div class="right-content-header">
-          <h2>{{ getPageTitle() }}</h2>
-          <button class="toggle-sidebar-btn" @click="toggleSidebar">
-            <i class="fas fa-compress"></i>
-          </button>
-        </div>
-        <div class="apps-content">
-          <!-- 最近使用的应用 -->
-          <div class="recent-apps-section">
-            <div class="section-header">
-              <h3>最近使用</h3>
-            </div>
-            <div class="recent-apps-grid">
-              <div
-                v-for="app in recentApps"
-                :key="app.id"
-                class="recent-app-grid-item"
-                @click="openApp(app.id)"
-              >
-                <div class="recent-app-grid-icon"><i :class="app.icon"></i></div>
-                <span class="recent-app-grid-name">{{ app.name }}</span>
-              </div>
-              <div v-if="recentApps.length === 0" class="empty-recent-apps">
-                <p>暂无最近使用的应用</p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 所有应用 -->
-          <div class="all-apps-section">
-            <div class="section-header">
-              <h3>所有应用</h3>
-            </div>
-            <div class="apps-grid">
-              <div 
-                v-for="app in allApps" 
-                :key="app.id"
-                class="app-item"
-                @click="app.url ? openApp(app.id) : openApp(app.id)"
-              >
-                <div class="app-icon"><i :class="app.icon"></i></div>
-                <div class="app-name">{{ app.name }}</div>
-              </div>
-              <div v-if="allApps.length === 0" class="empty-all-apps">
-                <p>暂无应用</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- 应用面板 -->
+      <AppsPanel
+        v-else-if="activeOption === 'apps' && !selectedAppId"
+        :recentApps="recentApps"
+        :allApps="allApps"
+        :pageTitle="getPageTitle()"
+        @toggleSidebar="toggleSidebar"
+        @openApp="openApp"
+      />
       
       <!-- 文件管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '3'" class="right-content">
@@ -526,26 +291,54 @@
     </div>
     
     <!-- 右键菜单 -->
-    <div
-      v-if="showMenu && selectedConversation"
-      class="context-menu"
-      :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-      @click.stop
-    >
-      <div class="context-menu-item" @click="handlePin(selectedConversation)">
-        {{ selectedConversation.pinned ? '取消置顶' : '置顶' }}
-      </div>
-      <div class="context-menu-item" @click="handleMute(selectedConversation)">
-        {{ selectedConversation.muted ? '取消免打扰' : '免打扰' }}
-      </div>
-      <div v-if="selectedConversation.type === 'group' || selectedConversation.type === 'discussion'" class="context-menu-item" @click="handleExitGroup(selectedConversation)">
-        退出群聊
-      </div>
-      <div class="context-menu-item divider"></div>
-      <div class="context-menu-item" @click="handleRemove(selectedConversation)">
-        移除会话
-      </div>
-    </div>
+    <MainContextMenus
+      :showMenu="showMenu"
+      :selectedConversation="selectedConversation"
+      :menuPosition="menuPosition"
+      :showActionMenuFlag="showActionMenuFlag"
+      :actionMenuPosition="actionMenuPosition"
+      :showUserContextMenuFlag="showUserContextMenuFlag"
+      :userContextMenuPosition="userContextMenuPosition"
+      :selectedEmployee="selectedEmployee"
+      :showMemberContextMenuFlag="showMemberContextMenuFlag"
+      :memberContextMenuPosition="memberContextMenuPosition"
+      :showGroupContextMenuFlag="showGroupContextMenuFlag"
+      :groupContextMenuPosition="groupContextMenuPosition"
+      :isGroupOwner="isGroupOwner(selectedGroup)"
+      :showSettingsMenuFlag="showSettingsMenuFlag"
+      :settingsMenuPosition="settingsMenuPosition"
+      :showThemeMenuFlag="showThemeMenuFlag"
+      :themeMenuPosition="themeMenuPosition"
+      :showMoreMenuFlag="showMoreMenuFlag"
+      :moreMenuPosition="moreMenuPosition"
+      :currentUser="currentUser"
+      @pin="handlePin"
+      @mute="handleMute"
+      @exitGroup="handleExitGroup"
+      @remove="handleRemove"
+      @createGroup="openCreateGroupModal"
+      @createDiscussion="createDiscussionGroup"
+      @createChannel="createChannel"
+      @systemMessage="openSystemMessageModal"
+      @viewUserProfile="viewUserProfile"
+      @privateChat="startPrivateChat"
+      @removeMember="removeMemberFromGroup"
+      @viewMemberInfo="viewMemberInfo"
+      @setAdmin="setAsAdmin"
+      @viewGroupMembers="viewGroupMembers"
+      @viewGroupInfo="viewGroupInfo"
+      @addMembers="addMembersToGroup"
+      @editAnnouncement="editAnnouncement"
+      @dissolveGroup="dissolveGroup"
+      @about="aboutApp"
+      @checkUpdate="checkForUpdates"
+      @settings="openSettings"
+      @logout="logout"
+      @setTheme="setTheme"
+      @showChannels="() => { handleSidebarOptionClick('channels'); closeMoreMenu() }"
+      @closeMoreMenu="closeMoreMenu"
+      @closeAllMenus="handleClickOutside"
+    />
     
     <!-- 用户信息弹窗 -->
     <UserProfile 
@@ -557,87 +350,17 @@
     />
     
     <!-- 个人资料弹窗 -->
-    <div v-if="showUserProfile && !selectedUser" class="user-profile-modal" @click="closeUserProfile">
-      <div class="user-profile-content" @click.stop>
-        <div class="user-profile-header">
-          <h3>个人信息</h3>
-          <button class="close-btn" @click="closeUserProfile">×</button>
-        </div>
-        <div class="user-profile-body">
-          <div class="profile-avatar">
-            <img 
-              :src="(currentUser?.avatar && currentUser.avatar.startsWith('http')) ? currentUser.avatar : (currentUser?.avatar ? serverUrl + currentUser.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=me')" 
-              :alt="currentUser?.username || 'avatar'"
-              @click="triggerAvatarInput"
-              class="avatar-clickable"
-            />
-            <input type="file" accept="image/*" class="avatar-input" @change="handleAvatarChange" />
-          </div>
-          <div class="profile-info">
-            <div class="info-item">
-              <label>昵称</label>
-              <input type="text" v-model="userProfile.nickname" class="profile-input" />
-            </div>
-            <div class="info-item">
-              <label>账号</label>
-              <span class="profile-value">{{ userProfile.username }}</span>
-            </div>
-            <div class="info-item">
-              <label>签名</label>
-              <textarea v-model="userProfile.signature" class="profile-textarea" placeholder="输入个人签名"></textarea>
-            </div>
-            <div class="info-item">
-              <label>部门</label>
-              <span class="profile-value">无</span>
-            </div>
-            <div class="info-item">
-              <label>ID</label>
-              <span class="profile-value">{{ userProfile.id }}</span>
-            </div>
-            <div class="info-item">
-              <label>加入时间</label>
-              <span class="profile-value">{{ userProfile.joinDate }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="user-profile-footer">
-          <button class="cancel-btn" @click="closeUserProfile">关闭</button>
-          <button class="save-btn" @click="saveUserProfile">保存</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 动作菜单 -->
-    <div v-if="showActionMenuFlag" class="action-menu" :style="{ left: actionMenuPosition.x + 'px', top: actionMenuPosition.y + 'px' }">
-      <div class="action-menu-item" @click="openCreateGroupModal">
-        <span class="action-menu-icon"><i class="fas fa-user-friends"></i></span>
-        <span>创建群聊</span>
-      </div>
-      <div class="action-menu-item" @click="createDiscussionGroup">
-        <span class="action-menu-icon"><i class="fas fa-comments"></i></span>
-        <span>创建讨论组</span>
-      </div>
-      <div class="action-menu-item" @click="createChannel">
-        <span class="action-menu-icon"><i class="fas fa-bullhorn"></i></span>
-        <span>创建频道</span>
-      </div>
-      <div v-if="currentUser?.isAdmin" class="action-menu-item" @click="openSystemMessageModal">
-        <span class="action-menu-icon"><i class="fas fa-broadcast-tower"></i></span>
-        <span>发布系统消息</span>
-      </div>
-    </div>
-    
-    <!-- 用户右键菜单 -->
-    <div v-if="showUserContextMenuFlag" class="user-context-menu" :style="{ left: userContextMenuPosition.x + 'px', top: userContextMenuPosition.y + 'px' }" @click.stop>
-      <div class="user-context-menu-item" @click="viewUserProfile">
-        <span class="user-context-menu-icon"><i class="fas fa-user"></i></span>
-        <span>查看资料</span>
-      </div>
-      <div class="user-context-menu-item" @click="startPrivateChat(selectedEmployee)">
-        <span class="user-context-menu-icon"><i class="fas fa-comment"></i></span>
-        <span>发起私聊</span>
-      </div>
-    </div>
+    <SelfProfileModal
+      v-if="showUserProfile && !selectedUser"
+      :visible="showUserProfile && !selectedUser"
+      :currentUser="currentUser"
+      :serverUrl="serverUrl"
+      :profile="userProfile"
+      @close="closeUserProfile"
+      @save="saveUserProfile"
+      @avatarClick="triggerAvatarInput"
+      @avatarChange="handleAvatarChange"
+    />
     
     <!-- 创建群聊/讨论组弹窗 -->
     <CreateGroupModal 
@@ -649,463 +372,30 @@
       @created="handleConversationCreated"
     />
     
-    <!-- 系统消息发布模态框 -->
-    <div v-if="showSystemMessageModal" class="user-profile-modal" @click="closeSystemMessageModal">
-      <div class="user-profile-content" @click.stop>
-        <div class="user-profile-header">
-          <h3>发布系统消息</h3>
-          <button class="close-btn" @click="closeSystemMessageModal">×</button>
-        </div>
-        <div class="user-profile-body">
-          <div class="profile-info">
-            <div class="info-item">
-              <label>消息标题</label>
-              <input type="text" v-model="systemMessage.title" class="profile-input" placeholder="请输入消息标题" />
-            </div>
-            <div class="info-item">
-              <label>消息内容</label>
-              <textarea v-model="systemMessage.content" class="profile-textarea" placeholder="请输入消息内容" rows="4"></textarea>
-            </div>
-            <div class="info-item">
-              <label>发送范围</label>
-              <select v-model="systemMessage.target" class="profile-input">
-                <option value="all">所有用户</option>
-                <option value="group">指定群聊</option>
-                <option value="user">指定用户</option>
-              </select>
-            </div>
-            <div v-if="systemMessage.target === 'group'" class="info-item">
-              <label>选择群聊</label>
-              <select v-model="systemMessage.groupId" class="profile-input">
-                <option v-for="group in conversations.filter(c => c.type === 'group')" :key="group.id" :value="group.id">{{ group.name }}</option>
-              </select>
-            </div>
-            <div v-if="systemMessage.target === 'user'" class="info-item">
-              <label>选择用户</label>
-              <select v-model="systemMessage.userId" class="profile-input">
-                <option v-for="employee in allEmployees" :key="employee.id" :value="employee.id">{{ employee.name }}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="user-profile-footer">
-          <button class="cancel-btn" @click="closeSystemMessageModal">取消</button>
-          <button class="save-btn" @click="sendSystemMessage" :disabled="!systemMessage.title || !systemMessage.content">发布</button>
-        </div>
-      </div>
-    </div>
+    <!-- 群模态框 -->
+    <GroupModals
+      :showGroupMembersModal="showGroupMembersModal"
+      :showGroupInfoModal="showGroupInfoModal"
+      :showAddMembersModal="showAddMembersModal"
+      :showEditAnnouncementModal="showEditAnnouncementModal"
+      :selectedGroup="selectedGroup"
+      :groupMembers="groupMembers"
+      :allEmployees="allEmployees"
+      :addMembersSearchQuery="addMembersSearchQuery"
+      :selectedAddMembers="selectedAddMembers"
+      :editAnnouncementContent="editAnnouncementContent"
+      :currentUserId="currentUser?.id"
+      :formatTime="formatTime"
+      @closeGroupMembers="closeGroupMembersModal"
+      @closeGroupInfo="closeGroupInfoModal"
+      @closeAddMembers="closeAddMembersModal"
+      @closeEditAnnouncement="closeEditAnnouncementModal"
+      @removeMember="removeMember"
+      @confirmAddMembers="confirmAddMembers"
+      @saveAnnouncement="saveAnnouncement"
+    />
     
-    <!-- 成员上下文菜单 -->
-    <div v-if="showMemberContextMenuFlag" class="context-menu" :style="{ left: memberContextMenuPosition.x + 'px', top: memberContextMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="removeMemberFromGroup">
-        <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
-        <span>移除群聊</span>
-      </div>
-      <div class="context-menu-item" @click="viewMemberInfo">
-        <span class="context-menu-icon"><i class="fas fa-user"></i></span>
-        <span>查看资料</span>
-      </div>
-      <div class="context-menu-item" @click="setAsAdmin">
-        <span class="context-menu-icon"><i class="fas fa-star"></i></span>
-        <span>设为管理员</span>
-      </div>
-    </div>
-    
-    <!-- 群成员模态框 -->
-    <div v-if="showGroupMembersModal" class="add-members-modal" @click="closeGroupMembersModal">
-      <div class="add-members-content" @click.stop>
-        <div class="add-members-header">
-          <h3>群成员列表</h3>
-          <button class="close-btn" @click="closeGroupMembersModal">×</button>
-        </div>
-        <div class="add-members-body">
-          <div class="group-info">
-            <div class="group-avatar">
-              <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
-            </div>
-            <div class="group-details">
-              <div class="group-name">{{ selectedGroup?.name }}</div>
-              <div class="group-members-count">{{ groupMembers.length }} 位成员</div>
-            </div>
-          </div>
-          
-          <div class="members-section">
-            <div class="section-header">
-              <span>成员列表</span>
-            </div>
-            <div class="members-list">
-              <div 
-                v-for="member in groupMembers" 
-                :key="member.id" 
-                class="member-item"
-              >
-                <div class="member-avatar">
-                  <img :src="member.avatar" :alt="member.name" />
-                </div>
-                <div class="member-info">
-                  <div class="member-name">{{ member.name }}</div>
-                  <div class="member-position">{{ member.position || '无职位信息' }}</div>
-                </div>
-                <div class="member-actions">
-                  <button 
-                    class="remove-member-btn" 
-                    @click="removeMember(member)"
-                    v-if="member.id !== currentUser.id"
-                  >
-                    <i class="fas fa-trash-alt"></i>
-                  </button>
-                </div>
-              </div>
-              <div v-if="groupMembers.length === 0" class="empty-state">
-                <p>暂无成员</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="add-members-footer">
-          <button class="cancel-btn" @click="closeGroupMembersModal">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 群资料模态框 -->
-    <div v-if="showGroupInfoModal" class="add-members-modal" @click="closeGroupInfoModal">
-      <div class="add-members-content" @click.stop>
-        <div class="add-members-header">
-          <h3>群聊资料</h3>
-          <button class="close-btn" @click="closeGroupInfoModal">×</button>
-        </div>
-        <div class="add-members-body">
-          <div class="group-info">
-            <div class="group-avatar" style="width: 80px; height: 80px;">
-              <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
-            </div>
-            <div class="group-details">
-              <div class="group-name" style="font-size: 20px;">{{ selectedGroup?.name }}</div>
-              <div class="group-members-count">{{ selectedGroup?.members?.length || 0 }} 位成员</div>
-            </div>
-          </div>
-          
-          <div class="group-details-section">
-            <div class="detail-item">
-              <div class="detail-label">群聊ID</div>
-              <div class="detail-value">{{ selectedGroup?.id }}</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-label">创建时间</div>
-              <div class="detail-value">{{ selectedGroup?.createdAt ? formatTime(selectedGroup.createdAt) : '未知' }}</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-label">群聊类型</div>
-              <div class="detail-value">群聊</div>
-            </div>
-          </div>
-        </div>
-        <div class="add-members-footer">
-          <button class="cancel-btn" @click="closeGroupInfoModal">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 添加成员模态框 -->
-    <div v-if="showAddMembersModal" class="add-members-modal" @click="closeAddMembersModal">
-      <div class="add-members-content" @click.stop>
-        <div class="add-members-header">
-          <h3>邀请成员加入群聊</h3>
-          <button class="close-btn" @click="closeAddMembersModal">×</button>
-        </div>
-        <div class="add-members-body">
-          <div class="group-info">
-            <div class="group-avatar">
-              <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
-            </div>
-            <div class="group-details">
-              <div class="group-name">{{ selectedGroup?.name }}</div>
-              <div class="group-members-count">{{ selectedGroup?.members?.length || 0 }} 位成员</div>
-            </div>
-          </div>
-          
-          <div class="search-section">
-            <div class="search-box">
-              <input 
-                type="text" 
-                v-model="addMembersSearchQuery" 
-                placeholder="搜索成员..." 
-                class="search-input"
-              />
-            </div>
-          </div>
-          
-          <div class="members-section">
-            <div class="section-header">
-              <span>选择成员</span>
-              <span class="selected-count">{{ selectedAddMembers.length }} 已选择</span>
-            </div>
-            <div class="members-list">
-              <div 
-                v-for="employee in filteredAddMembersEmployees" 
-                :key="employee.id" 
-                class="member-item"
-                :class="{ selected: selectedAddMembers.some(m => m.id === employee.id) }"
-                @click="toggleAddMember(employee)"
-              >
-                <div class="member-avatar">
-                  <img :src="employee.avatar" :alt="employee.name" />
-                </div>
-                <div class="member-info">
-                  <div class="member-name">{{ employee.name }}</div>
-                  <div class="member-position">{{ employee.position || '无职位信息' }}</div>
-                </div>
-                <div class="member-checkbox">
-                  <input 
-                    type="checkbox" 
-                    v-model="selectedAddMembers" 
-                    :value="employee"
-                    class="checkbox"
-                  />
-                </div>
-              </div>
-              <div v-if="filteredAddMembersEmployees.length === 0" class="empty-state">
-                <p>没有找到匹配的成员</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="add-members-footer">
-          <button class="cancel-btn" @click="closeAddMembersModal">取消</button>
-          <button 
-            class="confirm-btn" 
-            @click="confirmAddMembers"
-            :disabled="selectedAddMembers.length === 0"
-          >
-            邀请 ({{ selectedAddMembers.length }})
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 群聊上下文菜单 -->
-    <div v-if="showGroupContextMenuFlag" class="context-menu" :style="{ left: groupContextMenuPosition.x + 'px', top: groupContextMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="viewGroupMembers">
-        <span class="context-menu-icon"><i class="fas fa-user-friends"></i></span>
-        <span>查看群成员</span>
-      </div>
-      <div class="context-menu-item" @click="viewGroupInfo">
-        <span class="context-menu-icon"><i class="fas fa-info-circle"></i></span>
-        <span>查看群资料</span>
-      </div>
-      <div class="context-menu-item" @click="addMembersToGroup">
-        <span class="context-menu-icon"><i class="fas fa-plus"></i></span>
-        <span>添加成员</span>
-      </div>
-      <div v-if="isGroupOwner(selectedGroup)" class="context-menu-item" @click="editAnnouncement">
-        <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
-        <span>编辑群公告</span>
-      </div>
-      <div v-if="isGroupOwner(selectedGroup)" class="context-menu-item" @click="dissolveGroup">
-        <span class="context-menu-icon"><i class="fas fa-trash-alt"></i></span>
-        <span>解散群聊</span>
-      </div>
-      <div class="context-menu-divider"></div>
-      <div class="context-menu-item" @click="exitGroup">
-        <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-        <span>退出群聊</span>
-      </div>
-    </div>
-    
-    <!-- 编辑群公告模态框 -->
-    <div v-if="showEditAnnouncementModal" class="add-members-modal" @click="closeEditAnnouncementModal">
-      <div class="add-members-content" @click.stop>
-        <div class="add-members-header">
-          <h3>编辑群公告</h3>
-          <button class="close-btn" @click="closeEditAnnouncementModal">×</button>
-        </div>
-        <div class="add-members-body">
-          <div class="group-info">
-            <div class="group-avatar">
-              <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
-            </div>
-            <div class="group-details">
-              <div class="group-name">{{ selectedGroup?.name }}</div>
-            </div>
-          </div>
-          
-          <div class="announcement-edit-section">
-            <textarea 
-              v-model="editAnnouncementContent" 
-              placeholder="输入群公告内容..." 
-              class="announcement-textarea"
-              rows="6"
-            ></textarea>
-            <p class="announcement-tip">群公告将对所有群成员可见</p>
-          </div>
-        </div>
-        <div class="add-members-footer">
-          <button class="cancel-btn" @click="closeEditAnnouncementModal">取消</button>
-          <button class="confirm-btn" @click="saveAnnouncement">保存</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 设置菜单 -->
-    <div v-if="showSettingsMenuFlag" class="context-menu" :style="{ left: settingsMenuPosition.x + 'px', top: settingsMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="aboutApp">
-        <span class="context-menu-icon"><i class="fas fa-info-circle"></i></span>
-        <span>关于</span>
-      </div>
-      <div class="context-menu-item" @click="checkForUpdates">
-        <span class="context-menu-icon"><i class="fas fa-sync"></i></span>
-        <span>检查更新</span>
-      </div>
-      <div class="context-menu-item" @click="openSettings">
-        <span class="context-menu-icon"><i class="fas fa-sliders"></i></span>
-        <span>设置</span>
-      </div>
-      <div class="context-menu-divider"></div>
-      <div class="context-menu-item" @click="logout">
-        <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-        <span>退出登录</span>
-      </div>
-    </div>
-    
-    <!-- 主题菜单 -->
-    <div v-if="showThemeMenuFlag" class="context-menu theme-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="setTheme('modern-light')">
-        <span class="context-menu-icon theme-icon light-theme"></span>
-        <span>清新白</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('elegant-dark')">
-        <span class="context-menu-icon theme-icon elegant-dark-theme"></span>
-        <span>炫酷黑</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('ocean-blue')">
-        <span class="context-menu-icon theme-icon ocean-blue-theme"></span>
-        <span>海洋蓝</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('elegant-purple')">
-        <span class="context-menu-icon theme-icon elegant-purple-theme"></span>
-        <span>高雅紫</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('warm-amber')">
-        <span class="context-menu-icon theme-icon warm-amber-theme"></span>
-        <span>琥珀黄</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('crimson-red')">
-        <span class="context-menu-icon theme-icon crimson-red-theme"></span>
-        <span>中国红</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('emerald-green')">
-        <span class="context-menu-icon theme-icon emerald-green-theme"></span>
-        <span>翡翠绿</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('urban-jungle')">
-        <span class="context-menu-icon theme-icon urban-jungle-theme"></span>
-        <span>都市丛林</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('mediterranean-dream')">
-        <span class="context-menu-icon theme-icon mediterranean-dream-theme"></span>
-        <span>地中海</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('monochrome-elegance')">
-        <span class="context-menu-icon theme-icon monochrome-elegance-theme"></span>
-        <span>单色雅</span>
-      </div>
-      <div class="context-menu-item" @click="setTheme('spring-blossom')">
-        <span class="context-menu-icon theme-icon spring-blossom-theme"></span>
-        <span>春日花</span>
-      </div>
-    </div>
-    
-    <!-- 更多菜单 -->
-    <div v-if="showMoreMenuFlag" class="context-menu" :style="{ left: moreMenuPosition.x + 'px', top: moreMenuPosition.y + 'px' }">
-      <div class="context-menu-item" @click="handleSidebarOptionClick('channels'); closeMoreMenu()">
-        <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
-        <span>频道</span>
-      </div>
-    </div>
-    
-    <!-- 关于对话框 -->
-    <div v-if="showAboutDialog" class="about-dialog-overlay" @click="closeAboutDialog">
-      <div class="about-dialog" @click.stop>
-        <div class="about-dialog-header">
-          <h3>关于</h3>
-          <button class="about-dialog-close" @click="closeAboutDialog">×</button>
-        </div>
-        <div class="about-dialog-content">
-          <div class="about-dialog-logo">
-            <i class="fas fa-comments fa-4x"></i>
-          </div>
-          <h2>QIM</h2>
-          <p class="version">版本: 1.0.0</p>
-          <p class="date">发布日期: 2026-04-11</p>
-          <p class="author">作者: huangqun@buaa.edu.cn</p>
-          <p class="copyright">© 2026 QIM</p>
-          <p class="description">
-            一个现代化的即时通讯界面，提供简洁、高效的聊天体验。
-          </p>
-        </div>
-        <div class="about-dialog-footer">
-          <button class="about-dialog-button" @click="closeAboutDialog">确定</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 退出登录确认对话框 -->
-    <div v-if="showLogoutDialog" class="logout-dialog-overlay" @click="cancelLogout">
-      <div class="logout-dialog" @click.stop>
-        <div class="logout-dialog-header">
-          <h3>退出登录</h3>
-          <button class="logout-dialog-close" @click="cancelLogout">×</button>
-        </div>
-        <div class="logout-dialog-content">
-          <p class="logout-dialog-message">确定要退出登录吗？</p>
-        </div>
-        <div class="logout-dialog-footer">
-          <button class="logout-dialog-button cancel-button" @click="cancelLogout">取消</button>
-          <button class="logout-dialog-button confirm-button" @click="confirmLogout">确定</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 检查更新对话框 -->
-    <div v-if="showUpdateDialog" class="update-dialog-overlay" @click="closeUpdateDialog">
-      <div class="update-dialog" @click.stop>
-        <div class="update-dialog-header">
-          <h3>检查更新</h3>
-          <button class="update-dialog-close" @click="closeUpdateDialog">×</button>
-        </div>
-        <div class="update-dialog-content">
-          <div v-if="isCheckingUpdate" class="update-loading">
-            <div class="loading-spinner"></div>
-            <p class="loading-text">正在检查更新...</p>
-          </div>
-          <div v-else-if="isDownloading" class="update-downloading">
-            <div class="download-icon">
-              <i class="fas fa-download"></i>
-            </div>
-            <p class="download-text">正在下载更新...</p>
-            <div class="download-progress">
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: downloadProgress + '%' }"></div>
-              </div>
-              <p class="progress-text">{{ downloadProgress }}%</p>
-            </div>
-          </div>
-          <div v-else class="update-result">
-            <div class="result-icon" :class="{ 'new-version': hasNewVersion }">
-              <i v-if="hasNewVersion" class="fas fa-arrow-circle-up"></i>
-              <i v-else class="fas fa-check-circle"></i>
-            </div>
-            <p class="result-text">{{ updateResult }}</p>
-            <p class="version-info">当前版本: 1.0.0</p>
-          </div>
-        </div>
-        <div class="update-dialog-footer">
-          <button v-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="downloadUpdate">升级</button>
-          <button class="update-dialog-button" @click="closeUpdateDialog">关闭</button>
-        </div>
-      </div>
-    </div>
+    <!-- 设置、主题、更多菜单 -->
     
     <!-- 通知中心 -->
     <NotificationCenter 
@@ -1116,358 +406,52 @@
       @notification-click="handleNotificationClick"
     />
 
-    <!-- 语音通话模态框 -->
-    <div v-if="showVoiceCallModal" class="voice-call-modal" @click="endVoiceCall">
-      <div class="voice-call-content" @click.stop>
-        <div class="voice-call-header">
-          <h3>语音通话</h3>
-        </div>
-        <div class="voice-call-body">
-          <div class="call-status">
-            <div v-if="voiceCallStatus === 'calling'" class="call-status-text">
-              <i class="fas fa-phone-alt"></i>
-              <span>正在呼叫...</span>
-            </div>
-            <div v-else-if="voiceCallStatus === 'ringing'" class="call-status-text">
-              <i class="fas fa-phone-ring"></i>
-              <span>对方正在接听...</span>
-            </div>
-            <div v-else-if="voiceCallStatus === 'active'" class="call-status-text">
-              <i class="fas fa-phone"></i>
-              <span>通话中</span>
-              <div class="call-duration">{{ formatCallDuration(voiceCallDuration) }}</div>
-            </div>
-            <div v-else-if="voiceCallStatus === 'ended'" class="call-status-text">
-              <i class="fas fa-phone-slash"></i>
-              <span>通话已结束</span>
-            </div>
-          </div>
-        </div>
-        <div class="voice-call-footer">
-          <button class="end-call-btn" @click="endVoiceCall">
-            <i class="fas fa-phone-slash"></i>
-            结束通话
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- 对话框和弹窗集合 -->
+    <MainDialogs
+      :showAboutDialog="showAboutDialog"
+      :showLogoutDialog="showLogoutDialog"
+      :showUpdateDialog="showUpdateDialog"
+      :showSystemMessageModal="showSystemMessageModal"
+      :showVoiceCallModal="showVoiceCallModal"
+      :isCheckingUpdate="isCheckingUpdate"
+      :isDownloading="isDownloading"
+      :downloadProgress="downloadProgress"
+      :hasNewVersion="hasNewVersion"
+      :updateResult="updateResult"
+      :callStatus="voiceCallStatus"
+      :formattedDuration="formatCallDuration(voiceCallDuration)"
+      :groupConversations="conversations.filter(c => c.type === 'group')"
+      :allEmployees="allEmployees"
+      :systemMessage="systemMessage"
+      @closeAbout="closeAboutDialog"
+      @cancelLogout="cancelLogout"
+      @confirmLogout="confirmLogout"
+      @closeUpdate="closeUpdateDialog"
+      @downloadUpdate="downloadUpdate"
+      @closeSystemMessage="closeSystemMessageModal"
+      @sendSystemMessage="sendSystemMessage"
+      @endCall="endVoiceCall"
+    />
   </div>
   
   <!-- 系统设置页面 -->
-  <div v-if="showSettingsModal" class="settings-modal" @click="closeSettingsModal">
-    <div class="settings-content" @click.stop>
-      <div class="settings-header">
-        <h3>系统设置</h3>
-        <button class="close-btn" @click="closeSettingsModal">×</button>
-      </div>
-      <div class="settings-body">
-        <div class="settings-sidebar">
-          <div 
-            class="settings-sidebar-item" 
-            :class="{ active: activeSettingsTab === 'basic' }" 
-            @click="activeSettingsTab = 'basic'"
-          >
-            <i class="fas fa-user"></i>
-            <span>基本设置</span>
-          </div>
-          <div 
-            class="settings-sidebar-item" 
-            :class="{ active: activeSettingsTab === 'message' }" 
-            @click="activeSettingsTab = 'message'"
-          >
-            <i class="fas fa-comment"></i>
-            <span>消息设置</span>
-          </div>
-          <div 
-            class="settings-sidebar-item" 
-            :class="{ active: activeSettingsTab === 'appearance' }" 
-            @click="activeSettingsTab = 'appearance'"
-          >
-            <i class="fas fa-paint-brush"></i>
-            <span>外观设置</span>
-          </div>
-          <div 
-            class="settings-sidebar-item" 
-            :class="{ active: activeSettingsTab === 'advanced' }" 
-            @click="activeSettingsTab = 'advanced'"
-          >
-            <i class="fas fa-cog"></i>
-            <span>高级设置</span>
-          </div>
-          <div 
-            class="settings-sidebar-item" 
-            :class="{ active: activeSettingsTab === 'file' }" 
-            @click="activeSettingsTab = 'file'"
-          >
-            <i class="fas fa-file"></i>
-            <span>文件设置</span>
-          </div>
-        </div>
-        <div class="settings-main">
-          <!-- 基本设置 -->
-          <div v-if="activeSettingsTab === 'basic'" class="settings-section">
-            <div class="settings-section-header">
-              <h4>个人信息</h4>
-            </div>
-            <div class="settings-item">
-              <label>头像</label>
-              <div class="avatar-setting">
-                <div class="current-avatar">
-                  <img :src="(currentUser?.avatar && currentUser.avatar.startsWith('http')) ? currentUser.avatar : (currentUser?.avatar ? serverUrl + currentUser.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=me')" :alt="currentUser?.username || 'avatar'" />
-                  <button class="change-avatar-btn">更换</button>
-                </div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>昵称</label>
-              <input type="text" v-model="settingsProfile.nickname" class="settings-input" />
-            </div>
-            <div class="settings-item">
-              <label>账号</label>
-              <span class="settings-value">{{ currentUser?.username || '' }}</span>
-            </div>
-            <div class="settings-item">
-              <label>签名</label>
-              <textarea v-model="settingsProfile.signature" class="settings-textarea" placeholder="输入个人签名"></textarea>
-            </div>
-          </div>
-          
-          <!-- 消息设置 -->
-          <div v-if="activeSettingsTab === 'message'" class="settings-section">
-            <div class="settings-section-header">
-              <h4>消息通知</h4>
-            </div>
-            <div class="settings-item">
-              <label>开启消息通知</label>
-              <label class="switch">
-                <input type="checkbox" v-model="messageSettings.notificationsEnabled" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="settings-item">
-              <label>声音提醒</label>
-              <label class="switch">
-                <input type="checkbox" v-model="messageSettings.soundEnabled" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="settings-item">
-              <label>桌面通知</label>
-              <label class="switch">
-                <input type="checkbox" v-model="messageSettings.desktopNotificationsEnabled" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="settings-item">
-              <label>消息免打扰</label>
-              <div class="dnd-setting">
-                <select v-model="messageSettings.dndMode" class="settings-select">
-                  <option value="none">关闭</option>
-                  <option value="work">工作时间</option>
-                  <option value="custom">自定义</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 外观设置 -->
-          <div v-if="activeSettingsTab === 'appearance'" class="settings-section">
-            <div class="settings-section-header">
-              <h4>主题设置</h4>
-            </div>
-            <div class="settings-item">
-              <label>主题</label>
-              <div class="theme-selector">
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'modern-light' }" 
-                  @click="appearanceSettings.theme = 'modern-light'"
-                >
-                  <div class="theme-preview light-theme"></div>
-                  <span>清新白</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'elegant-dark' }" 
-                  @click="appearanceSettings.theme = 'elegant-dark'"
-                >
-                  <div class="theme-preview dark-theme"></div>
-                  <span>炫酷黑</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'ocean-blue' }" 
-                  @click="appearanceSettings.theme = 'ocean-blue'"
-                >
-                  <div class="theme-preview netblue-theme"></div>
-                  <span>海洋蓝</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'elegant-purple' }" 
-                  @click="appearanceSettings.theme = 'elegant-purple'"
-                >
-                  <div class="theme-preview elegant-purple-theme"></div>
-                  <span>高雅紫</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'warm-amber' }" 
-                  @click="appearanceSettings.theme = 'warm-amber'"
-                >
-                  <div class="theme-preview warm-amber-theme"></div>
-                  <span>琥珀黄</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'crimson-red' }" 
-                  @click="appearanceSettings.theme = 'crimson-red'"
-                >
-                  <div class="theme-preview crimson-red-theme"></div>
-                  <span>中国红</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'emerald-green' }" 
-                  @click="appearanceSettings.theme = 'emerald-green'"
-                >
-                  <div class="theme-preview emerald-green-theme"></div>
-                  <span>翡翠绿</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'urban-jungle' }" 
-                  @click="appearanceSettings.theme = 'urban-jungle'"
-                >
-                  <div class="theme-preview urban-jungle-theme"></div>
-                  <span>都市丛林</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'mediterranean-dream' }" 
-                  @click="appearanceSettings.theme = 'mediterranean-dream'"
-                >
-                  <div class="theme-preview mediterranean-dream-theme"></div>
-                  <span>地中海</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'monochrome-elegance' }" 
-                  @click="appearanceSettings.theme = 'monochrome-elegance'"
-                >
-                  <div class="theme-preview monochrome-elegance-theme"></div>
-                  <span>单色雅</span>
-                </div>
-                <div 
-                  class="theme-option" 
-                  :class="{ active: appearanceSettings.theme === 'spring-blossom' }" 
-                  @click="appearanceSettings.theme = 'spring-blossom'"
-                >
-                  <div class="theme-preview spring-blossom-theme"></div>
-                  <span>春日花</span>
-                </div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>字体大小</label>
-              <div class="font-size-slider">
-                <input 
-                  type="range" 
-                  v-model.number="appearanceSettings.fontSize" 
-                  min="12" 
-                  max="18" 
-                  step="1"
-                />
-                <span class="font-size-value">{{ appearanceSettings.fontSize }}px</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 高级设置 -->
-          <div v-if="activeSettingsTab === 'advanced'" class="settings-section">
-            <div class="settings-section-header">
-              <h4>高级设置</h4>
-            </div>
-            <div class="settings-item">
-              <label>清除缓存</label>
-              <button class="clear-cache-btn" @click="clearCache">清除</button>
-            </div>
-            <div class="settings-item">
-              <label>双因素认证</label>
-              <label class="switch">
-                <input type="checkbox" v-model="advancedSettings.twoFactorEnabled" @change="saveTwoFactorSetting" />
-                <span class="slider round"></span>
-              </label>
-              <div class="settings-hint">开启后，下次登录需要输入验证码</div>
-            </div>
-            <div class="settings-item">
-              <label>账号安全</label>
-              <button class="security-btn" @click="openSecuritySettings">查看</button>
-            </div>
-            <div class="settings-item">
-              <label>关于</label>
-              <div class="about-info">
-                <span>版本：1.0.0</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 文件设置 -->
-          <div v-if="activeSettingsTab === 'file'" class="settings-section">
-            <div class="settings-section-header">
-              <h4>文件设置</h4>
-            </div>
-            <div class="settings-item">
-              <label>默认保存目录</label>
-              <div class="file-path-setting">
-                <input type="text" v-model="fileSettings.defaultSaveDirectory" class="settings-input" placeholder="选择默认保存目录" />
-                <button class="browse-btn" @click="browseDefaultSaveDirectory">浏览</button>
-              </div>
-              <div class="settings-hint">设置接收文件的默认保存位置</div>
-            </div>
-            <div class="settings-item">
-              <label>文件自动下载</label>
-              <label class="switch">
-                <input type="checkbox" v-model="fileSettings.autoDownload" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="settings-item">
-              <label>最大上传文件大小</label>
-              <div class="file-size-setting">
-                <input type="number" v-model.number="fileSettings.maxFileSize" class="settings-input" placeholder="文件大小限制" />
-                <span class="size-unit">MB</span>
-              </div>
-              <div class="settings-hint">设置单个文件的最大上传大小</div>
-            </div>
-            <div class="settings-item">
-              <label>允许的文件类型</label>
-              <input type="text" v-model="fileSettings.allowedFileTypes" class="settings-input" placeholder="例如：jpg,png,pdf,doc" />
-              <div class="settings-hint">设置允许上传的文件类型，用逗号分隔</div>
-            </div>
-            <div class="settings-item">
-              <label>图片自动预览</label>
-              <label class="switch">
-                <input type="checkbox" v-model="fileSettings.autoPreviewImages" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="settings-item">
-              <label>文件历史记录</label>
-              <label class="switch">
-                <input type="checkbox" v-model="fileSettings.enableFileHistory" />
-                <span class="slider round"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="settings-footer">
-        <button class="cancel-btn" @click="closeSettingsModal">取消</button>
-        <button class="save-btn" @click="saveSettings">保存</button>
-      </div>
-    </div>
-  </div>
+  <SettingsPanel
+    v-if="showSettingsModal"
+    :visible="showSettingsModal"
+    :currentUser="currentUser"
+    :serverUrl="serverUrl"
+    :profile="settingsProfile"
+    :messageSettings="messageSettings"
+    :appearanceSettings="appearanceSettings"
+    :advancedSettings="advancedSettings"
+    :fileSettings="fileSettings"
+    @close="closeSettingsModal"
+    @save="saveSettings"
+    @clearCache="clearCache"
+    @saveTwoFactor="saveTwoFactorSetting"
+    @openSecurity="openSecuritySettings"
+    @browseDirectory="browseDefaultSaveDirectory"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1497,143 +481,52 @@ declare global {
   }
 }
 import Sidebar from '../components/layout/Sidebar.vue'
+import SideOptions from '../components/layout/SideOptions.vue'
 import ChatWindow from '../components/chat/ChatWindow.vue'
-import GroupList from '../components/shared/GroupList.vue'
 import GroupDetail from '../components/shared/GroupDetail.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 import UserProfile from '../components/modals/UserProfile.vue'
 import NotificationCenter from '../components/notification/NotificationCenter.vue'
-import ChannelList from '../components/shared/ChannelList.vue'
 import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
+import ChannelDetail from '../components/channel/ChannelDetail.vue'
+import UserDetailPanel from '../components/user/UserDetailPanel.vue'
+import AppsPanel from '../components/apps/AppsPanel.vue'
+import SelfProfileModal from '../components/modals/SelfProfileModal.vue'
+import GroupModals from '../components/modals/GroupModals.vue'
+import MainContextMenus from '../components/menus/MainContextMenus.vue'
+import MainDialogs from '../components/modals/MainDialogs.vue'
+import SettingsPanel from '../components/settings/SettingsPanel.vue'
 import { API_BASE_URL } from '../config'
 import { generateAvatar, getAvatarUrl } from '../utils/avatar'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
+import { useChannel } from '../composables/useChannel'
+import { useCurrentUser } from '../composables/useCurrentUser'
+import { useProcessConversation } from '../composables/useProcessConversation'
+import { useSettings } from '../composables/useSettings'
+import { useNetwork } from '../composables/useNetwork'
+import { useWebSocketManager } from '../composables/useWebSocketManager'
+import { useGroup } from '../composables/useGroup'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
-// 获取群聊群主
-const getGroupOwner = (group: Conversation | null) => {
-  if (!group || !group.members) return ''
-  const owner = group.members.find((member: User) => member.role === 'owner')
-  return owner ? owner.name : ''
-}
+// 当前用户信息
+const { currentUser, userProfile, syncUserProfile, getProfileAvatar } = useCurrentUser()
 
-// 检查当前用户是否是群主
-const isGroupOwner = (group: Conversation | null) => {
-  if (!group || !group.members || !currentUser.value) return false
-  const owner = group.members.find((member: User) => member.role === 'owner')
-  return owner && owner.id === currentUser.value.id
-}
+// 频道相关
+const {
+  channelMessage,
+  isChannelCreator,
+  subscribeChannel,
+  unsubscribeChannel,
+  sendChannelMessage
+} = useChannel(serverUrl, currentUser)
 
-// 解散群聊
-const dissolveGroup = async () => {
-  if (!selectedGroup.value) {
-    closeGroupContextMenu()
-    return
-  }
-  
-  ElMessageBox.confirm(
-    `确定要解散群聊 "${selectedGroup.value.name}" 吗？此操作不可恢复。`,
-    '确认解散群聊',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  )
-  .then(async () => {
-    try {
-      const response = await request(`/api/v1/conversations/${selectedGroup.value.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (response.code === 0) {
-        ElMessage.success('群聊已成功解散')
-        // 从群聊列表中移除
-        const index = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
-        if (index > -1) {
-          conversations.value.splice(index, 1)
-        }
-        // 清空选中的群聊
-        selectedGroup.value = null
-      } else {
-        ElMessage.error(response.message || '解散群聊失败')
-      }
-    } catch (error) {
-      console.error('解散群聊失败:', error)
-      ElMessage.error('网络错误，解散群聊失败')
-    }
-    closeGroupContextMenu()
-  })
-  .catch(() => {
-    closeGroupContextMenu()
-  })
-}
+// 会话数据处理
+const { processConversation } = useProcessConversation(serverUrl, currentUser)
 
-// 编辑群公告
-const editAnnouncement = () => {
-  if (!selectedGroup.value) return
-  editAnnouncementContent.value = selectedGroup.value.announcement || ''
-  showEditAnnouncementModal.value = true
-}
-
-// 保存群公告
-const saveAnnouncement = async () => {
-  if (!selectedGroup.value) {
-    closeEditAnnouncementModal()
-    return
-  }
-  
-  try {
-    const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/announcement`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ announcement: editAnnouncementContent.value })
-    })
-    
-    if (response.code === 0) {
-      ElMessage.success('群公告已成功更新')
-      // 更新本地群聊数据
-      selectedGroup.value.announcement = editAnnouncementContent.value
-      // 更新群聊列表中的数据
-      const index = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
-      if (index > -1) {
-        conversations.value[index].announcement = editAnnouncementContent.value
-      }
-    } else {
-      ElMessage.error(response.message || '更新群公告失败')
-    }
-  } catch (error) {
-    console.error('更新群公告失败:', error)
-    ElMessage.error('网络错误，更新群公告失败')
-  }
-  closeEditAnnouncementModal()
-}
-
-// 获取成员头像
-const getMemberAvatar = (member: User) => {
-  if (!member) return generateAvatar('成员')
-  if (member.avatar && member.avatar.startsWith('http')) {
-    return member.avatar
-  }
-  if (member.avatar) {
-    return serverUrl.value + member.avatar
-  }
-  return generateAvatar(member.name || '成员')
-}
-
-// 网络连接状态
-const sessionExpired = ref(false)
-const reconnectAttempts = ref(0)
-const maxReconnectAttempts = 5
-const reconnectTimer = ref<number | null>(null)
+// 网络连接状态 - 已从 useNetwork composable 导入
 
 // 获取 token
 const getToken = () => {
@@ -1832,6 +725,61 @@ const {
   setNetworkError
 } = useAppState()
 
+// 设置相关
+const {
+  currentTheme,
+  settingsProfile,
+  messageSettings,
+  appearanceSettings,
+  advancedSettings,
+  fileSettings,
+  loadSettings,
+  saveSettings,
+  clearCache,
+  saveTwoFactorSetting,
+  browseDefaultSaveDirectory,
+  applyFontSize,
+  setTheme,
+  initTheme,
+  updateSettingsProfile
+} = useSettings(currentUser, serverUrl, request)
+
+// 网络相关
+const {
+  sessionExpired,
+  reconnectAttempts,
+  maxReconnectAttempts,
+  reconnectTimer,
+  baseReconnectDelay,
+  resetNetworkState,
+  reconnect,
+  handleReconnect,
+  handleSessionExpired,
+  gotoLogin,
+  cleanupNetwork
+} = useNetwork()
+
+// WebSocket 管理
+const {
+  ws,
+  isConnected,
+  connectWebSocket: connectWSManager,
+  disconnectWebSocket,
+  sendMessage,
+  addHandler
+} = useWebSocketManager(serverUrl)
+
+// 群组相关（使用别名避免与 useUI 中的同名变量冲突）
+const groupState = useGroup()
+const {
+  isGroupOwnerCheck
+} = groupState
+
+// 检查当前用户是否是群聊所有者
+const isGroupOwner = (group: any) => {
+  return isGroupOwnerCheck(group, currentUser.value?.id?.toString())
+}
+
 const ui = useUI()
 
 // 解构 UI 状态
@@ -1955,7 +903,8 @@ const {
   activeSettingsTab,
   openSettings,
   closeSettingsModal,
-  switchSettingsTab
+  switchSettingsTab,
+  handleClickOutside
 } = ui
 
 // 使用 useConversation composable
@@ -1985,7 +934,9 @@ const {
   addConversation,
   handleExitGroup,
   loadGroups,
-  resetState: _resetConversationState
+  loadConversations: loadConversationsFromApi,
+  resetState: _resetConversationState,
+  updateConversations
 } = conversation
 
 // 通知中心组件 ref
@@ -2065,293 +1016,7 @@ const handleSidebarOptionClick = (option: string) => {
 
 // 会话数据已从 useConversation composable 导入
 
-// 频道相关状态
-const channelMessage = ref('')
-
-// 检查当前用户是否是频道创建者
-const isChannelCreator = (channel) => {
-  if (!currentUser.value?.id || !channel.creator_id) return false
-  return currentUser.value.id === channel.creator_id || currentUser.value.id.toString() === channel.creator_id.toString()
-}
-
-// 订阅频道
-const subscribeChannel = async (channel) => {
-  try {
-    const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/subscribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      channel.is_subscribed = true
-      ElMessage.success('订阅成功')
-    } else {
-      ElMessage.error('订阅失败')
-    }
-  } catch (error) {
-    console.error('订阅频道失败:', error)
-    ElMessage.error('订阅失败')
-  }
-}
-
-// 取消订阅频道
-const unsubscribeChannel = async (channel) => {
-  try {
-    const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/unsubscribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      channel.is_subscribed = false
-      ElMessage.success('取消订阅成功')
-    } else {
-      ElMessage.error('取消订阅失败')
-    }
-  } catch (error) {
-    console.error('取消订阅频道失败:', error)
-    ElMessage.error('取消订阅失败')
-  }
-}
-
-// 发送频道消息
-const sendChannelMessage = async (channel) => {
-  if (!channelMessage.value.trim()) return
-  
-  try {
-    const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        content: channelMessage.value
-      })
-    })
-    
-    if (response.ok) {
-      const newMessage = await response.json()
-      if (!channel.messages) {
-        channel.messages = []
-      }
-      channel.messages.push(newMessage)
-      channelMessage.value = ''
-      ElMessage.success('发送成功')
-    } else {
-      ElMessage.error('发送失败')
-    }
-  } catch (error) {
-    console.error('发送频道消息失败:', error)
-    ElMessage.error('发送失败')
-  }
-}
-
-// 获取当前登录用户信息
-const getCurrentUser = () => {
-  const userStr = localStorage.getItem('user')
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr)
-      if (user && user.id) {
-        user.isAdmin = true
-        return user
-      }
-    } catch (error) {
-      console.error('解析用户信息失败:', error)
-    }
-  }
-  // 模拟用户信息，用于测试
-  return {
-    id: '1',
-    username: 'admin',
-    nickname: '管理员',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
-    isAdmin: true
-  }
-}
-
-// 当前登录用户信息
-const currentUser = ref(getCurrentUser())
-
-// 用户资料弹窗
-const userProfile = ref({
-  nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
-  username: currentUser.value?.username || '',
-  signature: currentUser.value?.signature || '这个人很懒，什么都没留下',
-  id: currentUser.value?.id?.toString() || 'user_123456',
-  joinDate: '2023-01-01'
-})
-
-// 同步用户资料
-const syncUserProfile = () => {
-  userProfile.value = {
-    nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
-    username: currentUser.value?.username || '',
-    signature: currentUser.value?.signature || '这个人很懒，什么都没留下',
-    id: currentUser.value?.id?.toString() || 'user_123456',
-    joinDate: '2023-01-01'
-  }
-}
-
-// 监听 currentUser 变化，同步更新 userProfile
-watch(() => currentUser.value, () => {
-  syncUserProfile()
-}, { deep: true })
-
-// 处理会话数据，确保 sender 字段正确
-const processConversation = (conv: any) => {
-  const members = conv.members ? conv.members.map((member: any) => ({
-    id: member.user && member.user.id ? member.user.id.toString() : (member.UserID ? member.UserID.toString() : (member.user_id ? member.user_id.toString() : '')),
-    name: member.user ? (member.user.nickname || member.user.username || '') : (member.User ? (member.User.Nickname || member.User.Username || '') : ''),
-    username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
-    avatar: (member.user && member.user.avatar && member.user.avatar.startsWith('http')) ? member.user.avatar : (member.user && member.user.avatar ? serverUrl.value + member.user.avatar : (member.User && member.User.Avatar ? serverUrl.value + member.User.Avatar : '')),
-    role: member.role || member.Role || 'member'
-  })) : []
-  
-  // 为单聊会话设置对方用户的头像和名称
-  let avatar = conv.avatar || ''
-  let name = conv.name || ''
-  const currentUserId = currentUser.value?.id?.toString() || ''
-  
-  // 检查是否是与自己的单聊（只有自己一个成员，且名称包含"自己"）
-  const isSelfChat = (conv.type !== 'group' && conv.type !== 'discussion') && members.length === 1 && members[0].id === currentUserId
-  
-  if (isSelfChat) {
-    // 与自己聊天的会话，显示自己的信息
-    avatar = members[0].avatar || avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=self'
-    name = members[0].name || currentUser.value?.nickname || currentUser.value?.username || '自己'
-  } else if ((conv.type !== 'group' && conv.type !== 'discussion') && members.length > 1) {
-    const otherMember = members.find((m: any) => m.id !== currentUserId)
-    if (otherMember) {
-      avatar = otherMember.avatar || ''
-      name = otherMember.name || ''
-    }
-  }
-  
-  // 处理群聊和讨论组头像
-  if ((conv.type === 'group' || conv.type === 'discussion') && conv.avatar) {
-    avatar = (conv.avatar.startsWith('http')) ? conv.avatar : serverUrl.value + conv.avatar
-  }
-  
-  // 检查是否有未读消息
-  let unreadCount = conv.unread_count || 0
-  
-  // 日志：检查服务器返回的会话数据
-  console.log('Server conversation data:', conv)
-  console.log('Server last_message:', conv.last_message)
-  console.log('Server last_message.sender:', conv.last_message?.sender)
-  
-  // 获取发送人信息
-  const getSenderInfo = (senderId: string, members: any[]) => {
-    // 首先尝试从 members 中找到对应的用户
-    const member = members.find(m => m.id === senderId)
-    if (member) {
-      return {
-        id: member.id,
-        name: member.name || '',
-        avatar: member.avatar || ''
-      }
-    }
-    // 如果找不到，返回空对象
-    return {
-      id: '',
-      name: '',
-      avatar: ''
-    }
-  }
-  
-  const conversationObj = {
-    id: conv.id ? conv.id.toString() : (conv.ID ? conv.ID.toString() : ''),
-    name: name || '',
-    avatar: avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user',
-    ip: conv.ip || '',
-    status: conv.status || 'offline',
-    signature: conv.signature || '',
-    otherMemberId: conv.other_member_id || conv.OtherMemberID || '',
-    otherMemberName: conv.other_member_name || conv.OtherMemberName || '',
-    lastMessage: conv.lastMessage || conv.last_message ? {
-      id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
-      content: conv.lastMessage?.content || conv.last_message?.content || '',
-      file_name: conv.lastMessage?.file_name || conv.last_message?.file_name,
-      file_size: conv.lastMessage?.file_size || conv.last_message?.file_size,
-      sender: (conv.lastMessage?.sender || conv.last_message?.sender) ? {
-        id: (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id) ? (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id).toString() : '',
-        name: conv.lastMessage?.sender?.nickname || conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.name || conv.lastMessage?.sender?.user?.nickname || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.nickname || conv.last_message?.sender?.username || conv.last_message?.sender?.name || conv.last_message?.sender?.user?.nickname || conv.last_message?.sender?.user?.username || '',
-        username: conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.username || conv.last_message?.sender?.user?.username || '',
-        avatar: ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) && (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar).startsWith('http')) ? (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) ? serverUrl.value + (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ''),
-        // 保存原始 sender 对象，以便在需要时访问更多属性
-        user: conv.lastMessage?.sender || conv.last_message?.sender
-      } : {
-        id: '',
-        name: '',
-        username: '',
-        avatar: ''
-      },
-      timestamp: conv.lastMessage?.created_at || conv.last_message?.created_at ? new Date(conv.lastMessage?.created_at || conv.last_message?.created_at).getTime() : Date.now(),
-      type: conv.lastMessage?.type || conv.last_message?.type || 'text',
-      isSelf: false,
-      miniAppData: (() => {
-        try {
-          const content = conv.lastMessage?.content || conv.last_message?.content
-          if ((conv.lastMessage?.type || conv.last_message?.type) === 'miniApp' && content && content !== '[消息已撤回]') {
-            return JSON.parse(content)
-          }
-          return undefined
-        } catch (e) {
-          console.error('解析小程序数据失败:', e)
-          return undefined
-        }
-      })(),
-      shareData: (() => {
-        try {
-          const content = conv.lastMessage?.content || conv.last_message?.content
-          if ((conv.lastMessage?.type || conv.last_message?.type) === 'share' && content && content !== '[消息已撤回]') {
-            return JSON.parse(content)
-          }
-          return undefined
-        } catch (e) {
-          console.error('解析分享数据失败:', e)
-          return undefined
-        }
-      })()
-    } : undefined,
-    unreadCount: unreadCount,
-    timestamp: conv.last_message_at ? new Date(conv.last_message_at).getTime() : (conv.created_at ? new Date(conv.created_at).getTime() : Date.now()),
-    type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP') ? 'group' : (conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'discussion' : (conv.type === 'bot' ? 'bot' : 'single'),
-    members: members,
-    pinned: conv.is_pinned || false,
-    muted: conv.muted || false,
-    announcement: conv.announcement || ''
-  }
-  
-  // 如果是群聊，并且 lastMessage 存在，但 sender.name 为空，尝试从 members 中获取发送人信息
-  if (conversationObj.type === 'group' && conversationObj.lastMessage) {
-    const senderId = conversationObj.lastMessage.sender?.id || (conv.lastMessage?.sender_id || conv.last_message?.sender_id)?.toString() || ''
-    if (senderId && (!conversationObj.lastMessage.sender?.name || conversationObj.lastMessage.sender.name === '')) {
-      const senderInfo = getSenderInfo(senderId, members)
-      if (senderInfo.name) {
-        conversationObj.lastMessage.sender.name = senderInfo.name
-        if (senderInfo.avatar) {
-          conversationObj.lastMessage.sender.avatar = senderInfo.avatar
-        }
-      }
-    }
-  }
-  
-  // 日志：检查处理后的会话对象
-  console.log('Processed conversation:', conversationObj)
-  console.log('Processed lastMessage:', conversationObj.lastMessage)
-  console.log('Processed lastMessage.sender:', conversationObj.lastMessage?.sender)
-  
-  return conversationObj
-}
+// 会话数据处理已从 useProcessConversation composable 导入
 
 // 加载会话列表
 const loadConversations = async () => {
@@ -2361,13 +1026,16 @@ const loadConversations = async () => {
     if (response.code === 0 && response.data) {
       const serverConversations = response.data.map((conv: any) => processConversation(conv))
       
-      conversations.value = serverConversations
+      // 使用updateConversations方法更新会话列表
+      updateConversations(serverConversations)
     } else {
-      conversations.value = []
+      // 清空会话列表
+      updateConversations([])
     }
   } catch (error) {
     console.error('加载会话失败:', error)
-    conversations.value = []
+    // 清空会话列表
+    updateConversations([])
   }
 }
 
@@ -2489,44 +1157,13 @@ import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
 import { useUI } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
-import { connectWebSocket as connectWS, addMessageHandler, sendWebSocketMessage, getWebSocket } from '../utils/websocketManager'
 
-// 暴露sendWebSocketMessage到全局，供screenShareManager使用
-if (typeof window !== 'undefined') {
-  window.sendWebSocketMessage = sendWebSocketMessage
-}
-
-// WebSocket 实例代理变量（用于兼容旧代码）
-const ws = {
-  get readyState() { return getWebSocket()?.readyState ?? WebSocket.CLOSED },
-  send: (data: string) => sendWebSocketMessage(data),
-  close: () => {
-    const ws = getWebSocket()
-    if (ws) ws.close()
-  },
-  onclose: null as ((event: CloseEvent) => void) | null,
-  onerror: null as ((event: Event) => void) | null,
-  onopen: null as ((event: Event) => void) | null,
-  onmessage: null as ((event: MessageEvent) => void) | null
-}
+// WebSocket 实例代理变量（已从 useWebSocketManager composable 导入）
 
 // WebSocket连接
-const baseReconnectDelay = 1000 // 1秒
 
 // 连接WebSocket
 const connectWebSocket = () => {
-  // 获取token
-  const token = localStorage.getItem('token')
-  if (!token) return
-  
-  // 隐藏网络错误提示
-  showNetworkError.value = false
-  networkErrorMsg.value = '网络连接失败，正在尝试重新连接...'
-  sessionExpired.value = false
-  
-  // 使用WebSocket管理器连接
-  connectWS(serverUrl.value, token)
-  
   // 为每种消息类型添加专门的处理器
   const messageHandlers = {
     'message_read': handleReadReceipt,
@@ -2552,51 +1189,14 @@ const connectWebSocket = () => {
     'screen-share-rejected': handleScreenShareRejected
   }
   
-  // 注册所有消息处理器
-  Object.entries(messageHandlers).forEach(([type, handler]) => {
-    addMessageHandler((message) => {
-      handler(message.data)
-      return true
-    }, type)
-  })
-  
-  // 尝试重连逻辑
-  const ws = getWebSocket()
-  if (ws) {
-    ws.onclose = () => {
-      console.log('WebSocket连接关闭')
-      // 尝试重连
-      if (reconnectAttempts.value < maxReconnectAttempts) {
-        // 指数退避策略
-        const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts.value)
-        console.log(`WebSocket重连尝试 ${reconnectAttempts.value + 1}/${maxReconnectAttempts}，延迟 ${delay}ms`)
-        
-        // 显示网络错误提示
-        showNetworkError.value = true
-        networkErrorMsg.value = `网络连接失败，正在尝试重新连接... (${reconnectAttempts.value + 1}/${maxReconnectAttempts})`
-        
-        reconnectTimer.value = window.setTimeout(() => {
-          reconnectAttempts.value++
-          connectWebSocket()
-        }, delay)
-      } else {
-        console.log('WebSocket重连失败，已达到最大重试次数')
-        // 显示最终错误提示
-        showNetworkError.value = true
-        networkErrorMsg.value = '网络连接失败，请检查网络设置或稍后重试'
-      }
-    }
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket错误:', error)
-      // 检查是否是会话过期错误
-      if (error.message && error.message.includes('401')) {
-        sessionExpired.value = true
-        showNetworkError.value = true
-        networkErrorMsg.value = '会话已过期，请重新登录'
-      }
-    }
-  }
+  // 使用WebSocket管理器连接
+  connectWSManager(
+    () => handleReconnect(connectWebSocket, showNetworkError, networkErrorMsg),
+    showNetworkError,
+    networkErrorMsg,
+    sessionExpired,
+    messageHandlers
+  )
 }
 
 // 注意：由于我们现在使用了按消息类型分类的处理器，这个函数不再需要
@@ -2886,9 +1486,7 @@ const sendScreenShareResponse = (conversationId: number, requesterId: number, st
     }
   }
   // 发送WebSocket消息
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(wsMsg))
-  }
+  sendMessage(wsMsg)
 }
 
 // 处理屏幕共享接受
@@ -3313,37 +1911,16 @@ const playMessageSound = () => {
   }
 }
 
-// 重新连接
-const reconnect = () => {
-  // 重置重连尝试次数
-  reconnectAttempts.value = 0
-  // 清除之前的定时器
-  if (reconnectTimer.value) {
-    clearTimeout(reconnectTimer.value)
-    reconnectTimer.value = null
-  }
-  // 重新连接
-  connectWebSocket()
-}
+// 重新连接 - 已从 useNetwork composable 导入
 
-// 跳转到登录页
-const gotoLogin = () => {
-  // 清除本地存储的token和用户信息
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  // 跳转到登录页
-  window.location.href = '/'
-}
+// 跳转到登录页 - 已从 useNetwork composable 导入
 
 // 组件销毁时关闭WebSocket连接
 onUnmounted(() => {
-  if (ws) {
-    ws.close()
-  }
+  // 关闭WebSocket连接
+  disconnectWebSocket()
   // 清除重连定时器
-  if (reconnectTimer.value) {
-    clearTimeout(reconnectTimer.value)
-  }
+  cleanupNetwork()
 })
 
 // 过滤后的会话列表
@@ -3647,7 +2224,7 @@ const handleSendMessage = async (messageData: any) => {
   console.log('发送消息时的原始数据:', messageData)
   
   // 检查WebSocket连接状态
-  const isWebSocketConnected = ws && ws.readyState === WebSocket.OPEN
+  const isWebSocketConnected = isConnected.value
   
   try {
     let requestData: any = {}
@@ -4098,41 +2675,31 @@ const handleRetrySendMessage = (failedMessage: any) => {
 // 处理屏幕共享开始
 const handleScreenShareStart = (data: { conversationId: number; userId: number }) => {
   console.log('===== 发送屏幕共享请求 =====', data)
-  
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const wsMsg = {
-      type: 'screen-share-request',
-      data: data
-    }
-    console.log('发送的WebSocket消息:', wsMsg)
-    ws.send(JSON.stringify(wsMsg))
-  } else {
-    console.error('WebSocket未连接，无法发送屏幕共享请求')
+
+  const wsMsg = {
+    type: 'screen-share-request',
+    data: data
   }
+  console.log('发送的WebSocket消息:', wsMsg)
+  sendMessage(wsMsg)
 }
 
 // 处理屏幕共享停止
 const handleScreenShareStop = (data: { conversationId: number }) => {
   console.log('发送屏幕共享停止:', data)
-  
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'screen-share-stop',
-      data: data
-    }))
-  }
+  sendMessage({
+    type: 'screen-share-stop',
+    data: data
+  })
 }
 
 // 处理屏幕共享数据
 const handleScreenShareData = (data: { conversationId: number; data: string }) => {
   // console.log('发送屏幕共享数据:', data)
-  
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'screen-share-data',
-      data: data
-    }))
-  }
+  sendMessage({
+    type: 'screen-share-data',
+    data: data
+  })
 }
 
 // 处理会话选择
@@ -5066,42 +3633,10 @@ const filteredAddMembersEmployees = computed(() => {
 
 // 成员和群聊菜单状态已从 useUI composable 导入
 // 设置相关状态已从 useUI composable 导入
+// 注意: settingsProfile, messageSettings, appearanceSettings, advancedSettings, fileSettings
+// 已从 useSettings composable 导入
 
-// 主题状态
-const currentTheme = ref(localStorage.getItem('theme') || 'modern-light')
-
-// 以下为本地特有的设置数据
-const settingsProfile = ref({
-  nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
-  signature: '这个人很懒，什么都没留下'
-})
-const messageSettings = ref({
-  notificationsEnabled: true,
-  soundEnabled: true,
-  desktopNotificationsEnabled: true,
-  dndMode: 'none'
-})
-const appearanceSettings = ref({
-  theme: currentTheme.value,
-  fontSize: 14
-})
-
-// 高级设置
-const advancedSettings = ref({
-  twoFactorEnabled: currentUser.value?.two_factor_enabled || false
-})
-
-// 文件设置
-const fileSettings = ref({
-  defaultSaveDirectory: '',
-  autoDownload: false,
-  maxFileSize: 50,
-  allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
-  autoPreviewImages: true,
-  enableFileHistory: true
-})
-
-// 以下函数已从 useUI composable 导入：showActionMenu, closeActionMenu, openCreateGroupModal, closeCreateConversationModal, openSystemMessageModal, closeSystemMessageModal, showMemberContextMenu, closeMemberContextMenu
+// 以下函数已从 useUI composable 导入：showActionMenu, hideActionMenu, openCreateGroupModal, closeCreateConversationModal, openSystemMessageModal, closeSystemMessageModal, showMemberContextMenu, closeMemberContextMenu
 
 // 处理会话创建成功
 const handleConversationCreated = () => {
@@ -5138,10 +3673,66 @@ const sendSystemMessage = async () => {
 
 
 const createChannel = () => {
-  closeActionMenu()
+  hideActionMenu()
   // 这里可以实现创建频道的逻辑
   ElMessage.info('创建频道功能开发中...')
   console.log('创建频道')
+}
+
+const createDiscussionGroup = () => {
+  hideActionMenu()
+  // 打开创建群聊模态框，类型为讨论组
+  openCreateGroupModal('discussion')
+  console.log('创建讨论组')
+}
+
+const viewUserProfile = () => {
+  if (selectedEmployee) {
+    openUserProfile(selectedEmployee)
+  }
+  hideUserContextMenu()
+}
+
+const editAnnouncement = () => {
+  if (selectedGroup.value) {
+    editAnnouncementContent.value = selectedGroup.value.announcement || ''
+    openEditAnnouncementModal()
+  }
+  closeGroupContextMenu()
+}
+
+const dissolveGroup = async () => {
+  if (selectedGroup.value) {
+    // 调用 useGroup 中的实现
+    const success = await groupState.dissolveGroup(selectedGroup.value)
+    if (success) {
+      // 从会话列表中移除该群聊（副作用处理）
+      const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
+      if (conversationIndex !== -1) {
+        conversations.value.splice(conversationIndex, 1)
+        conversations.value = [...conversations.value]
+      }
+      selectedGroup.value = null
+    }
+  }
+}
+
+const saveAnnouncement = async () => {
+  if (selectedGroup.value) {
+    // 调用 useGroup 中的实现
+    const success = await groupState.updateAnnouncement(selectedGroup.value.id, editAnnouncementContent.value)
+    if (success) {
+      // 更新本地群聊信息（副作用处理）
+      selectedGroup.value.announcement = editAnnouncementContent.value
+      // 更新会话列表中的群聊信息
+      const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
+      if (conversationIndex !== -1) {
+        conversations.value[conversationIndex].announcement = editAnnouncementContent.value
+        conversations.value = [...conversations.value]
+      }
+      closeEditAnnouncementModal()
+    }
+  }
 }
 
 const closeMemberContextMenu = () => {
@@ -5188,28 +3779,12 @@ const viewMemberInfo = () => {
 
 const setAsAdmin = async () => {
   if (selectedMember.value && selectedGroup.value) {
-    try {
-      const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members/${selectedMember.value.id}/role`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: 'admin' })
-      })
-      
-      if (response.code === 0) {
-        ElMessage.success('已成功设为管理员')
-        // 更新本地成员角色
-        const member = selectedGroup.value.members.find(m => m.id === selectedMember.value.id)
-        if (member) {
-          member.role = 'admin'
-        }
-      } else {
-        ElMessage.error(response.message || '设置管理员失败')
-      }
-    } catch (error) {
-      console.error('设置管理员失败:', error)
-      ElMessage.error('网络错误，设置管理员失败')
+    // 调用 useGroup 中的实现
+    await groupState.setAsAdmin(selectedGroup.value.id, selectedMember.value.id)
+    // 更新本地成员角色（副作用处理）
+    const member = selectedGroup.value.members.find(m => m.id === selectedMember.value.id)
+    if (member) {
+      member.role = 'admin'
     }
   }
   closeMemberContextMenu()
@@ -5217,17 +3792,8 @@ const setAsAdmin = async () => {
 
 const viewGroupMembers = () => {
   if (selectedGroup.value) {
-    // 映射成员数据，确保使用昵称而不是账号
-    groupMembers.value = (selectedGroup.value.members || []).map((member: any) => ({
-      id: member.user && member.user.id ? member.user.id.toString() : (member.id ? member.id.toString() : ''),
-      name: member.user ? (member.user.nickname || member.user.username || '') : (member.name || ''),
-      avatar: member.user ? (
-        member.user.avatar && member.user.avatar.startsWith('http')
-          ? member.user.avatar
-          : (member.user.avatar ? serverUrl.value + member.user.avatar : '')
-      ) : (member.avatar || ''),
-      position: member.user ? (member.user.position || '无职位信息') : (member.position || '无职位信息')
-    }))
+    // 使用 useGroup 中的方法准备成员显示数据
+    groupMembers.value = groupState.prepareGroupMembersForDisplay(selectedGroup.value, serverUrl.value)
     showGroupMembersModal.value = true
   }
   closeGroupContextMenu()
@@ -5600,34 +4166,23 @@ const exitGroup = async () => {
 // 移除成员
 const removeMember = async (member) => {
   if (selectedGroup.value) {
-    // 使用更美观的确认对话框
     if (window.confirm(`确定要将${member.name}移出群聊吗？`)) {
-      try {
-        const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members/${member.id}`, {
-          method: 'DELETE'
-        })
-        
-        if (response.code === 0) {
-          // 更新群成员列表
-          groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
-          // 更新选中群的成员列表
-          if (selectedGroup.value.members) {
-            selectedGroup.value.members = selectedGroup.value.members.filter(m => m.id !== member.id)
-          }
-          // 更新会话列表中对应群聊的成员数
-          const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value.id)
-          if (conversationIndex !== -1) {
-            conversations.value[conversationIndex].members = selectedGroup.value.members
-            // 强制触发响应式更新
-            conversations.value = [...conversations.value]
-          }
-          showMessage({ message: '移除成员成功', type: 'success' })
-        } else {
-          showMessage({ message: '移除成员失败: ' + response.message, type: 'error' })
+      // 调用 useGroup 中的实现
+      const success = await groupState.removeGroupMember(selectedGroup.value.id, member.id)
+      if (success) {
+        // 更新群成员列表（副作用处理）
+        groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
+        // 更新选中群的成员列表
+        if (selectedGroup.value.members) {
+          selectedGroup.value.members = selectedGroup.value.members.filter(m => m.id !== member.id)
         }
-      } catch (error) {
-        console.error('移除成员失败:', error)
-        showMessage({ message: '移除成员失败，请稍后重试', type: 'error' })
+        // 更新会话列表中对应群聊的成员数
+        const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
+        if (conversationIndex !== -1) {
+          conversations.value[conversationIndex].members = selectedGroup.value?.members
+          // 强制触发响应式更新
+          conversations.value = [...conversations.value]
+        }
       }
     }
   }
@@ -5734,7 +4289,6 @@ const closeWindow = () => {
     console.log('Electron not available')
   }
 }
-
 
 const closeSettingsMenu = () => {
   showSettingsMenuFlag.value = false
@@ -5864,106 +4418,13 @@ const logout = () => {
 }
 
 // 主题菜单相关函数
-// 关闭系统设置模态框
-// 保存系统设置
-const saveSettings = async () => {
-  try {
-    // 保存个人信息
-    const profileResponse = await request('/api/v1/users/me', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        nickname: settingsProfile.value.nickname,
-        signature: settingsProfile.value.signature
-      })
-    })
-    
-    // 保存主题设置
-    if (appearanceSettings.value.theme !== currentTheme.value) {
-      setTheme(appearanceSettings.value.theme)
-    }
-    
-    // 应用字体大小设置
-    localStorage.setItem('fontSize', appearanceSettings.value.fontSize.toString())
-    applyFontSize(appearanceSettings.value.fontSize)
-    
-    // 保存其他设置到本地存储
-    localStorage.setItem('messageSettings', JSON.stringify(messageSettings.value))
-    localStorage.setItem('appearanceSettings', JSON.stringify(appearanceSettings.value))
-    localStorage.setItem('fileSettings', JSON.stringify(fileSettings.value))
-    
-    if (profileResponse.code === 0) {
-      // 更新当前用户信息
-      if (currentUser.value) {
-        currentUser.value.username = settingsProfile.value.nickname
-      }
-      ElMessage.success('保存成功')
-      closeSettingsModal()
-    } else {
-      ElMessage.error('保存失败: ' + profileResponse.message)
-    }
-  } catch (error) {
-    console.error('保存设置失败:', error)
-    const errorMessage = error instanceof Error ? error.message : '未知错误'
-    ElMessage.error('保存失败: ' + errorMessage)
-  }
-}
+// 保存系统设置 - 已从 useSettings composable 导入
 
-// 清除缓存
-const clearCache = () => {
-  if (confirm('确定要清除缓存吗？')) {
-    // 清除本地存储
-    localStorage.removeItem('messageSettings')
-    localStorage.removeItem('appearanceSettings')
-    localStorage.removeItem('fileSettings')
-    ElMessage.success('缓存已清除')
-  }
-}
+// 清除缓存 - 已从 useSettings composable 导入
 
-// 保存双因素认证设置
-const saveTwoFactorSetting = async () => {
-  try {
-    const token = getToken()
-    if (!token) {
-      showMessage({ message: '请先登录', type: 'error' })
-      return
-    }
-    const response = await axios.put(`${serverUrl.value}/api/v1/users/me`, {
-      two_factor_enabled: advancedSettings.value.twoFactorEnabled
-    }, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (response.data.code === 0) {
-      showMessage({ message: '设置保存成功', type: 'success' })
-    }
-  } catch (error) {
-    console.error('保存双因素认证设置失败:', error)
-    showMessage({ message: '保存设置失败', type: 'error' })
-  }
-}
+// 保存双因素认证设置 - 已从 useSettings composable 导入
 
-// 浏览默认保存目录
-const browseDefaultSaveDirectory = () => {
-  if (window.electron && window.electron.ipcRenderer) {
-    window.electron.ipcRenderer.send('open-file-dialog', { properties: ['openDirectory'] })
-    
-    const handleResult = (result: any) => {
-      window.electron.ipcRenderer.removeListener('file-dialog-result', handleResult)
-      if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
-        fileSettings.value.defaultSaveDirectory = result.filePaths[0]
-        showMessage({ message: '目录已选择', type: 'success' })
-      }
-    }
-    window.electron.ipcRenderer.on('file-dialog-result', handleResult)
-  } else {
-    fileSettings.value.defaultSaveDirectory = '/Users/yourname/Downloads'
-    showMessage({ message: '非Electron环境，已设置默认路径', type: 'info' })
-  }
-}
+// 浏览默认保存目录 - 已从 useSettings composable 导入
 
 // 打开安全设置
 const openSecuritySettings = () => {
@@ -5971,36 +4432,7 @@ const openSecuritySettings = () => {
   // 这里可以实现打开安全设置页面的逻辑
 }
 
-const setTheme = (theme: string) => {
-  currentTheme.value = theme
-  localStorage.setItem('theme', theme)
-  // 应用主题到页面
-  document.documentElement.setAttribute('data-theme', theme)
-  hideThemeMenu()
-}
-
-// 应用字体大小设置
-const applyFontSize = (fontSize: number) => {
-  const container = document.querySelector('.im-container') as HTMLElement
-  if (container) {
-    container.style.fontSize = fontSize + 'px'
-  }
-  localStorage.setItem('fontSize', fontSize.toString())
-}
-
-// 初始化主题和字体大小
-const initTheme = () => {
-  const savedTheme = localStorage.getItem('theme') || 'modern-light'
-  currentTheme.value = savedTheme
-  document.documentElement.setAttribute('data-theme', savedTheme)
-  
-  // 初始化字体大小
-  const savedFontSize = localStorage.getItem('fontSize')
-  if (savedFontSize) {
-    appearanceSettings.value.fontSize = parseInt(savedFontSize)
-  }
-  applyFontSize(appearanceSettings.value.fontSize)
-}
+// setTheme, applyFontSize, initTheme 已从 useSettings composable 导入
 
 // 初始化主题
 initTheme()
@@ -6074,14 +4506,7 @@ initTheme()
 
 /* 优雅深色主题 - 应用分类 */
 
-/* Markdown 样式 */
-.markdown-heading {
-  margin: 20px 0 12px 0;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--text-color);
-  transition: all 0.3s ease;
-}
+
 
 .markdown-heading:nth-child(1) {
   margin-top: 0;
@@ -6113,52 +4538,12 @@ initTheme()
   color: var(--text-secondary);
 }
 
-.markdown-bold {
-  font-weight: 600;
-  color: var(--text-color);
-}
 
-.markdown-italic {
-  font-style: italic;
-  color: var(--text-secondary);
-}
-
-.markdown-list {
-  margin: 12px 0;
-  padding-left: 28px;
-}
-
-.markdown-list-item {
-  margin: 6px 0;
-  line-height: 1.5;
-  color: var(--text-color);
-}
-
-.markdown-code {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-  padding: 16px;
-  margin: 12px 0;
-  overflow-x: auto;
-  font-family: 'Fira Code', 'Courier New', Courier, monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-}
 
 .markdown-code:hover {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.markdown-link {
-  color: var(--primary-color);
-  text-decoration: none;
-  transition: all 0.3s ease;
-  border-bottom: 1px solid transparent;
-  padding-bottom: 2px;
-}
 
 .markdown-link:hover {
   color: var(--active-color);
@@ -6166,38 +4551,15 @@ initTheme()
   border-bottom-color: var(--active-color);
 }
 
-.markdown-image {
-  max-width: 100%;
-  max-height: 400px;
-  border-radius: 8px;
-  margin: 12px 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
 
 .markdown-image:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transform: scale(1.01);
 }
 
-/* 引用样式 */
-.markdown-quote {
-  border-left: 4px solid var(--primary-color);
-  padding: 12px 16px;
-  margin: 12px 0;
-  background: var(--hover-color);
-  border-radius: 0 6px 6px 0;
-  color: var(--text-secondary);
-  font-style: italic;
-}
 
-/* 表格样式 */
-.markdown-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 12px 0;
-  font-size: 14px;
-}
+
+
 
 .markdown-table th,
 .markdown-table td {
@@ -6216,10 +4578,7 @@ initTheme()
   background: var(--hover-color);
 }
 
-/* 文件管理样式优化 */
-.file-item {
-  transition: background-color 0.2s ease;
-}
+
 
 .file-item:hover {
   background-color: var(--hover-color);
@@ -6234,170 +4593,20 @@ initTheme()
   opacity: 1;
 }
 
-/* 应用管理样式优化 */
-.app-item {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
 
-.app-item:hover {
+
+.main-app-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* 组织架构样式优化 */
-.tree-node-content {
-  transition: background-color 0.2s ease;
-}
+
 
 .tree-node-content:hover {
   background-color: var(--hover-color);
 }
 
-/* 会话列表样式优化 */
-.conversation-item {
-  transition: background-color 0.2s ease;
-}
 
-.conversation-item:hover {
-  background-color: var(--hover-color);
-}
-
-/* 搜索结果悬浮窗 */
-.search-popup {
-  position: relative;
-  width: 100%;
-  max-height: 300px;
-  background: var(--sidebar-bg);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  overflow: hidden;
-  margin-bottom: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.search-popup-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.search-popup-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.search-popup-count {
-  font-weight: normal;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.search-popup-list {
-  max-height: 340px;
-  overflow-y: auto;
-}
-
-.search-popup-item {
-  display: flex;
-  align-items: center;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.search-popup-item:hover {
-  background-color: var(--hover-color);
-}
-
-.search-popup-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.search-popup-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.search-popup-info {
-  flex: 1;
-  margin-left: 12px;
-  min-width: 0;
-}
-
-.search-popup-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.search-popup-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.search-popup-username {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.search-popup-type {
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--hover-color);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-
-.search-popup-status {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 8px;
-}
-
-.search-popup-status.online {
-  background-color: #dcfce7;
-  color: #16a34a;
-}
-
-.search-popup-status.offline {
-  background-color: #fef2f2;
-  color: #dc2626;
-}
-
-.search-popup-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-}
-
-.search-popup-btn:hover {
-  background: var(--active-color);
-  transform: scale(1.05);
-}
 
 /* 深色主题适配 */
 
@@ -6598,31 +4807,8 @@ button:active {
 
 /* 春日花主题 - 窗口控制栏左侧 */
 
-/* 语音通话模态框样式 */
-.voice-call-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
 
-.voice-call-content {
-  width: 360px;
-  max-width: 90vw;
-  background-color: var(--context-menu-bg);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  animation: slideIn 0.3s ease;
-}
+
 
 @keyframes slideIn {
   from {
@@ -6635,12 +4821,6 @@ button:active {
   }
 }
 
-.voice-call-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--list-bg);
-  text-align: center;
-}
 
 .voice-call-header h3 {
   margin: 0;
@@ -6649,31 +4829,7 @@ button:active {
   color: var(--text-color);
 }
 
-.voice-call-body {
-  flex: 1;
-  padding: 40px 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
 
-.call-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.call-status-text {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-color);
-  font-size: 16px;
-  margin-bottom: 20px;
-}
 
 .call-status-text i {
   font-size: 48px;
@@ -6697,34 +4853,7 @@ button:active {
   }
 }
 
-.call-duration {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--primary-color);
-  margin-top: 12px;
-}
 
-.voice-call-footer {
-  padding: 20px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: center;
-}
-
-.end-call-btn {
-  padding: 12px 32px;
-  background-color: #f44336;
-  color: white;
-  border: none;
-  border-radius: 30px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
-}
 
 .end-call-btn:hover {
   background-color: #d32f2f;
@@ -6739,66 +4868,15 @@ button:active {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .voice-call-content {
-    width: 300px;
-  }
+
   
   .call-status-text i {
     font-size: 36px;
   }
-  
-  .call-duration {
-    font-size: 20px;
-  }
-  
-  .end-call-btn {
-    padding: 10px 24px;
-    font-size: 14px;
-  }
+
 }
 
-/* 网络错误提示 */
-.network-error {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: transparent;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: fadeIn 0.3s ease;
-}
 
-.network-error-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(254, 240, 240, 0.9);
-  border: none;
-  border-radius: 8px;
-  padding: 20px;
-  max-width: 100%;
-  width: 95%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-height: 120px;
-  max-height: 200px;
-}
-
-.error-icon {
-  color: #f56c6c;
-  font-size: 32px;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-}
-
-.error-message {
-  text-align: center;
-  margin-bottom: 20px;
-}
 
 .error-message p {
   margin: 0 0 8px 0;
@@ -6806,11 +4884,6 @@ button:active {
   font-size: 16px;
 }
 
-.error-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
 
 .retry-btn, .login-btn {
   padding: 6px 16px;
@@ -6821,20 +4894,12 @@ button:active {
   transition: all 0.3s ease;
 }
 
-.retry-btn {
-  background: rgba(255, 255, 255, 0.8);
-  color: #f56c6c;
-}
 
 .retry-btn:hover {
   background: #f56c6c;
   color: white;
 }
 
-.login-btn {
-  background: #f56c6c;
-  color: white;
-}
 
 .login-btn:hover {
   background: #f5222d;
@@ -6851,14 +4916,8 @@ button:active {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .network-error-content {
-    padding: 20px;
-    max-width: 90%;
-  }
-  
-  .error-icon {
-    font-size: 24px;
-  }
+
+
   
   .error-message p {
     font-size: 14px;
@@ -6938,10 +4997,38 @@ button:active {
   }
 }
 
+/* 顶部区域：左侧边栏 + 窗口控制栏 */
+.top-bar {
+  display: flex;
+  height: 40px;
+  -webkit-app-region: drag;
+}
+
+.top-bar-left {
+  width: 60px;
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.top-bar .window-controls {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  background: var(--window-controls-bg);
+  padding: 0 20px;
+  user-select: none;
+  -webkit-app-region: drag;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: background 0.3s ease;
+}
+
 /* 自定义窗口控制栏 */
 .window-controls {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   height: 40px;
   background: var(--window-controls-bg);
@@ -6951,22 +5038,8 @@ button:active {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.window-controls-left {
-  display: flex;
-  align-items: center;
-  width: 72px;
-  height: 100%;
-  justify-content: center;
-  background: var(--list-bg);
-  margin: 0 -20px;
-  padding: 0 20px;
-}
-
-.window-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  letter-spacing: 0.5px;
+.window-controls-spacer {
+  flex: 1;
 }
 
 .window-controls-right {
@@ -7017,71 +5090,7 @@ button:active {
   flex: 1;
   display: flex;
   overflow: hidden;
-}
-
-/* 左侧垂直选项栏样式 */
-.side-options {
-  width: 72px;
-  background: var(--list-bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px 0;
-  gap: 20px;
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.side-options:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.option-spacer {
-  flex: 0.9;
-}
-
-.settings-option {
-  /* top:-20px; */
-  /* transform: translateY(-24px); */
-  transition: none;
-  position: relative;
-}
-
-.settings-option:hover {
-  transform: translateY(-24px);
-  transition: none;
-  box-shadow: none;
-  background: var(--hover-color);
-  color: var(--primary-color);
-  position: relative;
-}
-
-/* 选项项样式 */
-.option-item {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-secondary);
-}
-
-.option-item:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
-  box-shadow: var(--shadow-sm);
-}
-
-.option-item.active {
-  background: var(--primary-color);
-  color: white;
-  box-shadow: var(--shadow-md);
-}
-
-.option-icon {
-  font-size: 20px;
+  margin-left: 60px;
 }
 
 /* 主题图标样式 */
@@ -7677,40 +5686,6 @@ button:active {
   box-shadow: var(--shadow-md);
 }
 
-.option-item {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--text-color);
-}
-
-.option-item:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
-}
-
-.option-item.active {
-  background: var(--active-color);
-  color: #fff;
-}
-
-.option-icon {
-  font-size: 18px;
-  opacity: 0.8;
-  transition: all 0.2s;
-}
-
-.option-item:hover .option-icon,
-.option-item.active .option-icon {
-  opacity: 1;
-  transform: scale(1.1);
-}
-
 /* 内容区域样式 */
 .content-area {
   flex: 1;
@@ -7989,47 +5964,6 @@ button:active {
   overflow-y: auto;
 }
 
-/* 会话列表样式 */
-
-.conversation-avatar img {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.unread-badge {
-  background: var(--primary-color);
-  color: white;
-  font-size: 10px;
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1;
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.member-count {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.7;
-  font-weight: normal;
-}
-
-.muted-icon {
-  font-size: 14px;
-  opacity: 0.7;
-  margin-right: 8px;
-  display: inline-block;
-  vertical-align: middle;
-  color: var(--text-color);
-}
-
 /* 组织架构样式 */
 .org-content {
   flex: 1;
@@ -8230,10 +6164,9 @@ button:active {
   color: var(--text-color);
 }
 
-.apps-grid {
+.main-apps-grid {
   flex: 1;
   padding: 16px;
-  /* background: var(--content-bg); */
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -8242,23 +6175,8 @@ button:active {
   align-content: flex-start;
 }
 
-.app-item {
-  width: 120px;
-  height: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--list-bg);
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-}
 
-.app-item:hover {
+.main-app-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   border-color: var(--hover-color);
@@ -8266,7 +6184,7 @@ button:active {
   opacity: 0.9;
 }
 
-.app-icon {
+.main-app-icon {
   font-size: 32px;
   margin-bottom: 8px;
   width: 48px;
@@ -8281,13 +6199,13 @@ button:active {
   opacity: 1;
 }
 
-.app-item:hover .app-icon {
+.main-app-item:hover .main-app-icon {
   transform: scale(1.05);
   background: var(--primary-color);
   color: #fff;
 }
 
-.app-name {
+.main-app-name {
   font-size: 12px;
   color: var(--text-color);
   font-weight: 500;
@@ -8298,7 +6216,7 @@ button:active {
   max-width: 100%;
 }
 
-.app-item:hover .app-name {
+.main-app-item:hover .main-app-name {
   color: var(--primary-color);
 }
 
@@ -8326,8 +6244,7 @@ button:active {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  /* background: var(--right-content-bg); */
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--sidebar-bg);
 }
 
 .section-header {
@@ -10728,21 +8645,9 @@ input:checked + .slider:before {
   opacity: 0;
 }
 
-/* 悬停效果优化 */
-.option-item {
-  transition: all 0.3s ease;
-}
 
-.option-item:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
 
-.app-item {
-  transition: all 0.3s ease;
-}
-
-.app-item:hover {
+.main-app-item:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -10883,28 +8788,16 @@ select:focus {
 
 /* 小屏幕 */
 @media (max-width: 767px) {
+  .side-options {
+    position: relative !important;
+    width: 100% !important;
+    height: 60px !important;
+    flex-direction: row;
+  }
+  
   .main-content-area {
     flex-direction: column;
-  }
-  
-  .side-options {
-    width: 100%;
-    height: 60px;
-    flex-direction: row;
-    padding: 0 20px;
-    gap: 16px;
-  }
-  
-  .option-spacer {
-    display: none;
-  }
-  
-  .settings-option {
-    transform: none;
-  }
-  
-  .settings-option:hover {
-    transform: none;
+    margin-left: 0;
   }
   
   .main-content {
@@ -10952,14 +8845,6 @@ select:focus {
   
   .window-controls {
     padding: 0 16px;
-  }
-  
-  .window-controls-left {
-    width: 60px;
-  }
-  
-  .window-title {
-    font-size: 12px;
   }
   
   .window-control-btn {

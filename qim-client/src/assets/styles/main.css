@@ -18,20 +18,6 @@
   gap: 16px;
 }
 
-.file-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.file-item:hover {
-  background: var(--hover-color);
-}
-
 .file-icon {
   font-size: 32px;
   margin-bottom: 8px;
@@ -86,24 +72,14 @@
   padding: 20px;
 }
 
-.org-content {
-  padding: 16px;
-}
-
 .tree-node {
-  padding: 8px 16px;
+  /* padding: 8px 16px; */
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tree-node:hover {
-  background: var(--hover-color);
-}
-
-.tree-node-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  /* background: var(--hover-color); */
 }
 
 .tree-node-icon {
@@ -114,147 +90,6 @@
 .tree-node-label {
   font-size: 14px;
   color: var(--text-color);
-}
-
-/* 会话列表优化 */
-.conversation-list {
-  padding: 8px;
-}
-
-.conversation-item {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  gap: 12px;
-}
-
-.conversation-item:hover {
-  background: var(--hover-color);
-}
-
-.conversation-item.active {
-  background: var(--active-color);
-}
-
-.conversation-avatar {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.conversation-avatar img {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.conversation-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.conversation-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.conversation-preview {
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 4px;
-}
-
-.conversation-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.conversation-time {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.unread-badge {
-  background: var(--primary-color);
-  color: white;
-  font-size: 10px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 5px;
-  font-weight: 600;
-}
-
-/* 按钮优化 */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary {
-  background: var(--primary-color);
-  color: white;
-}
-
-.btn-primary:hover {
-  background: var(--active-color);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-secondary {
-  background: var(--list-bg);
-  color: var(--text-color);
-}
-
-.btn-secondary:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-/* 输入框优化 */
-.input {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--text-color);
-  background: var(--context-menu-bg);
-  transition: all 0.2s ease;
-}
-
-.input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
-}
-
-.input::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.7;
 }
 
 /* 标签优化 */
@@ -285,157 +120,13 @@
   border-bottom-color: var(--primary-color);
 }
 
-/* 免打扰图标 */
-.muted-icon {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-left: 4px;
-}
-
 /* ========================================
    通用样式 - Common Styles
    ======================================== */
 
-/* 加载状态 */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #1890ff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 徽章样式 */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge-primary {
-  background: var(--primary-color);
-  color: white;
-}
-
-.badge-success {
-  background: #52c41a;
-  color: white;
-}
-
-.badge-warning {
-  background: #faad14;
-  color: white;
-}
-
-.badge-error {
-  background: #f5222d;
-  color: white;
-}
-
-/* 通知角标 */
-.notification-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #f5222d;
-}
-
-/* 群聊徽章 */
-.group-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: var(--primary-color);
-  color: white;
-  font-size: 9px;
-  padding: 0 3px;
-  border-radius: 3px;
-  line-height: 1.2;
-}
-
-/* 机器人徽章 */
-.bot-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: #9c27b0;
-  color: white;
-  font-size: 10px;
-  padding: 1px 3px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 讨论组徽章 */
-.discussion-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  padding: 1px 2px;
-}
-
 /* 主题图标 */
-.theme-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.theme-icon:hover {
-  transform: scale(1.05);
-  box-shadow: var(--shadow-md);
-}
 
 /* ========================================
    工具函数 - Utility Classes
    ======================================== */
-
-.text-center { text-align: center; }
-.text-left { text-align: left; }
-.text-right { text-align: right; }
-
-.flex { display: flex; }
-.flex-1 { flex: 1; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.gap-8 { gap: 8px; }
-.gap-16 { gap: 16px; }
-
-.overflow-hidden { overflow: hidden; }
-.overflow-auto { overflow: auto; }
-
-.cursor-pointer { cursor: pointer; }
-.cursor-not-allowed { cursor: not-allowed; }
-
-.transition { transition: all 0.2s ease; }
-.transition-slow { transition: all 0.3s ease; }
+/* 基础工具类已移至 components.css */

@@ -550,46 +550,6 @@
   background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
 }
 
-/* 都市丛林主题 */
-[data-theme="urban-jungle"] {
-  --primary-color: #27ae60;
-  --primary-light: #e8f8f0;
-  --secondary-color: #f0fff4;
-  --text-color: #1a4a2e;
-  --border-color: #c6e6d5;
-  --hover-color: #dcf5e8;
-  --active-color: #219150;
-  --sidebar-bg: #ffffff;
-  --window-controls-bg: #ffffff;
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #e8f8f0;
-  --accent-color: #2ecc71;
-  --text-secondary: #2e6b4a;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  --panel-bg: #ffffff;
-  --list-bg: #f0fff4;
-  --card-bg: #ffffff;
-  --header-panel-bg: #e8f8f0;
-}
-
-/* 都市丛林主题 - 左边侧边栏 */
-[data-theme="urban-jungle"] .side-options {
-  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-}
-
-/* 都市丛林主题 - 文本颜色 */
-[data-theme="urban-jungle"] .window-title,
-[data-theme="urban-jungle"] .option-item,
-[data-theme="urban-jungle"] .option-item.active {
-  color: #ffffff;
-}
-
-/* 都市丛林主题 - 窗口控制栏左侧 */
-[data-theme="urban-jungle"] .window-controls-left {
-  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-}
-
 /* 地中海主题 */
 [data-theme="mediterranean-dream"] {
   --primary-color: #c0392b;

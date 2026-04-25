@@ -11,7 +11,7 @@
     <!-- 普通消息 -->
     <template v-else>
       <img
-        :src="getAvatarUrl(message.sender)"
+        :src="getAvatarUrlUtil(message.sender.avatar, message.sender.name || '用户', serverUrl)"
         :alt="message.sender.name || '未知用户'"
         class="message-avatar"
         @click="$emit('showUserProfile', message.sender)"
@@ -146,7 +146,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import TextMessage from './TextMessage.vue'
 import ImageMessage from './ImageMessage.vue'
 import FileMessage from './FileMessage.vue'
@@ -156,6 +155,7 @@ import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
+import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 
 const props = defineProps<{
   message: any
@@ -179,16 +179,6 @@ const emit = defineEmits<{
   retrySendMessage: [message: any]
   showReadUsers: [message: any]
 }>()
-
-const getAvatarUrl = (sender: any): string => {
-  if (sender.avatar && sender.avatar.startsWith('http')) {
-    return sender.avatar
-  } else if (sender.avatar) {
-    return props.serverUrl + sender.avatar
-  } else {
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender.name || 'user'}`
-  }
-}
 
 // 格式化时间函数
 function formatTime(timestamp: number | string | null | undefined): string {

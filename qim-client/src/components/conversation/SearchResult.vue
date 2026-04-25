@@ -67,64 +67,69 @@ defineEmits<{
 
 <style scoped>
 .search-popup {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  background: var(--sidebar-bg, #fff);
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
-  max-height: 400px;
-  overflow-y: auto;
+  position: relative;
+  width: 100%;
+  max-height: 300px;
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
 }
 
 .search-popup-content {
-  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .search-popup-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-color, #333);
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-color);
 }
 
 .search-popup-count {
-  font-size: 12px;
-  color: var(--text-secondary, #999);
   font-weight: normal;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .search-popup-list {
-  padding: 4px 0;
+  max-height: 340px;
+  overflow-y: auto;
 }
 
 .search-popup-item {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 10px 16px;
   cursor: pointer;
-  transition: background 0.2s;
-  gap: 12px;
+  transition: background-color 0.2s ease;
 }
 
 .search-popup-item:hover {
-  background: var(--hover-color, rgba(0, 0, 0, 0.05));
+  background-color: var(--hover-color);
 }
 
 .search-popup-avatar {
-  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
   flex-shrink: 0;
+  position: relative;
 }
 
 .search-popup-avatar img {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
@@ -132,7 +137,7 @@ defineEmits<{
   position: absolute;
   bottom: -2px;
   right: -2px;
-  background: var(--primary-color, #1976d2);
+  background: var(--primary-color);
   color: white;
   font-size: 9px;
   padding: 0 3px;
@@ -150,13 +155,14 @@ defineEmits<{
 
 .search-popup-info {
   flex: 1;
+  margin-left: 12px;
   min-width: 0;
 }
 
 .search-popup-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-color, #333);
+  color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -164,50 +170,57 @@ defineEmits<{
 
 .search-popup-meta {
   display: flex;
-  gap: 8px;
   align-items: center;
-  font-size: 12px;
-  color: var(--text-secondary, #999);
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .search-popup-username {
-  opacity: 0.7;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.search-popup-type {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .search-popup-status {
-  padding: 0 4px;
-  border-radius: 2px;
-  font-size: 10px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 
 .search-popup-status.online {
-  color: var(--color-success-500);
-  background: var(--color-success-50);
+  background-color: #dcfce7;
+  color: #16a34a;
 }
 
 .search-popup-status.offline {
-  color: var(--text-secondary);
-  background: var(--color-gray-100);
+  background-color: #fef2f2;
+  color: #dc2626;
 }
 
 .search-popup-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: white;
   border: none;
-  background: none;
-  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary, #666);
-  transition: all 0.2s;
   flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .search-popup-btn:hover {
-  background: var(--hover-color, rgba(0, 0, 0, 0.05));
-  color: var(--primary-color, #1976d2);
+  background: var(--active-color);
+  transform: scale(1.05);
 }
 </style>

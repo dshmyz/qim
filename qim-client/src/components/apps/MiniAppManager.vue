@@ -1,8 +1,7 @@
 <template>
   <!-- 小程序列表面板 -->
-  <div v-if="showMiniAppList" class="mini-app-panel-container">
-    <div class="mini-app-panel-backdrop" @click="closeMiniAppList"></div>
-    <div class="mini-app-panel">
+  <div v-if="showMiniAppList" class="mini-app-panel-container" @click="closeMiniAppList">
+    <div class="mini-app-panel" @click.stop>
       <div class="mini-app-panel-header">
         <h4>小程序</h4>
         <button class="close-btn" @click="closeMiniAppList">×</button>
@@ -26,7 +25,7 @@
 import { ref, onMounted } from 'vue'
 import { showMiniAppModal } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
-import '../../assets/styles/modal.css'
+import '../../assets/styles/modules/modals.css'
 import '../../assets/styles/apps/calculator.css'
 import '../../assets/styles/apps/notepad.css'
 import '../../assets/styles/apps/password-generator.css'
@@ -343,6 +342,14 @@ onMounted(async () => {
   font-size: 20px;
   color: var(--text-secondary);
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
 }
 
 .mini-app-grid {

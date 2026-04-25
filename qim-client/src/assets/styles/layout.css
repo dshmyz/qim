@@ -1,11 +1,56 @@
 /* ========================================
    布局样式 - Layout Styles
-   从 main.css 拆分：主容器、侧边栏、窗口控制、选项栏、内容区域、右侧内容
+   从 Main.vue 迁移
    ======================================== */
 
 /* ========================================
    主容器样式 - Main Container Styles
    ======================================== */
+
+/* 主内容区域 */
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 侧边栏样式 */
+.sidebar {
+  width: 260px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 右侧内容样式 */
+.right-content {
+  flex: 1;
+  background: var(--content-bg);
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+}
+
+.right-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--sidebar-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.right-content-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
 .im-container {
   display: flex;
   flex-direction: column;
@@ -16,10 +61,59 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* 模态框内容样式 */
+.modal-content {
+  animation: modalFadeIn 0.3s ease;
+}
+
+/* 响应式设计优化 */
+@media (max-width: 768px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: 200px;
+  }
+
+  .right-content {
+    flex: 1;
+  }
+}
+
+/* 顶部区域：左侧边栏 + 窗口控制栏 */
+.top-bar {
+  display: flex;
+  height: 40px;
+  -webkit-app-region: drag;
+}
+
+.top-bar-left {
+  width: 60px;
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.top-bar .window-controls {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  background: var(--window-controls-bg);
+  padding: 0 20px;
+  user-select: none;
+  -webkit-app-region: drag;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: background 0.3s ease;
+}
+
 /* 自定义窗口控制栏 */
 .window-controls {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   height: 40px;
   background: var(--window-controls-bg);
@@ -29,22 +123,8 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.window-controls-left {
-  display: flex;
-  align-items: center;
-  width: 72px;
-  height: 100%;
-  justify-content: center;
-  background: var(--list-bg);
-  margin: 0 -20px;
-  padding: 0 20px;
-}
-
-.window-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  letter-spacing: 0.5px;
+.window-controls-spacer {
+  flex: 1;
 }
 
 .window-controls-right {
@@ -95,172 +175,119 @@
   flex: 1;
   display: flex;
   overflow: hidden;
+  margin-left: 60px;
 }
 
-/* 左侧垂直选项栏样式 */
-.side-options {
-  width: 72px;
-  background: var(--list-bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px 0;
-  gap: 20px;
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.side-options:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.option-spacer {
-  flex: 0.9;
-}
-
-.settings-option {
-  transition: none;
-  position: relative;
-}
-
-.settings-option:hover {
-  transform: translateY(-24px);
-  transition: none;
-  box-shadow: none;
-  background: var(--hover-color);
-  color: var(--primary-color);
-  position: relative;
-}
-
-/* 选项项样式 */
-.option-item {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.3s ease;
-}
-
-.option-item:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
+/* 主题图标样式 */
+.theme-icon {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
   box-shadow: var(--shadow-sm);
-  transform: translateY(-2px);
 }
 
-.option-item.active {
-  background: var(--primary-color);
-  color: white;
-  box-shadow: var(--shadow-md);
+/* ========================================
+   主题图标样式 - Theme Icon Styles
+   ======================================= */
+.modern-light-theme {
+  background: #3b82f6;
+  border: 1px solid #2563eb;
 }
 
-.option-icon {
-  font-size: 20px;
-  position: relative;
+.elegant-dark-theme {
+  background: #1e293b;
+  border: 1px solid #334155;
 }
 
-.option-item:hover .option-icon,
-.option-item.active .option-icon {
-  opacity: 1;
-  transform: scale(1.1);
+.ocean-blue-theme {
+  background: #0ea5e9;
+  border: 1px solid #0284c7;
 }
 
-/* 主内容区域 */
-.main-content {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
+.elegant-purple-theme {
+  background: #8b5cf6;
+  border: 1px solid #7c3aed;
 }
 
-/* 内容区域样式 */
-.content-area {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
+.warm-amber-theme {
+  background: #f59e0b;
+  border: 1px solid #d97706;
 }
 
-.content-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.crimson-red-theme {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
 }
 
-/* 右侧内容样式 */
-.right-content {
-  flex: 1;
-  background: var(--right-content-bg);
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
+.emerald-green-theme {
+  background: #10b981;
+  border: 1px solid #059669;
 }
 
-.right-content-header {
-  padding: 16px 20px;
-  background: var(--right-content-header-bg);
-  height: 72px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border-bottom: 1px solid var(--border-color);
+.urban-jungle-theme {
+  background: #4b5563;
+  border: 1px solid #374151;
 }
 
-.right-content-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 500;
-  color: var(--text-color);
+.mediterranean-dream-theme {
+  background: #0284c7;
+  border: 1px solid #0369a1;
 }
 
-.right-content-body {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-color);
-  font-size: 14px;
-  opacity: 0.7;
+.monochrome-elegance-theme {
+  background: #6b7280;
+  border: 1px solid #4b5563;
 }
 
-.empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--right-content-bg);
+.spring-blossom-theme {
+  background: #ec4899;
+  border: 1px solid #db2777;
 }
 
-.empty-content {
-  text-align: center;
-  color: var(--text-secondary);
+.green-theme {
+  background: #22c55e;
+  border: 1px solid #16a34a;
 }
 
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
+.light-theme {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
 }
 
-/* 炫酷黑主题 - 主内容区域 */
-[data-theme="elegant-dark"] .main-content {
-  background: var(--secondary-color) !important;
+.dark-theme {
+  background: #111827;
+  border: 1px solid #1f2937;
 }
 
-/* 炫酷黑主题 - 无会话状态 */
+.netblue-theme {
+  background: #3b82f6;
+  border: 1px solid #2563eb;
+}
+
+.elegantpurple-theme {
+  background: #8b5cf6;
+  border: 1px solid #7c3aed;
+}
+
+.sacredyellow-theme {
+  background: #f59e0b;
+  border: 1px solid #d97706;
+}
+
+.chinesered-theme {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+}
+
+.grassgreen-theme {
+  background: #10b981;
+  border: 1px solid #059669;
+}
+
+/* 炫酷黑主题 */
 [data-theme="elegant-dark"] .no-conversation {
   background: var(--secondary-color) !important;
   color: var(--text-color) !important;
-}
-
-/* 炫酷黑主题 - 应用内容区域 */
-[data-theme="elegant-dark"] .apps-content {
-  background: var(--secondary-color) !important;
-}
-
-[data-theme="elegant-dark"] .recent-apps-section,
-[data-theme="elegant-dark"] .all-apps-section {
-  background: var(--secondary-color) !important;
 }

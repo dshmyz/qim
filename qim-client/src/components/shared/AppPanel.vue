@@ -1,8 +1,8 @@
 <template>
   <div class="apps-container">
-    <div class="app-tabs">
+    <div class="panel-tabs">
       <div
-        class="app-tab-item"
+        class="panel-tab-item"
         :class="{ active: activeAppTab === 'categories' }"
         @click="handleTabClick('categories')"
       >
@@ -23,15 +23,15 @@
             <span class="category-name">{{ category.name }}</span>
             <span class="category-toggle">{{ category.expanded ? '▼' : '▶' }}</span>
           </div>
-          <div v-if="category.expanded" class="category-apps">
+          <div v-if="category.expanded" class="panel-category-apps">
             <div
               v-for="app in category.apps"
               :key="app.id"
-              class="category-app-item"
+              class="panel-category-app-item"
               @click="handleAppClick(app)"
             >
-              <div class="category-app-icon"><i :class="app.icon"></i></div>
-              <span class="category-app-name">{{ app.name }}</span>
+              <div class="panel-category-app-icon"><i :class="app.icon"></i></div>
+              <span class="panel-category-app-name">{{ app.name }}</span>
             </div>
           </div>
         </div>
@@ -88,22 +88,19 @@ const handleTabClick = (tab: string) => {
 
 <style scoped>
 .apps-container {
-  background: var(--list-bg);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--sidebar-bg);
   overflow: hidden;
-  margin: 8px 8px;
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 8px 0;
 }
 
-.app-tabs {
+.panel-tabs {
   display: flex;
   margin-bottom: 16px;
 }
 
-.app-tab-item {
+.panel-tab-item {
   flex: 1;
   display: flex;
   align-items: center;
@@ -115,11 +112,11 @@ const handleTabClick = (tab: string) => {
   gap: 8px;
 }
 
-.app-tab-item:hover {
+.panel-tab-item:hover {
   background: var(--hover-color);
 }
 
-.app-tab-item.active {
+.panel-tab-item.active {
   border-bottom-color: var(--primary-color);
   color: var(--primary-color);
 }
@@ -180,11 +177,11 @@ const handleTabClick = (tab: string) => {
   background: var(--hover-color);
 }
 
-.category-apps {
+.panel-category-apps {
   background: transparent;
 }
 
-.category-app-item {
+.panel-category-app-item {
   display: flex;
   align-items: center;
   padding: 8px 16px 8px 32px;
@@ -193,11 +190,11 @@ const handleTabClick = (tab: string) => {
   border: none;
 }
 
-.category-app-item:hover {
+.panel-category-app-item:hover {
   background: var(--hover-color);
 }
 
-.category-app-icon {
+.panel-category-app-icon {
   font-size: 16px;
   margin-right: 12px;
   width: 20px;
@@ -205,42 +202,9 @@ const handleTabClick = (tab: string) => {
   color: var(--primary-color);
 }
 
-.category-app-name {
+.panel-category-app-name {
   font-size: 13px;
   color: var(--text-color);
   flex: 1;
-}
-
-.all-apps {
-  padding: 0 8px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.app-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s;
-  text-align: center;
-}
-
-.app-item:hover {
-  background: var(--hover-color);
-}
-
-.app-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-  color: var(--primary-color);
-}
-
-.app-name {
-  font-size: 13px;
-  color: var(--text-color);
 }
 </style>

@@ -1,9 +1,273 @@
 /* ========================================
-   对话框/弹窗样式 - Dialog/Modal Styles
-   从 main.css 拆分
+   弹窗样式 - Modal Styles
+   从 dialogs.css 和 modal.css 提取重组
    ======================================== */
 
-/* 语音通话模态框样式 */
+/* ========================================
+   通用动画
+   ======================================== */
+/* 动画关键帧已统一到 components.css */
+
+/* ========================================
+   小程序模态框样式
+   ======================================== */
+
+.mini-app-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.mini-app-modal-content {
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mini-app-modal-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mini-app-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.mini-app-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.mini-app-modal-body {
+  padding: 20px;
+}
+
+.mini-app-modal-icon {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.mini-app-modal-icon img {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+}
+
+.mini-app-modal-description {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+.mini-app-modal-content-area {
+  background: var(--content-bg);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.mini-app-modal-content-area h3 {
+  margin-top: 0;
+  color: var(--text-color);
+}
+
+.mini-app-modal-content-area p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.mini-app-modal-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mini-app-modal-btn {
+  padding: 8px 16px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* ========================================
+   分享内容预览弹窗样式
+   ======================================== */
+
+.share-preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.share-preview-content {
+  background: var(--sidebar-bg);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.share-preview-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.share-preview-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.share-preview-body {
+  padding: 20px;
+}
+
+.share-file-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.share-file-icon {
+  font-size: 48px;
+  color: var(--primary-color);
+}
+
+.share-file-info {
+  flex: 1;
+}
+
+.share-preview-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 8px;
+}
+
+.share-file-size {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.share-preview-content-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.share-preview-meta {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.share-preview-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.share-file-action-btn {
+  padding: 8px 16px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.share-file-action-btn:hover {
+  background: var(--active-color);
+}
+
+/* ========================================
+   便签预览样式
+   ======================================== */
+
+.sticky-note-preview {
+  background: #fff9c4;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sticky-note-preview .share-preview-header {
+  background: rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.sticky-note-content {
+  font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+
+.sticky-note-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
+}
+
+.sticky-note-body {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sticky-note-preview .share-preview-meta {
+  color: #666;
+  border-top: 1px dashed rgba(0, 0, 0, 0.2);
+  padding-top: 8px;
+  margin-top: 12px;
+}
+
+/* ========================================
+   语音通话模态框样式
+   ======================================== */
+
 .voice-call-modal {
   position: fixed;
   top: 0;
@@ -27,17 +291,6 @@
   display: flex;
   flex-direction: column;
   animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
 }
 
 .voice-call-header {
@@ -87,21 +340,6 @@
   animation: pulse 2s infinite;
 }
 
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
 .call-duration {
   font-size: 24px;
   font-weight: 600;
@@ -142,7 +380,10 @@
   font-size: 18px;
 }
 
-/* 网络错误提示 */
+/* ========================================
+   网络错误提示
+   ======================================== */
+
 .network-error {
   position: fixed;
   top: 0;
@@ -225,16 +466,10 @@
   background: #f5222d;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
+/* ========================================
+   关于对话框样式
+   ======================================== */
 
-/* 关于对话框样式 */
 .about-dialog-overlay {
   position: fixed;
   top: 0;
@@ -372,7 +607,10 @@
   box-shadow: var(--shadow-md);
 }
 
-/* 退出登录对话框样式 */
+/* ========================================
+   退出登录对话框样式
+   ======================================== */
+
 .logout-dialog-overlay {
   position: fixed;
   top: 0;
@@ -486,7 +724,10 @@
   box-shadow: var(--shadow-md);
 }
 
-/* 检查更新对话框样式 */
+/* ========================================
+   检查更新对话框样式
+   ======================================== */
+
 .update-dialog-overlay {
   position: fixed;
   top: 0;
@@ -554,26 +795,6 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #1890ff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.loading-text {
-  margin: 0;
-  font-size: 14px;
-  color: #666;
 }
 
 .update-downloading {
@@ -699,129 +920,38 @@
   box-shadow: var(--shadow-md);
 }
 
-/* 添加成员模态框样式 */
-.add-members-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
+/* ========================================
+   响应式设计
+   ======================================== */
 
-.add-members-content {
-  background-color: var(--right-content-bg);
-  border-radius: 12px;
-  width: 600px;
-  max-width: 90%;
-  max-height: 85vh;
-  overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-color);
-}
+@media (max-width: 768px) {
+  .voice-call-content {
+    width: 300px;
+  }
 
-.add-members-header {
-  padding: 24px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: var(--right-content-header-bg);
-}
+  .call-status-text i {
+    font-size: 36px;
+  }
 
-.add-members-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-}
+  .call-duration {
+    font-size: 20px;
+  }
 
-.add-members-header .close-btn {
-  background: transparent;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--text-color);
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: all 0.2s;
-  opacity: 0.6;
-}
+  .end-call-btn {
+    padding: 10px 24px;
+    font-size: 14px;
+  }
 
-.add-members-header .close-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-  opacity: 1;
-}
+  .network-error-content {
+    padding: 20px;
+    max-width: 90%;
+  }
 
-.add-members-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
+  .error-icon {
+    font-size: 24px;
+  }
 
-.add-members-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  background-color: var(--right-content-header-bg);
-}
-
-.add-members-footer .cancel-btn {
-  padding: 10px 24px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s;
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-.add-members-footer .cancel-btn:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  background-color: var(--primary-light);
-}
-
-.confirm-btn {
-  padding: 10px 24px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s;
-  background-color: #1890ff;
-  color: #fff;
-  font-weight: 500;
-  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
-}
-
-.confirm-btn:hover {
-  background-color: #40a9ff;
-  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-.confirm-btn:disabled {
-  background-color: #f0f0f0;
-  color: #999;
-  cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
-}
-
-.confirm-btn:disabled:hover {
-  background-color: #f0f0f0;
-  box-shadow: none;
-  transform: none;
+  .error-message p {
+    font-size: 14px;
+  }
 }

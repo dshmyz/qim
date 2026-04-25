@@ -6,7 +6,6 @@
         <button class="close-btn" @click="close">×</button>
       </div>
       <div class="share-modal-body">
-        <!-- 搜索框 -->
         <div class="share-search-box">
           <input
             v-model="searchQuery"
@@ -17,7 +16,6 @@
           <i class="fas fa-search share-search-icon"></i>
         </div>
         
-        <!-- 选项卡 -->
         <div class="share-tabs">
           <button 
             class="share-tab" 
@@ -35,7 +33,6 @@
           </button>
         </div>
         
-        <!-- 用户列表 -->
         <div v-if="activeTab === 'users'" class="share-list">
           <div 
             v-for="user in filteredUsers" 
@@ -58,7 +55,6 @@
           </div>
         </div>
         
-        <!-- 群聊列表 -->
         <div v-else-if="activeTab === 'groups'" class="share-list">
           <div 
             v-for="group in filteredGroups" 
@@ -96,9 +92,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 
-// Props
 const props = defineProps({
   visible: {
     type: Boolean,
@@ -118,16 +113,13 @@ const props = defineProps({
   }
 })
 
-// Emits
 const emit = defineEmits(['close', 'confirm'])
 
-// State
 const searchQuery = ref('')
 const activeTab = ref('users')
 const selectedUsers = ref<string[]>([])
 const selectedGroups = ref<string[]>([])
 
-// Computed
 const filteredUsers = computed(() => {
   if (!searchQuery.value) return props.users
   const query = searchQuery.value.toLowerCase()
@@ -145,7 +137,6 @@ const filteredGroups = computed(() => {
   )
 })
 
-// Methods
 const close = () => {
   emit('close')
 }
@@ -175,13 +166,13 @@ const toggleGroupSelection = (groupId: string) => {
   }
 }
 
-// Lifecycle
-onMounted(() => {
-  // 重置选择
-  selectedUsers.value = []
-  selectedGroups.value = []
-  searchQuery.value = ''
-  activeTab.value = 'users'
+watch(() => props.visible, (newVal) => {
+  if (newVal) {
+    selectedUsers.value = []
+    selectedGroups.value = []
+    searchQuery.value = ''
+    activeTab.value = 'users'
+  }
 })
 </script>
 
@@ -200,7 +191,7 @@ onMounted(() => {
 }
 
 .share-modal-content {
-  background: white;
+  background: var(--card-bg, #ffffff);
   border-radius: 8px;
   width: 480px;
   max-width: 90%;
@@ -212,7 +203,7 @@ onMounted(() => {
 
 .share-modal-header {
   padding: 16px 20px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -222,7 +213,7 @@ onMounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .close-btn {
@@ -230,7 +221,7 @@ onMounted(() => {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #999;
+  color: var(--text-secondary, #999);
   padding: 0;
   width: 24px;
   height: 24px;
@@ -242,8 +233,8 @@ onMounted(() => {
 }
 
 .close-btn:hover {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--hover-color, #f5f5f5);
+  color: var(--text-color, #333);
 }
 
 .share-modal-body {
@@ -260,16 +251,18 @@ onMounted(() => {
 .share-search-input {
   width: 100%;
   padding: 8px 32px 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 4px;
   font-size: 14px;
   transition: all 0.3s;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-color, #333);
 }
 
 .share-search-input:focus {
   outline: none;
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  border-color: var(--primary-color, #1890ff);
+  box-shadow: 0 0 0 2px var(--primary-light, rgba(24, 144, 255, 0.2));
 }
 
 .share-search-icon {
@@ -277,14 +270,14 @@ onMounted(() => {
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: #999;
+  color: var(--text-secondary, #999);
   font-size: 14px;
 }
 
 .share-tabs {
   display: flex;
   margin-bottom: 16px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
 }
 
 .share-tab {
@@ -293,19 +286,19 @@ onMounted(() => {
   background: none;
   border: none;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.3s;
   border-bottom: 2px solid transparent;
 }
 
 .share-tab:hover {
-  color: #1890ff;
+  color: var(--primary-color, #1890ff);
 }
 
 .share-tab.active {
-  color: #1890ff;
-  border-bottom-color: #1890ff;
+  color: var(--primary-color, #1890ff);
+  border-bottom-color: var(--primary-color, #1890ff);
 }
 
 .share-list {
@@ -324,12 +317,12 @@ onMounted(() => {
 }
 
 .share-item:hover {
-  background: #f5f5f5;
+  background: var(--hover-color, #f5f5f5);
 }
 
 .share-item.selected {
-  background: #e6f7ff;
-  border: 1px solid #91d5ff;
+  background: var(--primary-light, #e6f7ff);
+  border: 1px solid var(--primary-color, #91d5ff);
 }
 
 .share-item-avatar {
@@ -348,7 +341,7 @@ onMounted(() => {
 .share-item-name {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-color, #333);
   margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -357,7 +350,7 @@ onMounted(() => {
 
 .share-item-desc {
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary, #999);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -366,32 +359,32 @@ onMounted(() => {
 .share-item-checkbox {
   width: 20px;
   height: 20px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1890ff;
+  color: var(--primary-color, #1890ff);
   font-size: 12px;
   transition: all 0.2s;
 }
 
 .share-item.selected .share-item-checkbox {
-  background: #1890ff;
-  border-color: #1890ff;
+  background: var(--primary-color, #1890ff);
+  border-color: var(--primary-color, #1890ff);
   color: white;
 }
 
 .empty-share {
   text-align: center;
   padding: 40px 0;
-  color: #999;
+  color: var(--text-secondary, #999);
   font-size: 14px;
 }
 
 .share-modal-footer {
   padding: 16px 20px;
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid var(--border-color, #e8e8e8);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -400,25 +393,25 @@ onMounted(() => {
 
 .cancel-btn {
   padding: 6px 16px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 4px;
-  background: white;
-  color: #333;
+  background: var(--card-bg, white);
+  color: var(--text-color, #333);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .cancel-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: var(--primary-color, #1890ff);
+  color: var(--primary-color, #1890ff);
 }
 
 .confirm-btn {
   padding: 6px 16px;
-  border: 1px solid #1890ff;
+  border: 1px solid var(--primary-color, #1890ff);
   border-radius: 4px;
-  background: #1890ff;
+  background: var(--primary-color, #1890ff);
   color: white;
   font-size: 14px;
   cursor: pointer;
@@ -426,14 +419,14 @@ onMounted(() => {
 }
 
 .confirm-btn:hover:not(:disabled) {
-  background: #40a9ff;
-  border-color: #40a9ff;
+  background: var(--active-color, #40a9ff);
+  border-color: var(--active-color, #40a9ff);
 }
 
 .confirm-btn:disabled {
-  background: #f0f0f0;
-  border-color: #d9d9d9;
-  color: #999;
+  background: var(--color-gray-100, #f0f0f0);
+  border-color: var(--border-color, #d9d9d9);
+  color: var(--text-secondary, #999);
   cursor: not-allowed;
 }
 </style>

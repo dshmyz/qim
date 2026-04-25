@@ -2,81 +2,221 @@
   <div v-if="visible" class="call-modal" @click="handleEndCall">
     <div class="call-modal-content" @click.stop>
       <div class="call-modal-header">
-        <h3>{{ callType === 'voice' ? '语音通话' : '视频通话' }}</h3>
+        <h3>{{ currentCallType === 'voice' ? '语音通话' : '视频通话' }}</h3>
       </div>
       <div class="call-modal-body">
-        <div class="call-info">
+        <!-- 视频通话区域 -->
+        <div v-if="currentCallType === 'video'" class="video-container">
+          <!-- 远程视频（大窗口） -->
+          <div class="remote-video">
+            <video
+              v-if="remoteStream"
+              ref="remoteVideoRef"
+              class="video-element"
+              autoplay
+              playsinline
+            ></video>
+            <div v-else class="video-placeholder">
+              <i class="fas fa-user"></i>
+              <span>{{ name || '对方' }}</span>
+            </div>
+          </div>
+
+          <!-- 本地视频预览（小窗口悬浮） -->
+          <div v-if="currentStatus === 'answered'" class="local-video">
+            <video
+              v-if="localStream && isVideoEnabled"
+              ref="localVideoRef"
+              class="video-element"
+              autoplay
+              playsinline
+              muted
+            ></video>
+            <div v-else class="video-placeholder small">
+              <i class="fas fa-user"></i>
+            </div>
+          </div>
+
+          <!-- 通话信息覆盖层 -->
+          <div v-if="currentStatus !== 'answered'" class="call-info">
+            <div class="call-avatar">
+              <img :src="avatar" :alt="name || '未知'" />
+            </div>
+            <div class="call-name">{{ name || '未知' }}</div>
+            <div class="call-status">
+              <span v-if="currentStatus === 'ringing'" class="status-ringing">正在呼叫...</span>
+              <span v-else-if="currentStatus === 'ended'" class="status-ended">通话结束</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 语音通话时显示的头像和信息 -->
+        <div v-else class="call-info">
           <div class="call-avatar">
             <img :src="avatar" :alt="name || '未知'" />
           </div>
           <div class="call-name">{{ name || '未知' }}</div>
           <div class="call-status">
-            <span v-if="status === 'ringing'" class="status-ringing">正在呼叫...</span>
-            <span v-else-if="status === 'answered'" class="status-answered">通话中</span>
-            <span v-else-if="status === 'ended'" class="status-ended">通话结束</span>
-          </div>
-        </div>
-
-        <!-- 视频通话区域 -->
-        <div v-if="callType === 'video' && status === 'answered'" class="video-container">
-          <div class="local-video">
-            <div class="video-placeholder">
-              <i class="fas fa-user"></i>
-              <span>您</span>
-            </div>
-          </div>
-          <div class="remote-video">
-            <div class="video-placeholder">
-              <i class="fas fa-user"></i>
-              <span>{{ name || '对方' }}</span>
-            </div>
+            <span v-if="currentStatus === 'ringing'" class="status-ringing">正在呼叫...</span>
+            <span v-else-if="currentStatus === 'answered'" class="status-answered">通话中</span>
+            <span v-else-if="currentStatus === 'ended'" class="status-ended">通话结束</span>
           </div>
         </div>
       </div>
       <div class="call-modal-footer">
-        <button v-if="status === 'ringing'" class="call-btn reject-btn" @click.stop="handleRejectCall">
-          <i class="fas fa-phone-slash"></i>
-          <span>拒绝</span>
-        </button>
-        <button v-if="status === 'ringing'" class="call-btn answer-btn" @click.stop="handleAnswerCall">
-          <i class="fas fa-phone"></i>
-          <span>接听</span>
-        </button>
-        <button v-else class="call-btn end-btn" @click.stop="handleEndCall">
-          <i class="fas fa-phone-slash"></i>
-          <span>结束通话</span>
-        </button>
+        <!-- 通话控制按钮 -->
+        <template v-if="status === 'answered'">
+          <!-- 静音按钮 -->
+          <button
+            class="call-btn control-btn"
+            :class="{ 'control-btn-active': isMuted }"
+            @click.stop="handleToggleMute"
+            :title="isMuted ? '取消静音' : '静音'"
+          >
+            <i :class="isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone'"></i>
+            <span>{{ isMuted ? '静音' : '麦克风' }}</span>
+          </button>
+
+          <!-- 视频开关按钮（仅视频通话显示） -->
+          <button
+            v-if="callType === 'video'"
+            class="call-btn control-btn"
+            :class="{ 'control-btn-active': !isVideoEnabled }"
+            @click.stop="handleToggleVideo"
+            :title="isVideoEnabled ? '关闭摄像头' : '开启摄像头'"
+          >
+            <i :class="isVideoEnabled ? 'fas fa-video' : 'fas fa-video-slash'"></i>
+            <span>{{ isVideoEnabled ? '摄像头' : '已关闭' }}</span>
+          </button>
+
+          <!-- 结束通话按钮 -->
+          <button class="call-btn end-btn" @click.stop="handleEndCall">
+            <i class="fas fa-phone-slash"></i>
+            <span>结束通话</span>
+          </button>
+        </template>
+
+        <!-- 呼入时显示的按钮 -->
+        <template v-else-if="status === 'ringing'">
+          <button class="call-btn reject-btn" @click.stop="handleRejectCall">
+            <i class="fas fa-phone-slash"></i>
+            <span>拒绝</span>
+          </button>
+          <button class="call-btn answer-btn" @click.stop="handleAnswerCall">
+            <i class="fas fa-phone"></i>
+            <span>接听</span>
+          </button>
+        </template>
+
+        <!-- 通话结束时显示关闭按钮 -->
+        <template v-else>
+          <button class="call-btn close-btn" @click.stop="handleClose">
+            <i class="fas fa-times"></i>
+            <span>关闭</span>
+          </button>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, watch, computed } from 'vue'
+import { useVideoCall } from '../../composables/useVideoCall'
+
 interface Props {
   visible: boolean
-  callType: 'voice' | 'video' | ''
-  status: 'ringing' | 'answered' | 'ended' | ''
+  callType?: 'voice' | 'video' | ''
+  status?: 'ringing' | 'answered' | 'ended' | ''
   avatar: string
   name: string
 }
 
-defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  callType: '',
+  status: ''
+})
+
 const emit = defineEmits<{
   (e: 'reject-call'): void
   (e: 'answer-call'): void
   (e: 'end-call'): void
+  (e: 'close'): void
 }>()
 
+// 集成 useVideoCall
+const {
+  callStatus,
+  callType: videoCallType,
+  localStream,
+  remoteStream,
+  isMuted,
+  isVideoEnabled,
+  toggleMute,
+  toggleVideo,
+  endCall: endVideoCall,
+  rejectCall: rejectVideoCall,
+  answerCall: answerVideoCall
+} = useVideoCall()
+
+// 视频元素引用
+const localVideoRef = ref<HTMLVideoElement | null>(null)
+const remoteVideoRef = ref<HTMLVideoElement | null>(null)
+
+// 计算属性：优先使用 props 的值，否则使用 useVideoCall 的值
+const currentCallType = computed(() => {
+  return props.callType || videoCallType.value
+})
+
+const currentStatus = computed(() => {
+  return props.status || callStatus.value
+})
+
+// 监听 localStream 变化，自动设置 video 元素的 srcObject
+watch(localStream, (stream) => {
+  if (localVideoRef.value && stream) {
+    localVideoRef.value.srcObject = stream
+  }
+})
+
+// 监听 remoteStream 变化，自动设置 video 元素的 srcObject
+watch(remoteStream, (stream) => {
+  if (remoteVideoRef.value && stream) {
+    remoteVideoRef.value.srcObject = stream
+  }
+})
+
+// 处理静音切换
+const handleToggleMute = () => {
+  toggleMute()
+}
+
+// 处理视频开关切换
+const handleToggleVideo = () => {
+  toggleVideo()
+}
+
+// 处理拒绝通话
 const handleRejectCall = () => {
+  rejectVideoCall()
   emit('reject-call')
 }
 
+// 处理接听通话
 const handleAnswerCall = () => {
+  answerVideoCall()
   emit('answer-call')
 }
 
+// 处理结束通话
 const handleEndCall = () => {
+  endVideoCall()
   emit('end-call')
+}
+
+// 处理关闭（通话结束后）
+const handleClose = () => {
+  emit('close')
 }
 </script>
 
@@ -134,6 +274,8 @@ const handleEndCall = () => {
   align-items: center;
   justify-content: center;
   background: var(--content-bg);
+  position: relative;
+  min-height: 400px;
 }
 
 .call-info {
@@ -187,35 +329,46 @@ const handleEndCall = () => {
 /* 视频通话区域 */
 .video-container {
   width: 100%;
-  max-width: 400px;
-  margin-top: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.local-video,
-.remote-video {
-  width: 100%;
-  height: 200px;
-  border-radius: 8px;
+  height: 300px;
+  position: relative;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--sidebar-bg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.remote-video {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-color);
+  background: #1a1a1a;
+}
+
+.remote-video .video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .local-video {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
   width: 120px;
   height: 90px;
-  position: absolute;
-  top: 20px;
-  right: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #2a2a2a;
   border: 2px solid var(--primary-color);
-  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.local-video .video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
 }
 
 .video-placeholder {
@@ -240,10 +393,19 @@ const handleEndCall = () => {
   font-weight: 500;
 }
 
+.video-placeholder.small {
+  padding: 8px;
+}
+
+.video-placeholder.small i {
+  font-size: 24px;
+  margin-bottom: 0;
+}
+
 .call-modal-footer {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  gap: 16px;
   padding: 24px;
   background: var(--sidebar-bg);
   border-top: 1px solid var(--border-color);
@@ -251,8 +413,8 @@ const handleEndCall = () => {
 }
 
 .call-btn {
-  width: 60px;
-  height: 60px;
+  min-width: 70px;
+  height: 70px;
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -267,7 +429,7 @@ const handleEndCall = () => {
 }
 
 .call-btn i {
-  font-size: 20px;
+  font-size: 22px;
   margin-bottom: 4px;
 }
 
@@ -304,19 +466,60 @@ const handleEndCall = () => {
   box-shadow: 0 6px 16px rgba(244, 67, 54, 0.4);
 }
 
-.screen-share-btn {
+.close-btn {
+  background: #757575;
+  color: #fff;
+}
+
+.close-btn:hover {
+  background: #616161;
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(117, 117, 117, 0.4);
+}
+
+/* 控制按钮样式 */
+.control-btn {
+  background: #424242;
+  color: #fff;
+}
+
+.control-btn:hover {
+  background: #616161;
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.control-btn-active {
   background: #ff9800;
   color: #fff;
-  margin-left: 10px;
 }
 
-.screen-share-btn:hover {
+.control-btn-active:hover {
   background: #f57c00;
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
 }
 
-/* 炫酷黑主题 - 通话模态框 */
+/* 动画 */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 暗黑主题适配 */
 :deep([data-theme="dark"]) .call-modal-content {
   background: var(--sidebar-bg) !important;
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5) !important;
@@ -361,5 +564,17 @@ const handleEndCall = () => {
   background: var(--sidebar-bg) !important;
   border-top: 1px solid var(--border-color) !important;
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+:deep([data-theme="dark"]) .control-btn {
+  background: #424242;
+}
+
+:deep([data-theme="dark"]) .control-btn:hover {
+  background: #616161;
+}
+
+:deep([data-theme="dark"]) .control-btn-active {
+  background: #ff9800;
 }
 </style>

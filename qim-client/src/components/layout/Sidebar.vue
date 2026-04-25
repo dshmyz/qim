@@ -46,6 +46,7 @@ interface Props {
   selectedChannel: any
   appCategories: AppCategory[]
   searchResults: SearchResultItem[]
+  collapsed?: boolean
 }
 
 const props = defineProps<Props>()
@@ -123,9 +124,9 @@ const filteredConversations = computed(() => {
 </script>
 
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ 'sidebar-collapsed': collapsed }">
     <!-- 侧边栏头部 -->
-    <div class="sidebar-header">
+    <div class="sidebar-header" v-show="!collapsed">
       <div class="user-info" @click="$emit('showUserProfile')">
         <img
           :src="userAvatar"
@@ -146,7 +147,7 @@ const filteredConversations = computed(() => {
     </div>
 
     <!-- 搜索框 -->
-    <div class="search-box">
+    <div class="search-box" v-show="!collapsed">
       <input
         :value="searchQuery"
         @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
@@ -157,7 +158,7 @@ const filteredConversations = computed(() => {
     </div>
 
     <!-- 侧边栏内容 -->
-    <div class="sidebar-content">
+    <div class="sidebar-content" v-show="!collapsed">
       <div v-if="activeOption === 'recent'" class="content-section">
         <SearchResult
           v-if="searchQuery && searchResults.length > 0"
@@ -212,21 +213,20 @@ const filteredConversations = computed(() => {
 </template>
 
 <style scoped>
-/* 侧边栏样式 */
 .sidebar {
   width: 320px;
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.3s ease;
-  flex-shrink: 0;
   box-shadow: var(--shadow-sm);
   z-index: 5;
+  transition: width 0.3s ease;
 }
 
-.sidebar.collapsed {
+.sidebar.sidebar-collapsed {
   width: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -333,11 +333,13 @@ const filteredConversations = computed(() => {
   flex: 1;
   overflow-y: auto;
   background: var(--sidebar-bg);
+  position: relative;
 }
 
 .content-section {
   height: 100%;
   overflow-y: auto;
+  position: relative;
 }
 
 /* 移动设备适配 */

@@ -1,0 +1,294 @@
+/* ========================================
+   聊天窗口样式 - Chat Styles
+   包含聊天窗口相关的全局样式
+   ======================================== */
+
+/* ========================================
+   聊天内容区域
+   ======================================== */
+
+/* 聊天消息区域 */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--content-bg);
+}
+
+/* 聊天消息容器 */
+.chat-messages-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 聊天消息项 */
+.chat-message {
+  display: flex;
+  gap: 12px;
+  max-width: 80%;
+}
+
+.chat-message.self {
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+
+.chat-message-avatar {
+  flex-shrink: 0;
+}
+
+.chat-message-avatar img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-message-bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--list-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.chat-message.self .chat-message-bubble {
+  background: var(--primary-color);
+  color: white;
+}
+
+.chat-message-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 8px;
+}
+
+.chat-message.self .chat-message-time {
+  text-align: right;
+}
+
+/* ========================================
+   聊天输入区域
+   ======================================== */
+
+.chat-input-area {
+  padding: 12px 16px;
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--border-color);
+}
+
+.chat-input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.chat-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-input {
+  width: 100%;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  background: var(--context-menu-bg);
+  color: var(--text-color);
+  transition: border-color 0.2s;
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.chat-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.chat-input-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-send-btn {
+  padding: 10px 20px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chat-send-btn:hover {
+  background: var(--active-color);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn:disabled {
+  background: var(--color-gray-300);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ========================================
+   聊天工具栏
+   ======================================== */
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.chat-toolbar-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.chat-toolbar-btn:hover {
+  background: var(--hover-color);
+  color: var(--primary-color);
+}
+
+/* ========================================
+   聊天头部
+   ======================================== */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--sidebar-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin: 0;
+  margin-bottom: 1px;
+  border-radius: 0;
+}
+
+.chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-header-avatar {
+  position: relative;
+}
+
+.chat-header-avatar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-header-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.chat-header-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chat-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ========================================
+   空状态
+   ======================================== */
+
+.chat-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--content-bg);
+  color: var(--text-secondary);
+}
+
+.chat-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.chat-empty-text {
+  font-size: 14px;
+}
+
+/* ========================================
+   主题切换样式 - 炫酷黑主题
+   ======================================== */
+
+[data-theme="elegant-dark"] .chat-messages {
+  background: var(--secondary-color) !important;
+}
+
+[data-theme="elegant-dark"] .chat-message-bubble {
+  background: var(--list-bg) !important;
+  color: var(--text-color) !important;
+}
+
+[data-theme="elegant-dark"] .chat-message.self .chat-message-bubble {
+  background: var(--primary-color) !important;
+  color: white !important;
+}
+
+[data-theme="elegant-dark"] .chat-input {
+  background: var(--sidebar-bg) !important;
+  border-color: var(--border-color) !important;
+}
+
+[data-theme="elegant-dark"] .chat-input:focus {
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="elegant-dark"] .chat-header {
+  background: var(--sidebar-bg) !important;
+}

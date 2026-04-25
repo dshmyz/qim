@@ -140,8 +140,8 @@ const handleStartPrivateChat = (member: Member) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 6px 8px 0 8px;
+  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .members-header {
