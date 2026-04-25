@@ -5054,6 +5054,9 @@ const filteredAddMembersEmployees = computed(() => {
 // 成员和群聊菜单状态已从 useUI composable 导入
 // 设置相关状态已从 useUI composable 导入
 
+// 主题状态
+const currentTheme = ref(localStorage.getItem('theme') || 'modern-light')
+
 // 以下为本地特有的设置数据
 const settingsProfile = ref({
   nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
