@@ -500,6 +500,15 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
+	// 解析请求体
+	var req struct {
+		TargetUserID uint `json:"target_user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
 	db := database.GetDB()
 
 	var msg model.Message
@@ -508,9 +517,52 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
-	if msg.SenderID != userID.(uint) {
+	// 验证提醒发起者是否在消息所在会话中
+	var requesterMember model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&requesterMember).Error; err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发送提醒"})
 		return
+	}
+
+	// 验证目标用户是否在同一会话中
+	var targetMember model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, req.TargetUserID).First(&targetMember).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不在该会话中"})
+		return
+	}
+
+	// 检查是否是发送者本人（不能提醒消息的发送者）
+	if req.TargetUserID == msg.SenderID {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能提醒消息的发送者"})
+		return
+	}
+
+	// 检查是否提醒自己的消息给自己
+	if req.TargetUserID == userID.(uint) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能提醒自己的消息给自己"})
+		return
+	}
+
+	// 发送 WebSocket 提醒通知
+	if ws.GlobalHub != nil {
+		contentPreview := msg.Content
+		if len(contentPreview) > 100 {
+			contentPreview = contentPreview[:100] + "..."
+		}
+
+		remindMsg := ws.WSMessage{
+			Type: "message_remind",
+			Data: gin.H{
+				"message_id":      msg.ID,
+				"conversation_id": msg.ConversationID,
+				"sender_id":       userID,
+				"content_preview": contentPreview,
+			},
+		}
+		jsonMsg, marshalErr := json.Marshal(remindMsg)
+		if marshalErr == nil {
+			ws.GlobalHub.SendToUser(req.TargetUserID, jsonMsg)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
