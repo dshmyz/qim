@@ -8131,19 +8131,32 @@ button:active {
 }
 
 /* 优化组织架构树的显示 */
-.department-node 
+.department-node .tree-children {
+  margin-left: 16px;
+}
 
-.sub-department-node 
+.sub-department-node .tree-children {
+  margin-left: 16px;
+}
 
-.department-node:last-child 
+.department-node:last-child .tree-node-content {
+  border-bottom: none;
+}
 
-.sub-department-node 
+.sub-department-node .tree-node-content {
+  padding-left: 16px;
+}
 
-.employee-node 
+.employee-node .tree-node-content {
+  padding-left: 16px;
+  background: transparent;
+  opacity: 1;
+}
 
-.employee-node 
-
-.employee-node:last-child 
+.employee-node .tree-node-content:hover {
+  background: var(--hover-color);
+  opacity: 1;
+}
 
 /* 群聊样式 */
 
