@@ -42,7 +42,12 @@ export function useChatUtils() {
   }
 
   // 判断是否应该显示时间分隔线
-  const shouldShowTimeDivider = (index: number, currentMessage: Message, messages: Message[]): boolean => {
+  const shouldShowTimeDivider = (index: number, currentMessage: Message, messages?: Message[]): boolean => {
+    // 如果没有传入 messages 数组，只能判断是否是第一条消息
+    if (!messages || messages.length === 0) {
+      return index === 0
+    }
+
     // 第一条消息总是显示时间
     if (index === 0) {
       return true

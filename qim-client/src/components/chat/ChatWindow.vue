@@ -318,7 +318,6 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import UserProfile from '../modals/UserProfile.vue'
-import MiniAppManager from '../apps/MiniAppManager.vue'
 import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
 import MessageInputArea from './MessageInputArea.vue'
@@ -333,7 +332,7 @@ import SharePreviewDialog from './SharePreviewDialog.vue'
 import CallModal from './CallModal.vue'
 import { openMiniApp } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
-import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
+import { getAvatarUrl } from '../../utils/avatar'
 import { getCurrentUser } from '../../utils/user'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
@@ -361,8 +360,6 @@ const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMa
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
 
 // 屏幕共享相关
-const showScreenShareModal = ref(false)
-const screenSources = ref([])
 const screenShareComponent = ref(null) // 屏幕共享组件引用
 const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
 
