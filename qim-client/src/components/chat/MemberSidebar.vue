@@ -119,3 +119,225 @@ const handleStartPrivateChat = (member: Member) => {
   emit('start-private-chat', member)
 }
 </script>
+
+<style scoped>
+.members-sidebar {
+  width: 180px;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+  transition: width 0.3s ease;
+}
+
+.members-sidebar.collapsed {
+  width: 30px;
+  border-left: none;
+}
+
+.sidebar-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.members-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-content .toggle-sidebar-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.header-content .toggle-sidebar-btn:hover {
+  background: var(--hover-color);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapsed-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: var(--sidebar-bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-color);
+  transition: all 0.2s;
+}
+
+.collapsed-toggle-btn:hover {
+  background: var(--hover-color);
+  border-radius: 4px;
+}
+
+.members-sidebar .members-header {
+  padding: 8px 12px;
+  background: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.members-sidebar .members-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.search-toggle-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-color);
+  transition: all 0.2s;
+}
+
+.search-toggle-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.members-search {
+  padding: 6px 8px;
+  background: var(--sidebar-bg);
+}
+
+.member-search-input {
+  width: 100%;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  background: var(--sidebar-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.member-search-input:focus {
+  border-color: var(--primary-color);
+}
+
+.members-sidebar .members-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+
+.members-sidebar .member-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+  margin-bottom: 1px;
+  cursor: pointer;
+}
+
+.members-sidebar .member-item:hover {
+  background: var(--hover-color);
+  transform: translateY(-1px);
+}
+
+.members-sidebar .member-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.members-sidebar .member-name {
+  font-size: 13px;
+  color: var(--text-color);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+
+.members-sidebar .member-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.members-sidebar .member-role {
+  font-size: 14px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.members-sidebar .member-role.owner {
+  color: #ffd700;
+}
+
+.members-sidebar .member-role.admin {
+  color: #4facfe;
+}
+
+/* 炫酷黑主题 */
+[data-theme="dark"] .members-header {
+  background: var(--sidebar-bg) !important;
+}
+
+[data-theme="dark"] .members-content {
+  background: var(--sidebar-bg) !important;
+}
+
+[data-theme="dark"] .members-search {
+  background: var(--sidebar-bg) !important;
+}
+
+[data-theme="dark"] .member-search-input {
+  background: var(--secondary-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+</style>
