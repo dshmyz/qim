@@ -1582,12 +1582,6 @@ const editAnnouncement = () => {
   showEditAnnouncementModal.value = true
 }
 
-// 关闭编辑群公告模态框
-const closeEditAnnouncementModal = () => {
-  showEditAnnouncementModal.value = false
-  editAnnouncementContent.value = ''
-}
-
 // 保存群公告
 const saveAnnouncement = async () => {
   if (!selectedGroup.value) {
@@ -1998,11 +1992,6 @@ const {
 const notificationCenterRef = ref<any>(null)
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
-const handleConversationSelect = (conversationItem: any) => {
-  _handleConversationSelect(conversationItem)
-  loadMessages(conversationItem.id)
-}
-
 // 重写通知点击处理，包含 Main.vue 的特定逻辑
 const handleNotificationClick = (notification: any) => {
   _handleNotificationClick(notification)
@@ -3409,13 +3398,9 @@ watch(searchQuery, (newQuery) => {
 })
 
 // 当前选中的会话
-const currentConversation = computed(() => {
-  return conversations.value.find(conv => conv.id === currentConversationId.value)
-})
+)
 
 // 消息数据
-const messages = ref<Message[]>([])
-
 // 已处理的已读回执，用于避免重复处理
 const readReceiptsProcessed = ref<Set<string> | null>(null)
 
@@ -3517,9 +3502,9 @@ const processMessage = (msg: any) => {
 
 // 加载会话消息
 // 分页参数
+// 消息分页相关变量已从 useConversation composable 导入
 const messagePage = ref(1)
 const messagePageSize = ref(20)
-const hasMoreMessages = ref(true)
 const isLoadingMessages = ref(false)
 
 const loadMessages = async (conversationId: string, reset: boolean = true) => {
@@ -4127,23 +4112,6 @@ const handleScreenShareData = (data: { conversationId: number; data: string }) =
 }
 
 // 处理会话选择
-const handleConversationSelect = (conversation: Conversation) => {
-  // 切换到最近联系人选项卡
-  activeOption.value = 'recent'
-  currentConversationId.value = conversation.id
-  loadMessages(conversation.id)
-  // 重置未读消息计数
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
-  if (conversationIndex !== -1) {
-    conversations.value[conversationIndex].unreadCount = 0
-  }
-
-  // 停止托盘图标闪动
-  if (window.electron?.tray) {
-    window.electron.tray.stopFlash()
-  }
-}
-
 // 格式化时间
 const formatTime = (timestamp: number): string => {
   const date = new Date(timestamp)
@@ -4336,12 +4304,6 @@ const startPrivateChat = async (user: any) => {
   closeUserContextMenu()
 }
 
-// 语音通话相关
-const showVoiceCallModal = ref(false)
-const voiceCallStatus = ref('idle') // idle, calling, ringing, active, ended
-const voiceCallDuration = ref(0)
-const voiceCallTimer = ref<number | null>(null)
-
 // 发起语音通话
 const startVoiceCall = async (userId: string) => {
   try {
@@ -4521,28 +4483,6 @@ const toggleSubDepartment = (departmentId: string, subDepartmentId: string) => {
     expandedSubDepartments.value[departmentId].push(subDepartmentId)
   }
 }
-
-// 系统消息数据
-const systemMessage = ref({
-  title: '',
-  content: '',
-  target: 'all',
-  groupId: '',
-  userId: ''
-})
-
-// 显示系统消息发布模态框
-const showSystemMessageModal = ref(false)
-
-// 创建会话相关状态
-const showCreateConversationModal = ref(false)
-const createConversationType = ref('group')
-const createConversationTitle = ref('创建群聊')
-
-// 添加成员相关
-const showAddMembersModal = ref(false)
-const addMembersSearchQuery = ref('')
-const selectedAddMembers = ref<any[]>([])
 
 // 组织架构数据
 const orgStructure = ref([
@@ -5100,42 +5040,10 @@ const filteredAddMembersEmployees = computed(() => {
   )
 })
 
-// 成员上下文菜单
-const showMemberContextMenuFlag = ref(false)
-const memberContextMenuPosition = ref({ x: 0, y: 0 })
-const selectedMember = ref(null)
+// 成员和群聊菜单状态已从 useUI composable 导入
+// 设置相关状态已从 useUI composable 导入
 
-// 群聊上下文菜单
-const showGroupContextMenuFlag = ref(false)
-const groupContextMenuPosition = ref({ x: 0, y: 0 })
-
-// 群成员模态框
-const showGroupMembersModal = ref(false)
-const groupMembers = ref([])
-
-// 群资料模态框
-const showGroupInfoModal = ref(false)
-
-// 群公告
-const showEditAnnouncementModal = ref(false)
-const editAnnouncementContent = ref('')
-
-// 设置菜单
-const showSettingsMenuFlag = ref(false)
-const settingsMenuPosition = ref({ x: 0, y: 0 })
-
-// 主题菜单相关
-const showThemeMenuFlag = ref(false)
-const themeMenuPosition = ref({ x: 0, y: 0 })
-
-// 更多菜单状态
-const showMoreMenuFlag = ref(false)
-const moreMenuPosition = ref({ x: 0, y: 0 })
-const currentTheme = ref(localStorage.getItem('theme') || 'light')
-
-// 系统设置相关
-const showSettingsModal = ref(false)
-const activeSettingsTab = ref('basic')
+// 以下为本地特有的设置数据
 const settingsProfile = ref({
   nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
   signature: '这个人很懒，什么都没留下'
@@ -5166,74 +5074,7 @@ const fileSettings = ref({
   enableFileHistory: true
 })
 
-// 关于对话框
-const showAboutDialog = ref(false)
-
-const showActionMenu = (event: MouseEvent) => {
-  event.stopPropagation()
-  
-  // 切换动作菜单显示状态
-  if (showActionMenuFlag.value) {
-    closeActionMenu()
-    return
-  }
-  
-  // 计算菜单位置，确保在屏幕内显示
-  const menuWidth = 180 // 菜单宽度
-  const menuHeight = 120 // 菜单高度
-  const windowWidth = window.innerWidth
-  const windowHeight = window.innerHeight
-  
-  let x = event.clientX
-  let y = event.clientY
-  
-  // 调整x坐标，确保菜单不超出屏幕右侧
-  if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10
-  }
-  
-  // 调整y坐标，确保菜单不超出屏幕底部
-  if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10
-  }
-  
-  actionMenuPosition.value = {
-    x,
-    y
-  }
-  showActionMenuFlag.value = true
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeActionMenu)
-  }, 0)
-}
-
-const closeActionMenu = () => {
-  showActionMenuFlag.value = false
-  document.removeEventListener('click', closeActionMenu)
-}
-
-// 打开创建群聊弹窗
-const openCreateGroupModal = () => {
-  closeActionMenu()
-  createConversationType.value = 'group'
-  createConversationTitle.value = '创建群聊'
-  showCreateConversationModal.value = true
-}
-
-// 打开创建讨论组弹窗
-const createDiscussionGroup = () => {
-  closeActionMenu()
-  createConversationType.value = 'discussion'
-  createConversationTitle.value = '创建讨论组'
-  showCreateConversationModal.value = true
-}
-
-// 关闭创建会话弹窗
-const closeCreateConversationModal = () => {
-  showCreateConversationModal.value = false
-}
+// 以下函数已从 useUI composable 导入：showActionMenu, closeActionMenu, openCreateGroupModal, closeCreateConversationModal, openSystemMessageModal, closeSystemMessageModal, showMemberContextMenu, closeMemberContextMenu
 
 // 处理会话创建成功
 const handleConversationCreated = () => {
@@ -5242,29 +5083,7 @@ const handleConversationCreated = () => {
 }
 
 // 打开系统消息发布模态框
-const openSystemMessageModal = () => {
-  systemMessage.value = {
-    title: '',
-    content: '',
-    target: 'all',
-    groupId: '',
-    userId: ''
-  }
-  showSystemMessageModal.value = true
-}
-
 // 关闭系统消息发布模态框
-const closeSystemMessageModal = () => {
-  showSystemMessageModal.value = false
-  systemMessage.value = {
-    title: '',
-    content: '',
-    target: 'all',
-    groupId: '',
-    userId: ''
-  }
-}
-
 // 发送系统消息
 const sendSystemMessage = async () => {
   if (!systemMessage.value.title || !systemMessage.value.content) return
@@ -5296,21 +5115,6 @@ const createChannel = () => {
   // 这里可以实现创建频道的逻辑
   ElMessage.info('创建频道功能开发中...')
   console.log('创建频道')
-}
-
-const showMemberContextMenu = (event: MouseEvent, member: any) => {
-  event.stopPropagation()
-  memberContextMenuPosition.value = {
-    x: event.clientX,
-    y: event.clientY
-  }
-  selectedMember.value = member
-  showMemberContextMenuFlag.value = true
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeMemberContextMenu)
-  }, 0)
 }
 
 const closeMemberContextMenu = () => {
@@ -5382,46 +5186,6 @@ const setAsAdmin = async () => {
     }
   }
   closeMemberContextMenu()
-}
-
-const showGroupContextMenu = (event: MouseEvent, group: any) => {
-  event.stopPropagation()
-  
-  // 计算菜单位置，确保在屏幕内显示
-  const menuWidth = 180 // 菜单宽度
-  const menuHeight = 160 // 菜单高度
-  const windowWidth = window.innerWidth
-  const windowHeight = window.innerHeight
-  
-  let x = event.clientX
-  let y = event.clientY
-  
-  // 调整x坐标，确保菜单不超出屏幕右侧
-  if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10
-  }
-  
-  // 调整y坐标，确保菜单不超出屏幕底部
-  if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10
-  }
-  
-  groupContextMenuPosition.value = {
-    x,
-    y
-  }
-  selectedGroup.value = group
-  showGroupContextMenuFlag.value = true
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeGroupContextMenu)
-  }, 0)
-}
-
-const closeGroupContextMenu = () => {
-  showGroupContextMenuFlag.value = false
-  document.removeEventListener('click', closeGroupContextMenu)
 }
 
 const viewGroupMembers = () => {
@@ -5506,23 +5270,7 @@ const handleSwitchConversation = async (conversationId) => {
 }
 
 // 打开分享弹窗
-const openShareModal = (type, data) => {
-  shareType.value = type
-  window.shareData = data // 临时存储分享数据
-  
-  // 加载可分享的用户和群聊
-  loadShareUsersAndGroups()
-  
-  showShareModal.value = true
-}
-
 // 关闭分享弹窗
-const closeShareModal = () => {
-  showShareModal.value = false
-  shareType.value = ''
-  window.shareData = null // 清除临时分享数据
-}
-
 // 加载可分享的用户和群聊
 const loadShareUsersAndGroups = async () => {
   try {
@@ -5859,24 +5607,8 @@ const removeMember = async (member) => {
 }
 
 // 关闭添加成员模态框
-const closeAddMembersModal = () => {
-  showAddMembersModal.value = false
-  selectedAddMembers.value = []
-  addMembersSearchQuery.value = ''
-  selectedGroup.value = null
-}
-
 // 关闭群成员模态框
-const closeGroupMembersModal = () => {
-  showGroupMembersModal.value = false
-  groupMembers.value = []
-}
-
 // 关闭群资料模态框
-const closeGroupInfoModal = () => {
-  showGroupInfoModal.value = false
-}
-
 // 切换成员选择状态
 const toggleAddMember = (employee: any) => {
   const index = selectedAddMembers.value.findIndex(m => m.id === employee.id)
@@ -5937,95 +5669,6 @@ const confirmAddMembers = async () => {
   }
 }
 
-const handlePin = async (conversation: Conversation | null) => {
-  if (conversation) {
-    try {
-      const newValue = !conversation.pinned
-      console.log('切换置顶状态:', { conversationId: conversation.id, is_pinned: newValue })
-      const token = getToken()
-      const response = await axios.put(`${serverUrl.value}/api/v1/conversations/${conversation.id}/pin`, {
-        "is_pinned": newValue
-      }, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      if (response.data.code === 0) {
-        // 直接更新pinned字段，确保状态正确切换
-        conversation.pinned = newValue
-        // 重新排序会话列表，确保UI正确更新
-        conversations.value = [...conversations.value]
-        showMessage({ message: newValue ? '会话已置顶' : '会话已取消置顶', type: 'success' })
-      }
-    } catch (error) {
-      console.error('切换置顶状态失败:', error)
-      showMessage({ message: '切换置顶状态失败', type: 'error' })
-    }
-  }
-  closeContextMenu()
-}
-
-const handleMute = (conversation: Conversation | null) => {
-  if (conversation) {
-    conversation.muted = !conversation.muted
-  }
-  closeContextMenu()
-}
-
-const handleRemove = (conversation: Conversation | null) => {
-  if (conversation) {
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index > -1) {
-      conversations.value.splice(index, 1)
-      if (currentConversationId.value === conversation.id) {
-        currentConversationId.value = null
-      }
-    }
-  }
-  closeContextMenu()
-}
-
-const handleExitGroup = async (conversation: Conversation | null) => {
-  if (conversation && conversation.type === 'group') {
-    if (confirm(`确定要退出${conversation.name}吗？`)) {
-      try {
-        const response = await request(`/api/v1/conversations/${conversation.id}/exit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (response.code === 200) {
-          // 不从会话列表中移除该群聊，只更新会话状态
-          const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
-          if (conversationIndex !== -1) {
-            // 更新会话状态为已退出
-            const updatedConversation = {
-              ...conversations.value[conversationIndex],
-              isExited: true
-            }
-            conversations.value.splice(conversationIndex, 1, updatedConversation)
-            // 强制触发响应式更新
-            conversations.value = [...conversations.value]
-            // 保存会话到本地存储
-            storage.saveConversations(conversations.value)
-          }
-          closeContextMenu()
-          showMessage({ message: '退出群聊成功', type: 'success' })
-        } else {
-          showMessage({ message: '退出群聊失败: ' + response.message, type: 'error' })
-        }
-      } catch (error) {
-        console.error('退出群聊失败:', error)
-        showMessage({ message: '退出群聊失败，请稍后重试', type: 'error' })
-      }
-    }
-  }
-  closeContextMenu()
-}
-
 // 点击其他地方关闭菜单由showContextMenu和showGroupContextMenu函数内部处理
 
 // 窗口控制方法
@@ -6066,157 +5709,9 @@ const closeWindow = () => {
 }
 
 
-const showSettingsMenu = (event: MouseEvent) => {
-  event.stopPropagation()
-  
-  // 关闭主题菜单和更多菜单
-  closeThemeMenu()
-  closeMoreMenu()
-  
-  // 获取设置按钮的DOM元素
-  const settingsButton = event.currentTarget as HTMLElement
-  if (settingsButton) {
-    // 计算按钮的位置
-    const rect = settingsButton.getBoundingClientRect()
-    
-    // 菜单宽度和高度
-    const menuWidth = 180
-    const menuHeight = 160
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-    
-    // 计算菜单位置：按钮右侧2px，底部与鼠标点击位置对齐
-    let x = rect.right + 2
-    let y = event.clientY - menuHeight
-    
-    // 调整x坐标，确保菜单不超出屏幕右侧
-    if (x + menuWidth > windowWidth) {
-      x = rect.left - menuWidth - 10
-    }
-    
-    // 调整y坐标，确保菜单不超出屏幕底部
-    if (y + menuHeight > windowHeight) {
-      y = windowHeight - menuHeight - 10
-    }
-    
-    // 确保y坐标不小于0
-    if (y < 0) {
-      y = 10
-    }
-    
-    settingsMenuPosition.value = {
-      x,
-      y
-    }
-    showSettingsMenuFlag.value = true
-    
-    // 点击其他地方关闭菜单
-    setTimeout(() => {
-      document.addEventListener('click', closeSettingsMenu)
-    }, 0)
-  }
-}
-
 const closeSettingsMenu = () => {
   showSettingsMenuFlag.value = false
   document.removeEventListener('click', closeSettingsMenu)
-}
-
-const openSettings = () => {
-  console.log('打开设置')
-  // 打开系统设置模态框
-  showSettingsModal.value = true
-  // 加载设置值
-  settingsProfile.value = {
-    nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
-    signature: '这个人很懒，什么都没留下'
-  }
-  
-  // 加载消息设置
-  const savedMessageSettings = localStorage.getItem('messageSettings')
-  if (savedMessageSettings) {
-    try {
-      messageSettings.value = JSON.parse(savedMessageSettings)
-    } catch (error) {
-      console.error('解析消息设置失败:', error)
-      messageSettings.value = {
-        notificationsEnabled: true,
-        soundEnabled: true,
-        desktopNotificationsEnabled: true,
-        dndMode: 'none'
-      }
-    }
-  } else {
-    messageSettings.value = {
-      notificationsEnabled: true,
-      soundEnabled: true,
-      desktopNotificationsEnabled: true,
-      dndMode: 'none'
-    }
-  }
-  
-  // 加载外观设置
-  const savedAppearanceSettings = localStorage.getItem('appearanceSettings')
-  if (savedAppearanceSettings) {
-    try {
-      appearanceSettings.value = JSON.parse(savedAppearanceSettings)
-    } catch (error) {
-      console.error('解析外观设置失败:', error)
-      appearanceSettings.value = {
-        theme: currentTheme.value,
-        fontSize: 14
-      }
-    }
-  } else {
-    appearanceSettings.value = {
-      theme: currentTheme.value,
-      fontSize: 14
-    }
-  }
-  
-  // 加载文件设置
-  const savedFileSettings = localStorage.getItem('fileSettings')
-  if (savedFileSettings) {
-    try {
-      fileSettings.value = JSON.parse(savedFileSettings)
-      // 确保新字段存在
-      if (fileSettings.value.autoDownload === undefined) {
-        fileSettings.value.autoDownload = false
-      }
-      if (fileSettings.value.maxFileSize === undefined) {
-        fileSettings.value.maxFileSize = 50
-      }
-      if (fileSettings.value.allowedFileTypes === undefined) {
-        fileSettings.value.allowedFileTypes = 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar'
-      }
-      if (fileSettings.value.autoPreviewImages === undefined) {
-        fileSettings.value.autoPreviewImages = true
-      }
-      if (fileSettings.value.enableFileHistory === undefined) {
-        fileSettings.value.enableFileHistory = true
-      }
-    } catch (error) {
-      console.error('解析文件设置失败:', error)
-      fileSettings.value = {
-        defaultSaveDirectory: '',
-        autoDownload: false,
-        maxFileSize: 50,
-        allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
-        autoPreviewImages: true,
-        enableFileHistory: true
-      }
-    }
-  } else {
-    fileSettings.value = {
-      defaultSaveDirectory: '',
-      autoDownload: false,
-      maxFileSize: 50,
-      allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
-      autoPreviewImages: true,
-      enableFileHistory: true
-    }
-  }
-  closeSettingsMenu()
 }
 
 // 监听自动更新事件
@@ -6327,21 +5822,12 @@ const aboutApp = () => {
   closeSettingsMenu()
 }
 
-const closeAboutDialog = () => {
-  showAboutDialog.value = false
-}
-
 const emit = defineEmits<{
   (e: 'logout'): void
 }>()
 
-const showLogoutDialog = ref(false)
-const showUpdateDialog = ref(false)
-const isCheckingUpdate = ref(false)
-const updateResult = ref('')
-const hasNewVersion = ref(false)
-const downloadProgress = ref(0)
-const isDownloading = ref(false)
+// 以下状态已从 useUI composable 导入：showLogoutDialog, showUpdateDialog, isCheckingUpdate, updateResult, hasNewVersion, downloadProgress, isDownloading
+// 以下函数已从 useUI composable 导入：confirmLogout, cancelLogout, closeUpdateDialog, showThemeMenu, closeThemeMenu, showMoreMenu, closeMoreMenu, closeSettingsModal
 
 const logout = () => {
   console.log('退出登录')
@@ -6350,139 +5836,8 @@ const logout = () => {
   closeSettingsMenu()
 }
 
-const confirmLogout = () => {
-  // 清除本地存储的用户信息
-  localStorage.removeItem('user')
-  // 触发退出登录事件
-  emit('logout')
-  showLogoutDialog.value = false
-}
-
-const cancelLogout = () => {
-  showLogoutDialog.value = false
-}
-
-const closeUpdateDialog = () => {
-  showUpdateDialog.value = false
-}
-
 // 主题菜单相关函数
-const showThemeMenu = (event: MouseEvent) => {
-  event.stopPropagation()
-  
-  // 关闭设置菜单
-  closeSettingsMenu()
-  
-  // 获取皮肤按钮的DOM元素
-  const themeButton = event.currentTarget as HTMLElement
-  if (themeButton) {
-    // 计算按钮的位置
-    const rect = themeButton.getBoundingClientRect()
-    
-    // 菜单宽度和高度
-    const menuWidth = 180
-    const menuHeight = 400
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-    
-    // 计算菜单位置：按钮下方显示
-    let x = rect.right + 2
-    let y = rect.top
-    
-    // 调整x坐标，确保菜单不超出屏幕右侧
-    if (x + menuWidth > windowWidth) {
-      x = rect.left - menuWidth - 10
-    }
-    
-    // 调整y坐标，确保菜单不超出屏幕底部
-    if (y + menuHeight > windowHeight - 10) {
-      y = windowHeight - menuHeight - 10
-    }
-    
-    // 确保y坐标不小于0
-    if (y < 10) {
-      y = 10
-    }
-    
-    themeMenuPosition.value = {
-      x,
-      y
-    }
-    showThemeMenuFlag.value = true
-    
-    // 点击其他地方关闭菜单
-    setTimeout(() => {
-      document.addEventListener('click', closeThemeMenu)
-    }, 0)
-  }
-}
-
-const closeThemeMenu = () => {
-  showThemeMenuFlag.value = false
-  document.removeEventListener('click', closeThemeMenu)
-}
-
-const showMoreMenu = (event: MouseEvent) => {
-  event.stopPropagation()
-  
-  // 关闭其他菜单
-  closeSettingsMenu()
-  closeThemeMenu()
-  
-  // 获取更多按钮的DOM元素
-  const moreButton = event.currentTarget as HTMLElement
-  if (moreButton) {
-    // 计算按钮的位置
-    const rect = moreButton.getBoundingClientRect()
-    
-    // 菜单宽度和高度
-    const menuWidth = 120
-    const menuHeight = 180
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-    
-    // 计算菜单位置：默认显示在按钮右侧，与按钮顶部对齐
-    let x = rect.right + 10
-    let y = rect.top
-    
-    // 调整x坐标，确保菜单不超出屏幕右侧
-    if (x + menuWidth > windowWidth) {
-      x = rect.left - menuWidth - 10
-    }
-    
-    // 调整y坐标，确保菜单不超出屏幕底部
-    if (y + menuHeight > windowHeight) {
-      y = windowHeight - menuHeight - 10
-    }
-    
-    // 确保y坐标不小于0
-    if (y < 0) {
-      y = 10
-    }
-    
-    moreMenuPosition.value = {
-      x,
-      y
-    }
-    showMoreMenuFlag.value = true
-    
-    // 点击其他地方关闭菜单
-    setTimeout(() => {
-      document.addEventListener('click', closeMoreMenu)
-    }, 0)
-  }
-}
-
-const closeMoreMenu = () => {
-  showMoreMenuFlag.value = false
-  document.removeEventListener('click', closeMoreMenu)
-}
-
 // 关闭系统设置模态框
-const closeSettingsModal = () => {
-  showSettingsModal.value = false
-}
-
 // 保存系统设置
 const saveSettings = async () => {
   try {
