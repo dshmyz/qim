@@ -206,7 +206,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
 
@@ -283,7 +283,7 @@ const loadFiles = async () => {
     }
   } catch (error) {
     console.error('加载文件失败:', error)
-    ElMessage.error('加载文件失败，请稍后重试')
+    QMessage.error('加载文件失败，请稍后重试')
   }
 }
 
@@ -394,7 +394,7 @@ const downloadFile = async (file: any) => {
   } catch (error) {
     console.error('下载文件失败:', error)
     // 模拟下载
-    ElMessage.info(`正在下载 ${file.name}`)
+    QMessage.info(`正在下载 ${file.name}`)
   }
 }
 
@@ -449,10 +449,10 @@ const shareFile = (file: any) => {
 const copyShareLink = (file: any) => {
   const shareLink = `${window.location.origin}/share/file/${file.id}`
   navigator.clipboard.writeText(shareLink).then(() => {
-    ElMessage.success('分享链接已复制到剪贴板')
+    QMessage.success('分享链接已复制到剪贴板')
   }).catch(err => {
     console.error('复制失败:', err)
-    ElMessage.error('复制失败，请手动复制')
+    QMessage.error('复制失败，请手动复制')
   })
 }
 

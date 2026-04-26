@@ -1,8 +1,13 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/styles/index.css'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+import QMessage from './components/shared/QMessage.vue'
+import QMessageBox from './components/shared/QMessageBox.vue'
 import '@fortawesome/fontawesome-free/css/all.css'
 
-createApp(App).use(ElementPlus).mount('#app')
+const app = createApp(App)
+
+app.component('QMessage', QMessage)
+app.component('QMessageBox', QMessageBox)
+
+app.mount('#app')

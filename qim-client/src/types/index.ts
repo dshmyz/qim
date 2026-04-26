@@ -61,6 +61,9 @@ export interface Conversation {
   muted?: boolean
   pinned?: boolean
   ip?: string
+  status?: 'online' | 'offline' | 'busy'
+  signature?: string
+  announcement?: string
 }
 
 export interface Channel {

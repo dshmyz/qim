@@ -115,6 +115,7 @@ import { computed, ref, watch } from 'vue'
 import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Conversation, User } from '../../types'
+import { logger } from '../../utils/logger';
 
 const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
 
@@ -207,7 +208,7 @@ const updateInvitePermission = async () => {
     
     if (response.ok) {
       // 更新成功
-      console.log('邀请权限更新成功')
+      logger.log('邀请权限更新成功')
     } else {
       // 恢复原设置
       if (props.group) {

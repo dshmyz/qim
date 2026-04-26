@@ -1,0 +1,247 @@
+<template>
+  <div class="chat-header">
+    <div class="header-info">
+      <img :src="avatarUrl" :alt="displayName" class="header-avatar" />
+      <div class="header-text">
+        <div class="header-name" @dblclick="handleNameDoubleClick">{{ displayName }}</div>
+        <div class="header-status">
+          <template v-if="isGroupOrDiscussion">
+            {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
+            <span v-if="memberCount" class="member-count">
+              ({{ memberCount }}人)
+            </span>
+          </template>
+          <template v-else-if="isSingleChat">
+            <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
+              {{ conversation?.status === 'online' ? '在线' : '离线' }}
+            </span>
+            <span v-if="conversation?.signature" class="signature-info">
+              {{ conversation.signature }}
+            </span>
+          </template>
+          <template v-else>
+            在线
+          </template>
+          <span v-if="isSingleChat && conversation?.ip" class="ip-info">
+            {{ conversation.ip }}
+          </span>
+          <span v-if="isGroupOrDiscussion && conversation?.announcement" class="header-announcement-inline">
+            <i class="fas fa-bullhorn"></i>
+            {{ conversation.announcement }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <GroupPanel
+      :conversation="conversation"
+      :current-user="currentUser"
+      v-model:showHeaderMenu="showHeaderMenu"
+      v-model:showEditGroupInfoModal="showEditGroupInfoModal"
+      v-model:showEditAnnouncementModal="showEditAnnouncementModal"
+      v-model:editGroupName="editGroupName"
+      v-model:editAnnouncement="editAnnouncement"
+      @invite-members="emit('invite-members')"
+      @delete-group="emit('delete-group')"
+      @save-group-info="emit('save-group-info')"
+      @save-group-announcement="emit('save-group-announcement')"
+      @switch-conversation="(id: string) => emit('switch-conversation', id)"
+      @show-user-profile="(user: any) => emit('show-user-profile', user)"
+      @remove-member="(id: string, name: string) => emit('remove-member', id, name)"
+      @set-admin="(id: string, name: string, isAdmin: boolean) => emit('set-admin', id, name, isAdmin)"
+      @transfer-owner="(id: string, name: string) => emit('transfer-owner', id, name)"
+      @start-private-chat="(id: string) => emit('start-private-chat', id)"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import type { Conversation } from '../../types'
+import GroupPanel from './GroupPanel.vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { ref } from 'vue'
+
+interface Props {
+  conversation: Conversation
+  currentUser: any
+  serverUrl: string
+}
+
+interface Emits {
+  (e: 'invite-members'): void
+  (e: 'delete-group'): void
+  (e: 'save-group-info'): void
+  (e: 'save-group-announcement'): void
+  (e: 'switch-conversation', id: string): void
+  (e: 'show-user-profile', user: any): void
+  (e: 'remove-member', id: string, name: string): void
+  (e: 'set-admin', id: string, name: string, isAdmin: boolean): void
+  (e: 'transfer-owner', id: string, name: string): void
+  (e: 'start-private-chat', id: string): void
+  (e: 'edit-group-info'): void
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
+
+const showHeaderMenu = ref(false)
+const showEditGroupInfoModal = ref(false)
+const showEditAnnouncementModal = ref(false)
+const editGroupName = ref('')
+const editAnnouncement = ref('')
+
+const isGroupOrDiscussion = computed(() =>
+  props.conversation?.type === 'group' || props.conversation?.type === 'discussion'
+)
+
+const isSingleChat = computed(() => props.conversation?.type === 'single')
+
+const memberCount = computed(() =>
+  props.conversation?.members?.length ?? 0
+)
+
+const displayName = computed(() => props.conversation?.name || '未知会话')
+
+const avatarUrl = computed(() =>
+  getAvatarUrl(
+    props.conversation?.avatar,
+    props.conversation?.name || '用户',
+    props.serverUrl
+  )
+)
+
+const handleNameDoubleClick = () => {
+  if (isGroupOrDiscussion.value) {
+    emit('edit-group-info')
+  }
+}
+
+defineExpose({
+  showHeaderMenu,
+  showEditGroupInfoModal,
+  showEditAnnouncementModal,
+  editGroupName,
+  editAnnouncement
+})
+</script>
+
+<style scoped>
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--sidebar-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin: 0;
+  margin-bottom: 1px;
+  border-radius: 0;
+}
+
+.header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.header-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.header-name {
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--text-color);
+}
+
+.header-status {
+  font-size: 12px;
+  color: var(--color-success-500);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ip-info {
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 11px;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: var(--hover-color);
+  border-radius: 3px;
+}
+
+.online-status {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
+.online-status.online {
+  color: var(--color-success-500);
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.online-status.offline {
+  color: var(--color-gray-500);
+  background: rgba(153, 153, 153, 0.1);
+}
+
+.signature-info {
+  color: var(--text-color);
+  opacity: 0.6;
+  font-size: 12px;
+  font-style: italic;
+  margin-left: 8px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-announcement-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: var(--input-bg);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-announcement-inline i {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.member-count {
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.member-count:hover {
+  text-decoration: underline;
+}
+</style>

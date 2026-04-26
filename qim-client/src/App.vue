@@ -13,6 +13,8 @@
       @close="showVersionUpdate = false"
       @update="handleUpdate"
     />
+    <QMessage />
+    <QMessageBox />
   </div>
 </template>
 
@@ -22,6 +24,7 @@ import Main from './views/Main.vue'
 import Login from './views/Login.vue'
 import VersionUpdateDialog from './components/modals/VersionUpdateDialog.vue'
 import { checkVersionUpdate, getCurrentVersion } from './utils/version'
+import { logger } from './utils/logger';
 
 const isLoggedIn = ref(false)
 
@@ -34,12 +37,12 @@ const updateUrl = ref('')
 const forceUpdate = ref(false)
 
 const handleLoginSuccess = (user: any) => {
-  console.log('登录成功:', user)
+  logger.log('登录成功:', user)
   isLoggedIn.value = true
 }
 
 const handleLogout = () => {
-  console.log('退出登录')
+  logger.log('退出登录')
   isLoggedIn.value = false
   // 清除本地存储的用户信息和token
   localStorage.removeItem('user')
@@ -47,7 +50,7 @@ const handleLogout = () => {
 }
 
 const handleUpdate = () => {
-  console.log('用户点击了更新')
+  logger.log('用户点击了更新')
   // 可以在这里添加更新相关的逻辑
 }
 

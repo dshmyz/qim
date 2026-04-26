@@ -21,8 +21,14 @@
             ({{ conversation.members.length }}人)
           </span>
         </div>
-        <div class="conversation-preview">
-          {{ formatMessagePreview(conversation.lastMessage, conversation) }}
+        <div class="conversation-preview" :class="{ 'has-draft': hasDraft(conversation) }">
+          <template v-if="hasDraft(conversation)">
+            <i class="fas fa-edit draft-icon"></i>
+            [草稿] {{ getDraftPreview(conversation) }}
+          </template>
+          <template v-else>
+            {{ formatMessagePreview(conversation.lastMessage, conversation) }}
+          </template>
         </div>
       </div>
       <div class="conversation-meta">
@@ -74,6 +80,29 @@ defineEmits<{
   (e: 'select', conversation: Conversation): void
   (e: 'contextMenu', event: MouseEvent, conversation: Conversation): void
 }>()
+
+const hasDraft = (conversation: Conversation): boolean => {
+  const draft = localStorage.getItem(`qim_draft_${conversation.id}`)
+  if (!draft) return false
+  try {
+    const { text } = JSON.parse(draft)
+    return !!text
+  } catch {
+    return false
+  }
+}
+
+const getDraftPreview = (conversation: Conversation): string => {
+  const draft = localStorage.getItem(`qim_draft_${conversation.id}`)
+  if (!draft) return ''
+  try {
+    const { text } = JSON.parse(draft)
+    if (!text) return ''
+    return text.length > 50 ? text.substring(0, 50) + '...' : text
+  } catch {
+    return ''
+  }
+}
 
 const formatTime = (timestamp?: string | number): string => {
   if (!timestamp) return ''
@@ -217,6 +246,19 @@ const getUnreadCount = (conversation: Conversation): number => {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.conversation-preview.has-draft {
+  color: var(--color-warning-500, #f59e0b);
+  font-style: italic;
+}
+
+.draft-icon {
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .conversation-meta {

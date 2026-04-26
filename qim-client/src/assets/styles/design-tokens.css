@@ -183,7 +183,7 @@
   --list-bg: var(--color-gray-50);
   --card-bg: #ffffff;
   --header-panel-bg: var(--color-gray-100);
-  --right-content-bg: #ffffff;
+  --right-content-bg: #f5f5f5;
   --right-content-header-bg: #ffffff;
   --font-size-base: var(--font-size-sm);
   --input-bg: #ffffff;
@@ -216,7 +216,7 @@
   --list-bg: var(--color-gray-50);
   --card-bg: #ffffff;
   --header-panel-bg: var(--color-gray-100);
-  --right-content-bg: #ffffff;
+  --right-content-bg: #f5f5f5;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
 }

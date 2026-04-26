@@ -1,5 +1,5 @@
 import { ref, onUnmounted, readonly } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../utils/qmessage'
 
 export interface WebSocketMessage {
   type: string
@@ -18,12 +18,31 @@ const isConnected = ref(false)
 const showNetworkError = ref(false)
 const networkErrorMsg = ref('网络连接已断开')
 
-const RECONNECT_INTERVAL = 3000
+const RECONNECT_INTERVAL = 5000
 const HEARTBEAT_INTERVAL = 30000
-const MAX_RECONNECT_ATTEMPTS = 5
+const MAX_RECONNECT_ATTEMPTS = 3
+const RECONNECT_JITTER_MIN = 2000
+const RECONNECT_JITTER_MAX = 8000
 
 // 重连回调函数
 let onSessionExpiredCallback: (() => void) | null = null
+// 保存外部传入的网络状态 ref，供 connect() 和回调使用
+let externalShowNetworkError: typeof showNetworkError | null = null
+let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
+
+/**
+ * 设置网络错误状态（同时更新内部和外部状态）
+ */
+const setNetworkError = (show: boolean, msg: string) => {
+  showNetworkError.value = show
+  networkErrorMsg.value = msg
+  if (externalShowNetworkError) {
+    externalShowNetworkError.value = show
+  }
+  if (externalNetworkErrorMsg) {
+    externalNetworkErrorMsg.value = msg
+  }
+}
 
 export function useWebSocket(wsUrl: string) {
   let reconnectAttempts = 0
@@ -87,11 +106,14 @@ export function useWebSocket(wsUrl: string) {
     sessionExpiredRef: { value: boolean },
     messageHandlers: Record<string, (data: any) => void>
   ) => {
+    // 保存外部 ref，供 connect() 及其回调使用
+    externalShowNetworkError = showNetworkErrorRef
+    externalNetworkErrorMsg = networkErrorMsgRef
+
     // 保存 session 过期回调
     onSessionExpiredCallback = () => {
       sessionExpiredRef.value = true
-      showNetworkErrorRef.value = true
-      networkErrorMsgRef.value = '会话已过期，请重新登录'
+      setNetworkError(true, '会话已过期，请重新登录')
     }
 
     // 注册消息处理器
@@ -102,8 +124,7 @@ export function useWebSocket(wsUrl: string) {
     })
 
     // 隐藏网络错误
-    showNetworkErrorRef.value = false
-    networkErrorMsgRef.value = '网络连接失败，正在尝试重新连接...'
+    setNetworkError(false, '网络连接失败，正在尝试重新连接...')
     sessionExpiredRef.value = false
 
     // 执行连接
@@ -118,8 +139,7 @@ export function useWebSocket(wsUrl: string) {
 
     const token = localStorage.getItem('token')
     if (!token) {
-      showNetworkError.value = true
-      networkErrorMsg.value = '未登录，请先登录'
+      setNetworkError(true, '未登录，请先登录')
       return
     }
 
@@ -137,7 +157,7 @@ export function useWebSocket(wsUrl: string) {
 
       ws.onopen = () => {
         isConnected.value = true
-        showNetworkError.value = false
+        setNetworkError(false, '')
         reconnectAttempts = 0
         startHeartbeat()
         console.log('WebSocket connected')
@@ -148,8 +168,7 @@ export function useWebSocket(wsUrl: string) {
       ws.onclose = (event: CloseEvent) => {
         isConnected.value = false
         stopHeartbeat()
-        showNetworkError.value = true
-        networkErrorMsg.value = '网络连接已断开，正在尝试重新连接...'
+        setNetworkError(true, '网络连接已断开，正在尝试重新连接...')
 
         // 检查是否是会话过期（通过 CloseEvent code 或 reason）
         if (event.code === 4401 || (event.reason && event.reason.includes('401'))) {
@@ -175,27 +194,38 @@ export function useWebSocket(wsUrl: string) {
       }
     } catch (error) {
       console.error('WebSocket connection error:', error)
-      showNetworkError.value = true
-      networkErrorMsg.value = '网络连接失败'
+      setNetworkError(true, '网络连接失败')
       scheduleReconnect()
     }
   }
 
   /**
-   * 安排重连
+   * 安排重连（带指数退避和随机抖动，避免所有客户端同时重连）
    */
   const scheduleReconnect = () => {
     if (reconnectTimer) return
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      networkErrorMsg.value = '重连次数过多，请检查网络或重新登录'
+      setNetworkError(true, '重连次数过多，请检查网络或重新登录')
       return
     }
 
     reconnectAttempts++
+    
+    // 指数退避：第1次5秒，第2次10秒，第3次20秒
+    const baseDelay = RECONNECT_INTERVAL * Math.pow(2, reconnectAttempts - 1)
+    
+    // 随机抖动：避免所有客户端同时发起重连请求
+    const jitter = RECONNECT_JITTER_MIN + Math.random() * (RECONNECT_JITTER_MAX - RECONNECT_JITTER_MIN)
+    
+    const totalDelay = baseDelay + jitter
+    
+    console.log(`WebSocket 将在 ${Math.round(totalDelay / 1000)}s 后重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
+    setNetworkError(true, `网络连接已断开，${Math.round(totalDelay / 1000)}秒后尝试重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
+    
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null
       connect()
-    }, RECONNECT_INTERVAL * Math.min(reconnectAttempts, 3))
+    }, totalDelay)
   }
 
   /**
@@ -221,7 +251,7 @@ export function useWebSocket(wsUrl: string) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data))
     } else {
-      ElMessage.error('网络连接已断开')
+      QMessage.error('网络连接已断开')
     }
   }
 

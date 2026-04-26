@@ -205,8 +205,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import { API_BASE_URL } from '../../config'
+import { logger } from '../../utils/logger';
 
 const props = defineProps<{
   visible: boolean
@@ -259,9 +261,9 @@ watch(() => props.conversationId, (newVal) => {
 
 // 加载消息
 const loadMessages = async (page: number = 1) => {
-  console.log('loadMessages 被调用, conversationId:', props.conversationId)
+  logger.log('loadMessages 被调用, conversationId:', props.conversationId)
   if (!props.conversationId) {
-    console.log('loadMessages 提前返回: conversationId 为空')
+    logger.log('loadMessages 提前返回: conversationId 为空')
     return
   }
 
@@ -283,7 +285,7 @@ const loadMessages = async (page: number = 1) => {
     }
     
     // 处理日期范围
-    console.log('日期过滤检查: selectedDateRange =', selectedDateRange.value)
+    logger.log('日期过滤检查: selectedDateRange =', selectedDateRange.value)
     if (selectedDateRange.value !== 'all') {
       const now = new Date()
       const year = now.getFullYear()
@@ -315,7 +317,7 @@ const loadMessages = async (page: number = 1) => {
         endDate = customDateEnd.value
       }
 
-      console.log('日期过滤 - startDate:', startDate, 'endDate:', endDate, 'selectedDateRange:', selectedDateRange.value)
+      logger.log('日期过滤 - startDate:', startDate, 'endDate:', endDate, 'selectedDateRange:', selectedDateRange.value)
 
       if (startDate) {
         params.append('start_date', startDate)
@@ -351,13 +353,13 @@ const loadMessages = async (page: number = 1) => {
         total.value = data.data.total
       }
     } else if (response.status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
+      QMessage.error('登录已过期，请重新登录')
       localStorage.removeItem('token')
       setTimeout(() => {
         window.location.href = '/login'
       }, 1500)
     } else {
-      ElMessage.error('加载消息失败，请稍后重试')
+      QMessage.error('加载消息失败，请稍后重试')
     }
   } catch (error) {
     console.error('加载消息失败:', error)
@@ -368,7 +370,7 @@ const loadMessages = async (page: number = 1) => {
 
 // 应用过滤器
 const applyFilters = () => {
-  console.log('applyFilters 被调用', 'selectedDateRange:', selectedDateRange.value)
+  logger.log('applyFilters 被调用', 'selectedDateRange:', selectedDateRange.value)
   loadMessages(1)
 }
 
@@ -599,13 +601,13 @@ const downloadImage = async () => {
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
-      ElMessage.success('图片下载成功')
+      QMessage.success('图片下载成功')
     } else {
-      ElMessage.error('图片下载失败')
+      QMessage.error('图片下载失败')
     }
   } catch (error) {
     console.error('图片下载失败:', error)
-    ElMessage.error('图片下载失败')
+    QMessage.error('图片下载失败')
   }
 }
 

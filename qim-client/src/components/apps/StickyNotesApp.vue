@@ -155,8 +155,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import { logger } from '../../utils/logger';
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -288,7 +289,7 @@ const updateStickyNote = async () => {
     closeNoteModal()
   } catch (error) {
     console.error('更新便签失败:', error)
-    ElMessage.error('更新便签失败，请稍后重试')
+    QMessage.error('更新便签失败，请稍后重试')
   }
 }
 
@@ -441,7 +442,7 @@ const forwardNoteToChat = (note: any) => {
     detail: { content: messageContent }
   }))
   
-  console.log('转发笔记到聊天窗口:', note)
+  logger.log('转发笔记到聊天窗口:', note)
 }
 
 // 接收添加到笔记事件
@@ -460,7 +461,7 @@ const handleAddToNote = async (event: CustomEvent) => {
   selectedNote.value = null
   // 自动创建笔记并保存到后端
   await createStickyNote()
-  console.log('收到添加到笔记:', { title, content })
+  logger.log('收到添加到笔记:', { title, content })
 }
 
 // 处理键盘快捷键

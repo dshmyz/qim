@@ -1,7 +1,6 @@
 import { ref, onUnmounted, readonly } from 'vue'
 import { videoCallManager, type CallStatus, type CallType } from '../utils/videoCall'
 import type { User } from '../types'
-import { logger } from '@/utils/logger'
 
 export interface RemoteUser {
   id: number
@@ -181,7 +180,7 @@ export function useVideoCall() {
     user_info?: RemoteUser
   }) => {
     try {
-      logger.log('收到呼叫邀请:', data)
+      console.log('收到呼叫邀请:', data)
 
       // 从缓存或数据中获取用户信息
       let userInfo = getUserInfo(data.target_user_id)
@@ -220,7 +219,7 @@ export function useVideoCall() {
   // 处理对方接听
   const handleCallAccept = async (data: { target_user_id: string; signal: RTCSessionDescriptionInit }) => {
     try {
-      logger.log('对方接听:', data)
+      console.log('对方接听:', data)
 
       // 如果是主叫方，收到 answer
       if (videoCallManager.getCallStatus() === 'calling') {
@@ -233,7 +232,7 @@ export function useVideoCall() {
 
   // 处理对方拒绝
   const handleCallReject = (data: { target_user_id: string }) => {
-    logger.log('对方拒绝通话:', data)
+    console.log('对方拒绝通话:', data)
     videoCallManager.cleanup()
     callStatus.value = 'ended'
     localStream.value = null
@@ -242,7 +241,7 @@ export function useVideoCall() {
 
   // 处理对方结束通话
   const handleCallEnd = (data: { target_user_id: string }) => {
-    logger.log('对方结束通话:', data)
+    console.log('对方结束通话:', data)
     videoCallManager.handleRemoteEndCall()
   }
 

@@ -17,12 +17,6 @@ type Config struct {
 	Storage  StorageConfig
 	AI       ai.AIConfig
 	CORS     CORSConfig
-	Upload   UploadConfig
-}
-
-type UploadConfig struct {
-	MaxSizeMB    int      `yaml:"max_size_mb"`
-	AllowedTypes []string `yaml:"allowed_types"`
 }
 
 type CORSConfig struct {
@@ -85,7 +79,6 @@ type yamlConfig struct {
 	Storage StorageConfig  `yaml:"storage"`
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
-	Upload  UploadConfig   `yaml:"upload"`
 }
 
 func Load() *Config {
@@ -101,6 +94,12 @@ func Load() *Config {
 			fmt.Printf("配置文件解析失败: %v，使用默认配置\n", err)
 			cfg = getDefaultConfig()
 		}
+	}
+
+	// 确保CORS配置有默认值
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		defaultCfg := getDefaultConfig()
+		cfg.CORS = defaultCfg.CORS
 	}
 
 	port := os.Getenv("PORT")
@@ -218,7 +217,6 @@ func Load() *Config {
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
-		Upload:   cfg.Upload,
 	}
 }
 
@@ -293,11 +291,7 @@ func getDefaultConfig() yamlConfig {
 			},
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: []string{"http://localhost:5173", "app://localhost"},
-		},
-		Upload: UploadConfig{
-			MaxSizeMB:    50,
-			AllowedTypes: []string{},
+			AllowedOrigins: []string{"*"},
 		},
 	}
 }

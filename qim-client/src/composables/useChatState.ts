@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { logger } from '../utils/logger';
 
 /**
  * 聊天状态管理 composable
@@ -8,7 +9,7 @@ export function useChatState() {
   // 显示消息提示
   const showMessage = (options: { message: string, type?: 'success' | 'warning' | 'error' | 'info', duration?: number }) => {
     const { message, type = 'info', duration = 3000 } = options
-    console.log('显示消息:', message, type)
+    logger.log('显示消息:', message, type)
 
     // 创建消息容器
     const messageElement = document.createElement('div')
@@ -64,18 +65,18 @@ export function useChatState() {
 
     switch (type) {
       case 'success':
-        icon.innerHTML = '✓'
+        icon.textContent = '✓'
         icon.style.fontWeight = 'bold'
         break
       case 'warning':
-        icon.innerHTML = '⚠️'
+        icon.textContent = '⚠️'
         break
       case 'error':
-        icon.innerHTML = '✗'
+        icon.textContent = '✗'
         icon.style.fontWeight = 'bold'
         break
       case 'info':
-        icon.innerHTML = 'ℹ️'
+        icon.textContent = 'ℹ️'
         break
     }
 
@@ -88,7 +89,7 @@ export function useChatState() {
 
     // 添加到 DOM
     document.body.appendChild(messageElement)
-    console.log('消息已添加到 DOM', messageElement)
+    logger.log('消息已添加到 DOM', messageElement)
 
     // 添加动画样式
     const animationStyle = document.createElement('style')
@@ -131,7 +132,7 @@ export function useChatState() {
         messageElement.remove()
         animationStyle.remove()
         fadeOutStyle.remove()
-        console.log('消息已移除')
+        logger.log('消息已移除')
       }, 300)
     }, duration)
   }

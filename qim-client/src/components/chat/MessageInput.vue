@@ -14,26 +14,7 @@
     
     <div v-if="showEmojiPanel" class="emoji-panel-container">
       <div class="emoji-panel-backdrop" @click="$emit('close-emoji-panel')"></div>
-      <div class="emoji-panel">
-        <div class="emoji-category">
-          <div class="emoji-category-title">常用表情</div>
-          <div class="emoji-grid">
-            <div v-for="emoji in commonEmojis" :key="emoji" class="emoji-item" @click="$emit('insert-emoji', emoji)">{{ emoji }}</div>
-          </div>
-        </div>
-        <div class="emoji-category">
-          <div class="emoji-category-title">表情符号</div>
-          <div class="emoji-grid">
-            <div v-for="emoji in faceEmojis" :key="emoji" class="emoji-item" @click="$emit('insert-emoji', emoji)">{{ emoji }}</div>
-          </div>
-        </div>
-        <div class="emoji-category">
-          <div class="emoji-category-title">动物与自然</div>
-          <div class="emoji-grid">
-            <div v-for="emoji in animalEmojis" :key="emoji" class="emoji-item" @click="$emit('insert-emoji', emoji)">{{ emoji }}</div>
-          </div>
-        </div>
-      </div>
+      <EmojiPanel @select="handleEmojiSelect" />
     </div>
     
     <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" class="at-members-panel-container">
@@ -88,6 +69,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import EmojiPanel from './EmojiPanel.vue'
 import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 
@@ -105,9 +87,6 @@ interface Props {
   showSearch: boolean
   searchQuery: string
   quotedMessage: any
-  commonEmojis: string[]
-  faceEmojis: string[]
-  animalEmojis: string[]
   isElectron: boolean
   getFileIcon: (fileUrl: string) => string
 }
@@ -156,6 +135,10 @@ const filteredAtMembers = computed(() => {
   const query = atMembersSearchQuery.value.toLowerCase()
   return (props.conversation.members || []).filter(member => member.name.toLowerCase().includes(query))
 })
+
+const handleEmojiSelect = (emoji: string) => {
+  emit('insert-emoji', emoji)
+}
 
 const handleInputAndResize = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement

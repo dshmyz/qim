@@ -16,6 +16,10 @@ interface ElectronAPI {
     cancelSelection: () => void
     getScreenInfo: () => Promise<any>
   }
+  tray: {
+    flash: () => void
+    stopFlash: () => void
+  }
 }
 
 interface Window {

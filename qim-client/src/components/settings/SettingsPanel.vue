@@ -428,9 +428,10 @@ input:checked + .slider:before {
 
 .theme-selector {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
   flex: 1;
+  overflow-x: auto;
 }
 
 .theme-option {

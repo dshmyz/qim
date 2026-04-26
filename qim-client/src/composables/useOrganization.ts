@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../utils/qmessage'
 
 interface Employee {
   id: string

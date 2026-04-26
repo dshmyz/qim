@@ -7,6 +7,7 @@ import AppPanel from '../shared/AppPanel.vue'
 import SearchResult from '../conversation/SearchResult.vue'
 import ConversationList from '../conversation/ConversationList.vue'
 import type { Conversation, User } from '../../types'
+import { logger } from '../../utils/logger';
 
 interface OrgDepartment {
   id: string
@@ -189,7 +190,7 @@ const filteredConversations = computed(() => {
         <GroupList
           :conversations="conversations"
           :selectedGroup="selectedGroup"
-          @select="(group) => { console.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
+          @select="(group) => { logger.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
           @enter="(conv) => $emit('enterGroup', conv)"
           @invite="(conv) => $emit('inviteMembers', conv)"
           @showContextMenu="(event, conv) => $emit('groupContextMenu', event, conv)"

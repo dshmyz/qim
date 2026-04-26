@@ -118,6 +118,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
+import { logger } from '../../utils/logger';
 
 // 定义事件
 const emit = defineEmits(['back'])
@@ -142,20 +143,20 @@ const loadApps = async () => {
   try {
     const token = localStorage.getItem('token')
     const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
-    console.log('加载应用列表，服务器地址:', serverUrl)
+    logger.log('加载应用列表，服务器地址:', serverUrl)
     const response = await axios.get(`${serverUrl}/api/v1/apps`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
-    console.log('加载应用列表响应:', response.data)
+    logger.log('加载应用列表响应:', response.data)
     if (response.data.code === 0) {
       // 处理后端返回的open_type字段
       userApps.value = response.data.data.map((app: any) => ({
         ...app,
         openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
       }))
-      console.log('应用列表加载成功:', userApps.value)
+      logger.log('应用列表加载成功:', userApps.value)
     } else {
       console.error('加载应用列表失败:', response.data.message)
     }
@@ -166,14 +167,14 @@ const loadApps = async () => {
 
 // 打开应用
 const openApp = (app: any) => {
-  console.log('打开应用:', app.name)
+  logger.log('打开应用:', app.name)
   
   // 触发自定义事件，通知父组件（Main.vue）打开应用
   const event = new CustomEvent('open-user-app', {
     detail: app
   })
   window.dispatchEvent(event)
-  console.log('已发送打开应用事件:', app)
+  logger.log('已发送打开应用事件:', app)
 }
 
 // 显示创建应用模态框
@@ -218,7 +219,7 @@ const saveApp = async () => {
     
     if (selectedApp.value) {
       // 编辑应用
-      console.log('编辑应用:', formData.value)
+      logger.log('编辑应用:', formData.value)
       response = await axios.put(`${serverUrl}/api/v1/apps/${selectedApp.value.id}`, formData.value, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -226,7 +227,7 @@ const saveApp = async () => {
       })
     } else {
       // 创建应用
-      console.log('创建应用:', formData.value)
+      logger.log('创建应用:', formData.value)
       response = await axios.post(`${serverUrl}/api/v1/apps`, formData.value, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -234,13 +235,13 @@ const saveApp = async () => {
       })
     }
     
-    console.log('保存应用响应:', response.data)
+    logger.log('保存应用响应:', response.data)
     if (response.data.code === 0) {
       closeAppModal()
       await loadApps()
       // 通知父组件重新加载用户应用
       window.dispatchEvent(new CustomEvent('refresh-user-apps'))
-      console.log('应用保存成功')
+      logger.log('应用保存成功')
     } else {
       console.error('应用保存失败:', response.data.message)
     }
@@ -255,18 +256,18 @@ const deleteApp = async (appId: number) => {
     try {
       const token = localStorage.getItem('token')
       const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
-      console.log('删除应用:', appId)
+      logger.log('删除应用:', appId)
       const response = await axios.delete(`${serverUrl}/api/v1/apps/${appId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
-      console.log('删除应用响应:', response.data)
+      logger.log('删除应用响应:', response.data)
       if (response.data.code === 0) {
         await loadApps()
         // 通知父组件重新加载用户应用
         window.dispatchEvent(new CustomEvent('refresh-user-apps'))
-        console.log('应用删除成功')
+        logger.log('应用删除成功')
       } else {
         console.error('应用删除失败:', response.data.message)
       }

@@ -12,7 +12,7 @@ import (
 )
 
 type Claims struct {
-	UserID uint   `json:"user_id"`
+	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
@@ -22,25 +22,27 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		// 首先从Authorization头获取token
 		authHeader := c.GetHeader("Authorization")
 		var tokenString string
-		
+
 		if authHeader != "" {
-			// 从Authorization头获取
+			// 尝试从Authorization头获取（Bearer格式）
 			parts := strings.SplitN(authHeader, " ", 2)
-			if !(len(parts) == 2 && parts[0] == "Bearer") {
-				c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "认证令牌格式错误"})
-				c.Abort()
-				return
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			} else {
+				// 如果不是Bearer格式，回退到从URL参数获取（用于WebSocket连接）
+				tokenString = c.Query("token")
 			}
-			tokenString = parts[1]
 		} else {
 			// 从URL参数获取（用于WebSocket连接）
 			tokenString = c.Query("token")
-			if tokenString == "" {
-				c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未提供认证令牌"})
-				c.Abort()
-				return
-			}
 		}
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未提供认证令牌"})
+			c.Abort()
+			return
+		}
+
 		claims := &Claims{}
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -67,14 +69,14 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		var userRoles []model.UserRole
 		if err := database.GetDB().Where("user_id = ?", userID).Find(&userRoles).Error; err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限操作"})
 			c.Abort()
 			return
 		}
-		
+
 		hasRole := false
 		for _, ur := range userRoles {
 			for _, role := range roles {
@@ -87,13 +89,13 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 				break
 			}
 		}
-		
+
 		if !hasRole {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限操作"})
 			c.Abort()
 			return
 		}
-		
+
 		c.Next()
 	}
 }

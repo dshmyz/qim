@@ -1,3 +1,4 @@
+import { logger } from './logger';
 // WebSocket 管理器 - 简洁版
 
 // 定义消息类型
@@ -38,7 +39,7 @@ export const connectWebSocket = (serverUrl: string, token: string): WebSocket =>
   }
   
   ws.onopen = () => {
-    console.log('WebSocket 连接成功');
+    logger.log('WebSocket 连接成功');
   };
   
   ws.onmessage = (event) => {
@@ -51,7 +52,7 @@ export const connectWebSocket = (serverUrl: string, token: string): WebSocket =>
   };
   
   ws.onclose = () => {
-    console.log('WebSocket 连接关闭');
+    logger.log('WebSocket 连接关闭');
   };
   
   ws.onerror = (error) => {

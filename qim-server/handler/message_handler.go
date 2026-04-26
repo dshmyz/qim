@@ -99,7 +99,7 @@ func GetMessages(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"data": responseMessages,
+		"messages": responseMessages,
 		"pagination": gin.H{
 			"current_page": page,
 			"page_size":    pageSize,

@@ -1,13 +1,11 @@
 <template>
   <div class="login-container">
-    <!-- 窗口控制按钮 -->
     <div class="window-controls">
       <button class="window-control-btn minimize-btn" @click="minimizeWindow">—</button>
       <button class="window-control-btn maximize-btn" @click="maximizeWindow">☐</button>
       <button class="window-control-btn close-btn" @click="closeWindow">×</button>
     </div>
     
-    <!-- 背景装饰 -->
     <div class="background-decoration">
       <div class="circle circle-1"></div>
       <div class="circle circle-2"></div>
@@ -24,102 +22,109 @@
         <p>即时通讯应用</p>
       </div>
       
-      <!-- 登录表单 -->
-      <el-form v-if="!show2FAForm" :model="loginForm" :rules="rules" ref="loginFormRef" label-position="top">
-        <el-form-item prop="username" class="form-item">
-          <div class="input-wrapper">
+      <form v-if="!show2FAForm" @submit.prevent="login" class="login-form-content">
+        <div class="form-item">
+          <div class="input-wrapper" :class="{ 'input-error': errors.username }">
             <i class="fas fa-user input-icon"></i>
-            <el-input 
-              v-model="loginForm.username" 
-              placeholder="请输入用户名" 
+            <input 
+              v-model="loginForm.username"
+              type="text"
+              placeholder="请输入用户名"
               class="login-input"
               @focus="handleInputFocus('username')"
               @blur="handleInputBlur('username')"
               @change="checkTwoFactorStatus"
             />
           </div>
-        </el-form-item>
+          <div v-if="errors.username" class="error-message">{{ errors.username }}</div>
+        </div>
         
-        <el-form-item prop="password" class="form-item">
-          <div class="input-wrapper">
+        <div class="form-item">
+          <div class="input-wrapper" :class="{ 'input-error': errors.password }">
             <i class="fas fa-lock input-icon"></i>
-            <el-input 
-              v-model="loginForm.password" 
-              type="password" 
-              placeholder="请输入密码" 
+            <input 
+              v-model="loginForm.password"
+              type="password"
+              placeholder="请输入密码"
               class="login-input"
               @focus="handleInputFocus('password')"
               @blur="handleInputBlur('password')"
             />
           </div>
-        </el-form-item>
-        
-        <div class="form-options">
-          <el-checkbox v-model="loginForm.remember" class="remember-checkbox">记住密码</el-checkbox>
-          <el-button link @click="showServerSettings = true" class="server-settings-btn">设置服务器地址</el-button>
+          <div v-if="errors.password" class="error-message">{{ errors.password }}</div>
         </div>
         
-        <el-form-item class="form-item">
-          <el-button 
-            type="primary" 
-            @click="login" 
+        <div class="form-options">
+          <label class="remember-checkbox">
+            <input type="checkbox" v-model="loginForm.remember" />
+            <span>记住密码</span>
+          </label>
+          <button type="button" @click="showServerSettings = true" class="server-settings-btn">
+            设置服务器地址
+          </button>
+        </div>
+        
+        <div class="form-item">
+          <button 
+            type="submit"
             class="login-button"
-            :loading="isLoading"
+            :disabled="isLoading"
           >
             {{ isLoading ? '登录中...' : '登录' }}
-          </el-button>
-        </el-form-item>
-      </el-form>
+          </button>
+        </div>
+      </form>
       
-      <!-- 双因素认证表单 -->
-      <el-form v-else :model="twoFAForm" :rules="twoFARules" ref="twoFAFormRef" label-position="top" class="twofa-form">
+      <form v-else @submit.prevent="verifyTwoFA" class="twofa-form">
         <h3 class="twofa-title">双因素认证</h3>
         
         <p class="twofa-message">你已开启双因素，请输入动态口令</p>
         
-        <el-form-item prop="code" class="twofa-input-item">
-          <el-input 
-            v-model="twoFAForm.code" 
-            placeholder="请输入6位验证码" 
-            class="twofa-input"
-            @keyup.enter="verifyTwoFA"
-            maxlength="6"
-          />
-        </el-form-item>
+        <div class="twofa-input-item">
+          <div class="input-wrapper" :class="{ 'input-error': errors.code }">
+            <input 
+              v-model="twoFAForm.code"
+              type="text"
+              placeholder="请输入6位验证码"
+              class="twofa-input"
+              @keyup.enter="verifyTwoFA"
+              maxlength="6"
+            />
+          </div>
+          <div v-if="errors.code" class="error-message">{{ errors.code }}</div>
+        </div>
         
-        <el-form-item class="twofa-button-item">
-          <el-button 
-            type="primary" 
-            @click="verifyTwoFA" 
+        <div class="twofa-button-item">
+          <button 
+            type="submit"
             class="twofa-button"
-            :loading="isLoading"
+            :disabled="isLoading"
           >
             {{ isLoading ? '验证中...' : '验证' }}
-          </el-button>
-        </el-form-item>
+          </button>
+        </div>
         
         <div class="twofa-actions">
-          <el-button 
-            link 
+          <button 
+            type="button"
             @click="resendCode"
             class="twofa-action-btn"
             :disabled="isResending"
           >
             {{ isResending ? '重新发送中...' : '重新发送' }}
-          </el-button>
-          <el-button 
-            link 
+          </button>
+          <button 
+            type="button"
             @click="show2FAForm = false"
             class="twofa-action-btn"
           >
             返回登录
-          </el-button>
+          </button>
         </div>
-      </el-form>
+      </form>
       
     </div>
     
-    <!-- 版本号显示 -->
     <div class="version-info">
       <div class="info-row">
         <span class="info-item">版本: {{ packageJson.version }}</span>
@@ -128,39 +133,53 @@
       </div>
     </div>
     
-    <!-- 服务器设置弹窗 -->
-    <el-dialog
-      v-model="showServerSettings"
-      title="服务器设置"
-      width="400px"
-    >
-      <el-form :model="serverSettings" label-width="100px">
-        <el-form-item label="服务器地址">
-          <el-input v-model="serverSettings.url" placeholder="请输入服务器地址" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showServerSettings = false">取消</el-button>
-          <el-button type="primary" @click="saveServerSettings">保存</el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <div v-if="showServerSettings" class="dialog-overlay" @click.self="showServerSettings = false">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>服务器设置</h3>
+          <button class="dialog-close" @click="showServerSettings = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label>服务器地址</label>
+            <input v-model="serverSettings.url" type="text" placeholder="请输入服务器地址" />
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button @click="showServerSettings = false">取消</button>
+          <button type="button" class="btn-primary" @click="saveServerSettings">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage } from 'element-plus'
 import packageJson from '../../package.json'
 import { API_BASE_URL } from '../config'
+import QMessage from '../utils/qmessage'
+
+declare global {
+  interface Window {
+    electron?: {
+      ipcRenderer: {
+        send: (channel: string, ...args: any[]) => void
+      }
+    }
+  }
+}
+
+interface FormErrors {
+  username?: string
+  password?: string
+  code?: string
+}
 
 const emit = defineEmits<{
   (e: 'login-success', user: { username: string }): void
 }>()
 
-const loginFormRef = ref<FormInstance>()
 const loginForm = reactive({
   username: '',
   password: '',
@@ -168,55 +187,13 @@ const loginForm = reactive({
   twoFactorEnabled: false
 })
 
-const rules = reactive<FormRules>({
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' }
-  ]
-})
-
-// 双因素认证相关
-const show2FAForm = ref(false)
-const twoFAFormRef = ref<FormInstance>()
 const twoFAForm = reactive({
   code: ''
 })
 
-const twoFARules = reactive<FormRules>({
-  code: [
-    { required: true, message: '请输入验证码', trigger: 'blur' },
-    { pattern: /^\d{6}$/, message: '请输入6位数字验证码', trigger: 'blur' }
-  ]
-})
-
-// 登录会话信息，用于双因素认证
+const errors = ref<FormErrors>({})
+const show2FAForm = ref(false)
 const loginSession = ref<string>('')
-
-// 检查用户双因素认证状态
-const checkTwoFactorStatus = async () => {
-  if (!loginForm.username) return
-  
-  try {
-    const response = await fetch(`${serverSettings.url}/api/v1/auth/check-2fa`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ username: loginForm.username })
-    })
-    
-    const data = await response.json()
-    if (data.code === 0) {
-      // 保存用户双因素认证状态
-      loginForm.twoFactorEnabled = data.data.twoFactorEnabled
-    }
-  } catch (error) {
-    console.error('检查双因素认证状态失败:', error)
-  }
-}
-
 const isLoading = ref(false)
 const focusedInput = ref<string | null>(null)
 const showServerSettings = ref(false)
@@ -226,165 +203,197 @@ const serverSettings = reactive({
   url: API_BASE_URL
 })
 
+const validateField = (field: keyof FormErrors, value: string): boolean => {
+  switch (field) {
+    case 'username':
+      if (!value.trim()) {
+        errors.value.username = '请输入用户名'
+        return false
+      }
+      errors.value.username = undefined
+      return true
+    case 'password':
+      if (!value) {
+        errors.value.password = '请输入密码'
+        return false
+      }
+      errors.value.password = undefined
+      return true
+    case 'code':
+      if (!value) {
+        errors.value.code = '请输入验证码'
+        return false
+      }
+      if (!/^\d{6}$/.test(value)) {
+        errors.value.code = '请输入6位数字验证码'
+        return false
+      }
+      errors.value.code = undefined
+      return true
+    default:
+      return true
+  }
+}
+
+const validateForm = (formType: 'login' | 'twofa'): boolean => {
+  let valid = true
+  errors.value = {}
+
+  if (formType === 'login') {
+    valid = validateField('username', loginForm.username) && valid
+    valid = validateField('password', loginForm.password) && valid
+  } else if (formType === 'twofa') {
+    valid = validateField('code', twoFAForm.code) && valid
+  }
+
+  return valid
+}
+
+const checkTwoFactorStatus = async () => {
+  if (!loginForm.username) return
+  
+  try {
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/check-2fa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: loginForm.username })
+    })
+    
+    const data = await response.json()
+    if (data.code === 0) {
+      loginForm.twoFactorEnabled = data.data.twoFactorEnabled
+    }
+  } catch (error) {
+    console.error('检查双因素认证状态失败:', error)
+  }
+}
+
 const handleInputFocus = (input: string) => {
   focusedInput.value = input
+  errors.value[input as keyof FormErrors] = undefined
 }
 
 const handleInputBlur = (input: string) => {
   if (focusedInput.value === input) {
     focusedInput.value = null
+    validateField(input as keyof FormErrors, loginForm[input as keyof typeof loginForm] as string)
   }
 }
 
 const saveServerSettings = () => {
-  // 保存服务器地址到本地存储
   localStorage.setItem('serverUrl', serverSettings.url)
   showServerSettings.value = false
-  ElMessage.success('服务器地址保存成功')
+  QMessage.success('服务器地址保存成功')
 }
 
 const login = async () => {
-  if (!loginFormRef.value) return
+  if (!validateForm('login')) return
   
-  await loginFormRef.value.validate(async (valid, fields) => {
-    if (valid) {
-      isLoading.value = true
-      try {
-        const response = await fetch(`${serverSettings.url}/api/v1/auth/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            username: loginForm.username,
-            password: loginForm.password,
-            version: packageJson.version
-          })
-        })
-        
-        // 无论响应状态码如何，都尝试解析响应数据
-        const data = await response.json()
-        if (data.code === 0) {
-          // 保存token和用户信息
-          localStorage.setItem('token', data.data.token)
-          localStorage.setItem('user', JSON.stringify(data.data.user))
-          
-          // 如果勾选了记住密码，保存到本地存储
-          if (loginForm.remember) {
-            localStorage.setItem('username', loginForm.username)
-            localStorage.setItem('password', loginForm.password)
-            localStorage.setItem('remember', 'true')
-          } else {
-            localStorage.removeItem('username')
-            localStorage.removeItem('password')
-            localStorage.removeItem('remember')
-          }
-          
-          emit('login-success', data.data.user)
-        } else if (data.code === 401 && data.message === '需要双因素认证') {
-          // 需要双因素认证
-          loginSession.value = data.data.session
-          show2FAForm.value = true
-        } else {
-          ElMessage.error(data.message || '登录失败')
-        }
-      } catch (error) {
-        console.error('登录错误:', error)
-        ElMessage.error('网络错误，请检查服务器连接')
-      } finally {
-        isLoading.value = false
+  isLoading.value = true
+  try {
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: loginForm.username,
+        password: loginForm.password,
+        version: packageJson.version
+      })
+    })
+    
+    const data = await response.json()
+    if (data.code === 0) {
+      localStorage.setItem('token', data.data.token)
+      localStorage.setItem('user', JSON.stringify(data.data.user))
+      
+      if (loginForm.remember) {
+        localStorage.setItem('username', loginForm.username)
+        localStorage.setItem('password', btoa(encodeURIComponent(loginForm.password)))
+        localStorage.setItem('remember', 'true')
+      } else {
+        localStorage.removeItem('username')
+        localStorage.removeItem('password')
+        localStorage.removeItem('remember')
       }
+      
+      emit('login-success', data.data.user)
+    } else if (data.code === 401 && data.message === '需要双因素认证') {
+      loginSession.value = data.data.session
+      show2FAForm.value = true
     } else {
-      console.log('验证失败:', fields)
+      QMessage.error(data.message || '登录失败')
     }
-  })
+  } catch (error) {
+    console.error('登录错误:', error)
+    QMessage.error('网络错误，请检查服务器连接')
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const verifyTwoFA = async () => {
-  if (!twoFAFormRef.value) return
+  if (!validateForm('twofa')) return
   
-  await twoFAFormRef.value.validate(async (valid, fields) => {
-    if (valid) {
-      isLoading.value = true
-      try {
-        const response = await fetch(`${serverSettings.url}/api/v1/auth/2fa/verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            session: loginSession.value,
-            code: twoFAForm.code,
-            username: loginForm.username
-          })
-        })
+  isLoading.value = true
+  try {
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/2fa/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session: loginSession.value,
+        code: twoFAForm.code,
+        username: loginForm.username
+      })
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.code === 0) {
+        localStorage.setItem('token', data.data.token)
+        localStorage.setItem('user', JSON.stringify(data.data.user))
         
-        if (response.ok) {
-          const data = await response.json()
-          if (data.code === 0) {
-            // 保存token和用户信息
-            localStorage.setItem('token', data.data.token)
-            localStorage.setItem('user', JSON.stringify(data.data.user))
-            
-            // 如果勾选了记住密码，保存到本地存储
-            if (loginForm.remember) {
-              localStorage.setItem('username', loginForm.username)
-              localStorage.setItem('password', loginForm.password)
-              localStorage.setItem('remember', 'true')
-            } else {
-              localStorage.removeItem('username')
-              localStorage.removeItem('password')
-              localStorage.removeItem('remember')
-            }
-            
-            emit('login-success', data.data.user)
-          } else {
-            ElMessage.error(data.message || '验证失败')
-          }
+        if (loginForm.remember) {
+          localStorage.setItem('username', loginForm.username)
+          localStorage.setItem('password', btoa(encodeURIComponent(loginForm.password)))
+          localStorage.setItem('remember', 'true')
         } else {
-          const errorData = await response.json()
-          ElMessage.error(errorData.message || '验证失败')
+          localStorage.removeItem('username')
+          localStorage.removeItem('password')
+          localStorage.removeItem('remember')
         }
-      } catch (error) {
-        console.error('验证错误:', error)
-        ElMessage.error('网络错误，请检查服务器连接')
-      } finally {
-        isLoading.value = false
+        
+        emit('login-success', data.data.user)
+      } else {
+        QMessage.error(data.message || '验证失败')
       }
     } else {
-      console.log('验证失败:', fields)
+      const errorData = await response.json()
+      QMessage.error(errorData.message || '验证失败')
     }
-  })
+  } catch (error) {
+    console.error('验证错误:', error)
+    QMessage.error('网络错误，请检查服务器连接')
+  } finally {
+    isLoading.value = false
+  }
 }
 
-// 初始化时加载保存的设置
 const loadSavedSettings = () => {
   const savedUsername = localStorage.getItem('username')
   const savedPassword = localStorage.getItem('password')
   const savedRemember = localStorage.getItem('remember')
   const savedServerUrl = localStorage.getItem('serverUrl')
   
-  if (savedUsername) {
+  if (savedRemember === 'true' && savedUsername && savedPassword) {
     loginForm.username = savedUsername
-  }
-  
-  if (savedPassword) {
-    loginForm.password = savedPassword
-  }
-  
-  if (savedRemember === 'true') {
+    loginForm.password = decodeURIComponent(atob(savedPassword))
     loginForm.remember = true
   }
-  
-  if (savedServerUrl) {
-    serverSettings.url = savedServerUrl
-  }
+  if (savedServerUrl) serverSettings.url = savedServerUrl
 }
 
-// 调用加载保存的设置
 loadSavedSettings()
 
-// 重新发送验证码
 const resendCode = async () => {
   if (isResending.value) return
   
@@ -392,9 +401,7 @@ const resendCode = async () => {
   try {
     const response = await fetch(`${serverSettings.url}/api/v1/auth/2fa/resend`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         session: loginSession.value,
         username: loginForm.username
@@ -403,21 +410,19 @@ const resendCode = async () => {
     
     const data = await response.json()
     if (data.code === 0) {
-      ElMessage.success('验证码已重新发送')
+      QMessage.success('验证码已重新发送')
     } else {
-      ElMessage.error(data.message || '重新发送验证码失败')
+      QMessage.error(data.message || '重新发送验证码失败')
     }
   } catch (error) {
     console.error('重新发送验证码错误:', error)
-    ElMessage.error('网络错误，请检查服务器连接')
+    QMessage.error('网络错误，请检查服务器连接')
   } finally {
     isResending.value = false
   }
 }
 
-// 窗口控制函数
 const minimizeWindow = () => {
-  // 发送消息到主进程，请求最小化窗口
   if (window.electron) {
     window.electron.ipcRenderer.send('minimize-window')
   } else {
@@ -426,7 +431,6 @@ const minimizeWindow = () => {
 }
 
 const maximizeWindow = () => {
-  // 发送消息到主进程，请求最大化窗口
   if (window.electron) {
     window.electron.ipcRenderer.send('maximize-window')
   } else {
@@ -435,7 +439,6 @@ const maximizeWindow = () => {
 }
 
 const closeWindow = () => {
-  // 发送消息到主进程，请求关闭窗口
   if (window.electron) {
     window.electron.ipcRenderer.send('close-window')
   } else {
@@ -457,7 +460,6 @@ const closeWindow = () => {
   -webkit-app-region: drag;
 }
 
-/* 背景装饰 */
 .background-decoration {
   position: absolute;
   top: 0;
@@ -521,7 +523,6 @@ const closeWindow = () => {
   -webkit-app-region: no-drag;
 }
 
-/* 窗口控制按钮 */
 .window-controls {
   position: fixed;
   top: 16px;
@@ -624,6 +625,10 @@ const closeWindow = () => {
   color: #666;
 }
 
+.login-form-content {
+  width: 100%;
+}
+
 .form-item {
   margin-bottom: 24px;
 }
@@ -635,12 +640,22 @@ const closeWindow = () => {
   transition: all 0.3s ease;
   width: 100%;
   box-sizing: border-box;
+  border: 1px solid transparent;
 }
 
 .input-wrapper:focus-within {
   background: white;
   box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.2);
   transform: translateY(-2px);
+}
+
+.input-wrapper.input-error {
+  border-color: #f5222d;
+  background: #fff2f0;
+}
+
+.input-wrapper.input-error:focus-within {
+  box-shadow: 0 0 0 3px rgba(245, 34, 45, 0.1);
 }
 
 .input-icon {
@@ -650,24 +665,34 @@ const closeWindow = () => {
   transform: translateY(-50%);
   color: #999;
   transition: all 0.3s ease;
+  z-index: 1;
 }
 
 .input-wrapper:focus-within .input-icon {
   color: #64b5f6;
 }
 
-.login-input {
-  padding-left: 48px !important;
-  border: none !important;
-  background: transparent !important;
-  border-radius: 8px !important;
-  height: 56px !important;
-  font-size: 16px !important;
-  transition: all 0.3s ease !important;
+.input-wrapper.input-error .input-icon {
+  color: #f5222d;
 }
 
-.login-input:focus {
-  box-shadow: none !important;
+.login-input {
+  width: 100%;
+  padding: 16px 16px 16px 48px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.error-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #f5222d;
+  padding-left: 4px;
 }
 
 .form-options {
@@ -678,27 +703,31 @@ const closeWindow = () => {
 }
 
 .remember-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: #666;
+  cursor: pointer;
+}
+
+.remember-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .server-settings-btn {
   font-size: 14px;
   color: #64b5f6;
+  background: none;
+  border: none;
+  cursor: pointer;
   transition: all 0.3s ease;
+  padding: 0;
 }
 
 .server-settings-btn:hover {
-  color: #42a5f5;
-}
-
-.back-to-login {
-  font-size: 14px;
-  color: #64b5f6;
-  transition: all 0.3s ease;
-}
-
-.back-to-login:hover {
   color: #42a5f5;
 }
 
@@ -727,7 +756,7 @@ const closeWindow = () => {
 .twofa-input-item {
   width: 100%;
   max-width: 280px;
-  margin-bottom: 24px !important;
+  margin-bottom: 24px;
 }
 
 .twofa-input {
@@ -739,6 +768,8 @@ const closeWindow = () => {
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   transition: all 0.3s ease;
+  outline: none;
+  background: transparent;
 }
 
 .twofa-input:focus {
@@ -749,7 +780,7 @@ const closeWindow = () => {
 .twofa-button-item {
   width: 100%;
   max-width: 280px;
-  margin-bottom: 24px !important;
+  margin-bottom: 24px;
 }
 
 .twofa-button {
@@ -760,13 +791,20 @@ const closeWindow = () => {
   border-radius: 8px;
   background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
   border: none;
+  cursor: pointer;
   transition: all 0.3s ease;
+  color: white;
 }
 
-.twofa-button:hover {
+.twofa-button:hover:not(:disabled) {
   background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(100, 181, 246, 0.3);
+}
+
+.twofa-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .twofa-actions {
@@ -779,11 +817,13 @@ const closeWindow = () => {
 .twofa-action-btn {
   font-size: 14px;
   color: #64b5f6;
-  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
   transition: color 0.3s ease;
 }
 
-.twofa-action-btn:hover {
+.twofa-action-btn:hover:not(:disabled) {
   color: #42a5f5;
 }
 
@@ -800,20 +840,143 @@ const closeWindow = () => {
   font-weight: 600;
   background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
   border: none;
+  cursor: pointer;
   transition: all 0.3s ease;
+  color: white;
 }
 
-.login-button:hover {
+.login-button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(100, 181, 246, 0.4);
   background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
 }
 
-.login-button:active {
+.login-button:active:not(:disabled) {
   transform: translateY(0);
 }
 
-/* 版本号样式 */
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 8px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.dialog-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  color: #666;
+}
+
+.form-group input {
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus {
+  border-color: #64b5f6;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.dialog-footer button {
+  padding: 8px 20px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dialog-footer button:hover {
+  border-color: #c0c4cc;
+  background: #f5f7fa;
+}
+
+.dialog-footer .btn-primary {
+  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  border: none;
+  color: white;
+}
+
+.dialog-footer .btn-primary:hover {
+  background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
+}
+
 .version-info {
   position: absolute;
   bottom: 16px;
@@ -839,7 +1002,6 @@ const closeWindow = () => {
   color: rgba(102, 102, 102, 0.4);
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .login-form {
     width: 90%;

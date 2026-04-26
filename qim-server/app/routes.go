@@ -34,7 +34,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	aiHandler := handler.NewAIHandler(aiService, mcpServer)
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
-	// CORS配置
 	corsMiddleware := cors.New(cors.Config{
 		AllowOrigins:     cfg.CORS.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -85,6 +84,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/organization/tree", handler.GetOrganizationTree)
 			// 创建部门
 			authed.POST("/departments", handler.CreateDepartment)
+			// 删除部门
+			authed.DELETE("/departments/:id", handler.DeleteDepartment)
+			// 获取部门员工
+			authed.GET("/departments/:id/employees", handler.GetDepartmentEmployees)
+			// 从部门移除员工
+			authed.DELETE("/department-employees/:id/:user_id", handler.RemoveEmployeeFromDepartment)
 			// 创建用户
 			authed.POST("/users", handler.CreateUser)
 			// 关联用户和部门
@@ -104,10 +109,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/conversations/:id", handler.DeleteConversation)
 
 			// 消息
-				authed.GET("/conversations/:id/messages", handler.GetMessages)
-				authed.POST("/conversations/:id/messages", handler.SendMessage)
-				authed.POST("/conversations/:id/messages/stream", handler.StreamMessage)
-				authed.POST("/conversations/:id/read", handler.MarkConversationAsRead)
+			authed.GET("/conversations/:id/messages", handler.GetMessages)
+			authed.POST("/conversations/:id/messages", handler.SendMessage)
+			authed.POST("/conversations/:id/messages/stream", handler.StreamMessage)
+			authed.POST("/conversations/:id/read", handler.MarkConversationAsRead)
 			authed.GET("/messages/:id/read-users", handler.GetMessageReadUsers)
 			// 消息撤回
 			authed.POST("/messages/:id/recall", handler.RecallMessage)
@@ -228,6 +233,17 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户搜索
 			authed.GET("/users/search", handler.SearchUsers)
 
+			// 管理员接口（需要 system_admin 角色）
+			admin := authed.Group("/admin")
+			admin.Use(middleware.RequireRole("system_admin"))
+			{
+				admin.GET("/users", handler.AdminGetUsers)
+				admin.GET("/groups", handler.AdminGetGroups)
+				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
+				admin.GET("/statistics", handler.AdminGetStatistics)
+				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
+			}
+
 			// 节点间通信
 			authed.POST("/node/broadcast", handler.BroadcastMessage)
 			authed.POST("/node/send-to-user", handler.SendToUserMessage)
@@ -235,6 +251,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户角色管理
 			authed.POST("/users/:id/roles", middleware.RequireRole("system_admin"), handler.AddUserRole)
 			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole("system_admin"), handler.RemoveUserRole)
+			authed.POST("/users/:id/roles/batch", middleware.RequireRole("system_admin"), handler.BatchAssignUserRoles)
+
+			// 用户删除（管理员）
+			authed.DELETE("/users/:id", middleware.RequireRole("system_admin"), handler.DeleteUser)
 
 			// AI相关路由
 			aiHandler.RegisterRoutes(authed)

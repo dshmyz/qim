@@ -107,7 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import type { Conversation } from '../../types'
 import { getCurrentUser } from '../../utils/user'
 import MemberSidebar from './MemberSidebar.vue'

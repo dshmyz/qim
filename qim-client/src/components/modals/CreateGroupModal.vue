@@ -103,7 +103,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 import { generateAvatar } from '../../utils/avatar'
 
@@ -274,18 +274,18 @@ const handleAvatarUpload = async (event: Event) => {
           // 上传成功后更新为服务器地址
           avatar.value = data.data.url
         } else {
-          ElMessage.error('头像上传失败: ' + data.message)
+          QMessage.error('头像上传失败: ' + data.message)
           // 上传失败后清除预览
           avatar.value = ''
         }
       } else {
-        ElMessage.error('头像上传失败: 服务器错误')
+        QMessage.error('头像上传失败: 服务器错误')
         // 上传失败后清除预览
         avatar.value = ''
       }
     } catch (error) {
       console.error('头像上传失败:', error)
-      ElMessage.error('头像上传失败: 网络错误')
+      QMessage.error('头像上传失败: 网络错误')
       // 上传失败后清除预览
       avatar.value = ''
     }
@@ -303,7 +303,7 @@ const createConversation = async () => {
   try {
     // 检查props是否存在
     if (!props) {
-      ElMessage.error('组件参数错误，请重试')
+      QMessage.error('组件参数错误，请重试')
       return
     }
     
@@ -315,7 +315,7 @@ const createConversation = async () => {
     // 为群聊添加名称
     if (props.type === 'group') {
       if (!name.value) {
-        ElMessage.error('请输入群聊名称')
+        QMessage.error('请输入群聊名称')
         return
       }
       requestData.name = name.value
@@ -358,16 +358,16 @@ const createConversation = async () => {
         // 触发创建成功事件
         emit('created')
         // 显示成功提示
-        ElMessage.success(`${props.type === 'group' ? '群聊' : '讨论组'}创建成功`)
+        QMessage.success(`${props.type === 'group' ? '群聊' : '讨论组'}创建成功`)
       } else {
-        ElMessage.error('创建失败: ' + data.message)
+        QMessage.error('创建失败: ' + data.message)
       }
     } else {
-      ElMessage.error('创建失败: 服务器错误')
+      QMessage.error('创建失败: 服务器错误')
     }
   } catch (error) {
     console.error('创建失败:', error)
-    ElMessage.error('创建失败，请重试')
+    QMessage.error('创建失败，请重试')
   }
 }
 </script>

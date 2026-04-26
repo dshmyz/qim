@@ -130,8 +130,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import { logger } from '../../utils/logger';
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -179,7 +180,7 @@ const loadEvents = async () => {
     events.value = response.data.data
   } catch (error) {
     console.error('加载事件失败:', error)
-    ElMessage.error('加载事件失败，请稍后重试')
+    QMessage.error('加载事件失败，请稍后重试')
   }
   
   // 设置所有事件的提醒
@@ -199,8 +200,8 @@ const createEvent = async () => {
       end: new Date(formData.value.end).toISOString(),
       allDay: Boolean(formData.value.allDay)
     }
-    console.log('发送事件数据:', eventData)
-    console.log('Token:', token)
+    logger.log('发送事件数据:', eventData)
+    logger.log('Token:', token)
     const response = await axios.post(`${serverUrl.value}/api/v1/events`, eventData, {
       headers: {
         'Content-Type': 'application/json',
@@ -213,7 +214,7 @@ const createEvent = async () => {
     closeCreateEventModal()
   } catch (error) {
     console.error('创建事件失败:', error)
-    ElMessage.error('创建事件失败，请稍后重试')
+    QMessage.error('创建事件失败，请稍后重试')
   }
 }
 
@@ -432,7 +433,7 @@ const showReminderNotification = (event: any) => {
   }
   
   // 显示浏览器通知
-  console.log('提醒:', event.title)
+  logger.log('提醒:', event.title)
 }
 
 // 设置事件提醒

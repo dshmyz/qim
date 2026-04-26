@@ -1,3 +1,4 @@
+import { logger } from './logger';
 // WebRTC 视频通话核心模块
 
 export type CallStatus = 'idle' | 'calling' | 'ringing' | 'answered' | 'ended';
@@ -137,23 +138,23 @@ class VideoCallManager {
 
     // 处理 ICE 连接状态变化
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE 连接状态变化:', pc.iceConnectionState);
+      logger.log('ICE 连接状态变化:', pc.iceConnectionState);
 
       if (pc.iceConnectionState === 'failed') {
         this.onError?.(new Error('ICE 连接失败'));
       } else if (pc.iceConnectionState === 'disconnected') {
-        console.log('ICE 连接已断开');
+        logger.log('ICE 连接已断开');
       }
     };
 
     // 处理连接状态变化
     pc.onconnectionstatechange = () => {
-      console.log('连接状态变化:', pc.connectionState);
+      logger.log('连接状态变化:', pc.connectionState);
 
       if (pc.connectionState === 'connected') {
-        console.log('WebRTC 连接已建立');
+        logger.log('WebRTC 连接已建立');
       } else if (pc.connectionState === 'disconnected') {
-        console.log('WebRTC 连接已断开');
+        logger.log('WebRTC 连接已断开');
       } else if (pc.connectionState === 'failed') {
         this.onError?.(new Error('WebRTC 连接失败'));
       }
@@ -161,11 +162,11 @@ class VideoCallManager {
 
     // 处理远程流
     pc.ontrack = (event) => {
-      console.log('收到远程流事件:', event);
+      logger.log('收到远程流事件:', event);
 
       if (event.streams && event.streams.length > 0) {
         this.remoteStream = event.streams[0];
-        console.log('远程流:', this.remoteStream);
+        logger.log('远程流:', this.remoteStream);
 
         if (this.onRemoteStream) {
           this.onRemoteStream(this.remoteStream);
@@ -184,13 +185,13 @@ class VideoCallManager {
           type,
           data
         }));
-        console.log(`信令消息发送成功: ${type}`);
+        logger.log(`信令消息发送成功: ${type}`);
       } else if ((window as any).electron?.websocket) {
         (window as any).electron.websocket.send({
           type,
           data
         });
-        console.log(`信令消息发送成功（通过 IPC）: ${type}`);
+        logger.log(`信令消息发送成功（通过 IPC）: ${type}`);
       } else {
         console.error('WebSocket 连接不可用');
         throw new Error('WebSocket 连接不可用');
@@ -204,7 +205,7 @@ class VideoCallManager {
   // 发起通话
   async startCall(targetUserId: string, callType: CallType): Promise<void> {
     try {
-      console.log('开始通话:', targetUserId, callType);
+      logger.log('开始通话:', targetUserId, callType);
 
       // 检查浏览器支持
       this.checkBrowserSupport();
@@ -216,7 +217,7 @@ class VideoCallManager {
 
       // 获取本地媒体流
       this.localStream = await this.getMediaStream(callType);
-      console.log('本地流获取成功:', this.localStream);
+      logger.log('本地流获取成功:', this.localStream);
 
       if (this.onLocalStream) {
         this.onLocalStream(this.localStream);
@@ -231,13 +232,13 @@ class VideoCallManager {
         tracks.forEach(track => {
           this.peerConnection?.addTrack(track, this.localStream!);
         });
-        console.log('本地流轨道已添加');
+        logger.log('本地流轨道已添加');
       }
 
       // 生成 offer
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
-      console.log('offer 生成成功');
+      logger.log('offer 生成成功');
 
       // 发送呼叫邀请
       this.sendSignalMessage('call_invite', {
@@ -247,7 +248,7 @@ class VideoCallManager {
       });
 
       this.setCallStatus('calling');
-      console.log('通话已发起');
+      logger.log('通话已发起');
     } catch (error: any) {
       console.error('发起通话失败:', error);
       this.doCleanup();
@@ -259,7 +260,7 @@ class VideoCallManager {
   // 接听通话
   async answerCall(): Promise<void> {
     try {
-      console.log('接听通话');
+      logger.log('接听通话');
 
       if (!this.peerConnection) {
         throw new Error('PeerConnection 未初始化');
@@ -267,7 +268,7 @@ class VideoCallManager {
 
       // 获取本地媒体流
       this.localStream = await this.getMediaStream(this.callType);
-      console.log('本地流获取成功:', this.localStream);
+      logger.log('本地流获取成功:', this.localStream);
 
       if (this.onLocalStream) {
         this.onLocalStream(this.localStream);
@@ -279,14 +280,14 @@ class VideoCallManager {
         tracks.forEach(track => {
           this.peerConnection?.addTrack(track, this.localStream!);
         });
-        console.log('本地流轨道已添加');
+        logger.log('本地流轨道已添加');
       }
 
       // 发送接听响应
       if (this.targetUserId) {
         const answer = await this.peerConnection.createAnswer();
         await this.peerConnection.setLocalDescription(answer);
-        console.log('answer 生成成功');
+        logger.log('answer 生成成功');
 
         this.sendSignalMessage('call_accept', {
           target_user_id: this.targetUserId,
@@ -295,7 +296,7 @@ class VideoCallManager {
       }
 
       this.setCallStatus('answered');
-      console.log('通话已接听');
+      logger.log('通话已接听');
     } catch (error: any) {
       console.error('接听通话失败:', error);
       this.doCleanup();
@@ -307,7 +308,7 @@ class VideoCallManager {
   // 结束通话
   async endCall(): Promise<void> {
     try {
-      console.log('结束通话');
+      logger.log('结束通话');
 
       if (this.targetUserId) {
         this.sendSignalMessage('call_end', {
@@ -317,7 +318,7 @@ class VideoCallManager {
 
       this.doCleanup();
       this.setCallStatus('ended');
-      console.log('通话已结束');
+      logger.log('通话已结束');
     } catch (error: any) {
       console.error('结束通话失败:', error);
       this.doCleanup();
@@ -329,7 +330,7 @@ class VideoCallManager {
   // 拒绝通话
   async rejectCall(): Promise<void> {
     try {
-      console.log('拒绝通话');
+      logger.log('拒绝通话');
 
       if (this.targetUserId) {
         this.sendSignalMessage('call_reject', {
@@ -339,7 +340,7 @@ class VideoCallManager {
 
       this.doCleanup();
       this.setCallStatus('ended');
-      console.log('通话已拒绝');
+      logger.log('通话已拒绝');
     } catch (error: any) {
       console.error('拒绝通话失败:', error);
       this.doCleanup();
@@ -356,7 +357,7 @@ class VideoCallManager {
         track.enabled = !track.enabled;
       });
       this.isMuted = !this.isMuted;
-      console.log('静音状态:', this.isMuted);
+      logger.log('静音状态:', this.isMuted);
     }
   }
 
@@ -368,21 +369,21 @@ class VideoCallManager {
         track.enabled = !track.enabled;
       });
       this.isVideoEnabled = !this.isVideoEnabled;
-      console.log('视频启用状态:', this.isVideoEnabled);
+      logger.log('视频启用状态:', this.isVideoEnabled);
     }
   }
 
   // 处理收到的 offer
   async handleOffer(offer: RTCSessionDescriptionInit, senderId: string): Promise<void> {
     try {
-      console.log('处理 offer，发送者 ID:', senderId);
+      logger.log('处理 offer，发送者 ID:', senderId);
 
       this.targetUserId = senderId;
       this.peerConnection = this.createPeerConnection();
 
       // 设置远程描述
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      console.log('远程描述设置成功');
+      logger.log('远程描述设置成功');
 
       // 刷新缓存的 ICE 候选者
       this.flushIceCandidates();
@@ -390,7 +391,7 @@ class VideoCallManager {
       // 生成 answer
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      console.log('answer 生成成功');
+      logger.log('answer 生成成功');
 
       // 发送 answer
       this.sendSignalMessage('call_accept', {
@@ -409,14 +410,14 @@ class VideoCallManager {
   // 处理收到的 answer
   async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
     try {
-      console.log('处理 answer');
+      logger.log('处理 answer');
 
       if (!this.peerConnection) {
         throw new Error('PeerConnection 未初始化');
       }
 
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      console.log('远程描述设置成功');
+      logger.log('远程描述设置成功');
 
       // 刷新缓存的 ICE 候选者
       this.flushIceCandidates();
@@ -433,7 +434,7 @@ class VideoCallManager {
   addIceCandidate(candidate: RTCIceCandidateInit): void {
     try {
       if (!this.peerConnection) {
-        console.log('PeerConnection 未初始化，缓存 ICE 候选者');
+        logger.log('PeerConnection 未初始化，缓存 ICE 候选者');
         this.iceCandidateCache.push(new RTCIceCandidate(candidate));
         return;
       }
@@ -441,9 +442,9 @@ class VideoCallManager {
       if (this.peerConnection.remoteDescription) {
         const iceCandidate = new RTCIceCandidate(candidate);
         this.peerConnection.addIceCandidate(iceCandidate);
-        console.log('ICE 候选者添加成功:', iceCandidate);
+        logger.log('ICE 候选者添加成功:', iceCandidate);
       } else {
-        console.log('远程描述未设置，缓存 ICE 候选者');
+        logger.log('远程描述未设置，缓存 ICE 候选者');
         this.iceCandidateCache.push(new RTCIceCandidate(candidate));
       }
     } catch (error) {
@@ -454,14 +455,14 @@ class VideoCallManager {
   // 刷新缓存的 ICE 候选者
   private flushIceCandidates(): void {
     if (this.peerConnection && this.peerConnection.remoteDescription) {
-      console.log('刷新缓存的 ICE 候选者，数量:', this.iceCandidateCache.length);
+      logger.log('刷新缓存的 ICE 候选者，数量:', this.iceCandidateCache.length);
 
       while (this.iceCandidateCache.length > 0) {
         const candidate = this.iceCandidateCache.shift();
         if (candidate) {
           try {
             this.peerConnection.addIceCandidate(candidate);
-            console.log('缓存的 ICE 候选者添加成功:', candidate);
+            logger.log('缓存的 ICE 候选者添加成功:', candidate);
           } catch (error) {
             console.error('添加缓存的 ICE 候选者失败:', error);
           }
@@ -477,7 +478,7 @@ class VideoCallManager {
     signal: RTCSessionDescriptionInit;
   }): Promise<void> {
     try {
-      console.log('收到呼叫邀请:', data);
+      logger.log('收到呼叫邀请:', data);
 
       this.targetUserId = data.target_user_id;
       this.callType = data.call_type;
@@ -488,7 +489,7 @@ class VideoCallManager {
 
       // 设置远程描述
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
-      console.log('远程描述设置成功');
+      logger.log('远程描述设置成功');
 
       // 刷新缓存的 ICE 候选者
       this.flushIceCandidates();
@@ -503,7 +504,7 @@ class VideoCallManager {
 
   // 处理对方结束通话
   handleRemoteEndCall(): void {
-    console.log('对方结束通话');
+    logger.log('对方结束通话');
     this.doCleanup();
     this.setCallStatus('ended');
   }
@@ -515,7 +516,7 @@ class VideoCallManager {
 
   // 内部清理资源
   private doCleanup(): void {
-    console.log('清理资源');
+    logger.log('清理资源');
 
     // 停止本地流
     if (this.localStream) {

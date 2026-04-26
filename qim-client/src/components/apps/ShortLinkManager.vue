@@ -95,7 +95,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 
 // 定义事件
@@ -136,7 +136,7 @@ const loadShortLinks = async () => {
     }
   } catch (error) {
     console.error('加载短链接列表失败:', error)
-    ElMessage.error('加载短链接列表失败')
+    QMessage.error('加载短链接列表失败')
   } finally {
     isLoading.value = false
   }
@@ -146,7 +146,7 @@ const loadShortLinks = async () => {
 const generateShortLink = async () => {
   const url = originalUrl.value.trim()
   if (!url) {
-    ElMessage.warning('请输入要缩短的URL')
+    QMessage.warning('请输入要缩短的URL')
     return
   }
 
@@ -169,13 +169,13 @@ const generateShortLink = async () => {
     const data = await response.json()
     if (data.code === 0 && data.data) {
       shortLinkResult.value = data.data.short_url
-      ElMessage.success('短链接生成成功')
+      QMessage.success('短链接生成成功')
       // 重新加载短链接列表
       await loadShortLinks()
     }
   } catch (error) {
     console.error('生成短链接失败:', error)
-    ElMessage.error('生成短链接失败')
+    QMessage.error('生成短链接失败')
   } finally {
     isGenerating.value = false
   }
@@ -188,13 +188,13 @@ const copyShortLink = async () => {
   try {
     await navigator.clipboard.writeText(shortLinkResult.value)
     isCopying.value = true
-    ElMessage.success('短链接已复制到剪贴板')
+    QMessage.success('短链接已复制到剪贴板')
     setTimeout(() => {
       isCopying.value = false
     }, 2000)
   } catch (error) {
     console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
+    QMessage.error('复制失败，请手动复制')
   }
 }
 
@@ -202,10 +202,10 @@ const copyShortLink = async () => {
 const copyLink = async (url: string) => {
   try {
     await navigator.clipboard.writeText(url)
-    ElMessage.success('短链接已复制到剪贴板')
+    QMessage.success('短链接已复制到剪贴板')
   } catch (error) {
     console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
+    QMessage.error('复制失败，请手动复制')
   }
 }
 
@@ -229,13 +229,13 @@ const deleteLink = async (id: number) => {
 
     const data = await response.json()
     if (data.code === 0) {
-      ElMessage.success('短链接删除成功')
+      QMessage.success('短链接删除成功')
       // 重新加载短链接列表
       await loadShortLinks()
     }
   } catch (error) {
     console.error('删除短链接失败:', error)
-    ElMessage.error('删除短链接失败')
+    QMessage.error('删除短链接失败')
   }
 }
 

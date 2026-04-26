@@ -159,7 +159,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 
 // 服务器URL
@@ -226,7 +226,7 @@ const loadTasks = async () => {
     }
   } catch (error) {
     console.error('加载任务失败:', error)
-    ElMessage.error('加载任务失败，请稍后重试')
+    QMessage.error('加载任务失败，请稍后重试')
   }
 }
 
@@ -246,7 +246,7 @@ const createTask = async () => {
     }
   } catch (error) {
     console.error('创建任务失败:', error)
-    ElMessage.error('创建任务失败，请稍后重试')
+    QMessage.error('创建任务失败，请稍后重试')
   }
 }
 
@@ -269,7 +269,7 @@ const updateTask = async () => {
     }
   } catch (error) {
     console.error('更新任务失败:', error)
-    ElMessage.error('更新任务失败，请稍后重试')
+    QMessage.error('更新任务失败，请稍后重试')
   }
 }
 
@@ -286,7 +286,7 @@ const deleteTask = async (taskId: string) => {
     tasks.value = tasks.value.filter(task => task.id !== taskId)
   } catch (error) {
     console.error('删除任务失败:', error)
-    ElMessage.error('删除任务失败，请稍后重试')
+    QMessage.error('删除任务失败，请稍后重试')
   }
 }
 
@@ -306,7 +306,7 @@ const updateTaskStatus = async (taskId: string, status: string) => {
     }
   } catch (error) {
     console.error('更新任务状态失败:', error)
-    ElMessage.error('更新任务状态失败，请稍后重试')
+    QMessage.error('更新任务状态失败，请稍后重试')
   }
 }
 

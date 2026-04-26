@@ -143,12 +143,13 @@ const handleConfirm = () => {
   visible.value = false
 }
 
-const confirm = (message: string, title?: string) => {
+const confirm = (message: string, title?: string, options?: Partial<MessageBoxOptions>) => {
   return show({
     title: title || '确认',
     message,
     type: 'warning',
-    showCancelButton: true
+    showCancelButton: true,
+    ...options
   })
 }
 

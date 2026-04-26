@@ -144,6 +144,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 // @ts-ignore - WebRTC module has no type declarations
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
+import { logger } from '../../utils/logger';
 
 interface ScreenSource {
   id: string
@@ -209,7 +210,7 @@ watch(() => props.senderId, (newId) => {
     remoteStreamActive.value = true
     showFloatingWindow.value = true
     floatingMode.value = true
-    console.log('ScreenShare: 检测到senderId变化，自动加入共享', newId)
+    logger.log('ScreenShare: 检测到senderId变化，自动加入共享', newId)
     startReceivingStream()
   }
 })
@@ -243,19 +244,19 @@ const stopDurationTimer = () => {
 }
 
 const initiateShare = async () => {
-  console.log('ScreenShare: initiateShare函数被调用')
+  logger.log('ScreenShare: initiateShare函数被调用')
   try {
     // 设置为发起者状态
     isInitiator.value = true
-    console.log('ScreenShare: 开始获取屏幕源')
+    logger.log('ScreenShare: 开始获取屏幕源')
     const sources = await getScreenSources()
-    console.log('ScreenShare: 获取到屏幕源:', sources)
+    logger.log('ScreenShare: 获取到屏幕源:', sources)
     if (sources.length > 0) {
-      console.log('ScreenShare: 显示源选择器')
+      logger.log('ScreenShare: 显示源选择器')
       screenSources.value = sources
       showSourcePicker.value = true
     } else {
-      console.log('ScreenShare: 没有屏幕源，直接开始共享')
+      logger.log('ScreenShare: 没有屏幕源，直接开始共享')
       await startSharing()
     }
   } catch (error) {
@@ -285,7 +286,7 @@ const getScreenSources = async (): Promise<ScreenSource[]> => {
         });
       });
       
-      console.log('收到屏幕源:', sources);
+      logger.log('收到屏幕源:', sources);
       
       if (Array.isArray(sources) && sources.length > 0) {
         return sources.map((source: any) => ({
@@ -315,14 +316,14 @@ const cancelShare = () => {
 const selectedSourceId = ref('')
 
 const startSharing = async () => {
-  console.log('ScreenShare: startSharing函数被调用')
+  logger.log('ScreenShare: startSharing函数被调用')
   if (!selectedSource.value) {
-    console.log('ScreenShare: 未选择屏幕源')
+    logger.log('ScreenShare: 未选择屏幕源')
     return
   }
 
   try {
-    console.log('ScreenShare: 开始共享，源:', selectedSource.value.name)
+    logger.log('ScreenShare: 开始共享，源:', selectedSource.value.name)
     showSourcePicker.value = false
     screenShareName.value = selectedSource.value.name
     isSharing.value = true
@@ -333,19 +334,19 @@ const startSharing = async () => {
 
     // 使用 screenShareSender 开始共享
     if (props.receiverId !== undefined) {
-      console.log('ScreenShare: 发送屏幕共享请求，接收者ID:', props.receiverId, '会话ID:', props.conversationId)
+      logger.log('ScreenShare: 发送屏幕共享请求，接收者ID:', props.receiverId, '会话ID:', props.conversationId)
       // 发送屏幕共享请求，使用会话ID
       screenShareSender.sendShareRequest(props.receiverId, props.conversationId)
       
       // 等待对方接受
-      console.log('ScreenShare: 等待对方接受屏幕共享请求...')
+      logger.log('ScreenShare: 等待对方接受屏幕共享请求...')
       
       // 发送屏幕共享开始事件
-      console.log('ScreenShare: 发送屏幕共享开始事件，接收者ID:', props.receiverId, '会话ID:', props.conversationId)
+      logger.log('ScreenShare: 发送屏幕共享开始事件，接收者ID:', props.receiverId, '会话ID:', props.conversationId)
       emit('screen-share-start', { conversationId: props.conversationId || props.receiverId })
       
       // 开始共享（注意：这里会直接发送 webrtc_offer，实际应该在对方接受后再发送）
-      console.log('ScreenShare: 使用 screenShareSender 开始共享，接收者ID:', props.receiverId)
+      logger.log('ScreenShare: 使用 screenShareSender 开始共享，接收者ID:', props.receiverId)
       await screenShareSender.startScreenShare(props.receiverId)
     }
   } catch (error) {
@@ -357,19 +358,19 @@ const startSharing = async () => {
 
 // 当收到对方接受后，开始建立 WebRTC 连接
 const establishConnection = async () => {
-  console.log('ScreenShare: establishConnection函数被调用')
+  logger.log('ScreenShare: establishConnection函数被调用')
   
   try {
     // screenShareSender 已经在 startScreenShare 中建立了连接
     // 这里不需要重复建立连接
-    console.log('ScreenShare: WebRTC 连接已经在 startScreenShare 中建立')
+    logger.log('ScreenShare: WebRTC 连接已经在 startScreenShare 中建立')
     
     // 使用本地预览视频元素显示自己的屏幕（预览用）
     if (remoteVideoRef.value) {
       // 获取屏幕共享流并设置到预览视频元素
       const screenStream = screenShareSender.getScreenStream()
       if (screenStream) {
-        console.log('ScreenShare: 设置本地预览视频流')
+        logger.log('ScreenShare: 设置本地预览视频流')
         remoteVideoRef.value.srcObject = screenStream
         // 尝试播放视频
         try {
@@ -380,7 +381,7 @@ const establishConnection = async () => {
           console.error('播放预览视频出错:', error)
         }
       } else {
-        console.log('ScreenShare: 未获取到屏幕共享流，预览功能暂时不可用')
+        logger.log('ScreenShare: 未获取到屏幕共享流，预览功能暂时不可用')
       }
     }
   } catch (error) {
@@ -460,10 +461,10 @@ const startReceivingStream = () => {
     
     // 确保视频元素已经初始化
     if (videoElement) {
-      console.log('ScreenShare: 初始化screenShareReceiver，视频元素:', videoElement)
+      logger.log('ScreenShare: 初始化screenShareReceiver，视频元素:', videoElement)
       // 初始化screenShareReceiver，传递远程流接收回调
       screenShareReceiver.init(videoElement, (stream) => {
-        console.log('ScreenShare: 收到远程流，更新状态')
+        logger.log('ScreenShare: 收到远程流，更新状态')
         remoteStreamActive.value = true
         if (floatingMode.value) {
           // 浮窗模式下通过模板绑定设置srcObject，这里只更新floatingStream
@@ -471,17 +472,17 @@ const startReceivingStream = () => {
         }
       })
     } else {
-      console.log('ScreenShare: 视频元素还未初始化，等待下一帧')
+      logger.log('ScreenShare: 视频元素还未初始化，等待下一帧')
       // 等待下一帧，确保视频元素已经渲染
       setTimeout(() => {
         // 再次检查浮窗模式
         const delayedVideoElement = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
         
         if (delayedVideoElement) {
-          console.log('ScreenShare: 延迟初始化screenShareReceiver，视频元素:', delayedVideoElement)
+          logger.log('ScreenShare: 延迟初始化screenShareReceiver，视频元素:', delayedVideoElement)
           // 初始化screenShareReceiver，传递远程流接收回调
           screenShareReceiver.init(delayedVideoElement, (stream) => {
-            console.log('ScreenShare: 收到远程流，更新状态')
+            logger.log('ScreenShare: 收到远程流，更新状态')
             remoteStreamActive.value = true
             // 只在浮窗模式下设置floatingStream，避免冲突
             if (floatingMode.value) {
@@ -638,18 +639,18 @@ defineExpose({
   stopReceiving: stopShare,
   establishConnection: establishConnection,
   handleOffer: (signal: any, fromUserId: number) => {
-    console.log('ScreenShare: 处理WebRTC offer，来自用户:', fromUserId)
-        console.log('ScreenShare: 处理WebRTC signal:', signal)
+    logger.log('ScreenShare: 处理WebRTC offer，来自用户:', fromUserId)
+        logger.log('ScreenShare: 处理WebRTC signal:', signal)
 
     const tryHandleOffer = (retries = 10) => {
       // 优先使用浮窗视频元素（如果浮窗模式开启）
       const videoElement = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
       
       if (videoElement) {
-        console.log('ScreenShare: screenShareReceiver已初始化，使用视频元素:', videoElement)
+        logger.log('ScreenShare: screenShareReceiver已初始化，使用视频元素:', videoElement)
         // 初始化screenShareReceiver，传递远程流接收回调
         screenShareReceiver.init(videoElement, (stream) => {
-          console.log('ScreenShare: 收到远程流，更新状态')
+          logger.log('ScreenShare: 收到远程流，更新状态')
           remoteStreamActive.value = true
           // 只在浮窗模式下设置floatingStream，避免冲突
           if (floatingMode.value) {
@@ -658,10 +659,10 @@ defineExpose({
         })
         screenShareReceiver.handleOffer(signal, fromUserId)
       } else if (retries > 0) {
-        console.log('ScreenShare: 视频元素还未初始化，100ms后重试，剩余重试次数:', retries)
-        console.log('ScreenShare: floatingMode:', floatingMode.value)
-        console.log('ScreenShare: floatingVideoRef.value:', floatingVideoRef.value)
-        console.log('ScreenShare: remoteVideoRef.value:', remoteVideoRef.value)
+        logger.log('ScreenShare: 视频元素还未初始化，100ms后重试，剩余重试次数:', retries)
+        logger.log('ScreenShare: floatingMode:', floatingMode.value)
+        logger.log('ScreenShare: floatingVideoRef.value:', floatingVideoRef.value)
+        logger.log('ScreenShare: remoteVideoRef.value:', remoteVideoRef.value)
         setTimeout(() => tryHandleOffer(retries - 1), 100)
       } else {
         console.error('ScreenShare: 无法处理offer，视频元素为null，已重试10次')
@@ -682,7 +683,7 @@ defineExpose({
     remoteStreamActive.value = true
     showFloatingWindow.value = true
     floatingMode.value = true
-    console.log('ScreenShare: receiveScreenShareStream被调用，开始初始化接收流')
+    logger.log('ScreenShare: receiveScreenShareStream被调用，开始初始化接收流')
     
     // 初始化screenShareReceiver并开始接收流
     if (props.senderId) {
@@ -695,7 +696,7 @@ defineExpose({
     remoteStreamActive.value = false
     showFloatingWindow.value = true
     floatingMode.value = true
-    console.log('ScreenShare: showViewer被调用，显示浮窗')
+    logger.log('ScreenShare: showViewer被调用，显示浮窗')
     
     // 初始化screenShareReceiver并开始接收流
     if (props.senderId) {

@@ -87,12 +87,15 @@ export function useConversation() {
    * 置顶/取消置顶会话
    */
   const handlePin = async (conversation: Conversation) => {
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index === -1) return
+
     try {
       await request(`/api/v1/conversations/${conversation.id}/pin`, {
         method: 'PUT',
         body: JSON.stringify({ pinned: !conversation.pinned })
       })
-      conversation.pinned = !conversation.pinned
+      conversations.value[index] = { ...conversations.value[index], pinned: !conversations.value[index].pinned }
     } catch (error) {
       console.error('置顶会话失败:', error)
     }
@@ -102,12 +105,15 @@ export function useConversation() {
    * 静音/取消静音会话
    */
   const handleMute = async (conversation: Conversation) => {
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index === -1) return
+
     try {
       await request(`/api/v1/conversations/${conversation.id}/mute`, {
         method: 'PUT',
         body: JSON.stringify({ muted: !conversation.muted })
       })
-      conversation.muted = !conversation.muted
+      conversations.value[index] = { ...conversations.value[index], muted: !conversations.value[index].muted }
     } catch (error) {
       console.error('静音会话失败:', error)
     }
@@ -277,13 +283,13 @@ export function useConversation() {
 
   return {
     // 状态
-    conversations: readonly(conversations),
+    conversations,  // 允许外部直接修改（WebSocket 消息处理等场景）
     currentConversationId: readonly(currentConversationId),
-    messages: readonly(messages),
-    hasMoreMessages: readonly(hasMoreMessages),
+    messages,  // 不包 readonly，允许外部直接修改（用于消息加载）
+    hasMoreMessages,  // 不包 readonly，允许外部直接修改
     selectedConversation: readonly(selectedConversation),
-    selectedGroup: readonly(selectedGroup),
-    selectedChannel: readonly(selectedChannel),
+    selectedGroup,  // 允许外部直接设置（群聊选择等场景）
+    selectedChannel,  // 允许外部直接设置（频道选择等场景）
     groups: readonly(groups),
     currentConversation,
     pinnedConversations,

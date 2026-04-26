@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
+import { logger } from '../utils/logger';
 
 type MessageHandler = (data: any) => void
 
@@ -47,12 +48,12 @@ export function useWebSocketManager(serverUrl: any) {
     if (ws) {
       // @ts-ignore
       localWs.onclose = () => {
-        console.log('WebSocket连接关闭')
+        logger.log('WebSocket连接关闭')
       }
 
       // @ts-ignore
       localWs.onopen = () => {
-        console.log('WebSocket连接成功')
+        logger.log('WebSocket连接成功')
       }
     }
   }

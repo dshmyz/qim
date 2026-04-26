@@ -1,64 +1,26 @@
 <template>
   <div class="chat-window">
-    <div class="chat-header">
-      <div class="header-info">
-        <img :src="getAvatarUrl(conversation?.avatar, conversation?.name || '用户', serverUrl.value)" :alt="conversation?.name || '未知'" class="header-avatar" />
-        <div class="header-text">
-          <div class="header-name" @dblclick="(conversation?.type === 'group' || conversation?.type === 'discussion') && editGroupInfo()">{{ conversation?.name || '未知会话' }}</div>
-          <div class="header-status">
-            <template v-if="conversation?.type === 'group' || conversation?.type === 'discussion'">
-              {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
-              <span v-if="conversation?.members" class="member-count">
-                ({{ conversation.members.length }}人)
-              </span>
-            </template>
-            <template v-else-if="conversation?.type === 'single'">
-              <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
-                {{ conversation?.status === 'online' ? '在线' : '离线' }}
-              </span>
-              <span v-if="conversation?.signature" class="signature-info">
-                {{ conversation.signature }}
-              </span>
-            </template>
-            <template v-else>
-              在线
-            </template>
-            <span v-if="conversation?.type === 'single' && conversation?.ip" class="ip-info">
-              {{ conversation.ip }}
-            </span>
-            <span v-if="(conversation?.type === 'group' || conversation?.type === 'discussion') && conversation?.announcement" class="header-announcement-inline">
-              <i class="fas fa-bullhorn"></i>
-              {{ conversation.announcement }}
-            </span>
-          </div>
-        </div>
-      </div>
+    <ChatHeader
+      ref="chatHeaderRef"
+      :conversation="conversation"
+      :current-user="currentUser"
+      :server-url="serverUrl"
+      @invite-members="handleInviteMembers"
+      @delete-group="confirmDeleteConversation"
+      @save-group-info="saveGroupInfo"
+      @save-group-announcement="saveAnnouncement"
+      @switch-conversation="handleSwitchConversation"
+      @show-user-profile="showUserProfile"
+      @remove-member="handleRemoveMember"
+      @set-admin="handleSetAdmin"
+      @transfer-owner="handleTransferOwner"
+      @start-private-chat="handleStartPrivateChat"
+      @edit-group-info="editGroupInfo"
+    />
 
-      <GroupPanel
-        :conversation="conversation"
-        :current-user="currentUser"
-        v-model:showHeaderMenu="showHeaderMenu"
-        v-model:showEditGroupInfoModal="showEditGroupInfoModal"
-        v-model:showEditAnnouncementModal="showEditAnnouncementModal"
-        v-model:editGroupName="editGroupName"
-        v-model:editAnnouncement="editAnnouncementContent"
-        @invite-members="handleInviteMembers"
-        @delete-group="confirmDeleteConversation"
-        @save-group-info="saveGroupInfo"
-        @save-group-announcement="saveAnnouncement"
-        @switch-conversation="handleSwitchConversation"
-        @show-user-profile="showUserProfile"
-        @remove-member="handleRemoveMember"
-        @set-admin="handleSetAdmin"
-        @transfer-owner="handleTransferOwner"
-        @start-private-chat="handleStartPrivateChat"
-      />
-    </div>
-
-      <div class="chat-main">
-        <div ref="messageListRef" class="message-list">
-        <!-- 搜索结果 -->
-        <MessageSearch
+    <div class="chat-main">
+      <!-- 搜索结果 -->
+      <MessageSearch
           v-if="showSearch"
           :search-results="searchResults"
           :search-query="searchQuery"
@@ -79,55 +41,43 @@
         />
 
         <!-- 正常消息列表 -->
-        <div v-else>
-          <!-- 没有更多消息提示 -->
-          <div v-if="!hasMoreMessages" class="no-more-messages">
-            <span>没有更多消息了</span>
-          </div>
-          
-          <div v-for="(message, index) in messages" :key="message.id">
-            <!-- 显示时间分隔线 -->
-            <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
-              <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
-            </div>
-            
-            <MessageItem
-              :message="message"
-              :is-self="message.isSelf"
-              :is-recalled="message.isRecalled"
-              :conversation-type="conversation?.type || 'single'"
-              :read-users-map="readUsersMap"
-              :server-url="serverUrl"
-              @contextmenu="showMessageContextMenu"
-              @show-user-profile="showUserProfile"
-              @scroll-to-quoted-message="scrollToQuotedMessage"
-              @preview-image="previewImage"
-              @download-file="downloadFile"
-              @save-as="saveFileAs"
-              @view-shared-content="viewSharedContent"
-              @open-mini-app="openMiniApp"
-              @open-news-link="openNewsLink"
-              @retry-send-message="retrySendMessage"
-              @show-read-users="showReadUsers"
-            />
-          </div>
-        </div>
-      </div>
+        <MessageListView
+          v-else
+          ref="messageListViewRef"
+          :messages="messages"
+          :has-more-messages="hasMoreMessages"
+          :conversation-type="conversation?.type || 'single'"
+          :read-users-map="readUsersMap"
+          :server-url="serverUrl"
+          @message-contextmenu="showMessageContextMenu"
+          @show-user-profile="showUserProfile"
+          @scroll-to-quoted-message="scrollToQuotedMessage"
+          @preview-image="previewImage"
+          @download-file="downloadFile"
+          @save-as="saveFileAs"
+          @view-shared-content="viewSharedContent"
+          @open-mini-app="openMiniApp"
+          @open-news-link="openNewsLink"
+          @retry-send-message="retrySendMessage"
+          @show-read-users="showReadUsers"
+          @mark-read="markMessagesAsRead"
+          @load-more="loadMoreMessages"
+        />
 
-      <!-- 群成员侧边栏 -->
-      <MemberSidebar
-        v-if="conversation?.type === 'group' || conversation?.type === 'discussion'"
-        :members="conversation?.members || []"
-        :isExpanded="isMembersSidebarExpanded"
-        :showSearch="showMemberSearch"
-        v-model:searchQuery="memberSearchQuery"
-        @toggle-expanded="toggleMembersSidebar"
-        @toggle-member-search="toggleMemberSearch"
-        @search-focus="showMemberSearch = true"
-        @show-member-context-menu="handleShowMemberContextMenu"
-        @start-private-chat="handleStartPrivateChat"
-      />
-    </div>
+        <!-- 群成员侧边栏 -->
+        <MemberSidebar
+          v-if="conversation?.type === 'group' || conversation?.type === 'discussion'"
+          :members="conversation?.members || []"
+          :isExpanded="isMembersSidebarExpanded"
+          :showSearch="showMemberSearch"
+          v-model:searchQuery="memberSearchQuery"
+          @toggle-expanded="toggleMembersSidebar"
+          @toggle-member-search="toggleMemberSearch"
+          @search-focus="showMemberSearch = true"
+          @show-member-context-menu="handleShowMemberContextMenu"
+          @start-private-chat="handleStartPrivateChat"
+        />
+      </div>
 
     <!-- 成员右键菜单 -->
     <MemberContextMenu
@@ -150,13 +100,10 @@
       :pendingFiles="pendingFiles"
       :showEmojiPanel="showEmojiPanel"
       :showAtMembersPanel="showAtMembersPanel"
-      :showMiniAppList="showMiniAppList"
+      v-model:showMiniAppList="showMiniAppList"
       :showSearch="showSearch"
       v-model:searchQuery="searchQuery"
       :quotedMessage="quotedMessage"
-      :commonEmojis="commonEmojis"
-      :faceEmojis="faceEmojis"
-      :animalEmojis="animalEmojis"
       :isElectron="isElectron"
       :getFileIcon="getFileIcon"
       @send="handleSend"
@@ -307,7 +254,8 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import UserProfile from '../modals/UserProfile.vue'
 import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
@@ -322,6 +270,8 @@ import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
 import SharePreviewDialog from './SharePreviewDialog.vue'
 import CallModal from './CallModal.vue'
+import ChatHeader from './ChatHeader.vue'
+import MessageListView from './MessageListView.vue'
 import { openMiniApp } from '../../utils/miniAppUtils'
 import { API_BASE_URL } from '../../config'
 import { getAvatarUrl } from '../../utils/avatar'
@@ -329,6 +279,8 @@ import { getCurrentUser } from '../../utils/user'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
+import { useMessageActions } from '../../composables/useMessageActions'
+import { useScreenShare } from '../../composables/useScreenShare'
 import ScreenShare from '../shared/ScreenShare.vue'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
@@ -342,10 +294,6 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
 const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
-
-// 屏幕共享相关
-const screenShareComponent = ref(null) // 屏幕共享组件引用
-const remoteScreenUserId = ref(null) // 远程屏幕共享用户ID
 
 interface Props {
   conversation: Conversation
@@ -374,6 +322,48 @@ const emit = defineEmits<{
   'send-screen-share-data': [data: { conversationId: number; data: string }]
 }>()
 
+// 消息操作相关逻辑
+const messageActions = useMessageActions(serverUrl, ref(props.currentUser))
+const {
+  readUsersMap,
+  showReadUsersModal,
+  currentReadUsers,
+  fetchReadUsers,
+  showReadUsers,
+  markMessagesAsRead,
+  recallMessage,
+  deleteMessage,
+  sendMessage,
+  retrySendMessage,
+  copyMessage,
+  loadReadUsersForMessages,
+  cleanup: cleanupMessageActions
+} = messageActions
+
+// 屏幕共享相关逻辑
+const screenShare = useScreenShare(ref(props.conversation), ref(props.currentUser))
+const {
+  screenShareComponent,
+  remoteScreenUserId,
+  showScreenShareViewer,
+  handleScreenShareMessage,
+  handleWebRTCOffer,
+  handleWebRTCAnswer,
+  handleWebRTCIceCandidate,
+  handleScreenShareRequest,
+  handleScreenShareAccepted,
+  handleScreenShareRejected,
+  handleScreenShareStart,
+  handleScreenShareStop,
+  sendScreenShareSignal,
+  startScreenShare,
+  receiveScreenShareStream,
+  stopScreenShare,
+  cleanupScreenShare
+} = screenShare
+
+// 向后兼容：保留原来的 ref 声明（逐步迁移后可删除）
+
 // 监听远程屏幕共享
 watch(() => props.remoteScreenSharing, (newVal) => {
   if (newVal && props.remoteScreenData === null) {
@@ -393,7 +383,10 @@ watch(() => props.remoteScreenData, (newVal) => {
 })
 
 const inputMessage = ref('')
+const quotedMessage = ref<any>(null)
 const messageListRef = ref<HTMLDivElement>()
+const chatHeaderRef = ref<any>()
+const messageListViewRef = ref<any>()
 const messageInputAreaRef = ref<any>()
 const messageInputRef = ref<HTMLTextAreaElement>()
 const showSearch = ref(false)
@@ -401,6 +394,32 @@ const searchQuery = ref('')
 const searchResults = ref<Message[]>([])
 const isSearching = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// 草稿系统：使用 localStorage 按会话存储
+// 切换会话时加载草稿
+watch(() => props.conversation?.id, (newId) => {
+  if (newId) {
+    const draft = localStorage.getItem(`qim_draft_${newId}`)
+    if (draft) {
+      const { text, quoted } = JSON.parse(draft)
+      inputMessage.value = text
+      quotedMessage.value = quoted
+    } else {
+      inputMessage.value = ''
+      quotedMessage.value = null
+    }
+  }
+}, { immediate: true })
+
+// 输入变化时保存草稿
+watch(inputMessage, () => {
+  if (props.conversation?.id) {
+    localStorage.setItem(`qim_draft_${props.conversation.id}`, JSON.stringify({
+      text: inputMessage.value,
+      quoted: quotedMessage.value
+    }))
+  }
+})
 
 // 待发送文件
 interface PendingFile {
@@ -422,7 +441,6 @@ const selectedUser = ref({})
 const showMessageContextMenuFlag = ref(false)
 const messageContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMessage = ref(null)
-const quotedMessage = ref(null)
 
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
@@ -448,66 +466,11 @@ watch(editGroupName, (newValue) => {
 watch(editAnnouncementContent, (newValue) => {
 })
 
-// 已读用户列表
-const readUsersMap = ref<Record<string, { read_users: any[], total_members: number }>>({})
-const showReadUsersModal = ref(false)
-const currentReadUsers = ref<{ read_users: any[], total_members: number }>({ read_users: [], total_members: 0 })
-
-// 获取消息已读用户列表
-const fetchReadUsers = async (messageId: string) => {
-  if (!isMounted.value) return { read_users: [], total_members: 0 }
-  
-  // 强制重新获取已读用户列表，不使用缓存
-  if (props.getReadUsers) {
-    try {
-      const data = await props.getReadUsers(messageId)
-      if (isMounted.value) {
-        // 对已读用户列表进行去重处理，确保一个用户只出现一次
-        const uniqueReadUsers = []
-        const seenUserIds = new Set()
-        
-        if (data.read_users) {
-          for (const user of data.read_users) {
-            if (user.id && !seenUserIds.has(user.id)) {
-              seenUserIds.add(user.id)
-              uniqueReadUsers.push(user)
-            }
-          }
-        }
-        
-        // 更新去重后的已读用户列表
-        readUsersMap.value[messageId] = {
-          ...data,
-          read_users: uniqueReadUsers
-        }
-      }
-      return data
-    } catch (error) {
-      console.error('获取已读用户列表失败:', error)
-      return { read_users: [], total_members: 0 }
-    }
-  }
-  return { read_users: [], total_members: 0 }
-}
-
-// 显示已读用户列表弹窗
-const showReadUsers = async (message: Message) => {
-  if (!message.isSelf || !isMounted.value) return
-  const data = await fetchReadUsers(message.id)
-  if (isMounted.value) {
-    currentReadUsers.value = data
-    showReadUsersModal.value = true
-  }
-}
-
 // 消息管理器
 const showMessageManager = ref(false)
 
 // 表情面板相关
 const showEmojiPanel = ref(false)
-const commonEmojis = ['😊', '😂', '❤️', '👍', '🎉', '🔥', '🤔', '😢', '😡', '👏']
-const faceEmojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '🥵', '🤒', '🤕', '🤠']
-const animalEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🐊', '🐅', '🐆', '🐈', '🐩']
 
 // @成员功能相关
 const showAtMembersPanel = ref(false)
@@ -860,6 +823,10 @@ const handleSend = async () => {
     emit('send', messageData)
     inputMessage.value = ''
     quotedMessage.value = null
+    // 发送成功后清空草稿
+    if (props.conversation?.id) {
+      localStorage.removeItem(`qim_draft_${props.conversation.id}`)
+    }
   }
 }
 
@@ -878,78 +845,22 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 const scrollToBottom = () => {
   nextTick(() => {
-    if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-      // 滚动到底部时标记消息为已读
-      markMessagesAsRead()
+    if (messageListViewRef.value) {
+      messageListViewRef.value.scrollToBottom()
     }
   })
 }
 
-// 标记消息为已读
-const lastMarkReadTime = ref(0)
-const markMessagesAsRead = async () => {
-  if (!props.conversation) return
-  
-  // 限制调用频率，避免短时间内重复调用
-  const now = Date.now()
-  if (now - lastMarkReadTime.value < 3000) return
-  lastMarkReadTime.value = now
-  
-  try {
-    const response = await request(`/api/v1/conversations/${props.conversation.id}/read`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    if (response.code === 0) {
-      // 重新获取已读用户列表
-      await loadReadUsersForMessages()
-      // 这里可以触发父组件更新消息状态
-    }
-  } catch (error) {
-    console.error('标记消息已读失败:', error)
-  }
-}
-
-// 节流函数
-const throttle = (func: Function, delay: number) => {
-  let timeoutId: number | null = null
-  return function(this: any, ...args: any[]) {
-    if (timeoutId === null) {
-      timeoutId = window.setTimeout(() => {
-        func.apply(this, args)
-        timeoutId = null
-      }, delay)
-    }
-  }
-}
-
-// 监听消息列表滚动，当滚动到底部时标记消息为已读，当滚动到顶部时加载更多消息
-const handleScroll = throttle(() => {
-  if (!messageListRef.value) return
-  
-  const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
-  // 当滚动到距离底部50px以内时，标记消息为已读
-  if (scrollHeight - scrollTop - clientHeight < 50) {
-    markMessagesAsRead()
-  }
-  
-  // 当滚动到顶部时，加载更多消息
-  if (scrollTop < 50 && !isLoadingMore.value) {
-    loadMoreMessages()
-  }
-}, 100)
+// 节流函数 - 已由 MessageListView 组件处理
+// 注意：滚动逻辑已移至 MessageListView 组件，此处保留函数定义以兼容现有调用
+const handleScroll = () => {}
 
 // 加载更多消息的状态
 const isLoadingMore = ref(false)
-const hasMoreMessages = ref(true)
 
 // 加载更多消息
 const loadMoreMessages = async () => {
-  if (!props.conversation || !hasMoreMessages.value) return
+  if (!props.conversation || !props.hasMoreMessages) return
   
   isLoadingMore.value = true
   try {
@@ -972,16 +883,7 @@ let messageContextMenuTimeoutId: number | null = null
 // 跟踪 IPC 截图监听器的清理函数
 let screenshotCleanup: (() => void) | null = null
 
-// 加载消息后获取已读用户列表，使用 Promise.all 并行请求
-const loadReadUsersForMessages = async () => {
-  if (!isMounted.value || !props.conversation || props.conversation.type !== 'group') return
-  
-  const promises = props.messages
-    .filter(message => message.isSelf)
-    .map(message => fetchReadUsers(message.id))
-  
-  await Promise.all(promises)
-}
+
 
 // 监听组件挂载和消息变化
 watch(() => props.messages, async () => {
@@ -1083,187 +985,13 @@ const initWebSocketMessageHandler = () => {
   }
 };
 
-// 处理屏幕共享消息
-const handleScreenShareMessage = (type, data) => {
-  switch (type) {
-    case 'webrtc_offer':
-      handleWebRTCOffer(data);
-      break;
-    case 'webrtc_answer':
-      handleWebRTCAnswer(data);
-      break;
-    case 'webrtc_ice_candidate':
-      handleWebRTCIceCandidate(data);
-      break;
-    case 'screen-share-request':
-      handleScreenShareRequest(data);
-      break;
-    case 'screen-share-accepted':
-      handleScreenShareAccepted(data);
-      break;
-    case 'screen-share-rejected':
-      handleScreenShareRejected(data);
-      break;
-    case 'screen-share-start':
-      handleScreenShareStart(data);
-      break;
-    case 'screen-share-stop':
-      handleScreenShareStop(data);
-      break;
-  }
-};
 
-// 处理 WebRTC offer
-const handleWebRTCOffer = async (data) => {
-  try {
-    
-    // 先设置远程屏幕共享用户ID，触发ScreenShare组件的渲染
-    remoteScreenUserId.value = data.from_user_id
-    
-    // 等待组件渲染
-    await nextTick()
-    
-    // 显示屏幕共享请求对话框
-    ElMessage({
-      message: '收到屏幕共享请求',
-      type: 'info',
-      showClose: true,
-      duration: 5000
-    })
-    
-    // 调用 ScreenShare 组件的方法处理 offer
-    if (screenShareComponent.value) {
-      await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
-    }
-  } catch (error) {
-    console.error('处理 WebRTC offer 失败:', error)
-  }
-}
 
-// 处理 WebRTC answer
-const handleWebRTCAnswer = (data) => {
-  try {
-    screenShareSender.handleAnswer(data.signal)
-  } catch (error) {
-    console.error('处理 WebRTC answer 失败:', error)
-  }
-}
 
-// 处理 WebRTC ICE 候选者
-const handleWebRTCIceCandidate = (data) => {
-  try {
-    
-    // 验证 data.signal 是否有效
-    // if (!data || !data.signal) {
-    //   console.warn('无效的 ICE 候选者数据:', data)
-    //   return
-    // }
-    
-    // 根据当前状态判断是发送者还是接收者
-    if (screenShareSender.getIsSharing()) {
-      screenShareSender.addIceCandidate(data.signal)
-    } else {
-      // 调用 ScreenShare 组件的方法处理 ICE 候选者
-      if (screenShareComponent.value) {
-        screenShareComponent.value.handleIceCandidate(data.signal)
-      } else {
-        screenShareReceiver.handleIceCandidate(data.signal)
-      }
-    }
-  } catch (error) {
-    console.error('处理 WebRTC ICE 候选者失败:', error)
-  }
-}
 
-// 处理屏幕共享请求
-const handleScreenShareRequest = (data) => {
-  
-  // 获取请求者ID，支持多种字段名
-  const requesterId = data.requester_id || data.userId || data.user_id
-  const conversationId = data.conversation_id || data.conversationId
-  
-  if (!requesterId) {
-    console.error('屏幕共享请求缺少请求者ID:', data)
-    return
-  }
-  
-  if (!conversationId) {
-    console.error('屏幕共享请求缺少会话ID:', data)
-    return
-  }
-  
-  // 使用 screenShareReceiver 处理屏幕共享请求
-  screenShareReceiver.handleShareRequest(data)
-  
-  // 显示确认对话框
-  ElMessageBox.confirm(
-    '是否接受屏幕共享请求？',
-    '屏幕共享请求',
-    {
-      confirmButtonText: '接受',
-      cancelButtonText: '拒绝',
-      type: 'question'
-    }
-  ).then(async () => {
-    // 发送接受消息
-    await screenShareReceiver.acceptShareRequest(conversationId)
-    
-    // 立即显示浮窗，让接收者可以看到共享即将开始
-    if (screenShareComponent.value) {
-      screenShareComponent.value.showViewer()
-    }
-  }).catch(() => {
-    // 发送拒绝消息
-    screenShareReceiver.rejectShareRequest(conversationId)
-  })
-}
 
-// 处理屏幕共享接受
-const handleScreenShareAccepted = (data) => {
-  ElMessage({
-    message: '屏幕共享请求已被接受',
-    type: 'success',
-    duration: 3000
-  })
-  
-  // 调用 ScreenShare 组件的 establishConnection 方法，开始建立 WebRTC 连接
-  if (screenShareComponent.value) {
-    screenShareComponent.value.establishConnection()
-  }
-}
 
-// 处理屏幕共享拒绝
-const handleScreenShareRejected = (data) => {
-  ElMessage({
-    message: '屏幕共享请求被拒绝',
-    type: 'error',
-    duration: 3000
-  })
-}
 
-// 处理屏幕共享开始
-const handleScreenShareStart = (data) => {
-  ElMessage({
-    message: '屏幕共享已开始',
-    type: 'success',
-    duration: 3000
-  })
-}
-
-// 处理屏幕共享停止
-const handleScreenShareStop = (data) => {
-  ElMessage({
-    message: '屏幕共享已停止',
-    type: 'info',
-    duration: 3000
-  })
-  
-  // 清理屏幕共享资源
-  if (screenShareComponent.value) {
-    screenShareComponent.value.stopReceiving()
-  }
-  showScreenShareViewer.value = false
-}
 
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
@@ -1609,10 +1337,7 @@ const closeUserProfile = () => {
   selectedUser.value = {}
 }
 
-// 重新发送失败的消息
-const retrySendMessage = (message: any) => {
-  emit('retry-send', message)
-}
+
 
 interface User {
   id: string | number
@@ -1761,18 +1486,6 @@ const closeMessageContextMenu = () => {
   document.removeEventListener('click', closeMessageContextMenu)
 }
 
-const copyMessage = () => {
-  if (selectedMessage.value && selectedMessage.value.content) {
-    navigator.clipboard.writeText(selectedMessage.value.content)
-      .then(() => {
-      })
-      .catch(err => {
-        console.error('复制失败:', err)
-      })
-  }
-  closeMessageContextMenu()
-}
-
 const forwardMessage = () => {
   if (selectedMessage.value) {
     // 触发全局事件，打开分享弹窗并传递消息数据
@@ -1783,50 +1496,6 @@ const forwardMessage = () => {
     }))
   }
   closeMessageContextMenu()
-}
-
-const deleteMessage = () => {
-  if (selectedMessage.value) {
-    ElMessage.info('暂时不支持删除消息，因为目前没计划删除。')
-  }
-  closeMessageContextMenu()
-}
-
-// 消息撤回
-const recallMessage = async () => {
-  if (!selectedMessage.value) {
-    closeMessageContextMenu()
-    return
-  }
-  
-  const messageToRecall = selectedMessage.value
-  
-  if (messageToRecall.isSelf) {
-    openConfirmDialog('确认撤回', '确定要撤回这条消息吗？', async () => {
-      try {
-        const response = await request(`/api/v1/messages/${messageToRecall.id}/recall`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (response.code === 0) {
-          // 通知父组件更新消息状态
-          emit('recall', messageToRecall.id)
-          closeMessageContextMenu()
-          $message.success('消息撤回成功')
-        } else {
-          $message.error('消息撤回失败: ' + response.message)
-        }
-      } catch (error) {
-        console.error('消息撤回失败:', error)
-        $message.error('消息撤回失败: ' + error.message)
-      }
-    })
-  } else {
-    closeMessageContextMenu()
-  }
 }
 
 // 判断是否可以发送提醒
@@ -2151,30 +1820,7 @@ const startVideoCall = () => {
   simulateCallRequest('video')
 }
 
-// 开始屏幕共享
-const startScreenShare = () => {
-  if (!props.conversation) {
-    return
-  }
-  
-  // 检查是否在通话中
-  if (isInCall.value) {
-    $message.warning('您已经在通话中')
-    return
-  }
-  
-  // 检查是否已经在共享
-  if (screenShareSender.getIsSharing()) {
-    $message.warning('您已经在共享屏幕')
-    return
-  }
-  
-  // 调用ScreenShare组件的startScreenShare方法
-  if (screenShareComponent.value) {
-    screenShareComponent.value.startScreenShare()
-  } else {
-  }
-}
+
 
 const handleScreenShareStartFromComponent = (data: { conversationId: string | number }) => {
   // 只发送屏幕共享开始事件，不立即建立连接
@@ -2193,13 +1839,8 @@ const handleScreenShareJoinFromComponent = () => {
 const handleScreenShareLeaveFromComponent = () => {
 }
 
-// 处理屏幕共享流
-const receiveScreenShareStream = (data: any) => {
-  if (screenShareComponent.value) {
-    screenShareComponent.value.receiveScreenShareStream(data)
-  } else {
-  }
-}
+
+
 
 
 
@@ -2824,6 +2465,8 @@ defineExpose({
 </script>
 
 <style scoped>
+/* ===== ChatWindow 组件自身使用的样式 ===== */
+
 .chat-window {
   flex: 1;
   display: flex;
@@ -2839,7 +2482,6 @@ defineExpose({
   flex: 1;
   display: flex;
   overflow: hidden;
-  /* background: var(--content-bg); */
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
 }
 
@@ -2855,7 +2497,6 @@ defineExpose({
   margin: 0;
   margin-bottom: 1px;
   border-radius: 0;
-  /* border-bottom: 1px solid var(--border-color); */
 }
 
 .chat-body {
@@ -2864,1820 +2505,8 @@ defineExpose({
   overflow: hidden;
 }
 
-.header-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+/* ===== 小程序面板样式 ===== */
 
-.header-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.header-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.header-name {
-  font-weight: 500;
-  font-size: 16px;
-  color: var(--text-color);
-}
-
-.header-status {
-  font-size: 12px;
-  color: var(--color-success-500);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ip-info {
-  color: var(--text-color);
-  opacity: 0.7;
-  font-size: 11px;
-  margin-left: 8px;
-  padding: 2px 6px;
-  background: var(--hover-color);
-  border-radius: 3px;
-}
-
-.online-status {
-  font-size: 12px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  margin-right: 8px;
-}
-
-.online-status.online {
-  color: var(--color-success-500);
-  background: rgba(82, 196, 26, 0.1);
-}
-
-.online-status.offline {
-  color: var(--color-gray-500);
-  background: rgba(153, 153, 153, 0.1);
-}
-
-.signature-info {
-  color: var(--text-color);
-  opacity: 0.6;
-  font-size: 12px;
-  font-style: italic;
-  margin-left: 8px;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 群聊公告样式 */
-.header-announcement {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  padding: 8px 12px;
-  background: var(--primary-light);
-  border-radius: 8px;
-  border-left: 4px solid var(--primary-color);
-  font-size: 12px;
-  color: var(--primary-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-  position: relative;
-}
-
-.header-announcement:hover {
-  background: var(--primary-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.header-announcement:hover::after {
-  content: attr(data-announcement);
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: var(--primary-color);
-  color: white;
-  padding: 8px 12px;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  white-space: normal;
-  z-index: 100;
-  margin-top: 4px;
-  max-width: 500px;
-  word-wrap: break-word;
-}
-
-.header-announcement i {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.announcement-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.4;
-  font-weight: 500;
-}
-
-.header-announcement-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 8px;
-  padding: 2px 8px;
-  background: var(--input-bg);
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.header-announcement-inline i {
-  font-size: 11px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.message-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  /* background: var(--secondary-color); */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  opacity: 0.95;
-}
-
-
-
-/* 消息管理器样式 */
-.message-manager-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(5px);
-}
-
-.message-manager-content {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  width: 90%;
-  max-width: 900px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.message-manager-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  background: var(--sidebar-bg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.message-manager-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.message-manager-header h3::before {
-  /* content: '📋'; */
-  font-size: 20px;
-}
-
-.message-manager-body {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-  background: var(--sidebar-bg);
-}
-
-.message-manager-search {
-  margin-bottom: 24px;
-  position: relative;
-}
-
-.message-manager-search .search-input {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.message-manager-search .search-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
-}
-
-.message-manager-filters {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  min-width: 150px;
-}
-
-.filter-group label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  opacity: 0.8;
-}
-
-.filter-select {
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
-}
-
-/* 日期范围选择器样式 */
-.date-range-group {
-  flex: 2;
-  min-width: 300px;
-}
-
-.date-range-inputs {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.date-input {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  flex: 1;
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
-}
-
-.date-range-separator {
-  font-size: 14px;
-  color: var(--text-color);
-  opacity: 0.7;
-  white-space: nowrap;
-}
-
-/* 分页控件样式 */
-.message-manager-pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 24px;
-  padding-top: 16px;
-  background: var(--sidebar-bg);
-  border-radius: 0 0 12px 12px;
-  padding: 16px 20px;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
-}
-
-/* 悬浮分页效果 */
-.sticky-pagination {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  margin-top: 0;
-  border-radius: 0;
-}
-
-.pagination-info {
-  font-size: 14px;
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pagination-btn {
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.pagination-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-}
-
-.pagination-current {
-  font-size: 14px;
-  color: var(--text-color);
-  min-width: 80px;
-  text-align: center;
-}
-
-.page-jump {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 16px;
-}
-
-.page-input {
-  width: 60px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 14px;
-  border: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  text-align: center;
-  transition: all 0.2s ease;
-}
-
-.page-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
-}
-
-.jump-btn {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.jump-btn:hover {
-  background: var(--primary-color);
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.jump-btn:active {
-  transform: translateY(0);
-}
-
-.jump-btn:disabled {
-  background: var(--border-color);
-  cursor: not-allowed;
-  opacity: 0.6;
-  transform: none;
-}
-
-.message-manager-list {
-  max-height: 450px;
-  overflow-y: auto;
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.message-manager-item {
-  padding: 10px 16px;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.message-manager-item:hover {
-  background: var(--hover-color);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.message-manager-item:last-child {
-  border-bottom: none;
-}
-
-.message-manager-item-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.message-sender {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 13px;
-  flex: 1;
-  min-width: 80px;
-}
-
-.message-time {
-  font-size: 11px;
-  color: var(--text-color);
-  opacity: 0.6;
-  transition: opacity 0.3s ease;
-  flex: 0 0 auto;
-}
-
-.message-item:hover .message-time {
-  opacity: 1;
-}
-
-/* 消息管理器中的消息时间始终显示 */
-.message-manager-item .message-time {
-  opacity: 0.7;
-}
-
-.message-manager-item:hover .message-time {
-  opacity: 1;
-}
-
-.message-type {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--primary-color);
-  background: var(--hover-color);
-  padding: 2px 8px;
-  border-radius: 10px;
-  flex: 0 0 auto;
-}
-
-.message-manager-item-content {
-  font-size: 13px;
-  color: var(--text-color);
-  line-height: 1.4;
-  padding-left: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 60px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-
-
-
-.message-content-file {
-  display: flex;
-  align-items: center;
-}
-
-.message-mini-app,
-.message-share,
-.message-news {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.message-mini-app > span,
-.message-share > span,
-.message-news > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.message-mini-app i,
-.message-share i,
-.message-news i {
-  color: var(--primary-color);
-}
-
-.mini-app-description,
-.share-type,
-.news-summary {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.3;
-  /* margin-left: 24px; */
-}
-
-.message-file-link {
-  display: flex;
-  align-items: center;
-  color: var(--color-primary-300);
-  text-decoration: none;
-  transition: all 0.3s ease;
-}
-
-.message-file-link:hover {
-  color: var(--color-primary-400);
-  text-decoration: underline;
-}
-
-.message-file-link i {
-  margin-right: 8px;
-}
-
-.message-type {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.message-type-text {
-  background-color: var(--color-primary-100);
-  color: var(--color-primary-600);
-}
-
-.message-type-image {
-  background-color: var(--color-success-100);
-  color: var(--color-success-600);
-}
-
-.message-type-file {
-  background-color: var(--color-warning-100);
-  color: var(--color-warning-500);
-}
-
-/* 分享消息样式 */
-.share-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  padding: 14px;
-  max-width: 400px;
-  min-width: 250px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
-
-.share-message:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
-}
-
-.share-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.share-icon-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.share-icon {
-  font-size: 24px;
-  margin-top: 2px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--list-bg);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.share-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.share-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
-}
-
-.share-type {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.2;
-  white-space: nowrap;
-  text-align: center;
-  margin-bottom: 4px;
-}
-
-.share-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.share-action-btn {
-  padding: 6px 16px;
-  font-size: 12px;
-  border-radius: 8px;
-  border: none;
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  /* border: 1px solid var(--primary-color); */
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.share-action-btn:hover {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-.share-action-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(51, 133, 255, 0.3);
-}
-
-/* 自己发送的分享消息 */
-.message-item.self .share-message {
-  background: var(--primary-color);
-}
-
-.message-item.self .share-name {
-  color: #fff;
-}
-
-.message-item.self .share-type {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.message-item.self .share-icon {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
-}
-
-.message-item.self .share-action-btn {
-  background-color: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
-}
-
-.message-item.self .share-action-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
-}
-
-.message-item.self .share-action-btn:active {
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3);
-}
-
-.loading-message {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 200px;
-  font-size: 14px;
-  color: var(--text-color);
-  opacity: 0.6;
-  background: var(--sidebar-bg);
-  border-radius: 8px;
-  margin: 16px 0;
-}
-
-.message-manager-header h3 i {
-  margin-right: 8px;
-  color: var(--color-primary-300);
-}
-
-.empty-message {
-  text-align: center;
-  padding: 60px 0;
-  color: var(--text-color);
-  opacity: 0.6;
-  font-size: 14px;
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.empty-message::before {
-  content: '📭';
-  display: block;
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-/* 滚动条样式 */
-.message-manager-list::-webkit-scrollbar,
-.message-manager-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.message-manager-list::-webkit-scrollbar-track,
-.message-manager-body::-webkit-scrollbar-track {
-  background: var(--sidebar-bg);
-  border-radius: 3px;
-}
-
-.message-manager-list::-webkit-scrollbar-thumb,
-.message-manager-body::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.message-manager-list::-webkit-scrollbar-thumb:hover,
-.message-manager-body::-webkit-scrollbar-thumb:hover {
-  background: var(--text-color);
-  opacity: 0.5;
-}
-
-.message-item {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.message-item.self {
-  flex-direction: row-reverse;
-}
-
-.message-item.self .message-sender {
-  display: none;
-}
-
-.message-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.message-content {
-  max-width: 60%;
-  margin: 0 12px;
-}
-
-.message-link {
-  color: var(--color-primary-500);
-  text-decoration: none;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.message-link:hover {
-  color: var(--color-primary-600);
-  text-decoration: underline;
-  transform: translateY(-1px);
-}
-
-.at-user {
-  color: var(--color-primary-500);
-  font-weight: 600;
-  background-color: rgba(59, 130, 246, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.3s ease;
-}
-
-.at-user:hover {
-  background-color: rgba(59, 130, 246, 0.2);
-  transform: translateY(-1px);
-}
-
-.message-bubble {
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  font-size: 14px;
-  line-height: 1.5;
-  word-break: break-word;
-  white-space: pre-wrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: white;
-  border: none;
-}
-
-/* 为其他主题保留原来的样式 */
-[data-theme="dark"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="dark"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: var(--secondary-color);
-}
-
-[data-theme="dark"] .message-item.self .recalled-message {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-[data-theme="netblue"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="netblue"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-[data-theme="netblue"] .message-item.self .recalled-message {
-  background: rgba(66, 153, 225, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-[data-theme="elegantpurple"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="elegantpurple"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-[data-theme="elegantpurple"] .message-item.self .recalled-message {
-  background: rgba(139, 92, 246, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-[data-theme="sacredyellow"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="sacredyellow"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-[data-theme="sacredyellow"] .message-item.self .recalled-message {
-  background: rgba(217, 119, 6, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-[data-theme="chinesered"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="chinesered"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-[data-theme="chinesered"] .message-item.self .recalled-message {
-  background: rgba(220, 38, 38, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-[data-theme="grassgreen"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-}
-
-[data-theme="grassgreen"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-[data-theme="grassgreen"] .message-item.self .recalled-message {
-  background: rgba(16, 185, 129, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-/* 小程序消息样式 */
-.mini-app-message {
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 250px;
-  max-width: 400px;
-}
-
-.mini-app-message:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.mini-app-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.mini-app-icon-container {
-  flex-shrink: 0;
-}
-
-.mini-app-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  object-fit: cover;
-}
-
-.mini-app-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.mini-app-name {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mini-app-description {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 己方消息中的小程序消息样式 */
-.message-item.self .mini-app-message .mini-app-name {
-  color: white;
-  font-weight: 600;
-}
-
-.message-item.self .mini-app-message .mini-app-description {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.mini-app-tag {
-  display: inline-block;
-  font-size: 10px;
-  padding: 2px 6px;
-  background-color: var(--hover-color);
-  border-radius: 4px;
-  color: var(--text-secondary);
-}
-
-.mini-app-arrow {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-/* 资讯消息样式 */
-.news-message {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.news-message:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.news-info {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.news-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.news-title {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  line-height: 1.3;
-}
-
-.news-summary {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.news-image-container {
-  flex-shrink: 0;
-  width: 80px;
-  height: 60px;
-}
-
-.news-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 4px;
-}
-
-/* 撤回消息样式 */
-.recalled-message {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-secondary) !important;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 12px;
-}
-
-.message-item.self .recalled-message {
-  background: rgba(33, 150, 243, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-/* 被高亮的消息 */
-.highlighted-message {
-  animation: highlight 2s ease;
-}
-
-@keyframes highlight {
-  0% {
-    background-color: rgba(255, 255, 0, 0.2);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-
-.message-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.message-time {
-  font-size: 11px;
-  color: var(--text-color);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.message-item:hover .message-time {
-  opacity: 0.6;
-}
-
-.message-item.self .message-meta {
-  justify-content: flex-end;
-}
-
-.message-read-status {
-  font-size: 10px;
-  color: var(--color-gray-500);
-  opacity: 0.8;
-}
-
-.message-read-status.clickable {
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.message-read-status.clickable:hover {
-  opacity: 0.8;
-  transform: scale(1.05);
-}
-
-.message-read-status.read {
-  color: var(--color-success-500);
-  opacity: 1;
-}
-
-.message-read-status.failed {
-  color: var(--color-error-500);
-  opacity: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.message-read-status.failed .retry-btn {
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.message-read-status.failed .retry-btn:hover {
-  color: var(--color-error-400);
-  transform: scale(1.1);
-}
-
-/* 发送失败的消息气泡样式 */
-.message-item.self.failed .message-bubble {
-  background-color: var(--color-error-500);
-}
-
-/* 撤回消息样式 */
-.message-item.recalled .message-bubble {
-  background: var(--sidebar-bg);
-  color: var(--color-gray-500);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.message-item.self.recalled .message-bubble {
-  background: var(--sidebar-bg);
-  color: var(--color-gray-500);
-}
-
-.recalled-message span {
-  font-size: 12px;
-}
-
-.member-count {
-  color: var(--primary-color);
-  cursor: pointer;
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.member-count:hover {
-  text-decoration: underline;
-}
-
-.members-list {
-  background: var(--sidebar-bg);
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.members-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  background: var(--sidebar-bg);
-}
-
-.members-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.close-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--hover-color);
-}
-
-.members-content {
-  padding: 12px 20px;
-}
-
-.member-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-  gap: 12px;
-}
-
-.member-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.member-name {
-  font-size: 14px;
-  color: var(--text-color);
-}
-
-.members-sidebar {
-  width: 180px;
-  background: var(--sidebar-bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
-  transition: width 0.3s ease;
-}
-
-.members-sidebar.collapsed {
-  width: 30px;
-  border-left: none;
-}
-
-.sidebar-header-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.members-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.header-content .toggle-sidebar-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.header-content .toggle-sidebar-btn:hover {
-  background: var(--hover-color);
-}
-
-.collapsed-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-}
-
-.toggle-sidebar-btn.collapsed {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.members-sidebar .members-header {
-  padding: 8px 12px;
-  background: var(--sidebar-bg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.members-sidebar .members-header h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.search-toggle-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--text-color);
-  transition: all 0.2s;
-}
-
-.search-toggle-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.members-search {
-  padding: 6px 8px;
-  background: var(--sidebar-bg);
-}
-
-.member-search-input {
-  width: 100%;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  outline: none;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.member-search-input:focus {
-  border-color: var(--primary-color);
-}
-
-.members-sidebar .members-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 8px;
-}
-
-.members-sidebar .member-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 6px;
-  padding: 6px 10px;
-  transition: all 0.2s ease;
-  margin-bottom: 1px;
-  cursor: pointer;
-}
-
-.members-sidebar .member-item:hover {
-  background: var(--hover-color);
-  transform: translateY(-1px);
-}
-
-.members-sidebar .member-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.members-sidebar .member-name {
-  font-size: 13px;
-}
-
-.member-signature {
-  font-size: 11px;
-  color: var(--text-secondary, var(--color-gray-500));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100px;
-}
-
-.owner-badge {
-  font-size: 10px;
-  background: var(--color-warning-500);
-  color: white;
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 4px;
-}
-
-.admin-badge {
-  font-size: 10px;
-  background: var(--color-primary-500);
-  color: white;
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 4px;
-}
-
-.member-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.search-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  color: var(--color-gray-700);
-  font-size: 14px;
-}
-
-.search-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.search-loading::before {
-  content: '';
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--color-gray-300);
-  border-top: 2px solid var(--color-primary-600);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.search-results {
-  padding: 16px 20px;
-}
-
-.search-results-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  font-size: 14px;
-  color: var(--color-gray-800);
-}
-
-.clear-search-btn {
-  padding: 4px 12px;
-  background: transparent;
-  color: var(--color-primary-600);
-  border-radius: 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.clear-search-btn:hover {
-  background: var(--color-primary-100);
-}
-
-.message-sender {
-  font-size: 12px;
-  color: var(--color-gray-700);
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
-/* 成员上下文菜单样式 */
-.context-menu {
-  position: fixed;
-  background: var(--context-menu-bg);
-  border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
-}
-
-.context-menu-item {
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-color);
-  transition: background 0.2s;
-}
-
-.context-menu-item:hover {
-  background: var(--context-menu-hover);
-}
-
-.context-menu-item.divider {
-  height: 1px;
-  background: var(--color-gray-300);
-  padding: 0;
-  margin: 4px 0;
-  cursor: default;
-}
-
-.context-menu-item.divider:hover {
-  background: var(--color-gray-300);
-}
-
-
-.context-menu-icon {
-  margin-right: 10px;
-  font-size: 16px;
-  width: 20px;
-  text-align: center;
-}
-
-.context-menu-divider {
-  height: 1px;
-  background-color: var(--color-gray-200);
-  margin: 4px 0;
-}
-
-.file-link {
-  color: var(--color-primary-500);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-
-/* 图片消息样式 */
-.message-image {
-  max-width: 320px;
-  max-height: 320px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-  border: 1px solid var(--border-color);
-  background-color: var(--list-bg);
-  padding: 8px;
-}
-
-.message-image:hover {
-  transform: scale(1.02);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 文件消息样式 */
-.file-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  padding: 14px;
-  max-width: 400px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
-
-.file-message:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
-}
-
-.file-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.file-icon {
-  font-size: 24px;
-  margin-top: 2px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--list-bg);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.file-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.file-icon-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.file-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
-}
-
-.file-size {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.2;
-  white-space: nowrap;
-  text-align: center;
-}
-
-.file-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.file-action-btn {
-  padding: 6px 16px;
-  font-size: 12px;
-  border-radius: 8px;
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border: none;
-  /* border: 1px solid var(--primary-color); */
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.file-action-btn:hover {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 12px var(--color-primary-100);
-  transform: translateY(-1px);
-}
-
-.file-action-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px var(--color-primary-100);
-}
-
-/* 自己发送的文件消息 */
-.message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-.message-item.self .file-name {
-  color: #fff;
-}
-
-.message-item.self .file-size {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.message-item.self .file-icon {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.message-item.self .file-action-btn {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border: none;
-  /* border: 1px solid rgba(255, 255, 255, 0.2); */
-}
-
-.message-item.self .file-action-btn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
-}
-
-.message-item.self .file-action-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
-}
-
-
-
-/* 炫酷黑主题 */
-[data-theme="dark"] .chat-window {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .chat-main {
-  background: var(--secondary-color) !important;
-  border-top: none !important;
-}
-
-[data-theme="dark"] .chat-header {
-  background: var(--sidebar-bg) !important;
-  box-shadow: var(--shadow-md) !important;
-}
-
-[data-theme="elegant-dark"] .message-list {
-  background: var(--secondary-color) !important;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1) !important;
-}
-
-[data-theme="dark"] .message-bubble {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-[data-theme="dark"] .share-message {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-[data-theme="dark"] .mini-app-message {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-[data-theme="dark"] .file-message {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-[data-theme="dark"] .news-message {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* 小程序列表面板样式 */
 .mini-app-panel-container {
   position: fixed;
   top: 0;
@@ -4786,373 +2615,51 @@ defineExpose({
   background: var(--primary-hover);
 }
 
+/* ===== 按钮样式 ===== */
 
-/* 暗黑主题下的文件消息样式 */
-[data-theme="dark"] .file-message {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .file-icon {
-  background-color: var(--secondary-color) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .file-size {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .file-action-btn {
-  background-color: var(--secondary-color) !important;
-  border: none;
-  /* border: 1px solid var(--border-color) !important; */
-  color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .file-action-btn:hover {
-  background-color: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
-  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.4) !important;
-}
-
-/* 暗黑主题下自己发送的文件消息样式 */
-[data-theme="dark"] .message-item.self .file-message {
-  background: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
-  border: none;
-  /* border: 1px solid rgba(24, 144, 255, 0.3) !important; */
-}
-
-[data-theme="dark"] .message-item.self .file-name {
-  color: var(--color-gray-900) !important;
-}
-
-[data-theme="dark"] .message-item.self .file-size {
-  color: rgba(32, 32, 32, 0.8) !important;
-}
-
-[data-theme="dark"] .message-item.self .file-icon {
-  background-color: rgba(32, 32, 32, 0.2) !important;
-  color: var(--color-gray-900) !important;
-  border: 1px solid rgba(32, 32, 32, 0.3) !important;
-}
-
-[data-theme="dark"] .message-item.self .file-action-btn {
-  background-color: rgba(32, 32, 32, 0.2) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-  border: none;
-}
-
-[data-theme="dark"] .message-item.self .file-action-btn:hover {
-  background-color: rgba(32, 32, 32, 0.3) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(32, 32, 32, 0.3) !important;
-}
-
-[data-theme="dark"] .search-status {
-  color: var(--text-color) !important;
-  opacity: 0.7 !important;
-}
-
-[data-theme="dark"] .search-results-header {
-  color: var(--text-color) !important;
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .clear-search-btn {
-  color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .clear-search-btn:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="dark"] .message-sender {
-  color: var(--text-color) !important;
-  opacity: 0.8 !important;
-}
-
-[data-theme="dark"] .context-menu {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .context-menu-item {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .context-menu-item:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="dark"] .context-menu-divider {
-  background-color: var(--border-color) !important;
-}
-
-[data-theme="dark"] .file-message {
-  background-color: var(--sidebar-bg) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .file-name {
-  color: var(--text-color) !important;
-}
-
-/* [data-theme="dark"] .file-action-btn {
-  background-color: var(--sidebar-bg) !important;
-  color: var(--primary-color) !important;
-  border: none;
-  border: 1px solid var(--border-color) !important; 
-} */
-
-[data-theme="dark"] .file-action-btn:hover {
-  background-color: var(--primary-color) !important;
-  color: var(--color-gray-900) !important;
-}
-
-[data-theme="dark"] .message-manager-content {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-header {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-body {
-  background: var(--secondary-color) !important;
-}
-
-[data-theme="dark"] .message-manager-search .search-input {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-}
-
-[data-theme="dark"] .filter-group label {
-  color: var(--text-color) !important;
-  opacity: 0.8 !important;
-}
-
-[data-theme="dark"] .filter-select {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-}
-
-[data-theme="dark"] .date-input {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-}
-
-[data-theme="dark"] .date-range-separator {
-  color: var(--text-color) !important;
-  opacity: 0.7 !important;
-}
-
-[data-theme="dark"] .message-manager-pagination {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1) !important;
-  border-top: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .pagination-info {
-  color: var(--text-color) !important;
-  opacity: 0.7 !important;
-}
-
-[data-theme="dark"] .pagination-btn {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .pagination-btn:hover:not(:disabled) {
-  background: var(--hover-color) !important;
-  border-color: var(--primary-color) !important;
-  color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .pagination-btn:disabled {
-  background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
-  opacity: 0.7 !important;
-}
-
-[data-theme="dark"] .pagination-current {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .message-manager-list {
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-item {
-  border-bottom: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-item:hover {
-  background: var(--hover-color) !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-}
-
-[data-theme="dark"] .message-manager-item-content {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .empty-message {
-  color: var(--text-color) !important;
-  opacity: 0.6 !important;
-  background: var(--sidebar-bg) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-list::-webkit-scrollbar-track,
-[data-theme="dark"] .message-manager-body::-webkit-scrollbar-track {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .message-manager-list::-webkit-scrollbar-thumb,
-[data-theme="dark"] .message-manager-body::-webkit-scrollbar-thumb {
-  background: var(--border-color) !important;
-}
-
-[data-theme="dark"] .message-manager-list::-webkit-scrollbar-thumb:hover,
-[data-theme="dark"] .message-manager-body::-webkit-scrollbar-thumb:hover {
-  background: var(--text-color) !important;
-  opacity: 0.5 !important;
-}
-
-/* Toast样式 */
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: var(--color-success-500);
+.screenshot-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--primary-color);
   color: #fff;
-  padding: 12px 20px;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  font-size: 14px;
-  font-weight: 500;
-  z-index: 9999;
-  animation: toastSlideIn 0.3s ease;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-@keyframes toastSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.screenshot-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
 }
 
-/* 炫酷黑主题 - Toast样式 */
-[data-theme="dark"] .toast {
-  background: var(--primary-color) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+.call-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-/* 炫酷黑主题 - 其他按钮样式 */
-[data-theme="dark"] .action-btn {
-  color: var(--text-color) !important;
+.call-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
 }
 
-[data-theme="dark"] .action-btn.primary {
-  color: white !important;
+/* ===== 主题样式 ===== */
+
+[data-theme="dark"] .chat-window {
+  background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .file-action-btn {
-  color: var(--text-color) !important;
+[data-theme="dark"] .chat-main {
+  background: var(--secondary-color) !important;
+  border-top: none !important;
 }
 
-[data-theme="dark"] .share-action-btn {
-  color: var(--text-color) !important;
+[data-theme="dark"] .chat-header {
+  background: var(--sidebar-bg) !important;
+  box-shadow: var(--shadow-md) !important;
 }
-
-[data-theme="dark"] .screenshot-btn {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .call-btn {
-  color: white !important;
-}
-
-/* 炫酷黑主题 - 引用消息移除按钮 */
-
-
-/* 时间分隔线样式 */
-.time-divider {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 15px 0;
-  position: relative;
-}
-
-.time-divider-text {
-  background-color: var(--color-gray-200);
-  color: var(--color-gray-500);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 12px;
-  text-align: center;
-  font-weight: 400;
-}
-[data-theme="elegant-dark"] .time-divider-text {
-  background-color: var(--sidebar-bg);
-  color: var(--color-gray-700);
-}
-/* 深色主题下的时间分隔线样式 */
-.dark-theme .time-divider-text {
-  background-color: var(--color-gray-800);
-  color: var(--color-gray-700);
-}
-
-/* 网络蓝主题下的时间分隔线样式 */
-.netblue-theme .time-divider-text {
-  background-color: var(--color-primary-50);
-  color: var(--color-primary-500);
-}
-
-/* 高雅紫主题下的时间分隔线样式 */
-.elegantpurple-theme .time-divider-text {
-  background-color: var(--color-primary-50);
-  color: var(--color-primary-700);
-}
-
-/* 神圣黄主题下的时间分隔线样式 */
-.sacredyellow-theme .time-divider-text {
-  background-color: var(--color-warning-50);
-  color: var(--color-warning-600);
-}
-
-/* 没有更多消息提示 */
-.no-more-messages {
-  text-align: center;
-  padding: 20px 0;
-  color: var(--color-gray-500);
-  font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-200);
-  margin-bottom: 10px;
-}
-
-/* 消息列表系统提示样式 */
 </style>

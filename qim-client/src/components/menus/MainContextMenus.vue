@@ -1,17 +1,17 @@
 <template>
   <!-- 右键菜单 -->
   <div v-if="showMenu && selectedConversation" class="context-menu" :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }" @click.stop>
-    <div class="context-menu-item" @click="$emit('pin', selectedConversation)">
+    <div class="context-menu-item" @click="handleContextMenuAction('pin', selectedConversation)">
       {{ selectedConversation.pinned ? '取消置顶' : '置顶' }}
     </div>
-    <div class="context-menu-item" @click="$emit('mute', selectedConversation)">
+    <div class="context-menu-item" @click="handleContextMenuAction('mute', selectedConversation)">
       {{ selectedConversation.muted ? '取消免打扰' : '免打扰' }}
     </div>
-    <div v-if="selectedConversation.type === 'group' || selectedConversation.type === 'discussion'" class="context-menu-item" @click="$emit('exitGroup', selectedConversation)">
+    <div v-if="selectedConversation.type === 'group' || selectedConversation.type === 'discussion'" class="context-menu-item" @click="handleContextMenuAction('exitGroup', selectedConversation)">
       退出群聊
     </div>
     <div class="context-menu-item divider"></div>
-    <div class="context-menu-item" @click="$emit('remove', selectedConversation)">
+    <div class="context-menu-item" @click="handleContextMenuAction('remove', selectedConversation)">
       移除会话
     </div>
   </div>
@@ -221,6 +221,11 @@ const emit = defineEmits<{
   'closeAllMenus': []
 }>()
 
+const handleContextMenuAction = (event: string, payload?: any) => {
+  emit(event as any, payload)
+  emit('closeAllMenus')
+}
+
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   if (target.closest('.context-menu') || target.closest('.action-menu') || target.closest('.theme-menu')) {
@@ -283,7 +288,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   color: var(--text-color, #333);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .context-menu-item:hover {
@@ -372,7 +377,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   color: var(--text-color, #333);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .user-context-menu-item:hover {

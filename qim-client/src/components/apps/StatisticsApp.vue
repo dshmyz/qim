@@ -159,7 +159,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 
 // 服务器URL
@@ -207,7 +207,7 @@ const loadStatistics = async () => {
     statisticsData.value = response.data.data
   } catch (error) {
     console.error('加载统计数据失败:', error)
-    ElMessage.error('加载统计数据失败，请稍后重试')
+    QMessage.error('加载统计数据失败，请稍后重试')
   }
 }
 

@@ -1,5 +1,6 @@
 import { ref, computed, readonly } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import QMessage from '../utils/qmessage'
+import QMessageBox from '../utils/qmessagebox'
 import { request, useRequest } from './useRequest'
 
 /**
@@ -103,15 +104,15 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('群聊创建成功')
+        QMessage.success('群聊创建成功')
         return response.data
       } else {
-        ElMessage.error(response.message || '创建群聊失败')
+        QMessage.error(response.message || '创建群聊失败')
         return null
       }
     } catch (error) {
       console.error('创建群聊失败:', error)
-      ElMessage.error('网络错误，创建群聊失败')
+      QMessage.error('网络错误，创建群聊失败')
       return null
     }
   }
@@ -127,7 +128,7 @@ export function useGroup() {
     }
 
     try {
-      await ElMessageBox.confirm(
+      await QMessageBox.confirm(
         `确定要解散群聊 "${group.name}" 吗？此操作不可恢复。`,
         '确认解散群聊',
         {
@@ -147,16 +148,16 @@ export function useGroup() {
       })
 
       if (response.code === 0 || response.code === 200) {
-        ElMessage.success('群聊已成功解散')
+        QMessage.success('群聊已成功解散')
         closeGroupContextMenu()
         return true
       } else {
-        ElMessage.error(response.message || '解散群聊失败')
+        QMessage.error(response.message || '解散群聊失败')
         return false
       }
     } catch (error) {
       console.error('解散群聊失败:', error)
-      ElMessage.error('网络错误，解散群聊失败')
+      QMessage.error('网络错误，解散群聊失败')
       return false
     }
   }
@@ -169,7 +170,7 @@ export function useGroup() {
     if (!group) return false
 
     try {
-      await ElMessageBox.confirm(
+      await QMessageBox.confirm(
         `确定要退出群聊 "${group.name}" 吗？`,
         '确认退出群聊',
         {
@@ -189,16 +190,16 @@ export function useGroup() {
       })
 
       if (response.code === 0 || response.code === 200) {
-        ElMessage.success('已退出群聊')
+        QMessage.success('已退出群聊')
         closeGroupContextMenu()
         return true
       } else {
-        ElMessage.error(response.message || '退出群聊失败')
+        QMessage.error(response.message || '退出群聊失败')
         return false
       }
     } catch (error) {
       console.error('退出群聊失败:', error)
-      ElMessage.error('网络错误，退出群聊失败')
+      QMessage.error('网络错误，退出群聊失败')
       return false
     }
   }
@@ -211,7 +212,7 @@ export function useGroup() {
     if (!group) return false
 
     try {
-      await ElMessageBox.confirm(
+      await QMessageBox.confirm(
         `确定要退出群聊 "${group.name}" 吗？`,
         '确认退出群聊',
         {
@@ -230,16 +231,16 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('已退出群聊')
+        QMessage.success('已退出群聊')
         closeGroupContextMenu()
         return true
       } else {
-        ElMessage.error(response.message || '退出群聊失败')
+        QMessage.error(response.message || '退出群聊失败')
         return false
       }
     } catch (error) {
       console.error('退出群聊失败:', error)
-      ElMessage.error('网络错误，退出群聊失败')
+      QMessage.error('网络错误，退出群聊失败')
       return false
     }
   }
@@ -255,15 +256,15 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('群组信息已更新')
+        QMessage.success('群组信息已更新')
         return response.data
       } else {
-        ElMessage.error(response.message || '更新群组信息失败')
+        QMessage.error(response.message || '更新群组信息失败')
         return null
       }
     } catch (error) {
       console.error('更新群组信息失败:', error)
-      ElMessage.error('网络错误，更新群组信息失败')
+      QMessage.error('网络错误，更新群组信息失败')
       return null
     }
   }
@@ -279,15 +280,15 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('成员已添加')
+        QMessage.success('成员已添加')
         return response.data || []
       } else {
-        ElMessage.error(response.message || '添加成员失败')
+        QMessage.error(response.message || '添加成员失败')
         return null
       }
     } catch (error) {
       console.error('添加群组成员失败:', error)
-      ElMessage.error('网络错误，添加成员失败')
+      QMessage.error('网络错误，添加成员失败')
       return null
     }
   }
@@ -302,17 +303,17 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('成员已移除')
+        QMessage.success('成员已移除')
         // 更新本地群组成员列表
         groupMembers.value = groupMembers.value.filter(m => m.id !== memberId)
         return true
       } else {
-        ElMessage.error(response.message || '移除成员失败')
+        QMessage.error(response.message || '移除成员失败')
         return false
       }
     } catch (error) {
       console.error('移除群组成员失败:', error)
-      ElMessage.error('网络错误，移除成员失败')
+      QMessage.error('网络错误，移除成员失败')
       return false
     }
   }
@@ -328,7 +329,7 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('已成功设为管理员')
+        QMessage.success('已成功设为管理员')
         // 更新本地成员角色
         const member = groupMembers.value.find(m => m.id === memberId)
         if (member) {
@@ -336,12 +337,12 @@ export function useGroup() {
         }
         return true
       } else {
-        ElMessage.error(response.message || '设置管理员失败')
+        QMessage.error(response.message || '设置管理员失败')
         return false
       }
     } catch (error) {
       console.error('设置管理员失败:', error)
-      ElMessage.error('网络错误，设置管理员失败')
+      QMessage.error('网络错误，设置管理员失败')
       return false
     }
   }
@@ -357,15 +358,15 @@ export function useGroup() {
       })
 
       if (response.code === 0) {
-        ElMessage.success('群公告已更新')
+        QMessage.success('群公告已更新')
         return true
       } else {
-        ElMessage.error(response.message || '更新群公告失败')
+        QMessage.error(response.message || '更新群公告失败')
         return false
       }
     } catch (error) {
       console.error('更新群公告失败:', error)
-      ElMessage.error('网络错误，更新群公告失败')
+      QMessage.error('网络错误，更新群公告失败')
       return false
     }
   }

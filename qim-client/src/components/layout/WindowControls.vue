@@ -14,32 +14,30 @@
  * WindowControls - 窗口控制栏组件
  * 提供最小化、最大化、关闭按钮
  */
-import { logger } from '@/utils/logger'
-
 const minimizeWindow = () => {
-  logger.log('Minimize window clicked')
+  console.log('Minimize window clicked')
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.send('minimize-window')
   } else {
-    logger.log('Electron not available')
+    console.log('Electron not available')
   }
 }
 
 const maximizeWindow = () => {
-  logger.log('Maximize window clicked')
+  console.log('Maximize window clicked')
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.send('maximize-window')
   } else {
-    logger.log('Electron not available')
+    console.log('Electron not available')
   }
 }
 
 const closeWindow = () => {
-  logger.log('Close window clicked')
+  console.log('Close window clicked')
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.send('close-window')
   } else {
-    logger.log('Electron not available')
+    console.log('Electron not available')
   }
 }
 </script>

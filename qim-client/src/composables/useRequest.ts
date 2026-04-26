@@ -1,14 +1,9 @@
 import { ref, computed } from 'vue'
 import { API_BASE_URL } from '../config'
-import {
-  request as unifiedRequest,
-  getToken as unifiedGetToken,
-  type ApiRequestConfig
-} from '@/utils/request'
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
-export interface RequestOptions extends ApiRequestConfig {
+export interface RequestOptions extends RequestInit {
   baseUrl?: string
   timeout?: number
   params?: Record<string, string | number | boolean>
@@ -23,29 +18,93 @@ export interface ApiResponse<T = any> {
 /**
  * 获取认证 token
  */
-export const getToken = unifiedGetToken
+export const getToken = (): string | null => {
+  return localStorage.getItem('token')
+}
 
 /**
- * 通用 HTTP 请求封装（委托给统一 request 客户端）
+ * 通用 HTTP 请求封装
+ * @param url 请求路径
+ * @param options 请求配置
+ * @returns API 响应数据
  */
 export async function request<T = any>(
   url: string,
   options?: RequestOptions
 ): Promise<T> {
-  const baseUrl = options?.baseUrl || serverUrl.value
+  const token = getToken()
 
-  const config: ApiRequestConfig = {
-    ...options,
-    customBaseUrl: baseUrl,
-    // 将 Fetch API 的 body 映射为 axios 的 data
-    data: options?.body,
-    // 将 Fetch API 的 method 传递（axios 不区分大小写，但规范化更安全）
-    method: options?.method?.toUpperCase() as ApiRequestConfig['method'],
-    // 将 Fetch API 的 headers 合并
-    headers: options?.headers as Record<string, string>
+  // 构建 headers
+  const headers: Record<string, string> = {}
+
+  // 只有当不是 FormData 时才设置 Content-Type
+  if (!options?.body || !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
   }
 
-  return unifiedRequest<T>(url, config)
+  // 添加 Authorization 头
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const baseUrl = options?.baseUrl || serverUrl.value
+  let fullUrl = baseUrl.startsWith('http')
+    ? `${baseUrl}${url}`
+    : `${serverUrl.value}${url}`
+
+  // 添加 URL 参数
+  if (options?.params) {
+    const searchParams = new URLSearchParams()
+    Object.entries(options.params).forEach(([key, value]) => {
+      searchParams.append(key, String(value))
+    })
+    const queryString = searchParams.toString()
+    fullUrl += queryString ? `?${queryString}` : ''
+  }
+
+  // 构建请求配置
+  const requestOptions: RequestInit = {
+    ...options,
+    headers: {
+      ...headers,
+      ...options?.headers
+    }
+  }
+
+  // 添加超时控制
+  const timeout = options?.timeout || 30000
+  const controller = new AbortController()
+  requestOptions.signal = controller.signal
+
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(fullUrl, requestOptions)
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+
+      if (response.status === 401) {
+        throw new Error('UNAUTHORIZED')
+      }
+      if (response.status === 403) {
+        throw new Error(errorData.message || '权限不足，请检查您的权限')
+      }
+      throw new Error(errorData.message || `请求失败 (${response.status})`)
+    }
+
+    const data = await response.json()
+    return data as T
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('请求超时，请稍后重试')
+    }
+
+    throw error
+  }
 }
 
 /**

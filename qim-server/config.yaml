@@ -4,7 +4,7 @@ server:
 
 jwt:
   secret: "your-secret-key-change-in-production"
-  expire_hours: 2
+  expire: 7200
   refresh_expire_days: 7
 
 database:
@@ -81,3 +81,8 @@ ai:
     api_key: "YOUR-AI-API-KEY-HERE"
     model: "glm-5.1"
     base_url: "http://0yc4r0gn901.copilot.rds.aliyuncs.com/apps/anthropic"
+
+# CORS配置
+cors:
+  allowed_origins:
+    - "*"

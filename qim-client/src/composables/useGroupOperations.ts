@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import QMessage from '../utils/qmessage'
+import QMessageBox from '../utils/qmessagebox'
 
 interface Conversation {
   id: string
@@ -54,18 +55,18 @@ export function useGroupOperations(request: any, conversations: any) {
       })
       
       if (response.code === 0) {
-        ElMessage.success('群公告已成功更新')
+        QMessage.success('群公告已成功更新')
         selectedGroup.value.announcement = editAnnouncementContent.value
         const index = conversations.value.findIndex((c: Conversation) => c.id === selectedGroup.value?.id)
         if (index > -1) {
           conversations.value[index].announcement = editAnnouncementContent.value
         }
       } else {
-        ElMessage.error(response.message || '更新群公告失败')
+        QMessage.error(response.message || '更新群公告失败')
       }
     } catch (error) {
       console.error('更新群公告失败:', error)
-      ElMessage.error('网络错误，更新群公告失败')
+      QMessage.error('网络错误，更新群公告失败')
     }
     closeEditAnnouncementModal()
   }
@@ -81,17 +82,17 @@ export function useGroupOperations(request: any, conversations: any) {
         })
         
         if (response.code === 0) {
-          ElMessage.success('成员已成功移除')
+          QMessage.success('成员已成功移除')
           const index = selectedGroup.value.members!.findIndex((member: any) => member.id === selectedMember.value.id)
           if (index > -1) {
             selectedGroup.value.members!.splice(index, 1)
           }
         } else {
-          ElMessage.error(response.message || '移除成员失败')
+          QMessage.error(response.message || '移除成员失败')
         }
       } catch (error) {
         console.error('移除成员失败:', error)
-        ElMessage.error('网络错误，移除成员失败')
+        QMessage.error('网络错误，移除成员失败')
       }
     }
     closeMemberContextMenu()
@@ -99,7 +100,7 @@ export function useGroupOperations(request: any, conversations: any) {
 
   const viewMemberInfo = () => {
     if (selectedMember.value) {
-      ElMessage.info(`查看${selectedMember.value.name}的资料`)
+      QMessage.info(`查看${selectedMember.value.name}的资料`)
       console.log('查看成员资料:', selectedMember.value)
     }
     closeMemberContextMenu()
@@ -117,17 +118,17 @@ export function useGroupOperations(request: any, conversations: any) {
         })
         
         if (response.code === 0) {
-          ElMessage.success('已成功设为管理员')
+          QMessage.success('已成功设为管理员')
           const member = selectedGroup.value.members!.find((m: any) => m.id === selectedMember.value.id)
           if (member) {
             member.role = 'admin'
           }
         } else {
-          ElMessage.error(response.message || '设置管理员失败')
+          QMessage.error(response.message || '设置管理员失败')
         }
       } catch (error) {
         console.error('设置管理员失败:', error)
-        ElMessage.error('网络错误，设置管理员失败')
+        QMessage.error('网络错误，设置管理员失败')
       }
     }
     closeMemberContextMenu()

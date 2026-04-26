@@ -1,6 +1,5 @@
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { request } from '../utils/request'
+import QMessage from '../utils/qmessage'
 
 export interface SettingsProfile {
   nickname: string
@@ -128,16 +127,16 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
         if (currentUser.value) {
           currentUser.value.username = settingsProfile.value.nickname
         }
-        ElMessage.success('保存成功')
+        QMessage.success('保存成功')
         return true
       } else {
-        ElMessage.error('保存失败: ' + profileResponse.message)
+        QMessage.error('保存失败: ' + profileResponse.message)
         return false
       }
     } catch (error) {
       console.error('保存设置失败:', error)
       const errorMessage = error instanceof Error ? error.message : '未知错误'
-      ElMessage.error('保存失败: ' + errorMessage)
+      QMessage.error('保存失败: ' + errorMessage)
       return false
     }
   }
@@ -147,7 +146,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       localStorage.removeItem('messageSettings')
       localStorage.removeItem('appearanceSettings')
       localStorage.removeItem('fileSettings')
-      ElMessage.success('缓存已清除')
+      QMessage.success('缓存已清除')
     }
   }
 
@@ -155,7 +154,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     try {
       const token = localStorage.getItem('token')
       if (!token) {
-        ElMessage.error('请先登录')
+        QMessage.error('请先登录')
         return false
       }
       const response = await fetch(`${serverUrl.value}/api/v1/users/me`, {
@@ -170,15 +169,15 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       })
       const data = await response.json()
       if (data.code === 0) {
-        ElMessage.success('设置保存成功')
+        QMessage.success('设置保存成功')
         return true
       } else {
-        ElMessage.error(data.message || '设置保存失败')
+        QMessage.error(data.message || '设置保存失败')
         return false
       }
     } catch (error) {
       console.error('保存双因素认证设置失败:', error)
-      ElMessage.error('保存设置失败')
+      QMessage.error('保存设置失败')
       return false
     }
   }
@@ -191,7 +190,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
         window.electron.ipcRenderer.removeListener('file-dialog-result', handleResult)
         if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
           fileSettings.value.defaultSaveDirectory = result.filePaths[0]
-          ElMessage.success('目录已选择')
+          QMessage.success('目录已选择')
           if (callback) {
             callback(result.filePaths[0])
           }
@@ -201,7 +200,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       window.electron.ipcRenderer.on('file-dialog-result', handleResult)
     } else {
       fileSettings.value.defaultSaveDirectory = '/Users/yourname/Downloads'
-      ElMessage.info('使用默认下载目录')
+      QMessage.info('使用默认下载目录')
     }
   }
 

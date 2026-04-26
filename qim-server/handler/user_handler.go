@@ -324,6 +324,81 @@ func RemoveUserRole(c *gin.Context) {
 	})
 }
 
+// BatchAssignUserRoles 批量分配用户角色
+func BatchAssignUserRoles(c *gin.Context) {
+	userIDStr := c.Param("id")
+	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	var req struct {
+		Roles []string `json:"roles" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	db := database.GetDB()
+
+	var targetUser model.User
+	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	// 先删除用户所有现有角色
+	db.Where("user_id = ?", uint(targetUserID)).Delete(&model.UserRole{})
+
+	// 添加新角色
+	for _, roleName := range req.Roles {
+		userRole := model.UserRole{
+			UserID: uint(targetUserID),
+			Role:   roleName,
+		}
+		db.Create(&userRole)
+	}
+
+	response.Success(c, gin.H{
+		"message": "角色分配成功",
+		"roles":   req.Roles,
+	})
+}
+
+// DeleteUser 删除用户
+func DeleteUser(c *gin.Context) {
+	userIDStr := c.Param("id")
+	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	var targetUser model.User
+	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	// 删除用户关联的角色
+	db.Where("user_id = ?", uint(targetUserID)).Delete(&model.UserRole{})
+
+	// 删除用户（软删除）
+	if err := db.Delete(&targetUser).Error; err != nil {
+		response.InternalServerError(c, "删除用户失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"message": "删除成功",
+	})
+}
+
 func GetAIConfig(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 

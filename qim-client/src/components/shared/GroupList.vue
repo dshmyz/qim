@@ -24,6 +24,7 @@ import { ref, computed } from 'vue'
 import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Conversation, User } from '../../types'
+import { logger } from '../../utils/logger';
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
@@ -42,8 +43,8 @@ defineEmits<{
 
 const filteredConversations = computed(() => {
   const filtered = props.conversations.filter(c => c.type === 'group' || c.type === 'discussion')
-  console.log('GroupList - Filtered conversations:', filtered)
-  console.log('GroupList - Total conversations:', props.conversations.length)
+  logger.log('GroupList - Filtered conversations:', filtered)
+  logger.log('GroupList - Total conversations:', props.conversations.length)
   return filtered
 })
 
