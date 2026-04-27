@@ -60,7 +60,7 @@
           @open-news-link="openNewsLink"
           @retry-send-message="retrySendMessage"
           @show-read-users="showReadUsers"
-          @mark-read="markMessagesAsRead"
+          @mark-read="handleMarkRead"
           @load-more="loadMoreMessages"
         />
 
@@ -90,7 +90,14 @@
       @remove-member="handleRemoveMember"
       @set-admin="handleSetAdmin"
       @transfer-owner="handleTransferOwner"
-      @start-private-chat="handleStartPrivateChat"
+      @view-member-info="viewMemberInfo"
+      @send-private-message="sendPrivateMessage"
+    />
+
+    <!-- AI 快捷指令栏 -->
+    <AIQuickActions
+      :is-processing="aiIsProcessing"
+      @action="handleAIAction"
     />
 
     <MessageInput
@@ -170,7 +177,7 @@
     @preview-image="previewImage"
     @save-file-as="saveFileAs"
     @download-file="downloadFile"
-    @copy-message="copyMessage"
+    @copy-message="copyMessage(selectedMessage)"
     @forward-message="forwardMessage"
     @quote-message="quoteMessage"
     @add-to-note="addToNote"
@@ -211,14 +218,15 @@
   
   <!-- 通话模态框 -->
   <CallModal
-    :visible="showCallModal"
-    :call-type="callType"
-    :status="callStatus"
-    :avatar="props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
-    :name="props.conversation?.name || '未知'"
+    :visible="showCallModal || videoCallStatus !== 'idle'"
+    :call-type="videoCallType"
+    :status="videoCallStatus"
+    :avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
+    :name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
     @reject-call="rejectCall"
     @answer-call="answerCall"
     @end-call="endCall"
+    @close="handleCallModalClose"
   />
   
   <!-- 图片预览弹窗 -->
@@ -243,9 +251,55 @@
   />
 
   <!-- 小程序加载器 -->
-  <MiniAppLoader
-    :mini-app="activeMiniApp"
-    @close="activeMiniApp = null"
+  <div style="display: contents">
+    <MiniAppLoader
+      :mini-app="activeMiniApp"
+      @close="activeMiniApp = null"
+      @show-toast="handleMiniAppToast"
+    />
+  </div>
+
+  <!-- 群名称编辑弹窗 -->
+  <div v-if="showEditGroupInfoModal" class="user-profile-modal" @click="closeEditGroupInfoModal">
+    <div class="profile-content" @click.stop>
+      <div class="profile-header">
+        <h3>修改群名称</h3>
+        <button class="close-btn" @click="closeEditGroupInfoModal">×</button>
+      </div>
+      <div class="profile-body">
+        <input type="text" v-model="editGroupName" class="profile-input" placeholder="请输入群名称" />
+      </div>
+      <div class="profile-footer">
+        <button class="btn btn-cancel" @click="closeEditGroupInfoModal">取消</button>
+        <button class="btn btn-save" @click="saveGroupInfo">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 群公告编辑弹窗 -->
+  <div v-if="showEditAnnouncementModal" class="user-profile-modal" @click="closeEditAnnouncementModal">
+    <div class="profile-content" @click.stop>
+      <div class="profile-header">
+        <h3>编辑群公告</h3>
+        <button class="close-btn" @click="closeEditAnnouncementModal">×</button>
+      </div>
+      <div class="profile-body">
+        <textarea v-model="editAnnouncementContent" class="profile-textarea" placeholder="请输入群公告内容" rows="6"></textarea>
+      </div>
+      <div class="profile-footer">
+        <button class="btn btn-cancel" @click="closeEditAnnouncementModal">取消</button>
+        <button class="btn btn-save" @click="saveAnnouncement">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 摘要面板 -->
+  <AISummaryPanel
+    v-if="conversation?.id"
+    :visible="showSummaryPanel"
+    :conversation-id="Number(conversation.id)"
+    time-range="today"
+    @close="showSummaryPanel = false"
   />
   </div>
 
@@ -284,18 +338,122 @@ import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import { useScreenShare } from '../../composables/useScreenShare'
 import ScreenShare from '../shared/ScreenShare.vue'
+import { useVideoCall } from '../../composables/useVideoCall'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
+import { useAIActions } from '../../composables/useAIActions'
+import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
+import AIQuickActions from '../ai/AIQuickActions.vue'
+import AISummaryPanel from '../ai/AISummaryPanel.vue'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
-
 // 初始化 composables
 const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
 const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
+
+// AI 操作 composable
+const {
+  isProcessing: aiIsProcessing,
+  translateText,
+  rewriteText,
+  polishText,
+  generateSummary,
+} = useAIActions()
+
+// AI 摘要面板状态
+const showSummaryPanel = ref(false)
+
+// AI 快捷操作处理
+const handleAIAction = async (actionId: string) => {
+  const text = inputMessage.value.trim()
+
+  switch (actionId) {
+    case 'summary':
+      if (props.conversation?.id) {
+        showSummaryPanel.value = true
+      }
+      break
+    case 'translate':
+      if (!text) {
+        $message.warning('请先输入需要翻译的文本')
+        return
+      }
+      try {
+        const result = await translateText(text, 'zh')
+        inputMessage.value = result
+        autoResizeTextarea()
+        $message.success('翻译完成')
+      } catch {
+        $message.error('翻译失败')
+      }
+      break
+    case 'rewrite':
+      if (!text) {
+        $message.warning('请先输入需要改写的文本')
+        return
+      }
+      try {
+        const result = await rewriteText(text, 'concise', 'professional')
+        inputMessage.value = result
+        autoResizeTextarea()
+        $message.success('改写完成')
+      } catch {
+        $message.error('改写失败')
+      }
+      break
+    case 'polish':
+      if (!text) {
+        $message.warning('请先输入需要润色的文本')
+        return
+      }
+      try {
+        const result = await polishText(text, 'zh')
+        inputMessage.value = result
+        autoResizeTextarea()
+        $message.success('润色完成')
+      } catch {
+        $message.error('润色失败')
+      }
+      break
+    case 'code_review':
+      if (!text) {
+        $message.warning('请先输入需要审查的代码')
+        return
+      }
+      $message.info('代码审查功能开发中')
+      break
+    default:
+      break
+  }
+}
+
+// AI 键盘快捷键
+useAIKeyboardShortcuts([
+  {
+    key: 'k',
+    ctrlKey: true,
+    shiftKey: false,
+    action: () => {
+      $message.info('AI 快捷面板')
+    },
+    description: '打开 AI 快捷面板'
+  },
+  {
+    key: 's',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => {
+      if (props.conversation?.id) {
+        showSummaryPanel.value = true
+      }
+    },
+    description: '快速生成会话摘要'
+  }
+])
 
 interface Props {
   conversation: Conversation
@@ -343,7 +501,7 @@ const {
 } = messageActions
 
 // 屏幕共享相关逻辑
-const screenShare = useScreenShare(ref(props.conversation), ref(props.currentUser))
+const screenShare = useScreenShare(ref(props.conversation))
 const {
   screenShareComponent,
   remoteScreenUserId,
@@ -363,6 +521,26 @@ const {
   stopScreenShare,
   cleanupScreenShare
 } = screenShare
+
+// 视频通话相关逻辑
+const videoCall = useVideoCall()
+const {
+  callStatus: videoCallStatus,
+  callType: videoCallType,
+  localStream: videoCallLocalStream,
+  remoteStream: videoCallRemoteStream,
+  isMuted: videoCallIsMuted,
+  isVideoEnabled: videoCallIsVideoEnabled,
+  remoteUser: videoCallRemoteUser,
+  incomingCall: videoCallIncomingCall,
+  startCall: videoCallStart,
+  answerCall: videoCallAnswer,
+  endCall: videoCallEnd,
+  rejectCall: videoCallReject,
+  toggleMute: videoCallToggleMute,
+  toggleVideo: videoCallToggleVideo,
+  handleSignalingMessage: videoCallHandleSignaling
+} = videoCall
 
 // 向后兼容：保留原来的 ref 声明（逐步迁移后可删除）
 
@@ -412,6 +590,9 @@ watch(() => props.conversation?.id, (newId) => {
     }
   }
 }, { immediate: true })
+
+// 标记是否正在插入系统消息（本地操作），此时不应触发滚动
+const isInsertingSystemMessage = ref(false)
 
 // 输入变化时保存草稿
 watch(inputMessage, () => {
@@ -875,6 +1056,13 @@ const loadMoreMessages = async () => {
   }
 }
 
+// 处理标记已读
+const handleMarkRead = () => {
+  if (props.conversation?.id) {
+    markMessagesAsRead(props.conversation.id)
+  }
+}
+
 // 组件是否挂载
 const isMounted = ref(true)
 // 跟踪 WebSocket 消息处理器以便在卸载时清理
@@ -888,12 +1076,36 @@ let screenshotCleanup: (() => void) | null = null
 
 
 // 监听组件挂载和消息变化
-watch(() => props.messages, async () => {
+watch(() => props.messages, async (newMessages, oldMessages) => {
   if (!isMounted.value) return
-  // 新消息到达时，滚动到底部并标记为已读
-  scrollToBottom()
-  // 获取已读用户列表
-  await loadReadUsersForMessages()
+  // 本地插入系统消息时不触发滚动
+  if (isInsertingSystemMessage.value) return
+  
+  const oldLength = oldMessages?.length ?? 0
+  const newLength = newMessages?.length ?? 0
+  
+  if (newLength > oldLength) {
+    // 消息增加了，判断是加载历史消息还是收到新消息
+    const oldFirstId = oldMessages?.[0]?.id
+    const newFirstId = newMessages?.[0]?.id
+    
+    if (oldFirstId !== newFirstId) {
+      // 加载历史消息（在数组前面添加）：不滚动，保持当前浏览位置
+      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single')
+      return
+    }
+    
+    // 新消息到达（添加到末尾），滚动到底部
+    scrollToBottom()
+  }
+  
+  // 获取已读用户列表（只对新消息）
+  if (newLength > oldLength) {
+    const newMessagesOnly = newMessages.slice(oldLength)
+    if (newMessagesOnly.length > 0) {
+      await loadReadUsersForMessages(newMessagesOnly, props.conversation?.type || 'single')
+    }
+  }
 }, { deep: true })
 
 // 监听消息的 isRead 状态变化，重新获取已读用户列表
@@ -907,8 +1119,8 @@ watch(
       return oldMsg && newMsg.isRead !== oldMsg.isRead
     })
     if (hasReadStatusChanged) {
-      // 当消息的已读状态变化时，重新获取已读用户列表
-      await loadReadUsersForMessages()
+      // 当消息的已读状态变化时，重新获取已读用户列表（强制刷新）
+      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single', true)
     }
   },
   { deep: true }
@@ -947,9 +1159,11 @@ onMounted(async () => {
     messageListRef.value.addEventListener('scroll', handleScroll)
   }
   // 初始标记消息为已读
-  markMessagesAsRead()
+  if (props.conversation?.id) {
+    markMessagesAsRead(props.conversation.id)
+  }
   // 初始加载已读用户列表
-  await loadReadUsersForMessages()
+  await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
   // 加载小程序列表
   loadMiniApps()
   // 初始化 WebSocket 消息处理
@@ -964,13 +1178,13 @@ onMounted(async () => {
 
 // 初始化 WebSocket 消息处理
 const initWebSocketMessageHandler = () => {
-  const webrtcMessageTypes = [
+  const screenShareMessageTypes = [
     'webrtc_offer',
     'webrtc_ice_candidate',
     'webrtc_answer'
   ];
   
-  webrtcMessageTypes.forEach(type => {
+  screenShareMessageTypes.forEach(type => {
     const handler = (message: any) => {
       handleScreenShareMessage(type, message.data);
     };
@@ -978,10 +1192,36 @@ const initWebSocketMessageHandler = () => {
     registeredScreenShareHandlers.push({ handler, type });
   });
   
+  const videoCallMessageTypes = [
+    'call_invite',
+    'call_accept',
+    'call_reject',
+    'call_end',
+    'webrtc_offer',
+    'webrtc_answer',
+    'webrtc_ice_candidate'
+  ];
+  
+  videoCallMessageTypes.forEach(type => {
+    const handler = (message: any) => {
+      videoCallHandleSignaling(message);
+      if (type === 'call_invite' || type === 'webrtc_offer') {
+        showCallModal.value = true
+      }
+    };
+    addWsHandler(handler, type);
+  });
+  
   if (window.electron && window.electron.websocket) {
     window.electron.websocket.onMessage((message) => {
-      if (webrtcMessageTypes.includes(message.type)) {
+      if (screenShareMessageTypes.includes(message.type)) {
         handleScreenShareMessage(message.type, message.data);
+      }
+      if (videoCallMessageTypes.includes(message.type)) {
+        videoCallHandleSignaling(message);
+        if (message.type === 'call_invite' || message.type === 'webrtc_offer') {
+          showCallModal.value = true
+        }
       }
     });
   }
@@ -1744,9 +1984,6 @@ const retakeScreenshot = () => {
 }
 
 // 通话相关状态
-const isInCall = ref(false)
-const callType = ref('') // 'voice' 或 'video'
-const callStatus = ref('') // 'ringing', 'answered', 'ended'
 const showCallModal = ref(false)
 const isScreenSharing = ref(false) // 是否正在共享屏幕
 
@@ -1759,44 +1996,112 @@ const openMiniApp = (miniApp: MiniAppData) => {
   activeMiniApp.value = miniApp
 }
 
+// 处理小程序 Toast 消息
+const handleMiniAppToast = (message: string) => {
+  window.$message?.info(message)
+}
+
 // 开始语音通话
-const startVoiceCall = () => {
+const startVoiceCall = async () => {
   if (!props.conversation) return
   
-  // 检查是否在通话中
-  if (isInCall.value) {
+  if (videoCallStatus.value !== 'idle' && videoCallStatus.value !== 'ended') {
     $message.warning('您已经在通话中')
     return
   }
   
-  // 开始语音通话
-  callType.value = 'voice'
-  callStatus.value = 'ringing'
-  isInCall.value = true
-  showCallModal.value = true
+  const targetUser = getTargetUserForCall()
+  if (!targetUser) {
+    $message.warning('无法找到通话对象')
+    return
+  }
   
-  // 模拟通话请求
-  simulateCallRequest('voice')
+  try {
+    await videoCallStart(targetUser, 'voice')
+    showCallModal.value = true
+    $message.info('正在发起语音通话...')
+  } catch (error: any) {
+    console.error('发起语音通话失败:', error)
+    $message.error(`通话失败: ${error.message || '未知错误'}`)
+  }
 }
 
 // 开始视频通话
-const startVideoCall = () => {
+const startVideoCall = async () => {
   if (!props.conversation) return
   
-  // 检查是否在通话中
-  if (isInCall.value) {
+  if (videoCallStatus.value !== 'idle' && videoCallStatus.value !== 'ended') {
     $message.warning('您已经在通话中')
     return
   }
   
-  // 开始视频通话
-  callType.value = 'video'
-  callStatus.value = 'ringing'
-  isInCall.value = true
-  showCallModal.value = true
+  const targetUser = getTargetUserForCall()
+  if (!targetUser) {
+    $message.warning('无法找到通话对象')
+    return
+  }
   
-  // 模拟通话请求
-  simulateCallRequest('video')
+  try {
+    await videoCallStart(targetUser, 'video')
+    showCallModal.value = true
+    $message.info('正在发起视频通话...')
+  } catch (error: any) {
+    console.error('发起视频通话失败:', error)
+    $message.error(`通话失败: ${error.message || '未知错误'}`)
+  }
+}
+
+const getTargetUserForCall = () => {
+  if (!props.conversation) {
+    $message.warning('未选择会话')
+    return null
+  }
+  
+  console.log('通话会话信息:', props.conversation)
+  console.log('会话类型:', props.conversation.type)
+  
+  // 单聊：从 members 中获取对方用户
+  if (props.conversation.type === 'single') {
+    const currentUserId = currentUser.value?.id?.toString() || ''
+    console.log('当前用户ID:', currentUserId)
+    console.log('会话成员:', props.conversation.members)
+    
+    if (props.conversation.members && props.conversation.members.length === 2) {
+      const otherMember = props.conversation.members.find(member => String(member.id) !== currentUserId)
+      
+      if (!otherMember) {
+        $message.warning('未找到对方用户')
+        return null
+      }
+      
+      console.log('找到对方用户:', otherMember)
+      
+      return {
+        id: otherMember.id,
+        name: otherMember.nickname || otherMember.name || props.conversation.name,
+        avatar: otherMember.avatar || props.conversation.avatar || '',
+        nickname: otherMember.nickname || otherMember.name || props.conversation.name
+      }
+    }
+    
+    // 备用方案：使用 other_member_id 或 user_id
+    const targetUserId = props.conversation.other_member_id || props.conversation.user_id
+    if (targetUserId) {
+      return {
+        id: targetUserId,
+        name: props.conversation.other_member_name || props.conversation.name,
+        avatar: props.conversation.avatar || '',
+        nickname: props.conversation.other_member_name || props.conversation.name
+      }
+    }
+    
+    $message.warning('无法获取对方用户ID')
+    return null
+  }
+  
+  // 群聊不支持通话
+  $message.warning('仅支持单聊发起通话')
+  return null
 }
 
 
@@ -1839,57 +2144,48 @@ const enhanceErrorHandling = () => {
   console.warn('enhanceErrorHandling 已废弃，错误处理逻辑已移至 ScreenShare 组件')
 }
 
-
-
-// 模拟通话请求
-const simulateCallRequest = (type) => {
-  // 模拟对方接听
-  setTimeout(() => {
-    callStatus.value = 'answered'
-    $message.success('对方已接听')
-  }, 3000)
+// 结束通话
+const endCall = async () => {
+  try {
+    await videoCallEnd()
+    showCallModal.value = false
+    $message.info('通话已结束')
+  } catch (error) {
+    console.error('结束通话失败:', error)
+  }
 }
 
-// 结束通话
-const endCall = () => {
-  callStatus.value = 'ended'
-  isInCall.value = false
-  showCallModal.value = false
-  
-  // 停止屏幕共享
-  if (isScreenSharing.value) {
-    screenShareSender.stopScreenShare()
-    isScreenSharing.value = false
+// 处理通话模态框关闭
+const handleCallModalClose = async () => {
+  try {
+    await videoCallEnd()
+    showCallModal.value = false
+  } catch (error) {
+    console.error('关闭通话模态框时清理资源失败:', error)
+    showCallModal.value = false
   }
-  
-  // 模拟通话结束
-  setTimeout(() => {
-    callType.value = ''
-    callStatus.value = ''
-  }, 1000)
-  
-  $message.info('通话已结束')
 }
 
 // 拒绝通话
-const rejectCall = () => {
-  callStatus.value = 'ended'
-  isInCall.value = false
-  showCallModal.value = false
-  
-  // 模拟通话结束
-  setTimeout(() => {
-    callType.value = ''
-    callStatus.value = ''
-  }, 1000)
-  
-  $message.info('已拒绝通话')
+const rejectCall = async () => {
+  try {
+    await videoCallReject()
+    showCallModal.value = false
+    $message.info('已拒绝通话')
+  } catch (error) {
+    console.error('拒绝通话失败:', error)
+  }
 }
 
 // 接听通话
-const answerCall = () => {
-  callStatus.value = 'answered'
-  $message.success('已接听通话')
+const answerCall = async () => {
+  try {
+    await videoCallAnswer()
+    $message.success('通话已接听')
+  } catch (error) {
+    console.error('接听通话失败:', error)
+    $message.error('接听失败')
+  }
 }
 
 
@@ -2306,9 +2602,15 @@ const editGroupInfo = () => {
 }
 
 // 保存群信息
-const saveGroupInfo = async () => {
+const saveGroupInfo = async (groupName?: string) => {
   if (!props.conversation) {
     showEditGroupInfoModal.value = false
+    return
+  }
+  
+  const name = groupName ?? editGroupName.value
+  if (!name) {
+    QMessage.warning('群名称不能为空')
     return
   }
   
@@ -2318,20 +2620,20 @@ const saveGroupInfo = async () => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ name: editGroupName.value })
+      body: JSON.stringify({ name })
     })
     
     if (response.code === 0) {
       QMessage.success('群名称已成功更新')
       // 更新本地群聊数据
       if (props.updateConversation) {
-        props.updateConversation({ ...props.conversation, name: editGroupName.value })
+        props.updateConversation({ ...props.conversation, name })
       }
       
       // 发送群名称修改系统消息到后台服务器
       const currentUser = getCurrentUser()
       const currentUserName = currentUser?.name || currentUser?.nickname || '未知用户'
-      const systemMessageContent = `${currentUserName} 修改群名称为 ${editGroupName.value}`
+      const systemMessageContent = `${currentUserName} 修改群名称为 ${name}`
       
       try {
         await request(`/api/v1/conversations/${props.conversation.id}/messages`, {
@@ -2348,7 +2650,7 @@ const saveGroupInfo = async () => {
         console.error('发送系统消息失败:', error)
       }
       
-      // 本地也显示系统消息
+      // 本地也显示系统消息，按时间排序插入，避免消息错乱
       const systemMessage = {
         id: `system_${Date.now()}`,
         type: 'system',
@@ -2363,16 +2665,21 @@ const saveGroupInfo = async () => {
         isRead: true
       }
       
-      // 添加到本地消息列表
+      // 设置标记，防止插入系统消息时触发滚动
+      isInsertingSystemMessage.value = true
+      // 按时间排序插入消息，保持消息顺序正确
       if (Array.isArray(props.messages)) {
         props.messages.push(systemMessage)
       }
+      // 延迟重置标记，确保 watch 不会在此时触发滚动
+      setTimeout(() => {
+        isInsertingSystemMessage.value = false
+      }, 100)
     } else {
       QMessage.error(response.message || '更新群名称失败')
     }
   } catch (error: any) {
     console.error('更新群名称失败:', error)
-    // 根据错误状态码给出更具体的提示
     if (error?.response?.status === 403) {
       QMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
     } else if (error?.response?.status === 404) {
@@ -2386,6 +2693,16 @@ const saveGroupInfo = async () => {
   showEditGroupInfoModal.value = false
 }
 
+// 关闭编辑群名称弹窗
+const closeEditGroupInfoModal = () => {
+  showEditGroupInfoModal.value = false
+}
+
+// 关闭编辑群公告弹窗
+const closeEditAnnouncementModal = () => {
+  showEditAnnouncementModal.value = false
+}
+
 // 编辑群公告
 const editGroupAnnouncement = () => {
   if (props.conversation) {
@@ -2396,11 +2713,13 @@ const editGroupAnnouncement = () => {
 }
 
 // 保存群公告
-const saveAnnouncement = async () => {
+const saveAnnouncement = async (announcement?: string) => {
   if (!props.conversation) {
     showEditAnnouncementModal.value = false
     return
   }
+  
+  const content = announcement ?? editAnnouncementContent.value
   
   try {
     const response = await request(`/api/v1/conversations/${props.conversation.id}/announcement`, {
@@ -2408,21 +2727,20 @@ const saveAnnouncement = async () => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ announcement: editAnnouncementContent.value })
+      body: JSON.stringify({ announcement: content })
     })
     
     if (response.code === 0) {
       QMessage.success('群公告已成功更新')
       // 更新本地群聊数据
       if (props.updateConversation) {
-        props.updateConversation({ ...props.conversation, announcement: editAnnouncementContent.value })
+        props.updateConversation({ ...props.conversation, announcement: content })
       }
     } else {
       QMessage.error(response.message || '更新群公告失败')
     }
   } catch (error: any) {
     console.error('更新群公告失败:', error)
-    // 根据错误状态码给出更具体的提示
     if (error?.response?.status === 403) {
       QMessage.error('没有权限更新群公告，只有管理员和群主可以操作')
     } else if (error?.response?.status === 404) {

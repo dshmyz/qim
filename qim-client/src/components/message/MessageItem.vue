@@ -1,9 +1,9 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system' }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage }"
     :data-message-id="message.id"
-    @contextmenu.prevent="$emit('contextmenu', $event, message)"
+    @contextmenu.prevent="handleContextMenu"
   >
     <!-- 系统消息 -->
     <SystemMessage v-if="message.type === 'system'" :content="message.content" />
@@ -17,7 +17,11 @@
         @click="$emit('showUserProfile', message.sender)"
       />
       <div class="message-content">
-        <div v-if="conversationType === 'group' && !isSelf" class="message-sender">{{ message.sender.name || '未知用户' }}</div>
+        <div v-if="conversationType === 'group' && !isSelf" class="message-sender">
+          <span>{{ message.sender.name || '未知用户' }}</span>
+          <!-- AI 消息标识 -->
+          <AIMessageBadge v-if="isAIMessage" compact :assistant-name="message.ai_assistant_name" />
+        </div>
 
         <!-- 撤回消息 -->
         <div v-if="isRecalled" class="message-bubble recalled-message">
@@ -65,7 +69,10 @@
           </div>
 
           <!-- 文本消息 -->
-          <TextMessage v-if="message.type === 'text'" :content="message.content" :is-self="isSelf" />
+          <TextMessage v-if="message.type === 'text' && !isAIMessage" :content="message.content" :is-self="isSelf" />
+
+          <!-- AI 消息 (使用专用内容组件支持折叠/展开) -->
+          <AIMessageContent v-else-if="isAIMessage" :content="message.content" @copy="onCopyContent" />
 
           <!-- 图片消息 -->
           <ImageMessage
@@ -134,7 +141,7 @@
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
           </div>
           <div v-else-if="isSelf && conversationType === 'group' && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
-            {{ message.isRead ? `${readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
+            {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
           <div v-else-if="isSelf && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
             {{ message.isRead ? '已读' : '未读' }}
@@ -142,6 +149,15 @@
         </div>
       </div>
     </template>
+
+    <!-- AI 右键菜单 -->
+    <AIMessageContextMenu
+      :visible="showAIMenu"
+      :position="aiMenuPosition"
+      :message="message"
+      @select="handleAIAction"
+      @close="showAIMenu = false"
+    />
   </div>
 </template>
 
@@ -155,16 +171,31 @@ import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
+import AIMessageBadge from '../ai/AIMessageBadge.vue'
+import AIMessageContent from '../ai/AIMessageContent.vue'
+import AIMessageContextMenu from '../ai/AIMessageContextMenu.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
+import { computed, ref } from 'vue'
+import { useAIActions } from '../../composables/useAIActions'
 
 const props = defineProps<{
   message: any
   isSelf: boolean
   isRecalled: boolean
   conversationType: string
-  readUsersMap: Record<string, { read_users: any[], total_members: number }>
+  readUsersMap: Record<string, { read_users: any[], total_members: number, read_count?: number }>
   serverUrl: string
 }>()
+
+const isAIMessage = computed(() => {
+  return props.message.sender_id === 0 || props.message.sender?.id === 0
+})
+
+function onCopyContent(content: string) {
+  navigator.clipboard.writeText(content).then(() => {
+    // 可以显示一个 toast 提示
+  }).catch(() => {})
+}
 
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, message: any]
@@ -179,6 +210,79 @@ const emit = defineEmits<{
   retrySendMessage: [message: any]
   showReadUsers: [message: any]
 }>()
+
+// AI 右键菜单相关状态
+const showAIMenu = ref(false)
+const aiMenuPosition = ref({ x: 0, y: 0 })
+
+// AI 操作 composable
+const { translateText, rewriteText, polishText } = useAIActions()
+
+// 处理消息右键菜单（区分 AI 消息和普通消息）
+const handleContextMenu = (event: MouseEvent) => {
+  if (isAIMessage.value) {
+    // AI 消息：显示 AI 专用右键菜单
+    event.preventDefault()
+    const menuWidth = 200
+    const menuHeight = 250
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+
+    let x = event.clientX
+    let y = event.clientY
+
+    if (x + menuWidth > windowWidth) {
+      x = windowWidth - menuWidth - 10
+    }
+    if (y + menuHeight > windowHeight) {
+      y = windowHeight - menuHeight - 10
+    }
+
+    aiMenuPosition.value = { x, y }
+    showAIMenu.value = true
+
+    // 同时触发父组件的 contextmenu 事件
+    emit('contextmenu', event, props.message)
+
+    // 点击其他地方关闭
+    setTimeout(() => {
+      document.addEventListener('click', closeAIMenu)
+    }, 0)
+  } else {
+    // 普通消息：触发原有的 contextmenu 事件
+    emit('contextmenu', event, props.message)
+  }
+}
+
+const closeAIMenu = () => {
+  showAIMenu.value = false
+  document.removeEventListener('click', closeAIMenu)
+}
+
+// 处理 AI 菜单操作选择
+const handleAIAction = async (actionId: string, msg: any) => {
+  if (!msg || !msg.content) return
+
+  try {
+    switch (actionId) {
+      case 'ai_summary':
+        // 消息级别的摘要可以通过父组件处理
+        emit('contextmenu', new MouseEvent('contextmenu') as any, msg)
+        break
+      case 'translate':
+        await translateText(msg.content, 'zh')
+        break
+      case 'rewrite':
+        await rewriteText(msg.content, 'concise', 'professional')
+        break
+      case 'polish':
+        await polishText(msg.content, 'zh')
+        break
+    }
+  } catch {
+    // 错误由 composable 处理
+  }
+}
 
 // 格式化时间函数
 function formatTime(timestamp: number | string | null | undefined): string {
@@ -593,6 +697,30 @@ const isFileContent = (content: string): boolean => {
 .message-item.self .message-link:hover {
   color: white;
   text-decoration: underline;
+}
+
+/* AI 消息样式 */
+.message-item.ai {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+  border-radius: 8px;
+  padding: 4px 0;
+}
+
+.message-item.ai .message-bubble {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.06) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+.message-item.ai .message-sender {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-sender {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 引用消息主题样式 */
