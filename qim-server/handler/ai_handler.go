@@ -95,16 +95,6 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	})
 }
 
-// GenerateSummary 生成会话摘要 (B3 待实现)
-func (h *AIHandler) GenerateSummary(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "会话摘要功能待实现"})
-}
-
-// AISearch 语义搜索消息 (B3 待实现)
-func (h *AIHandler) AISearch(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "语义搜索功能待实现"})
-}
-
 // OpsDashboard 运维面板数据
 // @Summary 运维面板数据
 // @Description 获取AI运维面板的统计数据
