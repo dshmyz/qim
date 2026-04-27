@@ -18,7 +18,7 @@ export interface UpdateMiniAppParams {
   status?: 'active' | 'inactive'
 }
 
-export const getMiniApps = (params: PaginationParams & { name?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<MiniApp>>>> => {
+export const getMiniApps = (params: PaginationParams & { name?: string; status?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<MiniApp>>>> => {
   return request({
     url: '/v1/mini-apps',
     method: 'get',

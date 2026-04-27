@@ -156,12 +156,46 @@ func DeleteApp(c *gin.Context) {
 func GetMiniApps(c *gin.Context) {
 	db := database.GetDB()
 
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	name := c.Query("name")
+	status := c.Query("status")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	query := db.Model(&model.MiniApp{})
+
+	if name != "" {
+		query = query.Where("name LIKE ?", "%"+name+"%")
+	}
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var miniApps []model.MiniApp
-	db.Where("status = ?", "active").Find(&miniApps)
+	offset := (page - 1) * pageSize
+	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&miniApps).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询小程序失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": miniApps,
+		"data": gin.H{
+			"list":     miniApps,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
 	})
 }
 
@@ -210,7 +244,7 @@ func CreateMiniApp(c *gin.Context) {
 		Description: req.Description,
 		Icon:        req.Icon,
 		Path:        req.Path,
-		Status:      "active",
+		Status:      "inactive",
 	}
 
 	if err := db.Create(&miniApp).Error; err != nil {

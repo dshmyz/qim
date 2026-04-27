@@ -46,6 +46,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	r.Use(corsMiddleware)
 	// 静态文件服务
 	r.Static("/uploads", "./uploads")
+	r.Static("/miniprograms", "./static/miniprograms")
 	// 使用静态文件处理函数，并确保CORS中间件应用
 
 	// API路由

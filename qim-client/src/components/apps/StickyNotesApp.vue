@@ -217,7 +217,7 @@ const loadStickyNotes = async () => {
     stickyNotes.value = response.data.data.filter((note: any) => note.type === 'sticky')
   } catch (error) {
     console.error('加载便签失败:', error)
-    ElMessage.error('加载便签失败，请稍后重试')
+    QMessage.error('加载便签失败，请稍后重试')
   }
 }
 
@@ -248,7 +248,7 @@ const createStickyNote = async () => {
     closeNoteModal()
   } catch (error) {
     console.error('创建便签失败:', error)
-    ElMessage.error('创建便签失败，请稍后重试')
+    QMessage.error('创建便签失败，请稍后重试')
   }
 }
 

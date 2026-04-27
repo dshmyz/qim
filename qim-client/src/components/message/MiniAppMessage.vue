@@ -52,6 +52,7 @@ const openMiniApp = () => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 200px;
 }
 
 .mini-app-icon-container {

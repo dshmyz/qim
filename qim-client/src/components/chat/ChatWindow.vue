@@ -189,21 +189,14 @@
   />
   
   <!-- 确认对话框 -->
-  <div v-if="showConfirmDialog" class="confirm-dialog-modal" @click="closeConfirmDialog">
-    <div class="confirm-dialog-content" @click.stop>
-      <div class="confirm-dialog-header">
-        <h3>{{ confirmDialogTitle }}</h3>
-        <button class="close-btn" @click="closeConfirmDialog">&times;</button>
-      </div>
-      <div class="confirm-dialog-body">
-        <p>{{ confirmDialogMessage }}</p>
-      </div>
-      <div class="confirm-dialog-footer">
-        <button class="cancel" @click="closeConfirmDialog">取消</button>
-        <button class="confirm" @click="handleConfirmAction">确定</button>
-      </div>
-    </div>
-  </div>
+  <ConfirmDialog
+    :visible="showConfirmDialog"
+    :title="confirmDialogTitle"
+    :message="confirmDialogMessage"
+    @update:visible="showConfirmDialog = $event"
+    @confirm="handleConfirmAction"
+    @cancel="closeConfirmDialog"
+  />
   
   <!-- 编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
   
@@ -237,6 +230,7 @@
   
   <!-- 分享内容预览弹窗 -->
   <SharePreviewDialog
+    v-if="showSharePreview"
     :visible="showSharePreview"
     :preview-data="sharePreviewData"
     :get-file-icon="getFileIcon"
@@ -246,6 +240,12 @@
     @close="closeSharePreview"
     @download-file="downloadFile"
     @save-file-as="saveFileAs"
+  />
+
+  <!-- 小程序加载器 -->
+  <MiniAppLoader
+    :mini-app="activeMiniApp"
+    @close="activeMiniApp = null"
   />
   </div>
 
@@ -272,7 +272,9 @@ import SharePreviewDialog from './SharePreviewDialog.vue'
 import CallModal from './CallModal.vue'
 import ChatHeader from './ChatHeader.vue'
 import MessageListView from './MessageListView.vue'
-import { openMiniApp } from '../../utils/miniAppUtils'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
+import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { API_BASE_URL } from '../../config'
 import { getAvatarUrl } from '../../utils/avatar'
 import { getCurrentUser } from '../../utils/user'
@@ -1118,37 +1120,32 @@ const autoResizeTextarea = () => {
 
 
 
-const showMemberContextMenu = (event: MouseEvent, member: any) => {
+const handleShowMemberContextMenu = (event: MouseEvent, member: any) => {
   event.stopPropagation()
   
-  // 计算菜单位置，确保在屏幕内显示
-  const menuWidth = 180 // 菜单宽度
-  const menuHeight = 80 // 菜单高度
+  const menuWidth = 180
+  const menuHeight = 80
   const windowWidth = window.innerWidth
   const windowHeight = window.innerHeight
   
   let x = event.clientX
   let y = event.clientY
   
-  // 调整x坐标，确保菜单不超出屏幕右侧
   if (x + menuWidth > windowWidth) {
     x = windowWidth - menuWidth - 10
   }
   
-  // 调整y坐标，确保菜单不超出屏幕底部
   if (y + menuHeight > windowHeight) {
     y = windowHeight - menuHeight - 10
   }
   
-  memberContextMenuPosition.value = {
-    x,
-    y
+  memberContextMenuPosition.value = { x, y }
+  selectedMember.value = {
+    ...member,
+    name: member.name || member.nickname || member.username || '未知用户'
   }
-  selectedMember.value = member
   showMemberContextMenuFlag.value = true
   
-  // 点击其他地方关闭菜单
-  // 先清理之前可能存在的监听器
   document.removeEventListener('click', closeMemberContextMenu)
   memberContextMenuTimeoutId = window.setTimeout(() => {
     if (isMounted.value) {
@@ -1231,14 +1228,14 @@ const removeMemberFromGroup = async () => {
       })
 
       if (response.code === 0) {
-        ElMessage.success('移除成员成功')
+        QMessage.success('移除成员成功')
         emit('switchConversation', conversationId)
       } else {
-        ElMessage.error('移除成员失败: ' + response.message)
+        QMessage.error('移除成员失败: ' + response.message)
       }
     } catch (error: any) {
       console.error('移除成员失败:', error)
-      ElMessage.error('移除成员失败: ' + error.message)
+      QMessage.error('移除成员失败: ' + error.message)
     }
   })
 }
@@ -1258,32 +1255,8 @@ const setAsAdmin = async () => {
 
   const memberId = selectedMember.value.id
   const memberName = selectedMember.value.name
-  const conversationId = props.conversation.id
   const currentIsAdmin = isSelectedMemberAdmin.value
-  const newRole = currentIsAdmin ? 'member' : 'admin'
-  const action = currentIsAdmin ? '取消管理员' : '设为管理员'
-
-  openConfirmDialog('确认操作', `确定要${action}成员 ${memberName} 吗？`, async () => {
-    try {
-      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: newRole })
-      })
-
-      if (response.code === 0) {
-        ElMessage.success(`${action}成功`)
-        emit('switchConversation', conversationId)
-      } else {
-        ElMessage.error(`${action}失败: ` + response.message)
-      }
-    } catch (error: any) {
-      console.error(`${action}失败:`, error)
-      ElMessage.error(`${action}失败: ` + error.message)
-    }
-  })
+  handleSetAdmin(memberId, memberName, !currentIsAdmin)
   closeMemberContextMenu()
 }
 
@@ -1307,14 +1280,14 @@ const transferOwner = async () => {
       })
 
       if (response.code === 0) {
-        ElMessage.success('群主转让成功')
+        QMessage.success('群主转让成功')
         emit('switchConversation', conversationId)
       } else {
-        ElMessage.error('群主转让失败: ' + response.message)
+        QMessage.error('群主转让失败: ' + response.message)
       }
     } catch (error: any) {
       console.error('群主转让失败:', error)
-      ElMessage.error('群主转让失败: ' + error.message)
+      QMessage.error('群主转让失败: ' + error.message)
     }
   })
   closeMemberContextMenu()
@@ -1411,14 +1384,14 @@ const handleRemoveMember = (memberId: string, memberName: string) => {
       })
 
       if (response.code === 0) {
-        ElMessage.success('移除成员成功')
+        QMessage.success('移除成员成功')
         emit('switchConversation', props.conversation.id)
       } else {
-        ElMessage.error('移除成员失败: ' + response.message)
+        QMessage.error('移除成员失败: ' + response.message)
       }
     } catch (error: any) {
       console.error('移除成员失败:', error)
-      ElMessage.error('移除成员失败: ' + error.message)
+      QMessage.error('移除成员失败: ' + error.message)
     }
   })
 }
@@ -1439,14 +1412,14 @@ const handleSetAdmin = (memberId: string, memberName: string, isAdmin: boolean) 
       })
 
       if (response.code === 0) {
-        ElMessage.success(`${action}成功`)
+        QMessage.success(`${action}成功`)
         emit('switchConversation', props.conversation.id)
       } else {
-        ElMessage.error(`${action}失败: ` + response.message)
+        QMessage.error(`${action}失败: ` + response.message)
       }
     } catch (error: any) {
       console.error(`${action}失败:`, error)
-      ElMessage.error(`${action}失败: ` + error.message)
+      QMessage.error(`${action}失败: ` + error.message)
     }
   })
 }
@@ -1464,14 +1437,14 @@ const handleTransferOwner = (memberId: string, memberName: string) => {
       })
 
       if (response.code === 0) {
-        ElMessage.success('群主转让成功')
+        QMessage.success('群主转让成功')
         emit('switchConversation', props.conversation.id)
       } else {
-        ElMessage.error('群主转让失败: ' + response.message)
+        QMessage.error('群主转让失败: ' + response.message)
       }
     } catch (error: any) {
       console.error('群主转让失败:', error)
-      ElMessage.error('群主转让失败: ' + error.message)
+      QMessage.error('群主转让失败: ' + error.message)
     }
   })
 }
@@ -1779,6 +1752,12 @@ const isScreenSharing = ref(false) // 是否正在共享屏幕
 
 // 小程序列表
 const showMiniAppList = ref(false)
+const activeMiniApp = ref<MiniAppData | null>(null)
+
+// 打开小程序
+const openMiniApp = (miniApp: MiniAppData) => {
+  activeMiniApp.value = miniApp
+}
 
 // 开始语音通话
 const startVoiceCall = () => {
@@ -2321,7 +2300,7 @@ const editGroupInfo = () => {
     editGroupName.value = props.conversation.name || ''
     showEditGroupInfoModal.value = true
   } else if (props.conversation && !canEditGroupName.value) {
-    ElMessage.warning('只有管理员和群主可以修改群名称')
+    QMessage.warning('只有管理员和群主可以修改群名称')
   }
   closeHeaderMenu()
 }
@@ -2343,7 +2322,7 @@ const saveGroupInfo = async () => {
     })
     
     if (response.code === 0) {
-      ElMessage.success('群名称已成功更新')
+      QMessage.success('群名称已成功更新')
       // 更新本地群聊数据
       if (props.updateConversation) {
         props.updateConversation({ ...props.conversation, name: editGroupName.value })
@@ -2389,19 +2368,19 @@ const saveGroupInfo = async () => {
         props.messages.push(systemMessage)
       }
     } else {
-      ElMessage.error(response.message || '更新群名称失败')
+      QMessage.error(response.message || '更新群名称失败')
     }
   } catch (error: any) {
     console.error('更新群名称失败:', error)
     // 根据错误状态码给出更具体的提示
     if (error?.response?.status === 403) {
-      ElMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
+      QMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
     } else if (error?.response?.status === 404) {
-      ElMessage.error('群聊不存在或已被解散')
+      QMessage.error('群聊不存在或已被解散')
     } else if (error?.response?.status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
+      QMessage.error('登录已过期，请重新登录')
     } else {
-      ElMessage.error('网络错误，更新群名称失败')
+      QMessage.error('网络错误，更新群名称失败')
     }
   }
   showEditGroupInfoModal.value = false
@@ -2433,25 +2412,25 @@ const saveAnnouncement = async () => {
     })
     
     if (response.code === 0) {
-      ElMessage.success('群公告已成功更新')
+      QMessage.success('群公告已成功更新')
       // 更新本地群聊数据
       if (props.updateConversation) {
         props.updateConversation({ ...props.conversation, announcement: editAnnouncementContent.value })
       }
     } else {
-      ElMessage.error(response.message || '更新群公告失败')
+      QMessage.error(response.message || '更新群公告失败')
     }
   } catch (error: any) {
     console.error('更新群公告失败:', error)
     // 根据错误状态码给出更具体的提示
     if (error?.response?.status === 403) {
-      ElMessage.error('没有权限更新群公告，只有管理员和群主可以操作')
+      QMessage.error('没有权限更新群公告，只有管理员和群主可以操作')
     } else if (error?.response?.status === 404) {
-      ElMessage.error('群公告不存在或已被删除')
+      QMessage.error('群公告不存在或已被删除')
     } else if (error?.response?.status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
+      QMessage.error('登录已过期，请重新登录')
     } else {
-      ElMessage.error('网络错误，更新群公告失败')
+      QMessage.error('网络错误，更新群公告失败')
     }
   }
   showEditAnnouncementModal.value = false

@@ -36,10 +36,10 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'remove-member'): void
-  (e: 'view-member-info'): void
-  (e: 'set-admin'): void
-  (e: 'transfer-owner'): void
+  (e: 'remove-member', memberId: string | number, memberName: string): void
+  (e: 'view-member-info', member: User | null): void
+  (e: 'set-admin', memberId: string | number, memberName: string, isAdmin: boolean): void
+  (e: 'transfer-owner', memberId: string | number, memberName: string): void
   (e: 'send-private-message'): void
 }
 
@@ -79,19 +79,22 @@ const canTransferOwner = computed((): boolean => {
 })
 
 const handleRemoveMember = () => {
-  emit('remove-member')
+  if (!props.member) return
+  emit('remove-member', props.member.id, props.member.name || '未知用户')
 }
 
 const handleViewMemberInfo = () => {
-  emit('view-member-info')
+  emit('view-member-info', props.member)
 }
 
 const handleSetAdmin = () => {
-  emit('set-admin')
+  if (!props.member) return
+  emit('set-admin', props.member.id, props.member.name || '未知用户', isSelectedMemberAdmin.value)
 }
 
 const handleTransferOwner = () => {
-  emit('transfer-owner')
+  if (!props.member) return
+  emit('transfer-owner', props.member.id, props.member.name || '未知用户')
 }
 
 const handleSendPrivateMessage = () => {

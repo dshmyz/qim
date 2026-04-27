@@ -2,7 +2,11 @@
   <div ref="messageListRef" class="message-list" @scroll="handleScroll">
     <!-- 没有更多消息提示 -->
     <div v-if="!hasMoreMessages" class="no-more-messages">
-      <span>没有更多消息了</span>
+      <div class="no-more-divider">
+        <span class="divider-line"></span>
+        <span class="divider-text">已全部加载完毕</span>
+        <span class="divider-line"></span>
+      </div>
     </div>
 
     <!-- 加载更多提示 -->
@@ -176,11 +180,26 @@ onMounted(() => {
 
 .no-more-messages {
   text-align: center;
-  padding: 20px 0;
-  color: var(--color-gray-500);
-  font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-200);
-  margin-bottom: 10px;
+  padding: 12px 0;
+}
+
+.no-more-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background-color: var(--color-gray-200);
+}
+
+.divider-text {
+  color: var(--color-gray-400);
+  font-size: 12px;
+  white-space: nowrap;
+  font-weight: 400;
 }
 
 .loading-more {

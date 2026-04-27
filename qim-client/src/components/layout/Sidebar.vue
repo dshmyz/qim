@@ -215,7 +215,7 @@ const filteredConversations = computed(() => {
 
 <style scoped>
 .sidebar {
-  width: 320px;
+  min-width: 320px;
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;

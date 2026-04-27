@@ -1,5 +1,5 @@
 import { ref, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import QMessage from '../utils/qmessage'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 
@@ -53,12 +53,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
     try {
       remoteScreenUserId.value = data.from_user_id
       await nextTick()
-      ElMessage({
-        message: '收到屏幕共享请求',
-        type: 'info',
-        showClose: true,
-        duration: 5000
-      })
+      QMessage.info('收到屏幕共享请求', 5000)
       if (screenShareComponent.value) {
         await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
       }
@@ -99,12 +94,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    * 处理屏幕共享请求
    */
   const handleScreenShareRequest = (data: any) => {
-    ElMessage({
-      message: `${data.from_user_name} 请求屏幕共享`,
-      type: 'info',
-      showClose: true,
-      duration: 5000
-    })
+    QMessage.info(`${data.from_user_name} 请求屏幕共享`, 5000)
     screenShareReceiver.handleShareRequest(data)
   }
 
@@ -113,7 +103,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    */
   const handleScreenShareAccepted = async (data: any) => {
     try {
-      ElMessage.success('屏幕共享请求已接受')
+      QMessage.success('屏幕共享请求已接受')
       if (screenShareComponent.value) {
         screenShareComponent.value.establishConnection()
       }
@@ -126,7 +116,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    * 处理屏幕共享被拒绝
    */
   const handleScreenShareRejected = (data: any) => {
-    ElMessage.warning('屏幕共享请求被拒绝')
+    QMessage.warning('屏幕共享请求被拒绝')
   }
 
   /**
@@ -134,7 +124,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    */
   const handleScreenShareStart = (data: any) => {
     showScreenShareViewer.value = true
-    ElMessage.success('屏幕共享已开始')
+    QMessage.success('屏幕共享已开始')
   }
 
   /**
@@ -145,7 +135,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
     if (screenShareComponent.value) {
       screenShareComponent.value.stopReceiving()
     }
-    ElMessage.info('屏幕共享已停止')
+    QMessage.info('屏幕共享已停止')
   }
 
   /**
@@ -165,7 +155,7 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
   const startScreenShare = () => {
     if (!currentUser.value || !conversation.value) return
     if (screenShareSender.getIsSharing()) {
-      ElMessage.warning('屏幕共享已在运行')
+      QMessage.warning('屏幕共享已在运行')
       return
     }
     if (screenShareComponent.value) {

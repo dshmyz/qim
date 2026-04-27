@@ -247,7 +247,7 @@ type MiniApp struct {
 	Description string         `json:"description" gorm:"type:text"`
 	Icon        string         `json:"icon" gorm:"size:500"`
 	Path        string         `json:"path" gorm:"size:500"`
-	Status      string         `json:"status" gorm:"size:20;default:'active'"`
+	Status      string         `json:"status" gorm:"size:20;default:'inactive'"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

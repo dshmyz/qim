@@ -12,6 +12,12 @@
               @keyup.enter="handleSearch"
             />
           </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="searchForm.status" placeholder="请选择状态" clearable>
+              <el-option label="正常" value="active" />
+              <el-option label="停用" value="inactive" />
+            </el-select>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleSearch">搜索</el-button>
             <el-button @click="handleReset">重置</el-button>
@@ -33,7 +39,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)">
               {{ statusLabel(row.status) }}
@@ -41,9 +47,22 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-popconfirm
+              :title="row.status === 'active' ? '确定停用该小程序吗？' : '确定上线该小程序吗？上线后用户将可见'"
+              @confirm="handleToggleStatus(row)"
+            >
+              <template #reference>
+                <el-button
+                  size="small"
+                  :type="row.status === 'active' ? 'warning' : 'success'"
+                >
+                  {{ row.status === 'active' ? '停用' : '上线' }}
+                </el-button>
+              </template>
+            </el-popconfirm>
             <el-popconfirm
               title="确定删除该小程序吗？"
               @confirm="handleDelete(row.id)"
@@ -83,11 +102,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { MiniApp } from '@/types'
-import { getMiniApps, deleteMiniApp } from '@/api/miniApps'
+import { getMiniApps, deleteMiniApp, updateMiniApp } from '@/api/miniApps'
 import MiniAppDialog from './components/MiniAppDialog.vue'
 
 // 搜索和分页
-const searchForm = reactive({ name: '' })
+const searchForm = reactive({ name: '', status: '' })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const miniApps = ref<MiniApp[]>([])
 const loading = ref(false)
@@ -115,6 +134,7 @@ const fetchMiniApps = async () => {
       page: pagination.page,
       pageSize: pagination.pageSize,
       name: searchForm.name || undefined,
+      status: searchForm.status || undefined,
     })
     miniApps.value = data.data.list
     pagination.total = data.data.total
@@ -132,7 +152,22 @@ const handleSearch = () => {
 
 const handleReset = () => {
   searchForm.name = ''
+  searchForm.status = ''
   handleSearch()
+}
+
+// 切换小程序状态
+const handleToggleStatus = async (row: MiniApp) => {
+  const newStatus = row.status === 'active' ? 'inactive' : 'active'
+  const actionText = newStatus === 'active' ? '上线' : '停用'
+
+  try {
+    await updateMiniApp(row.id, { status: newStatus })
+    ElMessage.success(`${actionText}成功`)
+    fetchMiniApps()
+  } catch {
+    // 错误已在请求拦截器中处理
+  }
 }
 
 // 创建小程序
