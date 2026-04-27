@@ -1,12 +1,13 @@
 <template>
   <button class="ai-quick-action" @click="$emit('click')" :title="tooltip">
-    <span class="action-icon">{{ icon }}</span>
+    <span class="action-icon" v-html="icon"></span>
     <span class="action-label">{{ label }}</span>
   </button>
 </template>
 
 <script setup lang="ts">
 interface Props {
+  /** SVG markup string for the icon */
   icon: string
   label: string
   tooltip?: string
@@ -43,7 +44,14 @@ defineEmits<Emits>()
 }
 
 .action-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.action-icon :deep(svg) {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .action-label {
