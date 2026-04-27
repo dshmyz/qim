@@ -30,11 +30,25 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		aiGroup.POST("/completion/stream", h.GetCompletionStream)
 		aiGroup.GET("/tools", h.ListTools)
 		aiGroup.POST("/tools/execute", h.ExecuteTool)
+
+		// 新增: 会话摘要
+		aiGroup.POST("/summary", h.GenerateSummary)
+
+		// 新增: 语义搜索
+		aiGroup.POST("/search", h.AISearch)
+
+		// 新增: 文本处理
+		aiGroup.POST("/translate", h.TranslateText)
+		aiGroup.POST("/rewrite", h.RewriteText)
+		aiGroup.POST("/polish", h.PolishText)
+
+		// 运维相关路由(已有)
 		aiGroup.POST("/ops/troubleshooting", h.IntelligentTroubleshooting)
 		aiGroup.POST("/ops/command", h.CommandGeneration)
 		aiGroup.POST("/ops/logs", h.LogAnalysis)
 		aiGroup.POST("/ops/alert", h.IntelligentAlert)
 		aiGroup.POST("/ops/knowledge", h.OpsKnowledge)
+		aiGroup.GET("/ops/dashboard", h.OpsDashboard)
 	}
 }
 
@@ -78,6 +92,71 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 		"code":    200,
 		"message": "success",
 		"data":    result,
+	})
+}
+
+// GenerateSummary 生成会话摘要 (B3 待实现)
+func (h *AIHandler) GenerateSummary(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "会话摘要功能待实现"})
+}
+
+// AISearch 语义搜索消息 (B3 待实现)
+func (h *AIHandler) AISearch(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "语义搜索功能待实现"})
+}
+
+// TranslateText 翻译文本 (B4 待实现)
+func (h *AIHandler) TranslateText(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本翻译功能待实现"})
+}
+
+// RewriteText 改写文本 (B4 待实现)
+func (h *AIHandler) RewriteText(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本改写功能待实现"})
+}
+
+// PolishText 润色文本 (B4 待实现)
+func (h *AIHandler) PolishText(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本润色功能待实现"})
+}
+
+// OpsDashboard 运维面板数据
+// @Summary 运维面板数据
+// @Description 获取AI运维面板的统计数据
+// @Tags AI
+// @Produce json
+// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
+// @Router /api/ai/ops/dashboard [get]
+func (h *AIHandler) OpsDashboard(c *gin.Context) {
+	aiConfigured := h.aiService.IsConfigured()
+
+	// 返回运维面板数据
+	dashboard := gin.H{
+		"ai_configured": aiConfigured,
+		"provider":      "",
+		"tools":         []gin.H{},
+		"stats": gin.H{
+			"total_bots":     0,
+			"active_bots":    0,
+			"total_messages": 0,
+			"ai_messages":    0,
+		},
+	}
+
+	if aiConfigured {
+		cfg := h.aiService.GetConfig()
+		dashboard["provider"] = cfg.Provider
+	}
+
+	if h.mcpServer != nil {
+		tools := h.mcpServer.ListTools()
+		dashboard["tools"] = tools
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "success",
+		"data":    dashboard,
 	})
 }
 
@@ -190,7 +269,7 @@ func (h *AIHandler) ExecuteTool(c *gin.Context) {
 	}
 
 	// 执行工具
-	result, err := h.mcpServer.ExecuteTool(req.ToolName, req.Parameters)
+	result, err := h.mcpServer.ExecuteTool(req.ToolName, req.Parameters, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "工具执行失败: " + err.Error()})
 		return
