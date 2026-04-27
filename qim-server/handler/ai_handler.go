@@ -105,21 +105,6 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "语义搜索功能待实现"})
 }
 
-// TranslateText 翻译文本 (B4 待实现)
-func (h *AIHandler) TranslateText(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本翻译功能待实现"})
-}
-
-// RewriteText 改写文本 (B4 待实现)
-func (h *AIHandler) RewriteText(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本改写功能待实现"})
-}
-
-// PolishText 润色文本 (B4 待实现)
-func (h *AIHandler) PolishText(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"code": 501, "message": "文本润色功能待实现"})
-}
-
 // OpsDashboard 运维面板数据
 // @Summary 运维面板数据
 // @Description 获取AI运维面板的统计数据
