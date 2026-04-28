@@ -415,26 +415,44 @@ onMounted(fetchTree)
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: var(--space-5);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: var(--radius-xl);
+  color: white;
 }
 
 .header-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .page-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 800;
-  color: var(--color-text-primary);
+  color: white;
   letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .page-subtitle {
   margin: 0;
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+}
+
+:deep(.el-button--primary) {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: white !important;
+  backdrop-filter: blur(8px);
+}
+
+:deep(.el-button--primary:hover) {
+  background: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
 }
 
 .content-grid {

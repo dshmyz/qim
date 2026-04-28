@@ -78,10 +78,12 @@ const handleMiniAppToast = (message: string) => {
 }
 
 const loadMiniApps = async () => {
-  // 如果已有数据，不重新加载
-  if (miniApps.value.length > 0) return
+  // 如果已有数据，静默后台刷新，不显示 loading
+  const hasData = miniApps.value.length > 0
+  if (!hasData) {
+    loading.value = true
+  }
 
-  loading.value = true
   try {
     const token = getToken()
     const headers: Record<string, string> = {
@@ -108,14 +110,18 @@ const loadMiniApps = async () => {
     const list = result.data?.list ?? result.data ?? []
     miniApps.value = list.map((item: any) => ({
       id: item.id,
+      name: item.name,
       icon: item.icon || defaultIcon,
       path: item.path,
+      description: item.description || '',
       status: item.status,
       permissions: item.permissions || '',
     }))
   } catch (error) {
     console.error('加载小程序列表失败:', error)
-    miniApps.value = []
+    if (!hasData) {
+      miniApps.value = []
+    }
   } finally {
     loading.value = false
   }
