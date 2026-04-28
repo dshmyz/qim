@@ -13,9 +13,9 @@
     >
       <!-- 展开/收起箭头 -->
       <span
-        v-if="isExpandable"
+        v-if="isExpandableProp || folder.children?.length"
         class="folder-toggle"
-        :class="{ 'folder-toggle--expanded': expanded }"
+        :class="{ 'folder-toggle--expanded': isExpandedState }"
         @click.stop="handleToggle"
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -27,7 +27,7 @@
 
       <!-- 文件夹图标 -->
       <span class="folder-icon">
-        <svg v-if="expanded" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+        <svg v-if="isExpandedState" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
           <path d="M20 6h-8l-2-2H4C2.9 4 2 4.9 2 6v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
         </svg>
         <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -44,7 +44,7 @@
       <div class="folder-actions" v-if="isHovered">
         <button
           class="folder-action-btn"
-          :title="'删除文件夹'"
+          title="删除文件夹"
           @click.stop="$emit('delete', folder)"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
@@ -57,11 +57,15 @@
 
     <!-- 子文件夹列表（递归） -->
     <transition name="folder-expand">
-      <div v-if="expanded && folder.children && folder.children.length > 0" class="folder-children">
+      <div v-if="isExpandedState && folder.children && folder.children.length > 0" class="folder-children">
         <FolderTreeItem
           v-for="child in folder.children"
           :key="child.id"
           :folder="child"
+          :expanded-ids="expandedIds"
+          :selected-id="selectedId"
+          :is-expandable-fn="isExpandableFn"
+          :loading-ids="loadingIds"
           @toggle="$emit('toggle', $event)"
           @select="$emit('select', $event)"
           @delete="$emit('delete', $event)"
@@ -70,7 +74,7 @@
     </transition>
 
     <!-- 子文件夹加载状态 -->
-    <div v-if="expanded && isLoadingChildren" class="folder-loading">
+    <div v-if="isExpandedState && isLoadingChildren" class="folder-loading">
       <span class="loading-dots">
         <span />
         <span />
@@ -79,14 +83,14 @@
     </div>
 
     <!-- 空子文件夹提示 -->
-    <div v-if="expanded && folder.children && folder.children.length === 0 && !isLoadingChildren" class="folder-empty">
+    <div v-if="isExpandedState && folder.children && folder.children.length === 0 && !isLoadingChildren" class="folder-empty">
       空文件夹
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, type PropType } from 'vue'
 import type { FolderNode } from '../../../composables/useFolderTree'
 
 defineOptions({
@@ -95,13 +99,15 @@ defineOptions({
 
 interface Props {
   folder: FolderNode
-  expanded: boolean
-  selected: boolean
-  isExpandable: boolean
-  isLoadingChildren: boolean
+  expandedIds: Set<string>
+  selectedId: string | null
+  isExpandableFn: ((folder: FolderNode) => boolean) | null
+  loadingIds: Set<string>
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  isExpandableFn: null
+})
 
 const emit = defineEmits<{
   (e: 'toggle', folder: FolderNode): void
@@ -111,9 +117,15 @@ const emit = defineEmits<{
 
 const isHovered = ref(false)
 
-const isSelected = computed(() => props.selected)
+const isExpandedState = computed(() => props.expandedIds.has(props.folder.id))
 
-const expanded = computed(() => props.expanded)
+const isSelected = computed(() => props.selectedId === props.folder.id)
+
+const isLoadingChildren = computed(() => props.loadingIds.has(props.folder.id))
+
+const isExpandableProp = computed(() =>
+  props.isExpandableFn ? props.isExpandableFn(props.folder) : false
+)
 
 const handleClick = () => {
   emit('select', props.folder)

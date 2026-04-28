@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { useRequest, type ApiResponse } from '../composables/useRequest'
+import { useRequest, type ApiResponse } from './useRequest'
 
 /**
  * 文件夹节点接口
@@ -20,7 +20,10 @@ export interface FolderNode {
  * 支持懒加载、展开/收起、选择文件夹
  */
 export function useFolderTree() {
-  const { get, post, del } = useRequest()
+  const requestMethods = useRequest()
+  const { get, post } = requestMethods
+  // useRequest 返回的 delete 方法被命名为 delete（TS 关键字），需要这样访问
+  const deleteRequest = requestMethods.delete as <T = any>(url: string, options?: import('./useRequest').RequestOptions) => Promise<T | null>
 
   // 树根节点
   const treeData = ref<FolderNode[]>([])
@@ -188,7 +191,7 @@ export function useFolderTree() {
    */
   const deleteFolder = async (folderId: string): Promise<boolean> => {
     try {
-      const response = await del<ApiResponse<void>>(`/api/v1/folders/${folderId}`)
+      const response = await deleteRequest<ApiResponse<void>>(`/api/v1/folders/${folderId}`)
 
       if (response?.code === 0) {
         // 从树中移除该节点
@@ -273,7 +276,7 @@ export function useFolderTree() {
    * 判断节点是否可展开（有子节点或有加载子节点的标志）
    */
   const isExpandable = (folder: FolderNode): boolean => {
-    return folder.hasChildren === true || (folder.children && folder.children.length > 0)
+    return folder.hasChildren === true || !!(folder.children && folder.children.length > 0)
   }
 
   // 统计信息

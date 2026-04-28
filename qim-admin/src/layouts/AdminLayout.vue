@@ -116,7 +116,7 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
 <style scoped>
 .admin-layout {
   height: 100vh;
-  background-color: var(--color-bg-base);
+  background-color: var(--color-bg-page);
   display: flex;
   overflow: hidden;
 }
@@ -125,21 +125,46 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: var(--color-bg-base);
+  background-color: var(--color-bg-page);
   flex: 1;
   min-width: 0;
+  padding: var(--space-4);
+  gap: var(--space-4);
 }
 
 .admin-main {
-  background-color: transparent;
+  background-color: var(--color-surface);
   padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 :deep(.el-main) {
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+
+:deep(.el-header) {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .admin-main {
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+  }
+
+  :deep(.el-header) {
+    border-radius: var(--radius-md);
+  }
 }
 </style>
