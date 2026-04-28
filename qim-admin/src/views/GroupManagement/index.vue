@@ -1,91 +1,137 @@
-<!-- src/views/GroupManagement/index.vue -->
 <template>
-  <DataTable :data="list" :loading="loading" :pagination="pagination"
-    @search="handleSearch" @page-change="handlePageChange" @refresh="fetchData">
-    <template #search>
-      <SearchForm @search="handleSearch" @reset="handleReset">
-        <SearchField v-model="(searchForm.keyword as string)" label="群组名称" placeholder="请输入群组名称" />
-      </SearchForm>
-    </template>
-
-    <el-table-column prop="id" label="ID" width="80" />
-    <el-table-column label="群组名称" min-width="180">
-      <template #default="{ row }">
-        <div class="group-cell">
-          <el-avatar :size="32" :src="row.avatar">{{ row.name?.charAt(0) || '?' }}</el-avatar>
-          <span class="group-name">{{ row.name }}</span>
+  <div class="group-management-page">
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">群组管理</h1>
+        <p class="page-subtitle">管理所有群组和成员信息</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ pagination.total }}</span>
+          <span class="stat-label">群组总数</span>
         </div>
-      </template>
-    </el-table-column>
-    <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-    <el-table-column prop="memberCount" label="成员数" width="100" />
-    <el-table-column label="状态" width="100">
-      <template #default="{ row }">
-        <StatusTag :status="row.status" />
-      </template>
-    </el-table-column>
-    <el-table-column prop="createdAt" label="创建时间" width="180" />
-    <el-table-column label="操作" width="180" fixed="right">
-      <template #default="{ row }">
-        <el-button size="small" type="primary" @click="handleViewMembers(row)">查看成员</el-button>
-        <el-popconfirm title="确定删除该群组吗？" @confirm="handleDeleteGroup(row.id)">
-          <template #reference>
-            <ActionButton type="danger">删除</ActionButton>
-          </template>
-        </el-popconfirm>
-      </template>
-    </el-table-column>
-  </DataTable>
+      </div>
+    </div>
 
-  <el-dialog v-model="memberDialogVisible" :title="`群组成员 - ${currentGroup?.name || ''}`" width="600px">
-    <el-table :data="members" v-loading="membersLoading" size="small" max-height="400">
-      <el-table-column prop="id" label="ID" width="80" />
-      <el-table-column label="成员" min-width="150">
-        <template #default="{ row }">
-          <div class="member-cell">
-            <el-avatar :size="28" :src="row.avatar">{{ (row.nickname || row.username)?.charAt(0) || '?' }}</el-avatar>
-            <span>{{ row.nickname || row.username }}</span>
+    <div class="content-card">
+      <div class="card-toolbar">
+        <SearchForm @search="handleSearch" @reset="handleReset">
+          <SearchField v-model="(searchForm.keyword as string)" label="群组名称" placeholder="请输入群组名称" />
+        </SearchForm>
+      </div>
+
+      <el-table :data="list" v-loading="loading" style="width: 100%">
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column label="群组名称" min-width="200">
+          <template #default="{ row }">
+            <div class="group-cell">
+              <el-avatar :size="40" :src="row.avatar" class="group-avatar">
+                {{ row.name?.charAt(0) || '?' }}
+              </el-avatar>
+              <div class="group-info">
+                <span class="group-name">{{ row.name }}</span>
+                <span class="group-desc">{{ row.description || '暂无描述' }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="memberCount" label="成员数" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.memberCount || 0 }} 人</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <StatusTag :status="row.status" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" @click="handleViewMembers(row)">
+              <el-icon><User /></el-icon>
+              查看成员
+            </el-button>
+            <el-popconfirm title="确定删除该群组吗？" @confirm="handleDeleteGroup(row.id)">
+              <template #reference>
+                <el-button size="small" type="danger" plain>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="card-footer">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          :page-size="pagination.pageSize"
+          :total="pagination.total"
+          layout="total, prev, pager, next"
+          @current-change="handlePageChange"
+        />
+      </div>
+    </div>
+
+    <el-dialog
+      v-model="memberDialogVisible"
+      :title="`群组成员 - ${currentGroup?.name || ''}`"
+      width="700px"
+      :close-on-click-modal="false"
+    >
+      <div v-loading="membersLoading" class="members-grid">
+        <div
+          v-for="member in members"
+          :key="member.id"
+          class="member-card"
+        >
+          <el-avatar :size="48" :src="member.avatar" class="member-avatar">
+            {{ (member.nickname || member.username)?.charAt(0)?.toUpperCase() || '?' }}
+          </el-avatar>
+          <div class="member-info">
+            <span class="member-name">{{ member.nickname || member.username }}</span>
+            <div class="member-meta">
+              <el-tag v-if="member.role" size="small" :type="getRoleType(member.role)">
+                {{ roleLabel(member.role) }}
+              </el-tag>
+              <span class="member-time">{{ member.joinedAt }}</span>
+            </div>
           </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="角色" width="100">
-        <template #default="{ row }">
-          <el-tag size="small" v-if="row.role">{{ roleLabel(row.role) }}</el-tag>
-          <span v-else class="text-muted">普通成员</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="joinedAt" label="加入时间" width="180" />
-      <el-table-column label="操作" width="100">
-        <template #default="{ row }">
-          <el-popconfirm title="确定移除该成员吗？" @confirm="handleRemoveMember(row.userId)">
-            <template #reference>
-              <el-button size="small" type="danger" link>移除</el-button>
-            </template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      v-if="memberPagination.total > memberPagination.pageSize"
-      :current-page="memberPagination.page"
-      :page-size="memberPagination.pageSize"
-      :total="memberPagination.total"
-      layout="total, prev, pager, next"
-      small
-      class="member-pagination"
-      @current-change="handleMemberPageChange"
-    />
-  </el-dialog>
+          <el-button
+            v-if="member.userId !== currentGroup?.ownerId"
+            size="small"
+            type="danger"
+            text
+            @click="handleRemoveMember(member.userId)"
+          >
+            移除
+          </el-button>
+          <el-tag v-else size="small" type="warning">群主</el-tag>
+        </div>
+        <el-empty v-if="!membersLoading && members.length === 0" description="暂无成员" :image-size="64" />
+      </div>
+      <el-pagination
+        v-if="memberPagination.total > memberPagination.pageSize"
+        :current-page="memberPagination.page"
+        :page-size="memberPagination.pageSize"
+        :total="memberPagination.total"
+        layout="total, prev, pager, next"
+        small
+        class="member-pagination"
+        @current-change="handleMemberPageChange"
+      />
+    </el-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import DataTable from '@/components/data/DataTable.vue'
+import { User, Delete } from '@element-plus/icons-vue'
 import SearchForm from '@/components/data/SearchForm.vue'
 import SearchField from '@/components/data/SearchField.vue'
 import StatusTag from '@/components/data/StatusTag.vue'
-import ActionButton from '@/components/common/ActionButton.vue'
 import { useEntity } from '@/composables/useEntity'
 import { getGroups, getGroupMembers, removeGroupMember, deleteGroup } from '@/api/groups'
 import type { Group, ConversationMember } from '@/types'
@@ -120,6 +166,15 @@ const memberPagination = ref({
 const roleLabel = (role: string): string => {
   const map: Record<string, string> = { owner: '群主', admin: '管理员', member: '成员' }
   return map[role] || role
+}
+
+const getRoleType = (role: string): '' | 'success' | 'warning' | 'info' | 'danger' => {
+  const map: Record<string, '' | 'success' | 'warning' | 'info' | 'danger'> = {
+    owner: 'warning',
+    admin: 'success',
+    member: 'info'
+  }
+  return map[role] || 'info'
 }
 
 const handleViewMembers = async (row: Group) => {
@@ -170,7 +225,6 @@ const handleRemoveMember = async (userId: number) => {
   }
 }
 
-// 删除群组（直接调用 API，避免 useEntity.handleDelete 双重确认弹窗）
 const handleDeleteGroup = async (id: number) => {
   try {
     await deleteGroup(id)
@@ -191,25 +245,187 @@ const handlePageChange = (page: number) => {
 </script>
 
 <style scoped>
+.group-management-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5);
+  background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  border-radius: var(--radius-xl);
+  color: white;
+}
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+}
+
+.header-stats {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: white;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.content-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+}
+
+.card-toolbar {
+  margin-bottom: var(--space-4);
+}
+
 .group-cell {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 
+.group-avatar {
+  background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  color: white;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.group-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .group-name {
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-.member-cell {
+.group-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  min-height: 200px;
+}
+
+.member-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.member-card:hover {
+  background: var(--color-surface-active);
+}
+
+.member-avatar {
+  background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  color: white;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.member-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.member-meta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
+.member-time {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .member-pagination {
   margin-top: var(--space-4);
   justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .header-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>
