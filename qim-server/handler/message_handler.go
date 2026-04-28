@@ -15,7 +15,35 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// Global smart reply engine instance
+var smartReplyEngine *SmartReplyEngine
+
+// Global todo extractor instance
+var todoExtractor *TodoExtractor
+
+// Global anomaly detector instance
+var anomalyDetector *AnomalyDetector
+
+// InitSmartReplyEngine initializes the smart reply engine with the given AI service
+func InitSmartReplyEngine(aiService *ai.AIService) {
+	detector := ai.NewIntentDetector(aiService)
+	smartReplyEngine = NewSmartReplyEngine(aiService, detector)
+	todoExtractor = NewTodoExtractor(aiService)
+}
+
+// InitAnomalyDetector initializes the anomaly detector
+func InitAnomalyDetector() {
+	anomalyDetector = NewAnomalyDetector()
+	StartAnomalyDetection(anomalyDetector)
+}
+
+// GetSmartReplyEngine returns the smart reply engine instance
+func GetSmartReplyEngine() *SmartReplyEngine {
+	return smartReplyEngine
+}
 
 func GetMessages(c *gin.Context) {
 	userID, _ := c.Get("user_id")
@@ -27,9 +55,11 @@ func GetMessages(c *gin.Context) {
 
 	pageStr := c.Query("page")
 	pageSizeStr := c.Query("page_size")
+	afterIDStr := c.Query("after_id")
 
 	page := 1
 	pageSize := 20
+	afterID := uint(0)
 
 	if pageStr != "" {
 		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
@@ -40,6 +70,12 @@ func GetMessages(c *gin.Context) {
 	if pageSizeStr != "" {
 		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
 			pageSize = ps
+		}
+	}
+
+	if afterIDStr != "" {
+		if id, err := strconv.ParseUint(afterIDStr, 10, 64); err == nil {
+			afterID = uint(id)
 		}
 	}
 
@@ -66,7 +102,11 @@ func GetMessages(c *gin.Context) {
 	}
 
 	var messages []model.Message
-	db.Where("conversation_id = ?", convID).Preload("Sender").Preload("QuotedMessage").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
+	query := db.Where("conversation_id = ?", convID)
+	if afterID > 0 {
+		query = query.Where("id > ?", afterID)
+	}
+	query.Preload("Sender").Preload("QuotedMessage").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
 
 	for i := range messages {
 		if messages[i].QuotedMessage != nil {
@@ -271,9 +311,78 @@ func SendMessage(c *gin.Context) {
 			log.Printf("发送WebSocket消息到会话 %d，排除用户 %d", uint(convIDUint), userID.(uint))
 			ws.GlobalHub.SendToConversation(uint(convIDUint), userID.(uint), jsonMsg)
 		}
+
+		// AI 意图检测 + 智能回复（非阻塞）
+		if smartReplyEngine != nil {
+			log.Printf("[SmartReply] 引擎已初始化，开始处理消息: convID=%d, content=%s", uint(convIDUint), req.Content[:min(30, len(req.Content))])
+			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content)
+		} else {
+			log.Printf("[SmartReply] 警告：智能回复引擎未初始化")
+		}
+
+		// 异常检测（非阻塞）
+		if anomalyDetector != nil {
+			go func() {
+				anomalyDetector.RecordMessage(uint(convIDUint))
+
+				// 检测敏感内容
+				if alert := anomalyDetector.CheckSensitiveContent(req.Content); alert != nil {
+					anomalyDetector.SendAlert(userID.(uint), alert)
+				}
+
+				// 检测消息频率
+				if alert := anomalyDetector.CheckMessageFrequency(userID.(uint), uint(convIDUint)); alert != nil {
+					anomalyDetector.SendAlert(userID.(uint), alert)
+				}
+			}()
+		}
 	}
 
 	response.Success(c, responseData)
+}
+
+// broadcastNewMessage 广播新消息到会话并更新相关状态
+func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Conversation) {
+	db := database.GetDB()
+
+	// 更新会话的最后消息
+	now := time.Now()
+	db.Model(&model.Conversation{}).Where("id = ?", msg.ConversationID).Updates(map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
+
+	// 增加其他成员的未读数
+	if excludeUserID > 0 {
+		db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id != ?", msg.ConversationID, excludeUserID).
+			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
+	}
+
+	// 构建响应数据
+	responseData := gin.H{
+		"id":                msg.ID,
+		"conversation_id":   msg.ConversationID,
+		"sender_id":         msg.SenderID,
+		"type":              msg.Type,
+		"content":           msg.Content,
+		"quoted_message_id": msg.QuotedMessageID,
+		"is_recalled":       msg.IsRecalled,
+		"is_read":           msg.IsRead,
+		"recalled_at":       msg.RecalledAt,
+		"created_at":        msg.CreatedAt,
+		"sender":            msg.Sender,
+		"quoted_message":    msg.QuotedMessage,
+	}
+
+	if ws.GlobalHub != nil {
+		newMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: responseData,
+		}
+		jsonMsg, _ := json.Marshal(newMsg)
+		ws.GlobalHub.SendToConversation(msg.ConversationID, excludeUserID, jsonMsg)
+	}
 }
 
 func StreamMessage(c *gin.Context) {
@@ -603,8 +712,12 @@ func GetMessageReadUsers(c *gin.Context) {
 	var totalMembers int64
 	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", msg.ConversationID).Count(&totalMembers)
 
+	var readCount int64
+	db.Model(&model.MessageReadReceipt{}).Where("message_id = ?", msgID).Count(&readCount)
+
 	response.Success(c, gin.H{
 		"read_users":    readUsers,
+		"read_count":    readCount,
 		"total_members": totalMembers,
 	})
 }
@@ -631,20 +744,50 @@ func MarkConversationAsRead(c *gin.Context) {
 		return
 	}
 
-	var messages []model.Message
-	db.Where("conversation_id = ?", uint(convID)).Find(&messages)
+	// 检查是否已有未读消息，避免重复执行
+	var unreadCount int64
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ? AND is_read = false", uint(convID), userID).
+		Count(&unreadCount)
 
-	for _, msg := range messages {
-		var existingReceipt model.MessageReadReceipt
-		err := db.Where("message_id = ? AND user_id = ?", msg.ID, userID).First(&existingReceipt).Error
-		if err != nil {
-			receipt := model.MessageReadReceipt{
-				MessageID:      msg.ID,
-				ConversationID: msg.ConversationID,
-				UserID:         userID.(uint),
-				CreatedAt:      time.Now(),
+	if unreadCount == 0 {
+		// 没有未读消息，直接返回
+		response.Success(c, gin.H{
+			"marked_count":    0,
+			"conversation_id": convID,
+		})
+		return
+	}
+
+	var unreadMsgIDs []uint
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ?", uint(convID), userID).
+		Pluck("id", &unreadMsgIDs)
+
+	if len(unreadMsgIDs) > 0 {
+		batchSize := 500
+		for i := 0; i < len(unreadMsgIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(unreadMsgIDs) {
+				end = len(unreadMsgIDs)
 			}
-			db.Create(&receipt)
+			batch := unreadMsgIDs[i:end]
+
+			receipts := make([]model.MessageReadReceipt, 0, len(batch))
+			now := time.Now()
+			for _, msgID := range batch {
+				receipts = append(receipts, model.MessageReadReceipt{
+					MessageID:      msgID,
+					ConversationID: uint(convID),
+					UserID:         userID.(uint),
+					CreatedAt:      now,
+				})
+			}
+
+			db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
+				DoNothing: true,
+			}).Create(&receipts)
 		}
 	}
 

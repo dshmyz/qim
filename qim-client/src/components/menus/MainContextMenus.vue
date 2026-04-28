@@ -161,7 +161,6 @@ const themes: Theme[] = [
   { id: 'warm-amber', name: '琥珀黄', themeClass: 'warm-amber-theme' },
   { id: 'crimson-red', name: '中国红', themeClass: 'crimson-red-theme' },
   { id: 'emerald-green', name: '翡翠绿', themeClass: 'emerald-green-theme' },
-  { id: 'urban-jungle', name: '都市丛林', themeClass: 'urban-jungle-theme' },
   { id: 'mediterranean-dream', name: '地中海', themeClass: 'mediterranean-dream-theme' },
   { id: 'monochrome-elegance', name: '单色雅', themeClass: 'monochrome-elegance-theme' },
   { id: 'spring-blossom', name: '春日花', themeClass: 'spring-blossom-theme' }
@@ -322,7 +321,6 @@ onUnmounted(() => {
 .warm-amber-theme { background: #d4893a; }
 .crimson-red-theme { background: #c4352e; }
 .emerald-green-theme { background: #2d8b4e; }
-.urban-jungle-theme { background: #4a7c59; }
 .mediterranean-dream-theme { background: #4a8aad; }
 .monochrome-elegance-theme { background: #777; }
 .spring-blossom-theme { background: #f0a1b9; }

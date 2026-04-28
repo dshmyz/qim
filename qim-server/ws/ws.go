@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var GlobalHub *Hub
@@ -332,6 +333,14 @@ func (c *Client) readPump() {
 			handleWebRTCSignal(c, msg.Data, "webrtc_answer")
 		case "webrtc_ice_candidate":
 			handleWebRTCSignal(c, msg.Data, "webrtc_ice_candidate")
+		case "call_invite":
+			handleCallInvite(c, msg.Data)
+		case "call_accept":
+			handleCallAccept(c, msg.Data)
+		case "call_reject":
+			handleCallReject(c, msg.Data)
+		case "call_end":
+			handleCallEnd(c, msg.Data)
 		case "screen-share-start":
 			handleScreenShareStart(c, msg.Data)
 		case "screen-share-stop":
@@ -443,8 +452,38 @@ func handleReadMessage(c *Client, data interface{}) {
 
 	convIDFloat, _ := msgData["conversation_id"].(float64)
 	convID := uint(convIDFloat)
-	msgIDFloat, _ := msgData["message_id"].(float64)
-	msgID := uint(msgIDFloat)
+
+	var unreadMsgIDs []uint
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, c.userID).
+		Pluck("id", &unreadMsgIDs)
+
+	if len(unreadMsgIDs) > 0 {
+		batchSize := 500
+		for i := 0; i < len(unreadMsgIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(unreadMsgIDs) {
+				end = len(unreadMsgIDs)
+			}
+			batch := unreadMsgIDs[i:end]
+
+			receipts := make([]model.MessageReadReceipt, 0, len(batch))
+			now := time.Now()
+			for _, msgID := range batch {
+				receipts = append(receipts, model.MessageReadReceipt{
+					MessageID:      msgID,
+					ConversationID: convID,
+					UserID:         c.userID,
+					CreatedAt:      now,
+				})
+			}
+
+			db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
+				DoNothing: true,
+			}).Create(&receipts)
+		}
+	}
 
 	// 更新成员未读数和最后读取
 	db.Model(&model.ConversationMember{}).
@@ -454,13 +493,6 @@ func handleReadMessage(c *Client, data interface{}) {
 			"last_read_at": time.Now(),
 		})
 
-	// 记录已读回执
-	db.Create(&model.MessageReadReceipt{
-		MessageID:      msgID,
-		ConversationID: convID,
-		UserID:         c.userID,
-	})
-
 	// 标记消息为已读（只标记非自己发送的消息）
 	result := db.Model(&model.Message{}).
 		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, c.userID).
@@ -468,11 +500,9 @@ func handleReadMessage(c *Client, data interface{}) {
 
 	// 只有当确实有消息被标记为已读时，才发送已读回执通知给对方
 	if result.RowsAffected > 0 {
-		// 发送已读回执通知给对方
 		var conv model.Conversation
 		db.First(&conv, convID)
 
-		// 构建已读回执消息
 		readMsg := WSMessage{
 			Type: "message_read",
 			Data: map[string]interface{}{
@@ -484,19 +514,14 @@ func handleReadMessage(c *Client, data interface{}) {
 		jsonMsg, _ := json.Marshal(readMsg)
 
 		if conv.Type == "single" {
-			// 对于单聊，找到对方用户
 			var otherMember model.ConversationMember
 			db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).First(&otherMember)
-
-			// 发送给对方用户
 			c.hub.SendToUser(otherMember.UserID, jsonMsg)
 		} else if conv.Type == "group" {
-			// 对于群聊，发送给所有其他成员
 			var members []model.ConversationMember
 			db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).Find(&members)
 
 			for _, member := range members {
-				// 发送给每个成员
 				c.hub.SendToUser(member.UserID, jsonMsg)
 			}
 		}
@@ -526,12 +551,17 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 	}
 
 	// 构建转发的信令消息
+	// ICE 候选者使用 candidate 字段，其他信令使用 signal 字段
+	signalData := msgData["signal"]
+	if signalType == "webrtc_ice_candidate" {
+		signalData = msgData["candidate"]
+	}
+
 	signalMsg := WSMessage{
 		Type: signalType,
 		Data: map[string]interface{}{
 			"from_user_id": c.userID,
-			"signal":       msgData["signal"],
-			"call_id":      msgData["call_id"],
+			"signal":       signalData,
 		},
 	}
 
@@ -920,4 +950,154 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 
 		log.Printf("用户 %d 拒绝了屏幕共享请求，会话 %d", c.userID, convID)
 	}
+}
+
+// 处理视频通话邀请
+func handleCallInvite(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("通话邀请数据格式错误: %v", data)
+		return
+	}
+
+	var targetUserID uint
+	if targetUserIDFloat, ok := msgData["target_user_id"].(float64); ok {
+		targetUserID = uint(targetUserIDFloat)
+	} else if targetUserIDStr, ok := msgData["target_user_id"].(string); ok {
+		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
+			targetUserID = uint(id)
+		} else {
+			log.Printf("解析 target_user_id 失败: %v", targetUserIDStr)
+			return
+		}
+	} else {
+		log.Printf("通话邀请缺少 target_user_id")
+		return
+	}
+
+	callType, _ := msgData["call_type"].(string)
+	signal := msgData["signal"]
+
+	log.Printf("用户 %d 向用户 %d 发起 %s 通话邀请", c.userID, targetUserID, callType)
+
+	// 转发通话邀请给目标用户
+	callMsg := WSMessage{
+		Type: "call_invite",
+		Data: map[string]interface{}{
+			"from_user_id": c.userID,
+			"call_type":    callType,
+			"signal":       signal,
+			"timestamp":    time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(callMsg)
+	c.hub.SendToUser(targetUserID, jsonMsg)
+}
+
+// 处理视频通话接听
+func handleCallAccept(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("通话接听数据格式错误: %v", data)
+		return
+	}
+
+	var targetUserID uint
+	if targetUserIDFloat, ok := msgData["target_user_id"].(float64); ok {
+		targetUserID = uint(targetUserIDFloat)
+	} else if targetUserIDStr, ok := msgData["target_user_id"].(string); ok {
+		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
+			targetUserID = uint(id)
+		} else {
+			return
+		}
+	} else {
+		return
+	}
+
+	signal := msgData["signal"]
+
+	log.Printf("用户 %d 接听用户 %d 的通话", c.userID, targetUserID)
+
+	// 转发接听消息给发起方
+	callMsg := WSMessage{
+		Type: "call_accept",
+		Data: map[string]interface{}{
+			"from_user_id": c.userID,
+			"signal":       signal,
+			"timestamp":    time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(callMsg)
+	c.hub.SendToUser(targetUserID, jsonMsg)
+}
+
+// 处理视频通话拒绝
+func handleCallReject(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("通话拒绝数据格式错误: %v", data)
+		return
+	}
+
+	var targetUserID uint
+	if targetUserIDFloat, ok := msgData["target_user_id"].(float64); ok {
+		targetUserID = uint(targetUserIDFloat)
+	} else if targetUserIDStr, ok := msgData["target_user_id"].(string); ok {
+		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
+			targetUserID = uint(id)
+		} else {
+			return
+		}
+	} else {
+		return
+	}
+
+	log.Printf("用户 %d 拒绝用户 %d 的通话", c.userID, targetUserID)
+
+	// 转发拒绝消息给发起方
+	callMsg := WSMessage{
+		Type: "call_reject",
+		Data: map[string]interface{}{
+			"from_user_id": c.userID,
+			"timestamp":    time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(callMsg)
+	c.hub.SendToUser(targetUserID, jsonMsg)
+}
+
+// 处理视频通话结束
+func handleCallEnd(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("通话结束数据格式错误: %v", data)
+		return
+	}
+
+	var targetUserID uint
+	if targetUserIDFloat, ok := msgData["target_user_id"].(float64); ok {
+		targetUserID = uint(targetUserIDFloat)
+	} else if targetUserIDStr, ok := msgData["target_user_id"].(string); ok {
+		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
+			targetUserID = uint(id)
+		} else {
+			return
+		}
+	} else {
+		return
+	}
+
+	log.Printf("用户 %d 结束与用户 %d 的通话", c.userID, targetUserID)
+
+	// 转发通话结束消息给对方
+	callMsg := WSMessage{
+		Type: "call_end",
+		Data: map[string]interface{}{
+			"from_user_id": c.userID,
+			"timestamp":    time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(callMsg)
+	c.hub.SendToUser(targetUserID, jsonMsg)
 }

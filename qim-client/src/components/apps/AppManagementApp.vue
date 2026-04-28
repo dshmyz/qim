@@ -53,64 +53,61 @@
     </div>
     
     <!-- 创建/编辑应用模态框 -->
-    <div v-if="showAppModal" class="modal-overlay" @click="closeAppModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>{{ selectedApp ? '编辑应用' : '创建应用' }}</h3>
-          <button class="modal-close" @click="closeAppModal">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>应用名称</label>
-            <input 
-              v-model="formData.name" 
-              type="text" 
-              class="form-input" 
-              placeholder="请输入应用名称"
-            />
-          </div>
-          <div class="form-group">
-            <label>应用图标</label>
-            <input 
-              v-model="formData.icon" 
-              type="text" 
-              class="form-input" 
-              placeholder="请输入图标类名 (例如: fas fa-star)"
-            />
-          </div>
-          <div class="form-group">
-            <label>应用链接</label>
-            <input 
-              v-model="formData.url" 
-              type="url" 
-              class="form-input" 
-              placeholder="请输入应用URL"
-            />
-          </div>
-          <div class="form-group">
-            <label>应用分类</label>
-            <select v-model="formData.category" class="form-select">
-              <option value="productivity">生产力</option>
-              <option value="communication">通讯</option>
-              <option value="entertainment">娱乐</option>
-              <option value="education">教育</option>
-              <option value="other">其他</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>应用类型</label>
-            <select v-model="formData.openType" class="form-select">
-              <option value="in-app">内嵌应用</option>
-              <option value="external">外链应用</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-btn cancel-btn" @click="closeAppModal">取消</button>
-          <button class="modal-btn confirm-btn" @click="saveApp">{{ selectedApp ? '保存' : '创建' }}</button>
-        </div>
+    <ModalContainer
+      :visible="showAppModal"
+      :title="selectedApp ? '编辑应用' : '创建应用'"
+      @close="closeAppModal"
+    >
+      <div class="app-form-group">
+        <label>应用名称</label>
+        <input 
+          v-model="formData.name" 
+          type="text" 
+          class="app-form-input" 
+          placeholder="请输入应用名称"
+        />
       </div>
-    </div>
+      <div class="app-form-group">
+        <label>应用图标</label>
+        <input 
+          v-model="formData.icon" 
+          type="text" 
+          class="app-form-input" 
+          placeholder="请输入图标类名 (例如: fas fa-star)"
+        />
+      </div>
+      <div class="app-form-group">
+        <label>应用链接</label>
+        <input 
+          v-model="formData.url" 
+          type="url" 
+          class="app-form-input" 
+          placeholder="请输入应用URL"
+        />
+      </div>
+      <div class="app-form-group">
+        <label>应用分类</label>
+        <select v-model="formData.category" class="app-form-select">
+          <option value="productivity">生产力</option>
+          <option value="communication">通讯</option>
+          <option value="entertainment">娱乐</option>
+          <option value="education">教育</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="app-form-group">
+        <label>应用类型</label>
+        <select v-model="formData.openType" class="app-form-select">
+          <option value="in-app">内嵌应用</option>
+          <option value="external">外链应用</option>
+        </select>
+      </div>
+      
+      <template #footer>
+        <button class="app-modal-btn app-cancel-btn" @click="closeAppModal">取消</button>
+        <button class="app-modal-btn app-confirm-btn" @click="saveApp">{{ selectedApp ? '保存' : '创建' }}</button>
+      </template>
+    </ModalContainer>
   </div>
 </template>
 
@@ -119,6 +116,7 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
+import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 定义事件
 const emit = defineEmits(['back'])
@@ -184,7 +182,8 @@ const showCreateAppModal = () => {
     icon: 'fas fa-star',
     category: 'productivity',
     url: '',
-    status: 'active'
+    status: 'active',
+    openType: 'in-app'
   }
   selectedApp.value = null
   showAppModal.value = true
@@ -212,13 +211,17 @@ const closeAppModal = () => {
 
 // 保存应用
 const saveApp = async () => {
+  if (!formData.value.name || formData.value.name.trim() === '') {
+    alert('请输入应用名称')
+    return
+  }
+  
   try {
     const token = localStorage.getItem('token')
     const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
     let response
     
     if (selectedApp.value) {
-      // 编辑应用
       logger.log('编辑应用:', formData.value)
       response = await axios.put(`${serverUrl}/api/v1/apps/${selectedApp.value.id}`, formData.value, {
         headers: {
@@ -226,7 +229,6 @@ const saveApp = async () => {
         }
       })
     } else {
-      // 创建应用
       logger.log('创建应用:', formData.value)
       response = await axios.post(`${serverUrl}/api/v1/apps`, formData.value, {
         headers: {
@@ -239,7 +241,6 @@ const saveApp = async () => {
     if (response.data.code === 0) {
       closeAppModal()
       await loadApps()
-      // 通知父组件重新加载用户应用
       window.dispatchEvent(new CustomEvent('refresh-user-apps'))
       logger.log('应用保存成功')
     } else {
@@ -636,19 +637,75 @@ onMounted(() => {
     justify-content: flex-start;
   }
   
-  .app-management-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
   .create-app-btn {
-    align-self: stretch;
+    padding: 6px 12px;
   }
-  
-  .modal-content {
-    width: 95%;
-    margin: 20px;
-  }
+}
+
+.app-form-group {
+  margin-bottom: 16px;
+}
+
+.app-form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.app-form-input,
+.app-form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.app-form-input:focus,
+.app-form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.app-modal-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.app-cancel-btn {
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.app-cancel-btn:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.app-confirm-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.app-confirm-btn:hover {
+  background-color: var(--active-color);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 </style>

@@ -46,10 +46,10 @@ export function useChatRequest(baseUrl: string) {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('请求失败:', errorData)
-        if (response.status === 403) {
-          throw new Error(errorData.message || '权限不足，请检查您的权限')
-        }
-        throw new Error(errorData.message || '请求失败')
+        const error = new Error(errorData.message || '请求失败') as any
+        error.response = response
+        error.data = errorData
+        throw error
       }
 
       const data = await response.json()

@@ -143,8 +143,9 @@ defineEmits<{
     width: 100% !important;
     height: 60px !important;
     flex-direction: row;
-    padding: 0 20px;
+    padding: 0 5px;
     gap: 16px;
+    justify-content: space-around;
   }
   
   .side-options-title {
@@ -158,6 +159,8 @@ defineEmits<{
   .settings-option {
     transform: none;
     margin-top: 0;
+    margin-bottom: 0;
+
   }
   
   .settings-option:hover {

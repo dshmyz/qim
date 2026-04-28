@@ -23,12 +23,18 @@ func GetConversations(c *gin.Context) {
 
 	type ConversationWithPin struct {
 		model.Conversation
-		IsPinned        bool   `json:"is_pinned"`
-		IP              string `json:"ip,omitempty"`
-		Status          string `json:"status,omitempty"`
-		Signature       string `json:"signature,omitempty"`
-		OtherMemberID   uint   `json:"other_member_id,omitempty"`
-		OtherMemberName string `json:"other_member_name,omitempty"`
+		Name             string `json:"name,omitempty"`
+		Avatar           string `json:"avatar,omitempty"`
+		CreatorID        uint   `json:"creator_id,omitempty"`
+		Announcement     string `json:"announcement,omitempty"`
+		InvitePermission string `json:"invite_permission,omitempty"`
+		AIEnabled        bool   `json:"ai_enabled,omitempty"`
+		IsPinned         bool   `json:"is_pinned"`
+		IP               string `json:"ip,omitempty"`
+		Status           string `json:"status,omitempty"`
+		Signature        string `json:"signature,omitempty"`
+		OtherMemberID    uint   `json:"other_member_id,omitempty"`
+		OtherMemberName  string `json:"other_member_name,omitempty"`
 	}
 
 	var conversations []ConversationWithPin
@@ -44,6 +50,19 @@ func GetConversations(c *gin.Context) {
 			IsPinned:     session.IsPinned,
 		}
 
+		// 对于群聊和讨论组，从Group表获取名称、头像等信息
+		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
+			var group model.Group
+			if err := db.Where("conversation_id = ?", cm.Conversation.ID).First(&group).Error; err == nil {
+				convWithPin.Name = group.Name
+				convWithPin.Avatar = group.Avatar
+				convWithPin.CreatorID = group.CreatorID
+				convWithPin.Announcement = group.Announcement
+				convWithPin.InvitePermission = group.InvitePermission
+				convWithPin.AIEnabled = group.AIEnabled
+			}
+		}
+
 		if cm.Conversation.Type == "single" {
 			var otherMember model.ConversationMember
 			db.Where("conversation_id = ? AND user_id != ?", cm.Conversation.ID, userID).First(&otherMember)
@@ -55,6 +74,9 @@ func GetConversations(c *gin.Context) {
 				convWithPin.Signature = otherUser.Signature
 				convWithPin.OtherMemberID = otherUser.ID
 				convWithPin.OtherMemberName = otherUser.Nickname
+				// 对于单聊，使用对方的昵称作为会话名称
+				convWithPin.Name = otherUser.Nickname
+				convWithPin.Avatar = otherUser.Avatar
 			}
 		}
 
@@ -83,6 +105,34 @@ func GetConversation(c *gin.Context) {
 	if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err != nil {
 		response.Forbidden(c, "无权限访问")
 		return
+	}
+
+	// 对于群聊和讨论组，从Group表获取名称、头像等信息
+	if conv.Type == "group" || conv.Type == "discussion" {
+		var group model.Group
+		if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
+			name := group.Name
+
+			// 构建包含群聊信息的响应
+			responseData := gin.H{
+				"id":                conv.ID,
+				"type":              conv.Type,
+				"name":              name,
+				"avatar":            group.Avatar,
+				"creator_id":        group.CreatorID,
+				"announcement":      group.Announcement,
+				"invite_permission": group.InvitePermission,
+				"ai_enabled":        group.AIEnabled,
+				"is_deleted":        conv.IsDeleted,
+				"last_message_id":   conv.LastMessageID,
+				"last_message_at":   conv.LastMessageAt,
+				"created_at":        conv.CreatedAt,
+				"updated_at":        conv.UpdatedAt,
+				"members":           conv.Members,
+			}
+			response.Success(c, responseData)
+			return
+		}
 	}
 
 	response.Success(c, conv)
@@ -121,9 +171,7 @@ func CreateSingleConversation(c *gin.Context) {
 		db.First(&targetUser, req.UserID)
 
 		conv := model.Conversation{
-			Type:   "single",
-			Name:   targetUser.Nickname + "（自己）",
-			Avatar: targetUser.Avatar,
+			Type: "single",
 		}
 		db.Create(&conv)
 
@@ -139,9 +187,7 @@ func CreateSingleConversation(c *gin.Context) {
 	db.First(&targetUser, req.UserID)
 
 	conv := model.Conversation{
-		Type:   "single",
-		Name:   targetUser.Nickname,
-		Avatar: targetUser.Avatar,
+		Type: "single",
 	}
 	db.Create(&conv)
 
@@ -170,12 +216,21 @@ func CreateGroupConversation(c *gin.Context) {
 	db := database.GetDB()
 
 	conv := model.Conversation{
-		Type:      "group",
-		Name:      req.Name,
-		Avatar:    req.Avatar,
-		CreatorID: userID.(uint),
+		Type: "group",
 	}
 	db.Create(&conv)
+
+	// 创建群聊记录
+	group := model.Group{
+		ConversationID:   conv.ID,
+		GroupType:        "group",
+		Name:             req.Name,
+		Avatar:           req.Avatar,
+		CreatorID:        userID.(uint),
+		InvitePermission: "owner_admin",
+		AIEnabled:        false,
+	}
+	db.Create(&group)
 
 	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"})
 
@@ -185,7 +240,24 @@ func CreateGroupConversation(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, conv)
+	// 构建包含群聊信息的响应
+	responseData := gin.H{
+		"id":                conv.ID,
+		"type":              conv.Type,
+		"name":              group.Name,
+		"avatar":            group.Avatar,
+		"creator_id":        group.CreatorID,
+		"announcement":      group.Announcement,
+		"invite_permission": group.InvitePermission,
+		"ai_enabled":        group.AIEnabled,
+		"is_deleted":        conv.IsDeleted,
+		"last_message_id":   conv.LastMessageID,
+		"last_message_at":   conv.LastMessageAt,
+		"created_at":        conv.CreatedAt,
+		"updated_at":        conv.UpdatedAt,
+	}
+
+	response.Success(c, responseData)
 }
 
 func CreateDiscussionConversation(c *gin.Context) {
@@ -205,12 +277,21 @@ func CreateDiscussionConversation(c *gin.Context) {
 	db := database.GetDB()
 
 	conv := model.Conversation{
-		Type:      "discussion",
-		Name:      req.Name,
-		Avatar:    req.Avatar,
-		CreatorID: userID.(uint),
+		Type: "discussion",
 	}
 	db.Create(&conv)
+
+	// 创建群聊记录
+	group := model.Group{
+		ConversationID:   conv.ID,
+		GroupType:        "discussion",
+		Name:             req.Name,
+		Avatar:           req.Avatar,
+		CreatorID:        userID.(uint),
+		InvitePermission: "owner_admin",
+		AIEnabled:        false,
+	}
+	db.Create(&group)
 
 	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"})
 
@@ -220,7 +301,24 @@ func CreateDiscussionConversation(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, conv)
+	// 构建包含群聊信息的响应
+	responseData := gin.H{
+		"id":                conv.ID,
+		"type":              conv.Type,
+		"name":              group.Name,
+		"avatar":            group.Avatar,
+		"creator_id":        group.CreatorID,
+		"announcement":      group.Announcement,
+		"invite_permission": group.InvitePermission,
+		"ai_enabled":        group.AIEnabled,
+		"is_deleted":        conv.IsDeleted,
+		"last_message_id":   conv.LastMessageID,
+		"last_message_at":   conv.LastMessageAt,
+		"created_at":        conv.CreatedAt,
+		"updated_at":        conv.UpdatedAt,
+	}
+
+	response.Success(c, responseData)
 }
 
 func PinConversation(c *gin.Context) {
@@ -371,7 +469,11 @@ func DeleteConversation(c *gin.Context) {
 		return
 	}
 
-	conv.Name = "[已解散] " + conv.Name
+	// 获取群聊信息
+	var group model.Group
+	db.Where("conversation_id = ?", conv.ID).First(&group)
+	group.Name = "[已解散] " + group.Name
+	db.Save(&group)
 	conv.IsDeleted = true
 	if err := tx.Save(&conv).Error; err != nil {
 		tx.Rollback()

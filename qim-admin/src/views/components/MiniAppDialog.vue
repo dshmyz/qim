@@ -35,6 +35,17 @@
           placeholder="请输入描述"
         />
       </el-form-item>
+      <el-form-item label="权限">
+        <div class="permissions-section">
+          <el-checkbox-group v-model="form.permissionsList">
+            <el-checkbox value="user_info">获取用户信息</el-checkbox>
+            <el-checkbox value="token">获取认证 Token</el-checkbox>
+            <el-checkbox value="api_request">调用后端 API</el-checkbox>
+            <el-checkbox value="clipboard">读写剪贴板</el-checkbox>
+          </el-checkbox-group>
+          <div class="permissions-hint">控制小程序可调用主程序的 API 范围</div>
+        </div>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
@@ -76,6 +87,7 @@ const form = reactive({
   icon: '',
   path: '',
   description: '',
+  permissionsList: [] as string[],
 })
 
 const rules: FormRules = {
@@ -94,6 +106,7 @@ watch(
       form.icon = miniApp.icon || ''
       form.path = miniApp.path
       form.description = miniApp.description || ''
+      form.permissionsList = miniApp.permissions ? JSON.parse(miniApp.permissions) : []
     }
   },
   { immediate: true }
@@ -106,6 +119,7 @@ const resetForm = () => {
   form.icon = ''
   form.path = ''
   form.description = ''
+  form.permissionsList = []
   formRef.value?.resetFields()
 }
 
@@ -126,6 +140,7 @@ const handleSubmit = async () => {
           icon: form.icon || undefined,
           path: form.path,
           description: form.description || undefined,
+          permissions: JSON.stringify(form.permissionsList),
         })
       } else {
         await createMiniApp({
@@ -134,6 +149,7 @@ const handleSubmit = async () => {
           icon: form.icon || undefined,
           path: form.path,
           description: form.description || undefined,
+          permissions: JSON.stringify(form.permissionsList),
         })
       }
       emit('saved')

@@ -1,42 +1,9 @@
 <template>
   <div class="emoji-panel">
-    <div class="emoji-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        :class="['emoji-tab-btn', { active: activeTab === tab.key }]"
-        @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
-
     <div class="emoji-content">
-      <div class="emoji-section" v-if="activeTab === 'common'">
+      <div class="emoji-section">
         <div
-          v-for="emoji in commonEmojis"
-          :key="emoji"
-          class="emoji-item"
-          @click="selectEmoji(emoji)"
-        >
-          {{ emoji }}
-        </div>
-      </div>
-
-      <div class="emoji-section" v-if="activeTab === 'face'">
-        <div
-          v-for="emoji in faceEmojis"
-          :key="emoji"
-          class="emoji-item"
-          @click="selectEmoji(emoji)"
-        >
-          {{ emoji }}
-        </div>
-      </div>
-
-      <div class="emoji-section" v-if="activeTab === 'animal'">
-        <div
-          v-for="emoji in animalEmojis"
+          v-for="emoji in allEmojis"
           :key="emoji"
           class="emoji-item"
           @click="selectEmoji(emoji)"
@@ -49,25 +16,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-
 interface Emits {
   (e: 'select', emoji: string): void
 }
 
 const emit = defineEmits<Emits>()
 
-const activeTab = ref('common')
-
-const tabs = [
-  { key: 'common', label: '常用' },
-  { key: 'face', label: '表情' },
-  { key: 'animal', label: '动物' }
-]
-
-const commonEmojis = ['😊', '😂', '❤️', '👍', '🎉', '🔥', '🤔', '😢', '😡', '👏']
-
-const faceEmojis = [
+const allEmojis = [
+  '😊', '😂', '❤️', '👍', '🎉', '🔥', '🤔', '😢', '😡', '👏',
   '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
   '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
   '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
@@ -76,10 +32,7 @@ const faceEmojis = [
   '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
   '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
   '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐',
-  '🥴', '🤢', '🤮', '🤧', '🥵', '🤒', '🤕', '🤠'
-]
-
-const animalEmojis = [
+  '🥴', '🤢', '🤮', '🤧', '🥵', '🤒', '🤕', '🤠',
   '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
   '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🐣',
   '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝',
@@ -98,71 +51,71 @@ const selectEmoji = (emoji: string) => {
   position: absolute;
   bottom: 100%;
   left: 0;
-  width: 320px;
-  max-height: 400px;
+  width: 440px;
+  height: 360px;
   background: var(--sidebar-bg);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
   z-index: 100;
   overflow: hidden;
+  border: 1px solid var(--border-color);
 }
 
-.emoji-tabs {
+.emoji-header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
 }
 
-.emoji-tab-btn {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
+.emoji-header-title {
   font-size: 13px;
-  transition: all 0.2s ease;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
-.emoji-tab-btn:hover {
-  background: var(--hover-color);
-}
-
-.emoji-tab-btn.active {
-  color: var(--primary-color);
-  border-bottom: 2px solid var(--primary-color);
-  background: var(--primary-light);
+.emoji-count-text {
+  font-size: 11px;
+  color: var(--text-color);
+  opacity: 0.4;
 }
 
 .emoji-content {
   padding: 12px;
   overflow-y: auto;
-  max-height: 350px;
+  flex: 1;
+  min-height: 0;
 }
 
 .emoji-section {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 4px;
 }
 
 .emoji-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  aspect-ratio: 1;
   border-radius: 8px;
   cursor: pointer;
   font-size: 20px;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  background: transparent;
+  user-select: none;
 }
 
 .emoji-item:hover {
   background: var(--hover-color);
-  transform: scale(1.1);
+  transform: scale(1.12);
+}
+
+.emoji-item:active {
+  transform: scale(0.95);
 }
 
 .emoji-content::-webkit-scrollbar {

@@ -19,30 +19,8 @@
     />
 
     <div class="chat-main">
-      <!-- 搜索结果 -->
-      <MessageSearch
-          v-if="showSearch"
-          :search-results="searchResults"
-          :search-query="searchQuery"
-          :is-searching="isSearching"
-          :conversation-type="conversation?.type || 'single'"
-          :read-users-map="readUsersMap"
-          :server-url="serverUrl"
-          @clear-search="clearSearch"
-          @message-contextmenu="showMessageContextMenu"
-          @show-user-profile="showUserProfile"
-          @preview-image="previewImage"
-          @download-file="downloadFile"
-          @save-as="saveFileAs"
-          @view-shared-content="viewSharedContent"
-          @retry-send-message="retrySendMessage"
-          @show-read-users="showReadUsers"
-          @scroll-to-quoted-message="scrollToQuotedMessage"
-        />
-
         <!-- 正常消息列表 -->
         <MessageListView
-          v-else
           ref="messageListViewRef"
           :messages="messages"
           :has-more-messages="hasMoreMessages"
@@ -108,8 +86,6 @@
       :showEmojiPanel="showEmojiPanel"
       :showAtMembersPanel="showAtMembersPanel"
       v-model:showMiniAppList="showMiniAppList"
-      :showSearch="showSearch"
-      v-model:searchQuery="searchQuery"
       :quotedMessage="quotedMessage"
       :isElectron="isElectron"
       :getFileIcon="getFileIcon"
@@ -134,8 +110,6 @@
       @handle-keydown="handleKeydown"
       @remove-pending-file="removePendingFile"
       @remove-quoted-message="quotedMessage = null"
-      @perform-search="performSearch"
-      @close-search="showSearch = false"
       @send-mini-app-message="handleSendMiniAppMessage"
     />
   <!-- 用户资料弹窗 -->
@@ -167,8 +141,6 @@
     @screen-share-leave="handleScreenShareLeaveFromComponent"
   />
 
-
-
   <!-- 消息上下文菜单 -->
   <MessageContextMenu
     :visible="showMessageContextMenuFlag"
@@ -184,9 +156,7 @@
     @recall-message="recallMessage"
     @send-message-reminder="sendMessageReminder"
   />
-  
 
-  
   <!-- 消息管理器 -->
   <MessageManager 
     :visible="showMessageManager" 
@@ -309,13 +279,9 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
-import QMessageBox from '../../utils/qmessagebox'
 import UserProfile from '../modals/UserProfile.vue'
-import MessageItem from '../message/MessageItem.vue'
 import MessageManager from './MessageManager.vue'
 import MessageInput from './MessageInput.vue'
-import MessageSearch from './MessageSearch.vue'
-import GroupPanel from './GroupPanel.vue'
 import MemberSidebar from './MemberSidebar.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
 import MessageContextMenu from './MessageContextMenu.vue'
@@ -332,8 +298,6 @@ import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { API_BASE_URL } from '../../config'
 import { getAvatarUrl } from '../../utils/avatar'
 import { getCurrentUser } from '../../utils/user'
-// @ts-ignore - WebRTC module has no type declarations
-import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import { useScreenShare } from '../../composables/useScreenShare'
@@ -569,10 +533,6 @@ const chatHeaderRef = ref<any>()
 const messageListViewRef = ref<any>()
 const messageInputAreaRef = ref<any>()
 const messageInputRef = ref<HTMLTextAreaElement>()
-const showSearch = ref(false)
-const searchQuery = ref('')
-const searchResults = ref<Message[]>([])
-const isSearching = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 // 草稿系统：使用 localStorage 按会话存储
@@ -593,6 +553,10 @@ watch(() => props.conversation?.id, (newId) => {
 
 // 标记是否正在插入系统消息（本地操作），此时不应触发滚动
 const isInsertingSystemMessage = ref(false)
+
+// 用于追踪消息变化的状态
+const previousMessageLength = ref(0)
+const previousFirstMessageId = ref<string | undefined>(undefined)
 
 // 输入变化时保存草稿
 watch(inputMessage, () => {
@@ -635,19 +599,6 @@ const editGroupName = ref('')
 // 编辑群公告状态
 const showEditAnnouncementModal = ref(false)
 const editAnnouncementContent = ref('')
-
-// 监听状态变化
-watch(showEditGroupInfoModal, (newValue) => {
-})
-
-watch(showEditAnnouncementModal, (newValue) => {
-})
-
-watch(editGroupName, (newValue) => {
-})
-
-watch(editAnnouncementContent, (newValue) => {
-})
 
 // 消息管理器
 const showMessageManager = ref(false)
@@ -723,10 +674,6 @@ const confirmDeleteConversation = async () => {
 // 切换表情面板
 const toggleEmojiPanel = () => {
   showEmojiPanel.value = !showEmojiPanel.value
-  // 如果显示表情面板，关闭搜索框
-  if (showEmojiPanel.value) {
-    showSearch.value = false
-  }
 }
 
 // 插入表情
@@ -826,9 +773,9 @@ const uploadAndSendFile = async (file: File) => {
         emit('send', messageData)
         
         // 清空引用消息
-        quotedMessage.value = null
-      }
-    }
+    quotedMessage.value = null
+  }
+}
   } catch (error) {
     console.error('上传文件失败:', error)
     $message.error('上传文件失败')
@@ -924,35 +871,6 @@ const toggleMemberSearch = () => {
 const isMembersSidebarExpanded = ref(true)
 const toggleMembersSidebar = () => {
   isMembersSidebarExpanded.value = !isMembersSidebarExpanded.value
-}
-const toggleSearch = () => {
-  showSearch.value = !showSearch.value
-  if (!showSearch.value) {
-    searchQuery.value = ''
-    searchResults.value = []
-    isSearching.value = false
-  }
-}
-
-const performSearch = () => {
-  const query = searchQuery.value.trim()
-  if (!query) return
-  
-  isSearching.value = true
-  
-  // 模拟搜索延迟
-  setTimeout(() => {
-    searchResults.value = props.messages.filter(message => 
-      message.content.toLowerCase().includes(query.toLowerCase())
-    )
-    isSearching.value = false
-  }, 300)
-}
-
-const clearSearch = () => {
-  searchQuery.value = ''
-  searchResults.value = []
-  isSearching.value = false
 }
 
 const handleSend = async () => {
@@ -1075,52 +993,52 @@ let screenshotCleanup: (() => void) | null = null
 
 
 
-// 监听组件挂载和消息变化
-watch(() => props.messages, async (newMessages, oldMessages) => {
+// 监听消息数量变化
+watch(() => props.messages.length, async (newLength) => {
   if (!isMounted.value) return
-  // 本地插入系统消息时不触发滚动
   if (isInsertingSystemMessage.value) return
   
-  const oldLength = oldMessages?.length ?? 0
-  const newLength = newMessages?.length ?? 0
+  const oldLength = previousMessageLength.value
+  const oldFirstId = previousFirstMessageId.value
+  
+  // 更新保存的状态
+  previousMessageLength.value = newLength
+  previousFirstMessageId.value = props.messages[0]?.id
   
   if (newLength > oldLength) {
-    // 消息增加了，判断是加载历史消息还是收到新消息
-    const oldFirstId = oldMessages?.[0]?.id
-    const newFirstId = newMessages?.[0]?.id
+    const currentFirstId = props.messages[0]?.id
     
-    if (oldFirstId !== newFirstId) {
-      // 加载历史消息（在数组前面添加）：不滚动，保持当前浏览位置
-      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single')
+    // 如果第一个消息的 id 变了，说明是加载历史消息（从头部插入）
+    if (oldFirstId && currentFirstId !== oldFirstId) {
+      await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
       return
     }
     
-    // 新消息到达（添加到末尾），滚动到底部
+    // 新消息添加到尾部，滚动到底部
     scrollToBottom()
-  }
-  
-  // 获取已读用户列表（只对新消息）
-  if (newLength > oldLength) {
-    const newMessagesOnly = newMessages.slice(oldLength)
+    
+    // 获取新消息的已读用户列表
+    const newMessagesOnly = props.messages.slice(oldLength)
     if (newMessagesOnly.length > 0) {
       await loadReadUsersForMessages(newMessagesOnly, props.conversation?.type || 'single')
     }
   }
-}, { deep: true })
+})
 
 // 监听消息的 isRead 状态变化，重新获取已读用户列表
 watch(
-  () => props.messages,
+  () => props.messages.map(m => ({ id: m.id, isRead: m.isRead })),
   async (newMessages, oldMessages) => {
     if (!isMounted.value) return
+    
     // 检查是否有消息的 isRead 状态发生了变化
     const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
       const oldMsg = oldMessages[index]
       return oldMsg && newMsg.isRead !== oldMsg.isRead
     })
+    
     if (hasReadStatusChanged) {
-      // 当消息的已读状态变化时，重新获取已读用户列表（强制刷新）
-      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single', true)
+      await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single', true)
     }
   },
   { deep: true }
@@ -1154,6 +1072,11 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 // 组件挂载时添加事件监听器
 onMounted(async () => {
   isMounted.value = true
+  
+  // 初始化消息追踪状态
+  previousMessageLength.value = props.messages.length
+  previousFirstMessageId.value = props.messages[0]?.id
+  
   // 添加滚动事件监听器
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
@@ -1164,8 +1087,6 @@ onMounted(async () => {
   }
   // 初始加载已读用户列表
   await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
-  // 加载小程序列表
-  loadMiniApps()
   // 初始化 WebSocket 消息处理
   initWebSocketMessageHandler()
   // 添加转发笔记事件监听器
@@ -1273,43 +1194,6 @@ onUnmounted(() => {
     screenShareComponent.value.stopReceiving()
   }
 })
-
-// 加载小程序列表
-const loadMiniApps = () => {
-  // 这里可以从服务器获取小程序列表，现在使用硬编码的列表
-  // 实际项目中应该调用API获取
-  const miniAppsList = [
-    {
-      id: 'calculator',
-      name: '计算器',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=calculator',
-      description: '基本的加减乘除运算',
-      path: '/calculator'
-    },
-    {
-      id: 'notepad',
-      name: '记事本',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=notepad',
-      description: '文本编辑和保存',
-      path: '/notepad'
-    },
-    {
-      id: 'todo',
-      name: '待办事项',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=todo',
-      description: '任务管理',
-      path: '/todo'
-    },
-    {
-      id: 'password-generator',
-      name: '密码生成器',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=password',
-      description: '生成强密码',
-      path: '/password-generator'
-    }
-  ]
-  // 这里可以将小程序列表存储到某个状态中，以便在需要时使用
-}
 
 // 滚动到引用的消息位置
 const scrollToQuotedMessage = (quotedMessageId: string) => {
@@ -1535,7 +1419,7 @@ const transferOwner = async () => {
 
 const sendPrivateMessage = () => {
   if (selectedMember.value) {
-    sendPrivateMessageToUser()
+    handleSendPrivateMessage(selectedMember.value.id)
   }
   closeMemberContextMenu()
 }
@@ -1639,7 +1523,7 @@ const handleRemoveMember = (memberId: string, memberName: string) => {
 const handleSetAdmin = (memberId: string, memberName: string, isAdmin: boolean) => {
   if (!props.conversation) return
 
-  const action = isAdmin ? '设为管理员' : '取消管理员'
+  const action = isAdmin ? '取消管理员' : '设为管理员'
   openConfirmDialog('确认操作', `确定要${action}成员 ${memberName} 吗？`, async () => {
     try {
       const newRole = isAdmin ? 'admin' : 'member'
@@ -2138,12 +2022,6 @@ const handleScreenShareLeaveFromComponent = () => {
 
 
 
-// 增强接收端错误处理
-// 注意：此函数已移至 ScreenShare 组件中，此处保留空实现以避免引用错误
-const enhanceErrorHandling = () => {
-  console.warn('enhanceErrorHandling 已废弃，错误处理逻辑已移至 ScreenShare 组件')
-}
-
 // 结束通话
 const endCall = async () => {
   try {
@@ -2471,28 +2349,6 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
       $message.error('文件下载失败: 网络错误')
     }
   }
-}
-
-// 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示
-const convertUrlsToLinks = (text: string): string => {
-  // 正则表达式匹配URL
-  const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
-  const atRegex = /@([\u4e00-\u9fa5\w]+)/g
-  
-  let result = text
-  
-  // 先处理URL
-  result = result.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
-  
-  // 再处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
-  })
-  
-  return result
 }
 
 // 消息右键菜单添加文件相关选项

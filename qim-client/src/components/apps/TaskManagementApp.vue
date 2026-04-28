@@ -111,48 +111,45 @@
     </div>
 
     <!-- 创建任务模态框 -->
-    <div v-if="showCreateTaskModal" class="modal-overlay" @click="closeCreateTaskModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>{{ selectedTask ? '编辑任务' : '创建任务' }}</h3>
-          <button class="modal-close" @click="closeCreateTaskModal">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>任务标题</label>
-            <input type="text" class="form-input" v-model="taskForm.title" placeholder="请输入任务标题">
-          </div>
-          <div class="form-group">
-            <label>任务描述</label>
-            <textarea class="form-textarea" v-model="taskForm.description" placeholder="请输入任务描述"></textarea>
-          </div>
-          <div class="form-group">
-            <label>截止日期</label>
-            <input type="date" class="form-input" v-model="taskForm.due_date">
-          </div>
-          <div class="form-group">
-            <label>优先级</label>
-            <select class="form-select" v-model="taskForm.priority">
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>状态</label>
-            <select class="form-select" v-model="taskForm.status">
-              <option value="todo">待办</option>
-              <option value="in_progress">进行中</option>
-              <option value="completed">已完成</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-btn cancel-btn" @click="closeCreateTaskModal">取消</button>
-          <button class="modal-btn confirm-btn" @click="selectedTask ? updateTask() : createTask">{{ selectedTask ? '更新' : '创建' }}</button>
-        </div>
+    <ModalContainer
+      :visible="showCreateTaskModal"
+      :title="selectedTask ? '编辑任务' : '创建任务'"
+      @close="closeCreateTaskModal"
+    >
+      <div class="task-form-group">
+        <label>任务标题</label>
+        <input type="text" class="task-form-input" v-model="taskForm.title" placeholder="请输入任务标题">
       </div>
-    </div>
+      <div class="task-form-group">
+        <label>任务描述</label>
+        <textarea class="task-form-textarea" v-model="taskForm.description" placeholder="请输入任务描述"></textarea>
+      </div>
+      <div class="task-form-group">
+        <label>截止日期</label>
+        <input type="date" class="task-form-input" v-model="taskForm.due_date">
+      </div>
+      <div class="task-form-group">
+        <label>优先级</label>
+        <select class="task-form-select" v-model="taskForm.priority">
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+        </select>
+      </div>
+      <div class="task-form-group">
+        <label>状态</label>
+        <select class="task-form-select" v-model="taskForm.status">
+          <option value="todo">待办</option>
+          <option value="in_progress">进行中</option>
+          <option value="completed">已完成</option>
+        </select>
+      </div>
+      
+      <template #footer>
+        <button class="task-modal-btn task-cancel-btn" @click="closeCreateTaskModal">取消</button>
+        <button class="task-modal-btn task-confirm-btn" @click="selectedTask ? updateTask() : createTask">{{ selectedTask ? '更新' : '创建' }}</button>
+      </template>
+    </ModalContainer>
   </div>
 </template>
 
@@ -161,6 +158,7 @@ import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -928,5 +926,79 @@ onMounted(async () => {
 
 .tasks-board::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+.task-form-group {
+  margin-bottom: 16px;
+}
+
+.task-form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.task-form-input,
+.task-form-textarea,
+.task-form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.task-form-input:focus,
+.task-form-textarea:focus,
+.task-form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.task-form-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.task-modal-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.task-cancel-btn {
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.task-cancel-btn:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.task-confirm-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.task-confirm-btn:hover {
+  background-color: var(--active-color);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 </style>

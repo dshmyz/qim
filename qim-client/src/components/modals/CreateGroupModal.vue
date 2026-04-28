@@ -353,10 +353,11 @@ const createConversation = async () => {
     if (response.ok) {
       const data = await response.json()
       if (data.code === 0) {
+        const newConversation = data.data
         // 关闭弹窗
         handleClose()
-        // 触发创建成功事件
-        emit('created')
+        // 触发创建成功事件，传递新创建的会话对象
+        emit('created', newConversation)
         // 显示成功提示
         QMessage.success(`${props.type === 'group' ? '群聊' : '讨论组'}创建成功`)
       } else {

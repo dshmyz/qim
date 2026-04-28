@@ -807,4 +807,9 @@ const isFileContent = (content: string): boolean => {
 .message-item.self .at-user:hover {
   background-color: rgba(255, 255, 255, 0.2);
 }
+
+.message-item.self ::selection {
+  background: rgba(0, 0, 0, 0.25);
+  color: white;
+}
 </style>

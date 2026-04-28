@@ -143,6 +143,10 @@ func AdminGetGroups(c *gin.Context) {
 		var memberCount int64
 		db.Model(&model.ConversationMember{}).Where("conversation_id = ?", conv.ID).Count(&memberCount)
 
+		// 获取群聊信息
+		var group model.Group
+		db.Where("conversation_id = ?", conv.ID).First(&group)
+
 		status := "active"
 		if conv.IsDeleted {
 			status = "inactive"
@@ -150,9 +154,9 @@ func AdminGetGroups(c *gin.Context) {
 
 		groups = append(groups, GroupInfo{
 			ID:          conv.ID,
-			Name:        conv.Name,
-			Avatar:      conv.Avatar,
-			Description: conv.Announcement,
+			Name:        group.Name,
+			Avatar:      group.Avatar,
+			Description: group.Announcement,
 			Type:        conv.Type,
 			Status:      status,
 			MemberCount: memberCount,

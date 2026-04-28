@@ -266,7 +266,6 @@ export function useChat() {
         }
         
         messages.value.push(failedMessage)
-        storage.saveMessages(conversationId, messages.value)
         
         const conversationIndex = conversations.value.findIndex(
           c => c.id.toString() === conversationId
@@ -327,7 +326,6 @@ export function useChat() {
           }
           
           messages.value.push(newMessage)
-          storage.saveMessages(conversationId, messages.value)
           
           const conversationIndex = conversations.value.findIndex(
             c => c.id.toString() === conversationId
@@ -358,7 +356,6 @@ export function useChat() {
           }
           
           messages.value.push(failedMessage)
-          storage.saveMessages(conversationId, messages.value)
         }
       }
     } catch (error) {
@@ -401,7 +398,6 @@ export function useChat() {
       }
       
       messages.value.push(streamMessage)
-      storage.saveMessages(conversationId, messages.value)
       
       const response = await fetch(`${serverUrl.value}/api/v1/conversations/${conversationId}/messages/stream`, {
         method: 'POST',
@@ -459,16 +455,13 @@ export function useChat() {
         if (messageIndex !== -1) {
           messages.value[messageIndex].content = accumulatedContent
           messages.value[messageIndex].isStreaming = true
-          storage.saveMessages(conversationId, messages.value)
         }
       }
       
-      // 流式结束
       const messageIndex = messages.value.findIndex(m => m.id === streamMessageId)
       if (messageIndex !== -1) {
         messages.value[messageIndex].isStreaming = false
         messages.value[messageIndex].type = 'markdown'
-        storage.saveMessages(conversationId, messages.value)
       }
     } catch (error) {
       console.error('流式消息处理失败:', error)
@@ -483,15 +476,11 @@ export function useChat() {
     failedMessage: any,
     messages: Ref<Message[]>,
     currentConversationId: Ref<string | null>,
-    storage: any,
     handleSendMessage: (...args: any[]) => void
   ) => {
     const messageIndex = messages.value.findIndex(msg => msg.id === failedMessage.id)
     if (messageIndex !== -1) {
       messages.value.splice(messageIndex, 1)
-      if (currentConversationId.value) {
-        storage.saveMessages(currentConversationId.value, messages.value)
-      }
     }
     
     if (failedMessage.originalData) {
@@ -507,8 +496,6 @@ export function useChat() {
   const handleRecallMessage = async (
     messageId: number,
     messages: Ref<Message[]>,
-    currentConversationId: Ref<string | null>,
-    storage: any,
     request: (url: string, options?: any) => Promise<any>
   ) => {
     try {
@@ -524,10 +511,6 @@ export function useChat() {
         if (index !== -1) {
           messages.value[index].content = '[消息已撤回]'
           messages.value[index].isRecalled = true
-          
-          if (currentConversationId.value) {
-            storage.saveMessages(currentConversationId.value, messages.value)
-          }
         }
       } else {
         console.error('撤回消息失败:', response.message)

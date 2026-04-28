@@ -36,11 +36,11 @@ func main() {
 	fmt.Printf("找到 %d 个小程序记录，开始检查 path 字段...\n", len(miniApps))
 
 	pathMapping := map[string]string{
-		"calculator":         "/miniprograms/calculator/index.html",
-		"notepad":            "/miniprograms/notepad/index.html",
-		"todo":               "/miniprograms/todo/index.html",
+		"calculator":       "/miniprograms/calculator/index.html",
+		"notepad":          "/miniprograms/notepad/index.html",
+		"todo":             "/miniprograms/todo/index.html",
 		"password-generator": "/miniprograms/password-generator/index.html",
-		"short-link":         "/miniprograms/short-link/index.html",
+		"short-link":       "/miniprograms/short-link/index.html",
 	}
 
 	updated := 0

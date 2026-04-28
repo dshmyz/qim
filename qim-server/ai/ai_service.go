@@ -1,16 +1,19 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 )
 
 type AIService struct {
-	config   *AIConfig
-	factory  *ProviderFactory
-	provider Provider
-	mu       sync.RWMutex
+	config    *AIConfig
+	factory   *ProviderFactory
+	provider  Provider
+	mu        sync.RWMutex
+	mcpServer *MCPServer
 }
 
 func NewAIService(cfg *AIConfig) *AIService {
@@ -24,6 +27,142 @@ func NewAIService(cfg *AIConfig) *AIService {
 	}
 
 	return svc
+}
+
+// SetMCPServer 设置 MCP 服务器用于工具调用
+func (s *AIService) SetMCPServer(mcpServer *MCPServer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mcpServer = mcpServer
+}
+
+// GetMCPServer 获取 MCP 服务器
+func (s *AIService) GetMCPServer() *MCPServer {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.mcpServer
+}
+
+// GetCompletionWithTools 带工具调用的 AI 完成
+func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (string, error) {
+	s.mu.RLock()
+	mcpServer := s.mcpServer
+	s.mu.RUnlock()
+
+	if mcpServer == nil {
+		return s.GetCompletion(messages)
+	}
+
+	// 构建工具列表描述
+	tools := mcpServer.ListTools()
+	toolsDesc := "你可以使用以下工具（如果用户请求涉及管理操作，请使用工具）：\n\n"
+	for _, tool := range tools {
+		name := tool["name"].(string)
+		desc := tool["description"].(string)
+		params := tool["parameters"].(map[string]interface{})
+		toolsDesc += fmt.Sprintf("工具: %s\n说明: %s\n", name, desc)
+		toolsDesc += "参数:\n"
+		for pname, pinfo := range params {
+			if pmap, ok := pinfo.(map[string]interface{}); ok {
+				req := ""
+				if pmap["required"] == true {
+					req = " (必填)"
+				}
+				toolsDesc += fmt.Sprintf("  - %s: %s%s\n", pname, pmap["description"], req)
+			}
+		}
+		toolsDesc += "\n"
+	}
+
+	// 添加使用说明到系统消息
+	toolInstruction := toolsDesc + `如需调用工具，请严格按照以下 JSON 格式返回：
+{"tool_call": {"name": "工具名称", "arguments": {"参数名": "参数值"}}}
+
+如果不需要调用工具，直接输出回复内容。
+注意：只在用户明确要求执行管理操作时才调用工具，普通聊天不要调用工具。`
+
+	// 将工具说明注入到 system 消息中
+	var newMessages []Message
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			newMessages = append(newMessages, Message{Role: "system", Content: msg.Content + "\n\n" + toolInstruction})
+		} else {
+			newMessages = append(newMessages, msg)
+		}
+	}
+
+	// 第一次调用 AI
+	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(tools))
+	reply, err := s.GetCompletion(newMessages)
+	if err != nil {
+		log.Printf("[AI Service] 工具调用 - AI 请求失败: %v", err)
+		return "", err
+	}
+	log.Printf("[AI Service] 工具调用 - AI 回复: %s", reply[:min(200, len(reply))])
+
+	// 检查是否包含工具调用
+	toolCall, err := parseToolCall(reply)
+	if err != nil || toolCall == nil {
+		log.Printf("[AI Service] 工具调用 - 未检测到工具调用")
+		// 没有工具调用，直接返回回复
+		return reply, nil
+	}
+
+	log.Printf("[AI Service] 工具调用 - 检测到工具调用: name=%s, args=%v", toolCall.Name, toolCall.Arguments)
+
+	// 执行工具
+	result, err := mcpServer.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
+	if err != nil {
+		log.Printf("[AI Service] 工具执行失败: %v", err)
+		return "", err
+	}
+	log.Printf("[AI Service] 工具执行成功: %v", result)
+
+	// 将工具结果追加到消息列表
+	newMessages = append(newMessages, Message{Role: "assistant", Content: reply})
+	resultJSON, _ := json.Marshal(result)
+	newMessages = append(newMessages, Message{Role: "user", Content: fmt.Sprintf("工具 %s 执行结果: %s\n请根据这个结果生成给用户的回复。", toolCall.Name, string(resultJSON))})
+
+	// 第二次调用 AI，基于工具结果生成最终回复
+	finalReply, err := s.GetCompletion(newMessages)
+	if err != nil {
+		return "", err
+	}
+
+	return finalReply, nil
+}
+
+// ToolCall 工具调用
+type ToolCall struct {
+	Name      string                 `json:"name"`
+	Arguments map[string]interface{} `json:"arguments"`
+}
+
+// parseToolCall 从 AI 回复中解析工具调用
+func parseToolCall(reply string) (*ToolCall, error) {
+	// 尝试提取 JSON
+	idx := strings.Index(reply, "{")
+	if idx == -1 {
+		return nil, nil
+	}
+
+	jsonStr := reply[idx:]
+	if endIdx := strings.LastIndex(jsonStr, "}"); endIdx >= 0 {
+		jsonStr = jsonStr[:endIdx+1]
+	}
+
+	var result struct {
+		ToolCall *ToolCall `json:"tool_call"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, nil // 不是有效的 JSON，当作普通回复
+	}
+
+	if result.ToolCall == nil || result.ToolCall.Name == "" {
+		return nil, nil
+	}
+
+	return result.ToolCall, nil
 }
 
 func (s *AIService) UpdateConfig(cfg *AIConfig) {

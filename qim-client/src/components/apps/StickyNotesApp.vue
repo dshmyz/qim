@@ -77,78 +77,75 @@
     </div>
 
     <!-- 便签模态框 -->
-    <div v-if="showNoteModal" class="modal-overlay" @click="closeNoteModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>{{ selectedNote ? '编辑便签' : '创建便签' }}</h3>
-          <button class="modal-close" @click="closeNoteModal">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>标题</label>
-            <input type="text" class="form-input" v-model="formData.title" placeholder="便签标题">
-          </div>
-          <div class="form-group">
-            <label>内容</label>
-            <textarea class="form-textarea" v-model="formData.content" placeholder="便签内容"></textarea>
-          </div>
-          <div class="form-group">
-            <label>颜色</label>
-            <div class="color-picker">
-              <div 
-                v-for="color in noteColors" 
-                :key="color.value"
-                class="color-option"
-                :class="{ active: formData.color === color.value }"
-                :style="{ backgroundColor: color.value }"
-                @click="formData.color = color.value"
-              ></div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>提醒时间</label>
-            <input 
-              type="datetime-local" 
-              class="form-input" 
-              v-model="formData.reminder"
-              placeholder="设置提醒时间"
-            >
-          </div>
-          <div class="form-group">
-            <label>标签</label>
-            <input 
-              type="text" 
-              class="form-input" 
-              v-model="formData.tags"
-              placeholder="输入标签，用逗号分隔"
-            >
-            <p class="form-hint">示例：工作, 个人, 重要</p>
-          </div>
-          <div class="form-group">
-            <label>纸张样式</label>
-            <select class="form-select" v-model="formData.paperStyle">
-              <option value="plain">普通纸张</option>
-              <option value="lined">横线纸张</option>
-              <option value="grid">网格纸张</option>
-              <option value="dotted">点阵纸张</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>字体</label>
-            <select class="form-select" v-model="formData.fontFamily">
-              <option value="'Comic Sans MS', 'Marker Felt', cursive">手写体</option>
-              <option value="'Arial', 'Helvetica', sans-serif">Arial</option>
-              <option value="'Georgia', 'Times New Roman', serif">Georgia</option>
-              <option value="'Courier New', monospace">Courier New</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-btn cancel-btn" @click="closeNoteModal">取消</button>
-          <button class="modal-btn confirm-btn" @click="selectedNote ? updateStickyNote() : createStickyNote()">{{ selectedNote ? '更新' : '创建' }}</button>
+    <ModalContainer
+      :visible="showNoteModal"
+      :title="selectedNote ? '编辑便签' : '创建便签'"
+      @close="closeNoteModal"
+    >
+      <div class="sticky-note-form-group">
+        <label>标题</label>
+        <input type="text" class="sticky-note-form-input" v-model="formData.title" placeholder="便签标题">
+      </div>
+      <div class="sticky-note-form-group">
+        <label>内容</label>
+        <textarea class="sticky-note-form-textarea" v-model="formData.content" placeholder="便签内容"></textarea>
+      </div>
+      <div class="sticky-note-form-group">
+        <label>颜色</label>
+        <div class="sticky-note-color-picker">
+          <div 
+            v-for="color in noteColors" 
+            :key="color.value"
+            class="sticky-note-color-option"
+            :class="{ active: formData.color === color.value }"
+            :style="{ backgroundColor: color.value }"
+            @click="formData.color = color.value"
+          ></div>
         </div>
       </div>
-    </div>
+      <div class="sticky-note-form-group">
+        <label>提醒时间</label>
+        <input 
+          type="datetime-local" 
+          class="sticky-note-form-input"
+          v-model="formData.reminder"
+          placeholder="设置提醒时间"
+        >
+      </div>
+      <div class="sticky-note-form-group">
+        <label>标签</label>
+        <input 
+          type="text" 
+          class="sticky-note-form-input"
+          v-model="formData.tags"
+          placeholder="输入标签，用逗号分隔"
+        >
+        <p class="sticky-note-form-hint">示例：工作, 个人, 重要</p>
+      </div>
+      <div class="sticky-note-form-group">
+        <label>纸张样式</label>
+        <select class="sticky-note-form-select" v-model="formData.paperStyle">
+          <option value="plain">普通纸张</option>
+          <option value="lined">横线纸张</option>
+          <option value="grid">网格纸张</option>
+          <option value="dotted">点阵纸张</option>
+        </select>
+      </div>
+      <div class="sticky-note-form-group">
+        <label>字体</label>
+        <select class="sticky-note-form-select" v-model="formData.fontFamily">
+          <option value="'Comic Sans MS', 'Marker Felt', cursive">手写体</option>
+          <option value="'Arial', 'Helvetica', sans-serif">Arial</option>
+          <option value="'Georgia', 'Times New Roman', serif">Georgia</option>
+          <option value="'Courier New', monospace">Courier New</option>
+        </select>
+      </div>
+      
+      <template #footer>
+        <button class="sticky-note-modal-btn sticky-note-cancel-btn" @click="closeNoteModal">取消</button>
+        <button class="sticky-note-modal-btn sticky-note-confirm-btn" @click="selectedNote ? updateStickyNote() : createStickyNote()">{{ selectedNote ? '更新' : '创建' }}</button>
+      </template>
+    </ModalContainer>
   </div>
 </template>
 
@@ -158,6 +155,7 @@ import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
+import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -1400,5 +1398,190 @@ const setupReminder = (note: any) => {
   .empty-hint {
     font-size: 12px !important;
   }
+}
+</style>
+
+<style>
+.sticky-note-modal-overlay {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease;
+}
+
+.sticky-note-modal-content {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  animation: slideIn 0.3s ease;
+}
+
+.sticky-note-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-color);
+  border-radius: 8px 8px 0 0;
+}
+
+.sticky-note-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.sticky-note-modal-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sticky-note-modal-close:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  transform: rotate(90deg);
+}
+
+.sticky-note-modal-body {
+  padding: 20px;
+}
+
+.sticky-note-form-group {
+  margin-bottom: 16px;
+}
+
+.sticky-note-form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.sticky-note-form-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  margin-bottom: 0;
+  opacity: 0.8;
+}
+
+.sticky-note-form-input,
+.sticky-note-form-textarea,
+.sticky-note-form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.sticky-note-form-input:focus,
+.sticky-note-form-textarea:focus,
+.sticky-note-form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.sticky-note-form-textarea {
+  resize: vertical;
+  min-height: 150px;
+}
+
+.sticky-note-color-picker {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sticky-note-color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.sticky-note-color-option:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sticky-note-color-option.active {
+  border-color: #333;
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sticky-note-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.sticky-note-modal-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.sticky-note-cancel-btn {
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.sticky-note-cancel-btn:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.sticky-note-confirm-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.sticky-note-confirm-btn:hover {
+  background-color: var(--active-color);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 </style>

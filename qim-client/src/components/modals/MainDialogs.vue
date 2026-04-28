@@ -13,9 +13,22 @@
         <h2>QIM</h2>
         <p class="version">版本: 1.0.0</p>
         <p class="date">发布日期: 2026-04-11</p>
-        <p class="author">作者: huangqun@buaa.edu.cn</p>
-        <p class="copyright">© 2026 QIM</p>
-        <p class="description">一个现代化的即时通讯界面，提供简洁、高效的聊天体验。</p>
+        <div class="credits-section">
+          <p class="credit-item">
+            <i class="fas fa-pencil-ruler"></i>
+            产品设计: Huang Qun
+          </p>
+          <p class="credit-item">
+            <i class="fas fa-robot"></i>
+            代码实现: AI Assistant
+          </p>
+        </div>
+        <p class="contact">
+          <i class="fas fa-envelope"></i>
+          联系邮箱: <a href="mailto:huangqun@buaa.edu.cn">huangqun@buaa.edu.cn</a>
+        </p>
+        <p class="copyright">© 2026 QIM. All rights reserved.</p>
+        <p class="description">一款现代化的即时通讯应用，致力于提供简洁、高效、智能化的沟通体验，让团队协作更顺畅。</p>
       </div>
       <div class="about-dialog-footer">
         <button class="about-dialog-button" @click="$emit('closeAbout')">确定</button>
@@ -286,12 +299,51 @@ watch(() => props.systemMessage, (val) => {
 
 .version,
 .date,
-.author,
 .copyright,
 .description {
   margin: 4px 0;
   font-size: 14px;
   color: var(--text-secondary, #999);
+}
+
+.credits-section {
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+}
+
+.credit-item {
+  margin: 6px 0;
+  font-size: 14px;
+  color: var(--text-color, #666);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.credit-item i {
+  color: var(--primary-color, #409eff);
+}
+
+.contact {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.contact a {
+  color: var(--primary-color, #409eff);
+  text-decoration: none;
+}
+
+.contact a:hover {
+  text-decoration: underline;
 }
 
 .about-dialog-footer,

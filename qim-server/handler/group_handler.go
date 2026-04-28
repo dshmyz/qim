@@ -59,7 +59,10 @@ func AddMemberToGroup(c *gin.Context) {
 	}
 
 	if conv.Type == "group" {
-		if conv.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
+		// 获取群聊信息
+		var group model.Group
+		db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
+		if group.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主和管理员可以邀请成员"})
 			return
 		}
@@ -87,11 +90,15 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 		db.Create(&newMember)
 
+		// 获取群聊信息
+		var group model.Group
+		db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
+
 		notification := model.Notification{
 			UserID:  memberID,
 			Type:    "group_invitation",
 			Title:   "群聊邀请",
-			Content: fmt.Sprintf("您被邀请加入群聊 %s", conv.Name),
+			Content: fmt.Sprintf("您被邀请加入群聊 %s", group.Name),
 		}
 		db.Create(&notification)
 
@@ -233,12 +240,16 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 
 		for _, member := range addedMembers {
+			// 获取群聊信息
+			var group model.Group
+			db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
+
 			addedMsg := ws.WSMessage{
 				Type: "added_to_group",
 				Data: gin.H{
 					"conversation_id": conv.ID,
-					"group_name":      conv.Name,
-					"group_avatar":    conv.Avatar,
+					"group_name":      group.Name,
+					"group_avatar":    group.Avatar,
 					"members":         members,
 				},
 			}
@@ -382,7 +393,7 @@ func ExitGroup(c *gin.Context) {
 			Type: "group_member_left",
 			Data: gin.H{
 				"conversation_id": conv.ID,
-				"user_id":        userID,
+				"user_id":         userID,
 			},
 		}
 		jsonMsg, _ := json.Marshal(exitMsg)
@@ -409,6 +420,7 @@ func UpdateGroupInfo(c *gin.Context) {
 		Name             string `json:"name"`
 		Avatar           string `json:"avatar"`
 		InvitePermission string `json:"invite_permission"`
+		AIEnabled        *bool  `json:"ai_enabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -435,28 +447,50 @@ func UpdateGroupInfo(c *gin.Context) {
 		return
 	}
 
-	if conv.Type == "group" && member.Role != "owner" && member.Role != "admin" {
+	// 获取群聊信息
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		return
+	}
+
+	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以更新群聊信息"})
 		return
 	}
 
 	if req.Name != "" {
-		conv.Name = req.Name
+		group.Name = req.Name
 	}
 	if req.Avatar != "" {
-		conv.Avatar = req.Avatar
+		group.Avatar = req.Avatar
 	}
 	if req.InvitePermission != "" {
 		if req.InvitePermission == "owner_admin" || req.InvitePermission == "all" {
-			conv.InvitePermission = req.InvitePermission
+			group.InvitePermission = req.InvitePermission
 		}
 	}
-	db.Save(&conv)
+	if req.AIEnabled != nil {
+		group.AIEnabled = *req.AIEnabled
+	}
+	db.Save(&group)
 
 	if ws.GlobalHub != nil {
 		updateMsg := ws.WSMessage{
 			Type: "conversation_updated",
-			Data: conv,
+			Data: gin.H{
+				"id":                conv.ID,
+				"type":              conv.Type,
+				"name":              group.Name,
+				"avatar":            group.Avatar,
+				"announcement":      group.Announcement,
+				"invite_permission": group.InvitePermission,
+				"ai_enabled":        group.AIEnabled,
+				"last_message_id":   conv.LastMessageID,
+				"last_message_at":   conv.LastMessageAt,
+				"created_at":        conv.CreatedAt,
+				"updated_at":        conv.UpdatedAt,
+			},
 		}
 		jsonMsg, _ := json.Marshal(updateMsg)
 
@@ -466,7 +500,7 @@ func UpdateGroupInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "群聊信息更新成功",
-		"data":    conv,
+		"data":    group,
 	})
 }
 
@@ -617,8 +651,15 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	conv.CreatorID = targetMember.UserID
-	if err := tx.Save(&conv).Error; err != nil {
+	// 更新群聊创建者
+	var group model.Group
+	if err := tx.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取群聊信息失败"})
+		return
+	}
+	group.CreatorID = targetMember.UserID
+	if err := tx.Save(&group).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "转让失败"})
 		return
@@ -688,13 +729,20 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	if conv.Type == "group" && member.Role != "owner" && member.Role != "admin" {
+	// 获取群聊信息
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		return
+	}
+
+	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以设置群公告"})
 		return
 	}
 
-	conv.Announcement = req.Announcement
-	if err := db.Save(&conv).Error; err != nil {
+	group.Announcement = req.Announcement
+	if err := db.Save(&group).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新群公告失败"})
 		return
 	}
@@ -773,5 +821,5 @@ func UpdateAnnouncement(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(uint(convID), 0, newMsgJson)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": conv})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": group})
 }

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"qim-server/ai"
@@ -10,8 +9,6 @@ import (
 	"qim-server/ws"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // SmartReplyEngine 智能回复引擎
@@ -19,14 +16,19 @@ type SmartReplyEngine struct {
 	aiService      *ai.AIService
 	intentDetector *ai.IntentDetector
 	knowledgeSvc   *KnowledgeService
+	promptBuilder  *SmartPromptBuilder
+	messageSender  *WebSocketMessageSender
 }
 
 // NewSmartReplyEngine 创建智能回复引擎
 func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *SmartReplyEngine {
+	knowledgeSvc := NewKnowledgeService(aiService)
 	return &SmartReplyEngine{
 		aiService:      aiService,
 		intentDetector: detector,
-		knowledgeSvc:   NewKnowledgeService(aiService),
+		knowledgeSvc:   knowledgeSvc,
+		promptBuilder:  NewSmartPromptBuilder(knowledgeSvc),
+		messageSender:  NewWebSocketMessageSender(ws.GlobalHub),
 	}
 }
 
@@ -117,18 +119,14 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 // generateAndSendReply 生成并发送智能回复
 func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
-	db := database.GetDB()
-
-	var conv model.Conversation
-	if err := db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		log.Printf("[SmartReply] 获取会话信息失败: %v", err)
+	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)
+	if ctx == nil {
+		log.Printf("[SmartReply] 构建提示词上下文失败")
 		return
 	}
 
-	// 始终构建完整的系统提示（包含用户上下文）
-	systemPrompt := e.buildSystemPrompt(conversationID, &conv, userID)
+	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
 
-	// 如果有知识库内容，追加到 prompt 中
 	if e.knowledgeSvc != nil {
 		knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(userContent)
 		if knowledgeCtx != "" {
@@ -141,7 +139,6 @@ func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint
 		{Role: "user", Content: userContent},
 	}
 
-	// 使用带工具调用的 AI 完成（支持自动执行管理操作）
 	callerCtx := &ai.CallerContext{
 		UserID: userID,
 	}
@@ -151,137 +148,13 @@ func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint
 		return
 	}
 
-	botReply := model.Message{
-		ConversationID: conversationID,
-		SenderID:       0,
-		Type:           "text",
-		Content:        reply,
-		IsRead:         false,
-	}
-	db.Create(&botReply)
-
-	// 构建 AI 发送者信息
-	aiSender := model.User{
-		ID:       0,
-		Username: "ai_assistant",
-		Nickname: "🤖 AI 助手",
-		Avatar:   "",
-	}
-	botReply.Sender = aiSender
-
-	// 复用 broadcastNewMessage 统一处理广播和状态更新
-	broadcastNewMessage(&botReply, 0, &conv)
-
-	log.Printf("[SmartReply] 已发送智能回复到会话 %d, msgID=%d", conversationID, botReply.ID)
-}
-
-// buildSystemPrompt 构建系统提示词
-func (e *SmartReplyEngine) buildSystemPrompt(conversationID uint, conv *model.Conversation, userID uint) string {
-	db := database.GetDB()
-
-	prompt := "你是 QIM 企业即时通讯系统中的智能助手。"
-
-	// 1. 当前时间
-	now := time.Now()
-	prompt += fmt.Sprintf("\n当前时间：%s (%s)", now.Format("2006-01-02 15:04"), now.Weekday().String())
-
-	// 2. 群组性质和历史
-	var groupName string
-	if conv.Type == "group" || conv.Type == "discussion" {
-		// 获取群聊信息
-		var group model.Group
-		db.Where("conversation_id = ?", conversationID).First(&group)
-		groupName = group.Name
-		prompt += "\n\n📋 群组信息："
-		prompt += fmt.Sprintf("\n- 群名：%s", group.Name)
-		prompt += fmt.Sprintf("\n- 群ID：%d", conv.ID)
-		prompt += fmt.Sprintf("\n- 成员数：%d", len(conv.Members))
-		prompt += "\n- 群成员："
-		for _, m := range conv.Members {
-			name := m.User.Nickname
-			if name == "" {
-				name = m.User.Username
-			}
-			prompt += name + "、"
-		}
-		prompt = prompt[:len(prompt)-1] + "。"
-
-		// 最近消息历史（最近 20 条）
-		var recentMessages []model.Message
-		db.Where("conversation_id = ?", conversationID).
-			Preload("Sender").
-			Order("created_at DESC").
-			Limit(20).
-			Find(&recentMessages)
-
-		if len(recentMessages) > 0 {
-			prompt += "\n\n📝 最近对话历史（按时间倒序）："
-			for i := len(recentMessages) - 1; i >= 0; i-- {
-				msg := recentMessages[i]
-				senderName := msg.Sender.Nickname
-				if senderName == "" {
-					senderName = msg.Sender.Username
-				}
-				content := msg.Content
-				if len(content) > 100 {
-					content = content[:100] + "..."
-				}
-				prompt += fmt.Sprintf("\n[%s] %s: %s", msg.CreatedAt.Format("15:04"), senderName, content)
-			}
-		}
+	err = e.messageSender.SendAIMessage(conversationID, reply, "AI助手")
+	if err != nil {
+		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		return
 	}
 
-	// 3. 用户角色和权限
-	var user model.User
-	if err := db.First(&user, userID).Error; err == nil {
-		prompt += fmt.Sprintf("\n\n👤 当前提问用户：%s", user.Nickname)
-		if user.Status == "disabled" {
-			prompt += "（账号已禁用）"
-		}
-	}
-
-	// 3.1 待办任务
-	var pendingTasks []model.Task
-	db.Where("user_id = ? AND status = 'todo'", userID).Order("due_date ASC").Limit(5).Find(&pendingTasks)
-	if len(pendingTasks) > 0 {
-		prompt += "\n\n📋 用户待办任务（未完成）："
-		for _, task := range pendingTasks {
-			dueStr := "无截止日期"
-			if task.DueDate != nil {
-				dueStr = task.DueDate.Format("2006-01-02")
-			}
-			prompt += fmt.Sprintf("\n- [%s] %s (截止: %s)", strings.ToUpper(task.Priority[:1]), task.Title, dueStr)
-		}
-		if len(pendingTasks) >= 5 {
-			prompt += "\n- ... 还有更多未显示"
-		}
-	}
-
-	// 4. 相关文档和知识库
-	knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(groupName)
-	if knowledgeCtx != "" {
-		prompt += "\n\n📚 群组相关文档：\n" + knowledgeCtx
-	}
-
-	// 5. 系统状态和指标
-	var totalMessages int64
-	db.Model(&model.Message{}).Where("conversation_id = ?", conversationID).Count(&totalMessages)
-	var onlineUsers int64
-	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", conversationID).Count(&onlineUsers)
-
-	prompt += fmt.Sprintf("\n\n📊 当前群状态：")
-	prompt += fmt.Sprintf("\n- 总消息数：%d", totalMessages)
-	prompt += fmt.Sprintf("\n- 成员数：%d", onlineUsers)
-
-	prompt += `\n\n回复规则：
-- 优先使用知识库中的内容回答
-- 如果知识库中有相关内容，基于该内容给出准确答案
-- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明"以下回答基于通用知识，建议核实"
-- 回答要简洁、专业、准确
-- 使用中文回复，除非用户用其他语言
-- 如果是管理员提问，可以提供更详细的管理操作建议`
-
-	return prompt
+	log.Printf("[SmartReply] 已发送智能回复到会话 %d", conversationID)
 }
 
 func min(a, b int) int {
@@ -330,12 +203,22 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		return
 	}
 
+	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)
+	if ctx == nil {
+		log.Printf("[SmartReply] 构建提示词上下文失败")
+		return
+	}
+
+	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
+
+	if e.knowledgeSvc != nil {
+		knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(question)
+		if knowledgeCtx != "" {
+			systemPrompt += "\n\n" + knowledgeCtx
+		}
+	}
+
 	db := database.GetDB()
-
-	// 构建系统提示
-	systemPrompt := e.buildSystemPrompt(conversationID, conv, userID)
-
-	// 获取最近消息作为上下文(最近 15 条)
 	var recentMessages []model.Message
 	db.Where("conversation_id = ?", conversationID).
 		Preload("Sender").
@@ -343,12 +226,10 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		Limit(15).
 		Find(&recentMessages)
 
-	// 反转消息顺序(按时间正序)
 	for i, j := 0, len(recentMessages)-1; i < j; i, j = i+1, j-1 {
 		recentMessages[i], recentMessages[j] = recentMessages[j], recentMessages[i]
 	}
 
-	// 构建消息列表
 	var messages []ai.Message
 	messages = append(messages, ai.Message{Role: "system", Content: systemPrompt})
 
@@ -363,10 +244,8 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		})
 	}
 
-	// 添加用户问题
 	messages = append(messages, ai.Message{Role: "user", Content: fmt.Sprintf("[用户提问]: %s", question)})
 
-	// 调用 AI
 	var reply string
 	var err error
 
@@ -382,46 +261,15 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		return
 	}
 
-	// 过滤输出长度
 	reply = e.aiService.FilterOutput(reply, "ai_reply")
 
-	// 创建 AI 回复消息
-	aiMessage := model.Message{
-		ConversationID: conversationID,
-		SenderID:       0, // 0 表示 AI/系统
-		Type:           "text",
-		Content:        reply,
-		IsRead:         false,
-	}
-
-	if err := db.Create(&aiMessage).Error; err != nil {
-		log.Printf("[SmartReply] 保存 AI 回复失败: %v", err)
+	err = e.messageSender.SendAIMessage(conversationID, reply, assistantName)
+	if err != nil {
+		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
 		return
 	}
 
-	// 通过 WebSocket 推送消息
-	if ws.GlobalHub != nil {
-		msgData := gin.H{
-			"id":                aiMessage.ID,
-			"conversation_id":   conversationID,
-			"sender_id":         0,
-			"type":              "text",
-			"content":           reply,
-			"is_ai_message":     true,
-			"ai_assistant_name": assistantName,
-			"created_at":        aiMessage.CreatedAt,
-		}
-
-		wsMsg := ws.WSMessage{
-			Type: "new_message",
-			Data: msgData,
-		}
-
-		jsonMsg, _ := json.Marshal(wsMsg)
-		ws.GlobalHub.SendToConversation(conversationID, 0, jsonMsg)
-	}
-
-	log.Printf("[SmartReply] @AI 回复已发送,消息ID=%d", aiMessage.ID)
+	log.Printf("[SmartReply] @AI 回复已发送，消息ID已记录")
 }
 
 // GroupSummaryJob 群聊总结定时任务

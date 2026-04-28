@@ -100,9 +100,11 @@ function createWindow() {
     height: 800,
     icon: icon,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
     },
-    sandbox: false,
     frame: false,
     titleBarStyle: 'customButtonsOnHover',
     titleBarOverlay: {
@@ -204,6 +206,36 @@ function createWindow() {
 
     console.log('[screenshot] Instance created successfully')
     
+    // 后台预初始化截图功能，避免第一次调用时卡顿
+    // 原理：首次 startCapture() 会创建窗口并进入 Kiosk 模式
+    // 我们监听窗口 show 事件，在显示瞬间就隐藏，用户不会感知
+    // 然后 endCapture() 会 hide() 窗口（singleWindow: true）
+    // 后续用户调用截图时，窗口已预热好，直接 show() 即可
+    let preheatDone = false
+    const onShowForPreheat = () => {
+      if (!preheatDone && screenshotInstance && screenshotInstance.$win) {
+        preheatDone = true
+        // 窗口一显示就隐藏，用户不会看到任何闪烁
+        screenshotInstance.$win.hide()
+        // 立即结束这次截图，让窗口回到隐藏状态
+        setTimeout(() => {
+          screenshotInstance.endCapture()
+          console.log('[screenshot] Pre-initialization completed')
+        }, 50)
+      }
+    }
+    
+    screenshotInstance.on('windowCreated', (win) => {
+      win.on('show', onShowForPreheat)
+    })
+    
+    setTimeout(() => {
+      if (screenshotInstance && !preheatDone) {
+        // 启动一次截图用于预热，窗口会在显示后立即被隐藏
+        screenshotInstance.startCapture()
+      }
+    }, 1000)
+    
     // 注册截图快捷键
     globalShortcut.register('CommandOrControl+Shift+A', () => {
       console.log('Global shortcut: CommandOrControl+Shift+A pressed, starting screenshot')
@@ -290,7 +322,10 @@ function createWindow() {
     if (isTrayFlashing) return
 
     isTrayFlashing = true
-    normalTrayIcon = tray.getImage()
+    // 使用 loadIcon 获取默认图标，而不是 tray.getImage()（Electron Tray 没有此方法）
+    if (!normalTrayIcon) {
+      normalTrayIcon = loadIcon(22)
+    }
     let flashCount = 0
     const maxFlashCount = 20
 
@@ -306,13 +341,15 @@ function createWindow() {
         return
       }
 
+      // 闪烁效果：交替设置空图标和正常图标
       if (flashCount % 2 === 0) {
         if (normalTrayIcon) {
           tray.setImage(normalTrayIcon)
         }
       } else {
-        // 可以创建一个带有徽章的图标，但为了简单，这里我们切换到一个视觉上有区别的状态
-        tray.setImage(normalTrayIcon)
+        // 创建一个空/透明图标实现闪烁效果
+        const emptyImage = nativeImage.createEmpty()
+        tray.setImage(emptyImage)
       }
     }, 500)
   })

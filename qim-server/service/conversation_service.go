@@ -131,9 +131,7 @@ func (s *ConversationService) CreateSingleConversation(userID1, userID2 uint) (*
 		}
 
 		conv := model.Conversation{
-			Type:   "single",
-			Name:   targetUser.Nickname + "（自己）",
-			Avatar: targetUser.Avatar,
+			Type: "single",
 		}
 		if err := db.Create(&conv).Error; err != nil {
 			return nil, err
@@ -153,9 +151,7 @@ func (s *ConversationService) CreateSingleConversation(userID1, userID2 uint) (*
 	}
 
 	conv := model.Conversation{
-		Type:   "single",
-		Name:   targetUser.Nickname,
-		Avatar: targetUser.Avatar,
+		Type: "single",
 	}
 	if err := db.Create(&conv).Error; err != nil {
 		return nil, err
@@ -176,12 +172,23 @@ func (s *ConversationService) CreateGroupConversation(name string, creatorID uin
 	db := database.GetDB()
 
 	conv := model.Conversation{
-		Type:      "group",
-		Name:      name,
-		Avatar:    avatar,
-		CreatorID: creatorID,
+		Type: "group",
 	}
 	if err := db.Create(&conv).Error; err != nil {
+		return nil, err
+	}
+
+	// 创建群聊记录
+	group := model.Group{
+		ConversationID:   conv.ID,
+		GroupType:        "group",
+		Name:             name,
+		Avatar:           avatar,
+		CreatorID:        creatorID,
+		InvitePermission: "owner_admin",
+		AIEnabled:        false,
+	}
+	if err := db.Create(&group).Error; err != nil {
 		return nil, err
 	}
 
@@ -205,12 +212,23 @@ func (s *ConversationService) CreateDiscussionConversation(name string, creatorI
 	db := database.GetDB()
 
 	conv := model.Conversation{
-		Type:      "discussion",
-		Name:      name,
-		Avatar:    avatar,
-		CreatorID: creatorID,
+		Type: "discussion",
 	}
 	if err := db.Create(&conv).Error; err != nil {
+		return nil, err
+	}
+
+	// 创建群聊记录
+	group := model.Group{
+		ConversationID:   conv.ID,
+		GroupType:        "discussion",
+		Name:             name,
+		Avatar:           avatar,
+		CreatorID:        creatorID,
+		InvitePermission: "owner_admin",
+		AIEnabled:        false,
+	}
+	if err := db.Create(&group).Error; err != nil {
 		return nil, err
 	}
 
@@ -267,12 +285,21 @@ func (s *ConversationService) DeleteConversation(convID, userID uint) error {
 
 	tx := db.Begin()
 
+	// 获取群聊信息并更新
+	var group model.Group
+	if err := tx.Where("conversation_id = ?", convID).First(&group).Error; err == nil {
+		group.Name = "[已解散] " + group.Name
+		if err := tx.Save(&group).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
 	if err := tx.Where("conversation_id = ?", convID).Delete(&model.ConversationMember{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	conv.Name = "[已解散] " + conv.Name
 	conv.IsDeleted = true
 	if err := tx.Save(&conv).Error; err != nil {
 		tx.Rollback()

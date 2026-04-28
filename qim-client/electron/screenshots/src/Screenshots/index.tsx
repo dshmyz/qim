@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactElement } from 'react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import composeImage from './composeImage';
 import './icons/iconfont.less';
 import './screenshots.less';
@@ -42,7 +42,8 @@ export default function Screenshots({
   const [cursor, setCursor] = useState<string | undefined>('move');
   const [operation, setOperation] = useState<string | undefined>(undefined);
 
-  const store = {
+  // 使用 useMemo 稳定 store 引用，避免子组件不必要的重渲染
+  const store = useMemo(() => ({
     url,
     width,
     height,
@@ -57,7 +58,7 @@ export default function Screenshots({
     bounds,
     cursor,
     operation,
-  };
+  }), [url, width, height, image, lang, history, bounds, cursor, operation]);
 
   const call = useCallback(
     <T extends unknown[]>(funcName: string, ...args: T) => {
@@ -69,13 +70,13 @@ export default function Screenshots({
     [],
   );
 
-  const dispatcher = {
+  const dispatcher = useMemo(() => ({
     call,
     setHistory,
     setBounds,
     setCursor,
     setOperation,
-  };
+  }), [call]);
 
   const classNames = ['screenshots'];
 

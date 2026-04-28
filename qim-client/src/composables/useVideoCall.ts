@@ -174,7 +174,8 @@ export function useVideoCall() {
 
   // 处理呼叫邀请
   const handleIncomingCallInvite = async (data: {
-    target_user_id: string
+    from_user_id?: number
+    target_user_id?: string
     call_type: CallType
     signal: RTCSessionDescriptionInit
     user_info?: RemoteUser
@@ -182,18 +183,13 @@ export function useVideoCall() {
     try {
       console.log('收到呼叫邀请:', data)
 
+      const senderId = data.from_user_id?.toString() || data.target_user_id || ''
+
       // 从缓存或数据中获取用户信息
-      let userInfo = getUserInfo(data.target_user_id)
+      let userInfo = getUserInfo(senderId)
       if (!userInfo && data.user_info) {
         userInfo = data.user_info
-        setUserInfo(data.target_user_id, userInfo)
-      }
-
-      // 设置来电信息
-      incomingCall.value = {
-        userId: data.target_user_id,
-        callType: data.call_type,
-        signal: data.signal
+        setUserInfo(senderId, userInfo)
       }
 
       // 设置远程用户信息
@@ -207,17 +203,30 @@ export function useVideoCall() {
 
       // 处理收到的 offer（作为被叫方）
       await videoCallManager.handleIncomingCall({
-        target_user_id: data.target_user_id,
+        target_user_id: senderId,
         call_type: data.call_type,
         signal: data.signal
       })
+
+      // 只有在成功设置远程描述后才显示来电 UI
+      callStatus.value = 'ringing'
+      incomingCall.value = {
+        userId: senderId,
+        callType: data.call_type,
+        signal: data.signal
+      }
+
+      console.log('呼叫邀请处理成功，显示来电 UI')
     } catch (error) {
       console.error('处理呼叫邀请失败:', error)
+      // 失败时重置状态
+      callStatus.value = 'idle'
+      incomingCall.value = null
     }
   }
 
   // 处理对方接听
-  const handleCallAccept = async (data: { target_user_id: string; signal: RTCSessionDescriptionInit }) => {
+  const handleCallAccept = async (data: { from_user_id?: number; target_user_id?: string; signal: RTCSessionDescriptionInit }) => {
     try {
       console.log('对方接听:', data)
 
@@ -231,7 +240,7 @@ export function useVideoCall() {
   }
 
   // 处理对方拒绝
-  const handleCallReject = (data: { target_user_id: string }) => {
+  const handleCallReject = (data: { from_user_id?: number; target_user_id?: string }) => {
     console.log('对方拒绝通话:', data)
     videoCallManager.cleanup()
     callStatus.value = 'ended'
@@ -240,7 +249,7 @@ export function useVideoCall() {
   }
 
   // 处理对方结束通话
-  const handleCallEnd = (data: { target_user_id: string }) => {
+  const handleCallEnd = (data: { from_user_id?: number; target_user_id?: string }) => {
     console.log('对方结束通话:', data)
     videoCallManager.handleRemoteEndCall()
   }

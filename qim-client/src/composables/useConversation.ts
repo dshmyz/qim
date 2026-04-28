@@ -269,7 +269,14 @@ export function useConversation() {
   }
 
   /**
-   * 重置状态
+   * 设置当前会话 ID
+   */
+  const setCurrentConversationId = (id: string | null) => {
+    currentConversationId.value = id
+  }
+
+  /**
+   * 重置所有状态
    */
   const resetState = () => {
     currentConversationId.value = null
@@ -316,6 +323,7 @@ export function useConversation() {
     loadGroups,
     loadConversations,
     searchConversations,
+    setCurrentConversationId,
     resetState
   }
 }

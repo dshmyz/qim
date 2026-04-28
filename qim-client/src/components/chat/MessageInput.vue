@@ -5,11 +5,14 @@
       <button class="toolbar-btn" @click="$emit('start-video-call')"><i class="fas fa-video"></i></button>
       <button class="toolbar-btn" @click="$emit('start-screen-share')"><i class="fas fa-desktop"></i></button>
       <button class="toolbar-btn" @click="$emit('toggle-emoji-panel')"><i class="fas fa-smile"></i></button>
-      <button class="toolbar-btn" @click="$emit('select-file')"><i class="fas fa-paperclip"></i></button>
+      <button class="toolbar-btn" @click="handleSelectFile"><i class="fas fa-paperclip"></i></button>
       <button class="toolbar-btn" @click="$emit('select-image')"><i class="fas fa-image"></i></button>
       <button v-if="isElectron" class="toolbar-btn" @click="$emit('take-screenshot')"><i class="fas fa-scissors"></i></button>
       <button class="toolbar-btn" @click="$emit('open-message-manager')"><i class="fas fa-history"></i></button>
       <button class="toolbar-btn" @click="$emit('open-mini-app-list')"><i class="fas fa-th-large"></i></button>
+      <button class="toolbar-btn ai-btn" @click="$emit('open-ai-assistant')" title="AI 助手">
+        <span class="ai-icon">🤖</span>
+      </button>
     </div>
     
     <div v-if="showEmojiPanel" class="emoji-panel-container">
@@ -42,12 +45,6 @@
     
     <input type="file" ref="fileInputRef" style="display: none" @change="$emit('handle-file-select', $event)" multiple />
 
-    <div v-if="showSearch" class="search-container">
-      <input v-model="searchQueryLocal" type="text" placeholder="搜索历史消息..." class="search-input" @keyup.enter="$emit('perform-search')" />
-      <button class="search-btn" @click="$emit('perform-search')">搜索</button>
-      <button class="close-search-btn" @click="$emit('close-search')">×</button>
-    </div>
-    
     <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="$emit('remove-quoted-message')" />
 
     <div v-if="pendingFiles.length > 0" class="pending-files">
@@ -84,8 +81,6 @@ interface Props {
   showEmojiPanel: boolean
   showAtMembersPanel: boolean
   showMiniAppList: boolean
-  showSearch: boolean
-  searchQuery: string
   quotedMessage: any
   isElectron: boolean
   getFileIcon: (fileUrl: string) => string
@@ -107,6 +102,7 @@ const emit = defineEmits<{
   (e: 'start-screen-share'): void
   (e: 'insert-emoji', emoji: string): void
   (e: 'close-at-members-panel'): void
+  (e: 'open-ai-assistant'): void
   (e: 'select-at-member', member: Member): void
   (e: 'select-at-all'): void
   (e: 'handle-file-select', event: Event): void
@@ -114,10 +110,7 @@ const emit = defineEmits<{
   (e: 'handle-keydown', event: KeyboardEvent): void
   (e: 'remove-pending-file', index: number): void
   (e: 'remove-quoted-message'): void
-  (e: 'perform-search'): void
-  (e: 'close-search'): void
   (e: 'send-mini-app-message', miniApp: any): void
-  (e: 'update:searchQuery', value: string): void
   (e: 'update:showMiniAppList', value: boolean): void
   (e: 'input', event: Event): void
 }>()
@@ -127,7 +120,6 @@ const messageInputRef = ref<HTMLTextAreaElement | null>(null)
 const atMembersSearchQuery = ref('')
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
-const searchQueryLocal = computed({ get: () => props.searchQuery, set: (val) => emit('update:searchQuery', val) })
 
 const filteredAtMembers = computed(() => {
   if (!props.conversation) return []
@@ -138,6 +130,10 @@ const filteredAtMembers = computed(() => {
 
 const handleEmojiSelect = (emoji: string) => {
   emit('insert-emoji', emoji)
+}
+
+const handleSelectFile = () => {
+  fileInputRef.value?.click()
 }
 
 const handleInputAndResize = (event: Event) => {
@@ -188,6 +184,19 @@ defineExpose({ messageInputRef })
 
 .toolbar-btn:hover {
   background: var(--hover-color);
+}
+
+/* AI 助手按钮 */
+.ai-btn {
+  position: relative;
+}
+
+.ai-btn .ai-icon {
+  font-size: 16px;
+}
+
+.ai-btn:hover {
+  background: rgba(14, 165, 233, 0.15);
 }
 
 /* 表情面板容器样式 */
@@ -415,66 +424,6 @@ defineExpose({ messageInputRef })
   font-size: 14px;
 }
 
-/* 搜索相关样式 */
-.search-container {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-  margin-bottom: 12px;
-  gap: 8px;
-  background: var(--sidebar-bg);
-  padding: 8px 12px;
-  border-radius: 8px;
-}
-
-.search-input {
-  flex: 1;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  outline: none;
-  background: var(--sidebar-bg);
-  color: var(--text-color);
-}
-
-.search-input:focus {
-  border-color: var(--primary-color);
-}
-
-.search-btn {
-  padding: 6px 16px;
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.search-btn:hover {
-  opacity: 0.9;
-}
-
-.close-search-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.close-search-btn:hover {
-  background: var(--hover-color);
-}
-
 /* 待发送文件样式 */
 .pending-files {
   display: flex;
@@ -558,16 +507,6 @@ defineExpose({ messageInputRef })
   background: var(--sidebar-bg) !important;
   border: 1px solid var(--border-color) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-}
-
-[data-theme="dark"] .search-container {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .search-input {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
 }
 
 /* 炫酷黑主题 - 发送按钮样式 */

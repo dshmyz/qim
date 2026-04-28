@@ -1025,12 +1025,508 @@ class ScreenShareReceiver {
   }
 }
 
+// WebRTC 视频通话工具类
+
+class VideoCallSender {
+  constructor() {
+    this.peerConnection = null;
+    this.localStream = null;
+    this.isCalling = false;
+    this.receiverId = null;
+    this.enableDirectConnect = true;
+    this.onAnswered = null;
+    this.onHangup = null;
+    this.onError = null;
+  }
+
+  async startVideoCall(receiverId, { video = true, audio = true } = {}) {
+    try {
+      this.receiverId = receiverId;
+
+      logger.log('检查浏览器支持...');
+      logger.log('navigator.mediaDevices:', navigator.mediaDevices);
+      logger.log('navigator.mediaDevices.getUserMedia:', navigator.mediaDevices?.getUserMedia);
+      logger.log('window.RTCPeerConnection:', window.RTCPeerConnection);
+      
+      if (!navigator.mediaDevices) {
+        throw new Error('浏览器不支持媒体设备 API');
+      }
+      
+      if (!navigator.mediaDevices.getUserMedia) {
+        throw new Error('浏览器不支持 getUserMedia API');
+      }
+      
+      if (!window.RTCPeerConnection) {
+        throw new Error('浏览器不支持 WebRTC API');
+      }
+
+      logger.log('获取本地媒体流...');
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          video,
+          audio
+        });
+        logger.log('本地媒体流获取成功');
+      } catch (error) {
+        console.error('获取本地媒体流失败:', error);
+        if (error.name === 'NotAllowedError') {
+          throw new Error('用户拒绝了摄像头或麦克风权限');
+        } else if (error.name === 'NotFoundError') {
+          throw new Error('未找到摄像头或麦克风设备');
+        } else {
+          throw error;
+        }
+      }
+
+      logger.log('创建 RTCPeerConnection...');
+      const peerConfig = this.getPeerConfig();
+      this.peerConnection = new RTCPeerConnection(peerConfig);
+
+      logger.log('添加本地轨道到连接...');
+      const tracks = this.localStream.getTracks();
+      tracks.forEach(track => {
+        this.peerConnection.addTrack(track, this.localStream);
+      });
+
+      this.setupPeerConnectionHandlers(receiverId);
+
+      logger.log('生成 offer...');
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+
+      logger.log('发送 offer 到接收方...');
+      await this.sendSignalingMessage('webrtc_offer', {
+        target_user_id: receiverId,
+        signal: offer,
+        call_type: video ? 'video' : 'audio'
+      });
+
+      this.isCalling = true;
+      logger.log('视频通话已开始');
+      return true;
+    } catch (error) {
+      console.error('开始视频通话失败:', error);
+      this.cleanup();
+      if (this.onError) {
+        this.onError(error.message || '通话失败');
+      }
+      throw error;
+    }
+  }
+
+  async handleAnswer(answer) {
+    try {
+      if (this.peerConnection) {
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        logger.log('远程描述设置成功');
+      }
+    } catch (error) {
+      console.error('处理 answer 失败:', error);
+      throw error;
+    }
+  }
+
+  addIceCandidate(candidate) {
+    try {
+      if (this.peerConnection && candidate?.candidate && this.peerConnection.remoteDescription) {
+        const iceCandidate = new RTCIceCandidate({
+          candidate: candidate.candidate,
+          sdpMid: candidate.sdpMid || '',
+          sdpMLineIndex: candidate.sdpMLineIndex || 0
+        });
+        this.peerConnection.addIceCandidate(iceCandidate);
+        logger.log('ICE 候选者添加成功');
+      }
+    } catch (error) {
+      console.error('添加 ICE 候选者失败:', error);
+    }
+  }
+
+  hangup() {
+    this.sendSignalingMessage('webrtc_hangup', {
+      target_user_id: this.receiverId
+    }).catch(() => {});
+    this.cleanup();
+  }
+
+  cleanup() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream = null;
+    }
+
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
+    }
+
+    this.isCalling = false;
+    this.receiverId = null;
+    logger.log('通话已清理');
+  }
+
+  getPeerConfig() {
+    const portRangeBegin = 60443;
+    const portRangeEnd = 60443;
+    
+    if (this.enableDirectConnect) {
+      return {
+        iceCandidatePortRange: { min: portRangeBegin, max: portRangeEnd },
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 10
+      };
+    } else {
+      return {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 10,
+        iceCandidatePortRange: { min: portRangeBegin, max: portRangeEnd }
+      };
+    }
+  }
+
+  setupPeerConnectionHandlers(receiverId) {
+    this.peerConnection.onicecandidate = async (event) => {
+      if (event.candidate) {
+        await this.sendSignalingMessage('webrtc_ice_candidate', {
+          target_user_id: receiverId,
+          signal: event.candidate
+        });
+      }
+    };
+
+    this.peerConnection.oniceconnectionstatechange = () => {
+      const state = this.peerConnection.iceConnectionState;
+      logger.log('ICE 连接状态变化:', state);
+      
+      if (this.enableDirectConnect && (state === 'failed' || state === 'disconnected')) {
+        logger.log('直连失败，尝试使用 ICE 服务器...');
+        this.enableDirectConnect = false;
+      }
+    };
+
+    this.peerConnection.onconnectionstatechange = () => {
+      const state = this.peerConnection.connectionState;
+      logger.log('连接状态变化:', state);
+      
+      if (state === 'connected') {
+        logger.log('WebRTC 连接已建立');
+        if (this.onAnswered) {
+          this.onAnswered();
+        }
+      } else if (state === 'disconnected' || state === 'failed') {
+        logger.log('WebRTC 连接已断开');
+        this.cleanup();
+        if (this.onHangup) {
+          this.onHangup();
+        }
+      }
+    };
+  }
+
+  async sendSignalingMessage(type, data) {
+    try {
+      if (typeof window !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify({ type, data }));
+        logger.log(`${type} 发送成功`);
+      } else if (window.electron && window.electron.websocket) {
+        window.electron.websocket.send({ type, data });
+        logger.log(`${type} 发送成功（通过 IPC）`);
+      } else {
+        throw new Error('WebSocket 连接不可用');
+      }
+    } catch (error) {
+      console.error(`发送 ${type} 失败:`, error);
+      throw error;
+    }
+  }
+
+  getIsCalling() {
+    return this.isCalling;
+  }
+
+  getLocalStream() {
+    return this.localStream;
+  }
+
+  setCallbacks(callbacks) {
+    if (callbacks.onAnswered) this.onAnswered = callbacks.onAnswered;
+    if (callbacks.onHangup) this.onHangup = callbacks.onHangup;
+    if (callbacks.onError) this.onError = callbacks.onError;
+  }
+}
+
+class VideoCallReceiver {
+  constructor() {
+    this.peerConnection = null;
+    this.localStream = null;
+    this.remoteStream = null;
+    this.senderId = null;
+    this.enableDirectConnect = true;
+    this.iceCandidateCache = [];
+    this.onStreamReceived = null;
+    this.onCallReceived = null;
+    this.onHangup = null;
+    this.onError = null;
+  }
+
+  async handleOffer(offer, senderId, callType = 'video') {
+    try {
+      this.senderId = senderId;
+      logger.log('处理 offer，发送者 ID:', senderId);
+
+      logger.log('获取本地媒体流...');
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          video: callType === 'video',
+          audio: true
+        });
+        logger.log('本地媒体流获取成功');
+      } catch (error) {
+        console.error('获取本地媒体流失败:', error);
+        if (error.name === 'NotAllowedError') {
+          throw new Error('用户拒绝了摄像头或麦克风权限');
+        } else if (error.name === 'NotFoundError') {
+          throw new Error('未找到摄像头或麦克风设备');
+        } else {
+          throw error;
+        }
+      }
+
+      logger.log('创建 RTCPeerConnection...');
+      const peerConfig = this.getPeerConfig();
+      this.peerConnection = new RTCPeerConnection(peerConfig);
+
+      logger.log('添加本地轨道到连接...');
+      const tracks = this.localStream.getTracks();
+      tracks.forEach(track => {
+        this.peerConnection.addTrack(track, this.localStream);
+      });
+
+      this.setupPeerConnectionHandlers(senderId);
+
+      this.peerConnection.ontrack = (event) => {
+        logger.log('收到远程流事件');
+        if (event.streams && event.streams.length > 0) {
+          this.remoteStream = event.streams[0];
+          if (this.onStreamReceived) {
+            this.onStreamReceived(this.remoteStream);
+          }
+        }
+      };
+
+      logger.log('设置远程描述...');
+      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      this.flushIceCandidates();
+
+      logger.log('生成 answer...');
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+
+      logger.log('发送 answer 到发送方...');
+      await this.sendSignalingMessage('webrtc_answer', {
+        target_user_id: senderId,
+        signal: answer
+      });
+
+      logger.log('视频通话连接已建立');
+      return true;
+    } catch (error) {
+      console.error('处理视频通话 offer 失败:', error);
+      if (this.onError) {
+        this.onError(error.message || '接听失败');
+      }
+      throw error;
+    }
+  }
+
+  addIceCandidate(candidate) {
+    try {
+      if (this.peerConnection && candidate?.candidate) {
+        if (this.peerConnection.remoteDescription) {
+          const iceCandidate = new RTCIceCandidate({
+            candidate: candidate.candidate,
+            sdpMid: candidate.sdpMid || '',
+            sdpMLineIndex: candidate.sdpMLineIndex || 0
+          });
+          this.peerConnection.addIceCandidate(iceCandidate);
+          logger.log('ICE 候选者添加成功');
+        } else {
+          logger.log('远程描述未设置，缓存 ICE 候选者');
+          this.iceCandidateCache.push(candidate);
+        }
+      }
+    } catch (error) {
+      console.error('添加 ICE 候选者失败:', error);
+    }
+  }
+
+  flushIceCandidates() {
+    if (this.peerConnection && this.peerConnection.remoteDescription) {
+      logger.log('刷新缓存的 ICE 候选者，数量:', this.iceCandidateCache.length);
+      while (this.iceCandidateCache.length > 0) {
+        const candidate = this.iceCandidateCache.shift();
+        try {
+          const iceCandidate = new RTCIceCandidate({
+            candidate: candidate.candidate,
+            sdpMid: candidate.sdpMid || '',
+            sdpMLineIndex: candidate.sdpMLineIndex || 0
+          });
+          this.peerConnection.addIceCandidate(iceCandidate);
+          logger.log('缓存的 ICE 候选者添加成功');
+        } catch (error) {
+          console.error('添加缓存的 ICE 候选者失败:', error);
+        }
+      }
+    }
+  }
+
+  async acceptCall() {
+    logger.log('接听通话');
+    // 实际的接听逻辑在 handleOffer 中已完成
+    // 这里发送接听确认
+    await this.sendSignalingMessage('webrtc_call_accepted', {
+      target_user_id: this.senderId
+    }).catch(() => {});
+  }
+
+  rejectCall() {
+    logger.log('拒绝通话');
+    this.sendSignalingMessage('webrtc_call_rejected', {
+      target_user_id: this.senderId
+    }).catch(() => {});
+    this.cleanup();
+  }
+
+  hangup() {
+    this.sendSignalingMessage('webrtc_hangup', {
+      target_user_id: this.senderId
+    }).catch(() => {});
+    this.cleanup();
+  }
+
+  cleanup() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream = null;
+    }
+
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
+    }
+
+    this.remoteStream = null;
+    this.senderId = null;
+    this.iceCandidateCache = [];
+    logger.log('通话已清理');
+  }
+
+  getPeerConfig() {
+    const portRangeBegin = 60443;
+    const portRangeEnd = 60443;
+    
+    if (this.enableDirectConnect) {
+      return {
+        iceCandidatePortRange: { min: portRangeBegin, max: portRangeEnd },
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 10
+      };
+    } else {
+      return {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 10,
+        iceCandidatePortRange: { min: portRangeBegin, max: portRangeEnd }
+      };
+    }
+  }
+
+  setupPeerConnectionHandlers(senderId) {
+    this.peerConnection.onicecandidate = async (event) => {
+      if (event.candidate) {
+        await this.sendSignalingMessage('webrtc_ice_candidate', {
+          target_user_id: senderId,
+          signal: event.candidate
+        });
+      }
+    };
+
+    this.peerConnection.oniceconnectionstatechange = () => {
+      const state = this.peerConnection.iceConnectionState;
+      logger.log('ICE 连接状态变化:', state);
+      
+      if (this.enableDirectConnect && (state === 'failed' || state === 'disconnected')) {
+        logger.log('直连失败，尝试使用 ICE 服务器...');
+        this.enableDirectConnect = false;
+      }
+    };
+
+    this.peerConnection.onconnectionstatechange = () => {
+      const state = this.peerConnection.connectionState;
+      logger.log('连接状态变化:', state);
+      
+      if (state === 'disconnected' || state === 'failed') {
+        logger.log('WebRTC 连接已断开');
+        this.cleanup();
+        if (this.onHangup) {
+          this.onHangup();
+        }
+      }
+    };
+  }
+
+  async sendSignalingMessage(type, data) {
+    try {
+      if (typeof window !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify({ type, data }));
+        logger.log(`${type} 发送成功`);
+      } else if (window.electron && window.electron.websocket) {
+        window.electron.websocket.send({ type, data });
+        logger.log(`${type} 发送成功（通过 IPC）`);
+      } else {
+        throw new Error('WebSocket 连接不可用');
+      }
+    } catch (error) {
+      console.error(`发送 ${type} 失败:`, error);
+      throw error;
+    }
+  }
+
+  setCallbacks(callbacks) {
+    if (callbacks.onStreamReceived) this.onStreamReceived = callbacks.onStreamReceived;
+    if (callbacks.onCallReceived) this.onCallReceived = callbacks.onCallReceived;
+    if (callbacks.onHangup) this.onHangup = callbacks.onHangup;
+    if (callbacks.onError) this.onError = callbacks.onError;
+  }
+
+  getLocalStream() {
+    return this.localStream;
+  }
+
+  getRemoteStream() {
+    return this.remoteStream;
+  }
+}
+
 // 导出单例实例
 const screenShareSender = new ScreenShareSender();
 const screenShareReceiver = new ScreenShareReceiver();
+const videoCallSender = new VideoCallSender();
+const videoCallReceiver = new VideoCallReceiver();
 
-export { screenShareSender, screenShareReceiver };
+export { screenShareSender, screenShareReceiver, videoCallSender, videoCallReceiver };
 export default {
   screenShareSender,
-  screenShareReceiver
+  screenShareReceiver,
+  videoCallSender,
+  videoCallReceiver
 };

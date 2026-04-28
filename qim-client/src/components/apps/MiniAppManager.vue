@@ -32,6 +32,7 @@
   <MiniAppLoader
     :mini-app="activeMiniApp"
     @close="activeMiniApp = null"
+    @show-toast="handleMiniAppToast"
   />
 </template>
 
@@ -40,6 +41,9 @@ import { ref, onMounted } from 'vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { API_BASE_URL } from '../../config'
+import { useChatState } from '../../composables/useChatState'
+
+const { $message } = useChatState()
 
 const props = defineProps<{
   showMiniAppList: boolean
@@ -70,6 +74,10 @@ const sendMiniAppMessage = (miniApp: MiniAppData) => {
   closeMiniAppList()
 }
 
+const handleMiniAppToast = (message: string) => {
+  $message.info(message)
+}
+
 const loadMiniApps = async () => {
   loading.value = true
   try {
@@ -98,6 +106,7 @@ const loadMiniApps = async () => {
         path: item.path,
         description: item.description || '',
         status: item.status,
+        permissions: item.permissions || '',
       }))
     }
   } catch (error) {

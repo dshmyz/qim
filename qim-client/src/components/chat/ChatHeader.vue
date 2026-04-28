@@ -3,7 +3,7 @@
     <div class="header-info">
       <img :src="avatarUrl" :alt="displayName" class="header-avatar" />
       <div class="header-text">
-        <div class="header-name" @dblclick="handleNameDoubleClick">{{ displayName }}</div>
+        <div class="header-name">{{ displayName }}</div>
         <div class="header-status">
           <template v-if="isGroupOrDiscussion">
             {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
@@ -43,8 +43,8 @@
       v-model:editAnnouncement="editAnnouncement"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
-      @save-group-info="emit('save-group-info')"
-      @save-group-announcement="emit('save-group-announcement')"
+      @save-group-info="(name: string) => emit('save-group-info', name)"
+      @save-group-announcement="(announcement: string) => emit('save-group-announcement', announcement)"
       @switch-conversation="(id: string) => emit('switch-conversation', id)"
       @show-user-profile="(user: any) => emit('show-user-profile', user)"
       @remove-member="(id: string, name: string) => emit('remove-member', id, name)"
@@ -71,15 +71,19 @@ interface Props {
 interface Emits {
   (e: 'invite-members'): void
   (e: 'delete-group'): void
-  (e: 'save-group-info'): void
-  (e: 'save-group-announcement'): void
+  (e: 'save-group-info', name: string): void
+  (e: 'save-group-announcement', announcement: string): void
   (e: 'switch-conversation', id: string): void
   (e: 'show-user-profile', user: any): void
   (e: 'remove-member', id: string, name: string): void
   (e: 'set-admin', id: string, name: string, isAdmin: boolean): void
   (e: 'transfer-owner', id: string, name: string): void
   (e: 'start-private-chat', id: string): void
-  (e: 'edit-group-info'): void
+  (e: 'update:showHeaderMenu', value: boolean): void
+  (e: 'update:showEditGroupInfoModal', value: boolean): void
+  (e: 'update:showEditAnnouncementModal', value: boolean): void
+  (e: 'update:editGroupName', value: string): void
+  (e: 'update:editAnnouncement', value: string): void
 }
 
 const props = defineProps<Props>()
@@ -110,12 +114,6 @@ const avatarUrl = computed(() =>
     props.serverUrl
   )
 )
-
-const handleNameDoubleClick = () => {
-  if (isGroupOrDiscussion.value) {
-    emit('edit-group-info')
-  }
-}
 
 defineExpose({
   showHeaderMenu,
@@ -204,7 +202,6 @@ defineExpose({
   color: var(--text-color);
   opacity: 0.6;
   font-size: 12px;
-  font-style: italic;
   margin-left: 8px;
   max-width: 200px;
   overflow: hidden;

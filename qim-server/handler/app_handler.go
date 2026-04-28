@@ -222,6 +222,7 @@ func CreateMiniApp(c *gin.Context) {
 		Description string `json:"description"`
 		Icon        string `json:"icon"`
 		Path        string `json:"path"`
+		Permissions string `json:"permissions"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -245,6 +246,7 @@ func CreateMiniApp(c *gin.Context) {
 		Icon:        req.Icon,
 		Path:        req.Path,
 		Status:      "inactive",
+		Permissions: req.Permissions,
 	}
 
 	if err := db.Create(&miniApp).Error; err != nil {
@@ -267,6 +269,7 @@ func UpdateMiniApp(c *gin.Context) {
 		Icon        string `json:"icon"`
 		Path        string `json:"path"`
 		Status      string `json:"status"`
+		Permissions string `json:"permissions"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -295,6 +298,9 @@ func UpdateMiniApp(c *gin.Context) {
 	}
 	if req.Status != "" {
 		miniApp.Status = req.Status
+	}
+	if req.Permissions != "" {
+		miniApp.Permissions = req.Permissions
 	}
 
 	db.Save(&miniApp)

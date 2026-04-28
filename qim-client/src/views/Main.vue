@@ -335,8 +335,8 @@
     
     <!-- 用户信息弹窗 -->
     <UserProfile 
-      v-if="showUserProfile && selectedUser" 
-      :visible="showUserProfile && selectedUser" 
+      v-if="selectedUser"
+      :visible="showUserProfile" 
       :user="selectedUser" 
       @close="closeUserProfile"
       @send-private-message="startPrivateChat"
@@ -344,7 +344,6 @@
     
     <!-- 个人资料弹窗 -->
     <SelfProfileModal
-      v-if="showUserProfile && !selectedUser"
       :visible="showUserProfile && !selectedUser"
       :currentUser="currentUser"
       :serverUrl="serverUrl"
@@ -418,7 +417,7 @@
       :systemMessage="systemMessage"
       @closeAbout="closeAboutDialog"
       @cancelLogout="cancelLogout"
-      @confirmLogout="confirmLogout"
+      @confirmLogout="handleConfirmLogout"
       @closeUpdate="closeUpdateDialog"
       @downloadUpdate="downloadUpdate"
       @closeSystemMessage="closeSystemMessageModal"
@@ -439,7 +438,7 @@
     :advancedSettings="advancedSettings"
     :fileSettings="fileSettings"
     @close="closeSettingsModal"
-    @save="saveSettings"
+    @save="handleSaveSettings"
     @clearCache="clearCache"
     @saveTwoFactor="saveTwoFactorSetting"
     @openSecurity="openSecuritySettings"
@@ -448,7 +447,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, defineComponent, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import type { Conversation, Message, User } from '../types'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
@@ -504,6 +503,7 @@ import { useSettings } from '../composables/useSettings'
 import { useNetwork } from '../composables/useNetwork'
 import { useWebSocketManager } from '../composables/useWebSocketManager'
 import { useGroup } from '../composables/useGroup'
+import { useMessageActions } from '../composables/useMessageActions'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -769,7 +769,8 @@ const {
   loadGroups,
   loadConversations: loadConversationsFromApi,
   resetState: _resetConversationState,
-  updateConversations
+  updateConversations,
+  setCurrentConversationId
 } = conversation
 
 // 通知中心组件 ref
@@ -794,7 +795,7 @@ const handleNotificationClick = (notification: any) => {
   _handleNotificationClick(notification)
   if (notification.type === 'message' && notification.data?.conversationId) {
     activeOption.value = 'recent'
-    currentConversationId.value = notification.data.conversationId
+    setCurrentConversationId(notification.data.conversationId)
     loadMessages(notification.data.conversationId)
   } else if (notification.type === 'group' && notification.data?.groupId) {
     activeOption.value = 'groups'
@@ -1441,9 +1442,6 @@ const handleGroupAnnouncementUpdated = (data: any) => {
         isRead: true
       }
       messages.value.push(systemMessage)
-      
-      // 保存系统消息到本地存储
-      storage.saveMessages(conversationId, messages.value)
     }
   }
 }
@@ -1476,17 +1474,24 @@ const handleGroupOwnerTransferred = (data: any) => {
   if (conversationIndex !== -1) {
     const conversation = conversations.value[conversationIndex]
     if (conversation.members) {
-      // 更新旧群主的角色
-      const oldOwnerIndex = conversation.members.findIndex(m => m.id === data.old_owner_id.toString())
-      if (oldOwnerIndex !== -1) {
-        conversation.members[oldOwnerIndex].role = 'member'
+      // 创建新的成员数组，确保响应式更新
+      const updatedMembers = conversation.members.map(member => {
+        if (member.id === data.old_owner_id.toString()) {
+          return { ...member, role: 'member' }
+        }
+        if (member.id === data.new_owner_id.toString()) {
+          return { ...member, role: 'owner' }
+        }
+        return member
+      })
+      
+      // 创建新的会话对象
+      const updatedConversation = {
+        ...conversation,
+        members: updatedMembers
       }
-      // 更新新群主的角色
-      const newOwnerIndex = conversation.members.findIndex(m => m.id === data.new_owner_id.toString())
-      if (newOwnerIndex !== -1) {
-        conversation.members[newOwnerIndex].role = 'owner'
-      }
-      // 强制触发响应式更新
+      
+      conversations.value.splice(conversationIndex, 1, updatedConversation)
       conversations.value = [...conversations.value]
       // 保存会话到本地存储
       storage.saveConversations(conversations.value)
@@ -1497,26 +1502,26 @@ const handleGroupOwnerTransferred = (data: any) => {
 // 处理已读回执
 const handleReadReceipt = (data: any) => {
   const { conversation_id, user_id } = data
+  const convIdStr = conversation_id.toString()
   
-  // 只处理当前会话的已读回执
-  if (currentConversationId.value !== conversation_id.toString()) return
+  if (currentConversationId.value === convIdStr) {
+    messages.value = messages.value.map(msg => {
+      if (msg.isSelf) {
+        return { ...msg, isRead: true }
+      }
+      return msg
+    })
+    messages.value = [...messages.value]
+  }
   
-  // 每次收到已读回执都处理，不再检查重复
-  // 这样可以确保所有消息的已读状态都能正确更新
+  const conversationIndex = conversations.value.findIndex(c => c.id === convIdStr)
+  if (conversationIndex !== -1) {
+    conversations.value[conversationIndex].unreadCount = 0
+    conversations.value = [...conversations.value]
+    storage.saveConversations(conversations.value)
+  }
   
-  // 更新消息的已读状态
-  messages.value = messages.value.map(msg => {
-    // 更新自己发送的消息（对方已读）
-    if (msg.isSelf) {
-      return { ...msg, isRead: true }
-    }
-    return msg
-  })
-  
-  // 强制触发响应式更新，确保UI及时更新
-  messages.value = [...messages.value]
-  
-  console.log('处理已读回执，更新了消息状态，当前消息数量:', messages.value.length)
+  console.log('处理已读回执，会话:', convIdStr, '用户:', user_id)
 }
 
 // 处理消息撤回
@@ -1590,7 +1595,7 @@ const handleNewMessage = (data: any) => {
   }
   
   // 使用 processMessage 函数处理新消息
-  const newMessage = processMessage(data)
+  const newMessage = processMessage(data, conversationId)
   
   console.log('构建的新消息对象:', newMessage)
   console.log('新消息是否包含引用消息:', !!newMessage.quotedMessage)
@@ -1813,7 +1818,7 @@ const handleSearchItemClick = (item) => {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
     // 如果是群聊或讨论组，选中该会话
-    currentConversationId.value = item.id.toString()
+    handleGroupChatSelect(item)
     activeOption.value = 'recent'
     loadMessages(item.id.toString())
     // 关闭搜索悬浮框
@@ -1852,7 +1857,7 @@ const markMessagesAsRead = async (conversationId: string) => {
 }
 
 // 处理消息数据，确保 sender 字段正确
-const processMessage = (msg: any) => {
+const processMessage = (msg: any, conversationId?: string) => {
   const messageObj: any = {
     id: msg.id ? msg.id.toString() : '',
     content: msg.content || '',
@@ -1874,6 +1879,8 @@ const processMessage = (msg: any) => {
     isSelf: msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false,
     isRead: msg.is_read || false,
     isRecalled: msg.is_recalled || false,
+    isFailed: msg.is_failed || false,
+    conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',
       content: msg.quoted_message.content || '',
@@ -1939,41 +1946,25 @@ const messagePageSize = ref(20)
 const isLoadingMessages = ref(false)
 
 const loadMessages = async (conversationId: string, reset: boolean = true) => {
-  console.log('[loadMessages] 被调用, conversationId:', conversationId, 'reset:', reset, '当前 hasMoreMessages:', hasMoreMessages.value)
   if (isLoadingMessages.value) return
   
   if (reset) {
     messagePage.value = 1
     hasMoreMessages.value = true
   } else if (!hasMoreMessages.value) {
-    console.log('[loadMessages] 没有更多消息，提前返回')
     return
   }
   
   isLoadingMessages.value = true
   try {
-    // 优先从本地缓存加载
-    let cachedMessages: any[] = []
-    if (reset) {
-      try {
-        cachedMessages = await storage.loadMessages(conversationId)
-        if (cachedMessages.length > 0) {
-          console.log('[loadMessages] 从本地缓存加载了', cachedMessages.length, '条消息')
-          messages.value = cachedMessages.map(processMessage)
-        }
-      } catch (e) {
-        console.warn('[loadMessages] 本地缓存加载失败:', e)
-      }
-    }
-    
-    // 从服务器获取最新消息
+    // 从服务器获取消息，添加分页参数
     const response = await request(`/api/v1/conversations/${conversationId}/messages?page=${messagePage.value}&page_size=${messagePageSize.value}`)
-    console.log('[loadMessages] 服务器响应:', response)
     if (response.code === 0) {
-      const messagesArray = response.data?.messages || response.data?.data || []
+      // 后端返回的数据结构是 { messages: [...], pagination: {...} }
+      const messagesArray = response.data?.messages || []
       const serverMessages = Array.isArray(messagesArray) ? messagesArray.map((msg: any) => processMessage(msg)) : []
-      console.log('[loadMessages] 服务器返回', serverMessages.length, '条消息')
       
+      // 保存当前滚动位置
       const messageListElement = document.querySelector('.message-list')
       let scrollTop = 0
       let initialHeight = 0
@@ -1983,18 +1974,12 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       }
       
       if (reset) {
-        // 合并本地和服务端消息，去重（以服务端为准）
-        if (serverMessages.length > 0) {
-          const serverIds = new Set(serverMessages.map(m => m.id))
-          const localOnlyMessages = cachedMessages.filter(m => !serverIds.has(m.id))
-          messages.value = [...serverMessages, ...localOnlyMessages]
-        } else {
-          messages.value = cachedMessages
-        }
+        messages.value = serverMessages
       } else {
         messages.value = [...serverMessages, ...messages.value]
       }
       
+      // 调整滚动位置，保持用户查看的内容不变
       setTimeout(() => {
         if (messageListElement) {
           const newHeight = messageListElement.scrollHeight
@@ -2003,12 +1988,14 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
         }
       }, 0)
       
-      const paginationData = response.data?.pagination || response.pagination
-      if (paginationData) {
-        const { current_page, total_pages } = paginationData
+      // 处理分页信息
+      if (response.pagination) {
+        const { current_page, total_pages } = response.pagination
+        // 检查是否还有更多消息
         hasMoreMessages.value = current_page < total_pages
         messagePage.value = current_page + 1
       } else {
+        // 兼容旧版本，没有分页信息时的处理
         hasMoreMessages.value = serverMessages.length === messagePageSize.value
         messagePage.value++
       }
@@ -2018,31 +2005,20 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
         conversations.value[conversationIndex].unreadCount = 0
       }
       
-      // 保存合并后的消息到本地
-      try {
-        storage.saveMessages(conversationId, messages.value)
-      } catch (e) {
-        console.warn('[loadMessages] 保存到本地失败:', e)
-      }
-      
       try {
         await markMessagesAsRead(conversationId)
       } catch (error) {
         console.error('标记消息已读失败:', error)
       }
     } else {
-      if (reset && cachedMessages.length > 0) {
-        // 网络失败但有本地缓存，保持显示缓存
-        console.log('[loadMessages] 网络请求失败，使用本地缓存')
-      } else if (reset) {
+      if (reset) {
         messages.value = []
       }
       hasMoreMessages.value = false
     }
   } catch (error) {
-    console.error('[loadMessages] 加载消息失败:', error)
-    // 网络错误时保持本地缓存显示
-    if (reset && messages.value.length === 0) {
+    console.error('加载消息失败:', error)
+    if (reset) {
       messages.value = []
     }
     hasMoreMessages.value = false
@@ -2163,6 +2139,7 @@ const handleSendMessage = async (messageData: any) => {
         isSelf: true,
         isRead: false,
         isFailed: true,
+        conversationId: String(currentConversationId.value),
         quotedMessage: messageData.quotedMessage,
         miniAppData: miniAppData,
         newsData: newsData,
@@ -2171,11 +2148,7 @@ const handleSendMessage = async (messageData: any) => {
       
       console.log('添加发送失败的消息:', failedMessage)
       
-      // 添加到消息列表
       messages.value.push(failedMessage)
-      
-      // 保存消息到本地存储
-      storage.saveMessages(conversationId, messages.value)
       
       // 更新会话列表中的最后消息
       const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
@@ -2231,9 +2204,6 @@ const handleSendMessage = async (messageData: any) => {
         
         messages.value.push(newMessage)
         
-        // 保存消息到本地存储
-        storage.saveMessages(conversationId, messages.value)
-        
         // 更新会话列表中的最后消息
         const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
         if (conversationIndex !== -1) {
@@ -2248,37 +2218,48 @@ const handleSendMessage = async (messageData: any) => {
         // playMessageSound() // 暂时注释掉，因为该函数未定义
       } else {
         console.error('发送消息失败:', response.message)
-        showMessage({ message: '消息发送失败: ' + response.message, type: 'error' })
+        
+        // 根据响应码给出更友好的提示
+        let errorMessage = '消息发送失败'
+        if (response.code === 401) {
+          errorMessage = '登录已过期，请重新登录'
+          sessionExpired.value = true
+        } else if (response.code === 403) {
+          errorMessage = '没有发送消息的权限'
+        } else if (response.code === 404) {
+          errorMessage = '会话不存在或已被解散'
+        } else if (response.message) {
+          errorMessage = response.message
+        }
+        
+        showMessage({ message: errorMessage, type: 'error' })
         
         // 创建发送失败的消息对象
-        const failedMessage = {
-          id: Date.now().toString(),
-          content: messageContent,
-          file_name: messageData.fileName,
-          file_size: messageData.fileSize,
-          sender: {
-            id: currentUser.value?.id?.toString() || '',
-            name: currentUser.value?.nickname || currentUser.value?.username || '',
-            avatar: currentUser.value?.avatar || ''
-          },
-          timestamp: new Date().getTime(),
-          type: messageType,
-          isSelf: true,
-          isRead: false,
-          isFailed: true,
-          quotedMessage: messageData.quotedMessage,
-          miniAppData: miniAppData,
-          newsData: newsData,
-          originalData: messageData // 保存原始消息数据，用于重新发送
-        }
+      const failedMessage = {
+        id: Date.now().toString(),
+        content: messageContent,
+        file_name: messageData.fileName,
+        file_size: messageData.fileSize,
+        sender: {
+          id: currentUser.value?.id?.toString() || '',
+          name: currentUser.value?.nickname || currentUser.value?.username || '',
+          avatar: currentUser.value?.avatar || ''
+        },
+        timestamp: new Date().getTime(),
+        type: messageType,
+        isSelf: true,
+        isRead: false,
+        isFailed: true,
+        conversationId: String(currentConversationId.value),
+        quotedMessage: messageData.quotedMessage,
+        miniAppData: miniAppData,
+        newsData: newsData,
+        originalData: messageData // 保存原始消息数据，用于重新发送
+      }
         
         console.log('添加发送失败的消息:', failedMessage)
         
-        // 添加到消息列表
         messages.value.push(failedMessage)
-        
-        // 保存消息到本地存储
-        storage.saveMessages(String(currentConversationId.value), messages.value)
         
         // 更新会话列表中的最后消息
         const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
@@ -2291,9 +2272,35 @@ const handleSendMessage = async (messageData: any) => {
         }
       }
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('发送消息失败:', error)
-    showMessage({ message: '网络错误，消息发送失败', type: 'error' })
+    
+    // 根据错误类型给出更友好的提示
+    let errorMessage = '消息发送失败'
+    if (error?.response?.status === 401) {
+      errorMessage = '登录已过期，请重新登录'
+      // 触发重新登录
+      sessionExpired.value = true
+    } else if (error?.message?.includes('Network') || error?.message?.includes('network')) {
+      errorMessage = '网络连接失败，请检查网络'
+    } else if (error?.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message) {
+      // 处理常见错误消息
+      const msg = error.message.toLowerCase()
+      if (msg.includes('unauthorized')) {
+        errorMessage = '登录已过期，请重新登录'
+        sessionExpired.value = true
+      } else if (msg.includes('forbidden')) {
+        errorMessage = '没有发送消息的权限'
+      } else if (msg.includes('not found')) {
+        errorMessage = '会话不存在或已被解散'
+      } else {
+        errorMessage = error.message
+      }
+    }
+    
+    showMessage({ message: errorMessage, type: 'error' })
     
     // 创建发送失败的消息对象
     let messageType = 'text'
@@ -2342,6 +2349,7 @@ const handleSendMessage = async (messageData: any) => {
       isSelf: true,
       isRead: false,
       isFailed: true,
+      conversationId: String(currentConversationId.value),
       quotedMessage: messageData.quotedMessage,
       miniAppData: miniAppData,
       newsData: newsData,
@@ -2350,11 +2358,7 @@ const handleSendMessage = async (messageData: any) => {
     
     console.log('添加发送失败的消息:', failedMessage)
     
-    // 添加到消息列表
     messages.value.push(failedMessage)
-    
-    // 保存消息到本地存储
-    storage.saveMessages(String(currentConversationId.value), messages.value)
     
     // 更新会话列表中的最后消息
     const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
@@ -2371,16 +2375,10 @@ const handleSendMessage = async (messageData: any) => {
 // 处理消息撤回
 const handleRecallMessage = async (messageId: number) => {
   try {
-    // 更新本地消息状态
     const index = messages.value.findIndex(m => m.id === messageId.toString())
     if (index !== -1) {
       messages.value[index].content = '[消息已撤回]'
       messages.value[index].isRecalled = true
-      
-      // 保存消息到本地存储
-      if (currentConversationId.value) {
-        storage.saveMessages(currentConversationId.value, messages.value)
-      }
     }
   } catch (error) {
     console.error('撤回消息失败:', error)
@@ -2406,21 +2404,19 @@ const handleStreamMessage = async (conversationId: string, requestData: any, mes
       type: 'streaming',
       isSelf: false,
       isRead: false,
-      isStreaming: true
+      isStreaming: true,
+      conversationId: conversationId
     }
     
-    // 添加到消息列表
     messages.value.push(streamMessage)
     
-    // 保存消息到本地存储
-    storage.saveMessages(conversationId, messages.value)
-    
     // 发送流式请求
+    const token = localStorage.getItem('token')
     const response = await fetch(`${serverUrl.value}/api/v1/conversations/${conversationId}/messages/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
       body: JSON.stringify(requestData)
     })
@@ -2482,20 +2478,13 @@ const handleStreamMessage = async (conversationId: string, requestData: any, mes
       if (messageIndex !== -1) {
         messages.value[messageIndex].content = accumulatedContent
         messages.value[messageIndex].isStreaming = true
-        
-        // 保存消息到本地存储
-        storage.saveMessages(conversationId, messages.value)
       }
     }
     
-    // 流式结束，更新消息状态
     const messageIndex = messages.value.findIndex(m => m.id === streamMessageId)
     if (messageIndex !== -1) {
       messages.value[messageIndex].isStreaming = false
-      messages.value[messageIndex].type = 'markdown' // 流式结束后转换为markdown类型
-      
-      // 保存消息到本地存储
-      storage.saveMessages(conversationId, messages.value)
+      messages.value[messageIndex].type = 'markdown'
     }
     
   } catch (error) {
@@ -2518,10 +2507,6 @@ const handleRetrySendMessage = (failedMessage: any) => {
   const messageIndex = messages.value.findIndex(msg => msg.id === failedMessage.id)
   if (messageIndex !== -1) {
     messages.value.splice(messageIndex, 1)
-    // 保存更新后的消息列表
-    if (currentConversationId.value) {
-      storage.saveMessages(currentConversationId.value, messages.value)
-    }
   }
   
   // 重新发送消息
@@ -2589,74 +2574,6 @@ const formatTime = (timestamp: number): string => {
 }
 
 // 格式化消息预览
-const formatMessagePreview = (message: any, conversation: any): string => {
-  if (!message) {
-    return '暂无消息'
-  }
-  
-  let previewText = ''
-  console.log('Message type:', message)
-  switch (message.type) {
-    case 'text':
-      previewText = message.content || '无内容'
-      break
-    case 'image':
-      let imageName = '图片'
-      try {
-        const imageData = JSON.parse(message.content)
-        imageName = imageData.name || imageData.fileName || message.file_name || (imageData.url ? imageData.url.split('/').pop() : '图片')
-      } catch (e) {
-        imageName = message.file_name || message.content.split('/').pop() || '图片'
-      }
-      previewText = `[图片] ${imageName}`
-      break
-    case 'file':
-      let fileName = '文件'
-      try {
-        const fileData = JSON.parse(message.content)
-        fileName = fileData.name || fileData.fileName || message.file_name || (fileData.url ? fileData.url.split('/').pop() : '文件')
-      } catch (e) {
-        fileName = message.file_name || message.content.split('/').pop() || '文件'
-      }
-      console.log('File name:', fileName)
-      previewText = `[文件] ${fileName}`
-      break
-    case 'miniApp':
-      if (message.miniAppData) {
-        previewText = `[小程序] ${message.miniAppData.name || '小程序'}`
-      } else {
-        previewText = '[小程序]'
-      }
-      break
-    case 'share':
-      if (message.shareData) {
-        const shareType = message.shareData.type === 'file' ? '文件' : message.shareData.type === 'note' ? '笔记' : message.shareData.type === 'sticky' ? '便签' : '分享'
-        const shareName = message.shareData.name || message.content || '分享内容'
-        previewText = `[${shareType}] ${shareName}`
-      } else {
-        previewText = '[分享]'
-      }
-      break
-    default:
-      previewText = message.content || '无内容'
-  }
-  
-  // 群聊消息显示发送人名字
-  if (conversation && message.sender) {
-    console.log('Conversation type:', conversation.type)
-    console.log('Message sender:', message.sender)
-    if ((conversation.type === 'group' || conversation.type === 'Group' || conversation.type === 'GROUP')) {
-      const senderName = message.sender.name || message.sender.nickname || message.sender.username || message.sender.user?.nickname || message.sender.user?.username
-      console.log('Sender name:', senderName)
-      if (senderName) {
-        return `${senderName}: ${previewText}`
-      }
-    }
-  }
-  console.log('Preview text:', previewText)
-  return previewText
-}
-
 // 获取搜索占位符
 const getSearchPlaceholder = (): string => {
   switch (activeOption.value) {
@@ -2724,7 +2641,7 @@ const startPrivateChat = async (user: any) => {
       // 重新加载会话列表
       loadConversations()
       // 选择新创建的会话
-      currentConversationId.value = response.data.id.toString()
+      setCurrentConversationId(response.data.id.toString())
       loadMessages(response.data.id.toString())
     }
   } catch (error) {
@@ -2748,7 +2665,7 @@ const startPrivateChat = async (user: any) => {
     // 添加到会话列表
     conversations.value.unshift(mockConversation)
     // 选择新创建的会话
-    currentConversationId.value = mockConversation.id
+    setCurrentConversationId(mockConversation.id)
     // 初始化消息列表
     messages.value = []
   }
@@ -3399,9 +3316,20 @@ const filteredAddMembersEmployees = computed(() => {
 // 以下函数已从 useUI composable 导入：showActionMenu, hideActionMenu, openCreateGroupModal, closeCreateConversationModal, openSystemMessageModal, closeSystemMessageModal, showMemberContextMenu, closeMemberContextMenu
 
 // 处理会话创建成功
-const handleConversationCreated = () => {
+const handleConversationCreated = (newConversation: any) => {
   // 重新加载会话列表
   loadConversations()
+  
+  // 如果传递了新创建的会话对象，直接切换到新会话
+  if (newConversation && newConversation.id) {
+    setCurrentConversationId(newConversation.id)
+    messages.value = []
+    messagePage.value = 1
+    hasMoreMessages.value = true
+    
+    // 加载新会话的消息
+    loadMessages(newConversation.id)
+  }
 }
 
 // 打开系统消息发布模态框
@@ -3447,8 +3375,8 @@ const createDiscussionGroup = () => {
 }
 
 const viewUserProfile = () => {
-  if (selectedEmployee) {
-    openUserProfile(selectedEmployee)
+  if (selectedEmployee.value) {
+    openUserProfile(selectedEmployee.value)
   }
   hideUserContextMenu()
 }
@@ -3617,7 +3545,7 @@ const handleSwitchConversation = async (conversationId) => {
   // 重新加载会话列表
   await loadConversations()
   // 选择新会话
-  currentConversationId.value = conversationId
+  setCurrentConversationId(conversationId)
   // 加载新会话的消息
   await loadMessages(conversationId)
 }
@@ -3962,41 +3890,36 @@ const toggleAddMember = (employee: any) => {
 }
 
 // 确认添加成员
-const confirmAddMembers = async () => {
-  if (!selectedGroup.value || selectedAddMembers.value.length === 0) {
+const confirmAddMembers = async (members: any[]) => {
+  if (!selectedGroup.value || !members || members.length === 0) {
     return
   }
   
   try {
-    const memberIDs = selectedAddMembers.value.map(m => parseInt(m.id))
+    const memberIDs = members.map(m => parseInt(m.id))
     const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members`, {
       method: 'POST',
       body: JSON.stringify({ member_ids: memberIDs })
     })
     
     if (response.code === 0) {
-      // 确保response.data是一个数组
-      const newMembers = (Array.isArray(response.data) ? response.data : []).map(member => ({
+      const newMembers = (Array.isArray(response.data) ? response.data : []).map((member: any) => ({
         id: member.id?.toString() || '',
         name: member.nickname || member.username || (member.name !== undefined ? member.name : '未知用户'),
         avatar: member.avatar || ''
       }))
       
-      // 更新群聊成员列表
       if (selectedGroup.value.members) {
         selectedGroup.value.members = [...selectedGroup.value.members, ...newMembers]
       } else {
         selectedGroup.value.members = newMembers
       }
       
-      // 更新groupMembers，确保群聊人数显示正确
       groupMembers.value = selectedGroup.value.members || []
       
-      // 更新会话列表中对应群聊的成员数
       const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value.id)
       if (conversationIndex !== -1) {
         conversations.value[conversationIndex].members = selectedGroup.value.members
-        // 强制触发响应式更新
         conversations.value = [...conversations.value]
       }
       
@@ -4005,7 +3928,7 @@ const confirmAddMembers = async () => {
     } else {
       QMessage.error('添加成员失败: ' + response.message)
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('添加成员失败:', error)
     QMessage.error('添加成员失败，请稍后重试')
   }
@@ -4140,6 +4063,44 @@ const logout = () => {
   closeSettingsMenu()
 }
 
+// 确认登出 - 执行实际的登出操作
+const handleConfirmLogout = async () => {
+  // 关闭登出确认对话框
+  cancelLogout()
+  
+  // 使用 Promise.race 实现超时控制
+  const withTimeout = (promise: Promise<any>, timeoutMs: number, label: string) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`${label}超时`)), timeoutMs)
+      )
+    ])
+  }
+  
+  // 并行执行所有清理操作，不互相阻塞
+  const cleanupTasks = [
+    // 1. 调用后端登出接口（最多等待 2 秒）
+    withTimeout(request('/api/v1/auth/logout', { method: 'POST' }), 2000, '登出请求')
+      .catch(error => console.error('登出请求失败或超时:', error)),
+    
+    // 2. 清理 IndexedDB 存储（最多等待 1 秒）
+    import('../utils/storage').then(({ clearAll }) => 
+      withTimeout(clearAll(), 1000, '清理本地存储')
+    ).catch(error => console.error('清理本地存储失败或超时:', error))
+  ]
+  
+  // 3. 立即清理 localStorage（同步操作，无延迟）
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  
+  // 等待所有清理任务完成（最多等待 2 秒）
+  await Promise.allSettled(cleanupTasks)
+  
+  // 4. 跳转到登录页
+  window.location.href = '/login'
+}
+
 // 主题菜单相关函数
 // 保存系统设置 - 已从 useSettings composable 导入
 
@@ -4153,6 +4114,22 @@ const logout = () => {
 const openSecuritySettings = () => {
   QMessage.info('打开安全设置')
   // 这里可以实现打开安全设置页面的逻辑
+}
+
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any }) => {
+  settingsProfile.value = { ...settingsProfile.value, ...data.profile }
+  messageSettings.value = { ...messageSettings.value, ...data.messageSettings }
+  appearanceSettings.value = { ...appearanceSettings.value, ...data.appearanceSettings }
+  
+  if (data.appearanceSettings.theme && data.appearanceSettings.theme !== currentTheme.value) {
+    setTheme(data.appearanceSettings.theme)
+  }
+  if (data.appearanceSettings.fontSize) {
+    applyFontSize(data.appearanceSettings.fontSize)
+  }
+  
+  await saveSettings()
+  closeSettingsModal()
 }
 
 // setTheme, applyFontSize, initTheme 已从 useSettings composable 导入
@@ -4600,11 +4577,6 @@ button:active {
 .emerald-green-theme {
   background: #10b981;
   border: 1px solid #059669;
-}
-
-.urban-jungle-theme {
-  background: #27ae60;
-  border: 1px solid #d35400;
 }
 
 .mediterranean-dream-theme {

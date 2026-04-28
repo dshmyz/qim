@@ -240,11 +240,19 @@ class VideoCallManager {
       await this.peerConnection.setLocalDescription(offer);
       logger.log('offer 生成成功');
 
+      // 获取当前用户信息
+      const currentUser = (window as any).currentUser || {}
+      
       // 发送呼叫邀请
       this.sendSignalMessage('call_invite', {
         target_user_id: targetUserId,
         call_type: callType,
-        signal: offer
+        signal: offer,
+        user_info: {
+          id: currentUser.id,
+          name: currentUser.nickname || currentUser.name || '',
+          avatar: currentUser.avatar || ''
+        }
       });
 
       this.setCallStatus('calling');
@@ -264,6 +272,13 @@ class VideoCallManager {
 
       if (!this.peerConnection) {
         throw new Error('PeerConnection 未初始化');
+      }
+
+      const signalingState = this.peerConnection.signalingState;
+      logger.log('当前 PeerConnection 状态:', signalingState);
+
+      if (signalingState !== 'have-remote-offer' && signalingState !== 'have-local-pranswer') {
+        throw new Error(`无法在当前状态下创建 answer，当前状态: ${signalingState}`);
       }
 
       // 获取本地媒体流
@@ -520,7 +535,10 @@ class VideoCallManager {
 
     // 停止本地流
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        track.stop();
+        logger.log('已停止媒体轨道:', track.kind, track.label);
+      });
       this.localStream = null;
     }
 
@@ -534,6 +552,8 @@ class VideoCallManager {
     this.iceCandidateCache = [];
     this.isMuted = false;
     this.isVideoEnabled = true;
+    this.targetUserId = '';
+    this.callType = 'voice';
   }
 
   // 重置状态

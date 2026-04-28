@@ -121,11 +121,15 @@ func SearchUsers(c *gin.Context) {
 			isMember = true
 		}
 
+		// 获取群聊信息
+		var group model.Group
+		db.Where("conversation_id = ?", conv.ID).First(&group)
+
 		responseUsers = append(responseUsers, gin.H{
 			"id":       conv.ID,
 			"type":     conv.Type,
-			"name":     conv.Name,
-			"avatar":   conv.Avatar,
+			"name":     group.Name,
+			"avatar":   group.Avatar,
 			"isMember": isMember,
 		})
 	}

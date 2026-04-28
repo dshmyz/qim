@@ -79,51 +79,48 @@
     </div>
 
     <!-- 事件模态框 -->
-    <div v-if="showCalendarModal" class="modal-overlay" @click="selectedEvent ? closeEditEventModal() : closeCreateEventModal()">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>{{ selectedEvent ? '编辑事件' : '创建事件' }}</h3>
-          <button class="modal-close" @click="selectedEvent ? closeEditEventModal() : closeCreateEventModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>标题</label>
-            <input type="text" class="form-input" v-model="formData.title" placeholder="事件标题">
-          </div>
-          <div class="form-group">
-            <label>描述</label>
-            <textarea class="form-textarea" v-model="formData.description" placeholder="事件描述"></textarea>
-          </div>
-          <div class="form-group">
-            <label>开始时间</label>
-            <input type="datetime-local" class="form-input" v-model="formData.start">
-          </div>
-          <div class="form-group">
-            <label>结束时间</label>
-            <input type="datetime-local" class="form-input" v-model="formData.end">
-          </div>
-          <div class="form-group checkbox-group">
-            <input type="checkbox" id="allDay" v-model="formData.allDay">
-            <label for="allDay">全天</label>
-          </div>
-          <div class="form-group">
-            <label>提醒</label>
-            <select v-model="formData.reminder" class="form-select">
-              <option value="0">无提醒</option>
-              <option value="5">5分钟前</option>
-              <option value="15">15分钟前</option>
-              <option value="30">30分钟前</option>
-              <option value="60">1小时前</option>
-              <option value="1440">1天前</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-btn cancel-btn" @click="selectedEvent ? closeEditEventModal() : closeCreateEventModal()">取消</button>
-          <button class="modal-btn confirm-btn" @click="selectedEvent ? updateEvent() : createEvent()">{{ selectedEvent ? '更新' : '创建' }}</button>
-        </div>
+    <ModalContainer
+      :visible="showCalendarModal"
+      :title="selectedEvent ? '编辑事件' : '创建事件'"
+      @close="selectedEvent ? closeEditEventModal() : closeCreateEventModal()"
+    >
+      <div class="calendar-form-group">
+        <label>标题</label>
+        <input type="text" class="calendar-form-input" v-model="formData.title" placeholder="事件标题">
       </div>
-    </div>
+      <div class="calendar-form-group">
+        <label>描述</label>
+        <textarea class="calendar-form-textarea" v-model="formData.description" placeholder="事件描述"></textarea>
+      </div>
+      <div class="calendar-form-group">
+        <label>开始时间</label>
+        <input type="datetime-local" class="calendar-form-input" v-model="formData.start">
+      </div>
+      <div class="calendar-form-group">
+        <label>结束时间</label>
+        <input type="datetime-local" class="calendar-form-input" v-model="formData.end">
+      </div>
+      <div class="calendar-form-group calendar-checkbox-group">
+        <input type="checkbox" id="calendar-allDay" v-model="formData.allDay">
+        <label for="calendar-allDay">全天</label>
+      </div>
+      <div class="calendar-form-group">
+        <label>提醒</label>
+        <select v-model="formData.reminder" class="calendar-form-select">
+          <option value="0">无提醒</option>
+          <option value="5">5分钟前</option>
+          <option value="15">15分钟前</option>
+          <option value="30">30分钟前</option>
+          <option value="60">1小时前</option>
+          <option value="1440">1天前</option>
+        </select>
+      </div>
+      
+      <template #footer>
+        <button class="calendar-modal-btn calendar-cancel-btn" @click="selectedEvent ? closeEditEventModal() : closeCreateEventModal()">取消</button>
+        <button class="calendar-modal-btn calendar-confirm-btn" @click="selectedEvent ? updateEvent() : createEvent()">{{ selectedEvent ? '更新' : '创建' }}</button>
+      </template>
+    </ModalContainer>
   </div>
 </template>
 
@@ -133,6 +130,7 @@ import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
+import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -409,7 +407,9 @@ const formatEventTime = (event: any) => {
   }
   const start = new Date(event.start)
   const end = new Date(event.end)
-  return `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
+  const startStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`
+  const endStr = `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
+  return `${startStr} - ${endStr}`
 }
 
 // 显示提醒通知
@@ -1160,5 +1160,173 @@ onUnmounted(() => {
     align-self: flex-end;
     margin-left: 0;
   }
+}
+</style>
+
+<style>
+.calendar-modal-overlay {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease;
+}
+
+.calendar-modal-content {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  animation: slideIn 0.3s ease;
+}
+
+.calendar-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-color);
+  border-radius: 8px 8px 0 0;
+}
+
+.calendar-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.calendar-modal-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-modal-close:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  transform: rotate(90deg);
+}
+
+.calendar-modal-body {
+  padding: 20px;
+}
+
+.calendar-form-group {
+  margin-bottom: 16px;
+}
+
+.calendar-form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.calendar-form-input,
+.calendar-form-textarea,
+.calendar-form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.calendar-form-input:focus,
+.calendar-form-textarea:focus,
+.calendar-form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.calendar-form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.calendar-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-checkbox-group input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.calendar-checkbox-group label {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.calendar-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.calendar-modal-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.calendar-cancel-btn {
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.calendar-cancel-btn:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.calendar-confirm-btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.calendar-confirm-btn:hover {
+  background-color: var(--active-color);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 </style>

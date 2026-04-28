@@ -141,7 +141,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     }
   }
 
-  const clearCache = () => {
+  const clearCache = async () => {
     if (confirm('确定要清除缓存吗？')) {
       localStorage.removeItem('messageSettings')
       localStorage.removeItem('appearanceSettings')

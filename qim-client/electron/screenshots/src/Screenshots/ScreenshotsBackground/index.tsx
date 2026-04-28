@@ -25,6 +25,10 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
   const isMoveRef = useRef<boolean>(false);
   const [position, setPosition] = useState<Position | null>(null);
 
+  // 使用 rAF 节流 pointermove，避免高频 getBoundingClientRect 和 setState
+  const rafRef = useRef<number | null>(null);
+  const pendingMoveRef = useRef<Point | null>(null);
+
   const updateBounds = useCallback(
     (p1: Point, p2: Point) => {
       if (!elRef.current) {
@@ -50,6 +54,33 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
     [width, height, boundsDispatcher]
   );
 
+  const flushPointerMove = useCallback(() => {
+    rafRef.current = null;
+    const pending = pendingMoveRef.current;
+    if (!pending || !pointRef.current) return;
+
+    // 更新放大镜位置
+    if (elRef.current) {
+      const rect = elRef.current.getBoundingClientRect();
+      if (
+        pending.x < rect.left ||
+        pending.y < rect.top ||
+        pending.x > rect.right ||
+        pending.y > rect.bottom
+      ) {
+        setPosition(null);
+      } else {
+        setPosition({
+          x: pending.x - rect.x,
+          y: pending.y - rect.y,
+        });
+      }
+    }
+
+    updateBounds(pointRef.current, pending);
+    isMoveRef.current = true;
+  }, [updateBounds]);
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       // e.button 鼠标左键
@@ -67,31 +98,38 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
-      if (elRef.current) {
-        const rect = elRef.current.getBoundingClientRect();
-        if (
-          e.clientX < rect.left ||
-          e.clientY < rect.top ||
-          e.clientX > rect.right ||
-          e.clientY > rect.bottom
-        ) {
-          setPosition(null);
-        } else {
-          setPosition({
-            x: e.clientX - rect.x,
-            y: e.clientY - rect.y,
-          });
-        }
-      }
+      const pending = { x: e.clientX, y: e.clientY };
+      pendingMoveRef.current = pending;
 
       if (!pointRef.current) {
+        // 未拖拽时，只更新放大镜位置（也需要 rAF 节流）
+        if (rafRef.current) return;
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (elRef.current) {
+            const rect = elRef.current.getBoundingClientRect();
+            if (
+              pending.x < rect.left ||
+              pending.y < rect.top ||
+              pending.x > rect.right ||
+              pending.y > rect.bottom
+            ) {
+              setPosition(null);
+            } else {
+              setPosition({
+                x: pending.x - rect.x,
+                y: pending.y - rect.y,
+              });
+            }
+          }
+        });
         return;
       }
-      updateBounds(pointRef.current, {
-        x: e.clientX,
-        y: e.clientY,
-      });
-      isMoveRef.current = true;
+
+      // 拖拽中，合并到下一帧处理
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(flushPointerMove);
+      }
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -107,6 +145,7 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
       }
       pointRef.current = null;
       isMoveRef.current = false;
+      pendingMoveRef.current = null;
     };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -114,8 +153,12 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [updateBounds]);
+  }, [updateBounds, flushPointerMove]);
 
   useLayoutEffect(() => {
     if (!image || bounds) {

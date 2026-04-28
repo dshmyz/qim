@@ -391,35 +391,6 @@
   --input-bg: #ffffff;
 }
 
-/* 都市丛林主题 - Urban Jungle Theme */
-[data-theme="urban-jungle"] {
-  --primary-color: #27ae60;
-  --primary-light: #ecf0f1;
-  --primary-dark: #2ecc71;
-  --secondary-color: #ecf0f1;
-  --text-color: #2c3e50;
-  --text-secondary: #2ecc71;
-  --side-options-title-color: #ffffff;
-  --border-color: #d35400;
-  --hover-color: #ecf0f1;
-  --active-color: #27ae60;
-  --sidebar-bg: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-  --side-options-bg: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-  --content-bg: #f8f8f8;
-  --window-controls-bg: #ffffff;
-  --window-controls-left-bg: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-  --context-menu-bg: #ffffff;
-  --context-menu-hover: #ecf0f1;
-  --accent-color: #2ecc71;
-  --panel-bg: #ffffff;
-  --list-bg: #f8f8f8;
-  --card-bg: #ffffff;
-  --header-panel-bg: #ecf0f1;
-  --right-content-bg: #ffffff;
-  --right-content-header-bg: #ffffff;
-  --input-bg: #ffffff;
-}
-
 /* 单色优雅主题 - Monochrome Elegance Theme */
 [data-theme="monochrome-elegance"] {
   --primary-color: #333333;

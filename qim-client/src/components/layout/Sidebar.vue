@@ -182,7 +182,7 @@ const filteredConversations = computed(() => {
           :orgStructure="orgStructure"
           @selectUser="$emit('selectUser', $event)"
           @startPrivateChat="$emit('startPrivateChat', $event)"
-          @userContextMenu="$emit('userContextMenu', $event, $event)"
+          @userContextMenu="(...args) => $emit('userContextMenu', ...args)"
         />
       </div>
       

@@ -289,28 +289,31 @@ func InitTestData(db *gorm.DB) {
 
 		// 创建会话
 		conversation1 := model.Conversation{
-			Type:      "single",
-			Name:      users[1].Nickname,
-			Avatar:    users[1].Avatar,
-			CreatorID: users[0].ID,
+			Type: "single",
 		}
 		db.Create(&conversation1)
 
 		conversation2 := model.Conversation{
-			Type:      "single",
-			Name:      users[2].Nickname,
-			Avatar:    users[2].Avatar,
-			CreatorID: users[0].ID,
+			Type: "single",
 		}
 		db.Create(&conversation2)
 
 		conversation3 := model.Conversation{
-			Type:      "group",
-			Name:      "技术交流群",
-			Avatar:    "https://api.dicebear.com/7.x/identicon/svg?seed=group",
-			CreatorID: users[0].ID,
+			Type: "group",
 		}
 		db.Create(&conversation3)
+
+		// 为群聊创建Group记录
+		group := model.Group{
+			ConversationID:   conversation3.ID,
+			GroupType:        "group",
+			Name:             "技术交流群",
+			Avatar:           "https://api.dicebear.com/7.x/identicon/svg?seed=group",
+			CreatorID:        users[0].ID,
+			InvitePermission: "owner_admin",
+			AIEnabled:        false,
+		}
+		db.Create(&group)
 
 		// 添加会话成员
 		conversationMembers := []model.ConversationMember{
@@ -433,12 +436,21 @@ func InitTestData(db *gorm.DB) {
 			if userBotConvCount == 0 {
 				// 系统助手会话
 				systemConv := model.Conversation{
-					Type:      "bot",
-					Name:      systemBot.Name,
-					Avatar:    systemBot.Avatar,
-					CreatorID: user.ID,
+					Type: "bot",
 				}
 				db.Create(&systemConv)
+
+				// 为机器人会话创建Group记录
+				systemGroup := model.Group{
+					ConversationID:   systemConv.ID,
+					GroupType:        "bot",
+					Name:             systemBot.Name,
+					Avatar:           systemBot.Avatar,
+					CreatorID:        user.ID,
+					InvitePermission: "owner_admin",
+					AIEnabled:        false,
+				}
+				db.Create(&systemGroup)
 
 				// 添加成员
 				db.Create(&model.ConversationMember{
@@ -456,12 +468,21 @@ func InitTestData(db *gorm.DB) {
 
 				// AI助手会话
 				aiConv := model.Conversation{
-					Type:      "bot",
-					Name:      aiBot.Name,
-					Avatar:    aiBot.Avatar,
-					CreatorID: user.ID,
+					Type: "bot",
 				}
 				db.Create(&aiConv)
+
+				// 为机器人会话创建Group记录
+				aiGroup := model.Group{
+					ConversationID:   aiConv.ID,
+					GroupType:        "bot",
+					Name:             aiBot.Name,
+					Avatar:           aiBot.Avatar,
+					CreatorID:        user.ID,
+					InvitePermission: "owner_admin",
+					AIEnabled:        false,
+				}
+				db.Create(&aiGroup)
 
 				// 添加成员
 				db.Create(&model.ConversationMember{

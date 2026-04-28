@@ -38,6 +38,8 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 // MigrateDB 自动迁移数据库表
 func MigrateDB(db *gorm.DB) {
+	cleanupDuplicateReadReceipts(db)
+
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Department{},
@@ -54,7 +56,6 @@ func MigrateDB(db *gorm.DB) {
 		&model.BotConversation{},
 		&model.Event{},
 		&model.SystemMessage{},
-		&model.MiniApp{},
 		&model.App{},
 		&model.Notification{},
 		&model.UserRole{},
@@ -63,7 +64,76 @@ func MigrateDB(db *gorm.DB) {
 		&model.ChannelMessage{},
 		&model.ShortLink{},
 		&model.Task{},
+		&model.Group{},
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
+	}
+
+	migrateMiniApps(db)
+	migrateGroupData(db)
+}
+
+// cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
+func cleanupDuplicateReadReceipts(db *gorm.DB) {
+	if !db.Migrator().HasTable("message_read_receipts") {
+		return
+	}
+
+	db.Exec(`
+		DELETE FROM message_read_receipts
+		WHERE id NOT IN (
+			SELECT MIN(id)
+			FROM message_read_receipts
+			GROUP BY message_id, user_id
+		)
+	`)
+	log.Printf("已清理消息已读回执的重复记录")
+}
+
+// migrateGroupData 迁移群聊数据到Group表
+func migrateGroupData(db *gorm.DB) {
+	// 检查Group表是否为空
+	var count int64
+	db.Model(&model.Group{}).Count(&count)
+	if count > 0 {
+		return // 已有数据，跳过迁移
+	}
+
+	// 查询所有群聊和讨论组会话
+	var conversations []model.Conversation
+	db.Where("type = ? OR type = ?", "group", "discussion").Find(&conversations)
+
+	// 迁移数据到Group表
+	for _, conv := range conversations {
+		group := model.Group{
+			ConversationID:   conv.ID,
+			GroupType:        conv.Type, // 使用原Type字段值作为GroupType
+			Name:             "",
+			Avatar:           "",
+			CreatorID:        0,
+			Announcement:     "",
+			InvitePermission: "owner_admin",
+			AIEnabled:        false,
+			CreatedAt:        conv.CreatedAt,
+			UpdatedAt:        conv.UpdatedAt,
+		}
+		db.Create(&group)
+	}
+	log.Printf("群聊数据迁移完成，共迁移 %d 个群聊", len(conversations))
+}
+
+// migrateMiniApps 手动迁移 mini_apps 表，避免 AutoMigrate 在 SQLite 上产生 DDL 错误
+func migrateMiniApps(db *gorm.DB) {
+	if !db.Migrator().HasTable("mini_apps") {
+		if err := db.Migrator().CreateTable(&model.MiniApp{}); err != nil {
+			log.Fatal("创建 mini_apps 表失败:", err)
+		}
+		return
+	}
+
+	if !db.Migrator().HasColumn(&model.MiniApp{}, "permissions") {
+		if err := db.Migrator().AddColumn(&model.MiniApp{}, "permissions"); err != nil {
+			log.Fatal("为 mini_apps 表添加 permissions 字段失败:", err)
+		}
 	}
 }

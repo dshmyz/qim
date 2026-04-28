@@ -54,8 +54,19 @@ interface User {
 interface LastMessage {
   content?: string
   senderId?: string
+  sender?: {
+    id?: string
+    name?: string
+    nickname?: string
+    username?: string
+    user?: any
+  }
   type?: string
   title?: string
+  file_name?: string
+  file_size?: number
+  miniAppData?: any
+  shareData?: any
 }
 
 interface Conversation {
@@ -129,20 +140,77 @@ const formatTime = (timestamp?: string | number): string => {
 const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversation): string => {
   if (!lastMessage) return '暂无消息'
   
-  if (lastMessage.type === 'image') return '[图片]'
-  if (lastMessage.type === 'file') return '[文件]'
-  if (lastMessage.type === 'system') return lastMessage.content || '[系统消息]'
-  if (lastMessage.type === 'mini_app' || lastMessage.type === 'miniApp') {
-    try {
-      const data = JSON.parse(lastMessage.content || '{}')
-      const miniAppName = data.data?.name || data.name || '小程序'
-      return `[小程序] ${miniAppName}`
-    } catch {
-      return '[小程序]'
+  let previewText = ''
+  
+  switch (lastMessage.type) {
+    case 'text':
+      previewText = lastMessage.content || '无内容'
+      break
+    case 'image':
+      let imageName = '图片'
+      try {
+        const imageData = JSON.parse(lastMessage.content || '{}')
+        imageName = imageData.name || imageData.fileName || lastMessage.file_name || (imageData.url ? imageData.url.split('/').pop() : '图片')
+      } catch (e) {
+        imageName = lastMessage.file_name || (lastMessage.content ? lastMessage.content.split('/').pop() : '图片') || '图片'
+      }
+      previewText = `[图片] ${imageName}`
+      break
+    case 'file':
+      let fileName = '文件'
+      try {
+        const fileData = JSON.parse(lastMessage.content || '{}')
+        fileName = fileData.name || fileData.fileName || lastMessage.file_name || (fileData.url ? fileData.url.split('/').pop() : '文件')
+      } catch (e) {
+        fileName = lastMessage.file_name || (lastMessage.content ? lastMessage.content.split('/').pop() : '文件') || '文件'
+      }
+      previewText = `[文件] ${fileName}`
+      break
+    case 'miniApp':
+    case 'mini_app':
+      if (lastMessage.miniAppData) {
+        previewText = `[小程序] ${lastMessage.miniAppData.name || '小程序'}`
+      } else {
+        try {
+          const data = JSON.parse(lastMessage.content || '{}')
+          const miniAppName = data.data?.name || data.name || '小程序'
+          previewText = `[小程序] ${miniAppName}`
+        } catch {
+          previewText = '[小程序]'
+        }
+      }
+      break
+    case 'share':
+      if (lastMessage.shareData) {
+        const shareType = lastMessage.shareData.type === 'file' ? '文件' : lastMessage.shareData.type === 'note' ? '笔记' : lastMessage.shareData.type === 'sticky' ? '便签' : '分享'
+        const shareName = lastMessage.shareData.name || lastMessage.content || '分享内容'
+        previewText = `[${shareType}] ${shareName}`
+      } else {
+        previewText = '[分享]'
+      }
+      break
+    case 'system':
+      previewText = lastMessage.content || '[系统消息]'
+      break
+    default:
+      previewText = lastMessage.content || '无内容'
+  }
+  
+  const isGroupChat = conversation?.type === 'group' || conversation?.type === 'discussion'
+  
+  if (isGroupChat && lastMessage.sender) {
+    const senderName = lastMessage.sender.name || 
+                       lastMessage.sender.nickname || 
+                       lastMessage.sender.username || 
+                       lastMessage.sender.user?.nickname || 
+                       lastMessage.sender.user?.username ||
+                       ''
+    if (senderName) {
+      return `${senderName}: ${previewText}`
     }
   }
   
-  return lastMessage.content || '暂无消息'
+  return previewText
 }
 
 const getUnreadCount = (conversation: Conversation): number => {
@@ -253,7 +321,6 @@ const getUnreadCount = (conversation: Conversation): number => {
 
 .conversation-preview.has-draft {
   color: var(--color-warning-500, #f59e0b);
-  font-style: italic;
 }
 
 .draft-icon {

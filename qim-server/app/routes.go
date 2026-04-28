@@ -11,16 +11,36 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Global AI service instance
+var globalAIService *ai.AIService
+
+// GetAIService returns the global AI service instance
+func GetAIService() *ai.AIService {
+	return globalAIService
+}
+
 // SetupRoutes 设置 API 路由
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 设置配置
 	handler.SetConfig(cfg)
 
 	// 初始化AI服务
-	aiService := ai.NewAIService(&cfg.AI)
+	globalAIService = ai.NewAIService(&cfg.AI)
 
 	// 初始化MCP服务器
 	mcpServer := ai.NewMCPServer(false)
+
+	// 将 MCP 服务器注入 AI 服务（启用工具调用）
+	globalAIService.SetMCPServer(mcpServer)
+
+	// 注册管理操作工具（用户管理、群组管理、系统通知等）
+	handler.RegisterAdminTools(mcpServer)
+
+	// 初始化智能回复引擎（嵌入消息处理链路）
+	handler.InitSmartReplyEngine(globalAIService)
+
+	// 初始化异常检测器
+	handler.InitAnomalyDetector()
 
 	// 启动MCP服务器（在后台运行）
 	go func() {
@@ -31,12 +51,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}()
 
 	// 初始化AI处理器
-	aiHandler := handler.NewAIHandler(aiService, mcpServer)
+	aiHandler := handler.NewAIHandler(globalAIService, mcpServer)
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
 	corsMiddleware := cors.New(cors.Config{
 		AllowOrigins:     cfg.CORS.AllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
@@ -259,6 +279,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// AI相关路由
 			aiHandler.RegisterRoutes(authed)
+
+			// AI 运维面板（管理员）
+			admin.GET("/ai/dashboard", func(c *gin.Context) {
+				aiHandler.OpsDashboard(c)
+			})
 		}
 	}
 

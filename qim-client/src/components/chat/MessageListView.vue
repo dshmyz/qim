@@ -23,7 +23,7 @@
       <MessageItem
         :message="message"
         :is-self="message.isSelf"
-        :is-recalled="message.isRecalled"
+        :is-recalled="message.isRecalled || false"
         :conversation-type="conversationType"
         :read-users-map="readUsersMap"
         :server-url="serverUrl"
@@ -40,13 +40,17 @@
         @show-read-users="(msg: Message) => emit('show-read-users', msg)"
       />
     </div>
+
+    <!-- AI 思考中指示器 -->
+    <ThinkingIndicator v-if="showThinkingIndicator" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import type { Message } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
+import ThinkingIndicator from '../message/ThinkingIndicator.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
 
 const { formatTime, shouldShowTimeDivider } = useChatUtils()
@@ -55,8 +59,9 @@ interface Props {
   messages: Message[]
   hasMoreMessages: boolean
   conversationType: string
-  readUsersMap: Record<string, { read_users: any[], total_members: number }>
+  readUsersMap: Record<string, { read_users: any[], total_members: number, read_count?: number }>
   serverUrl: string
+  showThinkingIndicator?: boolean
 }
 
 interface Emits {
@@ -81,42 +86,21 @@ const emit = defineEmits<Emits>()
 
 const messageListRef = ref<HTMLDivElement>()
 const isLoadingMore = ref(false)
-const lastMarkReadTime = ref(0)
+const markMessagesAsRead = () => {
+  emit('mark-read')
+}
 
 const shouldShowTime = (index: number, message: Message, messages: Message[]) => {
   return shouldShowTimeDivider(index, message, messages)
 }
 
-const throttle = (func: Function, delay: number) => {
-  let timeoutId: number | null = null
-  return function (this: any, ...args: any[]) {
-    if (timeoutId === null) {
-      timeoutId = window.setTimeout(() => {
-        func.apply(this, args)
-        timeoutId = null
-      }, delay)
-    }
-  }
-}
-
-const handleScroll = throttle(() => {
+const handleScroll = () => {
   if (!messageListRef.value) return
 
-  const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
-  if (scrollHeight - scrollTop - clientHeight < 50) {
-    markMessagesAsRead()
-  }
-
+  const { scrollTop } = messageListRef.value
   if (scrollTop < 50 && !isLoadingMore.value) {
     loadMoreMessages()
   }
-}, 100)
-
-const markMessagesAsRead = async () => {
-  const now = Date.now()
-  if (now - lastMarkReadTime.value < 3000) return
-  lastMarkReadTime.value = now
-  emit('mark-read')
 }
 
 const loadMoreMessages = async () => {
@@ -141,8 +125,17 @@ defineExpose({
   messageListRef
 })
 
+watch(() => props.messages, () => {
+  nextTick(() => {
+    markMessagesAsRead()
+  })
+}, { deep: true })
+
 onMounted(() => {
   scrollToBottom()
+})
+
+onUnmounted(() => {
 })
 </script>
 

@@ -2,12 +2,13 @@ import { ref, nextTick } from 'vue'
 import QMessage from '../utils/qmessage'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
+import { getCurrentUser } from '../utils/user'
 
 /**
  * 屏幕共享 WebRTC 相关逻辑
  * 包含：屏幕共享请求处理、WebRTC 信令、开始/停止共享等
  */
-export function useScreenShare(conversation: { value: any }, currentUser: { value: any }) {
+export function useScreenShare(conversation: { value: any }) {
   const screenShareComponent = ref<any>(null)
   const remoteScreenUserId = ref<number | null>(null)
   const showScreenShareViewer = ref(false)
@@ -153,13 +154,26 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    * 开始屏幕共享
    */
   const startScreenShare = () => {
-    if (!currentUser.value || !conversation.value) return
+    if (!conversation.value) {
+      QMessage.warning('请先选择一个会话')
+      return
+    }
+    
+    const user = getCurrentUser()
+    if (!user || !user.id) {
+      QMessage.warning('用户信息未加载，无法使用屏幕共享')
+      return
+    }
+    
     if (screenShareSender.getIsSharing()) {
       QMessage.warning('屏幕共享已在运行')
       return
     }
+    
     if (screenShareComponent.value) {
       screenShareComponent.value.startScreenShare()
+    } else {
+      QMessage.error('屏幕共享组件未初始化，请稍后重试')
     }
   }
 
@@ -183,9 +197,6 @@ export function useScreenShare(conversation: { value: any }, currentUser: { valu
    * 清理屏幕共享资源
    */
   const cleanupScreenShare = () => {
-    registeredScreenShareHandlers.forEach(({ handler, type }) => {
-      // 移除事件监听器
-    })
     registeredScreenShareHandlers.length = 0
     if (screenShareComponent.value) {
       screenShareComponent.value.stopReceiving()

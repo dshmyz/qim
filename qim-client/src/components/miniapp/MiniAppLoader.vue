@@ -24,7 +24,8 @@
           ref="iframeRef"
           class="miniapp-iframe"
           :src="iframeSrc"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          :sandbox="shouldSandbox ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals' : undefined"
+          :allow="getIframeAllow()"
           @load="handleIframeLoad"
         />
       </div>
@@ -33,8 +34,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { API_BASE_URL } from '../../config'
+import { getCurrentUser } from '../../utils/user'
 
 export interface MiniAppData {
   id: number | string
@@ -44,6 +46,12 @@ export interface MiniAppData {
   path: string
   description?: string
   status?: string
+  permissions?: string
+}
+
+export interface MiniAppBridgeMessage {
+  type: string
+  payload?: any
 }
 
 const props = defineProps<{
@@ -52,6 +60,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  'show-toast': [message: string]
 }>()
 
 const visible = computed(() => !!props.miniApp)
@@ -59,6 +68,23 @@ const iframeRef = ref<HTMLIFrameElement | null>(null)
 const loading = ref(false)
 const error = ref(false)
 const errorMessage = ref('')
+const hasClipboardPermission = computed(() => {
+  try {
+    const perms = props.miniApp?.permissions ? JSON.parse(props.miniApp.permissions) as string[] : []
+    return perms.includes('clipboard')
+  } catch {
+    return false
+  }
+})
+
+const getIframeAllow = (): string => {
+  if (hasClipboardPermission.value) {
+    return 'clipboard-read; clipboard-write'
+  }
+  return ''
+}
+
+const shouldSandbox = computed(() => true)
 
 const iframeSrc = computed(() => {
   if (!props.miniApp?.path) return ''
@@ -67,9 +93,19 @@ const iframeSrc = computed(() => {
   return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`
 })
 
+const hasPermission = (perm: string): boolean => {
+  try {
+    const perms = props.miniApp?.permissions ? JSON.parse(props.miniApp.permissions) as string[] : []
+    return perms.includes(perm)
+  } catch {
+    return false
+  }
+}
+
 const handleIframeLoad = () => {
   loading.value = false
   error.value = false
+  injectBridgeScript()
 }
 
 const loadMiniApp = () => {
@@ -92,6 +128,153 @@ const close = () => {
 const handleOverlayClick = () => {
   close()
 }
+
+const handleMiniAppMessage = (event: MessageEvent) => {
+  if (!event.data || typeof event.data !== 'object') return
+
+  const data = event.data as MiniAppBridgeMessage
+
+  switch (data.type) {
+    case 'miniapp-loaded':
+      break
+    case 'miniapp-toast':
+      emit('show-toast', data.payload?.message || '')
+      break
+    case 'get-user-info':
+      if (!hasPermission('user_info')) {
+        iframeRef.value?.contentWindow?.postMessage({
+          type: 'user-info-response',
+          payload: { error: '未授予 user_info 权限' },
+        }, '*')
+        return
+      }
+      const user = getCurrentUser()
+      iframeRef.value?.contentWindow?.postMessage({
+        type: 'user-info-response',
+        payload: {
+          id: user.id,
+          username: user.username,
+          nickname: user.nickname || '',
+          avatar: user.avatar || '',
+        },
+      }, '*')
+      break
+    case 'get-token':
+      if (!hasPermission('token')) {
+        iframeRef.value?.contentWindow?.postMessage({
+          type: 'token-response',
+          payload: { error: '未授予 token 权限' },
+        }, '*')
+        return
+      }
+      const token = localStorage.getItem('token') || ''
+      iframeRef.value?.contentWindow?.postMessage({
+        type: 'token-response',
+        payload: { token },
+      }, '*')
+      break
+    case 'api-request':
+      if (!hasPermission('api_request')) {
+        iframeRef.value?.contentWindow?.postMessage({
+          type: 'api-response',
+          payload: { code: 403, message: '无权限调用此 API' },
+        }, '*')
+        return
+      }
+      handleApiRequest(data.payload)
+      break
+    case 'clipboard-read':
+      if (!hasPermission('clipboard')) {
+        iframeRef.value?.contentWindow?.postMessage({
+          type: 'clipboard-read-response',
+          payload: { error: '未授予 clipboard 权限' },
+        }, '*')
+        return
+      }
+      navigator.clipboard.readText()
+        .then(text => {
+          iframeRef.value?.contentWindow?.postMessage({
+            type: 'clipboard-read-response',
+            payload: { text },
+          }, '*')
+        })
+        .catch(err => {
+          iframeRef.value?.contentWindow?.postMessage({
+            type: 'clipboard-read-response',
+            payload: { error: err.message || '读取剪贴板失败' },
+          }, '*')
+        })
+      break
+    case 'clipboard-write':
+      if (!hasPermission('clipboard')) {
+        iframeRef.value?.contentWindow?.postMessage({
+          type: 'clipboard-write-response',
+          payload: { error: '未授予 clipboard 权限' },
+        }, '*')
+        return
+      }
+      navigator.clipboard.writeText(data.payload?.text || '')
+        .then(() => {
+          iframeRef.value?.contentWindow?.postMessage({
+            type: 'clipboard-write-response',
+            payload: { success: true },
+          }, '*')
+        })
+        .catch(err => {
+          iframeRef.value?.contentWindow?.postMessage({
+            type: 'clipboard-write-response',
+            payload: { error: err.message || '写入剪贴板失败' },
+          }, '*')
+        })
+      break
+  }
+}
+
+const handleApiRequest = async (payload: { method: string; url: string; body?: any }) => {
+  if (!payload || !payload.url) return
+
+  const token = localStorage.getItem('token') || ''
+  const url = payload.url.startsWith('http') ? payload.url : `${API_BASE_URL}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`
+
+  try {
+    const response = await fetch(url, {
+      method: payload.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: payload.body ? JSON.stringify(payload.body) : undefined,
+    })
+
+    const result = await response.json()
+    iframeRef.value?.contentWindow?.postMessage({
+      type: 'api-response',
+      payload: result,
+    }, '*')
+  } catch (err: any) {
+    iframeRef.value?.contentWindow?.postMessage({
+      type: 'api-response',
+      payload: { code: 500, message: err.message || '请求失败' },
+    }, '*')
+  }
+}
+
+const injectBridgeScript = () => {
+  if (!iframeRef.value?.contentWindow) return
+
+  iframeRef.value.contentWindow.postMessage({
+    type: 'bridge-ready',
+    payload: { appId: props.miniApp?.appID },
+  }, '*')
+}
+
+onMounted(() => {
+  window.addEventListener('message', handleMiniAppMessage)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('message', handleMiniAppMessage)
+})
 
 watch(() => props.miniApp, (newVal) => {
   if (newVal) {

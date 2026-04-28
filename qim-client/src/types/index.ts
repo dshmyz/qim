@@ -29,10 +29,12 @@ export interface Message {
   content: string
   sender: User
   timestamp: number
-  type: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news'
+  type: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news' | 'system' | 'markdown' | 'streaming'
   isSelf: boolean
   isRead?: boolean
   isRecalled?: boolean
+  isFailed?: boolean
+  conversationId: string
   quotedMessage?: Message
   miniAppData?: {
     id: string
@@ -47,6 +49,8 @@ export interface Message {
     image: string
     url: string
   }
+  shareData?: any
+  isStreaming?: boolean
 }
 
 export interface Conversation {
@@ -64,6 +68,9 @@ export interface Conversation {
   status?: 'online' | 'offline' | 'busy'
   signature?: string
   announcement?: string
+  other_member_id?: number
+  other_member_name?: string
+  user_id?: number
 }
 
 export interface Channel {

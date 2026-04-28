@@ -1,13 +1,28 @@
 <template>
   <div class="message-content-image">
-    <img v-if="cachedUrl" :src="cachedUrl" class="message-image" @click="previewImage" @dblclick="previewImage" />
-    <img v-else :src="placeholderUrl" class="message-image loading" @click="previewImage" @dblclick="previewImage" />
+    <template v-if="imageLoaded && !loadError">
+      <img
+        :src="cachedUrl"
+        class="message-image"
+        @click="previewImage"
+        @dblclick="previewImage"
+        @load="onImageLoad"
+        @error="onImageError"
+      />
+    </template>
+    <template v-else>
+      <ImagePlaceholder
+        :is-loading="isLoading"
+        :text="loadError ? '图片加载失败' : '加载中...'"
+      />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
 import { useImageCache } from '../../composables/useImageCache'
+import ImagePlaceholder from './ImagePlaceholder.vue'
 
 const props = defineProps<{
   src: string
@@ -20,8 +35,10 @@ const emit = defineEmits<{
 }>()
 
 const { getCachedImage, cacheImage, preloadImage } = useImageCache()
-const cachedUrl = ref<string | null>(null)
+const cachedUrl = ref<string | undefined>(undefined)
 const isLoading = ref(false)
+const imageLoaded = ref(false)
+const loadError = ref(false)
 
 // 解析图片数据
 const imageData = computed(() => {
@@ -44,39 +61,61 @@ const fullImageUrl = computed(() => {
   }
 })
 
-// 占位符URL
-const placeholderUrl = computed(() => {
-  return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23f0f0f0" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" fill="%23999"%3E%3C/animation%3E%3C/text%3E%3C/svg%3E'
-})
-
 // 加载图片
 const loadImage = async () => {
-  if (isLoading.value) return
+  if (isLoading.value || imageLoaded.value) return
 
   const url = fullImageUrl.value
-  if (!url) return
+  if (!url) {
+    loadError.value = true
+    return
+  }
 
   const cached = getCachedImage(url)
   if (cached) {
     cachedUrl.value = cached
+    imageLoaded.value = true
     return
   }
 
   isLoading.value = true
+  loadError.value = false
   try {
     const result = await cacheImage(url)
     if (result) {
       cachedUrl.value = result
+      imageLoaded.value = true
+    } else {
+      loadError.value = true
     }
+  } catch (error) {
+    console.error('Failed to load image:', error)
+    loadError.value = true
   } finally {
     isLoading.value = false
   }
 }
 
-watch(() => props.src, () => {
-  cachedUrl.value = null
-  loadImage()
-}, { immediate: true })
+const onImageLoad = () => {
+  imageLoaded.value = true
+  loadError.value = false
+}
+
+const onImageError = () => {
+  loadError.value = true
+  isLoading.value = false
+}
+
+watch(
+  () => props.src,
+  () => {
+    cachedUrl.value = undefined
+    imageLoaded.value = false
+    loadError.value = false
+    loadImage()
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   loadImage()
@@ -108,16 +147,6 @@ const previewImage = () => {
 .message-image:hover {
   transform: scale(1.05);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.message-image.loading {
-  opacity: 0.7;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 0.4; }
 }
 
 /* 自己的图片消息样式 */

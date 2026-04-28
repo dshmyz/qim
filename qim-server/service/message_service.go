@@ -11,6 +11,7 @@ import (
 	"qim-server/ws"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrMessageNotFound = errors.New("message not found")
@@ -24,15 +25,15 @@ func NewMessageService() *MessageService {
 }
 
 type MessageQuery struct {
-	ConvID       uint
-	UserID       uint
-	BeforeMsgID  uint
-	Limit        int
-	Offset       int
-	MessageType  string
-	Keyword      string
-	StartDate    string
-	EndDate      string
+	ConvID      uint
+	UserID      uint
+	BeforeMsgID uint
+	Limit       int
+	Offset      int
+	MessageType string
+	Keyword     string
+	StartDate   string
+	EndDate     string
 }
 
 type MessageResult struct {
@@ -53,11 +54,11 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 
 	msg := model.Message{
 		ConversationID:  convID,
-		SenderID:       senderID,
-		Type:           msgType,
-		Content:        content,
+		SenderID:        senderID,
+		Type:            msgType,
+		Content:         content,
 		QuotedMessageID: quotedMessageID,
-		IsRead:         false,
+		IsRead:          false,
 	}
 	if err := db.Create(&msg).Error; err != nil {
 		return nil, err
@@ -374,22 +375,37 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	var messages []model.Message
-	if err := db.Where("conversation_id = ?", convID).Find(&messages).Error; err != nil {
+	var unreadMsgIDs []uint
+	if err := db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ?", convID, userID).
+		Pluck("id", &unreadMsgIDs).Error; err != nil {
 		return err
 	}
 
-	for _, msg := range messages {
-		var existingReceipt model.MessageReadReceipt
-		err := db.Where("message_id = ? AND user_id = ?", msg.ID, userID).First(&existingReceipt).Error
-		if err != nil {
-			receipt := model.MessageReadReceipt{
-				MessageID:      msg.ID,
-				ConversationID: msg.ConversationID,
-				UserID:         userID,
-				CreatedAt:      time.Now(),
+	if len(unreadMsgIDs) > 0 {
+		batchSize := 500
+		for i := 0; i < len(unreadMsgIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(unreadMsgIDs) {
+				end = len(unreadMsgIDs)
 			}
-			if err := db.Create(&receipt).Error; err != nil {
+			batch := unreadMsgIDs[i:end]
+
+			receipts := make([]model.MessageReadReceipt, 0, len(batch))
+			now := time.Now()
+			for _, msgID := range batch {
+				receipts = append(receipts, model.MessageReadReceipt{
+					MessageID:      msgID,
+					ConversationID: convID,
+					UserID:         userID,
+					CreatedAt:      now,
+				})
+			}
+
+			if err := db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
+				DoNothing: true,
+			}).Create(&receipts).Error; err != nil {
 				return err
 			}
 		}
@@ -431,8 +447,8 @@ func (s *MessageService) notifyMessageRead(convID, userID uint) {
 		Type: "message_read",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
-			"user_id":        userID,
-			"timestamp":      time.Now().Unix(),
+			"user_id":         userID,
+			"timestamp":       time.Now().Unix(),
 		},
 	}
 	jsonMsg, _ := json.Marshal(readMsg)
@@ -532,15 +548,15 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
-		"sender_id":        msg.SenderID,
-		"type":             msg.Type,
+		"sender_id":         msg.SenderID,
+		"type":              msg.Type,
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
-		"is_recalled":      msg.IsRecalled,
-		"is_read":          msg.IsRead,
-		"recalled_at":      msg.RecalledAt,
-		"created_at":       msg.CreatedAt,
-		"sender":           msg.Sender,
-		"quoted_message":   msg.QuotedMessage,
+		"is_recalled":       msg.IsRecalled,
+		"is_read":           msg.IsRead,
+		"recalled_at":       msg.RecalledAt,
+		"created_at":        msg.CreatedAt,
+		"sender":            msg.Sender,
+		"quoted_message":    msg.QuotedMessage,
 	}
 }
