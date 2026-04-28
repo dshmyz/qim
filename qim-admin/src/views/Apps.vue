@@ -1,7 +1,6 @@
 <template>
   <div class="apps-page">
     <el-card shadow="never">
-      <!-- 搜索栏 -->
       <div class="search-bar">
         <el-form :model="searchForm" inline>
           <el-form-item label="应用名称">
@@ -12,6 +11,12 @@
               @keyup.enter="handleSearch"
             />
           </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="searchForm.status" placeholder="请选择状态" clearable>
+              <el-option label="正常" value="active" />
+              <el-option label="停用" value="inactive" />
+            </el-select>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleSearch">搜索</el-button>
             <el-button @click="handleReset">重置</el-button>
@@ -20,7 +25,6 @@
         <el-button type="success" @click="handleCreate">创建应用</el-button>
       </div>
 
-      <!-- 应用列表 -->
       <el-table :data="apps" v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column label="应用名称" min-width="180">
@@ -48,9 +52,22 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-popconfirm
+              :title="row.status === 'active' ? '确定停用该应用吗？' : '确定启用该应用吗？'"
+              @confirm="handleToggleStatus(row)"
+            >
+              <template #reference>
+                <el-button
+                  size="small"
+                  :type="row.status === 'active' ? 'warning' : 'success'"
+                >
+                  {{ row.status === 'active' ? '停用' : '启用' }}
+                </el-button>
+              </template>
+            </el-popconfirm>
             <el-popconfirm
               title="确定删除该应用吗？"
               @confirm="handleDelete(row.id)"
@@ -63,7 +80,6 @@
         </el-table-column>
       </el-table>
 
-      <!-- 分页 -->
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -77,7 +93,6 @@
       </div>
     </el-card>
 
-    <!-- 创建/编辑应用对话框 -->
     <AppDialog
       v-model="appDialogVisible"
       :app="currentApp"
@@ -90,20 +105,17 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { App } from '@/types'
-import { getApps, deleteApp } from '@/api/apps'
+import { getApps, deleteApp, updateApp } from '@/api/apps'
 import AppDialog from './components/AppDialog.vue'
 
-// 搜索和分页
-const searchForm = reactive({ name: '' })
+const searchForm = reactive({ name: '', status: '' })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const apps = ref<App[]>([])
 const loading = ref(false)
 
-// 对话框
 const appDialogVisible = ref(false)
 const currentApp = ref<App | null>(null)
 
-// 工具函数
 const openTypeLabel = (type: string): string => {
   const map: Record<string, string> = { 'in-app': '应用内', external: '外部' }
   return map[type] || type
@@ -119,7 +131,6 @@ const statusType = (status: string): 'success' | 'info' => {
   return map[status] || 'info'
 }
 
-// 获取应用列表
 const fetchApps = async () => {
   loading.value = true
   try {
@@ -127,11 +138,11 @@ const fetchApps = async () => {
       page: pagination.page,
       pageSize: pagination.pageSize,
       name: searchForm.name || undefined,
-    })
+      status: searchForm.status || undefined,
+    } as any)
     apps.value = data.data.list
     pagination.total = data.data.total
   } catch {
-    // 错误已在请求拦截器中处理
   } finally {
     loading.value = false
   }
@@ -144,29 +155,38 @@ const handleSearch = () => {
 
 const handleReset = () => {
   searchForm.name = ''
+  searchForm.status = ''
   handleSearch()
 }
 
-// 创建应用
+const handleToggleStatus = async (row: App) => {
+  const newStatus = row.status === 'active' ? 'inactive' : 'active'
+  const actionText = newStatus === 'active' ? '启用' : '停用'
+
+  try {
+    await updateApp(row.id, { status: newStatus })
+    ElMessage.success(`${actionText}成功`)
+    fetchApps()
+  } catch {
+  }
+}
+
 const handleCreate = () => {
   currentApp.value = null
   appDialogVisible.value = true
 }
 
-// 编辑应用
 const handleEdit = (row: App) => {
   currentApp.value = row
   appDialogVisible.value = true
 }
 
-// 删除应用
 const handleDelete = async (id: number) => {
   try {
     await deleteApp(id)
     ElMessage.success('删除成功')
     fetchApps()
   } catch {
-    // 错误已在请求拦截器中处理
   }
 }
 

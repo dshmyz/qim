@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"log"
 	"qim-server/config"
 	"qim-server/database"
@@ -72,6 +73,7 @@ func MigrateDB(db *gorm.DB) {
 
 	migrateMiniApps(db)
 	migrateGroupData(db)
+	migrateFileSource(db)
 }
 
 // cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
@@ -136,5 +138,39 @@ func migrateMiniApps(db *gorm.DB) {
 		if err := db.Migrator().AddColumn(&model.MiniApp{}, "permissions"); err != nil {
 			log.Fatal("为 mini_apps 表添加 permissions 字段失败:", err)
 		}
+	}
+}
+
+// migrateFileSource 迁移文件来源字段，将聊天消息中引用的文件标记为chat来源
+func migrateFileSource(db *gorm.DB) {
+	if !db.Migrator().HasTable("messages") || !db.Migrator().HasTable("files") {
+		return
+	}
+
+	var messages []model.Message
+	if err := db.Where("type IN ?", []string{"file", "image"}).Find(&messages).Error; err != nil {
+		log.Printf("查询聊天文件消息失败: %v", err)
+		return
+	}
+
+	updated := 0
+	for _, msg := range messages {
+		var fileData struct {
+			URL string `json:"url"`
+			ID  uint   `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(msg.Content), &fileData); err != nil {
+			continue
+		}
+		if fileData.ID > 0 {
+			result := db.Model(&model.File{}).Where("id = ? AND source = ?", fileData.ID, "upload").Update("source", "chat")
+			if result.RowsAffected > 0 {
+				updated++
+			}
+		}
+	}
+
+	if updated > 0 {
+		log.Printf("文件来源迁移完成，共更新 %d 个聊天文件", updated)
 	}
 }

@@ -13,23 +13,49 @@ import (
 
 func GetApps(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	fmt.Println("获取应用列表请求，用户ID:", userID)
 
 	db := database.GetDB()
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	name := c.Query("name")
+	status := c.Query("status")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	query := db.Model(&model.App{}).Where("user_id = ?", userID)
+
+	if name != "" {
+		query = query.Where("name LIKE ?", "%"+name+"%")
+	}
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var apps []model.App
-	result := db.Where("user_id = ?", userID).Order("created_at DESC").Find(&apps)
-	if result.Error != nil {
-		fmt.Println("获取应用列表失败:", result.Error)
+	offset := (page - 1) * pageSize
+	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&apps).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取应用列表失败"})
 		return
 	}
 
-	fmt.Println("获取应用列表成功，应用数量:", len(apps))
-	fmt.Println("应用列表:", apps)
-
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": apps,
+		"data": gin.H{
+			"list":     apps,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
 	})
 }
 
