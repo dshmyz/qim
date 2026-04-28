@@ -27,8 +27,9 @@ export const usePermissionStore = defineStore('permission', () => {
 
   function hasAnyPermission(checks: string[]): boolean {
     return checks.some(check => {
-      const [resource, action] = check.split(':')
-      return hasPermission(resource, action)
+      const parts = check.split(':')
+      if (parts.length !== 2) return false
+      return hasPermission(parts[0], parts[1])
     })
   }
 

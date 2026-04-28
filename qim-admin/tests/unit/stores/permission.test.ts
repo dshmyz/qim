@@ -38,6 +38,14 @@ describe('permission store', () => {
     expect(store.hasAnyPermission(['user:delete', 'group:create'])).toBe(false)
   })
 
+  it('hasAnyPermission returns false for malformed permission strings', () => {
+    const store = usePermissionStore()
+    store.setPermissions([{ resource: 'user', actions: ['read'] }])
+    expect(store.hasAnyPermission(['user'])).toBe(false)
+    expect(store.hasAnyPermission([''])).toBe(false)
+    expect(store.hasAnyPermission([])).toBe(false)
+  })
+
   it('isRole returns true for matching role', () => {
     const store = usePermissionStore()
     store.setRoles([{ id: 1, name: '管理员', code: 'system_admin', description: '', permissions: [], userCount: 0, createdAt: '' }])
