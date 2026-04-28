@@ -111,7 +111,7 @@
 
               <!-- 步骤2：选择模板 -->
               <div v-else-if="createMethod === 'template' && !showCreateForm" class="template-selector">
-                <div v-if="templates.length > 0" class="template-list">
+                <div v-if="templates && templates.length > 0" class="template-list">
                   <div v-for="tpl in templates" :key="tpl.id" class="template-item" @click="createFromTemplate(tpl)">
                     <div class="template-avatar">
                       <img :src="tpl.avatar" :alt="tpl.name" v-if="tpl.avatar">

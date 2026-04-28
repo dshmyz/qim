@@ -200,7 +200,7 @@ import {
   getDepartmentEmployees,
 } from '@/api/organization'
 import { getUsers } from '@/api/users'
-import TreeNode from './components/TreeNode.vue'
+import TreeNode from '@/views/Organization/components/TreeNode.vue'
 
 const departmentTree = ref<Organization[]>([])
 const treeLoading = ref(false)
@@ -262,12 +262,47 @@ const flattenDepartments = (depts: Organization[]): Organization[] => {
   return result
 }
 
+const buildTree = (items: Organization[]): Organization[] => {
+  const map = new Map<number, Organization>()
+  const roots: Organization[] = []
+
+  items.forEach((item) => {
+    map.set(item.id, { ...item, children: [] })
+  })
+
+  items.forEach((item) => {
+    const node = map.get(item.id)!
+    if (item.parentId === null || item.parentId === undefined) {
+      roots.push(node)
+    } else {
+      const parent = map.get(item.parentId)
+      if (parent) {
+        if (!parent.children) {
+          parent.children = []
+        }
+        parent.children.push(node)
+      }
+    }
+  })
+
+  return roots
+}
+
 const fetchTree = async () => {
   treeLoading.value = true
   try {
     const { data } = await getOrganizationTree()
-    departmentTree.value = data.data
-    departmentOptions.value = flattenDepartments(data.data)
+    const treeData = data.data
+    if (treeData && treeData.length > 0) {
+      if (treeData[0].children !== undefined) {
+        departmentTree.value = treeData
+      } else {
+        departmentTree.value = buildTree(treeData)
+      }
+    } else {
+      departmentTree.value = []
+    }
+    departmentOptions.value = flattenDepartments(departmentTree.value)
   } catch (error) {
   } finally {
     treeLoading.value = false
