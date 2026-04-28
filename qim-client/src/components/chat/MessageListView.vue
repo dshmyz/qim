@@ -15,26 +15,19 @@
     </div>
 
     <!-- 虚拟滚动容器 -->
-    <div ref="virtualizerRef" class="virtualizer-container">
+    <div class="virtualizer-container" :style="{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }">
       <div
+        v-for="virtualItem in virtualizer.getVirtualItems()"
+        :key="String(virtualItem.key)"
+        :data-index="virtualItem.index"
         :style="{
-          height: `${totalSize}px`,
+          position: 'absolute',
+          top: 0,
+          left: 0,
           width: '100%',
-          position: 'relative'
+          transform: `translateY(${virtualItem.start}px)`
         }"
       >
-        <div
-          v-for="virtualItem in virtualItems"
-          :key="String(virtualItem.key)"
-          :data-index="virtualItem.index"
-          :style="{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            transform: `translateY(${virtualItem.start}px)`
-          }"
-        >
           <!-- 时间分隔线 -->
           <div
             v-if="virtualItem.index < messages.length && shouldShowTime(virtualItem.index, messages[virtualItem.index], messages)"
@@ -73,9 +66,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import type { Message } from '../../types'
+import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
 
@@ -85,77 +78,68 @@ interface Props {
   messages: Message[]
   hasMoreMessages: boolean
   conversationType: string
-  readUsersMap: Record<string, { read_users: any[], total_members: number }>
+  readUsersMap: Record<string, { read_users: User[]; total_members: number }>
   serverUrl: string
 }
 
 interface Emits {
-  (e: 'message-contextmenu', event: MouseEvent, message: Message): void
-  (e: 'show-user-profile', user: any): void
-  (e: 'scroll-to-quoted-message', id: string): void
-  (e: 'preview-image', data: string): void
-  (e: 'download-file', data: string): void
-  (e: 'save-as', data: string): void
-  (e: 'view-shared-content', content: string): void
-  (e: 'open-mini-app', app: any): void
-  (e: 'open-news-link', url: string): void
-  (e: 'retry-send-message', msg: any): void
-  (e: 'show-read-users', msg: Message): void
-  (e: 'scroll-to-bottom'): void
-  (e: 'load-more'): void
-  (e: 'mark-read'): void
+  'message-contextmenu': [event: MouseEvent, message: Message]
+  'show-user-profile': [user: User]
+  'scroll-to-quoted-message': [id: string]
+  'preview-image': [data: string]
+  'download-file': [data: string]
+  'save-as': [data: string]
+  'view-shared-content': [content: string]
+  'open-mini-app': [app: Message['miniAppData']]
+  'open-news-link': [url: string]
+  'retry-send-message': [msg: Message]
+  'show-read-users': [msg: Message]
+  'scroll-to-bottom': []
+  'load-more': []
+  'mark-read': []
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const messageListRef = ref<HTMLDivElement>()
-const virtualizerRef = ref<HTMLDivElement>()
+const messageListRef = ref<HTMLDivElement | null>(null)
 const isLoadingMore = ref(false)
 const lastMarkReadTime = ref(0)
 
 // 虚拟滚动配置
 const virtualizer = useVirtualizer({
-  get count() {
-    return props.messages.length
-  },
-  getItemKey: (index) => String(props.messages[index]?.id || index),
+  count: props.messages.length,
+  getItemKey: (index) => props.messages[index]?.id || index,
   estimateSize: () => 80,
   overscan: 5,
-  getScrollElement: () => messageListRef.value ?? null
+  getScrollElement: () => messageListRef.value
 })
-
-// 从 virtualizer ref 中提取虚拟滚动数据
-const virtualItems = computed(() => virtualizer.value.getVirtualItems())
-const totalSize = computed(() => virtualizer.value.getTotalSize())
 
 const shouldShowTime = (index: number, message: Message, messages: Message[]) => {
   return shouldShowTimeDivider(index, message, messages)
 }
 
-const handleScroll = (event: Event) => {
-  const element = event.target as HTMLDivElement
-  if (!element) return
+const handleScroll = () => {
+  if (!messageListRef.value) return
 
-  virtualizer.value.measure()
-
-  const { scrollTop } = element
+  const { scrollTop } = messageListRef.value
   if (scrollTop < 50 && !isLoadingMore.value) {
     loadMoreMessages()
   }
 }
 
-const loadMoreMessages = async () => {
-  if (!props.hasMoreMessages) return
+const loadMoreMessages = () => {
+  if (!props.hasMoreMessages || isLoadingMore.value) return
   isLoadingMore.value = true
-  try {
-    emit('load-more')
-  } finally {
+  emit('load-more')
+  // isLoadingMore 由父组件通过 hasMoreMessages prop 控制
+  // 此处设置一个安全的超时重置，防止加载失败时永远显示加载中
+  setTimeout(() => {
     isLoadingMore.value = false
-  }
+  }, 5000)
 }
 
-const markMessagesAsRead = async () => {
+const markMessagesAsRead = () => {
   const now = Date.now()
   if (now - lastMarkReadTime.value < 3000) return
   lastMarkReadTime.value = now
@@ -163,12 +147,10 @@ const markMessagesAsRead = async () => {
 }
 
 const scrollToBottom = () => {
-  if (messageListRef.value) {
-    nextTick(() => {
-      messageListRef.value!.scrollTop = messageListRef.value!.scrollHeight
-      markMessagesAsRead()
-    })
-  }
+  const el = messageListRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+  markMessagesAsRead()
 }
 
 defineExpose({
@@ -177,18 +159,18 @@ defineExpose({
 })
 
 // 消息变化时滚动到底部并标记已读
-watch(() => props.messages.length, () => {
-  nextTick(() => {
-    scrollToBottom()
-    markMessagesAsRead()
-  })
+// 仅当消息追加时（长度增加）才滚动到底部，避免加载历史消息时强制跳转
+watch(() => props.messages.length, (newLen, oldLen) => {
+  if (oldLen === undefined || newLen > oldLen) {
+    nextTick(() => {
+      scrollToBottom()
+      markMessagesAsRead()
+    })
+  }
 })
 
 onMounted(() => {
   scrollToBottom()
-})
-
-onUnmounted(() => {
 })
 </script>
 
