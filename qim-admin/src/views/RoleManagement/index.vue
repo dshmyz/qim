@@ -8,7 +8,7 @@
       </SearchForm>
     </template>
     <template #actions>
-      <el-button v-permission="'role:create'" type="primary" :icon="Plus" @click="openCreateDialog()">创建角色</el-button>
+      <el-button v-permission="'role:create'" type="primary" :icon="Plus" @click="handleCreate">创建角色</el-button>
     </template>
 
     <el-table-column prop="id" label="ID" width="80" />
@@ -17,14 +17,18 @@
     <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
     <el-table-column label="权限" min-width="240">
       <template #default="{ row }">
-        <el-tag
-          v-for="perm in row.permissions"
-          :key="perm"
-          size="small"
-          class="perm-tag"
-        >
-          {{ permissionLabel(perm) }}
-        </el-tag>
+        <div class="permissions-cell">
+          <el-tag
+            v-for="perm in (row.permissions || []).slice(0, 3)"
+            :key="perm"
+            size="small"
+          >
+            {{ permissionLabel(perm) }}
+          </el-tag>
+          <el-tag v-if="(row.permissions || []).length > 3" size="small" type="info">
+            +{{ (row.permissions || []).length - 3 }}
+          </el-tag>
+        </div>
       </template>
     </el-table-column>
     <el-table-column label="用户数" width="100">
@@ -59,20 +63,37 @@
 
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
+import { Plus } from '@element-plus/icons-vue'
 import DataTable from '@/components/data/DataTable.vue'
 import SearchForm from '@/components/data/SearchForm.vue'
 import SearchField from '@/components/data/SearchField.vue'
-import ActionButton from '@/components/common/ActionButton.vue'
 import EntityDialog from '@/components/forms/EntityDialog.vue'
+import ActionButton from '@/components/common/ActionButton.vue'
 import { useEntity } from '@/composables/useEntity'
 import type { FormField } from '@/composables/useEntity'
 import { getRoles, createRole, updateRole, deleteRole } from '@/api/roles'
 import type { Role } from '@/types'
 
+const permissionOptions = [
+  { label: '查看用户', value: 'user:read' },
+  { label: '创建用户', value: 'user:create' },
+  { label: '编辑用户', value: 'user:update' },
+  { label: '删除用户', value: 'user:delete' },
+  { label: '查看群组', value: 'group:read' },
+  { label: '创建群组', value: 'group:create' },
+  { label: '编辑群组', value: 'group:update' },
+  { label: '删除群组', value: 'group:delete' },
+  { label: '查看角色', value: 'role:read' },
+  { label: '创建角色', value: 'role:create' },
+  { label: '编辑角色', value: 'role:update' },
+  { label: '删除角色', value: 'role:delete' },
+]
+
 const roleFields: FormField[] = [
   { name: 'name', label: '角色名称', type: 'input', required: true },
   { name: 'code', label: '角色代码', type: 'input', required: true },
   { name: 'description', label: '描述', type: 'textarea' },
+  { name: 'permissions', label: '权限', type: 'select', props: { multiple: true, placeholder: '请选择权限' }, options: permissionOptions },
 ]
 
 const roleRules = {
@@ -130,8 +151,9 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
-.perm-tag {
-  margin-right: 4px;
-  margin-bottom: 4px;
+.permissions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 </style>
