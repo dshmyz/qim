@@ -1,0 +1,287 @@
+<template>
+  <!-- 用户资料弹窗 -->
+  <UserProfile
+    v-if="selectedUser"
+    :visible="showUserProfile"
+    :user="selectedUser"
+    @close="emit('close-user-profile')"
+    @send-private-message="handleSendPrivateMessageFromProfile"
+  />
+
+  <!-- 已读用户列表弹窗 -->
+  <ReadUsersModal
+    :visible="showReadUsersModal"
+    :read-users="currentReadUsers"
+    :server-url="serverUrl"
+    @close="emit('close-read-users')"
+  />
+
+  <!-- 消息右键菜单 -->
+  <MessageContextMenu
+    :visible="showMessageContextMenu"
+    :position="messageContextMenuPosition"
+    :message="selectedMessage"
+    @preview-image="emit('preview-image', $event)"
+    @save-file-as="emit('save-file-as', $event)"
+    @download-file="emit('download-file', $event)"
+    @copy-message="handleCopyMessage"
+    @forward-message="emit('forward-message')"
+    @quote-message="emit('quote-message')"
+    @add-to-note="emit('add-to-note')"
+    @recall-message="emit('recall-message')"
+    @send-message-reminder="emit('send-message-reminder')"
+  />
+
+  <!-- 成员右键菜单 -->
+  <MemberContextMenu
+    :visible="showMemberContextMenu"
+    :position="memberContextMenuPosition"
+    :member="selectedMember"
+    :current-user-id="currentUserId ?? 0"
+    :conversation="conversation ?? undefined"
+    @close="emit('close-member-context-menu')"
+    @remove-member="handleRemoveMember"
+    @set-admin="handleSetAdmin"
+    @transfer-owner="handleTransferOwner"
+    @view-member-info="emit('view-member-info')"
+    @send-private-message="handleSendPrivateMessageFromMember"
+  />
+
+  <!-- 消息管理器 -->
+  <MessageManager
+    :visible="showMessageManager"
+    :conversation-id="String(conversationId ?? '')"
+    @close="emit('close-message-manager')"
+    @scroll-to-message="emit('scroll-to-message', $event)"
+  />
+
+  <!-- 确认对话框 -->
+  <ConfirmDialog
+    :visible="showConfirmDialog"
+    :title="confirmDialogTitle"
+    :message="confirmDialogMessage"
+    @update:visible="(v) => emit('update-confirm-dialog', v)"
+    @confirm="emit('confirm-action')"
+    @cancel="emit('cancel-confirm-action')"
+  />
+
+  <!-- 截图预览对话框 -->
+  <ScreenshotPreviewDialog
+    :visible="showScreenshotPreview"
+    :image-data="screenshotImageData"
+    @cancel="emit('cancel-screenshot')"
+    @retake="emit('retake-screenshot')"
+    @send="emit('send-screenshot')"
+  />
+
+  <!-- 通话模态框 -->
+  <CallModal
+    :visible="showCallModal"
+    :call-type="callType as 'voice' | 'video' | ''"
+    :status="callStatus as 'ringing' | 'answered' | 'ended' | ''"
+    :avatar="callAvatar"
+    :name="callName"
+    @reject-call="emit('reject-call')"
+    @answer-call="emit('answer-call')"
+    @end="emit('end-call')"
+    @close="emit('close-call-modal')"
+  />
+
+  <!-- 图片预览弹窗 -->
+  <ImagePreviewDialog
+    :visible="showImagePreview"
+    :image-url="previewImageUrl"
+    @close="emit('close-image-preview')"
+  />
+
+  <!-- 分享内容预览弹窗 -->
+  <SharePreviewDialog
+    v-if="showSharePreview"
+    :visible="showSharePreview"
+    :preview-data="sharePreviewData"
+    :get-file-icon="getFileIcon"
+    :format-file-size="formatFileSize"
+    :render-markdown="renderMarkdown"
+    :format-time="formatTimeWrapper"
+    @close="emit('close-share-preview')"
+    @download-file="handleDownloadFile"
+    @save-file-as="handleSaveFileAs"
+  />
+
+  <!-- 屏幕共享组件 -->
+  <ScreenShare
+    :receiver-id="otherUserId ?? undefined"
+    :sender-id="remoteScreenUserId ?? undefined"
+    :sender-name="senderName"
+    :conversation-id="String(conversationId ?? '')"
+    ref="screenShareRef"
+    @screen-share-start="emit('screen-share-start', $event)"
+    @screen-share-stop="emit('screen-share-stop')"
+    @screen-share-join="emit('screen-share-join')"
+    @screen-share-leave="emit('screen-share-leave')"
+  />
+
+  <!-- 小程序加载器 -->
+  <div style="display: contents">
+    <MiniAppLoader
+      :mini-app="activeMiniApp"
+      @close="emit('close-mini-app')"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { Conversation, Message, User } from '../../types'
+import UserProfile from '../modals/UserProfile.vue'
+import ReadUsersModal from './ReadUsersModal.vue'
+import MessageContextMenu from './MessageContextMenu.vue'
+import MemberContextMenu from './MemberContextMenu.vue'
+import MessageManager from './MessageManager.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
+import CallModal from './CallModal.vue'
+import ImagePreviewDialog from './ImagePreviewDialog.vue'
+import SharePreviewDialog from './SharePreviewDialog.vue'
+import ScreenShare from '../shared/ScreenShare.vue'
+import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
+import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
+
+const props = defineProps<{
+  conversation: Conversation | null
+  conversationId: string | number | null
+  senderName: string
+  serverUrl: string
+  currentUserId: string | number | null
+  // 用户资料
+  showUserProfile: boolean
+  selectedUser: User | null
+  // 已读用户
+  showReadUsersModal: boolean
+  currentReadUsers: { read_users: User[]; total_members: number }
+  // 消息右键菜单
+  showMessageContextMenu: boolean
+  messageContextMenuPosition: { x: number; y: number }
+  selectedMessage: Message | null
+  // 成员右键菜单
+  showMemberContextMenu: boolean
+  memberContextMenuPosition: { x: number; y: number }
+  selectedMember: User | null
+  // 消息管理器
+  showMessageManager: boolean
+  // 确认对话框
+  showConfirmDialog: boolean
+  confirmDialogTitle: string
+  confirmDialogMessage: string
+  // 截图
+  showScreenshotPreview: boolean
+  screenshotImageData: string
+  // 通话
+  showCallModal: boolean
+  callType: string
+  callStatus: string
+  callAvatar: string
+  callName: string
+  // 图片预览
+  showImagePreview: boolean
+  previewImageUrl: string
+  // 分享预览
+  showSharePreview: boolean
+  sharePreviewData: any
+  // 屏幕共享
+  otherUserId: string | number | null
+  remoteScreenUserId: number | null
+  // 小程序
+  activeMiniApp: MiniAppData | null
+  // 工具函数
+  getFileIcon: (fileName: string) => string
+  formatFileSize: (size: number) => string
+  renderMarkdown: (content: string) => string
+  formatTime: (timestamp: number) => string
+}>()
+
+const emit = defineEmits<{
+  'close-user-profile': []
+  'send-private-message': [userId: string | number]
+  'close-read-users': []
+  'preview-image': [data: string]
+  'save-file-as': [data: string]
+  'download-file': [data: string]
+  'copy-message': []
+  'forward-message': []
+  'quote-message': []
+  'add-to-note': []
+  'recall-message': []
+  'send-message-reminder': []
+  'close-member-context-menu': []
+  'remove-member': [memberId: string | number, memberName: string]
+  'set-admin': [memberId: string | number, memberName: string, isAdmin: boolean]
+  'transfer-owner': [memberId: string | number, memberName: string]
+  'view-member-info': []
+  'close-message-manager': []
+  'scroll-to-message': [messageId: string]
+  'update-confirm-dialog': [visible: boolean]
+  'confirm-action': []
+  'cancel-confirm-action': []
+  'cancel-screenshot': []
+  'retake-screenshot': []
+  'send-screenshot': []
+  'reject-call': []
+  'answer-call': []
+  'end-call': []
+  'close-call-modal': []
+  'close-image-preview': []
+  'close-share-preview': []
+  'screen-share-start': [data: any]
+  'screen-share-stop': []
+  'screen-share-join': []
+  'screen-share-leave': []
+  'close-mini-app': []
+  'mini-app-toast': [message: string]
+}>()
+
+const screenShareRef = ref<InstanceType<typeof ScreenShare>>()
+
+defineExpose({
+  stopReceiving: () => screenShareRef.value?.stopReceiving()
+})
+
+// Event handler wrappers to bridge type differences
+const handleSendPrivateMessageFromProfile = () => {
+  emit('close-user-profile')
+}
+
+const handleCopyMessage = () => {
+  emit('copy-message')
+}
+
+const handleRemoveMember = (memberId: string | number, _memberName: string) => {
+  emit('remove-member', String(memberId), _memberName)
+}
+
+const handleSetAdmin = (memberId: string | number, _memberName: string, _isAdmin: boolean) => {
+  emit('set-admin', String(memberId), _memberName, _isAdmin)
+}
+
+const handleTransferOwner = (memberId: string | number, _memberName: string) => {
+  emit('transfer-owner', String(memberId), _memberName)
+}
+
+const handleSendPrivateMessageFromMember = () => {
+  // MemberContextMenu doesn't pass userId directly
+  // The parent will need to get it from selectedMember
+}
+
+const formatTimeWrapper = (timestamp: number | string | null | undefined) => {
+  if (timestamp == null) return ''
+  return props.formatTime(timestamp as number)
+}
+
+const handleDownloadFile = (url: string, _name: string) => {
+  emit('download-file', url)
+}
+
+const handleSaveFileAs = (url: string, _name: string) => {
+  emit('save-file-as', url)
+}
+</script>
