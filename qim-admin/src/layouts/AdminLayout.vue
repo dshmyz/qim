@@ -101,6 +101,7 @@ const titleMap: Record<string, string> = {
   '/mini-apps': '小程序管理',
   '/ai-assistant': 'AI 助手',
   '/ai-ops': 'AI 运维面板',
+  '/ai-config': 'AI 模型配置',
   '/messages': '系统消息',
   '/notifications': '通知管理',
   '/blacklist': '黑名单管理',

@@ -84,6 +84,10 @@
             <el-icon><Monitor /></el-icon>
             <template #title>AI 运维面板</template>
           </el-menu-item>
+          <el-menu-item index="/ai-config" v-permission="'ai:read'">
+            <el-icon><Setting /></el-icon>
+            <template #title>AI 模型配置</template>
+          </el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="msg-group">

@@ -110,6 +110,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'AI 运维面板' },
       },
       {
+        path: 'ai-config',
+        name: 'AIConfig',
+        component: () => import('@/views/AIConfig/Providers.vue'),
+        meta: { title: 'AI 模型配置' },
+      },
+      {
         path: 'sensitive-words',
         name: 'SensitiveWords',
         component: () => import('@/views/SensitiveWords.vue'),
