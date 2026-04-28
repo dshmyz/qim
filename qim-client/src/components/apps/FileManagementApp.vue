@@ -1,58 +1,21 @@
 <template>
   <div class="file-management-app">
-    <!-- 头部工具栏 -->
-    <div class="app-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
-        </button>
-        <h2>文件管理</h2>
+    <!-- 顶部导航栏 -->
+    <div class="app-nav">
+      <button class="nav-back" @click="$emit('back')">
+        <i class="fas fa-chevron-left"></i>
+      </button>
+      <div class="nav-title">
+        <i class="fas fa-folder-open"></i>
+        <span>文件箱</span>
       </div>
-      
-      <div class="header-center">
-        <!-- 来源筛选 -->
-        <div class="source-filter">
-          <button
-            :class="['source-tab', { active: sourceFilter === null }]"
-            @click="handleSourceChange(null)"
-          >
-            全部
-          </button>
-          <button
-            :class="['source-tab', { active: sourceFilter === 'upload' }]"
-            @click="handleSourceChange('upload')"
-          >
-            上传
-          </button>
-          <button
-            :class="['source-tab', { active: sourceFilter === 'chat' }]"
-            @click="handleSourceChange('chat')"
-          >
-            聊天
-          </button>
-        </div>
-
-        <!-- 文件夹选择 -->
-        <div class="folder-selector">
-          <select v-model="selectedFolderId" @change="handleFolderChange" class="folder-select">
-            <option :value="null">全部文件</option>
-            <option :value="-1">星标文件</option>
-            <optgroup label="文件夹">
-              <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-                {{ folder.name }}
-              </option>
-            </optgroup>
-          </select>
-        </div>
-      </div>
-
-      <div class="header-actions">
-        <button class="action-btn" @click="showCreateFolderModal = true" title="新建文件夹">
+      <div class="nav-actions">
+        <button class="nav-btn" @click="showCreateFolderModal = true" title="新建文件夹">
           <i class="fas fa-folder-plus"></i>
         </button>
-        <button class="action-btn primary" @click="triggerFileUpload" title="上传文件">
-          <i class="fas fa-upload"></i>
-          <span class="btn-text">上传</span>
+        <button class="nav-btn primary" @click="triggerFileUpload" title="上传文件">
+          <i class="fas fa-cloud-upload-alt"></i>
+          <span>上传</span>
         </button>
         <input
           ref="fileInputRef"
@@ -64,37 +27,85 @@
       </div>
     </div>
 
+    <!-- 筛选工具栏 -->
+    <div class="filter-bar">
+      <div class="filter-left">
+        <!-- 来源筛选 -->
+        <div class="filter-chips">
+          <button
+            :class="['chip', { active: sourceFilter === null }]"
+            @click="handleSourceChange(null)"
+          >
+            <i class="fas fa-layer-group"></i>
+            <span>全部</span>
+          </button>
+          <button
+            :class="['chip', { active: sourceFilter === 'upload' }]"
+            @click="handleSourceChange('upload')"
+          >
+            <i class="fas fa-cloud-upload-alt"></i>
+            <span>我的上传</span>
+          </button>
+          <button
+            :class="['chip', { active: sourceFilter === 'chat' }]"
+            @click="handleSourceChange('chat')"
+          >
+            <i class="fas fa-comment-dots"></i>
+            <span>聊天文件</span>
+          </button>
+        </div>
+
+        <div class="filter-divider"></div>
+
+        <!-- 文件夹选择 -->
+        <div class="folder-picker">
+          <i class="fas fa-folder picker-icon"></i>
+          <select v-model="selectedFolderId" @change="handleFolderChange" class="picker-select">
+            <option :value="null">全部文件</option>
+            <option :value="-1">⭐ 星标文件</option>
+            <optgroup label="文件夹">
+              <option v-for="folder in folders" :key="folder.id" :value="folder.id">
+                📁 {{ folder.name }}
+              </option>
+            </optgroup>
+          </select>
+          <i class="fas fa-chevron-down picker-arrow"></i>
+        </div>
+      </div>
+
+      <div class="filter-right">
+        <span class="file-count">{{ total }} 个文件</span>
+      </div>
+    </div>
+
     <!-- 主内容区域 -->
     <div class="app-content">
-      <!-- 文件列表 -->
-      <div class="main-content">
-        <FileList
-          ref="fileListRef"
-          :files="files"
-          :total="total"
-          :current-page="currentPage"
-          :total-pages="totalPages"
-          :is-loading="isLoading"
-          :error="error"
-          :search-query="searchQuery"
-          :filter-type="filterType"
-          :show-starred="showStarred"
-          :has-files="hasFiles"
-          @refresh="refresh"
-          @search="handleSearch"
-          @filter-change="handleFilterChange"
-          @toggle-starred="toggleStarred"
-          @page-change="changePage"
-          @preview="handleFilePreview"
-          @download="handleFileDownload"
-          @star="handleFileStar"
-          @share="handleFileShare"
-          @delete="handleFileDelete"
-          @upload="handleFileUpload"
-          @context-menu="handleContextMenu"
-          @select="handleFileSelect"
-        />
-      </div>
+      <FileList
+        ref="fileListRef"
+        :files="files"
+        :total="total"
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :is-loading="isLoading"
+        :error="error"
+        :search-query="searchQuery"
+        :filter-type="filterType"
+        :show-starred="showStarred"
+        :has-files="hasFiles"
+        @refresh="refresh"
+        @search="handleSearch"
+        @filter-change="handleFilterChange"
+        @toggle-starred="toggleStarred"
+        @page-change="changePage"
+        @preview="handleFilePreview"
+        @download="handleFileDownload"
+        @star="handleFileStar"
+        @share="handleFileShare"
+        @delete="handleFileDelete"
+        @upload="handleFileUpload"
+        @context-menu="handleContextMenu"
+        @select="handleFileSelect"
+      />
     </div>
 
     <!-- 创建文件夹模态框 -->
@@ -177,10 +188,8 @@ import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
 import { fileApi, type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
 
-// 定义事件
 const emit = defineEmits(['back'])
 
-// 使用 composables
 const {
   files,
   total,
@@ -210,19 +219,16 @@ const {
   loadRootFolders
 } = useFolderTree()
 
-// 组件引用
 const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
 const fileListRef = ref<InstanceType<typeof FileList> | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-// 模态框状态
 const showCreateFolderModal = ref(false)
 const showPreviewModal = ref(false)
 const showActionsModal = ref(false)
 const previewFile = ref<FileItem | null>(null)
 const actionFile = ref<FileItem | null>(null)
 
-// 右键菜单状态
 const contextMenu = ref({
   visible: false,
   x: 0,
@@ -230,24 +236,18 @@ const contextMenu = ref({
   file: null as FileItem | null
 })
 
-// 文件夹列表（用于模态框）
 const folders = ref<FolderItem[]>([])
-
-// 当前选中的文件夹ID
 const selectedFolderId = ref<number | null | -1>(null)
 
-// 当前文件夹路径
 const currentFolderPath = computed(() => {
   if (!selectedFolder.value) return ''
   return selectedFolder.value.path || selectedFolder.value.name
 })
 
-// 文件夹选择
 const handleFolderSelect = (folder: FolderNode) => {
   changeFolder(folder.id)
 }
 
-// 文件夹选择变化
 const handleFolderChange = () => {
   if (selectedFolderId.value === -1) {
     showStarred.value = true
@@ -258,34 +258,28 @@ const handleFolderChange = () => {
   }
 }
 
-// 搜索
 const handleSearch = (query: string) => {
   searchQuery.value = query
 }
 
-// 过滤类型变化
 const handleFilterChange = (type: string) => {
   changeFilterType(type)
 }
 
-// 来源变化
 const handleSourceChange = (source: string | null) => {
   changeSource(source)
 }
 
-// 文件预览
 const handleFilePreview = (file: FileItem) => {
   previewFile.value = file
   showPreviewModal.value = true
 }
 
-// 关闭预览模态框
 const closePreviewModal = () => {
   showPreviewModal.value = false
   previewFile.value = null
 }
 
-// 文件下载
 const handleFileDownload = async (file: FileItem) => {
   try {
     const response = await fileApi.downloadFile(file.id)
@@ -303,19 +297,16 @@ const handleFileDownload = async (file: FileItem) => {
   }
 }
 
-// 文件星标
 const handleFileStar = async (file: FileItem) => {
   await toggleFileStar(file.id, !file.is_starred)
 }
 
-// 文件删除
 const handleFileDelete = async (file: FileItem) => {
   if (confirm(`确定要删除文件 "${file.name}" 吗？`)) {
     await deleteFile(file.id)
   }
 }
 
-// 文件上传
 const handleFileUpload = async (event: Event | FileList) => {
   const files = event instanceof Event ? (event.target as HTMLInputElement).files : event
   if (!files || files.length === 0) return
@@ -340,18 +331,15 @@ const handleFileUpload = async (event: Event | FileList) => {
     QMessage.error(`${failCount} 个文件上传失败`)
   }
 
-  // 重置文件输入
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
 }
 
-// 触发文件上传
 const triggerFileUpload = () => {
   fileInputRef.value?.click()
 }
 
-// 右键菜单
 const handleContextMenu = (file: FileItem, event: MouseEvent) => {
   contextMenu.value = {
     visible: true,
@@ -361,7 +349,6 @@ const handleContextMenu = (file: FileItem, event: MouseEvent) => {
   }
 }
 
-// 右键菜单操作
 const handleContextMenuAction = (action: string) => {
   const file = contextMenu.value.file
   if (!file) return
@@ -392,55 +379,45 @@ const handleContextMenuAction = (action: string) => {
   }
 }
 
-// 文件分享
 const handleFileShare = (file: FileItem) => {
   window.dispatchEvent(new CustomEvent('openShareModal', {
     detail: { type: 'file', data: file }
   }))
 }
 
-// 文件选择
 const handleFileSelect = (fileIds: number[]) => {
   console.log('Selected files:', fileIds)
 }
 
-// 文件夹创建成功
 const handleFolderCreated = () => {
   loadRootFolders()
   QMessage.success('文件夹创建成功')
 }
 
-// 操作成功
 const handleActionSuccess = () => {
   refresh()
 }
 
-// 导航到根目录
 const navigateToRoot = () => {
   changeFolder(null)
 }
 
-// 导航到指定路径
 const navigateToPath = (index: number) => {
-  // 实现路径导航逻辑
   console.log('Navigate to path index:', index)
 }
 
-// 点击外部关闭右键菜单
 const handleClickOutside = () => {
   if (contextMenu.value.visible) {
     contextMenu.value.visible = false
   }
 }
 
-// 组件挂载
 onMounted(async () => {
   await loadFiles()
   await loadRootFolders()
   document.addEventListener('click', handleClickOutside)
 })
 
-// 组件卸载
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
 })
@@ -451,269 +428,336 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--content-bg);
-  border-radius: 8px;
+  background: var(--content-bg, #f5f7fa);
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* 头部工具栏 */
-.app-header {
+/* ===== 顶部导航栏 ===== */
+.app-nav {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--card-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  min-height: 64px;
-  box-sizing: border-box;
+  padding: 0 20px;
+  height: 56px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, #e8ecf0);
   gap: 16px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   flex-shrink: 0;
 }
 
-.header-left h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.header-center {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  justify-content: center;
-}
-
-/* 来源筛选 */
-.source-filter {
-  display: flex;
-  gap: 4px;
-  background: var(--hover-color);
-  padding: 4px;
-  border-radius: 8px;
-}
-
-.source-tab {
-  padding: 6px 16px;
+.nav-back {
+  width: 36px;
+  height: 36px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-
-.source-tab:hover {
-  color: var(--primary-color);
-}
-
-.source-tab.active {
-  background: var(--card-bg);
-  color: var(--primary-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* 文件夹选择器 */
-.folder-selector {
-  position: relative;
-}
-
-.folder-select {
-  padding: 8px 32px 8px 12px;
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text-color);
-  font-size: 14px;
-  min-width: 160px;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-}
-
-.folder-select:hover {
-  border-color: var(--primary-color);
-}
-
-.folder-select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-light);
-}
-
-.back-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary-color);
+  color: var(--text-secondary, #8c95a6);
+  font-size: 14px;
   transition: all 0.2s ease;
 }
 
-.back-btn:hover {
-  background: var(--primary-light);
+.nav-back:hover {
+  background: var(--hover-color, #f0f2f5);
+  color: var(--primary-color, #4f6ef7);
 }
 
-.header-actions {
+.nav-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary, #1a2233);
+}
+
+.nav-title i {
+  color: var(--primary-color, #4f6ef7);
+  font-size: 18px;
+}
+
+.nav-actions {
+  margin-left: auto;
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
-.action-btn {
+.nav-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
-  border-radius: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #e8ecf0);
+  background: var(--card-bg, #fff);
+  border-radius: 10px;
   cursor: pointer;
-  color: var(--text-color);
-  font-size: 14px;
+  color: var(--text-color, #4a5568);
+  font-size: 13px;
+  font-weight: 500;
   transition: all 0.2s ease;
 }
 
-.action-btn:hover {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+.nav-btn:hover {
+  background: var(--hover-color, #f0f2f5);
+  border-color: var(--primary-color, #4f6ef7);
+  color: var(--primary-color, #4f6ef7);
 }
 
-.action-btn.primary {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: white;
+.nav-btn.primary {
+  background: var(--primary-color, #4f6ef7);
+  border-color: var(--primary-color, #4f6ef7);
+  color: #fff;
 }
 
-.action-btn.primary:hover {
-  background: var(--primary-hover);
-  border-color: var(--primary-hover);
+.nav-btn.primary:hover {
+  background: var(--primary-hover, #3b5de7);
+  border-color: var(--primary-hover, #3b5de7);
+  box-shadow: 0 2px 8px rgba(79, 110, 247, 0.35);
 }
 
-.btn-text {
+.nav-btn.primary span {
   display: inline;
 }
 
-/* 主内容区域 */
+/* ===== 筛选工具栏 ===== */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, #e8ecf0);
+  flex-shrink: 0;
+}
+
+.filter-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.filter-right {
+  display: flex;
+  align-items: center;
+}
+
+.file-count {
+  font-size: 13px;
+  color: var(--text-secondary, #8c95a6);
+  font-weight: 500;
+}
+
+/* 筛选标签 */
+.filter-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color, #e8ecf0);
+  background: var(--card-bg, #fff);
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--text-secondary, #8c95a6);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chip i {
+  font-size: 12px;
+}
+
+.chip:hover {
+  border-color: var(--primary-color, #4f6ef7);
+  color: var(--primary-color, #4f6ef7);
+  background: rgba(79, 110, 247, 0.04);
+}
+
+.chip.active {
+  background: var(--primary-color, #4f6ef7);
+  border-color: var(--primary-color, #4f6ef7);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(79, 110, 247, 0.3);
+}
+
+.chip.active i {
+  color: #fff;
+}
+
+/* 分隔线 */
+.filter-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color, #e8ecf0);
+}
+
+/* 文件夹选择器 */
+.folder-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e8ecf0);
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.folder-picker:hover {
+  border-color: var(--primary-color, #4f6ef7);
+  box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.08);
+}
+
+.picker-icon {
+  color: var(--primary-color, #4f6ef7);
+  font-size: 14px;
+}
+
+.picker-select {
+  border: none;
+  background: transparent;
+  color: var(--text-color, #4a5568);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  padding-right: 16px;
+  min-width: 120px;
+}
+
+.picker-arrow {
+  color: var(--text-secondary, #8c95a6);
+  font-size: 10px;
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+}
+
+/* ===== 主内容区域 ===== */
 .app-content {
   flex: 1;
   overflow: hidden;
+  background: var(--content-bg, #f5f7fa);
 }
 
-.main-content {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* 右键菜单 */
+/* ===== 右键菜单 ===== */
 .context-menu {
   position: fixed;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 8px 0;
-  min-width: 160px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e8ecf0);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 6px;
+  min-width: 180px;
   z-index: 10000;
-  animation: fadeIn 0.15s ease;
+  animation: menuIn 0.15s ease;
 }
 
 .context-menu-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 10px 14px;
   cursor: pointer;
-  color: var(--text-color);
+  color: var(--text-color, #4a5568);
   font-size: 14px;
-  transition: all 0.2s ease;
+  border-radius: 8px;
+  transition: all 0.15s ease;
 }
 
 .context-menu-item:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
+  background: var(--hover-color, #f0f2f5);
+  color: var(--primary-color, #4f6ef7);
 }
 
 .context-menu-item.danger {
-  color: var(--error-color);
+  color: var(--error-color, #e53e3e);
 }
 
 .context-menu-item.danger:hover {
-  background: var(--color-error-50);
-  color: var(--error-color);
+  background: rgba(229, 62, 62, 0.06);
+  color: var(--error-color, #e53e3e);
 }
 
 .context-menu-item i {
   width: 16px;
   text-align: center;
+  font-size: 14px;
 }
 
 .context-menu-divider {
   height: 1px;
-  background: var(--border-color);
-  margin: 8px 0;
+  background: var(--border-color, #e8ecf0);
+  margin: 4px 8px;
 }
 
-@keyframes fadeIn {
+@keyframes menuIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: scale(0.95) translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: scale(1) translateY(0);
   }
 }
 
-/* 响应式 */
+/* ===== 响应式 ===== */
 @media (max-width: 768px) {
-  .app-header {
-    padding: 12px 16px;
-    height: auto;
-    flex-wrap: wrap;
-    gap: 12px;
+  .app-nav {
+    padding: 0 12px;
+    height: 48px;
   }
 
-  .header-info h2 {
-    font-size: 16px;
+  .nav-title {
+    font-size: 15px;
   }
 
-  .breadcrumb {
-    font-size: 12px;
-  }
-
-  .btn-text {
+  .nav-btn span {
     display: none;
   }
 
-  .app-content {
+  .filter-bar {
+    padding: 10px 12px;
     flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
   }
 
-  .sidebar {
+  .filter-left {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filter-divider {
+    display: none;
+  }
+
+  .chip {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .folder-picker {
     width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-    max-height: 200px;
+  }
+
+  .picker-select {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>
