@@ -277,6 +277,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
+				admin.GET("/bot-approvals", handler.GetBotApprovals)
+				admin.PATCH("/bot-approvals/:id/approve", handler.ApproveBot)
+				admin.PATCH("/bot-approvals/:id/reject", handler.RejectBot)
 			}
 
 			// 节点间通信
