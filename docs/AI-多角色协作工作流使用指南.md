@@ -47,15 +47,17 @@
 
 ### 产出
 
-1. **4 个定制化角色**：
-   - 产品经理（已存在）
-   - 技术架构师（新建）
-   - UI/UX 设计师（新建）
-   - 全栈开发工程师（新建）
-2. **3 个预设工作流**：
-   - `product-tech-review.yaml` - 产品+技术全链路评审
-   - `feature-to-implementation.yaml` - 功能需求到开发实现
-   - `code-review.yaml` - 代码审查与优化
+**4 个定制化角色**：
+
+产品经理（已存在）
+
+- 技术架构师（新建）
+- UI/UX 设计师（新建）
+- 全栈开发工程师（新建）
+- **3 个预设工作流**：
+  - `product-tech-review.yaml` - 产品+技术全链路评审
+  - `feature-to-implementation.yaml` - 功能需求到开发实现
+  - `code-review.yaml` - 代码审查与优化
 
 ***
 

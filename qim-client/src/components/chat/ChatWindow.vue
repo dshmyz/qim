@@ -88,6 +88,7 @@
       @remove-pending-file="removePendingFile"
       @remove-quoted-message="quotedMessage = null"
       @send-mini-app-message="handleSendMiniAppMessage"
+      @open-ai-assistant="openAIAssistant"
       @ai-action="handleAIAction"
       @perform-search="performSearch"
       @close-search="showSearch = false"
@@ -217,6 +218,13 @@
       time-range="today"
       @close="showSummaryPanel = false"
     />
+
+    <!-- AI 助手面板 -->
+    <div v-if="showAIAssistant" class="ai-assistant-overlay">
+      <div class="ai-assistant-container">
+        <AIAssistantApp @back="closeAIAssistant" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -243,6 +251,7 @@ import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
+import AIAssistantApp from '../apps/AIAssistantApp.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
 // 服务器地址
@@ -1917,6 +1926,19 @@ const handleMiniAppToast = (message: string) => {
   window.$message?.info(message)
 }
 
+// AI 助手面板
+const showAIAssistant = ref(false)
+
+// 打开 AI 助手
+const openAIAssistant = () => {
+  showAIAssistant.value = true
+}
+
+// 关闭 AI 助手
+const closeAIAssistant = () => {
+  showAIAssistant.value = false
+}
+
 // 开始语音通话
 const startVoiceCall = async () => {
   if (!props.conversation) return
@@ -2874,5 +2896,25 @@ defineExpose({
 [data-theme="dark"] .chat-header {
   background: var(--sidebar-bg) !important;
   box-shadow: var(--shadow-md) !important;
+}
+
+/* AI 助手覆盖层样式 */
+.ai-assistant-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: var(--content-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-assistant-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

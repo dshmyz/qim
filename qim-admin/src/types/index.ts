@@ -260,6 +260,37 @@ export interface AIBot {
   status: 'active' | 'inactive'
   conversationCount: number
   createdAt: string
+  // 新增审批相关字段
+  approvalStatus?: 'pending' | 'approved' | 'rejected'
+  creatorId?: number
+  creatorName?: string
+  creatorAvatar?: string
+  rejectReason?: string
+  isTemplate?: boolean
+  creatorBotCount?: number
+}
+
+export interface BotApprovalItem {
+  id: number
+  name: string
+  avatar: string
+  description: string
+  type: string
+  creatorName: string
+  creatorAvatar: string
+  creatorBotCount: number
+  approvalStatus: 'pending' | 'approved' | 'rejected'
+  rejectReason?: string
+  createdAt: string
+}
+
+export interface AIUsageLog {
+  id: number
+  userId: number
+  botId: number
+  messagePreview: string
+  callType: string
+  createdAt: string
 }
 
 // 权限和路由相关
