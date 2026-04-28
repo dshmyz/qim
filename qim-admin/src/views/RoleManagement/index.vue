@@ -130,17 +130,22 @@ const entityFields = roleFields as any
 // 权限标签映射
 const permissionLabelMap: Record<string, string> = {
   'user:read': '查看用户',
-  'user:write': '编辑用户',
+  'user:create': '创建用户',
+  'user:update': '编辑用户',
   'user:delete': '删除用户',
   'group:read': '查看群组',
-  'group:write': '编辑群组',
+  'group:create': '创建群组',
+  'group:update': '编辑群组',
   'group:delete': '删除群组',
+  'role:read': '查看角色',
+  'role:create': '创建角色',
+  'role:update': '编辑角色',
+  'role:delete': '删除角色',
   'message:read': '查看消息',
   'message:write': '发送消息',
   'message:delete': '删除消息',
   'system:config': '系统配置',
   'system:log': '查看日志',
-  'role:manage': '角色管理',
 }
 
 const permissionLabel = (perm: string): string => {
