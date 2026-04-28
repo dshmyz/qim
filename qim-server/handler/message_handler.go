@@ -266,6 +266,20 @@ func SendMessage(c *gin.Context) {
 	}
 	db.Create(&msg)
 
+	// 创建消息后，如果是文件消息，更新文件的source字段
+	if req.Type == "file" {
+		// 解析文件URL，获取文件ID
+		var fileData struct {
+			URL string `json:"url"`
+			ID  uint   `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(req.Content), &fileData); err == nil {
+			if fileData.ID > 0 {
+				db.Model(&model.File{}).Where("id = ?", fileData.ID).Update("source", "chat")
+			}
+		}
+	}
+
 	db.Preload("Sender").Preload("QuotedMessage").First(&msg, msg.ID)
 
 	if msg.QuotedMessage != nil {
