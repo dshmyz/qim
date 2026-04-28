@@ -45,9 +45,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
-import { folderApi, type FolderItem } from '@/api/file'
-import QMessage from '@/utils/qmessage'
+import { ref, watch, nextTick } from 'vue'
+import { folderApi, type FolderItem } from '../../../api/file'
+import QMessage from '../../../utils/qmessage'
 
 interface Props {
   visible: boolean

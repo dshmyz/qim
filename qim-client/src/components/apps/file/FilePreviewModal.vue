@@ -89,9 +89,8 @@
 
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue'
-import { fileApi, type FileItem } from '@/api/file'
-import QMessage from '@/utils/qmessage'
-import { API_BASE_URL } from '@/config'
+import { type FileItem } from '../../../api/file'
+import { API_BASE_URL } from '../../../config'
 
 interface Props {
   visible: boolean
