@@ -210,12 +210,13 @@ a:hover {
 
 /* ---- 按钮 ---- */
 .el-button {
-  border-radius: var(--radius-lg) !important;
+  border-radius: var(--radius-md) !important;
   font-weight: 600 !important;
   transition: all var(--duration-normal) var(--ease-out) !important;
   min-height: var(--height-md) !important;
-  padding: 0 var(--space-5) !important;
-  letter-spacing: 0.02em !important;
+  padding: 0 var(--space-4) !important;
+  letter-spacing: 0.01em !important;
+  font-size: 13px !important;
 }
 
 /* 大按钮 hover 缩放效果（仅默认和主要按钮） */
@@ -224,7 +225,7 @@ a:hover {
 .el-button--warning:not(.el-button--small):not(.el-button--text):hover,
 .el-button--danger:not(.el-button--small):not(.el-button--text):hover,
 .el-button--default:not(.el-button--small):not(.el-button--text):hover {
-  transform: scale(1.02) !important;
+  transform: translateY(-1px) !important;
   box-shadow: var(--shadow-button-hover) !important;
 }
 
@@ -239,7 +240,7 @@ a:hover {
 }
 
 .el-button:active {
-  transform: scale(0.98) !important;
+  transform: translateY(0) !important;
 }
 
 .el-button--primary {
@@ -339,11 +340,11 @@ a:hover {
 
 /* ---- 输入框 ---- */
 .el-input__wrapper {
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-sm) !important;
   box-shadow: 0 0 0 1px var(--color-border) inset !important;
   transition: all var(--duration-normal) var(--ease-out) !important;
-  min-height: var(--height-md) !important;
-  padding: 0 var(--space-4) !important;
+  min-height: 36px !important;
+  padding: 0 var(--space-3) !important;
   background-color: var(--color-surface) !important;
 }
 
@@ -352,26 +353,26 @@ a:hover {
 }
 
 .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 2.5px rgb(14 165 233 / 0.15) !important;
+  box-shadow: 0 0 0 2px rgb(14 165 233 / 0.15) !important;
   background-color: var(--color-surface) !important;
 }
 
 .el-input__inner {
-  font-size: 14px !important;
+  font-size: 13px !important;
   font-weight: 400 !important;
   color: var(--color-text-primary) !important;
 }
 
 .el-textarea__inner {
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-sm) !important;
   box-shadow: 0 0 0 1px var(--color-border) inset !important;
   transition: all var(--duration-normal) var(--ease-out) !important;
-  font-size: 14px !important;
-  padding: var(--space-3) var(--space-4) !important;
+  font-size: 13px !important;
+  padding: var(--space-2) var(--space-3) !important;
 }
 
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 2.5px rgb(14 165 233 / 0.15) !important;
+  box-shadow: 0 0 0 2px rgb(14 165 233 / 0.15) !important;
 }
 
 .el-textarea__inner:hover {
@@ -436,7 +437,7 @@ a:hover {
 /* ---- 表格 ---- */
 .el-table {
   --el-table-border-color: var(--color-border-light) !important;
-  --el-table-header-bg-color: var(--color-primary-lighter) !important;
+  --el-table-header-bg-color: var(--color-surface-hover) !important;
   --el-table-row-hover-bg-color: var(--color-primary-lighter) !important;
   --el-table-tr-bg-color: var(--color-surface) !important;
   border-radius: var(--radius-lg) !important;
@@ -446,20 +447,21 @@ a:hover {
 .el-table th.el-table__cell {
   font-weight: 700 !important;
   color: var(--color-text-secondary) !important;
-  font-size: 13px !important;
-  padding: 14px 0 !important;
-  letter-spacing: 0.02em !important;
-  text-transform: none !important;
+  font-size: 12px !important;
+  padding: 10px 0 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  background: var(--color-surface-hover) !important;
 }
 
 .el-table td.el-table__cell {
   color: var(--color-text-primary) !important;
-  padding: 14px 0 !important;
-  font-size: 14px !important;
+  padding: 10px 0 !important;
+  font-size: 13px !important;
 }
 
 .el-table__row {
-  min-height: 48px !important;
+  min-height: 42px !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
@@ -560,12 +562,13 @@ a:hover {
 
 /* ---- 标签 Tag ---- */
 .el-tag {
-  border-radius: var(--radius-full) !important;
-  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 0 var(--space-2) !important;
   font-weight: 600 !important;
-  font-size: 12px !important;
+  font-size: 11px !important;
   border: none !important;
-  line-height: 22px !important;
+  line-height: 20px !important;
+  height: 20px !important;
 }
 
 .el-tag--default {
@@ -600,20 +603,21 @@ a:hover {
 
 /* ---- 分页器 ---- */
 .el-pagination {
-  padding: var(--space-4) 0 !important;
+  padding: var(--space-3) 0 !important;
   font-weight: 500 !important;
 }
 
 .el-pagination .el-pager li {
-  border-radius: var(--radius-md) !important;
-  min-width: 36px !important;
-  height: 36px !important;
-  line-height: 36px !important;
+  border-radius: var(--radius-sm) !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
   font-weight: 600 !important;
+  font-size: 13px !important;
   transition: all var(--duration-normal) var(--ease-out) !important;
   background: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
-  margin: 0 4px !important;
+  margin: 0 2px !important;
 }
 
 .el-pagination .el-pager li:hover {
@@ -625,16 +629,17 @@ a:hover {
   background: var(--gradient-primary) !important;
   color: #fff !important;
   border: none !important;
-  box-shadow: 0 2px 8px -1px rgb(14 165 233 / 0.3) !important;
+  box-shadow: 0 2px 6px -1px rgb(14 165 233 / 0.3) !important;
 }
 
 .el-pagination button {
-  border-radius: var(--radius-md) !important;
-  min-width: 36px !important;
-  height: 36px !important;
+  border-radius: var(--radius-sm) !important;
+  min-width: 32px !important;
+  height: 32px !important;
   border: 1px solid var(--color-border) !important;
   background: var(--color-surface) !important;
   font-weight: 600 !important;
+  font-size: 13px !important;
   transition: all var(--duration-normal) var(--ease-out) !important;
 }
 
@@ -644,13 +649,13 @@ a:hover {
 }
 
 .el-pagination .el-select .el-input__wrapper {
-  min-height: 36px !important;
-  border-radius: var(--radius-md) !important;
+  min-height: 32px !important;
+  border-radius: var(--radius-sm) !important;
 }
 
 /* ---- 对话框 ---- */
 .el-dialog {
-  border-radius: var(--radius-2xl) !important;
+  border-radius: var(--radius-xl) !important;
   box-shadow: var(--shadow-xl) !important;
   border: none !important;
   overflow: hidden !important;
@@ -658,23 +663,23 @@ a:hover {
 
 .el-dialog__header {
   border-bottom: none !important;
-  padding: var(--space-6) var(--space-8) var(--space-4) !important;
+  padding: var(--space-5) var(--space-6) var(--space-3) !important;
   margin: 0 !important;
 }
 
 .el-dialog__title {
-  font-size: 20px !important;
+  font-size: 18px !important;
   font-weight: 700 !important;
   color: var(--color-text-primary) !important;
 }
 
 .el-dialog__body {
-  padding: var(--space-2) var(--space-8) var(--space-6) !important;
+  padding: var(--space-2) var(--space-6) var(--space-5) !important;
 }
 
 .el-dialog__footer {
   border-top: none !important;
-  padding: var(--space-4) var(--space-8) var(--space-6) !important;
+  padding: var(--space-3) var(--space-6) var(--space-5) !important;
 }
 
 /* ---- Popconfirm ---- */

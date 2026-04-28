@@ -1,7 +1,8 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { API_BASE_URL } from '../config'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || '')
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 function getToken() {
   return localStorage.getItem('token')
