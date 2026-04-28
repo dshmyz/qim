@@ -45,7 +45,9 @@
       <div class="sidebar">
         <FolderTree
           ref="folderTreeRef"
+          :selected-source="sourceFilter"
           @select="handleFolderSelect"
+          @source-change="handleSourceChange"
         />
       </div>
 
@@ -71,6 +73,7 @@
           @preview="handleFilePreview"
           @download="handleFileDownload"
           @star="handleFileStar"
+          @share="handleFileShare"
           @delete="handleFileDelete"
           @upload="handleFileUpload"
           @context-menu="handleContextMenu"
@@ -173,6 +176,7 @@ const {
   searchQuery,
   filterType,
   showStarred,
+  sourceFilter,
   hasFiles,
   loadFiles,
   refresh,
@@ -180,6 +184,7 @@ const {
   changeFolder,
   changeFilterType,
   toggleStarred,
+  changeSource,
   uploadFile,
   deleteFile,
   toggleFileStar
@@ -232,6 +237,11 @@ const handleSearch = (query: string) => {
 // 过滤类型变化
 const handleFilterChange = (type: string) => {
   changeFilterType(type)
+}
+
+// 来源变化
+const handleSourceChange = (source: string | null) => {
+  changeSource(source)
 }
 
 // 文件预览
@@ -355,12 +365,8 @@ const handleContextMenuAction = (action: string) => {
 
 // 文件分享
 const handleFileShare = (file: FileItem) => {
-  const fileWithUrl = {
-    ...file,
-    url: file.storage_path || file.storage_path
-  }
   window.dispatchEvent(new CustomEvent('openShareModal', {
-    detail: { type: 'file', data: fileWithUrl }
+    detail: { type: 'file', data: file }
   }))
 }
 

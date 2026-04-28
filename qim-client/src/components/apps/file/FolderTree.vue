@@ -50,6 +50,28 @@
       </div>
     </div>
 
+    <!-- 来源筛选标签 -->
+    <div class="source-filter">
+      <button
+        :class="['source-tab', { active: props.selectedSource === null }]"
+        @click="handleSourceChange(null)"
+      >
+        全部
+      </button>
+      <button
+        :class="['source-tab', { active: props.selectedSource === 'upload' }]"
+        @click="handleSourceChange('upload')"
+      >
+        上传
+      </button>
+      <button
+        :class="['source-tab', { active: props.selectedSource === 'chat' }]"
+        @click="handleSourceChange('chat')"
+      >
+        聊天
+      </button>
+    </div>
+
     <!-- 搜索框 -->
     <div class="folder-tree__search" v-if="treeData.length > 5">
       <input
@@ -167,8 +189,17 @@ import QMessage from '../../../utils/qmessage'
 import FolderTreeItem from './FolderTreeItem.vue'
 import { useFolderTree, type FolderNode } from '../../../composables/useFolderTree'
 
+interface Props {
+  selectedSource?: string | null
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  selectedSource: null
+})
+
 const emit = defineEmits<{
   (e: 'select', folder: FolderNode): void
+  (e: 'sourceChange', source: string | null): void
 }>()
 
 const {
@@ -190,6 +221,11 @@ const {
 
 // 搜索
 const searchQuery = ref('')
+
+// 处理来源变化
+function handleSourceChange(source: string | null) {
+  emit('sourceChange', source)
+}
 
 // 新建文件夹对话框
 const showCreateDialog = ref(false)
@@ -412,6 +448,36 @@ defineExpose({
 .folder-tree__action-btn:hover {
   background: var(--hover-color);
   color: var(--primary-color);
+}
+
+/* 来源筛选 */
+.source-filter {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.source-tab {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  background: var(--hover-color);
+  color: var(--text-color);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.source-tab:hover {
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.source-tab.active {
+  background: var(--primary-color);
+  color: white;
 }
 
 /* 搜索框 */
