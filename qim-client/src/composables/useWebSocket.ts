@@ -28,6 +28,7 @@ const RECONNECT_JITTER_MAX = 8000
 let onSessionExpiredCallback: (() => void) | null = null
 let externalShowNetworkError: typeof showNetworkError | null = null
 let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
+let reconnectAttempts = 0
 
 /**
  * 设置网络错误状态
@@ -83,10 +84,10 @@ export const addWsHandler = (handler: MessageHandler, messageType?: string): (()
 
 /**
  * 批量注册多个消息处理器，返回统一的清理函数
- * @param handlerMap 消息类型 -> 处理函数映射
+ * @param handlerMap 消息类型 -> 处理函数映射 (函数接收 data 参数而非完整 message)
  * @returns 清理函数
  */
-export const addWsHandlers = (handlerMap: Record<string, MessageHandler>): (() => void) => {
+export const addWsHandlers = (handlerMap: Record<string, (data: any) => void>): (() => void) => {
   const cleanups = Object.entries(handlerMap).map(([type, handler]) =>
     addWsHandler((message: WebSocketMessage) => {
       handler(message.data)
@@ -99,8 +100,6 @@ export const addWsHandlers = (handlerMap: Record<string, MessageHandler>): (() =
 }
 
 export function useWebSocket(wsUrl: string) {
-  let reconnectAttempts = 0
-
   /**
    * 处理 WebSocket 消息
    */
