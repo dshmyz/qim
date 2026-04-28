@@ -266,9 +266,8 @@ func SendMessage(c *gin.Context) {
 	}
 	db.Create(&msg)
 
-	// 创建消息后，如果是文件消息，更新文件的source字段
-	if req.Type == "file" {
-		// 解析文件URL，获取文件ID
+	// 创建消息后，如果是文件/图片消息，更新文件的source字段
+	if req.Type == "file" || req.Type == "image" {
 		var fileData struct {
 			URL string `json:"url"`
 			ID  uint   `json:"id"`
@@ -276,7 +275,6 @@ func SendMessage(c *gin.Context) {
 		if err := json.Unmarshal([]byte(req.Content), &fileData); err != nil {
 			log.Printf("[SendMessage] 解析文件消息失败: %v, content: %s", err, req.Content)
 		} else if fileData.ID > 0 {
-			// 验证文件归属并更新source字段
 			result := db.Model(&model.File{}).
 				Where("id = ? AND user_id = ?", fileData.ID, userID.(uint)).
 				Update("source", "chat")

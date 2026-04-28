@@ -701,14 +701,12 @@ const uploadAndSendFile = async (file: File) => {
       const data = await response.json()
       if (data.code === 0) {
         const fileUrl = data.data.url
-        // 使用服务器返回的文件名,如果没有则使用原始文件名
+        const fileId = data.data.id
         const fileName = data.data.name || file.name
-        // 使用服务器返回的文件大小,如果没有则使用原始文件大小
         const fileSize = data.data.size || file.size
         
-        // 构建消息对象，包含引用信息
         const messageData = {
-          content: JSON.stringify({ url: fileUrl, name: fileName, size: fileSize }),
+          content: JSON.stringify({ url: fileUrl, id: fileId, name: fileName, size: fileSize }),
           type: file.type.startsWith('image/') ? 'image' : 'file',
           quotedMessage: quotedMessage.value
         }
