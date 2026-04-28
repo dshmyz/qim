@@ -134,7 +134,7 @@ const statCards = computed<StatCardConfig[]>(() => {
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 @media (max-width: 1200px) {
@@ -150,22 +150,22 @@ const statCards = computed<StatCardConfig[]>(() => {
 }
 
 .stat-card {
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   color: white;
   transition: all var(--duration-normal) var(--ease-out);
   cursor: default;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.15);
 }
 
 .card-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .card-header {
@@ -175,27 +175,27 @@ const statCards = computed<StatCardConfig[]>(() => {
 }
 
 .card-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   opacity: 0.9;
 }
 
 .card-icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   background: rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .card-value {
-  min-height: 36px;
+  min-height: 32px;
 }
 
 .value-number {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -203,8 +203,8 @@ const statCards = computed<StatCardConfig[]>(() => {
 
 .loading-skeleton {
   display: inline-block;
-  width: 80px;
-  height: 32px;
+  width: 70px;
+  height: 28px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-sm);
   animation: pulse 1.5s ease-in-out infinite;

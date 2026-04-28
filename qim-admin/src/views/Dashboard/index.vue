@@ -123,14 +123,14 @@ onMounted(() => {
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .dashboard-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
   border-radius: var(--radius-xl);
   color: white;
@@ -139,12 +139,12 @@ onMounted(() => {
 .header-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
 }
 
 .dashboard-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: white;
   letter-spacing: -0.02em;
@@ -153,7 +153,7 @@ onMounted(() => {
 
 .dashboard-subtitle {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
   font-weight: 500;
 }
