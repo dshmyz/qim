@@ -10,9 +10,6 @@
       <button v-if="isElectron" class="toolbar-btn" @click="$emit('take-screenshot')"><i class="fas fa-scissors"></i></button>
       <button class="toolbar-btn" @click="$emit('open-message-manager')"><i class="fas fa-history"></i></button>
       <button class="toolbar-btn" @click="$emit('open-mini-app-list')"><i class="fas fa-th-large"></i></button>
-      <button class="toolbar-btn ai-btn" @click="$emit('open-ai-assistant')" title="AI 助手">
-        <span class="ai-icon">🤖</span>
-      </button>
     </div>
     
     <div v-if="showEmojiPanel" class="emoji-panel-container">
@@ -102,7 +99,6 @@ const emit = defineEmits<{
   (e: 'start-screen-share'): void
   (e: 'insert-emoji', emoji: string): void
   (e: 'close-at-members-panel'): void
-  (e: 'open-ai-assistant'): void
   (e: 'select-at-member', member: Member): void
   (e: 'select-at-all'): void
   (e: 'handle-file-select', event: Event): void
@@ -184,19 +180,6 @@ defineExpose({ messageInputRef })
 
 .toolbar-btn:hover {
   background: var(--hover-color);
-}
-
-/* AI 助手按钮 */
-.ai-btn {
-  position: relative;
-}
-
-.ai-btn .ai-icon {
-  font-size: 16px;
-}
-
-.ai-btn:hover {
-  background: rgba(14, 165, 233, 0.15);
 }
 
 /* 表情面板容器样式 */

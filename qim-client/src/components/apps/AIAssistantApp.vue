@@ -10,6 +10,15 @@
     </div>
     <div class="ai-assistant-content">
       <div v-if="!showBotChat" class="bot-selection">
+        <!-- Tab 导航 -->
+        <div class="bot-tabs">
+          <button :class="['bot-tab', { active: activeTab === 'available' }]" @click="activeTab = 'available'">可用机器人</button>
+          <button :class="['bot-tab', { active: activeTab === 'my-bots' }]" @click="activeTab = 'my-bots'">我的机器人</button>
+          <button class="bot-tab" @click="openCreateModal"><i class="fas fa-plus"></i> 创建机器人</button>
+        </div>
+
+        <!-- 可用机器人 Tab 内容 -->
+        <div v-show="activeTab === 'available'" class="tab-content">
         <h3>选择模式</h3>
         <div class="mode-list">
           <div class="mode-item" @click="selectMode('chat')">
@@ -31,18 +40,18 @@
             </div>
           </div>
         </div>
-        
+
         <div class="bot-selection-header">
           <h3 class="mt-4">选择机器人</h3>
-          <button class="create-bot-btn" @click="showCreateBotModal = true">
+          <button class="create-bot-btn" @click="openCreateModal">
             <i class="fas fa-plus"></i>
             <span>创建机器人</span>
           </button>
         </div>
         <div class="bot-list">
-          <div 
-            v-for="bot in bots" 
-            :key="bot.id" 
+          <div
+            v-for="bot in bots"
+            :key="bot.id"
             class="bot-item"
             @click="selectBot(bot.id)"
           >
@@ -60,23 +69,69 @@
           <div v-if="bots.length === 0" class="empty-bots">
             <i class="fas fa-robot"></i>
             <p>暂无可用的机器人</p>
-            <button class="create-first-bot-btn" @click="showCreateBotModal = true">
+            <button class="create-first-bot-btn" @click="openCreateModal">
               <i class="fas fa-plus"></i>
               <span>创建第一个机器人</span>
             </button>
           </div>
         </div>
-        
+        </div>
+
+        <!-- 我的机器人 Tab -->
+        <div v-show="activeTab === 'my-bots'" class="tab-content">
+          <MyBotsPanel @use-bot="handleUseBot" @edit-bot="handleEditBot" @open-create="openCreateModal" />
+        </div>
+
         <!-- 创建机器人模态框 -->
         <div v-if="showCreateBotModal" class="tool-modal">
           <div class="modal-content">
             <div class="modal-header">
-              <h3>创建自定义机器人</h3>
+              <h3>{{ !showCreateForm && !createMethod ? '创建机器人' : createMethod === 'template' && !showCreateForm ? '选择模板' : createMethod === 'template' ? '创建机器人（模板）' : '创建自定义机器人' }}</h3>
               <button class="close-button" @click="showCreateBotModal = false">
                 <i class="fas fa-times"></i>
               </button>
             </div>
             <div class="modal-body">
+              <!-- 步骤1：选择创建方式 -->
+              <div v-if="!showCreateForm && !createMethod" class="create-method-selector">
+                <h3>选择创建方式</h3>
+                <div class="method-options">
+                  <div class="method-option recommended" @click="selectCreateMethod('template')">
+                    <div class="method-icon"><i class="fas fa-layer-group"></i></div>
+                    <h4>使用模板</h4>
+                    <p>从预设模板快速创建，推荐新手使用</p>
+                  </div>
+                  <div class="method-option" @click="selectCreateMethod('custom')">
+                    <div class="method-icon"><i class="fas fa-edit"></i></div>
+                    <h4>自定义</h4>
+                    <p>完全自定义配置，需管理员审批</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 步骤2：选择模板 -->
+              <div v-else-if="createMethod === 'template' && !showCreateForm" class="template-selector">
+                <div v-if="templates.length > 0" class="template-list">
+                  <div v-for="tpl in templates" :key="tpl.id" class="template-item" @click="createFromTemplate(tpl)">
+                    <div class="template-avatar">
+                      <img :src="tpl.avatar" :alt="tpl.name" v-if="tpl.avatar">
+                      <i class="fas fa-robot" v-else></i>
+                    </div>
+                    <div class="template-info">
+                      <h4>{{ tpl.name }}</h4>
+                      <p>{{ tpl.description }}</p>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-templates">
+                  <i class="fas fa-inbox"></i>
+                  <p>暂无可用模板，请选择自定义创建</p>
+                  <button class="cancel-button" style="margin-top: 12px;" @click="selectCreateMethod('custom')">切换到自定义</button>
+                </div>
+              </div>
+
+              <!-- 步骤3：填写表单 -->
+              <div v-else>
               <div class="form-group">
                 <label>机器人名称</label>
                 <input v-model="createBotForm.name" type="text" placeholder="请输入机器人名称">
@@ -116,11 +171,12 @@
                 <label>头像 URL</label>
                 <input v-model="createBotForm.avatar" type="text" placeholder="请输入头像 URL（可选）">
               </div>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="cancel-button" @click="showCreateBotModal = false">取消</button>
               <button class="submit-button" @click="createBot" :disabled="creatingBot">
-                {{ creatingBot ? '创建中...' : '创建机器人' }}
+                {{ creatingBot ? '创建中...' : (createMethod === 'template' ? '创建' : '提交审批') }}
               </button>
             </div>
           </div>
@@ -315,9 +371,14 @@ import { API_BASE_URL } from '../../config'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { logger } from '../../utils/logger';
+import MyBotsPanel from './MyBotsPanel.vue'
+import { useBots } from '../../composables/useBots'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+
+// useBots composable
+const { fetchBots, fetchTemplates, fetchMyBotCount, createBot: submitCreateBot } = useBots()
 
 // 定义事件
 const emit = defineEmits(['back'])
@@ -369,6 +430,14 @@ const createBotForm = ref({
   avatar: ''
 })
 
+// Tab 相关
+const activeTab = ref<'available' | 'my-bots'>('available')
+
+// 创建方式
+const createMethod = ref<'template' | 'custom' | null>(null)
+const showCreateForm = ref(false)
+const templates = ref<any[]>([])
+
 // 获取当前选中的机器人
 const currentBot = computed(() => {
   return bots.value.find(bot => bot.id === selectedBotId.value)
@@ -382,18 +451,52 @@ const getToken = () => {
 // 加载机器人列表
 const loadBots = async () => {
   try {
-    const token = getToken()
-    const response = await axios.get(`${serverUrl.value}/api/v1/bots`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (response.data.code === 0) {
-      bots.value = response.data.data
+    const response = await fetchBots()
+    if (Array.isArray(response)) {
+      bots.value = response
     }
   } catch (error) {
     console.error('加载机器人列表失败:', error)
   }
+}
+
+// 打开创建模态框
+const openCreateModal = async () => {
+  showCreateBotModal.value = true
+  createMethod.value = null
+  showCreateForm.value = false
+  // 预加载模板列表
+  templates.value = await fetchTemplates()
+  // 检查数量限制
+  const count = await fetchMyBotCount()
+  if (count >= 5) {
+    alert('已达到创建上限（5个），如需更多请联系管理员')
+    showCreateBotModal.value = false
+  }
+}
+
+// 选择创建方式
+const selectCreateMethod = (method: 'template' | 'custom' | null) => {
+  createMethod.value = method
+  if (method === 'template') {
+    showCreateForm.value = false
+  }
+}
+
+// 从模板创建
+const createFromTemplate = async (tpl: any) => {
+  let config = {}
+  try { config = JSON.parse(tpl.config || '{}') } catch { config = {} }
+  createBotForm.value = {
+    name: tpl.name,
+    description: tpl.description,
+    type: tpl.type || 'ai',
+    provider: 'openai',
+    custom_model_url: '',
+    lobster_url: '',
+    avatar: tpl.avatar,
+  }
+  showCreateForm.value = true
 }
 
 // 选择模式
@@ -734,38 +837,58 @@ const createBot = async () => {
     alert('请输入机器人名称')
     return
   }
-  
+
   creatingBot.value = true
   try {
-    const token = getToken()
-    const response = await axios.post(`${serverUrl.value}/api/v1/bots`, createBotForm.value, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+    const isTemplate = createMethod.value === 'template'
+    const response = await submitCreateBot({
+      ...createBotForm.value,
+      is_template: isTemplate,
     })
-    
-    if (response.data.code === 0) {
-      // 重新加载机器人列表
+
+    if (response.code === 0) {
       await loadBots()
-      // 关闭模态框
       showCreateBotModal.value = false
-      // 重置表单
       Object.keys(createBotForm.value).forEach(key => {
         createBotForm.value[key as keyof typeof createBotForm.value] = ''
       })
       createBotForm.value.type = 'ai'
       createBotForm.value.provider = 'openai'
-      // 显示成功消息
-      alert('机器人创建成功，等待管理员审批')
+      createMethod.value = null
+      showCreateForm.value = false
+      alert(isTemplate ? '机器人创建成功' : '已提交审批，等待管理员审核')
     } else {
-      alert('创建机器人失败，请稍后再试')
+      alert('创建失败，请稍后再试')
     }
-  } catch (error) {
-    console.error('创建机器人失败:', error)
-    alert('创建机器人失败，请稍后再试')
+  } catch (error: any) {
+    if (error.response?.data?.code === 400 && error.response?.data?.message?.includes('上限')) {
+      alert('已达到创建上限，请联系管理员')
+    } else {
+      alert('创建失败，请稍后再试')
+    }
   } finally {
     creatingBot.value = false
   }
+}
+
+const handleEditBot = (bot: any) => {
+  createBotForm.value = {
+    name: bot.name,
+    description: bot.description,
+    type: bot.type,
+    provider: bot.config ? JSON.parse(bot.config).provider || 'openai' : 'openai',
+    custom_model_url: '',
+    lobster_url: '',
+    avatar: bot.avatar,
+  }
+  showCreateBotModal.value = true
+  createMethod.value = 'custom'
+  showCreateForm.value = true
+}
+
+const handleUseBot = async (bot: any) => {
+  activeTab.value = 'available'
+  await selectBot(bot.id)
 }
 
 // 执行工具
@@ -1714,27 +1837,78 @@ onMounted(async () => {
 }
 
 /* 响应式设计 */
+/* Tab 导航 */
+.bot-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 0;
+}
+
+.bot-tab {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+}
+
+.bot-tab:hover { color: var(--text-primary); }
+.bot-tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+
+.tab-content { padding-top: 4px; }
+
+/* 创建方式选择器 */
+.create-method-selector { padding: 30px; text-align: center; }
+.create-method-selector h3 { margin-bottom: 24px; color: var(--text-primary); }
+.method-options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+.method-option { padding: 24px; border: 2px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+.method-option:hover { border-color: var(--primary-color); transform: translateY(-2px); }
+.method-option.recommended { border-color: var(--primary-color); background: rgba(59, 130, 246, 0.05); }
+.method-icon { width: 50px; height: 50px; border-radius: 50%; background: var(--bg-color); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 22px; color: var(--primary-color); }
+.method-option h4 { margin: 0 0 8px; color: var(--text-primary); }
+.method-option p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+
+/* 模板选择器 */
+.template-selector { padding: 20px; }
+.template-list { display: flex; flex-direction: column; gap: 12px; }
+.template-item { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.template-item:hover { background: var(--hover-color); border-color: var(--primary-color); }
+.template-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-color); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.template-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.template-info h4 { margin: 0 0 4px; font-size: 15px; color: var(--text-primary); }
+.template-info p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.empty-templates { text-align: center; padding: 40px; color: var(--text-secondary); }
+
 @media (max-width: 768px) {
   .mode-list {
     grid-template-columns: 1fr;
   }
-  
+
   .bot-list {
     grid-template-columns: 1fr;
   }
-  
+
   .tool-buttons {
     flex-wrap: wrap;
   }
-  
+
   .tool-button {
     flex: 1;
     min-width: calc(20% - 8px);
   }
-  
+
   .modal-content {
     width: 95%;
     max-height: 90vh;
   }
+
+  .method-options { grid-template-columns: 1fr; }
 }
 </style>
