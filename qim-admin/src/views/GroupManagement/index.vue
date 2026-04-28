@@ -248,14 +248,14 @@ const handlePageChange = (page: number) => {
 .group-management-page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
   border-radius: var(--radius-xl);
   color: white;
@@ -264,12 +264,12 @@ const handlePageChange = (page: number) => {
 .header-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
 }
 
 .page-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: white;
   letter-spacing: -0.02em;
@@ -278,31 +278,31 @@ const handlePageChange = (page: number) => {
 
 .page-subtitle {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
   font-weight: 500;
 }
 
 .header-stats {
   display: flex;
-  gap: var(--space-6);
+  gap: var(--space-5);
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .stat-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   color: white;
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.8);
 }
 
@@ -310,11 +310,11 @@ const handlePageChange = (page: number) => {
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .card-toolbar {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .group-cell {
@@ -353,15 +353,15 @@ const handlePageChange = (page: number) => {
 .card-footer {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-border-light);
 }
 
 .members-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2);
   min-height: 200px;
 }
 
@@ -369,7 +369,7 @@ const handlePageChange = (page: number) => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background: var(--color-surface-hover);
   transition: all var(--duration-fast) var(--ease-out);
@@ -391,7 +391,7 @@ const handlePageChange = (page: number) => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .member-name {
@@ -412,15 +412,19 @@ const handlePageChange = (page: number) => {
 }
 
 .member-pagination {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
   justify-content: center;
+}
+
+:deep(.el-table .el-table__cell) {
+  padding: 8px 0;
 }
 
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   .header-stats {

@@ -443,14 +443,14 @@ onMounted(fetchTree)
 .organization-page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   border-radius: var(--radius-xl);
   color: white;
@@ -459,12 +459,12 @@ onMounted(fetchTree)
 .header-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
 }
 
 .page-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: white;
   letter-spacing: -0.02em;
@@ -473,7 +473,7 @@ onMounted(fetchTree)
 
 .page-subtitle {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
   font-weight: 500;
 }
@@ -492,9 +492,9 @@ onMounted(fetchTree)
 
 .content-grid {
   display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: var(--space-4);
-  min-height: 600px;
+  grid-template-columns: 320px 1fr;
+  gap: var(--space-3);
+  min-height: 560px;
 }
 
 @media (max-width: 1024px) {
@@ -516,26 +516,26 @@ onMounted(fetchTree)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .panel-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .panel-count {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
 .tree-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4);
+  padding: var(--space-3);
 }
 
 .tree-root {
@@ -546,32 +546,32 @@ onMounted(fetchTree)
 .detail-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .detail-card {
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .detail-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .dept-title {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .dept-title h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
   color: var(--color-text-primary);
 }
@@ -579,13 +579,13 @@ onMounted(fetchTree)
 .detail-info {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .info-item.full-width {
@@ -593,13 +593,13 @@ onMounted(fetchTree)
 }
 
 .info-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-muted);
   font-weight: 500;
 }
 
 .info-value {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-text-primary);
   font-weight: 600;
 }
@@ -608,7 +608,7 @@ onMounted(fetchTree)
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
-  padding: var(--space-5);
+  padding: var(--space-4);
   flex: 1;
 }
 
@@ -616,32 +616,32 @@ onMounted(fetchTree)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .card-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .employee-count {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
 .employees-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-2);
 }
 
 .employee-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: var(--space-2);
+  padding: var(--space-2);
   border-radius: var(--radius-md);
   background: var(--color-surface-hover);
   transition: all var(--duration-fast) var(--ease-out);
@@ -663,17 +663,17 @@ onMounted(fetchTree)
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .employee-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .employee-email {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
