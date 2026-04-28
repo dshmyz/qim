@@ -975,9 +975,12 @@ onMounted(async () => {
   })
   
   // 监听文件分享事件
-  window.addEventListener('openShareModal', (event: CustomEvent) => {
+  window.addEventListener('openShareModal', async (event: CustomEvent) => {
     const { type, data } = event.detail
-    openShareModal(type, data)
+    window.shareData = data
+    shareType.value = type
+    showShareModal.value = true
+    await loadShareUsersAndGroups()
   })
   
   // 监听刷新用户应用事件
