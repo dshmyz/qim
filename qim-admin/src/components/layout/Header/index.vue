@@ -47,7 +47,6 @@ const emit = defineEmits<Emits>()
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   width: 100%;
   flex-shrink: 0;
-  border-radius: var(--radius-lg);
 }
 
 .header-left {
