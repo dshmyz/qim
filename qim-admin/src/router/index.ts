@@ -98,6 +98,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'AI 助手' },
       },
       {
+        path: 'ai-ops',
+        name: 'AIOps',
+        component: () => import('@/views/AIOps.vue'),
+        meta: { title: 'AI 运维面板' },
+      },
+      {
         path: 'sensitive-words',
         name: 'SensitiveWords',
         component: () => import('@/views/SensitiveWords.vue'),
@@ -122,6 +128,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '版本管理' },
       },
     ],
+  },
+  {
+    path: '/403',
+    name: 'Forbidden',
+    component: () => import('@/views/Forbidden.vue'),
+    meta: { requiresAuth: false },
   },
 ]
 
