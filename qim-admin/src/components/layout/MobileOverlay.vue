@@ -5,9 +5,11 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+interface Props {
   visible: boolean
-}>()
+}
+
+const props = defineProps<Props>()
 
 defineEmits<{
   close: []
@@ -21,8 +23,8 @@ defineEmits<{
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.5);
-  z-index: 999;
+  background: var(--overlay-bg, rgba(15, 23, 42, 0.5));
+  z-index: var(--z-overlay, 999);
   backdrop-filter: blur(2px);
 }
 
