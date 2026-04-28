@@ -280,6 +280,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/bot-approvals", handler.GetBotApprovals)
 				admin.PATCH("/bot-approvals/:id/approve", handler.ApproveBot)
 				admin.PATCH("/bot-approvals/:id/reject", handler.RejectBot)
+				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
 			}
 
 			// 节点间通信
