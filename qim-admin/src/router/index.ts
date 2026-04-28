@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'groups',
         name: 'Groups',
-        component: () => import('@/views/Groups.vue'),
+        component: () => import('@/views/GroupManagement/index.vue'),
         meta: { title: '群组管理' },
       },
       {
