@@ -61,7 +61,12 @@ const fetchDashboardStats = async () => {
   statsLoading.value = true
   try {
     const { data } = await getDashboardStats()
-    dashboardStats.value = data.data
+    dashboardStats.value = data.data ?? {
+      totalUsers: 0,
+      onlineUsers: 0,
+      totalGroups: 0,
+      totalMessages: 0,
+    }
   } catch (error) {
     console.error('Failed to fetch dashboard stats:', error)
     ElMessage.error('获取仪表盘数据失败')
@@ -74,7 +79,7 @@ const fetchRecentRegistrations = async () => {
   registrationsLoading.value = true
   try {
     const { data } = await getRecentRegistrations({ page: 1, pageSize: 10 })
-    recentRegistrations.value = data.data.list
+    recentRegistrations.value = data.data?.list ?? []
   } catch (error) {
     console.error('Failed to fetch recent registrations:', error)
     ElMessage.error('获取注册数据失败')
@@ -85,11 +90,16 @@ const fetchRecentRegistrations = async () => {
 
 const refreshData = async () => {
   refreshing.value = true
-  await Promise.all([
-    fetchDashboardStats(),
-    fetchRecentRegistrations(),
-  ])
-  refreshing.value = false
+  try {
+    await Promise.all([
+      fetchDashboardStats(),
+      fetchRecentRegistrations(),
+    ])
+  } catch (error) {
+    console.error('Failed to refresh dashboard:', error)
+  } finally {
+    refreshing.value = false
+  }
 }
 
 const handleViewAll = () => {
