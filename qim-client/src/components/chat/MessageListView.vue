@@ -14,43 +14,62 @@
       <span>加载中...</span>
     </div>
 
-    <div v-for="(message, index) in messages" :key="message.id">
-      <!-- 时间分隔线 -->
-      <div v-if="shouldShowTime(index, message, messages)" class="time-divider">
-        <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
-      </div>
+    <!-- 虚拟滚动容器 -->
+    <div class="virtualizer-container" :style="{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }">
+      <div
+        v-for="virtualItem in virtualizer.getVirtualItems()"
+        :key="String(virtualItem.key)"
+        :data-index="virtualItem.index"
+        :style="{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          transform: `translateY(${virtualItem.start}px)`
+        }"
+      >
+          <!-- 时间分隔线 -->
+          <div
+            v-if="virtualItem.index < messages.length && shouldShowTime(virtualItem.index, messages[virtualItem.index], messages)"
+            class="time-divider"
+          >
+            <span class="time-divider-text">{{ formatTime(messages[virtualItem.index].timestamp) }}</span>
+          </div>
 
-      <MessageItem
-        :message="message"
-        :is-self="message.isSelf"
-        :is-recalled="message.isRecalled || false"
-        :conversation-type="conversationType"
-        :read-users-map="readUsersMap"
-        :server-url="serverUrl"
-        @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, message)"
-        @show-user-profile="(user: any) => emit('show-user-profile', user)"
-        @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
-        @preview-image="(data: string) => emit('preview-image', data)"
-        @download-file="(data: string) => emit('download-file', data)"
-        @save-as="(data: string) => emit('save-as', data)"
-        @view-shared-content="(content: string) => emit('view-shared-content', content)"
-        @open-mini-app="(app: any) => emit('open-mini-app', app)"
-        @open-news-link="(url: string) => emit('open-news-link', url)"
-        @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
-        @show-read-users="(msg: Message) => emit('show-read-users', msg)"
-      />
+          <MessageItem
+            v-if="virtualItem.index < messages.length"
+            :message="messages[virtualItem.index]"
+            :is-self="messages[virtualItem.index].isSelf"
+            :is-recalled="!!messages[virtualItem.index].isRecalled"
+            :conversation-type="conversationType"
+            :read-users-map="readUsersMap"
+            :server-url="serverUrl"
+            @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, messages[virtualItem.index])"
+            @show-user-profile="(user: any) => emit('show-user-profile', user)"
+            @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
+            @preview-image="(data: string) => emit('preview-image', data)"
+            @download-file="(data: string) => emit('download-file', data)"
+            @save-as="(data: string) => emit('save-as', data)"
+            @view-shared-content="(content: string) => emit('view-shared-content', content)"
+            @open-mini-app="(app: any) => emit('open-mini-app', app)"
+            @open-news-link="(url: string) => emit('open-news-link', url)"
+            @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
+            @show-read-users="(msg: Message) => emit('show-read-users', msg)"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- AI 思考中指示器 -->
-    <ThinkingIndicator v-if="showThinkingIndicator" />
+    <slot name="thinking-indicator" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import type { Message } from '../../types'
+import { ref, onMounted, watch, nextTick } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
+import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
-import ThinkingIndicator from '../message/ThinkingIndicator.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
 
 const { formatTime, shouldShowTimeDivider } = useChatUtils()
@@ -59,36 +78,42 @@ interface Props {
   messages: Message[]
   hasMoreMessages: boolean
   conversationType: string
-  readUsersMap: Record<string, { read_users: any[], total_members: number, read_count?: number }>
+  readUsersMap: Record<string, { read_users: User[]; total_members: number }>
   serverUrl: string
-  showThinkingIndicator?: boolean
 }
 
 interface Emits {
-  (e: 'message-contextmenu', event: MouseEvent, message: Message): void
-  (e: 'show-user-profile', user: any): void
-  (e: 'scroll-to-quoted-message', id: string): void
-  (e: 'preview-image', data: string): void
-  (e: 'download-file', data: string): void
-  (e: 'save-as', data: string): void
-  (e: 'view-shared-content', content: string): void
-  (e: 'open-mini-app', app: any): void
-  (e: 'open-news-link', url: string): void
-  (e: 'retry-send-message', msg: any): void
-  (e: 'show-read-users', msg: Message): void
-  (e: 'scroll-to-bottom'): void
-  (e: 'load-more'): void
-  (e: 'mark-read'): void
+  'message-contextmenu': [event: MouseEvent, message: Message]
+  'show-user-profile': [user: User]
+  'scroll-to-quoted-message': [id: string]
+  'preview-image': [data: string]
+  'download-file': [data: string]
+  'save-as': [data: string]
+  'view-shared-content': [content: string]
+  'open-mini-app': [app: Message['miniAppData']]
+  'open-news-link': [url: string]
+  'retry-send-message': [msg: Message]
+  'show-read-users': [msg: Message]
+  'scroll-to-bottom': []
+  'load-more': []
+  'mark-read': []
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const messageListRef = ref<HTMLDivElement>()
+const messageListRef = ref<HTMLDivElement | null>(null)
 const isLoadingMore = ref(false)
-const markMessagesAsRead = () => {
-  emit('mark-read')
-}
+const lastMarkReadTime = ref(0)
+
+// 虚拟滚动配置
+const virtualizer = useVirtualizer({
+  count: props.messages.length,
+  getItemKey: (index) => props.messages[index]?.id || index,
+  estimateSize: () => 80,
+  overscan: 5,
+  getScrollElement: () => messageListRef.value
+})
 
 const shouldShowTime = (index: number, message: Message, messages: Message[]) => {
   return shouldShowTimeDivider(index, message, messages)
@@ -103,21 +128,29 @@ const handleScroll = () => {
   }
 }
 
-const loadMoreMessages = async () => {
-  if (!props.hasMoreMessages) return
+const loadMoreMessages = () => {
+  if (!props.hasMoreMessages || isLoadingMore.value) return
   isLoadingMore.value = true
-  try {
-    emit('load-more')
-  } finally {
+  emit('load-more')
+  // isLoadingMore 由父组件通过 hasMoreMessages prop 控制
+  // 此处设置一个安全的超时重置，防止加载失败时永远显示加载中
+  setTimeout(() => {
     isLoadingMore.value = false
-  }
+  }, 5000)
+}
+
+const markMessagesAsRead = () => {
+  const now = Date.now()
+  if (now - lastMarkReadTime.value < 3000) return
+  lastMarkReadTime.value = now
+  emit('mark-read')
 }
 
 const scrollToBottom = () => {
-  if (messageListRef.value) {
-    messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-    markMessagesAsRead()
-  }
+  const el = messageListRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+  markMessagesAsRead()
 }
 
 defineExpose({
@@ -125,17 +158,19 @@ defineExpose({
   messageListRef
 })
 
-watch(() => props.messages, () => {
-  nextTick(() => {
-    markMessagesAsRead()
-  })
-}, { deep: true })
+// 消息变化时滚动到底部并标记已读
+// 仅当消息追加时（长度增加）才滚动到底部，避免加载历史消息时强制跳转
+watch(() => props.messages.length, (newLen, oldLen) => {
+  if (oldLen === undefined || newLen > oldLen) {
+    nextTick(() => {
+      scrollToBottom()
+      markMessagesAsRead()
+    })
+  }
+})
 
 onMounted(() => {
   scrollToBottom()
-})
-
-onUnmounted(() => {
 })
 </script>
 
@@ -146,6 +181,10 @@ onUnmounted(() => {
   padding: 20px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   opacity: 0.95;
+}
+
+.virtualizer-container {
+  width: 100%;
 }
 
 .time-divider {

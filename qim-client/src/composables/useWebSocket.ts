@@ -1,4 +1,4 @@
-import { ref, onUnmounted, readonly } from 'vue'
+import { ref, readonly } from 'vue'
 import QMessage from '../utils/qmessage'
 
 export interface WebSocketMessage {
@@ -12,8 +12,8 @@ export type MessageHandler = (message: WebSocketMessage) => void
 let ws: WebSocket | null = null
 let reconnectTimer: number | null = null
 let heartbeatTimer: number | null = null
-const handlers: Map<string, MessageHandler[]> = new Map()
-const generalHandlers: MessageHandler[] = []
+const handlers: Map<string, Set<MessageHandler>> = new Map()
+const generalHandlers: Set<MessageHandler> = new Set()
 const isConnected = ref(false)
 const showNetworkError = ref(false)
 const networkErrorMsg = ref('网络连接已断开')
@@ -26,12 +26,12 @@ const RECONNECT_JITTER_MAX = 8000
 
 // 重连回调函数
 let onSessionExpiredCallback: (() => void) | null = null
-// 保存外部传入的网络状态 ref，供 connect() 和回调使用
 let externalShowNetworkError: typeof showNetworkError | null = null
 let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
+let reconnectAttempts = 0
 
 /**
- * 设置网络错误状态（同时更新内部和外部状态）
+ * 设置网络错误状态
  */
 const setNetworkError = (show: boolean, msg: string) => {
   showNetworkError.value = show
@@ -44,9 +44,62 @@ const setNetworkError = (show: boolean, msg: string) => {
   }
 }
 
-export function useWebSocket(wsUrl: string) {
-  let reconnectAttempts = 0
+/**
+ * 注册消息处理器，返回清理函数
+ * @param handler 消息处理函数
+ * @param messageType 消息类型（可选，不传则处理所有消息）
+ * @returns 清理函数，调用后自动移除该 handler
+ */
+export const addWsHandler = (handler: MessageHandler, messageType?: string): (() => void) => {
+  let removed = false
 
+  const cleanup = () => {
+    if (removed) return
+    removed = true
+
+    if (messageType) {
+      const typeHandlers = handlers.get(messageType)
+      if (typeHandlers) {
+        typeHandlers.delete(handler)
+        if (typeHandlers.size === 0) {
+          handlers.delete(messageType)
+        }
+      }
+    } else {
+      generalHandlers.delete(handler)
+    }
+  }
+
+  if (messageType) {
+    if (!handlers.has(messageType)) {
+      handlers.set(messageType, new Set())
+    }
+    handlers.get(messageType)!.add(handler)
+  } else {
+    generalHandlers.add(handler)
+  }
+
+  return cleanup
+}
+
+/**
+ * 批量注册多个消息处理器，返回统一的清理函数
+ * @param handlerMap 消息类型 -> 处理函数映射 (函数接收 data 参数而非完整 message)
+ * @returns 清理函数
+ */
+export const addWsHandlers = (handlerMap: Record<string, (data: any) => void>): (() => void) => {
+  const cleanups = Object.entries(handlerMap).map(([type, handler]) =>
+    addWsHandler((message: WebSocketMessage) => {
+      handler(message.data)
+    }, type)
+  )
+
+  return () => {
+    cleanups.forEach(cleanup => cleanup())
+  }
+}
+
+export function useWebSocket(wsUrl: string) {
   /**
    * 处理 WebSocket 消息
    */
@@ -95,10 +148,6 @@ export function useWebSocket(wsUrl: string) {
 
   /**
    * 连接 WebSocket（带消息处理器）
-   * @param showNetworkErrorRef 显示网络错误的 ref
-   * @param networkErrorMsgRef 网络错误消息的 ref
-   * @param sessionExpiredRef 会话过期的 ref
-   * @param messageHandlers 消息处理器映射
    */
   const connectWithHandlers = (
     showNetworkErrorRef: typeof showNetworkError,
@@ -106,28 +155,24 @@ export function useWebSocket(wsUrl: string) {
     sessionExpiredRef: { value: boolean },
     messageHandlers: Record<string, (data: any) => void>
   ) => {
-    // 保存外部 ref，供 connect() 及其回调使用
     externalShowNetworkError = showNetworkErrorRef
     externalNetworkErrorMsg = networkErrorMsgRef
 
-    // 保存 session 过期回调
     onSessionExpiredCallback = () => {
       sessionExpiredRef.value = true
       setNetworkError(true, '会话已过期，请重新登录')
     }
 
-    // 注册消息处理器
+    // 使用新的 addWsHandler，每个 handler 自动注册
     Object.entries(messageHandlers).forEach(([type, handler]) => {
-      addHandler((message: WebSocketMessage) => {
+      addWsHandler((message: WebSocketMessage) => {
         handler(message.data)
       }, type)
     })
 
-    // 隐藏网络错误
     setNetworkError(false, '网络连接失败，正在尝试重新连接...')
     sessionExpiredRef.value = false
 
-    // 执行连接
     connect()
   }
 
@@ -150,7 +195,6 @@ export function useWebSocket(wsUrl: string) {
 
       ws = new WebSocket(wsFullUrl)
 
-      // 暴露到全局
       if (typeof window !== 'undefined') {
         ;(window as any).ws = ws
       }
@@ -170,7 +214,6 @@ export function useWebSocket(wsUrl: string) {
         stopHeartbeat()
         setNetworkError(true, '网络连接已断开，正在尝试重新连接...')
 
-        // 检查是否是会话过期（通过 CloseEvent code 或 reason）
         if (event.code === 4401 || (event.reason && event.reason.includes('401'))) {
           if (onSessionExpiredCallback) {
             onSessionExpiredCallback()
@@ -184,7 +227,6 @@ export function useWebSocket(wsUrl: string) {
         isConnected.value = false
         console.error('WebSocket error:', error)
 
-        // 检查是否是会话过期错误
         const errorObj = error as any
         if (errorObj.message && errorObj.message.includes('401')) {
           if (onSessionExpiredCallback) {
@@ -200,7 +242,7 @@ export function useWebSocket(wsUrl: string) {
   }
 
   /**
-   * 安排重连（带指数退避和随机抖动，避免所有客户端同时重连）
+   * 安排重连
    */
   const scheduleReconnect = () => {
     if (reconnectTimer) return
@@ -211,12 +253,8 @@ export function useWebSocket(wsUrl: string) {
 
     reconnectAttempts++
     
-    // 指数退避：第1次5秒，第2次10秒，第3次20秒
     const baseDelay = RECONNECT_INTERVAL * Math.pow(2, reconnectAttempts - 1)
-    
-    // 随机抖动：避免所有客户端同时发起重连请求
     const jitter = RECONNECT_JITTER_MIN + Math.random() * (RECONNECT_JITTER_MAX - RECONNECT_JITTER_MIN)
-    
     const totalDelay = baseDelay + jitter
     
     console.log(`WebSocket 将在 ${Math.round(totalDelay / 1000)}s 后重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
@@ -256,97 +294,38 @@ export function useWebSocket(wsUrl: string) {
   }
 
   /**
-   * 添加特定类型消息处理器
-   */
-  const addHandler = (handler: MessageHandler, messageType?: string) => {
-    if (messageType) {
-      if (!handlers.has(messageType)) {
-        handlers.set(messageType, [])
-      }
-      handlers.get(messageType)!.push(handler)
-    } else {
-      generalHandlers.push(handler)
-    }
-  }
-
-  /**
-   * 移除消息处理器
-   */
-  const removeHandler = (handler: MessageHandler, messageType?: string) => {
-    if (messageType) {
-      const typeHandlers = handlers.get(messageType)
-      if (typeHandlers) {
-        const index = typeHandlers.indexOf(handler)
-        if (index !== -1) {
-          typeHandlers.splice(index, 1)
-        }
-      }
-    } else {
-      const index = generalHandlers.indexOf(handler)
-      if (index !== -1) {
-        generalHandlers.splice(index, 1)
-      }
-    }
-  }
-
-  /**
    * 获取 WebSocket 实例
    */
   const getWs = () => ws
 
-  onUnmounted(() => {
-    // 只清理当前实例添加的处理器，不关闭连接
-    // 因为连接是模块级共享的
-  })
-
   return {
-    // 状态（只读）
     isConnected: readonly(isConnected),
     showNetworkError: readonly(showNetworkError),
     networkErrorMsg: readonly(networkErrorMsg),
-
-    // 内部状态（可修改）
     ws,
-
-    // 方法
     connect,
     connectWithHandlers,
     disconnect,
     sendMessage,
-    addHandler,
-    removeHandler,
+    addHandler: addWsHandler,
     getWs
   }
 }
 
-// 导出模块级函数，供外部使用
+// 导出模块级函数
 export const getWebSocketInstance = () => ws
 export const isWebSocketConnected = () => isConnected.value
 
-export const addWsHandler = (handler: MessageHandler, messageType?: string) => {
-  if (messageType) {
-    if (!handlers.has(messageType)) {
-      handlers.set(messageType, [])
-    }
-    handlers.get(messageType)!.push(handler)
-  } else {
-    generalHandlers.push(handler)
-  }
-}
-
+// 保留向后兼容的导出（标记为 deprecated）
+/** @deprecated 使用 addWsHandler 返回值进行清理，不要直接调用此函数 */
 export const removeWsHandler = (handler: MessageHandler, messageType?: string) => {
+  console.warn('removeWsHandler is deprecated, use the cleanup function returned by addWsHandler instead')
   if (messageType) {
     const typeHandlers = handlers.get(messageType)
     if (typeHandlers) {
-      const index = typeHandlers.indexOf(handler)
-      if (index !== -1) {
-        typeHandlers.splice(index, 1)
-      }
+      typeHandlers.delete(handler)
     }
   } else {
-    const index = generalHandlers.indexOf(handler)
-    if (index !== -1) {
-      generalHandlers.splice(index, 1)
-    }
+    generalHandlers.delete(handler)
   }
 }
