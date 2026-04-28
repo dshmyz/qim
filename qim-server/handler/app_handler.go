@@ -34,8 +34,10 @@ func GetApps(c *gin.Context) {
 		query = query.Where("name LIKE ?", "%"+name+"%")
 	}
 
-	if status != "" {
+	if status != "" && status != "all" {
 		query = query.Where("status = ?", status)
+	} else if status != "all" {
+		query = query.Where("status = ?", "active")
 	}
 
 	var total int64

@@ -134,7 +134,7 @@ const fetchMiniApps = async () => {
       page: pagination.page,
       pageSize: pagination.pageSize,
       name: searchForm.name || undefined,
-      status: searchForm.status || undefined,
+      status: searchForm.status || 'all',
     })
     miniApps.value = data.data.list
     pagination.total = data.data.total
