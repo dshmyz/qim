@@ -468,8 +468,6 @@ const chatHeaderRef = ref<any>()
 const chatBodyRef = ref<InstanceType<typeof ChatBody>>()
 const chatInputRef = ref<InstanceType<typeof ChatInputArea>>()
 const overlayRef = ref<InstanceType<typeof OverlayManager>>()
-const messageListViewRef = ref<any>()
-const messageInputAreaRef = ref<any>()
 const messageInputRef = ref<HTMLTextAreaElement>()
 const showSearch = ref(false)
 const searchQuery = ref('')
@@ -537,19 +535,6 @@ const editGroupName = ref('')
 // 编辑群公告状态
 const showEditAnnouncementModal = ref(false)
 const editAnnouncementContent = ref('')
-
-// 监听状态变化
-watch(showEditGroupInfoModal, (newValue) => {
-})
-
-watch(showEditAnnouncementModal, (newValue) => {
-})
-
-watch(editGroupName, (newValue) => {
-})
-
-watch(editAnnouncementContent, (newValue) => {
-})
 
 // 消息管理器
 const showMessageManager = ref(false)
@@ -1744,9 +1729,7 @@ const otherUserId = computed(() => {
 
 // 检测是否在Electron环境中
 const isElectron = computed(() => {
-  // 开发环境中也返回true，让用户能看到截图按钮
-  // 实际运行时会自动使用模拟截图功能
-  return true || (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.once === 'function')
+  return window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.once === 'function'
 })
 
 const takeScreenshot = () => {
