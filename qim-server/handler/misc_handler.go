@@ -21,7 +21,11 @@ func GetBots(c *gin.Context) {
 	db := database.GetDB()
 
 	var bots []model.Bot
-	db.Where("is_active = ?", true).Find(&bots)
+	// 返回：系统 Bot + 模板 Bot + 已审批通过的用户自建 Bot
+	db.Where(
+		"(creator_id = 0 AND is_active = ?) OR (is_template = ? AND is_active = ? AND approval_status = ?) OR (approval_status = ? AND is_active = ?)",
+		true, true, true, "approved", "approved", true,
+	).Find(&bots)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,

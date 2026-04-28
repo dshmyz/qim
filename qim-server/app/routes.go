@@ -202,6 +202,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 机器人管理
 			authed.GET("/bots", handler.GetBots)
+			authed.GET("/bots/templates", handler.GetTemplates)
+			authed.GET("/bots/my", handler.GetMyBots)
+			authed.GET("/bots/my-count", handler.GetMyBotCount)
+			authed.POST("/bots", handler.CreateBot)
+			authed.PUT("/bots/:id", handler.UpdateMyBot)
+			authed.DELETE("/bots/:id", handler.DeleteMyBot)
 
 			// 日历事件
 			authed.GET("/events", handler.GetEvents)
