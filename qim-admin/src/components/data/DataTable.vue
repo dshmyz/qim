@@ -1,0 +1,111 @@
+<!-- src/components/data/DataTable.vue -->
+<template>
+  <div class="data-table">
+    <div class="table-header">
+      <div class="search-area">
+        <slot name="search"></slot>
+      </div>
+      <div class="actions-area">
+        <slot name="actions"></slot>
+        <el-button type="primary" @click="$emit('refresh')">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </div>
+
+    <el-table :data="data" v-loading="loading" stripe>
+      <slot></slot>
+    </el-table>
+
+    <div class="pagination-area" v-if="showPagination">
+      <el-pagination
+        v-model:current-page="innerPage"
+        v-model:page-size="innerPageSize"
+        :total="total"
+        :page-sizes="pageSizes"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="$emit('page-change')"
+        @current-change="$emit('page-change')"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
+
+interface PaginationConfig {
+  page: number
+  pageSize: number
+  total: number
+}
+
+interface Props {
+  data: unknown[]
+  loading: boolean
+  pagination: PaginationConfig
+  showPagination?: boolean
+  pageSizes?: number[]
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  showPagination: true,
+  pageSizes: () => [10, 20, 50, 100]
+})
+
+defineEmits<{
+  'page-change': []
+  'refresh': []
+}>()
+
+const innerPage = computed({
+  get: () => props.pagination.page,
+  set: (_val: number) => {}
+})
+
+const innerPageSize = computed({
+  get: () => props.pagination.pageSize,
+  set: (_val: number) => {}
+})
+
+const total = computed(() => props.pagination.total)
+</script>
+
+<style scoped>
+.data-table {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-5);
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.search-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.actions-area {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.pagination-area {
+  margin-top: var(--space-5);
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+}
+</style>
