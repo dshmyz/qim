@@ -576,12 +576,13 @@ const sendBotMessage = async () => {
       await sendStreamingRequest(message, token)
     } else {
       // 聊天模式：通过会话发送消息
-      if (!selectedBotId.value) return
-      
+      const botId = Number(selectedBotId.value)
+      if (!botId) return
+
       // 创建单一会话
       const convResponse = await axios.post(`${serverUrl.value}/api/v1/conversations/single`, {
-        recipient_id: 0, // 0 表示机器人
-        bot_id: selectedBotId.value
+        recipient_id: 0,
+        bot_id: botId
       }, {
         headers: {
           'Authorization': `Bearer ${token}`

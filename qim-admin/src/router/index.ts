@@ -74,6 +74,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '消息搜索' },
       },
       {
+        path: 'file-storage',
+        name: 'FileStorage',
+        component: () => import('@/views/FileManagement/Storage.vue'),
+        meta: { title: '文件存储管理' },
+      },
+      {
+        path: 'server-monitor',
+        name: 'ServerMonitor',
+        component: () => import('@/views/SystemMonitor/Server.vue'),
+        meta: { title: '服务器监控' },
+      },
+      {
         path: 'notifications',
         name: 'Notifications',
         component: () => import('@/views/Notifications.vue'),

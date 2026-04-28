@@ -221,7 +221,7 @@ const currentFolderPath = computed(() => {
 
 // 文件夹选择
 const handleFolderSelect = (folder: FolderNode) => {
-  changeFolder(folder.id === 'root' ? null : parseInt(folder.id))
+  changeFolder(folder.id)
 }
 
 // 搜索

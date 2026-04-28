@@ -199,7 +199,7 @@ const createError = ref('')
 const folderNameInput = ref<HTMLInputElement | null>(null)
 
 // 子节点加载状态追踪
-const loadingChildrenIds = ref<Set<string>>(new Set())
+const loadingChildrenIds = ref<Set<number>>(new Set())
 
 // 判断是否全部展开
 const allExpanded = computed(() => {

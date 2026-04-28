@@ -54,7 +54,12 @@ func GetBotApprovals(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": items,
+		"data": gin.H{
+			"list":     items,
+			"total":    int64(len(items)),
+			"page":     1,
+			"pageSize": len(items),
+		},
 	})
 }
 

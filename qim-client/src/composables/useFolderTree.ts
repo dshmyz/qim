@@ -5,14 +5,18 @@ import { useRequest, type ApiResponse } from './useRequest'
  * 文件夹节点接口
  */
 export interface FolderNode {
-  id: string
+  id: number
+  user_id: number
   name: string
-  parentId: string | null
+  parent_id: number | null
+  sort_order?: number
+  icon?: string
+  color?: string
+  created_at?: string
+  updated_at?: string
   children?: FolderNode[]
   hasChildren?: boolean
   path?: string
-  createdAt?: string
-  updatedAt?: string
 }
 
 /**
@@ -28,7 +32,7 @@ export function useFolderTree() {
   // 树根节点
   const treeData = ref<FolderNode[]>([])
   // 已展开的节点 ID 集合
-  const expandedIds = ref<Set<string>>(new Set())
+  const expandedIds = ref<Set<number>>(new Set())
   // 当前选中的文件夹
   const selectedFolder = ref<FolderNode | null>(null)
   // 加载状态
@@ -44,7 +48,7 @@ export function useFolderTree() {
     error.value = null
 
     try {
-      const response = await get<ApiResponse<FolderNode[]>>('/api/v1/folders')
+      const response = await get<ApiResponse<FolderNode[]>>('/api/v1/folders/tree')
       if (response?.code === 0 && Array.isArray(response.data)) {
         treeData.value = response.data
       } else {
@@ -61,10 +65,11 @@ export function useFolderTree() {
   /**
    * 懒加载子文件夹
    */
-  const loadChildren = async (folderId: string): Promise<FolderNode[]> => {
+  const loadChildren = async (folderId: number): Promise<FolderNode[]> => {
     try {
       const response = await get<ApiResponse<FolderNode[]>>(
-        `/api/v1/folders/${folderId}/children`
+        `/api/v1/folders/tree`,
+        { params: { parent_id: folderId } }
       )
 
       if (response?.code === 0 && Array.isArray(response.data)) {
@@ -102,7 +107,7 @@ export function useFolderTree() {
   /**
    * 移除子节点的展开状态（收起时清理）
    */
-  const removeChildrenExpanded = (parentId: string) => {
+  const removeChildrenExpanded = (parentId: number) => {
     const parent = findFolderInTree(parentId)
     if (parent && parent.children) {
       for (const child of parent.children) {
@@ -115,7 +120,7 @@ export function useFolderTree() {
   /**
    * 在树中查找并更新文件夹
    */
-  const updateFolderInTree = (folderId: string, updates: Partial<FolderNode>) => {
+  const updateFolderInTree = (folderId: number, updates: Partial<FolderNode>) => {
     const updateNode = (nodes: FolderNode[]): boolean => {
       for (const node of nodes) {
         if (node.id === folderId) {
@@ -134,7 +139,7 @@ export function useFolderTree() {
   /**
    * 在树中查找文件夹节点
    */
-  const findFolderInTree = (folderId: string): FolderNode | null => {
+  const findFolderInTree = (folderId: number): FolderNode | null => {
     const find = (nodes: FolderNode[]): FolderNode | null => {
       for (const node of nodes) {
         if (node.id === folderId) return node
@@ -158,11 +163,11 @@ export function useFolderTree() {
   /**
    * 创建文件夹
    */
-  const createFolder = async (name: string, parentId: string | null = null): Promise<boolean> => {
+  const createFolder = async (name: string, parentId: number | null = null): Promise<boolean> => {
     try {
       const response = await post<ApiResponse<FolderNode>>('/api/v1/folders', {
         name,
-        parentId
+        parent_id: parentId
       })
 
       if (response?.code === 0) {
@@ -189,7 +194,7 @@ export function useFolderTree() {
   /**
    * 删除文件夹
    */
-  const deleteFolder = async (folderId: string): Promise<boolean> => {
+  const deleteFolder = async (folderId: number): Promise<boolean> => {
     try {
       const response = await deleteRequest<ApiResponse<void>>(`/api/v1/folders/${folderId}`)
 
@@ -212,7 +217,7 @@ export function useFolderTree() {
   /**
    * 从树中移除文件夹节点
    */
-  const removeFolderFromTree = (folderId: string) => {
+  const removeFolderFromTree = (folderId: number) => {
     const removeFromNodes = (nodes: FolderNode[]): boolean => {
       const index = nodes.findIndex(n => n.id === folderId)
       if (index !== -1) {
@@ -261,14 +266,14 @@ export function useFolderTree() {
   /**
    * 判断节点是否展开
    */
-  const isExpanded = (folderId: string): boolean => {
+  const isExpanded = (folderId: number): boolean => {
     return expandedIds.value.has(folderId)
   }
 
   /**
    * 判断节点是否选中
    */
-  const isSelected = (folderId: string): boolean => {
+  const isSelected = (folderId: number): boolean => {
     return selectedFolder.value?.id === folderId
   }
 

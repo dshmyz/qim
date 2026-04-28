@@ -57,7 +57,7 @@ const { loading, fetchMyBots, deleteBot } = useBots()
 const myBots = ref<any[]>([])
 
 const loadMyBots = async () => {
-  myBots.value = await fetchMyBots()
+  myBots.value = (await fetchMyBots()) || []
 }
 
 const statusLabel = (status: string) => {

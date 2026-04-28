@@ -99,10 +99,10 @@ defineOptions({
 
 interface Props {
   folder: FolderNode
-  expandedIds: Set<string>
-  selectedId: string | null
+  expandedIds: Set<number>
+  selectedId: number | null
   isExpandableFn: ((folder: FolderNode) => boolean) | null
-  loadingIds: Set<string>
+  loadingIds: Set<number>
 }
 
 const props = withDefaults(defineProps<Props>(), {

@@ -142,7 +142,9 @@ func CreateSingleConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		UserID uint `json:"user_id" binding:"required"`
+		UserID      uint  `json:"user_id"`
+		RecipientID uint  `json:"recipient_id"`
+		BotID       *uint `json:"bot_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -151,6 +153,44 @@ func CreateSingleConversation(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	if req.BotID != nil && *req.BotID > 0 {
+		var bot model.Bot
+		if err := db.First(&bot, *req.BotID).Error; err != nil {
+			response.NotFound(c, "机器人不存在")
+			return
+		}
+
+		var botConv model.BotConversation
+		db.Where("bot_id = ? AND user_id = ?", *req.BotID, userID.(uint)).
+			Preload("Conversation").First(&botConv)
+
+		if botConv.ID > 0 {
+			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
+				First(&botConv, botConv.ID)
+			response.Success(c, botConv.Conversation)
+			return
+		}
+
+		conv := model.Conversation{Type: "single"}
+		db.Create(&conv)
+
+		db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
+		db.Create(&model.BotConversation{
+			BotID:          *req.BotID,
+			UserID:         userID.(uint),
+			ConversationID: conv.ID,
+		})
+
+		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
+		response.Success(c, conv)
+		return
+	}
+
+	if req.UserID == 0 {
+		response.BadRequest(c, "缺少必要参数")
+		return
+	}
 
 	var existingConv model.Conversation
 	db.Raw(`

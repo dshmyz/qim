@@ -99,6 +99,10 @@
             <el-icon><ChatDotRound /></el-icon>
             <template #title>系统消息</template>
           </el-menu-item>
+          <el-menu-item index="/message-search" v-permission="'message:read'">
+            <el-icon><Search /></el-icon>
+            <template #title>消息搜索</template>
+          </el-menu-item>
           <el-menu-item index="/notifications" v-permission="'notification:read'">
             <el-icon><BellFilled /></el-icon>
             <template #title>通知管理</template>
@@ -137,6 +141,14 @@
             <el-icon><Upload /></el-icon>
             <template #title>版本管理</template>
           </el-menu-item>
+          <el-menu-item index="/file-storage" v-permission="'file:read'">
+            <el-icon><Folder /></el-icon>
+            <template #title>文件存储管理</template>
+          </el-menu-item>
+          <el-menu-item index="/server-monitor" v-permission="'monitor:read'">
+            <el-icon><Monitor /></el-icon>
+            <template #title>服务器监控</template>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </div>
@@ -158,7 +170,7 @@ import {
   CircleCloseFilled, TrendCharts, School, ChatLineSquare,
   Connection, Grid, Monitor, Cellphone, BellFilled,
   Fold, Expand, DataAnalysis, Key, Cpu, Warning, Document,
-  Lock, Setting, Tools, Upload,
+  Lock, Setting, Tools, Upload, Search, Folder,
 } from '@element-plus/icons-vue'
 
 defineEmits<{
