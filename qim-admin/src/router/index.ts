@@ -88,7 +88,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'roles',
         name: 'Roles',
-        component: () => import('@/views/Roles.vue'),
+        component: () => import('@/views/RoleManagement/index.vue'),
         meta: { title: '角色权限' },
       },
       {
