@@ -161,7 +161,7 @@
             </div>
             <div class="overview-item">
               <span class="overview-label">活跃群组</span>
-              <span class="overview-value">{{ stats.totalGroups || 0 }}</span>
+              <span class="overview-value">{{ stats.activeGroups ?? stats.totalGroups || 0 }}</span>
             </div>
             <div class="overview-item">
               <span class="overview-label">活跃用户占比</span>
@@ -235,8 +235,10 @@ const fetchStatistics = async () => {
     if (data.data) {
       stats.value = data.data
     }
-    // TODO: 趋势数据应从后端 API 获取
-    // generateMockTrendData()
+    // 开发环境启用 mock 数据
+    if (import.meta.env.DEV) {
+      generateMockTrendData()
+    }
   } catch (error) {
     console.error('[Statistics] fetch statistics failed:', error)
     ElMessage.error('获取统计数据失败')
