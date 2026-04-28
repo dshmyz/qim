@@ -167,6 +167,7 @@ export interface MiniApp {
   path: string
   description: string
   status: 'active' | 'inactive'
+  permissions?: string
   createdAt: string
   updatedAt: string
 }
@@ -259,4 +260,17 @@ export interface AIBot {
   status: 'active' | 'inactive'
   conversationCount: number
   createdAt: string
+}
+
+// 权限和路由相关
+export interface Permission {
+  resource: string
+  actions: string[]
+}
+
+export interface RouteMeta {
+  title: string
+  requiresAuth?: boolean
+  permission?: string  // format: resource:action
+  icon?: string
 }
