@@ -35,6 +35,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import StatCards from '@/components/dashboard/StatCards.vue'
 import RecentActivityTable from '@/components/dashboard/RecentActivityTable.vue'
 import ChartPlaceholders from '@/components/dashboard/ChartPlaceholders.vue'
@@ -63,6 +64,7 @@ const fetchDashboardStats = async () => {
     dashboardStats.value = data.data
   } catch (error) {
     console.error('Failed to fetch dashboard stats:', error)
+    ElMessage.error('获取仪表盘数据失败')
   } finally {
     statsLoading.value = false
   }
@@ -75,6 +77,7 @@ const fetchRecentRegistrations = async () => {
     recentRegistrations.value = data.data.list
   } catch (error) {
     console.error('Failed to fetch recent registrations:', error)
+    ElMessage.error('获取注册数据失败')
   } finally {
     registrationsLoading.value = false
   }

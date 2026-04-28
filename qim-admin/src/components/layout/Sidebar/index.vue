@@ -172,11 +172,14 @@ const activeMenu = computed(() => route.path)
 <style scoped>
 .sidebar {
   background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   position: relative;
   transition: width var(--duration-normal) var(--ease-out);
   box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
   z-index: 10;
+  height: 100vh;
 }
 
 .logo-container {

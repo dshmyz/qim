@@ -8,6 +8,7 @@ export interface CreateMiniAppParams {
   icon?: string
   path: string
   description?: string
+  permissions?: string
 }
 
 export interface UpdateMiniAppParams {
@@ -16,6 +17,7 @@ export interface UpdateMiniAppParams {
   path?: string
   description?: string
   status?: 'active' | 'inactive'
+  permissions?: string
 }
 
 export const getMiniApps = (params: PaginationParams & { name?: string; status?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<MiniApp>>>> => {

@@ -1,0 +1,18 @@
+{
+  "plugins": {
+    "entries": {
+      "openclaw-weixin": {
+        "enabled": true
+      },
+      "qim-integration": {
+        "enabled": true,
+        "config": {
+          "apiUrl": "http://localhost:8080",
+          "username": "你的QIM用户名",
+          "password": "你的QIM密码",
+          "enabled": true
+        }
+      }
+    }
+  }
+}

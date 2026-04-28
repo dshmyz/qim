@@ -106,7 +106,12 @@ watch(
       form.icon = miniApp.icon || ''
       form.path = miniApp.path
       form.description = miniApp.description || ''
-      form.permissionsList = miniApp.permissions ? JSON.parse(miniApp.permissions) : []
+      try {
+        form.permissionsList = miniApp.permissions ? JSON.parse(miniApp.permissions) : []
+      } catch {
+        console.error('Failed to parse miniApp permissions:', miniApp.permissions)
+        form.permissionsList = []
+      }
     }
   },
   { immediate: true }

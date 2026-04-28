@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QIM Admin 重新设计 - 视觉伴侣</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #0f172a; overflow-x: hidden; }
+  
+  /* Header */
+  .header { background: linear-gradient(135deg, #0ea5e9, #6366f1); color: white; padding: 32px 48px; text-align: center; }
+  .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+  .header p { opacity: 0.9; font-size: 14px; }
+
+  /* Tabs */
+  .tabs { display: flex; justify-content: center; gap: 12px; padding: 24px; background: white; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; }
+  .tab { padding: 10px 24px; border-radius: 8px; border: 2px solid #e2e8f0; background: white; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 14px; }
+  .tab:hover { border-color: #0ea5e9; color: #0ea5e9; }
+  .tab.active { background: linear-gradient(135deg, #0ea5e9, #6366f1); color: white; border-color: transparent; }
+
+  /* Panels */
+  .panel { display: none; padding: 32px 48px; animation: fadeIn 0.3s ease; }
+  .panel.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Section */
+  .section { background: white; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .section h3 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #0f172a; }
+  .section h4 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: #475569; }
+  .section p { color: #475569; line-height: 1.6; margin-bottom: 12px; }
+
+  /* Mock Admin Panel */
+  .mock-admin { display: grid; grid-template-columns: 240px 1fr; gap: 0; background: white; border-radius: 12px; overflow: hidden; border: 2px solid #e2e8f0; min-height: 500px; }
+  .mock-sidebar { background: linear-gradient(180deg, #0f172a, #1e293b); padding: 20px 0; color: white; }
+  .mock-logo { display: flex; align-items: center; gap: 10px; padding: 0 20px; height: 56px; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px; }
+  .mock-logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #0ea5e9, #6366f1); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .mock-logo-text { font-size: 16px; font-weight: 800; }
+  .mock-menu-group { margin-bottom: 16px; }
+  .mock-menu-title { padding: 8px 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.4); }
+  .mock-menu-item { padding: 10px 20px; font-size: 13px; color: rgba(255,255,255,0.7); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; }
+  .mock-menu-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .mock-menu-item.active { background: rgba(255,255,255,0.1); color: white; font-weight: 700; }
+  .mock-menu-icon { width: 16px; height: 16px; background: rgba(255,255,255,0.3); border-radius: 4px; }
+  .mock-menu-item.active .mock-menu-icon { background: #0ea5e9; }
+
+  .mock-header { background: white; padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+  .mock-breadcrumb { font-size: 13px; color: #94a3b8; }
+  .mock-user { display: flex; align-items: center; gap: 8px; }
+  .mock-avatar { width: 32px; height: 32px; background: linear-gradient(135deg, #0ea5e9, #6366f1); border-radius: 50%; }
+  .mock-main { padding: 24px; background: #f1f5f9; }
+
+  /* Stat Cards */
+  .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; }
+  .stat-card .label { font-size: 12px; color: #94a3b8; margin-bottom: 8px; font-weight: 600; }
+  .stat-card .value { font-size: 28px; font-weight: 800; color: #0f172a; }
+  .stat-card .change { font-size: 12px; margin-top: 8px; }
+  .stat-card .change.positive { color: #10b981; }
+  .stat-card .change.negative { color: #ef4444; }
+
+  /* Table Mock */
+  .mock-table { background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+  .mock-table-header { background: #f0f9ff; padding: 12px 16px; display: grid; grid-template-columns: 60px 2fr 2fr 1fr 1fr 120px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 1px solid #e2e8f0; }
+  .mock-table-row { padding: 12px 16px; display: grid; grid-template-columns: 60px 2fr 2fr 1fr 1fr 120px; font-size: 13px; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+  .mock-table-row:hover { background: #f0f9ff; }
+  .mock-table-row:last-child { border-bottom: none; }
+
+  /* Tags */
+  .tag { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .tag-success { background: #d1fae5; color: #059669; }
+  .tag-warning { background: #fef3c7; color: #d97706; }
+  .tag-danger { background: #fee2e2; color: #dc2626; }
+  .tag-info { background: #dbeafe; color: #2563eb; }
+
+  /* Issues List */
+  .issue-list { list-style: none; }
+  .issue-item { display: flex; gap: 12px; padding: 12px; background: #fef2f2; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid #ef4444; }
+  .issue-item.warning { background: #fffbeb; border-left-color: #f59e0b; }
+  .issue-item.success { background: #f0fdf4; border-left-color: #10b981; }
+  .issue-icon { font-size: 18px; margin-top: 2px; }
+  .issue-title { font-weight: 600; margin-bottom: 4px; }
+  .issue-desc { font-size: 13px; color: #475569; }
+
+  /* Architecture Diagram */
+  .arch-diagram { display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #f8fafc; border-radius: 12px; }
+  .arch-layer { display: flex; gap: 12px; justify-content: center; }
+  .arch-block { background: white; border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 140px; font-size: 13px; font-weight: 600; }
+  .arch-block.blue { border-color: #0ea5e9; background: #f0f9ff; }
+  .arch-block.purple { border-color: #6366f1; background: #eef2ff; }
+  .arch-block.green { border-color: #10b981; background: #f0fdf4; }
+  .arch-block.orange { border-color: #f59e0b; background: #fffbeb; }
+  .arch-arrow { text-align: center; color: #94a3b8; font-size: 20px; }
+
+  /* Comparison Grid */
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .comparison-item { border: 2px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  .comparison-header { padding: 16px; text-align: center; font-weight: 700; font-size: 16px; }
+  .comparison-header.before { background: #fef2f2; color: #dc2626; }
+  .comparison-header.after { background: #f0fdf4; color: #10b981; }
+  .comparison-body { padding: 20px; }
+  .comparison-body ul { list-style: none; }
+  .comparison-body li { padding: 8px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+  .comparison-body li:last-child { border-bottom: none; }
+  .comparison-body .icon { margin-right: 8px; }
+
+  /* Navigation Layout */
+  .nav-layout { display: grid; grid-template-columns: 240px 200px 1fr; min-height: 400px; border: 2px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: white; }
+  .nav-sidebar { background: linear-gradient(180deg, #0f172a, #1e293b); padding: 20px 0; }
+  .nav-sub-menu { padding: 8px; }
+  .nav-sub-item { padding: 8px 12px; font-size: 12px; color: rgba(255,255,255,0.6); border-radius: 6px; margin-bottom: 4px; cursor: pointer; }
+  .nav-sub-item:hover, .nav-sub-item.active { background: rgba(255,255,255,0.1); color: white; }
+  .nav-content { padding: 24px; background: #f1f5f9; }
+
+  /* Feature Cards */
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .feature-card { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; transition: all 0.2s; }
+  .feature-card:hover { border-color: #0ea5e9; transform: translateY(-4px); box-shadow: 0 8px 24px rgba(14,165,233,0.15); }
+  .feature-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 12px; }
+  .feature-icon.blue { background: #f0f9ff; color: #0ea5e9; }
+  .feature-icon.purple { background: #eef2ff; color: #6366f1; }
+  .feature-icon.green { background: #f0fdf4; color: #10b981; }
+  .feature-icon.orange { background: #fffbeb; color: #f59e0b; }
+  .feature-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .feature-desc { font-size: 13px; color: #475569; line-height: 1.5; }
+
+  /* Priority Badge */
+  .priority { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 8px; }
+  .priority.high { background: #fee2e2; color: #dc2626; }
+  .priority.medium { background: #fef3c7; color: #d97706; }
+  .priority.low { background: #dbeafe; color: #2563eb; }
+
+  .highlight { background: linear-gradient(135deg, #0ea5e9, #6366f1); color: white; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>QIM Admin 管理后台重新设计</h1>
+  <p>当前状态分析 & 重构方案探索</p>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showPanel('current')">1. 当前现状</button>
+  <button class="tab" onclick="showPanel('issues')">2. 问题分析</button>
+  <button class="tab" onclick="showPanel('options')">3. 设计方案</button>
+  <button class="tab" onclick="showPanel('architecture')">4. 架构设计</button>
+</div>
+
+<!-- Panel 1: Current State -->
+<div id="panel-current" class="panel active">
+  <div class="section">
+    <h3>当前管理后台结构</h3>
+    <p>技术栈：Vue 3 + TypeScript + Element Plus + Vite</p>
+    
+    <div class="mock-admin">
+      <div class="mock-sidebar">
+        <div class="mock-logo">
+          <div class="mock-logo-icon">💬</div>
+          <div class="mock-logo-text">QIM Admin</div>
+        </div>
+        <div class="mock-menu-group">
+          <div class="mock-menu-title">数据概览</div>
+          <div class="mock-menu-item active"><div class="mock-menu-icon"></div>仪表盘</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>数据统计</div>
+        </div>
+        <div class="mock-menu-group">
+          <div class="mock-menu-title">用户与组织</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>用户管理</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>组织架构</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>角色权限</div>
+        </div>
+        <div class="mock-menu-group">
+          <div class="mock-menu-title">会话与群组</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>群组管理</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>会话管理</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>频道管理</div>
+        </div>
+        <div class="mock-menu-group">
+          <div class="mock-menu-title">应用生态</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>应用管理</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>小程序管理</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>AI 助手</div>
+          <div class="mock-menu-item"><div class="mock-menu-icon"></div>AI 运维面板</div>
+        </div>
+      </div>
+      <div>
+        <div class="mock-header">
+          <div class="mock-breadcrumb">首页 / 仪表盘</div>
+          <div class="mock-user">
+            <div class="mock-avatar"></div>
+            <span>Admin</span>
+          </div>
+        </div>
+        <div class="mock-main">
+          <div class="stat-cards">
+            <div class="stat-card">
+              <div class="label">总用户数</div>
+              <div class="value">12,458</div>
+              <div class="change positive">↑ 12% 较上月</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">在线用户</div>
+              <div class="value">1,234</div>
+              <div class="change positive">↑ 8% 较昨日</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">群组总数</div>
+              <div class="value">3,567</div>
+              <div class="change positive">↑ 5% 较上月</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">消息总数</div>
+              <div class="value">1.2M</div>
+              <div class="change negative">↓ 3% 较昨日</div>
+            </div>
+          </div>
+          <div class="mock-table">
+            <div class="mock-table-header">
+              <span>ID</span>
+              <span>用户名</span>
+              <span>邮箱</span>
+              <span>状态</span>
+              <span>角色</span>
+              <span>创建时间</span>
+            </div>
+            <div class="mock-table-row">
+              <span>1001</span>
+              <span>张三</span>
+              <span>zhang@example.com</span>
+              <span><span class="tag tag-success">正常</span></span>
+              <span><span class="tag tag-info">管理员</span></span>
+              <span>2024-01-15</span>
+            </div>
+            <div class="mock-table-row">
+              <span>1002</span>
+              <span>李四</span>
+              <span>li@example.com</span>
+              <span><span class="tag tag-success">正常</span></span>
+              <span><span class="tag tag-info">用户</span></span>
+              <span>2024-01-16</span>
+            </div>
+            <div class="mock-table-row">
+              <span>1003</span>
+              <span>王五</span>
+              <span>wang@example.com</span>
+              <span><span class="tag tag-warning">停用</span></span>
+              <span><span class="tag tag-info">用户</span></span>
+              <span>2024-01-17</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>现有文件结构</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon blue">📁</div>
+        <div class="feature-title">19 个视图文件</div>
+        <div class="feature-desc">每个路由页面独立文件，但存在大量重复代码</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">🧩</div>
+        <div class="feature-title">2 个通用组件</div>
+        <div class="feature-desc">BaseDialog.vue, BaseTableLayout.vue - 但使用率很低</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon green">📊</div>
+        <div class="feature-title">19 个 API 文件</div>
+        <div class="feature-desc">按模块划分，但缺乏统一错误处理和请求拦截</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">🎨</div>
+        <div class="feature-title">850+ CSS 行</div>
+        <div class="feature-desc">全局样式覆盖完善，但各页面仍有大量重复样式</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon blue">🔐</div>
+        <div class="feature-title">Pinia 状态管理</div>
+        <div class="feature-desc">仅有 auth store，缺乏其他模块的状态管理</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">📐</div>
+        <div class="feature-title">7 个菜单分组</div>
+        <div class="feature-desc">侧边栏菜单结构合理，但缺乏权限控制</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel 2: Issues -->
+<div id="panel-issues" class="panel">
+  <div class="section">
+    <h3>问题分析</h3>
+    
+    <h4 style="color: #dc2626; margin-top: 0;">🔴 严重问题</h4>
+    <ul class="issue-list">
+      <li class="issue-item">
+        <span class="issue-icon">❌</span>
+        <div>
+          <div class="issue-title">缺乏组件抽象 - 代码重复严重</div>
+          <div class="issue-desc">每个页面都重复编写搜索栏、表格、分页逻辑，没有使用现有组件。违反 DRY 原则，维护成本高。</div>
+        </div>
+      </li>
+      <li class="issue-item">
+        <span class="issue-icon">❌</span>
+        <div>
+          <div class="issue-title">缺少权限控制 - 路由和菜单未实现 RBAC</div>
+          <div class="issue-desc">虽然有角色类型定义，但所有用户都能看到所有菜单项和页面，缺乏基于角色的访问控制。</div>
+        </div>
+      </li>
+      <li class="issue-item">
+        <span class="issue-icon">❌</span>
+        <div>
+          <div class="issue-title">错误处理掩盖 - catch 块空实现</div>
+          <div class="issue-desc">多处 catch 块仅注释"错误已在请求拦截器中处理"，但实际未提供用户可见的反馈。</div>
+        </div>
+      </li>
+    </ul>
+
+    <h4 style="color: #f59e0b;">⚠️ 警告问题</h4>
+    <ul class="issue-list">
+      <li class="issue-item warning">
+        <span class="issue-icon">⚠️</span>
+        <div>
+          <div class="issue-title">类型定义不完整 - any 使用</div>
+          <div class="issue-desc">BaseTableLayout 使用 any[] 作为 data 类型，失去了 TypeScript 的类型安全保障。</div>
+        </div>
+      </li>
+      <li class="issue-item warning">
+        <span class="issue-icon">⚠️</span>
+        <div>
+          <div class="issue-title">对话框硬编码 - 角色选项写死</div>
+          <div class="issue-desc">Users.vue 中角色选项硬编码，应该从 API 动态获取。不利于扩展。</div>
+        </div>
+      </li>
+      <li class="issue-item warning">
+        <span class="issue-icon">⚠️</span>
+        <div>
+          <div class="issue-title">缺乏数据刷新机制</div>
+          <div class="issue-desc">除了 Dashboard 有刷新按钮，其他页面都缺少手动刷新和数据同步机制。</div>
+        </div>
+      </li>
+      <li class="issue-item warning">
+        <span class="issue-icon">⚠️</span>
+        <div>
+          <div class="issue-title">响应式不完善</div>
+          <div class="issue-desc">移动端侧边栏处理简陋，表格在小屏幕上可能溢出，缺少响应式优化。</div>
+        </div>
+      </li>
+    </ul>
+
+    <h4 style="color: #10b981;">✅ 做得好的地方</h4>
+    <ul class="issue-list">
+      <li class="issue-item success">
+        <span class="issue-icon">✅</span>
+        <div>
+          <div class="issue-title">设计系统完善</div>
+          <div class="issue-desc">CSS 变量、主题切换、Element Plus 覆盖都很完整，视觉一致性良好。</div>
+        </div>
+      </li>
+      <li class="issue-item success">
+        <span class="issue-icon">✅</span>
+        <div>
+          <div class="issue-title">菜单分组合理</div>
+          <div class="issue-desc">侧边栏按功能模块分组，信息架构清晰，符合管理后台最佳实践。</div>
+        </div>
+      </li>
+      <li class="issue-item success">
+        <span class="issue-icon">✅</span>
+        <div>
+          <div class="issue-title">类型定义丰富</div>
+          <div class="issue-desc">types/index.ts 包含了大部分业务实体的类型定义，为重构提供了良好基础。</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- Panel 3: Design Options -->
+<div id="panel-options" class="panel">
+  <div class="section">
+    <h3>设计方案对比</h3>
+    
+    <div class="comparison" style="margin-bottom: 24px;">
+      <div class="comparison-item">
+        <div class="comparison-header before">方案 A - 渐进式重构</div>
+        <div class="comparison-body">
+          <ul>
+            <li><span class="icon">🔧</span> 提取可复用组件</li>
+            <li><span class="icon">🔧</span> 完善错误处理</li>
+            <li><span class="icon">🔧</span> 添加权限控制</li>
+            <li><span class="icon">🔧</span> 修复类型问题</li>
+            <li><span class="icon">🔧</span> 保留现有结构</li>
+          </ul>
+          <p style="margin-top: 16px; font-weight: 600; color: #f59e0b;">⚡ 风险低，改动小，但治标不治本</p>
+        </div>
+      </div>
+      <div class="comparison-item">
+        <div class="comparison-header after">方案 B - 全面重构 (推荐)</div>
+        <div class="comparison-body">
+          <ul>
+            <li><span class="icon">🏗️</span> 全新组件架构</li>
+            <li><span class="icon">🏗️</span> 基于权限的动态菜单</li>
+            <li><span class="icon">🏗️</span> 统一数据层封装</li>
+            <li><span class="icon">🏗️</span> 完善的状态管理</li>
+            <li><span class="icon">🏗️</span> 响应式优先设计</li>
+          </ul>
+          <p style="margin-top: 16px; font-weight: 600; color: #10b981;">✨ 彻底解决问题，长期维护成本低</p>
+        </div>
+      </div>
+    </div>
+
+    <h4>推荐方案 B - 全面重构</h4>
+    <p>考虑到管理后台的长期发展和可维护性，建议采用全面重构方案。以下是重构后的核心改进：</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon blue">🧩</div>
+        <div class="feature-title">组件系统</div>
+        <div class="feature-desc">构建 PageLayout、DataTable、SearchForm、EntityDialog 等可复用组件</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">🔐</div>
+        <div class="feature-title">权限系统</div>
+        <div class="feature-desc">基于 RBAC 的动态菜单和路由守卫，支持按钮级权限控制</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon green">📊</div>
+        <div class="feature-title">数据层</div>
+        <div class="feature-desc">统一的 useEntity CRUD Composable，封装分页、搜索、刷新逻辑</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">🎨</div>
+        <div class="feature-title">布局系统</div>
+        <div class="feature-desc">响应式优先，支持侧边栏折叠、移动端抽屉式导航、自定义主题</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon blue">⚡</div>
+        <div class="feature-title">性能优化</div>
+        <div class="feature-desc">路由懒加载、组件异步加载、表格虚拟滚动、数据缓存策略</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">🔔</div>
+        <div class="feature-title">用户体验</div>
+        <div class="feature-desc">全局错误处理、操作反馈、加载状态、空状态优化、快捷键支持</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel 4: Architecture -->
+<div id="panel-architecture" class="panel">
+  <div class="section">
+    <h3>重构后的文件架构</h3>
+    
+    <div style="background: #1e293b; color: #e2e8f0; padding: 24px; border-radius: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto;">
+      <div style="color: #94a3b8;">qim-admin/src/</div>
+      <div style="padding-left: 16px;">
+        <div><span style="color: #10b981;">📁</span> api/ <span style="color: #64748b;"># API 接口层</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── modules/ <span style="color: #64748b;"># 按模块划分</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── request.ts <span style="color: #64748b;"># 统一请求封装</span></div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> components/ <span style="color: #64748b;"># 组件系统</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── layout/ <span style="color: #64748b;"># 布局组件</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── AdminLayout.vue <span style="color: #64748b;"># 主布局</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── Sidebar/ <span style="color: #64748b;"># 侧边栏</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── Header/ <span style="color: #64748b;"># 顶部栏</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   └── Breadcrumb/ <span style="color: #64748b;"># 面包屑</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── data/ <span style="color: #64748b;"># 数据展示组件</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── DataTable.vue <span style="color: #64748b;"># 数据表格</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── SearchForm.vue <span style="color: #64748b;"># 搜索表单</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── Pagination/ <span style="color: #64748b;"># 分页</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   └── StatCards.vue <span style="color: #64748b;"># 统计卡片</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── forms/ <span style="color: #64748b;"># 表单组件</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── EntityDialog.vue <span style="color: #64748b;"># 实体对话框</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   └── FieldRenderer.vue <span style="color: #64748b;"># 字段渲染</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── common/ <span style="color: #64748b;"># 通用组件</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">    ├── EmptyState.vue <span style="color: #64748b;"># 空状态</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">    └── LoadingSpinner.vue <span style="color: #64748b;"># 加载状态</span></div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> composables/ <span style="color: #64748b;"># 组合式函数</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── useEntity.ts <span style="color: #64748b;"># CRUD 通用逻辑</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── usePermission.ts <span style="color: #64748b;"># 权限判断</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── useSearch.ts <span style="color: #64748b;"># 搜索逻辑</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── useDialog.ts <span style="color: #64748b;"># 对话框管理</span></div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> stores/ <span style="color: #64748b;"># 状态管理</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── auth.ts <span style="color: #64748b;"># 认证状态</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── permission.ts <span style="color: #64748b;"># 权限状态</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── app.ts <span style="color: #64748b;"># 应用状态</span></div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> views/ <span style="color: #64748b;"># 页面视图</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── Dashboard/ <span style="color: #64748b;"># 仪表盘</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── UserManagement/ <span style="color: #64748b;"># 用户管理</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── index.vue <span style="color: #64748b;"># 主页面</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   ├── UserTable.vue <span style="color: #64748b;"># 表格</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">│   └── UserDialog.vue <span style="color: #64748b;"># 对话框</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── Organization/ <span style="color: #64748b;"># 组织架构</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── ...</div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> router/ <span style="color: #64748b;"># 路由配置</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── index.ts <span style="color: #64748b;"># 路由入口</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">├── routes.ts <span style="color: #64748b;"># 路由定义</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── guards.ts <span style="color: #64748b;"># 路由守卫</span></div>
+      </div>
+      <div style="padding-left: 16px; margin-top: 8px;">
+        <div><span style="color: #10b981;">📁</span> types/ <span style="color: #64748b;"># 类型定义</span></div>
+        <div style="padding-left: 16px; color: #94a3b8;">└── index.ts</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>重构后的导航架构</h3>
+    
+    <h4>方案：带子菜单的双栏导航</h4>
+    <div class="nav-layout">
+      <div class="nav-sidebar">
+        <div class="mock-logo">
+          <div class="mock-logo-icon">💬</div>
+          <div class="mock-logo-text">QIM Admin</div>
+        </div>
+        <div style="padding: 16px;">
+          <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 8px; padding: 0 12px;">数据概览</div>
+          <div class="nav-sub-item active">📊 仪表盘</div>
+          <div class="nav-sub-item">📈 数据统计</div>
+          
+          <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin: 16px 0 8px; padding: 0 12px;">用户管理</div>
+          <div class="nav-sub-item">👤 用户列表</div>
+          <div class="nav-sub-item">🏢 组织架构</div>
+          <div class="nav-sub-item">🔑 角色权限</div>
+          
+          <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin: 16px 0 8px; padding: 0 12px;">内容管理</div>
+          <div class="nav-sub-item">💬 群组管理</div>
+          <div class="nav-sub-item">📨 会话管理</div>
+        </div>
+      </div>
+      <div style="background: #f8fafc; border-right: 1px solid #e2e8f0; padding: 16px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 16px; color: #0f172a;">快速操作</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <button style="padding: 8px 12px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; cursor: pointer; text-align: left;">➕ 新建用户</button>
+          <button style="padding: 8px 12px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; cursor: pointer; text-align: left;">🔍 全局搜索</button>
+          <button style="padding: 8px 12px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; cursor: pointer; text-align: left;">📋 最近操作</button>
+        </div>
+        
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+          <div style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 12px;">系统状态</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #64748b;">
+            <div>🟢 在线用户: 1,234</div>
+            <div>🟢 系统负载: 45%</div>
+            <div>🟡 内存使用: 78%</div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-content">
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #e2e8f0;">
+          <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">用户列表</div>
+          <div style="color: #64748b; font-size: 14px;">管理系统中的所有用户账号</div>
+        </div>
+        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+          <div style="color: #94a3b8; font-size: 13px; margin-bottom: 12px;">共 12,458 条记录</div>
+          <div style="height: 200px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-size: 48px;">📋</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>实施建议</h3>
+    
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; gap: 16px; padding: 16px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #0ea5e9;">
+        <div style="font-weight: 800; font-size: 24px; color: #0ea5e9; min-width: 40px;">1</div>
+        <div>
+          <div style="font-weight: 700; margin-bottom: 4px;">第一阶段 - 基础设施</div>
+          <div style="font-size: 13px; color: #475569;">完善权限系统、创建核心组件库、重构数据层封装</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 16px; padding: 16px; background: #eef2ff; border-radius: 8px; border-left: 4px solid #6366f1;">
+        <div style="font-weight: 800; font-size: 24px; color: #6366f1; min-width: 40px;">2</div>
+        <div>
+          <div style="font-weight: 700; margin-bottom: 4px;">第二阶段 - 核心页面重构</div>
+          <div style="font-size: 13px; color: #475569;">用户管理、组织架构、群组管理 - 验证组件可用性</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 16px; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #10b981;">
+        <div style="font-weight: 800; font-size: 24px; color: #10b981; min-width: 40px;">3</div>
+        <div>
+          <div style="font-weight: 700; margin-bottom: 4px;">第三阶段 - 批量迁移</div>
+          <div style="font-size: 13px; color: #475569;">使用新组件重构剩余页面，完善响应式和性能优化</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

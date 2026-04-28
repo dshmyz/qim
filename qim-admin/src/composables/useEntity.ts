@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 
 interface PaginationState {
   page: number
@@ -110,9 +110,6 @@ export function useEntity<T extends { id: number }>(options: UseEntityOptions<T>
   // Delete
   async function handleDelete(id: number) {
     try {
-      await ElMessageBox.confirm('确定删除吗？', '确认', {
-        type: 'warning',
-      })
       await api.delete(id)
       ElMessage.success(successMessages.delete || '删除成功')
       fetchData()

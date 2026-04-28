@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>密码生成器</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .pw-container {
+      width: 100%;
+      max-width: 420px;
+    }
+    .pw-output-section {
+      margin-bottom: 20px;
+    }
+    .pw-output-wrapper {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .pw-output {
+      flex: 1;
+      padding: 12px 14px;
+      border: 1px solid #3a3a5a;
+      border-radius: 8px;
+      background: #2a2a4a;
+      color: #4a90d9;
+      font-size: 16px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+      word-break: break-all;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+    }
+    .pw-copy-btn {
+      padding: 0 16px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      white-space: nowrap;
+      transition: background 0.2s ease;
+    }
+    .pw-copy-btn:hover {
+      background: #3a7bc8;
+    }
+    .pw-strength-bar {
+      height: 4px;
+      background: #2a2a4a;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .pw-strength-fill {
+      height: 100%;
+      transition: width 0.3s ease, background 0.3s ease;
+      border-radius: 2px;
+    }
+    .pw-settings {
+      background: #2a2a4a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .pw-setting {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .pw-setting + .pw-setting {
+      border-top: 1px solid #3a3a5a;
+    }
+    .pw-setting label {
+      font-size: 14px;
+    }
+    .pw-length-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pw-length-input {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid #3a3a5a;
+      border-radius: 6px;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 14px;
+      text-align: center;
+      outline: none;
+    }
+    .pw-length-input:focus {
+      border-color: #4a90d9;
+    }
+    .pw-toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #3a3a5a;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      border: none;
+    }
+    .pw-toggle.active {
+      background: #4a90d9;
+    }
+    .pw-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+    }
+    .pw-toggle.active::after {
+      transform: translateX(20px);
+    }
+    .pw-generate-btn {
+      width: 100%;
+      padding: 12px;
+      background: #2ecc71;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .pw-generate-btn:hover {
+      background: #27ae60;
+    }
+  </style>
+</head>
+<body>
+  <div class="pw-container">
+    <div class="pw-output-section">
+      <div class="pw-output-wrapper">
+        <div class="pw-output" id="pw-output">点击生成</div>
+        <button class="pw-copy-btn" id="pw-copy">复制</button>
+      </div>
+      <div class="pw-strength-bar">
+        <div class="pw-strength-fill" id="pw-strength"></div>
+      </div>
+    </div>
+
+    <div class="pw-settings">
+      <div class="pw-setting">
+        <label>密码长度</label>
+        <div class="pw-length-wrapper">
+          <input type="number" class="pw-length-input" id="pw-length" value="16" min="6" max="64" />
+        </div>
+      </div>
+      <div class="pw-setting">
+        <label>包含大写字母</label>
+        <button class="pw-toggle active" id="pw-upper" data-key="upper"></button>
+      </div>
+      <div class="pw-setting">
+        <label>包含数字</label>
+        <button class="pw-toggle active" id="pw-digits" data-key="digits"></button>
+      </div>
+      <div class="pw-setting">
+        <label>包含特殊字符</label>
+        <button class="pw-toggle active" id="pw-symbols" data-key="symbols"></button>
+      </div>
+    </div>
+
+    <button class="pw-generate-btn" id="pw-generate">生成密码</button>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var outputEl = document.getElementById('pw-output');
+      var copyBtn = document.getElementById('pw-copy');
+      var generateBtn = document.getElementById('pw-generate');
+      var lengthInput = document.getElementById('pw-length');
+      var strengthFill = document.getElementById('pw-strength');
+
+      var options = { upper: true, lower: true, digits: true, symbols: true };
+
+      document.querySelectorAll('.pw-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var key = btn.getAttribute('data-key');
+          options[key] = !options[key];
+          btn.classList.toggle('active');
+        });
+      });
+
+      function generatePassword() {
+        var length = parseInt(lengthInput.value) || 16;
+        if (length < 6) length = 6;
+        if (length > 64) length = 64;
+
+        var chars = 'abcdefghijklmnopqrstuvwxyz';
+        if (options.upper) chars += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        if (options.digits) chars += '0123456789';
+        if (options.symbols) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+        var password = '';
+        for (var i = 0; i < length; i++) {
+          password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
+      }
+
+      function updateStrength(pw) {
+        var score = 0;
+        if (pw.length >= 8) score++;
+        if (pw.length >= 12) score++;
+        if (pw.length >= 16) score++;
+        if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+        if (/\d/.test(pw)) score++;
+        if (/[^a-zA-Z0-9]/.test(pw)) score++;
+
+        var pct = Math.min(100, Math.round((score / 6) * 100));
+        var color = pct < 40 ? '#e74c3c' : pct < 70 ? '#e6a23c' : '#2ecc71';
+        strengthFill.style.width = pct + '%';
+        strengthFill.style.background = color;
+      }
+
+      generateBtn.addEventListener('click', function() {
+        var pw = generatePassword();
+        outputEl.textContent = pw;
+        updateStrength(pw);
+      });
+
+      copyBtn.addEventListener('click', function() {
+        var pw = outputEl.textContent;
+        if (pw === '点击生成') return;
+        navigator.clipboard.writeText(pw).then(function() {
+          copyBtn.textContent = '已复制';
+          setTimeout(function() { copyBtn.textContent = '复制'; }, 1500);
+        }).catch(function() {
+          copyBtn.textContent = '复制失败';
+          setTimeout(function() { copyBtn.textContent = '复制'; }, 1500);
+        });
+      });
+
+      window.parent.postMessage({ type: 'miniapp-loaded', appId: 'password-generator' }, '*');
+    });
+  </script>
+</body>
+</html>

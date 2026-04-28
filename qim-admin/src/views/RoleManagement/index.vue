@@ -8,7 +8,7 @@
       </SearchForm>
     </template>
     <template #actions>
-      <el-button v-permission="'role:create'" type="success" @click="handleCreate">创建角色</el-button>
+      <el-button v-permission="'role:create'" type="primary" :icon="Plus" @click="openCreateDialog()">创建角色</el-button>
     </template>
 
     <el-table-column prop="id" label="ID" width="80" />

@@ -1,7 +1,7 @@
 <!-- src/views/GroupManagement/index.vue -->
 <template>
   <DataTable :data="list" :loading="loading" :pagination="pagination"
-    @search="handleSearch" @page-change="fetchData" @refresh="fetchData">
+    @search="handleSearch" @page-change="handlePageChange" @refresh="fetchData">
     <template #search>
       <SearchForm @search="handleSearch" @reset="handleReset">
         <SearchField v-model="(searchForm.keyword as string)" label="群组名称" placeholder="请输入群组名称" />
@@ -119,6 +119,7 @@ const fetchMembers = async (conversationId: number) => {
     members.value = data.data.list
   } catch (error) {
     console.error('[GroupManagement] fetch members failed:', error)
+    ElMessage.error('获取成员列表失败')
   } finally {
     membersLoading.value = false
   }
@@ -132,6 +133,7 @@ const handleRemoveMember = async (userId: number) => {
     fetchMembers(currentGroup.value.id)
   } catch (error) {
     console.error('[GroupManagement] remove member failed:', error)
+    ElMessage.error('移除成员失败')
   }
 }
 
@@ -143,10 +145,16 @@ const handleDeleteGroup = async (id: number) => {
     fetchData()
   } catch (error) {
     console.error('[GroupManagement] delete group failed:', error)
+    ElMessage.error('删除群组失败')
   }
 }
 
 onMounted(fetchData)
+
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  fetchData()
+}
 </script>
 
 <style scoped>

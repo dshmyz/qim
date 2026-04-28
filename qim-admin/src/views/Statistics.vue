@@ -177,6 +177,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { User, Connection, UserFilled, ChatLineRound } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { getStatistics } from '@/api/statistics'
 import type { StatisticsData } from '@/types'
 
@@ -234,17 +235,19 @@ const fetchStatistics = async () => {
     if (data.data) {
       stats.value = data.data
     }
-    // 模拟生成趋势数据（实际项目中应从后端获取）
-    generateMockTrendData()
+    // TODO: 趋势数据应从后端 API 获取
+    // generateMockTrendData()
   } catch (error) {
-    // 错误已在请求拦截器中处理
-    generateMockTrendData()
+    console.error('[Statistics] fetch statistics failed:', error)
+    ElMessage.error('获取统计数据失败')
   } finally {
     chartLoading.value = false
   }
 }
 
+// 模拟生成趋势数据（开发调试用，生产环境应禁用）
 const generateMockTrendData = () => {
+  console.warn('[Statistics] 使用模拟数据，生产环境应从后端 API 获取')
   const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   userTrendData.value = days.map((day) => ({
     label: day,
@@ -270,10 +273,6 @@ onMounted(fetchStatistics)
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-}
-
-.stats-row {
-  margin-bottom: var(--space-2);
 }
 
 .stat-card {
@@ -302,7 +301,7 @@ onMounted(fetchStatistics)
 }
 
 .stat-value {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--color-text-primary);
   letter-spacing: -0.02em;
@@ -349,61 +348,6 @@ onMounted(fetchStatistics)
   margin-bottom: var(--space-2);
 }
 
-.chart-container {
-  min-height: 250px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: var(--space-4) 0;
-}
-
-.bar-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-around;
-  width: 100%;
-  height: 200px;
-  padding: 0 var(--space-4);
-  gap: var(--space-2);
-}
-
-.bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  height: 100%;
-  justify-content: flex-end;
-}
-
-.bar {
-  width: 100%;
-  max-width: 40px;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: var(--space-1);
-  min-height: 20px;
-  transition: height 0.3s ease;
-}
-
-.bar-value {
-  font-size: 11px;
-  color: #fff;
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.bar-label {
-  margin-top: var(--space-2);
-  font-size: 12px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  font-weight: 500;
-}
-
 .activity-list {
   padding: var(--space-4);
 }
@@ -432,13 +376,13 @@ onMounted(fetchStatistics)
 
 .activity-bar {
   height: 100%;
-  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+  background: linear-gradient(90deg, var(--color-primary) 0%, #0284c7 100%);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding-right: var(--space-2);
-  transition: width 0.3s ease;
+  transition: width var(--duration-normal) var(--ease-out);
   min-width: 40px;
 }
 
@@ -449,11 +393,10 @@ onMounted(fetchStatistics)
 }
 
 .overview-grid {
-  padding: var(--space-5);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  min-height: 200px;
+  gap: var(--space-4);
 }
 
 .overview-item {
@@ -480,5 +423,82 @@ onMounted(fetchStatistics)
   font-weight: 800;
   color: var(--color-text-primary);
   letter-spacing: -0.02em;
+}
+
+.chart-container {
+  min-height: 280px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--space-5) var(--space-4);
+}
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  width: 100%;
+  height: 220px;
+  gap: var(--space-3);
+}
+
+.bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.bar {
+  width: 100%;
+  max-width: 48px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: var(--space-2);
+  min-height: 40px;
+  transition: height var(--duration-normal) var(--ease-out);
+  position: relative;
+}
+
+/* 柱子颜色根据索引区分 */
+.bar-item:nth-child(1) .bar,
+.bar-item:nth-child(5) .bar {
+  background: linear-gradient(180deg, var(--color-primary) 0%, #0284c7 100%);
+}
+
+.bar-item:nth-child(2) .bar,
+.bar-item:nth-child(6) .bar {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.bar-item:nth-child(3) .bar,
+.bar-item:nth-child(7) .bar {
+  background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+}
+
+.bar-item:nth-child(4) .bar {
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.bar-value {
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  font-weight: 600;
+  position: absolute;
+  top: -20px;
+}
+
+.bar-label {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  font-weight: 500;
 }
 </style>

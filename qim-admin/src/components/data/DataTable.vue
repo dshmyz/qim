@@ -20,13 +20,13 @@
 
     <div class="pagination-area" v-if="showPagination">
       <el-pagination
-        v-model:current-page="innerPage"
-        v-model:page-size="innerPageSize"
+        :current-page="pagination.page"
+        :page-size="pagination.pageSize"
         :total="total"
         :page-sizes="pageSizes"
         layout="total, sizes, prev, pager, next, jumper"
-        @size-change="$emit('page-change')"
-        @current-change="$emit('page-change')"
+        @size-change="$emit('page-change', $event)"
+        @current-change="$emit('page-change', $event)"
       />
     </div>
   </div>
@@ -56,19 +56,9 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 defineEmits<{
-  'page-change': []
+  'page-change': [value: number]
   'refresh': []
 }>()
-
-const innerPage = computed({
-  get: () => props.pagination.page,
-  set: (_val: number) => {}
-})
-
-const innerPageSize = computed({
-  get: () => props.pagination.pageSize,
-  set: (_val: number) => {}
-})
 
 const total = computed(() => props.pagination.total)
 </script>

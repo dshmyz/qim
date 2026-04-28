@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>权限测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #fff;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      padding: 16px 0;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .header h2 {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+    .header p {
+      font-size: 13px;
+      color: #888;
+    }
+    .perm-card {
+      background: #2a2a4a;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid #3a3a5a;
+    }
+    .perm-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .perm-card-title .icon {
+      font-size: 18px;
+    }
+    .perm-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .result-box {
+      background: #1a1a2e;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #2ecc71;
+      min-height: 40px;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .result-box.error {
+      color: #e74c3c;
+    }
+    .result-box.empty {
+      color: #666;
+    }
+    .test-btn {
+      padding: 8px 16px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.2s ease;
+    }
+    .test-btn:hover {
+      background: #3a7bc8;
+    }
+    .test-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .test-btn.danger {
+      background: #e74c3c;
+    }
+    .test-btn.danger:hover {
+      background: #c0392b;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-badge.granted {
+      background: rgba(46, 204, 113, 0.2);
+      color: #2ecc71;
+    }
+    .status-badge.denied {
+      background: rgba(231, 76, 60, 0.2);
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>权限测试小程序</h2>
+      <p>测试主程序桥接 API 的各项权限</p>
+    </div>
+
+    <div class="perm-card">
+      <div class="perm-card-title">
+        <span class="icon">👤</span>
+        获取用户信息
+        <span id="status-user-info" class="status-badge denied">未测试</span>
+      </div>
+      <div class="perm-card-body">
+        <div class="btn-row">
+          <button class="test-btn" onclick="testUserInfo()">测试获取用户信息</button>
+        </div>
+        <div id="result-user-info" class="result-box empty">点击按钮测试...</div>
+      </div>
+    </div>
+
+    <div class="perm-card">
+      <div class="perm-card-title">
+        <span class="icon">🔑</span>
+        获取认证 Token
+        <span id="status-token" class="status-badge denied">未测试</span>
+      </div>
+      <div class="perm-card-body">
+        <div class="btn-row">
+          <button class="test-btn" onclick="testToken()">测试获取 Token</button>
+        </div>
+        <div id="result-token" class="result-box empty">点击按钮测试...</div>
+      </div>
+    </div>
+
+    <div class="perm-card">
+      <div class="perm-card-title">
+        <span class="icon">🌐</span>
+        调用后端 API
+        <span id="status-api" class="status-badge denied">未测试</span>
+      </div>
+      <div class="perm-card-body">
+        <div class="btn-row">
+          <button class="test-btn" onclick="testApiGet()">测试 GET 请求</button>
+          <button class="test-btn danger" onclick="testApiPost()">测试 POST 请求</button>
+        </div>
+        <div id="result-api" class="result-box empty">点击按钮测试...</div>
+      </div>
+    </div>
+
+    <div class="perm-card">
+      <div class="perm-card-title">
+        <span class="icon">📋</span>
+        读写剪贴板
+        <span id="status-clipboard" class="status-badge denied">未测试</span>
+      </div>
+      <div class="perm-card-body">
+        <div class="btn-row">
+          <button class="test-btn" onclick="testClipboard()">测试写入剪贴板</button>
+        </div>
+        <div id="result-clipboard" class="result-box empty">点击按钮测试...</div>
+      </div>
+    </div>
+
+    <div class="perm-card">
+      <div class="perm-card-title">
+        <span class="icon">💬</span>
+        显示 Toast 消息
+        <span id="status-toast" class="status-badge granted">默认开放</span>
+      </div>
+      <div class="perm-card-body">
+        <div class="btn-row">
+          <button class="test-btn" onclick="testToast()">测试 Toast</button>
+        </div>
+        <div id="result-toast" class="result-box empty">点击按钮测试...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../sdk/qim-miniapp-bridge.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      QIMBridge.init();
+
+      window.showResult = function(id, data, isError) {
+        var el = document.getElementById('result-' + id);
+        var badgeEl = document.getElementById('status-' + id);
+        if (!el) return;
+
+        el.className = 'result-box' + (isError ? ' error' : '');
+        el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+
+        if (badgeEl) {
+          if (isError) {
+            badgeEl.className = 'status-badge denied';
+            badgeEl.textContent = '被拒绝';
+          } else {
+            badgeEl.className = 'status-badge granted';
+            badgeEl.textContent = '已授权';
+          }
+        }
+      };
+
+      window.testUserInfo = function() {
+        QIMBridge.getUserInfo().then(function(user) {
+          showResult('user-info', user, false);
+        }).catch(function(err) {
+          showResult('user-info', '获取失败: ' + (err.message || err), true);
+        });
+      };
+
+      window.testToken = function() {
+        QIMBridge.getToken().then(function(data) {
+          var masked = data.token ? data.token.substring(0, 20) + '...' : '空';
+          showResult('token', 'Token: ' + masked + '\n\n完整 Token:\n' + data.token, false);
+        }).catch(function(err) {
+          showResult('token', '获取失败: ' + (err.message || err), true);
+        });
+      };
+
+      window.testApiGet = function() {
+        QIMBridge.api('GET', '/api/v1/mini-apps').then(function(result) {
+          showResult('api', result, false);
+        }).catch(function(err) {
+          showResult('api', '请求失败: ' + (err.message || err), true);
+        });
+      };
+
+      window.testApiPost = function() {
+        var testUrl = prompt('请输入要测试的 POST API 路径:', '/api/v1/messages');
+        if (!testUrl) return;
+        QIMBridge.api('POST', testUrl, { test: 'permission-test' }).then(function(result) {
+          showResult('api', result, false);
+        }).catch(function(err) {
+          showResult('api', '请求失败: ' + (err.message || err), true);
+        });
+      };
+
+      window.testClipboard = function() {
+        var text = '权限测试-' + Date.now();
+        QIMBridge.writeClipboard(text).then(function() {
+          showResult('clipboard', '写入成功！\n已复制文本: ' + text, false);
+        }).catch(function(err) {
+          showResult('clipboard', '写入失败: ' + (err.message || err), true);
+        });
+      };
+
+      window.testToast = function() {
+        QIMBridge.showToast('Hello from MiniApp! 时间: ' + new Date().toLocaleTimeString());
+        document.getElementById('result-toast').className = 'result-box';
+        document.getElementById('result-toast').textContent = 'Toast 已发送，请在主界面查看';
+      };
+    });
+  </script>
+</body>
+</html>

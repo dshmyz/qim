@@ -1,0 +1,27 @@
+{
+  "id": "qim-integration",
+  "name": "QIM 集成插件",
+  "description": "将 QIM 企业即时通讯系统集成到 OpenClaw，支持消息收发、实时WebSocket推送",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "description": "QIM 服务器地址"
+      },
+      "username": {
+        "type": "string",
+        "description": "QIM 登录用户名"
+      },
+      "password": {
+        "type": "string",
+        "description": "QIM 登录密码"
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}

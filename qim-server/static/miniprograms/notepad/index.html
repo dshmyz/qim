@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>记事本</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .notepad-container {
+      width: 100%;
+      max-width: 500px;
+    }
+    .notepad-title {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #3a3a5a;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      background: #2a2a4a;
+      color: #fff;
+      transition: border-color 0.2s ease;
+    }
+    .notepad-title:focus {
+      outline: none;
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2);
+    }
+    .notepad-content {
+      width: 100%;
+      height: 300px;
+      padding: 12px;
+      border: 1px solid #3a3a5a;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      resize: vertical;
+      background: #2a2a4a;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.6;
+      transition: border-color 0.2s ease;
+    }
+    .notepad-content:focus {
+      outline: none;
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2);
+    }
+    .notepad-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .notepad-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .notepad-btn-save {
+      background: #4a90d9;
+      color: white;
+    }
+    .notepad-btn-save:hover {
+      background: #3a7bc8;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .notepad-btn-clear {
+      background: #2a2a4a;
+      color: #fff;
+      border: 1px solid #3a3a5a;
+    }
+    .notepad-btn-clear:hover {
+      border-color: #4a90d9;
+      color: #4a90d9;
+    }
+    .save-hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="notepad-container">
+    <input type="text" class="notepad-title" id="note-title" placeholder="笔记标题" />
+    <textarea class="notepad-content" id="note-content" placeholder="在这里输入内容..."></textarea>
+    <div class="notepad-actions">
+      <button class="notepad-btn notepad-btn-clear" id="clear-btn">清空</button>
+      <button class="notepad-btn notepad-btn-save" id="save-btn">保存</button>
+    </div>
+    <div class="save-hint">内容保存在本地存储中</div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var titleInput = document.getElementById('note-title');
+      var contentInput = document.getElementById('note-content');
+      var saveBtn = document.getElementById('save-btn');
+      var clearBtn = document.getElementById('clear-btn');
+
+      titleInput.value = localStorage.getItem('notepad_title') || '';
+      contentInput.value = localStorage.getItem('notepad_content') || '';
+
+      saveBtn.addEventListener('click', function() {
+        localStorage.setItem('notepad_title', titleInput.value);
+        localStorage.setItem('notepad_content', contentInput.value);
+        window.parent.postMessage({ type: 'miniapp-toast', message: '保存成功' }, '*');
+      });
+
+      clearBtn.addEventListener('click', function() {
+        titleInput.value = '';
+        contentInput.value = '';
+        localStorage.removeItem('notepad_title');
+        localStorage.removeItem('notepad_content');
+      });
+
+      window.parent.postMessage({ type: 'miniapp-loaded', appId: 'notepad' }, '*');
+    });
+  </script>
+</body>
+</html>

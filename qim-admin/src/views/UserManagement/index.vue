@@ -1,13 +1,13 @@
 <template>
   <DataTable :data="list" :loading="loading" :pagination="pagination"
-    @search="handleSearch" @page-change="fetchData" @refresh="fetchData">
+    @search="handleSearch" @page-change="handlePageChange" @refresh="fetchData">
     <template #search>
       <SearchForm @search="handleSearch" @reset="handleReset">
         <SearchField v-model="keyword" label="关键词" placeholder="用户名或昵称" />
       </SearchForm>
     </template>
     <template #actions>
-      <el-button v-permission="'user:create'" type="success" @click="handleCreate">创建用户</el-button>
+      <el-button v-permission="'user:create'" type="primary" @click="handleCreate">创建用户</el-button>
     </template>
 
     <el-table-column prop="id" label="ID" width="80" />
@@ -64,11 +64,11 @@
 
   <el-dialog v-model="roleDialogVisible" title="管理角色" width="400px">
     <p class="role-dialog-hint">为用户 <strong>{{ currentUser?.username }}</strong> 分配角色</p>
-    <el-checkbox-group v-model="selectedRoles">
-      <el-checkbox v-for="role in roleOptions" :key="role.value" :label="role.value">
-        {{ role.label }}
-      </el-checkbox>
-    </el-checkbox-group>
+    <el-checkbox-group v-model="selectedRoles" class="role-checkbox-list">
+        <el-checkbox v-for="role in roleOptions" :key="role.value" :label="role.value">
+          {{ role.label }}
+        </el-checkbox>
+      </el-checkbox-group>
     <template #footer>
       <el-button @click="roleDialogVisible = false">取消</el-button>
       <el-button type="primary" :loading="roleSubmitting" @click="handleSaveRoles">保存</el-button>
@@ -150,9 +150,15 @@ const handleSaveRoles = async () => {
     fetchData()
   } catch (error) {
     console.error('[UserManagement] save roles failed:', error)
+    ElMessage.error('角色保存失败')
   } finally {
     roleSubmitting.value = false
   }
+}
+
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  fetchData()
 }
 
 onMounted(fetchData)
@@ -181,7 +187,13 @@ onMounted(fetchData)
 }
 
 .role-tag {
-  margin-right: 4px;
+  margin-right: var(--space-1);
+}
+
+.role-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .role-dialog-hint {

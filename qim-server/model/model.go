@@ -28,7 +28,7 @@ type User struct {
 type Department struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
 	Name           string         `json:"name" gorm:"size:100;not null"`
-	ParentID       *uint          `json:"parent_id"`
+	ParentID       *uint          `json:"parent_id" gorm:"index"`
 	Level          int            `json:"level" gorm:"not null"`
 	Path           string         `json:"path" gorm:"size:500"`
 	SortOrder      int            `json:"sort_order" gorm:"default:0"`
@@ -124,7 +124,7 @@ type File struct {
 	MimeType     string         `json:"mime_type" gorm:"size:100"`
 	StoragePath  string         `json:"storage_path" gorm:"size:500;not null"`
 	Checksum     string         `json:"checksum" gorm:"size:64"`
-	FolderID     *uint          `json:"folder_id"`
+	FolderID     *uint          `json:"folder_id" gorm:"index"`
 	Source       string         `json:"source" gorm:"size:20;default:'upload'"`
 	SourceID     string         `json:"source_id" gorm:"size:100"`
 	IsStarred    bool           `json:"is_starred" gorm:"default:false"`
@@ -140,7 +140,7 @@ type Folder struct {
 	ID        uint           `json:"id" gorm:"primarykey"`
 	UserID    uint           `json:"user_id" gorm:"not null;index"`
 	Name      string         `json:"name" gorm:"size:255;not null"`
-	ParentID  *uint          `json:"parent_id"`
+	ParentID  *uint          `json:"parent_id" gorm:"index"`
 	SortOrder int            `json:"sort_order" gorm:"default:0"`
 	Icon      string         `json:"icon" gorm:"size:50"`
 	Color     string         `json:"color" gorm:"size:20"`
