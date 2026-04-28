@@ -117,6 +117,8 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
 .admin-layout {
   height: 100vh;
   background-color: var(--color-bg-page);
+  display: flex;
+  overflow: hidden;
 }
 
 .main-container {
@@ -124,16 +126,49 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
   flex-direction: column;
   height: 100vh;
   background-color: var(--color-bg-page);
+  flex: 1;
+  min-width: 0;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+  padding-bottom: var(--space-4);
+  gap: var(--space-4);
 }
 
 .admin-main {
-  background-color: var(--color-bg-page);
+  background-color: var(--color-surface);
   padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 :deep(.el-main) {
   padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-header) {
+  border-radius: var(--radius-lg);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    padding-bottom: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .admin-main {
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+  }
+
+  :deep(.el-header) {
+    border-radius: var(--radius-md);
+  }
 }
 </style>

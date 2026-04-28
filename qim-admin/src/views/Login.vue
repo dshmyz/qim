@@ -71,7 +71,7 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, ArrowRight, ChatDotRound } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
@@ -79,6 +79,7 @@ import { login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -95,19 +96,28 @@ const rules = {
 }
 
 const handleLogin = async () => {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+  if (!formRef.value) return
+
+  try {
+    await formRef.value.validate()
+  } catch {
+    return
+  }
 
   loading.value = true
   try {
     const { data } = await login(loginForm)
-    authStore.setToken(data.data.token)
-    authStore.setUser(data.data.user)
-    ElMessage.success('登录成功')
-    router.push('/')
-  } catch (error) {
-    console.error('Login failed:', error)
-    ElMessage.error('登录失败，请检查用户名和密码')
+    if (data.data) {
+      authStore.setToken(data.data.token)
+      authStore.setUser(data.data.user)
+
+      // 跳转到 redirect 页面或首页
+      const redirect = route.query.redirect as string
+      router.push(redirect || '/')
+    }
+  } catch (error: any) {
+    const message = error?.response?.data?.message || '登录失败，请检查用户名和密码'
+    ElMessage.error(message)
   } finally {
     loading.value = false
   }

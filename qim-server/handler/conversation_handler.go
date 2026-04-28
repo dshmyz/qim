@@ -398,7 +398,7 @@ func SetConversationMute(c *gin.Context) {
 	}
 
 	var req struct {
-		Muted bool `json:"muted" binding:"required"`
+		Muted bool `json:"muted"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

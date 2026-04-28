@@ -2230,7 +2230,7 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
 // 查看分享的内容
 // 分享内容预览相关
 const showSharePreview = ref(false)
-const sharePreviewData = ref<any>(null)
+const sharePreviewData = ref<any>({})
 
 const viewSharedContent = (content: string) => {
   if (!content || content === '[消息已撤回]') return

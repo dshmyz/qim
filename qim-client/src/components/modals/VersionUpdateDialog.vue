@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineProps, defineEmits } from 'vue'
+import { ref } from 'vue'
 import { openUpdateLink } from '../../utils/version'
 
 const props = defineProps<{

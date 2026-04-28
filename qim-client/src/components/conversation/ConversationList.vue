@@ -24,10 +24,10 @@
         <div class="conversation-preview" :class="{ 'has-draft': hasDraft(conversation) }">
           <template v-if="hasDraft(conversation)">
             <i class="fas fa-edit draft-icon"></i>
-            [草稿] {{ getDraftPreview(conversation) }}
+            <span class="conversation-preview-text">[草稿] {{ getDraftPreview(conversation) }}</span>
           </template>
           <template v-else>
-            {{ formatMessagePreview(conversation.lastMessage, conversation) }}
+            <span class="conversation-preview-text">{{ formatMessagePreview(conversation.lastMessage, conversation) }}</span>
           </template>
         </div>
       </div>
@@ -321,6 +321,14 @@ const getUnreadCount = (conversation: Conversation): number => {
 
 .conversation-preview.has-draft {
   color: var(--color-warning-500, #f59e0b);
+}
+
+.conversation-preview-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .draft-icon {
