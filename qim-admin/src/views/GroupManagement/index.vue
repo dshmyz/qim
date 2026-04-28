@@ -4,7 +4,7 @@
     @search="handleSearch" @page-change="fetchData" @refresh="fetchData">
     <template #search>
       <SearchForm @search="handleSearch" @reset="handleReset">
-        <SearchField v-model="searchForm.keyword" label="群组名称" placeholder="请输入群组名称" />
+        <SearchField v-model="(searchForm.keyword as string)" label="群组名称" placeholder="请输入群组名称" />
       </SearchForm>
     </template>
 
@@ -84,7 +84,7 @@ const groupApi = {
   getList: (params: Record<string, unknown>) => getGroups(params as any),
   create: async () => {},
   update: async () => {},
-  delete: (id: number) => deleteGroup(id),
+  delete: (id: number) => deleteGroup(id).then(() => {}),
 }
 
 const {
