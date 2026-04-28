@@ -3,8 +3,10 @@ package handler
 import (
 	"net/http"
 	"strconv"
+
 	"qim-server/database"
 	"qim-server/model"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,7 +30,10 @@ func GetBotApprovals(c *gin.Context) {
 		query = query.Where("approval_status = ?", status)
 	}
 
-	query.Order("created_at DESC").Find(&bots)
+	if err := query.Order("created_at DESC").Find(&bots).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取审批列表失败"})
+		return
+	}
 
 	// 组装审批列表项
 	items := make([]BotApprovalItem, 0, len(bots))
@@ -36,12 +41,14 @@ func GetBotApprovals(c *gin.Context) {
 		item := BotApprovalItem{Bot: bot}
 		// 查询创建者头像
 		var creator model.User
-		db.Where("id = ?", bot.CreatorID).First(&creator)
-		item.CreatorAvatar = creator.Avatar
+		if err := db.Where("id = ?", bot.CreatorID).First(&creator).Error; err == nil {
+			item.CreatorAvatar = creator.Avatar
+		}
 		// 查询创建者已创建 Bot 数量
 		var count int64
-		db.Model(&model.Bot{}).Where("creator_id = ?", bot.CreatorID).Count(&count)
-		item.CreatorBotCount = count
+		if err := db.Model(&model.Bot{}).Where("creator_id = ?", bot.CreatorID).Count(&count).Error; err == nil {
+			item.CreatorBotCount = count
+		}
 		items = append(items, item)
 	}
 
@@ -98,7 +105,10 @@ func RejectBot(c *gin.Context) {
 	}
 
 	var req RejectBotRequest
-	c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		return
+	}
 
 	if err := db.Model(&bot).Updates(map[string]interface{}{
 		"approval_status": "rejected",
