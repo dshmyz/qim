@@ -52,13 +52,40 @@ watch(isDrawerOpen, (open) => {
   }
 })
 
+const touchStartX = ref(0)
+const touchStartY = ref(0)
+
+const onTouchStart = (e: TouchEvent) => {
+  touchStartX.value = e.touches[0].clientX
+  touchStartY.value = e.touches[0].clientY
+}
+
+const onTouchEnd = (e: TouchEvent) => {
+  const deltaX = e.changedTouches[0].clientX - touchStartX.value
+  const deltaY = Math.abs(e.changedTouches[0].clientY - touchStartY.value)
+  
+  // 从左边缘向右滑动打开抽屉
+  if (deltaX > 80 && deltaY < 100 && touchStartX.value < 40) {
+    isDrawerOpen.value = true
+  }
+  
+  // 从右向左滑动关闭抽屉
+  if (deltaX < -80 && deltaY < 100 && isDrawerOpen.value) {
+    isDrawerOpen.value = false
+  }
+}
+
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  window.addEventListener('touchstart', onTouchStart, { passive: true })
+  window.addEventListener('touchend', onTouchEnd, { passive: true })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('touchstart', onTouchStart)
+  window.removeEventListener('touchend', onTouchEnd)
 })
 
 const titleMap: Record<string, string> = {
