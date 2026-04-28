@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 import type { ApiResponse } from '@/types'
+import { usePermissionStore } from '@/stores/permission'
 
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -20,7 +21,7 @@ service.interceptors.request.use(
     return config
   },
   (error) => {
-    console.error('Request error:', error)
+    console.error('[Request] error:', error)
     return Promise.reject(error)
   }
 )
@@ -31,6 +32,8 @@ service.interceptors.response.use(
     if (res.code !== 0) {
       ElMessage.error(res.message || '请求失败')
       if (res.code === 401) {
+        const permStore = usePermissionStore()
+        permStore.reset()
         localStorage.removeItem('token')
         window.location.href = '/login'
       }
@@ -39,13 +42,21 @@ service.interceptors.response.use(
     return response
   },
   (error) => {
-    console.error('Response error:', error)
-    if (error.response?.status === 401) {
+    console.error('[Response] error:', error)
+    const status = error.response?.status
+
+    if (status === 401) {
+      const permStore = usePermissionStore()
+      permStore.reset()
       localStorage.removeItem('token')
       window.location.href = '/login'
+    } else if (status === 403) {
+      ElMessage.error('权限不足，无法执行此操作')
+    } else {
+      const message = error.response?.data?.message || error.message || '网络异常'
+      ElMessage.error(message)
     }
-    const message = error.response?.data?.message || error.message || '网络异常'
-    ElMessage.error(message)
+
     return Promise.reject(error)
   }
 )
