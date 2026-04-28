@@ -109,12 +109,21 @@ CREATE TABLE IF NOT EXISTS `files` (
   `storage_path` VARCHAR(500) NOT NULL,
   `checksum` VARCHAR(64),
   `folder_id` INTEGER,
+  `source` VARCHAR(20) DEFAULT 'upload',
+  `source_id` VARCHAR(100),
+  `is_starred` BOOLEAN DEFAULT FALSE,
+  `starred_at` DATETIME,
+  `tags` VARCHAR(500),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
 CREATE INDEX IF NOT EXISTS `idx_files_user_id` ON `files`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_files_folder_id` ON `files`(`folder_id`);
 CREATE INDEX IF NOT EXISTS `idx_files_deleted_at` ON `files`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_files_is_starred` ON `files`(`is_starred`);
+CREATE INDEX IF NOT EXISTS `idx_files_source` ON `files`(`source`);
 
 -- Folders table
 CREATE TABLE IF NOT EXISTS `folders` (
@@ -122,12 +131,16 @@ CREATE TABLE IF NOT EXISTS `folders` (
   `user_id` INTEGER NOT NULL,
   `name` VARCHAR(255) NOT NULL,
   `parent_id` INTEGER,
+  `sort_order` INTEGER DEFAULT 0,
+  `icon` VARCHAR(50),
+  `color` VARCHAR(20),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
 
 CREATE INDEX IF NOT EXISTS `idx_folders_user_id` ON `folders`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_folders_parent_id` ON `folders`(`parent_id`);
 CREATE INDEX IF NOT EXISTS `idx_folders_deleted_at` ON `folders`(`deleted_at`);
 
 -- Notes table

@@ -125,7 +125,13 @@ type File struct {
 	StoragePath  string         `json:"storage_path" gorm:"size:500;not null"`
 	Checksum     string         `json:"checksum" gorm:"size:64"`
 	FolderID     *uint          `json:"folder_id"`
+	Source       string         `json:"source" gorm:"size:20;default:'upload'"`
+	SourceID     string         `json:"source_id" gorm:"size:100"`
+	IsStarred    bool           `json:"is_starred" gorm:"default:false"`
+	StarredAt    *time.Time     `json:"starred_at"`
+	Tags         string         `json:"tags" gorm:"size:500"`
 	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -135,6 +141,9 @@ type Folder struct {
 	UserID    uint           `json:"user_id" gorm:"not null;index"`
 	Name      string         `json:"name" gorm:"size:255;not null"`
 	ParentID  *uint          `json:"parent_id"`
+	SortOrder int            `json:"sort_order" gorm:"default:0"`
+	Icon      string         `json:"icon" gorm:"size:50"`
+	Color     string         `json:"color" gorm:"size:20"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
