@@ -5,7 +5,7 @@
     :visible="showUserProfile"
     :user="selectedUser"
     @close="emit('close-user-profile')"
-    @send-private-message="handleSendPrivateMessageFromProfile"
+    @send-private-message="emit('send-private-message', selectedUser.id)"
   />
 
   <!-- 已读用户列表弹窗 -->
@@ -24,7 +24,7 @@
     @preview-image="emit('preview-image', $event)"
     @save-file-as="emit('save-file-as', $event)"
     @download-file="emit('download-file', $event)"
-    @copy-message="handleCopyMessage"
+    @copy-message="emit('copy-message')"
     @forward-message="emit('forward-message')"
     @quote-message="emit('quote-message')"
     @add-to-note="emit('add-to-note')"
@@ -37,20 +37,21 @@
     :visible="showMemberContextMenu"
     :position="memberContextMenuPosition"
     :member="selectedMember"
-    :current-user-id="currentUserId ?? 0"
+    :current-user-id="currentUserId ?? ''"
     :conversation="conversation ?? undefined"
     @close="emit('close-member-context-menu')"
-    @remove-member="handleRemoveMember"
-    @set-admin="handleSetAdmin"
-    @transfer-owner="handleTransferOwner"
+    @remove-member="(memberId, _memberName) => emit('remove-member', String(memberId))"
+    @set-admin="(_memberId, _memberName, _isAdmin) => emit('set-admin', String(_memberId))"
+    @transfer-owner="(memberId, _memberName) => emit('transfer-owner', String(memberId))"
     @view-member-info="emit('view-member-info')"
-    @send-private-message="handleSendPrivateMessageFromMember"
+    @send-private-message="emit('send-private-message', selectedMember?.id ?? '')"
   />
 
   <!-- 消息管理器 -->
   <MessageManager
+    v-if="showMessageManager && conversationId"
     :visible="showMessageManager"
-    :conversation-id="String(conversationId ?? '')"
+    :conversation-id="String(conversationId)"
     @close="emit('close-message-manager')"
     @scroll-to-message="emit('scroll-to-message', $event)"
   />
@@ -77,8 +78,8 @@
   <!-- 通话模态框 -->
   <CallModal
     :visible="showCallModal"
-    :call-type="callType as 'voice' | 'video' | ''"
-    :status="callStatus as 'ringing' | 'answered' | 'ended' | ''"
+    :call-type="(callType as 'voice' | 'video' | '')"
+    :status="(callStatus as 'ringing' | 'answered' | 'ended' | '')"
     :avatar="callAvatar"
     :name="callName"
     @reject-call="emit('reject-call')"
@@ -102,18 +103,18 @@
     :get-file-icon="getFileIcon"
     :format-file-size="formatFileSize"
     :render-markdown="renderMarkdown"
-    :format-time="formatTimeWrapper"
+    :format-time="formatTimeWithCoerce"
     @close="emit('close-share-preview')"
-    @download-file="handleDownloadFile"
-    @save-file-as="handleSaveFileAs"
+    @download-file="emit('download-file', $event)"
+    @save-file-as="emit('save-file-as', $event)"
   />
 
   <!-- 屏幕共享组件 -->
   <ScreenShare
     :receiver-id="otherUserId ?? undefined"
-    :sender-id="remoteScreenUserId ?? undefined"
+    :sender-id="remoteScreenUserId"
     :sender-name="senderName"
-    :conversation-id="String(conversationId ?? '')"
+    :conversation-id="conversationId ?? undefined"
     ref="screenShareRef"
     @screen-share-start="emit('screen-share-start', $event)"
     @screen-share-stop="emit('screen-share-stop')"
@@ -126,12 +127,13 @@
     <MiniAppLoader
       :mini-app="activeMiniApp"
       @close="emit('close-mini-app')"
+      @show-toast="emit('mini-app-toast', $event)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { Conversation, Message, User } from '../../types'
 import UserProfile from '../modals/UserProfile.vue'
 import ReadUsersModal from './ReadUsersModal.vue'
@@ -147,58 +149,47 @@ import ScreenShare from '../shared/ScreenShare.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
-const props = defineProps<{
+interface Props {
   conversation: Conversation | null
   conversationId: string | number | null
   senderName: string
   serverUrl: string
   currentUserId: string | number | null
-  // 用户资料
   showUserProfile: boolean
   selectedUser: User | null
-  // 已读用户
   showReadUsersModal: boolean
   currentReadUsers: { read_users: User[]; total_members: number }
-  // 消息右键菜单
   showMessageContextMenu: boolean
   messageContextMenuPosition: { x: number; y: number }
   selectedMessage: Message | null
-  // 成员右键菜单
   showMemberContextMenu: boolean
   memberContextMenuPosition: { x: number; y: number }
   selectedMember: User | null
-  // 消息管理器
   showMessageManager: boolean
-  // 确认对话框
   showConfirmDialog: boolean
   confirmDialogTitle: string
   confirmDialogMessage: string
-  // 截图
   showScreenshotPreview: boolean
   screenshotImageData: string
-  // 通话
   showCallModal: boolean
   callType: string
   callStatus: string
   callAvatar: string
   callName: string
-  // 图片预览
   showImagePreview: boolean
   previewImageUrl: string
-  // 分享预览
   showSharePreview: boolean
   sharePreviewData: any
-  // 屏幕共享
   otherUserId: string | number | null
   remoteScreenUserId: number | null
-  // 小程序
   activeMiniApp: MiniAppData | null
-  // 工具函数
   getFileIcon: (fileName: string) => string
   formatFileSize: (size: number) => string
   renderMarkdown: (content: string) => string
   formatTime: (timestamp: number) => string
-}>()
+}
+
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close-user-profile': []
@@ -214,9 +205,9 @@ const emit = defineEmits<{
   'recall-message': []
   'send-message-reminder': []
   'close-member-context-menu': []
-  'remove-member': [memberId: string | number, memberName: string]
-  'set-admin': [memberId: string | number, memberName: string, isAdmin: boolean]
-  'transfer-owner': [memberId: string | number, memberName: string]
+  'remove-member': [memberId: string]
+  'set-admin': [memberId: string]
+  'transfer-owner': [memberId: string]
   'view-member-info': []
   'close-message-manager': []
   'scroll-to-message': [messageId: string]
@@ -242,46 +233,14 @@ const emit = defineEmits<{
 
 const screenShareRef = ref<InstanceType<typeof ScreenShare>>()
 
+const formatTimeWithCoerce = computed(() => {
+  return (timestamp: string | number | null | undefined) => {
+    if (timestamp == null) return ''
+    return props.formatTime(Number(timestamp))
+  }
+})
+
 defineExpose({
   stopReceiving: () => screenShareRef.value?.stopReceiving()
 })
-
-// Event handler wrappers to bridge type differences
-const handleSendPrivateMessageFromProfile = () => {
-  emit('close-user-profile')
-}
-
-const handleCopyMessage = () => {
-  emit('copy-message')
-}
-
-const handleRemoveMember = (memberId: string | number, _memberName: string) => {
-  emit('remove-member', String(memberId), _memberName)
-}
-
-const handleSetAdmin = (memberId: string | number, _memberName: string, _isAdmin: boolean) => {
-  emit('set-admin', String(memberId), _memberName, _isAdmin)
-}
-
-const handleTransferOwner = (memberId: string | number, _memberName: string) => {
-  emit('transfer-owner', String(memberId), _memberName)
-}
-
-const handleSendPrivateMessageFromMember = () => {
-  // MemberContextMenu doesn't pass userId directly
-  // The parent will need to get it from selectedMember
-}
-
-const formatTimeWrapper = (timestamp: number | string | null | undefined) => {
-  if (timestamp == null) return ''
-  return props.formatTime(timestamp as number)
-}
-
-const handleDownloadFile = (url: string, _name: string) => {
-  emit('download-file', url)
-}
-
-const handleSaveFileAs = (url: string, _name: string) => {
-  emit('save-file-as', url)
-}
 </script>
