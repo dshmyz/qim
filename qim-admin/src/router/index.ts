@@ -68,6 +68,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '系统消息' },
       },
       {
+        path: 'message-search',
+        name: 'MessageSearch',
+        component: () => import('@/views/MessageSearch/index.vue'),
+        meta: { title: '消息搜索' },
+      },
+      {
         path: 'notifications',
         name: 'Notifications',
         component: () => import('@/views/Notifications.vue'),
