@@ -78,8 +78,8 @@
   <!-- 通话模态框 -->
   <CallModal
     :visible="showCallModal"
-    :call-type="(callType as 'voice' | 'video' | '')"
-    :status="(callStatus as 'ringing' | 'answered' | 'ended' | '')"
+    :call-type="callType"
+    :status="callStatus"
     :avatar="callAvatar"
     :name="callName"
     @reject-call="emit('reject-call')"
@@ -133,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { Conversation, Message, User } from '../../types'
 import UserProfile from '../modals/UserProfile.vue'
 import ReadUsersModal from './ReadUsersModal.vue'
@@ -145,9 +145,15 @@ import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
 import CallModal from './CallModal.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
 import SharePreviewDialog from './SharePreviewDialog.vue'
+import type { SharePreviewData } from './SharePreviewDialog.vue'
 import ScreenShare from '../shared/ScreenShare.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
+
+interface ScreenShareStartData {
+  senderId: number
+  conversationId: number
+}
 
 interface Props {
   conversation: Conversation | null
@@ -172,14 +178,14 @@ interface Props {
   showScreenshotPreview: boolean
   screenshotImageData: string
   showCallModal: boolean
-  callType: string
-  callStatus: string
+  callType: 'voice' | 'video' | ''
+  callStatus: 'ringing' | 'answered' | 'ended' | ''
   callAvatar: string
   callName: string
   showImagePreview: boolean
   previewImageUrl: string
   showSharePreview: boolean
-  sharePreviewData: any
+  sharePreviewData: SharePreviewData
   otherUserId: string | number | null
   remoteScreenUserId: number | null
   activeMiniApp: MiniAppData | null
@@ -189,7 +195,7 @@ interface Props {
   formatTime: (timestamp: number) => string
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 const emit = defineEmits<{
   'close-user-profile': []
@@ -223,7 +229,7 @@ const emit = defineEmits<{
   'close-call-modal': []
   'close-image-preview': []
   'close-share-preview': []
-  'screen-share-start': [data: any]
+  'screen-share-start': [data: ScreenShareStartData]
   'screen-share-stop': []
   'screen-share-join': []
   'screen-share-leave': []
@@ -233,12 +239,10 @@ const emit = defineEmits<{
 
 const screenShareRef = ref<InstanceType<typeof ScreenShare>>()
 
-const formatTimeWithCoerce = computed(() => {
-  return (timestamp: string | number | null | undefined) => {
-    if (timestamp == null) return ''
-    return props.formatTime(Number(timestamp))
-  }
-})
+const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => {
+  if (timestamp == null) return ''
+  return props.formatTime(Number(timestamp))
+}
 
 defineExpose({
   stopReceiving: () => screenShareRef.value?.stopReceiving()
