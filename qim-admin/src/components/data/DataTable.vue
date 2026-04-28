@@ -7,10 +7,7 @@
       </div>
       <div class="actions-area">
         <slot name="actions"></slot>
-        <el-button type="primary" @click="$emit('refresh')">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
+        <el-button size="small" :icon="Refresh" circle @click="handleRefresh" :loading="isRefreshing" />
       </div>
     </div>
 
@@ -25,15 +22,15 @@
         :total="total"
         :page-sizes="pageSizes"
         layout="total, sizes, prev, pager, next, jumper"
-        @size-change="$emit('page-change', $event)"
-        @current-change="$emit('page-change', $event)"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 
 interface PaginationConfig {
@@ -55,12 +52,33 @@ const props = withDefaults(defineProps<Props>(), {
   pageSizes: () => [10, 20, 50, 100]
 })
 
-defineEmits<{
-  'page-change': [value: number]
+const emit = defineEmits<{
+  'page-change': [page: number]
+  'size-change': [pageSize: number]
   'refresh': []
 }>()
 
 const total = computed(() => props.pagination.total)
+
+const handleSizeChange = (pageSize: number) => {
+  emit('size-change', pageSize)
+  emit('page-change', 1)
+}
+
+const handlePageChange = (page: number) => {
+  emit('page-change', page)
+}
+
+const isRefreshing = ref(false)
+
+const handleRefresh = () => {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  emit('refresh')
+  setTimeout(() => {
+    isRefreshing.value = false
+  }, 500)
+}
 </script>
 
 <style scoped>
