@@ -23,6 +23,8 @@ export function useFilePagination() {
   const filterType = ref<string>('')
   // 是否只显示星标
   const showStarred = ref(false)
+  // 文件来源筛选
+  const sourceFilter = ref<string | null>(null)
   // 加载状态
   const isLoading = ref(false)
   // 错误信息
@@ -42,7 +44,8 @@ export function useFilePagination() {
         folder_id: currentFolderId.value,
         search: searchQuery.value || undefined,
         type: filterType.value || undefined,
-        starred: showStarred.value || undefined
+        starred: showStarred.value || undefined,
+        source: sourceFilter.value || undefined
       }
 
       const response = await fileApi.getFiles(params)
@@ -121,6 +124,15 @@ export function useFilePagination() {
    */
   const toggleStarred = async () => {
     showStarred.value = !showStarred.value
+    currentPage.value = 1
+    await loadFiles()
+  }
+
+  /**
+   * 切换来源过滤
+   */
+  const changeSource = async (source: string | null) => {
+    sourceFilter.value = source
     currentPage.value = 1
     await loadFiles()
   }
@@ -240,6 +252,7 @@ export function useFilePagination() {
     currentFolderId,
     filterType,
     showStarred,
+    sourceFilter,
     isLoading,
     error,
 
@@ -256,6 +269,7 @@ export function useFilePagination() {
     changeFolder,
     changeFilterType,
     toggleStarred,
+    changeSource,
     uploadFile,
     deleteFile,
     toggleFileStar,

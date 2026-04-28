@@ -40,6 +40,9 @@
           >
             <i :class="file.is_starred ? 'fas fa-star' : 'far fa-star'"></i>
           </button>
+          <button class="action-btn" title="分享" @click.stop="handleShare">
+            <i class="fas fa-share-alt"></i>
+          </button>
           <button class="action-btn action-btn--danger" title="删除" @click.stop="handleDelete">
             <i class="fas fa-trash"></i>
           </button>
@@ -89,6 +92,7 @@ const emit = defineEmits<{
   (e: 'preview', file: FileItem): void
   (e: 'download', file: FileItem): void
   (e: 'star', file: FileItem): void
+  (e: 'share', file: FileItem): void
   (e: 'delete', file: FileItem): void
 }>()
 
@@ -124,6 +128,10 @@ function handleDownload() {
 
 function handleStar() {
   emit('star', props.file)
+}
+
+function handleShare() {
+  emit('share', props.file)
 }
 
 function handleDelete() {

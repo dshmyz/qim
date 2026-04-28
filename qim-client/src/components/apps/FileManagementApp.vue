@@ -1,26 +1,51 @@
 <template>
   <div class="file-management-app">
-    <!-- 头部 -->
+    <!-- 头部工具栏 -->
     <div class="app-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
           <i class="fas fa-arrow-left"></i>
         </button>
-        <div class="header-info">
-          <h2>文件管理</h2>
-          <div class="breadcrumb" v-if="currentFolderPath">
-            <span class="breadcrumb-item" @click="navigateToRoot">
-              <i class="fas fa-home"></i>
-            </span>
-            <template v-for="(segment, index) in currentFolderPath.split('/').filter(s => s)" :key="index">
-              <span class="breadcrumb-separator">/</span>
-              <span class="breadcrumb-item" @click="navigateToPath(index)">
-                {{ segment }}
-              </span>
-            </template>
-          </div>
+        <h2>文件管理</h2>
+      </div>
+      
+      <div class="header-center">
+        <!-- 来源筛选 -->
+        <div class="source-filter">
+          <button
+            :class="['source-tab', { active: sourceFilter === null }]"
+            @click="handleSourceChange(null)"
+          >
+            全部
+          </button>
+          <button
+            :class="['source-tab', { active: sourceFilter === 'upload' }]"
+            @click="handleSourceChange('upload')"
+          >
+            上传
+          </button>
+          <button
+            :class="['source-tab', { active: sourceFilter === 'chat' }]"
+            @click="handleSourceChange('chat')"
+          >
+            聊天
+          </button>
+        </div>
+
+        <!-- 文件夹选择 -->
+        <div class="folder-selector">
+          <select v-model="selectedFolderId" @change="handleFolderChange" class="folder-select">
+            <option :value="null">全部文件</option>
+            <option :value="-1">星标文件</option>
+            <optgroup label="文件夹">
+              <option v-for="folder in folders" :key="folder.id" :value="folder.id">
+                {{ folder.name }}
+              </option>
+            </optgroup>
+          </select>
         </div>
       </div>
+
       <div class="header-actions">
         <button class="action-btn" @click="showCreateFolderModal = true" title="新建文件夹">
           <i class="fas fa-folder-plus"></i>
@@ -41,17 +66,7 @@
 
     <!-- 主内容区域 -->
     <div class="app-content">
-      <!-- 左侧文件夹树 -->
-      <div class="sidebar">
-        <FolderTree
-          ref="folderTreeRef"
-          :selected-source="sourceFilter"
-          @select="handleFolderSelect"
-          @source-change="handleSourceChange"
-        />
-      </div>
-
-      <!-- 中间文件列表 -->
+      <!-- 文件列表 -->
       <div class="main-content">
         <FileList
           ref="fileListRef"
@@ -218,6 +233,9 @@ const contextMenu = ref({
 // 文件夹列表（用于模态框）
 const folders = ref<FolderItem[]>([])
 
+// 当前选中的文件夹ID
+const selectedFolderId = ref<number | null | -1>(null)
+
 // 当前文件夹路径
 const currentFolderPath = computed(() => {
   if (!selectedFolder.value) return ''
@@ -227,6 +245,17 @@ const currentFolderPath = computed(() => {
 // 文件夹选择
 const handleFolderSelect = (folder: FolderNode) => {
   changeFolder(folder.id)
+}
+
+// 文件夹选择变化
+const handleFolderChange = () => {
+  if (selectedFolderId.value === -1) {
+    showStarred.value = true
+    changeFolder(null)
+  } else {
+    showStarred.value = false
+    changeFolder(selectedFolderId.value)
+  }
 }
 
 // 搜索
@@ -428,23 +457,101 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* 头部 */
+/* 头部工具栏 */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  height: 72px;
+  min-height: 64px;
   box-sizing: border-box;
+  gap: 16px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-left h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  justify-content: center;
+}
+
+/* 来源筛选 */
+.source-filter {
+  display: flex;
+  gap: 4px;
+  background: var(--hover-color);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.source-tab {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.source-tab:hover {
+  color: var(--primary-color);
+}
+
+.source-tab.active {
+  background: var(--card-bg);
+  color: var(--primary-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 文件夹选择器 */
+.folder-selector {
+  position: relative;
+}
+
+.folder-select {
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-color);
+  font-size: 14px;
+  min-width: 160px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.folder-select:hover {
+  border-color: var(--primary-color);
+}
+
+.folder-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
 }
 
 .back-btn {
@@ -463,34 +570,6 @@ onBeforeUnmount(() => {
 
 .back-btn:hover {
   background: var(--primary-light);
-}
-
-.header-info h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.breadcrumb-item {
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-
-.breadcrumb-item:hover {
-  color: var(--primary-color);
-}
-
-.breadcrumb-separator {
-  color: var(--text-tertiary);
 }
 
 .header-actions {
@@ -536,19 +615,12 @@ onBeforeUnmount(() => {
 /* 主内容区域 */
 .app-content {
   flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.sidebar {
-  width: 240px;
-  border-right: 1px solid var(--border-color);
-  background: var(--card-bg);
   overflow: hidden;
 }
 
 .main-content {
-  flex: 1;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 

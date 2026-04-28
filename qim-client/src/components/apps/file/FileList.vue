@@ -44,6 +44,7 @@
           @preview="handleFilePreview"
           @download="handleFileDownload"
           @star="handleFileStar"
+          @share="handleFileShare"
           @delete="handleFileDelete"
         />
       </div>
@@ -72,6 +73,7 @@
             @preview="handleFilePreview"
             @download="handleFileDownload"
             @star="handleFileStar"
+            @share="handleFileShare"
             @delete="handleFileDelete"
           />
         </div>
@@ -126,6 +128,7 @@ const emit = defineEmits<{
   (e: 'preview', file: FileItem): void
   (e: 'download', file: FileItem): void
   (e: 'star', file: FileItem): void
+  (e: 'share', file: FileItem): void
   (e: 'delete', file: FileItem): void
   (e: 'selection-change', fileIds: Set<number>): void
 }>()
@@ -165,6 +168,11 @@ function handleFileDownload(file: FileItem) {
 // 处理文件星标
 function handleFileStar(file: FileItem) {
   emit('star', file)
+}
+
+// 处理文件分享
+function handleFileShare(file: FileItem) {
+  emit('share', file)
 }
 
 // 处理文件删除
