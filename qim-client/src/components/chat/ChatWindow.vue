@@ -228,7 +228,7 @@ import { API_BASE_URL } from '../../config'
 import { getCurrentUser } from '../../utils/user'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
-import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
+import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import { useScreenShare } from '../../composables/useScreenShare'
 import { useVideoCall } from '../../composables/useVideoCall'
@@ -948,8 +948,8 @@ const handleMarkRead = () => {
 
 // 组件是否挂载
 const isMounted = ref(true)
-// 跟踪 WebSocket 消息处理器以便在卸载时清理
-const registeredScreenShareHandlers: { handler: Function; type: string }[] = []
+// 跟踪 WebSocket 消息处理器的清理函数
+let wsHandlersCleanup: (() => void) | null = null
 // 跟踪 context menu 的 setTimeout ID 以便清理
 let memberContextMenuTimeoutId: number | null = null
 let messageContextMenuTimeoutId: number | null = null
@@ -1061,19 +1061,17 @@ onMounted(async () => {
 
 // 初始化 WebSocket 消息处理
 const initWebSocketMessageHandler = () => {
+  // 先清理旧的 handler
+  if (wsHandlersCleanup) {
+    wsHandlersCleanup()
+    wsHandlersCleanup = null
+  }
+
   const screenShareMessageTypes = [
     'webrtc_offer',
     'webrtc_ice_candidate',
     'webrtc_answer'
   ];
-  
-  screenShareMessageTypes.forEach(type => {
-    const handler = (message: any) => {
-      handleScreenShareMessage(type, message.data);
-    };
-    addWsHandler(handler, type);
-    registeredScreenShareHandlers.push({ handler, type });
-  });
   
   const videoCallMessageTypes = [
     'call_invite',
@@ -1085,15 +1083,27 @@ const initWebSocketMessageHandler = () => {
     'webrtc_ice_candidate'
   ];
   
-  videoCallMessageTypes.forEach(type => {
-    const handler = (message: any) => {
-      videoCallHandleSignaling(message);
-      if (type === 'call_invite' || type === 'webrtc_offer') {
-        showCallModal.value = true
+  const allMessageTypes = [...screenShareMessageTypes, ...videoCallMessageTypes];
+  const uniqueMessageTypes = [...new Set(allMessageTypes)];
+  
+  // 使用新的 addWsHandlers 批量注册，返回统一清理函数
+  const handlerMap: Record<string, (data: any) => void> = {};
+  
+  uniqueMessageTypes.forEach(type => {
+    handlerMap[type] = (data: any) => {
+      if (screenShareMessageTypes.includes(type)) {
+        handleScreenShareMessage(type, data);
+      }
+      if (videoCallMessageTypes.includes(type)) {
+        videoCallHandleSignaling({ type, data });
+        if (type === 'call_invite' || type === 'webrtc_offer') {
+          showCallModal.value = true
+        }
       }
     };
-    addWsHandler(handler, type);
   });
+  
+  wsHandlersCleanup = addWsHandlers(handlerMap);
   
   if (window.electron && window.electron.websocket) {
     window.electron.websocket.onMessage((message) => {
@@ -1132,11 +1142,11 @@ onUnmounted(() => {
   window.removeEventListener('shareFileToChat', handleShareFile as EventListener)
   window.removeEventListener('keydown', handleGlobalKeydown)
   
-  // 移除 WebSocket 消息处理器
-  registeredScreenShareHandlers.forEach(({ handler, type }) => {
-    removeWsHandler(handler as any, type)
-  })
-  registeredScreenShareHandlers.length = 0
+  // 清理 WebSocket handler（使用新的清理机制）
+  if (wsHandlersCleanup) {
+    wsHandlersCleanup()
+    wsHandlersCleanup = null
+  }
   
   // 清理截图 IPC 监听器
   if (screenshotCleanup) {
