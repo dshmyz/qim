@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { Conversation, Message } from '../../types'
+import type { Conversation, Message, User } from '../../types'
 import MessageListView from './MessageListView.vue'
 import MemberSidebar from './MemberSidebar.vue'
 
@@ -53,11 +53,17 @@ interface Member {
   role?: 'owner' | 'admin' | 'member'
 }
 
+/** 消息已读信息 */
+interface MessageReadInfo {
+  read_users: User[]
+  total_members: number
+}
+
 interface Props {
   conversation: Conversation | null
   messages: Message[]
   hasMoreMessages: boolean
-  readUsersMap: Record<string, { read_users: any[], total_members: number }>
+  readUsersMap: Record<string, MessageReadInfo>
   serverUrl: string
   isMembersSidebarExpanded: boolean
   showMemberSearch: boolean
@@ -68,15 +74,15 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'message-contextmenu': [event: MouseEvent, message: Message]
-  'show-user-profile': [user: any]
+  'show-user-profile': [user: User]
   'scroll-to-quoted-message': [id: string]
   'preview-image': [data: string]
   'download-file': [data: string]
   'save-as': [data: string]
   'view-shared-content': [content: string]
-  'open-mini-app': [app: any]
+  'open-mini-app': [app: Message['miniAppData']]
   'open-news-link': [url: string]
-  'retry-send-message': [msg: any]
+  'retry-send-message': [msg: Message]
   'show-read-users': [msg: Message]
   'mark-read': []
   'load-more': []
@@ -99,7 +105,7 @@ const sidebarMembers = computed<Member[]>(() => {
     id: user.id,
     name: user.name,
     avatar: user.avatar,
-    role: user.role === 'admin' ? 'admin' : 'member'
+    role: user.role as Member['role'] ?? 'member'
   }))
 })
 
