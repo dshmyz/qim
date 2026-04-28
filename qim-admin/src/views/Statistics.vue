@@ -161,7 +161,7 @@
             </div>
             <div class="overview-item">
               <span class="overview-label">活跃群组</span>
-              <span class="overview-value">{{ stats.activeGroups ?? stats.totalGroups || 0 }}</span>
+              <span class="overview-value">{{ (stats as Record<string, unknown>).activeGroups ?? stats.totalGroups ?? 0 }}</span>
             </div>
             <div class="overview-item">
               <span class="overview-label">活跃用户占比</span>
