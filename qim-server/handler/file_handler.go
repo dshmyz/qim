@@ -64,6 +64,7 @@ func UploadFile(c *gin.Context) {
 			StoragePath:  "/uploads/" + filename,
 			Size:         file.Size,
 			UserID:       userID.(uint),
+			Source:       "upload",
 			CreatedAt:    time.Now(),
 		}
 		if err := db.Create(&fileRecord).Error; err != nil {
