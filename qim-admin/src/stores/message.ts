@@ -13,8 +13,8 @@ export const useMessageStore = defineStore('message', () => {
     loading.value = true
     try {
       const { data } = await searchMessages(params)
-      messages.value = data.list
-      total.value = data.total
+      messages.value = data.data.list
+      total.value = data.data.total
     } finally {
       loading.value = false
     }
@@ -24,7 +24,7 @@ export const useMessageStore = defineStore('message', () => {
     loading.value = true
     try {
       const { data } = await getMessageDetail(id)
-      currentMessage.value = data
+      currentMessage.value = data.data
     } finally {
       loading.value = false
     }
