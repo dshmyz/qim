@@ -273,9 +273,15 @@ func SendMessage(c *gin.Context) {
 			URL string `json:"url"`
 			ID  uint   `json:"id"`
 		}
-		if err := json.Unmarshal([]byte(req.Content), &fileData); err == nil {
-			if fileData.ID > 0 {
-				db.Model(&model.File{}).Where("id = ?", fileData.ID).Update("source", "chat")
+		if err := json.Unmarshal([]byte(req.Content), &fileData); err != nil {
+			log.Printf("[SendMessage] 解析文件消息失败: %v, content: %s", err, req.Content)
+		} else if fileData.ID > 0 {
+			// 验证文件归属并更新source字段
+			result := db.Model(&model.File{}).
+				Where("id = ? AND user_id = ?", fileData.ID, userID.(uint)).
+				Update("source", "chat")
+			if result.RowsAffected == 0 {
+				log.Printf("[SendMessage] 文件不存在或无权限: fileID=%d, userID=%d", fileData.ID, userID.(uint))
 			}
 		}
 	}
