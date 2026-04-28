@@ -12,7 +12,7 @@
     <el-table-column label="群组名称" min-width="180">
       <template #default="{ row }">
         <div class="group-cell">
-          <el-avatar :size="32" :src="row.avatar">{{ row.name.charAt(0) }}</el-avatar>
+          <el-avatar :size="32" :src="row.avatar">{{ row.name?.charAt(0) || '?' }}</el-avatar>
           <span class="group-name">{{ row.name }}</span>
         </div>
       </template>
@@ -43,7 +43,7 @@
       <el-table-column label="成员" min-width="150">
         <template #default="{ row }">
           <div class="member-cell">
-            <el-avatar :size="28" :src="row.avatar">{{ (row.nickname || row.username).charAt(0) }}</el-avatar>
+            <el-avatar :size="28" :src="row.avatar">{{ (row.nickname || row.username)?.charAt(0) || '?' }}</el-avatar>
             <span>{{ row.nickname || row.username }}</span>
           </div>
         </template>
@@ -65,6 +65,16 @@
         </template>
       </el-table-column>
     </el-table>
+    <el-pagination
+      v-if="memberPagination.total > memberPagination.pageSize"
+      :current-page="memberPagination.page"
+      :page-size="memberPagination.pageSize"
+      :total="memberPagination.total"
+      layout="total, prev, pager, next"
+      small
+      class="member-pagination"
+      @current-change="handleMemberPageChange"
+    />
   </el-dialog>
 </template>
 
@@ -101,6 +111,12 @@ const currentGroup = ref<Group | null>(null)
 const members = ref<ConversationMember[]>([])
 const membersLoading = ref(false)
 
+const memberPagination = ref({
+  page: 1,
+  pageSize: 20,
+  total: 0,
+})
+
 const roleLabel = (role: string): string => {
   const map: Record<string, string> = { owner: '群主', admin: '管理员', member: '成员' }
   return map[role] || role
@@ -109,14 +125,23 @@ const roleLabel = (role: string): string => {
 const handleViewMembers = async (row: Group) => {
   currentGroup.value = row
   memberDialogVisible.value = true
-  await fetchMembers(row.id)
+  memberPagination.value.page = 1
+  await fetchMembers(1)
 }
 
-const fetchMembers = async (conversationId: number) => {
+const fetchMembers = async (page = 1) => {
+  if (!currentGroup.value) return
   membersLoading.value = true
   try {
-    const { data } = await getGroupMembers(conversationId, { page: 1, pageSize: 100 })
-    members.value = data.data.list
+    const { data } = await getGroupMembers(currentGroup.value.id, {
+      page,
+      pageSize: memberPagination.value.pageSize,
+    })
+    if (data.data) {
+      members.value = data.data.list ?? []
+      memberPagination.value.total = data.data.total ?? 0
+      memberPagination.value.page = page
+    }
   } catch (error) {
     console.error('[GroupManagement] fetch members failed:', error)
     ElMessage.error('获取成员列表失败')
@@ -125,12 +150,20 @@ const fetchMembers = async (conversationId: number) => {
   }
 }
 
+const handleMemberPageChange = (page: number) => {
+  fetchMembers(page)
+}
+
 const handleRemoveMember = async (userId: number) => {
-  if (!currentGroup.value) return
+  if (userId === currentGroup.value?.ownerId) {
+    ElMessage.warning('无法移除群主')
+    return
+  }
+
   try {
-    await removeGroupMember(currentGroup.value.id, userId)
-    ElMessage.success('移除成功')
-    fetchMembers(currentGroup.value.id)
+    await removeGroupMember(currentGroup.value!.id, userId)
+    ElMessage.success('成员移除成功')
+    fetchMembers(memberPagination.value.page)
   } catch (error) {
     console.error('[GroupManagement] remove member failed:', error)
     ElMessage.error('移除成员失败')
@@ -173,5 +206,10 @@ const handlePageChange = (page: number) => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.member-pagination {
+  margin-top: var(--space-4);
+  justify-content: center;
 }
 </style>
