@@ -261,7 +261,7 @@ func CreateMiniApp(c *gin.Context) {
 }
 
 func UpdateMiniApp(c *gin.Context) {
-	appID := c.Param("id")
+	id := c.Param("id")
 
 	var req struct {
 		Name        string `json:"name"`
@@ -279,7 +279,7 @@ func UpdateMiniApp(c *gin.Context) {
 
 	db := database.GetDB()
 	var miniApp model.MiniApp
-	if err := db.Where("app_id = ?", appID).First(&miniApp).Error; err != nil {
+	if err := db.Where("id = ?", id).First(&miniApp).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "小程序不存在"})
 		return
 	}
@@ -303,7 +303,10 @@ func UpdateMiniApp(c *gin.Context) {
 		miniApp.Permissions = req.Permissions
 	}
 
-	db.Save(&miniApp)
+	if err := db.Save(&miniApp).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新小程序失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -312,10 +315,10 @@ func UpdateMiniApp(c *gin.Context) {
 }
 
 func DeleteMiniApp(c *gin.Context) {
-	appID := c.Param("id")
+	id := c.Param("id")
 
 	db := database.GetDB()
-	if err := db.Where("app_id = ?", appID).Delete(&model.MiniApp{}).Error; err != nil {
+	if err := db.Where("id = ?", id).Delete(&model.MiniApp{}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除小程序失败"})
 		return
 	}
