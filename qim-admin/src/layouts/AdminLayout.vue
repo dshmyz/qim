@@ -1,9 +1,15 @@
 <!-- src/layouts/AdminLayout.vue -->
 <template>
   <el-container class="admin-layout">
-    <Sidebar :collapsed="isCollapsed" @toggle="isCollapsed = !isCollapsed" />
+    <Sidebar v-if="!isMobile" :collapsed="isCollapsed" @toggle="isCollapsed = !isCollapsed" />
+    <SidebarDrawer :visible="isDrawerOpen" @close="isDrawerOpen = false" />
+    <MobileOverlay :visible="isDrawerOpen" @close="isDrawerOpen = false" />
     <el-container class="main-container">
-      <Header>
+      <Header 
+        :show-hamburger="isMobile" 
+        :sidebar-open="isDrawerOpen" 
+        @toggle-sidebar="isDrawerOpen = !isDrawerOpen"
+      >
         <template #breadcrumb>
           <Breadcrumb :title="currentTitle" />
         </template>
@@ -16,14 +22,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar/index.vue'
 import Header from '@/components/layout/Header/index.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb/index.vue'
+import SidebarDrawer from '@/components/layout/SidebarDrawer.vue'
+import MobileOverlay from '@/components/layout/MobileOverlay.vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
+const isMobile = ref(false)
+const isDrawerOpen = ref(false)
+
+const MOBILE_BREAKPOINT = 768
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= MOBILE_BREAKPOINT
+  if (!isMobile.value) {
+    isDrawerOpen.value = false
+  }
+}
+
+watch(isDrawerOpen, (open) => {
+  if (open) {
+    document.body.classList.add('mobile-drawer-open')
+  } else {
+    document.body.classList.remove('mobile-drawer-open')
+  }
+})
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 
 const titleMap: Record<string, string> = {
   '/': '仪表盘',
@@ -57,6 +93,9 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
 }
 
 .main-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   background-color: var(--color-bg-page);
 }
 
@@ -64,5 +103,10 @@ const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
   background-color: var(--color-bg-page);
   padding: var(--space-6);
   overflow-y: auto;
+  flex: 1;
+}
+
+:deep(.el-main) {
+  padding: 0;
 }
 </style>
