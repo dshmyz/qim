@@ -178,6 +178,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 文件管理
 			authed.GET("/files", handler.GetFiles)
+			authed.GET("/files/starred", handler.GetStarredFiles)
+			authed.GET("/files/stats", handler.GetFileStats)
+			authed.POST("/files/batch", handler.BatchOperation)
+			authed.PUT("/files/:id", handler.UpdateFile)
+			authed.PUT("/files/:id/star", handler.ToggleStar)
 			authed.GET("/files/:id/download", handler.DownloadFile)
 			authed.DELETE("/files/:id", handler.DeleteFile)
 
@@ -191,6 +196,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 文件夹管理
 			authed.POST("/folders", handler.CreateFolder)
 			authed.GET("/folders/tree", handler.GetFolderTree)
+			authed.GET("/folders/:id/files", handler.GetFolderFiles)
+			authed.PUT("/folders/:id", handler.UpdateFolder)
+			authed.DELETE("/folders/:id", handler.DeleteFolder)
 
 			// 机器人管理
 			authed.GET("/bots", handler.GetBots)
