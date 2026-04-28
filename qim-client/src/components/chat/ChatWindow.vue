@@ -687,6 +687,7 @@ const uploadAndSendFile = async (file: File) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('source', 'chat')
     
     const token = getToken()
     const response = await fetch(`${serverUrl.value}/api/v1/upload`, {
@@ -1842,6 +1843,7 @@ const uploadScreenshot = async () => {
     // 创建FormData
     const formData = new FormData()
     formData.append('file', blob, 'screenshot.png')
+    formData.append('source', 'chat')
     
     // 上传到服务器
     const uploadResponse = await fetch(`${serverUrl.value}/api/v1/upload`, {

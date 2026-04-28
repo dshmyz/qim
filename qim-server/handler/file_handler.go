@@ -24,6 +24,8 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
+	source := c.DefaultPostForm("source", "upload")
+
 	ext := filepath.Ext(file.Filename)
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
 	var storagePath string
@@ -64,7 +66,7 @@ func UploadFile(c *gin.Context) {
 			StoragePath:  "/uploads/" + filename,
 			Size:         file.Size,
 			UserID:       userID.(uint),
-			Source:       "upload",
+			Source:       source,
 			CreatedAt:    time.Now(),
 		}
 		if err := db.Create(&fileRecord).Error; err != nil {
@@ -290,9 +292,9 @@ func BatchOperation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		FileIDs  []uint `json:"file_ids" binding:"required"`
-		Operation string `json:"operation" binding:"required"` // "delete", "move", "star", "unstar"
-		TargetFolderID *uint `json:"target_folder_id"`       // 用于 move 操作
+		FileIDs        []uint `json:"file_ids" binding:"required"`
+		Operation      string `json:"operation" binding:"required"` // "delete", "move", "star", "unstar"
+		TargetFolderID *uint  `json:"target_folder_id"`             // 用于 move 操作
 	}
 
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
@@ -733,7 +735,6 @@ func GetFolderFiles(c *gin.Context) {
 		},
 	})
 }
-
 
 // isDescendant 检查 targetID 是否是 ancestorID 的后代（用于循环引用检测）
 func isDescendant(db *gorm.DB, targetID uint, ancestorID uint, userID uint) bool {
