@@ -70,36 +70,9 @@ import SearchField from '@/components/data/SearchField.vue'
 import EntityDialog from '@/components/forms/EntityDialog.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import { useEntity } from '@/composables/useEntity'
-import type { FormField } from '@/composables/useEntity'
 import { getRoles, createRole, updateRole, deleteRole } from '@/api/roles'
 import type { Role } from '@/types'
-
-const permissionOptions = [
-  { label: '查看用户', value: 'user:read' },
-  { label: '创建用户', value: 'user:create' },
-  { label: '编辑用户', value: 'user:update' },
-  { label: '删除用户', value: 'user:delete' },
-  { label: '查看群组', value: 'group:read' },
-  { label: '创建群组', value: 'group:create' },
-  { label: '编辑群组', value: 'group:update' },
-  { label: '删除群组', value: 'group:delete' },
-  { label: '查看角色', value: 'role:read' },
-  { label: '创建角色', value: 'role:create' },
-  { label: '编辑角色', value: 'role:update' },
-  { label: '删除角色', value: 'role:delete' },
-]
-
-const roleFields: FormField[] = [
-  { name: 'name', label: '角色名称', type: 'input', required: true },
-  { name: 'code', label: '角色代码', type: 'input', required: true },
-  { name: 'description', label: '描述', type: 'textarea' },
-  { name: 'permissions', label: '权限', type: 'select', props: { multiple: true, placeholder: '请选择权限' }, options: permissionOptions },
-]
-
-const roleRules = {
-  name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入角色代码', trigger: 'blur' }],
-}
+import { roleFields, roleRules, permissionLabelMap } from './config'
 
 const roleApi = {
   getList: (params: Record<string, unknown>) => getRoles(params as any),
@@ -127,29 +100,12 @@ const keyword = computed({
 
 const entityFields = roleFields as any
 
-// 权限标签映射
-const permissionLabelMap: Record<string, string> = {
-  'user:read': '查看用户',
-  'user:create': '创建用户',
-  'user:update': '编辑用户',
-  'user:delete': '删除用户',
-  'group:read': '查看群组',
-  'group:create': '创建群组',
-  'group:update': '编辑群组',
-  'group:delete': '删除群组',
-  'role:read': '查看角色',
-  'role:create': '创建角色',
-  'role:update': '编辑角色',
-  'role:delete': '删除角色',
-  'message:read': '查看消息',
-  'message:write': '发送消息',
-  'message:delete': '删除消息',
-  'system:config': '系统配置',
-  'system:log': '查看日志',
-}
-
 const permissionLabel = (perm: string): string => {
-  return permissionLabelMap[perm] || perm
+  const label = permissionLabelMap[perm]
+  if (!label && import.meta.env.DEV) {
+    console.warn(`[RoleManagement] Unknown permission: ${perm}`)
+  }
+  return label || perm
 }
 
 onMounted(fetchData)

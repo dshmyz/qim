@@ -1,0 +1,92 @@
+# 服务器配置
+server:
+  port: "8080"
+  mode: "release"  # debug / release / test
+
+# JWT 配置
+jwt:
+  secret: "${QIM_JWT_SECRET:change-me-to-random-string}"
+  expire: 7200  # 秒
+  refresh_expire_days: 7
+
+# 数据库配置
+database:
+  type: "sqlite"  # sqlite / mysql / postgresql
+  path: "./qim.db"
+  # MySQL/PostgreSQL 配置示例:
+  # host: "localhost"
+  # port: 3306
+  # username: "root"
+  # password: "your-password"
+  # database: "qim_server"
+
+# 多节点配置
+cluster:
+  enabled: false
+  nodes: []
+  # - "http://node1:8080"
+  # - "http://node2:8080"
+
+# 文件存储配置
+storage:
+  type: "local"  # local / s3
+  local:
+    path: "./uploads"
+  s3:
+    endpoint: "s3.amazonaws.com"
+    access_key: "your-access-key"
+    secret_key: "your-secret-key"
+    bucket: "qim"
+    region: "us-east-1"
+    use_ssl: true
+
+# AI 配置
+ai:
+  provider: "openai"  # openai / baidu / alibaba / tencent / bytedance / anthropic
+  max_tokens: 1000
+  temperature: 0.7
+  
+  # OpenAI 配置
+  openai:
+    api_key: "your-openai-api-key"
+    model: "gpt-3.5-turbo"
+    base_url: "https://api.openai.com/v1"
+  
+  # 百度文心一言配置
+  baidu:
+    api_key: ""
+    secret_key: ""
+    model: "ERNIE-Bot-4.0"
+    base_url: "https://aip.baidubce.com"
+  
+  # 阿里通义千问配置
+  alibaba:
+    api_key: ""
+    api_secret: ""
+    model: "qwen-plus"
+    base_url: "https://dashscope.aliyuncs.com/api/v1"
+  
+  # 腾讯混元大模型配置
+  tencent:
+    secret_id: ""
+    secret_key: ""
+    model: "hunyuan-pro"
+    base_url: "https://hunyuan.tencentcloudapi.com"
+  
+  # 字节跳动豆包配置
+  bytedance:
+    api_key: ""
+    model: "doubao-pro-1.0"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  
+  # Anthropic/Claude 配置
+  anthropic:
+    api_key: "your-anthropic-api-key"
+    model: "claude-3-sonnet-20240229"
+    base_url: "https://api.anthropic.com"
+
+# CORS 配置
+cors:
+  allowed_origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QIM Admin 设计方案对比</title>
+<style>
+/* 公共样式 */
+body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif; }
+.demo-section { display: grid; grid-template-columns: repeat(3, 1fr); min-height: 100vh; }
+.demo-label { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; background: #000; color: #fff; padding: 12px 32px; border-radius: 8px; font-size: 20px; font-weight: 700; }
+
+/* ============================================
+   方案 A：深空科技风
+   ============================================ */
+.scheme-a { background: linear-gradient(135deg, #0c0c0c 0%, #111111 100%); padding: 40px 30px; position: relative; overflow: hidden; }
+.scheme-a::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0); background-size: 40px 40px; pointer-events: none; }
+.scheme-a .scheme-title { color: #0ea5e9; font-size: 24px; font-weight: 700; margin-bottom: 8px; position: relative; }
+.scheme-a .scheme-desc { color: rgba(255,255,255,0.4); font-size: 12px; margin-bottom: 32px; position: relative; }
+
+/* 侧边栏 */
+.scheme-a .sidebar { background: #0a0a0a; border-radius: 12px; padding: 20px 16px; margin-bottom: 24px; position: relative; border: 1px solid rgba(255,255,255,0.06); }
+.scheme-a .sidebar-item { padding: 12px 16px; border-radius: 8px; color: rgba(255,255,255,0.5); font-size: 14px; cursor: pointer; transition: all 0.25s ease; position: relative; margin-bottom: 4px; }
+.scheme-a .sidebar-item:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.04); }
+.scheme-a .sidebar-item.active { color: #fff; background: rgba(14, 165, 233, 0.12); border-left: 3px solid #0ea5e9; margin-left: -19px; padding-left: 16px; }
+.scheme-a .sidebar-item.active::after { content: ''; position: absolute; left: 3px; top: 50%; transform: translateY(-50%); width: 2px; height: 12px; background: #0ea5e9; border-radius: 2px; box-shadow: 0 0 8px rgba(14,165,233,0.6); }
+
+/* 玻璃拟态卡片 */
+.scheme-a .glass-card { background: rgba(20, 20, 20, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; margin-bottom: 16px; position: relative; overflow: hidden; transition: all 0.3s ease; }
+.scheme-a .glass-card:hover { transform: translateY(-2px); border-color: rgba(14,165,233,0.3); box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(14,165,233,0.1); }
+.scheme-a .stat-card { display: flex; align-items: center; gap: 16px; }
+.scheme-a .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.scheme-a .stat-icon.blue { background: linear-gradient(135deg, #0ea5e9, #0284c7); box-shadow: 0 0 16px rgba(14,165,233,0.3); }
+.scheme-a .stat-icon.purple { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 0 16px rgba(99,102,241,0.3); }
+.scheme-a .stat-icon.green { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 0 16px rgba(16,185,129,0.3); }
+.scheme-a .stat-icon.orange { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 0 16px rgba(245,158,11,0.3); }
+.scheme-a .stat-value { font-size: 28px; font-weight: 800; color: #fff; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.scheme-a .stat-label { font-size: 13px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+/* 霓虹按钮 */
+.scheme-a .btn-neon { background: transparent; border: 1px solid #0ea5e9; color: #0ea5e9; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.25s ease; }
+.scheme-a .btn-neon:hover { background: rgba(14,165,233,0.1); box-shadow: 0 0 20px rgba(14,165,233,0.4); transform: scale(1.02); }
+.scheme-a .btn-neon.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
+.scheme-a .btn-neon.primary:hover { background: #0284c7; }
+
+/* 表格 */
+.scheme-a .data-table { background: rgba(20,20,20,0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; }
+.scheme-a .table-header { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; }
+.scheme-a .table-title { color: #fff; font-size: 15px; font-weight: 600; }
+.scheme-a .table-row { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; gap: 16px; transition: all 0.2s ease; position: relative; }
+.scheme-a .table-row:hover { background: rgba(14,165,233,0.06); }
+.scheme-a .table-row:hover::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #0ea5e9; box-shadow: 0 0 8px rgba(14,165,233,0.6); }
+.scheme-a .cell { color: rgba(255,255,255,0.6); font-size: 14px; flex: 1; }
+.scheme-a .cell.id { font-family: 'JetBrains Mono', monospace; color: #0ea5e9; width: 60px; flex: none; }
+.scheme-a .tag { padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+.scheme-a .tag.active { background: rgba(16,185,129,0.15); color: #10b981; }
+.scheme-a .tag.inactive { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+/* 输入框 */
+.scheme-a .input-tech { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px 16px; border-radius: 8px; font-size: 14px; width: 200px; outline: none; transition: all 0.25s ease; }
+.scheme-a .input-tech::placeholder { color: rgba(255,255,255,0.25); }
+.scheme-a .input-tech:focus { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,0.15); }
+
+/* ============================================
+   方案 B：极简白科技风
+   ============================================ */
+.scheme-b { background: #ffffff; padding: 40px 30px; }
+.scheme-b .scheme-title { color: #111; font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.scheme-b .scheme-desc { color: #9ca3af; font-size: 12px; margin-bottom: 32px; }
+
+/* 侧边栏 */
+.scheme-b .sidebar { background: #fff; border-right: 1px solid #f0f0f0; border-radius: 12px; padding: 20px 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+.scheme-b .sidebar-item { padding: 12px 16px; border-radius: 8px; color: #6b7280; font-size: 14px; cursor: pointer; transition: all 0.2s ease; margin-bottom: 4px; position: relative; }
+.scheme-b .sidebar-item:hover { color: #111; background: #f9fafb; }
+.scheme-b .sidebar-item.active { color: #0ea5e9; background: #f0f9ff; }
+.scheme-b .sidebar-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 20px; background: #0ea5e9; border-radius: 0 2px 2px 0; }
+
+/* 极简卡片 */
+.scheme-b .minimal-card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; border: 1px solid #f0f0f0; transition: all 0.2s ease; }
+.scheme-b .minimal-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); border-color: transparent; }
+.scheme-b .stat-card { display: flex; align-items: center; gap: 16px; }
+.scheme-b .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; }
+.scheme-b .stat-icon.blue { background: #0ea5e9; }
+.scheme-b .stat-icon.purple { background: #6366f1; }
+.scheme-b .stat-icon.green { background: #10b981; }
+.scheme-b .stat-icon.orange { background: #f59e0b; }
+.scheme-b .stat-value { font-size: 26px; font-weight: 700; color: #111; letter-spacing: -0.01em; }
+.scheme-b .stat-label { font-size: 13px; color: #9ca3af; margin-top: 4px; }
+
+/* 极简按钮 */
+.scheme-b .btn-minimal { background: #fff; border: 1px solid #e5e7eb; color: #374151; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease; }
+.scheme-b .btn-minimal:hover { border-color: #d1d5db; background: #f9fafb; }
+.scheme-b .btn-minimal.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
+.scheme-b .btn-minimal.primary:hover { background: #0284c7; }
+
+/* 表格 */
+.scheme-b .data-table { background: #fff; border: 1px solid #f0f0f0; border-radius: 12px; overflow: hidden; }
+.scheme-b .table-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+.scheme-b .table-title { color: #111; font-size: 15px; font-weight: 600; }
+.scheme-b .table-row { padding: 16px 24px; border-bottom: 1px solid #f9fafb; display: flex; align-items: center; gap: 16px; transition: all 0.15s ease; }
+.scheme-b .table-row:hover { background: #fafafa; }
+.scheme-b .cell { color: #4b5563; font-size: 14px; flex: 1; }
+.scheme-b .cell.id { font-family: monospace; color: #0ea5e9; width: 60px; flex: none; }
+.scheme-b .tag { padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+.scheme-b .tag.active { background: #d1fae5; color: #065f46; }
+.scheme-b .tag.inactive { background: #f3f4f6; color: #9ca3af; }
+
+/* 输入框 */
+.scheme-b .input-clean { background: #fff; border: 1px solid #e5e7eb; color: #111; padding: 12px 16px; border-radius: 6px; font-size: 14px; width: 200px; outline: none; transition: all 0.2s ease; }
+.scheme-b .input-clean::placeholder { color: #d1d5db; }
+.scheme-b .input-clean:focus { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
+
+/* ============================================
+   方案 C：暗色终端风
+   ============================================ */
+.scheme-c { background: #0a0e14; padding: 40px 30px; font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; }
+.scheme-c .scheme-title { color: #00ff00; font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.scheme-c .scheme-title::before { content: '> '; color: #00ff00; }
+.scheme-c .scheme-desc { color: #5c6370; font-size: 12px; margin-bottom: 32px; }
+
+/* 侧边栏 */
+.scheme-c .sidebar { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 16px 12px; margin-bottom: 24px; }
+.scheme-c .sidebar-item { padding: 10px 12px; border-radius: 2px; color: #8b949e; font-size: 12px; cursor: pointer; transition: all 0.15s ease; margin-bottom: 2px; }
+.scheme-c .sidebar-item:hover { color: #c9d1d9; background: #161b22; }
+.scheme-c .sidebar-item.active { color: #00ff00; background: rgba(0,255,0,0.08); border-left: 2px solid #00ff00; margin-left: -14px; padding-left: 12px; }
+
+/* 终端卡片 */
+.scheme-c .terminal-card { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 20px; margin-bottom: 16px; }
+.scheme-c .terminal-card:hover { border-color: #58a6ff; }
+.scheme-c .stat-card { display: flex; align-items: center; gap: 16px; }
+.scheme-c .stat-icon { width: 40px; height: 40px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 1px solid #30363d; }
+.scheme-c .stat-icon.blue { background: rgba(56,189,248,0.1); color: #38bdf8; border-color: rgba(56,189,248,0.3); }
+.scheme-c .stat-icon.purple { background: rgba(168,85,247,0.1); color: #a855f7; border-color: rgba(168,85,247,0.3); }
+.scheme-c .stat-icon.green { background: rgba(0,255,0,0.1); color: #00ff00; border-color: rgba(0,255,0,0.3); }
+.scheme-c .stat-icon.orange { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+.scheme-c .stat-value { font-size: 24px; font-weight: 700; color: #e6edf3; letter-spacing: 0; }
+.scheme-c .stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+
+/* 终端按钮 */
+.scheme-c .btn-terminal { background: transparent; border: 1px solid #30363d; color: #c9d1d9; padding: 8px 16px; border-radius: 2px; cursor: pointer; font-size: 12px; font-family: monospace; transition: all 0.15s ease; }
+.scheme-c .btn-terminal:hover { border-color: #58a6ff; color: #58a6ff; }
+.scheme-c .btn-terminal.primary { background: #00ff00; color: #0a0e14; border-color: #00ff00; }
+.scheme-c .btn-terminal.primary:hover { background: #00cc00; }
+
+/* 终端表格 */
+.scheme-c .data-table { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; overflow: hidden; }
+.scheme-c .table-header { padding: 16px 20px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+.scheme-c .table-title { color: #e6edf3; font-size: 14px; font-weight: 600; }
+.scheme-c .table-row { padding: 12px 20px; border-bottom: 1px solid rgba(48,54,61,0.5); display: flex; align-items: center; gap: 16px; font-size: 13px; }
+.scheme-c .table-row:hover { background: #161b22; }
+.scheme-c .cell { color: #8b949e; flex: 1; }
+.scheme-c .cell.id { color: #00ff00; width: 60px; flex: none; }
+.scheme-c .tag { padding: 2px 8px; border-radius: 2px; font-size: 11px; border: 1px solid; }
+.scheme-c .tag.active { background: rgba(0,255,0,0.1); color: #00ff00; border-color: rgba(0,255,0,0.3); }
+.scheme-c .tag.inactive { background: rgba(139,148,158,0.1); color: #8b949e; border-color: rgba(139,148,158,0.3); }
+
+/* 终端输入框 */
+.scheme-c .input-terminal { background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 8px 12px; border-radius: 2px; font-size: 13px; font-family: monospace; width: 200px; outline: none; transition: all 0.15s ease; }
+.scheme-c .input-terminal::placeholder { color: #5c6370; }
+.scheme-c .input-terminal:focus { border-color: #00ff00; box-shadow: 0 0 0 2px rgba(0,255,0,0.15); }
+
+/* 标签 */
+.scheme-label { position: absolute; top: 16px; right: 16px; padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; }
+.scheme-a .scheme-label { background: rgba(14,165,233,0.15); color: #0ea5e9; }
+.scheme-b .scheme-label { background: #f0f9ff; color: #0ea5e9; }
+.scheme-c .scheme-label { background: rgba(0,255,0,0.1); color: #00ff00; }
+
+/* 响应式 */
+@media (max-width: 1200px) { .demo-section { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="demo-label">🎨 QIM Admin 设计方案对比</div>
+<div class="demo-section">
+  
+  <!-- 方案 A：深空科技风 -->
+  <div class="scheme-a">
+    <div class="scheme-label">方案 A</div>
+    <div class="scheme-title">深空科技风</div>
+    <div class="scheme-desc">深色基调 · 玻璃拟态 · 霓虹光效</div>
+    
+    <div class="sidebar">
+      <div class="sidebar-item active">仪表盘</div>
+      <div class="sidebar-item">用户管理</div>
+      <div class="sidebar-item">群组管理</div>
+      <div class="sidebar-item">角色权限</div>
+      <div class="sidebar-item">数据统计</div>
+    </div>
+    
+    <div class="glass-card stat-card">
+      <div class="stat-icon blue">👤</div>
+      <div><div class="stat-value">12,846</div><div class="stat-label">总用户数</div></div>
+    </div>
+    
+    <div class="glass-card stat-card">
+      <div class="stat-icon purple">💬</div>
+      <div><div class="stat-value">3,291</div><div class="stat-label">今日消息</div></div>
+    </div>
+    
+    <div class="glass-card">
+      <div class="table-header">
+        <div class="table-title">用户管理</div>
+        <button class="btn-neon primary">+ 创建用户</button>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1024</div>
+        <div class="cell">Alice Chen</div>
+        <div class="cell">alice@example.com</div>
+        <span class="tag active">活跃</span>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1025</div>
+        <div class="cell">Bob Wang</div>
+        <div class="cell">bob@example.com</div>
+        <span class="tag inactive">停用</span>
+      </div>
+    </div>
+    
+    <div style="display: flex; gap: 12px; margin-top: 16px;">
+      <button class="btn-neon primary">确认</button>
+      <button class="btn-neon">取消</button>
+      <input type="text" class="input-tech" placeholder="搜索用户...">
+    </div>
+  </div>
+
+  <!-- 方案 B：极简白科技风 -->
+  <div class="scheme-b">
+    <div class="scheme-label">方案 B</div>
+    <div class="scheme-title">极简白科技风</div>
+    <div class="scheme-desc">大量留白 · 科技蓝点缀 · 极致简约</div>
+    
+    <div class="sidebar">
+      <div class="sidebar-item active">仪表盘</div>
+      <div class="sidebar-item">用户管理</div>
+      <div class="sidebar-item">群组管理</div>
+      <div class="sidebar-item">角色权限</div>
+      <div class="sidebar-item">数据统计</div>
+    </div>
+    
+    <div class="minimal-card stat-card">
+      <div class="stat-icon blue">👤</div>
+      <div><div class="stat-value">12,846</div><div class="stat-label">总用户数</div></div>
+    </div>
+    
+    <div class="minimal-card stat-card">
+      <div class="stat-icon purple">💬</div>
+      <div><div class="stat-value">3,291</div><div class="stat-label">今日消息</div></div>
+    </div>
+    
+    <div class="minimal-card">
+      <div class="table-header">
+        <div class="table-title">用户管理</div>
+        <button class="btn-minimal primary">+ 创建用户</button>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1024</div>
+        <div class="cell">Alice Chen</div>
+        <div class="cell">alice@example.com</div>
+        <span class="tag active">活跃</span>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1025</div>
+        <div class="cell">Bob Wang</div>
+        <div class="cell">bob@example.com</div>
+        <span class="tag inactive">停用</span>
+      </div>
+    </div>
+    
+    <div style="display: flex; gap: 12px; margin-top: 16px;">
+      <button class="btn-minimal primary">确认</button>
+      <button class="btn-minimal">取消</button>
+      <input type="text" class="input-clean" placeholder="搜索用户...">
+    </div>
+  </div>
+
+  <!-- 方案 C：暗色终端风 -->
+  <div class="scheme-c">
+    <div class="scheme-label">方案 C</div>
+    <div class="scheme-title">暗色终端风</div>
+    <div class="scheme-desc">终端界面 · 代码感设计 · 等宽字体</div>
+    
+    <div class="sidebar">
+      <div class="sidebar-item active">仪表盘</div>
+      <div class="sidebar-item">用户管理</div>
+      <div class="sidebar-item">群组管理</div>
+      <div class="sidebar-item">角色权限</div>
+      <div class="sidebar-item">数据统计</div>
+    </div>
+    
+    <div class="terminal-card stat-card">
+      <div class="stat-icon blue">👤</div>
+      <div><div class="stat-value">12,846</div><div class="stat-label">总用户数</div></div>
+    </div>
+    
+    <div class="terminal-card stat-card">
+      <div class="stat-icon green">💬</div>
+      <div><div class="stat-value">3,291</div><div class="stat-label">今日消息</div></div>
+    </div>
+    
+    <div class="terminal-card">
+      <div class="table-header">
+        <div class="table-title">$ 用户管理</div>
+        <button class="btn-terminal primary">+ 创建用户</button>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1024</div>
+        <div class="cell">Alice Chen</div>
+        <div class="cell">alice@example.com</div>
+        <span class="tag active">活跃</span>
+      </div>
+      <div class="table-row">
+        <div class="cell id">#1025</div>
+        <div class="cell">Bob Wang</div>
+        <div class="cell">bob@example.com</div>
+        <span class="tag inactive">停用</span>
+      </div>
+    </div>
+    
+    <div style="display: flex; gap: 12px; margin-top: 16px;">
+      <button class="btn-terminal primary">确认</button>
+      <button class="btn-terminal">取消</button>
+      <input type="text" class="input-terminal" placeholder="$ 搜索用户...">
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

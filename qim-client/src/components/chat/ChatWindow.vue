@@ -48,6 +48,7 @@
       @member-search-focus="() => showMemberSearch = true"
       @show-member-context-menu="handleShowMemberContextMenu"
       @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
+      @update:member-search-query="(val) => memberSearchQuery = val"
     />
 
     <!-- 输入区域 -->
@@ -90,6 +91,9 @@
       @ai-action="handleAIAction"
       @perform-search="performSearch"
       @close-search="showSearch = false"
+      @update:input-message="(val) => inputMessage = val"
+      @update:show-mini-app-list="(val) => showMiniAppList = val"
+      @update:search-query="(val) => searchQuery = val"
     />
 
     <!-- 弹窗管理器 -->

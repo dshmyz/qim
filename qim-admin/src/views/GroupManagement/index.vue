@@ -59,7 +59,7 @@
         <template #default="{ row }">
           <el-popconfirm title="确定移除该成员吗？" @confirm="handleRemoveMember(row.userId)">
             <template #reference>
-              <el-button size="small" type="danger" text>移除</el-button>
+              <el-button size="small" type="danger" link>移除</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -161,7 +161,7 @@ const handlePageChange = (page: number) => {
 .group-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .group-name {
@@ -172,6 +172,6 @@ const handlePageChange = (page: number) => {
 .member-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 </style>

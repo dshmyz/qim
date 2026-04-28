@@ -10,16 +10,16 @@
     <MessageInput
       ref="messageInputRef"
       :conversation="conversation as InputConversation"
-      v-model:input-message="inputMessage"
+      v-model:input-message="inputMessageLocal"
       :pending-files="pendingFiles"
       :show-emoji-panel="showEmojiPanel"
       :show-at-members-panel="showAtMembersPanel"
-      v-model:show-mini-app-list="showMiniAppList"
+      v-model:show-mini-app-list="showMiniAppListLocal"
       :quoted-message="quotedMessage"
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
       :show-search="showSearch"
-      v-model:search-query="searchQuery"
+      v-model:search-query="searchQueryLocal"
       @send="emit('send')"
       @input="emit('input', $event)"
       @toggle-emoji-panel="emit('toggle-emoji-panel')"
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { Message } from '../../types'
 import MessageInput from './MessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
@@ -77,7 +77,7 @@ interface Props {
   getFileIcon: (fileName: string) => string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'send': []
@@ -105,9 +105,27 @@ const emit = defineEmits<{
   'ai-action': [actionId: string]
   'perform-search': []
   'close-search': []
+  'update:inputMessage': [value: string]
+  'update:showMiniAppList': [value: boolean]
+  'update:searchQuery': [value: string]
 }>()
 
 const messageInputRef = ref<InstanceType<typeof MessageInput>>()
+
+const inputMessageLocal = computed({
+  get: () => props.inputMessage,
+  set: (val) => emit('update:inputMessage', val)
+})
+
+const showMiniAppListLocal = computed({
+  get: () => props.showMiniAppList,
+  set: (val) => emit('update:showMiniAppList', val)
+})
+
+const searchQueryLocal = computed({
+  get: () => props.searchQuery,
+  set: (val) => emit('update:searchQuery', val)
+})
 
 defineExpose({
   messageInputRef

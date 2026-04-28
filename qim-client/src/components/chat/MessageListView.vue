@@ -56,7 +56,6 @@
             @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
             @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           />
-        </div>
       </div>
     </div>
 

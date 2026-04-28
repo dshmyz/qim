@@ -29,7 +29,7 @@
       :members="sidebarMembers"
       :is-expanded="isMembersSidebarExpanded"
       :show-search="showMemberSearch"
-      v-model:search-query="memberSearchQuery"
+      v-model:search-query="memberSearchQueryLocal"
       @toggle-expanded="emit('toggle-members-sidebar')"
       @toggle-member-search="emit('toggle-member-search')"
       @search-focus="emit('member-search-focus')"
@@ -91,9 +91,15 @@ const emit = defineEmits<{
   'member-search-focus': []
   'show-member-context-menu': [event: MouseEvent, member: Member]
   'start-private-chat': [member: Member]
+  'update:member-search-query': [value: string]
 }>()
 
 const messageListViewRef = ref<InstanceType<typeof MessageListView>>()
+
+const memberSearchQueryLocal = computed({
+  get: () => props.memberSearchQuery,
+  set: (val) => emit('update:member-search-query', val)
+})
 
 const showMemberSidebar = computed(() => {
   return props.conversation?.type === 'group' || props.conversation?.type === 'discussion'

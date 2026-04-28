@@ -4,3 +4,7 @@ dist/
 qim-server/qim-server
 .DS_Store
 .trae.worktrees/
+
+# 服务器配置文件（包含敏感信息）
+qim-server/config.yaml
+qim-server/config/config.yaml

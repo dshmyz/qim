@@ -89,26 +89,28 @@ const loadMiniApps = async () => {
       headers['Authorization'] = `Bearer ${token}`
     }
 
-    const response = await fetch(`${serverUrl.value}/api/v1/mini-apps`, { headers })
+    const response = await fetch(`${serverUrl.value}/api/v1/mini-apps`, {
+      method: 'GET',
+      headers
+    })
 
     if (!response.ok) {
       throw new Error('获取小程序列表失败')
     }
 
     const result = await response.json()
-    if (result.code === 0) {
-      const list = result.data?.list ?? result.data ?? []
-      miniApps.value = list.map((item: any) => ({
-        id: item.id,
-        appID: item.app_id || item.appID,
-        name: item.name,
-        icon: item.icon || defaultIcon,
-        path: item.path,
-        description: item.description || '',
-        status: item.status,
-        permissions: item.permissions || '',
-      }))
+    if (result.code !== 0) {
+      throw new Error('获取小程序列表失败')
     }
+
+    const list = result.data?.list ?? result.data ?? []
+    miniApps.value = list.map((item: any) => ({
+      id: item.id,
+      icon: item.icon || defaultIcon,
+      path: item.path,
+      status: item.status,
+      permissions: item.permissions || '',
+    }))
   } catch (error) {
     console.error('加载小程序列表失败:', error)
     miniApps.value = []
@@ -131,11 +133,11 @@ onMounted(loadMiniApps)
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .mini-app-panel {

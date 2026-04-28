@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import FieldRenderer from './FieldRenderer.vue'
 import type { FormField } from './FieldRenderer.vue'
@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'save': [data: Record<string, unknown>]
+  'save': [data: Record<string, unknown>, callbacks: { onSuccess: () => void; onError: (error: any) => void }]
 }>()
 
 const formRef = ref<FormInstance>()
@@ -63,6 +63,10 @@ watch(
   (val) => {
     if (val) {
       formData.value = { ...props.initialData }
+      // 清除验证状态
+      nextTick(() => {
+        formRef.value?.resetFields()
+      })
     }
   }
 )
@@ -73,10 +77,16 @@ async function handleSave() {
   if (!valid) return
 
   loading.value = true
-  try {
-    emit('save', { ...formData.value })
-  } finally {
-    loading.value = false
-  }
+  
+  emit('save', { ...formData.value }, {
+    onSuccess: () => {
+      loading.value = false
+      emit('update:modelValue', false)
+    },
+    onError: (error: any) => {
+      console.error('[EntityDialog] save failed:', error)
+      loading.value = false
+    }
+  })
 }
 </script>
