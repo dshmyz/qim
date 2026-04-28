@@ -31,7 +31,10 @@ func GetMyBots(c *gin.Context) {
 	db := database.GetDB()
 
 	var bots []model.Bot
-	db.Where("creator_id = ?", userID).Order("created_at DESC").Find(&bots)
+	if err := db.Where("creator_id = ?", userID).Order("created_at DESC").Find(&bots).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取 Bot 列表失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -45,7 +48,10 @@ func GetMyBotCount(c *gin.Context) {
 	db := database.GetDB()
 
 	var count int64
-	db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'ai')", userID).Count(&count)
+	if err := db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'ai')", userID).Count(&count).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取数量失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -58,7 +64,10 @@ func GetTemplates(c *gin.Context) {
 	db := database.GetDB()
 
 	var bots []model.Bot
-	db.Where("is_template = ? AND is_active = ? AND approval_status = ?", true, true, "approved").Find(&bots)
+	if err := db.Where("is_template = ? AND is_active = ? AND approval_status = ?", true, true, "approved").Find(&bots).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取模板列表失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -68,41 +77,48 @@ func GetTemplates(c *gin.Context) {
 
 // CreateBot 创建 Bot
 func CreateBot(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(uint)
 	db := database.GetDB()
 
 	var req CreateBotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
 		return
 	}
 
-	// 检查用户是否已达到创建上限（模板 Bot 不计入限制）
-	if !req.IsTemplate {
-		var count int64
-		db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'ai')", userID).Count(&count)
-		if count >= getMaxBotsPerUser(db) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"code":    "BOT_LIMIT_EXCEEDED",
-				"message": "已达到创建上限，请联系管理员",
-			})
-			return
-		}
+	// 校验 Type 字段
+	if req.Type != "ai" && req.Type != "custom" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "Bot 类型无效"})
+		return
+	}
+
+	// 普通用户不能创建模板 Bot，强制设置为 false
+	req.IsTemplate = false
+
+	// 检查用户是否已达到创建上限
+	var count int64
+	db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'ai')", userID).Count(&count)
+	if count >= getMaxBotsPerUser(db) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "已达到创建上限，请联系管理员",
+		})
+		return
 	}
 
 	// 构建 Config JSON
-	configJSON, _ := json.Marshal(req.Config)
-	if req.Config == nil {
-		configJSON = []byte("{}")
+	configJSON := []byte("{}")
+	if req.Config != nil {
+		configJSON, _ = json.Marshal(req.Config)
 	}
 
-	// 判断审批状态
-	approvalStatus := "approved" // 系统 Bot 和模板 Bot 直接通过
-	creatorID := userID.(uint)
-	creatorName := ""
-
-	if !req.IsTemplate && creatorID != 0 {
-		approvalStatus = "pending" // 用户自建 Bot 需要审批
+	// 查找创建者用户名
+	var creator model.User
+	db.Select("nickname").First(&creator, "id = ?", userID)
+	creatorName := creator.Nickname
+	if creatorName == "" {
+		creatorName = creator.Username
 	}
 
 	bot := model.Bot{
@@ -112,13 +128,16 @@ func CreateBot(c *gin.Context) {
 		Avatar:         req.Avatar,
 		Config:         string(configJSON),
 		IsActive:       true,
-		ApprovalStatus: approvalStatus,
-		CreatorID:      creatorID,
+		ApprovalStatus: "pending", // 用户自建 Bot 需要审批
+		CreatorID:      userID,
 		CreatorName:    creatorName,
-		IsTemplate:     req.IsTemplate,
+		IsTemplate:     false,
 	}
 
-	db.Create(&bot)
+	if err := db.Create(&bot).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建 Bot 失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -128,12 +147,19 @@ func CreateBot(c *gin.Context) {
 
 // UpdateMyBot 更新我的 Bot（仅允许待审批和已拒绝状态）
 func UpdateMyBot(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	botID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(uint)
+
+	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的 Bot ID"})
+		return
+	}
+
 	db := database.GetDB()
 
 	var bot model.Bot
-	if err := db.Where("id = ? AND creator_id = ?", botID, userID).First(&bot).Error; err != nil {
+	if err := db.Where("id = ? AND creator_id = ?", uint(botID), userID).First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "Bot 不存在或无权操作"})
 		return
 	}
@@ -150,29 +176,48 @@ func UpdateMyBot(c *gin.Context) {
 		return
 	}
 
-	configJSON, _ := json.Marshal(req.Config)
-	if req.Config == nil {
-		configJSON = []byte("{}")
+	// 校验 Type 字段
+	if req.Type != "ai" && req.Type != "custom" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "Bot 类型无效"})
+		return
 	}
 
-	db.Model(&bot).Updates(map[string]interface{}{
+	configJSON := []byte("{}")
+	if req.Config != nil {
+		configJSON, _ = json.Marshal(req.Config)
+	}
+
+	if err := db.Model(&bot).Updates(map[string]interface{}{
 		"name":        req.Name,
 		"description": req.Description,
 		"type":        req.Type,
 		"avatar":      req.Avatar,
 		"config":      string(configJSON),
-	})
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新 Bot 失败"})
+		return
+	}
+
+	// 重新加载获取最新数据
+	db.First(&bot, bot.ID)
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": bot})
 }
 
 // DeleteMyBot 删除我的 Bot
 func DeleteMyBot(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	botID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(uint)
+
+	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的 Bot ID"})
+		return
+	}
+
 	db := database.GetDB()
 
-	result := db.Where("id = ? AND creator_id = ?", botID, userID).Delete(&model.Bot{})
+	result := db.Where("id = ? AND creator_id = ?", uint(botID), userID).Delete(&model.Bot{})
 	if result.Error != nil || result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "Bot 不存在或无权操作"})
 		return
