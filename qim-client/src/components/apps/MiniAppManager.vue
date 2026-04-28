@@ -66,7 +66,6 @@ const closeMiniAppList = () => {
 
 const launchMiniApp = (miniApp: MiniAppData) => {
   activeMiniApp.value = miniApp
-  closeMiniAppList()
 }
 
 const sendMiniAppMessage = (miniApp: MiniAppData) => {
@@ -79,6 +78,9 @@ const handleMiniAppToast = (message: string) => {
 }
 
 const loadMiniApps = async () => {
+  // 如果已有数据，不重新加载
+  if (miniApps.value.length > 0) return
+
   loading.value = true
   try {
     const token = getToken()

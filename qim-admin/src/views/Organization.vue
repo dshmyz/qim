@@ -14,42 +14,23 @@
       <div class="tree-panel">
         <div class="panel-header">
           <h3 class="panel-title">部门列表</h3>
-          <span class="panel-count">{{ departmentCount }} 个部门</span>
+          <span class="panel-count">{{ totalDepartments }} 个部门</span>
         </div>
         <div v-loading="treeLoading" class="tree-content">
-          <div
-            v-for="dept in flatDepartments"
-            :key="dept.id"
-            class="dept-card"
-            :class="{ 'is-active': selectedDepartment?.id === dept.id }"
-            :style="{ paddingLeft: dept.level * 20 + 'px' }"
-            @click="handleNodeClick(dept)"
-          >
-            <div class="dept-icon">
-              <el-icon><OfficeBuilding /></el-icon>
-            </div>
-            <div class="dept-info">
-              <span class="dept-name">{{ dept.name }}</span>
-              <span class="dept-code">{{ dept.code }}</span>
-            </div>
-            <div class="dept-actions">
-              <el-button
-                size="small"
-                :icon="Plus"
-                circle
-                @click.stop="handleAddSubDepartment(dept)"
+          <div class="tree-root">
+            <template v-for="(dept, index) in departmentTree" :key="dept.id">
+              <TreeNode
+                :node="dept"
+                :level="0"
+                :is-last="index === departmentTree.length - 1"
+                :selected-id="selectedDepartment?.id"
+                @select="handleNodeClick"
+                @add-child="handleAddSubDepartment"
+                @delete="handleDeleteDepartment"
               />
-              <el-button
-                size="small"
-                :icon="Delete"
-                circle
-                type="danger"
-                plain
-                @click.stop="handleDeleteDepartment(dept)"
-              />
-            </div>
+            </template>
           </div>
-          <el-empty v-if="!treeLoading && flatDepartments.length === 0" description="暂无部门数据" :image-size="64" />
+          <el-empty v-if="!treeLoading && departmentTree.length === 0" description="暂无部门数据" :image-size="64" />
         </div>
       </div>
 
@@ -219,6 +200,7 @@ import {
   getDepartmentEmployees,
 } from '@/api/organization'
 import { getUsers } from '@/api/users'
+import TreeNode from './components/TreeNode.vue'
 
 const departmentTree = ref<Organization[]>([])
 const treeLoading = ref(false)
@@ -250,25 +232,21 @@ const employeeSearchLoading = ref(false)
 
 const departmentOptions = ref<Organization[]>([])
 
-interface FlatDepartment extends Organization {
-  level: number
-}
-
-const flatDepartments = computed<FlatDepartment[]>(() => {
-  const result: FlatDepartment[] = []
-  const traverse = (items: Organization[], level: number = 0) => {
+const countDepartments = (depts: Organization[]): number => {
+  let count = 0
+  const traverse = (items: Organization[]) => {
     items.forEach((item) => {
-      result.push({ ...item, level })
+      count++
       if ((item as any).children && (item as any).children.length > 0) {
-        traverse((item as any).children, level + 1)
+        traverse((item as any).children)
       }
     })
   }
-  traverse(departmentTree.value)
-  return result
-})
+  traverse(depts)
+  return count
+}
 
-const departmentCount = computed(() => flatDepartments.value.length)
+const totalDepartments = computed(() => countDepartments(departmentTree.value))
 
 const flattenDepartments = (depts: Organization[]): Organization[] => {
   const result: Organization[] = []
@@ -461,7 +439,7 @@ onMounted(fetchTree)
 
 .content-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 360px 1fr;
   gap: var(--space-4);
   min-height: 600px;
 }
@@ -504,68 +482,12 @@ onMounted(fetchTree)
 .tree-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-3);
+  padding: var(--space-4);
 }
 
-.dept-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-  margin-bottom: var(--space-1);
-}
-
-.dept-card:hover {
-  background: var(--color-surface-hover);
-}
-
-.dept-card.is-active {
-  background: var(--color-primary-lighter);
-}
-
-.dept-icon {
-  width: 36px;
-  height: 36px;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  flex-shrink: 0;
-}
-
-.dept-info {
-  flex: 1;
-  min-width: 0;
+.tree-root {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.dept-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.dept-code {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.dept-actions {
-  display: flex;
-  gap: var(--space-1);
-  opacity: 0;
-  transition: opacity var(--duration-fast);
-}
-
-.dept-card:hover .dept-actions {
-  opacity: 1;
 }
 
 .detail-panel {

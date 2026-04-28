@@ -485,8 +485,7 @@ const selectCreateMethod = (method: 'template' | 'custom' | null) => {
 
 // 从模板创建
 const createFromTemplate = async (tpl: any) => {
-  let config = {}
-  try { config = JSON.parse(tpl.config || '{}') } catch { config = {} }
+  try { JSON.parse(tpl.config || '{}') } catch { /* ignore */ }
   createBotForm.value = {
     name: tpl.name,
     description: tpl.description,
@@ -568,7 +567,8 @@ const sendBotMessage = async () => {
   
   try {
     const token = getToken()
-    
+    if (!token) return
+
     if (currentMode.value === 'ops') {
       // 运维模式：使用流式API
       // 将用户消息添加到历史记录
