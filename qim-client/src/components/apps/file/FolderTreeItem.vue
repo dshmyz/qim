@@ -90,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, type PropType } from 'vue'
+import { ref, computed } from 'vue'
 import type { FolderNode } from '../../../composables/useFolderTree'
 
 defineOptions({
