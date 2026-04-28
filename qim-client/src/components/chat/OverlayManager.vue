@@ -116,7 +116,7 @@
     :sender-name="senderName"
     :conversation-id="conversationId ?? undefined"
     ref="screenShareRef"
-    @screen-share-start="emit('screen-share-start', $event)"
+    @screen-share-start="(data) => emit('screen-share-start', data)"
     @screen-share-stop="emit('screen-share-stop')"
     @screen-share-join="emit('screen-share-join')"
     @screen-share-leave="emit('screen-share-leave')"
@@ -145,14 +145,18 @@ import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
 import CallModal from './CallModal.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
 import SharePreviewDialog from './SharePreviewDialog.vue'
-import type { SharePreviewData } from './SharePreviewDialog.vue'
 import ScreenShare from '../shared/ScreenShare.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
-interface ScreenShareStartData {
-  senderId: number
-  conversationId: number
+interface SharePreviewData {
+  type: 'file' | 'note' | 'sticky'
+  name: string
+  content?: string
+  url?: string
+  path?: string
+  size?: number
+  created_at?: string
 }
 
 interface Props {
@@ -195,7 +199,7 @@ interface Props {
   formatTime: (timestamp: number) => string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close-user-profile': []
@@ -229,7 +233,7 @@ const emit = defineEmits<{
   'close-call-modal': []
   'close-image-preview': []
   'close-share-preview': []
-  'screen-share-start': [data: ScreenShareStartData]
+  'screen-share-start': [data: { conversationId: string | number }]
   'screen-share-stop': []
   'screen-share-join': []
   'screen-share-leave': []

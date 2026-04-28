@@ -1,5 +1,6 @@
 <template>
   <div class="chat-window">
+    <!-- 头部 -->
     <ChatHeader
       ref="chatHeaderRef"
       :conversation="conversation"
@@ -18,101 +19,52 @@
       @edit-group-info="editGroupInfo"
     />
 
-    <div class="chat-main">
-      <!-- 搜索结果 -->
-      <MessageSearch
-          v-if="showSearch"
-          :search-results="searchResults"
-          :search-query="searchQuery"
-          :is-searching="isSearching"
-          :conversation-type="conversation?.type || 'single'"
-          :read-users-map="readUsersMap"
-          :server-url="serverUrl"
-          @clear-search="clearSearch"
-          @message-contextmenu="showMessageContextMenu"
-          @show-user-profile="showUserProfile"
-          @preview-image="previewImage"
-          @download-file="downloadFile"
-          @save-as="saveFileAs"
-          @view-shared-content="viewSharedContent"
-          @retry-send-message="retrySendMessage"
-          @show-read-users="showReadUsers"
-          @scroll-to-quoted-message="scrollToQuotedMessage"
-        />
-
-        <!-- 正常消息列表 -->
-        <MessageListView
-          v-else
-          ref="messageListViewRef"
-          :messages="messages"
-          :has-more-messages="hasMoreMessages"
-          :conversation-type="conversation?.type || 'single'"
-          :read-users-map="readUsersMap"
-          :server-url="serverUrl"
-          @message-contextmenu="showMessageContextMenu"
-          @show-user-profile="showUserProfile"
-          @scroll-to-quoted-message="scrollToQuotedMessage"
-          @preview-image="previewImage"
-          @download-file="downloadFile"
-          @save-as="saveFileAs"
-          @view-shared-content="viewSharedContent"
-          @open-mini-app="openMiniApp"
-          @open-news-link="openNewsLink"
-          @retry-send-message="retrySendMessage"
-          @show-read-users="showReadUsers"
-          @mark-read="handleMarkRead"
-          @load-more="loadMoreMessages"
-        />
-
-        <!-- 群成员侧边栏 -->
-        <MemberSidebar
-          v-if="conversation?.type === 'group' || conversation?.type === 'discussion'"
-          :members="conversation?.members || []"
-          :isExpanded="isMembersSidebarExpanded"
-          :showSearch="showMemberSearch"
-          v-model:searchQuery="memberSearchQuery"
-          @toggle-expanded="toggleMembersSidebar"
-          @toggle-member-search="toggleMemberSearch"
-          @search-focus="showMemberSearch = true"
-          @show-member-context-menu="handleShowMemberContextMenu"
-          @start-private-chat="handleStartPrivateChat"
-        />
-      </div>
-
-    <!-- 成员右键菜单 -->
-    <MemberContextMenu
-      :visible="showMemberContextMenuFlag"
-      :position="memberContextMenuPosition"
-      :member="selectedMember"
-      :currentUserId="currentUserId"
+    <!-- 消息列表和成员侧边栏 -->
+    <ChatBody
+      ref="chatBodyRef"
       :conversation="conversation"
-      @close="showMemberContextMenuFlag = false"
-      @remove-member="handleRemoveMember"
-      @set-admin="handleSetAdmin"
-      @transfer-owner="handleTransferOwner"
-      @view-member-info="viewMemberInfo"
-      @send-private-message="sendPrivateMessage"
+      :messages="messages"
+      :has-more-messages="hasMoreMessages"
+      :read-users-map="readUsersMap"
+      :server-url="serverUrl"
+      :is-members-sidebar-expanded="isMembersSidebarExpanded"
+      :show-member-search="showMemberSearch"
+      :member-search-query="memberSearchQuery"
+      @message-contextmenu="showMessageContextMenu"
+      @show-user-profile="showUserProfile"
+      @scroll-to-quoted-message="scrollToQuotedMessage"
+      @preview-image="previewImage"
+      @download-file="downloadFile"
+      @save-as="saveFileAs"
+      @view-shared-content="viewSharedContent"
+      @open-mini-app="(app) => app && openMiniApp(app as MiniAppData)"
+      @open-news-link="openNewsLink"
+      @retry-send-message="retrySendMessage"
+      @show-read-users="showReadUsers"
+      @mark-read="handleMarkRead"
+      @load-more="loadMoreMessages"
+      @toggle-members-sidebar="toggleMembersSidebar"
+      @toggle-member-search="toggleMemberSearch"
+      @member-search-focus="() => showMemberSearch = true"
+      @show-member-context-menu="handleShowMemberContextMenu"
+      @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
     />
 
-    <!-- AI 快捷指令栏 -->
-    <AIQuickActions
+    <!-- 输入区域 -->
+    <ChatInputArea
+      ref="chatInputRef"
+      :conversation="conversation"
+      v-model:input-message="inputMessage"
+      :pending-files="pendingFiles"
+      :show-emoji-panel="showEmojiPanel"
+      :show-at-members-panel="showAtMembersPanel"
+      v-model:show-mini-app-list="showMiniAppList"
+      :quoted-message="quotedMessage"
+      :is-electron="isElectron"
+      :get-file-icon="getFileIcon"
       :is-processing="aiIsProcessing"
-      @action="handleAIAction"
-    />
-
-    <MessageInput
-      ref="messageInputAreaRef"
-      :conversation="conversation"
-      v-model:inputMessage="inputMessage"
-      :pendingFiles="pendingFiles"
-      :showEmojiPanel="showEmojiPanel"
-      :showAtMembersPanel="showAtMembersPanel"
-      v-model:showMiniAppList="showMiniAppList"
-      :showSearch="showSearch"
-      v-model:searchQuery="searchQuery"
-      :quotedMessage="quotedMessage"
-      :isElectron="isElectron"
-      :getFileIcon="getFileIcon"
+      :show-search="showSearch"
+      v-model:search-query="searchQuery"
       @send="handleSend"
       @input="handleInput"
       @toggle-emoji-panel="toggleEmojiPanel"
@@ -134,210 +86,151 @@
       @handle-keydown="handleKeydown"
       @remove-pending-file="removePendingFile"
       @remove-quoted-message="quotedMessage = null"
+      @send-mini-app-message="handleSendMiniAppMessage"
+      @ai-action="handleAIAction"
       @perform-search="performSearch"
       @close-search="showSearch = false"
-      @send-mini-app-message="handleSendMiniAppMessage"
     />
-  <!-- 用户资料弹窗 -->
-  <UserProfile 
-    :visible="showUserProfileFlag" 
-    :user="selectedUser" 
-    @close="closeUserProfile"
-    @send-private-message="handleSendPrivateMessage"
-  />
 
-  <!-- 已读用户列表弹窗 -->
-  <ReadUsersModal
-    :visible="showReadUsersModal"
-    :read-users="currentReadUsers"
-    :server-url="serverUrl"
-    @close="showReadUsersModal = false"
-  />
-
-  <!-- 屏幕共享组件 -->
-  <ScreenShare
-    :receiverId="otherUserId"
-    :senderId="remoteScreenUserId"
-    :senderName="conversation?.name"
-    :conversationId="conversation?.id"
-    ref="screenShareComponent"
-    @screen-share-start="handleScreenShareStartFromComponent"
-    @screen-share-stop="handleScreenShareStopFromComponent"
-    @screen-share-join="handleScreenShareJoinFromComponent"
-    @screen-share-leave="handleScreenShareLeaveFromComponent"
-  />
-
-
-
-  <!-- 消息上下文菜单 -->
-  <MessageContextMenu
-    :visible="showMessageContextMenuFlag"
-    :position="messageContextMenuPosition"
-    :message="selectedMessage"
-    @preview-image="previewImage"
-    @save-file-as="saveFileAs"
-    @download-file="downloadFile"
-    @copy-message="copyMessage(selectedMessage)"
-    @forward-message="forwardMessage"
-    @quote-message="quoteMessage"
-    @add-to-note="addToNote"
-    @recall-message="recallMessage"
-    @send-message-reminder="sendMessageReminder"
-  />
-  
-
-  
-  <!-- 消息管理器 -->
-  <MessageManager 
-    :visible="showMessageManager" 
-    :conversation-id="conversation?.id" 
-    @close="closeMessageManager"
-    @scroll-to-message="scrollToMessage"
-  />
-  
-  <!-- 确认对话框 -->
-  <ConfirmDialog
-    :visible="showConfirmDialog"
-    :title="confirmDialogTitle"
-    :message="confirmDialogMessage"
-    @update:visible="showConfirmDialog = $event"
-    @confirm="handleConfirmAction"
-    @cancel="closeConfirmDialog"
-  />
-  
-  <!-- 编辑群信息模态框和编辑群公告模态框已移至 GroupManagementPanel 组件 -->
-  
-  <!-- 截图预览对话框 -->
-  <ScreenshotPreviewDialog
-    :visible="showScreenshotPreview"
-    :image-data="screenshotImageData"
-    @cancel="cancelScreenshot"
-    @retake="retakeScreenshot"
-    @send="uploadScreenshot"
-  />
-  
-  <!-- 通话模态框 -->
-  <CallModal
-    :visible="showCallModal || videoCallStatus !== 'idle'"
-    :call-type="videoCallType"
-    :status="videoCallStatus"
-    :avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
-    :name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
-    @reject-call="rejectCall"
-    @answer-call="answerCall"
-    @end-call="endCall"
-    @close="handleCallModalClose"
-  />
-  
-  <!-- 图片预览弹窗 -->
-  <ImagePreviewDialog
-    :visible="showImagePreview"
-    :image-url="previewImageUrl"
-    @close="closeImagePreview"
-  />
-  
-  <!-- 分享内容预览弹窗 -->
-  <SharePreviewDialog
-    v-if="showSharePreview"
-    :visible="showSharePreview"
-    :preview-data="sharePreviewData"
-    :get-file-icon="getFileIcon"
-    :format-file-size="formatFileSize"
-    :render-markdown="renderMarkdown"
-    :format-time="formatTime"
-    @close="closeSharePreview"
-    @download-file="downloadFile"
-    @save-file-as="saveFileAs"
-  />
-
-  <!-- 小程序加载器 -->
-  <div style="display: contents">
-    <MiniAppLoader
-      :mini-app="activeMiniApp"
-      @close="activeMiniApp = null"
-      @show-toast="handleMiniAppToast"
+    <!-- 弹窗管理器 -->
+    <OverlayManager
+      ref="overlayRef"
+      :conversation="conversation"
+      :conversation-id="conversation?.id ?? null"
+      :sender-name="conversation?.name ?? ''"
+      :server-url="serverUrl"
+      :current-user-id="currentUserId"
+      :show-user-profile="showUserProfileFlag"
+      :selected-user="selectedUser"
+      :show-read-users-modal="showReadUsersModal"
+      :current-read-users="currentReadUsers"
+      :show-message-context-menu="showMessageContextMenuFlag"
+      :message-context-menu-position="messageContextMenuPosition"
+      :selected-message="selectedMessage"
+      :show-member-context-menu="showMemberContextMenuFlag"
+      :member-context-menu-position="memberContextMenuPosition"
+      :selected-member="selectedMember"
+      :show-message-manager="showMessageManager"
+      :show-confirm-dialog="showConfirmDialog"
+      :confirm-dialog-title="confirmDialogTitle"
+      :confirm-dialog-message="confirmDialogMessage"
+      :show-screenshot-preview="showScreenshotPreview"
+      :screenshot-image-data="screenshotImageData"
+      :show-call-modal="showCallModal || videoCallStatus !== 'idle'"
+      :call-type="videoCallType"
+      :call-status="(videoCallStatus === 'idle' || videoCallStatus === 'calling') ? '' : videoCallStatus"
+      :call-avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
+      :call-name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
+      :show-image-preview="showImagePreview"
+      :preview-image-url="previewImageUrl"
+      :show-share-preview="showSharePreview"
+      :share-preview-data="sharePreviewData"
+      :other-user-id="otherUserId"
+      :remote-screen-user-id="remoteScreenUserId"
+      :active-mini-app="activeMiniApp"
+      :get-file-icon="getFileIcon"
+      :format-file-size="formatFileSize"
+      :render-markdown="renderMarkdown"
+      :format-time="formatTime"
+      @close-user-profile="closeUserProfile"
+      @send-private-message="handleSendPrivateMessage"
+      @close-read-users="showReadUsersModal = false"
+      @preview-image="previewImage"
+      @save-file-as="saveFileAs"
+      @download-file="downloadFile"
+      @copy-message="selectedMessage && copyMessage(selectedMessage)"
+      @forward-message="forwardMessage"
+      @quote-message="quoteMessage"
+      @add-to-note="addToNote"
+      @recall-message="handleRecallMessage"
+      @send-message-reminder="sendMessageReminder"
+      @close-member-context-menu="closeMemberContextMenu"
+      @remove-member="handleRemoveMemberFromOverlay"
+      @set-admin="handleSetAdminFromOverlay"
+      @transfer-owner="handleTransferOwnerFromOverlay"
+      @view-member-info="viewMemberInfo"
+      @close-message-manager="closeMessageManager"
+      @scroll-to-message="scrollToMessage"
+      @update-confirm-dialog="(v) => showConfirmDialog = v"
+      @confirm-action="handleConfirmAction"
+      @cancel-confirm-action="closeConfirmDialog"
+      @cancel-screenshot="cancelScreenshot"
+      @retake-screenshot="retakeScreenshot"
+      @send-screenshot="uploadScreenshot"
+      @reject-call="rejectCall"
+      @answer-call="answerCall"
+      @end-call="endCall"
+      @close-call-modal="handleCallModalClose"
+      @close-image-preview="closeImagePreview"
+      @close-share-preview="closeSharePreview"
+      @screen-share-start="handleScreenShareStartFromComponent"
+      @screen-share-stop="handleScreenShareStopFromComponent"
+      @screen-share-join="handleScreenShareJoinFromComponent"
+      @screen-share-leave="handleScreenShareLeaveFromComponent"
+      @close-mini-app="activeMiniApp = null"
+      @mini-app-toast="handleMiniAppToast"
     />
-  </div>
 
-  <!-- 群名称编辑弹窗 -->
-  <div v-if="showEditGroupInfoModal" class="user-profile-modal" @click="closeEditGroupInfoModal">
-    <div class="profile-content" @click.stop>
-      <div class="profile-header">
-        <h3>修改群名称</h3>
-        <button class="close-btn" @click="closeEditGroupInfoModal">×</button>
-      </div>
-      <div class="profile-body">
-        <input type="text" v-model="editGroupName" class="profile-input" placeholder="请输入群名称" />
-      </div>
-      <div class="profile-footer">
-        <button class="btn btn-cancel" @click="closeEditGroupInfoModal">取消</button>
-        <button class="btn btn-save" @click="saveGroupInfo">保存</button>
+    <!-- 群名称编辑弹窗（保留在 ChatWindow，属于群组管理职责） -->
+    <div v-if="showEditGroupInfoModal" class="user-profile-modal" @click="closeEditGroupInfoModal">
+      <div class="profile-content" @click.stop>
+        <div class="profile-header">
+          <h3>修改群名称</h3>
+          <button class="close-btn" @click="closeEditGroupInfoModal">×</button>
+        </div>
+        <div class="profile-body">
+          <input type="text" v-model="editGroupName" class="profile-input" placeholder="请输入群名称" />
+        </div>
+        <div class="profile-footer">
+          <button class="btn btn-cancel" @click="closeEditGroupInfoModal">取消</button>
+          <button class="btn btn-save" @click="() => saveGroupInfo()">保存</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- 群公告编辑弹窗 -->
-  <div v-if="showEditAnnouncementModal" class="user-profile-modal" @click="closeEditAnnouncementModal">
-    <div class="profile-content" @click.stop>
-      <div class="profile-header">
-        <h3>编辑群公告</h3>
-        <button class="close-btn" @click="closeEditAnnouncementModal">×</button>
-      </div>
-      <div class="profile-body">
-        <textarea v-model="editAnnouncementContent" class="profile-textarea" placeholder="请输入群公告内容" rows="6"></textarea>
-      </div>
-      <div class="profile-footer">
-        <button class="btn btn-cancel" @click="closeEditAnnouncementModal">取消</button>
-        <button class="btn btn-save" @click="saveAnnouncement">保存</button>
+    <!-- 群公告编辑弹窗 -->
+    <div v-if="showEditAnnouncementModal" class="user-profile-modal" @click="closeEditAnnouncementModal">
+      <div class="profile-content" @click.stop>
+        <div class="profile-header">
+          <h3>编辑群公告</h3>
+          <button class="close-btn" @click="closeEditAnnouncementModal">×</button>
+        </div>
+        <div class="profile-body">
+          <textarea v-model="editAnnouncementContent" class="profile-textarea" placeholder="请输入群公告内容" rows="6"></textarea>
+        </div>
+        <div class="profile-footer">
+          <button class="btn btn-cancel" @click="closeEditAnnouncementModal">取消</button>
+          <button class="btn btn-save" @click="() => saveAnnouncement()">保存</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- AI 摘要面板 -->
-  <AISummaryPanel
-    v-if="conversation?.id"
-    :visible="showSummaryPanel"
-    :conversation-id="Number(conversation.id)"
-    time-range="today"
-    @close="showSummaryPanel = false"
-  />
+    <!-- AI 摘要面板 -->
+    <AISummaryPanel
+      v-if="conversation?.id"
+      :visible="showSummaryPanel"
+      :conversation-id="Number(conversation.id)"
+      time-range="today"
+      @close="showSummaryPanel = false"
+    />
   </div>
-
 </template>
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
-import QMessageBox from '../../utils/qmessagebox'
-import UserProfile from '../modals/UserProfile.vue'
-import MessageItem from '../message/MessageItem.vue'
-import MessageManager from './MessageManager.vue'
-import MessageInput from './MessageInput.vue'
-import MessageSearch from './MessageSearch.vue'
-import GroupPanel from './GroupPanel.vue'
-import MemberSidebar from './MemberSidebar.vue'
-import MemberContextMenu from './MemberContextMenu.vue'
-import MessageContextMenu from './MessageContextMenu.vue'
-import ReadUsersModal from './ReadUsersModal.vue'
-import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
-import ImagePreviewDialog from './ImagePreviewDialog.vue'
-import SharePreviewDialog from './SharePreviewDialog.vue'
-import CallModal from './CallModal.vue'
+import ChatBody from './ChatBody.vue'
+import ChatInputArea from './ChatInputArea.vue'
+import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
-import MessageListView from './MessageListView.vue'
-import ConfirmDialog from '../shared/ConfirmDialog.vue'
-import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
-import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { API_BASE_URL } from '../../config'
-import { getAvatarUrl } from '../../utils/avatar'
 import { getCurrentUser } from '../../utils/user'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 import { addWsHandler, removeWsHandler } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import { useScreenShare } from '../../composables/useScreenShare'
-import ScreenShare from '../shared/ScreenShare.vue'
 import { useVideoCall } from '../../composables/useVideoCall'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
@@ -345,14 +238,22 @@ import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
-import AIQuickActions from '../ai/AIQuickActions.vue'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
+import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+
+// 当前用户（需要在 useScreenShare 之前声明）
+const currentUser = ref(getCurrentUser())
+const currentUserId = computed((): string | number => {
+  const user = currentUser.value || props.currentUser
+  return user?.id ?? ''
+})
+
 // 初始化 composables
-const { getToken, formatDate, request } = useChatRequest(serverUrl.value)
-const { formatTime, shouldShowTimeDivider, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
+const { getToken, request } = useChatRequest(serverUrl.value)
+const { formatTime, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
 
 // AI 操作 composable
@@ -501,7 +402,7 @@ const {
 } = messageActions
 
 // 屏幕共享相关逻辑
-const screenShare = useScreenShare(ref(props.conversation))
+const screenShare = useScreenShare(ref(props.conversation), ref(currentUser.value))
 const {
   screenShareComponent,
   remoteScreenUserId,
@@ -550,9 +451,7 @@ watch(() => props.remoteScreenSharing, (newVal) => {
     // 开始接收远程屏幕共享
   } else if (!newVal) {
     // 停止接收远程屏幕共享
-    if (screenShareComponent.value) {
-      screenShareComponent.value.stopReceiving()
-    }
+    overlayRef.value?.stopReceiving()
   }
 })
 
@@ -566,6 +465,9 @@ const inputMessage = ref('')
 const quotedMessage = ref<any>(null)
 const messageListRef = ref<HTMLDivElement>()
 const chatHeaderRef = ref<any>()
+const chatBodyRef = ref<InstanceType<typeof ChatBody>>()
+const chatInputRef = ref<InstanceType<typeof ChatInputArea>>()
+const overlayRef = ref<InstanceType<typeof OverlayManager>>()
 const messageListViewRef = ref<any>()
 const messageInputAreaRef = ref<any>()
 const messageInputRef = ref<HTMLTextAreaElement>()
@@ -614,16 +516,16 @@ const pendingFiles = ref<PendingFile[]>([])
 // 成员上下文菜单
 const showMemberContextMenuFlag = ref(false)
 const memberContextMenuPosition = ref({ x: 0, y: 0 })
-const selectedMember = ref(null)
+const selectedMember = ref<any>(null)
 
 // 用户资料弹窗
 const showUserProfileFlag = ref(false)
-const selectedUser = ref({})
+const selectedUser = ref<any>(null)
 
 // 消息上下文菜单
 const showMessageContextMenuFlag = ref(false)
 const messageContextMenuPosition = ref({ x: 0, y: 0 })
-const selectedMessage = ref(null)
+const selectedMessage = ref<any>(null)
 
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
@@ -734,7 +636,7 @@ const insertEmoji = (emoji: string) => {
   inputMessage.value += emoji
   showEmojiPanel.value = false
   nextTick(() => {
-    const textarea = messageInputAreaRef.value?.messageInputRef as HTMLTextAreaElement | null
+    const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
     if (textarea) {
       textarea.focus()
     }
@@ -839,7 +741,7 @@ const uploadAndSendFile = async (file: File) => {
 
 // 选择 @ 成员
 const selectAtMember = (member: { id: string; name: string; avatar: string }) => {
-  const textarea = messageInputAreaRef.value?.messageInputRef as HTMLTextAreaElement | null
+  const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
   if (!textarea) return
   
   showAtMembersPanel.value = false
@@ -869,7 +771,7 @@ const selectAtMember = (member: { id: string; name: string; avatar: string }) =>
 
 // 选择 @ 所有人
 const selectAtAll = () => {
-  const textarea = messageInputAreaRef.value?.messageInputRef as HTMLTextAreaElement | null
+  const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
   if (!textarea) return
   
   showAtMembersPanel.value = false
@@ -1027,11 +929,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const scrollToBottom = () => {
-  nextTick(() => {
-    if (messageListViewRef.value) {
-      messageListViewRef.value.scrollToBottom()
-    }
-  })
+  chatBodyRef.value?.scrollToBottom()
 }
 
 // 节流函数 - 已由 MessageListView 组件处理
@@ -1269,9 +1167,7 @@ onUnmounted(() => {
   document.removeEventListener('click', closeMemberContextMenu)
   
   // 停止屏幕共享
-  if (screenShareComponent.value) {
-    screenShareComponent.value.stopReceiving()
-  }
+  overlayRef.value?.stopReceiving()
 })
 
 // 加载小程序列表
@@ -1348,7 +1244,7 @@ const scrollToMessage = (messageId: string) => {
 }
 
 const autoResizeTextarea = () => {
-  const textarea = messageInputAreaRef.value?.messageInputRef as HTMLTextAreaElement | null
+  const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
   if (textarea) {
     textarea.style.height = 'auto'
     const maxHeight = 200
@@ -1547,7 +1443,7 @@ const showUserProfile = (user: any) => {
 
 const closeUserProfile = () => {
   showUserProfileFlag.value = false
-  selectedUser.value = {}
+  selectedUser.value = null
 }
 
 
@@ -1693,6 +1589,36 @@ const handleStartPrivateChat = (memberId: string) => {
   handleSendPrivateMessage(memberId)
 }
 
+// OverlayManager 事件适配函数
+// OverlayManager 内部组件只传出 memberId，需要适配为原处理函数需要的签名
+const handleRemoveMemberFromOverlay = (memberId: string) => {
+  if (!props.conversation) return
+  const member = props.conversation.members?.find(m => String(m.id) === String(memberId))
+  const memberName = (member as any)?.name || '未知成员'
+  handleRemoveMember(memberId, memberName)
+}
+
+const handleSetAdminFromOverlay = (memberId: string) => {
+  if (!props.conversation) return
+  const member = props.conversation.members?.find(m => String(m.id) === String(memberId))
+  const memberName = (member as any)?.name || '未知成员'
+  const currentIsAdmin = (member as any)?.role === 'admin'
+  handleSetAdmin(memberId, memberName, !currentIsAdmin)
+}
+
+const handleTransferOwnerFromOverlay = (memberId: string) => {
+  if (!props.conversation) return
+  const member = props.conversation.members?.find(m => String(m.id) === String(memberId))
+  const memberName = (member as any)?.name || '未知成员'
+  handleTransferOwner(memberId, memberName)
+}
+
+// 撤回消息包装函数（适配 OverlayManager 无参数事件）
+const handleRecallMessage = async () => {
+  if (!selectedMessage.value || !props.conversation) return
+  await recallMessage(String(props.conversation.id), String(selectedMessage.value.id))
+}
+
 const closeMessageContextMenu = () => {
   showMessageContextMenuFlag.value = false
   selectedMessage.value = null
@@ -1806,19 +1732,12 @@ const addToNote = () => {
 // 截图相关状态
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
-const currentUser = ref(getCurrentUser())
-
-// 当前用户ID
-const currentUserId = computed((): string | number => {
-  const user = currentUser.value || props.currentUser
-  return user?.id ?? ''
-})
 
 // 获取对方用户ID（单聊）
 const otherUserId = computed(() => {
   if (props.conversation?.type === 'single' && props.conversation?.members && props.conversation.members.length === 2) {
     const currentUserId = currentUser.value?.id?.toString() || ''
-    return props.conversation.members.find(member => String(member.id) !== currentUserId)?.id
+    return props.conversation.members.find(member => String(member.id) !== currentUserId)?.id ?? null
   }
   return null
 })

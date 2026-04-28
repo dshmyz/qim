@@ -18,6 +18,8 @@
       :quoted-message="quotedMessage"
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
+      :show-search="showSearch"
+      v-model:search-query="searchQuery"
       @send="emit('send')"
       @input="emit('input', $event)"
       @toggle-emoji-panel="emit('toggle-emoji-panel')"
@@ -40,6 +42,8 @@
       @remove-pending-file="emit('remove-pending-file', $event)"
       @remove-quoted-message="emit('remove-quoted-message')"
       @send-mini-app-message="emit('send-mini-app-message', $event)"
+      @perform-search="emit('perform-search')"
+      @close-search="emit('close-search')"
     />
   </div>
 </template>
@@ -65,6 +69,8 @@ interface Props {
   showEmojiPanel: boolean
   showAtMembersPanel: boolean
   showMiniAppList: boolean
+  showSearch: boolean
+  searchQuery: string
   quotedMessage: Message | null
   isElectron: boolean
   isProcessing: boolean
@@ -97,6 +103,8 @@ const emit = defineEmits<{
   'remove-quoted-message': []
   'send-mini-app-message': [miniApp: Message['miniAppData']]
   'ai-action': [actionId: string]
+  'perform-search': []
+  'close-search': []
 }>()
 
 const messageInputRef = ref<InstanceType<typeof MessageInput>>()
