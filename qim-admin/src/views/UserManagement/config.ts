@@ -2,8 +2,8 @@ import type { FormRules } from 'element-plus'
 import type { FormField } from '@/composables/useEntity'
 
 export const userFields: FormField[] = [
-  { name: 'username', label: '用户名', type: 'input', required: true, props: { disabled: true } },
-  { name: 'password', label: '密码', type: 'password', required: true, props: { showPassword: true } },
+  { name: 'username', label: '用户名', type: 'input', required: true },
+  { name: 'password', label: '密码', type: 'password', props: { showPassword: true } },
   { name: 'nickname', label: '昵称', type: 'input' },
   { name: 'email', label: '邮箱', type: 'input', required: true },
   { name: 'avatar', label: '头像', type: 'input', props: { placeholder: '请输入头像URL' } },

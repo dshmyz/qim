@@ -26,8 +26,11 @@
     <el-table-column prop="phone" label="手机号" min-width="140" />
     <el-table-column label="角色" min-width="200">
       <template #default="{ row }">
-        <el-tag v-for="role in (row.roles || [])" :key="role" size="small" class="role-tag">
-          {{ roleLabel(role) }}
+        <el-tag v-for="role in (row.roles || []).slice(0, 3)" :key="role" size="small" class="role-tag">
+          {{ getRoleName(role) }}
+        </el-tag>
+        <el-tag v-if="(row.roles || []).length > 3" size="small" type="info">
+          +{{ (row.roles || []).length - 3 }}
         </el-tag>
         <span v-if="!row.roles || row.roles.length === 0" class="text-muted">未分配</span>
       </template>
@@ -55,7 +58,7 @@
     v-model="dialogVisible"
     :mode="dialogMode"
     :fields="entityFields"
-    :rules="userRules"
+    :rules="entityRules"
     :initial-data="formData"
     :create-title="'创建用户'"
     :edit-title="'编辑用户'"
@@ -79,6 +82,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import type { FormRules } from 'element-plus'
 import DataTable from '@/components/data/DataTable.vue'
 import SearchForm from '@/components/data/SearchForm.vue'
 import SearchField from '@/components/data/SearchField.vue'
@@ -89,7 +93,8 @@ import { useEntity } from '@/composables/useEntity'
 import { getUsers, createUser, updateUser, deleteUser, assignRoles } from '@/api/users'
 import { userFields, userRules, roleOptions } from './config'
 import type { User } from '@/types'
-import type { FormField } from '@/composables/useEntity'
+import type { FormField as EntityFormField } from '@/composables/useEntity'
+import type { FormField as RendererFormField } from '@/components/forms/FieldRenderer.vue'
 
 const userApi = {
   getList: (params: Record<string, unknown>) => getUsers(params as any),
@@ -98,7 +103,7 @@ const userApi = {
   delete: (id: number) => deleteUser(id).then(() => {}),
 }
 
-const typedFields = userFields as FormField[]
+const typedFields = userFields as EntityFormField[]
 
 const {
   list, loading, pagination, searchForm,
@@ -112,7 +117,22 @@ const {
   successMessages: { create: '创建成功', update: '更新成功', delete: '删除成功' }
 })
 
-const entityFields = typedFields as any
+const entityFields = computed<RendererFormField[]>(() => [
+  { name: 'username', label: '用户名', type: 'input', required: true, props: { disabled: dialogMode.value === 'edit' } },
+  { name: 'password', label: '密码', type: 'password', required: dialogMode.value === 'create', props: { showPassword: true, placeholder: dialogMode.value === 'edit' ? '留空表示不修改密码' : '请输入密码' } },
+  { name: 'nickname', label: '昵称', type: 'input' },
+  { name: 'email', label: '邮箱', type: 'input', required: true },
+  { name: 'avatar', label: '头像', type: 'input', props: { placeholder: '请输入头像URL' } },
+  { name: 'phone', label: '手机号', type: 'input' },
+])
+
+const entityRules = computed<FormRules>(() => {
+  const rules: FormRules = { ...userRules }
+  if (dialogMode.value === 'edit') {
+    delete rules.password
+  }
+  return rules
+})
 
 const keyword = computed({
   get: () => (searchForm.keyword as string) || '',
@@ -124,14 +144,9 @@ const currentUser = ref<User | null>(null)
 const selectedRoles = ref<string[]>([])
 const roleSubmitting = ref(false)
 
-const roleLabel = (role: string): string => {
-  const map: Record<string, string> = {
-    system_admin: '系统管理员',
-    system_publisher: '系统发布者',
-    system_moderator: '系统审核员',
-    system_operator: '系统运营',
-  }
-  return map[role] || role
+const getRoleName = (roleId: string): string => {
+  const option = roleOptions.find((r) => r.value === roleId)
+  return option?.label || `角色 #${roleId}`
 }
 
 const handleManageRoles = (row: User) => {
