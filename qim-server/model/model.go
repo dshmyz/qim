@@ -185,15 +185,30 @@ type MessageReadReceipt struct {
 
 // 机器人
 type Bot struct {
-	ID          uint      `json:"id" gorm:"primarykey"`
-	Name        string    `json:"name" gorm:"size:100;not null"`
-	Avatar      string    `json:"avatar" gorm:"size:500"`
-	Description string    `json:"description" gorm:"type:text"`
-	Type        string    `json:"type" gorm:"size:50;not null"` // system, custom, ai
-	Config      string    `json:"config" gorm:"type:text"`      // JSON配置
-	IsActive    bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID             uint      `json:"id" gorm:"primarykey"`
+	Name           string    `json:"name" gorm:"size:100;not null"`
+	Avatar         string    `json:"avatar" gorm:"size:500"`
+	Description    string    `json:"description" gorm:"type:text"`
+	Type           string    `json:"type" gorm:"size:50;not null"` // system, custom, ai
+	Config         string    `json:"config" gorm:"type:text"`      // JSON配置
+	IsActive       bool      `json:"is_active" gorm:"default:true"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	ApprovalStatus string    `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
+	CreatorID      uint      `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
+	CreatorName    string    `json:"creator_name" gorm:"size:100;default:''"`
+	RejectReason   string    `json:"reject_reason" gorm:"type:text"`
+	IsTemplate     bool      `json:"is_template" gorm:"default:false"`
+}
+
+// AI使用日志
+type AIUsageLog struct {
+	ID             uint      `json:"id" gorm:"primarykey"`
+	UserID         uint      `json:"user_id" gorm:"not null"`
+	BotID          uint      `json:"bot_id" gorm:"not null"`
+	MessagePreview string    `json:"message_preview" gorm:"size:100"`
+	CallType       string    `json:"call_type" gorm:"size:20"` // chat, ops
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // 机器人会话
@@ -380,6 +395,8 @@ type AIConfig struct {
 	BytedanceModel   string    `json:"bytedance_model" gorm:"size:100"`
 	BytedanceBaseURL string    `json:"bytedance_base_url" gorm:"size:500"`
 	AnthropicAPIKey  string    `json:"anthropic_api_key" gorm:"size:500"`
+	AIEnabled        bool      `json:"ai_enabled" gorm:"default:true"` // 是否可以使用 AI
+	DailyLimit       int       `json:"daily_limit" gorm:"default:0"`   // 每日调用限制，0=不限制
 	AnthropicModel   string    `json:"anthropic_model" gorm:"size:100"`
 	AnthropicBaseURL string    `json:"anthropic_base_url" gorm:"size:500"`
 	MaxTokens        int       `json:"max_tokens" gorm:"default:1000"`

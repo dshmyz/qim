@@ -65,6 +65,7 @@ func MigrateDB(db *gorm.DB) {
 		&model.ShortLink{},
 		&model.Task{},
 		&model.Group{},
+		&model.AIUsageLog{},
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
