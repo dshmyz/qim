@@ -32,9 +32,7 @@
         @edit-bot="handleEditBot"
         @use-bot="handleUseBot"
       />
-      <div v-if="activeTab === 'create'" class="placeholder-tab">
-        <p>创建机器人功能开发中...</p>
-      </div>
+      <CreateBotWizard v-if="activeTab === 'create'" @close="activeTab = 'my-bots'" />
       <MyModelConfigs v-if="activeTab === 'configs'" />
     </div>
   </div>
@@ -45,6 +43,7 @@ import { ref } from 'vue'
 import ChatCenter from './ai/ChatCenter.vue'
 import MyBotsPanel from './MyBotsPanel.vue'
 import MyModelConfigs from './ai/MyModelConfigs.vue'
+import CreateBotWizard from './ai/CreateBotWizard.vue'
 
 defineEmits(['back', 'toggleSidebar'])
 
