@@ -155,8 +155,8 @@ type Note struct {
 	UserID    uint           `json:"user_id" gorm:"not null;index"`
 	Title     string         `json:"title" gorm:"size:500;not null"`
 	Content   string         `json:"content" gorm:"type:text;not null"`
-	Color     string         `json:"color" gorm:"size:20;default:'yellow'"`
 	Type      string         `json:"type" gorm:"size:20;default:'note'"`
+	Style     string         `json:"style" gorm:"type:text;default:'{}'"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
@@ -185,20 +185,22 @@ type MessageReadReceipt struct {
 
 // 机器人
 type Bot struct {
-	ID             uint      `json:"id" gorm:"primarykey"`
-	Name           string    `json:"name" gorm:"size:100;not null"`
-	Avatar         string    `json:"avatar" gorm:"size:500"`
-	Description    string    `json:"description" gorm:"type:text"`
-	Type           string    `json:"type" gorm:"size:50;not null"` // system, custom, ai
-	Config         string    `json:"config" gorm:"type:text"`      // JSON配置
-	IsActive       bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	ApprovalStatus string    `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
-	CreatorID      uint      `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
-	CreatorName    string    `json:"creator_name" gorm:"size:100;default:''"`
-	RejectReason   string    `json:"reject_reason" gorm:"type:text"`
-	IsTemplate     bool      `json:"is_template" gorm:"default:false"`
+	ID              uint      `json:"id" gorm:"primarykey"`
+	Name            string    `json:"name" gorm:"size:100;not null"`
+	Avatar          string    `json:"avatar" gorm:"size:500"`
+	Description     string    `json:"description" gorm:"type:text"`
+	Type            string    `json:"type" gorm:"size:50;not null"` // system, custom, ai
+	Config          string    `json:"config" gorm:"type:text"`      // JSON配置
+	IsActive        bool      `json:"is_active" gorm:"default:true"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	ApprovalStatus  string    `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
+	CreatorID       uint      `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
+	CreatorName     string    `json:"creator_name" gorm:"size:100;default:''"`
+	RejectReason    string    `json:"reject_reason" gorm:"type:text"`
+	IsTemplate      bool      `json:"is_template" gorm:"default:false"`
+	UserConfigID    *uint     `json:"user_config_id" gorm:"index"`
+	UseSystemConfig bool      `json:"use_system_config" gorm:"default:true"`
 }
 
 // AI使用日志
@@ -309,17 +311,23 @@ type App struct {
 
 // 通知
 type Notification struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"not null;index"`
-	Type      string         `json:"type" gorm:"size:20;not null"`
-	Title     string         `json:"title" gorm:"size:500;not null"`
-	Content   string         `json:"content" gorm:"type:text;not null"`
-	Read      bool           `json:"read" gorm:"default:false"`
-	ReadAt    *time.Time     `json:"read_at"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-	User      User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ID            uint           `json:"id" gorm:"primarykey"`
+	UserID        uint           `json:"user_id" gorm:"not null;index"`
+	Type          string         `json:"type" gorm:"size:30;not null"`
+	Title         string         `json:"title" gorm:"size:500;not null"`
+	Content       string         `json:"content" gorm:"type:text;not null"`
+	Read          bool           `json:"read" gorm:"default:false"`
+	ReadAt        *time.Time     `json:"read_at"`
+	Priority      string         `json:"priority" gorm:"size:10;default:normal"`
+	ActionType    string         `json:"action_type" gorm:"size:30;default:''"`
+	ActionPayload string         `json:"action_payload" gorm:"type:text;default:''"`
+	Pinned        bool           `json:"pinned" gorm:"default:false"`
+	Important     bool           `json:"important" gorm:"default:false"`
+	Handled       bool           `json:"handled" gorm:"default:false"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
+	User          User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 频道
@@ -405,4 +413,22 @@ type AIConfig struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	User        User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
+// 用户AI配置
+type UserAIConfig struct {
+	ID              uint       `json:"id" gorm:"primarykey"`
+	UserID          uint       `json:"user_id" gorm:"not null;index"`
+	ConfigName      string     `json:"config_name" gorm:"size:50;not null"`
+	Provider        string     `json:"provider" gorm:"size:20;not null"`
+	APIKeyEncrypted string     `json:"-" gorm:"type:text;not null"`
+	ModelName       string     `json:"model_name" gorm:"size:50;not null"`
+	BaseURL         string     `json:"base_url" gorm:"size:255"`
+	Temperature     float64    `json:"temperature" gorm:"default:0.7"`
+	MaxTokens       int        `json:"max_tokens" gorm:"default:1000"`
+	IsVerified      bool       `json:"is_verified" gorm:"default:false"`
+	LastTestedAt    *time.Time `json:"last_tested_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	User            User       `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }

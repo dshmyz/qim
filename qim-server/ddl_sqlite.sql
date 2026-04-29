@@ -149,8 +149,8 @@ CREATE TABLE IF NOT EXISTS `notes` (
   `user_id` INTEGER NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `content` TEXT NOT NULL,
-  `color` VARCHAR(20) DEFAULT 'yellow',
   `type` VARCHAR(20) DEFAULT 'note',
+  `style` TEXT DEFAULT '{}',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -348,3 +348,24 @@ CREATE TABLE IF NOT EXISTS `channel_messages` (
 
 CREATE INDEX IF NOT EXISTS `idx_channel_messages_channel_id` ON `channel_messages`(`channel_id`);
 CREATE INDEX IF NOT EXISTS `idx_channel_messages_deleted_at` ON `channel_messages`(`deleted_at`);
+
+-- User ai configs table
+CREATE TABLE IF NOT EXISTS `user_ai_configs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `config_name` VARCHAR(50) NOT NULL,
+  `provider` VARCHAR(20) NOT NULL,
+  `api_key_encrypted` TEXT NOT NULL,
+  `model_name` VARCHAR(50) NOT NULL,
+  `base_url` VARCHAR(255),
+  `temperature` DECIMAL(3,2) DEFAULT 0.7,
+  `max_tokens` INTEGER DEFAULT 1000,
+  `is_verified` BOOLEAN DEFAULT FALSE,
+  `last_tested_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`),
+  UNIQUE(`user_id`, `config_name`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_user_ai_configs_user_id` ON `user_ai_configs`(`user_id`);
