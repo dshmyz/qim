@@ -12,6 +12,7 @@ import (
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetNotifications(c *gin.Context) {
@@ -70,6 +71,161 @@ func MarkAllNotificationsAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "标记所有通知已读成功",
+	})
+}
+
+func ClearAllNotifications(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	db := database.GetDB()
+	if err := db.Where("user_id = ?", userID).Delete(&model.Notification{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "清空通知失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "清空通知成功",
+	})
+}
+
+func HandleNotificationAction(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	notificationIDStr := c.Param("id")
+
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		return
+	}
+
+	var req struct {
+		Action string `json:"action" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+	var notification model.Notification
+	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		return
+	}
+
+	switch req.Action {
+	case "accept":
+		handleAcceptAction(db, &notification)
+	case "ignore":
+		handleIgnoreAction(db, &notification)
+	case "confirm":
+		handleConfirmAction(db, &notification)
+	case "reschedule":
+		handleRescheduleAction(db, &notification)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不支持的操作"})
+		return
+	}
+
+	notification.Handled = true
+	now := time.Now()
+	notification.ReadAt = &now
+	db.Save(&notification)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "操作成功",
+		"data":    notification,
+	})
+}
+
+func handleAcceptAction(db *gorm.DB, notification *model.Notification) {
+	if notification.Type == "group_invitation" {
+		var convID uint
+		if _, err := fmt.Sscanf(notification.ActionPayload, `{"conversation_id":%d}`, &convID); err != nil || convID == 0 {
+			return
+		}
+		var existing model.ConversationMember
+		if err := db.Where("conversation_id = ? AND user_id = ?", convID, notification.UserID).First(&existing).Error; err == nil {
+			return
+		}
+		member := model.ConversationMember{
+			ConversationID: convID,
+			UserID:         notification.UserID,
+			Role:           "member",
+			JoinedAt:       time.Now(),
+		}
+		db.Create(&member)
+	}
+}
+
+func handleIgnoreAction(db *gorm.DB, notification *model.Notification) {
+}
+
+func handleConfirmAction(db *gorm.DB, notification *model.Notification) {
+	if notification.Type == "todo_assigned" {
+		var taskID uint
+		if _, err := fmt.Sscanf(notification.ActionPayload, `{"task_id":%d}`, &taskID); err == nil && taskID > 0 {
+			db.Model(&model.Task{}).Where("id = ?", taskID).Update("status", "in_progress")
+		}
+	}
+}
+
+func handleRescheduleAction(db *gorm.DB, notification *model.Notification) {
+}
+
+func TogglePinNotification(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	notificationIDStr := c.Param("id")
+
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		return
+	}
+
+	db := database.GetDB()
+	var notification model.Notification
+	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		return
+	}
+
+	notification.Pinned = !notification.Pinned
+	db.Model(&notification).Update("pinned", notification.Pinned)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "操作成功",
+		"pinned":  notification.Pinned,
+	})
+}
+
+func ToggleImportantNotification(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	notificationIDStr := c.Param("id")
+
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		return
+	}
+
+	db := database.GetDB()
+	var notification model.Notification
+	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		return
+	}
+
+	notification.Important = !notification.Important
+	db.Model(&notification).Update("important", notification.Important)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":      0,
+		"message":   "操作成功",
+		"important": notification.Important,
 	})
 }
 
@@ -138,10 +294,13 @@ func CreateEvent(c *gin.Context) {
 			}
 
 			notification := model.Notification{
-				UserID:  userID.(uint),
-				Type:    "event_reminder",
-				Title:   "事件提醒",
-				Content: fmt.Sprintf("您设置的事件「%s」即将开始", currentEvent.Title),
+				UserID:        userID.(uint),
+				Type:          "event_reminder",
+				Title:         "事件提醒",
+				Content:       fmt.Sprintf("您设置的事件「%s」即将开始", currentEvent.Title),
+				Priority:      "important",
+				ActionType:    "confirm_reschedule",
+				ActionPayload: fmt.Sprintf(`{"event_id":%d}`, currentEvent.ID),
 			}
 			db.Create(&notification)
 

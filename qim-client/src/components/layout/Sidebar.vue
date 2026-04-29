@@ -7,6 +7,7 @@ import AppPanel from '../shared/AppPanel.vue'
 import SearchResult from '../conversation/SearchResult.vue'
 import ConversationList from '../conversation/ConversationList.vue'
 import type { Conversation, User } from '../../types'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 import { logger } from '../../utils/logger';
 
 interface OrgDepartment {
@@ -75,7 +76,7 @@ const emit = defineEmits<{
 }>()
 
 const userAvatar = computed(() => {
-  if (props.currentUser?.avatar && props.currentUser.avatar.startsWith('http')) {
+  if (props.currentUser?.avatar && isAbsoluteUrl(props.currentUser.avatar)) {
     return props.currentUser.avatar
   }
   if (props.currentUser?.avatar) {
@@ -87,33 +88,6 @@ const userAvatar = computed(() => {
 const userName = computed(() => {
   return props.currentUser?.nickname || props.currentUser?.username || '我的账号'
 })
-
-const generateAvatar = (name: string) => {
-  const colors = [
-    '#4285F4', '#EA4335', '#FBBC05', '#34A853',
-    '#FF6D01', '#46BDC6', '#7B1FA2', '#C2185B'
-  ]
-  const charCode = name.charCodeAt(0)
-  const colorIndex = charCode % colors.length
-  const bgColor = colors[colorIndex]
-  const displayName = name.charAt(0).toUpperCase()
-  const canvas = document.createElement('canvas')
-  canvas.width = 100
-  canvas.height = 100
-  const ctx = canvas.getContext('2d')
-  if (ctx) {
-    ctx.fillStyle = bgColor
-    ctx.beginPath()
-    ctx.arc(50, 50, 50, 0, 2 * Math.PI)
-    ctx.fill()
-    ctx.fillStyle = '#fff'
-    ctx.font = 'bold 40px Arial'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(displayName, 50, 50)
-  }
-  return canvas.toDataURL()
-}
 
 const filteredConversations = computed(() => {
   if (!props.searchQuery) return props.conversations

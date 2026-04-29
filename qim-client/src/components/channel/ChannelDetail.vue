@@ -1,14 +1,16 @@
 <template>
   <div class="channel-detail-content">
     <div class="right-content-header">
-      <h2>{{ channel.name }}</h2>
-      <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-        <i class="fas fa-compress"></i>
-      </button>
+      <div class="header-left-group">
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
+        </button>
+        <h2>{{ channel.name }}</h2>
+      </div>
     </div>
     <div class="channel-detail-info">
       <div class="channel-header-info">
-        <img :src="channel.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=channel'" :alt="channel.name" class="channel-header-avatar" />
+        <img :src="channel.avatar || generateAvatar(channel.name)" :alt="channel.name" class="channel-header-avatar" />
         <div class="channel-header-text">
           <p class="channel-description">{{ channel.description }}</p>
           <div class="channel-meta">
@@ -47,7 +49,7 @@
           :key="message.id" 
           class="message-item"
         >
-          <img :src="message.sender?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'" :alt="message.sender?.name" class="message-avatar" />
+          <img :src="message.sender?.avatar || generateAvatar(message.sender?.name || 'user')" :alt="message.sender?.name" class="message-avatar" />
           <div class="message-content">
             <div class="message-header">
               <span class="message-sender">{{ message.sender?.name || '未知' }}</span>
@@ -73,6 +75,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { generateAvatar } from '../../utils/avatar'
 
 interface ChannelMessage {
   id: string | number
@@ -134,6 +137,12 @@ const localMessage = ref(props.initialMessage || '')
   font-size: 20px;
   font-weight: 500;
   color: var(--text-color, #333);
+}
+
+.header-left-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .toggle-sidebar-btn {

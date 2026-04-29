@@ -1,21 +1,15 @@
 <template>
   <div class="tasks-app">
-    <div class="tasks-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
-        </button>
-        <div class="tasks-header-info">
-          <h2>任务管理</h2>
-        </div>
-      </div>
-      <div class="header-right">
-        <button class="toggle-board-btn" @click="emit('toggleSidebar')">
+    <AppHeader title="任务管理" @back="$emit('back')">
+      <template #extra-buttons>
+        <button class="icon-btn" @click="$emit('toggleSidebar')">
           <i class="fas fa-compress"></i>
         </button>
-        <button class="create-task-btn" @click="showCreateTaskModal = true">+ 新建任务</button>
-      </div>
-    </div>
+      </template>
+      <template #actions>
+        <button class="action-btn primary" @click="showCreateTaskModal = true">+ 新建任务</button>
+      </template>
+    </AppHeader>
     <div class="tasks-content">
       <div class="tasks-search-box">
         <input 
@@ -159,6 +153,7 @@ import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
+import AppHeader from './AppHeader.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -361,106 +356,6 @@ onMounted(async () => {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   min-width: 0;
-}
-
-.tasks-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--card-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-  height: 72px;
-  box-sizing: border-box;
-}
-
-.tasks-header:hover {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.2s;
-  color: var(--primary-color);
-}
-
-.back-btn:hover {
-  background: var(--primary-light);
-}
-
-.tasks-header-info h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-  transition: color 0.3s ease;
-}
-
-.create-task-btn {
-  padding: 8px 16px;
-  border: none;
-  background-color: var(--primary-color);
-  color: white;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.create-task-btn:hover {
-  background-color: var(--active-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.toggle-board-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: var(--text-color);
-}
-
-.toggle-board-btn:hover {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-1px);
 }
 
 .tasks-content {

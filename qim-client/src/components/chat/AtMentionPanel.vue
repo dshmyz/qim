@@ -32,7 +32,7 @@
           @click="handleSelectAll"
         >
           <img
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=all"
+            :src="generateAvatar('所有人')"
             alt="所有人"
             class="at-mention-item-avatar"
           />
@@ -66,6 +66,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
+import { generateAvatar } from '../../utils/avatar'
 
 export interface MemberItem {
   id: string

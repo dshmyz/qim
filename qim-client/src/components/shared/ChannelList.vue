@@ -46,7 +46,7 @@
           @click="selectChannel(channel)"
         >
           <div class="channel-card-header">
-            <img :src="channel.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=channel'" :alt="channel.name" class="channel-avatar" />
+            <img :src="channel.avatar || generateAvatar(channel.name)" :alt="channel.name" class="channel-avatar" />
             <button 
               v-if="channel.is_subscribed" 
               class="subscribe-btn subscribed" 
@@ -108,6 +108,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { Channel, User } from '../../types'
 import { API_BASE_URL } from '../../config'
+import { generateAvatar } from '../../utils/avatar'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)

@@ -2,6 +2,7 @@ import { ref, computed, readonly } from 'vue'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import { request, useRequest } from './useRequest'
+import { isAbsoluteUrl } from '../utils/avatar'
 
 /**
  * 群组成员信息接口
@@ -413,7 +414,7 @@ export function useGroup() {
       id: member.user && member.user.id ? member.user.id.toString() : (member.id ? member.id.toString() : ''),
       name: member.user ? (member.user.nickname || member.user.username || '') : (member.name || ''),
       avatar: member.user ? (
-        member.user.avatar && member.user.avatar.startsWith('http')
+        member.user.avatar && isAbsoluteUrl(member.user.avatar)
           ? member.user.avatar
           : (member.user.avatar ? serverUrl + member.user.avatar : '')
       ) : (member.avatar || ''),

@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue'
+import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
 
 export interface UserProfile {
   nickname: string
@@ -46,7 +47,7 @@ export function useCurrentUser() {
       id: '1',
       username: 'admin',
       nickname: '管理员',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+      avatar: generateAvatar('admin'),
       isAdmin: true
     }
   }
@@ -66,8 +67,8 @@ export function useCurrentUser() {
   }, { deep: true })
 
   const getProfileAvatar = (serverUrl: string): string => {
-    if (!currentUser.value?.avatar) return 'https://api.dicebear.com/7.x/avataaars/svg?seed=me'
-    if (currentUser.value.avatar.startsWith('http')) return currentUser.value.avatar
+    if (!currentUser.value?.avatar) return generateAvatar('me')
+    if (isAbsoluteUrl(currentUser.value.avatar)) return currentUser.value.avatar
     return serverUrl + currentUser.value.avatar
   }
 

@@ -8,61 +8,153 @@
     <div class="notification-center-header">
       <h3>通知中心</h3>
       <div class="notification-center-actions">
+        <button class="icon-btn" :class="{ active: showSearch }" @click="toggleSearch" title="搜索">
+          <i class="fas fa-search"></i>
+        </button>
+        <button class="icon-btn" @click="markAllAsRead" title="全部已读">
+          <i class="fas fa-check-double"></i>
+        </button>
         <button class="clear-all-btn" @click="clearAll">清空</button>
       </div>
+    </div>
+
+    <div v-if="showSearch" class="notification-search">
+      <input
+        v-model="searchKeyword"
+        class="search-input"
+        placeholder="搜索通知..."
+      />
     </div>
     
     <div class="notification-center-tabs">
       <div
-        v-for="type in notificationTypes"
-        :key="type.value"
+        v-for="tab in filterTabs"
+        :key="tab.value"
         class="notification-tab"
-        :class="{ active: currentType === type.value }"
-        @click="switchType(type.value)"
+        :class="{ active: currentFilter === tab.value }"
+        @click="switchFilter(tab.value)"
       >
-        {{ type.label }}
-        <span v-if="type.value !== 'all'" class="tab-badge">{{ getCountByType(type.value) }}</span>
+        {{ tab.label }}
+        <span v-if="tab.value !== 'all'" class="tab-badge">{{ tab.count }}</span>
       </div>
+    </div>
+
+    <div v-if="hasAnyFilters" class="notification-sort-bar">
+      <span class="sort-label">排序：</span>
+      <span
+        v-for="opt in sortOptions"
+        :key="opt.value"
+        class="sort-option"
+        :class="{ active: sortBy === opt.value }"
+        @click="sortBy = opt.value"
+      >
+        {{ opt.label }}
+      </span>
     </div>
     
     <div class="notification-center-content">
-      <div v-if="filteredNotifications.length === 0" class="empty-notifications">
+      <div v-if="displayNotifications.length === 0" class="empty-notifications">
         <i class="fas fa-bell-slash"></i>
-        <p>暂无通知</p>
+        <p>{{ emptyText }}</p>
       </div>
       <div v-else class="notification-list">
+        <div v-if="pinnedNotifications.length > 0" class="notification-section">
+          <div class="section-label"><i class="fas fa-thumbtack"></i> 置顶</div>
+          <div
+            v-for="notification in pinnedNotifications"
+            :key="notification.id"
+            class="notification-item"
+            :class="getItemClasses(notification)"
+          >
+            <div class="notification-body" @click="handleClick(notification)">
+              <div class="notification-icon">
+                <i :class="getIconClass(notification)"></i>
+              </div>
+              <div class="notification-content">
+                <div class="notification-title-row">
+                  <span class="notification-title">{{ notification.title }}</span>
+                  <div class="notification-badges">
+                    <span v-if="notification.important" class="badge-important" title="重要">
+                      <i class="fas fa-star"></i>
+                    </span>
+                    <span v-if="notification.handled" class="badge-handled">已处理</span>
+                  </div>
+                </div>
+                <div class="notification-text">{{ notification.content }}</div>
+                <div class="notification-time">{{ formatTime(notification.timestamp) }}</div>
+              </div>
+            </div>
+            <div class="notification-footer">
+              <div v-if="!notification.handled" class="notification-actions">
+                <button
+                  v-for="btn in getActionButtons(notification)"
+                  :key="btn.value"
+                  class="action-btn"
+                  :class="btn.style"
+                  @click.stop="handleAction(notification, btn.value)"
+                >
+                  {{ btn.label }}
+                </button>
+              </div>
+              <div class="notification-tools">
+                <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
+                  <i class="fas fa-thumbtack"></i>
+                </button>
+                <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
+                  <i class="fas fa-star"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="pinnedNotifications.length > 0 && normalNotifications.length > 0" class="section-divider"></div>
+
         <div
-          v-for="notification in filteredNotifications"
+          v-for="notification in normalNotifications"
           :key="notification.id"
           class="notification-item"
-          :class="{ unread: !notification.read }"
-          @click="handleClick(notification)"
+          :class="getItemClasses(notification)"
         >
-          <div class="notification-icon">
-            <i v-if="notification.type === 'message'" class="fas fa-comment"></i>
-            <i v-else-if="notification.type === 'system'" class="fas fa-bell"></i>
-            <i v-else-if="notification.type === 'group'" class="fas fa-user-friends"></i>
+          <div class="notification-body" @click="handleClick(notification)">
+            <div class="notification-icon">
+              <i :class="getIconClass(notification)"></i>
+            </div>
+            <div class="notification-content">
+              <div class="notification-title-row">
+                <span class="notification-title">{{ notification.title }}</span>
+                <div class="notification-badges">
+                  <span v-if="notification.important" class="badge-important" title="重要">
+                    <i class="fas fa-star"></i>
+                  </span>
+                  <span v-if="notification.handled" class="badge-handled">已处理</span>
+                </div>
+              </div>
+              <div class="notification-text">{{ notification.content }}</div>
+              <div class="notification-time">{{ formatTime(notification.timestamp) }}</div>
+            </div>
           </div>
-          <div class="notification-content">
-            <div class="notification-title">{{ notification.title }}</div>
-            <div class="notification-text">{{ notification.content }}</div>
-            <div class="notification-time">{{ formatTime(notification.timestamp) }}</div>
+          <div class="notification-footer">
+            <div v-if="!notification.handled" class="notification-actions">
+              <button
+                v-for="btn in getActionButtons(notification)"
+                :key="btn.value"
+                class="action-btn"
+                :class="btn.style"
+                @click.stop="handleAction(notification, btn.value)"
+              >
+                {{ btn.label }}
+              </button>
+            </div>
+            <div class="notification-tools">
+              <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
+                <i class="fas fa-thumbtack"></i>
+              </button>
+              <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
+                <i class="fas fa-star"></i>
+              </button>
+            </div>
           </div>
-          <div v-if="!notification.read" class="notification-badge"></div>
-        </div>
-        
-        <div v-if="hasMore" class="load-more-container">
-          <button 
-            class="load-more-btn" 
-            @click="loadMore"
-            :disabled="isLoading"
-          >
-            <span v-if="isLoading">加载中...</span>
-            <span v-else>加载更多</span>
-          </button>
-        </div>
-        <div v-else-if="filteredNotifications.length > 0" class="no-more-container">
-          <p>没有更多通知了</p>
         </div>
       </div>
     </div>
@@ -73,26 +165,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
-
-interface Notification {
-  id: string
-  title: string
-  content: string
-  timestamp: number
-  read: boolean
-  type: 'message' | 'system' | 'group'
-  data?: {
-    conversationId?: string
-    groupId?: string
-  }
-}
+import { type Notification, mapNotifications } from '../../utils/notificationMapper'
 
 interface Props {
   show: boolean
   position: { x: number; y: number }
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -103,36 +183,77 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const getToken = () => localStorage.getItem('token')
 
 const notifications = ref<Notification[]>([])
-const filteredNotifications = ref<Notification[]>([])
-const currentType = ref('all')
+const currentFilter = ref('all')
 const isLoading = ref(false)
 const hasMore = ref(true)
 const page = ref(1)
-const pageSize = 20
+const pageSize = 50
+const showSearch = ref(false)
+const searchKeyword = ref('')
+const sortBy = ref<'time' | 'importance'>('time')
 
-const notificationTypes = [
-  { value: 'all', label: '全部' },
-  { value: 'message', label: '消息' },
-  { value: 'system', label: '系统' },
-  { value: 'group', label: '群聊' }
-]
-
-const unreadCount = computed(() => {
-  return notifications.value.filter(n => !n.read).length
+const filterTabs = computed(() => {
+  const unread = notifications.value.filter(n => !n.read).length
+  const important = notifications.value.filter(n => n.important).length
+  return [
+    { value: 'all', label: '全部', count: notifications.value.length },
+    { value: 'unread', label: '未读', count: unread },
+    { value: 'important', label: '重要', count: important },
+  ]
 })
 
-const getCountByType = (type: string) => {
-  if (type === 'all') return notifications.value.length
-  return notifications.value.filter(n => n.type === type).length
+const sortOptions = [
+  { value: 'time' as const, label: '时间' },
+  { value: 'importance' as const, label: '重要性' },
+]
+
+const hasAnyFilters = computed(() => currentFilter.value !== 'all' || searchKeyword.value !== '')
+
+const emptyText = computed(() => {
+  if (searchKeyword.value) return '未找到匹配的通知'
+  if (currentFilter.value === 'unread') return '暂无未读通知'
+  if (currentFilter.value === 'important') return '暂无重要通知'
+  return '暂无通知'
+})
+
+const applyFilters = (list: Notification[]) => {
+  let result = list
+
+  if (currentFilter.value === 'unread') {
+    result = result.filter(n => !n.read)
+  } else if (currentFilter.value === 'important') {
+    result = result.filter(n => n.important)
+  }
+
+  if (searchKeyword.value.trim()) {
+    const kw = searchKeyword.value.trim().toLowerCase()
+    result = result.filter(n =>
+      n.title.toLowerCase().includes(kw) || n.content.toLowerCase().includes(kw)
+    )
+  }
+
+  if (sortBy.value === 'importance') {
+    result = [...result].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      if (a.important !== b.important) return a.important ? -1 : 1
+      return b.timestamp - a.timestamp
+    })
+  }
+
+  return result
 }
 
-const filterNotifications = () => {
-  if (currentType.value === 'all') {
-    filteredNotifications.value = notifications.value
-  } else {
-    filteredNotifications.value = notifications.value.filter(n => n.type === currentType.value)
-  }
-}
+const pinnedNotifications = computed(() => {
+  return applyFilters(notifications.value).filter(n => n.pinned)
+})
+
+const normalNotifications = computed(() => {
+  return applyFilters(notifications.value).filter(n => !n.pinned)
+})
+
+const displayNotifications = computed(() => {
+  return [...pinnedNotifications.value, ...normalNotifications.value]
+})
 
 const loadNotifications = async (isLoadMore = false) => {
   if (isLoading.value || (!hasMore.value && isLoadMore)) return
@@ -142,85 +263,23 @@ const loadNotifications = async (isLoadMore = false) => {
     const token = getToken()
     const currentPage = isLoadMore ? page.value + 1 : 1
     const response = await axios.get(`${serverUrl.value}/api/v1/notifications`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      params: {
-        page: currentPage,
-        page_size: pageSize
-      }
+      headers: { 'Authorization': `Bearer ${token}` },
+      params: { page: currentPage, page_size: pageSize }
     })
     if (response.data.code === 0) {
-      const newNotifications = response.data.data
+      const mapped = mapNotifications(response.data.data)
       if (isLoadMore) {
-        notifications.value = [...notifications.value, ...newNotifications]
+        notifications.value = [...notifications.value, ...mapped]
       } else {
-        notifications.value = newNotifications
+        notifications.value = mapped
       }
       page.value = currentPage
-      hasMore.value = newNotifications.length === pageSize
-      filterNotifications()
+      hasMore.value = mapped.length === pageSize
     }
   } catch (error) {
     console.error('加载通知失败:', error)
     if (!isLoadMore) {
-      notifications.value = [
-        {
-          id: '1',
-          title: '新消息',
-          content: '张三发送了一条新消息',
-          timestamp: Date.now() - 1000 * 60 * 5,
-          read: false,
-          type: 'message',
-          data: { conversationId: '1' }
-        },
-        {
-          id: '2',
-          title: '系统通知',
-          content: '您的账号已成功登录',
-          timestamp: Date.now() - 1000 * 60 * 30,
-          read: false,
-          type: 'system'
-        },
-        {
-          id: '3',
-          title: '群聊邀请',
-          content: '李四邀请您加入群聊 "技术讨论"',
-          timestamp: Date.now() - 1000 * 60 * 60,
-          read: true,
-          type: 'group',
-          data: { groupId: '1' }
-        },
-        {
-          id: '4',
-          title: '新消息',
-          content: '王五发送了一条新消息',
-          timestamp: Date.now() - 1000 * 60 * 120,
-          read: false,
-          type: 'message',
-          data: { conversationId: '2' }
-        },
-        {
-          id: '5',
-          title: '系统通知',
-          content: '您的账号权限已更新',
-          timestamp: Date.now() - 1000 * 60 * 180,
-          read: true,
-          type: 'system'
-        },
-        {
-          id: '6',
-          title: '群聊邀请',
-          content: '赵六邀请您加入群聊 "产品讨论"',
-          timestamp: Date.now() - 1000 * 60 * 240,
-          read: false,
-          type: 'group',
-          data: { groupId: '2' }
-        }
-      ]
-      page.value = 1
-      hasMore.value = false
-      filterNotifications()
+      notifications.value = []
     }
   } finally {
     isLoading.value = false
@@ -231,22 +290,13 @@ const markAsRead = async (notificationId: string) => {
   try {
     const token = getToken()
     await axios.put(`${serverUrl.value}/api/v1/notifications/${notificationId}/read`, {}, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     })
     const notification = notifications.value.find(n => n.id === notificationId)
-    if (notification) {
-      notification.read = true
-      filterNotifications()
-    }
+    if (notification) notification.read = true
   } catch (error) {
-    console.error('标记通知已读失败:', error)
     const notification = notifications.value.find(n => n.id === notificationId)
-    if (notification) {
-      notification.read = true
-      filterNotifications()
-    }
+    if (notification) notification.read = true
   }
 }
 
@@ -254,26 +304,96 @@ const markAllAsRead = async () => {
   try {
     const token = getToken()
     await axios.put(`${serverUrl.value}/api/v1/notifications/read-all`, {}, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers: { 'Authorization': `Bearer ${token}` }
     })
     notifications.value.forEach(n => { n.read = true })
-    filterNotifications()
   } catch (error) {
-    console.error('标记所有通知已读失败:', error)
     notifications.value.forEach(n => { n.read = true })
-    filterNotifications()
   }
 }
 
-const switchType = (type: string) => {
-  currentType.value = type
-  filterNotifications()
+const clearAll = async () => {
+  try {
+    const token = getToken()
+    await axios.delete(`${serverUrl.value}/api/v1/notifications`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    notifications.value = []
+  } catch (error) {
+    console.error('清空通知失败:', error)
+    notifications.value = []
+  }
 }
 
-const loadMore = () => {
-  loadNotifications(true)
+const switchFilter = (filter: string) => {
+  currentFilter.value = filter
+}
+
+const toggleSearch = () => {
+  showSearch.value = !showSearch.value
+  if (!showSearch.value) searchKeyword.value = ''
+}
+
+const ACTION_BUTTONS: Record<string, Array<{ value: string; label: string; style: string }>> = {
+  accept_ignore: [
+    { value: 'accept', label: '接受', style: 'primary' },
+    { value: 'ignore', label: '忽略', style: 'secondary' },
+  ],
+  confirm_reschedule: [
+    { value: 'confirm', label: '确认', style: 'primary' },
+    { value: 'reschedule', label: '延期', style: 'secondary' },
+  ],
+}
+
+const getActionButtons = (notification: Notification) => {
+  if (notification.handled) return []
+  return ACTION_BUTTONS[notification.actionType] || []
+}
+
+const handleAction = async (notification: Notification, action: string) => {
+  try {
+    const token = getToken()
+    await axios.patch(
+      `${serverUrl.value}/api/v1/notifications/${notification.id}/action`,
+      { action },
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    notification.handled = true
+    notification.read = true
+    emit('notificationClick', notification)
+  } catch (error) {
+    console.error('执行通知操作失败:', error)
+  }
+}
+
+const togglePin = async (notification: Notification) => {
+  try {
+    const token = getToken()
+    const res = await axios.patch(
+      `${serverUrl.value}/api/v1/notifications/${notification.id}/pin`,
+      {},
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    notification.pinned = res.data.pinned
+  } catch (error) {
+    notification.pinned = !notification.pinned
+    console.error('切换置顶失败:', error)
+  }
+}
+
+const toggleImportant = async (notification: Notification) => {
+  try {
+    const token = getToken()
+    const res = await axios.patch(
+      `${serverUrl.value}/api/v1/notifications/${notification.id}/important`,
+      {},
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    notification.important = res.data.important
+  } catch (error) {
+    notification.important = !notification.important
+    console.error('切换重要状态失败:', error)
+  }
 }
 
 const handleClick = (notification: Notification) => {
@@ -282,20 +402,20 @@ const handleClick = (notification: Notification) => {
   emit('close')
 }
 
-const clearAll = async () => {
-  try {
-    const token = getToken()
-    await axios.delete(`${serverUrl.value}/api/v1/notifications`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    notifications.value = []
-    filteredNotifications.value = []
-  } catch (error) {
-    console.error('清空通知失败:', error)
-    notifications.value = []
-    filteredNotifications.value = []
+const getIconClass = (notification: Notification): string => {
+  switch (notification.category) {
+    case 'message': return 'fas fa-comment'
+    case 'group': return 'fas fa-user-friends'
+    default: return 'fas fa-bell'
+  }
+}
+
+const getItemClasses = (notification: Notification) => {
+  return {
+    unread: !notification.read,
+    important: notification.important,
+    pinned: notification.pinned,
+    handled: notification.handled,
   }
 }
 
@@ -318,7 +438,7 @@ const formatTime = (timestamp: number | string): string => {
   return `${date.getMonth() + 1}-${date.getDate()}`
 }
 
-const handleClickOutside = (event: MouseEvent) => {
+const handleClickOutside = () => {
   emit('close')
 }
 
@@ -335,17 +455,15 @@ onUnmounted(() => {
 defineExpose({
   loadNotifications,
   markAllAsRead,
-  unreadCount,
   notifications,
-  filterNotifications
 })
 </script>
 
 <style scoped>
 .notification-center {
   position: fixed;
-  width: 380px;
-  max-height: 480px;
+  width: 400px;
+  max-height: 520px;
   background: var(--sidebar-bg);
   border-radius: 8px;
   box-shadow: var(--shadow-md);
@@ -356,7 +474,7 @@ defineExpose({
 }
 
 .notification-center-header {
-  padding: 16px 20px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
@@ -366,30 +484,74 @@ defineExpose({
 
 .notification-center-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-color);
 }
 
 .notification-center-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  align-items: center;
+}
+
+.icon-btn {
+  padding: 5px 8px;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.icon-btn.active {
+  color: var(--primary-color);
+  background: var(--primary-light);
 }
 
 .clear-all-btn {
-  padding: 4px 12px;
+  padding: 4px 10px;
   font-size: 12px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .clear-all-btn:hover {
   background: var(--hover-color);
   color: var(--text-color);
+}
+
+.notification-search {
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+}
+
+.search-input {
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--list-bg);
+  color: var(--text-color);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--primary-color);
 }
 
 .notification-center-tabs {
@@ -400,13 +562,13 @@ defineExpose({
 
 .notification-tab {
   flex: 1;
-  padding: 12px 16px;
+  padding: 10px 14px;
   text-align: center;
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -428,10 +590,44 @@ defineExpose({
   background: var(--primary-color);
   color: white;
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  min-width: 16px;
   text-align: center;
+}
+
+.notification-sort-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 18px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border-color);
+  gap: 12px;
+}
+
+.sort-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sort-option {
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.sort-option:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.sort-option.active {
+  color: var(--primary-color);
+  font-weight: 500;
+  background: var(--primary-light);
 }
 
 .notification-center-content {
@@ -444,22 +640,37 @@ defineExpose({
   padding: 0 8px;
 }
 
+.notification-section {
+  margin-bottom: 4px;
+}
+
+.section-label {
+  font-size: 11px;
+  color: var(--primary-color);
+  font-weight: 600;
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 12px;
+}
+
 .notification-item {
-  padding: 12px 16px;
+  padding: 10px 14px;
   margin: 4px 0;
   border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  transition: all 0.2s ease;
   background: var(--list-bg);
   border: 1px solid var(--border-color);
 }
 
 .notification-item:hover {
   background: var(--hover-color);
-  transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 
@@ -468,9 +679,28 @@ defineExpose({
   border-left: 3px solid var(--primary-color);
 }
 
+.notification-item.important {
+  border-left-color: #e67e22;
+}
+
+.notification-item.pinned {
+  background: var(--hover-color);
+}
+
+.notification-item.handled {
+  opacity: 0.7;
+}
+
+.notification-body {
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
 .notification-icon {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: var(--primary-light);
   display: flex;
@@ -478,7 +708,7 @@ defineExpose({
   justify-content: center;
   flex-shrink: 0;
   color: var(--primary-color);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .notification-content {
@@ -486,18 +716,47 @@ defineExpose({
   min-width: 0;
 }
 
+.notification-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
 .notification-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-color);
-  margin-bottom: 4px;
-  line-height: 1.4;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.badge-important {
+  color: #e67e22;
+  font-size: 10px;
+}
+
+.badge-handled {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 1px 6px;
+  border-radius: 3px;
 }
 
 .notification-text {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -507,18 +766,77 @@ defineExpose({
 }
 
 .notification-time {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-secondary);
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
-.notification-badge {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.notification-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.notification-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.action-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn.primary {
   background: var(--primary-color);
-  margin-top: 6px;
-  flex-shrink: 0;
+  color: white;
+}
+
+.action-btn.primary:hover {
+  opacity: 0.85;
+}
+
+.action-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.action-btn.secondary:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.notification-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.tool-btn {
+  padding: 3px 6px;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tool-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.tool-btn.active {
+  color: var(--primary-color);
 }
 
 .empty-notifications {
@@ -532,98 +850,40 @@ defineExpose({
 }
 
 .empty-notifications i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+  font-size: 40px;
+  margin-bottom: 14px;
+  opacity: 0.4;
 }
 
 .empty-notifications p {
   margin: 0;
-  font-size: 14px;
-}
-
-.load-more-container {
-  padding: 16px;
-  text-align: center;
-}
-
-.load-more-btn {
-  padding: 8px 20px;
   font-size: 13px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.load-more-btn:hover:not(:disabled) {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.load-more-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.no-more-container {
-  padding: 16px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.no-more-container p {
-  margin: 0;
 }
 
 [data-theme="dark"] .notification-center {
   background: var(--sidebar-bg) !important;
-  box-shadow: var(--shadow-md) !important;
 }
 
 [data-theme="dark"] .notification-center-header {
   background: var(--header-panel-bg) !important;
-  border-bottom-color: var(--border-color) !important;
 }
 
-[data-theme="dark"] .notification-center-header h3 {
-  color: var(--text-color) !important;
+[data-theme="dark"] .notification-search {
+  background: var(--sidebar-bg) !important;
 }
 
-[data-theme="dark"] .clear-all-btn {
+[data-theme="dark"] .search-input {
+  background: var(--list-bg) !important;
   border-color: var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .clear-all-btn:hover {
-  background: var(--hover-color) !important;
   color: var(--text-color) !important;
 }
 
 [data-theme="dark"] .notification-center-tabs {
   background: var(--sidebar-bg) !important;
-  border-bottom-color: var(--border-color) !important;
 }
 
-[data-theme="dark"] .notification-tab {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .notification-tab:hover {
-  background: var(--hover-color) !important;
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .notification-tab.active {
-  color: var(--primary-color) !important;
-  border-bottom-color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .tab-badge {
-  background: var(--primary-color) !important;
+[data-theme="dark"] .notification-sort-bar {
+  background: var(--sidebar-bg) !important;
 }
 
 [data-theme="dark"] .notification-item {
@@ -633,17 +893,14 @@ defineExpose({
 
 [data-theme="dark"] .notification-item:hover {
   background: var(--hover-color) !important;
-  box-shadow: var(--shadow-sm) !important;
 }
 
 [data-theme="dark"] .notification-item.unread {
   background: var(--primary-light) !important;
-  border-left-color: var(--primary-color) !important;
 }
 
 [data-theme="dark"] .notification-icon {
   background: var(--primary-light) !important;
-  color: var(--primary-color) !important;
 }
 
 [data-theme="dark"] .notification-title {
@@ -658,21 +915,20 @@ defineExpose({
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .empty-notifications {
-  color: var(--text-secondary) !important;
+[data-theme="dark"] .notification-footer {
+  border-top-color: var(--border-color) !important;
 }
 
-[data-theme="dark"] .load-more-btn {
+[data-theme="dark"] .action-btn.secondary {
   border-color: var(--border-color) !important;
   color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] .load-more-btn:hover:not(:disabled) {
+[data-theme="dark"] .action-btn.secondary:hover {
   background: var(--hover-color) !important;
-  color: var(--text-color) !important;
 }
 
-[data-theme="dark"] .no-more-container {
-  color: var(--text-secondary) !important;
+[data-theme="dark"] .tool-btn.active {
+  color: var(--primary-color) !important;
 }
 </style>

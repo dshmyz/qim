@@ -43,6 +43,7 @@ export function useUI() {
   // 分享模态框
   const showShareModal = ref(false)
   const shareType = ref('')
+  const shareData = ref<any>(null)
   const shareUsers = ref<any[]>([])
   const shareGroups = ref<any[]>([])
 
@@ -313,11 +314,16 @@ export function useUI() {
   // ========== 分享模态框操作 ==========
 
   // 打开分享模态框
-  const openShareModal = (type: string, users: any[], groups: any[]) => {
+  const openShareModal = (type: string, data: any, options?: { users?: any[]; groups?: any[] }) => {
     showShareModal.value = true
     shareType.value = type
-    shareUsers.value = users
-    shareGroups.value = groups
+    shareData.value = data
+    if (options?.users !== undefined) {
+      shareUsers.value = options.users
+    }
+    if (options?.groups !== undefined) {
+      shareGroups.value = options.groups
+    }
   }
 
   // 关闭分享模态框
@@ -551,6 +557,7 @@ export function useUI() {
     moreMenuPosition,
     showShareModal,
     shareType,
+    shareData,
     shareUsers,
     shareGroups,
     showUserProfile,

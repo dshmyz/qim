@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
+import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';

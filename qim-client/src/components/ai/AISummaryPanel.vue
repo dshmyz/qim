@@ -122,8 +122,8 @@ const renderMarkdown = (text: string): string => {
   background: var(--card-bg);
   border-radius: 12px;
   width: 90%;
-  max-width: 700px;
-  max-height: 80vh;
+  max-width: 750px;
+  max-height: 85vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -186,8 +186,37 @@ const renderMarkdown = (text: string): string => {
 }
 
 .summary-content {
-  padding: 20px;
+  padding: 28px 32px;
   overflow-y: auto;
+  line-height: 1.8;
+}
+
+.summary-content :deep(p) {
+  margin-bottom: 16px;
+}
+
+.summary-content :deep(ul),
+.summary-content :deep(ol) {
+  margin-bottom: 16px;
+  padding-left: 24px;
+}
+
+.summary-content :deep(li) {
+  margin-bottom: 8px;
+  line-height: 1.8;
+}
+
+.summary-content :deep(h1),
+.summary-content :deep(h2),
+.summary-content :deep(h3) {
+  margin-top: 24px;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.summary-content :deep(strong),
+.summary-content :deep(b) {
+  font-weight: 600;
 }
 
 .summary-meta {

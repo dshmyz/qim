@@ -113,7 +113,8 @@ export function useMessageActions(
       return { success: false, message: response.message || '撤回失败' }
     } catch (error) {
       console.error('撤回消息失败:', error)
-      return { success: false, message: '撤回失败' }
+      const message = error instanceof Error ? error.message : '撤回失败'
+      return { success: false, message }
     }
   }
 

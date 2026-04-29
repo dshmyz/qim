@@ -1,5 +1,5 @@
 <template>
-  <div class="markdown-message" v-html="renderedContent"></div>
+  <div class="markdown-message" v-html="renderedContent" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -11,6 +11,19 @@ const props = defineProps<{
   content: string
   isSelf: boolean
 }>()
+
+const handleLinkClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  const link = target.closest('a')
+  
+  if (link && window.electron?.shell?.openExternal) {
+    event.preventDefault()
+    const href = link.getAttribute('href')
+    if (href) {
+      window.electron.shell.openExternal(href)
+    }
+  }
+}
 
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {

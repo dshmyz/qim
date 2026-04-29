@@ -9,7 +9,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
+            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -58,7 +58,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar" style="width: 80px; height: 80px;">
-            <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
+            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
           </div>
           <div class="group-details">
             <div class="group-name" style="font-size: 20px;">{{ selectedGroup?.name }}</div>
@@ -97,7 +97,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
+            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -154,7 +154,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group'" :alt="selectedGroup?.name" />
+            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -176,6 +176,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { generateAvatar } from '../../utils/avatar'
 
 interface Member {
   id: string | number

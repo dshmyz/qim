@@ -4,7 +4,10 @@
     <div class="app-management-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
         </button>
         <div class="app-management-header-info">
           <h2>应用管理</h2>
@@ -119,7 +122,7 @@ import { logger } from '../../utils/logger';
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 定义事件
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 // 应用列表
 const userApps = ref<any[]>([])
@@ -149,12 +152,18 @@ const loadApps = async () => {
     })
     logger.log('加载应用列表响应:', response.data)
     if (response.data.code === 0) {
-      // 处理后端返回的open_type字段
-      userApps.value = response.data.data.map((app: any) => ({
-        ...app,
-        openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
-      }))
-      logger.log('应用列表加载成功:', userApps.value)
+      // 后端返回的数据结构是 { list: [...], pagination: {...} }
+      const appsArray = response.data.data.list || response.data.data
+      if (Array.isArray(appsArray)) {
+        // 处理后端返回的open_type字段
+        userApps.value = appsArray.map((app: any) => ({
+          ...app,
+          openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
+        }))
+        logger.log('应用列表加载成功:', userApps.value)
+      } else {
+        console.error('应用列表数据格式异常:', response.data.data)
+      }
     } else {
       console.error('加载应用列表失败:', response.data.message)
     }
@@ -221,16 +230,23 @@ const saveApp = async () => {
     const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
     let response
     
+    // 转换 openType 为后端期望的 open_type 字段
+    const payload = {
+      ...formData.value,
+      open_type: formData.value.openType
+    }
+    delete payload.openType
+    
     if (selectedApp.value) {
-      logger.log('编辑应用:', formData.value)
-      response = await axios.put(`${serverUrl}/api/v1/apps/${selectedApp.value.id}`, formData.value, {
+      logger.log('编辑应用:', payload)
+      response = await axios.put(`${serverUrl}/api/v1/apps/${selectedApp.value.id}`, payload, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
     } else {
-      logger.log('创建应用:', formData.value)
-      response = await axios.post(`${serverUrl}/api/v1/apps`, formData.value, {
+      logger.log('创建应用:', payload)
+      response = await axios.post(`${serverUrl}/api/v1/apps`, payload, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -329,6 +345,25 @@ onMounted(() => {
 }
 
 .back-btn:hover {
+  background: var(--primary-light);
+}
+
+.toggle-sidebar-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--hover-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--primary-color);
+}
+
+.toggle-sidebar-btn:hover {
   background: var(--primary-light);
 }
 

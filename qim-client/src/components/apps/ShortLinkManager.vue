@@ -4,7 +4,10 @@
     <div class="short-link-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
         </button>
         <div class="short-link-header-info">
           <h2>短链接管理</h2>
@@ -99,7 +102,7 @@ import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 
 // 定义事件
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -298,6 +301,25 @@ onMounted(async () => {
 }
 
 .back-btn:hover {
+  background: var(--primary-light);
+}
+
+.toggle-sidebar-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--hover-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--primary-color);
+}
+
+.toggle-sidebar-btn:hover {
   background: var(--primary-light);
 }
 

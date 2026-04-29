@@ -23,7 +23,7 @@
           </div>
 
           <!-- 本地视频预览（小窗口悬浮） -->
-          <div v-if="currentStatus === 'answered'" class="local-video">
+          <div v-if="currentStatus === 'answered' && showLocalPreview" class="local-video">
             <video
               v-if="localStream && isVideoEnabled"
               ref="localVideoRef"
@@ -35,6 +35,18 @@
             <div v-else class="video-placeholder small">
               <i class="fas fa-user"></i>
             </div>
+            
+            <!-- 隐藏本地视频预览按钮 -->
+            <button class="local-video-close-btn" @click.stop="handleToggleLocalPreview" title="隐藏己方预览">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          
+          <!-- 本地预览隐藏后显示的重启按钮 -->
+          <div v-if="currentStatus === 'answered' && !showLocalPreview" class="local-video-toggle-btn">
+            <button @click.stop="handleToggleLocalPreview" title="显示己方预览">
+              <i class="fas fa-user"></i>
+            </button>
           </div>
 
           <!-- 通话信息覆盖层 -->
@@ -163,6 +175,9 @@ const {
 const localVideoRef = ref<HTMLVideoElement | null>(null)
 const remoteVideoRef = ref<HTMLVideoElement | null>(null)
 
+// 本地预览窗口显示状态
+const showLocalPreview = ref(true)
+
 // 计算属性：优先使用 props 的值，否则使用 useVideoCall 的值
 const currentCallType = computed(() => {
   return props.callType || videoCallType.value
@@ -186,6 +201,13 @@ watch(remoteStream, (stream) => {
   }
 })
 
+// 监听通话状态变化，通话开始时重置预览显示状态
+watch(currentStatus, (newStatus) => {
+  if (newStatus === 'answered') {
+    showLocalPreview.value = true
+  }
+})
+
 // 处理静音切换
 const handleToggleMute = () => {
   toggleMute()
@@ -194,6 +216,11 @@ const handleToggleMute = () => {
 // 处理视频开关切换
 const handleToggleVideo = () => {
   toggleVideo()
+}
+
+// 处理本地预览窗口显示/隐藏
+const handleToggleLocalPreview = () => {
+  showLocalPreview.value = !showLocalPreview.value
 }
 
 // 处理拒绝通话
@@ -369,6 +396,57 @@ const handleClose = () => {
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
+}
+
+.local-video-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.local-video-close-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
+}
+
+.local-video-toggle-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+}
+
+.local-video-toggle-btn button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 2px solid var(--primary-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  transition: all 0.2s ease;
+}
+
+.local-video-toggle-btn button:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
 }
 
 .video-placeholder {

@@ -123,7 +123,7 @@
       :show-call-modal="showCallModal || videoCallStatus !== 'idle'"
       :call-type="videoCallType"
       :call-status="(videoCallStatus === 'idle' || videoCallStatus === 'calling') ? '' : videoCallStatus"
-      :call-avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'"
+      :call-avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || generateAvatar('user')"
       :call-name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
       :show-image-preview="showImagePreview"
       :preview-image-url="previewImageUrl"
@@ -241,6 +241,7 @@ import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
+import { generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
@@ -448,6 +449,17 @@ const {
 } = videoCall
 
 // 向后兼容：保留原来的 ref 声明（逐步迁移后可删除）
+
+// 同步 OverlayManager 中的 ScreenShare 组件引用到 screenShareComponent
+watch(
+  () => overlayRef.value,
+  (overlay) => {
+    if (overlay) {
+      screenShareComponent.value = overlay.screenShareRef
+    }
+  },
+  { immediate: true }
+)
 
 // 监听远程屏幕共享
 watch(() => props.remoteScreenSharing, (newVal) => {
@@ -953,6 +965,8 @@ const handleMarkRead = () => {
 const isMounted = ref(true)
 // 跟踪 WebSocket 消息处理器的清理函数
 let wsHandlersCleanup: (() => void) | null = null
+// 跟踪 Electron WebSocket 消息监听器的引用
+let electronWsHandler: ((message: any) => void) | null = null
 // 跟踪 context menu 的 setTimeout ID 以便清理
 let memberContextMenuTimeoutId: number | null = null
 let messageContextMenuTimeoutId: number | null = null
@@ -1069,6 +1083,12 @@ const initWebSocketMessageHandler = () => {
     wsHandlersCleanup()
     wsHandlersCleanup = null
   }
+  
+  // 清理旧的 Electron WebSocket 监听器
+  if (electronWsHandler && window.electron?.websocket?.removeOnMessage) {
+    window.electron.websocket.removeOnMessage(electronWsHandler)
+    electronWsHandler = null
+  }
 
   const screenShareMessageTypes = [
     'webrtc_offer',
@@ -1109,7 +1129,7 @@ const initWebSocketMessageHandler = () => {
   wsHandlersCleanup = addWsHandlers(handlerMap);
   
   if (window.electron && window.electron.websocket) {
-    window.electron.websocket.onMessage((message) => {
+    electronWsHandler = (message) => {
       if (screenShareMessageTypes.includes(message.type)) {
         handleScreenShareMessage(message.type, message.data);
       }
@@ -1119,7 +1139,8 @@ const initWebSocketMessageHandler = () => {
           showCallModal.value = true
         }
       }
-    });
+    };
+    window.electron.websocket.onMessage(electronWsHandler);
   }
 };
 
@@ -1151,6 +1172,12 @@ onUnmounted(() => {
     wsHandlersCleanup = null
   }
   
+  // 清理 Electron WebSocket 监听器
+  if (electronWsHandler && window.electron?.websocket?.removeOnMessage) {
+    window.electron.websocket.removeOnMessage(electronWsHandler)
+    electronWsHandler = null
+  }
+  
   // 清理截图 IPC 监听器
   if (screenshotCleanup) {
     screenshotCleanup()
@@ -1176,28 +1203,28 @@ const loadMiniApps = () => {
     {
       id: 'calculator',
       name: '计算器',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=calculator',
+      icon: generateAvatar('计算器'),
       description: '基本的加减乘除运算',
       path: '/calculator'
     },
     {
       id: 'notepad',
       name: '记事本',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=notepad',
+      icon: generateAvatar('记事本'),
       description: '文本编辑和保存',
       path: '/notepad'
     },
     {
       id: 'todo',
       name: '待办事项',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=todo',
+      icon: generateAvatar('待办'),
       description: '任务管理',
       path: '/todo'
     },
     {
       id: 'password-generator',
       name: '密码生成器',
-      icon: 'https://api.dicebear.com/7.x/avataaars/svg?seed=password',
+      icon: generateAvatar('密码'),
       description: '生成强密码',
       path: '/password-generator'
     }
@@ -1614,7 +1641,10 @@ const handleTransferOwnerFromOverlay = (memberId: string) => {
 // 撤回消息包装函数（适配 OverlayManager 无参数事件）
 const handleRecallMessage = async () => {
   if (!selectedMessage.value || !props.conversation) return
-  await recallMessage(String(props.conversation.id), String(selectedMessage.value.id))
+  const result = await recallMessage(String(props.conversation.id), String(selectedMessage.value.id))
+  if (!result.success) {
+    $message.error(result.message || '撤回失败')
+  }
 }
 
 const closeMessageContextMenu = () => {

@@ -109,10 +109,12 @@
       />
       <div v-else-if="activeOption === 'recent'" class="right-content">
         <div class="right-content-header">
-          <h2>{{ getPageTitle() }}</h2>
-          <button class="toggle-sidebar-btn" @click="toggleSidebar">
-            <i class="fas fa-compress"></i>
-          </button>
+          <div class="header-left-group">
+            <button class="toggle-sidebar-btn" @click="toggleSidebar">
+              <i class="fas fa-compress"></i>
+            </button>
+            <h2>{{ getPageTitle() }}</h2>
+          </div>
         </div>
         <div class="empty-state">
           <div class="empty-content">
@@ -136,10 +138,12 @@
       />
       <div v-else-if="activeOption === 'channels' && !selectedChannel" class="right-content">
         <div class="right-content-header">
-            <h2>频道</h2>
-            <button class="toggle-sidebar-btn" @click="toggleSidebar">
-              <i class="fas fa-compress"></i>
-            </button>
+            <div class="header-left-group">
+              <button class="toggle-sidebar-btn" @click="toggleSidebar">
+                <i class="fas fa-compress"></i>
+              </button>
+              <h2>频道</h2>
+            </div>
         </div>
         <div class="right-content-body">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
@@ -170,46 +174,41 @@
       
       <!-- 文件管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '3'" class="right-content">
-        <FileManagementApp @back="backToAppList" />
+        <FileManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
       <!-- 笔记应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '7'" class="right-content">
-        <NotesApp @back="backToAppList" />
+        <NotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
       <!-- 任务管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '5'" class="right-content">
         <TaskManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
-      <!-- 统计报表应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '1'" class="right-content">
-        <StatisticsApp @back="backToAppList" />
-      </div>
-      
       <!-- 日历应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '2'" class="right-content">
-        <CalendarApp @back="backToAppList" />
+        <CalendarApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
 
       <!-- 便签应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === '6'" class="right-content">
-        <StickyNotesApp @back="backToAppList" />
+        <StickyNotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
       <!-- 用户创建的应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'user-app' && currentUserApp" class="right-content">
         <div class="right-content-header">
-          <div class="header-left">
+          <div class="header-left-group">
+            <button class="toggle-sidebar-btn" @click="toggleSidebar">
+              <i class="fas fa-compress"></i>
+            </button>
             <button class="back-button" @click="backToAppList">
               <i class="fas fa-arrow-left"></i>
             </button>
             <h2>{{ currentUserApp.name }}</h2>
           </div>
-          <button class="toggle-sidebar-btn" @click="toggleSidebar">
-            <i class="fas fa-compress"></i>
-          </button>
         </div>
         <div class="user-app-content">
           <div v-if="currentUserApp.url" class="user-app-iframe-container">
@@ -230,31 +229,28 @@
       
       <!-- 应用管理 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'app-management'" class="right-content">
-        <AppManagementApp @back="backToAppList" />
+        <AppManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
       <!-- AI 助手 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-assistant'" class="right-content">
-        <AIAssistantApp @back="backToAppList" />
+        <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
 
-      <!-- AI 大模型配置 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-config'" class="right-content">
-        <AIConfigApp @back="backToAppList" />
-      </div>
-      
       <!-- 短链接管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'short-link'" class="right-content">
-        <ShortLinkManager @back="backToAppList" />
+        <ShortLinkManager @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
       
       <!-- 群聊详情 -->
       <div v-else-if="activeOption === 'groups' && selectedGroup" class="right-content">
         <div class="right-content-header">
-          <h2>{{ selectedGroup.name }}</h2>
-          <button class="toggle-sidebar-btn" @click="toggleSidebar">
-            <i class="fas fa-compress"></i>
-          </button>
+          <div class="header-left-group">
+            <button class="toggle-sidebar-btn" @click="toggleSidebar">
+              <i class="fas fa-compress"></i>
+            </button>
+            <h2>{{ selectedGroup.name }}</h2>
+          </div>
         </div>
         <GroupDetail
           :group="selectedGroup"
@@ -453,7 +449,6 @@ import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import axios from 'axios'
 import CalendarApp from '../components/apps/CalendarApp.vue'
-import StatisticsApp from '../components/apps/StatisticsApp.vue'
 import StickyNotesApp from '../components/apps/StickyNotesApp.vue'
 import NotesApp from '../components/apps/NotesApp.vue'
 import TaskManagementApp from '../components/apps/TaskManagementApp.vue'
@@ -461,7 +456,6 @@ import FileManagementApp from '../components/apps/FileManagementApp.vue'
 import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
-import AIConfigApp from '../components/apps/AIConfigApp.vue'
 import * as storage from '../utils/storage'
 
 // 声明 window.electron 变量
@@ -482,6 +476,7 @@ import GroupDetail from '../components/shared/GroupDetail.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 import UserProfile from '../components/modals/UserProfile.vue'
 import NotificationCenter from '../components/notification/NotificationCenter.vue'
+import { mapNotification } from '../utils/notificationMapper'
 import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
 import ChannelDetail from '../components/channel/ChannelDetail.vue'
 import UserDetailPanel from '../components/user/UserDetailPanel.vue'
@@ -492,10 +487,10 @@ import MainContextMenus from '../components/menus/MainContextMenus.vue'
 import MainDialogs from '../components/modals/MainDialogs.vue'
 import SettingsPanel from '../components/settings/SettingsPanel.vue'
 import { API_BASE_URL } from '../config'
-import { generateAvatar, getAvatarUrl } from '../utils/avatar'
+import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
-import { request } from '../composables/useRequest'
+import { request, getToken } from '../composables/useRequest'
 import { useChannel } from '../composables/useChannel'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
@@ -536,7 +531,6 @@ const { processConversation } = useProcessConversation(serverUrl, currentUser)
 
 // 使用 composable
 const {
-  notifications,
   unreadNotificationCount,
   showNotificationCenter,
   notificationCenterPosition,
@@ -544,7 +538,6 @@ const {
   closeNotificationCenter,
   handleNotificationClick: _handleNotificationClick,
   handleNewNotification: _handleNewNotification,
-  markAllNotificationsAsRead
 } = useNotifications()
 
 const {
@@ -663,6 +656,7 @@ const {
   // 分享模态框
   showShareModal,
   shareType,
+  shareData,
   shareUsers,
   shareGroups,
   openShareModal,
@@ -793,11 +787,12 @@ const handleConversationSelect = (conversation: Conversation) => {
 // 重写通知点击处理，包含 Main.vue 的特定逻辑
 const handleNotificationClick = (notification: any) => {
   _handleNotificationClick(notification)
-  if (notification.type === 'message' && notification.data?.conversationId) {
+  if (notification.category === 'message' && notification.data?.conversationId) {
     activeOption.value = 'recent'
-    setCurrentConversationId(notification.data.conversationId)
-    loadMessages(notification.data.conversationId)
-  } else if (notification.type === 'group' && notification.data?.groupId) {
+    const conversationId = String(notification.data.conversationId)
+    setCurrentConversationId(conversationId)
+    loadMessages(conversationId)
+  } else if (notification.category === 'group' && notification.data?.groupId) {
     activeOption.value = 'groups'
   }
 }
@@ -807,31 +802,16 @@ const handleNewNotification = (notification: any) => {
   _handleNewNotification(notification)
   console.log('收到新通知:', notification)
 
-  // 显示通知提示
   showMessage({
     message: notification.content || notification.title || '您有一条新通知',
     type: 'info',
     duration: 5000
   })
 
-  // 将通知添加到通知中心
   if (notificationCenterRef.value) {
-    const newNotification = {
-      id: notification.id || Date.now().toString(),
-      title: notification.title || '新通知',
-      content: notification.content || '',
-      timestamp: notification.timestamp || Date.now(),
-      read: false,
-      type: notification.type || 'system',
-      data: notification.data || {}
-    }
-
-    // 获取当前通知列表
+    const mapped = mapNotification(notification)
     const currentNotifications = notificationCenterRef.value.notifications || []
-    // 添加新通知到列表开头
-    notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
-    // 重新过滤通知
-    notificationCenterRef.value.filterNotifications()
+    notificationCenterRef.value.notifications = [mapped, ...currentNotifications]
   }
 }
 
@@ -890,7 +870,7 @@ const loadOrganizationTree = async () => {
             id: emp.id ? emp.id.toString() : '',
             name: emp.nickname || emp.username || '',
             username: emp.username || '',
-            avatar: (emp.avatar && emp.avatar.startsWith('http')) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=emp'),
+            avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
             position: '', // 后端没有提供职位信息
             department: dept.name, // 添加部门信息
             status: emp.status || 'offline' // 在线状态，默认为 offline
@@ -939,6 +919,50 @@ let messagePollingInterval: number | null = null
 
 // 开始轮询
 
+// 自定义事件处理器（提升到组件作用域以便清理）
+const handleShareStickyNote = async (event: Event) => {
+  const customEvent = event as CustomEvent
+  const note = customEvent.detail
+  await loadShareUsersAndGroups()
+  openShareModal('sticky', note)
+}
+
+const handleForwardMessage = async (event: Event) => {
+  const customEvent = event as CustomEvent
+  const message = customEvent.detail.message
+  if (message) {
+    await loadShareUsersAndGroups()
+    openShareModal('message', message)
+  }
+}
+
+const handleOpenShareModal = async (event: Event) => {
+  const customEvent = event as CustomEvent
+  const { type, data } = customEvent.detail
+  await loadShareUsersAndGroups()
+  openShareModal(type, data)
+}
+
+const handleRefreshUserApps = async () => {
+  await loadUserApps()
+}
+
+// 注册自定义事件监听器
+const registerCustomEventListeners = () => {
+  window.addEventListener('shareStickyNote', handleShareStickyNote)
+  window.addEventListener('forwardMessage', handleForwardMessage)
+  window.addEventListener('openShareModal', handleOpenShareModal)
+  window.addEventListener('refresh-user-apps', handleRefreshUserApps)
+}
+
+// 移除自定义事件监听器
+const unregisterCustomEventListeners = () => {
+  window.removeEventListener('shareStickyNote', handleShareStickyNote)
+  window.removeEventListener('forwardMessage', handleForwardMessage)
+  window.removeEventListener('openShareModal', handleOpenShareModal)
+  window.removeEventListener('refresh-user-apps', handleRefreshUserApps)
+}
+
 
 // 初始化数据
 onMounted(async () => {
@@ -960,33 +984,11 @@ onMounted(async () => {
   // 连接WebSocket（不再使用轮询，完全依赖WebSocket）
   connectWebSocket()
   
-  // 监听分享便签事件
-  window.addEventListener('shareStickyNote', (event: CustomEvent) => {
-    const note = event.detail
-    openShareModal('sticky', note)
-  })
+  // 注册更新事件监听器
+  registerUpdateEventListeners()
   
-  // 监听消息转发事件
-  window.addEventListener('forwardMessage', (event: CustomEvent) => {
-    const message = event.detail.message
-    if (message) {
-      openShareModal('message', message)
-    }
-  })
-  
-  // 监听文件分享事件
-  window.addEventListener('openShareModal', async (event: CustomEvent) => {
-    const { type, data } = event.detail
-    window.shareData = data
-    shareType.value = type
-    showShareModal.value = true
-    await loadShareUsersAndGroups()
-  })
-  
-  // 监听刷新用户应用事件
-  window.addEventListener('refresh-user-apps', async () => {
-    await loadUserApps()
-  })
+  // 注册自定义事件监听器
+  registerCustomEventListeners()
 })
 
 // 导入 composables
@@ -1061,7 +1063,7 @@ const handleAddedToGroup = (data: any) => {
   const groupConversation = {
     id: data.conversation_id.toString(),
     name: data.group_name,
-    avatar: data.group_avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group',
+    avatar: data.group_avatar || generateAvatar('group'),
     lastMessage: null,
     unreadCount: 0,
     timestamp: Date.now(),
@@ -1187,7 +1189,8 @@ const handleGroupMemberJoined = (data: any) => {
             avatar: ''
           },
           isSelf: false,
-          isRead: true
+          isRead: true,
+          conversationId: String(conversationId)
         }
         messages.value.push(systemMessage)
       }
@@ -1219,12 +1222,8 @@ const handleSystemMessage = (data: any) => {
     
     // 获取当前通知列表
     const currentNotifications = notificationCenterRef.value.notifications || []
-    // 添加新通知到列表开头
     notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
-    // 重新过滤通知
-    notificationCenterRef.value.filterNotifications()
     
-    // 更新未读通知计数
     unreadNotificationCount.value++
   }
   
@@ -1366,32 +1365,17 @@ const handleMessageDeleted = (data: any) => {
 // 处理通知
 const handleNotification = (data: any) => {
   console.log('收到通知:', data)
-  // 显示通知
   showMessage({
     message: data.content,
     type: 'info',
     duration: 5000
   })
   
-  // 将通知添加到通知中心
   if (notificationCenterRef.value) {
-    const newNotification = {
-      id: Date.now().toString(),
-      title: data.title,
-      content: data.content,
-      timestamp: Date.now(),
-      read: false,
-      type: data.type as 'group_invitation' | 'group_member_added' | 'other'
-    }
-    
-    // 获取当前通知列表
+    const mapped = mapNotification(data)
     const currentNotifications = notificationCenterRef.value.notifications || []
-    // 添加新通知到列表开头
-    notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
-    // 重新过滤通知
+    notificationCenterRef.value.notifications = [mapped, ...currentNotifications]
     notificationCenterRef.value.filterNotifications()
-    
-    // 更新未读通知计数
     unreadNotificationCount.value++
   }
 }
@@ -1442,7 +1426,8 @@ const handleGroupAnnouncementUpdated = (data: any) => {
           avatar: ''
         },
         isSelf: false,
-        isRead: true
+        isRead: true,
+        conversationId: String(conversationId)
       }
       messages.value.push(systemMessage)
     }
@@ -1640,14 +1625,14 @@ const handleNewMessage = (data: any) => {
           if (Notification.permission === 'granted') {
             new Notification('新消息', {
               body: newMessage.content,
-              icon: newMessage.sender.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+              icon: newMessage.sender.avatar || generateAvatar(newMessage.sender.name || 'user')
             })
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(permission => {
               if (permission === 'granted') {
                 new Notification('新消息', {
                   body: newMessage.content,
-                  icon: newMessage.sender.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+                  icon: newMessage.sender.avatar || generateAvatar(newMessage.sender.name || 'user')
                 })
               }
             })
@@ -1762,6 +1747,10 @@ onUnmounted(() => {
   disconnectWebSocket()
   // 清除重连定时器
   cleanupNetwork()
+  // 清理更新事件监听器
+  unregisterUpdateEventListeners()
+  // 清理自定义事件监听器
+  unregisterCustomEventListeners()
 })
 
 // 过滤后的会话列表
@@ -2198,6 +2187,7 @@ const handleSendMessage = async (messageData: any) => {
           type: response.data.type || messageType,
           isSelf: true,
           isRead: false,
+          conversationId: conversationId,
           quotedMessage: messageData.quotedMessage,
           miniAppData: miniAppData,
           newsData: newsData
@@ -2206,6 +2196,10 @@ const handleSendMessage = async (messageData: any) => {
         console.log('添加到消息列表的新消息:', newMessage)
         
         messages.value.push(newMessage)
+        
+        nextTick(() => {
+          chatWindowRef.value?.scrollToBottom()
+        })
         
         // 更新会话列表中的最后消息
         const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
@@ -2617,6 +2611,9 @@ const startPrivateChat = async (user: any) => {
   searchQuery.value = ''
   searchResults.value = []
   
+  // 关闭成员右键菜单
+  hideMemberContextMenu()
+  
   try {
     // 检查用户ID格式
     let userId = user.id
@@ -2661,7 +2658,7 @@ const startPrivateChat = async (user: any) => {
       timestamp: Date.now(),
       type: 'single',
       members: [
-        { id: currentUser.value?.id || 'me', name: currentUser.value?.nickname || currentUser.value?.username || '我', avatar: currentUser.value?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=me' },
+        { id: currentUser.value?.id || 'me', name: currentUser.value?.nickname || currentUser.value?.username || '我', avatar: currentUser.value?.avatar || generateAvatar('我') },
         { id: user.id, name: user.name, avatar: user.avatar }
       ]
     }
@@ -2881,7 +2878,7 @@ const loadRecentApps = () => {
 
 const recentApps = ref(loadRecentApps())
 
-// 所有应用列表（包括内置应用、外链应用和自定义应用）
+// 所有应用列表（包括内置应用和自定义应用）
 const allApps = computed(() => {
   const apps: any[] = []
   
@@ -2906,9 +2903,9 @@ const loadUserApps = async () => {
       }
     })
     if (response.data.code === 0) {
-      const userApps = response.data.data
+      const userApps = response.data.data.list || response.data.data
       // 找到自定义应用分类
-      const customCategory = appCategories.value.find(cat => cat.id === '3')
+      const customCategory = appCategories.value.find(cat => cat.id === '2')
       if (customCategory) {
         // 清空现有的自定义应用
         customCategory.apps = []
@@ -2935,7 +2932,6 @@ const appCategories = ref([
     name: '内置应用',
     expanded: true,
     apps: [
-      { id: '1', name: '统计报表', icon: 'fas fa-chart-bar' },
       { id: '2', name: '日历', icon: 'fas fa-calendar' },
       { id: '3', name: '文件管理', icon: 'fas fa-folder' },
       { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
@@ -2948,14 +2944,6 @@ const appCategories = ref([
   },
   {
     id: '2',
-    name: '外链应用',
-    expanded: false,
-    apps: [
-      // 外链应用列表
-    ]
-  },
-  {
-    id: '3',
     name: '自定义应用',
     expanded: false,
     apps: [
@@ -2963,7 +2951,7 @@ const appCategories = ref([
     ]
   },
   {
-    id: '4',
+    id: '3',
     name: '应用管理',
     expanded: false,
     apps: [
@@ -3208,12 +3196,39 @@ const openApp = async (appId: string) => {
 // 打开用户创建的应用
 const openUserApp = (app: any) => {
   console.log('打开用户创建的应用:', app)
-  selectedAppId.value = 'user-app'
-  currentUserApp.value = app
   
   // 记录最近使用的应用
   if (app.name && app.icon) {
     addToRecentApps(app.id, app.name, app.icon)
+  }
+  
+  // 根据 openType 决定如何打开应用
+  const openType = app.openType || app.open_type || 'in-app'
+  
+  if (openType === 'external') {
+    // 外链应用：使用默认浏览器打开
+    console.log('使用默认浏览器打开外链应用:', app.url)
+    if (app.url) {
+      try {
+        // 检查是否在Electron环境中
+        if (window.electron && window.electron.shell && typeof window.electron.shell.openExternal === 'function') {
+          console.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
+          window.electron.shell.openExternal(app.url)
+        } else {
+          // 在普通浏览器环境中，使用window.open
+          console.log('使用window.open打开链接')
+          window.open(app.url, '_blank', 'noopener,noreferrer')
+        }
+      } catch (error) {
+        console.error('打开外部应用失败:', error)
+        window.open(app.url, '_blank', 'noopener,noreferrer')
+      }
+    }
+  } else {
+    // 内嵌应用：在软件内部打开
+    console.log('在应用内打开内嵌应用:', app.name, app.url)
+    selectedAppId.value = 'user-app'
+    currentUserApp.value = app
   }
 }
 
@@ -3325,25 +3340,43 @@ const handleConversationCreated = (newConversation: any) => {
   
   // 如果传递了新创建的会话对象，直接切换到新会话
   if (newConversation && newConversation.id) {
-    setCurrentConversationId(newConversation.id)
+    const conversationId = String(newConversation.id)
+    setCurrentConversationId(conversationId)
     messages.value = []
     messagePage.value = 1
     hasMoreMessages.value = true
     
     // 加载新会话的消息
-    loadMessages(newConversation.id)
+    loadMessages(conversationId)
   }
 }
 
 // 打开系统消息发布模态框
 // 关闭系统消息发布模态框
 // 发送系统消息
-const sendSystemMessage = async () => {
-  if (!systemMessage.value.title || !systemMessage.value.content) return
+const sendSystemMessage = async (msg: { title: string; content: string; target: string; groupId: string; userId: string }) => {
+  if (!msg.title || !msg.content) {
+    showMessage({ message: '请填写标题和内容', type: 'warning' })
+    return
+  }
+  
+  const payload: any = {
+    title: msg.title,
+    content: msg.content,
+    target_type: msg.target || 'all',
+  }
+  
+  if (msg.target === 'group' && msg.groupId) {
+    payload.target_type = 'department'
+    payload.target_id = parseInt(String(msg.groupId))
+  } else if (msg.target === 'user' && msg.userId) {
+    payload.target_type = 'user'
+    payload.target_id = parseInt(String(msg.userId))
+  }
   
   try {
     const token = getToken()
-    const response = await axios.post(`${serverUrl.value}/api/v1/system-messages`, systemMessage.value, {
+    const response = await axios.post(`${serverUrl.value}/api/v1/system-messages`, payload, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -3352,13 +3385,15 @@ const sendSystemMessage = async () => {
     
     if (response.data.code === 0) {
       showMessage({ message: '系统消息发布成功', type: 'success' })
+      systemMessage.value = { title: '', content: '', target: 'all', groupId: '', userId: '' }
       closeSystemMessageModal()
     } else {
       showMessage({ message: '系统消息发布失败: ' + response.data.message, type: 'error' })
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('发布系统消息失败:', error)
-    showMessage({ message: '系统消息发布失败', type: 'error' })
+    const errMsg = error.response?.data?.message || '网络异常'
+    showMessage({ message: '系统消息发布失败: ' + errMsg, type: 'error' })
   }
 }
 
@@ -3542,15 +3577,17 @@ const handleSwitchApp = (app) => {
 }
 
 // 处理切换会话
-const handleSwitchConversation = async (conversationId) => {
+const handleSwitchConversation = async (conversationId: string) => {
+  // 确保 conversationId 是字符串类型
+  const id = String(conversationId)
   // 切换到最近联系人选项卡
   activeOption.value = 'recent'
   // 重新加载会话列表
   await loadConversations()
   // 选择新会话
-  setCurrentConversationId(conversationId)
+  setCurrentConversationId(id)
   // 加载新会话的消息
-  await loadMessages(conversationId)
+  await loadMessages(id)
 }
 
 // 打开分享弹窗
@@ -3571,7 +3608,7 @@ const loadShareUsersAndGroups = async () => {
               users.push({
                 id: emp.id.toString(),
                 name: emp.nickname || emp.username,
-                avatar: (emp.avatar && emp.avatar.startsWith('http')) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=emp'),
+                avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
                 department: dept.name
               })
             })
@@ -3593,7 +3630,7 @@ const loadShareUsersAndGroups = async () => {
       shareGroups.value = groups.map(group => ({
         id: group.id.toString(),
         name: group.name,
-        avatar: group.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=group',
+        avatar: group.avatar || generateAvatar(group.name || 'group'),
         members: group.members || []
       }))
     }
@@ -3602,33 +3639,41 @@ const loadShareUsersAndGroups = async () => {
   }
 }
 
+// 构建文件消息内容
+const buildFileContent = (file: any): string => {
+  return JSON.stringify({
+    url: file.url ?? file.storage_path ?? file.content,
+    name: file.name ?? file.original_name,
+    size: file.size,
+  })
+}
+
 // 处理分享确认
 const handleShareConfirm = async (selection) => {
   try {
     const { users, groups } = selection
-    const shareData = window.shareData
-    console.log('分享数据:', shareData)
+    console.log('分享数据:', shareData.value)
     // 构建分享消息内容
     let shareContent = ''
     let shareName = ''
     switch (shareType.value) {
       case 'file':
-        shareContent = `分享了文件: ${shareData.name}`
-        shareName = shareData.name
+        shareContent = `分享了文件: ${shareData.value.name}`
+        shareName = shareData.value.name
         break
       case 'note':
-        shareContent = `分享了笔记: ${shareData.title}`
-        shareName = shareData.title
+        shareContent = `分享了笔记: ${shareData.value.title}`
+        shareName = shareData.value.title
         break
       case 'sticky':
-        shareContent = `分享了便签: ${shareData.title}`
-        shareName = shareData.title
+        shareContent = `分享了便签: ${shareData.value.title}`
+        shareName = shareData.value.title
         break
       case 'message':
-        if (shareData.type === 'text') {
-          shareContent = `转发了消息: ${shareData.content.substring(0, 20)}${shareData.content.length > 20 ? '...' : ''}`
+        if (shareData.value.type === 'text') {
+          shareContent = `转发了消息: ${shareData.value.content.substring(0, 20)}${shareData.value.content.length > 20 ? '...' : ''}`
           shareName = '文本消息'
-        } else if (shareData.type === 'image') {
+        } else if (shareData.value.type === 'image') {
           shareContent = '转发了图片'
           shareName = '图片消息'
         } else {
@@ -3644,11 +3689,11 @@ const handleShareConfirm = async (selection) => {
     // 准备分享数据
     const shareDataObj = {
       type: shareType.value,
-      id: shareData.id || shareData.messageId,
+      id: shareData.value.id || shareData.value.messageId,
       name: shareName,
       content: shareContent,
-      originalContent: shareData.content, // 存储原始内容
-      originalMessage: shareType.value === 'message' ? shareData : undefined // 存储原始消息数据
+      originalContent: shareData.value.content,
+      originalMessage: shareType.value === 'message' ? shareData.value : undefined
     }
     
     // 发送分享消息给选择的用户
@@ -3666,16 +3711,9 @@ const handleShareConfirm = async (selection) => {
           content: JSON.stringify(shareDataObj)
         }
 
-        // 如果是文件分享，直接生成文件消息（将文件信息存储在content中）
-        if (shareType.value === 'file' && shareData) {
-          messageData = {
-            type: 'file',
-            content: JSON.stringify({
-              url: shareData.url || shareData.content,
-              name: shareData.name,
-              size: shareData.size
-            })
-          }
+        // 如果是文件分享，直接生成文件消息
+        if (shareType.value === 'file' && shareData.value) {
+          messageData = { type: 'file', content: buildFileContent(shareData.value) }
         } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
           // 如果是转发消息，根据原始消息类型发送相应的消息
           const originalMessage = shareDataObj.originalMessage
@@ -3726,16 +3764,9 @@ const handleShareConfirm = async (selection) => {
         content: JSON.stringify(shareDataObj)
       }
 
-      // 如果是文件分享，直接生成文件消息（将文件信息存储在content中）
-      if (shareType.value === 'file' && shareData) {
-        messageData = {
-          type: 'file',
-          content: JSON.stringify({
-            url: shareData.url || shareData.content,
-            name: shareData.name,
-            size: shareData.size
-          })
-        }
+      // 如果是文件分享，直接生成文件消息
+      if (shareType.value === 'file' && shareData.value) {
+        messageData = { type: 'file', content: buildFileContent(shareData.value) }
       } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
         // 如果是转发消息，根据原始消息类型发送相应的消息
         const originalMessage = shareDataObj.originalMessage
@@ -3944,49 +3975,79 @@ const closeSettingsMenu = () => {
   document.removeEventListener('click', closeSettingsMenu)
 }
 
-// 监听自动更新事件
-if (window.electron) {
-  // 检查更新中
-  window.electron.ipcRenderer.on('update-checking', () => {
-    isCheckingUpdate.value = true
-    updateResult.value = '正在检查更新...'
-  })
+// 更新事件监听器注册和清理
+const updateEventListeners: Array<{ channel: string; handler: (...args: any[]) => void }> = []
+
+const registerUpdateEventListeners = () => {
+  if (!window.electron) return
   
-  // 发现新版本
-  window.electron.ipcRenderer.on('update-available', (_event, info: any) => {
-    isCheckingUpdate.value = false
-    hasNewVersion.value = true
-    updateResult.value = `发现新版本 v${info.version}`
-  })
+  // 先清理已存在的监听器，防止重复注册
+  unregisterUpdateEventListeners()
   
-  // 当前已是最新版本
-  window.electron.ipcRenderer.on('update-not-available', () => {
-    isCheckingUpdate.value = false
-    hasNewVersion.value = false
-    updateResult.value = '当前已是最新版本'
-  })
+  const handlers = [
+    {
+      channel: 'update-checking',
+      handler: () => {
+        isCheckingUpdate.value = true
+        updateResult.value = '正在检查更新...'
+      }
+    },
+    {
+      channel: 'update-available',
+      handler: (_event: any, info: any) => {
+        isCheckingUpdate.value = false
+        hasNewVersion.value = true
+        updateResult.value = `发现新版本 v${info.version}`
+      }
+    },
+    {
+      channel: 'update-not-available',
+      handler: () => {
+        isCheckingUpdate.value = false
+        hasNewVersion.value = false
+        updateResult.value = '当前已是最新版本'
+      }
+    },
+    {
+      channel: 'update-error',
+      handler: (_event: any, error: any) => {
+        isCheckingUpdate.value = false
+        updateResult.value = `更新错误: ${error}`
+      }
+    },
+    {
+      channel: 'update-progress',
+      handler: (_event: any, progressObj: any) => {
+        isDownloading.value = true
+        downloadProgress.value = progressObj.percent
+      }
+    },
+    {
+      channel: 'update-downloaded',
+      handler: (_event: any, _info: any) => {
+        isDownloading.value = false
+        updateResult.value = '下载完成，正在安装...'
+        setTimeout(() => {
+          updateResult.value = '升级成功，需要重启应用'
+          hasNewVersion.value = false
+        }, 1500)
+      }
+    }
+  ]
   
-  // 更新错误
-  window.electron.ipcRenderer.on('update-error', (_event, error: any) => {
-    isCheckingUpdate.value = false
-    updateResult.value = `更新错误: ${error}`
+  handlers.forEach(({ channel, handler }) => {
+    window.electron.ipcRenderer.on(channel, handler)
+    updateEventListeners.push({ channel, handler })
   })
+}
+
+const unregisterUpdateEventListeners = () => {
+  if (!window.electron) return
   
-  // 下载进度
-  window.electron.ipcRenderer.on('update-progress', (_event, progressObj: any) => {
-    isDownloading.value = true
-    downloadProgress.value = progressObj.percent
+  updateEventListeners.forEach(({ channel, handler }) => {
+    window.electron.ipcRenderer.removeListener(channel, handler)
   })
-  
-  // 更新下载完成
-  window.electron.ipcRenderer.on('update-downloaded', (_event, _info: any) => {
-    isDownloading.value = false
-    updateResult.value = '下载完成，正在安装...'
-    setTimeout(() => {
-      updateResult.value = '升级成功，需要重启应用'
-      hasNewVersion.value = false
-    }, 1500)
-  })
+  updateEventListeners.length = 0
 }
 
 const checkForUpdates = () => {
@@ -4417,6 +4478,18 @@ button:active {
   height: 72px;
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.header-left-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.right-content-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .toggle-sidebar-btn {

@@ -1,19 +1,17 @@
 <template>
   <div class="file-management-app">
     <!-- 顶部导航栏 -->
-    <div class="app-nav">
-      <button class="nav-back" @click="$emit('back')">
-        <i class="fas fa-chevron-left"></i>
-      </button>
-      <div class="nav-title">
-        <i class="fas fa-folder-open"></i>
-        <span>文件箱</span>
-      </div>
-      <div class="nav-actions">
-        <button class="nav-btn" @click="showCreateFolderModal = true" title="新建文件夹">
+    <AppHeader title="文件箱" icon="fas fa-folder-open" @back="$emit('back')">
+      <template #extra-buttons>
+        <button class="icon-btn" @click="$emit('toggleSidebar')" title="切换侧边栏">
+          <i class="fas fa-compress"></i>
+        </button>
+      </template>
+      <template #actions>
+        <button class="action-btn" @click="showCreateFolderModal = true" title="新建文件夹">
           <i class="fas fa-folder-plus"></i>
         </button>
-        <button class="nav-btn primary" @click="triggerFileUpload" title="上传文件">
+        <button class="action-btn primary" @click="triggerFileUpload" title="上传文件">
           <i class="fas fa-cloud-upload-alt"></i>
           <span>上传</span>
         </button>
@@ -24,8 +22,8 @@
           style="display: none"
           @change="handleFileUpload"
         />
-      </div>
-    </div>
+      </template>
+    </AppHeader>
 
     <!-- 筛选工具栏 -->
     <div class="filter-bar">
@@ -183,12 +181,13 @@ import FileList from './file/FileList.vue'
 import CreateFolderModal from './file/CreateFolderModal.vue'
 import FilePreviewModal from './file/FilePreviewModal.vue'
 import FileActionsModal from './file/FileActionsModal.vue'
+import AppHeader from './AppHeader.vue'
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
 import { fileApi, type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
 
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 const {
   files,
@@ -431,96 +430,6 @@ onBeforeUnmount(() => {
   background: var(--content-bg, #f5f7fa);
   border-radius: 12px;
   overflow: hidden;
-}
-
-/* ===== 顶部导航栏 ===== */
-.app-nav {
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  height: 56px;
-  background: var(--card-bg, #fff);
-  border-bottom: 1px solid var(--border-color, #e8ecf0);
-  gap: 16px;
-  flex-shrink: 0;
-}
-
-.nav-back {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary, #8c95a6);
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.nav-back:hover {
-  background: var(--hover-color, #f0f2f5);
-  color: var(--primary-color, #4f6ef7);
-}
-
-.nav-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-primary, #1a2233);
-}
-
-.nav-title i {
-  color: var(--primary-color, #4f6ef7);
-  font-size: 18px;
-}
-
-.nav-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--border-color, #e8ecf0);
-  background: var(--card-bg, #fff);
-  border-radius: 10px;
-  cursor: pointer;
-  color: var(--text-color, #4a5568);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.nav-btn:hover {
-  background: var(--hover-color, #f0f2f5);
-  border-color: var(--primary-color, #4f6ef7);
-  color: var(--primary-color, #4f6ef7);
-}
-
-.nav-btn.primary {
-  background: var(--primary-color, #4f6ef7);
-  border-color: var(--primary-color, #4f6ef7);
-  color: #fff;
-}
-
-.nav-btn.primary:hover {
-  background: var(--primary-hover, #3b5de7);
-  border-color: var(--primary-hover, #3b5de7);
-  box-shadow: 0 2px 8px rgba(79, 110, 247, 0.35);
-}
-
-.nav-btn.primary span {
-  display: inline;
 }
 
 /* ===== 筛选工具栏 ===== */

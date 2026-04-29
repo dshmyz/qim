@@ -52,6 +52,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Props {
   visible: boolean
@@ -77,8 +78,8 @@ watch(() => props.visible, (val) => {
 })
 
 const avatarUrl = computed(() => {
-  if (!props.currentUser?.avatar) return 'https://api.dicebear.com/7.x/avataaars/svg?seed=me'
-  if (props.currentUser.avatar.startsWith('http')) return props.currentUser.avatar
+  if (!props.currentUser?.avatar) return generateAvatar(props.currentUser?.username || 'me')
+  if (isAbsoluteUrl(props.currentUser.avatar)) return props.currentUser.avatar
   return props.serverUrl + props.currentUser.avatar
 })
 </script>

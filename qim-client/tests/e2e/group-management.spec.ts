@@ -55,7 +55,7 @@ async function login(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ code: 0, data: [{ id: '1', name: '统计报表', icon: 'chart', description: '数据统计' }] })
+      body: JSON.stringify({ code: 0, data: [{ id: '2', name: '日历', icon: 'chart', description: '数据统计' }] })
     })
   })
 

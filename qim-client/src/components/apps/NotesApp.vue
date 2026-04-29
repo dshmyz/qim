@@ -3,7 +3,10 @@
     <div class="notes-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
         </button>
         <div class="notes-header-info">
           <h2>笔记</h2>
@@ -33,7 +36,7 @@
           >
             <div class="note-title">{{ note.title }}</div>
             <div class="note-preview">{{ note.content.substring(0, 50) }}...</div>
-            <div class="note-date">{{ formatNoteDate(note.timestamp) }}</div>
+            <div class="note-date">{{ formatNoteDate(note.updated_at) }}</div>
           </div>
           <div v-if="filteredNotes.length === 0" class="empty-notes">
             <p>没有找到匹配的笔记</p>
@@ -96,7 +99,7 @@ import { sanitizeMarkdown } from '../../utils/sanitize';
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 // 定义事件
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 // 笔记相关状态
 const notes = ref<any[]>([])
@@ -334,6 +337,25 @@ onMounted(async () => {
 }
 
 .back-btn:hover {
+  background: var(--primary-light);
+}
+
+.toggle-sidebar-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--hover-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--primary-color);
+}
+
+.toggle-sidebar-btn:hover {
   background: var(--primary-light);
 }
 

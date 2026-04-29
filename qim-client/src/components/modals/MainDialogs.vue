@@ -132,7 +132,7 @@
       </div>
       <div class="user-profile-footer">
         <button class="cancel-btn" @click="$emit('closeSystemMessage')">取消</button>
-        <button class="save-btn" @click="$emit('sendSystemMessage', { ...localMessage })" :disabled="!localMessage.title || !localMessage.content">发布</button>
+        <button class="save-btn" @click="$emit('sendSystemMessage', localMessage)" :disabled="!localMessage.title || !localMessage.content">发布</button>
       </div>
     </div>
   </div>

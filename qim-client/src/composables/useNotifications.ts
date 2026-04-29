@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { type Notification, mapNotification } from '../utils/notificationMapper'
 
 /**
  * 通知管理 composable
@@ -6,7 +7,7 @@ import { ref, computed } from 'vue'
  */
 export function useNotifications() {
   // 通知列表
-  const notifications = ref<any[]>([])
+  const notifications = ref<Notification[]>([])
   
   // 通知中心显示状态
   const showNotificationCenter = ref(false)
@@ -72,27 +73,17 @@ export function useNotifications() {
 
   // 处理通知点击 - 根据类型路由到不同页面
   const handleNotificationClick = (notification: any) => {
-    if (notification.type === 'message' && notification.data?.conversationId) {
-      // 切换到消息会话
+    if (notification.category === 'message' && notification.data?.conversationId) {
       console.log('Navigate to conversation:', notification.data.conversationId)
-    } else if (notification.type === 'group' && notification.data?.groupId) {
-      // 切换到群组
+    } else if (notification.category === 'group' && notification.data?.groupId) {
       console.log('Navigate to group:', notification.data.groupId)
     }
   }
 
   // 处理新通知 - 创建完整通知对象并添加到列表
   const handleNewNotification = (notification: any) => {
-    const newNotification = {
-      id: notification.id || Date.now().toString(),
-      title: notification.title || '新通知',
-      content: notification.content || '',
-      timestamp: notification.timestamp || Date.now(),
-      read: false,
-      type: notification.type || 'system',
-      data: notification.data || {}
-    }
-    notifications.value = [newNotification, ...notifications.value]
+    const mapped = mapNotification(notification)
+    notifications.value = [mapped, ...notifications.value]
     unreadNotificationCount.value++
   }
 

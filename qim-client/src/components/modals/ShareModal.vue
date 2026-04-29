@@ -94,24 +94,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 
-const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false
-  },
-  shareType: {
-    type: String,
-    required: true
-  },
-  users: {
-    type: Array,
-    default: () => []
-  },
-  groups: {
-    type: Array,
-    default: () => []
-  }
-})
+const props = defineProps<{
+  visible: boolean
+  shareType: string
+  users: { id: string; name: string; avatar: string; department?: string }[]
+  groups: { id: string; name: string; avatar: string; members: any[] }[]
+}>()
 
 const emit = defineEmits(['close', 'confirm'])
 
@@ -121,6 +109,7 @@ const selectedUsers = ref<string[]>([])
 const selectedGroups = ref<string[]>([])
 
 const filteredUsers = computed(() => {
+  if (!props.users || !Array.isArray(props.users)) return []
   if (!searchQuery.value) return props.users
   const query = searchQuery.value.toLowerCase()
   return props.users.filter(user => 
@@ -130,6 +119,7 @@ const filteredUsers = computed(() => {
 })
 
 const filteredGroups = computed(() => {
+  if (!props.groups || !Array.isArray(props.groups)) return []
   if (!searchQuery.value) return props.groups
   const query = searchQuery.value.toLowerCase()
   return props.groups.filter(group => 

@@ -73,7 +73,9 @@ const toggleCategory = (id: string) => {
 }
 
 const handleAppClick = (app: any) => {
-  if (app.url) {
+  const openType = app.openType || app.open_type || 'in-app'
+  
+  if (openType === 'external' && app.url) {
     emit('openExternalApp', app.url)
   } else {
     emit('openApp', app.id)

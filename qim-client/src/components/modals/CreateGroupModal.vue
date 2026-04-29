@@ -72,7 +72,7 @@
                   />
                   <div class="member-info">
                     <div class="member-avatar">
-                    <img :src="(employee.avatar && employee.avatar.startsWith('http')) ? employee.avatar : (employee.avatar ? serverUrl + employee.avatar : generateAvatar(employee.name))" :alt="employee.name" />
+                    <img :src="(employee.avatar && isAbsoluteUrl(employee.avatar)) ? employee.avatar : (employee.avatar ? serverUrl + employee.avatar : generateAvatar(employee.name))" :alt="employee.name" />
                   </div>
                     <div class="member-details">
                       <span class="member-name">{{ employee.name }}</span>
@@ -105,7 +105,7 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
-import { generateAvatar } from '../../utils/avatar'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 // Props
 const props = defineProps({

@@ -11,7 +11,7 @@ const defaultUser: User = {
   id: '1',
   username: 'admin',
   nickname: '管理员',
-  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+  avatar: '',
   isAdmin: true
 }
 

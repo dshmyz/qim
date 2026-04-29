@@ -95,10 +95,13 @@ func AddMemberToGroup(c *gin.Context) {
 		db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
 
 		notification := model.Notification{
-			UserID:  memberID,
-			Type:    "group_invitation",
-			Title:   "群聊邀请",
-			Content: fmt.Sprintf("您被邀请加入群聊 %s", group.Name),
+			UserID:        memberID,
+			Type:          "group_invitation",
+			Title:         "群聊邀请",
+			Content:       fmt.Sprintf("您被邀请加入群聊 %s", group.Name),
+			Priority:      "important",
+			ActionType:    "accept_ignore",
+			ActionPayload: fmt.Sprintf(`{"conversation_id":%d}`, uint(convIDUint)),
 		}
 		db.Create(&notification)
 

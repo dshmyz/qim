@@ -37,7 +37,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
+import { generateAvatar } from '../../utils/avatar'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { API_BASE_URL } from '../../config'
@@ -58,7 +59,7 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const miniApps = ref<MiniAppData[]>([])
 const loading = ref(false)
 const activeMiniApp = ref<MiniAppData | null>(null)
-const defaultIcon = 'https://api.dicebear.com/7.x/avataaars/svg?seed=default'
+const defaultIcon = generateAvatar('default')
 
 const closeMiniAppList = () => {
   emit('update:showMiniAppList', false)
@@ -78,7 +79,6 @@ const handleMiniAppToast = (message: string) => {
 }
 
 const loadMiniApps = async () => {
-  // 如果已有数据，静默后台刷新，不显示 loading
   const hasData = miniApps.value.length > 0
   if (!hasData) {
     loading.value = true
@@ -93,7 +93,7 @@ const loadMiniApps = async () => {
       headers['Authorization'] = `Bearer ${token}`
     }
 
-    const response = await fetch(`${serverUrl.value}/api/v1/mini-apps`, {
+    const response = await fetch(`${serverUrl.value}/api/v1/mini-apps?status=active`, {
       method: 'GET',
       headers
     })
@@ -131,7 +131,11 @@ const getToken = () => {
   return localStorage.getItem('token')
 }
 
-onMounted(loadMiniApps)
+watch(() => props.showMiniAppList, (visible) => {
+  if (visible) {
+    loadMiniApps()
+  }
+})
 </script>
 
 <style scoped>

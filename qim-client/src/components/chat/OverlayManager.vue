@@ -249,6 +249,7 @@ const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => 
 }
 
 defineExpose({
+  screenShareRef,
   stopReceiving: () => screenShareRef.value?.stopReceiving()
 })
 </script>

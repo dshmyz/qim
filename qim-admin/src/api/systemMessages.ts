@@ -5,8 +5,8 @@ import type { AxiosResponse } from 'axios'
 export interface CreateSystemMessageParams {
   title: string
   content: string
-  type: 'notification' | 'warning' | 'info'
-  priority?: 'low' | 'medium' | 'high'
+  target_type?: string
+  target_id?: number
 }
 
 export interface UpdateSystemMessageParams {

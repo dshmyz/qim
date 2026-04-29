@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -132,6 +133,7 @@ func UpdateApp(c *gin.Context) {
 		Category string `json:"category"`
 		URL      string `json:"url"`
 		Status   string `json:"status"`
+		OpenType string `json:"open_type"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -151,6 +153,9 @@ func UpdateApp(c *gin.Context) {
 	app.Category = req.Category
 	app.URL = req.URL
 	app.Status = req.Status
+	if req.OpenType != "" {
+		app.OpenType = req.OpenType
+	}
 	db.Save(&app)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -202,7 +207,7 @@ func GetMiniApps(c *gin.Context) {
 		query = query.Where("name LIKE ?", "%"+name+"%")
 	}
 
-	if status != "" {
+	if status != "" && status != "all" {
 		query = query.Where("status = ?", status)
 	}
 
@@ -401,6 +406,7 @@ func CreateNote(c *gin.Context) {
 		Content string `json:"content" binding:"omitempty"`
 		Color   string `json:"color"`
 		Type    string `json:"type"`
+		Style   string `json:"style"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -409,13 +415,28 @@ func CreateNote(c *gin.Context) {
 		return
 	}
 
+	style := req.Style
+	if style == "" {
+		style = "{}"
+	}
+	// If color is provided, merge it into style JSON
+	if req.Color != "" {
+		var styleMap map[string]interface{}
+		if err := json.Unmarshal([]byte(style), &styleMap); err == nil {
+			styleMap["color"] = req.Color
+			if styleBytes, err := json.Marshal(styleMap); err == nil {
+				style = string(styleBytes)
+			}
+		}
+	}
+
 	db := database.GetDB()
 	note := model.Note{
 		UserID:  userID.(uint),
 		Title:   req.Title,
 		Content: req.Content,
-		Color:   req.Color,
 		Type:    req.Type,
+		Style:   style,
 	}
 	db.Create(&note)
 
@@ -440,6 +461,7 @@ func UpdateNote(c *gin.Context) {
 		Content string `json:"content" binding:"omitempty"`
 		Color   string `json:"color"`
 		Type    string `json:"type"`
+		Style   string `json:"style"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -456,8 +478,30 @@ func UpdateNote(c *gin.Context) {
 
 	note.Title = req.Title
 	note.Content = req.Content
-	note.Color = req.Color
 	note.Type = req.Type
+
+	// Merge color and style into style JSON
+	style := note.Style
+	if style == "" {
+		style = "{}"
+	}
+	var styleMap map[string]interface{}
+	if err := json.Unmarshal([]byte(style), &styleMap); err == nil {
+		if req.Color != "" {
+			styleMap["color"] = req.Color
+		}
+		if req.Style != "" {
+			var newStyleMap map[string]interface{}
+			if err := json.Unmarshal([]byte(req.Style), &newStyleMap); err == nil {
+				for k, v := range newStyleMap {
+					styleMap[k] = v
+				}
+			}
+		}
+		if styleBytes, err := json.Marshal(styleMap); err == nil {
+			note.Style = string(styleBytes)
+		}
+	}
 	db.Save(&note)
 
 	c.JSON(http.StatusOK, gin.H{

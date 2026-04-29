@@ -81,6 +81,7 @@
             :is-self="isSelf"
             :server-url="serverUrl"
             @preview="$emit('previewImage', message.content)"
+            @image-loaded="$emit('imageLoaded')"
           />
 
           <!-- 文件消息 -->
@@ -209,6 +210,7 @@ const emit = defineEmits<{
   openNewsLink: [url: string]
   retrySendMessage: [message: any]
   showReadUsers: [message: any]
+  imageLoaded: []
 }>()
 
 // AI 右键菜单相关状态

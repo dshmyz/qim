@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import QMessage from '../utils/qmessage'
+import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
 
 interface Employee {
   id: string
@@ -35,7 +36,7 @@ export function useOrganization(serverUrl: any, request: any) {
               id: emp.id ? emp.id.toString() : '',
               name: emp.nickname || emp.username || '',
               username: emp.username || '',
-              avatar: (emp.avatar && emp.avatar.startsWith('http')) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=emp'),
+              avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
               position: '',
               department: dept.name,
               status: emp.status || 'offline'

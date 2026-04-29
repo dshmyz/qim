@@ -109,7 +109,6 @@ async function login(page: Page) {
       body: JSON.stringify({
         code: 0,
         data: [
-          { id: '1', name: '统计报表', icon: 'chart', description: '数据统计' },
           { id: '2', name: '日历', icon: 'calendar', description: '日程管理' }
         ]
       })

@@ -262,30 +262,14 @@ const flattenDepartments = (depts: Organization[]): Organization[] => {
   return result
 }
 
-const buildTree = (items: Organization[]): Organization[] => {
-  const map = new Map<number, Organization>()
-  const roots: Organization[] = []
-
-  items.forEach((item) => {
-    map.set(item.id, { ...item, children: [] })
-  })
-
-  items.forEach((item) => {
-    const node = map.get(item.id)!
-    if (item.parentId === null || item.parentId === undefined) {
-      roots.push(node)
-    } else {
-      const parent = map.get(item.parentId)
-      if (parent) {
-        if (!parent.children) {
-          parent.children = []
-        }
-        parent.children.push(node)
-      }
+const transformTree = (items: any[]): Organization[] => {
+  return items.map((item) => {
+    const children = item.subDepartments || item.children || []
+    return {
+      ...item,
+      children: children.length > 0 ? transformTree(children) : [],
     }
   })
-
-  return roots
 }
 
 const fetchTree = async () => {
@@ -294,11 +278,7 @@ const fetchTree = async () => {
     const { data } = await getOrganizationTree()
     const treeData = data.data
     if (treeData && treeData.length > 0) {
-      if (treeData[0].children !== undefined) {
-        departmentTree.value = treeData
-      } else {
-        departmentTree.value = buildTree(treeData)
-      }
+      departmentTree.value = transformTree(treeData)
     } else {
       departmentTree.value = []
     }

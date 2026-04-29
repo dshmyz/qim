@@ -1,5 +1,5 @@
 <template>
-  <div class="message-bubble text-message" :class="{ self: isSelf }" v-html="convertedContent"></div>
+  <div class="message-bubble text-message" :class="{ self: isSelf }" v-html="convertedContent" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -10,6 +10,19 @@ const props = defineProps<{
   content: string
   isSelf?: boolean
 }>()
+
+const handleLinkClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  const link = target.closest('a')
+  
+  if (link && window.electron?.shell?.openExternal) {
+    event.preventDefault()
+    const href = link.getAttribute('href')
+    if (href) {
+      window.electron.shell.openExternal(href)
+    }
+  }
+}
 
 // 转换URL为链接的函数
 // 注意：必须先对内容进行 HTML 转义，然后再插入链接，防止 XSS 攻击

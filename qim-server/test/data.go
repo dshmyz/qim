@@ -27,7 +27,7 @@ func AddTestData() {
 		{
 			Name:        "公司公告",
 			Description: "公司内部公告和通知",
-			Avatar:      "https://api.dicebear.com/7.x/avataaars/svg?seed=company",
+			Avatar:      "",
 			CreatorID:   1, // 假设用户ID为1的是系统管理员
 			Status:      "active",
 			CreatedAt:   time.Now(),
@@ -36,7 +36,7 @@ func AddTestData() {
 		{
 			Name:        "技术分享",
 			Description: "技术相关的分享和讨论",
-			Avatar:      "https://api.dicebear.com/7.x/avataaars/svg?seed=tech",
+			Avatar:      "",
 			CreatorID:   1,
 			Status:      "active",
 			CreatedAt:   time.Now(),
@@ -45,7 +45,7 @@ func AddTestData() {
 		{
 			Name:        "产品动态",
 			Description: "产品相关的动态和更新",
-			Avatar:      "https://api.dicebear.com/7.x/avataaars/svg?seed=product",
+			Avatar:      "",
 			CreatorID:   1,
 			Status:      "active",
 			CreatedAt:   time.Now(),
@@ -141,7 +141,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "test",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "测试用户",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=test",
+				Avatar:       "",
 				Signature:    "这是一个测试用户",
 				Phone:        "13800000000",
 				Email:        "test@example.com",
@@ -151,7 +151,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user1",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户一",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user1",
+				Avatar:       "",
 				Signature:    "专注技术，热爱开源",
 				Phone:        "13800000001",
 				Email:        "user1@example.com",
@@ -161,7 +161,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user2",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户二",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user2",
+				Avatar:       "",
 				Signature:    "产品经理一枚",
 				Phone:        "13800000002",
 				Email:        "user2@example.com",
@@ -171,7 +171,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user3",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户三",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user3",
+				Avatar:       "",
 				Signature:    "前端开发工程师",
 				Phone:        "13800000003",
 				Email:        "user3@example.com",
@@ -181,7 +181,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user4",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户四",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user4",
+				Avatar:       "",
 				Signature:    "后端开发工程师",
 				Phone:        "13800000004",
 				Email:        "user4@example.com",
@@ -191,7 +191,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user5",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户五",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user5",
+				Avatar:       "",
 				Signature:    "UI设计师",
 				Phone:        "13800000005",
 				Email:        "user5@example.com",
@@ -201,7 +201,7 @@ func InitTestData(db *gorm.DB) {
 				Username:     "user6",
 				PasswordHash: "$2a$10$O980uwFOXxpxARnI8OodLud34Y76gK1uNZzJ0J09OTKhGRNGA7tVO", // 123456
 				Nickname:     "用户六",
-				Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=user6",
+				Avatar:       "",
 				Signature:    "测试工程师",
 				Phone:        "13800000006",
 				Email:        "user6@example.com",
@@ -308,7 +308,7 @@ func InitTestData(db *gorm.DB) {
 			ConversationID:   conversation3.ID,
 			GroupType:        "group",
 			Name:             "技术交流群",
-			Avatar:           "https://api.dicebear.com/7.x/identicon/svg?seed=group",
+			Avatar:           "",
 			CreatorID:        users[0].ID,
 			InvitePermission: "owner_admin",
 			AIEnabled:        false,
@@ -409,7 +409,7 @@ func InitTestData(db *gorm.DB) {
 		// 创建系统机器人
 		systemBot := model.Bot{
 			Name:        "系统助手",
-			Avatar:      "https://api.dicebear.com/7.x/avataaars/svg?seed=system",
+			Avatar:      "",
 			Description: "提供系统相关的帮助和信息",
 			Type:        "system",
 			Config:      `{"responses":{"greeting":"你好！我是系统助手，有什么可以帮你的吗？","help":"我可以帮助你了解系统功能，解答常见问题。"}}`,
@@ -420,7 +420,7 @@ func InitTestData(db *gorm.DB) {
 		// 创建AI机器人
 		aiBot := model.Bot{
 			Name:        "AI助手",
-			Avatar:      "https://api.dicebear.com/7.x/avataaars/svg?seed=ai",
+			Avatar:      "",
 			Description: "基于大模型的智能助手，能回答各种问题",
 			Type:        "ai",
 			Config:      `{"api_key":"your-api-key", "model":"gpt-3.5-turbo", "temperature":0.7}`,
@@ -527,7 +527,7 @@ func InitTestData(db *gorm.DB) {
 			AppID:       "calculator",
 			Name:        "计算器",
 			Description: "简单易用的计算器",
-			Icon:        "https://api.dicebear.com/7.x/avataaars/svg?seed=calculator",
+			Icon:        "",
 			Path:        "/calculator",
 			Status:      "active",
 		}
@@ -538,7 +538,7 @@ func InitTestData(db *gorm.DB) {
 			AppID:       "notepad",
 			Name:        "记事本",
 			Description: "简单的文本编辑器",
-			Icon:        "https://api.dicebear.com/7.x/avataaars/svg?seed=notepad",
+			Icon:        "",
 			Path:        "/notepad",
 			Status:      "active",
 		}
@@ -549,7 +549,7 @@ func InitTestData(db *gorm.DB) {
 			AppID:       "todo",
 			Name:        "待办事项",
 			Description: "任务管理工具",
-			Icon:        "https://api.dicebear.com/7.x/avataaars/svg?seed=todo",
+			Icon:        "",
 			Path:        "/todo",
 			Status:      "active",
 		}
@@ -560,7 +560,7 @@ func InitTestData(db *gorm.DB) {
 			AppID:       "unit-converter",
 			Name:        "单位转换",
 			Description: "多种单位之间的转换",
-			Icon:        "https://api.dicebear.com/7.x/avataaars/svg?seed=unit",
+			Icon:        "",
 			Path:        "/unit-converter",
 			Status:      "active",
 		}
@@ -571,7 +571,7 @@ func InitTestData(db *gorm.DB) {
 			AppID:       "password-generator",
 			Name:        "密码生成器",
 			Description: "生成强密码",
-			Icon:        "https://api.dicebear.com/7.x/avataaars/svg?seed=password",
+			Icon:        "",
 			Path:        "/password-generator",
 			Status:      "active",
 		}

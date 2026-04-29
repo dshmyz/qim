@@ -3,7 +3,9 @@
     <el-card shadow="never">
       <div class="page-header">
         <h3>系统消息管理</h3>
-        <el-button type="primary" @click="handleCreate">创建消息</el-button>
+        <div class="page-actions">
+          <el-button type="primary" @click="handleCreate">创建消息</el-button>
+        </div>
       </div>
 
       <!-- 消息列表 -->
@@ -11,21 +13,18 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="标题" min-width="200" />
         <el-table-column prop="content" label="内容" min-width="250" show-overflow-tooltip />
-        <el-table-column label="类型" width="100">
+        <el-table-column label="目标类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="typeLabel(row.type).type">
-              {{ typeLabel(row.type).label }}
-            </el-tag>
+            <el-tag>{{ targetTypeLabel(row.target_type) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'published' ? 'success' : 'info'">
-              {{ row.status === 'published' ? '已发布' : '草稿' }}
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'">
+              {{ row.status === 'active' ? '已发布' : '草稿' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="readCount" label="已读数" width="100" />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
@@ -69,33 +68,30 @@
         label-width="80px"
       >
         <el-form-item label="标题" prop="title">
-          <el-input v-model="messageForm.title" />
+          <el-input v-model="messageForm.title" placeholder="请输入消息标题" />
         </el-form-item>
         <el-form-item label="内容" prop="content">
           <el-input
             v-model="messageForm.content"
             type="textarea"
             :rows="5"
+            placeholder="请输入消息内容"
           />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="messageForm.type" placeholder="请选择消息类型">
-            <el-option label="通知" value="notification" />
-            <el-option label="警告" value="warning" />
-            <el-option label="信息" value="info" />
+        <el-form-item label="发送范围" prop="target_type">
+          <el-select v-model="messageForm.target_type" placeholder="请选择发送范围" @change="handleTargetTypeChange">
+            <el-option label="全员" value="all" />
+            <el-option label="指定部门" value="department" />
+            <el-option label="指定用户" value="user" />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级">
-          <el-select v-model="messageForm.priority" placeholder="请选择优先级">
-            <el-option label="低" value="low" />
-            <el-option label="中" value="medium" />
-            <el-option label="高" value="high" />
-          </el-select>
+        <el-form-item v-if="messageForm.target_type !== 'all'" label="目标ID" prop="target_id">
+          <el-input-number v-model="messageForm.target_id" :min="1" placeholder="请输入目标ID" />
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
           <el-select v-model="messageForm.status" placeholder="请选择状态">
             <el-option label="草稿" value="draft" />
-            <el-option label="已发布" value="published" />
+            <el-option label="已发布" value="active" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -128,25 +124,29 @@ const messageForm = reactive({
   id: 0,
   title: '',
   content: '',
-  type: 'notification' as 'notification' | 'warning' | 'info',
-  priority: 'medium' as 'low' | 'medium' | 'high',
+  target_type: 'all' as string,
+  target_id: undefined as number | undefined,
   status: 'draft' as 'published' | 'draft',
 })
 
 const messageRules: FormRules = {
   title: [{ required: true, message: '请输入消息标题', trigger: 'blur' }],
   content: [{ required: true, message: '请输入消息内容', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择消息类型', trigger: 'change' }],
+  target_type: [{ required: true, message: '请选择发送范围', trigger: 'change' }],
 }
 
 // 工具函数
-const typeLabel = (type: string): { label: string; type: 'success' | 'warning' | 'info' } => {
-  const map: Record<string, { label: string; type: 'success' | 'warning' | 'info' }> = {
-    notification: { label: '通知', type: 'success' },
-    warning: { label: '警告', type: 'warning' },
-    info: { label: '信息', type: 'info' },
+const targetTypeLabel = (type: string): string => {
+  const map: Record<string, string> = {
+    all: '全员',
+    department: '指定部门',
+    user: '指定用户',
   }
-  return map[type] || { label: type, type: 'info' }
+  return map[type] || type
+}
+
+const handleTargetTypeChange = () => {
+  messageForm.target_id = undefined
 }
 
 // 获取消息列表
@@ -168,9 +168,11 @@ const fetchMessages = async () => {
 
 // 创建消息
 const handleCreate = () => {
+  console.log('handleCreate 被调用')
   isEdit.value = false
   resetMessageForm()
   messageDialogVisible.value = true
+  console.log('messageDialogVisible:', messageDialogVisible.value)
 }
 
 // 编辑消息
@@ -179,8 +181,9 @@ const handleEdit = (row: SystemMessage) => {
   messageForm.id = row.id
   messageForm.title = row.title
   messageForm.content = row.content
-  messageForm.type = row.type
-  messageForm.status = row.status
+  messageForm.target_type = row.target_type || 'all'
+  messageForm.target_id = row.target_id
+  messageForm.status = row.status === 'active' ? 'published' : 'draft'
   messageDialogVisible.value = true
 }
 
@@ -188,39 +191,42 @@ const resetMessageForm = () => {
   messageForm.id = 0
   messageForm.title = ''
   messageForm.content = ''
-  messageForm.type = 'notification'
-  messageForm.priority = 'medium'
+  messageForm.target_type = 'all'
+  messageForm.target_id = undefined
   messageForm.status = 'draft'
 }
 
 const handleSubmit = async () => {
   if (!messageFormRef.value) return
   await messageFormRef.value.validate(async (valid) => {
-    if (!valid) return
+    if (!valid) {
+      ElMessage.warning('请检查表单填写是否完整')
+      return
+    }
+    console.log('提交系统消息:', JSON.parse(JSON.stringify(messageForm)))
     submitting.value = true
     try {
       if (isEdit.value) {
         await updateSystemMessage(messageForm.id, {
           title: messageForm.title,
           content: messageForm.content,
-          type: messageForm.type,
-          priority: messageForm.priority,
-          status: messageForm.status,
+          status: messageForm.status === 'published' ? 'active' : 'draft',
         })
         ElMessage.success('更新成功')
       } else {
         await createSystemMessage({
           title: messageForm.title,
           content: messageForm.content,
-          type: messageForm.type,
-          priority: messageForm.priority,
+          target_type: messageForm.target_type,
+          target_id: messageForm.target_id,
         })
         ElMessage.success('创建成功')
       }
       messageDialogVisible.value = false
       fetchMessages()
-    } catch (error) {
-      // 错误已在请求拦截器中处理
+    } catch (error: any) {
+      console.error('提交系统消息失败:', error)
+      ElMessage.error(error.response?.data?.message || '创建失败')
     } finally {
       submitting.value = false
     }
@@ -263,6 +269,11 @@ onMounted(fetchMessages)
   font-weight: 800;
   color: var(--color-text-primary);
   letter-spacing: -0.02em;
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .pagination-container {

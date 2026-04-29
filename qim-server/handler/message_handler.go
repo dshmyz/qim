@@ -185,7 +185,7 @@ func GetMessagesByFilter(c *gin.Context) {
 	}
 	offset := (page - 1) * pageSize
 
-	query := db.Where("conversation_id = ?", convID)
+	query := db.Where("conversation_id = ? AND type != ?", convID, "system")
 
 	if messageType != "" {
 		query = query.Where("type = ?", messageType)

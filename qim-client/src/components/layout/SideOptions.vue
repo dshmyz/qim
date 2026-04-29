@@ -35,10 +35,11 @@
     </div>
     <div
       class="option-item"
-      @click="$emit('showMoreMenu', $event)"
-      title="更多"
+      :class="{ active: activeOption === 'channels' }"
+      @click="$emit('update:activeOption', 'channels')"
+      title="频道"
     >
-      <span class="option-icon"><i class="fas fa-ellipsis-v"></i></span>
+      <span class="option-icon"><i class="fas fa-bullhorn"></i></span>
     </div>
     <div class="option-spacer"></div>
     <div class="option-item" @click="$emit('showThemeMenu', $event)" title="皮肤">

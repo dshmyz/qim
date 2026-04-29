@@ -6,15 +6,20 @@
       
       <!-- 群聊信息卡片 -->
       <div class="group-profile-card">
-        <!-- 头像和基本信息 -->
+        <!-- 群头像和基本信息 -->
         <div class="group-profile-avatar-section">
-          <div class="group-avatar-container">
+          <div class="group-avatar-container" :class="{ 'is-owner': isGroupOwner(group) }" @click="isGroupOwner(group) && triggerAvatarUpload()">
             <img
               :src="getGroupAvatar(group)"
               :alt="group.name"
               class="group-avatar"
             />
+            <div v-if="isGroupOwner(group)" class="avatar-overlay">
+              <i class="fas fa-camera"></i>
+              <span>更换头像</span>
+            </div>
           </div>
+          <input ref="avatarInput" type="file" accept="image/*" style="display: none" @change="handleAvatarChange" />
           <div class="group-basic-info">
             <h2 class="group-full-name">{{ group.name }}</h2>
             <p class="group-member-count">{{ group.members ? group.members.length + '人' : '0人' }}</p>
@@ -111,13 +116,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { generateAvatar, getAvatarUrl } from '../../utils/avatar'
+import { computed, ref, watch, nextTick } from 'vue'
+import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';
+import QMessage from '../../utils/qmessage'
 
 const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+const avatarInput = ref<HTMLInputElement | null>(null)
 
 interface Props {
   group: Conversation | null
@@ -141,7 +148,7 @@ const getGroupAvatar = (group: Conversation) => {
 // 获取成员头像
 const getMemberAvatar = (member: User) => {
   if (!member) return generateAvatar('成员')
-  if (member.avatar && member.avatar.startsWith('http')) {
+  if (member.avatar && isAbsoluteUrl(member.avatar)) {
     return member.avatar
   }
   if (member.avatar) {
@@ -222,6 +229,59 @@ const updateInvitePermission = async () => {
     if (props.group) {
       invitePermission.value = props.group.invite_permission || 'owner_admin'
     }
+  }
+}
+
+// 触发头像上传
+const triggerAvatarUpload = async () => {
+  if (avatarInput.value) {
+    await nextTick()
+    avatarInput.value.click()
+  }
+}
+
+// 处理头像上传
+const handleAvatarChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file || !props.group) return
+
+  // 检查文件大小（最大 2MB）
+  if (file.size > 2 * 1024 * 1024) {
+    QMessage.error('头像文件大小不能超过 2MB')
+    return
+  }
+
+  try {
+    // 将图片转为 base64
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string
+      
+      // 调用后端 API 更新群头像
+      const response = await fetch(`${serverUrl}/api/v1/conversations/${props.group!.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          avatar: base64
+        })
+      })
+
+      if (response.ok) {
+        QMessage.success('群头像更新成功')
+        // 清空 file input
+        target.value = ''
+      } else {
+        QMessage.error('群头像更新失败')
+      }
+    }
+    reader.readAsDataURL(file)
+  } catch (error) {
+    console.error('更新群头像时出错:', error)
+    QMessage.error('群头像更新失败')
   }
 }
 </script>
@@ -317,6 +377,14 @@ const updateInvitePermission = async () => {
   margin-right: 16px;
 }
 
+.group-avatar-container.is-owner {
+  cursor: pointer;
+}
+
+.group-avatar-container.is-owner:hover .avatar-overlay {
+  opacity: 1;
+}
+
 .group-avatar {
   width: 64px;
   height: 64px;
@@ -329,6 +397,29 @@ const updateInvitePermission = async () => {
 
 .group-avatar:hover {
   transform: scale(1.05);
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.avatar-overlay i {
+  font-size: 18px;
 }
 
 .group-basic-info {

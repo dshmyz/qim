@@ -1,9 +1,9 @@
 <template>
   <div class="ai-message-content">
-    <div v-if="!isExpanded && isLongContent" class="preview-content">
+    <div v-if="!isExpanded && isLongContent" class="preview-content" @click="handleLinkClick">
       <div v-html="renderMarkdown(previewText)" class="markdown-content"></div>
     </div>
-    <div v-else class="full-content">
+    <div v-else class="full-content" @click="handleLinkClick">
       <div v-html="renderMarkdown(content)" class="markdown-content"></div>
     </div>
 
@@ -55,6 +55,19 @@ const isLongContent = computed(() => {
 })
 
 const contentLength = computed(() => props.content.length)
+
+const handleLinkClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  const link = target.closest('a')
+  
+  if (link && window.electron?.shell?.openExternal) {
+    event.preventDefault()
+    const href = link.getAttribute('href')
+    if (href) {
+      window.electron.shell.openExternal(href)
+    }
+  }
+}
 
 const renderMarkdown = (text: string): string => {
   try {

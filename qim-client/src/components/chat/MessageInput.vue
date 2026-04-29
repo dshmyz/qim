@@ -10,7 +10,20 @@
       <button v-if="isElectron" class="toolbar-btn" @click="$emit('take-screenshot')"><i class="fas fa-scissors"></i></button>
       <button class="toolbar-btn" @click="$emit('open-message-manager')"><i class="fas fa-history"></i></button>
       <button class="toolbar-btn" @click="$emit('open-mini-app-list')"><i class="fas fa-th-large"></i></button>
+      <div class="toolbar-divider"></div>
+      <button class="toolbar-btn ai-toolbar-btn" @click="toggleAI" :class="{ 'ai-active': localShowAIActions }" :title="localShowAIActions ? '收起AI功能' : 'AI功能'">
+        <i class="fas fa-robot"></i>
+      </button>
     </div>
+
+    <transition name="ai-actions-slide">
+      <div v-if="localShowAIActions" class="ai-actions-bar">
+        <AIQuickActions
+          :is-processing="isProcessing"
+          @action="$emit('ai-action', $event)"
+        />
+      </div>
+    </transition>
     
     <div v-if="showEmojiPanel" class="emoji-panel-container">
       <div class="emoji-panel-backdrop" @click="$emit('close-emoji-panel')"></div>
@@ -26,7 +39,7 @@
         </div>
         <div class="at-members-list">
           <div class="at-member-item" @click="$emit('select-at-all')">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=all" alt="所有人" class="at-member-avatar" />
+            <img :src="generateAvatar('所有人')" alt="所有人" class="at-member-avatar" />
             <span class="at-member-name">所有人</span>
           </div>
           <div v-for="member in filteredAtMembers" :key="member.id" class="at-member-item" @click="$emit('select-at-member', member)">
@@ -66,6 +79,8 @@ import { ref, computed } from 'vue'
 import EmojiPanel from './EmojiPanel.vue'
 import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
+import AIQuickActions from '../ai/AIQuickActions.vue'
+import { generateAvatar } from '../../utils/avatar'
 
 interface PendingFile { file: File; name: string }
 interface Member { id: string; name: string; avatar: string }
@@ -78,12 +93,16 @@ interface Props {
   showEmojiPanel: boolean
   showAtMembersPanel: boolean
   showMiniAppList: boolean
+  isProcessing?: boolean
   quotedMessage: any
   isElectron: boolean
   getFileIcon: (fileUrl: string) => string
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  isProcessing: false
+})
+
 const emit = defineEmits<{
   (e: 'update:inputMessage', value: string): void
   (e: 'send'): void
@@ -94,6 +113,7 @@ const emit = defineEmits<{
   (e: 'take-screenshot'): void
   (e: 'open-message-manager'): void
   (e: 'open-mini-app-list'): void
+  (e: 'toggle-ai-actions'): void
   (e: 'start-voice-call'): void
   (e: 'start-video-call'): void
   (e: 'start-screen-share'): void
@@ -107,6 +127,7 @@ const emit = defineEmits<{
   (e: 'remove-pending-file', index: number): void
   (e: 'remove-quoted-message'): void
   (e: 'send-mini-app-message', miniApp: any): void
+  (e: 'ai-action', actionId: string): void
   (e: 'update:showMiniAppList', value: boolean): void
   (e: 'input', event: Event): void
 }>()
@@ -114,6 +135,7 @@ const emit = defineEmits<{
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const messageInputRef = ref<HTMLTextAreaElement | null>(null)
 const atMembersSearchQuery = ref('')
+const localShowAIActions = ref(false)
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
 
@@ -132,6 +154,10 @@ const handleSelectFile = () => {
   fileInputRef.value?.click()
 }
 
+const toggleAI = () => {
+  localShowAIActions.value = !localShowAIActions.value
+}
+
 const handleInputAndResize = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
   textarea.style.height = 'auto'
@@ -147,20 +173,17 @@ defineExpose({ messageInputRef })
 
 <style scoped>
 .chat-input-area {
-  padding: 12px 20px;
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 150px;
   position: relative;
-  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .input-toolbar {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
 }
 
 .toolbar-btn {
@@ -180,6 +203,53 @@ defineExpose({ messageInputRef })
 
 .toolbar-btn:hover {
   background: var(--hover-color);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 4px;
+  align-self: center;
+}
+
+.ai-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  transition: transform 0.3s ease;
+}
+
+.ai-toolbar-btn.ai-active svg {
+  transform: rotate(180deg);
+}
+
+.ai-toolbar-btn.ai-active {
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.ai-actions-bar {
+  padding: 8px 12px;
+  background: var(--card-bg);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.ai-actions-slide-enter-active,
+.ai-actions-slide-leave-active {
+  transition: all 0.3s ease;
+  max-height: 100px;
+  opacity: 1;
+}
+
+.ai-actions-slide-enter-from,
+.ai-actions-slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+  padding: 0 12px;
+  margin-bottom: 0;
 }
 
 /* 表情面板容器样式 */

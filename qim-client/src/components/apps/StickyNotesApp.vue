@@ -3,7 +3,10 @@
     <div class="sticky-notes-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
         </button>
         <h2>便签</h2>
       </div>
@@ -26,8 +29,7 @@
           v-for="(note, index) in filteredStickyNotes" 
           :key="note.id"
           class="sticky-note"
-          :class="[note.color, note.paperStyle]"
-          :style="{ fontFamily: note.fontFamily || 'Comic Sans MS, Marker Felt, cursive' }"
+          :class="[parseStyle(note.style).color, parseStyle(note.style).paperStyle]"
           :data-note-id="note.id"
           @click="showEditNoteModal(note)"
           draggable="true"
@@ -54,7 +56,7 @@
               </button>
             </div>
           </div>
-          <div class="sticky-note-content">{{ note.content }}</div>
+          <div class="sticky-note-content" :style="{ fontFamily: parseStyle(note.style).fontFamily }">{{ note.content }}</div>
           <div v-if="note.tags && note.tags.length > 0" class="sticky-note-tags">
             <span 
               v-for="(tag, index) in note.tags" 
@@ -65,7 +67,7 @@
             </span>
           </div>
           <div class="sticky-note-footer">
-            <span class="sticky-note-date">{{ formatDate(note.createdAt) }}</span>
+            <span class="sticky-note-date">{{ formatDate(note.created_at) }}</span>
           </div>
         </div>
         <div v-if="stickyNotes.length === 0" class="empty-notes">
@@ -108,7 +110,8 @@
         <input 
           type="datetime-local" 
           class="sticky-note-form-input"
-          v-model="formData.reminder"
+          :value="formatReminderForInput(formData.reminder)"
+          @input="formData.reminder = ($event.target as HTMLInputElement).value"
           placeholder="设置提醒时间"
         >
       </div>
@@ -134,9 +137,11 @@
       <div class="sticky-note-form-group">
         <label>字体</label>
         <select class="sticky-note-form-select" v-model="formData.fontFamily">
-          <option value="'Comic Sans MS', 'Marker Felt', cursive">手写体</option>
-          <option value="'Arial', 'Helvetica', sans-serif">Arial</option>
-          <option value="'Georgia', 'Times New Roman', serif">Georgia</option>
+          <option value="Arial, 'Microsoft YaHei', sans-serif">Arial</option>
+          <option value="'KaiTi', 'STKaiti', serif">楷体</option>
+          <option value="'SimSun', 'STSong', serif">宋体</option>
+          <option value="'SimHei', 'STHeiti', sans-serif">黑体</option>
+          <option value="'FangSong', 'STFangsong', serif">仿宋</option>
           <option value="'Courier New', monospace">Courier New</option>
         </select>
       </div>
@@ -175,7 +180,7 @@ const newNote = ref({
   reminder: '',
   tags: '',
   paperStyle: 'plain',
-  fontFamily: "'Comic Sans MS', 'Marker Felt', cursive"
+  fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
 })
 const selectedNote = ref<any>(null)
 const formData = ref({
@@ -185,11 +190,47 @@ const formData = ref({
   reminder: '',
   tags: '',
   paperStyle: 'plain',
-  fontFamily: "'Comic Sans MS', 'Marker Felt', cursive"
+  fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
 })
 const draggedNoteId = ref<string | null>(null)
 const searchQuery = ref('')
 const searchTimeout = ref<number | null>(null)
+
+// 解析样式 JSON
+const parseStyle = (styleStr: string | undefined) => {
+  if (!styleStr || styleStr === '{}') {
+    return { color: 'yellow', paperStyle: 'plain', fontFamily: "Arial, 'Microsoft YaHei', sans-serif" }
+  }
+  try {
+    const style = JSON.parse(styleStr)
+    return {
+      color: style.color || 'yellow',
+      paperStyle: style.paperStyle || 'plain',
+      fontFamily: style.fontFamily || "Arial, 'Microsoft YaHei', sans-serif"
+    }
+  } catch {
+    return { color: 'yellow', paperStyle: 'plain', fontFamily: "Arial, 'Microsoft YaHei', sans-serif" }
+  }
+}
+
+const formatReminderForInput = (reminder: string): string => {
+  if (!reminder) return ''
+  const d = new Date(reminder)
+  if (isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+const serializeStyle = () => {
+  return JSON.stringify({
+    color: formData.value.color,
+    paperStyle: formData.value.paperStyle,
+    fontFamily: formData.value.fontFamily
+  })
+}
 
 // 便签颜色选项
 const noteColors = [
@@ -223,15 +264,18 @@ const loadStickyNotes = async () => {
 const createStickyNote = async () => {
   try {
     const token = getToken()
-    // 处理标签，将逗号分隔的字符串转换为数组
     const tagsArray = formData.value.tags
       ? formData.value.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
       : []
     
     const response = await axios.post(`${serverUrl.value}/api/v1/notes`, {
-      ...formData.value,
+      title: formData.value.title,
+      content: formData.value.content,
+      color: formData.value.color,
+      reminder: formData.value.reminder,
       tags: tagsArray,
-      type: 'sticky'
+      type: 'sticky',
+      style: serializeStyle()
     }, {
       headers: {
         'Content-Type': 'application/json',
@@ -239,7 +283,6 @@ const createStickyNote = async () => {
       }
     })
     stickyNotes.value.push(response.data.data)
-    // 设置提醒
     if (formData.value.reminder) {
       setupReminder(response.data.data)
     }
@@ -254,23 +297,19 @@ const createStickyNote = async () => {
 const updateStickyNote = async () => {
   try {
     const token = getToken()
-    // 处理标签，将逗号分隔的字符串转换为数组
     const tagsArray = formData.value.tags
       ? formData.value.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
       : []
     
-    const updatedNote = {
-      ...selectedNote.value,
+    const response = await axios.put(`${serverUrl.value}/api/v1/notes/${selectedNote.value.id}`, {
       title: formData.value.title,
       content: formData.value.content,
       color: formData.value.color,
       reminder: formData.value.reminder,
       tags: tagsArray,
-      paperStyle: formData.value.paperStyle,
-      fontFamily: formData.value.fontFamily,
-      createdAt: selectedNote.value.createdAt || new Date().toISOString()
-    }
-    const response = await axios.put(`${serverUrl.value}/api/v1/notes/${selectedNote.value.id}`, updatedNote, {
+      type: 'sticky',
+      style: serializeStyle()
+    }, {
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -279,7 +318,6 @@ const updateStickyNote = async () => {
     const index = stickyNotes.value.findIndex(note => note.id === selectedNote.value.id)
     if (index !== -1) {
       stickyNotes.value[index] = response.data.data
-      // 更新提醒
       if (formData.value.reminder) {
         setupReminder(response.data.data)
       }
@@ -345,7 +383,7 @@ const showCreateNoteModal = () => {
     reminder: '',
     tags: '',
     paperStyle: 'plain',
-    fontFamily: "'Comic Sans MS', 'Marker Felt', cursive"
+    fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
   selectedNote.value = null
   showNoteModal.value = true
@@ -354,14 +392,15 @@ const showCreateNoteModal = () => {
 // 显示编辑便签模态框
 const showEditNoteModal = (note: any) => {
   selectedNote.value = { ...note }
+  const parsedStyle = parseStyle(note.style)
   formData.value = {
     title: note.title,
     content: note.content,
-    color: note.color,
+    color: parsedStyle.color,
     reminder: note.reminder || '',
     tags: Array.isArray(note.tags) ? note.tags.join(', ') : note.tags || '',
-    paperStyle: note.paperStyle || 'plain',
-    fontFamily: note.fontFamily || "'Comic Sans MS', 'Marker Felt', cursive"
+    paperStyle: parsedStyle.paperStyle,
+    fontFamily: parsedStyle.fontFamily
   }
   showNoteModal.value = true
 }
@@ -377,7 +416,7 @@ const closeNoteModal = () => {
     reminder: '',
     tags: '',
     paperStyle: 'plain',
-    fontFamily: "'Comic Sans MS', 'Marker Felt', cursive"
+    fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
 }
 
@@ -454,7 +493,7 @@ const handleAddToNote = async (event: CustomEvent) => {
     reminder: '',
     tags: '',
     paperStyle: 'plain',
-    fontFamily: "'Comic Sans MS', 'Marker Felt', cursive"
+    fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
   selectedNote.value = null
   // 自动创建笔记并保存到后端
@@ -496,7 +535,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 onMounted(async () => {
   await loadStickyNotes()
   // 添加添加到笔记事件监听器
-  window.addEventListener('addToNote', handleAddToNote as EventListener)
+  window.addEventListener('addToNote', handleAddToNote as unknown as EventListener)
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeydown)
 })
@@ -504,7 +543,7 @@ onMounted(async () => {
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
   // 移除添加到笔记事件监听器
-  window.removeEventListener('addToNote', handleAddToNote as EventListener)
+  window.removeEventListener('addToNote', handleAddToNote as unknown as EventListener)
   // 移除键盘事件监听器
   window.removeEventListener('keydown', handleKeydown)
 })
@@ -528,8 +567,8 @@ const filteredStickyNotes = computed(() => {
   
   // 按创建时间降序排序，最新的在前面
   result.sort((a, b) => {
-    const dateA = new Date(a.createdAt).getTime()
-    const dateB = new Date(b.createdAt).getTime()
+    const dateA = new Date(a.created_at).getTime()
+    const dateB = new Date(b.created_at).getTime()
     return dateB - dateA
   })
   
@@ -670,6 +709,25 @@ const setupReminder = (note: any) => {
   background: var(--primary-light);
 }
 
+.toggle-sidebar-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--hover-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: var(--primary-color);
+}
+
+.toggle-sidebar-btn:hover {
+  background: var(--primary-light);
+}
+
 .sticky-notes-header h2 {
   font-size: 18px;
   font-weight: 600;
@@ -724,7 +782,6 @@ const setupReminder = (note: any) => {
   position: relative;
   overflow: hidden;
   transform: rotate(-0.5deg);
-  font-family: 'Comic Sans MS', 'Marker Felt', cursive;
   padding-top: 28px;
   animation: noteAppear 0.5s ease-out;
 }
@@ -866,23 +923,41 @@ const setupReminder = (note: any) => {
 
 /* 纸张样式 */
 .sticky-note.lined {
-  background-image: linear-gradient(#f0f0f0 1px, transparent 1px);
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 17px,
+    rgba(0, 0, 0, 0.15) 17px,
+    rgba(0, 0, 0, 0.15) 18px
+  );
   background-size: 100% 18px;
-  background-position: 0 28px;
+  background-position: 0 14px;
 }
 
 .sticky-note.grid {
   background-image: 
-    linear-gradient(#f0f0f0 1px, transparent 1px),
-    linear-gradient(90deg, #f0f0f0 1px, transparent 1px);
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 17px,
+      rgba(0, 0, 0, 0.12) 17px,
+      rgba(0, 0, 0, 0.12) 18px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 17px,
+      rgba(0, 0, 0, 0.12) 17px,
+      rgba(0, 0, 0, 0.12) 18px
+    );
   background-size: 18px 18px;
-  background-position: 0 28px, 0 0;
+  background-position: 0 14px, 0 0;
 }
 
 .sticky-note.dotted {
-  background-image: radial-gradient(#f0f0f0 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.25) 1px, transparent 1px);
   background-size: 18px 18px;
-  background-position: 9px 37px;
+  background-position: 0 23px;
 }
 
 .sticky-note-header {

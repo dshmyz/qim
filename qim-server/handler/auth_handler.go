@@ -205,7 +205,7 @@ func Register(c *gin.Context) {
 		Username:     req.Username,
 		PasswordHash: string(hashedPassword),
 		Nickname:     nickname,
-		Avatar:       "https://api.dicebear.com/7.x/avataaars/svg?seed=" + req.Username,
+		Avatar:       "",
 		Status:       "online",
 	}
 

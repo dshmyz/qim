@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"qim-server/ai"
 	"qim-server/database"
@@ -248,11 +249,14 @@ func (e *TodoExtractor) notifyTodoAssigned(task model.Task, assigneeID uint, cre
 	db := database.GetDB()
 
 	notification := model.Notification{
-		UserID:  assigneeID,
-		Type:    "todo_assigned",
-		Title:   "📋 新的待办事项",
-		Content: task.Title,
-		Read:    false,
+		UserID:        assigneeID,
+		Type:          "todo_assigned",
+		Title:         "新的待办事项",
+		Content:       task.Title,
+		Read:          false,
+		Priority:      "important",
+		ActionType:    "confirm_reschedule",
+		ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
 	}
 	db.Create(&notification)
 

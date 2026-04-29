@@ -1,26 +1,25 @@
 <template>
   <div class="message-content-image">
-    <template v-if="imageLoaded && !loadError">
-      <img
-        :src="cachedUrl"
-        class="message-image"
-        @click="previewImage"
-        @dblclick="previewImage"
-        @load="onImageLoad"
-        @error="onImageError"
-      />
-    </template>
-    <template v-else>
-      <ImagePlaceholder
-        :is-loading="isLoading"
-        :text="loadError ? '图片加载失败' : '加载中...'"
-      />
-    </template>
+    <ImagePlaceholder
+      class="image-placeholder-overlay"
+      :class="{ 'placeholder-hidden': imageLoaded && !loadError }"
+      :is-loading="isLoading"
+      :text="loadError ? '图片加载失败' : '加载中...'"
+    />
+    <img
+      :src="cachedUrl || ''"
+      class="message-image"
+      :class="{ 'image-hidden': !imageLoaded || loadError }"
+      @click="previewImage"
+      @dblclick="previewImage"
+      @load="onImageLoad"
+      @error="onImageError"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useImageCache } from '../../composables/useImageCache'
 import ImagePlaceholder from './ImagePlaceholder.vue'
 
@@ -32,6 +31,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   preview: [url: string]
+  imageLoaded: []
 }>()
 
 const { getCachedImage, cacheImage, preloadImage } = useImageCache()
@@ -40,7 +40,6 @@ const isLoading = ref(false)
 const imageLoaded = ref(false)
 const loadError = ref(false)
 
-// 解析图片数据
 const imageData = computed(() => {
   try {
     return JSON.parse(props.src)
@@ -49,7 +48,6 @@ const imageData = computed(() => {
   }
 })
 
-// 获取图片URL
 const fullImageUrl = computed(() => {
   const url = imageData.value.url || props.src
   if (url.startsWith('http')) {
@@ -61,7 +59,6 @@ const fullImageUrl = computed(() => {
   }
 })
 
-// 加载图片
 const loadImage = async () => {
   if (isLoading.value || imageLoaded.value) return
 
@@ -75,6 +72,7 @@ const loadImage = async () => {
   if (cached) {
     cachedUrl.value = cached
     imageLoaded.value = true
+    emit('imageLoaded')
     return
   }
 
@@ -85,6 +83,7 @@ const loadImage = async () => {
     if (result) {
       cachedUrl.value = result
       imageLoaded.value = true
+      emit('imageLoaded')
     } else {
       loadError.value = true
     }
@@ -99,6 +98,7 @@ const loadImage = async () => {
 const onImageLoad = () => {
   imageLoaded.value = true
   loadError.value = false
+  emit('imageLoaded')
 }
 
 const onImageError = () => {
@@ -106,21 +106,38 @@ const onImageError = () => {
   isLoading.value = false
 }
 
+// 同步从缓存初始化：在 watch immediate 之前设置初始状态，避免闪烁
+const tryInitFromCache = () => {
+  const url = fullImageUrl.value
+  if (!url) return false
+  const cached = getCachedImage(url)
+  if (cached) {
+    cachedUrl.value = cached
+    imageLoaded.value = true
+    return true
+  }
+  return false
+}
+
+// 监听 src 变化，先检查缓存再决定是否加载
 watch(
   () => props.src,
-  () => {
-    cachedUrl.value = undefined
-    imageLoaded.value = false
-    loadError.value = false
-    loadImage()
+  (newSrc, oldSrc) => {
+    if (newSrc !== oldSrc) {
+      // 先同步检查缓存，有缓存则直接设置状态，跳过异步加载
+      if (tryInitFromCache()) {
+        return
+      }
+      // 没有缓存才重置状态并异步加载
+      cachedUrl.value = undefined
+      imageLoaded.value = false
+      loadError.value = false
+      isLoading.value = false
+      loadImage()
+    }
   },
   { immediate: true }
 )
-
-onMounted(() => {
-  loadImage()
-  preloadImage(fullImageUrl.value)
-})
 
 const previewImage = () => {
   emit('preview', cachedUrl.value || fullImageUrl.value)
@@ -132,6 +149,7 @@ const previewImage = () => {
   display: flex;
   align-items: center;
   max-width: 100%;
+  position: relative;
 }
 
 .message-image {
@@ -139,9 +157,18 @@ const previewImage = () => {
   max-height: 250px;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: opacity 0.15s ease;
   object-fit: cover;
   border: 1px solid var(--border-color);
+}
+
+.image-hidden {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
 }
 
 .message-image:hover {
@@ -149,7 +176,20 @@ const previewImage = () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* 自己的图片消息样式 */
+.image-placeholder-overlay {
+  transition: opacity 0.15s ease;
+}
+
+.placeholder-hidden {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  visibility: hidden;
+}
+
 .message-content-image.self .message-image {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }

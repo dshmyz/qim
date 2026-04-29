@@ -1,10 +1,12 @@
 <template>
   <div class="right-content">
     <div class="right-content-header">
-      <h2>{{ pageTitle }}</h2>
-      <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-        <i class="fas fa-compress"></i>
-      </button>
+      <div class="header-left-group">
+        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
+          <i class="fas fa-compress"></i>
+        </button>
+        <h2>{{ pageTitle }}</h2>
+      </div>
     </div>
     <div class="apps-content">
       <div class="recent-apps-section">
@@ -96,6 +98,12 @@ defineEmits<{
   font-size: 20px;
   font-weight: 500;
   color: var(--text-color, #333);
+}
+
+.header-left-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .toggle-sidebar-btn {

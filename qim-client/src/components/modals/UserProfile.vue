@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { API_BASE_URL } from '../../config'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface User {
   id: string | number
@@ -89,9 +90,9 @@ const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
 // 头像 URL
 const avatarUrl = computed(() => {
   if (!props.user.avatar) {
-    return 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+    return generateAvatar(props.user.name)
   }
-  if (props.user.avatar.startsWith('http')) {
+  if (isAbsoluteUrl(props.user.avatar)) {
     return props.user.avatar
   }
   return `${serverUrl}${props.user.avatar}`

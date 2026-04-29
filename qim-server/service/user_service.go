@@ -128,7 +128,7 @@ func (s *UserService) CreateUser(username, password, nickname, avatar string) (*
 
 	av := avatar
 	if av == "" {
-		av = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + username
+		av = ""
 	}
 
 	user := &model.User{

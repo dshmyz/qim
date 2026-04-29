@@ -1,5 +1,5 @@
 <template>
-  <div class="streaming-message" :class="{ 'self': isSelf }">
+  <div class="streaming-message" :class="{ 'self': isSelf }" @click="handleLinkClick">
     <div class="message-content">
       <div v-html="renderedContent" class="markdown-content"></div>
       <div v-if="isStreaming" class="typing-indicator">
@@ -21,6 +21,19 @@ const props = defineProps<{
   isSelf: boolean
   isStreaming: boolean
 }>()
+
+const handleLinkClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  const link = target.closest('a')
+  
+  if (link && window.electron?.shell?.openExternal) {
+    event.preventDefault()
+    const href = link.getAttribute('href')
+    if (href) {
+      window.electron.shell.openExternal(href)
+    }
+  }
+}
 
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {

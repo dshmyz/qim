@@ -38,6 +38,7 @@
         @open-news-link="(url: string) => emit('open-news-link', url)"
         @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
         @show-read-users="(msg: Message) => emit('show-read-users', msg)"
+        @image-loaded="handleImageLoaded"
       />
     </div>
 
@@ -47,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
@@ -85,6 +86,8 @@ const emit = defineEmits<Emits>()
 const messageListRef = ref<HTMLDivElement>()
 const isLoadingMore = ref(false)
 const lastMarkReadTime = ref(0)
+// 记录用户是否应该自动滚动到底部（用户在底部附近时）
+const shouldAutoScroll = ref(true)
 
 const shouldShowTime = (index: number, message: Message, messages: Message[]) => {
   return shouldShowTimeDivider(index, message, messages)
@@ -106,7 +109,10 @@ const handleScroll = throttle(() => {
   if (!messageListRef.value) return
 
   const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
-  if (scrollHeight - scrollTop - clientHeight < 50) {
+  // 用户距离底部50px以内，认为是"在底部"
+  shouldAutoScroll.value = scrollHeight - scrollTop - clientHeight < 50
+  
+  if (shouldAutoScroll.value) {
     markMessagesAsRead()
   }
 
@@ -137,6 +143,22 @@ const scrollToBottom = () => {
     messageListRef.value.scrollTop = messageListRef.value.scrollHeight
     markMessagesAsRead()
   }
+}
+
+// 图片加载完成后的处理
+const handleImageLoaded = () => {
+  // 使用 nextTick 等待 DOM 更新后检查滚动位置
+  nextTick(() => {
+    if (!messageListRef.value) return
+    const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight
+    
+    // 如果用户本来就在底部附近（考虑图片加载后scrollHeight可能变化，使用100px阈值）
+    // 或者标志位显示应该自动滚动，则滚动到底部
+    if (shouldAutoScroll.value || distanceToBottom < 100) {
+      scrollToBottom()
+    }
+  })
 }
 
 defineExpose({

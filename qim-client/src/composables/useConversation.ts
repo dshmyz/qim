@@ -64,7 +64,7 @@ export function useConversation() {
    * 处理会话选择
    */
   const handleConversationSelect = (conversation: Conversation) => {
-    currentConversationId.value = conversation.id
+    currentConversationId.value = String(conversation.id)
     selectedConversation.value = conversation
   }
 
@@ -73,7 +73,7 @@ export function useConversation() {
    */
   const handleGroupChatSelect = (group: any) => {
     selectedGroup.value = group
-    currentConversationId.value = group.id
+    currentConversationId.value = group.id ? String(group.id) : null
   }
 
   /**
@@ -271,8 +271,8 @@ export function useConversation() {
   /**
    * 设置当前会话 ID
    */
-  const setCurrentConversationId = (id: string | null) => {
-    currentConversationId.value = id
+  const setCurrentConversationId = (id: string | number | null) => {
+    currentConversationId.value = id !== null ? String(id) : null
   }
 
   /**

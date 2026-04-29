@@ -11,7 +11,7 @@
         </div>
         <div v-else class="read-users-list">
           <div v-for="user in readUsers.read_users" :key="user.id" class="read-user-item">
-            <img :src="(user.avatar && user.avatar.startsWith('http')) ? user.avatar : (user.avatar ? serverUrl + user.avatar : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.id)" :alt="user.name || user.username" class="read-user-avatar" />
+            <img :src="getReadUserAvatar(user)" :alt="user.name || user.username" class="read-user-avatar" />
             <div class="read-user-info">
               <span class="read-user-name">{{ user.name || user.username }}</span>
             </div>
@@ -24,6 +24,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
+
 interface ReadUser {
   id: string | number
   name?: string
@@ -42,11 +45,17 @@ interface Props {
   serverUrl: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const handleClose = () => {
   emit('close')
+}
+
+const getReadUserAvatar = (user: ReadUser): string => {
+  if (user.avatar && isAbsoluteUrl(user.avatar)) return user.avatar
+  if (user.avatar) return props.serverUrl + user.avatar
+  return generateAvatar(user.name || user.username || '用户')
 }
 </script>
 

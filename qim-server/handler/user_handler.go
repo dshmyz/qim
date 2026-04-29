@@ -172,7 +172,7 @@ func CreateUser(c *gin.Context) {
 
 	avatar := req.Avatar
 	if avatar == "" {
-		avatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + req.Username
+		avatar = ""
 	}
 
 	user := model.User{

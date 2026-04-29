@@ -169,6 +169,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {
   id: string
@@ -230,8 +231,8 @@ watch(() => props.visible, (val) => {
 })
 
 const currentUserAvatar = computed(() => {
-  if (!props.currentUser?.avatar) return 'https://api.dicebear.com/7.x/avataaars/svg?seed=me'
-  if (props.currentUser.avatar.startsWith('http')) return props.currentUser.avatar
+  if (!props.currentUser?.avatar) return generateAvatar('me')
+  if (isAbsoluteUrl(props.currentUser.avatar)) return props.currentUser.avatar
   return props.serverUrl + props.currentUser.avatar
 })
 

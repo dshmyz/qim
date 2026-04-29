@@ -1,4 +1,5 @@
 import { Ref } from 'vue'
+import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
 
 export interface Conversation {
   id: string
@@ -43,7 +44,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       id: member.user && member.user.id ? member.user.id.toString() : (member.UserID ? member.UserID.toString() : (member.user_id ? member.user_id.toString() : '')),
       name: member.user ? (member.user.nickname || member.user.username || '') : (member.User ? (member.User.Nickname || member.User.Username || '') : ''),
       username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
-      avatar: (member.user && member.user.avatar && member.user.avatar.startsWith('http')) ? member.user.avatar : (member.user && member.user.avatar ? serverUrl.value + member.user.avatar : (member.User && member.User.Avatar ? serverUrl.value + member.User.Avatar : '')),
+      avatar: (member.user && member.user.avatar && isAbsoluteUrl(member.user.avatar)) ? member.user.avatar : (member.user && member.user.avatar ? serverUrl.value + member.user.avatar : (member.User && member.User.Avatar ? serverUrl.value + member.User.Avatar : '')),
       role: member.role || member.Role || 'member'
     })) : []
     
@@ -54,7 +55,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
     const isSelfChat = (conv.type !== 'group' && conv.type !== 'discussion') && members.length === 1 && members[0].id === currentUserId
     
     if (isSelfChat) {
-      avatar = members[0].avatar || avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=self'
+      avatar = members[0].avatar || avatar || generateAvatar('self')
       name = members[0].name || currentUser.value?.nickname || currentUser.value?.username || '自己'
     } else if ((conv.type !== 'group' && conv.type !== 'discussion') && members.length > 1) {
       const otherMember = members.find((m: any) => m.id !== currentUserId)
@@ -65,7 +66,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
     }
     
     if ((conv.type === 'group' || conv.type === 'discussion') && conv.avatar) {
-      avatar = (conv.avatar.startsWith('http')) ? conv.avatar : serverUrl.value + conv.avatar
+      avatar = (isAbsoluteUrl(conv.avatar)) ? conv.avatar : serverUrl.value + conv.avatar
     }
     
     const unreadCount = conv.unread_count || 0
@@ -89,7 +90,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
     const conversationObj: Conversation = {
       id: conv.id ? conv.id.toString() : (conv.ID ? conv.ID.toString() : ''),
       name: name || '',
-      avatar: avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user',
+      avatar: avatar || generateAvatar(name || 'user'),
       ip: conv.ip || '',
       status: conv.status || 'offline',
       signature: conv.signature || '',
@@ -104,7 +105,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
           id: (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id) ? (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id).toString() : '',
           name: conv.lastMessage?.sender?.nickname || conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.name || conv.lastMessage?.sender?.user?.nickname || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.nickname || conv.last_message?.sender?.username || conv.last_message?.sender?.name || conv.last_message?.sender?.user?.nickname || conv.last_message?.sender?.user?.username || '',
           username: conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.username || conv.last_message?.sender?.user?.username || '',
-          avatar: ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) && (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar).startsWith('http')) ? (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) ? serverUrl.value + (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ''),
+          avatar: ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) && isAbsoluteUrl(conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar)) ? (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) ? serverUrl.value + (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ''),
           user: conv.lastMessage?.sender || conv.last_message?.sender
         } : {
           id: '',

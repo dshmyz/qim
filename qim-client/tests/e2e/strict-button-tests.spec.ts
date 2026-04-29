@@ -90,7 +90,7 @@ async function login(page: Page) {
   })
 
   await page.route('**/api/v1/apps/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, data: [{ id: '1', name: '统计报表', icon: 'chart', description: '数据统计' }] }) })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, data: [{ id: '2', name: '日历', icon: 'calendar', description: '日程管理' }] }) })
   })
 
   await page.route('**/api/v1/users/**', async (route) => {
