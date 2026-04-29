@@ -253,6 +253,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/notifications", handler.GetNotifications)
 			authed.PUT("/notifications/:id/read", handler.MarkNotificationAsRead)
 			authed.PUT("/notifications/read-all", handler.MarkAllNotificationsAsRead)
+			authed.DELETE("/notifications", handler.ClearAllNotifications)
+			authed.PATCH("/notifications/:id/action", handler.HandleNotificationAction)
+			authed.PATCH("/notifications/:id/pin", handler.TogglePinNotification)
+			authed.PATCH("/notifications/:id/important", handler.ToggleImportantNotification)
 
 			// 任务管理
 			authed.GET("/tasks", handler.GetTasks)
@@ -296,6 +300,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/users/:id", middleware.RequireRole("system_admin"), handler.DeleteUser)
 
 			// AI相关路由
+			userAIConfigHandler := handler.NewUserAIConfigHandler(GetDB())
+			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）

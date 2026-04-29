@@ -12,6 +12,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// Global database instance
+var globalDB *gorm.DB
+
+// SetDB sets the global database instance
+func SetDB(db *gorm.DB) {
+	globalDB = db
+}
+
+// GetDB returns the global database instance
+func GetDB() *gorm.DB {
+	return globalDB
+}
+
 // InitApp 初始化应用
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
@@ -19,6 +32,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化数据库
 	db := database.Init(cfg)
+
+	// 设置全局数据库实例
+	SetDB(db)
 
 	// 自动迁移表
 	MigrateDB(db)
@@ -65,8 +81,6 @@ func MigrateDB(db *gorm.DB) {
 		&model.ChannelMessage{},
 		&model.ShortLink{},
 		&model.Task{},
-		&model.Group{},
-		&model.AIUsageLog{},
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
@@ -74,6 +88,7 @@ func MigrateDB(db *gorm.DB) {
 	migrateMiniApps(db)
 	migrateGroupData(db)
 	migrateFileSource(db)
+	migrateNoteStyle(db)
 }
 
 // cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
@@ -172,5 +187,46 @@ func migrateFileSource(db *gorm.DB) {
 
 	if updated > 0 {
 		log.Printf("文件来源迁移完成，共更新 %d 个聊天文件", updated)
+	}
+}
+
+// migrateNoteStyle 为 notes 表添加 style 字段（兼容已存在的数据库）
+func migrateNoteStyle(db *gorm.DB) {
+	if !db.Migrator().HasTable("notes") {
+		return
+	}
+
+	// Migrate color from color column to style JSON if color column exists
+	if db.Migrator().HasColumn(&model.Note{}, "color") {
+		// Get all notes with color values
+		var notes []map[string]interface{}
+		db.Table("notes").Select("id, color").Find(&notes)
+		for _, note := range notes {
+			if color, ok := note["color"].(string); color != "" && ok {
+				// Get current style
+				var styleStr string
+				db.Table("notes").Where("id = ?", note["id"]).Pluck("style", &styleStr)
+				if len(styleStr) == 0 {
+					styleStr = "{}"
+				}
+				var styleMap map[string]interface{}
+				if err := json.Unmarshal([]byte(styleStr), &styleMap); err == nil {
+					styleMap["color"] = color
+					if styleBytes, err := json.Marshal(styleMap); err == nil {
+						db.Table("notes").Where("id = ?", note["id"]).Update("style", string(styleBytes))
+					}
+				}
+			}
+		}
+		db.Migrator().DropColumn(&model.Note{}, "color")
+		log.Printf("已将 notes 表的 color 字段迁移到 style JSON 中")
+	}
+
+	if !db.Migrator().HasColumn(&model.Note{}, "style") {
+		if err := db.Migrator().AddColumn(&model.Note{}, "style"); err != nil {
+			log.Printf("为 notes 表添加 style 字段失败: %v", err)
+			return
+		}
+		log.Printf("notes 表已添加 style 字段")
 	}
 }
