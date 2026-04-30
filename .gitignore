@@ -5,6 +5,14 @@ qim-server/qim-server
 .DS_Store
 .trae.worktrees/
 
+# 上传文件目录
+qim-server/uploads/
+
 # 服务器配置文件（包含敏感信息）
 qim-server/config.yaml
 qim-server/config/config.yaml
+
+# 备份文件
+*.backup
+*.bak
+*.tmp
