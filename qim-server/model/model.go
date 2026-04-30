@@ -98,6 +98,7 @@ type GroupDocument struct {
 	FileID    uint      `json:"file_id" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at"`
 	Group     Group     `json:"group,omitempty" gorm:"foreignkey:GroupID"`
+	File      File      `json:"file,omitempty" gorm:"foreignkey:FileID"`
 }
 
 // 会话成员

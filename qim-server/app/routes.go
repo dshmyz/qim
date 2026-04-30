@@ -162,6 +162,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/conversations/:id", handler.UpdateGroupInfo)
 			// 更新群聊 AI 设置
 			authed.PUT("/conversations/:id/ai-settings", handler.UpdateGroupAISettings)
+			// 群知识库管理
+			authed.GET("/conversations/:id/ai-documents", handler.GetGroupDocuments)
+			authed.POST("/conversations/:id/ai-documents", handler.AddGroupDocument)
+			authed.DELETE("/conversations/:id/ai-documents/:file_id", handler.RemoveGroupDocument)
 			// 设置/取消管理员
 			authed.PUT("/conversations/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
