@@ -12,8 +12,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// containsRole 检查角色列表中是否包含指定角色
+func containsRole(roles []string, role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
 func GetApps(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	userIDUint := userID.(uint)
 
 	db := database.GetDB()
 
@@ -21,6 +32,7 @@ func GetApps(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	name := c.Query("name")
 	status := c.Query("status")
+	category := c.Query("category")
 
 	if page < 1 {
 		page = 1
@@ -29,16 +41,19 @@ func GetApps(c *gin.Context) {
 		pageSize = 10
 	}
 
-	query := db.Model(&model.App{}).Where("user_id = ?", userID)
+	// 用户查看：自己的应用 + 全局应用
+	query := db.Model(&model.App{}).Where("(user_id = ? OR is_global = ?) AND deleted_at IS NULL", userIDUint, true)
 
 	if name != "" {
 		query = query.Where("name LIKE ?", "%"+name+"%")
 	}
 
+	if category != "" {
+		query = query.Where("category = ?", category)
+	}
+
 	if status != "" && status != "all" {
 		query = query.Where("status = ?", status)
-	} else if status != "all" {
-		query = query.Where("status = ?", "active")
 	}
 
 	var total int64
@@ -62,20 +77,84 @@ func GetApps(c *gin.Context) {
 	})
 }
 
-func GetAllApps(c *gin.Context) {
+func ToggleAppStatus(c *gin.Context) {
+	appIDStr := c.Param("id")
+
+	appID, err := strconv.ParseUint(appIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的应用ID"})
+		return
+	}
+
 	db := database.GetDB()
-	var apps []model.App
-	db.Order("created_at DESC").Find(&apps)
+	var app model.App
+	if err := db.First(&app, uint(appID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
+		return
+	}
+
+	app.Status = map[string]string{
+		"active":   "inactive",
+		"inactive": "active",
+	}[app.Status]
+
+	db.Save(&app)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": apps,
+		"data": app,
+	})
+}
+
+func GetAllApps(c *gin.Context) {
+	db := database.GetDB()
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	isGlobal := c.Query("is_global")
+	status := c.Query("status")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	query := db.Model(&model.App{})
+
+	if isGlobal != "" {
+		if isGlobal == "true" {
+			query = query.Where("is_global = ?", true)
+		} else {
+			query = query.Where("is_global = ?", false)
+		}
+	}
+
+	if status != "" && status != "all" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var apps []model.App
+	offset := (page - 1) * pageSize
+	query.Order("is_global DESC, created_at DESC").Offset(offset).Limit(pageSize).Find(&apps)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"list":     apps,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
 	})
 }
 
 func CreateApp(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	fmt.Println("创建应用请求，用户ID:", userID)
 
 	var req struct {
 		Name     string `json:"name" binding:"required"`
@@ -83,15 +162,23 @@ func CreateApp(c *gin.Context) {
 		Category string `json:"category"`
 		URL      string `json:"url"`
 		Status   string `json:"status"`
+		OpenType string `json:"open_type"`
+		IsGlobal bool   `json:"is_global"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fmt.Println("参数错误:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
 		return
 	}
 
-	fmt.Println("创建应用请求体:", req)
+	// 检查是否为全局应用，如果是则需要管理员权限
+	if req.IsGlobal {
+		roles, exists := c.Get("roles")
+		if !exists || !containsRole(roles.([]string), "system_admin") {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能创建全局应用"})
+			return
+		}
+	}
 
 	db := database.GetDB()
 	app := model.App{
@@ -101,15 +188,14 @@ func CreateApp(c *gin.Context) {
 		Category: req.Category,
 		URL:      req.URL,
 		Status:   req.Status,
+		OpenType: req.OpenType,
+		IsGlobal: req.IsGlobal,
 	}
 	result := db.Create(&app)
 	if result.Error != nil {
-		fmt.Println("创建应用失败:", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建应用失败"})
 		return
 	}
-
-	fmt.Println("创建应用成功，应用ID:", app.ID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -119,6 +205,7 @@ func CreateApp(c *gin.Context) {
 
 func UpdateApp(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	userIDUint := userID.(uint)
 	appIDStr := c.Param("id")
 
 	appID, err := strconv.ParseUint(appIDStr, 10, 32)
@@ -134,6 +221,7 @@ func UpdateApp(c *gin.Context) {
 		URL      string `json:"url"`
 		Status   string `json:"status"`
 		OpenType string `json:"open_type"`
+		IsGlobal bool   `json:"is_global"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -143,9 +231,42 @@ func UpdateApp(c *gin.Context) {
 
 	db := database.GetDB()
 	var app model.App
-	if err := db.Where("id = ? AND user_id = ?", uint(appID), userID).First(&app).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
-		return
+
+	// 先尝试查找用户自己的应用
+	if err := db.Where("id = ? AND user_id = ?", uint(appID), userIDUint).First(&app).Error; err != nil {
+		// 如果不是自己的应用，检查是否是全局应用
+		if err := db.Where("id = ? AND is_global = ?", uint(appID), true).First(&app).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
+			return
+		}
+
+		// 全局应用需要管理员权限才能更新
+		roles, exists := c.Get("roles")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限更新此应用"})
+			return
+		}
+
+		roleList, ok := roles.([]string)
+		if !ok || !containsRole(roleList, "system_admin") {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限更新此应用"})
+			return
+		}
+	}
+
+	// 如果请求修改 is_global 字段，需要检查管理员权限
+	if req.IsGlobal != app.IsGlobal {
+		roles, exists := c.Get("roles")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能修改应用的全局状态"})
+			return
+		}
+
+		roleList, ok := roles.([]string)
+		if !ok || !containsRole(roleList, "system_admin") {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能修改应用的全局状态"})
+			return
+		}
 	}
 
 	app.Name = req.Name
@@ -156,6 +277,8 @@ func UpdateApp(c *gin.Context) {
 	if req.OpenType != "" {
 		app.OpenType = req.OpenType
 	}
+	app.IsGlobal = req.IsGlobal
+
 	db.Save(&app)
 
 	c.JSON(http.StatusOK, gin.H{

@@ -97,6 +97,177 @@ func AdminGetUsers(c *gin.Context) {
 	})
 }
 
+func AdminGetChannels(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	keyword := c.Query("keyword")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	db := database.GetDB()
+
+	query := db.Model(&model.Channel{})
+	if keyword != "" {
+		query = query.Where("name LIKE ?", "%"+keyword+"%")
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var channels []model.Channel
+	offset := (page - 1) * pageSize
+	if err := query.Offset(offset).Limit(pageSize).Preload("Creator").Order("id DESC").Find(&channels).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		return
+	}
+
+	type ChannelInfo struct {
+		ID                uint   `json:"id"`
+		Name              string `json:"name"`
+		Avatar            string `json:"avatar"`
+		Description       string `json:"description"`
+		Status            string `json:"status"`
+		PublishPermission string `json:"publish_permission"`
+		CreatorName       string `json:"creatorName"`
+		MemberCount       int64  `json:"memberCount"`
+		CreatedAt         string `json:"createdAt"`
+	}
+
+	channelInfos := make([]ChannelInfo, 0, len(channels))
+	for _, ch := range channels {
+		var memberCount int64
+		db.Model(&model.ChannelSubscriber{}).Where("channel_id = ?", ch.ID).Count(&memberCount)
+
+		creatorName := ""
+		if ch.Creator.ID > 0 {
+			creatorName = ch.Creator.Nickname
+			if creatorName == "" {
+				creatorName = ch.Creator.Username
+			}
+		}
+
+		channelInfos = append(channelInfos, ChannelInfo{
+			ID:                ch.ID,
+			Name:              ch.Name,
+			Avatar:            ch.Avatar,
+			Description:       ch.Description,
+			Status:            ch.Status,
+			PublishPermission: ch.PublishPermission,
+			CreatorName:       creatorName,
+			MemberCount:       memberCount,
+			CreatedAt:         ch.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"list":  channelInfos,
+			"total": total,
+		},
+	})
+}
+
+func AdminUpdateChannel(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		return
+	}
+
+	var req struct {
+		Name              *string `json:"name"`
+		Description       *string `json:"description"`
+		Avatar            *string `json:"avatar"`
+		Status            *string `json:"status"`
+		PublishPermission *string `json:"publish_permission"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var channel model.Channel
+	if err := db.First(&channel, uint(id)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		return
+	}
+
+	updates := make(map[string]interface{})
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = *req.Avatar
+	}
+	if req.Status != nil {
+		if *req.Status != "active" && *req.Status != "inactive" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的状态值"})
+			return
+		}
+		updates["status"] = *req.Status
+	}
+	if req.PublishPermission != nil {
+		if *req.PublishPermission != "creator_only" && *req.PublishPermission != "all_subscribers" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的发布权限"})
+			return
+		}
+		updates["publish_permission"] = *req.PublishPermission
+	}
+
+	if len(updates) > 0 {
+		if err := db.Model(&channel).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+			return
+		}
+	}
+
+	db.Preload("Creator").First(&channel, uint(id))
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": channel,
+	})
+}
+
+func AdminDeleteChannel(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var channel model.Channel
+	if err := db.First(&channel, uint(id)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		return
+	}
+
+	if err := db.Delete(&channel).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除失败"})
+		return
+	}
+
+	db.Where("channel_id = ?", uint(id)).Delete(&model.ChannelSubscriber{})
+	db.Where("channel_id = ?", uint(id)).Delete(&model.ChannelMessage{})
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+}
+
 // AdminGetGroups 管理员获取所有群组列表（分页）
 func AdminGetGroups(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

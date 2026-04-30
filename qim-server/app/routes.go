@@ -154,6 +154,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/conversations/:id/members/:user_id", handler.RemoveMemberFromGroup)
 			// 退出群聊
 			authed.POST("/conversations/:id/exit", handler.ExitGroup)
+			// 申请加入群聊
+			authed.POST("/conversations/:id/apply", handler.ApplyJoinGroup)
+			// 拒绝加入请求
+			authed.DELETE("/conversations/:id/join-requests/:user_id", handler.RejectJoinRequest)
 			// 更新群聊信息
 			authed.PUT("/conversations/:id", handler.UpdateGroupInfo)
 			// 设置/取消管理员
@@ -245,6 +249,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/apps", handler.CreateApp)
 			authed.PUT("/apps/:id", handler.UpdateApp)
 			authed.DELETE("/apps/:id", handler.DeleteApp)
+			authed.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
+
+			// 管理员应用管理
+			authed.GET("/admin/apps", handler.GetAllApps)
 
 			// 统计报表
 			authed.GET("/statistics", handler.GetStatistics)
@@ -264,14 +272,49 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/tasks/:id", handler.UpdateTask)
 			authed.DELETE("/tasks/:id", handler.DeleteTask)
 			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
-
+			// 实时通信 API
+			realtime := authed.Group("/realtime")
+			{
+				realtime.POST("/sessions", handler.CreateSession)
+				realtime.GET("/sessions/:id", handler.GetSession)
+				realtime.GET("/sessions", handler.GetActiveSessions)
+				realtime.POST("/sessions/:id/end", handler.EndSession)
+				realtime.POST("/sessions/:id/participants", handler.RequestJoin)
+				realtime.PATCH("/sessions/:id/participants/:user_id", handler.ApproveJoin)
+				realtime.DELETE("/sessions/:id/participants/:user_id", handler.RejectJoin)
+				realtime.DELETE("/sessions/:id/participants", handler.LeaveSession)
+				// 离线共享请求
+				realtime.GET("/pending-requests", handler.GetPendingRequests)
+				realtime.POST("/pending-requests/:id/respond", handler.RespondToShareRequest)
+			}
 			// 短链接管理
 			authed.POST("/shortlinks", handler.CreateShortLink)
 			authed.GET("/shortlinks", handler.GetShortLinks)
 
 			// 用户搜索
 			authed.GET("/users/search", handler.SearchUsers)
+			// 敏感词管理
+			handler.RegisterSensitiveWordRoutes(authed)
 
+			// 系统配置
+			authed.GET("/system/config", handler.GetSystemConfig)
+			authed.PUT("/system/config", handler.UpdateSystemConfig)
+
+			// 操作日志
+			authed.GET("/logs/operation", handler.GetOperationLogs)
+			authed.GET("/logs/operation/export", handler.ExportOperationLogs)
+
+			// 版本管理
+			authed.GET("/client/versions", handler.GetVersions)
+			authed.POST("/client/versions", handler.CreateVersion)
+			authed.PUT("/client/versions/:id", handler.UpdateVersion)
+			authed.DELETE("/client/versions/:id", handler.DeleteVersion)
+			authed.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
+
+			// 黑名单管理
+			authed.GET("/users/blacklist", handler.GetBlacklist)
+			authed.POST("/users/blacklist", handler.AddToBlacklist)
+			authed.DELETE("/users/blacklist/:id", handler.RemoveBlacklistEntry)
 			// 管理员接口（需要 system_admin 角色）
 			admin := authed.Group("/admin")
 			admin.Use(middleware.RequireRole("system_admin"))
@@ -279,6 +322,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/users", handler.AdminGetUsers)
 				admin.GET("/groups", handler.AdminGetGroups)
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
+				admin.GET("/channels", handler.AdminGetChannels)
+				admin.PUT("/channels/:id", handler.AdminUpdateChannel)
+				admin.DELETE("/channels/:id", handler.AdminDeleteChannel)
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
 				admin.GET("/bot-approvals", handler.GetBotApprovals)

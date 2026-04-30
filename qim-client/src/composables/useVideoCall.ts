@@ -288,10 +288,11 @@ export function useVideoCall() {
   }
 
   // 处理 ICE 候选者
-  const handleIceCandidateMessage = (data: { candidate: RTCIceCandidateInit }) => {
+  const handleIceCandidateMessage = (data: { signal: RTCIceCandidateInit, from_user_id: number }) => {
     try {
       console.log('收到 ICE 候选者:', data)
-      videoCallManager.addIceCandidate(data.candidate)
+      // 后端将 candidate 放在 signal 字段中
+      videoCallManager.addIceCandidate(data.signal)
     } catch (error) {
       console.error('处理 ICE 候选者失败:', error)
     }

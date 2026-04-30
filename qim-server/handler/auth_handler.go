@@ -70,6 +70,13 @@ func Login(c *gin.Context) {
 
 	log.Printf("Login success: user=%s, ip=%s, os=%s, version=%s", req.Username, ip, op, clientVersion)
 
+	var userRoles []model.UserRole
+	db.Where("user_id = ?", user.ID).Find(&userRoles)
+	roleNames := make([]string, 0, len(userRoles))
+	for _, ur := range userRoles {
+		roleNames = append(roleNames, ur.Role)
+	}
+
 	response.Success(c, gin.H{
 		"token": token,
 		"user": gin.H{
@@ -81,6 +88,7 @@ func Login(c *gin.Context) {
 			"phone":              user.Phone,
 			"email":              user.Email,
 			"two_factor_enabled": user.TwoFactorEnabled,
+			"roles":              roleNames,
 		},
 	})
 }

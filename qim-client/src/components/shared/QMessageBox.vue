@@ -210,7 +210,9 @@ if (!window.$QMessageBox) {
   box-shadow: var(--shadow-2xl);
   width: 420px;
   max-width: 90%;
-  overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .q-message-box__header {
@@ -219,6 +221,7 @@ if (!window.$QMessageBox) {
   justify-content: space-between;
   padding: var(--spacing-4) var(--spacing-5);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .q-message-box__title {
@@ -257,6 +260,8 @@ if (!window.$QMessageBox) {
   align-items: flex-start;
   gap: var(--spacing-3);
   padding: var(--spacing-6) var(--spacing-5);
+  flex: 1;
+  overflow-y: auto;
 }
 
 .q-message-box__icon {
@@ -321,6 +326,7 @@ if (!window.$QMessageBox) {
   gap: var(--spacing-3);
   padding: var(--spacing-4) var(--spacing-5);
   border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .q-button {

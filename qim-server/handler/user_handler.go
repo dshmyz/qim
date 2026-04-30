@@ -22,6 +22,13 @@ func GetCurrentUser(c *gin.Context) {
 		return
 	}
 
+	var userRoles []model.UserRole
+	db.Where("user_id = ?", user.ID).Find(&userRoles)
+	roleNames := make([]string, 0, len(userRoles))
+	for _, ur := range userRoles {
+		roleNames = append(roleNames, ur.Role)
+	}
+
 	response.Success(c, gin.H{
 		"id":                 user.ID,
 		"username":           user.Username,
@@ -32,6 +39,7 @@ func GetCurrentUser(c *gin.Context) {
 		"email":              user.Email,
 		"status":             user.Status,
 		"two_factor_enabled": user.TwoFactorEnabled,
+		"roles":              roleNames,
 	})
 }
 
@@ -112,7 +120,9 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	var conversations []model.Conversation
-	db.Where("name LIKE ? AND (type = ? OR type = ?) AND deleted_at IS NULL", "%"+query+"%", "group", "discussion").Find(&conversations)
+	db.Joins("JOIN groups ON groups.conversation_id = conversations.id").
+		Where("groups.name LIKE ? AND (conversations.type = ? OR conversations.type = ?) AND conversations.is_deleted = ?", "%"+query+"%", "group", "discussion", false).
+		Find(&conversations)
 
 	for _, conv := range conversations {
 		var member model.ConversationMember

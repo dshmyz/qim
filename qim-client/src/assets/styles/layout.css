@@ -116,7 +116,7 @@
   justify-content: flex-end;
   align-items: center;
   height: 40px;
-  background: var(--window-controls-bg);
+  /* background: var(--window-controls-bg); */
   padding: 0 20px;
   user-select: none;
   -webkit-app-region: drag;

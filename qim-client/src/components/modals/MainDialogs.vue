@@ -10,7 +10,7 @@
         <div class="about-dialog-logo">
           <i class="fas fa-comments fa-4x"></i>
         </div>
-        <h2>QIM</h2>
+        <h2>QIM（青鸟）</h2>
         <p class="version">版本: 1.0.0</p>
         <p class="date">发布日期: 2026-04-11</p>
         <div class="credits-section">
@@ -27,7 +27,7 @@
           <i class="fas fa-envelope"></i>
           联系邮箱: <a href="mailto:huangqun@buaa.edu.cn">huangqun@buaa.edu.cn</a>
         </p>
-        <p class="copyright">© 2026 QIM. All rights reserved.</p>
+        <p class="copyright">© 2026 青鸟 QIM. All rights reserved.</p>
         <p class="description">一款现代化的即时通讯应用，致力于提供简洁、高效、智能化的沟通体验，让团队协作更顺畅。</p>
       </div>
       <div class="about-dialog-footer">

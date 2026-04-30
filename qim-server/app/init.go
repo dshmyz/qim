@@ -81,6 +81,16 @@ func MigrateDB(db *gorm.DB) {
 		&model.ChannelMessage{},
 		&model.ShortLink{},
 		&model.Task{},
+		&model.UserAIConfig{},        // 用户AI配置
+		&model.RealtimeSession{},     // 实时会话
+		&model.RealtimeParticipant{}, // 实时参与者
+		&model.AIConfig{},            // AI配置
+		&model.Group{},               // 群聊
+		&model.SensitiveWord{},       // 敏感词
+		&model.SystemConfig{},        // 系统配置
+		&model.OperationLog{},        // 操作日志
+		&model.ClientVersion{},       // 客户端版本
+		&model.Blacklist{},           // 黑名单
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}

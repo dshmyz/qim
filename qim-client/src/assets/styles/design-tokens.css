@@ -176,6 +176,7 @@
   --success-color: var(--color-success-500);
   --warning-color: var(--color-warning-500);
   --error-color: var(--color-error-500);
+  --danger-color: var(--color-error-500);
   --info-color: var(--color-info-500);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
@@ -187,6 +188,8 @@
   --right-content-header-bg: #ffffff;
   --font-size-base: var(--font-size-sm);
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* ========================================
@@ -219,8 +222,9 @@
   --right-content-bg: #f5f5f5;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
-
 /* 优雅深色主题 - Elegant Dark Theme */
 [data-theme="elegant-dark"] {
   --primary-color: var(--color-primary-400);
@@ -249,6 +253,8 @@
   --right-content-bg: #0f172a;
   --right-content-header-bg: #1e293b;
   --input-bg: #334155;
+  --modal-bg: #1e293b;
+  --btn-bg: #334155;
 }
 
 /* 海洋蓝主题 - Ocean Blue Theme */
@@ -277,6 +283,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 高雅紫主题 - Elegant Purple Theme */
@@ -305,6 +313,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 温暖琥珀主题 - Warm Amber Theme (基于 Golden Hour 设计) */
@@ -333,6 +343,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 绯红主题 - Crimson Red Theme */
@@ -361,6 +373,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 翡翠绿主题 - Emerald Green Theme */
@@ -389,6 +403,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 单色优雅主题 - Monochrome Elegance Theme */
@@ -417,6 +433,8 @@
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
 }
 
 /* 春日花开主题 - Spring Blossom Theme */

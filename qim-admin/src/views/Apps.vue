@@ -31,7 +31,10 @@
           <template #default="{ row }">
             <div class="app-cell">
               <el-avatar :size="32" :src="row.icon">{{ row.name.charAt(0) }}</el-avatar>
-              <span class="app-name">{{ row.name }}</span>
+              <div class="app-info">
+                <span class="app-name">{{ row.name }}</span>
+                <el-tag v-if="row.isGlobal" size="small" type="warning" style="margin-left: 8px">全局</el-tag>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -213,6 +216,11 @@ onMounted(fetchApps)
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.app-info {
+  display: flex;
+  align-items: center;
 }
 
 .app-name {

@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS `channels` (
   `avatar` VARCHAR(500),
   `creator_id` INT UNSIGNED NOT NULL,
   `status` VARCHAR(20) DEFAULT 'active',
+  `publish_permission` VARCHAR(20) DEFAULT 'creator_only',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,

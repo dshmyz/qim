@@ -18,9 +18,10 @@ func CreateChannel(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		Name        string `json:"name" binding:"required"`
-		Description string `json:"description"`
-		Avatar      string `json:"avatar"`
+		Name              string `json:"name" binding:"required"`
+		Description       string `json:"description"`
+		Avatar            string `json:"avatar"`
+		PublishPermission string `json:"publish_permission"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -28,14 +29,24 @@ func CreateChannel(c *gin.Context) {
 		return
 	}
 
+	publishPermission := req.PublishPermission
+	if publishPermission == "" {
+		publishPermission = "creator_only"
+	}
+	if publishPermission != "creator_only" && publishPermission != "all_subscribers" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的发布权限"})
+		return
+	}
+
 	db := database.GetDB()
 
 	channel := model.Channel{
-		Name:        req.Name,
-		Description: req.Description,
-		Avatar:      req.Avatar,
-		CreatorID:   userID.(uint),
-		Status:      "active",
+		Name:              req.Name,
+		Description:       req.Description,
+		Avatar:            req.Avatar,
+		CreatorID:         userID.(uint),
+		Status:            "active",
+		PublishPermission: publishPermission,
 	}
 
 	if err := db.Create(&channel).Error; err != nil {
@@ -185,8 +196,15 @@ func CreateChannelMessage(c *gin.Context) {
 	}
 
 	if channel.CreatorID != userID.(uint) {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发布消息"})
-		return
+		if channel.PublishPermission == "creator_only" {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发布消息，仅频道创建者可发布"})
+			return
+		}
+		var subscription model.ChannelSubscriber
+		if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发布消息，需先订阅该频道"})
+			return
+		}
 	}
 
 	channelMessage := model.ChannelMessage{

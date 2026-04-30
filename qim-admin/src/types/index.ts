@@ -155,6 +155,7 @@ export interface App {
   url: string
   openType: 'in-app' | 'external'
   status: 'active' | 'inactive'
+  isGlobal: boolean
   createdAt: string
   updatedAt: string
 }

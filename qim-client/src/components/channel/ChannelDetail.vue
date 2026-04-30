@@ -70,6 +70,10 @@
       ></textarea>
       <button class="btn btn-primary send-btn" @click="$emit('sendMessage', channel, localMessage)" :disabled="!localMessage.trim()">发送</button>
     </div>
+    <div v-else-if="channel.is_subscribed" class="message-readonly-hint">
+      <i class="fas fa-bullhorn"></i>
+      <span>频道为广播模式，仅创建者可发布消息</span>
+    </div>
   </div>
 </template>
 
@@ -297,5 +301,20 @@ const localMessage = ref(props.initialMessage || '')
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.message-readonly-hint {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color, #eee);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary, #999);
+  font-size: 13px;
+  background: var(--hover-color, #f5f5f5);
+}
+
+.message-readonly-hint i {
+  font-size: 14px;
 }
 </style>

@@ -24,11 +24,10 @@ import Main from './views/Main.vue'
 import Login from './views/Login.vue'
 import VersionUpdateDialog from './components/modals/VersionUpdateDialog.vue'
 import { checkVersionUpdate, getCurrentVersion } from './utils/version'
-import { logger } from './utils/logger';
+import { logger } from './utils/logger'
 
 const isLoggedIn = ref(false)
 
-// 版本更新相关状态
 const showVersionUpdate = ref(false)
 const currentVersion = ref(getCurrentVersion())
 const latestVersion = ref('')
@@ -44,17 +43,14 @@ const handleLoginSuccess = (user: any) => {
 const handleLogout = () => {
   logger.log('退出登录')
   isLoggedIn.value = false
-  // 清除本地存储的用户信息和token
   localStorage.removeItem('user')
   localStorage.removeItem('token')
 }
 
 const handleUpdate = () => {
   logger.log('用户点击了更新')
-  // 可以在这里添加更新相关的逻辑
 }
 
-// 检查版本更新
 const checkForUpdates = async () => {
   try {
     const updateInfo = await checkVersionUpdate()
@@ -70,14 +66,11 @@ const checkForUpdates = async () => {
   }
 }
 
-// 初始化时检查本地存储，保持登录状态
 onMounted(() => {
-  // 强制跳转到登录页面，以便重新登录
   isLoggedIn.value = false
   localStorage.removeItem('user')
   localStorage.removeItem('token')
   
-  // 检查版本更新
   checkForUpdates()
 })
 </script>

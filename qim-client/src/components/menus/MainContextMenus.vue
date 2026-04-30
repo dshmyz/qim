@@ -272,7 +272,7 @@ onUnmounted(() => {
 <style scoped>
 .context-menu {
   position: fixed;
-  background: var(--menu-bg, #fff);
+  background: var(--context-menu-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 8px 0;
@@ -286,18 +286,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-color, #333);
+  color: var(--text-color);
   font-size: 13px;
 }
 
 .context-menu-item:hover {
-  background: var(--hover-color, #f0f0f0);
+  background: var(--context-menu-hover);
 }
 
 .context-menu-item.divider,
 .context-menu-divider {
   height: 1px;
-  background: var(--border-color, #eee);
+  background: var(--border-color);
   margin: 4px 0;
   padding: 0;
 }
@@ -331,7 +331,7 @@ onUnmounted(() => {
 
 .action-menu {
   position: fixed;
-  background: var(--menu-bg, #fff);
+  background: var(--context-menu-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 8px 0;
@@ -345,22 +345,22 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--text-color, #333);
+  color: var(--text-color);
 }
 
 .action-menu-item:hover {
-  background: var(--hover-color, #f0f0f0);
+  background: var(--context-menu-hover);
 }
 
 .action-menu-icon {
   width: 20px;
   text-align: center;
-  color: var(--primary-color, #409eff);
+  color: var(--primary-color);
 }
 
 .user-context-menu {
   position: fixed;
-  background: var(--menu-bg, #fff);
+  background: var(--context-menu-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 8px 0;
@@ -374,12 +374,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-color, #333);
+  color: var(--text-color);
   font-size: 13px;
 }
 
 .user-context-menu-item:hover {
-  background: var(--hover-color, #f0f0f0);
+  background: var(--context-menu-hover);
 }
 
 .user-context-menu-icon {

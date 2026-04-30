@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -9,7 +8,6 @@ import (
 	"qim-server/database"
 	"qim-server/model"
 	"qim-server/pkg/response"
-	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 )
@@ -485,58 +483,26 @@ func DeleteConversation(c *gin.Context) {
 		return
 	}
 
-	if conv.Type != "group" && conv.Type != "discussion" {
-		response.BadRequest(c, "只能解散群聊或讨论组")
-		return
-	}
-
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convIDUint), userID).First(&currentMember).Error; err != nil {
-		response.Forbidden(c, "无权限操作")
-		return
-	}
-
-	if currentMember.Role != "owner" {
-		response.Forbidden(c, "只有群主可以解散群聊")
-		return
-	}
-
-	tx := db.Begin()
-
-	if err := tx.Where("conversation_id = ?", uint(convIDUint)).Delete(&model.ConversationMember{}).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "删除成员失败")
-		return
-	}
-
-	// 获取群聊信息
-	var group model.Group
-	db.Where("conversation_id = ?", conv.ID).First(&group)
-	group.Name = "[已解散] " + group.Name
-	db.Save(&group)
-	conv.IsDeleted = true
-	if err := tx.Save(&conv).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "更新会话状态失败")
-		return
-	}
-
-	tx.Commit()
-
-	if ws.GlobalHub != nil {
-		dissolveMsg := ws.WSMessage{
-			Type: "conversation_deleted",
-			Data: gin.H{
-				"conversation_id": conv.ID,
-				"message":         "群聊已被解散",
-			},
+	var session model.ConversationSession
+	result := db.Where("user_id = ? AND conversation_id = ?", userID, uint(convIDUint)).First(&session)
+	if result.Error != nil {
+		session = model.ConversationSession{
+			UserID:         userID.(uint),
+			ConversationID: uint(convIDUint),
+			LastVisitedAt:  time.Now(),
 		}
-		jsonMsg, _ := json.Marshal(dissolveMsg)
+		db.Create(&session)
+	}
 
-		ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
+	now := time.Now()
+	session.IsHidden = true
+	session.HiddenAt = &now
+	if err := db.Save(&session).Error; err != nil {
+		response.InternalServerError(c, "移除会话失败")
+		return
 	}
 
 	response.Success(c, gin.H{
-		"message": "群聊解散成功",
+		"message": "已移除会话",
 	})
 }

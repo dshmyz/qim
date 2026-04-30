@@ -140,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 // @ts-ignore - WebRTC module has no type declarations
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
@@ -186,6 +186,9 @@ const sharingStartTime = ref<number | null>(null)
 const durationInterval = ref<number | null>(null)
 const formattedDuration = ref('00:00')
 
+// 内部保存的 senderId，用于 handleOffer 传入的 fromUserId
+const internalSenderId = ref<number | null>(null)
+
 const remoteVideoRef = ref<HTMLVideoElement | null>(null)
 const floatingVideoRef = ref<HTMLVideoElement | null>(null)
 const floatingStream = ref<MediaStream | null>(null)
@@ -207,11 +210,9 @@ watch(() => props.senderId, (newId) => {
   if (newId) {
     isViewer.value = true
     hasJoined.value = true
-    remoteStreamActive.value = true
-    showFloatingWindow.value = true
-    floatingMode.value = true
-    logger.log('ScreenShare: 检测到senderId变化，自动加入共享', newId)
-    startReceivingStream()
+    // 注意：不在这里调用 startReceivingStream()
+    // 接收器初始化应该在 handleOffer 中完成，避免重复初始化
+    logger.log('ScreenShare: 检测到senderId变化，设置为观看者模式', newId)
   }
 })
 
@@ -357,6 +358,8 @@ const startSharing = async () => {
 }
 
 // 当收到对方接受后，开始建立 WebRTC 连接
+let isComponentMounted = true
+
 const establishConnection = async () => {
   logger.log('ScreenShare: establishConnection函数被调用')
   
@@ -366,7 +369,7 @@ const establishConnection = async () => {
     logger.log('ScreenShare: WebRTC 连接已经在 startScreenShare 中建立')
     
     // 使用本地预览视频元素显示自己的屏幕（预览用）
-    if (remoteVideoRef.value) {
+    if (remoteVideoRef.value && isComponentMounted) {
       // 获取屏幕共享流并设置到预览视频元素
       const screenStream = screenShareSender.getScreenStream()
       if (screenStream) {
@@ -385,9 +388,13 @@ const establishConnection = async () => {
       }
     }
   } catch (error) {
-    console.error('ScreenShare: 建立连接失败:', error)
-    isSharing.value = false
-    isInitiator.value = false
+    if (isComponentMounted) {
+      console.error('ScreenShare: 建立连接失败:', error)
+      isSharing.value = false
+      isInitiator.value = false
+    } else {
+      console.warn('ScreenShare: 组件已卸载，跳过状态更新')
+    }
   }
 }
 
@@ -447,7 +454,13 @@ const joinShare = () => {
   hasJoined.value = !hasJoined.value
   if (hasJoined.value) {
     emit('screen-share-join')
-    startReceivingStream()
+    // 只有在 senderId 存在时才初始化接收器
+    const actualSenderId = internalSenderId.value || props.senderId
+    if (actualSenderId) {
+      startReceivingStream()
+    } else {
+      logger.log('ScreenShare: 加入共享，但 senderId 还未设置，等待 handleOffer 后再初始化')
+    }
   } else {
     emit('screen-share-leave')
     stopReceivingStream()
@@ -455,7 +468,9 @@ const joinShare = () => {
 }
 
 const startReceivingStream = () => {
-  if (props.senderId) {
+  // 使用内部 senderId 或 prop senderId
+  const senderId = internalSenderId.value || props.senderId
+  if (senderId) {
     // 优先使用浮窗视频元素（如果浮窗模式开启）
     const videoElement = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
     
@@ -638,37 +653,68 @@ defineExpose({
   startScreenShare: initiateShare,
   stopReceiving: stopShare,
   establishConnection: establishConnection,
-  handleOffer: (signal: any, fromUserId: number) => {
+  handleOffer: async (signal: any, fromUserId: number) => {
     logger.log('ScreenShare: 处理WebRTC offer，来自用户:', fromUserId)
-        logger.log('ScreenShare: 处理WebRTC signal:', signal)
+    logger.log('ScreenShare: signal.type:', signal?.type)
+    logger.log('ScreenShare: signal.sdp 长度:', signal?.sdp?.length)
+
+    // 设置当前用户为观看者
+    isViewer.value = true
+    hasJoined.value = true
+    showFloatingWindow.value = true
+    // 先关闭浮窗模式，等 DOM 更新后再开启
+    floatingMode.value = false
+    // 保存发送者 ID
+    internalSenderId.value = fromUserId
+
+    // 等待 DOM 更新（确保浮窗视频元素渲染完成）
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
+    // 现在开启浮窗模式
+    floatingMode.value = true
 
     const tryHandleOffer = (retries = 10) => {
-      // 优先使用浮窗视频元素（如果浮窗模式开启）
-      const videoElement = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
+      // 始终使用 remoteVideoRef 建立连接（它始终在 DOM 中）
+      const videoElement = remoteVideoRef.value
       
       if (videoElement) {
-        logger.log('ScreenShare: screenShareReceiver已初始化，使用视频元素:', videoElement)
-        // 初始化screenShareReceiver，传递远程流接收回调
-        screenShareReceiver.init(videoElement, (stream) => {
-          logger.log('ScreenShare: 收到远程流，更新状态')
+        logger.log('ScreenShare: 视频元素已就绪，开始初始化接收器')
+        
+        // 初始化 screenShareReceiver
+        screenShareReceiver.init(videoElement, async (stream) => {
+          logger.log('ScreenShare: 收到远程流回调')
+          logger.log('Stream ID:', stream?.id)
+          logger.log('Stream tracks:', stream?.getTracks()?.map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled, muted: t.muted })))
           remoteStreamActive.value = true
-          // 只在浮窗模式下设置floatingStream，避免冲突
-          if (floatingMode.value) {
+          
+          // 设置到 remoteVideoRef
+          if (remoteVideoRef.value) {
+            remoteVideoRef.value.srcObject = stream
+            remoteVideoRef.value.play().catch(err => {
+              console.error('远程视频播放失败:', err)
+            })
+          }
+          
+          // 等待 DOM 更新后同步到浮窗
+          await nextTick()
+          if (floatingMode.value && floatingVideoRef.value) {
+            logger.log('ScreenShare: 同步流到浮窗')
             floatingStream.value = stream
+            floatingVideoRef.value.srcObject = stream
+            floatingVideoRef.value.play().catch(err => {
+              console.error('浮窗视频播放失败:', err)
+            })
           }
         })
+        
+        logger.log('ScreenShare: 调用 screenShareReceiver.handleOffer')
         screenShareReceiver.handleOffer(signal, fromUserId)
       } else if (retries > 0) {
         logger.log('ScreenShare: 视频元素还未初始化，100ms后重试，剩余重试次数:', retries)
-        logger.log('ScreenShare: floatingMode:', floatingMode.value)
-        logger.log('ScreenShare: floatingVideoRef.value:', floatingVideoRef.value)
-        logger.log('ScreenShare: remoteVideoRef.value:', remoteVideoRef.value)
         setTimeout(() => tryHandleOffer(retries - 1), 100)
       } else {
         console.error('ScreenShare: 无法处理offer，视频元素为null，已重试10次')
-        console.error('ScreenShare: floatingMode:', floatingMode.value)
-        console.error('ScreenShare: floatingVideoRef.value:', floatingVideoRef.value)
-        console.error('ScreenShare: remoteVideoRef.value:', remoteVideoRef.value)
       }
     }
     
@@ -677,35 +723,54 @@ defineExpose({
   handleIceCandidate: (candidate: any) => {
     screenShareReceiver.addIceCandidate(candidate)
   },
-  receiveScreenShareStream: () => {
+  receiveScreenShareStream: async () => {
     isViewer.value = true
     hasJoined.value = true
     remoteStreamActive.value = true
     showFloatingWindow.value = true
-    floatingMode.value = true
+    // 先不开启浮窗模式，等待 DOM 更新
+    floatingMode.value = false
     logger.log('ScreenShare: receiveScreenShareStream被调用，开始初始化接收流')
     
-    // 初始化screenShareReceiver并开始接收流
-    if (props.senderId) {
+    // 等待 DOM 更新
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    floatingMode.value = true
+    
+    // 使用 internalSenderId 或 props.senderId
+    const actualSenderId = internalSenderId.value || props.senderId
+    if (actualSenderId) {
       startReceivingStream()
+    } else {
+      logger.log('ScreenShare: senderId 还未设置，等待 handleOffer 设置后再初始化')
     }
   },
-  showViewer: () => {
+  showViewer: async () => {
     isViewer.value = true
     hasJoined.value = true
     remoteStreamActive.value = false
     showFloatingWindow.value = true
-    floatingMode.value = true
+    // 先不开启浮窗模式，等待 DOM 更新
+    floatingMode.value = false
     logger.log('ScreenShare: showViewer被调用，显示浮窗')
     
-    // 初始化screenShareReceiver并开始接收流
-    if (props.senderId) {
+    // 等待 DOM 更新
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    floatingMode.value = true
+    
+    // 使用 internalSenderId 或 props.senderId
+    const actualSenderId = internalSenderId.value || props.senderId
+    if (actualSenderId) {
       startReceivingStream()
+    } else {
+      logger.log('ScreenShare: senderId 还未设置，等待 handleOffer 设置后再初始化')
     }
   }
 })
 
 onUnmounted(() => {
+  isComponentMounted = false
   stopDurationTimer()
   stopReceivingStream()
   if (isSharing.value && isInitiator.value) {

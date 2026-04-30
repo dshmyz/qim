@@ -1,7 +1,14 @@
 <template>
   <div class="chat-header">
     <div class="header-info">
-      <img :src="avatarUrl" :alt="displayName" class="header-avatar" />
+      <div class="avatar-wrapper">
+        <img :src="avatarUrl" :alt="displayName" class="header-avatar" />
+        <span
+          v-if="isSingleChat"
+          :class="['status-dot', conversation?.status === 'online' ? 'online' : 'offline']"
+          :title="conversation?.status === 'online' ? '在线' : '离线'"
+        ></span>
+      </div>
       <div class="header-text">
         <div class="header-name">{{ displayName }}</div>
         <div class="header-status">
@@ -12,8 +19,8 @@
             </span>
           </template>
           <template v-else-if="isSingleChat">
-            <span :class="['online-status', conversation?.status === 'online' ? 'online' : 'offline']">
-              {{ conversation?.status === 'online' ? '在线' : '离线' }}
+            <span v-if="conversation?.ip" class="ip-info">
+              {{ conversation.ip }}
             </span>
             <span v-if="conversation?.signature" class="signature-info">
               {{ conversation.signature }}
@@ -22,9 +29,6 @@
           <template v-else>
             在线
           </template>
-          <span v-if="isSingleChat && conversation?.ip" class="ip-info">
-            {{ conversation.ip }}
-          </span>
           <span v-if="isGroupOrDiscussion && conversation?.announcement" class="header-announcement-inline">
             <i class="fas fa-bullhorn"></i>
             {{ conversation.announcement }}
@@ -150,6 +154,30 @@ defineExpose({
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
+}
+
+.avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.status-dot {
+  position: absolute;
+  bottom: 4px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--sidebar-bg);
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: var(--color-success-500);
+}
+
+.status-dot.offline {
+  background: var(--color-gray-500);
 }
 
 .header-text {

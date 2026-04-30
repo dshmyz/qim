@@ -162,13 +162,15 @@ type Note struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-// 会话记录（用于置顶、排序等）
+// 会话记录（用于置顶、隐藏等）
 type ConversationSession struct {
 	ID             uint       `json:"id" gorm:"primarykey"`
 	UserID         uint       `json:"user_id" gorm:"not null;index;uniqueIndex:idx_user_conv"`
 	ConversationID uint       `json:"conversation_id" gorm:"not null;index;uniqueIndex:idx_user_conv"`
 	IsPinned       bool       `json:"is_pinned" gorm:"default:false"`
+	IsHidden       bool       `json:"is_hidden" gorm:"default:false"`
 	PinnedAt       *time.Time `json:"pinned_at"`
+	HiddenAt       *time.Time `json:"hidden_at"`
 	LastVisitedAt  time.Time  `json:"last_visited_at"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
@@ -303,6 +305,7 @@ type App struct {
 	URL       string         `json:"url" gorm:"size:500"`
 	Status    string         `json:"status" gorm:"size:20;default:'active'"`
 	OpenType  string         `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
+	IsGlobal  bool           `json:"is_global" gorm:"default:false"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
@@ -332,16 +335,17 @@ type Notification struct {
 
 // 频道
 type Channel struct {
-	ID          uint           `json:"id" gorm:"primarykey"`
-	Name        string         `json:"name" gorm:"size:200;not null"`
-	Description string         `json:"description" gorm:"type:text"`
-	Avatar      string         `json:"avatar" gorm:"size:500"`
-	CreatorID   uint           `json:"creator_id" gorm:"not null"`
-	Status      string         `json:"status" gorm:"size:20;default:'active'"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
-	Creator     User           `json:"creator,omitempty" gorm:"foreignkey:CreatorID"`
+	ID                uint           `json:"id" gorm:"primarykey"`
+	Name              string         `json:"name" gorm:"size:200;not null"`
+	Description       string         `json:"description" gorm:"type:text"`
+	Avatar            string         `json:"avatar" gorm:"size:500"`
+	CreatorID         uint           `json:"creator_id" gorm:"not null"`
+	Status            string         `json:"status" gorm:"size:20;default:'active'"`
+	PublishPermission string         `json:"publish_permission" gorm:"size:20;default:'creator_only'"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
+	Creator           User           `json:"creator,omitempty" gorm:"foreignkey:CreatorID"`
 }
 
 // 频道订阅者
@@ -431,4 +435,67 @@ type UserAIConfig struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	User            User       `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
+// 敏感词
+type SensitiveWord struct {
+	ID        uint           `json:"id" gorm:"primarykey"`
+	Word      string         `json:"word" gorm:"size:100;uniqueIndex;not null"`
+	Level     string         `json:"level" gorm:"size:20;default:'medium'"` // low, medium, high
+	Enabled   bool           `json:"enabled" gorm:"default:true"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// 系统配置
+type SystemConfig struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	Key       string    `json:"key" gorm:"size:100;uniqueIndex;not null"`
+	Value     string    `json:"value" gorm:"type:text;not null"`
+	Type      string    `json:"type" gorm:"size:20;default:'string'"` // string, number, boolean, json
+	Desc      string    `json:"desc" gorm:"size:500"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// 操作日志
+type OperationLog struct {
+	ID          uint      `json:"id" gorm:"primarykey"`
+	UserID      uint      `json:"user_id" gorm:"not null;index"`
+	Username    string    `json:"username" gorm:"size:100"`
+	Action      string    `json:"action" gorm:"size:100;not null"`
+	Module      string    `json:"module" gorm:"size:50"`
+	IP          string    `json:"ip" gorm:"size:50"`
+	UserAgent   string    `json:"user_agent" gorm:"type:text"`
+	RequestURL  string    `json:"request_url" gorm:"size:500"`
+	RequestBody string    `json:"request_body" gorm:"type:text"`
+	Response    string    `json:"response" gorm:"type:text"`
+	Duration    int       `json:"duration"` // ms
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// 客户端版本
+type ClientVersion struct {
+	ID          uint           `json:"id" gorm:"primarykey"`
+	Version     string         `json:"version" gorm:"size:50;uniqueIndex;not null"`
+	Platform    string         `json:"platform" gorm:"size:20;not null"`   // windows, mac, linux
+	Type        string         `json:"type" gorm:"size:20;default:'full'"` // full, patch
+	DownloadURL string         `json:"download_url" gorm:"size:500"`
+	Changelog   string         `json:"changelog" gorm:"type:text"`
+	ForceUpdate bool           `json:"force_update" gorm:"default:false"`
+	Enabled     bool           `json:"enabled" gorm:"default:true"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// 黑名单
+type Blacklist struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	UserID    uint      `json:"user_id" gorm:"not null;index;uniqueIndex:idx_blacklist_user"`
+	Reason    string    `json:"reason" gorm:"type:text"`
+	Operator  string    `json:"operator" gorm:"size:100"`
+	CreatedAt time.Time `json:"created_at"`
+	User      User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }

@@ -826,3 +826,149 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": group})
 }
+
+func ApplyJoinGroup(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var conv model.Conversation
+	if err := db.First(&conv, uint(convID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	if conv.Type != "group" && conv.Type != "discussion" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能申请加入群聊或讨论组"})
+		return
+	}
+
+	var existingMember model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&existingMember).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "您已经是群成员"})
+		return
+	}
+
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		return
+	}
+
+	var currentUser model.User
+	if err := db.First(&currentUser, userID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败"})
+		return
+	}
+
+	var ownersAndAdmins []model.ConversationMember
+	db.Where("conversation_id = ? AND role IN ?", uint(convID), []string{"owner", "admin"}).Find(&ownersAndAdmins)
+
+	for _, admin := range ownersAndAdmins {
+		notification := model.Notification{
+			UserID:        admin.UserID,
+			Type:          "group_join_request",
+			Title:         "入群申请",
+			Content:       fmt.Sprintf("%s 申请加入群聊 %s", currentUser.Nickname, group.Name),
+			Priority:      "important",
+			ActionType:    "approve_reject",
+			ActionPayload: fmt.Sprintf(`{"conversation_id":%d,"user_id":%d}`, uint(convID), userID.(uint)),
+		}
+		db.Create(&notification)
+
+		if ws.GlobalHub != nil {
+			notificationMsg := ws.WSMessage{
+				Type: "notification",
+				Data: notification,
+			}
+			jsonMsg, _ := json.Marshal(notificationMsg)
+			ws.GlobalHub.SendToUser(admin.UserID, jsonMsg)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "申请已发送，请等待管理员审批"})
+}
+
+func RejectJoinRequest(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+	targetUserIDStr := c.Param("user_id")
+
+	if strings.HasPrefix(convIDStr, "conv_") {
+		convIDStr = strings.TrimPrefix(convIDStr, "conv_")
+	}
+
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		return
+	}
+
+	targetUserID, err := strconv.ParseUint(targetUserIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var conv model.Conversation
+	if err := db.First(&conv, uint(convID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	var currentMember model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&currentMember).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		return
+	}
+
+	if currentMember.Role != "owner" && currentMember.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以拒绝加入请求"})
+		return
+	}
+
+	var targetUser model.User
+	if err := db.First(&targetUser, targetUserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		return
+	}
+
+	notification := model.Notification{
+		UserID:   uint(targetUserID),
+		Type:     "group_join_rejected",
+		Title:    "入群申请被拒绝",
+		Content:  fmt.Sprintf("您加入群聊 %s 的申请已被拒绝", group.Name),
+		Priority: "normal",
+	}
+	db.Create(&notification)
+
+	if ws.GlobalHub != nil {
+		notificationMsg := ws.WSMessage{
+			Type: "notification",
+			Data: notification,
+		}
+		jsonMsg, _ := json.Marshal(notificationMsg)
+		ws.GlobalHub.SendToUser(uint(targetUserID), jsonMsg)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已拒绝加入请求"})
+}

@@ -3,33 +3,36 @@
     <el-card shadow="never">
       <div class="page-header">
         <h3>频道管理</h3>
-        <el-button type="primary" @click="handleCreate">创建频道</el-button>
+        <div class="header-actions">
+          <el-input
+            v-model="keyword"
+            placeholder="搜索频道..."
+            clearable
+            style="width: 200px; margin-right: 12px"
+            @clear="fetchChannels"
+            @keyup.enter="fetchChannels"
+          />
+          <el-button type="primary" @click="handleCreate">创建频道</el-button>
+        </div>
       </div>
 
-      <!-- 频道列表 -->
       <el-table :data="channels" v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column label="频道名称" min-width="180">
           <template #default="{ row }">
             <div class="channel-cell">
-              <el-avatar :size="32" :src="row.icon">{{ row.name.charAt(0) }}</el-avatar>
+              <el-avatar :size="32" :src="row.avatar">{{ row.name.charAt(0) }}</el-avatar>
               <span class="channel-name">{{ row.name }}</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag :type="channelType(row.type).type">
-              {{ channelType(row.type).label }}
-            </el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="订阅数" width="100">
           <template #default="{ row }">
             <el-tag effect="plain">{{ row.memberCount }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="creatorName" label="创建者" width="120" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'info'">
@@ -38,10 +41,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" @click="handleEdit(row)">编辑</el-button>
             <el-popconfirm
-              title="确定删除该频道吗？"
+              title="确定删除该频道吗？删除后订阅和消息将一并清除。"
               @confirm="handleDelete(row.id)"
             >
               <template #reference>
@@ -52,7 +56,6 @@
         </el-table-column>
       </el-table>
 
-      <!-- 分页 -->
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -66,17 +69,16 @@
       </div>
     </el-card>
 
-    <!-- 创建频道对话框 -->
     <el-dialog
       v-model="channelDialogVisible"
-      title="创建频道"
+      :title="isEditing ? '编辑频道' : '创建频道'"
       width="500px"
     >
       <el-form
         ref="channelFormRef"
         :model="channelForm"
         :rules="channelRules"
-        label-width="80px"
+        label-width="100px"
       >
         <el-form-item label="名称" prop="name">
           <el-input v-model="channelForm.name" />
@@ -84,14 +86,13 @@
         <el-form-item label="描述" prop="description">
           <el-input v-model="channelForm.description" type="textarea" :rows="3" />
         </el-form-item>
-        <el-form-item label="图标" prop="icon">
-          <el-input v-model="channelForm.icon" placeholder="请输入图标URL" />
+        <el-form-item label="头像" prop="avatar">
+          <el-input v-model="channelForm.avatar" placeholder="请输入头像URL" />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="channelForm.type" placeholder="请选择频道类型">
-            <el-option label="文本频道" value="text" />
-            <el-option label="语音频道" value="voice" />
-            <el-option label="视频频道" value="video" />
+        <el-form-item v-if="isEditing" label="状态" prop="status">
+          <el-select v-model="channelForm.status" placeholder="请选择状态">
+            <el-option label="正常" value="active" />
+            <el-option label="停用" value="inactive" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -107,50 +108,41 @@
 import { ref, reactive, onMounted } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import type { Channel } from '@/types'
-import { getChannels, createChannel, deleteChannel } from '@/api/channels'
+import { getChannels, createChannel, updateChannel, deleteChannel } from '@/api/channels'
+import type { ChannelInfo } from '@/api/channels'
 
-// 分页
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
-const channels = ref<Channel[]>([])
+const channels = ref<ChannelInfo[]>([])
 const loading = ref(false)
+const keyword = ref('')
 
-// 频道表单
 const channelDialogVisible = ref(false)
 const channelFormRef = ref<FormInstance>()
 const submitting = ref(false)
+const isEditing = ref(false)
+const editingId = ref<number | null>(null)
+
 const channelForm = reactive({
   name: '',
   description: '',
-  icon: '',
-  type: 'text' as 'text' | 'voice' | 'video',
+  avatar: '',
+  status: 'active' as 'active' | 'inactive',
 })
 
 const channelRules: FormRules = {
   name: [{ required: true, message: '请输入频道名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择频道类型', trigger: 'change' }],
 }
 
-// 工具函数
-const channelType = (type: string): { label: string; type: 'success' | 'warning' | 'info' } => {
-  const map: Record<string, { label: string; type: 'success' | 'warning' | 'info' }> = {
-    text: { label: '文本', type: 'success' },
-    voice: { label: '语音', type: 'warning' },
-    video: { label: '视频', type: 'info' },
-  }
-  return map[type] || { label: type, type: 'info' }
-}
-
-// 获取频道列表
 const fetchChannels = async () => {
   loading.value = true
   try {
     const { data } = await getChannels({
       page: pagination.page,
       pageSize: pagination.pageSize,
-    })
-    channels.value = data.data.list
-    pagination.total = data.data.total
+      keyword: keyword.value || undefined,
+    } as any)
+    channels.value = data.data.list || []
+    pagination.total = data.data.total || 0
   } catch (error) {
     // 错误已在请求拦截器中处理
   } finally {
@@ -158,12 +150,23 @@ const fetchChannels = async () => {
   }
 }
 
-// 创建频道
 const handleCreate = () => {
+  isEditing.value = false
+  editingId.value = null
   channelForm.name = ''
   channelForm.description = ''
-  channelForm.icon = ''
-  channelForm.type = 'text'
+  channelForm.avatar = ''
+  channelForm.status = 'active'
+  channelDialogVisible.value = true
+}
+
+const handleEdit = (row: ChannelInfo) => {
+  isEditing.value = true
+  editingId.value = row.id
+  channelForm.name = row.name
+  channelForm.description = row.description
+  channelForm.avatar = row.avatar
+  channelForm.status = row.status as 'active' | 'inactive'
   channelDialogVisible.value = true
 }
 
@@ -173,13 +176,22 @@ const handleSubmit = async () => {
     if (!valid) return
     submitting.value = true
     try {
-      await createChannel({
-        name: channelForm.name,
-        description: channelForm.description,
-        icon: channelForm.icon,
-        type: channelForm.type,
-      })
-      ElMessage.success('创建成功')
+      if (isEditing.value && editingId.value) {
+        await updateChannel(editingId.value, {
+          name: channelForm.name,
+          description: channelForm.description,
+          avatar: channelForm.avatar,
+          status: channelForm.status,
+        })
+        ElMessage.success('更新成功')
+      } else {
+        await createChannel({
+          name: channelForm.name,
+          description: channelForm.description,
+          avatar: channelForm.avatar,
+        })
+        ElMessage.success('创建成功')
+      }
       channelDialogVisible.value = false
       fetchChannels()
     } catch (error) {
@@ -190,7 +202,6 @@ const handleSubmit = async () => {
   })
 }
 
-// 删除频道
 const handleDelete = async (id: number) => {
   try {
     await deleteChannel(id)
@@ -226,6 +237,11 @@ onMounted(fetchChannels)
   font-weight: 800;
   color: var(--color-text-primary);
   letter-spacing: -0.02em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
 }
 
 .channel-cell {

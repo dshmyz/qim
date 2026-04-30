@@ -42,14 +42,15 @@ defineEmits<{
   switchTab: [tab: string]
 }>()
 
-const { fetchBots } = useBots()
+const { fetchMyBots } = useBots()
 const bots = ref<Bot[]>([])
 const selectedBotId = ref('')
 const messages = ref<Message[]>([])
 const thinking = ref(false)
 
 onMounted(async () => {
-  bots.value = await fetchBots()
+  const allBots = await fetchMyBots()
+  bots.value = allBots.filter((bot: Bot) => bot.name !== '系统助手')
 })
 
 const currentBot = computed<Bot | null>(() =>

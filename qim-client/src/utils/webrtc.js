@@ -8,6 +8,7 @@ class ScreenShareSender {
     this.isSharing = false;
     this.receiverId = null;
     this.enableDirectConnect = true; // 启用直连尝试
+    this.iceCandidateCache = []; // ICE 候选者缓存
   }
 
   // 开始屏幕共享
@@ -180,7 +181,7 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -190,7 +191,7 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -200,6 +201,8 @@ class ScreenShareSender {
           } catch (error) {
             console.error('发送 ICE 候选者失败:', error);
           }
+        } else {
+          logger.log('ICE 候选者收集完成（event.candidate 为 null）');
         }
       };
 
@@ -298,9 +301,36 @@ class ScreenShareSender {
   // 处理 answer
   async handleAnswer(answer) {
     try {
+      console.log('=== ScreenShareSender.handleAnswer 被调用 ===')
+      console.log('answer:', answer)
+      console.log('peerConnection 是否存在:', !!this.peerConnection)
       if (this.peerConnection) {
+        console.log('当前连接状态:', this.peerConnection.connectionState)
+        console.log('远程描述是否已设置:', !!this.peerConnection.remoteDescription)
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         logger.log('远程描述设置成功');
+        console.log('设置后的连接状态:', this.peerConnection.connectionState)
+        
+        // 处理缓存的 ICE candidates
+        if (this.iceCandidateCache.length > 0) {
+          console.log('处理缓存的 ICE candidates:', this.iceCandidateCache.length, '个')
+          for (const candidate of this.iceCandidateCache) {
+            try {
+              const iceCandidate = new RTCIceCandidate({
+                candidate: candidate.candidate,
+                sdpMid: candidate.sdpMid || '',
+                sdpMLineIndex: candidate.sdpMLineIndex || 0
+              });
+              await this.peerConnection.addIceCandidate(iceCandidate);
+            } catch (e) {
+              console.error('添加缓存的 ICE candidate 失败:', e);
+            }
+          }
+          this.iceCandidateCache = [];
+          console.log('所有缓存的 ICE candidates 处理完成')
+        }
+      } else {
+        console.error('peerConnection 不存在，无法设置 answer')
       }
     } catch (error) {
       console.error('处理 answer 失败:', error);
@@ -310,26 +340,31 @@ class ScreenShareSender {
   // 处理 ICE 候选者
   addIceCandidate(candidate) {
     try {
-      if (this.peerConnection && candidate) {
-        // 验证 candidate 对象是否有效
-        if (candidate.candidate) {
-          // 检查远程描述是否已设置
-          if (this.peerConnection.remoteDescription) {
-            // 构造 RTCIceCandidate 对象
-            const iceCandidate = new RTCIceCandidate({
-              candidate: candidate.candidate,
-              sdpMid: candidate.sdpMid || '',
-              sdpMLineIndex: candidate.sdpMLineIndex || 0
-            });
-            this.peerConnection.addIceCandidate(iceCandidate);
-            logger.log('ICE 候选者添加成功:', iceCandidate);
-          } else {
-            // 远程描述未设置，跳过添加
-            logger.log('远程描述未设置，跳过添加 ICE 候选者:', candidate);
-          }
-        } else {
-          logger.log('无效的 ICE 候选者，跳过:', candidate);
-        }
+      if (!candidate || !candidate.candidate) {
+        logger.log('无效的 ICE 候选者，跳过:', candidate);
+        return;
+      }
+      
+      if (!this.peerConnection) {
+        logger.log('peerConnection 不存在，缓存 ICE 候选者');
+        this.iceCandidateCache.push(candidate);
+        return;
+      }
+      
+      // 检查远程描述是否已设置
+      if (this.peerConnection.remoteDescription) {
+        // 构造 RTCIceCandidate 对象
+        const iceCandidate = new RTCIceCandidate({
+          candidate: candidate.candidate,
+          sdpMid: candidate.sdpMid || '',
+          sdpMLineIndex: candidate.sdpMLineIndex || 0
+        });
+        this.peerConnection.addIceCandidate(iceCandidate);
+        logger.log('ICE 候选者添加成功:', iceCandidate);
+      } else {
+        // 远程描述未设置，缓存候选者
+        logger.log('远程描述未设置，缓存 ICE 候选者');
+        this.iceCandidateCache.push(candidate);
       }
     } catch (error) {
       console.error('添加 ICE 候选者失败:', error);
@@ -371,13 +406,15 @@ class ScreenShareSender {
       // 尝试使用全局 WebSocket 连接
       if (typeof window !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
         window.ws.send(JSON.stringify({
-          type: 'screen-share-request',
-          data: {
-            target_user_id: receiverId,
-            requester_id: window.currentUser?.id || 0,
-            conversation_id: conversationId || receiverId
-          }
-        }));
+        type: 'screen-share-request',
+        data: {
+          target_user_id: receiverId,
+          requester_id: window.currentUser?.id || 0,
+          from_user_id: window.currentUser?.id || 0,
+          from_user_name: window.currentUser?.name || window.currentUser?.nickname || '未知用户',
+          conversation_id: conversationId || receiverId
+        }
+      }));
         logger.log('屏幕共享请求发送成功');
       } else if (window.electron && window.electron.websocket) {
         // 回退到 IPC 方式
@@ -386,6 +423,8 @@ class ScreenShareSender {
           data: {
             target_user_id: receiverId,
             requester_id: window.currentUser?.id || 0,
+            from_user_id: window.currentUser?.id || 0,
+            from_user_name: window.currentUser?.name || window.currentUser?.nickname || '未知用户',
             conversation_id: conversationId || receiverId
           }
         });
@@ -520,7 +559,7 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -530,7 +569,7 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -762,7 +801,7 @@ class ScreenShareReceiver {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: senderId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -772,7 +811,7 @@ class ScreenShareReceiver {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: senderId,
-                  signal: event.candidate
+                  candidate: event.candidate
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -1194,7 +1233,7 @@ class VideoCallSender {
       if (event.candidate) {
         await this.sendSignalingMessage('webrtc_ice_candidate', {
           target_user_id: receiverId,
-          signal: event.candidate
+          candidate: event.candidate
         });
       }
     };
@@ -1455,7 +1494,7 @@ class VideoCallReceiver {
       if (event.candidate) {
         await this.sendSignalingMessage('webrtc_ice_candidate', {
           target_user_id: senderId,
-          signal: event.candidate
+          candidate: event.candidate
         });
       }
     };

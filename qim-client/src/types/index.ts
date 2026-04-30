@@ -71,6 +71,7 @@ export interface Conversation {
   other_member_id?: number
   other_member_name?: string
   user_id?: number
+  is_deleted?: boolean
 }
 
 export interface Channel {
@@ -80,9 +81,11 @@ export interface Channel {
   avatar: string
   creator_id: string
   status: string
+  publish_permission: 'creator_only' | 'all_subscribers'
   created_at: number
   is_subscribed?: boolean
   creator?: User
+  messages?: ChannelMessage[]
 }
 
 export interface ChannelMessage {

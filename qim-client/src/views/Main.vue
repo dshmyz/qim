@@ -50,6 +50,7 @@
       <div class="main-content">
       <!-- 侧边栏 -->
       <Sidebar
+        ref="sidebarRef"
         :currentUser="currentUser || { username: '用户', name: '用户' }"
         :activeOption="activeOption"
         :searchQuery="searchQuery"
@@ -82,31 +83,42 @@
         @resetApp="backToAppList"
         @searchResultSelect="handleSearchItemClick"
         @searchResultPrivateChat="startPrivateChat"
+        @searchResultApplyJoin="handleApplyJoinGroup"
       />
       
-      <!-- 聊天窗口 -->
-      <ChatWindow
-        ref="chatWindowRef"
-        v-if="currentConversation && activeOption === 'recent'"
-        :conversation="currentConversation"
-        :messages="messages"
-        :getReadUsers="getMessageReadUsers"
-        :currentUser="currentUser.value"
-        :hasMoreMessages="hasMoreMessages"
-        :remoteScreenSharing="remoteScreenSharing"
-        :remoteScreenUserId="remoteScreenUserId"
-        :remoteScreenData="remoteScreenData"
-        @send="handleSendMessage"
-        @recall="handleRecallMessage"
-        @inviteMembers="handleInviteMembers"
-        @switchConversation="handleSwitchConversation"
-        @switch-app="handleSwitchApp"
-        @loadMore="handleLoadMore"
-        @retry-send="handleRetrySendMessage"
-        @send-screen-share-start="handleScreenShareStart"
-        @send-screen-share-stop="handleScreenShareStop"
-        @send-screen-share-data="handleScreenShareData"
-      />
+      <!-- 实时通信全局组件（屏幕共享、视频通话） -->
+    <RealtimeCommunication
+      ref="realtimeRef"
+      :current-conversation="currentConversation"
+      :current-user-id="currentUser?.id"
+      :conversations="conversations"
+      :on-conversation-switch="handleConversationSelect"
+      :on-send-message="handleSendMessage"
+      @screen-share-start="handleScreenShareStart"
+      @screen-share-stop="handleScreenShareStop"
+      @screen-share-data="handleScreenShareData"
+    />
+
+    <!-- 聊天窗口 -->
+    <ChatWindow
+      ref="chatWindowRef"
+      v-if="currentConversation && activeOption === 'recent'"
+      :conversation="currentConversation"
+      :messages="messages"
+      :getReadUsers="getMessageReadUsers"
+      :currentUser="currentUser.value"
+      :hasMoreMessages="hasMoreMessages"
+      @send="handleSendMessage"
+      @recall="handleRecallMessage"
+      @inviteMembers="handleInviteMembers"
+      @switchConversation="handleSwitchConversation"
+      @switch-app="handleSwitchApp"
+      @loadMore="handleLoadMore"
+      @retry-send="handleRetrySendMessage"
+      @start-voice-call="handleStartVoiceCall"
+      @start-video-call="handleStartVideoCall"
+      @start-screen-share="handleStartScreenShare"
+    />
       <div v-else-if="activeOption === 'recent'" class="right-content">
         <div class="right-content-header">
           <div class="header-left-group">
@@ -472,6 +484,7 @@ import Sidebar from '../components/layout/Sidebar.vue'
 import SideOptions from '../components/layout/SideOptions.vue'
 import WindowControls from '../components/layout/WindowControls.vue'
 import ChatWindow from '../components/chat/ChatWindow.vue'
+import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
 import GroupDetail from '../components/shared/GroupDetail.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 import UserProfile from '../components/modals/UserProfile.vue'
@@ -513,7 +526,7 @@ const showMessage = (options: { message: string, type?: 'success' | 'warning' | 
 }
 
 // 当前用户信息
-const { currentUser, userProfile, syncUserProfile, getProfileAvatar } = useCurrentUser()
+const { currentUser, userProfile, syncUserProfile, getProfileAvatar, refreshUser } = useCurrentUser()
 
 // 频道相关
 const {
@@ -577,7 +590,8 @@ const {
 const {
   sessionExpired,
   gotoLogin,
-  cleanupNetwork
+  cleanupNetwork,
+  handleReconnect
 } = useNetwork()
 
 // 手动重连：重新连接 WebSocket
@@ -770,6 +784,15 @@ const {
 // 通知中心组件 ref
 const notificationCenterRef = ref<any>(null)
 
+// 聊天窗口引用
+const chatWindowRef = ref<any>(null)
+
+// 实时通信组件引用
+const realtimeRef = ref<InstanceType<typeof RealtimeCommunication> | null>(null)
+
+// 侧边栏组件引用
+const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
+
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
 const handleConversationSelect = (conversation: Conversation) => {
   _handleConversationSelect(conversation)
@@ -814,11 +837,6 @@ const handleNewNotification = (notification: any) => {
     notificationCenterRef.value.notifications = [mapped, ...currentNotifications]
   }
 }
-
-// 远程屏幕共享状态
-const remoteScreenSharing = ref(false)
-const remoteScreenUserId = ref<number | null>(null)
-const remoteScreenData = ref<string | null>(null)
 
 // 处理侧边栏选项按钮点击
 const handleSidebarOptionClick = (option: string) => {
@@ -969,6 +987,7 @@ onMounted(async () => {
   isLoading.value = true
   try {
     // 并行加载数据
+    await refreshUser()
     await Promise.all([
       console.log('开始加载数据.......'),
       loadConversations(),
@@ -1020,12 +1039,23 @@ const connectWebSocket = () => {
     'notification': handleNotification,
     'new_notification': handleNewNotification,
     'system_message': handleSystemMessage,
-    'screen-share-start': handleRemoteScreenShareStart,
-    'screen-share-stop': handleRemoteScreenShareStop,
-    'screen-share-data': handleRemoteScreenShareData,
-    'screen-share-request': handleScreenShareRequest,
-    'screen-share-accepted': handleScreenShareAccepted,
-    'screen-share-rejected': handleScreenShareRejected
+    // 屏幕共享和视频通话消息路由到 RealtimeCommunication 组件
+    'screen-share-start': (data: any) => realtimeRef.value?.handleScreenShareStart(data),
+    'screen-share-stop': (data: any) => realtimeRef.value?.handleScreenShareStop(data),
+    'screen-share-data': (data: any) => realtimeRef.value?.handleScreenShareMessage('screen-share-data', data),
+    'screen-share-request': (data: any) => realtimeRef.value?.handleScreenShareRequest(data),
+    'screen-share-accepted': (data: any) => realtimeRef.value?.handleScreenShareAccepted(data),
+    'screen-share-rejected': (data: any) => realtimeRef.value?.handleScreenShareRejected(data),
+    'webrtc_offer': (data: any) => realtimeRef.value?.handleWebRTCOffer(data),
+    'webrtc_answer': (data: any) => realtimeRef.value?.handleWebRTCAnswer(data),
+    'webrtc_ice_candidate': (data: any) => realtimeRef.value?.handleWebRTCIceCandidate(data),
+    // 实时会话消息
+    'realtime:session:created': (data: any) => realtimeRef.value?.handleRealtimeSessionCreated(data),
+    // 视频通话消息
+    'call_invite': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_invite', data: msg }),
+    'call_accept': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_accept', data: msg }),
+    'call_reject': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_reject', data: msg }),
+    'call_end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_end', data: msg })
   }
   
   // 使用WebSocket管理器连接
@@ -1231,126 +1261,6 @@ const handleSystemMessage = (data: any) => {
   // 例如，重新加载系统消息列表
   // loadSystemMessages()
 }
-
-// 处理远程屏幕共享开始
-const handleRemoteScreenShareStart = (data: any) => {
-  console.log('收到远程屏幕共享开始:', data)
-  
-  // 设置远程屏幕共享状态
-  remoteScreenSharing.value = true
-  remoteScreenUserId.value = data.user_id
-  remoteScreenData.value = null
-  
-  // 调用 ChatWindow 组件的 receiveScreenShareStream 函数，初始化视频元素
-  if (chatWindowRef.value) {
-    chatWindowRef.value.receiveScreenShareStream(data)
-  }
-  
-  showMessage({
-    message: `用户 ${data.user_id} 开始共享屏幕`,
-    type: 'info',
-    duration: 3000
-  })
-}
-
-// 处理远程屏幕共享停止
-const handleRemoteScreenShareStop = (data: any) => {
-  console.log('收到远程屏幕共享停止:', data)
-  
-  // 重置远程屏幕共享状态
-  remoteScreenSharing.value = false
-  remoteScreenUserId.value = null
-  remoteScreenData.value = null
-  
-  showMessage({
-    message: `用户 ${data.user_id} 停止了屏幕共享`,
-    type: 'info',
-    duration: 3000
-  })
-}
-
-// 聊天窗口引用
-const chatWindowRef = ref(null)
-
-// 处理远程屏幕共享数据
-const handleRemoteScreenShareData = (data: any) => {
-  console.log('收到远程屏幕共享数据:', data)
-  
-  // 更新远程屏幕共享数据
-  if (data.data) {
-    remoteScreenData.value = data.data
-    // 将屏幕共享数据传递给 ChatWindow 组件
-    if (chatWindowRef.value) {
-      chatWindowRef.value.handleRemoteScreenShareData(data.data)
-    }
-  }
-}
-
-
-// 处理屏幕共享请求
-const handleScreenShareRequest = (data: any) => {
-  console.log('收到屏幕共享请求:', data)
-  
-  // 显示确认对话框
-  QMessageBox.confirm(
-    `用户 ${data.user_id} 请求共享屏幕，是否接受？`,
-    '屏幕共享请求',
-    {
-      confirmButtonText: '接受',
-      cancelButtonText: '拒绝',
-      type: 'warning'
-    }
-  )
-  .then(() => {
-    // 发送接受响应
-    sendScreenShareResponse(data.conversation_id, data.user_id, 'accepted')
-  })
-  .catch(() => {
-    // 发送拒绝响应
-    sendScreenShareResponse(data.conversation_id, data.user_id, 'rejected')
-  })
-}
-
-// 发送屏幕共享响应
-const sendScreenShareResponse = (conversationId: number, requesterId: number, status: string) => {
-  const wsMsg = {
-    type: 'screen-share-response',
-    data: {
-      conversation_id: conversationId,
-      requester_id: requesterId,
-      status: status
-    }
-  }
-  // 发送WebSocket消息
-  sendMessage(wsMsg)
-}
-
-// 处理屏幕共享接受
-const handleScreenShareAccepted = (data: any) => {
-  console.log('屏幕共享请求被接受:', data)
-  showMessage({
-    message: '对方接受了屏幕共享请求',
-    type: 'success',
-    duration: 3000
-  })
-  // 调用ChatWindow组件的handleScreenShareAccepted方法，开始建立WebRTC连接
-  if (chatWindowRef.value) {
-    console.log('调用ChatWindow组件的handleScreenShareAccepted方法')
-    chatWindowRef.value.handleScreenShareAccepted(data)
-  }
-  console.log('对方已接受屏幕共享请求，开始建立连接...')
-}
-
-// 处理屏幕共享拒绝
-const handleScreenShareRejected = (data: any) => {
-  console.log('屏幕共享请求被拒绝:', data)
-  showMessage({
-    message: '对方拒绝了屏幕共享请求',
-    type: 'info',
-    duration: 3000
-  })
-}
-
 
 // 处理消息删除
 const handleMessageDeleted = (data: any) => {
@@ -1816,6 +1726,32 @@ const handleSearchItemClick = (item) => {
     // 关闭搜索悬浮框
     searchQuery.value = ''
     searchResults.value = []
+  }
+}
+
+// 处理申请加入群组
+const handleApplyJoinGroup = async (item) => {
+  if (!item || !item.id) {
+    QMessage.error('群组信息无效')
+    return
+  }
+
+  try {
+    const response = await request(`/api/v1/conversations/${item.id}/apply`, {
+      method: 'POST'
+    })
+
+    if (response.code === 0 || response.code === 200) {
+      QMessage.success('申请已发送，请等待管理员审批')
+      // 关闭搜索悬浮框
+      searchQuery.value = ''
+      searchResults.value = []
+    } else {
+      QMessage.error(response.message || '申请加入失败')
+    }
+  } catch (error) {
+    console.error('申请加入群组失败:', error)
+    QMessage.error('网络错误，申请加入失败')
   }
 }
 
@@ -2698,17 +2634,13 @@ const startVoiceCall = async (userId: string) => {
 // 开始语音通话计时器
 const startVoiceCallTimer = () => {
   voiceCallDuration.value = 0
-  voiceCallTimer.value = window.setInterval(() => {
+  window.setInterval(() => {
     voiceCallDuration.value++
   }, 1000)
 }
 
 // 结束语音通话
 const endVoiceCall = () => {
-  if (voiceCallTimer.value) {
-    clearInterval(voiceCallTimer.value)
-    voiceCallTimer.value = null
-  }
   voiceCallStatus.value = 'ended'
   setTimeout(() => {
     showVoiceCallModal.value = false
@@ -2938,7 +2870,6 @@ const appCategories = ref([
       { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
       { id: '7', name: '笔记', icon: 'fas fa-book' },
       { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' },
-      { id: 'ai-config', name: '大模型配置', icon: 'fas fa-cogs' },
       { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' }
     ]
   },
@@ -3400,10 +3331,10 @@ const sendSystemMessage = async (msg: { title: string; content: string; target: 
 
 const createChannel = () => {
   hideActionMenu()
-  // 这里可以实现创建频道的逻辑
-  QMessage.info('创建频道功能开发中...')
-  console.log('创建频道')
-}
+ activeOption.value = 'channels'
+  nextTick(() => {
+    sidebarRef.value?.channelListRef?.openCreateModal()
+  })}
 
 const createDiscussionGroup = () => {
   hideActionMenu()
@@ -3435,7 +3366,11 @@ const dissolveGroup = async () => {
       // 从会话列表中移除该群聊（副作用处理）
       const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
       if (conversationIndex !== -1) {
-        conversations.value.splice(conversationIndex, 1)
+       conversations.value[conversationIndex] = {
+          ...conversations.value[conversationIndex],
+          name: '[已解散] ' + conversations.value[conversationIndex].name,
+          is_deleted: true
+        }
         conversations.value = [...conversations.value]
       }
       selectedGroup.value = null
@@ -3574,6 +3509,30 @@ const handleSwitchApp = (app) => {
   activeOption.value = 'apps'
   selectedAppId.value = app
   console.log('切换到应用:', app)
+}
+
+// 处理语音通话
+const handleStartVoiceCall = () => {
+  console.log('Main: 开始语音通话')
+  // TODO: 调用 RealtimeCommunication 组件的语音通话方法
+  QMessage.info('语音通话功能开发中')
+}
+
+// 处理视频通话
+const handleStartVideoCall = () => {
+  console.log('Main: 开始视频通话')
+  // TODO: 调用 RealtimeCommunication 组件的视频通话方法
+  QMessage.info('视频通话功能开发中')
+}
+
+// 处理屏幕共享
+const handleStartScreenShare = async () => {
+  console.log('Main: 开始屏幕共享')
+  if (realtimeRef.value) {
+    await realtimeRef.value.startScreenShare()
+  } else {
+    QMessage.error('实时通信组件未初始化')
+  }
 }
 
 // 处理切换会话

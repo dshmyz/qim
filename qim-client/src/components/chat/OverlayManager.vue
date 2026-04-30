@@ -249,7 +249,8 @@ const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => 
 }
 
 defineExpose({
-  screenShareRef,
-  stopReceiving: () => screenShareRef.value?.stopReceiving()
+  startScreenShare: () => screenShareRef.value?.startScreenShare(),
+  stopReceiving: () => screenShareRef.value?.stopReceiving(),
+  setRemoteStream: (stream: MediaStream) => screenShareRef.value?.setRemoteStream(stream)
 })
 </script>

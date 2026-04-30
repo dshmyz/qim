@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import GroupList from '../shared/GroupList.vue'
 import ChannelList from '../shared/ChannelList.vue'
 import OrgTree from '../shared/OrgTree.vue'
@@ -73,7 +73,10 @@ const emit = defineEmits<{
   (e: 'resetApp'): void
   (e: 'searchResultSelect', item: SearchResultItem): void
   (e: 'searchResultPrivateChat', item: SearchResultItem): void
+  (e: 'searchResultApplyJoin', item: SearchResultItem): void
 }>()
+
+const channelListRef = ref<InstanceType<typeof ChannelList> | null>(null)
 
 const userAvatar = computed(() => {
   if (props.currentUser?.avatar && isAbsoluteUrl(props.currentUser.avatar)) {
@@ -96,6 +99,8 @@ const filteredConversations = computed(() => {
     conv.name?.toLowerCase().includes(query)
   )
 })
+
+defineExpose({ channelListRef })
 </script>
 
 <template>
@@ -141,6 +146,7 @@ const filteredConversations = computed(() => {
           :searchResults="searchResults"
           @select="(item) => $emit('searchResultSelect', item)"
           @privateChat="(item) => $emit('searchResultPrivateChat', item)"
+          @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
         />
         <ConversationList
           :conversations="filteredConversations"
@@ -172,7 +178,7 @@ const filteredConversations = computed(() => {
       </div>
       
       <div v-else-if="activeOption === 'channels'" class="content-section">
-        <ChannelList :currentUser="currentUser" @select-channel="$emit('selectChannel', $event)" />
+        <ChannelList ref="channelListRef" :currentUser="currentUser" @select-channel="$emit('selectChannel', $event)" />
       </div>
       
       <div v-else-if="activeOption === 'apps'" class="content-section">

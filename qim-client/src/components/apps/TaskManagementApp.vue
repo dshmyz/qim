@@ -141,7 +141,7 @@
       
       <template #footer>
         <button class="task-modal-btn task-cancel-btn" @click="closeCreateTaskModal">取消</button>
-        <button class="task-modal-btn task-confirm-btn" @click="selectedTask ? updateTask() : createTask">{{ selectedTask ? '更新' : '创建' }}</button>
+        <button class="task-modal-btn task-confirm-btn" @click="selectedTask ? updateTask() : createTask()">{{ selectedTask ? '更新' : '创建' }}</button>
       </template>
     </ModalContainer>
   </div>
@@ -225,6 +225,11 @@ const loadTasks = async () => {
 
 // 创建任务
 const createTask = async () => {
+  if (!taskForm.value.title.trim()) {
+    QMessage.error('请输入任务标题')
+    return
+  }
+
   try {
     const token = getToken()
     const response = await axios.post(`${serverUrl.value}/api/v1/tasks`, taskForm.value, {
@@ -236,6 +241,9 @@ const createTask = async () => {
     if (response.data.code === 0) {
       tasks.value.push(response.data.data)
       closeCreateTaskModal()
+      QMessage.success('任务创建成功')
+    } else {
+      QMessage.error(response.data.message || '创建任务失败')
     }
   } catch (error) {
     console.error('创建任务失败:', error)
@@ -245,6 +253,11 @@ const createTask = async () => {
 
 // 更新任务
 const updateTask = async () => {
+  if (!taskForm.value.title.trim()) {
+    QMessage.error('请输入任务标题')
+    return
+  }
+
   try {
     const token = getToken()
     const response = await axios.put(`${serverUrl.value}/api/v1/tasks/${selectedTask.value.id}`, taskForm.value, {
@@ -259,6 +272,9 @@ const updateTask = async () => {
         tasks.value[index] = response.data.data
       }
       closeCreateTaskModal()
+      QMessage.success('任务更新成功')
+    } else {
+      QMessage.error(response.data.message || '更新任务失败')
     }
   } catch (error) {
     console.error('更新任务失败:', error)

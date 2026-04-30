@@ -29,6 +29,12 @@
           <el-option label="外部打开" value="external" />
         </el-select>
       </el-form-item>
+      <el-form-item label="全局应用">
+        <el-switch v-model="form.isGlobal" />
+        <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px;">
+          全局应用对所有用户可见，仅管理员可创建
+        </span>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
@@ -70,6 +76,7 @@ const form = reactive({
   category: '',
   url: '',
   openType: 'in-app' as 'in-app' | 'external',
+  isGlobal: false,
 })
 
 const rules: FormRules = {
@@ -89,6 +96,7 @@ watch(
       form.category = app.category
       form.url = app.url
       form.openType = app.openType
+      form.isGlobal = app.isGlobal || false
     }
   },
   { immediate: true }

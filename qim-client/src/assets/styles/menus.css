@@ -14,13 +14,13 @@
 /* 群聊上下文菜单样式 */
 .context-menu-divider {
   height: 1px;
-  background: #e0e0e0;
+  background: var(--border-color);
   margin: 4px 0;
   cursor: default;
 }
 
 .context-menu-divider:hover {
-  background: #e0e0e0;
+  background: var(--border-color);
 }
 
 /* 动作菜单样式 */
@@ -137,13 +137,13 @@
 
 .context-menu-item.divider {
   height: 1px;
-  background: #e0e0e0;
+  background: var(--border-color);
   margin: 4px 0;
   cursor: default;
   padding: 0;
 }
 
 .context-menu-item.divider:hover {
-  background: #e0e0e0;
+  background: var(--border-color);
   cursor: default;
 }

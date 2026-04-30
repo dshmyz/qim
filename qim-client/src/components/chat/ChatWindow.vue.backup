@@ -230,12 +230,8 @@ import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
 import { API_BASE_URL } from '../../config'
 import { getCurrentUser } from '../../utils/user'
-// @ts-ignore - WebRTC module has no type declarations
-import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
-import { useScreenShare } from '../../composables/useScreenShare'
-import { useVideoCall } from '../../composables/useVideoCall'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
@@ -245,8 +241,6 @@ import { generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
-import { useRealtimeStore } from '../../stores/realtime'
-import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -262,28 +256,6 @@ const currentUserId = computed((): string | number => {
 const { getToken, request } = useChatRequest(serverUrl.value)
 const { formatTime, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
-
-// 实时通信 store 和连接管理器
-const realtimeStore = useRealtimeStore()
-const connectionManager = new RealtimeConnectionManager()
-const viewerConnection = new RealtimeViewerConnection()
-
-// 设置观看者连接的回调
-viewerConnection.setCallbacks({
-  onRemoteStream: (stream: MediaStream) => {
-    console.log('ChatWindow: 收到远程流', stream)
-    // 将远程流设置到 ScreenShare 组件的视频元素
-    if (overlayRef.value && overlayRef.value.setRemoteStream) {
-      overlayRef.value.setRemoteStream(stream)
-    }
-  },
-  onConnectionStateChange: (state: RTCPeerConnectionState) => {
-    console.log('ChatWindow: WebRTC 连接状态变化', state)
-  },
-  onError: (error: Error) => {
-    console.error('ChatWindow: WebRTC 连接错误', error)
-  }
-})
 
 // AI 操作 composable
 const {
@@ -431,7 +403,7 @@ const {
 } = messageActions
 
 // 屏幕共享相关逻辑
-const screenShare = useScreenShare(ref(props.conversation))
+const screenShare = useScreenShare(ref(props.conversation), ref(currentUser.value))
 const {
   screenShareComponent,
   remoteScreenUserId,
@@ -446,27 +418,11 @@ const {
   handleScreenShareStart,
   handleScreenShareStop,
   sendScreenShareSignal,
-  startScreenShare: _startScreenShare,
+  startScreenShare,
   receiveScreenShareStream,
   stopScreenShare,
   cleanupScreenShare
 } = screenShare
-
-// 覆盖 startScreenShare 方法，使用 OverlayManager 暴露的方法
-const startScreenShare = () => {
-  if (!props.conversation) {
-    QMessage.warning('请先选择一个会话')
-    return
-  }
-  
-  const user = getCurrentUser()
-  if (!user || !user.id) {
-    QMessage.warning('用户信息未加载，无法使用屏幕共享')
-    return
-  }
-  
-  overlayRef.value?.startScreenShare()
-}
 
 // 视频通话相关逻辑
 const videoCall = useVideoCall()
@@ -490,16 +446,17 @@ const {
 
 // 向后兼容：保留原来的 ref 声明（逐步迁移后可删除）
 
-// 同步 OverlayManager 中的 ScreenShare 组件引用到 screenShareComponent
-// watch(
-//   () => overlayRef.value,
-//   (overlay) => {
-//     if (overlay) {
-//       screenShareComponent.value = overlay.screenShareRef
-//     }
-//   },
-//   { immediate: true }
-// )
+// 在 overlayRef 挂载后设置 screenShareComponent
+onMounted(() => {
+  nextTick(() => {
+    if (overlayRef.value) {
+      const screenShare = overlayRef.value.getScreenShareRef?.()
+      if (screenShare) {
+        screenShareComponent.value = screenShare
+      }
+    }
+  })
+})
 
 // 监听远程屏幕共享
 watch(() => props.remoteScreenSharing, (newVal) => {
@@ -1108,6 +1065,14 @@ onMounted(async () => {
   loadMiniApps()
   // 初始化 WebSocket 消息处理
   initWebSocketMessageHandler()
+
+  const cachedOffer = consumeCachedOffer()
+  if (cachedOffer) {
+    console.log('ChatWindow: 发现缓存的 webrtc_offer，开始处理')
+    nextTick(() => {
+      handleWebRTCOffer({ signal: cachedOffer.signal, from_user_id: cachedOffer.fromUserId })
+    })
+  }
   // 添加转发笔记事件监听器
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   // 添加分享文件事件监听器
@@ -1117,120 +1082,6 @@ onMounted(async () => {
 })
 
 // 初始化 WebSocket 消息处理
-const handleRealtimeMessage = (type: string, data: any) => {
-  console.log('ChatWindow: 收到实时消息', type, 'data:', data, 'typeof data:', typeof data)
-  
-  switch (type) {
-    case 'realtime:session:created':
-      {
-        console.log('ChatWindow: data 内容:', JSON.stringify(data, null, 2))
-        const session = data?.session || data
-        console.log('ChatWindow: 处理 realtime:session:created', session)
-        
-        if (!session) {
-          console.warn('ChatWindow: session 数据为空')
-          return
-        }
-        
-        realtimeStore.updateSession(session)
-        
-        const currentUserId = getCurrentUser()?.id
-        console.log('ChatWindow: 当前用户ID', currentUserId, '发起者ID', session.initiator_id)
-        
-        if (session.initiator_id !== currentUserId && session.type === 'screen_share') {
-          console.log('ChatWindow: 设置 remoteScreenUserId', session.initiator_id)
-          remoteScreenUserId.value = session.initiator_id
-          const initiatorName = session.initiator?.nickname || `用户 ${session.initiator_id}`
-          $message.info(`${initiatorName} 正在共享屏幕`, 5000)
-          
-          // 自动请求加入会话
-          console.log('ChatWindow: 自动请求加入会话', session.id)
-          realtimeStore.requestJoin(session.id).catch(err => {
-            console.error('ChatWindow: 请求加入会话失败', err)
-          })
-        }
-      }
-      break
-    case 'realtime:join:requested':
-      {
-        console.log('ChatWindow: 收到加入请求', data)
-        const request = data?.participant || data
-        if (request && request.session_id && request.user_id) {
-          realtimeStore.addPendingRequest(request)
-          
-          // 自动批准屏幕共享的加入请求
-          const session = realtimeStore.mySession
-          if (session && session.type === 'screen_share') {
-            console.log('ChatWindow: 自动批准屏幕共享加入请求', request.user_id)
-            realtimeStore.approveJoin(request.session_id, request.user_id).then(() => {
-              // 批准成功后，创建 WebRTC 连接
-              console.log('ChatWindow: 批准成功，创建 WebRTC 连接')
-              connectionManager.createConnectionForViewer(request.user_id)
-            }).catch(err => {
-              console.error('ChatWindow: 批准加入失败', err)
-            })
-          }
-        }
-      }
-      break
-    case 'realtime:join:approved':
-      {
-        console.log('ChatWindow: 加入请求被批准', data)
-        // 加入请求被批准，开始建立连接
-        const participant = data?.participant || data
-        if (participant && participant.session_id) {
-          console.log('ChatWindow: 开始建立 WebRTC 连接')
-          // 设置当前观看的会话
-          const session = realtimeStore.activeSessions.find(s => s.id === participant.session_id)
-          if (session) {
-            realtimeStore.setCurrentViewingSession(session)
-          }
-          // 触发 ScreenShare 组件开始接收流
-          // 注意：WebRTC 连接会在 ScreenShare 组件中建立
-        }
-      }
-      break
-    case 'realtime:join:rejected':
-      // 加入请求被拒绝
-      $message.warning('您的加入请求被拒绝')
-      break
-    case 'realtime:participant:left':
-      // 参与者离开
-      if (data.viewer_id) {
-        connectionManager.closeConnection(data.viewer_id)
-      }
-      break
-    case 'realtime:session:ended':
-      // 会话结束
-      realtimeStore.removeSession(data.session_id)
-      connectionManager.closeAllConnections()
-      remoteScreenUserId.value = null
-      break
-    case 'realtime:webrtc:offer':
-      // 收到 WebRTC offer
-      if (data.session_id && data.from_user_id && data.signal) {
-        viewerConnection.handleOffer(data.session_id, data.from_user_id, data.signal)
-      }
-      break
-    case 'realtime:webrtc:answer':
-      // 收到 WebRTC answer
-      if (data.from_user_id && data.signal) {
-        connectionManager.handleAnswer(data.from_user_id, data.signal)
-      }
-      break
-    case 'realtime:webrtc:ice':
-      // 收到 ICE candidate
-      if (data.from_user_id && data.signal) {
-        if (realtimeStore.isViewing) {
-          viewerConnection.handleIceCandidate(data.signal)
-        } else if (realtimeStore.isSharing) {
-          connectionManager.handleIceCandidate(data.from_user_id, data.signal)
-        }
-      }
-      break
-  }
-}
-
 const initWebSocketMessageHandler = () => {
   // 先清理旧的 handler
   if (wsHandlersCleanup) {
@@ -1260,19 +1111,7 @@ const initWebSocketMessageHandler = () => {
     'webrtc_ice_candidate'
   ];
   
-  const realtimeMessageTypes = [
-    'realtime:session:created',
-    'realtime:join:requested',
-    'realtime:join:approved',
-    'realtime:join:rejected',
-    'realtime:participant:left',
-    'realtime:session:ended',
-    'realtime:webrtc:offer',
-    'realtime:webrtc:answer',
-    'realtime:webrtc:ice'
-  ];
-  
-  const allMessageTypes = [...screenShareMessageTypes, ...videoCallMessageTypes, ...realtimeMessageTypes];
+  const allMessageTypes = [...screenShareMessageTypes, ...videoCallMessageTypes];
   const uniqueMessageTypes = [...new Set(allMessageTypes)];
   
   // 使用新的 addWsHandlers 批量注册，返回统一清理函数
@@ -1289,9 +1128,6 @@ const initWebSocketMessageHandler = () => {
           showCallModal.value = true
         }
       }
-      if (realtimeMessageTypes.includes(type)) {
-        handleRealtimeMessage(type, data);
-      }
     };
   });
   
@@ -1307,9 +1143,6 @@ const initWebSocketMessageHandler = () => {
         if (message.type === 'call_invite' || message.type === 'webrtc_offer') {
           showCallModal.value = true
         }
-      }
-      if (realtimeMessageTypes.includes(message.type)) {
-        handleRealtimeMessage(message.type, message.data);
       }
     };
     window.electron.websocket.onMessage(electronWsHandler);
@@ -1425,15 +1258,6 @@ const scrollToQuotedMessage = (quotedMessageId: string) => {
 const scrollToMessage = (messageId: string) => {
   if (!messageId) return
   
-  // 先检查消息是否在当前的 props.messages 中
-  const targetMessage = props.messages.find(m => String(m.id) === String(messageId))
-  if (!targetMessage) {
-    console.warn('目标消息不在当前加载的消息列表中:', messageId)
-    QMessage.info('该消息不在当前可视范围内，请加载更多历史消息后重试')
-    closeMessageManager()
-    return
-  }
-  
   nextTick(() => {
     const messageElement = document.querySelector(`.message-item[data-message-id="${messageId}"]`)
     if (messageElement instanceof HTMLElement) {
@@ -1443,8 +1267,6 @@ const scrollToMessage = (messageId: string) => {
       setTimeout(() => {
         messageElement.classList.remove('highlighted-message')
       }, 2000)
-    } else {
-      console.warn('未找到目标消息 DOM 元素:', messageId)
     }
   })
   // 关闭消息管理器
@@ -2886,8 +2708,7 @@ const saveAnnouncement = async (announcement?: string) => {
 defineExpose({
   startScreenShare,
   receiveScreenShareStream,
-  handleScreenShareAccepted,
-  scrollToBottom
+  handleScreenShareAccepted
 })
 </script>
 

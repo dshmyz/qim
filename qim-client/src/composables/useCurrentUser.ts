@@ -16,6 +16,7 @@ export interface CurrentUser {
   avatar?: string
   signature?: string
   isAdmin?: boolean
+  roles?: string[]
   [key: string]: any
 }
 
@@ -36,19 +37,37 @@ export function useCurrentUser() {
       try {
         const user = JSON.parse(userStr)
         if (user && user.id) {
-          user.isAdmin = true
+          user.isAdmin = user.roles?.includes('system_admin') || false
           return user
         }
       } catch (error) {
         console.error('解析用户信息失败:', error)
       }
     }
-    return {
-      id: '1',
-      username: 'admin',
-      nickname: '管理员',
-      avatar: generateAvatar('admin'),
-      isAdmin: true
+    return null
+  }
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem('token')
+    const serverUrl = localStorage.getItem('serverUrl')
+    if (!token || !serverUrl) return
+
+    try {
+      const response = await fetch(`${serverUrl}/api/v1/users/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const data = await response.json()
+      if (data.code === 0 && data.data) {
+        const user = data.data
+        user.isAdmin = user.roles?.includes('system_admin') || false
+        localStorage.setItem('user', JSON.stringify(user))
+        currentUser.value = user
+      }
+    } catch (error) {
+      console.error('刷新用户信息失败:', error)
     }
   }
 
@@ -76,6 +95,7 @@ export function useCurrentUser() {
     currentUser,
     userProfile,
     syncUserProfile,
-    getProfileAvatar
+    getProfileAvatar,
+    refreshUser
   }
 }

@@ -206,6 +206,15 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 	h.sendToUserToOtherNodes(userID, message)
 }
 
+// IsUserOnline 检查用户是否在线
+func (h *Hub) IsUserOnline(userID uint) bool {
+	if existingClients, ok := h.userClients.Load(userID); ok {
+		clients := existingClients.([]*Client)
+		return len(clients) > 0
+	}
+	return false
+}
+
 // UpdateConversationMembers 更新会话成员缓存
 func (h *Hub) UpdateConversationMembers(convID uint) {
 	// 从数据库查询最新的会话成员
@@ -351,6 +360,25 @@ func (c *Client) readPump() {
 			handleScreenShareRequest(c, msg.Data)
 		case "screen-share-response":
 			handleScreenShareResponse(c, msg.Data)
+		// 实时通信事件
+		case "realtime:session:create":
+			HandleRealtimeSessionCreate(c, msg.Data)
+		case "realtime:session:end":
+			HandleRealtimeSessionEnd(c, msg.Data)
+		case "realtime:join:request":
+			HandleRealtimeJoinRequest(c, msg.Data)
+		case "realtime:join:approve":
+			HandleRealtimeJoinApprove(c, msg.Data)
+		case "realtime:join:reject":
+			HandleRealtimeJoinReject(c, msg.Data)
+		case "realtime:leave":
+			HandleRealtimeLeave(c, msg.Data)
+		case "realtime:webrtc:offer":
+			HandleRealtimeWebRTCOffer(c, msg.Data)
+		case "realtime:webrtc:answer":
+			HandleRealtimeWebRTCAnswer(c, msg.Data)
+		case "realtime:webrtc:ice":
+			HandleRealtimeWebRTCIce(c, msg.Data)
 		default:
 			log.Printf("未知消息类型: %s", msg.Type)
 		}
@@ -779,10 +807,12 @@ func handleScreenShareData(c *Client, data interface{}) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 
 	// 推送给会话其他成员
+	log.Printf("准备向会话 %d 的其他成员推送屏幕共享请求，发送者: %d", convID, c.userID)
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	log.Printf("用户 %d 请求屏幕共享，会话 %d", c.userID, convID)
 }
 
-// 处理屏幕共享请求
+// 处理屏幕共享请求（支持离线用户）
 func handleScreenShareRequest(c *Client, data interface{}) {
 	db := database.GetDB()
 
@@ -849,18 +879,26 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 		return
 	}
 
+	// 查询发送者昵称
+	var senderNickname string
+	if err := db.Model(&model.User{}).Where("id = ?", c.userID).Select("nickname").First(&senderNickname).Error; err != nil {
+		log.Printf("查询用户昵称失败: %v，使用默认值", err)
+		senderNickname = "未知用户"
+	}
+
 	// 构建屏幕共享请求消息
 	wsMsg := WSMessage{
 		Type: "screen-share-request",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         c.userID,
+			"from_user_name":  senderNickname,
 			"timestamp":       time.Now().Unix(),
 		},
 	}
 	jsonMsg, _ := json.Marshal(wsMsg)
 
-	// 推送给会话其他成员
+	// 推送给会话其他成员（复用原有的 SendToConversation 逻辑）
 	log.Printf("准备向会话 %d 的其他成员推送屏幕共享请求，发送者: %d", convID, c.userID)
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
 	log.Printf("用户 %d 请求屏幕共享，会话 %d", c.userID, convID)

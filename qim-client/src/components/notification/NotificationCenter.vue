@@ -343,6 +343,10 @@ const ACTION_BUTTONS: Record<string, Array<{ value: string; label: string; style
     { value: 'confirm', label: '确认', style: 'primary' },
     { value: 'reschedule', label: '延期', style: 'secondary' },
   ],
+  approve_reject: [
+    { value: 'approve', label: '同意', style: 'primary' },
+    { value: 'reject', label: '拒绝', style: 'secondary' },
+  ],
 }
 
 const getActionButtons = (notification: Notification) => {
@@ -353,11 +357,37 @@ const getActionButtons = (notification: Notification) => {
 const handleAction = async (notification: Notification, action: string) => {
   try {
     const token = getToken()
-    await axios.patch(
-      `${serverUrl.value}/api/v1/notifications/${notification.id}/action`,
-      { action },
-      { headers: { 'Authorization': `Bearer ${token}` } }
-    )
+    
+    if (notification.actionType === 'approve_reject' && (action === 'approve' || action === 'reject')) {
+      let payload: any = {}
+      if (typeof notification.actionPayload === 'string') {
+        payload = JSON.parse(notification.actionPayload)
+      } else if (typeof notification.actionPayload === 'object') {
+        payload = notification.actionPayload
+      }
+      
+      const { conversation_id, user_id } = payload
+      
+      if (action === 'approve') {
+        await axios.post(
+          `${serverUrl.value}/api/v1/conversations/${conversation_id}/members`,
+          { member_ids: [user_id] },
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        )
+      } else {
+        await axios.delete(
+          `${serverUrl.value}/api/v1/conversations/${conversation_id}/join-requests/${user_id}`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        )
+      }
+    } else {
+      await axios.patch(
+        `${serverUrl.value}/api/v1/notifications/${notification.id}/action`,
+        { action },
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
+    }
+    
     notification.handled = true
     notification.read = true
     emit('notificationClick', notification)

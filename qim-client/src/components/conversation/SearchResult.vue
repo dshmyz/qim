@@ -32,8 +32,11 @@
           <button v-if="item.type === 'user'" class="search-popup-btn" @click.stop="$emit('privateChat', item)">
             <i class="fas fa-comment"></i>
           </button>
-          <button v-if="item.type === 'group' || item.type === 'discussion'" class="search-popup-btn" @click.stop="$emit('select', item)">
+          <button v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-btn" @click.stop="$emit('select', item)">
             <i class="fas fa-arrow-right"></i>
+          </button>
+          <button v-if="(item.type === 'group' || item.type === 'discussion') && !item.isMember" class="search-popup-btn apply-btn" @click.stop="$emit('applyJoin', item)">
+            <i class="fas fa-user-plus"></i>
           </button>
         </div>
       </div>
@@ -62,6 +65,7 @@ defineProps<{
 defineEmits<{
   (e: 'select', item: SearchResultItem): void
   (e: 'privateChat', item: SearchResultItem): void
+  (e: 'applyJoin', item: SearchResultItem): void
 }>()
 </script>
 
@@ -222,5 +226,13 @@ defineEmits<{
 .search-popup-btn:hover {
   background: var(--active-color);
   transform: scale(1.05);
+}
+
+.search-popup-btn.apply-btn {
+  background: #10b981;
+}
+
+.search-popup-btn.apply-btn:hover {
+  background: #059669;
 }
 </style>

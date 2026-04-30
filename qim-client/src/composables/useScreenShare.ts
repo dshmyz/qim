@@ -1,19 +1,54 @@
-import { ref, nextTick } from 'vue'
+import { ref, shallowRef, nextTick } from 'vue'
 import QMessage from '../utils/qmessage'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 import { getCurrentUser } from '../utils/user'
+
+interface CachedOffer {
+  signal: any
+  fromUserId: number
+  timestamp: number
+}
+
+let cachedOffer: CachedOffer | null = null
+
+export function consumeCachedOffer(): CachedOffer | null {
+  const offer = cachedOffer
+  cachedOffer = null
+  return offer
+}
+
+export function cacheWebRTCOffer(signal: any, fromUserId: number): void {
+  cachedOffer = { signal, fromUserId, timestamp: Date.now() }
+}
 
 /**
  * 屏幕共享 WebRTC 相关逻辑
  * 包含：屏幕共享请求处理、WebRTC 信令、开始/停止共享等
  */
 export function useScreenShare(conversation: { value: any }) {
-  const screenShareComponent = ref<any>(null)
+  const screenShareComponent = shallowRef<any>(null)
   const remoteScreenUserId = ref<number | null>(null)
   const showScreenShareViewer = ref(false)
 
   const registeredScreenShareHandlers: { handler: Function; type: string }[] = []
+
+  // 外部回调：当需要显示屏幕共享组件时调用
+  let onShowScreenShareRequest: (() => void) | null = null
+
+  /**
+   * 设置外部回调
+   */
+  const setOnShowScreenShareRequest = (callback: () => void) => {
+    onShowScreenShareRequest = callback
+  }
+
+  /**
+   * 设置屏幕共享组件引用
+   */
+  const setScreenShareComponent = (component: any) => {
+    screenShareComponent.value = component
+  }
 
   /**
    * 处理屏幕共享消息
@@ -52,11 +87,25 @@ export function useScreenShare(conversation: { value: any }) {
    */
   const handleWebRTCOffer = async (data: any) => {
     try {
+      console.log('=== 开始处理 WebRTC offer ===')
+      console.log('data:', JSON.stringify(data, null, 2))
       remoteScreenUserId.value = data.from_user_id
-      await nextTick()
       QMessage.info('收到屏幕共享请求', 5000)
+      
+      // 通知外部需要显示组件
+      if (onShowScreenShareRequest) {
+        onShowScreenShareRequest()
+      }
+      
+      // 等待组件渲染
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       if (screenShareComponent.value) {
+        console.log('调用 screenShareComponent.handleOffer')
         await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
+      } else {
+        console.error('screenShareComponent 未初始化，无法处理 offer')
       }
     } catch (error) {
       console.error('处理 WebRTC offer 失败:', error)
@@ -82,10 +131,10 @@ export function useScreenShare(conversation: { value: any }) {
       if (screenShareSender.getIsSharing()) {
         screenShareSender.addIceCandidate(data.signal)
       } else if (screenShareComponent.value) {
-        screenShareComponent.value.handleIceCandidate(data.signal)
-      } else {
-        screenShareReceiver.handleIceCandidate(data.signal)
-      }
+      screenShareComponent.value.handleIceCandidate(data.signal)
+    } else {
+      screenShareReceiver.addIceCandidate(data.signal)
+    }
     } catch (error) {
       console.error('处理 WebRTC ICE candidate 失败:', error)
     }
@@ -105,11 +154,17 @@ export function useScreenShare(conversation: { value: any }) {
   const handleScreenShareAccepted = async (data: any) => {
     try {
       QMessage.success('屏幕共享请求已接受')
-      if (screenShareComponent.value) {
-        screenShareComponent.value.establishConnection()
+      if (screenShareComponent.value && typeof screenShareComponent.value.establishConnection === 'function') {
+        await screenShareComponent.value.establishConnection()
+      } else {
+        console.warn('ScreenShare component not ready or establishConnection method not available')
       }
-    } catch (error) {
-      console.error('处理屏幕共享接受失败:', error)
+    } catch (error: any) {
+      if (error?.message?.includes('instance.update')) {
+        console.warn('组件实例已卸载，跳过响应式更新')
+      } else {
+        console.error('处理屏幕共享接受失败:', error)
+      }
     }
   }
 
@@ -212,6 +267,8 @@ export function useScreenShare(conversation: { value: any }) {
     showScreenShareViewer,
     registeredScreenShareHandlers,
     // 方法
+    setScreenShareComponent,
+    setOnShowScreenShareRequest,
     handleScreenShareMessage,
     handleWebRTCOffer,
     handleWebRTCAnswer,

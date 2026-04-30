@@ -57,6 +57,15 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		
+		// 获取用户角色
+		var userRoles []model.UserRole
+		database.GetDB().Where("user_id = ?", claims.UserID).Find(&userRoles)
+		roleNames := make([]string, 0, len(userRoles))
+		for _, ur := range userRoles {
+			roleNames = append(roleNames, ur.Role)
+		}
+		c.Set("roles", roleNames)
 		c.Next()
 	}
 }

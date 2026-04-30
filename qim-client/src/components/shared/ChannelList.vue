@@ -75,46 +75,43 @@
     </div>
     
     <!-- 创建频道弹窗 -->
-    <div v-if="showCreateChannelModal" class="modal-overlay" @click="showCreateChannelModal = false">
-      <div class="modal-content create-channel-modal" @click.stop>
-        <div class="modal-header">
-          <h4>创建频道</h4>
-          <button class="close-btn" @click="showCreateChannelModal = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>频道名称</label>
-            <input v-model="createChannelForm.name" type="text" placeholder="输入频道名称" class="form-input" />
-          </div>
-          <div class="form-group">
-            <label>频道描述</label>
-            <textarea v-model="createChannelForm.description" placeholder="输入频道描述" rows="3" class="form-textarea"></textarea>
-          </div>
-          <div class="form-group">
-            <label>频道头像</label>
-            <input v-model="createChannelForm.avatar" type="text" placeholder="输入头像URL" class="form-input" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showCreateChannelModal = false">取消</button>
-          <button class="btn btn-primary" @click="createChannel" :disabled="!createChannelForm.name">创建</button>
-        </div>
+    <QDialog
+      v-model:visible="showCreateChannelModal"
+      title="创建频道"
+      width="500px"
+    >
+      <div class="form-group">
+        <label>频道名称</label>
+        <input v-model="createChannelForm.name" type="text" placeholder="输入频道名称" class="form-input" />
       </div>
-    </div>
+      <div class="form-group">
+        <label>频道描述</label>
+        <textarea v-model="createChannelForm.description" placeholder="输入频道描述" rows="3" class="form-textarea"></textarea>
+      </div>
+      <div class="form-group">
+        <label>频道头像</label>
+        <input v-model="createChannelForm.avatar" type="text" placeholder="输入头像URL" class="form-input" />
+      </div>
+      <template #footer>
+        <button class="q-btn q-btn--default" @click="showCreateChannelModal = false">取消</button>
+        <button class="q-btn q-btn--primary" @click="createChannel" :disabled="!createChannelForm.name">创建</button>
+      </template>
+    </QDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { Channel, User } from '../../types'
+import type { Channel } from '../../types'
 import { API_BASE_URL } from '../../config'
 import { generateAvatar } from '../../utils/avatar'
+import QMessage from '../../utils/qmessage'
+import QDialog from './QDialog.vue'
 
-// 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 const props = defineProps<{
-  currentUser: User
+  currentUser: Record<string, any>
 }>()
 
 const emit = defineEmits<{
@@ -182,8 +179,7 @@ const createChannel = async () => {
       showCreateChannelModal.value = false
       createChannelForm.value = { name: '', description: '', avatar: '' }
       await loadChannels()
-      // 显示审批提示
-      alert('频道创建成功，等待管理员审批')
+      QMessage.success('频道创建成功')
     }
   } catch (error) {
     console.error('创建频道失败:', error)
@@ -246,6 +242,12 @@ const selectChannel = async (channel: Channel) => {
   // 触发选择事件
   emit('select-channel', channel)
 }
+
+const openCreateModal = () => {
+  showCreateChannelModal.value = true
+}
+
+defineExpose({ openCreateModal })
 
 onMounted(() => {
   loadChannels()
@@ -535,58 +537,9 @@ onMounted(() => {
   padding-top: 12px;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal-content {
-  background: var(--card-bg);
-  border-radius: 16px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-.create-channel-modal {
-  max-width: 500px;
-}
-
 .channel-detail-modal {
   max-width: 800px;
   max-height: 90vh;
-}
-
-.modal-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--card-bg);
-  border-radius: 16px 16px 0 0;
 }
 
 .channel-header-info {
@@ -601,128 +554,6 @@ onMounted(() => {
   border-radius: 20px;
   object-fit: cover;
   border: 2px solid var(--border-color);
-}
-
-.modal-header h4 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.3s ease;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-primary);
-}
-
-.modal-body {
-  padding: 24px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: var(--text-primary);
-  font-size: 14px;
-}
-
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 12px;
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  background: var(--input-bg);
-  color: var(--text-color);
-}
-
-.form-input:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 100px;
-  font-family: inherit;
-}
-
-.modal-footer {
-  padding: 20px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  background: var(--card-bg);
-  border-radius: 0 0 16px 16px;
-}
-
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-secondary {
-  background: var(--hover-color);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background: var(--border-color);
-  transform: translateY(-1px);
-}
-
-.btn-primary {
-  background: var(--primary-color);
-  color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.btn-primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.btn:disabled {
-  background: var(--border-color);
-  color: var(--text-secondary);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 .channel-detail-info {
@@ -959,5 +790,84 @@ onMounted(() => {
   .modal-content {
     width: 95%;
   }
+}
+</style>
+
+<style>
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--input-bg);
+  color: var(--text-color);
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.q-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-width: 80px;
+  border: 1px solid var(--border-color);
+}
+
+.q-btn--default {
+  background: var(--right-content-bg);
+  color: var(--text-color);
+}
+
+.q-btn--default:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.q-btn--primary {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.q-btn--primary:hover {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.q-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

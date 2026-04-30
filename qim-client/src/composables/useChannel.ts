@@ -19,11 +19,12 @@ export function useChannel(serverUrl: any, currentUser: any) {
         }
       })
       
-      if (response.ok) {
+      const data = await response.json()
+      if (data.code === 0) {
         channel.is_subscribed = true
         QMessage.success('订阅成功')
       } else {
-        QMessage.error('订阅失败')
+        QMessage.error(data.message || '订阅失败')
       }
     } catch (error) {
       console.error('订阅频道失败:', error)
@@ -41,11 +42,12 @@ export function useChannel(serverUrl: any, currentUser: any) {
         }
       })
       
-      if (response.ok) {
+      const data = await response.json()
+      if (data.code === 0) {
         channel.is_subscribed = false
         QMessage.success('取消订阅成功')
       } else {
-        QMessage.error('取消订阅失败')
+        QMessage.error(data.message || '取消订阅失败')
       }
     } catch (error) {
       console.error('取消订阅频道失败:', error)
@@ -53,8 +55,9 @@ export function useChannel(serverUrl: any, currentUser: any) {
     }
   }
 
-  const sendChannelMessage = async (channel: any) => {
-    if (!channelMessage.value.trim()) return
+  const sendChannelMessage = async (channel: any, message?: string) => {
+    const content = message || channelMessage.value
+    if (!content?.trim()) return
     
     try {
       const response = await fetch(`${serverUrl.value}/api/v1/channels/${channel.id}/messages`, {
@@ -64,12 +67,13 @@ export function useChannel(serverUrl: any, currentUser: any) {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          content: channelMessage.value
+          content: content
         })
       })
       
-      if (response.ok) {
-        const newMessage = await response.json()
+      const data = await response.json()
+      if (data.code === 0) {
+        const newMessage = data.data
         if (!channel.messages) {
           channel.messages = []
         }
@@ -77,7 +81,7 @@ export function useChannel(serverUrl: any, currentUser: any) {
         channelMessage.value = ''
         QMessage.success('发送成功')
       } else {
-        QMessage.error('发送失败')
+        QMessage.error(data.message || '发送失败')
       }
     } catch (error) {
       console.error('发送频道消息失败:', error)
