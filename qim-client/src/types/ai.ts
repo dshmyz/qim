@@ -64,3 +64,30 @@ export const AI_PROVIDERS: AIProvider[] = [
     defaultBaseURL: 'https://api.anthropic.com/v1'
   }
 ]
+
+export interface GroupAISettings {
+  aiEnabled: boolean
+  aiAssistantName: string
+  aiReplyMode: string
+  aiPersonality: string
+  aiCustomPrompt: string
+  aiLanguage: string
+  aiMaxLength: string
+  aiMentionReplyMode: string
+  aiAntiSpamInterval: number
+  aiTriggerKeywords: string[]
+  aiLearnEnabled: boolean
+}
+
+export interface GroupDocument {
+  id: number
+  group_id: number
+  file_id: number
+  created_at: string
+  file?: {
+    id: number
+    name: string
+    size: number
+    type: string
+  }
+}

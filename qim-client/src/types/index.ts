@@ -72,6 +72,18 @@ export interface Conversation {
   other_member_name?: string
   user_id?: number
   is_deleted?: boolean
+  ai_personality?: string
+  ai_custom_prompt?: string
+  ai_language?: string
+  ai_max_length?: string
+  ai_mention_reply_mode?: string
+  ai_anti_spam_interval?: number
+  ai_trigger_keywords?: string
+  ai_learn_enabled?: boolean
+  ai_enabled?: boolean
+  ai_assistant_name?: string
+  ai_reply_mode?: string
+  context_messages?: number
 }
 
 export interface Channel {
