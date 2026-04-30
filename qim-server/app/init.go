@@ -86,6 +86,7 @@ func MigrateDB(db *gorm.DB) {
 		&model.RealtimeParticipant{}, // 实时参与者
 		&model.AIConfig{},            // AI配置
 		&model.Group{},               // 群聊
+		&model.GroupDocument{},       // 群文档
 		&model.SensitiveWord{},       // 敏感词
 		&model.SystemConfig{},        // 系统配置
 		&model.OperationLog{},        // 操作日志
