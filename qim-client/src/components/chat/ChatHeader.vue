@@ -48,7 +48,14 @@
       :ai-enabled="aiEnabled"
       :ai-assistant-name="aiAssistantName"
       :ai-reply-mode="aiReplyMode"
-      :context-messages="contextMessages"
+      :ai-personality="aiPersonality"
+      :ai-custom-prompt="aiCustomPrompt"
+      :ai-language="aiLanguage"
+      :ai-max-length="aiMaxLength"
+      :ai-mention-reply-mode="aiMentionReplyMode"
+      :ai-anti-spam-interval="aiAntiSpamInterval"
+      :ai-trigger-keywords="aiTriggerKeywords"
+      :ai-learn-enabled="aiLearnEnabled"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
       @save-group-info="(name: string) => emit('save-group-info', name)"
@@ -93,7 +100,7 @@ interface Emits {
   (e: 'update:showEditAnnouncementModal', value: boolean): void
   (e: 'update:editGroupName', value: string): void
   (e: 'update:editAnnouncement', value: string): void
-  (e: 'update-ai-settings', settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }): void
+  (e: 'update-ai-settings', settings: { enabled: boolean; assistantName: string; replyMode: string; personality: string; customPrompt: string; language: string; maxLength: string; mentionReplyMode: string; antiSpamInterval: number; triggerKeywords: string[]; learnEnabled: boolean }): void
 }
 
 const props = defineProps<Props>()
@@ -108,6 +115,17 @@ const editAnnouncement = ref('')
 const aiEnabled = computed(() => props.conversation?.ai_enabled ?? false)
 const aiAssistantName = computed(() => props.conversation?.ai_assistant_name ?? 'AI助手')
 const aiReplyMode = computed(() => props.conversation?.ai_reply_mode ?? 'mention_only')
+const aiPersonality = computed(() => props.conversation?.ai_personality ?? 'professional')
+const aiCustomPrompt = computed(() => props.conversation?.ai_custom_prompt ?? '')
+const aiLanguage = computed(() => props.conversation?.ai_language ?? 'auto')
+const aiMaxLength = computed(() => props.conversation?.ai_max_length ?? 'medium')
+const aiMentionReplyMode = computed(() => props.conversation?.ai_mention_reply_mode ?? 'mention')
+const aiAntiSpamInterval = computed(() => props.conversation?.ai_anti_spam_interval ?? 5)
+const aiTriggerKeywords = computed(() => {
+  const kw = props.conversation?.ai_trigger_keywords ?? ''
+  return kw ? kw.split(',').filter(Boolean) : []
+})
+const aiLearnEnabled = computed(() => props.conversation?.ai_learn_enabled ?? false)
 const contextMessages = computed(() => props.conversation?.context_messages ?? 10)
 
 const isGroupOrDiscussion = computed(() =>
@@ -139,6 +157,14 @@ defineExpose({
   aiEnabled,
   aiAssistantName,
   aiReplyMode,
+  aiPersonality,
+  aiCustomPrompt,
+  aiLanguage,
+  aiMaxLength,
+  aiMentionReplyMode,
+  aiAntiSpamInterval,
+  aiTriggerKeywords,
+  aiLearnEnabled,
   contextMessages
 })
 </script>

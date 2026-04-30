@@ -57,6 +57,7 @@
             :analyzing="analyzing"
             @save="handleSave"
             @analyze="handleAnalyze"
+            @import="triggerImport"
             @export="handleExport"
             @share="handleShare"
             @delete="handleDelete(selectedNote.id)"
@@ -73,6 +74,14 @@
         </div>
       </div>
     </div>
+    
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".md,.markdown"
+      style="display: none"
+      @change="handleFileSelect"
+    />
     
     <AIAnalysisModal
       :visible="showAnalysisModal"
@@ -117,6 +126,7 @@ const saving = ref(false)
 const analyzing = ref(false)
 const showAnalysisModal = ref(false)
 const analysisResult = ref<AIAnalyzeResult | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const allTags = computed(() => {
   const tags = new Set<string>()
@@ -154,6 +164,31 @@ async function handleCreate() {
     notes.value.unshift(note)
     selectNote(note.id)
   }
+}
+
+function triggerImport() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    const content = e.target?.result as string
+    const fileName = file.name.replace(/\.(md|markdown)$/i, '')
+    
+    const note = await createNote({ title: fileName, content })
+    if (note) {
+      notes.value.unshift(note)
+      selectNote(note.id)
+      QMessage.success('导入成功')
+    }
+  }
+  reader.readAsText(file)
+  input.value = ''
 }
 
 async function handleSave() {

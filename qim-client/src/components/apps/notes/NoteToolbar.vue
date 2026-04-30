@@ -23,6 +23,9 @@
       <button class="toolbar-btn ai" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
         <i class="fas fa-magic"></i>
       </button>
+      <button class="toolbar-btn import" @click="$emit('import')" title="导入 Markdown">
+        <i class="fas fa-file-import"></i>
+      </button>
       <button class="toolbar-btn export" @click="$emit('export')" title="导出">
         <i class="fas fa-download"></i>
       </button>
@@ -47,6 +50,7 @@ defineEmits<{
   'update:mode': [mode: 'edit' | 'preview']
   save: []
   analyze: []
+  import: []
   export: []
   share: []
   delete: []
@@ -153,6 +157,12 @@ defineEmits<{
 .toolbar-btn.export:hover:not(:disabled) {
   background: var(--color-info-500);
   border-color: var(--color-info-500);
+  color: white;
+}
+
+.toolbar-btn.import:hover:not(:disabled) {
+  background: var(--color-success-500);
+  border-color: var(--color-success-500);
   color: white;
 }
 

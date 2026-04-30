@@ -120,7 +120,14 @@
               :ai-enabled="aiEnabled"
               :ai-assistant-name="aiAssistantName"
               :ai-reply-mode="aiReplyMode"
-              :context-messages="contextMessages"
+              :ai-personality="aiPersonality"
+              :ai-custom-prompt="aiCustomPrompt"
+              :ai-language="aiLanguage"
+              :ai-max-length="aiMaxLength"
+              :ai-mention-reply-mode="aiMentionReplyMode"
+              :ai-anti-spam-interval="aiAntiSpamInterval"
+              :ai-trigger-keywords="aiTriggerKeywords"
+              :ai-learn-enabled="aiLearnEnabled"
               @update="handleUpdateAISettings"
             />
           </div>
@@ -166,13 +173,29 @@ interface Props {
   aiAssistantName?: string
   aiReplyMode?: string
   contextMessages?: number
+  aiPersonality?: string
+  aiCustomPrompt?: string
+  aiLanguage?: string
+  aiMaxLength?: string
+  aiMentionReplyMode?: string
+  aiAntiSpamInterval?: number
+  aiTriggerKeywords?: string[]
+  aiLearnEnabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   aiEnabled: false,
   aiAssistantName: 'AI助手',
   aiReplyMode: 'mention_only',
-  contextMessages: 10
+  contextMessages: 10,
+  aiPersonality: 'professional',
+  aiCustomPrompt: '',
+  aiLanguage: 'auto',
+  aiMaxLength: 'medium',
+  aiMentionReplyMode: 'mention',
+  aiAntiSpamInterval: 5,
+  aiTriggerKeywords: () => [],
+  aiLearnEnabled: false
 })
 
 // Emits 定义
@@ -192,7 +215,19 @@ const emit = defineEmits<{
   'set-admin': [memberId: string, memberName: string, isAdmin: boolean]
   'transfer-owner': [memberId: string, memberName: string]
   'start-private-chat': [memberId: string]
-  'update-ai-settings': [settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }]
+  'update-ai-settings': [settings: {
+    aiEnabled: boolean;
+    aiAssistantName: string;
+    aiReplyMode: string;
+    aiPersonality: string;
+    aiCustomPrompt: string;
+    aiLanguage: string;
+    aiMaxLength: string;
+    aiMentionReplyMode: string;
+    aiAntiSpamInterval: number;
+    aiTriggerKeywords: string[];
+    aiLearnEnabled: boolean;
+  }]
 }>()
 
 // Refs
@@ -414,7 +449,7 @@ function handleCloseAISettingsModal() {
   showAISettingsModal.value = false
 }
 
-function handleUpdateAISettings(settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }) {
+function handleUpdateAISettings(settings: any) {
   emit('update-ai-settings', settings)
   showAISettingsModal.value = false
 }

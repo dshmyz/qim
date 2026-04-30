@@ -2675,7 +2675,7 @@ const handleInviteMembers = () => {
   }
 }
 
-const handleUpdateAISettings = async (settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }) => {
+const handleUpdateAISettings = async (settings: any) => {
   if (!props.conversation?.id) return
 
   try {
@@ -2683,10 +2683,17 @@ const handleUpdateAISettings = async (settings: { enabled: boolean; assistantNam
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ai_enabled: settings.enabled,
-        ai_assistant_name: settings.assistantName,
-        ai_reply_mode: settings.replyMode,
-        context_messages: settings.contextMessages
+        ai_enabled: settings.aiEnabled,
+        ai_assistant_name: settings.aiAssistantName,
+        ai_reply_mode: settings.aiReplyMode,
+        ai_personality: settings.aiPersonality,
+        ai_custom_prompt: settings.aiCustomPrompt,
+        ai_language: settings.aiLanguage,
+        ai_max_length: settings.aiMaxLength,
+        ai_mention_reply_mode: settings.aiMentionReplyMode,
+        ai_anti_spam_interval: settings.aiAntiSpamInterval,
+        ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+        ai_learn_enabled: settings.aiLearnEnabled
       })
     })
 
@@ -2696,7 +2703,7 @@ const handleUpdateAISettings = async (settings: { enabled: boolean; assistantNam
     } else {
       QMessage.error(data.message || 'AI 设置更新失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     QMessage.error('AI 设置更新失败')
   }
 }
