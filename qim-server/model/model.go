@@ -157,6 +157,8 @@ type Note struct {
 	Content   string         `json:"content" gorm:"type:text;not null"`
 	Type      string         `json:"type" gorm:"size:20;default:'note'"`
 	Style     string         `json:"style" gorm:"type:text;default:'{}'"`
+	Tags      string         `json:"tags" gorm:"type:text"`    // JSON 数组字符串
+	Summary   string         `json:"summary" gorm:"type:text"` // AI 生成的摘要
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
