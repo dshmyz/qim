@@ -4,38 +4,33 @@
       <button
         :class="['mode-btn', { active: mode === 'edit' }]"
         @click="$emit('update:mode', 'edit')"
+        title="编辑"
       >
         <i class="fas fa-edit"></i>
-        编辑
       </button>
       <button
         :class="['mode-btn', { active: mode === 'preview' }]"
         @click="$emit('update:mode', 'preview')"
+        title="预览"
       >
         <i class="fas fa-eye"></i>
-        预览
       </button>
     </div>
     <div class="toolbar-right">
-      <button class="toolbar-btn save" @click="$emit('save')" :disabled="saving">
+      <button class="toolbar-btn save" @click="$emit('save')" :disabled="saving" title="保存">
         <i class="fas fa-save"></i>
-        {{ saving ? '保存中...' : '保存' }}
       </button>
-      <button class="toolbar-btn ai" @click="$emit('analyze')" :disabled="analyzing">
+      <button class="toolbar-btn ai" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
         <i class="fas fa-magic"></i>
-        {{ analyzing ? '分析中...' : 'AI 分析' }}
       </button>
-      <button class="toolbar-btn export" @click="$emit('export')">
+      <button class="toolbar-btn export" @click="$emit('export')" title="导出">
         <i class="fas fa-download"></i>
-        导出
       </button>
-      <button class="toolbar-btn share" @click="$emit('share')">
+      <button class="toolbar-btn share" @click="$emit('share')" title="分享">
         <i class="fas fa-share-alt"></i>
-        分享
       </button>
-      <button class="toolbar-btn delete" @click="$emit('delete')">
+      <button class="toolbar-btn delete" @click="$emit('delete')" title="删除">
         <i class="fas fa-trash"></i>
-        删除
       </button>
     </div>
   </div>
@@ -63,12 +58,14 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   margin-bottom: var(--spacing-4);
   box-shadow: var(--shadow-xs);
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
 }
 
 .toolbar-left,
@@ -78,17 +75,17 @@ defineEmits<{
 }
 
 .mode-btn {
-  padding: var(--spacing-2) var(--spacing-4);
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--border-color);
   background: var(--btn-bg);
   color: var(--text-secondary);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
+  justify-content: center;
   transition: all var(--transition-base);
 }
 
@@ -106,17 +103,17 @@ defineEmits<{
 }
 
 .toolbar-btn {
-  padding: var(--spacing-2) var(--spacing-3);
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--border-color);
   background: var(--btn-bg);
   color: var(--text-secondary);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
+  justify-content: center;
   transition: all var(--transition-base);
 }
 
