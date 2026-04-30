@@ -1,40 +1,62 @@
 <template>
   <div class="note-toolbar">
     <div class="toolbar-left">
-      <button
-        :class="['mode-btn', { active: mode === 'edit' }]"
-        @click="$emit('update:mode', 'edit')"
-        title="编辑"
-      >
-        <i class="fas fa-edit"></i>
-      </button>
-      <button
-        :class="['mode-btn', { active: mode === 'preview' }]"
-        @click="$emit('update:mode', 'preview')"
-        title="预览"
-      >
-        <i class="fas fa-eye"></i>
-      </button>
+      <div class="btn-wrapper">
+        <button
+          :class="['mode-btn', { active: mode === 'edit' }]"
+          @click="$emit('update:mode', 'edit')"
+        >
+          <i class="fas fa-edit"></i>
+        </button>
+        <span class="tooltip">编辑</span>
+      </div>
+      <div class="btn-wrapper">
+        <button
+          :class="['mode-btn', { active: mode === 'preview' }]"
+          @click="$emit('update:mode', 'preview')"
+        >
+          <i class="fas fa-eye"></i>
+        </button>
+        <span class="tooltip">预览</span>
+      </div>
     </div>
     <div class="toolbar-right">
-      <button class="toolbar-btn save" @click="$emit('save')" :disabled="saving" title="保存">
-        <i class="fas fa-save"></i>
-      </button>
-      <button class="toolbar-btn ai" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
-        <i class="fas fa-magic"></i>
-      </button>
-      <button class="toolbar-btn import" @click="$emit('import')" title="导入 Markdown">
-        <i class="fas fa-file-import"></i>
-      </button>
-      <button class="toolbar-btn export" @click="$emit('export')" title="导出">
-        <i class="fas fa-download"></i>
-      </button>
-      <button class="toolbar-btn share" @click="$emit('share')" title="分享">
-        <i class="fas fa-share-alt"></i>
-      </button>
-      <button class="toolbar-btn delete" @click="$emit('delete')" title="删除">
-        <i class="fas fa-trash"></i>
-      </button>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn save" @click="$emit('save')" :disabled="saving">
+          <i class="fas fa-save"></i>
+        </button>
+        <span class="tooltip">保存</span>
+      </div>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn ai" @click="$emit('analyze')" :disabled="analyzing">
+          <i class="fas fa-magic"></i>
+        </button>
+        <span class="tooltip">AI 分析</span>
+      </div>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn import" @click="$emit('import')">
+          <i class="fas fa-file-import"></i>
+        </button>
+        <span class="tooltip">导入 Markdown</span>
+      </div>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn export" @click="$emit('export')">
+          <i class="fas fa-download"></i>
+        </button>
+        <span class="tooltip">导出</span>
+      </div>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn share" @click="$emit('share')">
+          <i class="fas fa-share-alt"></i>
+        </button>
+        <span class="tooltip">分享</span>
+      </div>
+      <div class="btn-wrapper">
+        <button class="toolbar-btn delete" @click="$emit('delete')">
+          <i class="fas fa-trash"></i>
+        </button>
+        <span class="tooltip">删除</span>
+      </div>
     </div>
   </div>
 </template>
@@ -76,6 +98,44 @@ defineEmits<{
 .toolbar-right {
   display: flex;
   gap: var(--spacing-2);
+}
+
+.btn-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-color);
+  color: var(--card-bg);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.15s ease;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tooltip::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-bottom-color: var(--text-color);
+}
+
+.btn-wrapper:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .mode-btn {

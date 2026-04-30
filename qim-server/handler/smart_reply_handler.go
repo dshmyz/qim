@@ -71,6 +71,35 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 			log.Printf("[SmartReply] 群聊未开启AI助手，跳过")
 			return
 		}
+
+		// 触发关键词过滤
+		if group.AITriggerKeywords != "" {
+			keywords := strings.Split(group.AITriggerKeywords, ",")
+			hasKeyword := false
+			for _, kw := range keywords {
+				kw = strings.TrimSpace(kw)
+				if kw != "" && strings.Contains(strings.ToLower(content), strings.ToLower(kw)) {
+					hasKeyword = true
+					break
+				}
+			}
+			if !hasKeyword {
+				log.Printf("[SmartReply] 消息不包含触发关键词，跳过")
+				return
+			}
+		}
+
+		// 防刷屏检查
+		if group.AIAntiSpamInterval > 0 {
+			var lastAIMsg model.Message
+			err := db.Where("conversation_id = ? AND sender_id = 0 AND created_at > ?",
+				conversationID, time.Now().Add(-time.Duration(group.AIAntiSpamInterval)*time.Minute)).
+				Order("created_at DESC").First(&lastAIMsg).Error
+			if err == nil {
+				log.Printf("[SmartReply] 防刷屏间隔内，跳过回复")
+				return
+			}
+		}
 	}
 
 	// 群聊场景下：获取 AI 助手名称，检测 @AI
