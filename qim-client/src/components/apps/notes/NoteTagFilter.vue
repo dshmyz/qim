@@ -33,7 +33,7 @@ defineEmits<{
 
 <style scoped>
 .tag-filter {
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
 }
@@ -42,11 +42,11 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-2);
+  margin-bottom: var(--spacing-1);
 }
 
 .filter-label {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -54,13 +54,13 @@ defineEmits<{
 }
 
 .clear-btn {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   font-weight: var(--font-weight-medium);
   color: var(--primary-color);
   background: var(--primary-light);
   border: none;
   cursor: pointer;
-  padding: var(--spacing-1) var(--spacing-2);
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
 }
@@ -73,12 +73,12 @@ defineEmits<{
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-2);
+  gap: 4px;
 }
 
 .tag-item {
-  font-size: var(--font-size-xs);
-  padding: var(--spacing-1) var(--spacing-3);
+  font-size: 10px;
+  padding: 1px 6px;
   background: var(--btn-bg);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);

@@ -313,7 +313,8 @@ onMounted(async () => {
 }
 
 .notes-sidebar {
-  width: 300px;
+  width: 240px;
+  min-width: 200px;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
   overflow-y: auto;
@@ -323,18 +324,18 @@ onMounted(async () => {
 
 .notes-search-box {
   position: relative;
-  padding: var(--spacing-4);
+  padding: var(--spacing-3);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
 }
 
 .notes-search-input {
   width: 100%;
-  padding: var(--spacing-3) var(--spacing-4);
-  padding-right: 44px;
+  padding: var(--spacing-2) var(--spacing-3);
+  padding-right: 36px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   background: var(--content-bg);
   box-sizing: border-box;
@@ -353,15 +354,15 @@ onMounted(async () => {
 
 .notes-search-icon {
   position: absolute;
-  right: 28px;
+  right: 20px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 .notes-list {
-  padding: var(--spacing-3);
+  padding: var(--spacing-2);
   flex: 1;
   overflow-y: auto;
 }
