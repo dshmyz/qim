@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import NoteCard from './notes/NoteCard.vue'
 import NoteToolbar from './notes/NoteToolbar.vue'
 import NoteEditor from './notes/NoteEditor.vue'
@@ -260,7 +260,19 @@ async function handleDelete(id: number) {
 
 onMounted(async () => {
   notes.value = await fetchNotes()
+  
+  document.addEventListener('keydown', handleKeydown)
 })
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+  }
+}
 </script>
 
 <style scoped>
