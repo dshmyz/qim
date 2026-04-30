@@ -9,7 +9,7 @@
           :class="['persona-card', { active: modelValue.aiPersonality === p.value }]"
           @click="update('aiPersonality', p.value)"
         >
-          <div class="persona-icon">{{ p.icon }}</div>
+          <div class="persona-icon"><i :class="p.icon"></i></div>
           <div class="persona-name">{{ p.name }}</div>
           <div class="persona-desc">{{ p.desc }}</div>
         </div>
@@ -65,11 +65,11 @@ function update<K extends keyof GroupAISettings>(key: K, value: GroupAISettings[
 }
 
 const personas = [
-  { value: 'professional', icon: '🎓', name: '专业严谨', desc: '回答专业、严谨、客观' },
-  { value: 'casual', icon: '😊', name: '轻松幽默', desc: '语气活泼、善用表情' },
-  { value: 'concise', icon: '⚡', name: '简洁高效', desc: '直奔主题、不废话' },
-  { value: 'friendly', icon: '🤗', name: '贴心助手', desc: '温暖亲切、有耐心' },
-  { value: 'technical', icon: '💻', name: '技术专家', desc: '偏重技术深度和细节' }
+  { value: 'professional', icon: 'fas fa-briefcase', name: '专业严谨', desc: '回答专业、严谨、客观' },
+  { value: 'casual', icon: 'fas fa-face-smile', name: '轻松幽默', desc: '语气活泼、善用表情' },
+  { value: 'concise', icon: 'fas fa-bolt', name: '简洁高效', desc: '直奔主题、不废话' },
+  { value: 'friendly', icon: 'fas fa-heart', name: '贴心助手', desc: '温暖亲切、有耐心' },
+  { value: 'technical', icon: 'fas fa-code', name: '技术专家', desc: '偏重技术深度和细节' }
 ]
 </script>
 
@@ -81,7 +81,8 @@ const personas = [
 .persona-card { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s; }
 .persona-card:hover { border-color: var(--primary-color); }
 .persona-card.active { border-color: var(--primary-color); background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1)); }
-.persona-icon { font-size: 28px; margin-bottom: 6px; }
+.persona-icon { font-size: 24px; margin-bottom: 8px; color: var(--text-secondary); }
+.persona-card.active .persona-icon { color: var(--primary-color); }
 .persona-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
 .persona-desc { font-size: 12px; color: var(--text-secondary); }
 .form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; resize: vertical; box-sizing: border-box; font-family: inherit; }

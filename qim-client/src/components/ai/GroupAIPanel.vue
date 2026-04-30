@@ -1,7 +1,5 @@
 <template>
   <div class="group-ai-panel">
-    <h4>AI 助手设置</h4>
-
     <div class="tab-bar">
       <button
         v-for="tab in tabs"
@@ -187,8 +185,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.group-ai-panel { padding: 0; background: var(--card-bg); border-radius: 12px; overflow: hidden; }
-.group-ai-panel h4 { margin: 0; padding: 16px 20px; font-size: 16px; font-weight: 600; border-bottom: 1px solid var(--border-color); }
+.group-ai-panel { background: var(--card-bg); border-radius: 8px; overflow: hidden; }
 .tab-bar { display: flex; border-bottom: 1px solid var(--border-color); }
 .tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 8px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s; }
 .tab-btn:hover { color: var(--text-color); background: var(--hover-color); }
