@@ -1,5 +1,5 @@
 <template>
-  <div class="sticky-notes-app">
+  <div class="sticky-notes-app" :class="{ fullscreen: isFullscreen }">
     <div class="sticky-notes-header">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
@@ -24,6 +24,12 @@
       </div>
     </div>
     <div class="sticky-notes-content">
+      <StickyTagFilter
+        :all-tags="allTags"
+        :selected-tag="selectedTag"
+        @select="selectedTag = $event"
+        @clear="selectedTag = null"
+      />
       <div class="sticky-notes-grid">
         <div 
           v-for="(note, index) in filteredStickyNotes" 
@@ -147,10 +153,69 @@
       </div>
       
       <template #footer>
-        <button class="sticky-note-modal-btn sticky-note-cancel-btn" @click="closeNoteModal">取消</button>
-        <button class="sticky-note-modal-btn sticky-note-confirm-btn" @click="selectedNote ? updateStickyNote() : createStickyNote()">{{ selectedNote ? '更新' : '创建' }}</button>
+        <div class="modal-footer-left">
+          <button 
+            v-if="selectedNote" 
+            class="sticky-note-modal-btn sticky-note-ai-btn" 
+            @click="analyzeStickyNote"
+            title="AI 分析"
+          >
+            <i class="fas fa-magic"></i>
+          </button>
+          <button 
+            class="sticky-note-modal-btn sticky-note-fullscreen-btn" 
+            @click="toggleFullscreen"
+            :title="isFullscreen ? '退出全屏' : '全屏'"
+          >
+            <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+          </button>
+        </div>
+        <div class="modal-footer-right">
+          <button class="sticky-note-modal-btn sticky-note-cancel-btn" @click="closeNoteModal">取消</button>
+          <button class="sticky-note-modal-btn sticky-note-confirm-btn" @click="selectedNote ? updateStickyNote() : createStickyNote()">{{ selectedNote ? '更新' : '创建' }}</button>
+        </div>
       </template>
     </ModalContainer>
+    
+    <!-- AI 分析结果弹窗 -->
+    <div v-if="showAIAnalysis" class="ai-analysis-overlay" @click.self="showAIAnalysis = false">
+      <div class="ai-analysis-modal">
+        <div class="ai-analysis-header">
+          <h3>AI 分析结果</h3>
+          <button class="close-btn" @click="showAIAnalysis = false">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="ai-analysis-body">
+          <div class="ai-section">
+            <h4>摘要</h4>
+            <p>{{ aiAnalysisResult?.summary || '暂无摘要' }}</p>
+          </div>
+          <div class="ai-section">
+            <h4>推荐标签</h4>
+            <div class="ai-tags">
+              <span 
+                v-for="tag in aiAnalysisResult?.tags || []" 
+                :key="tag" 
+                class="ai-tag"
+              >
+                {{ tag }}
+              </span>
+            </div>
+          </div>
+          <div class="ai-section" v-if="aiAnalysisResult?.action_items?.length">
+            <h4>行动项</h4>
+            <ul>
+              <li v-for="(item, index) in aiAnalysisResult.action_items" :key="index">{{ item }}</li>
+            </ul>
+          </div>
+        </div>
+        <div class="ai-analysis-footer">
+          <button class="ai-btn cancel" @click="showAIAnalysis = false">取消</button>
+          <button class="ai-btn confirm" @click="applyAIResult(aiAnalysisResult?.summary, aiAnalysisResult?.tags)">应用标签</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -161,6 +226,7 @@ import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
 import ModalContainer from '../../components/shared/ModalContainer.vue'
+import StickyTagFilter from './sticky/StickyTagFilter.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -173,6 +239,11 @@ const getToken = () => {
 // 便签应用相关状态
 const stickyNotes = ref<any[]>([])
 const showNoteModal = ref(false)
+const isFullscreen = ref(false)
+const selectedTag = ref<string | null>(null)
+const showAIAnalysis = ref(false)
+const aiAnalysisResult = ref<any>(null)
+const analyzingNote = ref<any>(null)
 const newNote = ref({
   title: '',
   content: '',
@@ -409,6 +480,7 @@ const showEditNoteModal = (note: any) => {
 const closeNoteModal = () => {
   showNoteModal.value = false
   selectedNote.value = null
+  isFullscreen.value = false
   formData.value = {
     title: '',
     content: '',
@@ -418,6 +490,42 @@ const closeNoteModal = () => {
     paperStyle: 'plain',
     fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
+}
+
+// 全屏切换
+const toggleFullscreen = () => {
+  isFullscreen.value = !isFullscreen.value
+}
+
+// AI 分析便签
+const analyzeStickyNote = async () => {
+  if (!selectedNote.value) return
+  
+  analyzingNote.value = selectedNote.value
+  try {
+    const response = await axios.post(
+      `${serverUrl.value}/api/v1/notes/${selectedNote.value.id}/analyze`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      }
+    )
+    
+    if (response.data.code === 0) {
+      aiAnalysisResult.value = response.data.data
+      showAIAnalysis.value = true
+    }
+  } catch (error) {
+    QMessage.error('AI 分析失败')
+  }
+}
+
+// 应用 AI 分析结果
+const applyAIResult = (summary: string, tags: string[]) => {
+  if (selectedNote.value) {
+    formData.value.tags = JSON.stringify(tags)
+  }
+  showAIAnalysis.value = false
 }
 
 // 格式化日期
@@ -582,7 +690,33 @@ const filteredStickyNotes = computed(() => {
     })
   }
   
+  // 标签筛选
+  if (selectedTag.value) {
+    result = result.filter(note => {
+      const tags = note.tags ? JSON.parse(note.tags) : []
+      return tags.includes(selectedTag.value)
+    })
+  }
+  
   return result
+})
+
+// 所有标签
+const allTags = computed(() => {
+  const tags = new Set<string>()
+  stickyNotes.value.forEach(note => {
+    if (note.tags) {
+      try {
+        const noteTags = JSON.parse(note.tags)
+        if (Array.isArray(noteTags)) {
+          noteTags.forEach((tag: string) => tags.add(tag))
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    }
+  })
+  return Array.from(tags)
 })
 
 // 设置提醒
@@ -1473,6 +1607,203 @@ const setupReminder = (note: any) => {
   .empty-hint {
     font-size: 12px !important;
   }
+}
+
+/* 全屏模式 */
+.sticky-notes-app.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: var(--content-bg);
+}
+
+.sticky-notes-app.fullscreen .sticky-notes-header,
+.sticky-notes-app.fullscreen .sticky-notes-grid {
+  display: none;
+}
+
+/* 弹窗 footer 布局 */
+.modal-footer-left,
+.modal-footer-right {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.modal-footer-left {
+  margin-right: auto;
+}
+
+.sticky-note-ai-btn {
+  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600)) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+.sticky-note-ai-btn:hover {
+  opacity: 0.9;
+}
+
+.sticky-note-fullscreen-btn {
+  background: var(--btn-bg) !important;
+}
+
+.sticky-note-fullscreen-btn:hover {
+  background: var(--primary-light) !important;
+  color: var(--primary-color);
+}
+
+/* AI 分析弹窗 */
+.ai-analysis-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+.ai-analysis-modal {
+  background: var(--card-bg);
+  border-radius: var(--radius-xl);
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-color);
+}
+
+.ai-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-4) var(--spacing-5);
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
+}
+
+.ai-analysis-header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: white;
+}
+
+.ai-analysis-header .close-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-analysis-body {
+  padding: var(--spacing-5);
+  overflow-y: auto;
+}
+
+.ai-section {
+  margin-bottom: var(--spacing-4);
+}
+
+.ai-section:last-child {
+  margin-bottom: 0;
+}
+
+.ai-section h4 {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
+  margin: 0 0 var(--spacing-2) 0;
+}
+
+.ai-section p {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  padding: var(--spacing-3);
+  background: var(--content-bg);
+  border-radius: var(--radius-md);
+}
+
+.ai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.ai-tag {
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--primary-light);
+  color: var(--primary-color);
+  border-radius: var(--radius-full);
+}
+
+.ai-section ul {
+  margin: 0;
+  padding-left: var(--spacing-5);
+}
+
+.ai-section li {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.ai-analysis-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4) var(--spacing-5);
+  border-top: 1px solid var(--border-color);
+}
+
+.ai-btn {
+  padding: var(--spacing-2) var(--spacing-5);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.ai-btn.cancel {
+  background: var(--btn-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.ai-btn.cancel:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.ai-btn.confirm {
+  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
+  color: white;
+  border: none;
+}
+
+.ai-btn.confirm:hover {
+  opacity: 0.9;
 }
 </style>
 
