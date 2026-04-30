@@ -52,6 +52,7 @@ import type { GroupAISettings, GroupDocument } from '../../types/ai'
 
 interface Props {
   groupId: number
+  serverUrl: string
   aiEnabled?: boolean
   aiAssistantName?: string
   aiReplyMode?: string
@@ -137,7 +138,7 @@ const documents = ref<GroupDocument[]>([])
 
 async function loadDocuments() {
   try {
-    const response = await fetch(`/api/v1/conversations/${props.groupId}/ai-documents`, {
+    const response = await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const data = await response.json()
@@ -152,7 +153,7 @@ async function loadDocuments() {
 async function handleAddDocuments(fileIds: number[]) {
   for (const fileId of fileIds) {
     try {
-      await fetch(`/api/v1/conversations/${props.groupId}/ai-documents`, {
+      await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,7 +170,7 @@ async function handleAddDocuments(fileIds: number[]) {
 
 async function handleRemoveDocument(fileId: number) {
   try {
-    await fetch(`/api/v1/conversations/${props.groupId}/ai-documents/${fileId}`, {
+    await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${fileId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })

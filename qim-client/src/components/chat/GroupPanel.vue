@@ -117,6 +117,7 @@
           <div class="modal-body">
             <GroupAIPanel
               :group-id="groupId"
+              :server-url="serverUrl"
               :ai-enabled="aiEnabled"
               :ai-assistant-name="aiAssistantName"
               :ai-reply-mode="aiReplyMode"
@@ -164,6 +165,7 @@ interface GroupConversation extends Omit<Conversation, 'members'> {
 interface Props {
   conversation: Conversation | null
   currentUser: any
+  serverUrl: string
   showHeaderMenu: boolean
   showEditGroupInfoModal: boolean
   showEditAnnouncementModal: boolean

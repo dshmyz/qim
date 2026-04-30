@@ -40,6 +40,7 @@
     <GroupPanel
       :conversation="conversation"
       :current-user="currentUser"
+      :server-url="serverUrl"
       v-model:showHeaderMenu="showHeaderMenu"
       v-model:showEditGroupInfoModal="showEditGroupInfoModal"
       v-model:showEditAnnouncementModal="showEditAnnouncementModal"
@@ -100,7 +101,7 @@ interface Emits {
   (e: 'update:showEditAnnouncementModal', value: boolean): void
   (e: 'update:editGroupName', value: string): void
   (e: 'update:editAnnouncement', value: string): void
-  (e: 'update-ai-settings', settings: { enabled: boolean; assistantName: string; replyMode: string; personality: string; customPrompt: string; language: string; maxLength: string; mentionReplyMode: string; antiSpamInterval: number; triggerKeywords: string[]; learnEnabled: boolean }): void
+  (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
 }
 
 const props = defineProps<Props>()
