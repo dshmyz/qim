@@ -19,6 +19,15 @@
         </button>
         <span class="tooltip">预览</span>
       </div>
+      <div class="btn-wrapper">
+        <button
+          :class="['mode-btn', { active: fullscreen }]"
+          @click="$emit('toggle-fullscreen')"
+        >
+          <i :class="fullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+        </button>
+        <span class="tooltip">{{ fullscreen ? '退出全屏' : '全屏' }}</span>
+      </div>
     </div>
     <div class="toolbar-right">
       <div class="btn-wrapper">
@@ -66,6 +75,7 @@ defineProps<{
   mode: 'edit' | 'preview'
   saving?: boolean
   analyzing?: boolean
+  fullscreen?: boolean
 }>()
 
 defineEmits<{
@@ -76,6 +86,7 @@ defineEmits<{
   export: []
   share: []
   delete: []
+  'toggle-fullscreen': []
 }>()
 </script>
 

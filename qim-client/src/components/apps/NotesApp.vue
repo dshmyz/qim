@@ -1,6 +1,6 @@
 <template>
-  <div class="notes-app">
-    <div class="notes-header">
+  <div class="notes-app" :class="{ fullscreen: isFullscreen }">
+    <div class="notes-header" v-show="!isFullscreen">
       <div class="header-left">
         <button class="back-btn" @click="$emit('back')">
           <i class="fas fa-chevron-left"></i>
@@ -16,7 +16,7 @@
     </div>
     
     <div class="notes-content">
-      <div class="notes-sidebar">
+      <div class="notes-sidebar" v-show="!isFullscreen">
         <div class="notes-search-box">
           <input
             v-model="searchQuery"
@@ -55,12 +55,14 @@
             v-model:mode="editorMode"
             :saving="saving"
             :analyzing="analyzing"
+            :fullscreen="isFullscreen"
             @save="handleSave"
             @analyze="handleAnalyze"
             @import="triggerImport"
             @export="handleExport"
             @share="handleShare"
             @delete="handleDelete(selectedNote.id)"
+            @toggle-fullscreen="toggleFullscreen"
           />
           <NoteEditor
             v-model:title="selectedNote.title"
@@ -127,6 +129,7 @@ const analyzing = ref(false)
 const showAnalysisModal = ref(false)
 const analysisResult = ref<AIAnalyzeResult | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const isFullscreen = ref(false)
 
 const allTags = computed(() => {
   const tags = new Set<string>()
@@ -156,6 +159,10 @@ function selectNote(id: number) {
 
 function editNote(note: Note) {
   selectNote(note.id)
+}
+
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
 }
 
 async function handleCreate() {
@@ -265,6 +272,21 @@ onMounted(async () => {
   overflow: hidden;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
+}
+
+.notes-app.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  border-radius: 0;
+  margin: 0;
+}
+
+.notes-app.fullscreen .note-main {
+  padding: var(--spacing-4);
 }
 
 .notes-header {
