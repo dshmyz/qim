@@ -34,8 +34,22 @@ func NewSmartPromptBuilder(knowledgeSvc *KnowledgeService) *SmartPromptBuilder {
 }
 
 func (b *SmartPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
-	prompt := "你是 QIM 企业即时通讯系统中的智能助手。"
+	if ctx.Group != nil && ctx.Group.AICustomPrompt != "" {
+		prompt := ctx.Group.AICustomPrompt
+		prompt += b.buildTimeInfo()
+		prompt += b.buildGroupInfo(ctx)
+		prompt += b.buildMessageHistory(ctx)
+		prompt += b.buildUserInfo(ctx)
+		prompt += b.buildTaskInfo(ctx)
+		prompt += b.buildKnowledgeContext(ctx)
+		prompt += b.buildGroupStats(ctx)
+		prompt += b.buildRules(ctx)
+		return prompt
+	}
 
+	personalityPrompt := b.buildPersonalityPrompt(ctx)
+
+	prompt := personalityPrompt
 	prompt += b.buildTimeInfo()
 	prompt += b.buildGroupInfo(ctx)
 	prompt += b.buildMessageHistory(ctx)
@@ -43,9 +57,28 @@ func (b *SmartPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 	prompt += b.buildTaskInfo(ctx)
 	prompt += b.buildKnowledgeContext(ctx)
 	prompt += b.buildGroupStats(ctx)
-	prompt += b.buildRules()
+	prompt += b.buildRules(ctx)
 
 	return prompt
+}
+
+func (b *SmartPromptBuilder) buildPersonalityPrompt(ctx *PromptContext) string {
+	if ctx.Group == nil {
+		return "你是 QIM 企业即时通讯系统中的智能助手。"
+	}
+
+	switch ctx.Group.AIPersonality {
+	case "casual":
+		return "你是 QIM 企业即时通讯系统中的 AI 助手，性格轻松幽默。在回答中可以适当使用表情和emoji，语气活泼。"
+	case "concise":
+		return "你是 QIM 企业即时通讯系统中的 AI 助手，风格简洁高效。回答直奔主题，不废话，只说重点。"
+	case "friendly":
+		return "你是 QIM 企业即时通讯系统中的 AI 助手，性格温暖亲切。回答要有耐心，语气友善，像一个贴心的伙伴。"
+	case "technical":
+		return "你是 QIM 企业即时通讯系统中的技术专家 AI 助手。回答要有技术深度，关注细节，必要时提供代码示例和技术方案。"
+	default:
+		return "你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。"
+	}
 }
 
 func (b *SmartPromptBuilder) buildTimeInfo() string {
@@ -158,14 +191,42 @@ func (b *SmartPromptBuilder) buildGroupStats(ctx *PromptContext) string {
 	return fmt.Sprintf("\n\n📊 当前群状态：\n- 总消息数：%d\n- 成员数：%d", totalMessages, memberCount)
 }
 
-func (b *SmartPromptBuilder) buildRules() string {
-	return `\n\n回复规则：
-- 优先使用知识库中的内容回答
-- 如果知识库中有相关内容，基于该内容给出准确答案
-- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明"以下回答基于通用知识，建议核实"
-- 回答要简洁、专业、准确
-- 使用中文回复，除非用户用其他语言
-- 如果是管理员提问，可以提供更详细的管理操作建议`
+func (b *SmartPromptBuilder) buildRules(ctx *PromptContext) string {
+	var rules []string
+
+	if ctx.Group != nil {
+		switch ctx.Group.AILanguage {
+		case "zh":
+			rules = append(rules, "使用中文回复")
+		case "en":
+			rules = append(rules, "Reply in English")
+		case "ja":
+			rules = append(rules, "日本語で回答してください")
+		default:
+			rules = append(rules, "使用与提问者相同的语言回复")
+		}
+
+		switch ctx.Group.AIMaxLength {
+		case "short":
+			rules = append(rules, "回答要简短，控制在1-2句话以内")
+		case "long":
+			rules = append(rules, "可以详细展开回答，不限制长度")
+		default:
+			rules = append(rules, "回答长度控制在3-5句话")
+		}
+	} else {
+		rules = append(rules, "使用中文回复")
+		rules = append(rules, "回答要简洁、专业、准确")
+	}
+
+	rules = append(rules, "优先使用知识库中的内容回答")
+	rules = append(rules, "如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"")
+
+	if ctx.Group != nil && ctx.Group.AICustomPrompt != "" {
+		rules = append(rules, "额外要求: "+ctx.Group.AICustomPrompt)
+	}
+
+	return "\n\n回复规则：\n- " + strings.Join(rules, "\n- ")
 }
 
 func (b *SmartPromptBuilder) BuildPromptContext(conversationID uint, userID uint) *PromptContext {
