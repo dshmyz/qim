@@ -17,6 +17,7 @@
       @transfer-owner="handleTransferOwner"
       @start-private-chat="handleStartPrivateChat"
       @edit-group-info="editGroupInfo"
+      @update-ai-settings="handleUpdateAISettings"
     />
 
     <!-- 消息列表和成员侧边栏 -->
@@ -2671,6 +2672,32 @@ const showMessageContextMenu = (event: MouseEvent, message: Message) => {
 const handleInviteMembers = () => {
   if (props.conversation?.id) {
     emit('inviteMembers', props.conversation.id)
+  }
+}
+
+const handleUpdateAISettings = async (settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }) => {
+  if (!props.conversation?.id) return
+
+  try {
+    const response = await request(`/api/v1/conversations/${props.conversation.id}/ai-settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ai_enabled: settings.enabled,
+        ai_assistant_name: settings.assistantName,
+        ai_reply_mode: settings.replyMode,
+        context_messages: settings.contextMessages
+      })
+    })
+
+    const data = await response.json()
+    if (data.code === 0) {
+      QMessage.success('AI 设置已更新')
+    } else {
+      QMessage.error(data.message || 'AI 设置更新失败')
+    }
+  } catch (error) {
+    QMessage.error('AI 设置更新失败')
   }
 }
 

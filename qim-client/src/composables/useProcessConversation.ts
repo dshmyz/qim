@@ -150,7 +150,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       announcement: conv.announcement || ''
     }
     
-    if (conversationObj.type === 'group' && conversationObj.lastMessage) {
+    if ((conversationObj.type === 'group' || conversationObj.type === 'discussion') && conversationObj.lastMessage) {
       const senderId = conversationObj.lastMessage.sender?.id || (conv.lastMessage?.sender_id || conv.last_message?.sender_id)?.toString() || ''
       if (senderId && (!conversationObj.lastMessage.sender?.name || conversationObj.lastMessage.sender.name === '')) {
         const senderInfo = getSenderInfo(senderId, members)

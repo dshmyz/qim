@@ -20,6 +20,9 @@
           <div class="menu-item" @click="handleEditGroupAnnouncement">
             <i class="fas fa-bullhorn"></i> 编辑群公告
           </div>
+          <div class="menu-item" @click="handleOpenAISettings">
+            <i class="fas fa-robot"></i> AI 助手设置
+          </div>
           <div v-if="isOwner" class="menu-item" @click="handleConfirmDeleteGroup">
             <i class="fas fa-trash"></i> 解散群聊
           </div>
@@ -102,6 +105,28 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- AI 助手设置模态框 -->
+    <Teleport to="body">
+      <div v-if="showAISettingsModal" class="modal-overlay" @click="handleCloseAISettingsModal">
+        <div class="modal-content ai-settings-modal" @click.stop>
+          <div class="modal-header">
+            <h3>AI 助手设置</h3>
+            <button class="close-btn" @click="handleCloseAISettingsModal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <GroupAIPanel
+              :group-id="groupId"
+              :ai-enabled="aiEnabled"
+              :ai-assistant-name="aiAssistantName"
+              :ai-reply-mode="aiReplyMode"
+              :context-messages="contextMessages"
+              @update="handleUpdateAISettings"
+            />
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -112,6 +137,7 @@ import type { Conversation } from '../../types'
 import { getCurrentUser } from '../../utils/user'
 import MemberSidebar from './MemberSidebar.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
+import GroupAIPanel from '../ai/GroupAIPanel.vue'
 
 // 类型定义
 interface GroupMember {
@@ -136,9 +162,18 @@ interface Props {
   showEditAnnouncementModal: boolean
   editGroupName: string
   editAnnouncement: string
+  aiEnabled?: boolean
+  aiAssistantName?: string
+  aiReplyMode?: string
+  contextMessages?: number
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  aiEnabled: false,
+  aiAssistantName: 'AI助手',
+  aiReplyMode: 'mention_only',
+  contextMessages: 10
+})
 
 // Emits 定义
 const emit = defineEmits<{
@@ -157,6 +192,7 @@ const emit = defineEmits<{
   'set-admin': [memberId: string, memberName: string, isAdmin: boolean]
   'transfer-owner': [memberId: string, memberName: string]
   'start-private-chat': [memberId: string]
+  'update-ai-settings': [settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }]
 }>()
 
 // Refs
@@ -175,7 +211,10 @@ const memberContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMember = ref<GroupMember | null>(null)
 const isMembersSidebarExpanded = ref(true)
 const showMemberSearch = ref(false)
-const memberSearchQuery = ref('')
+const memberSearchQuery = ref(false)
+
+// AI 设置状态
+const showAISettingsModal = ref(false)
 
 // Computed
 const isGroupOrDiscussion = computed(() => {
@@ -193,6 +232,12 @@ const isOwner = computed(() => {
 const currentUserId = computed((): string | number => {
   const user = props.currentUser || getCurrentUser()
   return user?.id ?? ''
+})
+
+const groupId = computed((): number => {
+  return typeof props.conversation?.id === 'string'
+    ? parseInt(props.conversation.id, 10)
+    : (props.conversation?.id ?? 0)
 })
 
 const currentUserRole = computed((): string => {
@@ -354,8 +399,24 @@ function toggleMembersSidebar() {
 function toggleMemberSearch() {
   showMemberSearch.value = !showMemberSearch.value
   if (showMemberSearch.value) {
-    memberSearchQuery.value = ''
+    memberSearchQuery.value = false
   }
+}
+
+// AI 设置相关方法
+function handleOpenAISettings() {
+  showAISettingsModal.value = true
+  emit('update:showHeaderMenu', false)
+  document.removeEventListener('click', closeHeaderMenu)
+}
+
+function handleCloseAISettingsModal() {
+  showAISettingsModal.value = false
+}
+
+function handleUpdateAISettings(settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }) {
+  emit('update-ai-settings', settings)
+  showAISettingsModal.value = false
 }
 
 // 成员右键菜单
@@ -863,5 +924,14 @@ onUnmounted(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+/* AI 设置模态框 */
+.ai-settings-modal {
+  max-width: 480px;
+}
+
+.ai-settings-modal .modal-body {
+  padding: 0;
 }
 </style>

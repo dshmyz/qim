@@ -45,6 +45,10 @@
       v-model:showEditAnnouncementModal="showEditAnnouncementModal"
       v-model:editGroupName="editGroupName"
       v-model:editAnnouncement="editAnnouncement"
+      :ai-enabled="aiEnabled"
+      :ai-assistant-name="aiAssistantName"
+      :ai-reply-mode="aiReplyMode"
+      :context-messages="contextMessages"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
       @save-group-info="(name: string) => emit('save-group-info', name)"
@@ -55,6 +59,7 @@
       @set-admin="(id: string, name: string, isAdmin: boolean) => emit('set-admin', id, name, isAdmin)"
       @transfer-owner="(id: string, name: string) => emit('transfer-owner', id, name)"
       @start-private-chat="(id: string) => emit('start-private-chat', id)"
+      @update-ai-settings="(settings) => emit('update-ai-settings', settings)"
     />
   </div>
 </template>
@@ -88,6 +93,7 @@ interface Emits {
   (e: 'update:showEditAnnouncementModal', value: boolean): void
   (e: 'update:editGroupName', value: string): void
   (e: 'update:editAnnouncement', value: string): void
+  (e: 'update-ai-settings', settings: { enabled: boolean; assistantName: string; replyMode: string; contextMessages: number }): void
 }
 
 const props = defineProps<Props>()
@@ -98,6 +104,11 @@ const showEditGroupInfoModal = ref(false)
 const showEditAnnouncementModal = ref(false)
 const editGroupName = ref('')
 const editAnnouncement = ref('')
+
+const aiEnabled = computed(() => props.conversation?.ai_enabled ?? false)
+const aiAssistantName = computed(() => props.conversation?.ai_assistant_name ?? 'AI助手')
+const aiReplyMode = computed(() => props.conversation?.ai_reply_mode ?? 'mention_only')
+const contextMessages = computed(() => props.conversation?.context_messages ?? 10)
 
 const isGroupOrDiscussion = computed(() =>
   props.conversation?.type === 'group' || props.conversation?.type === 'discussion'
@@ -124,7 +135,11 @@ defineExpose({
   showEditGroupInfoModal,
   showEditAnnouncementModal,
   editGroupName,
-  editAnnouncement
+  editAnnouncement,
+  aiEnabled,
+  aiAssistantName,
+  aiReplyMode,
+  contextMessages
 })
 </script>
 

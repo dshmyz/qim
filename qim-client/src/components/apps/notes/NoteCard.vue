@@ -73,36 +73,40 @@ const formatDate = (dateStr: string) => {
 
 <style scoped>
 .note-card {
-  padding: 16px;
-  margin-bottom: 8px;
-  background: var(--bg-color);
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-2);
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-xs);
 }
 
 .note-card:hover {
   background: var(--hover-color);
   border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .note-card.active {
-  background: var(--hover-color);
+  background: var(--primary-light);
   border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .note-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-2);
 }
 
 .note-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
   margin: 0;
   flex: 1;
   overflow: hidden;
@@ -112,36 +116,44 @@ const formatDate = (dateStr: string) => {
 
 .note-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--spacing-1);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.note-card:hover .note-actions {
+  opacity: 1;
 }
 
 .note-action-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: transparent;
+  background: var(--btn-bg);
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all var(--transition-fast);
 }
 
 .note-action-btn:hover {
-  background: var(--hover-color);
+  background: var(--primary-light);
   color: var(--primary-color);
 }
 
 .note-action-btn.delete:hover {
+  background: var(--color-error-100);
   color: var(--danger-color);
 }
 
 .note-summary {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin: 0 0 8px 0;
-  line-height: 1.4;
+  margin: 0 0 var(--spacing-2) 0;
+  line-height: var(--line-height-normal);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -152,22 +164,25 @@ const formatDate = (dateStr: string) => {
 .note-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--spacing-1);
+  margin-bottom: var(--spacing-2);
 }
 
 .note-tag {
-  font-size: 12px;
-  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  padding: 2px 10px;
   background: var(--primary-light);
   color: var(--primary-color);
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   cursor: pointer;
+  transition: all var(--transition-fast);
+  font-weight: var(--font-weight-medium);
 }
 
 .note-tag:hover {
   background: var(--primary-color);
   color: white;
+  transform: scale(1.05);
 }
 
 .note-footer {
@@ -176,7 +191,7 @@ const formatDate = (dateStr: string) => {
 }
 
 .note-date {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 </style>

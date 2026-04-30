@@ -111,25 +111,31 @@ function insertFormat(prefix: string, suffix: string) {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-4);
   overflow: hidden;
 }
 
 .note-title-input {
-  padding: 12px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-  background: var(--bg-color);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-color);
+  background: var(--card-bg);
   outline: none;
-  transition: all 0.2s;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-xs);
 }
 
 .note-title-input:focus {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 4px rgba(51, 133, 255, 0.15);
+}
+
+.note-title-input::placeholder {
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-normal);
 }
 
 .editor-area,
@@ -142,96 +148,144 @@ function insertFormat(prefix: string, suffix: string) {
 
 .editor-toolbar {
   display: flex;
-  gap: 4px;
-  padding: 8px;
-  background: var(--bg-color);
+  gap: var(--spacing-1);
+  padding: var(--spacing-2);
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   flex-wrap: wrap;
+  border-bottom: none;
 }
 
 .format-btn {
-  padding: 6px 12px;
+  padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--border-color);
-  background: var(--card-bg);
-  color: var(--text-primary);
-  border-radius: 4px;
+  background: var(--btn-bg);
+  color: var(--text-color);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-fast);
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .format-btn:hover {
-  background: var(--hover-color);
+  background: var(--primary-light);
   border-color: var(--primary-color);
   color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.format-btn:active {
+  transform: translateY(0);
 }
 
 .note-content-input {
   flex: 1;
-  padding: 16px;
+  padding: var(--spacing-4);
   border: 1px solid var(--border-color);
   border-top: none;
-  border-radius: 0 0 8px 8px;
-  font-size: 14px;
-  font-family: 'Monaco', 'Menlo', monospace;
-  line-height: 1.6;
-  color: var(--text-primary);
-  background: var(--bg-color);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  line-height: var(--line-height-relaxed);
+  color: var(--text-color);
+  background: var(--card-bg);
   resize: none;
   outline: none;
+  transition: border-color var(--transition-base);
 }
 
 .note-content-input:focus {
   border-color: var(--primary-color);
 }
 
+.note-content-input::placeholder {
+  color: var(--text-secondary);
+}
+
 .preview-area {
-  padding: 16px;
+  padding: var(--spacing-4);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
   overflow-y: auto;
+  box-shadow: var(--shadow-xs);
 }
 
 .preview-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+  color: var(--text-color);
 }
 
 .preview-content :deep(h1) {
-  font-size: 24px;
-  margin: 16px 0 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  margin: var(--spacing-4) 0 var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-color);
 }
 
 .preview-content :deep(h2) {
-  font-size: 20px;
-  margin: 14px 0 6px;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin: var(--spacing-4) 0 var(--spacing-2);
+  color: var(--text-color);
 }
 
 .preview-content :deep(h3) {
-  font-size: 18px;
-  margin: 12px 0 4px;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin: var(--spacing-3) 0 var(--spacing-2);
+  color: var(--text-color);
 }
 
 .preview-content :deep(code) {
-  background: var(--code-bg);
+  background: var(--list-bg);
   padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Monaco', monospace;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-error-600);
 }
 
 .preview-content :deep(pre) {
-  background: var(--code-bg);
-  padding: 12px;
-  border-radius: 6px;
+  background: var(--list-bg);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-md);
   overflow-x: auto;
+  border: 1px solid var(--border-color);
+  margin: var(--spacing-3) 0;
+}
+
+.preview-content :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: var(--text-color);
 }
 
 .preview-content :deep(a) {
   color: var(--primary-color);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+}
+
+.preview-content :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.preview-content :deep(li) {
+  margin: var(--spacing-1) 0;
+  padding-left: var(--spacing-2);
+}
+
+.preview-content :deep(strong) {
+  font-weight: var(--font-weight-semibold);
 }
 </style>

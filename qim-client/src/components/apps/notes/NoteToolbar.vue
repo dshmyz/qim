@@ -63,77 +63,105 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--spacing-3) var(--spacing-4);
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-4);
+  box-shadow: var(--shadow-xs);
 }
 
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 .mode-btn {
-  padding: 8px 16px;
+  padding: var(--spacing-2) var(--spacing-4);
   border: 1px solid var(--border-color);
-  background: var(--bg-color);
+  background: var(--btn-bg);
   color: var(--text-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+  gap: var(--spacing-2);
+  transition: all var(--transition-base);
 }
 
 .mode-btn:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
+  background: var(--primary-light);
 }
 
 .mode-btn.active {
   background: var(--primary-color);
   border-color: var(--primary-color);
   color: white;
+  box-shadow: var(--shadow-sm);
 }
 
 .toolbar-btn {
-  padding: 8px 12px;
+  padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--border-color);
-  background: var(--bg-color);
+  background: var(--btn-bg);
   color: var(--text-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+  gap: var(--spacing-2);
+  transition: all var(--transition-base);
 }
 
 .toolbar-btn:hover:not(:disabled) {
   border-color: var(--primary-color);
   color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .toolbar-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 .toolbar-btn.save:hover:not(:disabled) {
   background: var(--success-color);
   border-color: var(--success-color);
   color: white;
+  box-shadow: 0 4px 12px rgba(38, 179, 97, 0.3);
+}
+
+.toolbar-btn.ai {
+  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
+  border-color: transparent;
+  color: white;
 }
 
 .toolbar-btn.ai:hover:not(:disabled) {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.4);
+}
+
+.toolbar-btn.export:hover:not(:disabled) {
+  background: var(--color-info-500);
+  border-color: var(--color-info-500);
+  color: white;
+}
+
+.toolbar-btn.share:hover:not(:disabled) {
+  background: var(--color-warning-500);
+  border-color: var(--color-warning-500);
   color: white;
 }
 
@@ -141,5 +169,6 @@ defineEmits<{
   background: var(--danger-color);
   border-color: var(--danger-color);
   color: white;
+  box-shadow: 0 4px 12px rgba(243, 64, 64, 0.3);
 }
 </style>

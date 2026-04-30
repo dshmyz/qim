@@ -17,7 +17,7 @@
         @click="$emit('showUserProfile', message.sender)"
       />
       <div class="message-content">
-        <div v-if="conversationType === 'group' && !isSelf" class="message-sender">
+        <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf" class="message-sender">
           <span>{{ message.sender.name || '未知用户' }}</span>
           <!-- AI 消息标识 -->
           <AIMessageBadge v-if="isAIMessage" compact :assistant-name="message.ai_assistant_name" />
@@ -141,7 +141,7 @@
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
           </div>
-          <div v-else-if="isSelf && conversationType === 'group' && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
+          <div v-else-if="isSelf && (conversationType === 'group' || conversationType === 'discussion') && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
             {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
           <div v-else-if="isSelf && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
