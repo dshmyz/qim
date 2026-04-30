@@ -160,6 +160,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/conversations/:id/join-requests/:user_id", handler.RejectJoinRequest)
 			// 更新群聊信息
 			authed.PUT("/conversations/:id", handler.UpdateGroupInfo)
+			// 更新群聊 AI 设置
+			authed.PUT("/conversations/:id/ai-settings", handler.UpdateGroupAISettings)
 			// 设置/取消管理员
 			authed.PUT("/conversations/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
@@ -196,6 +198,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/notes", handler.CreateNote)
 			authed.PUT("/notes/:id", handler.UpdateNote)
 			authed.DELETE("/notes/:id", handler.DeleteNote)
+			authed.POST("/notes/:id/analyze", handler.AnalyzeNote)
+			authed.GET("/notes/:id/export", handler.ExportNote)
+			authed.PATCH("/notes/:id/tags", handler.UpdateNoteTags)
+			authed.PATCH("/notes/:id/summary", handler.UpdateNoteSummary)
 
 			// 文件夹管理
 			authed.POST("/folders", handler.CreateFolder)
