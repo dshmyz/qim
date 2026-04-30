@@ -66,20 +66,38 @@ type Conversation struct {
 
 // 群聊
 type Group struct {
-	ID               uint         `json:"id" gorm:"primarykey"`
-	ConversationID   uint         `json:"conversation_id" gorm:"uniqueIndex;not null"`
-	GroupType        string       `json:"group_type" gorm:"size:20;not null"` // "group" 或 "discussion"
-	Name             string       `json:"name" gorm:"size:200;not null"`
-	Avatar           string       `json:"avatar" gorm:"size:500"`
-	CreatorID        uint         `json:"creator_id" gorm:"not null"`
-	Announcement     string       `json:"announcement" gorm:"type:text"`
-	InvitePermission string       `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
-	AIEnabled        bool         `json:"ai_enabled" gorm:"default:false"`
-	AIReplyMode      string       `json:"ai_reply_mode" gorm:"size:20;default:'mention_only'"` // always/mention_only/smart/off
-	AIAssistantName  string       `json:"ai_assistant_name" gorm:"size:100;default:'AI助手'"`
-	CreatedAt        time.Time    `json:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at"`
-	Conversation     Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+	ID                 uint            `json:"id" gorm:"primarykey"`
+	ConversationID     uint            `json:"conversation_id" gorm:"uniqueIndex;not null"`
+	GroupType          string          `json:"group_type" gorm:"size:20;not null"` // "group" 或 "discussion"
+	Name               string          `json:"name" gorm:"size:200;not null"`
+	Avatar             string          `json:"avatar" gorm:"size:500"`
+	CreatorID          uint            `json:"creator_id" gorm:"not null"`
+	Announcement       string          `json:"announcement" gorm:"type:text"`
+	InvitePermission   string          `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
+	AIEnabled          bool            `json:"ai_enabled" gorm:"default:false"`
+	AIReplyMode        string          `json:"ai_reply_mode" gorm:"size:20;default:'mention_only'"` // always/mention_only/smart/off
+	AIAssistantName    string          `json:"ai_assistant_name" gorm:"size:100;default:'AI助手'"`
+	AIPersonality      string          `json:"ai_personality" gorm:"size:20;default:'professional'"`
+	AICustomPrompt     string          `json:"ai_custom_prompt" gorm:"type:text"`
+	AILanguage         string          `json:"ai_language" gorm:"size:10;default:'auto'"`
+	AIMaxLength        string          `json:"ai_max_length" gorm:"size:10;default:'medium'"`
+	AIMentionReplyMode string          `json:"ai_mention_reply_mode" gorm:"size:10;default:'mention'"`
+	AIAntiSpamInterval int             `json:"ai_anti_spam_interval" gorm:"default:5"`
+	AITriggerKeywords  string          `json:"ai_trigger_keywords" gorm:"type:text"`
+	AILearnEnabled     bool            `json:"ai_learn_enabled" gorm:"default:false"`
+	Documents          []GroupDocument `json:"documents,omitempty" gorm:"foreignkey:GroupID"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	Conversation       Conversation    `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+}
+
+// 群聊文档关联
+type GroupDocument struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	GroupID   uint      `json:"group_id" gorm:"not null;index"`
+	FileID    uint      `json:"file_id" gorm:"not null"`
+	CreatedAt time.Time `json:"created_at"`
+	Group     Group     `json:"group,omitempty" gorm:"foreignkey:GroupID"`
 }
 
 // 会话成员
