@@ -147,6 +147,7 @@
       @forward-message="forwardMessage"
       @quote-message="quoteMessage"
       @add-to-note="addToNote"
+      @create-task="createTaskFromMessage"
       @recall-message="handleRecallMessage"
       @send-message-reminder="sendMessageReminder"
       @close-member-context-menu="closeMemberContextMenu"
@@ -247,6 +248,7 @@ import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
+import { useTaskStore } from '../../stores/task'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 
 // 服务器地址
@@ -1938,6 +1940,33 @@ const addToNote = () => {
     
     $message.success('消息已添加到便签')
   }
+  closeMessageContextMenu()
+}
+
+// 从消息创建任务
+const createTaskFromMessage = async () => {
+  if (!selectedMessage.value) {
+    closeMessageContextMenu()
+    return
+  }
+
+  const message = selectedMessage.value
+  const messageText = message.content || ''
+
+  try {
+    const taskStore = useTaskStore()
+    await taskStore.createTask({
+      title: messageText.slice(0, 50) + (messageText.length > 50 ? '...' : ''),
+      description: messageText,
+      priority: 'medium',
+      status: 'todo'
+    })
+    $message.success('已创建为任务')
+  } catch (error: any) {
+    console.error('创建任务失败:', error)
+    $message.error('创建任务失败: ' + (error.message || '未知错误'))
+  }
+
   closeMessageContextMenu()
 }
 

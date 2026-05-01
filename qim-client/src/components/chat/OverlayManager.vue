@@ -28,6 +28,7 @@
     @forward-message="emit('forward-message')"
     @quote-message="emit('quote-message')"
     @add-to-note="emit('add-to-note')"
+    @create-task="emit('create-task')"
     @recall-message="emit('recall-message')"
     @send-message-reminder="emit('send-message-reminder')"
   />
@@ -212,6 +213,7 @@ const emit = defineEmits<{
   'forward-message': []
   'quote-message': []
   'add-to-note': []
+  'create-task': []
   'recall-message': []
   'send-message-reminder': []
   'close-member-context-menu': []

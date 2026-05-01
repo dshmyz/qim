@@ -37,6 +37,10 @@
       <span class="context-menu-icon"><i class="fas fa-sticky-note"></i></span>
       <span>添加到便签</span>
     </div>
+    <div v-if="message && message.type === 'text'" class="context-menu-item" @click="handleCreateTask">
+      <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
+      <span>创建为任务</span>
+    </div>
     <!-- <div class="context-menu-item" @click="handleDeleteMessage">
       <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
       <span>删除</span>
@@ -70,6 +74,7 @@ interface Emits {
   (e: 'forward-message'): void
   (e: 'quote-message'): void
   (e: 'add-to-note'): void
+  (e: 'create-task'): void
   (e: 'recall-message'): void
   (e: 'send-message-reminder'): void
 }
@@ -126,6 +131,10 @@ const handleQuoteMessage = () => {
 
 const handleAddToNote = () => {
   emit('add-to-note')
+}
+
+const handleCreateTask = () => {
+  emit('create-task')
 }
 
 const handleRecallMessage = () => {
