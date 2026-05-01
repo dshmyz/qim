@@ -40,11 +40,34 @@
       @close="onCloseModal"
       @submit="onSubmitTask"
     />
+
+    <div
+      v-if="contextMenu.visible"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+    >
+      <button class="context-item" @click="onContextEdit">
+        <i class="fas fa-edit"></i> 编辑
+      </button>
+      <button class="context-item" @click="onContextStatusChange('todo')">
+        <i class="fas fa-circle" style="color:#fbbf24;font-size:8px;"></i> 移到待办
+      </button>
+      <button class="context-item" @click="onContextStatusChange('in_progress')">
+        <i class="fas fa-circle" style="color:#a78bfa;font-size:8px;"></i> 移到进行中
+      </button>
+      <button class="context-item" @click="onContextStatusChange('completed')">
+        <i class="fas fa-circle" style="color:#34d399;font-size:8px;"></i> 移到已完成
+      </button>
+      <div class="context-divider"></div>
+      <button class="context-item danger" @click="onContextDelete">
+        <i class="fas fa-trash"></i> 删除
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import type { Task, TaskStatus } from '../../types/task'
 import { useTaskStore } from '../../stores/task'
 import AppHeader from '../AppHeader.vue'
@@ -60,6 +83,12 @@ import QMessage from '../../utils/qmessage'
 const store = useTaskStore()
 const showCreateModal = ref(false)
 const selectedTask = computed(() => store.selectedTask)
+const contextMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  taskId: '' as string
+})
 
 defineEmits<{
   back: []
@@ -68,6 +97,13 @@ defineEmits<{
 
 onMounted(() => {
   store.loadTasks()
+  document.addEventListener('keydown', onKeydown)
+  document.addEventListener('click', onGlobalClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('click', onGlobalClick)
 })
 
 function onTaskClick(task: Task) {
@@ -75,8 +111,73 @@ function onTaskClick(task: Task) {
   showCreateModal.value = true
 }
 
-function onTaskContextmenu(_event: MouseEvent, _task: Task) {
-  // 右键菜单将在后续任务中实现
+function onTaskContextmenu(event: MouseEvent, task: Task) {
+  contextMenu.visible = true
+  contextMenu.x = event.clientX
+  contextMenu.y = event.clientY
+  contextMenu.taskId = task.id
+  store.selectTask(task.id)
+}
+
+function closeContextMenu() {
+  contextMenu.visible = false
+}
+
+function onContextEdit() {
+  showCreateModal.value = true
+  closeContextMenu()
+}
+
+async function onContextStatusChange(status: TaskStatus) {
+  await store.changeStatus(contextMenu.taskId, status)
+  closeContextMenu()
+}
+
+async function onContextDelete() {
+  await store.removeTask(contextMenu.taskId)
+  closeContextMenu()
+  QMessage.success('任务已删除')
+}
+
+function onGlobalClick() {
+  if (contextMenu.visible) closeContextMenu()
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (showCreateModal.value) return
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+  switch (e.key) {
+    case 'n':
+    case 'N':
+      e.preventDefault()
+      showCreateModal.value = true
+      break
+    case '1':
+      e.preventDefault()
+      store.setView('kanban')
+      break
+    case '2':
+      e.preventDefault()
+      store.setView('list')
+      break
+    case '3':
+      e.preventDefault()
+      store.setView('calendar')
+      break
+    case '4':
+      e.preventDefault()
+      store.setView('workspace')
+      break
+    case 'Delete':
+    case 'Backspace':
+      if (store.selectedTaskId) {
+        e.preventDefault()
+        store.removeTask(store.selectedTaskId)
+        QMessage.success('任务已删除')
+      }
+      break
+  }
 }
 
 function onCloseModal() {
@@ -148,5 +249,37 @@ async function onSubmitTask(data: {
 }
 .icon-btn:hover {
   background: var(--hover-bg);
+}
+.context-menu {
+  position: fixed;
+  z-index: var(--z-dropdown, 1000);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-1);
+  min-width: 160px;
+}
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.context-item:hover { background: var(--hover-bg); }
+.context-item.danger { color: #ef4444; }
+.context-item.danger:hover { background: #fef2f2; }
+.context-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--spacing-1) 0;
 }
 </style>
