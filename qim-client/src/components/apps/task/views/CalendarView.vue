@@ -33,8 +33,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { Task } from '../../../types/task'
-import { useTaskStore } from '../../../stores/task'
+import type { Task } from '../../../../types/task'
+import { useTaskStore } from '../../../../stores/task'
 
 const store = useTaskStore()
 

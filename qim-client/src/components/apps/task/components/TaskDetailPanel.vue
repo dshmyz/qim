@@ -106,13 +106,13 @@ async function onSubTaskToggle(subTaskId: string) {
   const updated = props.task.sub_tasks.map(st =>
     st.id === subTaskId ? { ...st, completed: !st.completed } : st
   )
-  await store.updateTask(props.task.id, { sub_tasks: updated as any })
+  await store.updateTask(props.task.id, { sub_tasks: updated })
 }
 
 async function onSubTaskRemove(subTaskId: string) {
   if (!props.task) return
   const updated = props.task.sub_tasks.filter(st => st.id !== subTaskId)
-  await store.updateTask(props.task.id, { sub_tasks: updated as any })
+  await store.updateTask(props.task.id, { sub_tasks: updated })
 }
 
 async function onSubTaskAdd(title: string) {
@@ -123,7 +123,7 @@ async function onSubTaskAdd(title: string) {
     completed: false,
     position: props.task.sub_tasks.length
   }
-  await store.updateTask(props.task.id, { sub_tasks: [...props.task.sub_tasks, newSubTask] as any })
+  await store.updateTask(props.task.id, { sub_tasks: [...props.task.sub_tasks, newSubTask] })
 }
 </script>
 

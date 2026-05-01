@@ -23,7 +23,7 @@
         :task="task"
         :is-selected="task.id === selectedTaskId"
         @click="emit('taskClick', $event)"
-        @contextmenu="(...args: any[]) => emit('taskContextmenu', ...args)"
+        @contextmenu="(event, task) => emit('taskContextmenu', event, task)"
         @toggle-complete="onToggleComplete"
       />
     </div>
@@ -32,8 +32,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { Task } from '../../../types/task'
-import { useTaskStore } from '../../../stores/task'
+import type { Task } from '../../../../types/task'
+import { useTaskStore } from '../../../../stores/task'
 import TaskRow from '../components/TaskRow.vue'
 
 const store = useTaskStore()

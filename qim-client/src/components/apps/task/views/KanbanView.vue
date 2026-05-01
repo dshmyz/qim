@@ -5,10 +5,10 @@
       status="todo"
       :tasks="todoTasks"
       dot-color="#fbbf24"
-      @task-click="emit('taskClick', $event)"
-      @task-contextmenu="emit('taskContextmenu', $event)"
-      @task-dragstart="emit('taskDragstart', $event)"
-      @task-dragend="emit('taskDragend')"
+      @task-click="(task) => emit('taskClick', task)"
+      @task-contextmenu="(event, task) => emit('taskContextmenu', event, task)"
+      @task-dragstart="(event, task) => emit('taskDragstart', event, task)"
+      @task-dragend="() => emit('taskDragend')"
       @drop="onColumnDrop"
     />
     <KanbanColumn
@@ -16,10 +16,10 @@
       status="in_progress"
       :tasks="inProgressTasks"
       dot-color="#a78bfa"
-      @task-click="emit('taskClick', $event)"
-      @task-contextmenu="emit('taskContextmenu', $event)"
-      @task-dragstart="emit('taskDragstart', $event)"
-      @task-dragend="emit('taskDragend')"
+      @task-click="(task) => emit('taskClick', task)"
+      @task-contextmenu="(event, task) => emit('taskContextmenu', event, task)"
+      @task-dragstart="(event, task) => emit('taskDragstart', event, task)"
+      @task-dragend="() => emit('taskDragend')"
       @drop="onColumnDrop"
     />
     <KanbanColumn
@@ -27,18 +27,18 @@
       status="completed"
       :tasks="completedTasks"
       dot-color="#34d399"
-      @task-click="emit('taskClick', $event)"
-      @task-contextmenu="emit('taskContextmenu', $event)"
-      @task-dragstart="emit('taskDragstart', $event)"
-      @task-dragend="emit('taskDragend')"
+      @task-click="(task) => emit('taskClick', task)"
+      @task-contextmenu="(event, task) => emit('taskContextmenu', event, task)"
+      @task-dragstart="(event, task) => emit('taskDragstart', event, task)"
+      @task-dragend="() => emit('taskDragend')"
       @drop="onColumnDrop"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import type { Task, TaskStatus } from '../../../types/task'
-import { useTaskStore } from '../../../stores/task'
+import type { Task, TaskStatus } from '../../../../types/task'
+import { useTaskStore } from '../../../../stores/task'
 import KanbanColumn from './KanbanColumn.vue'
 
 const store = useTaskStore()

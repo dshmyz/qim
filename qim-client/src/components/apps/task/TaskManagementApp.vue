@@ -74,8 +74,8 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
-import type { Task, TaskStatus, Tag, TaskUser } from '../../types/task'
-import { useTaskStore } from '../../stores/task'
+import type { Task, TaskStatus, TaskPriority, Tag, TaskUser } from '../../../types/task'
+import { useTaskStore } from '../../../stores/task'
 import AppHeader from '../AppHeader.vue'
 import TaskSidebar from './TaskSidebar.vue'
 import TaskToolbar from './TaskToolbar.vue'
@@ -85,7 +85,7 @@ import CalendarView from './views/CalendarView.vue'
 import MyWorkspace from './views/MyWorkspace.vue'
 import TaskCreateModal from './components/TaskCreateModal.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
-import QMessage from '../../utils/qmessage'
+import QMessage from '../../../utils/qmessage'
 
 const store = useTaskStore()
 const showCreateModal = ref(false)
@@ -204,8 +204,8 @@ async function onSubmitTask(data: {
   title: string
   description: string
   due_date: string | null
-  priority: string
-  status: string
+  priority: TaskPriority
+  status: TaskStatus
 }) {
   try {
     if (selectedTask.value) {

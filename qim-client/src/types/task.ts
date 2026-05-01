@@ -58,4 +58,5 @@ export interface CreateTaskData {
 
 export interface UpdateTaskData extends Partial<CreateTaskData> {
   position?: number
+  sub_tasks?: SubTask[]
 }

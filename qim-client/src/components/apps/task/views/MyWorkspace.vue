@@ -51,8 +51,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Task } from '../../../types/task'
-import { useTaskStore } from '../../../stores/task'
+import type { Task } from '../../../../types/task'
+import { useTaskStore } from '../../../../stores/task'
 import TaskCard from '../components/TaskCard.vue'
 
 const store = useTaskStore()

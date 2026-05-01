@@ -61,8 +61,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { TaskView } from '../../types/task'
-import { useTaskStore } from '../../stores/task'
+import type { TaskView } from '../../../types/task'
+import { useTaskStore } from '../../../stores/task'
 
 const store = useTaskStore()
 const currentView = computed(() => store.currentView)

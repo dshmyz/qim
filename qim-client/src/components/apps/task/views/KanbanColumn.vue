@@ -18,10 +18,10 @@
         v-for="task in tasks"
         :key="task.id"
         :task="task"
-        @click="$emit('taskClick', $event)"
-        @contextmenu="$emit('taskContextmenu', $event)"
-        @dragstart="$emit('taskDragstart', $event)"
-        @dragend="$emit('taskDragend')"
+        @click="(task) => emit('taskClick', task)"
+        @contextmenu="(event, task) => emit('taskContextmenu', event, task)"
+        @dragstart="(event, task) => emit('taskDragstart', event, task)"
+        @dragend="() => emit('taskDragend')"
       />
       <div v-if="!tasks.length" class="kanban-column-empty">
         拖拽任务到此处
@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { Task, TaskStatus } from '../../../types/task'
+import type { Task, TaskStatus } from '../../../../types/task'
 import TaskCard from '../components/TaskCard.vue'
 
 const props = defineProps<{
