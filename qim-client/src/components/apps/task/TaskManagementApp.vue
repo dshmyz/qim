@@ -32,6 +32,12 @@
           />
         </div>
       </div>
+      <TaskDetailPanel
+        :task="store.selectedTask"
+        :available-tags="availableTags"
+        :contacts="contacts"
+        @close="store.selectTask(null)"
+      />
     </div>
 
     <TaskCreateModal
@@ -68,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
-import type { Task, TaskStatus } from '../../types/task'
+import type { Task, TaskStatus, Tag, TaskUser } from '../../types/task'
 import { useTaskStore } from '../../stores/task'
 import AppHeader from '../AppHeader.vue'
 import TaskSidebar from './TaskSidebar.vue'
@@ -78,11 +84,21 @@ import ListView from './views/ListView.vue'
 import CalendarView from './views/CalendarView.vue'
 import MyWorkspace from './views/MyWorkspace.vue'
 import TaskCreateModal from './components/TaskCreateModal.vue'
+import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import QMessage from '../../utils/qmessage'
 
 const store = useTaskStore()
 const showCreateModal = ref(false)
 const selectedTask = computed(() => store.selectedTask)
+const availableTags = ref<Tag[]>([
+  { id: '1', name: '设计', color: '#ec4899' },
+  { id: '2', name: '后端', color: '#6366f1' },
+  { id: '3', name: '前端', color: '#3b82f6' },
+  { id: '4', name: '重构', color: '#8b5cf6' },
+  { id: '5', name: '文档', color: '#10b981' },
+  { id: '6', name: 'Bug', color: '#ef4444' }
+])
+const contacts = ref<TaskUser[]>([])
 const contextMenu = reactive({
   visible: false,
   x: 0,
@@ -108,7 +124,6 @@ onUnmounted(() => {
 
 function onTaskClick(task: Task) {
   store.selectTask(task.id)
-  showCreateModal.value = true
 }
 
 function onTaskContextmenu(event: MouseEvent, task: Task) {
