@@ -1,0 +1,3 @@
+{"type":"click","text":"A\n      \n        侧边栏便签列表\n        在侧边栏底部显示最近便签，点击展开完整列表","choice":"sidebar","id":null,"timestamp":1777598007746}
+{"type":"click","text":"B\n      \n        SideOptions 导航图标\n        在左侧导航栏添加便签图标，点击展开便签面板","choice":"nav-icon","id":null,"timestamp":1777598011856}
+{"type":"click","text":"C\n      \n        独立小窗口\n        可拖拽、可置顶的独立便签窗口","choice":"widget","id":null,"timestamp":1777598013188}

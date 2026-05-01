@@ -1,0 +1,237 @@
+<h2>任务管理模块 — 视觉风格选择</h2>
+<p class="subtitle">三种不同的设计方向，点击选择你偏好的风格</p>
+
+<div class="cards">
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header" style="background:#f8f9fa;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:14px;font-weight:600;color:#111;">任务</span>
+            <span style="font-size:12px;color:#9ca3af;">12 项</span>
+          </div>
+          <div style="display:flex;gap:12px;font-size:12px;color:#6b7280;">
+            <span style="color:#111;border-bottom:2px solid #111;padding-bottom:4px;">看板</span>
+            <span>列表</span>
+            <span>日历</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;padding:16px;background:#fafafa;min-height:280px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">待办 · 5</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#111;">完成首页设计稿</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                  <span style="font-size:11px;color:#9ca3af;">今天</span>
+                  <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;"></span>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#111;">编写 API 文档</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                  <span style="font-size:11px;color:#9ca3af;">明天</span>
+                  <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;"></span>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#374151;">评审代码变更</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                  <span style="font-size:11px;color:#9ca3af;">周五</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">进行中 · 4</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#111;">重构用户模块</div>
+                <div style="width:100%;height:3px;background:#f3f4f6;border-radius:2px;margin-top:8px;">
+                  <div style="width:60%;height:100%;background:#6366f1;border-radius:2px;"></div>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#111;">优化查询性能</div>
+                <div style="width:100%;height:3px;background:#f3f4f6;border-radius:2px;margin-top:8px;">
+                  <div style="width:30%;height:100%;background:#6366f1;border-radius:2px;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">已完成 · 3</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;opacity:0.6;">
+                <div style="font-size:13px;font-weight:500;color:#111;text-decoration:line-through;">部署测试环境</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 极简现代风</h3>
+      <p>Linear/Notion 风格 — 克制留白、细线条、微妙层次，专注内容本身</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="vibrant" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:14px;font-weight:700;color:#fff;">📋 任务管理</span>
+            <span style="font-size:12px;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:10px;">12 项</span>
+          </div>
+          <div style="background:rgba(255,255,255,0.2);border-radius:8px;padding:2px;display:flex;gap:2px;">
+            <span style="font-size:11px;color:#fff;background:rgba(255,255,255,0.3);padding:4px 10px;border-radius:6px;">看板</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.7);padding:4px 10px;">列表</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.7);padding:4px 10px;">日历</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;padding:12px;background:#f0f0ff;min-height:280px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#6366f1;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              🔴 待办 <span style="background:#fef2f2;color:#ef4444;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:600;">5</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(99,102,241,0.1);border-left:3px solid #ef4444;">
+                <div style="font-size:13px;font-weight:600;color:#1f2937;">完成首页设计稿</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:8px;">
+                  <span style="font-size:10px;background:#fef2f2;color:#ef4444;padding:2px 6px;border-radius:4px;">🔴 高优先</span>
+                  <span style="font-size:10px;color:#9ca3af;">今天截止</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:6px;">
+                  <div style="width:18px;height:18px;border-radius:50%;background:#6366f1;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;">张</div>
+                  <span style="font-size:10px;color:#6b7280;">张三</span>
+                </div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(99,102,241,0.1);border-left:3px solid #f59e0b;">
+                <div style="font-size:13px;font-weight:600;color:#1f2937;">编写 API 文档</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:8px;">
+                  <span style="font-size:10px;background:#fffbeb;color:#f59e0b;padding:2px 6px;border-radius:4px;">🟡 中优先</span>
+                  <span style="font-size:10px;color:#9ca3af;">明天截止</span>
+                </div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(99,102,241,0.1);border-left:3px solid #3b82f6;">
+                <div style="font-size:13px;font-weight:600;color:#1f2937;">评审代码变更</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:8px;">
+                  <span style="font-size:10px;background:#eff6ff;color:#3b82f6;padding:2px 6px;border-radius:4px;">🔵 低优先</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#8b5cf6;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              🟡 进行中 <span style="background:#fef3c7;color:#f59e0b;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:600;">4</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(99,102,241,0.1);border-left:3px solid #8b5cf6;">
+                <div style="font-size:13px;font-weight:600;color:#1f2937;">重构用户模块</div>
+                <div style="width:100%;height:6px;background:#f3f4f6;border-radius:3px;margin-top:8px;overflow:hidden;">
+                  <div style="width:60%;height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:3px;"></div>
+                </div>
+                <div style="font-size:10px;color:#8b5cf6;margin-top:4px;">60% 完成</div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              🟢 已完成 <span style="background:#ecfdf5;color:#10b981;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:600;">3</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(99,102,241,0.1);border-left:3px solid #10b981;opacity:0.7;">
+                <div style="font-size:13px;font-weight:600;color:#6b7280;text-decoration:line-through;">部署测试环境</div>
+                <div style="font-size:10px;color:#10b981;margin-top:4px;">✅ 已完成</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 丰富活力风</h3>
+      <p>Trello/Asana 风格 — 色彩鲜明、卡片丰富、标签醒目、视觉层次强</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="cozy" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header" style="background:#fffbf0;border-bottom:1px solid #f5e6c8;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:16px;">✏️</span>
+            <span style="font-size:15px;font-weight:600;color:#78350f;">我的任务</span>
+          </div>
+          <div style="display:flex;gap:16px;font-size:13px;color:#92400e;">
+            <span style="color:#78350f;font-weight:500;">看板</span>
+            <span>列表</span>
+            <span>日历</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:20px;padding:16px 20px;background:#fffef7;min-height:280px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#b45309;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#fbbf24;"></span>
+              待办
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="background:#fff;border:1px solid #fde68a;border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(180,83,9,0.05);">
+                <div style="font-size:13px;font-weight:500;color:#451a03;">完成首页设计稿</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+                  <span style="font-size:11px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:6px;">今天</span>
+                  <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;"></span>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #fde68a;border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(180,83,9,0.05);">
+                <div style="font-size:13px;font-weight:500;color:#451a03;">编写 API 文档</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+                  <span style="font-size:11px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:6px;">明天</span>
+                  <span style="width:8px;height:8px;border-radius:50%;background:#fbbf24;"></span>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #fde68a;border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(180,83,9,0.05);">
+                <div style="font-size:13px;font-weight:500;color:#78350f;">评审代码变更</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+                  <span style="font-size:11px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:6px;">周五</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#7c3aed;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;"></span>
+              进行中
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="background:#fff;border:1px solid #ddd6fe;border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(124,58,237,0.05);">
+                <div style="font-size:13px;font-weight:500;color:#451a03;">重构用户模块</div>
+                <div style="width:100%;height:4px;background:#f3f4f6;border-radius:2px;margin-top:10px;">
+                  <div style="width:60%;height:100%;background:#a78bfa;border-radius:2px;"></div>
+                </div>
+                <div style="font-size:11px;color:#7c3aed;margin-top:4px;">60%</div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#059669;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <span style="width:8px;height:8px;border-radius:50%;background:#34d399;"></span>
+              已完成
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="background:#fff;border:1px solid #bbf7d0;border-radius:12px;padding:14px;opacity:0.7;">
+                <div style="font-size:13px;font-weight:500;color:#6b7280;text-decoration:line-through;">部署测试环境</div>
+                <div style="font-size:11px;color:#059669;margin-top:6px;">✓ 完成</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 柔和舒适风</h3>
+      <p>Things/Microsoft To Do 风格 — 暖色调、圆润边角、舒适阅读体验</p>
+    </div>
+  </div>
+</div>

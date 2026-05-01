@@ -1,0 +1,297 @@
+<h2>任务管理模块 — 整体设计</h2>
+<p class="subtitle">混合风格：极简骨架 + 丰富信息 + 柔和配色 · 渐进式重构</p>
+
+<div class="section">
+  <h3>一、整体布局结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">主界面布局</div>
+    <div class="mockup-body" style="padding:0;overflow:hidden;">
+      <div style="display:flex;height:400px;">
+        <div style="width:200px;background:#fafaf9;border-right:1px solid #e7e5e4;padding:16px;display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:14px;font-weight:600;color:#44403c;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+            <span style="width:20px;height:20px;background:#a78bfa;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;">✓</span>
+            任务管理
+          </div>
+          <div style="font-size:10px;color:#a8a29e;text-transform:uppercase;letter-spacing:0.05em;margin:8px 0 4px 8px;">视图</div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#44403c;background:#f5f5f4;font-weight:500;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">▦</span> 看板
+          </div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">☰</span> 列表
+          </div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">📅</span> 日历
+          </div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">👤</span> 我的工作台
+          </div>
+          <div style="font-size:10px;color:#a8a29e;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 4px 8px;">筛选</div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;"></span> 高优先级
+          </div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">⏰</span> 即将到期
+          </div>
+          <div style="padding:6px 8px;border-radius:6px;font-size:12px;color:#78716c;display:flex;align-items:center;gap:6px;">
+            <span style="opacity:0.6;">📌</span> 已指派给我
+          </div>
+          <div style="flex:1;"></div>
+          <div style="padding:8px;border-radius:8px;background:#f5f5f4;font-size:11px;color:#78716c;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span>本周进度</span>
+              <span style="color:#059669;font-weight:500;">68%</span>
+            </div>
+            <div style="width:100%;height:4px;background:#e7e5e4;border-radius:2px;">
+              <div style="width:68%;height:100%;background:linear-gradient(90deg,#a78bfa,#8b5cf6);border-radius:2px;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="padding:12px 16px;border-bottom:1px solid #e7e5e4;display:flex;justify-content:space-between;align-items:center;background:#fff;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:13px;font-weight:600;color:#44403c;">看板视图</span>
+              <span style="font-size:11px;color:#a8a29e;">12 个任务</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="position:relative;">
+                <input style="padding:5px 28px 5px 10px;border:1px solid #e7e5e4;border-radius:6px;font-size:12px;width:160px;color:#78716c;background:#fafaf9;" value="搜索任务...">
+                <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#a8a29e;">⌘K</span>
+              </div>
+              <button style="padding:5px 12px;background:#8b5cf6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;">+ 新建</button>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;gap:12px;padding:12px;overflow-x:auto;background:#fafaf9;">
+            <div style="flex:1;min-width:220px;">
+              <div style="font-size:11px;font-weight:600;color:#a8a29e;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:#fbbf24;"></span>
+                待办 · 5
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;border-left:3px solid #ef4444;">
+                  <div style="font-size:12px;font-weight:500;color:#292524;">完成首页设计稿</div>
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap;">
+                    <span style="font-size:9px;background:#fef2f2;color:#ef4444;padding:1px 5px;border-radius:3px;">高优先</span>
+                    <span style="font-size:9px;background:#f5f5f4;color:#78716c;padding:1px 5px;border-radius:3px;">设计</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      <div style="width:16px;height:16px;border-radius:50%;background:#8b5cf6;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;">张</div>
+                      <span style="font-size:10px;color:#a8a29e;">今天</span>
+                    </div>
+                    <span style="font-size:10px;color:#a8a29e;">💬 3</span>
+                  </div>
+                </div>
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;border-left:3px solid #fbbf24;">
+                  <div style="font-size:12px;font-weight:500;color:#292524;">编写 API 文档</div>
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:6px;">
+                    <span style="font-size:9px;background:#fffbeb;color:#d97706;padding:1px 5px;border-radius:3px;">中优先</span>
+                    <span style="font-size:9px;background:#f5f5f4;color:#78716c;padding:1px 5px;border-radius:3px;">后端</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                    <span style="font-size:10px;color:#a8a29e;">明天</span>
+                  </div>
+                </div>
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;border-left:3px solid #60a5fa;">
+                  <div style="font-size:12px;font-weight:500;color:#292524;">评审代码变更</div>
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:6px;">
+                    <span style="font-size:9px;background:#eff6ff;color:#3b82f6;padding:1px 5px;border-radius:3px;">低优先</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                    <span style="font-size:10px;color:#a8a29e;">周五</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="flex:1;min-width:220px;">
+              <div style="font-size:11px;font-weight:600;color:#a8a29e;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:#a78bfa;"></span>
+                进行中 · 4
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;border-left:3px solid #8b5cf6;">
+                  <div style="font-size:12px;font-weight:500;color:#292524;">重构用户模块</div>
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:6px;">
+                    <span style="font-size:9px;background:#fef2f2;color:#ef4444;padding:1px 5px;border-radius:3px;">高优先</span>
+                    <span style="font-size:9px;background:#f5f5f4;color:#78716c;padding:1px 5px;border-radius:3px;">重构</span>
+                  </div>
+                  <div style="width:100%;height:3px;background:#f5f5f4;border-radius:2px;margin-top:8px;">
+                    <div style="width:60%;height:100%;background:#a78bfa;border-radius:2px;"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      <div style="width:16px;height:16px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;">李</div>
+                      <span style="font-size:10px;color:#a8a29e;">60%</span>
+                    </div>
+                    <span style="font-size:10px;color:#a8a29e;">📋 2/3</span>
+                  </div>
+                </div>
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;border-left:3px solid #8b5cf6;">
+                  <div style="font-size:12px;font-weight:500;color:#292524;">优化查询性能</div>
+                  <div style="width:100%;height:3px;background:#f5f5f4;border-radius:2px;margin-top:8px;">
+                    <div style="width:30%;height:100%;background:#a78bfa;border-radius:2px;"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+                    <span style="font-size:10px;color:#a8a29e;">30%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="flex:1;min-width:220px;">
+              <div style="font-size:11px;font-weight:600;color:#a8a29e;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:#34d399;"></span>
+                已完成 · 3
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:10px 12px;opacity:0.6;border-left:3px solid #34d399;">
+                  <div style="font-size:12px;font-weight:500;color:#78716c;text-decoration:line-through;">部署测试环境</div>
+                  <div style="font-size:10px;color:#059669;margin-top:6px;">✓ 完成于 1月10日</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>二、四种视图概览</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 12px;background:#fafaf9;border-bottom:1px solid #e7e5e4;font-size:11px;font-weight:600;color:#44403c;">▦ 看板视图</div>
+      <div style="padding:10px;background:#fafaf9;">
+        <div style="display:flex;gap:6px;">
+          <div style="flex:1;background:#fff;border-radius:4px;padding:6px;border:1px solid #e7e5e4;">
+            <div style="font-size:9px;color:#a8a29e;margin-bottom:4px;">待办</div>
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:3px;padding:4px 6px;font-size:8px;color:#44403c;border-left:2px solid #ef4444;">设计稿</div>
+          </div>
+          <div style="flex:1;background:#fff;border-radius:4px;padding:6px;border:1px solid #e7e5e4;">
+            <div style="font-size:9px;color:#a8a29e;margin-bottom:4px;">进行中</div>
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:3px;padding:4px 6px;font-size:8px;color:#44403c;border-left:2px solid #8b5cf6;">重构</div>
+          </div>
+          <div style="flex:1;background:#fff;border-radius:4px;padding:6px;border:1px solid #e7e5e4;">
+            <div style="font-size:9px;color:#a8a29e;margin-bottom:4px;">已完成</div>
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:3px;padding:4px 6px;font-size:8px;color:#a8a29e;text-decoration:line-through;">部署</div>
+          </div>
+        </div>
+        <div style="font-size:9px;color:#78716c;margin-top:6px;">拖拽卡片切换状态 · 支持自定义列</div>
+      </div>
+    </div>
+    <div style="border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 12px;background:#fafaf9;border-bottom:1px solid #e7e5e4;font-size:11px;font-weight:600;color:#44403c;">☰ 列表视图</div>
+      <div style="padding:10px;background:#fafaf9;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border-radius:3px;border:1px solid #e7e5e4;font-size:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;border:1px solid #d6d3d1;"></span>
+            <span style="color:#44403c;flex:1;">完成首页设计稿</span>
+            <span style="color:#ef4444;font-size:7px;">高</span>
+            <span style="color:#a8a29e;">今天</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border-radius:3px;border:1px solid #e7e5e4;font-size:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;border:1px solid #d6d3d1;"></span>
+            <span style="color:#44403c;flex:1;">编写 API 文档</span>
+            <span style="color:#d97706;font-size:7px;">中</span>
+            <span style="color:#a8a29e;">明天</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border-radius:3px;border:1px solid #e7e5e4;font-size:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#8b5cf6;border:1px solid #8b5cf6;"></span>
+            <span style="color:#44403c;flex:1;">重构用户模块</span>
+            <span style="color:#ef4444;font-size:7px;">高</span>
+            <span style="color:#a8a29e;">60%</span>
+          </div>
+        </div>
+        <div style="font-size:9px;color:#78716c;margin-top:6px;">可排序、可分组、支持批量操作</div>
+      </div>
+    </div>
+    <div style="border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 12px;background:#fafaf9;border-bottom:1px solid #e7e5e4;font-size:11px;font-weight:600;color:#44403c;">📅 日历视图</div>
+      <div style="padding:10px;background:#fafaf9;">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:7px;color:#a8a29e;margin-bottom:4px;">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:8px;color:#78716c;">
+          <span style="padding:2px;">13</span><span style="padding:2px;">14</span>
+          <span style="padding:2px;background:#fef2f2;border-radius:2px;color:#ef4444;font-weight:600;">15</span>
+          <span style="padding:2px;">16</span><span style="padding:2px;">17</span><span style="padding:2px;">18</span><span style="padding:2px;">19</span>
+        </div>
+        <div style="margin-top:4px;background:#fef2f2;border-radius:3px;padding:3px 6px;font-size:7px;color:#ef4444;">● 完成首页设计稿</div>
+        <div style="font-size:9px;color:#78716c;margin-top:6px;">按截止日期展示 · 拖拽调整日期</div>
+      </div>
+    </div>
+    <div style="border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 12px;background:#fafaf9;border-bottom:1px solid #e7e5e4;font-size:11px;font-weight:600;color:#44403c;">👤 我的工作台</div>
+      <div style="padding:10px;background:#fafaf9;">
+        <div style="font-size:9px;color:#a8a29e;margin-bottom:4px;">今日待办</div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;gap:4px;font-size:8px;">
+            <span style="color:#ef4444;">●</span><span style="color:#44403c;">完成首页设计稿</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;font-size:8px;">
+            <span style="color:#d97706;">●</span><span style="color:#44403c;">编写 API 文档</span>
+          </div>
+        </div>
+        <div style="font-size:9px;color:#a8a29e;margin:6px 0 4px;">进行中</div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:8px;">
+          <span style="color:#8b5cf6;">●</span><span style="color:#44403c;">重构用户模块</span>
+          <span style="color:#a78bfa;font-size:7px;">60%</span>
+        </div>
+        <div style="font-size:9px;color:#78716c;margin-top:6px;">个人视角 · 今日聚焦 · 快捷入口</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>三、聊天联动</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">从消息创建任务</div>
+      <div class="mockup-body" style="padding:10px;background:#fafaf9;">
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e7e5e4;margin-bottom:6px;">
+          <div style="font-size:9px;color:#a8a29e;margin-bottom:2px;">张三 · 10:30</div>
+          <div style="font-size:11px;color:#292524;">这个设计稿需要在周五前完成，记得加上响应式适配</div>
+        </div>
+        <div style="background:#8b5cf6;border-radius:8px;padding:8px 10px;margin-left:30px;margin-bottom:6px;">
+          <div style="font-size:11px;color:#fff;">好的，我创建一个任务来跟踪</div>
+        </div>
+        <div style="position:relative;background:#fff;border:1px solid #e7e5e4;border-radius:6px;padding:6px 8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);width:180px;">
+          <div style="font-size:10px;font-weight:600;color:#44403c;margin-bottom:4px;">📋 创建为任务</div>
+          <div style="font-size:9px;color:#78716c;margin-bottom:4px;">完成设计稿响应式适配</div>
+          <div style="display:flex;gap:4px;">
+            <span style="font-size:8px;background:#f5f5f4;color:#78716c;padding:1px 4px;border-radius:2px;">指派: 我</span>
+            <span style="font-size:8px;background:#f5f5f4;color:#78716c;padding:1px 4px;border-radius:2px;">周五</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">任务通知</div>
+      <div class="mockup-body" style="padding:10px;background:#fafaf9;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="background:#fff;border-radius:6px;padding:8px 10px;border:1px solid #e7e5e4;display:flex;align-items:center;gap:8px;">
+            <div style="width:24px;height:24px;border-radius:50%;background:#8b5cf6;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;">张</div>
+            <div>
+              <div style="font-size:10px;color:#292524;"><b>张三</b> 指派了一个任务给你</div>
+              <div style="font-size:9px;color:#a8a29e;margin-top:2px;">「完成首页设计稿」· 高优先级</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:6px;padding:8px 10px;border:1px solid #e7e5e4;display:flex;align-items:center;gap:8px;">
+            <div style="width:24px;height:24px;border-radius:50%;background:#34d399;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;">✓</div>
+            <div>
+              <div style="font-size:10px;color:#292524;"><b>李四</b> 完成了任务</div>
+              <div style="font-size:9px;color:#a8a29e;margin-top:2px;">「部署测试环境」</div>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:6px;padding:8px 10px;border:1px solid #e7e5e4;display:flex;align-items:center;gap:8px;">
+            <div style="width:24px;height:24px;border-radius:50%;background:#fbbf24;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;">⏰</div>
+            <div>
+              <div style="font-size:10px;color:#292524;">任务即将到期</div>
+              <div style="font-size:9px;color:#a8a29e;margin-top:2px;">「编写 API 文档」· 明天截止</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

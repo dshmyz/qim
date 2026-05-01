@@ -1,0 +1,158 @@
+<h2>便签快速捕捉入口对比</h2>
+<p class="subtitle">对比两种"极速捕捉"方案，选择更符合您期望的交互形式</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">方案 C：浮动按钮</div>
+    <div class="mockup-body">
+      <div style="display: flex; height: 400px; background: #1a1a2e; border-radius: 8px; overflow: hidden;">
+        <div style="width: 60px; background: #16213e; display: flex; flex-direction: column; align-items: center; padding: 16px 0;">
+          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #3385ff, #6c5ce7); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 24px;">Q</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; background: linear-gradient(135deg, #3385ff, #6c5ce7); color: white;">💬</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">🏢</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">👥</div>
+          <div style="flex: 1;"></div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">🎨</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; color: rgba(255,255,255,0.6);">⚙️</div>
+        </div>
+        <div style="flex: 1; background: #0f0f1a; display: flex; flex-direction: column;">
+          <div style="padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #3385ff, #6c5ce7);"></div>
+            <span style="color: white; font-weight: 500; font-size: 16px;">张三</span>
+          </div>
+          <div style="flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="max-width: 65%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; background: #1f1f3a; color: white; align-self: flex-start;">明天下午3点开会讨论项目进度</div>
+            <div style="max-width: 65%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; background: linear-gradient(135deg, #3385ff, #6c5ce7); color: white; align-self: flex-end;">好的，收到！</div>
+          </div>
+        </div>
+        
+        <!-- 浮动按钮 -->
+        <div style="position: absolute; bottom: 80px; right: 30px; width: 64px; height: 64px; background: linear-gradient(135deg, #ff6b6b, #ee5a6f); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; cursor: pointer; box-shadow: 0 8px 30px rgba(255, 107, 107, 0.5); animation: floatBounce 2s ease-in-out infinite;">
+          📝
+        </div>
+        
+        <!-- 快速输入框 -->
+        <div style="position: absolute; bottom: 160px; right: 30px; width: 300px; background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); overflow: hidden;">
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; font-size: 14px; font-weight: 600;">快速记录</div>
+          <div style="padding: 16px;">
+            <textarea placeholder="记录你的想法..." style="width: 100%; height: 80px; border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px; font-size: 14px; resize: none; font-family: inherit;"></textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;">
+              <button style="padding: 8px 16px; background: #f0f0f0; color: #666; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">取消</button>
+              <button style="padding: 8px 16px; background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600;">保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="mockup">
+    <div class="mockup-header">方案 D：顶部工具栏</div>
+    <div class="mockup-body">
+      <div style="display: flex; height: 400px; background: #1a1a2e; border-radius: 8px; overflow: hidden;">
+        <div style="width: 60px; background: #16213e; display: flex; flex-direction: column; align-items: center; padding: 16px 0;">
+          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #3385ff, #6c5ce7); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 24px;">Q</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; background: linear-gradient(135deg, #3385ff, #6c5ce7); color: white;">💬</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">🏢</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">👥</div>
+          <div style="flex: 1;"></div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; margin-bottom: 8px; color: rgba(255,255,255,0.6);">🎨</div>
+          <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; border-radius: 12px; color: rgba(255,255,255,0.6);">⚙️</div>
+        </div>
+        <div style="flex: 1; background: #0f0f1a; display: flex; flex-direction: column;">
+          <!-- 顶部工具栏 -->
+          <div style="padding: 12px 20px; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 12px;">
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px;">
+              <span style="font-size: 16px;">📝</span>
+              <input type="text" placeholder="快速记录便签..." style="flex: 1; background: none; border: none; color: white; font-size: 14px; outline: none;">
+            </div>
+            <button style="padding: 8px 16px; background: linear-gradient(135deg, #ff6b6b, #ee5a6f); color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600;">保存</button>
+          </div>
+          
+          <div style="padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #3385ff, #6c5ce7);"></div>
+            <span style="color: white; font-weight: 500; font-size: 16px;">张三</span>
+          </div>
+          <div style="flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="max-width: 65%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; background: #1f1f3a; color: white; align-self: flex-start;">明天下午3点开会讨论项目进度</div>
+            <div style="max-width: 65%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; background: linear-gradient(135deg, #3385ff, #6c5ce7); color: white; align-self: flex-end;">好的，收到！</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>方案对比</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>方案 C 优点</h4>
+      <ul>
+        <li>位置固定，随时可见</li>
+        <li>不占用界面空间</li>
+        <li>点击后弹出输入框，不打断当前工作流</li>
+        <li>视觉上突出，容易发现</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>方案 C 缺点</h4>
+      <ul>
+        <li>可能遮挡部分内容</li>
+        <li>视觉上不够统一</li>
+        <li>需要额外的动画和交互</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="pros-cons" style="margin-top: 16px;">
+    <div class="pros">
+      <h4>方案 D 优点</h4>
+      <ul>
+        <li>与界面融合，不遮挡内容</li>
+        <li>符合桌面应用习惯</li>
+        <li>输入框始终可见，无需点击</li>
+        <li>视觉上统一整洁</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>方案 D 缺点</h4>
+      <ul>
+        <li>占用垂直空间</li>
+        <li>可能与其他工具栏元素冲突</li>
+        <li>输入框始终显示可能显得杂乱</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>浮动按钮</h3>
+      <p>右下角浮动按钮，点击弹出输入框</p>
+    </div>
+  </div>
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>顶部工具栏</h3>
+      <p>顶部固定的快速输入框</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">混合</div>
+    <div class="content">
+      <h3>两者结合</h3>
+      <p>顶部工具栏为主，浮动按钮为辅（可配置）</p>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes floatBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+</style>

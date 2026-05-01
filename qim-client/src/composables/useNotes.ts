@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useRequest, request } from './useRequest'
+import { API_BASE_URL } from '../config'
 import type { Note, AIAnalyzeResult } from '../types/note'
 
 export function useNotes() {
@@ -125,15 +126,32 @@ export function useNotes() {
     }
   }
 
-  const exportNote = (id: number, title: string) => {
+  const exportNote = async (id: number, title: string) => {
     const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || ''
-    const url = `${serverUrl}/api/v1/notes/${id}/export?token=${token}`
+    const baseUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+    const url = `${baseUrl}/api/v1/notes/${id}/export`
 
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${title}.md`
-    link.click()
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('导出失败')
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = `${title}.md`
+      link.click()
+      URL.revokeObjectURL(downloadUrl)
+    } catch (e) {
+      console.error('导出失败:', e)
+    }
   }
 
   return {

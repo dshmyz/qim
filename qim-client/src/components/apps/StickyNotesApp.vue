@@ -31,51 +31,18 @@
         @clear="selectedTag = null"
       />
       <div class="sticky-notes-grid">
-        <div 
-          v-for="(note, index) in filteredStickyNotes" 
+        <StickyNoteCard
+          v-for="(note, index) in filteredStickyNotes"
           :key="note.id"
-          class="sticky-note"
-          :class="[parseStyle(note.style).color, parseStyle(note.style).paperStyle]"
-          :data-note-id="note.id"
-          @click="showEditNoteModal(note)"
-          draggable="true"
-          @dragstart="onDragStart($event, note.id)"
-          @dragover.prevent
-          @drop="onDrop($event, index)"
-        >
-          <div class="sticky-note-pin">
-            <i class="fas fa-thumbtack"></i>
-          </div>
-          <div class="sticky-note-header">
-            <div class="sticky-note-title-container">
-              <h3 class="sticky-note-title">{{ note.title }}</h3>
-              <span v-if="note.reminder" class="sticky-note-reminder">
-                <i class="fas fa-bell"></i>
-              </span>
-            </div>
-            <div class="sticky-note-actions">
-              <button class="sticky-note-action" @click.stop="shareNote(note)">
-                <i class="fas fa-share"></i>
-              </button>
-              <button class="sticky-note-delete" @click.stop="deleteStickyNote(note.id)">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </div>
-          <div class="sticky-note-content" :style="{ fontFamily: parseStyle(note.style).fontFamily }">{{ note.content }}</div>
-          <div v-if="note.tags && note.tags.length > 0" class="sticky-note-tags">
-            <span 
-              v-for="(tag, index) in note.tags" 
-              :key="index"
-              class="sticky-note-tag"
-            >
-              {{ tag }}
-            </span>
-          </div>
-          <div class="sticky-note-footer">
-            <span class="sticky-note-date">{{ formatDate(note.created_at) }}</span>
-          </div>
-        </div>
+          :note="note"
+          :index="index"
+          @click="showEditNoteModal"
+          @share="shareNote"
+          @delete="deleteStickyNote"
+          @filter-tag="selectedTag = $event"
+          @dragstart="onDragStart"
+          @drop="onDrop"
+        />
         <div v-if="stickyNotes.length === 0" class="empty-notes">
           <div class="empty-icon"><i class="fas fa-sticky-note"></i></div>
           <p>暂无便签</p>
@@ -101,12 +68,12 @@
       <div class="sticky-note-form-group">
         <label>颜色</label>
         <div class="sticky-note-color-picker">
-          <div 
-            v-for="color in noteColors" 
+          <div
+            v-for="color in noteColors"
             :key="color.value"
             class="sticky-note-color-option"
             :class="{ active: formData.color === color.value }"
-            :style="{ backgroundColor: color.value }"
+            :style="{ background: colorPreviewMap[color.value] }"
             @click="formData.color = color.value"
           ></div>
         </div>
@@ -227,6 +194,7 @@ import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 import StickyTagFilter from './sticky/StickyTagFilter.vue'
+import StickyNoteCard from './sticky/StickyNoteCard.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -303,7 +271,6 @@ const serializeStyle = () => {
   })
 }
 
-// 便签颜色选项
 const noteColors = [
   { name: '黄色', value: 'yellow' },
   { name: '蓝色', value: 'blue' },
@@ -312,6 +279,15 @@ const noteColors = [
   { name: '紫色', value: 'purple' },
   { name: '粉色', value: 'pink' }
 ]
+
+const colorPreviewMap: Record<string, string> = {
+  yellow: 'linear-gradient(145deg, #fff9c4, #fff59d)',
+  blue: 'linear-gradient(145deg, #e1f5fe, #b3e5fc)',
+  green: 'linear-gradient(145deg, #e8f5e9, #c8e6c9)',
+  red: 'linear-gradient(145deg, #fce4ec, #f8bbd0)',
+  purple: 'linear-gradient(145deg, #f3e5f5, #e1bee7)',
+  pink: 'linear-gradient(145deg, #fce4ec, #f8bbd0)'
+}
 
 // 加载便签数据
 const loadStickyNotes = async () => {
@@ -564,13 +540,10 @@ const onDrop = (event: DragEvent, targetIndex: number) => {
   if (draggedNoteId.value) {
     const draggedIndex = stickyNotes.value.findIndex(note => note.id === draggedNoteId.value)
     if (draggedIndex !== -1 && draggedIndex !== targetIndex) {
-      // 移除被拖拽的便签
       const [draggedNote] = stickyNotes.value.splice(draggedIndex, 1)
-      // 插入到新位置
       stickyNotes.value.splice(targetIndex, 0, draggedNote)
     }
   }
-  // 移除拖拽状态
   document.querySelectorAll('.sticky-note.dragging').forEach(el => {
     el.classList.remove('dragging')
   })
@@ -900,336 +873,9 @@ const setupReminder = (note: any) => {
 
 .sticky-notes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
   transition: all 0.3s ease;
-}
-
-.sticky-note {
-  background-color: #fffb96;
-  border-radius: 4px;
-  padding: 14px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  min-height: 180px;
-  position: relative;
-  overflow: hidden;
-  transform: rotate(-0.5deg);
-  padding-top: 28px;
-  animation: noteAppear 0.5s ease-out;
-}
-
-@keyframes noteAppear {
-  from {
-    opacity: 0;
-    transform: rotate(-0.5deg) scale(0.8) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(-0.5deg) scale(1) translateY(0);
-  }
-}
-
-.sticky-note.deleting {
-  animation: noteDisappear 0.3s ease-in forwards;
-}
-
-@keyframes noteDisappear {
-  from {
-    opacity: 1;
-    transform: rotate(-0.5deg) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: rotate(-0.5deg) scale(0.8) translateY(-20px);
-  }
-}
-
-.sticky-note::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 20px 20px 0;
-  border-color: transparent #e6e288 transparent transparent;
-  box-shadow: -2px 2px 5px rgba(0, 0, 0, 0.1);
-  transform-origin: top left;
-  transform: rotate(-5deg);
-  transition: all 0.3s ease;
-  z-index: 0;
-}
-
-.sticky-note:hover::before {
-  transform: rotate(-8deg) scale(1.05);
-  box-shadow: -3px 3px 8px rgba(0, 0, 0, 0.15);
-}
-
-.sticky-note-pin {
-  position: absolute;
-  top: 3px;
-  left: 15px;
-  width: 16px;
-  height: 16px;
-  background-color: #a0a0a0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  z-index: 1;
-  transition: all 0.3s ease;
-}
-
-.sticky-note-pin i {
-  font-size: 10px;
-  color: #666;
-  transform: rotate(45deg);
-}
-
-.sticky-note:hover .sticky-note-pin {
-  transform: rotate(10deg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-}
-
-.sticky-note:hover {
-  transform: rotate(0.5deg) translateY(-3px);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
-}
-
-.sticky-note.dragging {
-  opacity: 0.6;
-  transform: rotate(5deg) scale(1.05);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-  z-index: 100;
-}
-
-.sticky-note.yellow {
-  background-color: #fffb96;
-}
-
-.sticky-note.yellow::before {
-  border-color: transparent #e6e288 transparent transparent;
-}
-
-.sticky-note.blue {
-  background-color: #96e0ff;
-}
-
-.sticky-note.blue::before {
-  border-color: transparent #83c6e6 transparent transparent;
-}
-
-.sticky-note.green {
-  background-color: #96ff9e;
-}
-
-.sticky-note.green::before {
-  border-color: transparent #83e689 transparent transparent;
-}
-
-.sticky-note.red {
-  background-color: #ff9696;
-}
-
-.sticky-note.red::before {
-  border-color: transparent #e68383 transparent transparent;
-}
-
-.sticky-note.purple {
-  background-color: #d996ff;
-}
-
-.sticky-note.purple::before {
-  border-color: transparent #c083e6 transparent transparent;
-}
-
-.sticky-note.pink {
-  background-color: #ff96d9;
-}
-
-.sticky-note.pink::before {
-  border-color: transparent #e683c0 transparent transparent;
-}
-
-/* 纸张样式 */
-.sticky-note.lined {
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 17px,
-    rgba(0, 0, 0, 0.15) 17px,
-    rgba(0, 0, 0, 0.15) 18px
-  );
-  background-size: 100% 18px;
-  background-position: 0 14px;
-}
-
-.sticky-note.grid {
-  background-image: 
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 17px,
-      rgba(0, 0, 0, 0.12) 17px,
-      rgba(0, 0, 0, 0.12) 18px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 17px,
-      rgba(0, 0, 0, 0.12) 17px,
-      rgba(0, 0, 0, 0.12) 18px
-    );
-  background-size: 18px 18px;
-  background-position: 0 14px, 0 0;
-}
-
-.sticky-note.dotted {
-  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.25) 1px, transparent 1px);
-  background-size: 18px 18px;
-  background-position: 0 23px;
-}
-
-.sticky-note-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  transition: all 0.3s ease;
-}
-
-.sticky-note-title-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.sticky-note-reminder {
-  color: #ff9800;
-  font-size: 12px;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.sticky-note-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.sticky-note-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #333;
-  margin: 0;
-  transition: color 0.3s ease;
-  word-break: break-word;
-}
-
-.sticky-note-action,
-.sticky-note-delete {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background-color: rgba(0, 0, 0, 0.1);
-  color: #666;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transform: scale(0.8);
-}
-
-.sticky-note:hover .sticky-note-action,
-.sticky-note:hover .sticky-note-delete {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.sticky-note-action:hover {
-  background-color: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
-  transform: scale(1.1);
-}
-
-.sticky-note-delete:hover {
-  background-color: rgba(255, 0, 0, 0.2);
-  color: #ff0000;
-  transform: scale(1.1);
-}
-
-.sticky-note-content {
-  font-size: 13px;
-  line-height: 1.45;
-  color: #444;
-  margin-bottom: 12px;
-  flex: 1;
-  transition: color 0.3s ease;
-  word-break: break-word;
-  white-space: pre-wrap;
-  opacity: 0.9;
-}
-
-.sticky-note-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.sticky-note-tag {
-  background-color: rgba(0, 0, 0, 0.1);
-  color: #333;
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  transition: all 0.3s ease;
-}
-
-.sticky-note:hover .sticky-note-tag {
-  background-color: rgba(0, 0, 0, 0.15);
-  transform: scale(1.05);
-}
-
-.sticky-note-footer {
-  position: absolute;
-  bottom: 8px;
-  left: 14px;
-  right: 14px;
-  font-size: 11px;
-  color: #666;
-  transition: color 0.3s ease;
-  opacity: 0.7;
-}
-
-.sticky-note-date {
-  transition: opacity 0.3s ease;
-}
-
-.sticky-note:hover .sticky-note-date {
-  opacity: 1;
 }
 
 .empty-notes {
@@ -1537,56 +1183,6 @@ const setupReminder = (note: any) => {
   
   .sticky-notes-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .sticky-note {
-    min-height: 180px;
-    padding: 12px;
-  }
-  
-  .sticky-note-title {
-    font-size: 14px;
-  }
-  
-  .sticky-note-content {
-    font-size: 13px;
-  }
-  
-  .modal-content {
-    width: 95%;
-    margin: 20px;
-  }
-  
-  .modal-header h3 {
-    font-size: 14px;
-  }
-  
-  .modal-body {
-    padding: 16px;
-  }
-  
-  .form-group label {
-    font-size: 13px;
-  }
-  
-  .form-input,
-  .form-textarea,
-  .form-select {
-    font-size: 14px;
-    padding: 8px 12px;
-  }
-  
-  .form-textarea {
-    min-height: 120px;
-  }
-  
-  .modal-footer {
-    padding: 0 16px 16px;
-  }
-  
-  .modal-btn {
-    padding: 8px 20px;
-    font-size: 13px;
   }
 }
 
@@ -1925,28 +1521,40 @@ const setupReminder = (note: any) => {
 
 .sticky-note-color-picker {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .sticky-note-color-option {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  border: 3px solid transparent;
+  position: relative;
 }
 
 .sticky-note-color-option:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .sticky-note-color-option.active {
-  border-color: #333;
+  border-color: #5d4037;
   transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.sticky-note-color-option.active::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0.5);
 }
 
 .sticky-note-modal-footer {

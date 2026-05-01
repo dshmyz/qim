@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>便签入口位置对比 - 增强版</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: white;
+      font-size: 28px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    
+    .option {
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    
+    .option-header {
+      padding: 20px;
+      background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+      color: white;
+    }
+    
+    .option-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .option-desc {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    
+    .option-body {
+      padding: 20px;
+    }
+    
+    /* 模拟 QIM 界面 */
+    .mock-app {
+      display: flex;
+      background: #1a1a2e;
+      border-radius: 12px;
+      overflow: hidden;
+      height: 450px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    
+    /* SideOptions */
+    .side-options {
+      width: 60px;
+      background: #16213e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 0;
+    }
+    
+    .side-options .logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .side-options .nav-item {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .side-options .nav-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .side-options .nav-item.active {
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+    }
+    
+    /* 高亮便签入口 */
+    .side-options .nav-item.sticky-entry {
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      animation: pulse 2s infinite;
+      box-shadow: 0 0 20px rgba(246, 209, 101, 0.5);
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    
+    .side-options .nav-item.sticky-entry::before {
+      content: '便签';
+      position: absolute;
+      left: 55px;
+      background: #f6d365;
+      color: #333;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    
+    .side-options .spacer {
+      flex: 1;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      background: #1f1f3a;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .sidebar-header {
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .sidebar-header .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+    }
+    
+    .sidebar-header .name {
+      color: white;
+      font-size: 15px;
+      font-weight: 500;
+    }
+    
+    .sidebar-search {
+      padding: 0 16px 16px;
+    }
+    
+    .sidebar-search input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 13px;
+    }
+    
+    .sidebar-search input::placeholder {
+      color: rgba(255,255,255,0.5);
+    }
+    
+    .sidebar-list {
+      flex: 1;
+      padding: 0 8px;
+      overflow-y: auto;
+    }
+    
+    .sidebar-item {
+      padding: 12px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+    
+    .sidebar-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .sidebar-item.active {
+      background: rgba(51, 133, 255, 0.2);
+    }
+    
+    .sidebar-item .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+    }
+    
+    .sidebar-item .info {
+      flex: 1;
+    }
+    
+    .sidebar-item .info .name {
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .sidebar-item .info .msg {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    
+    /* 方案 B: Sidebar 底部便签入口 */
+    .sidebar-sticky {
+      padding: 12px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .sidebar-sticky-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px;
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      border-radius: 10px;
+      cursor: pointer;
+      animation: glow 2s infinite;
+    }
+    
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 10px rgba(246, 209, 101, 0.3); }
+      50% { box-shadow: 0 0 25px rgba(246, 209, 101, 0.6); }
+    }
+    
+    .sidebar-sticky-btn span {
+      font-size: 14px;
+      color: #333;
+      font-weight: 600;
+    }
+    
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      background: #0f0f1a;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .chat-header .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+    }
+    
+    .chat-header .name {
+      color: white;
+      font-weight: 500;
+      font-size: 16px;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    
+    .message {
+      max-width: 65%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+      position: relative;
+    }
+    
+    .message.received {
+      background: #1f1f3a;
+      color: white;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    
+    .message.sent {
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    
+    /* 方案 C: 聊天中的便签入口 */
+    .message-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    
+    .message-action {
+      padding: 6px 12px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.6);
+      background: rgba(255,255,255,0.1);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    
+    .message-action:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .message-action.sticky {
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      color: #333;
+      font-weight: 600;
+      animation: pulse 2s infinite;
+    }
+    
+    /* 选中文本浮动工具栏 */
+    .float-toolbar {
+      position: absolute;
+      background: #333;
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      gap: 4px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    
+    .float-toolbar .btn {
+      padding: 8px 14px;
+      color: white;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    
+    .float-toolbar .btn:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    
+    .float-toolbar .btn.sticky {
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      color: #333;
+      font-weight: 600;
+    }
+    
+    /* 方案 D: 全局快捷键弹窗 */
+    .quick-note-popup {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      padding: 24px;
+      width: 380px;
+      z-index: 100;
+    }
+    
+    .quick-note-popup h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #333;
+    }
+    
+    .quick-note-popup h3 .icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .quick-note-popup textarea {
+      width: 100%;
+      height: 120px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      resize: none;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    
+    .quick-note-popup textarea:focus {
+      outline: none;
+      border-color: #f6d365;
+    }
+    
+    .quick-note-popup .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    
+    .quick-note-popup .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      font-weight: 500;
+    }
+    
+    .quick-note-popup .btn.secondary {
+      background: #f0f0f0;
+      color: #666;
+    }
+    
+    .quick-note-popup .btn.primary {
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      color: white;
+    }
+    
+    .shortcut-hint {
+      text-align: center;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 13px;
+      color: #999;
+    }
+    
+    .shortcut-hint kbd {
+      background: #f0f0f0;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-weight: 600;
+      border: 1px solid #ddd;
+    }
+    
+    /* 方案 E: 桌面小组件 */
+    .widget-window {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      width: 300px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      overflow: hidden;
+      animation: floatIn 0.5s ease;
+    }
+    
+    @keyframes floatIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .widget-header {
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      padding: 14px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .widget-header h4 {
+      color: white;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .widget-header .actions {
+      display: flex;
+      gap: 6px;
+    }
+    
+    .widget-header .actions button {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: none;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .widget-content {
+      padding: 14px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    
+    .widget-note {
+      background: #fff9e6;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      border-left: 4px solid #f6d365;
+      color: #333;
+      line-height: 1.4;
+    }
+    
+    .widget-note:last-child {
+      margin-bottom: 0;
+    }
+    
+    .widget-add {
+      display: flex;
+      gap: 10px;
+      padding: 14px;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .widget-add input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    
+    .widget-add input:focus {
+      outline: none;
+      border-color: #f6d365;
+    }
+    
+    .widget-add button {
+      padding: 10px 16px;
+      background: linear-gradient(135deg, #f6d365, #fda085);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    /* 遮罩 */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+    }
+    
+    /* 优缺点 */
+    .pros-cons {
+      display: flex;
+      gap: 20px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .pros, .cons {
+      flex: 1;
+    }
+    
+    .pros h5, .cons h5 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .pros h5 {
+      color: #28a745;
+    }
+    
+    .cons h5 {
+      color: #dc3545;
+    }
+    
+    .pros ul, .cons ul {
+      font-size: 12px;
+      color: #666;
+      padding-left: 18px;
+    }
+    
+    .pros li, .cons li {
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    
+    /* 推荐标签 */
+    .recommended {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      background: #28a745;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+    }
+    
+    .option {
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <h1>便签入口位置对比</h1>
+  <p class="subtitle">点击查看各方案的优缺点，高亮部分为便签入口位置</p>
+  
+  <div class="comparison">
+    <!-- 方案 A: SideOptions 导航栏 -->
+    <div class="option">
+      <div class="recommended">推荐</div>
+      <div class="option-header">
+        <div class="option-title">方案 A: SideOptions 导航栏</div>
+        <div class="option-desc">在左侧图标导航栏中增加便签图标，点击展开便签面板</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item sticky-entry">📝</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <div class="sidebar-header">
+              <div class="avatar"></div>
+              <span class="name">用户名</span>
+            </div>
+            <div class="sidebar-search">
+              <input placeholder="搜索...">
+            </div>
+            <div class="sidebar-list">
+              <div class="sidebar-item active">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">张三</div>
+                  <div class="msg">好的，明天见</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">李四</div>
+                  <div class="msg">收到，谢谢！</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>入口明显，容易发现</li>
+              <li>与现有导航结构一致</li>
+              <li>点击后可展开完整便签面板</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>导航栏图标较多</li>
+              <li>需要点击后才能看到内容</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 B: Sidebar 底部 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 B: Sidebar 底部</div>
+        <div class="option-desc">在会话列表底部增加"快速记录"入口</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+              <div class="sidebar-header">
+                <div class="avatar"></div>
+                <span class="name">用户名</span>
+              </div>
+              <div class="sidebar-search">
+                <input placeholder="搜索...">
+              </div>
+              <div class="sidebar-list" style="flex: 1;">
+                <div class="sidebar-item active">
+                  <div class="avatar"></div>
+                  <div class="info">
+                    <div class="name">张三</div>
+                    <div class="msg">好的，明天见</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-sticky">
+              <div class="sidebar-sticky-btn">
+                <span>📝 快速记录</span>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>不改变现有导航结构</li>
+              <li>"快速记录"定位清晰</li>
+              <li>位置固定，易于习惯</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>位置不够显眼</li>
+              <li>可能与会话列表抢空间</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 C: 聊天界面内 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 C: 聊天界面内</div>
+        <div class="option-desc">消息右键菜单或选中文本后显示"保存到便签"</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="main-content" style="flex: 1;">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages" style="position: relative;">
+              <div class="message received">
+                明天下午3点开会讨论项目进度，记得准备材料
+                <div class="message-actions">
+                  <span class="message-action">回复</span>
+                  <span class="message-action">复制</span>
+                  <span class="message-action sticky">📝 保存到便签</span>
+                </div>
+              </div>
+              <div class="message sent">好的，收到！</div>
+              
+              <!-- 选中文本浮动工具栏 -->
+              <div class="float-toolbar" style="top: 100px; left: 30px;">
+                <span class="btn">复制</span>
+                <span class="btn sticky">📝 保存到便签</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>场景化入口，需要时才出现</li>
+              <li>不占用额外空间</li>
+              <li>直接保存聊天内容</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>入口隐蔽，不易发现</li>
+              <li>只能保存聊天内容</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 D: 全局快捷键 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 D: 全局快捷键弹窗</div>
+        <div class="option-desc">按 Ctrl+Shift+N 快速弹出便签输入窗口</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app" style="position: relative;">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="main-content" style="flex: 1; filter: blur(3px);">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+          
+          <!-- 快捷键弹窗 -->
+          <div class="quick-note-popup">
+            <h3>
+              <div class="icon">📝</div>
+              快速记录
+            </h3>
+            <textarea placeholder="记录你的想法..."></textarea>
+            <div class="actions">
+              <button class="btn secondary">取消</button>
+              <button class="btn primary">保存</button>
+            </div>
+            <div class="shortcut-hint">
+              按 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> 快速打开
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>极简高效，一键唤起</li>
+              <li>不打断当前工作流</li>
+              <li>专注输入体验</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>需要记住快捷键</li>
+              <li>新用户不易发现</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 E: 桌面小组件 -->
+    <div class="option">
+      <div class="recommended">推荐</div>
+      <div class="option-header">
+        <div class="option-title">方案 E: 桌面小组件</div>
+        <div class="option-desc">独立窗口，可置顶、拖拽，随时查看便签列表</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app" style="position: relative;">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="main-content" style="flex: 1;">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+          
+          <!-- 桌面小组件 -->
+          <div class="widget-window">
+            <div class="widget-header">
+              <h4>📝 便签</h4>
+              <div class="actions">
+                <button title="置顶">📌</button>
+                <button title="最小化">−</button>
+              </div>
+            </div>
+            <div class="widget-content">
+              <div class="widget-note">明天下午3点开会讨论项目进度</div>
+              <div class="widget-note">记得买牛奶</div>
+              <div class="widget-note">周五提交周报</div>
+            </div>
+            <div class="widget-add">
+              <input placeholder="快速添加...">
+              <button>➕</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>随时可见，无需切换</li>
+              <li>支持置顶，不会被遮挡</li>
+              <li>可快速查看和添加</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>实现复杂度较高</li>
+              <li>可能遮挡其他内容</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

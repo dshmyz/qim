@@ -463,7 +463,7 @@ import axios from 'axios'
 import CalendarApp from '../components/apps/CalendarApp.vue'
 import StickyNotesApp from '../components/apps/StickyNotesApp.vue'
 import NotesApp from '../components/apps/NotesApp.vue'
-import TaskManagementApp from '../components/apps/TaskManagementApp.vue'
+import TaskManagementApp from '../components/apps/task/TaskManagementApp.vue'
 import FileManagementApp from '../components/apps/FileManagementApp.vue'
 import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
@@ -1465,10 +1465,6 @@ const handleMessageRecalled = (data: any) => {
 const handleNewMessage = (data: any) => {
   const conversationId = data.conversation_id.toString()
   
-  console.log('收到新消息:', data)
-  console.log('新消息中的引用消息:', data.quoted_message)
-  
-  // 构建新消息对象
   let quotedMessageData = undefined
   if (data.quoted_message) {
     quotedMessageData = {
@@ -1489,30 +1485,21 @@ const handleNewMessage = (data: any) => {
       type: data.quoted_message.type || 'text',
       isSelf: data.quoted_message.sender?.id?.toString() === currentUser.value?.id?.toString()
     }
-    console.log('构建的引用消息数据:', quotedMessageData)
   }
   
-  // 使用 processMessage 函数处理新消息
   const newMessage = processMessage(data, conversationId)
   
-  console.log('构建的新消息对象:', newMessage)
-  console.log('新消息是否包含引用消息:', !!newMessage.quotedMessage)
-  
-  // 更新会话列表中的未读计数和最后消息
   const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex !== -1) {
-    // 创建新的会话对象，确保响应式更新
     const updatedConversation = {
       ...conversations.value[conversationIndex],
       lastMessage: newMessage,
       timestamp: newMessage.timestamp
     }
     
-    // 更新未读计数（如果不是当前会话）
     if (currentConversationId.value !== conversationId) {
       updatedConversation.unreadCount = (updatedConversation.unreadCount || 0) + 1
       
-      // 发送消息通知
       if (messageSettings.value.notificationsEnabled) {
         showMessage({
           message: `收到来自 ${newMessage.sender.name} 的新消息`,
@@ -1520,17 +1507,14 @@ const handleNewMessage = (data: any) => {
           duration: 3000
         })
         
-        // 播放消息提示音
         if (messageSettings.value.soundEnabled) {
           playMessageSound()
         }
 
-        // 托盘图标闪动
         if (window.electron?.tray) {
           window.electron.tray.flash()
         }
         
-        // 显示桌面通知
         if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
           if (Notification.permission === 'granted') {
             new Notification('新消息', {
@@ -1551,36 +1535,22 @@ const handleNewMessage = (data: any) => {
       }
     }
     
-    // 替换会话对象，触发响应式更新
     conversations.value.splice(conversationIndex, 1, updatedConversation)
-    
-    // 重新排序会话列表（按时间倒序）
-    conversations.value.sort((a, b) => b.timestamp - a.timestamp)
-    
-    // 强制触发响应式更新
-    conversations.value = [...conversations.value]
+    scheduleConversationSort()
   } else {
-    // 会话不存在于列表中，可能是被移除后又有新消息
-    // 重新加载会话列表以获取最新状态
-    console.log('收到已移除会话的消息，重新加载会话列表:', conversationId)
     loadConversations().then(() => {
-      // 重新加载后，检查会话是否存在，如果是新消息且不是当前会话，确保未读计数正确
       const newConversationIndex = conversations.value.findIndex(c => c.id === conversationId)
       if (newConversationIndex !== -1 && currentConversationId.value !== conversationId) {
-        // 确保未读计数至少为1
         const conversation = conversations.value[newConversationIndex]
         if (!conversation.unreadCount || conversation.unreadCount === 0) {
-          const updatedConversation = {
+          const updatedConv = {
             ...conversation,
             unreadCount: 1
           }
-          conversations.value.splice(newConversationIndex, 1, updatedConversation)
-          // 重新排序并强制更新
-          conversations.value.sort((a, b) => b.timestamp - a.timestamp)
-          conversations.value = [...conversations.value]
+          conversations.value.splice(newConversationIndex, 1, updatedConv)
+          scheduleConversationSort()
         }
         
-        // 发送消息通知
         if (messageSettings.value.notificationsEnabled) {
           showMessage({
             message: `收到来自 ${newMessage.sender.name} 的新消息`,
@@ -1588,7 +1558,6 @@ const handleNewMessage = (data: any) => {
             duration: 3000
           })
           
-          // 播放消息提示音
           if (messageSettings.value.soundEnabled) {
             playMessageSound()
           }
@@ -1597,16 +1566,11 @@ const handleNewMessage = (data: any) => {
     })
   }
   
-  // 如果是当前会话的消息，添加到消息列表
   if (currentConversationId.value === conversationId) {
-    // 检查消息是否已经存在，避免重复添加
     const messageExists = messages.value.some(msg => msg.id === newMessage.id)
     if (!messageExists) {
       messages.value.push(newMessage)
-      console.log('消息列表长度:', messages.value.length)
-      console.log('最后一条消息:', messages.value[messages.value.length - 1])
       
-      // 滚动到底部
       nextTick(() => {
         const messageContainer = document.querySelector('.message-list')
         if (messageContainer) {
@@ -1615,6 +1579,15 @@ const handleNewMessage = (data: any) => {
       })
     }
   }
+}
+
+let conversationSortTimer: number | null = null
+const scheduleConversationSort = () => {
+  if (conversationSortTimer) return
+  conversationSortTimer = window.setTimeout(() => {
+    conversationSortTimer = null
+    conversations.value.sort((a, b) => b.timestamp - a.timestamp)
+  }, 100)
 }
 
 // 播放消息提示音
@@ -2632,15 +2605,27 @@ const startVoiceCall = async (userId: string) => {
 }
 
 // 开始语音通话计时器
+let voiceCallTimerId: number | null = null
+
 const startVoiceCallTimer = () => {
+  if (voiceCallTimerId) {
+    clearInterval(voiceCallTimerId)
+  }
   voiceCallDuration.value = 0
-  window.setInterval(() => {
+  voiceCallTimerId = window.setInterval(() => {
     voiceCallDuration.value++
   }, 1000)
 }
 
-// 结束语音通话
+const stopVoiceCallTimer = () => {
+  if (voiceCallTimerId) {
+    clearInterval(voiceCallTimerId)
+    voiceCallTimerId = null
+  }
+}
+
 const endVoiceCall = () => {
+  stopVoiceCallTimer()
   voiceCallStatus.value = 'ended'
   setTimeout(() => {
     showVoiceCallModal.value = false

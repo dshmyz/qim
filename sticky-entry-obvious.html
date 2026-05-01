@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>便签入口 - 更明显的设计方案</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: white;
+      font-size: 28px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    
+    .option {
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      position: relative;
+    }
+    
+    .option-header {
+      padding: 20px;
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+      color: white;
+    }
+    
+    .option-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .option-desc {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    
+    .option-body {
+      padding: 20px;
+    }
+    
+    .mock-app {
+      display: flex;
+      background: #1a1a2e;
+      border-radius: 12px;
+      overflow: hidden;
+      height: 500px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    
+    .side-options {
+      width: 60px;
+      background: #16213e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 0;
+    }
+    
+    .side-options .logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .side-options .nav-item {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+      position: relative;
+      color: rgba(255,255,255,0.6);
+    }
+    
+    .side-options .nav-item:hover {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+    
+    .side-options .nav-item.active {
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+      color: white;
+    }
+    
+    .side-options .spacer {
+      flex: 1;
+    }
+    
+    .sidebar {
+      width: 240px;
+      background: #1f1f3a;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .sidebar-header {
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .sidebar-header .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+    }
+    
+    .sidebar-header .name {
+      color: white;
+      font-size: 15px;
+      font-weight: 500;
+    }
+    
+    .sidebar-search {
+      padding: 0 16px 16px;
+    }
+    
+    .sidebar-search input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 13px;
+    }
+    
+    .sidebar-list {
+      flex: 1;
+      padding: 0 8px;
+      overflow-y: auto;
+    }
+    
+    .sidebar-item {
+      padding: 12px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+    
+    .sidebar-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .sidebar-item.active {
+      background: rgba(51, 133, 255, 0.2);
+    }
+    
+    .sidebar-item .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+    }
+    
+    .sidebar-item .info {
+      flex: 1;
+    }
+    
+    .sidebar-item .info .name {
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .sidebar-item .info .msg {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    
+    .main-content {
+      flex: 1;
+      background: #0f0f1a;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .chat-header .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+    }
+    
+    .chat-header .name {
+      color: white;
+      font-weight: 500;
+      font-size: 16px;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    
+    .message {
+      max-width: 65%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    .message.received {
+      background: #1f1f3a;
+      color: white;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    
+    .message.sent {
+      background: linear-gradient(135deg, #3385ff, #6c5ce7);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .pros-cons {
+      display: flex;
+      gap: 20px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .pros, .cons {
+      flex: 1;
+    }
+    
+    .pros h5, .cons h5 {
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .pros h5 {
+      color: #28a745;
+    }
+    
+    .cons h5 {
+      color: #dc3545;
+    }
+    
+    .pros ul, .cons ul {
+      font-size: 12px;
+      color: #666;
+      padding-left: 18px;
+    }
+    
+    .pros li, .cons li {
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    
+    .recommended {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      background: #ff6b6b;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+      z-index: 10;
+    }
+
+    /* 方案 1: 超大图标 + 脉冲动画 */
+    .sticky-mega {
+      width: 56px !important;
+      height: 56px !important;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a6f) !important;
+      animation: megaPulse 1.5s ease-in-out infinite;
+      box-shadow: 0 0 30px rgba(255, 107, 107, 0.6);
+      margin: 8px 0 !important;
+    }
+    
+    @keyframes megaPulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 30px rgba(255, 107, 107, 0.6);
+      }
+      50% {
+        transform: scale(1.15);
+        box-shadow: 0 0 50px rgba(255, 107, 107, 0.8);
+      }
+    }
+    
+    .sticky-mega::before {
+      content: '便签';
+      position: absolute;
+      left: 65px;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      white-space: nowrap;
+      font-weight: 600;
+      box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    
+    .sticky-mega::after {
+      content: '快速记录';
+      position: absolute;
+      left: 65px;
+      top: 30px;
+      background: rgba(255, 107, 107, 0.2);
+      color: #ff6b6b;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      white-space: nowrap;
+      border: 1px solid rgba(255, 107, 107, 0.3);
+    }
+
+    /* 方案 2: 浮动按钮 */
+    .floating-sticky-btn {
+      position: absolute;
+      bottom: 80px;
+      right: 30px;
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      cursor: pointer;
+      box-shadow: 0 8px 30px rgba(255, 107, 107, 0.5);
+      animation: floatBounce 2s ease-in-out infinite;
+      z-index: 100;
+    }
+    
+    @keyframes floatBounce {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+    
+    .floating-sticky-btn::before {
+      content: '快速记录';
+      position: absolute;
+      right: 75px;
+      background: white;
+      color: #333;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      white-space: nowrap;
+      font-weight: 600;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      opacity: 0;
+      animation: fadeInOut 3s ease-in-out infinite;
+    }
+    
+    @keyframes fadeInOut {
+      0%, 100% { opacity: 0; }
+      20%, 80% { opacity: 1; }
+    }
+
+    /* 方案 3: 顶部提示条 */
+    .sticky-banner {
+      background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+      color: white;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      animation: slideDown 0.5s ease;
+    }
+    
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+    
+    .sticky-banner-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .sticky-banner-btn {
+      background: white;
+      color: #ff6b6b;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    
+    .sticky-banner-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 15px rgba(255,255,255,0.3);
+    }
+    
+    .sticky-banner-close {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 方案 4: 侧边栏顶部卡片 */
+    .sticky-card {
+      margin: 12px;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+      border-radius: 12px;
+      padding: 16px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s;
+      animation: cardGlow 2s ease-in-out infinite;
+    }
+    
+    @keyframes cardGlow {
+      0%, 100% {
+        box-shadow: 0 4px 20px rgba(255, 107, 107, 0.3);
+      }
+      50% {
+        box-shadow: 0 8px 40px rgba(255, 107, 107, 0.5);
+      }
+    }
+    
+    .sticky-card:hover {
+      transform: translateY(-2px);
+    }
+    
+    .sticky-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .sticky-card-desc {
+      font-size: 12px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+    
+    .sticky-card-badge {
+      background: rgba(255,255,255,0.3);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      margin-left: auto;
+    }
+
+    /* 方案 5: 组合方案 */
+    .combo-indicator {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #ff6b6b;
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      animation: bounce 1s ease infinite;
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body>
+  <h1>便签入口 - 更明显的设计方案</h1>
+  <p class="subtitle">针对"不够明显"的问题，提供更突出的视觉设计</p>
+  
+  <div class="comparison">
+    <!-- 方案 1: 超大图标 + 脉冲动画 -->
+    <div class="option">
+      <div class="recommended">最推荐</div>
+      <div class="option-header">
+        <div class="option-title">方案 1: 超大图标 + 强脉冲动画</div>
+        <div class="option-desc">在 SideOptions 中使用超大尺寸图标，配合强烈的脉冲动画和文字标签</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item sticky-mega">📝</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <div class="sidebar-header">
+              <div class="avatar"></div>
+              <span class="name">用户名</span>
+            </div>
+            <div class="sidebar-search">
+              <input placeholder="搜索...">
+            </div>
+            <div class="sidebar-list">
+              <div class="sidebar-item active">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">张三</div>
+                  <div class="msg">好的，明天见</div>
+                </div>
+              </div>
+              <div class="sidebar-item">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">李四</div>
+                  <div class="msg">收到，谢谢！</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>视觉冲击力极强，无法忽视</li>
+              <li>脉冲动画持续吸引注意力</li>
+              <li>文字标签清晰说明功能</li>
+              <li>副标题提供额外引导</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>可能过于显眼，影响整体美观</li>
+              <li>动画可能分散注意力</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 2: 浮动按钮 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 2: 右下角浮动按钮</div>
+        <div class="option-desc">类似手机悬浮球，固定在右下角，随时可见可点击</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app" style="position: relative;">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <div class="sidebar-header">
+              <div class="avatar"></div>
+              <span class="name">用户名</span>
+            </div>
+            <div class="sidebar-search">
+              <input placeholder="搜索...">
+            </div>
+            <div class="sidebar-list">
+              <div class="sidebar-item active">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">张三</div>
+                  <div class="msg">好的，明天见</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+          
+          <!-- 浮动按钮 -->
+          <div class="floating-sticky-btn">📝</div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>位置固定，随时可见</li>
+              <li>不占用导航栏空间</li>
+              <li>浮动动画吸引注意</li>
+              <li>悬停提示引导使用</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>可能遮挡部分内容</li>
+              <li>与整体风格不够统一</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 3: 顶部提示条 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 3: 顶部提示横幅</div>
+        <div class="option-desc">在主界面顶部显示醒目的提示条，引导用户使用便签功能</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app" style="flex-direction: column;">
+          <!-- 顶部提示条 -->
+          <div class="sticky-banner">
+            <div class="sticky-banner-content">
+              <span>📝</span>
+              <span>新功能：快速记录便签，随时保存重要信息</span>
+            </div>
+            <button class="sticky-banner-btn">立即体验</button>
+            <button class="sticky-banner-close">×</button>
+          </div>
+          
+          <div style="display: flex; flex: 1;">
+            <div class="side-options">
+              <div class="logo">Q</div>
+              <div class="nav-item active">💬</div>
+              <div class="nav-item">🏢</div>
+              <div class="nav-item">👥</div>
+              <div class="nav-item">📦</div>
+              <div class="nav-item">📢</div>
+              <div class="spacer"></div>
+              <div class="nav-item">🎨</div>
+              <div class="nav-item">⚙️</div>
+            </div>
+            <div class="sidebar">
+              <div class="sidebar-header">
+                <div class="avatar"></div>
+                <span class="name">用户名</span>
+              </div>
+              <div class="sidebar-search">
+                <input placeholder="搜索...">
+              </div>
+              <div class="sidebar-list">
+                <div class="sidebar-item active">
+                  <div class="avatar"></div>
+                  <div class="info">
+                    <div class="name">张三</div>
+                    <div class="msg">好的，明天见</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="main-content">
+              <div class="chat-header">
+                <div class="avatar"></div>
+                <span class="name">张三</span>
+              </div>
+              <div class="chat-messages">
+                <div class="message received">明天下午3点开会讨论项目进度</div>
+                <div class="message sent">好的，收到！</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>位置最显眼，无法忽视</li>
+              <li>信息完整，引导性强</li>
+              <li>可关闭，不影响长期使用</li>
+              <li>适合新功能推广</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>占用垂直空间</li>
+              <li>用户关闭后可能忘记</li>
+              <li>不适合长期展示</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 4: 侧边栏顶部卡片 -->
+    <div class="option">
+      <div class="option-header">
+        <div class="option-title">方案 4: 侧边栏顶部卡片</div>
+        <div class="option-desc">在侧边栏顶部显示醒目的便签卡片，点击快速进入</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <!-- 便签卡片 -->
+            <div class="sticky-card">
+              <div class="sticky-card-header">
+                <span>📝</span>
+                <span>快速记录</span>
+                <span class="sticky-card-badge">NEW</span>
+              </div>
+              <div class="sticky-card-desc">随时记录想法、待办事项，支持标签分类和提醒</div>
+            </div>
+            
+            <div class="sidebar-header">
+              <div class="avatar"></div>
+              <span class="name">用户名</span>
+            </div>
+            <div class="sidebar-search">
+              <input placeholder="搜索...">
+            </div>
+            <div class="sidebar-list">
+              <div class="sidebar-item active">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">张三</div>
+                  <div class="msg">好的，明天见</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>位置显眼，在视线范围内</li>
+              <li>信息丰富，说明清晰</li>
+              <li>与侧边栏融合自然</li>
+              <li>NEW 标签吸引注意</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>占用侧边栏空间</li>
+              <li>可能影响会话列表展示</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 方案 5: 组合方案 -->
+    <div class="option">
+      <div class="recommended">推荐</div>
+      <div class="option-header">
+        <div class="option-title">方案 5: 组合方案（多入口）</div>
+        <div class="option-desc">同时提供多个入口，确保用户能够发现并使用</div>
+      </div>
+      <div class="option-body">
+        <div class="mock-app" style="position: relative;">
+          <div class="side-options">
+            <div class="logo">Q</div>
+            <div class="nav-item active">💬</div>
+            <div class="nav-item">🏢</div>
+            <div class="nav-item sticky-mega" style="width: 48px !important; height: 48px !important;">📝</div>
+            <div class="nav-item">👥</div>
+            <div class="nav-item">📦</div>
+            <div class="nav-item">📢</div>
+            <div class="spacer"></div>
+            <div class="nav-item">🎨</div>
+            <div class="nav-item">⚙️</div>
+          </div>
+          <div class="sidebar">
+            <!-- 小型便签卡片 -->
+            <div class="sticky-card" style="padding: 12px; margin: 8px;">
+              <div class="sticky-card-header" style="font-size: 13px; margin-bottom: 0;">
+                <span>📝 快速记录</span>
+                <span class="sticky-card-badge">NEW</span>
+              </div>
+            </div>
+            
+            <div class="sidebar-header">
+              <div class="avatar"></div>
+              <span class="name">用户名</span>
+            </div>
+            <div class="sidebar-search">
+              <input placeholder="搜索...">
+            </div>
+            <div class="sidebar-list">
+              <div class="sidebar-item active">
+                <div class="avatar"></div>
+                <div class="info">
+                  <div class="name">张三</div>
+                  <div class="msg">好的，明天见</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="chat-header">
+              <div class="avatar"></div>
+              <span class="name">张三</span>
+            </div>
+            <div class="chat-messages">
+              <div class="message received">明天下午3点开会讨论项目进度</div>
+              <div class="message sent">好的，收到！</div>
+            </div>
+          </div>
+          
+          <!-- 浮动按钮（小号） -->
+          <div class="floating-sticky-btn" style="width: 50px; height: 50px; font-size: 22px; bottom: 100px;">📝</div>
+          
+          <!-- 角标提示 -->
+          <div class="combo-indicator">3</div>
+        </div>
+        
+        <div class="pros-cons">
+          <div class="pros">
+            <h5>✅ 优点</h5>
+            <ul>
+              <li>多入口确保可发现性</li>
+              <li>适应不同用户习惯</li>
+              <li>角标提示未读数量</li>
+              <li>灵活性强</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h5>❌ 缺点</h5>
+            <ul>
+              <li>可能显得过于拥挤</li>
+              <li>需要维护多个入口状态</li>
+              <li>实现复杂度较高</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div style="max-width: 1600px; margin: 30px auto; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+    <h3 style="font-size: 18px; margin-bottom: 16px; color: #333;">💡 设计建议</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+      <div style="padding: 16px; background: #f8f9fa; border-radius: 12px; border-left: 4px solid #ff6b6b;">
+        <h4 style="font-size: 15px; margin-bottom: 8px; color: #ff6b6b;">短期方案</h4>
+        <p style="font-size: 13px; color: #666; line-height: 1.6;">
+          使用<strong>方案 1（超大图标）</strong>或<strong>方案 3（顶部横幅）</strong>，确保新功能能够被用户快速发现。顶部横幅可以在用户使用几次后自动隐藏。
+        </p>
+      </div>
+      <div style="padding: 16px; background: #f8f9fa; border-radius: 12px; border-left: 4px solid #3385ff;">
+        <h4 style="font-size: 15px; margin-bottom: 8px; color: #3385ff;">长期方案</h4>
+        <p style="font-size: 13px; color: #666; line-height: 1.6;">
+          采用<strong>方案 5（组合方案）</strong>，提供多个入口点。用户熟悉后，可以关闭顶部横幅，保留 SideOptions 图标和浮动按钮。
+        </p>
+      </div>
+      <div style="padding: 16px; background: #f8f9fa; border-radius: 12px; border-left: 4px solid #28a745;">
+        <h4 style="font-size: 15px; margin-bottom: 8px; color: #28a745;">渐进式引导</h4>
+        <p style="font-size: 13px; color: #666; line-height: 1.6;">
+          首次使用时显示顶部横幅引导，3次使用后横幅自动隐藏，保留 SideOptions 图标和快捷键提示。同时支持浮动按钮作为备选入口。
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
