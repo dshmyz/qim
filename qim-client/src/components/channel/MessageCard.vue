@@ -136,9 +136,8 @@ const handleCopyLink = async () => {
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   padding: var(--spacing-4);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--border-color);
-  transition: all var(--transition-fast);
 }
 
 .card-main {
@@ -220,7 +219,6 @@ const handleCopyLink = async () => {
   cursor: pointer;
   font-size: var(--font-size-xs);
   border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
 }
 
 .action-btn:hover {
