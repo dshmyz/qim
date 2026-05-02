@@ -300,6 +300,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 短链接管理
 			authed.POST("/shortlinks", handler.CreateShortLink)
 			authed.GET("/shortlinks", handler.GetShortLinks)
+			authed.POST("/shortlinks/batch", handler.BatchCreateShortLinks)
+			authed.DELETE("/shortlinks/batch", handler.BatchDeleteShortLinks)
+			authed.DELETE("/shortlinks/:id", handler.DeleteShortLink)
 
 			// 用户搜索
 			authed.GET("/users/search", handler.SearchUsers)

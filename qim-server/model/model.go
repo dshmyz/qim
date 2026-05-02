@@ -402,6 +402,9 @@ type ShortLink struct {
 	UserID      uint           `json:"user_id" gorm:"not null;index"`
 	OriginalURL string         `json:"original_url" gorm:"type:text;not null"`
 	Code        string         `json:"code" gorm:"size:20;uniqueIndex;not null"`
+	CustomCode  string         `json:"custom_code" gorm:"size:50;index"`           // 自定义短链接后缀
+	ExpiresAt   *time.Time     `json:"expires_at"`                                 // 过期时间
+	Password    string         `json:"-" gorm:"size:255"`                          // 访问密码(哈希值)
 	VisitCount  int            `json:"visit_count" gorm:"default:0"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
