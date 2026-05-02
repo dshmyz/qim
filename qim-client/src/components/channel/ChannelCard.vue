@@ -29,7 +29,7 @@
   >
     <div class="card-header">
       <img
-        :src="channel.avatar || generateAvatar(channel.name)"
+        :src="channelAvatar"
         :alt="`${channel.name}的头像`"
         class="card-avatar"
       />
@@ -66,43 +66,48 @@
 </template>
 
 <script setup lang="ts">
-import { generateAvatar } from '../../utils/avatar'
+import { ref, computed } from 'vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
 import type { Channel } from '../../types'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Props {
   channel: Channel
   isSelected: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 defineEmits<{
   select: [channel: Channel]
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
 }>()
+
+const channelAvatar = computed(() => {
+  return getAvatarUrl(props.channel.avatar, props.channel.name, serverUrl.value)
+})
 </script>
 
 <style scoped>
 .channel-card {
   background: var(--card-bg);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-4);
-  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   cursor: pointer;
-  transition: all var(--transition-fast);
   border: 1px solid var(--border-color);
 }
 
 .channel-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
   border-color: var(--primary-color);
 }
 
 .channel-card.active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(51, 133, 255, 0.1);
+  border: 2px solid var(--primary-color);
+  box-shadow: 0 2px 12px rgba(51, 133, 255, 0.15);
 }
 
 .channel-card:focus {
@@ -127,13 +132,12 @@ defineEmits<{
 .card-subscribe-btn {
   padding: var(--spacing-1) var(--spacing-3);
   border: 1px solid var(--primary-color);
-  background: transparent;
+  background: white;
   color: var(--primary-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 12px;
   font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
@@ -144,11 +148,6 @@ defineEmits<{
   color: white;
 }
 
-.card-subscribe-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
 .card-subscribe-btn.subscribed {
   background: var(--primary-color);
   color: white;
@@ -156,12 +155,12 @@ defineEmits<{
 }
 
 .card-body {
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
 }
 
 .card-title {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: 15px;
+  margin: 0 0 var(--spacing-1) 0;
+  font-size: 14px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -171,9 +170,9 @@ defineEmits<{
 
 .card-description {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -182,10 +181,10 @@ defineEmits<{
 }
 
 .card-footer {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   border-top: 1px solid var(--border-color);
-  padding-top: var(--spacing-3);
+  padding-top: var(--spacing-2);
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
