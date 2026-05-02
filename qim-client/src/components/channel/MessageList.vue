@@ -181,7 +181,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-4);
+  padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
 }
@@ -279,12 +279,14 @@ const handleCopyLink = (message: ChannelMessage) => {
 .list-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-4);
+  padding: var(--spacing-5);
 }
 
 .card-grid {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
+  max-width: 800px;
+  margin: 0 auto;
 }
 </style>

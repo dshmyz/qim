@@ -134,21 +134,21 @@ const handleCopyLink = async () => {
 <style scoped>
 .message-card {
   background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-4);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: var(--spacing-5);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--border-color);
 }
 
 .card-main {
   display: flex;
-  gap: var(--spacing-3);
+  gap: var(--spacing-4);
 }
 
 .card-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -162,11 +162,12 @@ const handleCopyLink = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
 }
 
 .card-sender {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
   color: var(--text-color);
   display: flex;
   align-items: center;
@@ -193,7 +194,7 @@ const handleCopyLink = async () => {
 
 .card-text {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-size: 14px;
   color: var(--text-color);
   line-height: 1.6;
   word-break: break-word;
@@ -202,8 +203,8 @@ const handleCopyLink = async () => {
 
 .card-actions {
   display: flex;
-  gap: var(--spacing-2);
-  margin-top: var(--spacing-3);
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-4);
   padding-top: var(--spacing-3);
   border-top: 1px solid var(--border-color);
 }
