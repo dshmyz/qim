@@ -55,28 +55,37 @@
       </button>
     </div>
 
-    <!-- 视图切换 -->
-    <div class="view-toggle" role="group" aria-label="视图模式">
-      <button
-        class="view-btn"
-        :class="{ active: viewMode === 'list' }"
-        @click="setViewMode('list')"
-        aria-label="列表视图"
-        title="列表视图"
-        :aria-pressed="viewMode === 'list'"
-      >
-        <i class="fas fa-list"></i>
-      </button>
-      <button
-        class="view-btn"
-        :class="{ active: viewMode === 'card' }"
-        @click="setViewMode('card')"
-        aria-label="卡片视图"
-        title="卡片视图"
-        :aria-pressed="viewMode === 'card'"
-      >
-        <i class="fas fa-th-large"></i>
-      </button>
+    <!-- 视图切换和搜索 -->
+    <div class="view-and-search">
+      <input
+        v-model="searchQuery"
+        type="text"
+        class="search-input"
+        placeholder="搜索频道..."
+        aria-label="搜索频道"
+      />
+      <div class="view-toggle" role="group" aria-label="视图模式">
+        <button
+          class="view-btn"
+          :class="{ active: viewMode === 'list' }"
+          @click="setViewMode('list')"
+          aria-label="列表视图"
+          title="列表视图"
+          :aria-pressed="viewMode === 'list'"
+        >
+          <i class="fas fa-list"></i>
+        </button>
+        <button
+          class="view-btn"
+          :class="{ active: viewMode === 'card' }"
+          @click="setViewMode('card')"
+          aria-label="卡片视图"
+          title="卡片视图"
+          :aria-pressed="viewMode === 'card'"
+        >
+          <i class="fas fa-th-large"></i>
+        </button>
+      </div>
     </div>
 
     <!-- 侧边栏内容 -->
@@ -149,6 +158,7 @@ const channelStore = useChannelStore()
 
 // 本地状态
 const activeTab = ref<'subscribed' | 'discover'>('subscribed')
+const searchQuery = ref('')
 
 // 从 store 获取状态
 const channels = computed(() => channelStore.channels)
@@ -158,14 +168,27 @@ const selectedChannelId = computed(() => channelStore.selectedChannelId)
 
 // 计算属性
 const isAdmin = computed(() => {
-  return props.currentUser?.role === 'admin'
+  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
 })
 
 const displayChannels = computed(() => {
+  let result = channels.value
+  
+  // 根据标签过滤
   if (activeTab.value === 'subscribed') {
-    return channels.value.filter(c => c.is_subscribed)
+    result = result.filter(c => c.is_subscribed)
   }
-  return channels.value
+  
+  // 根据搜索关键词过滤
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase().trim()
+    result = result.filter(c => 
+      c.name.toLowerCase().includes(query) ||
+      c.description?.toLowerCase().includes(query)
+    )
+  }
+  
+  return result
 })
 
 const emptyTitle = computed(() => {
@@ -312,18 +335,52 @@ onMounted(() => {
   outline-offset: 2px;
 }
 
-/* 视图切换 */
-.view-toggle {
+/* 视图切换和搜索 */
+.view-and-search {
   display: flex;
-  gap: var(--spacing-1);
+  align-items: center;
+  gap: var(--spacing-2);
   padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--border-color);
 }
 
-.view-btn {
+.search-input {
   flex: 1;
-  padding: var(--spacing-2);
-  border: none;
+  min-width: 0;
+  padding: var(--spacing-1) var(--spacing-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--input-bg);
+  color: var(--text-color);
+  transition: all var(--transition-fast);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* 视图切换 */
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+}
+
+.view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
   background: transparent;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -338,8 +395,9 @@ onMounted(() => {
 }
 
 .view-btn.active {
-  background: var(--color-gray-200);
-  color: var(--text-color);
+  background: var(--color-gray-100);
+  border-color: var(--border-color);
+  color: var(--primary-color);
 }
 
 .view-btn:focus {

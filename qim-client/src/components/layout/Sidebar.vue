@@ -124,7 +124,7 @@ defineExpose({})
     </div>
 
     <!-- 搜索框 -->
-    <div class="search-box" v-show="!collapsed">
+    <div class="search-box" v-show="!collapsed && activeOption !== 'channels'">
       <input
         :value="searchQuery"
         @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
@@ -135,7 +135,7 @@ defineExpose({})
     </div>
 
     <!-- 侧边栏内容 -->
-    <div class="sidebar-content" v-show="!collapsed">
+    <div class="sidebar-content" v-show="!collapsed && activeOption !== 'channels'">
       <div v-if="activeOption === 'recent'" class="content-section">
         <SearchResult
           v-if="searchQuery && searchResults.length > 0"

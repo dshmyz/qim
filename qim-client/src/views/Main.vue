@@ -57,7 +57,6 @@
       <div class="main-content">
       <!-- 侧边栏 -->
       <Sidebar
-        v-if="activeOption !== 'channels'"
         ref="sidebarRef"
         :currentUser="currentUser || { username: '用户', name: '用户' }"
         :activeOption="activeOption"
@@ -205,6 +204,7 @@
         v-else-if="activeOption === 'apps' && !selectedAppId"
         :mainApps="mainApps"
         :quickTools="quickTools"
+        :customApps="customApps"
         :systemApps="systemApps"
         :pageTitle="getPageTitle()"
         @toggleSidebar="toggleSidebar"
@@ -2918,21 +2918,9 @@ const mainApps = computed(() => {
 
 // 系统应用列表
 const systemApps = computed(() => {
-  const apps = [
+  return [
     { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
   ]
-  
-  // 添加自定义应用
-  customApps.value.forEach(app => {
-    apps.push({
-      id: app.id,
-      name: app.name,
-      icon: app.icon,
-      description: '自定义应用'
-    })
-  })
-  
-  return apps
 })
 
 // 自定义应用列表

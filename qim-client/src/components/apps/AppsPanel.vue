@@ -54,6 +54,25 @@
         </div>
       </div>
 
+      <!-- 自定义应用区域 -->
+      <div v-if="customApps && customApps.length > 0" class="custom-apps-section">
+        <div class="section-header">
+          <h3>自定义应用</h3>
+          <span class="section-badge">我的应用</span>
+        </div>
+        <div class="custom-apps-grid">
+          <div
+            v-for="app in customApps"
+            :key="app.id"
+            class="custom-app-item"
+            @click="$emit('openApp', app.id)"
+          >
+            <div class="custom-app-icon"><i :class="app.icon"></i></div>
+            <div class="custom-app-name">{{ app.name }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 系统区域 -->
       <div class="system-apps-section">
         <div class="section-header">
@@ -90,6 +109,7 @@ interface App {
 interface Props {
   mainApps: App[]
   quickTools?: App[]
+  customApps?: App[]
   systemApps: App[]
   pageTitle: string
 }
@@ -290,6 +310,49 @@ defineEmits<{
   color: white;
   font-size: 10px;
   border-radius: 8px;
+  font-weight: 500;
+}
+
+/* 自定义应用样式 */
+.custom-apps-section {
+  margin-bottom: 24px;
+}
+
+.custom-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 16px;
+}
+
+.custom-app-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: var(--card-bg, white);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-color, transparent);
+  box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
+}
+
+.custom-app-item:hover {
+  background: var(--hover-color, #f0f0f0);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
+}
+
+.custom-app-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: var(--primary-color, #409eff);
+}
+
+.custom-app-name {
+  font-size: 12px;
+  color: var(--text-color, #333);
+  text-align: center;
   font-weight: 500;
 }
 
