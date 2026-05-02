@@ -17,7 +17,7 @@
   <div class="channel-header">
     <div class="header-info">
       <img
-        :src="channel.avatar || generateAvatar(channel.name)"
+        :src="getAvatarUrl(channel.avatar, channel.name, serverUrl)"
         :alt="`${channel.name}的头像`"
         class="header-avatar"
       />
@@ -60,9 +60,13 @@
 </template>
 
 <script setup lang="ts">
-import { generateAvatar } from '../../utils/avatar'
+import { ref } from 'vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
 import { useChatUtils } from '../../composables/useChatUtils'
 import type { Channel } from '../../types'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Props {
   channel: Channel
@@ -83,21 +87,21 @@ const { formatTime } = useChatUtils()
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: var(--spacing-5);
+  padding: var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
 }
 
 .header-info {
   display: flex;
-  gap: var(--spacing-4);
+  gap: var(--spacing-3);
   flex: 1;
   min-width: 0;
 }
 
 .header-avatar {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-lg);
   object-fit: cover;
   flex-shrink: 0;
@@ -109,8 +113,8 @@ const { formatTime } = useChatUtils()
 }
 
 .header-title {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: var(--font-size-xl);
+  margin: 0 0 var(--spacing-1) 0;
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -119,7 +123,7 @@ const { formatTime } = useChatUtils()
 }
 
 .header-description {
-  margin: 0 0 var(--spacing-3) 0;
+  margin: 0 0 var(--spacing-2) 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
@@ -133,7 +137,7 @@ const { formatTime } = useChatUtils()
 .header-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-4);
+  gap: var(--spacing-3);
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
@@ -150,27 +154,25 @@ const { formatTime } = useChatUtils()
 
 .header-actions {
   flex-shrink: 0;
-  margin-left: var(--spacing-4);
+  margin-left: var(--spacing-3);
 }
 
 .subscribe-btn {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-4);
-  border: 1px solid var(--primary-color);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--primary-color);
+  background: var(--primary-color);
+  color: white;
   cursor: pointer;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
 }
 
 .subscribe-btn:hover {
-  background: var(--primary-color);
-  color: white;
+  background: var(--primary-dark);
 }
 
 .subscribe-btn:focus {
@@ -180,12 +182,9 @@ const { formatTime } = useChatUtils()
 
 .subscribe-btn.subscribed {
   background: var(--success-color);
-  border-color: var(--success-color);
-  color: white;
 }
 
 .subscribe-btn.subscribed:hover {
   background: var(--success-dark, #5daf34);
-  border-color: var(--success-dark, #5daf34);
 }
 </style>
