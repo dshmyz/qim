@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import GroupList from '../shared/GroupList.vue'
-import ChannelList from '../shared/ChannelList.vue'
 import OrgTree from '../shared/OrgTree.vue'
 import AppPanel from '../shared/AppPanel.vue'
 import SearchResult from '../conversation/SearchResult.vue'
@@ -75,8 +74,6 @@ const emit = defineEmits<{
   (e: 'searchResultPrivateChat', item: SearchResultItem): void
   (e: 'searchResultApplyJoin', item: SearchResultItem): void
 }>()
-
-const channelListRef = ref<InstanceType<typeof ChannelList> | null>(null)
 
 const userAvatar = computed(() => {
   if (props.currentUser?.avatar && isAbsoluteUrl(props.currentUser.avatar)) {
@@ -178,7 +175,7 @@ defineExpose({ channelListRef })
       </div>
       
       <div v-else-if="activeOption === 'channels'" class="content-section">
-        <ChannelList ref="channelListRef" :currentUser="currentUser" @select-channel="$emit('selectChannel', $event)" />
+        <!-- 频道功能已迁移到 Main.vue 中的新布局，这里不再渲染旧的 ChannelList -->
       </div>
       
       <div v-else-if="activeOption === 'apps'" class="content-section">
