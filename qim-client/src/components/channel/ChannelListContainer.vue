@@ -3,7 +3,7 @@
 
   功能：
   - 管理频道列表的展示
-  - 支持列表视图和卡片视图切换
+  - 支持列表视图和卡片视图（由父组件控制）
   - 处理加载状态和空状态
   - 协调子组件的交互
 
@@ -20,32 +20,6 @@
 -->
 <template>
   <div class="channel-list-container">
-    <!-- 视图切换工具栏 -->
-    <div class="view-toolbar">
-      <div class="view-tabs">
-        <button
-          class="view-tab"
-          :class="{ active: viewMode === 'card' }"
-          @click="handleViewModeChange('card')"
-          :aria-label="'卡片视图'"
-          :aria-pressed="viewMode === 'card'"
-        >
-          <i class="fas fa-th-large"></i>
-          <span>卡片</span>
-        </button>
-        <button
-          class="view-tab"
-          :class="{ active: viewMode === 'list' }"
-          @click="handleViewModeChange('list')"
-          :aria-label="'列表视图'"
-          :aria-pressed="viewMode === 'list'"
-        >
-          <i class="fas fa-list"></i>
-          <span>列表</span>
-        </button>
-      </div>
-    </div>
-
     <!-- 加载状态 -->
     <LoadingSpinner v-if="loading" text="加载频道中..." />
 
@@ -111,13 +85,7 @@ const emit = defineEmits<{
   select: [channel: Channel]
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
-  'update:viewMode': [mode: 'list' | 'card']
 }>()
-
-// 处理视图模式切换
-function handleViewModeChange(mode: 'list' | 'card') {
-  emit('update:viewMode', mode)
-}
 
 // 处理频道选择
 function handleSelect(channel: Channel) {
@@ -141,53 +109,6 @@ function handleUnsubscribe(channel: Channel) {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-}
-
-/* 视图切换工具栏 */
-.view-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--spacing-3);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--card-bg);
-}
-
-.view-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-  background: var(--color-gray-100);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-1);
-}
-
-.view-tab {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
-}
-
-.view-tab:hover {
-  color: var(--text-color);
-  background: var(--color-gray-200);
-}
-
-.view-tab.active {
-  background: var(--primary-color);
-  color: white;
-}
-
-.view-tab:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
 }
 
 /* 频道列表 */
