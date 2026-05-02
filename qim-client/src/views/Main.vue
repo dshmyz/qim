@@ -143,32 +143,50 @@
         </div>
       </div>
       
-      <!-- 频道页面的右侧内容 -->
-      <ChannelDetail
-        v-else-if="activeOption === 'channels' && selectedChannel"
-        :channel="selectedChannel"
-        :isCreator="isChannelCreator(selectedChannel)"
-        :formatTime="formatTime"
-        :initialMessage="channelMessage"
-        @toggleSidebar="toggleSidebar"
-        @subscribe="subscribeChannel"
-        @unsubscribe="unsubscribeChannel"
-        @sendMessage="sendChannelMessage"
-      />
-      <div v-else-if="activeOption === 'channels' && !selectedChannel" class="right-content">
-        <div class="right-content-header">
-            <div class="header-left-group">
-              <button class="toggle-sidebar-btn" @click="toggleSidebar">
-                <i class="fas fa-compress"></i>
-              </button>
-              <h2>频道</h2>
-            </div>
-        </div>
-        <div class="right-content-body">
+      <!-- 频道页面的新布局 -->
+      <template v-else-if="activeOption === 'channels'">
+        <!-- 频道侧边栏 -->
+        <ChannelSidebar
+          :currentUser="currentUser"
+          @createChannel="handleCreateChannel"
+        />
+        
+        <!-- 频道内容区域 -->
+        <div class="channel-content-area">
+          <!-- 标签页导航 -->
+          <TabNavigation
+            v-if="channelStore.openTabs.length > 0"
+            :tabs="channelStore.openTabs"
+            :active-tab-id="channelStore.selectedChannelId"
+            @select="handleTabSelect"
+            @close="handleTabClose"
+            @add="handleAddTab"
+          />
+          
+          <!-- 频道详情 -->
+          <ChannelDetailNew
+            v-if="channelStore.selectedChannel"
+            :channel="channelStore.selectedChannel"
+            :isCreator="isChannelCreator(channelStore.selectedChannel)"
+            :displayMode="channelStore.messageMode"
+            :sortOrder="'desc'"
+            @subscribe="handleChannelSubscribe"
+            @unsubscribe="handleChannelUnsubscribe"
+            @sendMessage="handleChannelSendMessage"
+            @update:displayMode="handleDisplayModeChange"
+            @like="handleMessageLike"
+            @unlike="handleMessageUnlike"
+            @comment="handleMessageComment"
+            @copyLink="handleMessageCopyLink"
+          />
+          
+          <!-- 空状态 -->
+          <div v-else class="channel-empty-state">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
             <p>选择一个频道查看详情</p>
+          </div>
         </div>
-      </div>
+      </template>
       
       <!-- 组织架构用户信息 -->
       <UserDetailPanel
@@ -501,6 +519,9 @@ import NotificationCenter from '../components/notification/NotificationCenter.vu
 import { mapNotification } from '../utils/notificationMapper'
 import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
 import ChannelDetail from '../components/channel/ChannelDetail.vue'
+import ChannelSidebar from '../components/channel/ChannelSidebar.vue'
+import TabNavigation from '../components/channel/TabNavigation.vue'
+import ChannelDetailNew from '../components/channel/ChannelDetailNew.vue'
 import UserDetailPanel from '../components/user/UserDetailPanel.vue'
 import AppsPanel from '../components/apps/AppsPanel.vue'
 import SelfProfileModal from '../components/modals/SelfProfileModal.vue'
@@ -514,6 +535,7 @@ import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 import { request, getToken } from '../composables/useRequest'
 import { useChannel } from '../composables/useChannel'
+import { useChannelStore } from '../stores/channel'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
 import { useSettings } from '../composables/useSettings'
@@ -545,6 +567,9 @@ const {
   unsubscribeChannel,
   sendChannelMessage
 } = useChannel(serverUrl, currentUser)
+
+// 使用频道 store
+const channelStore = useChannelStore()
 
 // 会话数据处理
 const { processConversation } = useProcessConversation(serverUrl, currentUser)
@@ -3373,10 +3398,65 @@ const sendSystemMessage = async (msg: { title: string; content: string; target: 
 
 const createChannel = () => {
   hideActionMenu()
- activeOption.value = 'channels'
+  activeOption.value = 'channels'
   nextTick(() => {
     sidebarRef.value?.channelListRef?.openCreateModal()
   })}
+
+// 新的频道交互方法
+const handleCreateChannel = () => {
+  // TODO: 打开创建频道弹窗
+  console.log('创建频道')
+}
+
+const handleTabSelect = (tabId: string) => {
+  channelStore.selectChannel(tabId)
+}
+
+const handleTabClose = (tabId: string) => {
+  channelStore.removeTab(tabId)
+}
+
+const handleAddTab = () => {
+  // TODO: 打开频道选择器或创建新频道
+  console.log('添加标签页')
+}
+
+const handleChannelSubscribe = async (channel: any) => {
+  await channelStore.subscribeChannel(channel.id)
+}
+
+const handleChannelUnsubscribe = async (channel: any) => {
+  await channelStore.unsubscribeChannel(channel.id)
+}
+
+const handleChannelSendMessage = async (channel: any, message: string) => {
+  await sendChannelMessage(channel, message)
+}
+
+const handleDisplayModeChange = (mode: 'card' | 'timeline') => {
+  channelStore.setMessageMode(mode)
+}
+
+const handleMessageLike = (message: any) => {
+  // TODO: 实现点赞功能
+  console.log('点赞消息:', message)
+}
+
+const handleMessageUnlike = (message: any) => {
+  // TODO: 实现取消点赞功能
+  console.log('取消点赞消息:', message)
+}
+
+const handleMessageComment = (message: any) => {
+  // TODO: 实现评论功能
+  console.log('评论消息:', message)
+}
+
+const handleMessageCopyLink = (message: any) => {
+  // TODO: 实现复制链接功能
+  console.log('复制消息链接:', message)
+}
 
 const createDiscussionGroup = () => {
   hideActionMenu()
@@ -4536,6 +4616,39 @@ button:active {
   font-size: 14px;
   opacity: 0.7;
 }
+
+/* ===== 频道布局 ===== */
+.channel-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--content-bg);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.channel-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: var(--right-content-bg);
+  opacity: 0.7;
+}
+
+.channel-empty-state .empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+}
+
+.channel-empty-state p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 
 /* ===== 空状态 ===== */
 .empty-state {
