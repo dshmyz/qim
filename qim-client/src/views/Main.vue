@@ -2842,6 +2842,7 @@ const mainApps = computed(() => {
     { id: '7', name: '笔记', icon: 'fas fa-book' },
     { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
+    { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
     { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' }
   ]
