@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Task, TaskFilters, TaskView, TaskStatus } from '../types/task'
+import type { Task, TaskFilters, TaskView, TaskStatus, TaskUser } from '../types/task'
 import { fetchTasks, createTask as apiCreateTask, updateTask as apiUpdateTask, deleteTask as apiDeleteTask, updateTaskStatus as apiUpdateStatus, reorderTask as apiReorderTask } from '../api/task'
 import type { CreateTaskData, UpdateTaskData } from '../types/task'
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([])
+  const contacts = ref<TaskUser[]>([])
   const currentView = ref<TaskView>('kanban')
   const filters = ref<TaskFilters>({
     search: '',
@@ -16,6 +17,13 @@ export const useTaskStore = defineStore('task', () => {
   })
   const selectedTaskId = ref<string | null>(null)
   const loading = ref(false)
+
+  function enrichTask(task: Task): Task {
+    if (!task.assignee || !task.assignee.id) return task
+    const contact = contacts.value.find(c => c.id === task.assignee!.id)
+    if (!contact) return task
+    return { ...task, assignee: { ...task.assignee, name: contact.name, avatar: contact.avatar } }
+  }
 
   const filteredTasks = computed(() => {
     let result = tasks.value
@@ -34,6 +42,14 @@ export const useTaskStore = defineStore('task', () => {
     }
     if (filters.value.tag_id) {
       result = result.filter(t => t.tags.some(tag => tag.id === filters.value.tag_id))
+    }
+    if (filters.value.due_date_range) {
+      const { start, end } = filters.value.due_date_range
+      result = result.filter(t => {
+        if (!t.due_date) return false
+        const date = t.due_date.split('T')[0]
+        return date >= start && date <= end
+      })
     }
     return result
   })
@@ -73,7 +89,7 @@ export const useTaskStore = defineStore('task', () => {
   async function loadTasks() {
     loading.value = true
     try {
-      tasks.value = await fetchTasks()
+      tasks.value = (await fetchTasks()).map(enrichTask)
     } catch (e: any) {
       console.error('Failed to load tasks:', e)
     } finally {
@@ -81,10 +97,18 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function refreshTasks() {
+    try {
+      tasks.value = (await fetchTasks()).map(enrichTask)
+    } catch (e: any) {
+      console.error('Failed to refresh tasks:', e)
+    }
+  }
+
   async function createTask(data: CreateTaskData) {
     try {
-      const task = await apiCreateTask(data)
-      tasks.value.push(task)
+      const task = enrichTask(await apiCreateTask(data))
+      tasks.value = [...tasks.value, task]
       return task
     } catch (e: any) {
       console.error('Failed to create task:', e)
@@ -94,7 +118,7 @@ export const useTaskStore = defineStore('task', () => {
 
   async function updateTask(id: string, data: UpdateTaskData) {
     try {
-      const updated = await apiUpdateTask(id, data)
+      const updated = enrichTask(await apiUpdateTask(id, data))
       const index = tasks.value.findIndex(t => t.id === id)
       if (index !== -1) tasks.value[index] = updated
       return updated
@@ -116,7 +140,7 @@ export const useTaskStore = defineStore('task', () => {
 
   async function changeStatus(id: string, status: TaskStatus) {
     try {
-      const updated = await apiUpdateStatus(id, status)
+      const updated = enrichTask(await apiUpdateStatus(id, status))
       const index = tasks.value.findIndex(t => t.id === id)
       if (index !== -1) tasks.value[index] = updated
       return updated
@@ -151,6 +175,11 @@ export const useTaskStore = defineStore('task', () => {
     filters.value = { ...filters.value, ...newFilters }
   }
 
+  function setContacts(list: TaskUser[]) {
+    contacts.value = list
+    tasks.value = tasks.value.map(enrichTask)
+  }
+
   function resetFilters() {
     filters.value = {
       search: '',
@@ -163,6 +192,7 @@ export const useTaskStore = defineStore('task', () => {
 
   return {
     tasks,
+    contacts,
     currentView,
     filters,
     selectedTaskId,
@@ -175,6 +205,7 @@ export const useTaskStore = defineStore('task', () => {
     myTasks,
     selectedTask,
     loadTasks,
+    refreshTasks,
     createTask,
     updateTask,
     removeTask,
@@ -183,6 +214,7 @@ export const useTaskStore = defineStore('task', () => {
     setView,
     selectTask,
     setFilters,
+    setContacts,
     resetFilters
   }
 })

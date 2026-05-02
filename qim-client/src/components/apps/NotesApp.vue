@@ -115,7 +115,8 @@ const {
   analyzeNote,
   updateNoteTags,
   updateNoteSummary,
-  exportNote 
+  exportNote,
+  error: notesError
 } = useNotes()
 
 const notes = ref<Note[]>([])
@@ -217,9 +218,15 @@ async function handleAnalyze() {
   analyzing.value = true
   const result = await analyzeNote(selectedNote.value.id)
   analyzing.value = false
+  console.log('AI分析完成，结果:', result)
+  console.log('showAnalysisModal 当前值:', showAnalysisModal.value)
   if (result) {
     analysisResult.value = result
     showAnalysisModal.value = true
+    console.log('showAnalysisModal 设置后:', showAnalysisModal.value)
+    console.log('analysisResult:', analysisResult.value)
+  } else {
+    QMessage.error(notesError.value || 'AI 分析失败，请稍后重试')
   }
 }
 

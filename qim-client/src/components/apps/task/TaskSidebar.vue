@@ -1,66 +1,68 @@
 <template>
-  <div class="task-sidebar">
-    <div class="sidebar-title">
-      <span class="sidebar-icon">✓</span>
-      任务管理
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">视图</div>
+  <div class="task-topbar">
+    <div class="topbar-nav">
       <button
         v-for="view in views"
         :key="view.id"
-        class="sidebar-item"
+        class="nav-item"
         :class="{ active: currentView === view.id }"
+        :title="view.label"
         @click="store.setView(view.id)"
       >
         <i :class="view.icon"></i>
-        {{ view.label }}
+        <span class="nav-label">{{ view.label }}</span>
       </button>
     </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">筛选</div>
-      <button
-        class="sidebar-item"
-        :class="{ active: store.filters.priority === 'high' }"
-        @click="togglePriorityFilter('high')"
-      >
-        <span class="filter-dot" style="background:#ef4444;"></span>
-        高优先级
-      </button>
-      <button
-        class="sidebar-item"
-        :class="{ active: !!store.filters.due_date_range }"
-        @click="toggleDueSoonFilter"
-      >
-        <i class="fas fa-clock"></i>
-        即将到期
-      </button>
-      <button
-        class="sidebar-item"
-        :class="{ active: !!store.filters.assignee_id }"
-        @click="toggleMyTasksFilter"
-      >
-        <i class="fas fa-user"></i>
-        指派给我
-      </button>
-    </div>
-    <div class="sidebar-section" v-if="store.tasks.length">
-      <div class="sidebar-label">进度</div>
-      <div class="progress-summary">
-        <div class="progress-header">
-          <span>本周进度</span>
-          <span class="progress-percent">{{ completionPercent }}%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: completionPercent + '%' }"></div>
-        </div>
+    <div class="topbar-actions">
+      <div class="filter-group">
+        <button
+          class="filter-tag"
+          :class="{ on: store.filters.priority === 'high' }"
+          title="高优先级"
+          @click="togglePriorityFilter('high')"
+        >
+          <span class="tag-dot" style="background:#ef4444;"></span>
+          <span class="tag-label">高优先级</span>
+        </button>
+        <button
+          class="filter-tag"
+          :class="{ on: !!store.filters.due_date_range }"
+          title="即将到期"
+          @click="toggleDueSoonFilter"
+        >
+          <i class="fas fa-clock"></i>
+          <span class="tag-label">即将到期</span>
+        </button>
+        <button
+          class="filter-tag"
+          :class="{ on: !!store.filters.assignee_id }"
+          title="我的任务"
+          @click="toggleMyTasksFilter"
+        >
+          <i class="fas fa-user"></i>
+          <span class="tag-label">我的任务</span>
+        </button>
       </div>
+      <div class="search-box">
+        <i class="fas fa-search"></i>
+        <input
+          type="text"
+          :value="store.filters.search"
+          @input="onSearch"
+          placeholder="搜索任务..."
+          class="search-input"
+        />
+      </div>
+      <button class="create-btn" @click="$emit('create')" title="新建任务">
+        <i class="fas fa-plus"></i>
+        <span class="create-label">新建任务</span>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import type { TaskView } from '../../../types/task'
 import { useTaskStore } from '../../../stores/task'
 
@@ -71,15 +73,12 @@ const views: { id: TaskView; label: string; icon: string }[] = [
   { id: 'kanban', label: '看板', icon: 'fas fa-th-large' },
   { id: 'list', label: '列表', icon: 'fas fa-list' },
   { id: 'calendar', label: '日历', icon: 'fas fa-calendar-alt' },
-  { id: 'workspace', label: '我的工作台', icon: 'fas fa-user-circle' }
+  { id: 'workspace', label: '工作台', icon: 'fas fa-user-circle' }
 ]
 
-const completionPercent = computed(() => {
-  const total = store.tasks.length
-  if (!total) return 0
-  const completed = store.tasks.filter(t => t.status === 'completed').length
-  return Math.round((completed / total) * 100)
-})
+function onSearch(event: Event) {
+  store.setFilters({ search: (event.target as HTMLInputElement).value })
+}
 
 function togglePriorityFilter(priority: 'high') {
   store.setFilters({ priority: store.filters.priority === priority ? null : priority })
@@ -100,90 +99,187 @@ function toggleDueSoonFilter() {
 function toggleMyTasksFilter() {
   store.setFilters({ assignee_id: store.filters.assignee_id ? null : 'me' })
 }
+
+function onKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    document.querySelector<HTMLElement>('.search-input')?.focus()
+  }
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+
+defineEmits<{
+  create: []
+}>()
 </script>
 
 <style scoped>
-.task-sidebar {
-  width: 200px;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border-color);
-  padding: var(--spacing-4);
+.task-topbar {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-  overflow-y: auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-4);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
   flex-shrink: 0;
+  height: 44px;
+  gap: var(--spacing-3);
 }
-.sidebar-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-4);
+.topbar-nav {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+.nav-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-}
-.sidebar-icon {
-  width: 20px;
-  height: 20px;
-  background: #8b5cf6;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 10px;
-}
-.sidebar-section { margin-bottom: var(--spacing-4); }
-.sidebar-label {
-  font-size: 10px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--spacing-1);
-  padding: 0 var(--spacing-2);
-}
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  width: 100%;
-  padding: var(--spacing-1) var(--spacing-2);
+  gap: 5px;
+  padding: 0 14px;
   border: none;
   background: none;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  text-align: left;
-  transition: all var(--animation-fast) ease;
+  position: relative;
+  transition: color var(--animation-fast) ease;
+  white-space: nowrap;
 }
-.sidebar-item:hover { background: var(--hover-bg); color: var(--text-primary); }
-.sidebar-item.active { background: var(--active-bg); color: var(--text-primary); font-weight: 500; }
-.filter-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.progress-summary {
-  padding: var(--spacing-2);
+.nav-item:hover {
+  color: var(--text-primary);
   background: var(--hover-bg);
-  border-radius: var(--radius-md);
 }
-.progress-header {
+.nav-item.active {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  background: #8b5cf6;
+  border-radius: 1px;
+}
+.topbar-actions {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+}
+.filter-group {
+  display: flex;
+  gap: 4px;
+}
+.filter-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  background: none;
+  border-radius: 100px;
   font-size: 11px;
   color: var(--text-secondary);
-  margin-bottom: var(--spacing-1);
+  cursor: pointer;
+  transition: all var(--animation-fast) ease;
+  white-space: nowrap;
 }
-.progress-percent { color: #059669; font-weight: 500; }
-.progress-bar {
-  height: 4px;
-  background: var(--border-color);
-  border-radius: 2px;
-  overflow: hidden;
+.filter-tag:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #a78bfa, #8b5cf6);
-  border-radius: 2px;
-  transition: width var(--animation-slow) ease;
+.filter-tag.on {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+  color: #fff;
+}
+.tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  transition: border-color var(--animation-fast) ease;
+}
+.search-box:focus-within {
+  border-color: #8b5cf6;
+}
+.search-box i {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.search-input {
+  width: 100px;
+  border: none;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: transparent;
+  outline: none;
+  padding: 0;
+  transition: width 0.2s ease;
+}
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+.search-input:focus {
+  width: 160px;
+}
+.create-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--animation-fast) ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.create-btn:hover { background: #7c3aed; }
+
+@media (max-width: 720px) {
+  .nav-label {
+    display: none;
+  }
+  .nav-item {
+    padding: 0 10px;
+  }
+  .tag-label {
+    display: none;
+  }
+  .filter-tag {
+    padding: 3px 6px;
+  }
+  .create-label {
+    display: none;
+  }
+  .create-btn {
+    padding: 5px 8px;
+  }
+  .search-input {
+    width: 70px;
+  }
+  .search-input:focus {
+    width: 120px;
+  }
 }
 </style>

@@ -2,6 +2,7 @@
   <div
     class="file-list-item"
     :class="{ 'file-list-item--selected': isSelected }"
+    :style="gridStyle"
     @click="handleClick"
     @dblclick="handleDoubleClick"
     @mouseenter="isHovered = true"
@@ -13,9 +14,22 @@
     </div>
 
     <!-- 文件名 -->
-    <div class="file-name" :title="file.name">
-      {{ file.name }}
+    <div
+      class="file-name-wrap"
+      @mouseenter="showTooltip"
+      @mouseleave="hideTooltip"
+    >
+      <div class="file-name">{{ file.name }}</div>
     </div>
+    <Teleport to="body">
+      <div
+        v-if="tooltipVisible"
+        class="name-tooltip"
+        :style="tooltipStyle"
+      >
+        {{ file.name }}
+      </div>
+    </Teleport>
 
     <!-- 文件类型 -->
     <div class="file-type">
@@ -28,9 +42,22 @@
     </div>
 
     <!-- 修改时间 -->
-    <div class="file-date">
-      {{ formatFileDate(file.updated_at) }}
+    <div
+      class="file-date-wrap"
+      @mouseenter="showDateTooltip"
+      @mouseleave="hideDateTooltip"
+    >
+      <div class="file-date">{{ formatFileDate(file.updated_at) }}</div>
     </div>
+    <Teleport to="body">
+      <div
+        v-if="dateTooltipVisible"
+        class="name-tooltip"
+        :style="dateTooltipStyle"
+      >
+        {{ file.updated_at }}
+      </div>
+    </Teleport>
 
     <!-- 星标状态 -->
     <div class="file-star">
@@ -85,6 +112,7 @@ defineOptions({
 interface Props {
   file: FileItem
   isSelected?: boolean
+  gridStyle?: Record<string, string>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -102,6 +130,49 @@ const emit = defineEmits<{
 }>()
 
 const isHovered = ref(false)
+const tooltipVisible = ref(false)
+const tooltipStyle = ref({})
+
+const showTooltip = (event: MouseEvent) => {
+  const target = event.currentTarget as HTMLElement
+  const nameEl = target.querySelector('.file-name') as HTMLElement
+  if (!nameEl) return
+  const isTruncated = nameEl.scrollWidth > nameEl.clientWidth
+  if (!isTruncated) return
+  const rect = nameEl.getBoundingClientRect()
+  tooltipStyle.value = {
+    position: 'fixed',
+    top: `${rect.top - 30}px`,
+    left: `${rect.left}px`,
+  }
+  tooltipVisible.value = true
+}
+
+const hideTooltip = () => {
+  tooltipVisible.value = false
+}
+
+const dateTooltipVisible = ref(false)
+const dateTooltipStyle = ref({})
+
+const showDateTooltip = (event: MouseEvent) => {
+  const target = event.currentTarget as HTMLElement
+  const dateEl = target.querySelector('.file-date') as HTMLElement
+  if (!dateEl) return
+  const isTruncated = dateEl.scrollWidth > dateEl.clientWidth
+  if (!isTruncated) return
+  const rect = dateEl.getBoundingClientRect()
+  dateTooltipStyle.value = {
+    position: 'fixed',
+    top: `${rect.top - 30}px`,
+    left: `${rect.left}px`,
+  }
+  dateTooltipVisible.value = true
+}
+
+const hideDateTooltip = () => {
+  dateTooltipVisible.value = false
+}
 
 function handleClick() {
   emit('click', props.file)
@@ -135,10 +206,9 @@ function handleDelete() {
 <style scoped>
 .file-list-item {
   display: grid;
-  grid-template-columns: 40px 1fr 100px 100px 140px 40px 140px;
-  gap: 12px;
+  gap: 0;
   align-items: center;
-  padding: 12px 16px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: all var(--transition-base);
@@ -149,7 +219,7 @@ function handleDelete() {
 }
 
 .file-list-item--selected {
-  background: var(--primary-light);
+  background: var(--hover-color);
   border-left: 3px solid var(--primary-color);
 }
 
@@ -158,6 +228,12 @@ function handleDelete() {
   align-items: center;
   justify-content: center;
   font-size: 20px;
+  padding: 10px 8px;
+}
+
+.file-name-wrap {
+  position: relative;
+  padding: 10px 8px;
 }
 
 .file-name {
@@ -169,8 +245,35 @@ function handleDelete() {
   text-overflow: ellipsis;
 }
 
+.name-tooltip {
+  padding: 4px 10px;
+  background: var(--color-gray-900, #1a202c);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1070;
+  pointer-events: none;
+}
+
 .file-type,
-.file-size,
+.file-size {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 10px 8px;
+}
+
+.file-date-wrap {
+  position: relative;
+  padding: 10px 8px;
+}
+
 .file-date {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
@@ -184,12 +287,13 @@ function handleDelete() {
   align-items: center;
   justify-content: center;
   font-size: 14px;
+  padding: 10px 8px;
 }
 
 .file-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  display: block;
+  padding: 10px 8px;
+  text-align: right;
 }
 
 .actions-wrapper {
@@ -231,31 +335,5 @@ function handleDelete() {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-}
-
-/* 响应式 */
-@media (max-width: 1024px) {
-  .file-list-item {
-    grid-template-columns: 40px 1fr 80px 80px 120px 40px 120px;
-    gap: 8px;
-    padding: 10px 12px;
-  }
-}
-
-@media (max-width: 768px) {
-  .file-list-item {
-    grid-template-columns: 40px 1fr 60px 40px 100px;
-    gap: 8px;
-    padding: 8px;
-  }
-
-  .file-type,
-  .file-star {
-    display: none;
-  }
-
-  .file-actions {
-    justify-content: center;
-  }
 }
 </style>

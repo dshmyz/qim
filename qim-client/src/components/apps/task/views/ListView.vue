@@ -17,6 +17,10 @@
       <div class="list-header-cell assignee-cell">指派人</div>
     </div>
     <div class="list-body">
+      <div v-if="!sortedTasks.length" class="list-empty">
+        <i class="fas fa-inbox"></i>
+        <span>暂无任务</span>
+      </div>
       <TaskRow
         v-for="task in sortedTasks"
         :key="task.id"
@@ -88,6 +92,7 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 .list-header {
   display: flex;
@@ -116,7 +121,19 @@ const emit = defineEmits<{
 .assignee-cell { width: 32px; }
 .list-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   background: var(--card-bg);
 }
+.list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  gap: var(--spacing-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.list-empty i { font-size: 28px; opacity: 0.4; }
 </style>

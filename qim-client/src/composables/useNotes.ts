@@ -4,7 +4,7 @@ import { API_BASE_URL } from '../config'
 import type { Note, AIAnalyzeResult } from '../types/note'
 
 export function useNotes() {
-  const { get, post, delete: del } = useRequest()
+  const { get, post, put, delete: del } = useRequest()
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -50,7 +50,7 @@ export function useNotes() {
     loading.value = true
     error.value = null
     try {
-      const response = await post<any>(`/api/v1/notes/${id}`, {
+      const response = await put<any>(`/api/v1/notes/${id}`, {
         title: data.title,
         content: data.content,
         tags: JSON.stringify(data.tags || [])

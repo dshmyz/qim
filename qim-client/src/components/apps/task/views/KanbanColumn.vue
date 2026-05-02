@@ -72,15 +72,16 @@ function onDrop(event: DragEvent) {
 
 <style scoped>
 .kanban-column {
-  flex: 1;
-  min-width: 240px;
-  max-width: 320px;
+  flex: 1 1 0%;
+  min-width: 220px;
+  max-width: 340px;
   display: flex;
   flex-direction: column;
   background: var(--card-bg);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   overflow: hidden;
+  min-height: 0;
 }
 .kanban-column.drag-over {
   background: var(--hover-bg);
@@ -89,6 +90,7 @@ function onDrop(event: DragEvent) {
 .kanban-column-header {
   padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 .column-title {
   display: flex;
@@ -114,12 +116,12 @@ function onDrop(event: DragEvent) {
 }
 .kanban-column-list {
   flex: 1;
+  min-height: 0;
   padding: var(--spacing-3);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
-  min-height: 60px;
 }
 .kanban-column-empty {
   display: flex;

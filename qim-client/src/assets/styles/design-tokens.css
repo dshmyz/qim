@@ -270,7 +270,7 @@
   --active-color: #0369a1;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #f0f9ff;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;
@@ -300,7 +300,7 @@
   --active-color: #6d28d9;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #faf5ff;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;
@@ -330,7 +330,7 @@
   --active-color: #f4a900;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #faf5f0;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;
@@ -360,7 +360,7 @@
   --active-color: #b91c1c;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #fef2f2;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;
@@ -390,7 +390,7 @@
   --active-color: #047857;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #ecfdf5;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;
@@ -450,7 +450,7 @@
   --active-color: #e1bee7;
   --sidebar-bg: #ffffff;
   --side-options-bg: var(--sidebar-bg);
-  --content-bg: #fffef5;
+  --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
   --context-menu-bg: #ffffff;

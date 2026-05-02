@@ -67,6 +67,34 @@
   box-shadow: var(--shadow-sm) !important;
 }
 
+/* 炫酷黑主题 - 消息输入区域 */
+[data-theme="elegant-dark"] .message-input-area {
+  background: var(--sidebar-bg) !important;
+}
+
+/* 炫酷黑主题 - 模态框头部 */
+[data-theme="elegant-dark"] .modal-container-header {
+  background: var(--card-bg) !important;
+  border-bottom-color: var(--border-color) !important;
+}
+
+/* 炫酷黑主题 - 模态框底部 */
+[data-theme="elegant-dark"] .modal-container-footer {
+  background: var(--card-bg) !important;
+  border-top-color: var(--border-color) !important;
+}
+
+/* 炫酷黑主题 - 文本输入框 */
+[data-theme="elegant-dark"] textarea {
+  background: var(--sidebar-bg) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+[data-theme="elegant-dark"] textarea::placeholder {
+  color: var(--text-secondary) !important;
+}
+
 /* 天青蓝主题 */
 [data-theme="ocean-blue"] {
   --primary-color: #49bccf;

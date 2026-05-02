@@ -52,7 +52,22 @@
 
     <!-- 文件信息 -->
     <div class="file-info">
-      <div class="file-name" :title="file.name">{{ file.name }}</div>
+      <div
+        class="file-name-wrap"
+        @mouseenter="showTooltip"
+        @mouseleave="hideTooltip"
+      >
+        <div class="file-name">{{ file.name }}</div>
+      </div>
+      <Teleport to="body">
+        <div
+          v-if="tooltipVisible"
+          class="name-tooltip"
+          :style="tooltipStyle"
+        >
+          {{ file.name }}
+        </div>
+      </Teleport>
       <div class="file-meta">
         <span class="file-size">{{ formatFileSize(file.size) }}</span>
         <span class="file-type">{{ getFileTypeLabel(file.mime_type) }}</span>
@@ -98,6 +113,27 @@ const emit = defineEmits<{
 
 const isHovered = ref(false)
 const imageError = ref(false)
+const tooltipVisible = ref(false)
+const tooltipStyle = ref({})
+
+const showTooltip = (event: MouseEvent) => {
+  const target = event.currentTarget as HTMLElement
+  const nameEl = target.querySelector('.file-name') as HTMLElement
+  if (!nameEl) return
+  const isTruncated = nameEl.scrollWidth > nameEl.clientWidth
+  if (!isTruncated) return
+  const rect = nameEl.getBoundingClientRect()
+  tooltipStyle.value = {
+    position: 'fixed',
+    top: `${rect.top - 30}px`,
+    left: `${rect.left}px`,
+  }
+  tooltipVisible.value = true
+}
+
+const hideTooltip = () => {
+  tooltipVisible.value = false
+}
 
 const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
 
@@ -257,6 +293,10 @@ function handleDelete() {
   gap: 4px;
 }
 
+.file-name-wrap {
+  position: relative;
+}
+
 .file-name {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -264,6 +304,20 @@ function handleDelete() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.name-tooltip {
+  padding: 4px 10px;
+  background: var(--color-gray-900, #1a202c);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1070;
+  pointer-events: none;
 }
 
 .file-meta {

@@ -27,53 +27,88 @@
 
     <!-- 筛选工具栏 -->
     <div class="filter-bar">
-      <div class="filter-left">
-        <!-- 来源筛选 -->
-        <div class="filter-chips">
-          <button
-            :class="['chip', { active: sourceFilter === null }]"
-            @click="handleSourceChange(null)"
-          >
-            <i class="fas fa-layer-group"></i>
-            <span>全部</span>
-          </button>
-          <button
-            :class="['chip', { active: sourceFilter === 'upload' }]"
-            @click="handleSourceChange('upload')"
-          >
-            <i class="fas fa-cloud-upload-alt"></i>
-            <span>我的上传</span>
-          </button>
-          <button
-            :class="['chip', { active: sourceFilter === 'chat' }]"
-            @click="handleSourceChange('chat')"
-          >
-            <i class="fas fa-comment-dots"></i>
-            <span>聊天文件</span>
-          </button>
-        </div>
-
-        <div class="filter-divider"></div>
-
-        <!-- 文件夹选择 -->
-        <div class="folder-picker">
-          <i class="fas fa-folder picker-icon"></i>
-          <select v-model="selectedFolderId" @change="handleFolderChange" class="picker-select">
-            <option :value="null">全部文件</option>
-            <option :value="-1">⭐ 星标文件</option>
-            <optgroup label="文件夹">
-              <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-                📁 {{ folder.name }}
-              </option>
-            </optgroup>
-          </select>
-          <i class="fas fa-chevron-down picker-arrow"></i>
-        </div>
+      <!-- 搜索框 -->
+      <div class="search-wrap">
+        <i class="fas fa-search search-icon-inline"></i>
+        <input
+          type="text"
+          class="search-input-inline"
+          :value="searchQuery"
+          placeholder="搜索文件名..."
+          @input="handleSearchInput"
+          @keydown.escape="handleSearchClear"
+        />
+        <button
+          v-if="searchQuery"
+          class="search-clear-inline"
+          @click="handleSearchClear"
+        >
+          <i class="fas fa-times"></i>
+        </button>
       </div>
 
-      <div class="filter-right">
-        <span class="file-count">{{ total }} 个文件</span>
+      <div class="bar-divider"></div>
+
+      <!-- 来源+文件夹 统一下拉 -->
+      <div class="filter-select-wrap">
+        <i class="fas fa-filter filter-icon"></i>
+        <select v-model="filterValue" @change="handleFilterValueChange" class="filter-select">
+          <optgroup label="来源">
+            <option value="all">全部文件</option>
+            <option value="upload">我的上传</option>
+            <option value="chat">聊天文件</option>
+          </optgroup>
+          <optgroup label="快捷">
+            <option value="starred">⭐ 星标文件</option>
+          </optgroup>
+          <optgroup v-if="folders.length" label="文件夹">
+            <option v-for="folder in folders" :key="'f-'+folder.id" :value="'folder-'+folder.id">
+              📁 {{ folder.name }}
+            </option>
+          </optgroup>
+        </select>
+        <i class="fas fa-chevron-down select-arrow"></i>
       </div>
+
+      <!-- 日期筛选 -->
+      <FileDateFilter
+        :date-from="dateFrom"
+        :date-to="dateTo"
+        @change="handleDateChange"
+        @clear="handleDateClear"
+      />
+
+      <!-- 排序 -->
+      <div class="filter-select-wrap">
+        <i class="fas fa-sort-amount-down filter-icon"></i>
+        <select v-model="sortValue" @change="handleSortChange" class="filter-select">
+          <option value="created_at_desc">最新优先</option>
+          <option value="created_at_asc">最早优先</option>
+          <option value="name_asc">名称 A→Z</option>
+          <option value="name_desc">名称 Z→A</option>
+        </select>
+        <i class="fas fa-chevron-down select-arrow"></i>
+      </div>
+
+      <!-- 视图切换 -->
+      <div class="view-toggle">
+        <button
+          :class="['toggle-btn', { active: viewMode === 'grid' }]"
+          title="网格视图"
+          @click="viewMode = 'grid'"
+        >
+          <i class="fas fa-th"></i>
+        </button>
+        <button
+          :class="['toggle-btn', { active: viewMode === 'list' }]"
+          title="列表视图"
+          @click="viewMode = 'list'"
+        >
+          <i class="fas fa-list"></i>
+        </button>
+      </div>
+
+      <span class="file-count">{{ total }} 个文件</span>
     </div>
 
     <!-- 主内容区域 -->
@@ -90,6 +125,7 @@
         :filter-type="filterType"
         :show-starred="showStarred"
         :has-files="hasFiles"
+        :view-mode="viewMode"
         @refresh="refresh"
         @search="handleSearch"
         @filter-change="handleFilterChange"
@@ -181,6 +217,7 @@ import FileList from './file/FileList.vue'
 import CreateFolderModal from './file/CreateFolderModal.vue'
 import FilePreviewModal from './file/FilePreviewModal.vue'
 import FileActionsModal from './file/FileActionsModal.vue'
+import FileDateFilter from './file/FileDateFilter.vue'
 import AppHeader from './AppHeader.vue'
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
@@ -201,6 +238,10 @@ const {
   showStarred,
   sourceFilter,
   hasFiles,
+  sortBy,
+  sortOrder,
+  dateFrom,
+  dateTo,
   loadFiles,
   refresh,
   changePage,
@@ -208,6 +249,9 @@ const {
   changeFilterType,
   toggleStarred,
   changeSource,
+  changeSort,
+  changeDateRange,
+  clearDateRange,
   uploadFile,
   deleteFile,
   toggleFileStar
@@ -236,7 +280,8 @@ const contextMenu = ref({
 })
 
 const folders = ref<FolderItem[]>([])
-const selectedFolderId = ref<number | null | -1>(null)
+const filterValue = ref('all')
+const viewMode = ref<'grid' | 'list'>('list')
 
 const currentFolderPath = computed(() => {
   if (!selectedFolder.value) return ''
@@ -247,18 +292,45 @@ const handleFolderSelect = (folder: FolderNode) => {
   changeFolder(folder.id)
 }
 
-const handleFolderChange = () => {
-  if (selectedFolderId.value === -1) {
+const handleFilterValueChange = () => {
+  const val = filterValue.value
+  if (val === 'all') {
+    showStarred.value = false
+    changeSource(null)
+    changeFolder(null)
+  } else if (val === 'upload' || val === 'chat') {
+    showStarred.value = false
+    changeFolder(null)
+    changeSource(val)
+  } else if (val === 'starred') {
     showStarred.value = true
     changeFolder(null)
-  } else {
+    changeSource(null)
+  } else if (val.startsWith('folder-')) {
+    const folderId = parseInt(val.replace('folder-', ''))
     showStarred.value = false
-    changeFolder(selectedFolderId.value)
+    changeSource(null)
+    changeFolder(folderId)
   }
 }
 
 const handleSearch = (query: string) => {
   searchQuery.value = query
+}
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const handleSearchInput = (event: Event) => {
+  const value = (event.target as HTMLInputElement).value
+  searchQuery.value = value
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    searchQuery.value = value
+  }, 300)
+}
+
+const handleSearchClear = () => {
+  searchQuery.value = ''
 }
 
 const handleFilterChange = (type: string) => {
@@ -267,6 +339,33 @@ const handleFilterChange = (type: string) => {
 
 const handleSourceChange = (source: string | null) => {
   changeSource(source)
+}
+
+const sortValue = ref('created_at_desc')
+
+const handleSortChange = () => {
+  const val = sortValue.value
+  let field: string
+  let order: string
+  if (val.startsWith('created_at_')) {
+    field = 'created_at'
+    order = val.replace('created_at_', '')
+  } else if (val.startsWith('name_')) {
+    field = 'name'
+    order = val.replace('name_', '')
+  } else {
+    field = 'created_at'
+    order = 'desc'
+  }
+  changeSort(field, order)
+}
+
+const handleDateChange = (from: string, to: string) => {
+  changeDateRange(from, to)
+}
+
+const handleDateClear = () => {
+  clearDateRange()
 }
 
 const handleFilePreview = (file: FileItem) => {
@@ -427,7 +526,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--content-bg, #f5f7fa);
+  background: var(--card-bg, #fff);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -436,130 +535,170 @@ onBeforeUnmount(() => {
 .filter-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
+  gap: 10px;
+  padding: 10px 20px;
   background: var(--card-bg, #fff);
   border-bottom: 1px solid var(--border-color, #e8ecf0);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-.filter-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.filter-right {
-  display: flex;
-  align-items: center;
-}
-
-.file-count {
-  font-size: 13px;
+/* 内联搜索 */
+.search-icon-inline {
   color: var(--text-secondary, #8c95a6);
-  font-weight: 500;
-}
-
-/* 筛选标签 */
-.filter-chips {
-  display: flex;
-  gap: 6px;
-}
-
-.chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid var(--border-color, #e8ecf0);
-  background: var(--card-bg, #fff);
-  border-radius: 20px;
-  cursor: pointer;
-  color: var(--text-secondary, #8c95a6);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.chip i {
   font-size: 12px;
+  flex-shrink: 0;
 }
 
-.chip:hover {
-  border-color: var(--primary-color, #4f6ef7);
-  color: var(--primary-color, #4f6ef7);
-  background: rgba(79, 110, 247, 0.04);
-}
-
-.chip.active {
-  background: var(--primary-color, #4f6ef7);
-  border-color: var(--primary-color, #4f6ef7);
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(79, 110, 247, 0.3);
-}
-
-.chip.active i {
-  color: #fff;
-}
-
-/* 分隔线 */
-.filter-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--border-color, #e8ecf0);
-}
-
-/* 文件夹选择器 */
-.folder-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid var(--border-color, #e8ecf0);
-  border-radius: 10px;
-  background: var(--card-bg, #fff);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.folder-picker:hover {
-  border-color: var(--primary-color, #4f6ef7);
-  box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.08);
-}
-
-.picker-icon {
-  color: var(--primary-color, #4f6ef7);
-  font-size: 14px;
-}
-
-.picker-select {
+.search-input-inline {
   border: none;
   background: transparent;
   color: var(--text-color, #4a5568);
-  font-size: 13px;
+  font-size: 12px;
+  outline: none;
+  width: 120px;
+  min-width: 60px;
+  flex-shrink: 1;
+}
+
+.search-input-inline::placeholder {
+  color: var(--text-secondary, #8c95a6);
+}
+
+.search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--border-color, #e8ecf0);
+  border-radius: 16px;
+  transition: border-color 0.2s ease;
+}
+
+.search-wrap:focus-within {
+  border-color: var(--primary-color, #4f6ef7);
+}
+
+.search-clear-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--hover-color, #f0f2f5);
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text-secondary, #8c95a6);
+  font-size: 9px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.search-clear-inline:hover {
+  background: var(--border-color, #e8ecf0);
+  color: var(--text-color, #4a5568);
+}
+
+.bar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color, #e8ecf0);
+  flex-shrink: 0;
+}
+
+.file-count {
+  font-size: 12px;
+  color: var(--text-secondary, #8c95a6);
+  font-weight: 500;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 统一下拉选择器 */
+.filter-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--border-color, #e8ecf0);
+  border-radius: 16px;
+  background: var(--card-bg, #fff);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.filter-select-wrap:hover {
+  border-color: var(--primary-color, #4f6ef7);
+}
+
+.filter-icon {
+  color: var(--text-secondary, #8c95a6);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.filter-select {
+  border: none;
+  background: transparent;
+  color: var(--text-color, #4a5568);
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   outline: none;
   appearance: none;
-  padding-right: 16px;
-  min-width: 120px;
+  padding-right: 10px;
 }
 
-.picker-arrow {
+.select-arrow {
   color: var(--text-secondary, #8c95a6);
-  font-size: 10px;
+  font-size: 9px;
   position: absolute;
-  right: 12px;
+  right: 10px;
   pointer-events: none;
+}
+
+/* 视图切换 */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--hover-color, #f0f2f5);
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.toggle-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #8c95a6);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.toggle-btn:hover {
+  color: var(--text-color, #4a5568);
+}
+
+.toggle-btn.active {
+  background: var(--card-bg, #fff);
+  color: var(--primary-color, #4f6ef7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* ===== 主内容区域 ===== */
 .app-content {
   flex: 1;
   overflow: hidden;
-  background: var(--content-bg, #f5f7fa);
+  background: var(--card-bg, #fff);
 }
 
 /* ===== 右键菜单 ===== */
@@ -625,48 +764,75 @@ onBeforeUnmount(() => {
 }
 
 /* ===== 响应式 ===== */
-@media (max-width: 768px) {
-  .app-nav {
-    padding: 0 12px;
-    height: 48px;
-  }
-
-  .nav-title {
-    font-size: 15px;
-  }
-
-  .nav-btn span {
-    display: none;
-  }
-
+@media (max-width: 1024px) {
   .filter-bar {
-    padding: 10px 12px;
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
-  }
-
-  .filter-left {
-    flex-wrap: wrap;
+    padding: 8px 16px;
     gap: 8px;
   }
 
-  .filter-divider {
+  .search-input-inline {
+    width: 100px;
+  }
+
+  .file-count {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .filter-bar {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+
+  .search-input-inline {
+    width: 80px;
+  }
+
+  .filter-select-wrap {
+    padding: 3px 8px;
+  }
+
+  .filter-select {
+    font-size: 11px;
+    padding-right: 10px;
+  }
+
+  .filter-icon {
+    font-size: 10px;
+  }
+
+  .select-arrow {
     display: none;
   }
 
-  .chip {
-    padding: 5px 10px;
-    font-size: 12px;
+  .view-toggle {
+    padding: 1px;
   }
 
-  .folder-picker {
-    width: 100%;
+  .toggle-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .filter-bar {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
-  .picker-select {
-    flex: 1;
-    min-width: 0;
+  .bar-divider {
+    display: none;
+  }
+
+  .search-input-inline {
+    width: 80px;
+  }
+
+  .filter-select-wrap {
+    flex: 0 0 auto;
   }
 }
 </style>

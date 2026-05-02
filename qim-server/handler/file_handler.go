@@ -108,6 +108,10 @@ func GetFiles(c *gin.Context) {
 	starred := c.Query("starred")
 	fileType := c.Query("type")
 	search := c.Query("search")
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	dateFrom := c.Query("date_from")
+	dateTo := c.Query("date_to")
 
 	db := database.GetDB()
 	query := db.Model(&model.File{}).Where("user_id = ?", userID)
@@ -154,6 +158,28 @@ func GetFiles(c *gin.Context) {
 		query = query.Where("name LIKE ? OR original_name LIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
+	// 按日期范围筛选
+	if dateFrom != "" {
+		if t, err := time.Parse("2006-01-02", dateFrom); err == nil {
+			query = query.Where("created_at >= ?", t)
+		}
+	}
+	if dateTo != "" {
+		if t, err := time.Parse("2006-01-02", dateTo); err == nil {
+			query = query.Where("created_at <= ?", t.Add(24*time.Hour-1*time.Second))
+		}
+	}
+
+	// 排序
+	allowedSortFields := map[string]bool{"created_at": true, "name": true, "size": true, "updated_at": true}
+	if !allowedSortFields[sortBy] {
+		sortBy = "created_at"
+	}
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	orderClause := sortBy + " " + sortOrder
+
 	// 统计总数
 	var total int64
 	query.Count(&total)
@@ -161,7 +187,7 @@ func GetFiles(c *gin.Context) {
 	// 分页查询
 	var files []model.File
 	offset := (page - 1) * pageSize
-	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&files)
+	query.Order(orderClause).Offset(offset).Limit(pageSize).Find(&files)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,

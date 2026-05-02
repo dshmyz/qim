@@ -12,6 +12,7 @@
           :key="task.id"
           :task="task"
           @click="emit('taskClick', $event)"
+          @contextmenu="(event, task) => emit('taskContextmenu', event, task)"
         />
         <div v-if="!todayTasks.length" class="workspace-empty">今天没有待办任务</div>
       </div>
@@ -28,6 +29,7 @@
           :key="task.id"
           :task="task"
           @click="emit('taskClick', $event)"
+          @contextmenu="(event, task) => emit('taskContextmenu', event, task)"
         />
       </div>
     </div>
@@ -43,6 +45,7 @@
           :key="task.id"
           :task="task"
           @click="emit('taskClick', $event)"
+          @contextmenu="(event, task) => emit('taskContextmenu', event, task)"
         />
       </div>
     </div>
@@ -67,6 +70,7 @@ const myTasks = computed(() => store.myTasks)
 
 const emit = defineEmits<{
   taskClick: [task: Task]
+  taskContextmenu: [event: MouseEvent, task: Task]
 }>()
 </script>
 
@@ -78,6 +82,7 @@ const emit = defineEmits<{
   gap: var(--spacing-6);
   overflow-y: auto;
   padding: var(--spacing-4);
+  min-height: 0;
 }
 .workspace-section-header {
   display: flex;

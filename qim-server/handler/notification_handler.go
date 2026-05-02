@@ -433,6 +433,10 @@ func CreateTask(c *gin.Context) {
 		DueDate     string `json:"due_date"`
 		Priority    string `json:"priority"`
 		Status      string `json:"status"`
+		AssigneeID  string `json:"assignee_id"`
+		Tags        string `json:"tags"`
+		SubTasks    string `json:"sub_tasks"`
+		Position    *int   `json:"position"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -460,6 +464,11 @@ func CreateTask(c *gin.Context) {
 		status = "todo"
 	}
 
+	position := 0
+	if req.Position != nil {
+		position = *req.Position
+	}
+
 	task := model.Task{
 		UserID:      userID.(uint),
 		Title:       req.Title,
@@ -467,6 +476,10 @@ func CreateTask(c *gin.Context) {
 		DueDate:     dueDate,
 		Priority:    priority,
 		Status:      status,
+		AssigneeID:  req.AssigneeID,
+		Tags:        req.Tags,
+		SubTasks:    req.SubTasks,
+		Position:    position,
 	}
 
 	if err := db.Create(&task).Error; err != nil {
@@ -496,6 +509,10 @@ func UpdateTask(c *gin.Context) {
 		DueDate     string `json:"due_date"`
 		Priority    string `json:"priority"`
 		Status      string `json:"status"`
+		AssigneeID  string `json:"assignee_id"`
+		Tags        string `json:"tags"`
+		SubTasks    string `json:"sub_tasks"`
+		Position    *int   `json:"position"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -527,6 +544,18 @@ func UpdateTask(c *gin.Context) {
 	}
 	if req.Status != "" {
 		task.Status = req.Status
+	}
+	if req.AssigneeID != "" {
+		task.AssigneeID = req.AssigneeID
+	}
+	if req.Tags != "" {
+		task.Tags = req.Tags
+	}
+	if req.SubTasks != "" {
+		task.SubTasks = req.SubTasks
+	}
+	if req.Position != nil {
+		task.Position = *req.Position
 	}
 
 	if err := db.Save(&task).Error; err != nil {

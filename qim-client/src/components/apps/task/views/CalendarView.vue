@@ -21,6 +21,7 @@
             class="cal-task"
             :class="'priority-' + task.priority"
             @click="emit('taskClick', task)"
+            @contextmenu.prevent="emit('taskContextmenu', $event, task)"
           >
             {{ task.title }}
           </div>
@@ -85,6 +86,7 @@ function nextMonth() {
 
 const emit = defineEmits<{
   taskClick: [task: Task]
+  taskContextmenu: [event: MouseEvent, task: Task]
 }>()
 </script>
 
@@ -94,6 +96,7 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 .calendar-nav {
   display: flex;

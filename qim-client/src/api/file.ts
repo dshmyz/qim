@@ -54,6 +54,10 @@ export interface FileListParams {
   starred?: boolean
   type?: string
   search?: string
+  sort_by?: string
+  sort_order?: string
+  date_from?: string
+  date_to?: string
   page?: number
   page_size?: number
 }

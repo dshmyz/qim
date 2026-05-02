@@ -293,8 +293,12 @@ type Task struct {
 	Title       string         `json:"title" gorm:"size:500;not null"`
 	Description string         `json:"description" gorm:"type:text"`
 	DueDate     *time.Time     `json:"due_date"`
-	Priority    string         `json:"priority" gorm:"size:20;default:'medium'"` // low, medium, high
-	Status      string         `json:"status" gorm:"size:20;default:'todo'"`     // todo, in_progress, completed
+	Priority    string         `json:"priority" gorm:"size:20;default:'medium'"`
+	Status      string         `json:"status" gorm:"size:20;default:'todo'"`
+	AssigneeID  string         `json:"assignee_id" gorm:"size:100"`
+	Tags        string         `json:"tags" gorm:"type:text"`
+	SubTasks    string         `json:"sub_tasks" gorm:"type:text"`
+	Position    int            `json:"position" gorm:"default:0"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

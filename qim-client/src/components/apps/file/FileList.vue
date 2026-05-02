@@ -1,32 +1,5 @@
 <template>
   <div class="file-list">
-    <!-- 工具栏 -->
-    <div class="file-list-toolbar">
-      <div class="toolbar-left">
-        <span class="file-count">共 {{ total }} 个文件</span>
-      </div>
-      <div class="toolbar-right">
-        <!-- 视图切换 -->
-        <div class="view-toggle">
-          <button
-            :class="['toggle-btn', { active: viewMode === 'grid' }]"
-            title="网格视图"
-            @click="viewMode = 'grid'"
-          >
-            <i class="fas fa-th"></i>
-          </button>
-          <button
-            :class="['toggle-btn', { active: viewMode === 'list' }]"
-            title="列表视图"
-            @click="viewMode = 'list'"
-          >
-            <i class="fas fa-list"></i>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 文件列表 -->
     <div
       ref="scrollContainerRef"
       class="file-list-container"
@@ -50,15 +23,16 @@
       </div>
 
       <!-- 列表视图 -->
-      <div v-else class="file-table">
+      <div v-else class="file-table" :style="gridStyle">
         <!-- 表头 -->
-        <div class="file-table-header">
-          <div class="header-name">文件名</div>
-          <div class="header-type">类型</div>
-          <div class="header-size">大小</div>
-          <div class="header-date">修改时间</div>
-          <div class="header-star">星标</div>
-          <div class="header-actions">操作</div>
+        <div class="file-table-header" :style="gridStyle">
+          <div class="header-cell header-icon"></div>
+          <div class="header-cell header-name">文件名</div>
+          <div class="header-cell header-type">类型</div>
+          <div class="header-cell header-size">大小</div>
+          <div class="header-cell header-date">修改时间</div>
+          <div class="header-cell header-star">星标</div>
+          <div class="header-cell header-actions">操作</div>
         </div>
 
         <!-- 表体 -->
@@ -68,6 +42,7 @@
             :key="file.id"
             :file="file"
             :is-selected="selectedFileIds.has(file.id)"
+            :grid-style="gridStyle"
             @click="handleFileClick"
             @dblclick="handleFileDoubleClick"
             @preview="handleFilePreview"
@@ -102,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { FileItem } from '../../../api/file'
 import FileGridItem from './FileGridItem.vue'
 import FileListItem from './FileListItem.vue'
@@ -116,11 +91,13 @@ interface Props {
   total: number
   loading?: boolean
   hasMore?: boolean
+  viewMode?: 'grid' | 'list'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
-  hasMore: false
+  hasMore: false,
+  viewMode: 'list'
 })
 
 const emit = defineEmits<{
@@ -133,80 +110,74 @@ const emit = defineEmits<{
   (e: 'selection-change', fileIds: Set<number>): void
 }>()
 
-const viewMode = ref<'grid' | 'list'>('grid')
 const selectedFileIds = ref<Set<number>>(new Set())
 const scrollContainerRef = ref<HTMLElement | null>(null)
 
-// 处理文件点击
+const columnMinWidths = [40, 120, 60, 60, 100, 40, 160]
+
+const gridStyle = computed(() => {
+  const m = columnMinWidths
+  return {
+    gridTemplateColumns: `minmax(${m[0]}px, ${m[0]}px) minmax(${m[1]}px, 1fr) minmax(${m[2]}px, 80px) minmax(${m[3]}px, 80px) minmax(${m[4]}px, 140px) minmax(${m[5]}px, ${m[5]}px) minmax(${m[6]}px, ${m[6]}px)`
+  } as Record<string, string>
+})
+
 function handleFileClick(file: FileItem) {
   const newSelection = new Set(selectedFileIds.value)
   if (newSelection.has(file.id)) {
     newSelection.delete(file.id)
   } else {
-    newSelection.clear() // 单选模式
+    newSelection.clear()
     newSelection.add(file.id)
   }
   selectedFileIds.value = newSelection
   emit('selection-change', newSelection)
 }
 
-// 处理文件双击
 function handleFileDoubleClick(file: FileItem) {
   emit('preview', file)
 }
 
-// 处理文件预览
 function handleFilePreview(file: FileItem) {
   emit('preview', file)
 }
 
-// 处理文件下载
 function handleFileDownload(file: FileItem) {
   emit('download', file)
 }
 
-// 处理文件星标
 function handleFileStar(file: FileItem) {
   emit('star', file)
 }
 
-// 处理文件分享
 function handleFileShare(file: FileItem) {
   emit('share', file)
 }
 
-// 处理文件删除
 function handleFileDelete(file: FileItem) {
   emit('delete', file)
 }
 
-// 处理滚动（无限滚动）
 function handleScroll() {
   if (!scrollContainerRef.value || props.loading || !props.hasMore) return
-
   const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.value
   const scrollBottom = scrollHeight - scrollTop - clientHeight
-
-  // 距离底部 100px 时触发加载
   if (scrollBottom < 100) {
     loadMore()
   }
 }
 
-// 加载更多
 function loadMore() {
   if (!props.loading && props.hasMore) {
     emit('load-more')
   }
 }
 
-// 清除选择
 function clearSelection() {
   selectedFileIds.value = new Set()
   emit('selection-change', selectedFileIds.value)
 }
 
-// 暴露方法给父组件
 defineExpose({
   clearSelection
 })
@@ -220,75 +191,12 @@ defineExpose({
   overflow: hidden;
 }
 
-/* 工具栏 */
-.file-list-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--card-bg);
-  flex-shrink: 0;
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.file-count {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.view-toggle {
-  display: flex;
-  gap: 4px;
-  background: var(--hover-color);
-  padding: 4px;
-  border-radius: 8px;
-}
-
-.toggle-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all var(--transition-base);
-}
-
-.toggle-btn:hover {
-  color: var(--text-color);
-}
-
-.toggle-btn.active {
-  background: var(--card-bg);
-  color: var(--primary-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* 文件列表容器 */
 .file-list-container {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* 网格视图 */
 .file-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -296,7 +204,6 @@ defineExpose({
   padding: 16px;
 }
 
-/* 列表视图 */
 .file-table {
   display: flex;
   flex-direction: column;
@@ -304,9 +211,8 @@ defineExpose({
 
 .file-table-header {
   display: grid;
-  grid-template-columns: 40px 1fr 100px 100px 140px 40px 140px;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 0;
+  padding: 0 16px;
   background: var(--hover-color);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
@@ -317,15 +223,25 @@ defineExpose({
   z-index: 10;
 }
 
-.header-name {
-  grid-column: 2;
+.header-cell {
+  display: flex;
+  align-items: center;
+  padding: 10px 8px;
+  white-space: nowrap;
+}
+
+.header-icon {
+  justify-content: center;
+}
+
+.header-actions {
+  justify-content: center;
 }
 
 .file-table-body {
   flex: 1;
 }
 
-/* 加载状态 */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -351,7 +267,6 @@ defineExpose({
   }
 }
 
-/* 加载更多 */
 .load-more {
   display: flex;
   justify-content: center;
@@ -373,7 +288,6 @@ defineExpose({
   background: var(--primary-hover);
 }
 
-/* 空状态 */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -394,34 +308,55 @@ defineExpose({
   margin: 0;
 }
 
-/* 响应式 */
+/* ===== 响应式 ===== */
 @media (max-width: 1024px) {
-  .file-table-header {
-    grid-template-columns: 40px 1fr 80px 80px 120px 40px 120px;
-    gap: 8px;
-    padding: 10px 12px;
+  .file-table-header,
+  .file-table-body :deep(.file-list-item) {
+    grid-template-columns: 40px minmax(120px, 1fr) minmax(60px, 80px) minmax(60px, 80px) minmax(100px, 140px) 0px 160px;
+  }
+
+  .header-star,
+  .file-table-body :deep(.file-star) {
+    display: none;
   }
 }
 
 @media (max-width: 768px) {
-  .file-list-toolbar {
-    padding: 8px 12px;
-  }
-
-  .file-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .file-table-header {
-    grid-template-columns: 40px 1fr 60px 40px 100px;
-    gap: 8px;
-    padding: 8px;
+  .file-table-header,
+  .file-table-body :deep(.file-list-item) {
+    grid-template-columns: 40px minmax(100px, 1fr) 0px minmax(60px, 80px) minmax(80px, 120px) 0px 0px;
   }
 
   .header-type,
-  .header-star {
+  .header-star,
+  .header-actions,
+  .file-table-body :deep(.file-type),
+  .file-table-body :deep(.file-star),
+  .file-table-body :deep(.file-actions) {
+    display: none;
+  }
+
+  .file-table-header {
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .file-table-header,
+  .file-table-body :deep(.file-list-item) {
+    grid-template-columns: 0px minmax(80px, 1fr) 0px 0px minmax(80px, 120px) 0px 0px;
+  }
+
+  .header-icon,
+  .header-type,
+  .header-size,
+  .header-star,
+  .header-actions,
+  .file-table-body :deep(.file-icon),
+  .file-table-body :deep(.file-type),
+  .file-table-body :deep(.file-size),
+  .file-table-body :deep(.file-star),
+  .file-table-body :deep(.file-actions) {
     display: none;
   }
 }

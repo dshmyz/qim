@@ -25,6 +25,14 @@ export function useFilePagination() {
   const showStarred = ref(false)
   // 文件来源筛选
   const sourceFilter = ref<string | null>(null)
+  // 排序字段
+  const sortBy = ref<string>('created_at')
+  // 排序方向
+  const sortOrder = ref<string>('desc')
+  // 日期范围 - 起始
+  const dateFrom = ref<string>('')
+  // 日期范围 - 结束
+  const dateTo = ref<string>('')
   // 加载状态
   const isLoading = ref(false)
   // 错误信息
@@ -45,7 +53,11 @@ export function useFilePagination() {
         search: searchQuery.value || undefined,
         type: filterType.value || undefined,
         starred: showStarred.value || undefined,
-        source: sourceFilter.value || undefined
+        source: sourceFilter.value || undefined,
+        sort_by: sortBy.value,
+        sort_order: sortOrder.value,
+        date_from: dateFrom.value || undefined,
+        date_to: dateTo.value || undefined
       }
 
       const response = await fileApi.getFiles(params)
@@ -133,6 +145,36 @@ export function useFilePagination() {
    */
   const changeSource = async (source: string | null) => {
     sourceFilter.value = source
+    currentPage.value = 1
+    await loadFiles()
+  }
+
+  /**
+   * 切换排序
+   */
+  const changeSort = async (field: string, order: string) => {
+    sortBy.value = field
+    sortOrder.value = order
+    currentPage.value = 1
+    await loadFiles()
+  }
+
+  /**
+   * 设置日期范围
+   */
+  const changeDateRange = async (from: string, to: string) => {
+    dateFrom.value = from
+    dateTo.value = to
+    currentPage.value = 1
+    await loadFiles()
+  }
+
+  /**
+   * 清除日期范围
+   */
+  const clearDateRange = async () => {
+    dateFrom.value = ''
+    dateTo.value = ''
     currentPage.value = 1
     await loadFiles()
   }
@@ -253,6 +295,10 @@ export function useFilePagination() {
     filterType,
     showStarred,
     sourceFilter,
+    sortBy,
+    sortOrder,
+    dateFrom,
+    dateTo,
     isLoading,
     error,
 
@@ -270,6 +316,9 @@ export function useFilePagination() {
     changeFilterType,
     toggleStarred,
     changeSource,
+    changeSort,
+    changeDateRange,
+    clearDateRange,
     uploadFile,
     deleteFile,
     toggleFileStar,

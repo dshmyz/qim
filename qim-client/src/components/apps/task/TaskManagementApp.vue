@@ -8,37 +8,44 @@
       </template>
     </AppHeader>
     <div class="task-app-body">
-      <TaskSidebar />
+      <TaskSidebar @create="showCreateModal = true" />
       <div class="task-app-main">
-        <TaskToolbar @create="showCreateModal = true" />
         <div class="task-app-content">
-          <KanbanView
-            v-if="store.currentView === 'kanban'"
-            @task-click="onTaskClick"
-            @task-contextmenu="onTaskContextmenu"
-          />
-          <ListView
-            v-else-if="store.currentView === 'list'"
-            @task-click="onTaskClick"
-            @task-contextmenu="onTaskContextmenu"
-          />
-          <CalendarView
-            v-else-if="store.currentView === 'calendar'"
-            @task-click="onTaskClick"
-          />
-          <MyWorkspace
-            v-else-if="store.currentView === 'workspace'"
-            @task-click="onTaskClick"
-          />
+          <div v-if="store.loading" class="task-loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>加载中...</span>
+          </div>
+          <template v-else>
+            <KanbanView
+              v-if="store.currentView === 'kanban'"
+              @task-click="onTaskClick"
+              @task-contextmenu="onTaskContextmenu"
+            />
+            <ListView
+              v-else-if="store.currentView === 'list'"
+              @task-click="onTaskClick"
+              @task-contextmenu="onTaskContextmenu"
+            />
+            <CalendarView
+              v-else-if="store.currentView === 'calendar'"
+              @task-click="onTaskClick"
+              @task-contextmenu="onTaskContextmenu"
+            />
+            <MyWorkspace
+              v-else-if="store.currentView === 'workspace'"
+              @task-click="onTaskClick"
+              @task-contextmenu="onTaskContextmenu"
+            />
+          </template>
         </div>
       </div>
-      <TaskDetailPanel
-        :task="store.selectedTask"
-        :available-tags="availableTags"
-        :contacts="contacts"
-        @close="store.selectTask(null)"
-      />
     </div>
+    <TaskDetailPanel
+      :task="store.selectedTask"
+      :available-tags="availableTags"
+      :contacts="contacts"
+      @close="store.selectTask(null)"
+    />
 
     <TaskCreateModal
       :visible="showCreateModal"
@@ -76,9 +83,9 @@
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import type { Task, TaskStatus, TaskPriority, Tag, TaskUser } from '../../../types/task'
 import { useTaskStore } from '../../../stores/task'
+import { request } from '../../../composables/useRequest'
 import AppHeader from '../AppHeader.vue'
 import TaskSidebar from './TaskSidebar.vue'
-import TaskToolbar from './TaskToolbar.vue'
 import KanbanView from './views/KanbanView.vue'
 import ListView from './views/ListView.vue'
 import CalendarView from './views/CalendarView.vue'
@@ -113,6 +120,7 @@ defineEmits<{
 
 onMounted(() => {
   store.loadTasks()
+  loadContacts()
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onGlobalClick)
 })
@@ -121,6 +129,36 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   document.removeEventListener('click', onGlobalClick)
 })
+
+async function loadContacts() {
+  try {
+    const response: any = await request('/api/v1/organization/tree')
+    if (response.code === 0 && response.data) {
+      const users: TaskUser[] = []
+      const collectUsers = (departments: any[]) => {
+        for (const dept of departments) {
+          if (dept.employees) {
+            for (const emp of dept.employees) {
+              users.push({
+                id: String(emp.id),
+                name: emp.nickname || emp.username || '',
+                avatar: emp.avatar || ''
+              })
+            }
+          }
+          if (dept.subDepartments) {
+            collectUsers(dept.subDepartments)
+          }
+        }
+      }
+      collectUsers(response.data)
+      contacts.value = users
+      store.setContacts(users)
+    }
+  } catch (e) {
+    console.error('Failed to load contacts:', e)
+  }
+}
 
 function onTaskClick(task: Task) {
   store.selectTask(task.id)
@@ -217,6 +255,7 @@ async function onSubmitTask(data: {
     }
     showCreateModal.value = false
     store.selectTask(null)
+    store.refreshTasks()
   } catch {
     QMessage.error('操作失败，请重试')
   }
@@ -237,6 +276,7 @@ async function onSubmitTask(data: {
 .task-app-body {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 .task-app-main {
@@ -250,9 +290,21 @@ async function onSubmitTask(data: {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
   padding: var(--spacing-3);
-  background: var(--content-bg);
+  background: var(--card-bg, #fff);
 }
+.task-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-3);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.task-loading i { font-size: 24px; color: #8b5cf6; }
 .icon-btn {
   background: none;
   border: none;
