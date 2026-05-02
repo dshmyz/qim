@@ -2917,10 +2917,25 @@ const mainApps = computed(() => {
 
 // 系统应用列表
 const systemApps = computed(() => {
-  return [
+  const apps = [
     { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
   ]
+  
+  // 添加自定义应用
+  customApps.value.forEach(app => {
+    apps.push({
+      id: app.id,
+      name: app.name,
+      icon: app.icon,
+      description: '自定义应用'
+    })
+  })
+  
+  return apps
 })
+
+// 自定义应用列表
+const customApps = ref<any[]>([])
 
 
 // 加载用户创建的应用
@@ -2935,21 +2950,25 @@ const loadUserApps = async () => {
     })
     if (response.data.code === 0) {
       const userApps = response.data.data.list || response.data.data
-      // 找到自定义应用分类
+      // 更新自定义应用列表
+      customApps.value = userApps.map((app: any) => ({
+        id: 'user-' + app.id.toString(),
+        name: app.name,
+        icon: app.icon,
+        url: app.url,
+        openType: app.open_type || app.openType || 'in-app'
+      }))
+      
+      // 同时更新 appCategories(保持兼容性)
       const customCategory = appCategories.value.find(cat => cat.id === '2')
       if (customCategory) {
-        // 清空现有的自定义应用
-        customCategory.apps = []
-        // 添加用户创建的应用
-        userApps.forEach((app: any) => {
-          customCategory.apps.push({
-            id: 'user-' + app.id.toString(),
-            name: app.name,
-            icon: app.icon,
-            url: app.url,
-            openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
-          })
-        })
+        customCategory.apps = customApps.value.map(app => ({
+          id: app.id,
+          name: app.name,
+          icon: app.icon,
+          url: app.url,
+          openType: app.openType
+        }))
       }
     }
   } catch (error) {
