@@ -256,31 +256,35 @@ defineExpose({
 }
 
 .list-action-btn {
-  padding: 6px 12px;
-  background: var(--button-bg, #f3f4f6);
-  color: var(--text-secondary, #374151);
-  border: none;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .list-action-btn:hover {
-  background: var(--button-bg-hover, #e5e7eb);
+  background: var(--hover-bg, #f9fafb);
+  border-color: var(--primary-color, #667eea);
+  color: var(--primary-color, #667eea);
 }
 
 .list-action-btn.active {
   background: var(--primary-color, #667eea);
   color: white;
+  border-color: var(--primary-color, #667eea);
 }
 
 .batch-toolbar {
   padding: 12px 20px;
-  background: var(--color-gray-50, #f9fafb);
+  background: var(--hover-bg, #f9fafb);
   border-bottom: 1px solid var(--border-color, #e5e7eb);
   display: flex;
   align-items: center;
@@ -317,15 +321,16 @@ defineExpose({
 }
 
 .batch-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .batch-btn:disabled {
@@ -334,21 +339,23 @@ defineExpose({
 }
 
 .batch-btn--export {
-  background: var(--accent-bg, rgba(102, 126, 234, 0.1));
+  background: transparent;
   color: var(--accent-color, #667eea);
+  border-color: var(--accent-color, #667eea);
 }
 
 .batch-btn--export:hover:not(:disabled) {
-  background: var(--accent-bg-hover, rgba(102, 126, 234, 0.2));
+  background: var(--accent-bg, rgba(102, 126, 234, 0.1));
 }
 
 .batch-btn--delete {
-  background: var(--danger-bg, rgba(239, 68, 68, 0.1));
+  background: transparent;
   color: var(--danger-color, #ef4444);
+  border-color: var(--danger-color, #ef4444);
 }
 
 .batch-btn--delete:hover:not(:disabled) {
-  background: var(--danger-bg-hover, rgba(239, 68, 68, 0.2));
+  background: var(--danger-bg, rgba(239, 68, 68, 0.1));
 }
 
 .list-controls {
