@@ -25,6 +25,7 @@
   --card-bg: #161616;
   --header-panel-bg: #0f0f0f;
   --content-bg: #0a0a0a;
+  --side-options-bg: #0f0f0f;
 }
 
 /* 炫酷黑主题 - 侧边栏内容区域 */
@@ -97,18 +98,18 @@
 
 /* 天青蓝主题 */
 [data-theme="ocean-blue"] {
-  --primary-color: #49bccf;
+  --primary-color: #0284c7;
   --primary-light: #e0f2fe;
   --secondary-color: #f0f9ff;
   --text-color: #0c4a6e;
-  --border-color: #bae6fd;
-  --hover-color: #dbeafe;
-  --active-color: #3aa8b9;
+  --border-color: #7dd3fc;
+  --hover-color: #e0f2fe;
+  --active-color: #1e40af;
   --sidebar-bg: #ffffff;
   --window-controls-bg: #ffffff;
   --context-menu-bg: #ffffff;
   --context-menu-hover: #e0f2fe;
-  --accent-color: #68d8e8;
+  --accent-color: #0ea5e9;
   --text-secondary: #475569;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
@@ -116,11 +117,7 @@
   --list-bg: #f0f9ff;
   --card-bg: #ffffff;
   --header-panel-bg: #e0f2fe;
-}
-
-/* 天青蓝主题 - 左边侧边栏 */
-[data-theme="ocean-blue"] .side-options {
-  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
+  --side-options-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #1e40af 100%);
 }
 
 /* 天青蓝主题 - 文本颜色 */
@@ -133,7 +130,7 @@
 
 /* 天青蓝主题 - 窗口控制栏左侧 */
 [data-theme="ocean-blue"] .window-controls-left {
-  background: linear-gradient(135deg, #49bccf 0%, #68d8e8 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #1e40af 100%);
 }
 
 /* 天青蓝主题 - 侧边栏头部 */
@@ -320,11 +317,7 @@
   --list-bg: #faf5ff;
   --card-bg: #ffffff;
   --header-panel-bg: #f3e8ff;
-}
-
-/* 高雅紫主题 - 左边侧边栏 */
-[data-theme="elegantpurple"] .side-options {
-  background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+  --side-options-bg: linear-gradient(135deg, #c4b5fd 0%, #8b5cf6 50%, #581c87 100%);
 }
 
 /* 高雅紫主题 - 文本颜色 */
@@ -372,11 +365,7 @@
   --list-bg: #fffef8;
   --card-bg: #ffffff;
   --header-panel-bg: #fffef8;
-}
-
-/* 月牙黄主题 - 左边侧边栏 */
-[data-theme="warm-amber"] .side-options {
-  background: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
+  --side-options-bg: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
 }
 
 /* 月牙黄主题 - 文本颜色 */
@@ -424,11 +413,7 @@
   --list-bg: #fff5f5;
   --card-bg: #ffffff;
   --header-panel-bg: #fff5f5;
-}
-
-/* 中国红主题 - 左边侧边栏 */
-[data-theme="chinesered"] .side-options {
-  background: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
+  --side-options-bg: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
 }
 
 /* 中国红主题 - 文本颜色 */
@@ -476,11 +461,7 @@
   --list-bg: #f0fff4;
   --card-bg: #ffffff;
   --header-panel-bg: #f0fff4;
-}
-
-/* 青草绿主题 - 左边侧边栏 */
-[data-theme="grassgreen"] .side-options {
-  background: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
+  --side-options-bg: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
 
 /* 青草绿主题 - 文本颜色 */
@@ -529,6 +510,7 @@
   --card-bg: #ffffff;
   --header-panel-bg: #f8fafc;
   --content-bg: #f9fafb;
+  --side-options-bg: #ffffff;
 }
 
 /* 神圣黄主题（月牙黄） */
@@ -552,11 +534,7 @@
   --list-bg: #fffef8;
   --card-bg: #ffffff;
   --header-panel-bg: #fffef8;
-}
-
-/* 神圣黄主题（月牙黄） - 左边侧边栏 */
-[data-theme="sacredyellow"] .side-options {
-  background: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
+  --side-options-bg: linear-gradient(135deg, #e8d4a0 0%, #f0e2b8 100%);
 }
 
 /* 神圣黄主题（月牙黄） - 文本颜色 */
@@ -599,11 +577,7 @@
   --list-bg: #f0f9ff;
   --card-bg: #ffffff;
   --header-panel-bg: #fde8e8;
-}
-
-/* 地中海主题 - 左边侧边栏 */
-[data-theme="mediterranean-dream"] .side-options {
-  background: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
+  --side-options-bg: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
 }
 
 /* 地中海主题 - 文本颜色 */
@@ -639,11 +613,7 @@
   --list-bg: #fafafa;
   --card-bg: #ffffff;
   --header-panel-bg: #f5f5f5;
-}
-
-/* 单色雅主题 - 左边侧边栏 */
-[data-theme="monochrome-elegance"] .side-options {
-  background: linear-gradient(135deg, #333333 0%, #666666 100%);
+  --side-options-bg: linear-gradient(135deg, #333333 0%, #666666 100%);
 }
 
 /* 单色雅主题 - 文本颜色 */
@@ -661,39 +631,276 @@
 /* 春日花主题 */
 [data-theme="spring-blossom"] {
   --primary-color: #f8bbd9;
-  --primary-light: #fce4ec;
-  --secondary-color: #f3e5f5;
+  --primary-light: #fff9c4;
+  --primary-dark: #e1bee7;
+  --secondary-color: #fffef5;
   --text-color: #4a148c;
-  --border-color: #f8bbd9;
-  --hover-color: #fce4ec;
+  --text-secondary: #f8bbd9;
+  --border-color: #c8e6c9;
+  --hover-color: #fff9c4;
   --active-color: #e1bee7;
   --sidebar-bg: #ffffff;
+  --content-bg: #fffef5;
   --window-controls-bg: #ffffff;
   --context-menu-bg: #ffffff;
-  --context-menu-hover: #fce4ec;
-  --accent-color: #e1bee7;
-  --text-secondary: #7b1fa2;
+  --context-menu-hover: #fff9c4;
+  --accent-color: #f8bbd9;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --panel-bg: #ffffff;
-  --list-bg: #fce4ec;
+  --list-bg: #fffef5;
   --card-bg: #ffffff;
-  --header-panel-bg: #fce4ec;
-}
-
-/* 春日花主题 - 左边侧边栏 */
-[data-theme="spring-blossom"] .side-options {
-  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+  --header-panel-bg: #fff9c4;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --side-options-bg: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
 }
 
 /* 春日花主题 - 文本颜色 */
 [data-theme="spring-blossom"] .window-title,
 [data-theme="spring-blossom"] .option-item,
 [data-theme="spring-blossom"] .option-item.active {
-  color: #4a148c;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 春日花主题 - 窗口控制栏左侧 */
 [data-theme="spring-blossom"] .window-controls-left {
-  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 100%);
+  background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
+}
+
+/* ========================================
+   短链接管理主题变量 - Short Link Management Theme Variables
+   ======================================== */
+
+/* 炫酷黑主题 - 短链接管理 */
+[data-theme="elegant-dark"] .short-link-manager,
+[data-theme="elegant-dark"] .short-link-manager * {
+  --bg-color: #0a0a0a;
+  --card-bg: #161616;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-color-hover: rgba(0, 0, 0, 0.4);
+  --border-color: #374151;
+  --hover-color: #2d3748;
+  --primary-color: #667eea;
+  --primary-light: rgba(102, 126, 234, 0.15);
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --accent-gradient-start: #667eea;
+  --accent-gradient-end: #764ba2;
+  --accent-shadow: rgba(102, 126, 234, 0.3);
+  --accent-color: #667eea;
+  --button-bg: #2d3748;
+  --button-bg-hover: #374151;
+}
+
+/* 天青蓝主题 - 短链接管理 */
+[data-theme="ocean-blue"] .short-link-manager,
+[data-theme="ocean-blue"] .short-link-manager * {
+  --bg-color: #f0f9ff;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --shadow-color-hover: rgba(0, 0, 0, 0.15);
+  --border-color: #7dd3fc;
+  --hover-color: #e0f2fe;
+  --primary-color: #0284c7;
+  --primary-light: rgba(2, 132, 199, 0.1);
+  --text-primary: #0c4a6e;
+  --text-secondary: #475569;
+  --accent-gradient-start: #0ea5e9;
+  --accent-gradient-end: #0284c7;
+  --accent-shadow: rgba(14, 165, 233, 0.2);
+  --accent-color: #0ea5e9;
+  --button-bg: #e0f2fe;
+  --button-bg-hover: #bae6fd;
+}
+
+/* 高雅紫主题 - 短链接管理 */
+[data-theme="elegantpurple"] .short-link-manager,
+[data-theme="elegantpurple"] .short-link-manager * {
+  --bg-color: #faf5ff;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --shadow-color-hover: rgba(0, 0, 0, 0.15);
+  --border-color: #e9d5ff;
+  --hover-color: #ebd6fa;
+  --primary-color: #7e22ce;
+  --primary-light: rgba(126, 34, 206, 0.1);
+  --text-primary: #5b21b6;
+  --text-secondary: #7e22ce;
+  --accent-gradient-start: #8b5cf6;
+  --accent-gradient-end: #a855f7;
+  --accent-shadow: rgba(139, 92, 246, 0.2);
+  --accent-color: #a855f7;
+  --button-bg: #f3e8ff;
+  --button-bg-hover: #e9d5ff;
+}
+
+/* 月牙黄主题 - 短链接管理 */
+[data-theme="warm-amber"] .short-link-manager,
+[data-theme="warm-amber"] .short-link-manager * {
+  --bg-color: #fffef8;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.08);
+  --border-color: #f0e6c8;
+  --hover-color: #f5ecd5;
+  --primary-color: #d4b85f;
+  --primary-light: rgba(212, 184, 95, 0.1);
+  --text-primary: #6b5a2f;
+  --text-secondary: #8b7a50;
+  --accent-gradient-start: #f4a900;
+  --accent-gradient-end: #c1666b;
+  --accent-shadow: rgba(244, 169, 0, 0.2);
+  --accent-color: #e8d4a0;
+  --button-bg: #f5ecd5;
+  --button-bg-hover: #f0e6c8;
+}
+
+/* 中国红主题 - 短链接管理 */
+[data-theme="chinesered"] .short-link-manager,
+[data-theme="chinesered"] .short-link-manager * {
+  --bg-color: #fff5f5;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.08);
+  --border-color: #f5c6c6;
+  --hover-color: #ffe8e8;
+  --primary-color: #c41e3a;
+  --primary-light: rgba(196, 30, 58, 0.1);
+  --text-primary: #5c1a1a;
+  --text-secondary: #8b3a3a;
+  --accent-gradient-start: #c41e3a;
+  --accent-gradient-end: #e85c6c;
+  --accent-shadow: rgba(196, 30, 58, 0.2);
+  --accent-color: #e85c6c;
+  --button-bg: #ffe8e8;
+  --button-bg-hover: #f5c6c6;
+}
+
+/* 青草绿主题 - 短链接管理 */
+[data-theme="grassgreen"] .short-link-manager,
+[data-theme="grassgreen"] .short-link-manager * {
+  --bg-color: #f0fff4;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.08);
+  --border-color: #c6e6d5;
+  --hover-color: #dcf5e8;
+  --primary-color: #2e8b57;
+  --primary-light: rgba(46, 139, 87, 0.1);
+  --text-primary: #1a4a2e;
+  --text-secondary: #2e6b4a;
+  --accent-gradient-start: #2e8b57;
+  --accent-gradient-end: #5cb88a;
+  --accent-shadow: rgba(46, 139, 87, 0.2);
+  --accent-color: #5cb88a;
+  --button-bg: #dcf5e8;
+  --button-bg-hover: #c6e6d5;
+}
+
+/* 现代浅色主题 - 短链接管理 */
+[data-theme="modern-light"] .short-link-manager,
+[data-theme="modern-light"] .short-link-manager * {
+  --bg-color: #f9fafb;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.1);
+  --border-color: #e5e7eb;
+  --hover-color: #eff6ff;
+  --primary-color: #3b82f6;
+  --primary-light: rgba(59, 130, 246, 0.1);
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --accent-gradient-start: #3b82f6;
+  --accent-gradient-end: #60a5fa;
+  --accent-shadow: rgba(59, 130, 246, 0.2);
+  --accent-color: #60a5fa;
+  --button-bg: #f3f4f6;
+  --button-bg-hover: #e5e7eb;
+}
+
+/* 神圣黄主题 - 短链接管理 */
+[data-theme="sacredyellow"] .short-link-manager,
+[data-theme="sacredyellow"] .short-link-manager * {
+  --bg-color: #fffef8;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.08);
+  --border-color: #f0e6c8;
+  --hover-color: #f5ecd5;
+  --primary-color: #d4b85f;
+  --primary-light: rgba(212, 184, 95, 0.1);
+  --text-primary: #6b5a2f;
+  --text-secondary: #8b7a50;
+  --accent-gradient-start: #e8d4a0;
+  --accent-gradient-end: #f0e2b8;
+  --accent-shadow: rgba(232, 212, 160, 0.2);
+  --accent-color: #e8d4a0;
+  --button-bg: #f5ecd5;
+  --button-bg-hover: #f0e6c8;
+}
+
+/* 地中海主题 - 短链接管理 */
+[data-theme="mediterranean-dream"] .short-link-manager,
+[data-theme="mediterranean-dream"] .short-link-manager * {
+  --bg-color: #f0f9ff;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.1);
+  --border-color: #bae6fd;
+  --hover-color: #dbeafe;
+  --primary-color: #c0392b;
+  --primary-light: rgba(192, 57, 43, 0.1);
+  --text-primary: #1e3a5f;
+  --text-secondary: #475569;
+  --accent-gradient-start: #c0392b;
+  --accent-gradient-end: #3498db;
+  --accent-shadow: rgba(192, 57, 43, 0.2);
+  --accent-color: #3498db;
+  --button-bg: #dbeafe;
+  --button-bg-hover: #bae6fd;
+}
+
+/* 单色雅主题 - 短链接管理 */
+[data-theme="monochrome-elegance"] .short-link-manager,
+[data-theme="monochrome-elegance"] .short-link-manager * {
+  --bg-color: #fafafa;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.1);
+  --border-color: #e5e7eb;
+  --hover-color: #f3f4f6;
+  --primary-color: #333333;
+  --primary-light: rgba(51, 51, 51, 0.1);
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --accent-gradient-start: #333333;
+  --accent-gradient-end: #666666;
+  --accent-shadow: rgba(51, 51, 51, 0.2);
+  --accent-color: #666666;
+  --button-bg: #f3f4f6;
+  --button-bg-hover: #e5e7eb;
+}
+
+/* 春日花主题 - 短链接管理 */
+[data-theme="spring-blossom"] .short-link-manager,
+[data-theme="spring-blossom"] .short-link-manager * {
+  --bg-color: #fffef5;
+  --card-bg: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color-hover: rgba(0, 0, 0, 0.1);
+  --border-color: #c8e6c9;
+  --hover-color: #fff9c4;
+  --primary-color: #f8bbd9;
+  --primary-light: rgba(248, 187, 217, 0.1);
+  --text-primary: #4a148c;
+  --text-secondary: #f8bbd9;
+  --accent-gradient-start: #fce4ec;
+  --accent-gradient-end: #f8bbd9;
+  --accent-shadow: rgba(248, 187, 217, 0.2);
+  --accent-color: #f8bbd9;
+  --button-bg: #fff9c4;
+  --button-bg-hover: #f0f9ff;
 }

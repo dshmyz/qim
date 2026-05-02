@@ -9,6 +9,28 @@
       </div>
     </div>
     <div class="apps-content">
+      <!-- 快速工具区域 -->
+      <div v-if="quickTools && quickTools.length > 0" class="quick-tools-section">
+        <div class="section-header">
+          <h3>快速工具</h3>
+          <span class="section-badge">常用</span>
+        </div>
+        <div class="quick-tools-grid">
+          <div
+            v-for="app in quickTools"
+            :key="app.id"
+            class="quick-tool-item"
+            @click="$emit('openApp', app.id)"
+          >
+            <div class="quick-tool-icon"><i :class="app.icon"></i></div>
+            <div class="quick-tool-info">
+              <span class="quick-tool-name">{{ app.name }}</span>
+              <span class="quick-tool-desc">{{ app.description || '快速访问' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="recent-apps-section">
         <div class="section-header">
           <h3>最近使用</h3>
@@ -28,14 +50,14 @@
           </div>
         </div>
       </div>
-      
+
       <div class="all-apps-section">
         <div class="section-header">
           <h3>所有应用</h3>
         </div>
         <div class="main-apps-grid">
-          <div 
-            v-for="app in allApps" 
+          <div
+            v-for="app in allApps"
             :key="app.id"
             class="main-app-item"
             @click="$emit('openApp', app.id)"
@@ -58,12 +80,14 @@ interface App {
   name: string
   icon: string
   url?: string
+  description?: string
 }
 
 interface Props {
   recentApps: App[]
   allApps: App[]
   pageTitle: string
+  quickTools?: App[]
 }
 
 defineProps<Props>()
@@ -120,15 +144,85 @@ defineEmits<{
   padding: 20px;
 }
 
+.quick-tools-section,
 .recent-apps-section,
 .all-apps-section {
   margin-bottom: 24px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .section-header h3 {
-  margin: 0 0 12px 0;
+  margin: 0;
   font-size: 16px;
   color: var(--text-color, #333);
+}
+
+.section-badge {
+  padding: 2px 8px;
+  background: var(--primary-color, #409eff);
+  color: white;
+  font-size: 11px;
+  border-radius: 10px;
+}
+
+.quick-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.quick-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card-bg, white);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-color, transparent);
+  box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
+}
+
+.quick-tool-item:hover {
+  background: var(--hover-color, #f0f0f0);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
+}
+
+.quick-tool-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color, #409eff), var(--accent-color, #667eea));
+  border-radius: 10px;
+  color: white;
+  font-size: 18px;
+}
+
+.quick-tool-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quick-tool-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color, #333);
+}
+
+.quick-tool-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
 }
 
 .recent-apps-grid {

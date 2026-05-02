@@ -179,6 +179,7 @@
         v-else-if="activeOption === 'apps' && !selectedAppId"
         :recentApps="recentApps"
         :allApps="allApps"
+        :quickTools="quickTools"
         :pageTitle="getPageTitle()"
         @toggleSidebar="toggleSidebar"
         @openApp="openApp"
@@ -1285,7 +1286,6 @@ const handleNotification = (data: any) => {
     const mapped = mapNotification(data)
     const currentNotifications = notificationCenterRef.value.notifications || []
     notificationCenterRef.value.notifications = [mapped, ...currentNotifications]
-    notificationCenterRef.value.filterNotifications()
     unreadNotificationCount.value++
   }
 }
@@ -2807,6 +2807,19 @@ const allApps = computed(() => {
   })
   
   return apps
+})
+
+// 快速工具列表
+const quickTools = computed(() => {
+  // 定义快速工具应用
+  return [
+    {
+      id: 'short-link',
+      name: '短链接管理',
+      icon: 'fas fa-link',
+      description: '快速生成短链接'
+    }
+  ]
 })
 
 // 加载用户创建的应用
