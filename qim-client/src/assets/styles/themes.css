@@ -25,6 +25,11 @@
   --card-bg: #161616;
   --header-panel-bg: #0f0f0f;
   --content-bg: #0a0a0a;
+  --right-content-bg: #0f0f0f;
+  --right-content-header-bg: #1a1a1a;
+  --input-bg: #1f2937;
+  --modal-bg: #1f293b;
+  --btn-bg: #374151;
   --side-options-bg: #0f0f0f;
 }
 
@@ -117,6 +122,11 @@
   --list-bg: #f0f9ff;
   --card-bg: #ffffff;
   --header-panel-bg: #e0f2fe;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #1e40af 100%);
 }
 
@@ -317,6 +327,11 @@
   --list-bg: #faf5ff;
   --card-bg: #ffffff;
   --header-panel-bg: #f3e8ff;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #c4b5fd 0%, #8b5cf6 50%, #581c87 100%);
 }
 
@@ -365,6 +380,11 @@
   --list-bg: #fffef8;
   --card-bg: #ffffff;
   --header-panel-bg: #fffef8;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #f4a900 0%, #c1666b 100%);
 }
 
@@ -413,6 +433,11 @@
   --list-bg: #fff5f5;
   --card-bg: #ffffff;
   --header-panel-bg: #fff5f5;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #c41e3a 0%, #e85c6c 100%);
 }
 
@@ -461,6 +486,11 @@
   --list-bg: #f0fff4;
   --card-bg: #ffffff;
   --header-panel-bg: #f0fff4;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
 }
 
