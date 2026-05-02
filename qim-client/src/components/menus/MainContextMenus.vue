@@ -156,13 +156,13 @@ interface Theme {
 const themes: Theme[] = [
   { id: 'modern-light', name: '清新白', themeClass: 'light-theme' },
   { id: 'elegant-dark', name: '炫酷黑', themeClass: 'elegant-dark-theme' },
-  { id: 'ocean-blue', name: '海洋蓝', themeClass: 'ocean-blue-theme' },
-  { id: 'elegant-purple', name: '高雅紫', themeClass: 'elegant-purple-theme' },
-  { id: 'warm-amber', name: '琥珀黄', themeClass: 'warm-amber-theme' },
+  { id: 'monochrome-elegance', name: '单色雅', themeClass: 'monochrome-elegance-theme' },
   { id: 'crimson-red', name: '中国红', themeClass: 'crimson-red-theme' },
   { id: 'emerald-green', name: '翡翠绿', themeClass: 'emerald-green-theme' },
+  { id: 'elegant-purple', name: '高雅紫', themeClass: 'elegant-purple-theme' },
+  { id: 'warm-amber', name: '琥珀黄', themeClass: 'warm-amber-theme' },
+  { id: 'ocean-blue', name: '海洋蓝', themeClass: 'ocean-blue-theme' },
   { id: 'mediterranean-dream', name: '地中海', themeClass: 'mediterranean-dream-theme' },
-  { id: 'monochrome-elegance', name: '单色雅', themeClass: 'monochrome-elegance-theme' },
   { id: 'spring-blossom', name: '春日花', themeClass: 'spring-blossom-theme' }
 ]
 

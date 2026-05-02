@@ -277,7 +277,7 @@ const getUnreadCount = (conversation: Conversation): number => {
   position: absolute;
   bottom: -2px;
   right: -2px;
-  background: var(--color-info-500);
+  background: var(--accent-color);
   color: white;
   font-size: 10px;
   padding: 1px 3px;

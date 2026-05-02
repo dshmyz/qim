@@ -1,5 +1,14 @@
 <template>
   <div class="short-link-item" @mouseenter="isHovered = true" @mouseleave="isHovered = false">
+    <!-- 选择框 -->
+    <div v-if="selectMode" class="link-checkbox">
+      <input
+        type="checkbox"
+        :checked="isSelected"
+        @change="handleSelectChange"
+      />
+    </div>
+
     <div class="link-info">
       <div class="original-url">{{ link.original_url }}</div>
       <div class="link-meta">
@@ -35,13 +44,16 @@ export interface ShortLink {
   created_at: string
 }
 
-defineProps<{
+const props = defineProps<{
   link: ShortLink
+  selectMode?: boolean
+  isSelected?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   copy: [url: string]
   delete: [id: number]
+  'select-change': [id: number, selected: boolean]
 }>()
 
 const isHovered = ref(false)
@@ -49,6 +61,11 @@ const isHovered = ref(false)
 const formatDate = (dateString: string) => {
   const date = new Date(dateString)
   return date.toLocaleDateString('zh-CN')
+}
+
+const handleSelectChange = (e: Event) => {
+  const target = e.target as HTMLInputElement
+  emit('select-change', props.link.id, target.checked)
 }
 </script>
 
@@ -65,6 +82,18 @@ const formatDate = (dateString: string) => {
 
 .short-link-item:hover {
   background: var(--hover-bg, #f9fafb);
+}
+
+.link-checkbox {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.link-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .link-info {

@@ -15,7 +15,7 @@
         </div>
       </div>
     </div>
-    
+
     <div class="short-link-content">
       <!-- 快速生成区 -->
       <QuickGenerateSection
@@ -28,19 +28,50 @@
         @batch="handleBatch"
         @advanced="handleAdvanced"
       />
-      
+
       <!-- 统计卡片 -->
       <StatsCards :stats="stats" />
-      
+
       <!-- 列表管理 -->
       <ShortLinkList
+        ref="shortLinkListRef"
         :links="shortLinks"
         @copy="handleCopy"
         @delete="handleDelete"
         @export="handleExport"
+        @export-selected="handleExportSelected"
         @batch-delete="handleBatchDelete"
       />
     </div>
+
+    <!-- 批量生成对话框 -->
+    <BatchGenerateDialog
+      v-model:visible="showBatchDialog"
+      @success="loadShortLinks"
+    />
+
+    <!-- 高级选项对话框 -->
+    <AdvancedOptionsDialog
+      v-model:visible="showAdvancedDialog"
+      :initial-url="currentUrl"
+      @success="handleAdvancedSuccess"
+    />
+
+    <!-- 导出对话框 -->
+    <ExportDialog
+      v-model:visible="showExportDialog"
+      :links="shortLinks"
+      :selected-ids="selectedIdsForExport"
+    />
+
+    <!-- 批量删除确认对话框 -->
+    <ConfirmDialog
+      v-model:visible="showBatchDeleteConfirm"
+      title="批量删除确认"
+      :message="batchDeleteMessage"
+      confirm-text="删除"
+      @confirm="confirmBatchDelete"
+    />
   </div>
 </template>
 
@@ -51,6 +82,10 @@ import { API_BASE_URL } from '../../config'
 import QuickGenerateSection from './shortlink/QuickGenerateSection.vue'
 import StatsCards from './shortlink/StatsCards.vue'
 import ShortLinkList from './shortlink/ShortLinkList.vue'
+import BatchGenerateDialog from './shortlink/BatchGenerateDialog.vue'
+import AdvancedOptionsDialog from './shortlink/AdvancedOptionsDialog.vue'
+import ExportDialog from './shortlink/ExportDialog.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import type { ShortLink } from './shortlink/ShortLinkItem.vue'
 
 // 定义事件
@@ -68,13 +103,34 @@ const quickGenerateRef = ref<InstanceType<typeof QuickGenerateSection> | null>(n
 // 短链接列表相关状态
 const shortLinks = ref<ShortLink[]>([])
 const isLoading = ref(false)
+const shortLinkListRef = ref<InstanceType<typeof ShortLinkList> | null>(null)
+
+// 对话框状态
+const showBatchDialog = ref(false)
+const showAdvancedDialog = ref(false)
+const showExportDialog = ref(false)
+const showBatchDeleteConfirm = ref(false)
+
+// 当前URL（用于高级选项）
+const currentUrl = ref('')
+
+// 导出选中的ID
+const selectedIdsForExport = ref<number[]>([])
+
+// 待删除的ID列表
+const pendingDeleteIds = ref<number[]>([])
+
+// 批量删除确认消息
+const batchDeleteMessage = computed(() => {
+  return `确定要删除选中的 ${pendingDeleteIds.value.length} 个短链接吗？此操作不可撤销。`
+})
 
 // 统计数据
 const stats = computed(() => {
   const totalLinks = shortLinks.value.length
   const totalVisits = shortLinks.value.reduce((sum, link) => sum + link.visit_count, 0)
   const activeLinks = shortLinks.value.filter(link => link.visit_count > 0).length
-  
+
   // 计算今日访问量
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -86,7 +142,7 @@ const stats = computed(() => {
     }
     return sum
   }, 0)
-  
+
   return {
     totalLinks,
     totalLinksTrend: 0, // 可以从后端获取趋势数据
@@ -227,37 +283,93 @@ const handleDelete = async (id: number) => {
 
 // 批量生成
 const handleBatch = () => {
-  QMessage.info('批量生成功能开发中')
+  showBatchDialog.value = true
 }
 
 // 高级选项
 const handleAdvanced = () => {
-  QMessage.info('高级选项功能开发中')
+  const url = quickGenerateRef.value?.getCurrentUrl?.() || ''
+  currentUrl.value = url
+  showAdvancedDialog.value = true
+}
+
+// 高级选项生成成功
+const handleAdvancedSuccess = async (shortUrl: string) => {
+  generatedUrl.value = shortUrl
+  await loadShortLinks()
+  quickGenerateRef.value?.clear()
 }
 
 // 导出
 const handleExport = () => {
-  QMessage.info('导出功能开发中')
+  selectedIdsForExport.value = []
+  showExportDialog.value = true
+}
+
+// 导出选中项
+const handleExportSelected = (ids: number[]) => {
+  selectedIdsForExport.value = ids
+  showExportDialog.value = true
 }
 
 // 批量删除
-const handleBatchDelete = () => {
-  QMessage.info('批量操作功能开发中')
+const handleBatchDelete = (ids: number[]) => {
+  pendingDeleteIds.value = ids
+  showBatchDeleteConfirm.value = true
+}
+
+// 确认批量删除
+const confirmBatchDelete = async () => {
+  if (pendingDeleteIds.value.length === 0) return
+
+  try {
+    const token = localStorage.getItem('token')
+    const deletePromises = pendingDeleteIds.value.map(id =>
+      fetch(`${serverUrl.value}/api/v1/shortlinks/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+    )
+
+    const results = await Promise.allSettled(deletePromises)
+    const successCount = results.filter(r => r.status === 'fulfilled').length
+    const failCount = results.filter(r => r.status === 'rejected').length
+
+    if (successCount > 0) {
+      QMessage.success(`成功删除 ${successCount} 个短链接`)
+      await loadShortLinks()
+      // 清除选择状态
+      shortLinkListRef.value?.clearSelection()
+    }
+
+    if (failCount > 0) {
+      QMessage.warning(`${failCount} 个短链接删除失败`)
+    }
+  } catch (error) {
+    console.error('批量删除失败:', error)
+    QMessage.error('批量删除失败')
+  } finally {
+    showBatchDeleteConfirm.value = false
+    pendingDeleteIds.value = []
+  }
 }
 
 // ⌘+V 快捷键支持
 const handlePaste = async (e: ClipboardEvent) => {
   const clipboardData = e.clipboardData
   if (!clipboardData) return
-  
+
   const pastedText = clipboardData.getData('text')
-  
+
   // 检查是否是URL
   if (pastedText && (pastedText.startsWith('http://') || pastedText.startsWith('https://'))) {
     // 如果输入框没有焦点，自动粘贴并生成
     const activeElement = document.activeElement
     const isInputFocused = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
-    
+
     if (!isInputFocused) {
       e.preventDefault()
       quickGenerateRef.value?.focus()
@@ -378,7 +490,7 @@ onUnmounted(() => {
     padding: 12px 16px;
     height: auto;
   }
-  
+
   .short-link-content {
     padding: 16px;
   }

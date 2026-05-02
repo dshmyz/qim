@@ -69,7 +69,8 @@ defineExpose({
   focus: () => inputRef.value?.focus(),
   clear: () => {
     urlInput.value = ''
-  }
+  },
+  getCurrentUrl: () => urlInput.value.trim()
 })
 </script>
 

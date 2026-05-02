@@ -540,6 +540,11 @@
   --card-bg: #ffffff;
   --header-panel-bg: #f8fafc;
   --content-bg: #f9fafb;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: #ffffff;
 }
 
@@ -607,6 +612,11 @@
   --list-bg: #f0f9ff;
   --card-bg: #ffffff;
   --header-panel-bg: #fde8e8;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #c0392b 0%, #3498db 100%);
 }
 
@@ -643,6 +653,11 @@
   --list-bg: #fafafa;
   --card-bg: #ffffff;
   --header-panel-bg: #f5f5f5;
+  --right-content-bg: #ffffff;
+  --right-content-header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --modal-bg: #ffffff;
+  --btn-bg: #f5f5f5;
   --side-options-bg: linear-gradient(135deg, #333333 0%, #666666 100%);
 }
 
@@ -664,16 +679,16 @@
   --primary-light: #fff9c4;
   --primary-dark: #e1bee7;
   --secondary-color: #fffef5;
-  --text-color: #4a148c;
-  --text-secondary: #f8bbd9;
+  --text-color: #6b21a8;
+  --text-secondary: #9333ea;
   --border-color: #c8e6c9;
-  --hover-color: #fff9c4;
+  --hover-color: #fff3cd;
   --active-color: #e1bee7;
   --sidebar-bg: #ffffff;
   --content-bg: #fffef5;
   --window-controls-bg: #ffffff;
   --context-menu-bg: #ffffff;
-  --context-menu-hover: #fff9c4;
+  --context-menu-hover: #fff3cd;
   --accent-color: #f8bbd9;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);

@@ -234,13 +234,13 @@ interface Theme {
 const themes: Theme[] = [
   { id: 'modern-light', name: '清新白', previewClass: 'light-theme' },
   { id: 'elegant-dark', name: '炫酷黑', previewClass: 'dark-theme' },
-  { id: 'ocean-blue', name: '海洋蓝', previewClass: 'netblue-theme' },
-  { id: 'elegant-purple', name: '高雅紫', previewClass: 'elegant-purple-theme' },
-  { id: 'warm-amber', name: '琥珀黄', previewClass: 'warm-amber-theme' },
+  { id: 'monochrome-elegance', name: '单色雅', previewClass: 'monochrome-elegance-theme' },
   { id: 'crimson-red', name: '中国红', previewClass: 'crimson-red-theme' },
   { id: 'emerald-green', name: '翡翠绿', previewClass: 'emerald-green-theme' },
+  { id: 'elegant-purple', name: '高雅紫', previewClass: 'elegant-purple-theme' },
+  { id: 'warm-amber', name: '琥珀黄', previewClass: 'warm-amber-theme' },
+  { id: 'ocean-blue', name: '海洋蓝', previewClass: 'netblue-theme' },
   { id: 'mediterranean-dream', name: '地中海', previewClass: 'mediterranean-dream-theme' },
-  { id: 'monochrome-elegance', name: '单色雅', previewClass: 'monochrome-elegance-theme' },
   { id: 'spring-blossom', name: '春日花', previewClass: 'spring-blossom-theme' }
 ]
 
