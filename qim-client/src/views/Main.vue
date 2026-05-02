@@ -57,6 +57,7 @@
       <div class="main-content">
       <!-- 侧边栏 -->
       <Sidebar
+        v-if="activeOption !== 'channels'"
         ref="sidebarRef"
         :currentUser="currentUser || { username: '用户', name: '用户' }"
         :activeOption="activeOption"
