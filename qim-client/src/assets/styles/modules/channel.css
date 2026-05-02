@@ -15,7 +15,6 @@
   height: 100%;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
-  transition: width var(--transition-base);
 }
 
 .channel-sidebar-header {
@@ -55,7 +54,6 @@
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .channel-view-toggle-btn:hover {
@@ -100,7 +98,6 @@
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--transition-fast);
 }
 
 .channel-tab:hover {
@@ -122,7 +119,6 @@
   border-radius: 50%;
   font-size: 12px;
   opacity: 0;
-  transition: opacity var(--transition-fast);
 }
 
 .channel-tab:hover .channel-tab-close {
@@ -146,7 +142,6 @@
   font-size: 16px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
   flex-shrink: 0;
 }
 
@@ -187,7 +182,7 @@
   padding: var(--spacing-3);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  border: 1px solid transparent;
 }
 
 .channel-list-item:hover {
@@ -195,7 +190,8 @@
 }
 
 .channel-list-item.active {
-  background: var(--color-gray-200);
+  background: var(--color-gray-100);
+  border-color: var(--primary-color);
 }
 
 .channel-list-item-avatar {
@@ -265,15 +261,15 @@
   flex-direction: column;
   background: var(--card-bg);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-4);
-  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  border: 1px solid var(--border-color);
 }
 
-.channel-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+.channel-card.selected {
+  border: 2px solid var(--primary-color);
+  box-shadow: 0 2px 12px rgba(51, 133, 255, 0.15);
 }
 
 .channel-card-header {
@@ -357,8 +353,8 @@
   padding: var(--spacing-4);
   background: var(--card-bg);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--transition-fast);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-color);
 }
 
 .message-card:hover {
@@ -422,7 +418,6 @@
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .message-card-action:hover {
