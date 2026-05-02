@@ -50,6 +50,7 @@
 @import url('./modules/conversation.css');
 @import url('./modules/chat.css');
 @import url('./modules/modals.css');
+@import url('./channel.css');
 
 /* ========================================
    基础重置 - Base Reset
