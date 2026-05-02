@@ -28,7 +28,7 @@
     @keydown.space.prevent="$emit('select', channel)"
   >
     <img
-      :src="channel.avatar || generateAvatar(channel.name)"
+      :src="channelAvatar"
       :alt="`${channel.name}的头像`"
       class="channel-avatar"
     />
@@ -60,21 +60,29 @@
 </template>
 
 <script setup lang="ts">
-import { generateAvatar } from '../../utils/avatar'
+import { ref, computed } from 'vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
 import type { Channel } from '../../types'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Props {
   channel: Channel
   isSelected: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 defineEmits<{
   select: [channel: Channel]
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
 }>()
+
+const channelAvatar = computed(() => {
+  return getAvatarUrl(props.channel.avatar, props.channel.name, serverUrl.value)
+})
 </script>
 
 <style scoped>
@@ -85,7 +93,7 @@ defineEmits<{
   padding: var(--spacing-3);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  border: 2px solid transparent;
 }
 
 .channel-list-item:hover {
@@ -93,7 +101,8 @@ defineEmits<{
 }
 
 .channel-list-item.active {
-  background: var(--color-gray-200);
+  background: var(--color-gray-100);
+  border-color: var(--primary-color);
 }
 
 .channel-list-item:focus {
@@ -142,17 +151,15 @@ defineEmits<{
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--primary-color);
-  background: transparent;
-  color: var(--primary-color);
-  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--primary-color);
+  color: white;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .subscribe-btn:hover {
-  background: var(--primary-color);
-  color: white;
+  background: var(--primary-dark);
 }
 
 .subscribe-btn:focus {
@@ -161,8 +168,10 @@ defineEmits<{
 }
 
 .subscribe-btn.subscribed {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
+  background: var(--success-color);
+}
+
+.subscribe-btn.subscribed:hover {
+  background: var(--success-dark, #5daf34);
 }
 </style>
