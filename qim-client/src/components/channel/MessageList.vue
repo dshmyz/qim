@@ -184,6 +184,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
+  height: 53px;
 }
 
 .toolbar-left {

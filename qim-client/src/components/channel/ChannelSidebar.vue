@@ -256,7 +256,7 @@ onMounted(() => {
   justify-content: space-between;
   padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
-  min-height: 52px;
+  height: 53px;
 }
 
 .header-left {
