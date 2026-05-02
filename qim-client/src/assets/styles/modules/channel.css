@@ -357,10 +357,6 @@
   border: 1px solid var(--border-color);
 }
 
-.message-card:hover {
-  box-shadow: var(--shadow-md);
-}
-
 .message-card-avatar {
   width: 40px;
   height: 40px;
