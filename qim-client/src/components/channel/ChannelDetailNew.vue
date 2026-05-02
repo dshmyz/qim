@@ -29,7 +29,10 @@
       :mode="displayMode"
       :is-creator="isCreator"
       :loading="loading"
+      :sort-order="sortOrder"
+      :creator-id="channel.creator_id"
       @update:mode="handleModeChange"
+      @update:sort-order="handleSortOrderChange"
       @like="handleLike"
       @unlike="handleUnlike"
       @comment="handleComment"
@@ -69,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, watch } from 'vue'
 import ChannelHeader from './ChannelHeader.vue'
 import MessageList from './MessageList.vue'
 import type { Channel, ChannelMessage } from '../../types'
@@ -81,33 +84,49 @@ interface Props {
   isCreator?: boolean
   loading?: boolean
   initialMessage?: string
+  displayMode?: DisplayMode
+  sortOrder?: 'asc' | 'desc'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isCreator: false,
   loading: false,
-  initialMessage: ''
+  initialMessage: '',
+  displayMode: 'card',
+  sortOrder: 'desc'
 })
 
 const emit = defineEmits<{
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
   sendMessage: [channel: Channel, message: string]
+  'update:displayMode': [mode: DisplayMode]
+  'update:sortOrder': [sortOrder: 'asc' | 'desc']
   like: [message: ChannelMessage]
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
   copyLink: [message: ChannelMessage]
 }>()
 
-// 显示模式
-const displayMode = ref<DisplayMode>('card')
-
 // 消息输入
 const localMessage = ref(props.initialMessage)
 
+// 监听 initialMessage prop 变化，更新本地消息
+watch(
+  () => props.initialMessage,
+  (newValue) => {
+    localMessage.value = newValue
+  }
+)
+
 // 切换显示模式
 const handleModeChange = (mode: DisplayMode) => {
-  displayMode.value = mode
+  emit('update:displayMode', mode)
+}
+
+// 切换排序顺序
+const handleSortOrderChange = (sortOrder: 'asc' | 'desc') => {
+  emit('update:sortOrder', sortOrder)
 }
 
 // 发送消息

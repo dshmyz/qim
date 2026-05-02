@@ -88,7 +88,13 @@ const emit = defineEmits<{
 
 const { formatTime } = useChatUtils()
 
-// 点赞状态（本地状态，实际应用中应从消息数据获取）
+// 点赞状态（本地状态）
+// 注意：当前 ChannelMessage 类型定义中不包含点赞相关字段
+// 这是临时方案，使用本地状态管理点赞功能
+// TODO: 等待后端支持后，应从 message 数据中获取点赞状态和点赞数
+// 届时需要在 ChannelMessage 类型中添加：
+// - like_count?: number
+// - is_liked?: boolean
 const isLiked = ref(false)
 const likeCount = ref(0)
 

@@ -9,7 +9,7 @@
   使用示例：
   <MessageTimeline
     :messages="messages"
-    :is-creator="isCreator"
+    :creator-id="channel.creator_id"
   />
 -->
 <template>
@@ -55,11 +55,11 @@ import type { ChannelMessage } from '../../types'
 
 interface Props {
   messages: ChannelMessage[]
-  isCreator?: boolean
+  creatorId?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isCreator: false
+  creatorId: ''
 })
 
 const { formatTime } = useChatUtils()
@@ -70,10 +70,7 @@ const getSenderName = (message: ChannelMessage): string => {
 
 const isCreator = (message: ChannelMessage): boolean => {
   // 检查消息发送者是否是频道创建者
-  // 这里假设 message.sender_id 与频道创建者 ID 比较需要外部传入
-  // 由于 props.isCreator 是针对当前用户的，这里需要另一种方式判断
-  // 暂时通过 props.isCreator 和消息发送者 ID 判断
-  return props.isCreator && message.sender_id === message.channel_id
+  return props.creatorId ? message.sender_id === props.creatorId : false
 }
 </script>
 

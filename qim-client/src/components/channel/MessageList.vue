@@ -91,7 +91,7 @@
       <MessageTimeline
         v-else
         :messages="sortedMessages"
-        :is-creator="isCreator"
+        :creator-id="creatorId"
       />
     </div>
   </div>
@@ -113,28 +113,31 @@ interface Props {
   mode?: DisplayMode
   isCreator?: boolean
   loading?: boolean
+  sortOrder?: SortOrder
+  creatorId?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   mode: 'card',
   isCreator: false,
-  loading: false
+  loading: false,
+  sortOrder: 'desc',
+  creatorId: ''
 })
 
 const emit = defineEmits<{
   'update:mode': [mode: DisplayMode]
+  'update:sortOrder': [sortOrder: SortOrder]
   like: [message: ChannelMessage]
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
   copyLink: [message: ChannelMessage]
 }>()
 
-// 排序顺序
-const sortOrder = ref<SortOrder>('desc')
-
 // 切换排序
 const toggleSort = () => {
-  sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
+  const newSortOrder = props.sortOrder === 'desc' ? 'asc' : 'desc'
+  emit('update:sortOrder', newSortOrder)
 }
 
 // 排序后的消息列表
@@ -143,7 +146,7 @@ const sortedMessages = computed(() => {
   sorted.sort((a, b) => {
     const timeA = new Date(a.created_at).getTime()
     const timeB = new Date(b.created_at).getTime()
-    return sortOrder.value === 'desc' ? timeB - timeA : timeA - timeB
+    return props.sortOrder === 'desc' ? timeB - timeA : timeA - timeB
   })
   return sorted
 })
