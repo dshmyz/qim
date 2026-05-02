@@ -11,7 +11,7 @@
 .channel-sidebar {
   display: flex;
   flex-direction: column;
-  width: 300px;
+  width: 320px;
   height: 100%;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
@@ -29,7 +29,7 @@
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-4);
+  padding: var(--spacing-2);
 }
 
 /* ========================================
@@ -101,7 +101,7 @@
 }
 
 .channel-tab:hover {
-  background: var(--hover-color);
+  background: var(--color-gray-100);
   color: var(--text-color);
 }
 
@@ -148,7 +148,7 @@
 .channel-add-tab:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
-  background: var(--hover-color);
+  background: var(--color-gray-50);
 }
 
 /* ========================================
@@ -186,7 +186,7 @@
 }
 
 .channel-list-item:hover {
-  background: var(--hover-color);
+  background: var(--color-gray-100);
 }
 
 .channel-list-item.active {
@@ -260,16 +260,20 @@
   display: flex;
   flex-direction: column;
   background: var(--card-bg);
-  border-radius: 12px;
-  padding: var(--spacing-4);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: none;
   cursor: pointer;
-  border: 1px solid var(--border-color);
+  border: 1px solid transparent;
+}
+
+.channel-card:hover {
+  background: var(--hover-color);
 }
 
 .channel-card.selected {
-  border: 2px solid var(--primary-color);
-  box-shadow: 0 2px 12px rgba(51, 133, 255, 0.15);
+  background: var(--hover-color);
+  border-color: var(--primary-color);
 }
 
 .channel-card-header {
@@ -280,16 +284,16 @@
 }
 
 .channel-card-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
   object-fit: cover;
 }
 
 .channel-card-title {
   flex: 1;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-color);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -417,7 +421,7 @@
 }
 
 .message-card-action:hover {
-  background: var(--hover-color);
+  background: var(--color-gray-100);
   color: var(--text-color);
 }
 
