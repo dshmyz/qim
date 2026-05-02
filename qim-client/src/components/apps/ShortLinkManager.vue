@@ -481,7 +481,11 @@ onUnmounted(() => {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--bg-color, #f5f7fa);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* 响应式设计 */

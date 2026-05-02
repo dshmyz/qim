@@ -81,6 +81,9 @@ defineExpose({
   padding: 24px;
   margin-bottom: 24px;
   box-shadow: 0 10px 30px var(--accent-shadow, rgba(102, 126, 234, 0.2));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
 }
 
 .generate-header {
@@ -128,6 +131,7 @@ defineExpose({
 .url-input {
   flex: 1;
   min-width: 200px;
+  max-width: 100%;
   padding: 14px 16px;
   padding-right: 60px;
   border: none;
@@ -136,6 +140,7 @@ defineExpose({
   background: white;
   color: var(--text-primary, #1f2937);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
 }
 
 .url-input:focus {

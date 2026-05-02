@@ -57,6 +57,9 @@ defineProps<{
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .stat-card {
@@ -65,6 +68,8 @@ defineProps<{
   padding: 20px;
   box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
   border: 1px solid var(--border-color, transparent);
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .stat-label {

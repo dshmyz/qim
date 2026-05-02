@@ -230,6 +230,9 @@ defineExpose({
   box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
   overflow: hidden;
   border: 1px solid var(--border-color, transparent);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .list-header {
