@@ -11,8 +11,9 @@
         <button class="icon-btn" :class="{ active: showSearch }" @click="toggleSearch" title="搜索">
           <i class="fas fa-search"></i>
         </button>
-        <button class="icon-btn" @click="markAllAsRead" title="全部已读">
-          <i class="fas fa-check-double"></i>
+        <button class="text-btn" @click="markAllAsRead" title="全部已读">
+          <i class="fas fa-check"></i>
+          <span>全部已读</span>
         </button>
         <button class="clear-all-btn" @click="clearAll">清空</button>
       </div>
@@ -494,9 +495,10 @@ defineExpose({
   position: fixed;
   width: 400px;
   max-height: 520px;
-  background: var(--sidebar-bg);
+  background: var(--modal-bg);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
   z-index: 1000;
   overflow: hidden;
   display: flex;
@@ -546,6 +548,29 @@ defineExpose({
   background: var(--primary-light);
 }
 
+.text-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.text-btn i {
+  font-size: 11px;
+}
+
 .clear-all-btn {
   padding: 4px 10px;
   font-size: 12px;
@@ -565,7 +590,7 @@ defineExpose({
 .notification-search {
   padding: 10px 18px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
+  background: var(--modal-bg);
 }
 
 .search-input {
@@ -587,7 +612,7 @@ defineExpose({
 .notification-center-tabs {
   display: flex;
   border-bottom: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
+  background: var(--modal-bg);
 }
 
 .notification-tab {
@@ -630,7 +655,7 @@ defineExpose({
   display: flex;
   align-items: center;
   padding: 6px 18px;
-  background: var(--sidebar-bg);
+  background: var(--modal-bg);
   border-bottom: 1px solid var(--border-color);
   gap: 12px;
 }
@@ -869,6 +894,20 @@ defineExpose({
   color: var(--primary-color);
 }
 
+[data-theme="dark"] .tool-btn.active {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .text-btn {
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .text-btn:hover {
+  background: var(--hover-color) !important;
+  color: var(--text-color) !important;
+}
+
 .empty-notifications {
   display: flex;
   flex-direction: column;
@@ -891,7 +930,9 @@ defineExpose({
 }
 
 [data-theme="dark"] .notification-center {
-  background: var(--sidebar-bg) !important;
+  background: var(--modal-bg) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
 }
 
 [data-theme="dark"] .notification-center-header {
@@ -899,7 +940,7 @@ defineExpose({
 }
 
 [data-theme="dark"] .notification-search {
-  background: var(--sidebar-bg) !important;
+  background: var(--modal-bg) !important;
 }
 
 [data-theme="dark"] .search-input {
@@ -909,11 +950,11 @@ defineExpose({
 }
 
 [data-theme="dark"] .notification-center-tabs {
-  background: var(--sidebar-bg) !important;
+  background: var(--modal-bg) !important;
 }
 
 [data-theme="dark"] .notification-sort-bar {
-  background: var(--sidebar-bg) !important;
+  background: var(--modal-bg) !important;
 }
 
 [data-theme="dark"] .notification-item {

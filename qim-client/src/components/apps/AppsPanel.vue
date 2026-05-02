@@ -9,6 +9,28 @@
       </div>
     </div>
     <div class="apps-content">
+      <!-- 主要应用区域 -->
+      <div class="main-apps-section">
+        <div class="section-header">
+          <h3>主要应用</h3>
+          <span class="section-badge">核心功能</span>
+        </div>
+        <div class="main-apps-grid">
+          <div
+            v-for="app in mainApps"
+            :key="app.id"
+            class="main-app-item"
+            @click="$emit('openApp', app.id)"
+          >
+            <div class="main-app-icon"><i :class="app.icon"></i></div>
+            <div class="main-app-name">{{ app.name }}</div>
+          </div>
+          <div v-if="mainApps.length === 0" class="empty-apps">
+            <p>暂无主要应用</p>
+          </div>
+        </div>
+      </div>
+
       <!-- 快速工具区域 -->
       <div v-if="quickTools && quickTools.length > 0" class="quick-tools-section">
         <div class="section-header">
@@ -19,7 +41,7 @@
           <div
             v-for="app in quickTools"
             :key="app.id"
-            class="quick-tool-item"
+            :class="['quick-tool-item', { 'quick-tool-highlight': app.id === 'short-link' }]"
             @click="$emit('openApp', app.id)"
           >
             <div class="quick-tool-icon"><i :class="app.icon"></i></div>
@@ -27,46 +49,28 @@
               <span class="quick-tool-name">{{ app.name }}</span>
               <span class="quick-tool-desc">{{ app.description || '快速访问' }}</span>
             </div>
+            <div v-if="app.id === 'short-link'" class="quick-tool-badge">快速工具</div>
           </div>
         </div>
       </div>
 
-      <div class="recent-apps-section">
+      <!-- 系统区域 -->
+      <div class="system-apps-section">
         <div class="section-header">
-          <h3>最近使用</h3>
+          <h3>系统</h3>
         </div>
-        <div class="recent-apps-grid">
+        <div class="system-apps-grid">
           <div
-            v-for="app in recentApps"
+            v-for="app in systemApps"
             :key="app.id"
-            class="recent-app-grid-item"
+            class="system-app-item"
             @click="$emit('openApp', app.id)"
           >
-            <div class="recent-app-grid-icon"><i :class="app.icon"></i></div>
-            <span class="recent-app-grid-name">{{ app.name }}</span>
+            <div class="system-app-icon"><i :class="app.icon"></i></div>
+            <div class="system-app-name">{{ app.name }}</div>
           </div>
-          <div v-if="recentApps.length === 0" class="empty-recent-apps">
-            <p>暂无最近使用的应用</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="all-apps-section">
-        <div class="section-header">
-          <h3>所有应用</h3>
-        </div>
-        <div class="main-apps-grid">
-          <div
-            v-for="app in allApps"
-            :key="app.id"
-            class="main-app-item"
-            @click="$emit('openApp', app.id)"
-          >
-            <div class="main-app-icon"><i :class="app.icon"></i></div>
-            <div class="main-app-name">{{ app.name }}</div>
-          </div>
-          <div v-if="allApps.length === 0" class="empty-all-apps">
-            <p>暂无应用</p>
+          <div v-if="systemApps.length === 0" class="empty-apps">
+            <p>暂无系统应用</p>
           </div>
         </div>
       </div>
@@ -84,10 +88,10 @@ interface App {
 }
 
 interface Props {
-  recentApps: App[]
-  allApps: App[]
-  pageTitle: string
+  mainApps: App[]
   quickTools?: App[]
+  systemApps: App[]
+  pageTitle: string
 }
 
 defineProps<Props>()
@@ -144,9 +148,9 @@ defineEmits<{
   padding: 20px;
 }
 
+.main-apps-section,
 .quick-tools-section,
-.recent-apps-section,
-.all-apps-section {
+.system-apps-section {
   margin-bottom: 24px;
 }
 
@@ -171,6 +175,45 @@ defineEmits<{
   border-radius: 10px;
 }
 
+/* 主要应用样式 */
+.main-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 16px;
+}
+
+.main-app-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: var(--card-bg, white);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-color, transparent);
+  box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
+}
+
+.main-app-item:hover {
+  background: var(--hover-color, #f0f0f0);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
+}
+
+.main-app-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: var(--primary-color, #409eff);
+}
+
+.main-app-name {
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-color, #333);
+}
+
+/* 快速工具样式 */
 .quick-tools-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -178,6 +221,7 @@ defineEmits<{
 }
 
 .quick-tool-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -196,6 +240,17 @@ defineEmits<{
   box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
 }
 
+/* 短链接管理突出显示样式 */
+.quick-tool-highlight {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)) !important;
+  border: 2px solid rgba(102, 126, 234, 0.3) !important;
+}
+
+.quick-tool-highlight:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.15)) !important;
+  border-color: rgba(102, 126, 234, 0.5) !important;
+}
+
 .quick-tool-icon {
   width: 40px;
   height: 40px;
@@ -212,6 +267,7 @@ defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
 }
 
 .quick-tool-name {
@@ -225,75 +281,60 @@ defineEmits<{
   color: var(--text-secondary, #999);
 }
 
-.recent-apps-grid {
+.quick-tool-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  font-size: 10px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* 系统应用样式 */
+.system-apps-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 16px;
 }
 
-.recent-app-grid-item {
+.system-app-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 16px;
+  background: var(--card-bg, white);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+  border: 1px solid var(--border-color, transparent);
+  box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.1));
 }
 
-.recent-app-grid-item:hover {
+.system-app-item:hover {
   background: var(--hover-color, #f0f0f0);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
 }
 
-.recent-app-grid-icon {
+.system-app-icon {
   font-size: 32px;
   margin-bottom: 8px;
-  color: var(--primary-color, #409eff);
+  color: var(--text-secondary, #999);
 }
 
-.recent-app-grid-name {
+.system-app-name {
   font-size: 12px;
   text-align: center;
   color: var(--text-color, #333);
 }
 
-.empty-recent-apps,
-.empty-all-apps {
+.empty-apps {
   grid-column: 1 / -1;
   text-align: center;
   padding: 40px 0;
   color: var(--text-secondary, #999);
-}
-
-.main-apps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 16px;
-}
-
-.main-app-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.main-app-item:hover {
-  background: var(--hover-color, #f0f0f0);
-}
-
-.main-app-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-  color: var(--primary-color, #409eff);
-}
-
-.main-app-name {
-  font-size: 12px;
-  text-align: center;
-  color: var(--text-color, #333);
 }
 </style>

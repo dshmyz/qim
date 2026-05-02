@@ -1,0 +1,11 @@
+{"type":"server-started","port":55196,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:55196","screen_dir":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/optimization-direction.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/optimization-priority.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/waiting.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/design-styles.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/optimization-plans.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/design-architecture.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/design-channel-list.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/design-message-display.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/56629-1777713314/design-interactions.html"}
+{"type":"server-stopped","reason":"idle timeout"}

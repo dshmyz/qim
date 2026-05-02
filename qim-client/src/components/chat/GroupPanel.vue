@@ -5,7 +5,7 @@
       <span v-if="isGroupOrDiscussion" class="header-icon" title="邀请成员" @click.stop="handleInviteMembers">
         <i class="fas fa-user-plus"></i>
       </span>
-      <span class="header-icon" @click.stop="handleToggleHeaderMenu" ref="moreButtonRef">
+      <span v-if="isGroupOrDiscussion" class="header-icon" @click.stop="handleToggleHeaderMenu" ref="moreButtonRef">
         <i class="fas fa-ellipsis-v"></i>
       </span>
     </div>
@@ -294,7 +294,7 @@ function isGroupOwner(conversation: Conversation | null): boolean {
   if (!currentUser) return false
   const currentUserId = currentUser.id?.toString() || ''
   const owner = conversation.members.find((member: any) => String(member.id) === currentUserId)
-  return owner ? owner.role === 'owner' : false
+  return owner ? (owner.role as string) === 'owner' : false
 }
 
 // 切换头部下拉菜单

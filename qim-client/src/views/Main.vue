@@ -177,9 +177,9 @@
       <!-- 应用面板 -->
       <AppsPanel
         v-else-if="activeOption === 'apps' && !selectedAppId"
-        :recentApps="recentApps"
-        :allApps="allApps"
+        :mainApps="mainApps"
         :quickTools="quickTools"
+        :systemApps="systemApps"
         :pageTitle="getPageTitle()"
         @toggleSidebar="toggleSidebar"
         @openApp="openApp"
@@ -2821,6 +2821,25 @@ const quickTools = computed(() => {
     }
   ]
 })
+
+// 主要应用列表
+const mainApps = computed(() => {
+  return [
+    { id: '7', name: '笔记', icon: 'fas fa-book' },
+    { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
+    { id: '3', name: '文件管理', icon: 'fas fa-folder' },
+    { id: '2', name: '日历', icon: 'fas fa-calendar' },
+    { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' }
+  ]
+})
+
+// 系统应用列表
+const systemApps = computed(() => {
+  return [
+    { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
+  ]
+})
+
 
 // 加载用户创建的应用
 const loadUserApps = async () => {

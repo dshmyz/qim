@@ -98,21 +98,6 @@ import WindowControls from './WindowControls.vue'
   overflow: hidden;
 }
 
-/* 侧边选项栏 */
-.side-options {
-  width: 60px;
-  background: var(--sidebar-bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 0;
-  gap: 8px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 10;
-  gap: 20px;
-}
-
 /* 主内容 */
 .main-content {
   flex: 1;

@@ -297,7 +297,7 @@
 }
 
 /* 高雅紫主题 */
-[data-theme="elegantpurple"] {
+[data-theme="elegant-purple"] {
   --primary-color: #7e22ce;
   --primary-light: #f3e8ff;
   --secondary-color: #faf5ff;
@@ -321,26 +321,26 @@
 }
 
 /* 高雅紫主题 - 文本颜色 */
-[data-theme="elegantpurple"] .window-title,
-[data-theme="elegantpurple"] .option-item,
-[data-theme="elegantpurple"] .option-item.active {
+[data-theme="elegant-purple"] .window-title,
+[data-theme="elegant-purple"] .option-item,
+[data-theme="elegant-purple"] .option-item.active {
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* 高雅紫主题 - 侧边栏头部 */
-[data-theme="elegantpurple"] .sidebar-header {
+[data-theme="elegant-purple"] .sidebar-header {
   background: #ffffff;
   box-shadow: var(--shadow-md);
 }
 
-[data-theme="elegantpurple"] .sidebar-header .user-name {
+[data-theme="elegant-purple"] .sidebar-header .user-name {
   color: var(--text-color);
   text-shadow: none;
 }
 
 /* 高雅紫主题 - 窗口控制栏左侧 */
-[data-theme="elegantpurple"] .window-controls-left {
+[data-theme="elegant-purple"] .window-controls-left {
   background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
 }
 
@@ -717,8 +717,8 @@
 }
 
 /* 高雅紫主题 - 短链接管理 */
-[data-theme="elegantpurple"] .short-link-manager,
-[data-theme="elegantpurple"] .short-link-manager * {
+[data-theme="elegant-purple"] .short-link-manager,
+[data-theme="elegant-purple"] .short-link-manager * {
   --bg-color: #faf5ff;
   --card-bg: #ffffff;
   --shadow-color: rgba(0, 0, 0, 0.1);

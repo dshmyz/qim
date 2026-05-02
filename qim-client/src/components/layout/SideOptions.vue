@@ -71,7 +71,7 @@ defineEmits<{
   left: 0;
   bottom: 0;
   width: 60px;
-  background: var(--sidebar-bg);
+  background: var(--side-options-bg, var(--sidebar-bg)) !important;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -2879,7 +2879,7 @@ const saveGroupInfo = async (groupName?: string) => {
     } else if (error?.response?.status === 401) {
       QMessage.error('登录已过期，请重新登录')
     } else {
-      QMessage.error('网络错误，更新群名称失败')
+      QMessage.error(error.message || '网络错误，更新群名称失败')
     }
   }
   showEditGroupInfoModal.value = false
