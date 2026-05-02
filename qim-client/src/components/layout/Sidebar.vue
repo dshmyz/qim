@@ -97,7 +97,7 @@ const filteredConversations = computed(() => {
   )
 })
 
-defineExpose({ channelListRef })
+defineExpose({})
 </script>
 
 <template>
