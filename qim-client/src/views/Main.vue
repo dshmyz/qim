@@ -4476,6 +4476,9 @@ button:active {
   flex-direction: column;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .right-content-header {
