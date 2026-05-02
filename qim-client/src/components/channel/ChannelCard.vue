@@ -66,12 +66,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Channel } from '../../types'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const serverUrl = computed(() => localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Props {
   channel: Channel
@@ -132,7 +132,7 @@ const channelAvatar = computed(() => {
 .card-subscribe-btn {
   padding: var(--spacing-1) var(--spacing-3);
   border: 1px solid var(--primary-color);
-  background: white;
+  background: var(--card-bg);
   color: var(--primary-color);
   border-radius: var(--radius-md);
   cursor: pointer;
