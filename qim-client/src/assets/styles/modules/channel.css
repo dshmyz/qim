@@ -1,0 +1,542 @@
+/* ========================================
+   频道样式 - Channel Styles
+   包含频道界面相关的全局样式
+   使用设计系统变量以支持主题切换
+   ======================================== */
+
+/* ========================================
+   侧边栏容器 - Sidebar Container
+   ======================================== */
+
+.channel-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  height: 100%;
+  background: var(--card-bg);
+  border-right: 1px solid var(--border-color);
+  transition: width var(--transition-base);
+}
+
+.channel-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 60px;
+}
+
+.channel-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-3);
+}
+
+/* ========================================
+   视图切换按钮组 - View Toggle
+   ======================================== */
+
+.channel-view-toggle {
+  display: flex;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2);
+  background: var(--color-gray-100);
+  border-radius: var(--radius-md);
+}
+
+.channel-view-toggle-btn {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-view-toggle-btn:hover {
+  background: var(--card-bg);
+  color: var(--text-color);
+}
+
+.channel-view-toggle-btn.active {
+  background: var(--card-bg);
+  color: var(--text-color);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ========================================
+   标签页导航 - Tabs Navigation
+   ======================================== */
+
+.channel-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.channel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.channel-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.channel-tab:hover {
+  background: var(--color-gray-100);
+  color: var(--text-color);
+}
+
+.channel-tab.active {
+  background: var(--text-color);
+  color: var(--card-bg);
+}
+
+.channel-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.channel-tab:hover .channel-tab-close {
+  opacity: 0.7;
+}
+
+.channel-tab-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.channel-add-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.channel-add-tab:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--color-gray-50);
+}
+
+/* ========================================
+   内容区域 - Content Area
+   ======================================== */
+
+.channel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-gray-50);
+}
+
+.channel-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--spacing-4);
+}
+
+/* ========================================
+   列表视图项 - List View Item
+   ======================================== */
+
+.channel-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-list-item:hover {
+  background: var(--color-gray-100);
+}
+
+.channel-list-item.active {
+  background: var(--color-gray-200);
+}
+
+.channel-list-item-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.channel-list-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-list-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-list-item-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.channel-list-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.channel-list-item-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.channel-list-item-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--primary-color);
+  color: var(--card-bg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ========================================
+   卡片视图项 - Card View Item
+   ======================================== */
+
+.channel-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.channel-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+}
+
+.channel-card-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.channel-card-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-bottom: var(--spacing-3);
+}
+
+.channel-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--border-color);
+}
+
+.channel-card-stats {
+  display: flex;
+  gap: var(--spacing-4);
+}
+
+.channel-card-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.channel-card-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary-color);
+  color: var(--card-bg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ========================================
+   消息卡片 - Message Card
+   ======================================== */
+
+.message-card {
+  display: flex;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+}
+
+.message-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.message-card-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.message-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.message-card-author {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.message-card-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.message-card-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.message-card-actions {
+  display: flex;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--border-color);
+}
+
+.message-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.message-card-action:hover {
+  background: var(--color-gray-100);
+  color: var(--text-color);
+}
+
+/* ========================================
+   时间线消息 - Timeline Message
+   ======================================== */
+
+.message-timeline {
+  position: relative;
+  padding-left: var(--spacing-6);
+}
+
+.message-timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-color);
+}
+
+.message-timeline-item {
+  position: relative;
+  padding-bottom: var(--spacing-4);
+}
+
+.message-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.message-timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  z-index: 1;
+}
+
+.message-timeline-item.active .message-timeline-dot {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+}
+
+.message-timeline-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-2);
+}
+
+/* ========================================
+   响应式设计 - Responsive Design
+   ======================================== */
+
+@media (max-width: 768px) {
+  .channel-sidebar {
+    width: 100%;
+    border-right: none;
+  }
+
+  .channel-sidebar-header {
+    padding: var(--spacing-3);
+  }
+
+  .channel-tabs {
+    padding: var(--spacing-1) var(--spacing-2);
+  }
+
+  .channel-tab {
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 12px;
+  }
+
+  .channel-content {
+    padding: var(--spacing-3);
+  }
+
+  .channel-detail {
+    padding: var(--spacing-3);
+  }
+
+  .channel-list-item {
+    padding: var(--spacing-2);
+  }
+
+  .channel-list-item-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .channel-card {
+    padding: var(--spacing-3);
+  }
+
+  .channel-card-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .message-card {
+    padding: var(--spacing-3);
+  }
+
+  .message-card-avatar {
+    width: 32px;
+    height: 32px;
+  }
+}

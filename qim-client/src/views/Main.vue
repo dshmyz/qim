@@ -30,6 +30,13 @@
       @close="closeShareModal"
       @confirm="handleShareConfirm"
     />
+    
+    <!-- 小程序面板 -->
+    <MiniAppManager
+      v-model:showMiniAppList="showMiniAppList"
+      @send-mini-app-message="handleSendMiniAppMessage"
+    />
+    
     <!-- 顶部区域：窗口控制栏 -->
     <div class="top-bar">
       <div class="top-bar-left"></div>
@@ -469,6 +476,7 @@ import FileManagementApp from '../components/apps/FileManagementApp.vue'
 import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
+import MiniAppManager from '../components/apps/MiniAppManager.vue'
 import * as storage from '../utils/storage'
 
 // 声明 window.electron 变量
@@ -2818,6 +2826,12 @@ const quickTools = computed(() => {
       name: '短链接管理',
       icon: 'fas fa-link',
       description: '快速生成短链接'
+    },
+    {
+      id: 'mini-app',
+      name: '小程序',
+      icon: 'fas fa-th-large',
+      description: '轻量级应用工具'
     }
   ]
 })
@@ -3036,6 +3050,9 @@ const toggleCategory = (categoryId: string) => {
 // 当前打开的用户应用
 const currentUserApp = ref<any>(null)
 
+// 小程序面板状态
+const showMiniAppList = ref(false)
+
 // 应用面板的tab切换
 const activeAppTab = ref('categories')
 
@@ -3092,6 +3109,13 @@ const openApp = async (appId: string) => {
   if (appId === 'short-link') {
     console.log('打开短链接管理应用')
     selectedAppId.value = 'short-link'
+    return
+  }
+  
+  // 特殊处理小程序
+  if (appId === 'mini-app') {
+    console.log('打开小程序面板')
+    showMiniAppList.value = true
     return
   }
   
@@ -3817,6 +3841,14 @@ const handleShareConfirm = async (selection) => {
   } finally {
     closeShareModal()
   }
+}
+
+// 处理发送小程序消息
+const handleSendMiniAppMessage = (miniApp: any) => {
+  console.log('发送小程序消息:', miniApp)
+  // 这里可以添加发送小程序消息到当前聊天会话的逻辑
+  // 暂时只显示提示信息
+  showMessage({ message: `已选择小程序: ${miniApp.name}`, type: 'info' })
 }
 
 const exitGroup = async () => {
