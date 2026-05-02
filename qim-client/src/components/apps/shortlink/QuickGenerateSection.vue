@@ -93,6 +93,9 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .generate-header h3 {
@@ -100,11 +103,17 @@ defineExpose({
   color: white;
   font-size: 18px;
   font-weight: 600;
+  flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .generate-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .action-btn {
@@ -116,6 +125,7 @@ defineExpose({
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .action-btn:hover {
@@ -194,10 +204,15 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .result-info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .result-label {
@@ -210,6 +225,8 @@ defineExpose({
   color: white;
   font-size: 16px;
   font-weight: 600;
+  word-break: break-all;
+  overflow-wrap: break-word;
 }
 
 .copy-btn {
