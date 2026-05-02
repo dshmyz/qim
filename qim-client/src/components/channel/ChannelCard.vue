@@ -98,9 +98,9 @@ const channelAvatar = computed(() => {
 <style scoped>
 .channel-card {
   background: var(--card-bg);
-  border-radius: 16px;
-  padding: var(--spacing-5);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: var(--spacing-4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   border: 1px solid var(--border-color);
 }
@@ -111,7 +111,7 @@ const channelAvatar = computed(() => {
 
 .channel-card.active {
   border: 2px solid var(--primary-color);
-  box-shadow: 0 4px 24px rgba(51, 133, 255, 0.2);
+  box-shadow: 0 2px 16px rgba(51, 133, 255, 0.15);
 }
 
 .channel-card:focus {
@@ -123,18 +123,18 @@ const channelAvatar = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-3);
 }
 
 .card-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
 .card-subscribe-btn {
-  padding: var(--spacing-2) var(--spacing-4);
+  padding: var(--spacing-1) var(--spacing-3);
   border: 1px solid var(--primary-color);
   background: var(--card-bg);
   color: var(--primary-color);
@@ -159,12 +159,12 @@ const channelAvatar = computed(() => {
 }
 
 .card-body {
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
 }
 
 .card-title {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: 16px;
+  margin: 0 0 var(--spacing-1) 0;
+  font-size: 15px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -176,7 +176,7 @@ const channelAvatar = computed(() => {
   margin: 0;
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -188,8 +188,8 @@ const channelAvatar = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: var(--spacing-4);
-  padding-top: var(--spacing-3);
+  margin-top: var(--spacing-3);
+  padding-top: var(--spacing-2);
   border-top: 1px solid var(--border-color);
 }
 
@@ -199,8 +199,8 @@ const channelAvatar = computed(() => {
 }
 
 .tag {
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
 }

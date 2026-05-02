@@ -11,7 +11,7 @@
 .channel-sidebar {
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: 300px;
   height: 100%;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
@@ -29,7 +29,7 @@
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-6);
+  padding: var(--spacing-4);
 }
 
 /* ========================================
@@ -101,7 +101,7 @@
 }
 
 .channel-tab:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   color: var(--text-color);
 }
 
@@ -148,7 +148,7 @@
 .channel-add-tab:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
-  background: var(--color-gray-50);
+  background: var(--hover-color);
 }
 
 /* ========================================
@@ -186,7 +186,7 @@
 }
 
 .channel-list-item:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
 }
 
 .channel-list-item.active {
@@ -260,9 +260,9 @@
   display: flex;
   flex-direction: column;
   background: var(--card-bg);
-  border-radius: 16px;
-  padding: var(--spacing-5);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: var(--spacing-4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   border: 1px solid var(--border-color);
 }
@@ -280,9 +280,9 @@
 }
 
 .channel-card-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
@@ -417,7 +417,7 @@
 }
 
 .message-card-action:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   color: var(--text-color);
 }
 

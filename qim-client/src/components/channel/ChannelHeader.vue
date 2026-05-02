@@ -87,22 +87,22 @@ const { formatTime } = useChatUtils()
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: var(--spacing-4);
+  padding: var(--spacing-5);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
 }
 
 .header-info {
   display: flex;
-  gap: var(--spacing-3);
+  gap: var(--spacing-4);
   flex: 1;
   min-width: 0;
 }
 
 .header-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -113,8 +113,8 @@ const { formatTime } = useChatUtils()
 }
 
 .header-title {
-  margin: 0 0 var(--spacing-1) 0;
-  font-size: var(--font-size-lg);
+  margin: 0 0 var(--spacing-2) 0;
+  font-size: 18px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -123,8 +123,8 @@ const { formatTime } = useChatUtils()
 }
 
 .header-description {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: var(--font-size-sm);
+  margin: 0 0 var(--spacing-3) 0;
+  font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
   overflow: hidden;
@@ -138,7 +138,7 @@ const { formatTime } = useChatUtils()
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-3);
-  font-size: var(--font-size-xs);
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -154,20 +154,20 @@ const { formatTime } = useChatUtils()
 
 .header-actions {
   flex-shrink: 0;
-  margin-left: var(--spacing-3);
+  margin-left: var(--spacing-4);
 }
 
 .subscribe-btn {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-4);
   border: none;
   border-radius: var(--radius-md);
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: 14px;
   font-weight: var(--font-weight-medium);
 }
 
