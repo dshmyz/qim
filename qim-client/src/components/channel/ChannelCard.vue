@@ -57,6 +57,10 @@
       <p class="card-description">{{ channel.description }}</p>
     </div>
     <div class="card-footer">
+      <div class="card-tags">
+        <span class="tag tag-product">产品</span>
+        <span class="tag tag-update">更新</span>
+      </div>
       <span class="card-creator">
         <i class="fas fa-user"></i>
         {{ channel.creator?.name || '未知' }}
@@ -94,9 +98,9 @@ const channelAvatar = computed(() => {
 <style scoped>
 .channel-card {
   background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  padding: var(--spacing-5);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   border: 1px solid var(--border-color);
 }
@@ -107,7 +111,7 @@ const channelAvatar = computed(() => {
 
 .channel-card.active {
   border: 2px solid var(--primary-color);
-  box-shadow: 0 2px 12px rgba(51, 133, 255, 0.15);
+  box-shadow: 0 4px 24px rgba(51, 133, 255, 0.2);
 }
 
 .channel-card:focus {
@@ -119,18 +123,18 @@ const channelAvatar = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
 }
 
 .card-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   object-fit: cover;
 }
 
 .card-subscribe-btn {
-  padding: var(--spacing-1) var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-4);
   border: 1px solid var(--primary-color);
   background: var(--card-bg);
   color: var(--primary-color);
@@ -155,12 +159,12 @@ const channelAvatar = computed(() => {
 }
 
 .card-body {
-  margin-bottom: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
 }
 
 .card-title {
-  margin: 0 0 var(--spacing-1) 0;
-  font-size: 14px;
+  margin: 0 0 var(--spacing-2) 0;
+  font-size: 16px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -170,9 +174,9 @@ const channelAvatar = computed(() => {
 
 .card-description {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -181,10 +185,39 @@ const channelAvatar = computed(() => {
 }
 
 .card-footer {
-  font-size: 11px;
-  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-3);
   border-top: 1px solid var(--border-color);
-  padding-top: var(--spacing-2);
+}
+
+.card-tags {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.tag {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tag-product {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.tag-update {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.card-creator {
+  font-size: 12px;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: var(--spacing-1);

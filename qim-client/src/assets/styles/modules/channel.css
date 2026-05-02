@@ -11,7 +11,7 @@
 .channel-sidebar {
   display: flex;
   flex-direction: column;
-  width: 280px;
+  width: 320px;
   height: 100%;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
@@ -29,7 +29,7 @@
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-3);
+  padding: var(--spacing-6);
 }
 
 /* ========================================
@@ -260,9 +260,9 @@
   display: flex;
   flex-direction: column;
   background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  padding: var(--spacing-5);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   border: 1px solid var(--border-color);
 }
@@ -280,15 +280,15 @@
 }
 
 .channel-card-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   object-fit: cover;
 }
 
 .channel-card-title {
   flex: 1;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-color);
   overflow: hidden;
