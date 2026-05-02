@@ -87,7 +87,7 @@ const { formatTime } = useChatUtils()
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
   min-height: 52px;
