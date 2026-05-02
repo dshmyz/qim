@@ -16,7 +16,7 @@
   <div class="message-card" role="article" :aria-label="`来自 ${senderName} 的消息`">
     <div class="card-main">
       <img
-        :src="message.sender?.avatar || generateAvatar(senderName)"
+        :src="getAvatarUrl(message.sender?.avatar, senderName, serverUrl)"
         :alt="`${senderName}的头像`"
         class="card-avatar"
       />
@@ -66,9 +66,12 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { generateAvatar } from '../../utils/avatar'
+import { getAvatarUrl } from '../../utils/avatar'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { API_BASE_URL } from '../../config'
 import type { ChannelMessage } from '../../types'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Props {
   message: ChannelMessage
@@ -136,10 +139,6 @@ const handleCopyLink = async () => {
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
   transition: all var(--transition-fast);
-}
-
-.message-card:hover {
-  box-shadow: var(--shadow-md);
 }
 
 .card-main {
