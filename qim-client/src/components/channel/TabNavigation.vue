@@ -59,28 +59,28 @@
 
 <script setup lang="ts">
 interface Tab {
-  id: string
+  id: string | number
   name: string
 }
 
 interface Props {
   tabs: Tab[]
-  activeTabId: string | null
+  activeTabId: string | number | null
 }
 
 defineProps<Props>()
 
 const emit = defineEmits<{
-  select: [tabId: string]
-  close: [tabId: string]
+  select: [tabId: string | number]
+  close: [tabId: string | number]
   add: []
 }>()
 
-const handleSelect = (tabId: string) => {
+const handleSelect = (tabId: string | number) => {
   emit('select', tabId)
 }
 
-const handleClose = (tabId: string) => {
+const handleClose = (tabId: string | number) => {
   emit('close', tabId)
 }
 
@@ -96,16 +96,18 @@ const handleAdd = () => {
   width: 100%;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border-color);
-  min-height: 40px;
+  height: 72px;
+  padding: 0 var(--spacing-4);
+  box-sizing: border-box;
 }
 
 .tab-list {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
-  padding: var(--spacing-1) var(--spacing-2);
+  gap: 0;
   overflow-x: auto;
   flex: 1;
+  height: 100%;
 }
 
 /* 隐藏滚动条但保持滚动功能 */
@@ -122,36 +124,40 @@ const handleAdd = () => {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-1) var(--spacing-3);
-  background: var(--color-gray-100);
-  border-radius: var(--radius-sm);
+  padding: 0 var(--spacing-4);
+  background: transparent;
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 200px;
+  height: 100%;
+  color: var(--text-secondary);
 }
 
 .tab-item:hover {
-  background: var(--color-gray-200);
+  color: var(--text-color);
+  background: var(--color-gray-50);
 }
 
 .tab-item.active {
-  background: var(--primary-color);
-  color: white;
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  background: transparent;
 }
 
 .tab-item:focus {
   outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .tab-item.active:focus {
-  outline-color: white;
+  outline-color: var(--primary-color);
 }
 
 .tab-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: var(--font-weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,52 +168,54 @@ const handleAdd = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0;
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.tab-item:hover .tab-close-btn {
+  opacity: 0.6;
 }
 
 .tab-close-btn:hover {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.1);
+  opacity: 1 !important;
+  background: var(--color-gray-200);
 }
 
-.tab-item.active .tab-close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+.tab-item.active .tab-close-btn {
+  color: var(--primary-color);
 }
 
 .tab-close-btn:focus {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
-}
-
-.tab-item.active .tab-close-btn:focus {
-  outline-color: white;
+  opacity: 1;
 }
 
 .tab-add-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px dashed var(--border-color);
+  width: 32px;
+  height: 32px;
+  border: none;
   background: transparent;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  margin-left: var(--spacing-2);
 }
 
 .tab-add-btn:hover {
-  border-color: var(--primary-color);
   color: var(--primary-color);
   background: var(--primary-light);
 }
@@ -220,26 +228,22 @@ const handleAdd = () => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .tab-navigation {
-    min-height: 36px;
-  }
-
-  .tab-list {
-    padding: var(--spacing-1);
-    gap: var(--spacing-1);
+    height: 60px;
+    padding: 0 var(--spacing-3);
   }
 
   .tab-item {
-    padding: var(--spacing-1) var(--spacing-2);
+    padding: 0 var(--spacing-3);
     max-width: 150px;
   }
 
   .tab-name {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .tab-add-btn {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
   }
 }
 </style>

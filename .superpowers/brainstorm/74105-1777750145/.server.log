@@ -1,0 +1,7 @@
+{"type":"server-started","port":50675,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:50675","screen_dir":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145/channel-design-options.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145/channel-prototypes.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145/design-details.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145/final-design.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/74105-1777750145/final-design-no-animation.html"}
+{"type":"server-stopped","reason":"idle timeout"}

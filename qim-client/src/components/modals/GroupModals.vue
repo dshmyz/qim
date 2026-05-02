@@ -9,7 +9,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
+            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -58,7 +58,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar" style="width: 80px; height: 80px;">
-            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
+            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
           </div>
           <div class="group-details">
             <div class="group-name" style="font-size: 20px;">{{ selectedGroup?.name }}</div>
@@ -97,7 +97,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
+            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -154,7 +154,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="selectedGroup?.avatar || generateAvatar('群聊')" :alt="selectedGroup?.name" />
+            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -176,7 +176,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { generateAvatar } from '../../utils/avatar'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface Member {
   id: string | number

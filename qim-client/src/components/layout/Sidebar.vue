@@ -5,6 +5,7 @@ import OrgTree from '../shared/OrgTree.vue'
 import AppPanel from '../shared/AppPanel.vue'
 import SearchResult from '../conversation/SearchResult.vue'
 import ConversationList from '../conversation/ConversationList.vue'
+import ChannelSidebar from '../channel/ChannelSidebar.vue'
 import type { Conversation, User } from '../../types'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 import { logger } from '../../utils/logger';
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   (e: 'searchResultSelect', item: SearchResultItem): void
   (e: 'searchResultPrivateChat', item: SearchResultItem): void
   (e: 'searchResultApplyJoin', item: SearchResultItem): void
+  (e: 'createChannel'): void
 }>()
 
 const userAvatar = computed(() => {
@@ -135,7 +137,7 @@ defineExpose({})
     </div>
 
     <!-- 侧边栏内容 -->
-    <div class="sidebar-content" v-show="!collapsed && activeOption !== 'channels'">
+    <div class="sidebar-content" v-show="!collapsed">
       <div v-if="activeOption === 'recent'" class="content-section">
         <SearchResult
           v-if="searchQuery && searchResults.length > 0"
@@ -175,7 +177,10 @@ defineExpose({})
       </div>
       
       <div v-else-if="activeOption === 'channels'" class="content-section">
-        <!-- 频道功能已迁移到 Main.vue 中的新布局，这里不再渲染旧的 ChannelList -->
+        <ChannelSidebar
+          :currentUser="currentUser"
+          @createChannel="$emit('createChannel')"
+        />
       </div>
       
       <div v-else-if="activeOption === 'apps'" class="content-section">
@@ -217,6 +222,7 @@ defineExpose({})
   height: 72px;
   box-sizing: border-box;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
 }
 
 .icon-btn {

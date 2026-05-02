@@ -28,7 +28,7 @@
       <div class="timeline-content">
         <div class="timeline-header">
           <img
-            :src="message.sender?.avatar || generateAvatar(getSenderName(message))"
+            :src="getAvatarUrl(message.sender?.avatar, getSenderName(message), serverUrl)"
             :alt="`${getSenderName(message)}的头像`"
             class="timeline-avatar"
           />
@@ -49,13 +49,17 @@
 </template>
 
 <script setup lang="ts">
-import { generateAvatar } from '../../utils/avatar'
+import { ref } from 'vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
 import { useChatUtils } from '../../composables/useChatUtils'
 import type { ChannelMessage } from '../../types'
 
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+
 interface Props {
   messages: ChannelMessage[]
-  creatorId?: string
+  creatorId?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -69,8 +73,8 @@ const getSenderName = (message: ChannelMessage): string => {
 }
 
 const isCreator = (message: ChannelMessage): boolean => {
-  // 检查消息发送者是否是频道创建者
-  return props.creatorId ? message.sender_id === props.creatorId : false
+  if (!props.creatorId) return false
+  return String(message.sender_id) === String(props.creatorId)
 }
 </script>
 

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Channel } from '../types'
+import type { Channel, ChannelMessage } from '../types'
 import { request, type ApiResponse } from '../composables/useRequest'
 import QMessage from '../utils/qmessage'
 
@@ -23,6 +23,7 @@ export const useChannelStore = defineStore('channel', () => {
   const viewMode = ref<'list' | 'card'>(getStoredViewMode())
   const messageMode = ref<'card' | 'timeline'>(getStoredMessageMode())
   const loading = ref(false)
+  const messagesLoading = ref(false)
 
   // 计算属性
   const selectedChannel = computed(() => {
@@ -91,11 +92,34 @@ export const useChannelStore = defineStore('channel', () => {
     }
   }
 
-  function selectChannel(channelId: string) {
+  async function fetchChannelMessages(channelId: string) {
+    messagesLoading.value = true
+    try {
+      const response = await request<ApiResponse<ChannelMessage[]>>(`/api/v1/channels/${channelId}/messages`)
+      if (response.code === 0) {
+        const channel = channels.value.find(c => c.id === channelId)
+        if (channel) {
+          channel.messages = response.data || []
+        }
+      } else {
+        QMessage.error(response.message || '加载频道消息失败')
+      }
+    } catch (error) {
+      console.error('加载频道消息失败:', error)
+      QMessage.error('加载频道消息失败')
+    } finally {
+      messagesLoading.value = false
+    }
+  }
+
+  async function selectChannel(channelId: string) {
     selectedChannelId.value = channelId
     const channel = channels.value.find(c => c.id === channelId)
     if (channel) {
       addTab(channel)
+      if (channel.is_subscribed && (!channel.messages || channel.messages.length === 0)) {
+        await fetchChannelMessages(channelId)
+      }
     }
   }
 
@@ -134,11 +158,13 @@ export const useChannelStore = defineStore('channel', () => {
     viewMode,
     messageMode,
     loading,
+    messagesLoading,
     // 计算属性
     selectedChannel,
     subscribedChannels,
     // 方法
     fetchChannels,
+    fetchChannelMessages,
     subscribeChannel,
     unsubscribeChannel,
     selectChannel,

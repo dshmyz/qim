@@ -46,7 +46,7 @@
           @click="selectChannel(channel)"
         >
           <div class="channel-card-header">
-            <img :src="channel.avatar || generateAvatar(channel.name)" :alt="channel.name" class="channel-avatar" />
+            <img :src="getAvatarUrl(channel.avatar, channel.name, serverUrl)" :alt="channel.name" class="channel-avatar" />
             <button 
               v-if="channel.is_subscribed" 
               class="subscribe-btn subscribed" 
@@ -104,7 +104,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { Channel } from '../../types'
 import { API_BASE_URL } from '../../config'
-import { generateAvatar } from '../../utils/avatar'
+import { getAvatarUrl } from '../../utils/avatar'
 import QMessage from '../../utils/qmessage'
 import QDialog from './QDialog.vue'
 

@@ -124,7 +124,7 @@
       :show-call-modal="showCallModal || videoCallStatus !== 'idle'"
       :call-type="videoCallType"
       :call-status="(videoCallStatus === 'idle' || videoCallStatus === 'calling') ? '' : videoCallStatus"
-      :call-avatar="videoCallRemoteUser?.avatar || props.conversation?.avatar || generateAvatar('user')"
+      :call-avatar="getAvatarUrl(videoCallRemoteUser?.avatar || props.conversation?.avatar, 'user', serverUrl)"
       :call-name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
       :show-image-preview="showImagePreview"
       :preview-image-url="previewImageUrl"
@@ -243,7 +243,7 @@ import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
-import { generateAvatar } from '../../utils/avatar'
+import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'

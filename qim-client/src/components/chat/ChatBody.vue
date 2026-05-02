@@ -44,6 +44,7 @@ import { computed, ref } from 'vue'
 import type { Conversation, Message, User } from '../../types'
 import MessageListView from './MessageListView.vue'
 import MemberSidebar from './MemberSidebar.vue'
+import { getAvatarUrl } from '../../utils/avatar'
 
 /** MemberSidebar 组件内部使用的 Member 类型 */
 interface Member {
@@ -110,7 +111,7 @@ const sidebarMembers = computed<Member[]>(() => {
   return (props.conversation?.members || []).map(user => ({
     id: user.id,
     name: user.name,
-    avatar: user.avatar,
+    avatar: getAvatarUrl(user.avatar, user.name || '用户', props.serverUrl),
     role: user.role as Member['role'] ?? 'member'
   }))
 })

@@ -1,5 +1,5 @@
 import { Ref } from 'vue'
-import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
+import { generateAvatar, isAbsoluteUrl, getAvatarUrl } from '../utils/avatar'
 
 export interface Conversation {
   id: string
@@ -40,13 +40,17 @@ export interface Conversation {
 
 export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<any>) {
   const processConversation = (conv: any): Conversation => {
-    const members = conv.members ? conv.members.map((member: any) => ({
-      id: member.user && member.user.id ? member.user.id.toString() : (member.UserID ? member.UserID.toString() : (member.user_id ? member.user_id.toString() : '')),
-      name: member.user ? (member.user.nickname || member.user.username || '') : (member.User ? (member.User.Nickname || member.User.Username || '') : ''),
-      username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
-      avatar: (member.user && member.user.avatar && isAbsoluteUrl(member.user.avatar)) ? member.user.avatar : (member.user && member.user.avatar ? serverUrl.value + member.user.avatar : (member.User && member.User.Avatar ? serverUrl.value + member.User.Avatar : '')),
-      role: member.role || member.Role || 'member'
-    })) : []
+    const members = conv.members ? conv.members.map((member: any) => {
+      const memberName = member.user ? (member.user.nickname || member.user.username || '') : (member.User ? (member.User.Nickname || member.User.Username || '') : '')
+      const memberAvatar = member.user?.avatar || member.User?.Avatar || ''
+      return {
+        id: member.user && member.user.id ? member.user.id.toString() : (member.UserID ? member.UserID.toString() : (member.user_id ? member.user_id.toString() : '')),
+        name: memberName,
+        username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
+        avatar: getAvatarUrl(memberAvatar, memberName || '用户', serverUrl.value),
+        role: member.role || member.Role || 'member'
+      }
+    }) : []
     
     let avatar = conv.avatar || ''
     let name = conv.name || ''
@@ -105,7 +109,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
           id: (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id) ? (conv.lastMessage?.sender?.id || conv.last_message?.sender?.id).toString() : '',
           name: conv.lastMessage?.sender?.nickname || conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.name || conv.lastMessage?.sender?.user?.nickname || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.nickname || conv.last_message?.sender?.username || conv.last_message?.sender?.name || conv.last_message?.sender?.user?.nickname || conv.last_message?.sender?.user?.username || '',
           username: conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.user?.username || conv.last_message?.sender?.username || conv.last_message?.sender?.user?.username || '',
-          avatar: ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) && isAbsoluteUrl(conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar)) ? (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ((conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) ? serverUrl.value + (conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar) : ''),
+          avatar: getAvatarUrl(conv.lastMessage?.sender?.avatar || conv.last_message?.sender?.avatar, conv.lastMessage?.sender?.nickname || conv.lastMessage?.sender?.username || conv.lastMessage?.sender?.name || conv.last_message?.sender?.nickname || conv.last_message?.sender?.username || conv.last_message?.sender?.name || '用户', serverUrl.value),
           user: conv.lastMessage?.sender || conv.last_message?.sender
         } : {
           id: '',

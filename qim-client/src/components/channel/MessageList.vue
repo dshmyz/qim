@@ -114,7 +114,7 @@ interface Props {
   isCreator?: boolean
   loading?: boolean
   sortOrder?: SortOrder
-  creatorId?: string
+  creatorId?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {

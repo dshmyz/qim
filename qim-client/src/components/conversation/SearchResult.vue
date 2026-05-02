@@ -13,7 +13,7 @@
           @click="$emit('select', item)"
         >
           <div class="search-popup-avatar">
-            <img :src="item.avatar || generateAvatar(item.name)" :alt="item.name" />
+            <img :src="getAvatarUrl(item.avatar, item.name, serverUrl)" :alt="item.name" />
             <span v-if="item.type === 'group'" class="group-badge">群</span>
             <span v-if="item.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
           </div>
@@ -45,7 +45,11 @@
 </template>
 
 <script setup lang="ts">
-import { generateAvatar } from '../../utils/avatar'
+import { ref } from 'vue'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface SearchResultItem {
   id: string

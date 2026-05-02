@@ -10,7 +10,7 @@
     </div>
     <div class="channel-detail-info">
       <div class="channel-header-info">
-        <img :src="channel.avatar || generateAvatar(channel.name)" :alt="channel.name" class="channel-header-avatar" />
+        <img :src="getAvatarUrl(channel.avatar, channel.name, serverUrl)" :alt="channel.name" class="channel-header-avatar" />
         <div class="channel-header-text">
           <p class="channel-description">{{ channel.description }}</p>
           <div class="channel-meta">
@@ -49,7 +49,7 @@
           :key="message.id" 
           class="message-item"
         >
-          <img :src="message.sender?.avatar || generateAvatar(message.sender?.name || 'user')" :alt="message.sender?.name" class="message-avatar" />
+          <img :src="getAvatarUrl(message.sender?.avatar, message.sender?.name || 'user', serverUrl)" :alt="message.sender?.name" class="message-avatar" />
           <div class="message-content">
             <div class="message-header">
               <span class="message-sender">{{ message.sender?.name || '未知' }}</span>
@@ -79,7 +79,10 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { generateAvatar } from '../../utils/avatar'
+import { getAvatarUrl } from '../../utils/avatar'
+import { API_BASE_URL } from '../../config'
+
+const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
 interface ChannelMessage {
   id: string | number

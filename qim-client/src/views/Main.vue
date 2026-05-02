@@ -91,6 +91,7 @@
         @searchResultSelect="handleSearchItemClick"
         @searchResultPrivateChat="startPrivateChat"
         @searchResultApplyJoin="handleApplyJoinGroup"
+        @createChannel="handleCreateChannel"
       />
       
       <!-- 实时通信全局组件（屏幕共享、视频通话） -->
@@ -145,12 +146,6 @@
       
       <!-- 频道页面的新布局 -->
       <template v-else-if="activeOption === 'channels'">
-        <!-- 频道侧边栏 -->
-        <ChannelSidebar
-          :currentUser="currentUser"
-          @createChannel="handleCreateChannel"
-        />
-        
         <!-- 频道内容区域 -->
         <div class="channel-content-area">
           <!-- 标签页导航 -->
@@ -170,6 +165,7 @@
             :isCreator="isChannelCreator(channelStore.selectedChannel)"
             :displayMode="channelStore.messageMode"
             :sortOrder="'desc'"
+            :loading="channelStore.messagesLoading"
             @subscribe="handleChannelSubscribe"
             @unsubscribe="handleChannelUnsubscribe"
             @sendMessage="handleChannelSendMessage"
@@ -1170,7 +1166,7 @@ const handleAddedToGroup = (data: any) => {
   const groupConversation = {
     id: data.conversation_id.toString(),
     name: data.group_name,
-    avatar: data.group_avatar || generateAvatar('group'),
+    avatar: getAvatarUrl(data.group_avatar, 'group', serverUrl.value),
     lastMessage: null,
     unreadCount: 0,
     timestamp: Date.now(),
@@ -1595,14 +1591,14 @@ const handleNewMessage = (data: any) => {
           if (Notification.permission === 'granted') {
             new Notification('新消息', {
               body: newMessage.content,
-              icon: newMessage.sender.avatar || generateAvatar(newMessage.sender.name || 'user')
+              icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
             })
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(permission => {
               if (permission === 'granted') {
                 new Notification('新消息', {
                   body: newMessage.content,
-                  icon: newMessage.sender.avatar || generateAvatar(newMessage.sender.name || 'user')
+                  icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
                 })
               }
             })
@@ -2643,7 +2639,7 @@ const startPrivateChat = async (user: any) => {
       timestamp: Date.now(),
       type: 'single',
       members: [
-        { id: currentUser.value?.id || 'me', name: currentUser.value?.nickname || currentUser.value?.username || '我', avatar: currentUser.value?.avatar || generateAvatar('我') },
+        { id: currentUser.value?.id || 'me', name: currentUser.value?.nickname || currentUser.value?.username || '我', avatar: getAvatarUrl(currentUser.value?.avatar, '我', serverUrl.value) },
         { id: user.id, name: user.name, avatar: user.avatar }
       ]
     }
@@ -3834,7 +3830,7 @@ const loadShareUsersAndGroups = async () => {
       shareGroups.value = groups.map(group => ({
         id: group.id.toString(),
         name: group.name,
-        avatar: group.avatar || generateAvatar(group.name || 'group'),
+        avatar: getAvatarUrl(group.avatar, group.name || 'group', serverUrl.value),
         members: group.members || []
       }))
     }

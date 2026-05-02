@@ -60,7 +60,7 @@ export const getAvatarUrl = (avatar: string | undefined | null, name: string, se
   if (avatar && avatar.trim() && isAbsoluteUrl(avatar)) {
     return avatar
   }
-  if (avatar && avatar.trim()) {
+  if (avatar && avatar.trim() && serverUrl && serverUrl.trim()) {
     const cleanServerUrl = serverUrl.replace(/\/$/, '')
     const cleanAvatar = avatar.replace(/^\//, '')
     return `${cleanServerUrl}/${cleanAvatar}`
