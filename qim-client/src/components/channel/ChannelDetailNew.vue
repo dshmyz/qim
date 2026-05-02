@@ -24,7 +24,15 @@
     />
 
     <!-- 消息列表 -->
+    <div v-if="!channel.is_subscribed" class="subscribe-prompt">
+      <div class="prompt-content">
+        <i class="fas fa-lock prompt-icon"></i>
+        <h3 class="prompt-title">订阅后查看消息</h3>
+        <p class="prompt-description">订阅此频道后即可查看所有历史消息</p>
+      </div>
+    </div>
     <MessageList
+      v-else
       :messages="channel.messages || []"
       :mode="displayMode"
       :is-creator="isCreator"
@@ -168,14 +176,14 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .message-input-area {
-  padding: var(--spacing-4);
+  padding: var(--spacing-3);
   border-top: 1px solid var(--border-color);
   background: var(--card-bg);
 }
 
 .message-textarea {
   width: 100%;
-  padding: var(--spacing-3);
+  padding: var(--spacing-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   resize: none;
@@ -184,7 +192,6 @@ const handleCopyLink = (message: ChannelMessage) => {
   line-height: 1.5;
   background: var(--input-bg, var(--bg-color));
   color: var(--text-color);
-  transition: border-color var(--transition-fast);
 }
 
 .message-textarea:focus {
@@ -201,7 +208,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: var(--spacing-3);
+  margin-top: var(--spacing-2);
 }
 
 .input-hint {
@@ -213,7 +220,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   border: none;
   border-radius: var(--radius-md);
   background: var(--primary-color);
@@ -221,12 +228,10 @@ const handleCopyLink = (message: ChannelMessage) => {
   cursor: pointer;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--primary-dark);
-  transform: translateY(-1px);
 }
 
 .send-btn:focus {
@@ -237,11 +242,10 @@ const handleCopyLink = (message: ChannelMessage) => {
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
 .message-readonly-hint {
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   border-top: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -254,5 +258,40 @@ const handleCopyLink = (message: ChannelMessage) => {
 .message-readonly-hint i {
   font-size: 14px;
   color: var(--primary-color);
+}
+
+.subscribe-prompt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  background: var(--bg-color);
+}
+
+.prompt-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.prompt-icon {
+  font-size: 64px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-4);
+  opacity: 0.5;
+}
+
+.prompt-title {
+  margin: 0 0 var(--spacing-3) 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
+}
+
+.prompt-description {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 </style>
