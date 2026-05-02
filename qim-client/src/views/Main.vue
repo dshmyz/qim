@@ -148,16 +148,6 @@
       <template v-else-if="activeOption === 'channels'">
         <!-- 频道内容区域 -->
         <div class="channel-content-area">
-          <!-- 标签页导航 -->
-          <TabNavigation
-            v-if="channelStore.openTabs.length > 0"
-            :tabs="channelStore.openTabs"
-            :active-tab-id="channelStore.selectedChannelId"
-            @select="handleTabSelect"
-            @close="handleTabClose"
-            @add="handleAddTab"
-          />
-          
           <!-- 频道详情 -->
           <ChannelDetailNew
             v-if="channelStore.selectedChannel"
