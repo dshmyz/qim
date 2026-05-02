@@ -244,11 +244,9 @@ onMounted(() => {
 .channel-sidebar {
   display: flex;
   flex-direction: column;
-  width: 280px;
+  width: 100%;
   height: 100%;
-  background: var(--card-bg);
-  border-right: 1px solid var(--border-color);
-  transition: width var(--transition-base);
+  background: transparent;
 }
 
 /* 头部样式 */
@@ -256,20 +254,20 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-4);
+  padding: var(--spacing-3);
   border-bottom: 1px solid var(--border-color);
-  min-height: 60px;
+  min-height: 52px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
 }
 
 .sidebar-title {
   margin: 0;
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
 }
@@ -278,20 +276,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: var(--primary-color);
   color: white;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .create-btn:hover {
   background: var(--primary-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
 .create-btn:focus {
@@ -303,13 +298,13 @@ onMounted(() => {
 .channel-tabs-toggle {
   display: flex;
   gap: var(--spacing-1);
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-2);
   border-bottom: 1px solid var(--border-color);
 }
 
 .tab-btn {
   flex: 1;
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-1) var(--spacing-2);
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -317,7 +312,6 @@ onMounted(() => {
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .tab-btn:hover {
@@ -340,7 +334,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-2);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -353,7 +347,6 @@ onMounted(() => {
   font-size: 13px;
   background: var(--input-bg);
   color: var(--text-color);
-  transition: all var(--transition-fast);
 }
 
 .search-input:focus {
@@ -386,7 +379,6 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .view-btn:hover {
@@ -409,7 +401,7 @@ onMounted(() => {
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-3);
+  padding: var(--spacing-2);
 }
 
 /* 列表视图 */
@@ -446,17 +438,12 @@ onMounted(() => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .channel-sidebar {
-    width: 100%;
-    border-right: none;
-  }
-
   .channel-sidebar-header {
-    padding: var(--spacing-3);
+    padding: var(--spacing-2);
   }
 
   .sidebar-title {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
   }
 
   .channel-tabs-toggle,
