@@ -86,23 +86,25 @@ const { formatTime } = useChatUtils()
 .channel-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: var(--spacing-5);
+  align-items: center;
+  padding: var(--spacing-3);
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
+  min-height: 52px;
 }
 
 .header-info {
   display: flex;
-  gap: var(--spacing-4);
+  gap: var(--spacing-3);
   flex: 1;
   min-width: 0;
+  align-items: center;
 }
 
 .header-avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -110,11 +112,14 @@ const { formatTime } = useChatUtils()
 .header-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .header-title {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: 18px;
+  margin: 0;
+  font-size: 16px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -123,23 +128,17 @@ const { formatTime } = useChatUtils()
 }
 
 .header-description {
-  margin: 0 0 var(--spacing-3) 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
 }
 
 .header-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-3);
-  font-size: 13px;
-  color: var(--text-secondary);
+  display: none;
 }
 
 .meta-item {
@@ -154,20 +153,20 @@ const { formatTime } = useChatUtils()
 
 .header-actions {
   flex-shrink: 0;
-  margin-left: var(--spacing-4);
+  margin-left: var(--spacing-3);
 }
 
 .subscribe-btn {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-4);
+  padding: var(--spacing-1) var(--spacing-3);
   border: none;
   border-radius: var(--radius-md);
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
 }
 
