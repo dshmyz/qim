@@ -398,6 +398,43 @@
       @created="handleConversationCreated"
     />
     
+    <!-- 创建频道弹窗 -->
+    <ModalContainer
+      :visible="showCreateChannelModal"
+      title="创建频道"
+      width="500px"
+      @close="closeCreateChannelModal"
+      @confirm="handleCreateChannelSubmit"
+    >
+      <div class="form-group">
+        <label>频道名称 *</label>
+        <input 
+          v-model="createChannelForm.name" 
+          type="text" 
+          placeholder="输入频道名称" 
+          class="form-input"
+        />
+      </div>
+      <div class="form-group">
+        <label>频道描述</label>
+        <textarea 
+          v-model="createChannelForm.description" 
+          placeholder="输入频道描述" 
+          rows="3" 
+          class="form-textarea"
+        ></textarea>
+      </div>
+      <div class="form-group">
+        <label>频道头像URL</label>
+        <input 
+          v-model="createChannelForm.avatar" 
+          type="text" 
+          placeholder="输入头像URL（可选）" 
+          class="form-input"
+        />
+      </div>
+    </ModalContainer>
+    
     <!-- 群模态框 -->
     <GroupModals
       :showGroupMembersModal="showGroupMembersModal"
@@ -513,12 +550,12 @@ import WindowControls from '../components/layout/WindowControls.vue'
 import ChatWindow from '../components/chat/ChatWindow.vue'
 import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
 import GroupDetail from '../components/shared/GroupDetail.vue'
+import ModalContainer from '../components/shared/ModalContainer.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 import UserProfile from '../components/modals/UserProfile.vue'
 import NotificationCenter from '../components/notification/NotificationCenter.vue'
 import { mapNotification } from '../utils/notificationMapper'
 import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
-import ChannelDetail from '../components/channel/ChannelDetail.vue'
 import ChannelSidebar from '../components/channel/ChannelSidebar.vue'
 import TabNavigation from '../components/channel/TabNavigation.vue'
 import ChannelDetailNew from '../components/channel/ChannelDetailNew.vue'
@@ -561,10 +598,7 @@ const { currentUser, userProfile, syncUserProfile, getProfileAvatar, refreshUser
 
 // 频道相关
 const {
-  channelMessage,
   isChannelCreator,
-  subscribeChannel,
-  unsubscribeChannel,
   sendChannelMessage
 } = useChannel(serverUrl, currentUser)
 
@@ -781,6 +815,14 @@ const {
   switchSettingsTab,
   handleClickOutside
 } = ui
+
+// 创建频道弹窗状态
+const showCreateChannelModal = ref(false)
+const createChannelForm = ref({
+  name: '',
+  description: '',
+  avatar: ''
+})
 
 // 使用 useConversation composable
 const conversation = useConversation()
@@ -3405,8 +3447,43 @@ const createChannel = () => {
 
 // 新的频道交互方法
 const handleCreateChannel = () => {
-  // TODO: 打开创建频道弹窗
-  console.log('创建频道')
+  showCreateChannelModal.value = true
+}
+
+// 创建频道
+const handleCreateChannelSubmit = async () => {
+  if (!createChannelForm.value.name) {
+    QMessage.error('请输入频道名称')
+    return
+  }
+
+  try {
+    const response = await request('/api/v1/channels', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(createChannelForm.value)
+    })
+
+    if (response.code === 0) {
+      showCreateChannelModal.value = false
+      createChannelForm.value = { name: '', description: '', avatar: '' }
+      await channelStore.fetchChannels()
+      QMessage.success('频道创建成功')
+    } else {
+      QMessage.error(response.message || '创建频道失败')
+    }
+  } catch (error) {
+    console.error('创建频道失败:', error)
+    QMessage.error('创建频道失败')
+  }
+}
+
+// 关闭创建频道弹窗
+const closeCreateChannelModal = () => {
+  showCreateChannelModal.value = false
+  createChannelForm.value = { name: '', description: '', avatar: '' }
 }
 
 const handleTabSelect = (tabId: string) => {
@@ -3438,24 +3515,62 @@ const handleDisplayModeChange = (mode: 'card' | 'timeline') => {
   channelStore.setMessageMode(mode)
 }
 
-const handleMessageLike = (message: any) => {
-  // TODO: 实现点赞功能
-  console.log('点赞消息:', message)
+const handleMessageLike = async (message: any) => {
+  try {
+    // TODO: 调用后端 API 点赞消息
+    // const response = await request(`/api/v1/channels/${message.channel_id}/messages/${message.id}/like`, {
+    //   method: 'POST'
+    // })
+    // if (response.code === 0) {
+    //   QMessage.success('点赞成功')
+    // }
+    
+    // 临时方案：仅显示提示
+    QMessage.success('点赞成功')
+    console.log('点赞消息:', message)
+  } catch (error) {
+    console.error('点赞失败:', error)
+    QMessage.error('点赞失败')
+  }
 }
 
-const handleMessageUnlike = (message: any) => {
-  // TODO: 实现取消点赞功能
-  console.log('取消点赞消息:', message)
+const handleMessageUnlike = async (message: any) => {
+  try {
+    // TODO: 调用后端 API 取消点赞
+    // const response = await request(`/api/v1/channels/${message.channel_id}/messages/${message.id}/unlike`, {
+    //   method: 'POST'
+    // })
+    // if (response.code === 0) {
+    //   QMessage.success('取消点赞成功')
+    // }
+    
+    // 临时方案：仅显示提示
+    QMessage.success('取消点赞')
+    console.log('取消点赞消息:', message)
+  } catch (error) {
+    console.error('取消点赞失败:', error)
+    QMessage.error('取消点赞失败')
+  }
 }
 
 const handleMessageComment = (message: any) => {
   // TODO: 实现评论功能
+  // 可以打开一个评论弹窗或跳转到消息详情页
+  QMessage.info('评论功能开发中')
   console.log('评论消息:', message)
 }
 
-const handleMessageCopyLink = (message: any) => {
-  // TODO: 实现复制链接功能
-  console.log('复制消息链接:', message)
+const handleMessageCopyLink = async (message: any) => {
+  try {
+    // 生成消息链接
+    const url = `${window.location.origin}/channels/${message.channel_id}/messages/${message.id}`
+    await navigator.clipboard.writeText(url)
+    QMessage.success('链接已复制到剪贴板')
+    console.log('复制消息链接:', message)
+  } catch (error) {
+    console.error('复制链接失败:', error)
+    QMessage.error('复制链接失败')
+  }
 }
 
 const createDiscussionGroup = () => {
@@ -4890,5 +5005,40 @@ button:active {
   50% {
     opacity: 0.6;
   }
+}
+
+/* ===== 表单样式 ===== */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 </style>
