@@ -9,15 +9,17 @@
     </div>
 
     <div class="generate-input-group">
-      <input
-        ref="inputRef"
-        v-model="urlInput"
-        type="text"
-        class="url-input"
-        placeholder="粘贴URL,按Enter快速生成..."
-        @keydown.enter="handleGenerate"
-      />
-      <div class="input-hint">Cmd + V</div>
+      <div class="input-wrapper">
+        <input
+          ref="inputRef"
+          v-model="urlInput"
+          type="text"
+          class="url-input"
+          placeholder="粘贴URL,按Enter快速生成..."
+          @keydown.enter="handleGenerate"
+        />
+        <div class="input-hint">Cmd + V</div>
+      </div>
       <button class="generate-btn" @click="handleGenerate" :disabled="!urlInput.trim() || isGenerating">
         {{ isGenerating ? '生成中...' : '生成短链接' }}
       </button>
@@ -125,15 +127,18 @@ defineExpose({
   flex-wrap: wrap;
   gap: 12px;
   align-items: stretch;
+}
+
+.input-wrapper {
+  flex: 1;
+  min-width: 200px;
   position: relative;
 }
 
 .url-input {
-  flex: 1;
-  min-width: 200px;
-  max-width: 100%;
+  width: 100%;
   padding: 14px 16px;
-  padding-right: 60px;
+  padding-right: 80px;
   border: none;
   border-radius: 12px;
   font-size: 14px;
@@ -150,7 +155,7 @@ defineExpose({
 
 .input-hint {
   position: absolute;
-  right: 140px;
+  right: 16px;
   top: 50%;
   transform: translateY(-50%);
   color: #9ca3af;
@@ -246,6 +251,10 @@ defineExpose({
     display: none;
   }
 
+  .url-input {
+    padding-right: 16px;
+  }
+
   .generate-result {
     flex-wrap: wrap;
     gap: 12px;
@@ -269,9 +278,8 @@ defineExpose({
     flex-direction: column;
   }
 
-  .url-input {
+  .input-wrapper {
     min-width: 0;
-    padding-right: 16px;
   }
 
   .generate-btn {
