@@ -1,3 +1,18 @@
+<!--
+  ChannelSidebar.vue - 频道侧边栏容器组件
+
+  功能：
+  - 显示频道列表（支持列表视图和卡片视图）
+  - 订阅/广场标签切换
+  - 视图模式切换（列表/卡片）
+  - 创建频道按钮（仅管理员可见）
+  - 加载状态和空状态展示
+
+  使用：
+  - 通过 useChannelStore 管理频道状态
+  - 接收 currentUser prop 用于权限判断
+  - 发送 createChannel 事件用于创建频道
+-->
 <template>
   <div class="channel-sidebar">
     <!-- 侧边栏头部 -->
