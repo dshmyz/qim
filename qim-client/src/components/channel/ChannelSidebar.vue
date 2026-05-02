@@ -23,6 +23,7 @@
           v-if="isAdmin"
           class="create-btn"
           @click="handleCreateChannel"
+          aria-label="创建频道"
           title="创建频道"
         >
           <i class="fas fa-plus"></i>
@@ -31,11 +32,14 @@
     </div>
 
     <!-- 标签切换 -->
-    <div class="channel-tabs-toggle">
+    <div class="channel-tabs-toggle" role="tablist" aria-label="频道标签">
       <button
         class="tab-btn"
         :class="{ active: activeTab === 'subscribed' }"
         @click="activeTab = 'subscribed'"
+        role="tab"
+        :aria-selected="activeTab === 'subscribed'"
+        aria-label="订阅的频道"
       >
         订阅
       </button>
@@ -43,18 +47,23 @@
         class="tab-btn"
         :class="{ active: activeTab === 'discover' }"
         @click="activeTab = 'discover'"
+        role="tab"
+        :aria-selected="activeTab === 'discover'"
+        aria-label="频道广场"
       >
         广场
       </button>
     </div>
 
     <!-- 视图切换 -->
-    <div class="view-toggle">
+    <div class="view-toggle" role="group" aria-label="视图模式">
       <button
         class="view-btn"
         :class="{ active: viewMode === 'list' }"
         @click="setViewMode('list')"
+        aria-label="列表视图"
         title="列表视图"
+        :aria-pressed="viewMode === 'list'"
       >
         <i class="fas fa-list"></i>
       </button>
@@ -62,7 +71,9 @@
         class="view-btn"
         :class="{ active: viewMode === 'card' }"
         @click="setViewMode('card')"
+        aria-label="卡片视图"
         title="卡片视图"
+        :aria-pressed="viewMode === 'card'"
       >
         <i class="fas fa-th-large"></i>
       </button>
@@ -71,105 +82,44 @@
     <!-- 侧边栏内容 -->
     <div class="channel-sidebar-content">
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-state">
-        <div class="loading-spinner"></div>
-        <span>加载中...</span>
-      </div>
+      <LoadingSpinner v-if="loading" text="加载中..." />
 
       <!-- 空状态 -->
-      <div v-else-if="displayChannels.length === 0" class="empty-state">
-        <i class="fas fa-bullhorn empty-icon"></i>
-        <h4>{{ emptyTitle }}</h4>
-        <p>{{ emptyDescription }}</p>
-        <button
-          v-if="activeTab === 'subscribed'"
-          class="switch-btn"
-          @click="activeTab = 'discover'"
-        >
-          浏览频道广场
-        </button>
-      </div>
+      <EmptyState
+        v-else-if="displayChannels.length === 0"
+        icon="fa-bullhorn"
+        :title="emptyTitle"
+        :description="emptyDescription"
+        :action-text="activeTab === 'subscribed' ? '浏览频道广场' : undefined"
+        @action="activeTab = 'discover'"
+      />
 
       <!-- 频道列表 -->
       <div v-else :class="['channels-container', viewMode]">
         <!-- 列表视图 -->
         <div v-if="viewMode === 'list'" class="channel-list-view">
-          <div
+          <ChannelListItem
             v-for="channel in displayChannels"
             :key="channel.id"
-            class="channel-list-item"
-            :class="{ active: selectedChannelId === channel.id }"
-            @click="handleSelectChannel(channel)"
-          >
-            <img
-              :src="channel.avatar || generateAvatar(channel.name)"
-              :alt="channel.name"
-              class="channel-avatar"
-            />
-            <div class="channel-info">
-              <div class="channel-name">{{ channel.name }}</div>
-              <div class="channel-desc">{{ channel.description }}</div>
-            </div>
-            <div class="channel-actions">
-              <button
-                v-if="channel.is_subscribed"
-                class="subscribe-btn subscribed"
-                @click.stop="handleUnsubscribe(channel)"
-              >
-                <i class="fas fa-check"></i>
-              </button>
-              <button
-                v-else
-                class="subscribe-btn"
-                @click.stop="handleSubscribe(channel)"
-              >
-                <i class="fas fa-plus"></i>
-              </button>
-            </div>
-          </div>
+            :channel="channel"
+            :is-selected="selectedChannelId === channel.id"
+            @select="handleSelectChannel"
+            @subscribe="handleSubscribe"
+            @unsubscribe="handleUnsubscribe"
+          />
         </div>
 
         <!-- 卡片视图 -->
         <div v-else class="channel-card-view">
-          <div
+          <ChannelCard
             v-for="channel in displayChannels"
             :key="channel.id"
-            class="channel-card"
-            :class="{ active: selectedChannelId === channel.id }"
-            @click="handleSelectChannel(channel)"
-          >
-            <div class="card-header">
-              <img
-                :src="channel.avatar || generateAvatar(channel.name)"
-                :alt="channel.name"
-                class="card-avatar"
-              />
-              <button
-                v-if="channel.is_subscribed"
-                class="card-subscribe-btn subscribed"
-                @click.stop="handleUnsubscribe(channel)"
-              >
-                <i class="fas fa-check"></i> 已订阅
-              </button>
-              <button
-                v-else
-                class="card-subscribe-btn"
-                @click.stop="handleSubscribe(channel)"
-              >
-                <i class="fas fa-plus"></i> 订阅
-              </button>
-            </div>
-            <div class="card-body">
-              <h4 class="card-title">{{ channel.name }}</h4>
-              <p class="card-description">{{ channel.description }}</p>
-            </div>
-            <div class="card-footer">
-              <span class="card-creator">
-                <i class="fas fa-user"></i>
-                {{ channel.creator?.name || '未知' }}
-              </span>
-            </div>
-          </div>
+            :channel="channel"
+            :is-selected="selectedChannelId === channel.id"
+            @select="handleSelectChannel"
+            @subscribe="handleSubscribe"
+            @unsubscribe="handleUnsubscribe"
+          />
         </div>
       </div>
     </div>
@@ -179,8 +129,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useChannelStore } from '../../stores/channel'
-import { generateAvatar } from '../../utils/avatar'
 import type { Channel, User } from '../../types'
+import LoadingSpinner from '../shared/LoadingSpinner.vue'
+import EmptyState from '../shared/EmptyState.vue'
+import ChannelListItem from './ChannelListItem.vue'
+import ChannelCard from './ChannelCard.vue'
 
 interface Props {
   currentUser: User | null
@@ -239,11 +192,21 @@ const handleSelectChannel = (channel: Channel) => {
 }
 
 const handleSubscribe = async (channel: Channel) => {
-  await channelStore.subscribeChannel(channel.id)
+  try {
+    await channelStore.subscribeChannel(channel.id)
+  } catch (error) {
+    console.error('订阅频道失败:', error)
+    // 这里可以添加错误提示，例如使用消息组件
+  }
 }
 
 const handleUnsubscribe = async (channel: Channel) => {
-  await channelStore.unsubscribeChannel(channel.id)
+  try {
+    await channelStore.unsubscribeChannel(channel.id)
+  } catch (error) {
+    console.error('取消订阅失败:', error)
+    // 这里可以添加错误提示，例如使用消息组件
+  }
 }
 
 // 生命周期
@@ -308,6 +271,11 @@ onMounted(() => {
   box-shadow: var(--shadow-sm);
 }
 
+.create-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 /* 标签切换 */
 .channel-tabs-toggle {
   display: flex;
@@ -337,6 +305,11 @@ onMounted(() => {
 .tab-btn.active {
   background: var(--primary-color);
   color: white;
+}
+
+.tab-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* 视图切换 */
@@ -369,84 +342,16 @@ onMounted(() => {
   color: var(--text-color);
 }
 
+.view-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 /* 内容区域 */
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-3);
-}
-
-/* 加载状态 */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-12) 0;
-  color: var(--text-secondary);
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--border-color);
-  border-top: 3px solid var(--primary-color);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: var(--spacing-4);
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 空状态 */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-12) var(--spacing-4);
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 48px;
-  color: var(--primary-color);
-  margin-bottom: var(--spacing-4);
-  opacity: 0.5;
-}
-
-.empty-state h4 {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
-}
-
-.empty-state p {
-  margin: 0 0 var(--spacing-4) 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.switch-btn {
-  padding: var(--spacing-2) var(--spacing-4);
-  border: 1px solid var(--primary-color);
-  border-radius: var(--radius-md);
-  background: var(--primary-color);
-  color: white;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
-}
-
-.switch-btn:hover {
-  background: var(--primary-dark);
-  border-color: var(--primary-dark);
-  transform: translateY(-1px);
 }
 
 /* 列表视图 */
@@ -456,186 +361,11 @@ onMounted(() => {
   gap: var(--spacing-2);
 }
 
-.channel-list-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.channel-list-item:hover {
-  background: var(--color-gray-100);
-}
-
-.channel-list-item.active {
-  background: var(--color-gray-200);
-}
-
-.channel-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.channel-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.channel-name {
-  font-size: 14px;
-  font-weight: var(--font-weight-medium);
-  color: var(--text-color);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.channel-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
-}
-
-.channel-actions {
-  flex-shrink: 0;
-}
-
-.subscribe-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--primary-color);
-  background: transparent;
-  color: var(--primary-color);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.subscribe-btn:hover {
-  background: var(--primary-color);
-  color: white;
-}
-
-.subscribe-btn.subscribed {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-
 /* 卡片视图 */
 .channel-card-view {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-}
-
-.channel-card {
-  background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-4);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  border: 1px solid var(--border-color);
-}
-
-.channel-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-  border-color: var(--primary-color);
-}
-
-.channel-card.active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(51, 133, 255, 0.1);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-3);
-}
-
-.card-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-}
-
-.card-subscribe-btn {
-  padding: var(--spacing-1) var(--spacing-3);
-  border: 1px solid var(--primary-color);
-  background: transparent;
-  color: var(--primary-color);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: var(--font-weight-medium);
-  transition: all var(--transition-fast);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-1);
-}
-
-.card-subscribe-btn:hover {
-  background: var(--primary-color);
-  color: white;
-}
-
-.card-subscribe-btn.subscribed {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-.card-body {
-  margin-bottom: var(--spacing-3);
-}
-
-.card-title {
-  margin: 0 0 var(--spacing-2) 0;
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-description {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.card-footer {
-  font-size: 12px;
-  color: var(--text-secondary);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--spacing-3);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-1);
 }
 
 /* 滚动条样式 */
@@ -684,24 +414,6 @@ onMounted(() => {
 
   .channel-sidebar-content {
     padding: var(--spacing-2);
-  }
-
-  .channel-list-item {
-    padding: var(--spacing-2);
-  }
-
-  .channel-avatar {
-    width: 36px;
-    height: 36px;
-  }
-
-  .channel-card {
-    padding: var(--spacing-3);
-  }
-
-  .card-avatar {
-    width: 40px;
-    height: 40px;
   }
 }
 </style>

@@ -109,6 +109,8 @@ const handleSelectChange = (e: Event) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  word-break: break-all;
+  max-width: 100%;
 }
 
 .link-meta {
@@ -183,5 +185,53 @@ const handleSelectChange = (e: Event) => {
 .delete-btn:hover {
   background: var(--danger-bg-hover, rgba(239, 68, 68, 0.2));
   transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .short-link-item {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .link-info {
+    order: 2;
+    width: 100%;
+  }
+
+  .visit-count {
+    order: 1;
+    min-width: 60px;
+  }
+
+  .link-actions {
+    order: 3;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .link-meta {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .short-link-item {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .original-url {
+    font-size: 13px;
+  }
+
+  .link-meta {
+    font-size: 11px;
+  }
+
+  .action-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
 }
 </style>

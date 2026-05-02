@@ -351,8 +351,46 @@ defineExpose({
 .list-controls {
   padding: 16px 20px;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+@media (max-width: 768px) {
+  .list-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .list-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .batch-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .batch-left,
+  .batch-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .list-controls {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .list-header {
+    padding: 16px;
+  }
+
+  .list-controls {
+    padding: 12px;
+  }
 }
 
 .short-link-list {

@@ -119,6 +119,7 @@ defineExpose({
 
 .generate-input-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: stretch;
   position: relative;
@@ -126,6 +127,7 @@ defineExpose({
 
 .url-input {
   flex: 1;
+  min-width: 200px;
   padding: 14px 16px;
   padding-right: 60px;
   border: none;
@@ -218,5 +220,57 @@ defineExpose({
 
 .copy-btn:disabled {
   opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+  .quick-generate-section {
+    padding: 20px;
+  }
+
+  .generate-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .generate-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .input-hint {
+    display: none;
+  }
+
+  .generate-result {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .result-info {
+    width: 100%;
+  }
+
+  .copy-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .quick-generate-section {
+    padding: 16px;
+  }
+
+  .generate-input-group {
+    flex-direction: column;
+  }
+
+  .url-input {
+    min-width: 0;
+    padding-right: 16px;
+  }
+
+  .generate-btn {
+    width: 100%;
+  }
 }
 </style>
