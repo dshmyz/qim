@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { avatarAPI } from '../api/avatar'
 import type { AvatarLearnStatus } from '../types/avatar'
 
@@ -76,6 +76,10 @@ export function useAvatarPersona() {
       pollTimer = null
     }
   }
+
+  onUnmounted(() => {
+    stopPolling()
+  })
 
   return {
     learnStatus,
