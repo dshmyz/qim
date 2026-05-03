@@ -31,6 +31,14 @@ interface QMessageBoxAPI {
   prompt: (message: string, title?: string, placeholder?: string) => Promise<MessageBoxResult>
 }
 
+interface QMessageAPI {
+  success: (content: string, duration?: number) => void
+  error: (content: string, duration?: number) => void
+  warning: (content: string, duration?: number) => void
+  info: (content: string, duration?: number) => void
+}
+
 interface Window {
   $QMessageBox: QMessageBoxAPI
+  $QMessage: QMessageAPI
 }

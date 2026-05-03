@@ -76,7 +76,6 @@ import AvatarTriggerSettings from './AvatarTriggerSettings.vue'
 import AvatarKnowledgeSettings from './AvatarKnowledgeSettings.vue'
 import AvatarReplySettings from './AvatarReplySettings.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
-import type { AvatarConfig } from '../../types/avatar'
 
 const {
   config,

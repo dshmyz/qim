@@ -2,7 +2,7 @@
   <div class="avatar-reply-settings">
     <div class="setting-item">
       <label>回复长度</label>
-      <select :value="modelValue.replyStrategy.maxReplyLength" @change="updateStrategy('maxReplyLength', ($event.target as HTMLSelectElement).value)" class="form-select">
+      <select :value="modelValue.replyStrategy.maxReplyLength" @change="updateStrategy('maxReplyLength', ($event.target as HTMLSelectElement).value as 'short' | 'medium' | 'long')" class="form-select">
         <option value="short">简短（1-2 句）</option>
         <option value="medium">适中（3-5 句）</option>
         <option value="long">详细（6 句以上）</option>
@@ -31,7 +31,7 @@
 
     <div class="setting-item">
       <label>AI 标记样式</label>
-      <select :value="modelValue.replyStrategy.disclaimerStyle" @change="updateStrategy('disclaimerStyle', ($event.target as HTMLSelectElement).value)" class="form-select">
+      <select :value="modelValue.replyStrategy.disclaimerStyle" @change="updateStrategy('disclaimerStyle', ($event.target as HTMLSelectElement).value as 'badge' | 'footer' | 'both')" class="form-select">
         <option value="badge">徽章标记</option>
         <option value="footer">底部标注</option>
         <option value="both">两者都有</option>
