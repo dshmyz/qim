@@ -194,12 +194,20 @@ const floatingVideoRef = ref<HTMLVideoElement | null>(null)
 const floatingStream = ref<MediaStream | null>(null)
 
 const floatingPosition = ref({ x: 20, y: 20 })
-const windowPosition = ref({ 
+const windowPosition = ref({
   x: window.innerWidth / 2 - 210, // 420px 宽的一半
   y: window.innerHeight / 2 - 200  // 居中位置
 })
-const isDragging = ref(false)
-const dragOffset = ref({ x: 0, y: 0 })
+
+const dragState = ref({
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  elementX: 0,
+  elementY: 0
+})
+
+let rafId: number | null = null
 
 const floatingWindowStyle = computed(() => ({
   right: `${floatingPosition.value.x}px`,
@@ -221,6 +229,16 @@ watch(isSharing, (sharing) => {
     startDurationTimer()
   } else {
     stopDurationTimer()
+  }
+})
+
+watch(() => dragState.value.isDragging, (isDragging) => {
+  if (screenShareOverlayRef.value) {
+    if (isDragging) {
+      screenShareOverlayRef.value.classList.add('dragging')
+    } else {
+      screenShareOverlayRef.value.classList.remove('dragging')
+    }
   }
 })
 
@@ -577,74 +595,111 @@ const togglePictureInPicture = async () => {
   }
 }
 
-const screenShareOverlayRef = ref(null)
+const screenShareOverlayRef = ref<HTMLElement | null>(null)
 
 const startDrag = (e: MouseEvent) => {
-  isDragging.value = true
-  dragOffset.value = { x: e.clientX, y: e.clientY }
-  document.addEventListener('mousemove', onWindowDrag)
-  document.addEventListener('mouseup', stopWindowDrag)
+  e.preventDefault()
+  const element = screenShareOverlayRef.value
+  if (!element) return
+  
+  const rect = element.getBoundingClientRect()
+  
+  dragState.value = {
+    isDragging: true,
+    startX: e.clientX,
+    startY: e.clientY,
+    elementX: rect.left,
+    elementY: rect.top
+  }
+  
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
 }
 
 const onDrag = (e: MouseEvent) => {
-  if (isDragging.value) {
-    floatingPosition.value = {
-      x: Math.max(0, floatingPosition.value.x + e.clientX - dragOffset.value.x),
-      y: Math.max(0, floatingPosition.value.y + e.clientY - dragOffset.value.y)
-    }
-    dragOffset.value = { x: e.clientX, y: e.clientY }
-  }
-}
-
-const onWindowDrag = (e: MouseEvent) => {
-  if (isDragging.value && screenShareOverlayRef.value) {
-    const element = screenShareOverlayRef.value
+  if (!dragState.value.isDragging) return
+  
+  const deltaX = e.clientX - dragState.value.startX
+  const deltaY = e.clientY - dragState.value.startY
+  
+  let newX = dragState.value.elementX + deltaX
+  let newY = dragState.value.elementY + deltaY
+  
+  const element = screenShareOverlayRef.value
+  if (element) {
     const rect = element.getBoundingClientRect()
-    
-    const newX = rect.left + e.clientX - dragOffset.value.x
-    const newY = rect.top + e.clientY - dragOffset.value.y
-    
-    element.style.left = `${newX}px`
-    element.style.top = `${newY}px`
-    element.style.transform = 'none'
-    
-    dragOffset.value = { x: e.clientX, y: e.clientY }
+    newX = Math.max(0, Math.min(newX, window.innerWidth - rect.width))
+    newY = Math.max(0, Math.min(newY, window.innerHeight - rect.height))
   }
+  
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+  }
+  
+  rafId = requestAnimationFrame(() => {
+    if (element) {
+      element.style.left = `${newX}px`
+      element.style.top = `${newY}px`
+      element.style.transform = 'none'
+    }
+  })
 }
 
 const stopDrag = () => {
-  isDragging.value = false
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  dragState.value.isDragging = false
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
-}
-
-const stopWindowDrag = () => {
-  isDragging.value = false
-  document.removeEventListener('mousemove', onWindowDrag)
-  document.removeEventListener('mouseup', stopWindowDrag)
 }
 
 const startFloatingDrag = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (target.closest('.floating-actions')) return
-  isDragging.value = true
-  dragOffset.value = { x: e.clientX, y: e.clientY }
+  
+  const element = document.querySelector('.floating-window') as HTMLElement
+  if (!element) return
+  
+  const rect = element.getBoundingClientRect()
+  
+  dragState.value = {
+    isDragging: true,
+    startX: e.clientX,
+    startY: e.clientY,
+    elementX: window.innerWidth - rect.right,
+    elementY: window.innerHeight - rect.bottom
+  }
+  
   document.addEventListener('mousemove', onFloatingDrag)
   document.addEventListener('mouseup', stopFloatingDrag)
 }
 
 const onFloatingDrag = (e: MouseEvent) => {
-  if (isDragging.value) {
-    floatingPosition.value = {
-      x: Math.max(0, window.innerWidth - 320 - (e.clientX - dragOffset.value.x)),
-      y: Math.max(0, window.innerHeight - 200 - (e.clientY - dragOffset.value.y))
-    }
-    dragOffset.value = { x: e.clientX, y: e.clientY }
+  if (!dragState.value.isDragging) return
+  
+  const deltaX = e.clientX - dragState.value.startX
+  const deltaY = e.clientY - dragState.value.startY
+  
+  let newX = dragState.value.elementX - deltaX
+  let newY = dragState.value.elementY - deltaY
+  
+  const element = document.querySelector('.floating-window') as HTMLElement
+  if (element) {
+    const rect = element.getBoundingClientRect()
+    newX = Math.max(0, Math.min(newX, window.innerWidth - rect.width))
+    newY = Math.max(0, Math.min(newY, window.innerHeight - rect.height))
+  }
+  
+  floatingPosition.value = {
+    x: newX,
+    y: newY
   }
 }
 
 const stopFloatingDrag = () => {
-  isDragging.value = false
+  dragState.value.isDragging = false
   document.removeEventListener('mousemove', onFloatingDrag)
   document.removeEventListener('mouseup', stopFloatingDrag)
 }
