@@ -35,6 +35,10 @@
           </span>
         </div>
       </div>
+      <AvatarSessionToggle
+        v-if="currentUser"
+        :conversation-id="conversation.id"
+      />
     </div>
 
     <GroupPanel
@@ -76,6 +80,7 @@
 import { computed } from 'vue'
 import type { Conversation } from '../../types'
 import GroupPanel from './GroupPanel.vue'
+import AvatarSessionToggle from '../avatar/AvatarSessionToggle.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { ref } from 'vue'
 

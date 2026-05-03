@@ -20,6 +20,14 @@
       @update-ai-settings="handleUpdateAISettings"
     />
 
+    <!-- 分身接管横幅 -->
+    <AvatarTakeoverBanner
+      v-if="avatarTakeoverUntil"
+      :takeover-until="avatarTakeoverUntil"
+      @resume="handleAvatarResume"
+      @extend="handleAvatarExtend"
+    />
+
     <!-- 消息列表和成员侧边栏 -->
     <ChatBody
       ref="chatBodyRef"
@@ -246,10 +254,12 @@ import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
+import AvatarTakeoverBanner from '../avatar/AvatarTakeoverBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useTaskStore } from '../../stores/task'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
+import { useAvatar } from '../../composables/useAvatar'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -296,6 +306,9 @@ const {
   polishText,
   generateSummary,
 } = useAIActions()
+
+// 分身 composable
+const { takeoverSession, getSession } = useAvatar()
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
@@ -1330,7 +1343,6 @@ const initWebSocketMessageHandler = () => {
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
   isMounted.value = false
-  
   // 移除滚动事件监听器
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
@@ -1982,6 +1994,25 @@ const otherUserId = computed(() => {
   }
   return null
 })
+
+// 分身接管状态
+const avatarTakeoverUntil = computed(() => {
+  if (!props.conversation) return null
+  const session = getSession(props.conversation.id)
+  return session?.takeoverUntil || null
+})
+
+// 处理分身恢复
+async function handleAvatarResume() {
+  if (!props.conversation) return
+  await takeoverSession(props.conversation.id)
+}
+
+// 处理分身延长
+async function handleAvatarExtend() {
+  if (!props.conversation) return
+  await takeoverSession(props.conversation.id)
+}
 
 // 检测是否在Electron环境中
 const isElectron = computed(() => {

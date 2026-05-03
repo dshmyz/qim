@@ -17,7 +17,7 @@ import { computed } from 'vue'
 import { useAvatar } from '../../composables/useAvatar'
 
 const props = defineProps<{
-  conversationId: number
+  conversationId: string | number
 }>()
 
 const { config, toggleSession, isAvatarActive } = useAvatar()

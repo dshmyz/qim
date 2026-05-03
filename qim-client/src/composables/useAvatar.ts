@@ -83,12 +83,12 @@ export function useAvatar() {
     }
   }
 
-  async function toggleSession(convId: number, enabled: boolean) {
+  async function toggleSession(convId: string | number, enabled: boolean) {
     loading.value = true
     error.value = ''
     try {
-      const session = await avatarAPI.updateSession(convId, enabled)
-      const idx = sessions.value.findIndex(s => s.conversationId === convId)
+      const session = await avatarAPI.updateSession(Number(convId), enabled)
+      const idx = sessions.value.findIndex(s => s.conversationId === Number(convId))
       if (idx >= 0) {
         sessions.value[idx] = session
       } else {
@@ -103,12 +103,12 @@ export function useAvatar() {
     }
   }
 
-  async function takeoverSession(convId: number) {
+  async function takeoverSession(convId: string | number) {
     loading.value = true
     error.value = ''
     try {
-      const session = await avatarAPI.takeoverSession(convId)
-      const idx = sessions.value.findIndex(s => s.conversationId === convId)
+      const session = await avatarAPI.takeoverSession(Number(convId))
+      const idx = sessions.value.findIndex(s => s.conversationId === Number(convId))
       if (idx >= 0) {
         sessions.value[idx] = session
       }
@@ -121,11 +121,11 @@ export function useAvatar() {
     }
   }
 
-  function getSession(convId: number): AvatarSession | undefined {
-    return sessions.value.find(s => s.conversationId === convId)
+  function getSession(convId: string | number): AvatarSession | undefined {
+    return sessions.value.find(s => s.conversationId === Number(convId))
   }
 
-  function isAvatarActive(convId: number): boolean {
+  function isAvatarActive(convId: string | number): boolean {
     const session = getSession(convId)
     if (!session || !session.avatarEnabled) return false
     if (session.takeoverUntil && new Date(session.takeoverUntil) > new Date()) return false

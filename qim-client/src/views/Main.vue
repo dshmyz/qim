@@ -144,11 +144,9 @@
         </div>
       </div>
       
-      <!-- 频道页面的新布局 -->
+      <!-- 频道页面布局 -->
       <template v-else-if="activeOption === 'channels'">
-        <!-- 频道内容区域 -->
         <div class="channel-content-area">
-          <!-- 频道详情 -->
           <ChannelDetailNew
             v-if="channelStore.selectedChannel"
             :channel="channelStore.selectedChannel"
@@ -165,8 +163,6 @@
             @comment="handleMessageComment"
             @copyLink="handleMessageCopyLink"
           />
-          
-          <!-- 空状态 -->
           <div v-else class="channel-empty-state">
             <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
             <p>选择一个频道查看详情</p>
@@ -260,6 +256,11 @@
       <!-- AI 助手 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-assistant'" class="right-content">
         <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+      </div>
+
+      <!-- AI 分身 -->
+      <div v-else-if="activeOption === 'apps' && selectedAppId === 'avatar'" class="right-content">
+        <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
 
       <!-- 短链接管理应用 -->
@@ -519,6 +520,7 @@ import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
+import AvatarSettingsPanel from '../components/avatar/AvatarSettingsPanel.vue'
 import * as storage from '../utils/storage'
 
 // 声明 window.electron 变量
@@ -543,8 +545,6 @@ import UserProfile from '../components/modals/UserProfile.vue'
 import NotificationCenter from '../components/notification/NotificationCenter.vue'
 import { mapNotification } from '../utils/notificationMapper'
 import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
-import ChannelSidebar from '../components/channel/ChannelSidebar.vue'
-import TabNavigation from '../components/channel/TabNavigation.vue'
 import ChannelDetailNew from '../components/channel/ChannelDetailNew.vue'
 import UserDetailPanel from '../components/user/UserDetailPanel.vue'
 import AppsPanel from '../components/apps/AppsPanel.vue'
@@ -558,7 +558,6 @@ import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 // @ts-ignore - WebRTC module has no type declarations
 import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 import { request, getToken } from '../composables/useRequest'
-import { useChannel } from '../composables/useChannel'
 import { useChannelStore } from '../stores/channel'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
@@ -583,14 +582,9 @@ const showMessage = (options: { message: string, type?: 'success' | 'warning' | 
 // 当前用户信息
 const { currentUser, userProfile, syncUserProfile, getProfileAvatar, refreshUser } = useCurrentUser()
 
-// 频道相关
-const {
-  isChannelCreator,
-  sendChannelMessage
-} = useChannel(serverUrl, currentUser)
-
 // 使用频道 store
 const channelStore = useChannelStore()
+const { isChannelCreator, sendChannelMessage } = channelStore
 
 // 会话数据处理
 const { processConversation } = useProcessConversation(serverUrl, currentUser)
@@ -2880,12 +2874,6 @@ const quickTools = computed(() => {
       name: '短链接管理',
       icon: 'fas fa-link',
       description: '快速生成短链接'
-    },
-    {
-      id: 'mini-app',
-      name: '小程序',
-      icon: 'fas fa-th-large',
-      description: '轻量级应用工具'
     }
   ]
 })
@@ -2898,7 +2886,8 @@ const mainApps = computed(() => {
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
     { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
-    { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' }
+    { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' },
+    { id: 'avatar', name: 'AI 分身', icon: 'fas fa-user-astronaut' }
   ]
 })
 
@@ -3436,7 +3425,7 @@ const createChannel = () => {
   hideActionMenu()
   activeOption.value = 'channels'
   nextTick(() => {
-    sidebarRef.value?.channelListRef?.openCreateModal()
+    handleCreateChannel()
   })}
 
 // 新的频道交互方法
@@ -3478,19 +3467,6 @@ const handleCreateChannelSubmit = async () => {
 const closeCreateChannelModal = () => {
   showCreateChannelModal.value = false
   createChannelForm.value = { name: '', description: '', avatar: '' }
-}
-
-const handleTabSelect = (tabId: string) => {
-  channelStore.selectChannel(tabId)
-}
-
-const handleTabClose = (tabId: string) => {
-  channelStore.removeTab(tabId)
-}
-
-const handleAddTab = () => {
-  // TODO: 打开频道选择器或创建新频道
-  console.log('添加标签页')
 }
 
 const handleChannelSubscribe = async (channel: any) => {
