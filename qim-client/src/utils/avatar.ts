@@ -56,11 +56,16 @@ export const generateAvatar = (name: string): string => {
 }
 
 // 处理头像 URL
+export const getDisplayName = (user: { nickname?: string; username?: string; name?: string } | undefined | null): string => {
+  if (!user) return '未知用户'
+  return user.nickname || user.username || user.name || '未知用户'
+}
+
 export const getAvatarUrl = (avatar: string | undefined | null, name: string, serverUrl: string): string => {
   if (avatar && avatar.trim() && isAbsoluteUrl(avatar)) {
     return avatar
   }
-  if (avatar && avatar.trim() && serverUrl && serverUrl.trim()) {
+  if (avatar && avatar.trim()) {
     const cleanServerUrl = serverUrl.replace(/\/$/, '')
     const cleanAvatar = avatar.replace(/^\//, '')
     return `${cleanServerUrl}/${cleanAvatar}`

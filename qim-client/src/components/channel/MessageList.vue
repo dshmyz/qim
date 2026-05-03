@@ -1,31 +1,11 @@
-<!--
-  MessageList.vue - 消息列表容器组件
-
-  功能：
-  - 显示消息列表（卡片模式和时间线模式）
-  - 支持模式切换
-  - 支持排序切换
-  - 使用 LoadingSpinner 和 EmptyState 通用组件
-
-  使用示例：
-  <MessageList
-    :messages="messages"
-    :mode="displayMode"
-    :is-creator="isCreator"
-    :loading="isLoading"
-    @update:mode="handleModeChange"
-  />
--->
 <template>
   <div class="message-list-container">
-    <!-- 工具栏 -->
     <div class="list-toolbar">
       <div class="toolbar-left">
         <h3 class="list-title">最新消息</h3>
         <span class="message-count">{{ messages.length }} 条消息</span>
       </div>
       <div class="toolbar-right">
-        <!-- 显示模式切换 -->
         <div class="mode-toggle" role="group" aria-label="显示模式">
           <button
             class="mode-btn"
@@ -46,7 +26,6 @@
             <i class="fas fa-stream"></i>
           </button>
         </div>
-        <!-- 排序切换 -->
         <div class="sort-toggle">
           <button
             class="sort-btn"
@@ -60,10 +39,8 @@
       </div>
     </div>
 
-    <!-- 加载状态 -->
     <LoadingSpinner v-if="loading" text="加载消息中..." />
 
-    <!-- 空状态 -->
     <EmptyState
       v-else-if="!messages || messages.length === 0"
       icon="fa-comment-alt"
@@ -71,15 +48,14 @@
       description="还没有任何消息，等待创建者发布第一条消息吧！"
     />
 
-    <!-- 消息列表 -->
     <div v-else class="list-content">
-      <!-- 卡片模式 -->
       <div v-if="mode === 'card'" class="card-grid">
         <MessageCard
           v-for="message in sortedMessages"
           :key="message.id"
           :message="message"
           :is-creator="isCreator"
+          :interactive="interactive"
           @like="handleLike"
           @unlike="handleUnlike"
           @comment="handleComment"
@@ -87,18 +63,18 @@
         />
       </div>
 
-      <!-- 时间线模式 -->
       <MessageTimeline
         v-else
         :messages="sortedMessages"
         :creator-id="creatorId"
+        :interactive="interactive"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import EmptyState from '../shared/EmptyState.vue'
 import MessageCard from './MessageCard.vue'
@@ -115,6 +91,7 @@ interface Props {
   loading?: boolean
   sortOrder?: SortOrder
   creatorId?: string | number
+  interactive?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -122,7 +99,8 @@ const props = withDefaults(defineProps<Props>(), {
   isCreator: false,
   loading: false,
   sortOrder: 'desc',
-  creatorId: ''
+  creatorId: '',
+  interactive: true
 })
 
 const emit = defineEmits<{
@@ -134,13 +112,11 @@ const emit = defineEmits<{
   copyLink: [message: ChannelMessage]
 }>()
 
-// 切换排序
 const toggleSort = () => {
   const newSortOrder = props.sortOrder === 'desc' ? 'asc' : 'desc'
   emit('update:sortOrder', newSortOrder)
 }
 
-// 排序后的消息列表
 const sortedMessages = computed(() => {
   const sorted = [...props.messages]
   sorted.sort((a, b) => {
@@ -151,7 +127,6 @@ const sortedMessages = computed(() => {
   return sorted
 })
 
-// 事件处理
 const handleLike = (message: ChannelMessage) => {
   emit('like', message)
 }
@@ -181,10 +156,9 @@ const handleCopyLink = (message: ChannelMessage) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
-  height: 53px;
 }
 
 .toolbar-left {
@@ -280,14 +254,14 @@ const handleCopyLink = (message: ChannelMessage) => {
 .list-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-5);
+  padding: 20px;
 }
 
 .card-grid {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-4);
-  max-width: 800px;
+  gap: 16px;
+  max-width: 720px;
   margin: 0 auto;
 }
 </style>

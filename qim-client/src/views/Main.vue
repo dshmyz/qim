@@ -179,6 +179,7 @@
         @toggleSidebar="toggleSidebar"
         @privateChat="startPrivateChat"
         @showProfile="showUserProfile = true"
+        @open-avatar-settings="openAvatarSettings"
       />
       
       <!-- 应用面板 -->
@@ -3310,6 +3311,12 @@ const openExternalApp = (url: string) => {
 // 返回应用列表
 const backToAppList = () => {
   selectedAppId.value = ''
+}
+
+// 打开分身设置
+const openAvatarSettings = () => {
+  selectedAppId.value = 'avatar'
+  activeOption.value = 'apps'
 }
 
 

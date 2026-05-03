@@ -5,12 +5,10 @@ import { request, type ApiResponse } from '../composables/useRequest'
 import QMessage from '../utils/qmessage'
 
 export const useChannelStore = defineStore('channel', () => {
-  // 状态
   const channels = ref<Channel[]>([])
   const selectedChannelId = ref<string | null>(null)
   const openTabs = ref<Array<{ id: string; name: string }>>([])
 
-  // 初始化持久化的状态
   const getStoredViewMode = (): 'list' | 'card' => {
     const stored = localStorage.getItem('channel-viewMode')
     return (stored === 'list' || stored === 'card') ? stored : 'card'
@@ -25,7 +23,6 @@ export const useChannelStore = defineStore('channel', () => {
   const loading = ref(false)
   const messagesLoading = ref(false)
 
-  // 计算属性
   const selectedChannel = computed(() => {
     return channels.value.find(c => c.id === selectedChannelId.value) || null
   })
@@ -34,7 +31,10 @@ export const useChannelStore = defineStore('channel', () => {
     return channels.value.filter(c => c.is_subscribed)
   })
 
-  // 方法
+  const totalUnreadCount = computed(() => {
+    return channels.value.reduce((sum, c) => sum + (c.unread_count || 0), 0)
+  })
+
   async function fetchChannels() {
     loading.value = true
     try {
@@ -117,9 +117,24 @@ export const useChannelStore = defineStore('channel', () => {
     const channel = channels.value.find(c => c.id === channelId)
     if (channel) {
       addTab(channel)
-      if (channel.is_subscribed && (!channel.messages || channel.messages.length === 0)) {
+      if (!channel.messages || channel.messages.length === 0) {
         await fetchChannelMessages(channelId)
       }
+      markChannelRead(channelId)
+    }
+  }
+
+  function markChannelRead(channelId: string) {
+    const channel = channels.value.find(c => c.id === channelId)
+    if (channel) {
+      channel.unread_count = 0
+    }
+  }
+
+  function incrementUnread(channelId: string) {
+    const channel = channels.value.find(c => c.id === channelId)
+    if (channel) {
+      channel.unread_count = (channel.unread_count || 0) + 1
     }
   }
 
@@ -140,6 +155,38 @@ export const useChannelStore = defineStore('channel', () => {
     }
   }
 
+  function isChannelCreator(channel: Channel): boolean {
+    const userId = localStorage.getItem('userId')
+    if (!userId || !channel.creator_id) return false
+    return userId === channel.creator_id || userId.toString() === channel.creator_id.toString()
+  }
+
+  async function sendChannelMessage(channel: Channel, message: string) {
+    if (!message?.trim()) return
+    try {
+      const response = await request<ApiResponse<ChannelMessage>>(`/api/v1/channels/${channel.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: message.trim() })
+      })
+      if (response.code === 0) {
+        const newMessage = response.data
+        if (newMessage) {
+          if (!channel.messages) {
+            channel.messages = []
+          }
+          channel.messages.push(newMessage)
+        }
+        QMessage.success('发送成功')
+      } else {
+        QMessage.error(response.message || '发送失败')
+      }
+    } catch (error) {
+      console.error('发送频道消息失败:', error)
+      QMessage.error('发送失败')
+    }
+  }
+
   function setViewMode(mode: 'list' | 'card') {
     viewMode.value = mode
     localStorage.setItem('channel-viewMode', mode)
@@ -151,7 +198,6 @@ export const useChannelStore = defineStore('channel', () => {
   }
 
   return {
-    // 状态
     channels,
     selectedChannelId,
     openTabs,
@@ -159,10 +205,9 @@ export const useChannelStore = defineStore('channel', () => {
     messageMode,
     loading,
     messagesLoading,
-    // 计算属性
     selectedChannel,
     subscribedChannels,
-    // 方法
+    totalUnreadCount,
     fetchChannels,
     fetchChannelMessages,
     subscribeChannel,
@@ -172,5 +217,9 @@ export const useChannelStore = defineStore('channel', () => {
     removeTab,
     setViewMode,
     setMessageMode,
+    markChannelRead,
+    incrementUnread,
+    isChannelCreator,
+    sendChannelMessage,
   }
 })

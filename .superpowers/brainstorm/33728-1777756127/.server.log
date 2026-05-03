@@ -1,0 +1,5 @@
+{"type":"server-started","port":52383,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:52383","screen_dir":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/33728-1777756127"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/33728-1777756127/channel-layout-redesign.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/33728-1777756127/design-spec-a.html"}
+{"type":"screen-added","file":"/Users/gracegaoya/work/project/qim/.superpowers/brainstorm/33728-1777756127/design-spec-unified.html"}
+{"type":"server-stopped","reason":"idle timeout"}

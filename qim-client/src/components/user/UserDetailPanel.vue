@@ -81,6 +81,10 @@
             <i class="fas fa-id-card"></i>
             <span>详细资料</span>
           </button>
+          <button class="action-btn secondary" @click="$emit('open-avatar-settings')">
+            <i class="fas fa-user-astronaut"></i>
+            <span>分身设置</span>
+          </button>
         </div>
       </div>
     </div>
@@ -112,6 +116,7 @@ defineEmits<{
   'toggleSidebar': []
   'privateChat': [user: User]
   'showProfile': [user: User]
+  'open-avatar-settings': []
 }>()
 </script>
 

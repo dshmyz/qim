@@ -16,7 +16,7 @@
       
       <div class="login-header">
         <div class="app-logo">
-          <i class="fas fa-comments fa-4x"></i>
+          <img src="/app-logo.png" alt="QIM Logo" />
         </div>
         <h2>QIM</h2>
         <p>即时通讯应用</p>
@@ -587,13 +587,10 @@ const closeWindow = () => {
 .app-logo {
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 24px;
-  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -606,9 +603,10 @@ const closeWindow = () => {
   }
 }
 
-.app-logo i {
-  color: white;
-  font-size: 32px;
+.app-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .login-header h2 {

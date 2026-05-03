@@ -1,38 +1,32 @@
-<!--
-  ChannelHeader.vue - 频道头部组件
-
-  功能：
-  - 显示频道头像、名称、描述
-  - 显示订阅按钮（订阅/取消订阅）
-  - 显示频道元信息（创建者、创建时间）
-
-  使用示例：
-  <ChannelHeader
-    :channel="channel"
-    @subscribe="handleSubscribe"
-    @unsubscribe="handleUnsubscribe"
-  />
--->
 <template>
   <div class="channel-header">
     <div class="header-info">
-      <img
-        :src="getAvatarUrl(channel.avatar, channel.name, serverUrl)"
-        :alt="`${channel.name}的头像`"
-        class="header-avatar"
+      <ChannelAvatar
+        :avatar="channel.avatar"
+        :name="channel.name"
+        :publish-permission="channel.publish_permission"
+        size="sm"
+        shape="circle"
       />
       <div class="header-text">
-        <h2 class="header-title">{{ channel.name }}</h2>
-        <p class="header-description">{{ channel.description }}</p>
-        <div class="header-meta">
-          <span class="meta-item">
-            <i class="fas fa-user"></i>
-            {{ channel.creator?.name || '未知' }}
+        <div class="header-title-row">
+          <h2 class="header-title">{{ channel.name }}</h2>
+          <span class="channel-type-tag" :class="channel.publish_permission === 'creator_only' ? 'broadcast' : 'collaborative'">
+            {{ channel.publish_permission === 'creator_only' ? '广播' : '协作' }}
           </span>
-          <span v-if="channel.created_at" class="meta-item">
-            <i class="fas fa-clock"></i>
-            {{ formatTime(channel.created_at) }}
+          <span v-if="messageCount > 0" class="meta-item highlight">
+            <i class="fas fa-comment"></i>
+            {{ messageCount }}
           </span>
+          <span v-if="channel.subscriber_count" class="meta-item">
+            <i class="fas fa-users"></i>
+            {{ channel.subscriber_count }}
+          </span>
+        </div>
+        <div class="header-subtitle">
+          <span class="subtitle-creator">{{ getDisplayName(channel.creator) }}</span>
+          <span v-if="channel.description" class="subtitle-sep">·</span>
+          <span class="subtitle-desc">{{ channel.description }}</span>
         </div>
       </div>
     </div>
@@ -60,26 +54,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { getAvatarUrl } from '../../utils/avatar'
-import { API_BASE_URL } from '../../config'
-import { useChatUtils } from '../../composables/useChatUtils'
+import { computed } from 'vue'
+import { getDisplayName } from '../../utils/avatar'
 import type { Channel } from '../../types'
-
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+import ChannelAvatar from './ChannelAvatar.vue'
 
 interface Props {
   channel: Channel
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 defineEmits<{
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
 }>()
 
-const { formatTime } = useChatUtils()
+const messageCount = computed(() => {
+  return props.channel.messages?.length || 0
+})
 </script>
 
 <style scoped>
@@ -87,87 +80,121 @@ const { formatTime } = useChatUtils()
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-4);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--card-bg);
+  padding: 16px 20px;
   height: 72px;
+  box-sizing: border-box;
+  background: var(--sidebar-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
 }
 
 .header-info {
   display: flex;
-  gap: var(--spacing-3);
+  align-items: center;
+  gap: 12px;
   flex: 1;
   min-width: 0;
-  align-items: center;
-}
-
-.header-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
 }
 
 .header-text {
   flex: 1;
   min-width: 0;
+}
+
+.header-title-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
 }
 
 .header-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.header-description {
-  margin: 0;
-  font-size: 13px;
+.channel-type-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.channel-type-tag.broadcast {
+  color: var(--primary-color);
+  background: var(--primary-light, rgba(51, 133, 255, 0.1));
+}
+
+.channel-type-tag.collaborative {
+  color: var(--success-color);
+  background: rgba(103, 194, 58, 0.1);
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.meta-item.highlight {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.meta-item i {
+  font-size: 11px;
+}
+
+.header-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.subtitle-creator {
+  flex-shrink: 0;
+}
+
+.subtitle-sep {
+  flex-shrink: 0;
+}
+
+.subtitle-desc {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.header-meta {
-  display: none;
-}
-
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-1);
-}
-
-.meta-item i {
-  font-size: 12px;
-}
-
 .header-actions {
   flex-shrink: 0;
-  margin-left: var(--spacing-3);
+  margin-left: 12px;
 }
 
 .subscribe-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-1) var(--spacing-3);
+  gap: 6px;
+  padding: 6px 12px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   background: var(--primary-color);
   color: white;
   cursor: pointer;
   font-size: 13px;
-  font-weight: var(--font-weight-medium);
+  font-weight: 500;
 }
 
 .subscribe-btn:hover {

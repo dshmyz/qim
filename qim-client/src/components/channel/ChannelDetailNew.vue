@@ -1,44 +1,33 @@
-<!--
-  ChannelDetailNew.vue - 新的频道详情组件
-
-  功能：
-  - 显示频道详情（头部 + 消息列表）
-  - 支持创建者发送消息
-  - 组合使用 ChannelHeader 和 MessageList 组件
-
-  使用示例：
-  <ChannelDetailNew
-    :channel="channel"
-    @subscribe="handleSubscribe"
-    @unsubscribe="handleUnsubscribe"
-    @send-message="handleSendMessage"
-  />
--->
 <template>
   <div class="channel-detail-new">
-    <!-- 频道头部 -->
     <ChannelHeader
       :channel="channel"
       @subscribe="$emit('subscribe', $event)"
       @unsubscribe="$emit('unsubscribe', $event)"
     />
 
-    <!-- 消息列表 -->
-    <div v-if="!channel.is_subscribed" class="subscribe-prompt">
-      <div class="prompt-content">
-        <i class="fas fa-lock prompt-icon"></i>
-        <h3 class="prompt-title">订阅后查看消息</h3>
-        <p class="prompt-description">订阅此频道后即可查看所有历史消息</p>
+    <div v-if="!channel.is_subscribed && !isCreator" class="subscribe-banner">
+      <div class="banner-content">
+        <i class="fas fa-bell banner-icon"></i>
+        <div class="banner-text">
+          <span class="banner-title">订阅此频道以参与互动</span>
+          <span class="banner-desc">你可以浏览消息，但订阅后才能点赞、评论和发消息</span>
+        </div>
       </div>
+      <button class="banner-subscribe-btn" @click="$emit('subscribe', channel)">
+        <i class="fas fa-plus"></i>
+        订阅
+      </button>
     </div>
+
     <MessageList
-      v-else
       :messages="channel.messages || []"
       :mode="displayMode"
       :is-creator="isCreator"
       :loading="loading"
       :sort-order="sortOrder"
       :creator-id="channel.creator_id"
+      :interactive="channel.is_subscribed || isCreator"
       @update:mode="handleModeChange"
       @update:sort-order="handleSortOrderChange"
       @like="handleLike"
@@ -47,7 +36,6 @@
       @copy-link="handleCopyLink"
     />
 
-    <!-- 创建者消息输入区域 -->
     <div v-if="isCreator" class="message-input-area">
       <textarea
         v-model="localMessage"
@@ -71,10 +59,39 @@
       </div>
     </div>
 
-    <!-- 订阅者只读提示 -->
-    <div v-else-if="channel.is_subscribed" class="message-readonly-hint">
+    <div v-else-if="channel.publish_permission === 'all_subscribers' && channel.is_subscribed" class="message-input-area">
+      <textarea
+        v-model="localMessage"
+        placeholder="输入消息内容..."
+        rows="3"
+        class="message-textarea"
+        @keydown.enter.ctrl="handleSendMessage"
+        :aria-label="'消息输入框'"
+      ></textarea>
+      <div class="input-actions">
+        <span class="input-hint">Ctrl + Enter 发送</span>
+        <button
+          class="send-btn"
+          @click="handleSendMessage"
+          :disabled="!localMessage.trim()"
+          :aria-label="'发送消息'"
+        >
+          <i class="fas fa-paper-plane"></i>
+          <span>发送</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="channel.is_subscribed && channel.publish_permission === 'creator_only'" class="message-readonly-hint">
       <i class="fas fa-bullhorn"></i>
-      <span>频道为广播模式，仅创建者可发布消息</span>
+      <span>广播频道，仅创建者可发布消息</span>
+    </div>
+
+    <div v-else-if="!channel.is_subscribed && !isCreator" class="message-subscribe-bottom">
+      <button class="bottom-subscribe-btn" @click="$emit('subscribe', channel)">
+        <i class="fas fa-plus"></i>
+        订阅频道参与互动
+      </button>
     </div>
   </div>
 </template>
@@ -116,10 +133,8 @@ const emit = defineEmits<{
   copyLink: [message: ChannelMessage]
 }>()
 
-// 消息输入
 const localMessage = ref(props.initialMessage)
 
-// 监听 initialMessage prop 变化，更新本地消息
 watch(
   () => props.initialMessage,
   (newValue) => {
@@ -127,17 +142,14 @@ watch(
   }
 )
 
-// 切换显示模式
 const handleModeChange = (mode: DisplayMode) => {
   emit('update:displayMode', mode)
 }
 
-// 切换排序顺序
 const handleSortOrderChange = (sortOrder: 'asc' | 'desc') => {
   emit('update:sortOrder', sortOrder)
 }
 
-// 发送消息
 const handleSendMessage = () => {
   if (!localMessage.value.trim()) return
 
@@ -145,22 +157,18 @@ const handleSendMessage = () => {
   localMessage.value = ''
 }
 
-// 点赞处理
 const handleLike = (message: ChannelMessage) => {
   emit('like', message)
 }
 
-// 取消点赞处理
 const handleUnlike = (message: ChannelMessage) => {
   emit('unlike', message)
 }
 
-// 评论处理
 const handleComment = (message: ChannelMessage) => {
   emit('comment', message)
 }
 
-// 复制链接处理
 const handleCopyLink = (message: ChannelMessage) => {
   emit('copyLink', message)
 }
@@ -173,6 +181,68 @@ const handleCopyLink = (message: ChannelMessage) => {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-color);
+}
+
+.subscribe-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-3) var(--spacing-4);
+  background: linear-gradient(135deg, var(--primary-light, rgba(51, 133, 255, 0.08)), rgba(103, 194, 58, 0.06));
+  border-bottom: 1px solid var(--border-color);
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.banner-icon {
+  font-size: 20px;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color);
+}
+
+.banner-desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.banner-subscribe-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+}
+
+.banner-subscribe-btn:hover {
+  background: var(--primary-dark);
+}
+
+.banner-subscribe-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .message-input-area {
@@ -260,38 +330,34 @@ const handleCopyLink = (message: ChannelMessage) => {
   color: var(--primary-color);
 }
 
-.subscribe-prompt {
-  flex: 1;
+.message-subscribe-bottom {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+  background: var(--hover-color);
+}
+
+.bottom-subscribe-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--spacing-8);
-  background: var(--bg-color);
-}
-
-.prompt-content {
-  text-align: center;
-  max-width: 400px;
-}
-
-.prompt-icon {
-  font-size: 64px;
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-4);
-  opacity: 0.5;
-}
-
-.prompt-title {
-  margin: 0 0 var(--spacing-3) 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
-}
-
-.prompt-description {
-  margin: 0;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.5;
+  font-weight: var(--font-weight-medium);
+}
+
+.bottom-subscribe-btn:hover {
+  background: var(--primary-dark);
+}
+
+.bottom-subscribe-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 </style>

@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename)
 
 function getIconPath(size = 512) {
   const iconDir = path.join(__dirname, 'icons')
-  const iconPath = path.join(iconDir, `icon-v1_${size}x${size}.png`)
+  const iconPath = path.join(iconDir, `icon_${size}x${size}.png`)
   if (fs.existsSync(iconPath)) {
     return iconPath
   }

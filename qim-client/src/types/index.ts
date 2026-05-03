@@ -98,6 +98,11 @@ export interface Channel {
   is_subscribed?: boolean
   creator?: User
   messages?: ChannelMessage[]
+  subscriber_count?: number
+  last_active_at?: number
+  last_message?: ChannelMessage
+  unread_count?: number
+  category?: string
 }
 
 export interface ChannelMessage {

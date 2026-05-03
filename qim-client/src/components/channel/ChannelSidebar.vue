@@ -1,24 +1,11 @@
-<!--
-  ChannelSidebar.vue - 频道侧边栏容器组件
-
-  功能：
-  - 显示频道列表（支持列表视图和卡片视图）
-  - 订阅/广场标签切换
-  - 视图模式切换（列表/卡片）
-  - 创建频道按钮（仅管理员可见）
-  - 加载状态和空状态展示
-
-  使用：
-  - 通过 useChannelStore 管理频道状态
-  - 接收 currentUser prop 用于权限判断
-  - 发送 createChannel 事件用于创建频道
--->
 <template>
   <div class="channel-sidebar">
-    <!-- 侧边栏头部 -->
     <div class="channel-sidebar-header">
       <div class="header-left">
         <h2 class="sidebar-title">频道</h2>
+        <span v-if="totalUnreadCount > 0" class="unread-badge">{{ totalUnreadCount }}</span>
+      </div>
+      <div class="header-right">
         <button
           v-if="isAdmin"
           class="create-btn"
@@ -31,7 +18,6 @@
       </div>
     </div>
 
-    <!-- 标签切换 -->
     <div class="channel-tabs-toggle" role="tablist" aria-label="频道标签">
       <button
         class="tab-btn"
@@ -42,6 +28,7 @@
         aria-label="订阅的频道"
       >
         订阅
+        <span v-if="subscribedUnreadCount > 0" class="tab-unread">{{ subscribedUnreadCount }}</span>
       </button>
       <button
         class="tab-btn"
@@ -55,8 +42,7 @@
       </button>
     </div>
 
-    <!-- 视图切换和搜索 -->
-    <div class="view-and-search">
+    <div class="channel-search-box">
       <input
         v-model="searchQuery"
         type="text"
@@ -88,12 +74,9 @@
       </div>
     </div>
 
-    <!-- 侧边栏内容 -->
     <div class="channel-sidebar-content">
-      <!-- 加载状态 -->
       <LoadingSpinner v-if="loading" text="加载中..." />
 
-      <!-- 空状态 -->
       <EmptyState
         v-else-if="displayChannels.length === 0"
         icon="fa-bullhorn"
@@ -103,9 +86,7 @@
         @action="activeTab = 'discover'"
       />
 
-      <!-- 频道列表 -->
       <div v-else :class="['channels-container', viewMode]">
-        <!-- 列表视图 -->
         <div v-if="viewMode === 'list'" class="channel-list-view">
           <ChannelListItem
             v-for="channel in displayChannels"
@@ -118,7 +99,6 @@
           />
         </div>
 
-        <!-- 卡片视图 -->
         <div v-else class="channel-card-view">
           <ChannelCard
             v-for="channel in displayChannels"
@@ -156,38 +136,51 @@ const emit = defineEmits<{
 
 const channelStore = useChannelStore()
 
-// 本地状态
 const activeTab = ref<'subscribed' | 'discover'>('subscribed')
 const searchQuery = ref('')
 
-// 从 store 获取状态
 const channels = computed(() => channelStore.channels)
 const loading = computed(() => channelStore.loading)
 const viewMode = computed(() => channelStore.viewMode)
 const selectedChannelId = computed(() => channelStore.selectedChannelId)
+const totalUnreadCount = computed(() => channelStore.totalUnreadCount)
 
-// 计算属性
 const isAdmin = computed(() => {
-  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
+  return (props.currentUser as any)?.isAdmin || (props.currentUser as any)?.role === 'admin'
+})
+
+const subscribedUnreadCount = computed(() => {
+  return channels.value
+    .filter(c => c.is_subscribed)
+    .reduce((sum, c) => sum + (c.unread_count || 0), 0)
 })
 
 const displayChannels = computed(() => {
   let result = channels.value
-  
-  // 根据标签过滤
+
   if (activeTab.value === 'subscribed') {
     result = result.filter(c => c.is_subscribed)
   }
-  
-  // 根据搜索关键词过滤
+
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase().trim()
-    result = result.filter(c => 
+    result = result.filter(c =>
       c.name.toLowerCase().includes(query) ||
       c.description?.toLowerCase().includes(query)
     )
   }
-  
+
+  if (activeTab.value === 'subscribed') {
+    result = [...result].sort((a, b) => {
+      const unreadA = a.unread_count || 0
+      const unreadB = b.unread_count || 0
+      if (unreadB !== unreadA) return unreadB - unreadA
+      const timeA = a.last_active_at || a.created_at || 0
+      const timeB = b.last_active_at || b.created_at || 0
+      return timeB - timeA
+    })
+  }
+
   return result
 })
 
@@ -201,7 +194,6 @@ const emptyDescription = computed(() => {
     : '成为第一个创建频道的人吧！'
 })
 
-// 方法
 const setViewMode = (mode: 'list' | 'card') => {
   channelStore.setViewMode(mode)
 }
@@ -219,7 +211,6 @@ const handleSubscribe = async (channel: Channel) => {
     await channelStore.subscribeChannel(channel.id)
   } catch (error) {
     console.error('订阅频道失败:', error)
-    // 这里可以添加错误提示，例如使用消息组件
   }
 }
 
@@ -228,11 +219,9 @@ const handleUnsubscribe = async (channel: Channel) => {
     await channelStore.unsubscribeChannel(channel.id)
   } catch (error) {
     console.error('取消订阅失败:', error)
-    // 这里可以添加错误提示，例如使用消息组件
   }
 }
 
-// 生命周期
 onMounted(() => {
   if (channels.value.length === 0) {
     channelStore.fetchChannels()
@@ -249,27 +238,48 @@ onMounted(() => {
   background: transparent;
 }
 
-/* 头部样式 */
 .channel-sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-3) var(--spacing-4);
-  border-bottom: 1px solid var(--border-color);
-  height: 53px;
+  padding: 0 20px;
+  height: 72px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
+  gap: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sidebar-title {
   margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text-color);
+}
+
+.unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  background: var(--danger-color);
+  border-radius: 9px;
+  line-height: 1;
 }
 
 .create-btn {
@@ -281,7 +291,7 @@ onMounted(() => {
   border: none;
   background: var(--primary-color);
   color: white;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -294,28 +304,30 @@ onMounted(() => {
   outline-offset: 2px;
 }
 
-/* 标签切换 */
 .channel-tabs-toggle {
   display: flex;
-  gap: var(--spacing-1);
-  padding: var(--spacing-2);
-  border-bottom: 1px solid var(--border-color);
+  gap: 4px;
+  padding: 0 20px 8px;
 }
 
 .tab-btn {
   flex: 1;
-  padding: var(--spacing-1) var(--spacing-2);
+  padding: 6px 8px;
   border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   font-size: 13px;
-  font-weight: var(--font-weight-medium);
+  font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .tab-btn:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   color: var(--text-color);
 }
 
@@ -329,28 +341,47 @@ onMounted(() => {
   outline-offset: 2px;
 }
 
-/* 视图切换和搜索 */
-.view-and-search {
+.tab-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  background: var(--danger-color);
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.tab-btn.active .tab-unread {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.channel-search-box {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2);
+  gap: 8px;
+  padding: 12px 8px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .search-input {
   flex: 1;
   min-width: 0;
-  padding: var(--spacing-1) var(--spacing-2);
+  padding: 8px 12px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   font-size: 13px;
-  background: var(--input-bg);
+  background: var(--panel-bg);
   color: var(--text-color);
+  outline: none;
+  transition: all 0.2s;
 }
 
 .search-input:focus {
-  outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 2px var(--primary-light);
 }
@@ -359,11 +390,10 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-/* 视图切换 */
 .view-toggle {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -375,19 +405,19 @@ onMounted(() => {
   height: 28px;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   font-size: 14px;
   color: var(--text-secondary);
   cursor: pointer;
 }
 
 .view-btn:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   color: var(--text-color);
 }
 
 .view-btn.active {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   border-color: var(--border-color);
   color: var(--primary-color);
 }
@@ -397,28 +427,24 @@ onMounted(() => {
   outline-offset: 2px;
 }
 
-/* 内容区域 */
 .channel-sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-2);
+  padding: 8px;
 }
 
-/* 列表视图 */
 .channel-list-view {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2);
+  gap: 2px;
 }
 
-/* 卡片视图 */
 .channel-card-view {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
+  gap: 8px;
 }
 
-/* 滚动条样式 */
 .channel-sidebar-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -434,31 +460,5 @@ onMounted(() => {
 
 .channel-sidebar-content::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .channel-sidebar-header {
-    padding: var(--spacing-2);
-  }
-
-  .sidebar-title {
-    font-size: var(--font-size-base);
-  }
-
-  .channel-tabs-toggle,
-  .view-toggle {
-    padding: var(--spacing-1) var(--spacing-2);
-  }
-
-  .tab-btn,
-  .view-btn {
-    padding: var(--spacing-1) var(--spacing-2);
-    font-size: 12px;
-  }
-
-  .channel-sidebar-content {
-    padding: var(--spacing-2);
-  }
 }
 </style>

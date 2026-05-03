@@ -1,7 +1,7 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.is_avatar_reply }"
     :data-message-id="message.id"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -21,6 +21,8 @@
           <span>{{ message.sender.name || '未知用户' }}</span>
           <!-- AI 消息标识 -->
           <AIMessageBadge v-if="isAIMessage" compact :assistant-name="message.ai_assistant_name" />
+          <!-- 分身代回复标识 -->
+          <AvatarReplyBadge v-if="message.is_avatar_reply" variant="badge" />
         </div>
 
         <!-- 撤回消息 -->
@@ -175,6 +177,7 @@ import StreamingMessage from './StreamingMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AIMessageContent from '../ai/AIMessageContent.vue'
 import AIMessageContextMenu from '../ai/AIMessageContextMenu.vue'
+import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed, ref } from 'vue'
 import { useAIActions } from '../../composables/useAIActions'

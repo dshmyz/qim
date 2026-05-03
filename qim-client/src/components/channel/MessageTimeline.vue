@@ -1,17 +1,3 @@
-<!--
-  MessageTimeline.vue - 时间线模式消息组件
-
-  功能：
-  - 显示时间线消息列表
-  - 显示时间线圆点和连接线
-  - 支持创建者标识
-
-  使用示例：
-  <MessageTimeline
-    :messages="messages"
-    :creator-id="channel.creator_id"
-  />
--->
 <template>
   <div class="message-timeline" role="feed" aria-label="消息时间线">
     <div
@@ -43,6 +29,9 @@
         <div class="timeline-body">
           <p class="timeline-text">{{ message.content }}</p>
         </div>
+        <div v-if="!interactive" class="timeline-interact-hint">
+          订阅后可互动
+        </div>
       </div>
     </div>
   </div>
@@ -50,7 +39,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { getAvatarUrl } from '../../utils/avatar'
+import { getAvatarUrl, getDisplayName } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import { useChatUtils } from '../../composables/useChatUtils'
 import type { ChannelMessage } from '../../types'
@@ -60,16 +49,18 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 interface Props {
   messages: ChannelMessage[]
   creatorId?: string | number
+  interactive?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  creatorId: ''
+  creatorId: '',
+  interactive: true
 })
 
 const { formatTime } = useChatUtils()
 
 const getSenderName = (message: ChannelMessage): string => {
-  return message.sender?.name || '未知用户'
+  return getDisplayName(message.sender)
 }
 
 const isCreator = (message: ChannelMessage): boolean => {
@@ -197,5 +188,15 @@ const isCreator = (message: ChannelMessage): boolean => {
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+.timeline-interact-hint {
+  margin-top: var(--spacing-2);
+  padding-top: var(--spacing-2);
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  opacity: 0.6;
+  text-align: center;
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="css-avatar" :style="avatarStyle" :class="sizeClass">
+  <div class="css-avatar" :style="avatarStyle" :class="[sizeClass, shapeClass]">
     {{ initial }}
   </div>
 </template>
@@ -27,6 +27,7 @@ const avatarStyle = computed(() => ({
 }))
 
 const sizeClass = computed(() => `avatar-${props.size}`)
+const shapeClass = computed(() => `avatar-${props.shape}`)
 </script>
 
 <style scoped>
@@ -42,7 +43,6 @@ const sizeClass = computed(() => `avatar-${props.size}`)
   user-select: none;
 }
 
-/* Size variants */
 .avatar-sm {
   width: 32px;
   height: 32px;
@@ -67,7 +67,6 @@ const sizeClass = computed(() => `avatar-${props.size}`)
   font-size: 28px;
 }
 
-/* Shape variants */
 .avatar-circle {
   border-radius: 50%;
 }

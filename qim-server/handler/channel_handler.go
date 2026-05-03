@@ -250,7 +250,6 @@ func CreateChannelMessage(c *gin.Context) {
 }
 
 func GetChannelMessages(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	channelIDStr := c.Param("id")
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
@@ -264,12 +263,6 @@ func GetChannelMessages(c *gin.Context) {
 	var channel model.Channel
 	if err := db.First(&channel, uint(channelID)).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
-		return
-	}
-
-	var subscription model.ChannelSubscriber
-	if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限访问"})
 		return
 	}
 

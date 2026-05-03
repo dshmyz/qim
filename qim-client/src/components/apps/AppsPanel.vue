@@ -31,6 +31,26 @@
         </div>
       </div>
 
+      <!-- 自定义应用区域 -->
+      <div v-if="customApps && customApps.length > 0" class="custom-apps-section">
+        <div class="section-header">
+          <h3>自定义应用</h3>
+          <span class="section-badge">{{ customApps.length }}个</span>
+        </div>
+        <div class="custom-apps-grid">
+          <div
+            v-for="app in customApps"
+            :key="app.id"
+            class="custom-app-item"
+            @click="$emit('openApp', app.id)"
+          >
+            <div class="custom-app-icon"><i :class="app.icon"></i></div>
+            <div class="custom-app-name">{{ app.name }}</div>
+            <div v-if="app.url" class="custom-app-url">{{ app.url }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 快速工具区域 -->
       <div v-if="quickTools && quickTools.length > 0" class="quick-tools-section">
         <div class="section-header">
@@ -50,25 +70,6 @@
               <span class="quick-tool-desc">{{ app.description || '快速访问' }}</span>
             </div>
             <div v-if="app.id === 'short-link'" class="quick-tool-badge">快速工具</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 自定义应用区域 -->
-      <div v-if="customApps && customApps.length > 0" class="custom-apps-section">
-        <div class="section-header">
-          <h3>自定义应用</h3>
-          <span class="section-badge">我的应用</span>
-        </div>
-        <div class="custom-apps-grid">
-          <div
-            v-for="app in customApps"
-            :key="app.id"
-            class="custom-app-item"
-            @click="$emit('openApp', app.id)"
-          >
-            <div class="custom-app-icon"><i :class="app.icon"></i></div>
-            <div class="custom-app-name">{{ app.name }}</div>
           </div>
         </div>
       </div>
@@ -330,7 +331,7 @@ defineEmits<{
   align-items: center;
   padding: 16px;
   background: var(--card-bg, white);
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid var(--border-color, transparent);
@@ -351,9 +352,19 @@ defineEmits<{
 
 .custom-app-name {
   font-size: 12px;
-  color: var(--text-color, #333);
   text-align: center;
-  font-weight: 500;
+  color: var(--text-color, #333);
+}
+
+.custom-app-url {
+  font-size: 10px;
+  text-align: center;
+  color: var(--text-secondary, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  margin-top: 2px;
 }
 
 /* 系统应用样式 */

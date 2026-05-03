@@ -1,74 +1,63 @@
-<!--
-  MessageCard.vue - 卡片模式消息组件
-
-  功能：
-  - 显示消息卡片（头像、发送者、时间、内容）
-  - 显示操作按钮（点赞、评论、复制链接）
-  - 支持创建者标识
-
-  使用示例：
-  <MessageCard
-    :message="message"
-    :is-creator="isCreator"
-  />
--->
 <template>
-  <div class="message-card" role="article" :aria-label="`来自 ${senderName} 的消息`">
-    <div class="card-main">
-      <img
-        :src="getAvatarUrl(message.sender?.avatar, senderName, serverUrl)"
-        :alt="`${senderName}的头像`"
-        class="card-avatar"
-      />
-      <div class="card-content">
-        <div class="card-header">
-          <span class="card-sender">
-            {{ senderName }}
-            <span v-if="isCreator" class="creator-badge">创建者</span>
-          </span>
-          <span class="card-time">{{ formatTime(message.created_at) }}</span>
-        </div>
-        <div class="card-body">
-          <p class="card-text">{{ message.content }}</p>
+  <div class="message-card" :class="{ 'is-creator': isCreator }" role="article" :aria-label="`来自 ${senderName} 的消息`">
+    <div class="card-accent-bar"></div>
+    <div class="card-body">
+      <div class="card-top">
+        <div class="card-author">
+          <img
+            :src="getAvatarUrl(message.sender?.avatar, getDisplayName(message.sender), serverUrl)"
+            :alt="`${senderName}的头像`"
+            class="author-avatar"
+          />
+          <div class="author-info">
+            <span class="author-name">
+              {{ senderName }}
+              <span v-if="isCreator" class="creator-badge">
+                <i class="fas fa-crown"></i> 创建者
+              </span>
+            </span>
+            <span class="author-time">{{ formatTime(message.created_at) }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="card-actions">
-      <button
-        class="action-btn"
-        :class="{ active: isLiked }"
-        @click="handleLike"
-        :aria-label="isLiked ? '取消点赞' : '点赞'"
-        :aria-pressed="isLiked"
-      >
-        <i :class="isLiked ? 'fas fa-heart' : 'far fa-heart'"></i>
-        <span>{{ likeCount > 0 ? likeCount : '点赞' }}</span>
-      </button>
-      <button
-        class="action-btn"
-        @click="handleComment"
-        aria-label="评论"
-      >
-        <i class="far fa-comment"></i>
-        <span>评论</span>
-      </button>
-      <button
-        class="action-btn"
-        @click="handleCopyLink"
-        aria-label="复制链接"
-      >
-        <i class="far fa-copy"></i>
-        <span>复制</span>
-      </button>
+
+      <div class="card-content">
+        <p class="content-text">{{ message.content }}</p>
+      </div>
+
+      <div v-if="interactive" class="card-actions">
+        <button
+          class="action-btn like-btn"
+          :class="{ active: isLiked }"
+          @click="handleLike"
+          :aria-label="isLiked ? '取消点赞' : '点赞'"
+          :aria-pressed="isLiked"
+        >
+          <i :class="isLiked ? 'fas fa-heart' : 'far fa-heart'"></i>
+          <span>{{ likeCount > 0 ? likeCount : '点赞' }}</span>
+        </button>
+        <button class="action-btn" @click="handleComment" aria-label="评论">
+          <i class="far fa-comment"></i>
+          <span>评论</span>
+        </button>
+        <button class="action-btn" @click="handleCopyLink" aria-label="复制链接">
+          <i class="far fa-copy"></i>
+          <span>复制</span>
+        </button>
+      </div>
+      <div v-else class="card-actions-locked">
+        <i class="fas fa-lock"></i>
+        <span>订阅后可互动</span>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { getAvatarUrl } from '../../utils/avatar'
-import { useChatUtils } from '../../composables/useChatUtils'
+import { getAvatarUrl, getDisplayName } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
+import { useChatUtils } from '../../composables/useChatUtils'
 import type { ChannelMessage } from '../../types'
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -76,10 +65,12 @@ const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 interface Props {
   message: ChannelMessage
   isCreator?: boolean
+  interactive?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isCreator: false
+  isCreator: false,
+  interactive: true
 })
 
 const emit = defineEmits<{
@@ -91,17 +82,10 @@ const emit = defineEmits<{
 
 const { formatTime } = useChatUtils()
 
-// 点赞状态（本地状态）
-// 注意：当前 ChannelMessage 类型定义中不包含点赞相关字段
-// 这是临时方案，使用本地状态管理点赞功能
-// TODO: 等待后端支持后，应从 message 数据中获取点赞状态和点赞数
-// 届时需要在 ChannelMessage 类型中添加：
-// - like_count?: number
-// - is_liked?: boolean
 const isLiked = ref(false)
 const likeCount = ref(0)
 
-const senderName = computed(() => props.message.sender?.name || '未知用户')
+const senderName = computed(() => getDisplayName(props.message.sender))
 
 const handleLike = () => {
   if (isLiked.value) {
@@ -121,7 +105,6 @@ const handleComment = () => {
 
 const handleCopyLink = async () => {
   emit('copyLink', props.message)
-  // 复制链接到剪贴板
   try {
     const url = `${window.location.origin}/channels/${props.message.channel_id}/messages/${props.message.id}`
     await navigator.clipboard.writeText(url)
@@ -133,93 +116,133 @@ const handleCopyLink = async () => {
 
 <style scoped>
 .message-card {
+  display: flex;
   background: var(--card-bg);
   border-radius: 12px;
-  padding: var(--spacing-5);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
   border: 1px solid var(--border-color);
+  transition: box-shadow 0.2s, transform 0.15s;
 }
 
-.card-main {
-  display: flex;
-  gap: var(--spacing-4);
+.message-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 
-.card-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  object-fit: cover;
+.card-accent-bar {
+  width: 4px;
   flex-shrink: 0;
-}
-
-.card-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-3);
-}
-
-.card-sender {
-  font-weight: var(--font-weight-semibold);
-  font-size: 15px;
-  color: var(--text-color);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-}
-
-.creator-badge {
-  font-size: var(--font-size-xs);
-  padding: 2px var(--spacing-2);
   background: var(--primary-color);
-  color: white;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
+  opacity: 0.6;
+  transition: opacity 0.2s;
 }
 
-.card-time {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+.message-card:hover .card-accent-bar {
+  opacity: 1;
+}
+
+.message-card.is-creator .card-accent-bar {
+  background: linear-gradient(180deg, var(--primary-color), var(--success-color));
+  opacity: 1;
 }
 
 .card-body {
-  margin: 0;
+  flex: 1;
+  padding: 16px 20px;
+  min-width: 0;
 }
 
-.card-text {
-  margin: 0;
+.card-top {
+  margin-bottom: 12px;
+}
+
+.card-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.author-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--border-color);
+}
+
+.message-card.is-creator .author-avatar {
+  border-color: var(--primary-light, rgba(51, 133, 255, 0.3));
+}
+
+.author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.author-name {
   font-size: 14px;
+  font-weight: 600;
   color: var(--text-color);
-  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.creator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: linear-gradient(135deg, var(--primary-color), #6366f1);
+  color: white;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.creator-badge i {
+  font-size: 8px;
+}
+
+.author-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.card-content {
+  margin-bottom: 12px;
+}
+
+.content-text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-color);
+  line-height: 1.7;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
 .card-actions {
   display: flex;
-  gap: var(--spacing-3);
-  margin-top: var(--spacing-4);
-  padding-top: var(--spacing-3);
+  gap: 4px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color);
 }
 
 .action-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
-  padding: var(--spacing-1) var(--spacing-3);
+  gap: 5px;
+  padding: 5px 12px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--font-size-xs);
-  border-radius: var(--radius-sm);
+  font-size: 12px;
+  border-radius: 6px;
+  transition: all 0.15s;
 }
 
 .action-btn:hover {
@@ -232,15 +255,32 @@ const handleCopyLink = async () => {
   outline-offset: 2px;
 }
 
-.action-btn.active {
-  color: var(--danger-color);
-}
-
-.action-btn.active:hover {
-  color: var(--danger-color);
-}
-
 .action-btn i {
   font-size: 14px;
+}
+
+.like-btn.active {
+  color: var(--danger-color);
+}
+
+.like-btn.active:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger-color);
+}
+
+.card-actions-locked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.card-actions-locked i {
+  font-size: 11px;
 }
 </style>
