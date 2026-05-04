@@ -306,10 +306,20 @@ class ScreenShareSender {
       console.log('peerConnection 是否存在:', !!this.peerConnection)
       if (this.peerConnection) {
         console.log('当前连接状态:', this.peerConnection.connectionState)
+        console.log('信令状态:', this.peerConnection.signalingState)
         console.log('远程描述是否已设置:', !!this.peerConnection.remoteDescription)
+        
+        // 检查信令状态，只有在 have-local-offer 状态下才能设置 answer
+        if (this.peerConnection.signalingState !== 'have-local-offer') {
+          console.warn('当前信令状态不是 have-local-offer，跳过设置 answer');
+          console.warn('当前状态:', this.peerConnection.signalingState);
+          return;
+        }
+        
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         logger.log('远程描述设置成功');
         console.log('设置后的连接状态:', this.peerConnection.connectionState)
+        console.log('设置后的信令状态:', this.peerConnection.signalingState)
         
         // 处理缓存的 ICE candidates
         if (this.iceCandidateCache.length > 0) {
@@ -1156,6 +1166,13 @@ class VideoCallSender {
   async handleAnswer(answer) {
     try {
       if (this.peerConnection) {
+        // 检查信令状态，只有在 have-local-offer 状态下才能设置 answer
+        if (this.peerConnection.signalingState !== 'have-local-offer') {
+          console.warn('当前信令状态不是 have-local-offer，跳过设置 answer');
+          console.warn('当前状态:', this.peerConnection.signalingState);
+          return;
+        }
+        
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         logger.log('远程描述设置成功');
       }
