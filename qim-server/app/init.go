@@ -92,6 +92,9 @@ func MigrateDB(db *gorm.DB) {
 		&model.OperationLog{},        // 操作日志
 		&model.ClientVersion{},       // 客户端版本
 		&model.Blacklist{},           // 黑名单
+		&model.AvatarConfig{},        // 分身配置
+		&model.AvatarSession{},       // 分身会话状态
+		&model.AvatarLearnTask{},     // 分身学习任务
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
