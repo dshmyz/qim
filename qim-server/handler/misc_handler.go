@@ -251,7 +251,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 
 			for _, msg := range historyMessages {
 				role := "user"
-				if msg.SenderID == 0 {
+				if msg.SenderID == *bot.VirtualUserID {
 					role = "assistant"
 				}
 				messages = append(messages, ai.Message{
@@ -278,21 +278,17 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 		reply = "我是一个机器人，有什么可以帮你的吗？"
 	}
 
+	// 保存 Bot 回复
 	msg := model.Message{
 		ConversationID: convID,
-		SenderID:       0,
+		SenderID:       *bot.VirtualUserID, // 使用虚拟用户 ID
 		Type:           "markdown",
 		Content:        reply,
 	}
 	db.Create(&msg)
 
-	botUser := model.User{
-		ID:       0,
-		Username: bot.Name,
-		Nickname: bot.Name,
-		Avatar:   bot.Avatar,
-	}
-	msg.Sender = botUser
+	// 预加载 Sender 信息（虚拟用户）
+	db.Preload("Sender").First(&msg, msg.ID)
 
 	now := time.Now()
 	var conv model.Conversation
