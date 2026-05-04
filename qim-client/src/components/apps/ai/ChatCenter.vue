@@ -3,6 +3,7 @@
     <BotList
       v-if="!selectedBotId"
       :bots="bots"
+      :loading="loadingBots"
       @select="selectBot"
       @createBot="$emit('switchTab', 'create')"
     />
@@ -41,6 +42,7 @@ defineEmits<{
 
 const { fetchMyBots } = useBots()
 const bots = ref<Bot[]>([])
+const loadingBots = ref(false)
 const selectedBotId = ref<number | null>(null)
 
 // 使用 useBotChat 管理 Bot 对话
@@ -56,8 +58,13 @@ const {
 } = useBotChat(selectedBotId)
 
 onMounted(async () => {
-  const allBots = await fetchMyBots()
-  bots.value = allBots.filter((bot: Bot) => bot.name !== '系统助手')
+  loadingBots.value = true
+  try {
+    const allBots = await fetchMyBots()
+    bots.value = allBots.filter((bot: Bot) => bot.name !== '系统助手')
+  } finally {
+    loadingBots.value = false
+  }
 })
 
 const currentBot = computed<Bot | null>(() =>

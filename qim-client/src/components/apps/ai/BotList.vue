@@ -1,12 +1,21 @@
 <template>
   <div class="bot-list">
-    <div v-if="bots.length === 0" class="empty-state">
+    <!-- Loading 状态 -->
+    <div v-if="loading" class="loading-container">
+      <i class="fas fa-spinner fa-spin"></i>
+      <span>加载中...</span>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="bots.length === 0" class="empty-state">
       <i class="fas fa-robot"></i>
       <p>暂无可用的机器人</p>
       <button class="create-btn" @click="$emit('createBot')">
         <i class="fas fa-plus"></i> 创建第一个机器人
       </button>
     </div>
+
+    <!-- 机器人列表 -->
     <div v-else class="list">
       <div
         v-for="bot in bots"
@@ -39,6 +48,7 @@ interface Bot {
 
 defineProps<{
   bots: Bot[]
+  loading?: boolean
 }>()
 
 defineEmits<{
@@ -138,5 +148,24 @@ defineEmits<{
 .create-btn:hover {
   background: var(--primary-hover);
   transform: translateY(-1px);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 12px;
+}
+
+.loading-container i {
+  font-size: 32px;
+  color: var(--primary-color);
+}
+
+.loading-container span {
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 </style>
