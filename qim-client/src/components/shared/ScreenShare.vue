@@ -881,6 +881,12 @@ onUnmounted(() => {
   display: none;
 }
 
+.screen-share-overlay.dragging {
+  cursor: grabbing;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 0.2s;
+}
+
 .screen-share-header {
   display: flex;
   align-items: center;
@@ -888,8 +894,12 @@ onUnmounted(() => {
   padding: 12px 16px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  cursor: move;
+  cursor: grab;
   user-select: none;
+}
+
+.screen-share-header:active {
+  cursor: grabbing;
 }
 
 .share-indicator {
