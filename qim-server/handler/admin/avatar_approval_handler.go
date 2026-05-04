@@ -28,7 +28,7 @@ type AvatarApprovalItem struct {
 func ListPendingAvatars(c *gin.Context) {
 	db := database.GetDB()
 
-	status := c.DefaultQuery("status", "pending") // pending, approved, rejected, all
+	status := c.DefaultQuery("status", model.ApprovalStatusPending) // pending, approved, rejected, all
 
 	var configs []model.AvatarConfig
 	query := db.Model(&model.AvatarConfig{}).Preload("User")
@@ -94,14 +94,14 @@ func ApproveAvatar(c *gin.Context) {
 	adminID := adminIDAny.(uint)
 
 	var config model.AvatarConfig
-	if err := db.Where("id = ? AND approval_status = ?", uint(avatarID), "pending").First(&config).Error; err != nil {
+	if err := db.Where("id = ? AND approval_status = ?", uint(avatarID), model.ApprovalStatusPending).First(&config).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "分身不存在或无需审批"})
 		return
 	}
 
 	now := time.Now()
 	if err := db.Model(&config).Updates(map[string]interface{}{
-		"approval_status": "approved",
+		"approval_status": model.ApprovalStatusApproved,
 		"enabled":         true,
 		"approved_at":     &now,
 		"approved_by":     adminID,
@@ -128,7 +128,7 @@ func RejectAvatar(c *gin.Context) {
 	db := database.GetDB()
 
 	var config model.AvatarConfig
-	if err := db.Where("id = ? AND approval_status = ?", uint(avatarID), "pending").First(&config).Error; err != nil {
+	if err := db.Where("id = ? AND approval_status = ?", uint(avatarID), model.ApprovalStatusPending).First(&config).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "分身不存在或无需审批"})
 		return
 	}
@@ -140,7 +140,7 @@ func RejectAvatar(c *gin.Context) {
 	}
 
 	if err := db.Model(&config).Updates(map[string]interface{}{
-		"approval_status": "rejected",
+		"approval_status": model.ApprovalStatusRejected,
 		"enabled":         false,
 		"reject_reason":   req.Reason,
 	}).Error; err != nil {

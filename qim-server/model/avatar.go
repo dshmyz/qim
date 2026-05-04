@@ -6,6 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// 审批状态常量
+const (
+	ApprovalStatusNone     = "none"
+	ApprovalStatusPending  = "pending"
+	ApprovalStatusApproved = "approved"
+	ApprovalStatusRejected = "rejected"
+)
+
 // AvatarConfig 分身配置
 type AvatarConfig struct {
 	ID        uint           `json:"id" gorm:"primarykey"`
@@ -45,6 +53,16 @@ type AvatarConfig struct {
 	User        User          `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	ModelConfig *UserAIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
 	Approver    *User         `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
+}
+
+// CanApply 检查是否可以申请审批
+func (c *AvatarConfig) CanApply() bool {
+	return c.ApprovalStatus != ApprovalStatusPending && c.ApprovalStatus != ApprovalStatusApproved
+}
+
+// CanCancel 检查是否可以取消申请
+func (c *AvatarConfig) CanCancel() bool {
+	return c.ApprovalStatus == ApprovalStatusPending
 }
 
 // AvatarSession 会话级分身状态

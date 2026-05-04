@@ -469,20 +469,21 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 	}
 
 	// 检查当前状态
-	if config.ApprovalStatus == "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的申请"})
-		return
-	}
-
-	if config.ApprovalStatus == "approved" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "分身已通过审批"})
-		return
+	if !config.CanApply() {
+		if config.ApprovalStatus == model.ApprovalStatusPending {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的申请"})
+			return
+		}
+		if config.ApprovalStatus == model.ApprovalStatusApproved {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "分身已通过审批"})
+			return
+		}
 	}
 
 	// 更新审批状态
 	now := time.Now()
 	updates := map[string]interface{}{
-		"approval_status": "pending",
+		"approval_status": model.ApprovalStatusPending,
 		"applied_at":      &now,
 		"reject_reason":   "", // 清空之前的拒绝原因
 	}
@@ -509,15 +510,16 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 	}
 
 	// 只有待审批状态才能取消
-	if config.ApprovalStatus != "pending" {
+	if !config.CanCancel() {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前状态无法取消申请"})
 		return
 	}
 
 	// 更新审批状态
 	updates := map[string]interface{}{
-		"approval_status": "none",
+		"approval_status": model.ApprovalStatusNone,
 		"applied_at":      nil,
+		"reject_reason":   "", // 清空拒绝原因
 	}
 
 	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
