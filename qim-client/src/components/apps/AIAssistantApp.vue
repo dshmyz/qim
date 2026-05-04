@@ -28,12 +28,15 @@
       <ChatCenter v-if="activeTab === 'chat'" @switch-tab="switchTab" />
       <MyBotsPanel
         v-if="activeTab === 'my-bots'"
-        @open-create="activeTab = 'create'"
+        @create="showCreateModal = true"
         @edit-bot="handleEditBot"
         @use-bot="handleUseBot"
       />
-      <CreateBotWizard v-if="activeTab === 'create'" @close="activeTab = 'my-bots'" />
       <MyModelConfigs v-if="activeTab === 'configs'" />
+      
+      <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
+        <CreateBotWizard @close="showCreateModal = false" />
+      </QDialog>
     </div>
   </div>
 </template>
@@ -44,15 +47,16 @@ import ChatCenter from './ai/ChatCenter.vue'
 import MyBotsPanel from './MyBotsPanel.vue'
 import MyModelConfigs from './ai/MyModelConfigs.vue'
 import CreateBotWizard from './ai/CreateBotWizard.vue'
+import QDialog from './shared/QDialog.vue'
 
 defineEmits(['back', 'toggleSidebar'])
 
 const activeTab = ref('chat')
+const showCreateModal = ref(false)
 
 const tabs = [
   { id: 'chat', label: '对话', icon: 'fas fa-comments' },
   { id: 'my-bots', label: '我的机器人', icon: 'fas fa-robot' },
-  { id: 'create', label: '创建机器人', icon: 'fas fa-plus' },
   { id: 'configs', label: '我的模型配置', icon: 'fas fa-key' }
 ]
 

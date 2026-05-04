@@ -8,39 +8,46 @@
     <div v-else-if="myBots.length === 0" class="empty-state">
       <i class="fas fa-robot"></i>
       <p>你还没有创建过机器人</p>
-      <button class="create-btn" @click="$emit('open-create')">
+      <button class="create-btn" @click="$emit('create')">
         <i class="fas fa-plus"></i> 创建第一个机器人
       </button>
     </div>
 
-    <div v-else class="bot-grid">
-      <div v-for="bot in myBots" :key="bot.id" class="bot-card" :class="bot.approval_status">
-        <div class="bot-header">
-          <div class="bot-avatar">
-            <img :src="bot.avatar" :alt="bot.name" v-if="bot.avatar">
-            <i class="fas fa-robot" v-else></i>
+    <div v-else class="bot-list-container">
+      <div class="panel-header">
+        <button class="create-btn-header" @click="$emit('create')">
+          <i class="fas fa-plus"></i> 创建机器人
+        </button>
+      </div>
+      <div class="bot-grid">
+        <div v-for="bot in myBots" :key="bot.id" class="bot-card" :class="bot.approval_status">
+          <div class="bot-header">
+            <div class="bot-avatar">
+              <img :src="bot.avatar" :alt="bot.name" v-if="bot.avatar">
+              <i class="fas fa-robot" v-else></i>
+            </div>
+            <span class="status-badge" :class="bot.approval_status">
+              {{ statusLabel(bot.approval_status) }}
+            </span>
           </div>
-          <span class="status-badge" :class="bot.approval_status">
-            {{ statusLabel(bot.approval_status) }}
-          </span>
-        </div>
-        <div class="bot-body">
-          <h4>{{ bot.name }}</h4>
-          <p>{{ bot.description }}</p>
-          <p v-if="bot.approval_status === 'rejected' && bot.reject_reason" class="reject-reason">
-            拒绝原因：{{ bot.reject_reason }}
-          </p>
-        </div>
-        <div class="bot-actions">
-          <button v-if="bot.approval_status === 'approved'" class="action-btn primary" @click="$emit('use-bot', bot)">
-            <i class="fas fa-comment"></i> 使用
-          </button>
-          <button v-if="['pending', 'rejected'].includes(bot.approval_status)" class="action-btn" @click="$emit('edit-bot', bot)">
-            <i class="fas fa-edit"></i> 编辑
-          </button>
-          <button class="action-btn danger" @click="confirmDelete(bot)">
-            <i class="fas fa-trash"></i> 删除
-          </button>
+          <div class="bot-body">
+            <h4>{{ bot.name }}</h4>
+            <p>{{ bot.description }}</p>
+            <p v-if="bot.approval_status === 'rejected' && bot.reject_reason" class="reject-reason">
+              拒绝原因：{{ bot.reject_reason }}
+            </p>
+          </div>
+          <div class="bot-actions">
+            <button v-if="bot.approval_status === 'approved'" class="action-btn primary" @click="$emit('use-bot', bot)">
+              <i class="fas fa-comment"></i> 使用
+            </button>
+            <button v-if="['pending', 'rejected'].includes(bot.approval_status)" class="action-btn" @click="$emit('edit-bot', bot)">
+              <i class="fas fa-edit"></i> 编辑
+            </button>
+            <button class="action-btn danger" @click="confirmDelete(bot)">
+              <i class="fas fa-trash"></i> 删除
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -51,7 +58,7 @@
 import { ref, onMounted } from 'vue'
 import { useBots } from '../../composables/useBots'
 
-const emit = defineEmits(['open-create', 'edit-bot', 'use-bot'])
+const emit = defineEmits(['create', 'edit-bot', 'use-bot'])
 
 const { loading, fetchMyBots, deleteBot } = useBots()
 const myBots = ref<any[]>([])
@@ -112,6 +119,35 @@ onMounted(loadMyBots)
   color: white;
   cursor: pointer;
   font-size: 14px;
+}
+
+.bot-list-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 10px 10px;
+}
+
+.create-btn-header {
+  padding: 8px 16px;
+  border: 1px solid var(--primary-color);
+  border-radius: 6px;
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.create-btn-header:hover {
+  opacity: 0.9;
 }
 
 .bot-grid {
