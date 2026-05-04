@@ -2,9 +2,7 @@
 <template>
   <el-aside :width="collapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': collapsed }">
     <div class="logo-container">
-      <div class="logo-icon">
-        <el-icon :size="28"><ChatDotRound /></el-icon>
-      </div>
+      <img src="/app-logo.png" alt="QIM Logo" class="logo-image" />
       <h2 class="logo-text" v-show="!collapsed">QIM Admin</h2>
     </div>
 
@@ -88,13 +86,9 @@
             <el-icon><Setting /></el-icon>
             <template #title>AI 模型配置</template>
           </el-menu-item>
-          <el-menu-item index="/avatar-approvals" v-permission="'ai:read'">
-            <el-icon><UserFilled /></el-icon>
-            <template #title>Avatar 审批</template>
-          </el-menu-item>
-          <el-menu-item index="/bot-approvals" v-permission="'ai:read'">
-            <el-icon><Cpu /></el-icon>
-            <template #title>Bot 审批</template>
+          <el-menu-item index="/approvals" v-permission="'ai:read'">
+            <el-icon><Checked /></el-icon>
+            <template #title>审批管理</template>
           </el-menu-item>
         </el-sub-menu>
 
@@ -178,7 +172,7 @@ import {
   CircleCloseFilled, TrendCharts, School, ChatLineSquare,
   Connection, Grid, Monitor, Cellphone, BellFilled,
   Fold, Expand, DataAnalysis, Key, Cpu, Warning, Document,
-  Lock, Setting, Tools, Upload, Search, Folder,
+  Lock, Setting, Tools, Upload, Search, Folder, Checked,
 } from '@element-plus/icons-vue'
 
 defineEmits<{
@@ -216,17 +210,11 @@ const activeMenu = computed(() => route.path)
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.logo-icon {
+.logo-image {
   width: 36px;
   height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-md);
-  color: white;
+  object-fit: contain;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
 }
 
 .logo-text {

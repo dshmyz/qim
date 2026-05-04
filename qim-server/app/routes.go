@@ -347,11 +347,18 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.DELETE("/channels/:id", handler.AdminDeleteChannel)
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
+				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
+
+				// 统一审批 API
+				approvalHandler := service.NewApprovalHandler()
+				approvalHandler.RegisterRoutes(admin)
+
+				// 旧版 Bot 审批 API（保留向后兼容）
 				admin.GET("/bot-approvals", handler.GetBotApprovals)
 				admin.PATCH("/bot-approvals/:id/approve", handler.ApproveBot)
 				admin.PATCH("/bot-approvals/:id/reject", handler.RejectBot)
-				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
-				// 分身审批
+
+				// 旧版 Avatar 审批 API（保留向后兼容）
 				admin.GET("/avatar-approvals", adminhandler.ListPendingAvatars)
 				admin.POST("/avatar-approvals/:id/approve", adminhandler.ApproveAvatar)
 				admin.POST("/avatar-approvals/:id/reject", adminhandler.RejectAvatar)
