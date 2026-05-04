@@ -9,20 +9,24 @@
     <BotChatView
       v-else
       :bot="currentBot"
-      :messages="messages"
-      :thinking="thinking"
-      @back="selectedBotId = ''"
+      :messages="botMessages"
+      :is-loading="isLoading"
+      :is-sending="isSending"
+      :is-streaming="isStreaming"
+      :error="chatError"
+      @back="handleBack"
       @send="handleSendMessage"
-      @setThinking="thinking = $event"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useBots } from '../../../composables/useBots'
+import { useBotChat } from '../../../composables/useBotChat'
 import BotList from './BotList.vue'
 import BotChatView from './BotChatView.vue'
+import type { BotMessage } from '../../../types/bot'
 
 interface Bot {
   id: number
@@ -31,22 +35,25 @@ interface Bot {
   avatar?: string
 }
 
-interface Message {
-  id: number
-  content: string
-  sender: 'user' | 'bot' | 'system'
-  timestamp: Date
-}
-
 defineEmits<{
   switchTab: [tab: string]
 }>()
 
 const { fetchMyBots } = useBots()
 const bots = ref<Bot[]>([])
-const selectedBotId = ref('')
-const messages = ref<Message[]>([])
-const thinking = ref(false)
+const selectedBotId = ref<number | null>(null)
+
+// 使用 useBotChat 管理 Bot 对话
+const {
+  messages: botMessages,
+  isLoading,
+  isSending,
+  isStreaming,
+  error: chatError,
+  loadMessages,
+  sendMessage,
+  reset
+} = useBotChat(selectedBotId)
 
 onMounted(async () => {
   const allBots = await fetchMyBots()
@@ -54,23 +61,39 @@ onMounted(async () => {
 })
 
 const currentBot = computed<Bot | null>(() =>
-  bots.value.find(b => b.id === parseInt(selectedBotId.value)) || null
+  bots.value.find(b => b.id === selectedBotId.value) || null
 )
 
-function selectBot(botId: number) {
-  selectedBotId.value = botId.toString()
-  messages.value = []
-  thinking.value = false
+/**
+ * 选择 Bot 并初始化会话
+ */
+async function selectBot(botId: number) {
+  selectedBotId.value = botId
+  // 加载历史消息
+  await loadMessages()
 }
 
-function handleSendMessage(content: string) {
-  messages.value.push({
-    id: Date.now(),
-    content,
-    sender: 'user',
-    timestamp: new Date()
-  })
+/**
+ * 返回 Bot 列表
+ */
+function handleBack() {
+  selectedBotId.value = null
+  reset()
 }
+
+/**
+ * 发送消息
+ */
+async function handleSendMessage(content: string) {
+  await sendMessage(content)
+}
+
+// 监听 selectedBotId 变化，重置状态
+watch(selectedBotId, (newId, oldId) => {
+  if (oldId !== null && newId !== oldId) {
+    reset()
+  }
+})
 </script>
 
 <style scoped>
