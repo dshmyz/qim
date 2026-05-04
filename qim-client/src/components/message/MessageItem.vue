@@ -192,7 +192,9 @@ const props = defineProps<{
 }>()
 
 const isAIMessage = computed(() => {
-  return props.message.sender_id === 0 || props.message.sender?.id === 0
+  // 判断是否为 AI 消息：检查 sender.type 是否为 'bot' 或 'system'
+  const senderType = props.message.sender?.type
+  return senderType === 'bot' || senderType === 'system'
 })
 
 function onCopyContent(content: string) {
