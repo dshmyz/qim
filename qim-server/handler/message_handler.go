@@ -11,6 +11,7 @@ import (
 	"qim-server/database"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,13 @@ func InitSmartReplyEngine(aiService *ai.AIService) {
 	detector := ai.NewIntentDetector(aiService)
 	smartReplyEngine = NewSmartReplyEngine(aiService, detector)
 	todoExtractor = NewTodoExtractor(aiService)
+}
+
+// SetAvatarWorkerPool sets the avatar worker pool for the smart reply engine
+func SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetAvatarWorkerPool(pool)
+	}
 }
 
 // InitAnomalyDetector initializes the anomaly detector

@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/service"
 	"qim-server/ws"
 	"strings"
 	"time"
@@ -13,11 +15,12 @@ import (
 
 // SmartReplyEngine 智能回复引擎
 type SmartReplyEngine struct {
-	aiService      *ai.AIService
-	intentDetector *ai.IntentDetector
-	knowledgeSvc   *KnowledgeService
-	promptBuilder  *SmartPromptBuilder
-	messageSender  *WebSocketMessageSender
+	aiService        *ai.AIService
+	intentDetector   *ai.IntentDetector
+	knowledgeSvc     *KnowledgeService
+	promptBuilder    *SmartPromptBuilder
+	messageSender    *WebSocketMessageSender
+	avatarWorkerPool *service.AvatarWorkerPool
 }
 
 // NewSmartReplyEngine 创建智能回复引擎
@@ -30,6 +33,11 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 		promptBuilder:  NewSmartPromptBuilder(knowledgeSvc),
 		messageSender:  NewWebSocketMessageSender(ws.GlobalHub),
 	}
+}
+
+// SetAvatarWorkerPool 设置分身工作池
+func (e *SmartReplyEngine) SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
+	e.avatarWorkerPool = pool
 }
 
 // HandleMessage 处理消息并决定是否需要智能回复
@@ -51,6 +59,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 	}
 
 	log.Printf("[SmartReply] 会话类型: %s", conv.Type)
+
+	// 检查分身触发（在处理其他逻辑之前）
+	if e.avatarWorkerPool != nil {
+		e.checkAvatarTriggers(userID, &conv, content)
+	}
 
 	if conv.Type == "bot" {
 		log.Printf("[SmartReply] 机器人会话，由现有逻辑处理")
@@ -414,4 +427,108 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) {
 	db.Create(&summaryMsg)
 
 	log.Printf("[GroupSummary] 群 %d (%s) 总结已生成", group.ID, groupInfo.Name)
+}
+
+// checkAvatarTriggers 检查是否有用户的分身需要触发
+func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string) {
+	db := database.GetDB()
+
+	// 查找当前会话中启用了分身的用户
+	var sessions []model.AvatarSession
+	db.Where("conversation_id = ? AND avatar_enabled = ?", conv.ID, true).Find(&sessions)
+
+	for _, session := range sessions {
+		// 不触发自己的分身
+		if session.UserID == senderID {
+			continue
+		}
+
+		if e.shouldTriggerAvatar(&session, senderID, content) {
+			// 获取发送者信息
+			var sender model.User
+			db.First(&sender, senderID)
+
+			// 获取群聊名称（如果是群聊）
+			groupName := ""
+			if conv.Type == "group" || conv.Type == "discussion" {
+				var group model.Group
+				if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
+					groupName = group.Name
+				}
+			}
+
+			task := service.AvatarTask{
+				UserID:         session.UserID,
+				ConversationID: conv.ID,
+				TriggerMessage: content,
+				TriggerUserID:  senderID,
+				IsGroupChat:    conv.Type == "group" || conv.Type == "discussion",
+				GroupName:      groupName,
+				TriggerName:    sender.Nickname,
+			}
+
+			if err := e.avatarWorkerPool.Submit(task); err != nil {
+				log.Printf("[SmartReply] 提交分身任务失败: %v", err)
+			} else {
+				log.Printf("[SmartReply] 已触发用户 %d 的分身", session.UserID)
+			}
+		}
+	}
+}
+
+// shouldTriggerAvatar 判断是否应该触发分身
+func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string) bool {
+	db := database.GetDB()
+
+	// 检查是否在接管期内
+	if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
+		return false
+	}
+
+	// 获取分身配置
+	var config model.AvatarConfig
+	if err := db.Where("user_id = ?", session.UserID).First(&config).Error; err != nil {
+		return false
+	}
+
+	// 检查分身是否启用
+	if !config.Enabled {
+		return false
+	}
+
+	// 解析触发规则
+	var triggerRules model.AvatarTriggerRules
+	if config.TriggerRulesJSON != "" {
+		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
+			log.Printf("[SmartReply] 解析触发规则失败: %v", err)
+			return false
+		}
+	}
+
+	// 根据触发模式判断
+	switch triggerRules.Mode {
+	case "mention":
+		// @触发：检查是否 @了该用户
+		return strings.Contains(content, fmt.Sprintf("@%d", session.UserID))
+	case "offline":
+		// 离线触发：检查用户是否离线
+		var user model.User
+		if err := db.First(&user, session.UserID).Error; err != nil {
+			return false
+		}
+		return user.Status == "offline"
+	case "keyword":
+		// 关键词触发：检查是否包含关键词
+		for _, kw := range triggerRules.Keywords {
+			if strings.Contains(content, kw) {
+				return true
+			}
+		}
+		return false
+	case "all":
+		// 全部触发
+		return true
+	default:
+		return false
+	}
 }

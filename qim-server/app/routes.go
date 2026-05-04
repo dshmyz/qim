@@ -5,6 +5,7 @@ import (
 	"qim-server/config"
 	"qim-server/handler"
 	"qim-server/middleware"
+	"qim-server/service"
 	"qim-server/ws"
 
 	"github.com/gin-contrib/cors"
@@ -52,6 +53,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 初始化AI处理器
 	aiHandler := handler.NewAIHandler(globalAIService, mcpServer)
+
+	// 初始化分身服务并设置到智能回复引擎
+	avatarService := service.NewAvatarService(GetDB(), globalAIService)
+	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
 	corsMiddleware := cors.New(cors.Config{
@@ -362,6 +367,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			userAIConfigHandler := handler.NewUserAIConfigHandler(GetDB())
 			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
+
+			// 分身服务路由
+			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService)
+			avatarHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）
 			admin.GET("/ai/dashboard", func(c *gin.Context) {
