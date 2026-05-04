@@ -884,7 +884,9 @@ onUnmounted(() => {
 .screen-share-overlay.dragging {
   cursor: grabbing;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  transition: box-shadow 0.2s;
+  /* 故意覆盖基础 transition：拖拽时只对 box-shadow 应用快速过渡，
+     避免 transform 等属性在拖拽过程中产生延迟感 */
+  transition: box-shadow 0.2s ease-out;
 }
 
 .screen-share-header {
