@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-if="isInitiator || isViewer" ref="screenShareOverlayRef" class="screen-share-overlay" :class="{ 'is-initiator': isInitiator, 'is-viewer': isViewer, 'minimized': isMinimized }">
-      <div class="screen-share-header" @mousedown="startDrag">
+      <div class="screen-share-header" @mousedown="startDrag" @dblclick="handleHeaderDblClick">
         <div class="share-indicator">
           <span class="pulse-dot"></span>
           <span class="share-label">{{ isInitiator ? '正在共享屏幕' : '正在观看' }}</span>
@@ -19,6 +19,32 @@
           <button class="action-btn close-btn" @click.stop="stopShare" title="停止共享">
             <i class="fas fa-times"></i>
           </button>
+        </div>
+      </div>
+
+      <div v-if="isMinimized" class="minimized-content">
+        <div class="minimized-preview">
+          <video ref="minimizedVideoRef" autoplay playsinline muted></video>
+        </div>
+        <div class="minimized-info">
+          <div class="info-top">
+            <div class="minimized-status">
+              <span class="pulse-dot" :class="{ active: isSharing }"></span>
+              <span>{{ isInitiator ? '共享中' : '观看中' }}</span>
+            </div>
+            <div class="minimized-duration">{{ formattedDuration }}</div>
+            <div class="minimized-name">{{ screenShareName || senderName || '屏幕共享' }}</div>
+          </div>
+          <div class="minimized-actions" @click.stop>
+            <button class="action-btn expand-btn" @click="expandFromMinimized">
+              <i class="fas fa-expand"></i>
+              <span>展开</span>
+            </button>
+            <button class="action-btn close-btn" @click="stopShare">
+              <i class="fas fa-stop"></i>
+              <span>停止</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -890,7 +916,8 @@ onUnmounted(() => {
 
 .screen-share-overlay.minimized {
   width: 320px;
-  height: 48px;
+  height: auto;
+  min-height: 140px;
 }
 
 .screen-share-overlay.minimized .screen-share-body,
@@ -1425,5 +1452,88 @@ onUnmounted(() => {
   justify-content: center;
   color: rgba(255, 255, 255, 0.3);
   font-size: 32px;
+}
+
+.minimized-content {
+  display: flex;
+  padding: 12px;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.minimized-content:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.minimized-preview {
+  width: 120px;
+  height: 68px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+
+.minimized-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.minimized-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.info-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.minimized-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.minimized-duration {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.minimized-name {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.minimized-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.minimized-actions .action-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.expand-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.expand-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
 }
 </style>
