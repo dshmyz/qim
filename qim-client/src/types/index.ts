@@ -139,4 +139,6 @@ export interface Notification {
 }
 
 export * from './ai'
+export * from './avatar'
+export * from './bot'
 export * from './task'
