@@ -128,6 +128,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'AI 模型配置' },
       },
       {
+        path: 'avatar-approvals',
+        name: 'AvatarApprovals',
+        component: () => import('@/views/AvatarApprovalPanel.vue'),
+        meta: { title: 'Avatar 审批' },
+      },
+      {
+        path: 'bot-approvals',
+        name: 'BotApprovals',
+        component: () => import('@/views/BotApprovalPanel.vue'),
+        meta: { title: 'Bot 审批' },
+      },
+      {
         path: 'sensitive-words',
         name: 'SensitiveWords',
         component: () => import('@/views/SensitiveWords.vue'),

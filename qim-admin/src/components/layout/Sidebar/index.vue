@@ -88,6 +88,14 @@
             <el-icon><Setting /></el-icon>
             <template #title>AI 模型配置</template>
           </el-menu-item>
+          <el-menu-item index="/avatar-approvals" v-permission="'ai:read'">
+            <el-icon><UserFilled /></el-icon>
+            <template #title>Avatar 审批</template>
+          </el-menu-item>
+          <el-menu-item index="/bot-approvals" v-permission="'ai:read'">
+            <el-icon><Cpu /></el-icon>
+            <template #title>Bot 审批</template>
+          </el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="msg-group">

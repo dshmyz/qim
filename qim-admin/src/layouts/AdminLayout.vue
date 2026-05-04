@@ -102,6 +102,8 @@ const titleMap: Record<string, string> = {
   '/ai-assistant': 'AI 助手',
   '/ai-ops': 'AI 运维面板',
   '/ai-config': 'AI 模型配置',
+  '/avatar-approvals': 'Avatar 审批',
+  '/bot-approvals': 'Bot 审批',
   '/messages': '系统消息',
   '/message-search': '消息搜索',
   '/file-storage': '文件存储管理',
