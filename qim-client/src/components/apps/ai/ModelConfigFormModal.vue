@@ -60,7 +60,10 @@ const props = defineProps<{
   config?: UserAIConfig | null
 }>()
 
-const emit = defineEmits(['close', 'save'])
+const emit = defineEmits<{
+  close: []
+  save: [config: CreateConfigRequest]
+}>()
 
 const providers = AI_PROVIDERS
 const showKey = ref(false)
@@ -109,13 +112,9 @@ async function handleSubmit() {
 
   error.value = ''
   loading.value = true
-  try {
-    await emit('save', { ...form.value })
-  } catch (e: any) {
-    error.value = e.message || '保存失败'
-  } finally {
-    loading.value = false
-  }
+  // emit 是同步的，父组件负责处理保存逻辑
+  emit('save', { ...form.value })
+  loading.value = false
 }
 </script>
 
