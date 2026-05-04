@@ -659,6 +659,8 @@ const startFloatingDrag = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (target.closest('.floating-actions')) return
   
+  e.preventDefault()
+  
   const element = document.querySelector('.floating-window') as HTMLElement
   if (!element) return
   
@@ -831,6 +833,16 @@ onUnmounted(() => {
   if (isSharing.value && isInitiator.value) {
     screenShareSender.stopScreenShare()
   }
+  
+  // 清理拖拽相关资源
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('mousemove', onFloatingDrag)
+  document.removeEventListener('mouseup', stopFloatingDrag)
 })
 </script>
 
