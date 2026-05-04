@@ -13,6 +13,7 @@ type User struct {
 	PasswordHash     string         `json:"-" gorm:"size:255;not null"`
 	Nickname         string         `json:"nickname" gorm:"size:100"`
 	Avatar           string         `json:"avatar" gorm:"size:500"`
+	Type             string         `json:"type" gorm:"size:20;default:'user';index"` // 'user' | 'bot' | 'system' | 'api'
 	Signature        string         `json:"signature" gorm:"type:text"`
 	Phone            string         `json:"phone" gorm:"size:20"`
 	Email            string         `json:"email" gorm:"size:100"`
@@ -208,22 +209,24 @@ type MessageReadReceipt struct {
 
 // 机器人
 type Bot struct {
-	ID              uint      `json:"id" gorm:"primarykey"`
-	Name            string    `json:"name" gorm:"size:100;not null"`
-	Avatar          string    `json:"avatar" gorm:"size:500"`
-	Description     string    `json:"description" gorm:"type:text"`
-	Type            string    `json:"type" gorm:"size:50;not null"` // system, custom, ai
-	Config          string    `json:"config" gorm:"type:text"`      // JSON配置
-	IsActive        bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ApprovalStatus  string    `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
-	CreatorID       uint      `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
-	CreatorName     string    `json:"creator_name" gorm:"size:100;default:''"`
-	RejectReason    string    `json:"reject_reason" gorm:"type:text"`
-	IsTemplate      bool      `json:"is_template" gorm:"default:false"`
-	UserConfigID    *uint     `json:"user_config_id" gorm:"index"`
-	UseSystemConfig bool      `json:"use_system_config" gorm:"default:true"`
+	ID              uint           `json:"id" gorm:"primarykey"`
+	Name            string         `json:"name" gorm:"size:100;not null"`
+	Avatar          string         `json:"avatar" gorm:"size:500"`
+	Description     string         `json:"description" gorm:"type:text"`
+	Type            string         `json:"type" gorm:"size:50;not null"` // system, custom, ai
+	Config          string         `json:"config" gorm:"type:text"`      // JSON配置
+	IsActive        bool           `json:"is_active" gorm:"default:true"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	ApprovalStatus  string         `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
+	CreatorID       uint           `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
+	CreatorName     string         `json:"creator_name" gorm:"size:100;default:''"`
+	VirtualUserID   *uint          `json:"virtual_user_id"` // 关联虚拟用户 ID
+	RejectReason    string         `json:"reject_reason" gorm:"type:text"`
+	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
+	UserConfigID    *uint          `json:"user_config_id" gorm:"index"`
+	UseSystemConfig bool           `json:"use_system_config" gorm:"default:true"`
 }
 
 // AI使用日志
@@ -402,9 +405,9 @@ type ShortLink struct {
 	UserID      uint           `json:"user_id" gorm:"not null;index"`
 	OriginalURL string         `json:"original_url" gorm:"type:text;not null"`
 	Code        string         `json:"code" gorm:"size:20;uniqueIndex;not null"`
-	CustomCode  string         `json:"custom_code" gorm:"size:50;index"`           // 自定义短链接后缀
-	ExpiresAt   *time.Time     `json:"expires_at"`                                 // 过期时间
-	Password    string         `json:"-" gorm:"size:255"`                          // 访问密码(哈希值)
+	CustomCode  string         `json:"custom_code" gorm:"size:50;index"` // 自定义短链接后缀
+	ExpiresAt   *time.Time     `json:"expires_at"`                       // 过期时间
+	Password    string         `json:"-" gorm:"size:255"`                // 访问密码(哈希值)
 	VisitCount  int            `json:"visit_count" gorm:"default:0"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`

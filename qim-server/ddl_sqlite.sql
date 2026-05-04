@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password_hash` VARCHAR(255) NOT NULL,
   `nickname` VARCHAR(100),
   `avatar` VARCHAR(500),
+  `type` VARCHAR(20) DEFAULT 'user',
   `signature` TEXT,
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 );
 
 CREATE INDEX IF NOT EXISTS `idx_users_deleted_at` ON `users`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_users_type` ON `users`(`type`);
 
 -- Departments table
 CREATE TABLE IF NOT EXISTS `departments` (
@@ -197,8 +199,20 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `config` TEXT,
   `is_active` BOOLEAN DEFAULT TRUE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  `approval_status` VARCHAR(20) DEFAULT 'approved',
+  `creator_id` INTEGER DEFAULT 0,
+  `creator_name` VARCHAR(100) DEFAULT '',
+  `virtual_user_id` INTEGER NULL,
+  `reject_reason` TEXT,
+  `is_template` BOOLEAN DEFAULT FALSE,
+  `user_config_id` INTEGER,
+  `use_system_config` BOOLEAN DEFAULT TRUE
 );
+
+CREATE INDEX IF NOT EXISTS `idx_bots_deleted_at` ON `bots`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_bots_user_config_id` ON `bots`(`user_config_id`);
 
 -- Bot conversations table
 CREATE TABLE IF NOT EXISTS `bot_conversations` (

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password_hash` VARCHAR(255) NOT NULL,
   `nickname` VARCHAR(100),
   `avatar` VARCHAR(500),
+  `type` VARCHAR(20) DEFAULT 'user',
   `signature` TEXT,
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
@@ -21,7 +22,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
-  INDEX `idx_users_deleted_at` (`deleted_at`)
+  INDEX `idx_users_deleted_at` (`deleted_at`),
+  INDEX `idx_users_type` (`type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Departments table
@@ -210,7 +212,18 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `config` TEXT,
   `is_active` BOOLEAN DEFAULT TRUE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  `approval_status` VARCHAR(20) DEFAULT 'approved',
+  `creator_id` INT UNSIGNED DEFAULT 0,
+  `creator_name` VARCHAR(100) DEFAULT '',
+  `virtual_user_id` INT UNSIGNED NULL,
+  `reject_reason` TEXT,
+  `is_template` BOOLEAN DEFAULT FALSE,
+  `user_config_id` INT UNSIGNED,
+  `use_system_config` BOOLEAN DEFAULT TRUE,
+  INDEX `idx_bots_deleted_at` (`deleted_at`),
+  INDEX `idx_bots_user_config_id` (`user_config_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Bot conversations table
