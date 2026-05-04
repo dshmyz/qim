@@ -494,13 +494,32 @@ func StreamMessage(c *gin.Context) {
 			return
 		}
 
+		// 解析 Bot 配置获取系统提示词
+		systemPrompt := "你是一个智能助手，帮助用户解决问题。"
+		if bot.Config != "" {
+			var botConfig map[string]interface{}
+			if err := json.Unmarshal([]byte(bot.Config), &botConfig); err == nil {
+				if prompt, ok := botConfig["system_prompt"].(string); ok && prompt != "" {
+					systemPrompt = prompt
+				}
+			}
+		}
+
 		var messages []model.Message
 		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
 		var aiMessages []ai.Message
+		// 先添加系统提示词
+		aiMessages = append(aiMessages, ai.Message{
+			Role:    "system",
+			Content: systemPrompt,
+		})
+
+		// 加载历史消息，正确识别 Bot 消息
 		for _, msg := range messages {
 			role := "user"
-			if msg.SenderID == 0 {
+			// 判断是否为 Bot 消息：sender_id = 0 或 sender_id = VirtualUserID
+			if msg.SenderID == 0 || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
 				role = "assistant"
 			}
 			aiMessages = append(aiMessages, ai.Message{
@@ -526,9 +545,15 @@ func StreamMessage(c *gin.Context) {
 		close(responseChan)
 		doneChan <- true
 
+		// 保存 Bot 回复时使用 VirtualUserID
+		senderID := uint(0) // 默认使用 0
+		if bot.VirtualUserID != nil {
+			senderID = *bot.VirtualUserID
+		}
+
 		botReply := model.Message{
 			ConversationID: uint(convIDUint),
-			SenderID:       0,
+			SenderID:       senderID,
 			Type:           "markdown",
 			Content:        fullResponse,
 		}
