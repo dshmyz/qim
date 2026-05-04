@@ -591,12 +591,35 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 		"signal":       signalData,
 	}
 
-	// 转发原始消息中的其他字段（如 share_type, call_type 等）
-	if shareType, ok := msgData["share_type"]; ok {
-		forwardData["share_type"] = shareType
+	// 转发原始消息中的其他字段
+	// 优先使用新的 media_type 字段
+	if mediaType, ok := msgData["media_type"]; ok {
+		forwardData["media_type"] = mediaType
+	} else {
+		// 兼容旧的 share_type 和 call_type 字段
+		// 如果存在 share_type 或 call_type，同时设置 media_type
+		if shareType, ok := msgData["share_type"]; ok {
+			forwardData["share_type"] = shareType
+			forwardData["media_type"] = shareType // 同时设置 media_type
+		}
+		if callType, ok := msgData["call_type"]; ok {
+			forwardData["call_type"] = callType
+			forwardData["media_type"] = callType // 同时设置 media_type
+		}
 	}
-	if callType, ok := msgData["call_type"]; ok {
-		forwardData["call_type"] = callType
+
+	// 如果有 media_type，也转发原始的 share_type 和 call_type（向后兼容）
+	if mediaType, ok := forwardData["media_type"]; ok {
+		// 如果是新格式（只有 media_type），也设置 share_type 或 call_type
+		if _, hasShareType := forwardData["share_type"]; !hasShareType {
+			if mediaTypeStr, ok := mediaType.(string); ok {
+				if mediaTypeStr == "screen" {
+					forwardData["share_type"] = mediaTypeStr
+				} else if mediaTypeStr == "video" || mediaTypeStr == "audio" {
+					forwardData["call_type"] = mediaTypeStr
+				}
+			}
+		}
 	}
 
 	signalMsg := WSMessage{
