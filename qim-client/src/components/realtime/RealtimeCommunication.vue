@@ -293,29 +293,40 @@ const handleWebRTCOfferGlobal = (data: any) => {
   console.log('RealtimeCommunication: 收到 webrtc_offer', data)
   if (!data?.signal || !data?.from_user_id) return
 
-  const fromUserId = data.from_user_id
-  
-  // 尝试从会话成员中获取用户名
-  const conv = props.conversations.find(c => {
-    const members = c.members as any[]
-    return members?.some(m => m.id == fromUserId) && c.type !== 'group'
-  })
-  
-  if (conv) {
-    const member = (conv.members as any[])?.find(m => m.id == fromUserId)
-    if (member && (member.name || member.nickname)) {
-      remoteScreenUserName.value = member.name || member.nickname
+  // 检查消息类型，区分屏幕共享和语音/视频通话
+  if (data.share_type === 'screen') {
+    // 屏幕共享
+    console.log('RealtimeCommunication: 处理屏幕共享 offer')
+    const fromUserId = data.from_user_id
+    
+    // 尝试从会话成员中获取用户名
+    const conv = props.conversations.find(c => {
+      const members = c.members as any[]
+      return members?.some(m => m.id == fromUserId) && c.type !== 'group'
+    })
+    
+    if (conv) {
+      const member = (conv.members as any[])?.find(m => m.id == fromUserId)
+      if (member && (member.name || member.nickname)) {
+        remoteScreenUserName.value = member.name || member.nickname
+      }
     }
-  }
 
-  if (conv && props.currentConversation?.id !== conv.id) {
-    console.log('RealtimeCommunication: webrtc_offer 来自非当前会话')
-    if (props.onConversationSwitch) {
-      props.onConversationSwitch(conv)
+    if (conv && props.currentConversation?.id !== conv.id) {
+      console.log('RealtimeCommunication: webrtc_offer 来自非当前会话')
+      if (props.onConversationSwitch) {
+        props.onConversationSwitch(conv)
+      }
     }
-  }
 
-  handleWebRTCOffer(data)
+    handleWebRTCOffer(data)
+  } else if (data.call_type) {
+    // 语音/视频通话
+    console.log('RealtimeCommunication: 处理语音/视频通话 offer, call_type:', data.call_type)
+    handleVideoCallSignalingGlobal({ type: 'webrtc_offer', data })
+  } else {
+    console.warn('RealtimeCommunication: 未知的 webrtc_offer 类型', data)
+  }
 }
 
 const handleWebRTCAnswerGlobal = (data: any) => {

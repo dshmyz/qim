@@ -479,6 +479,7 @@ const stopShare = () => {
 
   isSharing.value = false
   isInitiator.value = false
+  isViewer.value = false
   isPaused.value = false
   isMinimized.value = false
   hasJoined.value = false

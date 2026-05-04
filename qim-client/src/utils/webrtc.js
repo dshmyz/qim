@@ -261,7 +261,8 @@ class ScreenShareSender {
             type: 'webrtc_offer',
             data: {
               target_user_id: receiverId,
-              signal: offer
+              signal: offer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           }));
           logger.log('offer 发送成功');
@@ -271,7 +272,8 @@ class ScreenShareSender {
             type: 'webrtc_offer',
             data: {
               target_user_id: receiverId,
-              signal: offer
+              signal: offer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           });
           logger.log('offer 发送成功（通过 IPC）');
