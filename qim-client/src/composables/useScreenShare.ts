@@ -105,7 +105,9 @@ export function useScreenShare(conversation: { value: any }) {
         console.log('调用 screenShareComponent.handleOffer')
         await screenShareComponent.value.handleOffer(data.signal, data.from_user_id)
       } else {
-        console.error('screenShareComponent 未初始化，无法处理 offer')
+        // 组件未初始化，缓存 offer 等待组件挂载后处理
+        console.log('screenShareComponent 未初始化，缓存 offer')
+        cacheWebRTCOffer(data.signal, data.from_user_id)
       }
     } catch (error) {
       console.error('处理 WebRTC offer 失败:', error)

@@ -154,11 +154,23 @@ const startScreenShare = () => {
 const screenShareRef = ref<InstanceType<typeof ScreenShare>>()
 
 // 屏幕共享组件挂载完成后的回调
-const onScreenShareMounted = () => {
+const onScreenShareMounted = async () => {
   console.log('RealtimeCommunication: ScreenShare 组件已挂载')
   if (screenShareRef.value) {
     screenShareComponent.value = screenShareRef.value
     console.log('RealtimeCommunication: 屏幕共享组件引用设置成功')
+    
+    // 检查是否有缓存的 offer 需要处理
+    const cachedOffer = consumeCachedOffer()
+    if (cachedOffer) {
+      console.log('RealtimeCommunication: 处理缓存的 offer')
+      try {
+        await screenShareRef.value.handleOffer(cachedOffer.signal, cachedOffer.fromUserId)
+        console.log('RealtimeCommunication: 缓存的 offer 处理成功')
+      } catch (error) {
+        console.error('RealtimeCommunication: 处理缓存的 offer 失败:', error)
+      }
+    }
   }
 }
 
