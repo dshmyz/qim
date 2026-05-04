@@ -5,33 +5,55 @@
         <i class="fas fa-arrow-left"></i>
       </button>
       <h3>{{ bot?.name || 'AI助手' }}</h3>
+      <div v-if="isLoading" class="loading-badge">加载中...</div>
     </div>
 
     <div class="messages" ref="messagesRef">
+      <!-- 加载状态 -->
+      <div v-if="isLoading && messages.length === 0" class="loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>加载历史消息...</span>
+      </div>
+
+      <!-- 消息列表 -->
       <div
         v-for="msg in messages"
         :key="msg.id"
-        :class="['message', msg.sender === 'user' ? 'user' : 'bot']"
+        :class="['message', msg.senderType === 'user' ? 'user' : 'bot']"
       >
-        <div class="content">{{ msg.content }}</div>
+        <div class="content">
+          <MarkdownRenderer
+            v-if="msg.type === 'markdown' || (msg.senderType === 'bot' && !msg.isStreaming)"
+            :content="msg.content"
+          />
+          <span v-else>{{ msg.content }}</span>
+          <span v-if="msg.isStreaming" class="streaming-cursor"></span>
+        </div>
         <div class="time">{{ formatTime(msg.timestamp) }}</div>
       </div>
-      <div v-if="thinking" class="message bot thinking">
-        <div class="thinking-indicator">
-          <span class="dot"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
+
+      <!-- 思考指示器 -->
+      <ThinkingIndicator v-if="isStreaming && !hasStreamingMessage" />
+
+      <!-- 错误提示 -->
+      <div v-if="error" class="error-message">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>{{ error }}</span>
       </div>
     </div>
 
     <div class="input-area">
       <input
         v-model="input"
-        :placeholder="`向 ${bot?.name} 提问...`"
+        :placeholder="`向 ${bot?.name || 'AI助手'} 提问...`"
+        :disabled="isSending || isStreaming"
         @keyup.enter="sendMessage"
       >
-      <button @click="sendMessage" class="send-btn">
+      <button
+        @click="sendMessage"
+        class="send-btn"
+        :disabled="isSending || isStreaming || !input.trim()"
+      >
         <i class="fas fa-paper-plane"></i>
       </button>
     </div>
@@ -39,14 +61,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
-
-interface Message {
-  id: number
-  content: string
-  sender: 'user' | 'bot' | 'system'
-  timestamp: Date
-}
+import { ref, computed, nextTick, watch } from 'vue'
+import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
+import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
+import type { BotMessage } from '../../../types/bot'
 
 interface Bot {
   id: number
@@ -57,27 +75,41 @@ interface Bot {
 
 const props = defineProps<{
   bot: Bot | null
-  messages: Message[]
-  thinking: boolean
+  messages: BotMessage[]
+  isLoading: boolean
+  isSending: boolean
+  isStreaming: boolean
+  error: string | null
 }>()
 
 const emit = defineEmits<{
   back: []
   send: [content: string]
-  setThinking: [value: boolean]
 }>()
 
 const input = ref('')
 const messagesRef = ref<HTMLDivElement | null>(null)
 
+/**
+ * 检查是否有正在流式传输的消息
+ */
+const hasStreamingMessage = computed(() => {
+  return props.messages.some(msg => msg.isStreaming)
+})
+
+/**
+ * 发送消息
+ */
 async function sendMessage() {
-  if (!input.value.trim()) return
+  if (!input.value.trim() || props.isSending || props.isStreaming) return
   emit('send', input.value.trim())
   input.value = ''
-  emit('setThinking', true)
   await scrollToBottom()
 }
 
+/**
+ * 滚动到底部
+ */
 async function scrollToBottom() {
   await nextTick()
   if (messagesRef.value) {
@@ -85,13 +117,25 @@ async function scrollToBottom() {
   }
 }
 
+/**
+ * 格式化时间
+ */
 function formatTime(date: Date) {
-  return new Date(date).toLocaleTimeString('zh-CN')
+  return new Date(date).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
+// 监听消息变化，自动滚动到底部
 watch(() => props.messages, () => {
   scrollToBottom()
 }, { deep: true })
+
+// 监听流式状态变化
+watch(() => props.isStreaming, () => {
+  scrollToBottom()
+})
 </script>
 
 <style scoped>
@@ -127,6 +171,14 @@ watch(() => props.messages, () => {
   background: var(--hover-color);
 }
 
+.loading-badge {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 .messages {
   flex: 1;
   padding: 20px;
@@ -134,6 +186,15 @@ watch(() => props.messages, () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  padding: 40px;
 }
 
 .message {
@@ -169,6 +230,32 @@ watch(() => props.messages, () => {
   word-break: break-word;
 }
 
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--primary-color);
+  animation: blink 1s infinite;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d32f2f;
+  background: #ffebee;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
 .input-area {
   padding: 16px;
   border-top: 1px solid var(--border-color);
@@ -192,6 +279,11 @@ watch(() => props.messages, () => {
   border-color: var(--primary-color);
 }
 
+.input-area input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .send-btn {
   width: 40px;
   height: 40px;
@@ -206,34 +298,12 @@ watch(() => props.messages, () => {
   transition: background-color 0.2s;
 }
 
-.send-btn:hover {
+.send-btn:hover:not(:disabled) {
   background: var(--primary-hover);
 }
 
-.thinking-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 12px 14px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary-color);
-  animation: pulse 1.5s infinite;
-}
-
-.dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+.send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>
