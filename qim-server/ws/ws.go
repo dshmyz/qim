@@ -585,12 +585,23 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 		signalData = msgData["candidate"]
 	}
 
+	// 构建转发的数据，包含原始消息中的所有字段
+	forwardData := map[string]interface{}{
+		"from_user_id": c.userID,
+		"signal":       signalData,
+	}
+
+	// 转发原始消息中的其他字段（如 share_type, call_type 等）
+	if shareType, ok := msgData["share_type"]; ok {
+		forwardData["share_type"] = shareType
+	}
+	if callType, ok := msgData["call_type"]; ok {
+		forwardData["call_type"] = callType
+	}
+
 	signalMsg := WSMessage{
 		Type: signalType,
-		Data: map[string]interface{}{
-			"from_user_id": c.userID,
-			"signal":       signalData,
-		},
+		Data: forwardData,
 	}
 
 	jsonMsg, _ := json.Marshal(signalMsg)
