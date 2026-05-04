@@ -124,6 +124,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 会话
 			authed.GET("/conversations", handler.GetConversations)
 			authed.POST("/conversations/single", handler.CreateSingleConversation)
+			authed.POST("/conversations/bot", handler.CreateBotConversation)
 			authed.POST("/conversations/group", handler.CreateGroupConversation)
 			authed.POST("/conversations/discussion", handler.CreateDiscussionConversation)
 			authed.GET("/conversations/:id", handler.GetConversation)

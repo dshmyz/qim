@@ -83,6 +83,7 @@
             class="remote-video"
             autoplay
             playsinline
+            muted
           ></video>
 
           <div v-if="!remoteStreamActive && isViewer && !hasJoined" class="waiting-state">
@@ -100,6 +101,10 @@
             <span>正在连接...</span>
           </div>
 
+          <!-- 调试信息 -->
+          <div v-if="remoteStreamActive" class="debug-info" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; z-index: 1000;">
+            流已接收
+          </div>
 
         </div>
       </div>
@@ -394,6 +399,13 @@ const startSharing = async () => {
       // 开始共享（注意：这里会直接发送 webrtc_offer，实际应该在对方接受后再发送）
       logger.log('ScreenShare: 使用 screenShareSender 开始共享，接收者ID:', props.receiverId)
       await screenShareSender.startScreenShare(props.receiverId)
+      
+      // 等待 DOM 更新
+      await nextTick()
+      
+      // 建立连接并显示本地预览
+      logger.log('ScreenShare: 调用 establishConnection 显示本地预览')
+      await establishConnection()
     }
   } catch (error) {
     console.error('ScreenShare: 开始屏幕共享失败:', error)
@@ -419,18 +431,30 @@ const establishConnection = async () => {
       const screenStream = screenShareSender.getScreenStream()
       if (screenStream) {
         logger.log('ScreenShare: 设置本地预览视频流')
+        logger.log('ScreenShare: screenStream tracks:', screenStream.getTracks().map((t: MediaStreamTrack) => ({ kind: t.kind, id: t.id, enabled: t.enabled })))
+        
         remoteVideoRef.value.srcObject = screenStream
-        // 尝试播放视频
+        
+        // 尝试播放视频（不等待元数据加载）
         try {
-          remoteVideoRef.value.play().catch(err => {
-            console.error('尝试播放预览视频失败:', err)
-          })
-        } catch (error) {
-          console.error('播放预览视频出错:', error)
+          await remoteVideoRef.value.play()
+          logger.log('ScreenShare: 预览视频播放成功')
+        } catch (err: any) {
+          console.error('尝试播放预览视频失败:', err)
+          logger.log('ScreenShare: 播放失败，错误名称:', err.name)
+          
+          // 如果自动播放被阻止，尝试静音后再播放
+          if (err.name === 'NotAllowedError') {
+            logger.log('ScreenShare: 自动播放被阻止，尝试静音后播放')
+            remoteVideoRef.value.muted = true
+            await remoteVideoRef.value.play().catch((e: any) => console.error('静音后播放仍然失败:', e))
+          }
         }
       } else {
         logger.log('ScreenShare: 未获取到屏幕共享流，预览功能暂时不可用')
       }
+    } else {
+      logger.log('ScreenShare: remoteVideoRef 未准备好或组件已卸载')
     }
   } catch (error) {
     if (isComponentMounted) {
@@ -524,7 +548,7 @@ const startReceivingStream = () => {
     if (videoElement) {
       logger.log('ScreenShare: 初始化screenShareReceiver，视频元素:', videoElement)
       // 初始化screenShareReceiver，传递远程流接收回调
-      screenShareReceiver.init(videoElement, (stream) => {
+      screenShareReceiver.init(videoElement, (stream: MediaStream) => {
         logger.log('ScreenShare: 收到远程流，更新状态')
         remoteStreamActive.value = true
         if (floatingMode.value) {
@@ -542,7 +566,7 @@ const startReceivingStream = () => {
         if (delayedVideoElement) {
           logger.log('ScreenShare: 延迟初始化screenShareReceiver，视频元素:', delayedVideoElement)
           // 初始化screenShareReceiver，传递远程流接收回调
-          screenShareReceiver.init(delayedVideoElement, (stream) => {
+          screenShareReceiver.init(delayedVideoElement, (stream: MediaStream) => {
             logger.log('ScreenShare: 收到远程流，更新状态')
             remoteStreamActive.value = true
             // 只在浮窗模式下设置floatingStream，避免冲突
@@ -774,66 +798,77 @@ defineExpose({
     // 设置当前用户为观看者
     isViewer.value = true
     hasJoined.value = true
-    showFloatingWindow.value = true
-    // 先关闭浮窗模式，等 DOM 更新后再开启
-    floatingMode.value = false
+    isMinimized.value = false // 确保不是最小化状态
     // 保存发送者 ID
     internalSenderId.value = fromUserId
 
-    // 等待 DOM 更新（确保浮窗视频元素渲染完成）
+    logger.log('ScreenShare: isViewer:', isViewer.value, 'hasJoined:', hasJoined.value, 'isMinimized:', isMinimized.value)
+
+    // 等待 DOM 更新（确保视频元素渲染完成）
     await nextTick()
-    await new Promise(resolve => setTimeout(resolve, 50))
+    await new Promise(resolve => setTimeout(resolve, 100))
     
-    // 现在开启浮窗模式
-    floatingMode.value = true
+    logger.log('ScreenShare: DOM 更新完成，remoteVideoRef:', remoteVideoRef.value)
 
     const tryHandleOffer = (retries = 10) => {
       // 始终使用 remoteVideoRef 建立连接（它始终在 DOM 中）
       const videoElement = remoteVideoRef.value
       
+      logger.log('ScreenShare: tryHandleOffer - 视频元素:', videoElement, '剩余重试:', retries)
+      
       if (videoElement) {
         logger.log('ScreenShare: 视频元素已就绪，开始初始化接收器')
+        logger.log('ScreenShare: 视频元素 readyState:', videoElement.readyState)
+        logger.log('ScreenShare: 视频元素 networkState:', videoElement.networkState)
         
         // 初始化 screenShareReceiver
-        screenShareReceiver.init(videoElement, async (stream) => {
+        screenShareReceiver.init(videoElement, async (stream: MediaStream) => {
           logger.log('ScreenShare: 收到远程流回调')
           logger.log('Stream ID:', stream?.id)
-          logger.log('Stream tracks:', stream?.getTracks()?.map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled, muted: t.muted })))
+          logger.log('Stream tracks:', stream?.getTracks()?.map((t: MediaStreamTrack) => ({ kind: t.kind, id: t.id, enabled: t.enabled, muted: t.muted })))
           remoteStreamActive.value = true
           
           // 设置到 remoteVideoRef
           if (remoteVideoRef.value) {
+            logger.log('ScreenShare: 设置 remoteVideoRef.srcObject')
+            logger.log('ScreenShare: remoteVideoRef.value:', remoteVideoRef.value)
+            logger.log('ScreenShare: remoteVideoRef.value.paused:', remoteVideoRef.value.paused)
+            
+            // 检查视频元素的尺寸
+            const rect = remoteVideoRef.value.getBoundingClientRect()
+            logger.log('ScreenShare: 视频元素尺寸:', rect.width, 'x', rect.height)
+            logger.log('ScreenShare: 视频元素位置:', rect.left, rect.top)
+            logger.log('ScreenShare: 视频元素 display:', window.getComputedStyle(remoteVideoRef.value).display)
+            logger.log('ScreenShare: 视频元素 visibility:', window.getComputedStyle(remoteVideoRef.value).visibility)
+            
             remoteVideoRef.value.srcObject = stream
-            remoteVideoRef.value.play().catch(err => {
-              console.error('远程视频播放失败:', err)
-            })
-          }
-          
-          // 等待 DOM 更新后同步到浮窗
-          await nextTick()
-          if (floatingMode.value && floatingVideoRef.value) {
-            logger.log('ScreenShare: 同步流到浮窗')
-            floatingStream.value = stream
             
-            // 先暂停当前播放，避免 AbortError
+            logger.log('ScreenShare: srcObject 已设置，尝试播放')
+            logger.log('ScreenShare: remoteVideoRef.value.srcObject:', remoteVideoRef.value.srcObject)
+            
+            // 尝试播放视频（不等待元数据加载）
             try {
-              floatingVideoRef.value.pause()
-            } catch (e) {
-              // 忽略暂停错误
-            }
-            
-            // 设置新的视频流
-            floatingVideoRef.value.srcObject = stream
-            
-            // 播放视频，忽略 AbortError
-            floatingVideoRef.value.play().catch(err => {
-              if (err.name !== 'AbortError') {
-                console.error('浮窗视频播放失败:', err)
-              } else {
-                // AbortError 是正常的，表示之前的播放请求被新的加载请求中断
-                logger.log('ScreenShare: 视频播放被新的加载请求中断，这是正常的')
+              logger.log('ScreenShare: 调用 play()')
+              await remoteVideoRef.value.play()
+              logger.log('ScreenShare: 远程视频播放成功')
+              logger.log('ScreenShare: 播放后 paused:', remoteVideoRef.value.paused)
+              logger.log('ScreenShare: 播放后 videoWidth:', remoteVideoRef.value.videoWidth)
+              logger.log('ScreenShare: 播放后 videoHeight:', remoteVideoRef.value.videoHeight)
+            } catch (err: any) {
+              console.error('远程视频播放失败:', err)
+              logger.log('ScreenShare: 播放失败，错误名称:', err.name)
+              logger.log('ScreenShare: 播放失败，错误消息:', err.message)
+              
+              // 如果自动播放被阻止，尝试静音后再播放
+              if (err.name === 'NotAllowedError') {
+                logger.log('ScreenShare: 自动播放被阻止，尝试静音后播放')
+                remoteVideoRef.value.muted = true
+                await remoteVideoRef.value.play().catch((e: any) => console.error('静音后播放仍然失败:', e))
               }
-            })
+            }
+          } else {
+            console.error('ScreenShare: remoteVideoRef 为 null，无法设置视频流')
+            logger.log('ScreenShare: remoteVideoRef 为 null')
           }
         })
         
@@ -1231,6 +1266,9 @@ onUnmounted(() => {
   height: 100%;
   object-fit: contain;
   background: #000;
+  display: block;
+  position: relative;
+  z-index: 1;
 }
 
 .waiting-state {

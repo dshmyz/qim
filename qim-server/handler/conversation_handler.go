@@ -237,6 +237,66 @@ func CreateSingleConversation(c *gin.Context) {
 	response.Success(c, conv)
 }
 
+// CreateBotConversation 创建或获取 Bot 会话
+func CreateBotConversation(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+
+	var req struct {
+		BotID uint `json:"bot_id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	db := database.GetDB()
+
+	// 检查 Bot 是否存在
+	var bot model.Bot
+	if err := db.First(&bot, req.BotID).Error; err != nil {
+		response.NotFound(c, "机器人不存在")
+		return
+	}
+
+	// 查找是否已有会话
+	var botConv model.BotConversation
+	db.Where("bot_id = ? AND user_id = ?", req.BotID, userID.(uint)).
+		Preload("Conversation").First(&botConv)
+
+	if botConv.ID > 0 {
+		db.Preload("Conversation.Members").Preload("Conversation.Members.User").
+			First(&botConv, botConv.ID)
+		response.Success(c, botConv.Conversation)
+		return
+	}
+
+	// 创建新会话
+	conv := model.Conversation{Type: "bot"}
+	db.Create(&conv)
+
+	// 添加用户为会话成员
+	db.Create(&model.ConversationMember{
+		ConversationID: conv.ID,
+		UserID:         userID.(uint),
+		Role:           "member",
+	})
+
+	// 创建 Bot 会话关联
+	db.Create(&model.BotConversation{
+		BotID:          req.BotID,
+		UserID:         userID.(uint),
+		ConversationID: conv.ID,
+	})
+
+	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
+	response.Success(c, conv)
+}
+
 func CreateGroupConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 

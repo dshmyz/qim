@@ -7,16 +7,19 @@
 qim-client 的 AI 助手模块存在以下问题：
 
 **P0 严重问题（功能不可用）**：
+
 - BotChatView 没有实际的 AI 对话能力
 - ModelConfigFormModal 的 emit 用法错误
 - handleEditBot 是空操作
 
 **P1 架构问题**：
+
 - API 调用方式不统一（三种不同的 HTTP 调用方式）
 - 类型定义重复（Bot 和 Message 在多个文件重复定义）
 - 使用 alert/confirm 而非项目共享组件
 
 **功能重复**：
+
 - Markdown 渲染重复（3 处）
 - 思考中指示器重复（3 处）
 - 复制/导出功能重复（2 处）
@@ -29,7 +32,7 @@ qim-client 的 AI 助手模块存在以下问题：
 3. **代码复用**：消除重复代码，提高可维护性
 4. **用户体验**：支持流式响应、对话历史持久化
 
----
+***
 
 ## 二、技术方案
 
@@ -37,25 +40,28 @@ qim-client 的 AI 助手模块存在以下问题：
 
 经过分析，后端已有完整的 Bot 会话机制：
 
-| API 端点 | 功能 |
-|---------|------|
-| `POST /api/v1/conversations/bot` | 创建或获取 Bot 会话 |
-| `GET /api/v1/conversations/:id/messages` | 获取会话历史消息 |
-| `POST /api/v1/conversations/:id/messages/stream` | 发送流式消息 |
+| API 端点                                           | 功能           |
+| ------------------------------------------------ | ------------ |
+| `POST /api/v1/conversations/bot`                 | 创建或获取 Bot 会话 |
+| `GET /api/v1/conversations/:id/messages`         | 获取会话历史消息     |
+| `POST /api/v1/conversations/:id/messages/stream` | 发送流式消息       |
 
 **优势**：
+
 - ✅ 自动保存消息历史到数据库
 - ✅ 自动关联 Bot 配置
 - ✅ 自动加载历史消息作为上下文
 - ✅ 支持跨设备同步
 
 **发现的问题**：
-1. `StreamMessage` 函数（message_handler.go:497-510）没有使用 Bot 的系统提示词，需要修复
+
+1. `StreamMessage` 函数（message\_handler.go:497-510）没有使用 Bot 的系统提示词，需要修复
 2. `sender_id = 0` 表示 Bot 消息存在歧义，无法区分不同 Bot
 
 ### 2.2 用户类型设计
 
 **问题**：当前 `sender_id = 0` 表示 Bot 消息，存在以下问题：
+
 - 无法区分不同 Bot
 - 无法区分 Bot 消息和系统消息
 - Preload Sender 时无法加载 Bot 信息
@@ -76,25 +82,26 @@ type User struct {
 
 **用户类型说明**：
 
-| 类型 | 用途 | 示例 |
-|------|------|------|
-| **user** | 普通用户 | alice、bob |
-| **bot** | 机器人 | AI助手、翻译官 |
-| **system** | 系统用户 | 系统通知、群聊日报 |
-| **api** | API 用户 | 第三方集成、Webhook |
+| 类型         | 用途     | 示例            |
+| ---------- | ------ | ------------- |
+| **user**   | 普通用户   | alice、bob     |
+| **bot**    | 机器人    | AI助手、翻译官      |
+| **system** | 系统用户   | 系统通知、群聊日报     |
+| **api**    | API 用户 | 第三方集成、Webhook |
 
 **数据示例**：
 
-| id | type | username | nickname | avatar |
-|----|------|----------|----------|--------|
-| 1 | user | alice | 爱丽丝 | /avatar/1.jpg |
-| 2 | user | bob | 鲍勃 | /avatar/2.jpg |
-| 3 | bot | bot_assistant | AI助手 | /bot/assistant.png |
-| 4 | bot | bot_translator | 翻译官 | /bot/translator.png |
-| 5 | system | system | 系统 | /system.png |
-| 6 | api | api_webhook | Webhook | /api.png |
+| id | type   | username        | nickname | avatar              |
+| -- | ------ | --------------- | -------- | ------------------- |
+| 1  | user   | alice           | 爱丽丝      | /avatar/1.jpg       |
+| 2  | user   | bob             | 鲍勃       | /avatar/2.jpg       |
+| 3  | bot    | bot\_assistant  | AI助手     | /bot/assistant.png  |
+| 4  | bot    | bot\_translator | 翻译官      | /bot/translator.png |
+| 5  | system | system          | 系统       | /system.png         |
+| 6  | api    | api\_webhook    | Webhook  | /api.png            |
 
 **说明**：
+
 - ID 使用数据库自增，保证唯一性
 - 通过 `type` 字段区分用户类型
 - Bot 和用户的 ID 可能混在一起，但通过 `type` 字段可以清晰区分
@@ -104,17 +111,14 @@ type User struct {
 1. **user** - 普通用户
    - 正常的 IM 用户
    - 可以发送消息、加入群组、创建 Bot 等
-
 2. **bot** - 机器人用户
    - AI 对话机器人
    - 群聊 AI 助手
    - 自动回复机器人
-
 3. **system** - 系统用户
    - 系统通知（"系统维护通知"）
    - 群聊日报（当前 `sender_id = 0` 的场景）
    - 审批通知（"您的 Bot 已通过审批"）
-
 4. **api** - API 用户
    - 第三方系统集成
    - Webhook 回调
@@ -123,6 +127,7 @@ type User struct {
 **实现逻辑**：
 
 1. 创建 Bot 时同步创建虚拟用户：
+
 ```go
 // 创建 Bot
 bot := model.Bot{Name: "AI助手", Avatar: "/bot/assistant.png", ...}
@@ -143,7 +148,8 @@ bot.VirtualUserID = virtualUser.ID
 db.Save(&bot)
 ```
 
-2. 保存 Bot 消息时使用虚拟用户 ID：
+1. 保存 Bot 消息时使用虚拟用户 ID：
+
 ```go
 botReply := model.Message{
     ConversationID: conversationID,
@@ -153,13 +159,15 @@ botReply := model.Message{
 }
 ```
 
-3. 查询时 Preload 自动加载 Bot 信息：
+1. 查询时 Preload 自动加载 Bot 信息：
+
 ```go
 db.Preload("Sender").Find(&messages)
 // Sender 会自动填充虚拟用户信息（nickname、avatar、type）
 ```
 
-4. 查询时通过 type 字段区分：
+1. 查询时通过 type 字段区分：
+
 ```go
 // 获取所有真实用户
 db.Where("type = ?", "user").Find(&users)
@@ -173,24 +181,27 @@ db.Model(&User{}).Where("type = ?", "user").Count(&count)
 
 **职责划分**：
 
-| 表 | 职责 |
-|----|------|
+| 表     | 职责                           |
+| ----- | ---------------------------- |
 | users | 消息显示（nickname、avatar）、用户类型区分 |
-| bots | Bot 配置管理（系统提示词、审批状态等） |
+| bots  | Bot 配置管理（系统提示词、审批状态等）        |
 
 **注意事项**：
 
 1. 用户统计排除非真实用户：
+
 ```go
 db.Model(&User{}).Where("type = ?", "user").Count(&count)
 ```
 
-2. 用户搜索排除非真实用户：
+1. 用户搜索排除非真实用户：
+
 ```go
 db.Where("type = ? AND nickname LIKE ?", "user", "%"+keyword+"%").Find(&users)
 ```
 
-3. 权限控制：
+1. 权限控制：
+
 ```go
 var typePermissions = map[string][]string{
     "user":   {"send_message", "create_group", "create_bot"},
@@ -200,7 +211,7 @@ var typePermissions = map[string][]string{
 }
 ```
 
-4. 创建系统用户：系统启动时自动创建 ID=1 的系统用户（如果不存在）
+1. 创建系统用户：系统启动时自动创建 ID=1 的系统用户（如果不存在）
 
 ### 2.3 整体架构
 
@@ -228,7 +239,7 @@ var typePermissions = map[string][]string{
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+***
 
 ## 三、详细设计
 
@@ -236,20 +247,20 @@ var typePermissions = map[string][]string{
 
 #### 3.1.1 前端新增文件
 
-| 文件路径 | 功能描述 |
-|---------|---------|
-| `src/composables/useBotChat.ts` | Bot 对话核心逻辑 |
-| `src/composables/useAIStream.ts` | SSE 流式响应处理 |
-| `src/types/bot.ts` | Bot 相关类型定义（统一现有重复类型） |
-| `src/components/shared/MarkdownRenderer.vue` | 统一的 Markdown 渲染组件 |
-| `src/utils/clipboard.ts` | 复制和导出工具函数 |
+| 文件路径                                         | 功能描述                 |
+| -------------------------------------------- | -------------------- |
+| `src/composables/useBotChat.ts`              | Bot 对话核心逻辑           |
+| `src/composables/useAIStream.ts`             | SSE 流式响应处理           |
+| `src/types/bot.ts`                           | Bot 相关类型定义（统一现有重复类型） |
+| `src/components/shared/MarkdownRenderer.vue` | 统一的 Markdown 渲染组件    |
+| `src/utils/clipboard.ts`                     | 复制和导出工具函数            |
 
 #### 3.1.2 后端新增文件
 
-| 文件路径 | 功能描述 |
-|---------|---------|
+| 文件路径                        | 功能描述         |
+| --------------------------- | ------------ |
 | `handler/ai_text_common.go` | 通用 AI 文本处理函数 |
-| `handler/message_utils.go` | 消息格式化工具 |
+| `handler/message_utils.go`  | 消息格式化工具      |
 
 ### 3.2 核心组件实现
 
@@ -603,34 +614,34 @@ func (h *AIHandler) processAIText(req AITextRequest) (*AITextResponse, error) {
 }
 ```
 
----
+***
 
 ## 四、修改文件清单
 
 ### 4.1 前端修改
 
-| 文件 | 修改内容 |
-|------|---------|
-| `src/components/apps/ai/ChatCenter.vue` | 使用 useBotChat 替代本地消息管理 |
-| `src/components/apps/ai/BotChatView.vue` | 复用 MarkdownRenderer、ThinkingIndicator |
-| `src/components/ai/AIMessageContent.vue` | 使用 MarkdownRenderer |
-| `src/components/message/StreamingMessage.vue` | 使用 MarkdownRenderer |
-| `src/components/ai/AISummaryPanel.vue` | 使用 MarkdownRenderer 和 clipboard 工具 |
-| `src/composables/useAIActions.ts` | 重构为通用请求处理 |
-| `src/composables/useBots.ts` | 统一使用 useRequest |
-| `src/components/apps/ai/ModelConfigFormModal.vue` | 修复 emit 错误 |
-| `src/types/ai.ts` | 更新 AI_PROVIDERS 默认模型 |
+| 文件                                                | 修改内容                                  |
+| ------------------------------------------------- | ------------------------------------- |
+| `src/components/apps/ai/ChatCenter.vue`           | 使用 useBotChat 替代本地消息管理                |
+| `src/components/apps/ai/BotChatView.vue`          | 复用 MarkdownRenderer、ThinkingIndicator |
+| `src/components/ai/AIMessageContent.vue`          | 使用 MarkdownRenderer                   |
+| `src/components/message/StreamingMessage.vue`     | 使用 MarkdownRenderer                   |
+| `src/components/ai/AISummaryPanel.vue`            | 使用 MarkdownRenderer 和 clipboard 工具    |
+| `src/composables/useAIActions.ts`                 | 重构为通用请求处理                             |
+| `src/composables/useBots.ts`                      | 统一使用 useRequest                       |
+| `src/components/apps/ai/ModelConfigFormModal.vue` | 修复 emit 错误                            |
+| `src/types/ai.ts`                                 | 更新 AI\_PROVIDERS 默认模型                 |
 
 ### 4.2 后端修改
 
-| 文件 | 修改内容 |
-|------|---------|
-| `handler/message_handler.go` | StreamMessage 添加系统提示词支持 |
-| `handler/ai_text_handler.go` | 使用通用函数重构 |
-| `handler/ai_summary_handler.go` | 使用消息格式化工具 |
-| `handler/ai_search_handler.go` | 使用消息格式化工具 |
+| 文件                              | 修改内容                    |
+| ------------------------------- | ----------------------- |
+| `handler/message_handler.go`    | StreamMessage 添加系统提示词支持 |
+| `handler/ai_text_handler.go`    | 使用通用函数重构                |
+| `handler/ai_summary_handler.go` | 使用消息格式化工具               |
+| `handler/ai_search_handler.go`  | 使用消息格式化工具               |
 
----
+***
 
 ## 五、实施计划
 
@@ -639,15 +650,12 @@ func (h *AIHandler) processAIText(req AITextRequest) (*AITextResponse, error) {
 1. **后端修复 StreamMessage**
    - 添加系统提示词支持
    - 测试流式对话功能
-
 2. **前端实现 useBotChat**
    - 实现 Bot 会话初始化
    - 实现消息加载和发送
    - 实现 SSE 流式处理
-
 3. **前端修复 ModelConfigFormModal**
    - 修复 emit 用法错误
-
 4. **前端实现 handleEditBot**
    - 实现编辑机器人功能
 
@@ -656,14 +664,11 @@ func (h *AIHandler) processAIText(req AITextRequest) (*AITextResponse, error) {
 1. **统一 API 调用方式**
    - useBots.ts 改用 useRequest
    - useModelConfigs.ts 改用 useRequest
-
 2. **统一类型定义**
    - 创建 types/bot.ts
    - 删除重复定义
-
 3. **替换 alert/confirm**
    - 使用项目共享组件
-
 4. **抽取复用组件**
    - MarkdownRenderer.vue
    - clipboard.ts
@@ -672,15 +677,14 @@ func (h *AIHandler) processAIText(req AITextRequest) (*AITextResponse, error) {
 ### 5.3 阶段三：后端优化
 
 1. **抽取通用函数**
-   - ai_text_common.go
-   - message_utils.go
-
+   - ai\_text\_common.go
+   - message\_utils.go
 2. **重构现有代码**
-   - ai_text_handler.go
-   - ai_summary_handler.go
-   - ai_search_handler.go
+   - ai\_text\_handler.go
+   - ai\_summary\_handler.go
+   - ai\_search\_handler.go
 
----
+***
 
 ## 六、验收标准
 
@@ -706,17 +710,17 @@ func (h *AIHandler) processAIText(req AITextRequest) (*AITextResponse, error) {
 - [ ] ESLint 检查通过
 - [ ] 无重复代码
 
----
+***
 
 ## 七、风险与应对
 
-| 风险 | 影响 | 应对措施 |
-|------|------|---------|
-| 后端 StreamMessage 修改影响现有功能 | 高 | 充分测试，保留原有逻辑作为降级方案 |
-| SSE 连接不稳定 | 中 | 添加重连机制和错误提示 |
-| 对话历史过多影响性能 | 中 | 后端限制加载条数，前端支持分页 |
+| 风险                        | 影响 | 应对措施              |
+| ------------------------- | -- | ----------------- |
+| 后端 StreamMessage 修改影响现有功能 | 高  | 充分测试，保留原有逻辑作为降级方案 |
+| SSE 连接不稳定                 | 中  | 添加重连机制和错误提示       |
+| 对话历史过多影响性能                | 中  | 后端限制加载条数，前端支持分页   |
 
----
+***
 
 ## 八、附录
 
@@ -738,11 +742,12 @@ type User struct {
 ```
 
 **Bot 虚拟用户特点**：
+
 - `type = 'bot'`
 - 每个对应一个 Bot 记录
 - 只存储显示信息（nickname、avatar）
 
----
+***
 
 **2. bots 表（Bot 配置）**
 
@@ -763,7 +768,7 @@ type Bot struct {
 
 **职责**：Bot 配置管理、审批流程、对话逻辑
 
----
+***
 
 **3. conversations 表（会话基本信息）**
 
@@ -780,9 +785,9 @@ type Conversation struct {
 
 **Bot 会话特点**：`type = 'bot'`
 
----
+***
 
-**4. bot_conversations 表（Bot 与会话关联）**
+**4. bot\_conversations 表（Bot 与会话关联）**
 
 ```go
 type BotConversation struct {
@@ -793,7 +798,7 @@ type BotConversation struct {
 }
 ```
 
----
+***
 
 **5. messages 表（所有消息）**
 
@@ -810,10 +815,11 @@ type Message struct {
 ```
 
 **消息区分**：
+
 - 用户消息：`SenderID = 用户ID`，`Sender.Type = 'user'`
 - Bot 消息：`SenderID = 虚拟用户ID`，`Sender.Type = 'bot'`
 
----
+***
 
 #### 8.1.2 数据流向
 
@@ -869,17 +875,20 @@ type Message struct {
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+***
 
 #### 8.1.3 关键代码位置
 
 **创建 Bot 和虚拟用户**：
+
 - 接口：`POST /api/v1/bots`
 - 代码：`handler/bot_creation_handler.go` → `CreateBot` 函数
 
 **Bot 回复保存（流式）**：
+
 - 接口：`POST /api/v1/conversations/:id/messages/stream`
 - 代码：`handler/message_handler.go:529-535`
+
 ```go
 botReply := model.Message{
     ConversationID: uint(convIDUint),
@@ -890,7 +899,7 @@ botReply := model.Message{
 db.Create(&botReply)
 ```
 
----
+***
 
 #### 8.1.4 查询示例
 
@@ -921,7 +930,7 @@ JOIN users u ON m.sender_id = u.id AND u.type = 'bot'
 WHERE bc.bot_id = ?;
 ```
 
----
+***
 
 #### 8.1.5 数据迁移
 
@@ -992,7 +1001,7 @@ ORDER BY m.id DESC
 LIMIT 10;
 ```
 
----
+***
 
 #### 8.1.6 注意事项
 
@@ -1000,14 +1009,11 @@ LIMIT 10;
    ```go
    db.Model(&User{}).Where("type = ?", "user").Count(&count)
    ```
-
 2. **用户搜索排除 Bot**：
    ```go
    db.Where("type = ? AND nickname LIKE ?", "user", "%"+keyword+"%").Find(&users)
    ```
-
 3. **Bot ID 分配**：建议虚拟用户 ID 从 10000 开始，避免与用户 ID 冲突
-
 4. **历史消息加载**：后端默认加载最近 20 条消息作为 AI 上下文
 
 ### 8.2 相关文件参考
@@ -1016,3 +1022,4 @@ LIMIT 10;
 - 后端流式消息处理：`handler/message_handler.go:470-566`
 - 后端非流式消息处理：`handler/misc_handler.go:202-306`
 - 数据模型定义：`model/model.go:55-65` (Conversation), `model/model.go:119-134` (Message), `model/model.go:240-249` (BotConversation)
+

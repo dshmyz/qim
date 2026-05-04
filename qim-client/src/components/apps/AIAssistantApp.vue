@@ -47,7 +47,7 @@ import ChatCenter from './ai/ChatCenter.vue'
 import MyBotsPanel from './MyBotsPanel.vue'
 import MyModelConfigs from './ai/MyModelConfigs.vue'
 import CreateBotWizard from './ai/CreateBotWizard.vue'
-import QDialog from './shared/QDialog.vue'
+import QDialog from '../shared/QDialog.vue'
 
 defineEmits(['back', 'toggleSidebar'])
 

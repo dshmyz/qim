@@ -781,12 +781,23 @@ class ScreenShareReceiver {
       this.peerConnection.ontrack = (event) => {
         logger.log('收到远程流事件:', event);
         logger.log('远程流数量:', event.streams.length);
+        logger.log('event.track:', event.track);
+        logger.log('event.track.kind:', event.track?.kind);
+        logger.log('event.track.enabled:', event.track?.enabled);
+        logger.log('event.track.muted:', event.track?.muted);
         
         if (event.streams && event.streams.length > 0) {
           this.remoteStream = event.streams[0];
           logger.log('远程流:', this.remoteStream);
           logger.log('流ID:', this.remoteStream.id);
           logger.log('轨道数量:', this.remoteStream.getTracks().length);
+          logger.log('轨道详情:', this.remoteStream.getTracks().map(t => ({
+            kind: t.kind,
+            id: t.id,
+            enabled: t.enabled,
+            muted: t.muted,
+            readyState: t.readyState
+          })));
           
           // 调用远程流接收回调（让调用方决定如何处理流）
           if (this.onStreamReceived) {
