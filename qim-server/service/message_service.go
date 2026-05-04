@@ -113,10 +113,14 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
+	// 获取系统用户 ID
+	systemUserID := model.GetSystemUserID(db)
+
 	var aiMessages []ai.Message
 	for _, msg := range messages {
 		role := "user"
-		if msg.SenderID == 0 {
+		// 判断是否为 AI 消息：sender_id = 0（兼容旧数据）或 sender_id = 系统用户 ID
+		if msg.SenderID == 0 || (systemUserID > 0 && msg.SenderID == systemUserID) {
 			role = "assistant"
 		}
 		aiMessages = append(aiMessages, ai.Message{
@@ -139,9 +143,12 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 			fullResponse = "抱歉，AI 服务暂时不可用，请稍后再试。"
 		}
 
+		// 获取系统用户 ID
+		senderID := model.GetSystemUserID(db)
+
 		botReply := model.Message{
 			ConversationID: convID,
-			SenderID:       0,
+			SenderID:       senderID,
 			Type:           "markdown",
 			Content:        fullResponse,
 		}

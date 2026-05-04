@@ -6,6 +6,33 @@ import (
 	"gorm.io/gorm"
 )
 
+// GetSystemUser 获取系统用户，如果不存在则返回 nil
+func GetSystemUser(db *gorm.DB) *User {
+	var systemUser User
+	if err := db.Where("type = ?", "system").First(&systemUser).Error; err != nil {
+		return nil
+	}
+	return &systemUser
+}
+
+// GetSystemUserID 获取系统用户 ID，如果不存在则返回 0
+func GetSystemUserID(db *gorm.DB) uint {
+	systemUser := GetSystemUser(db)
+	if systemUser != nil {
+		return systemUser.ID
+	}
+	return 0
+}
+
+// IsAIMessage 判断消息是否为 AI 消息（兼容旧数据 sender_id=0 和新数据 sender_id=系统用户ID）
+func IsAIMessage(db *gorm.DB, senderID uint) bool {
+	if senderID == 0 {
+		return true
+	}
+	systemUserID := GetSystemUserID(db)
+	return systemUserID > 0 && senderID == systemUserID
+}
+
 // 用户
 type User struct {
 	ID               uint           `json:"id" gorm:"primarykey"`

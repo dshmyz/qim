@@ -104,9 +104,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 		// 防刷屏检查
 		if group.AIAntiSpamInterval > 0 {
+			// 获取系统用户 ID，同时兼容旧数据 sender_id=0
+			systemUserID := model.GetSystemUserID(db)
 			var lastAIMsg model.Message
-			err := db.Where("conversation_id = ? AND sender_id = 0 AND created_at > ?",
-				conversationID, time.Now().Add(-time.Duration(group.AIAntiSpamInterval)*time.Minute)).
+			err := db.Where("conversation_id = ? AND (sender_id = 0 OR sender_id = ?) AND created_at > ?",
+				conversationID, systemUserID, time.Now().Add(-time.Duration(group.AIAntiSpamInterval)*time.Minute)).
 				Order("created_at DESC").First(&lastAIMsg).Error
 			if err == nil {
 				log.Printf("[SmartReply] 防刷屏间隔内，跳过回复")

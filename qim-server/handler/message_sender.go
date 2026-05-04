@@ -30,9 +30,12 @@ func NewWebSocketMessageSender(hub *ws.Hub) *WebSocketMessageSender {
 }
 
 func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string) error {
+	// 获取系统用户 ID
+	senderID := model.GetSystemUserID(s.db)
+
 	aiMessage := model.Message{
 		ConversationID: conversationID,
-		SenderID:       0,
+		SenderID:       senderID,
 		Type:           "text",
 		Content:        content,
 		IsRead:         false,
@@ -42,11 +45,19 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
+	// 获取系统用户信息用于显示
+	systemUser := model.GetSystemUser(s.db)
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
 		Nickname: "🤖 AI 助手",
 		Avatar:   "",
+	}
+	if systemUser != nil {
+		aiSender = *systemUser
+		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
+			aiSender.Nickname = "🤖 AI 助手"
+		}
 	}
 	aiMessage.Sender = aiSender
 
@@ -63,10 +74,13 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 }
 
 func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error {
+	// 获取系统用户 ID
+	senderID := model.GetSystemUserID(s.db)
+
 	if msg == nil {
 		aiMessage := model.Message{
 			ConversationID: conversationID,
-			SenderID:       0,
+			SenderID:       senderID,
 			Type:           "text",
 			Content:        content,
 			IsRead:         false,
@@ -79,11 +93,19 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 		msg = &aiMessage
 	}
 
+	// 获取系统用户信息用于显示
+	systemUser := model.GetSystemUser(s.db)
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
 		Nickname: "🤖 AI 助手",
 		Avatar:   "",
+	}
+	if systemUser != nil {
+		aiSender = *systemUser
+		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
+			aiSender.Nickname = "🤖 AI 助手"
+		}
 	}
 	msg.Sender = aiSender
 
@@ -102,9 +124,12 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 func BroadcastAIMessage(conversationID uint, content string, assistantName string) error {
 	db := database.GetDB()
 
+	// 获取系统用户 ID
+	senderID := model.GetSystemUserID(db)
+
 	aiMessage := model.Message{
 		ConversationID: conversationID,
-		SenderID:       0,
+		SenderID:       senderID,
 		Type:           "text",
 		Content:        content,
 		IsRead:         false,
@@ -114,11 +139,19 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
+	// 获取系统用户信息用于显示
+	systemUser := model.GetSystemUser(db)
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
 		Nickname: "🤖 AI 助手",
 		Avatar:   "",
+	}
+	if systemUser != nil {
+		aiSender = *systemUser
+		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
+			aiSender.Nickname = "🤖 AI 助手"
+		}
 	}
 	aiMessage.Sender = aiSender
 
@@ -134,7 +167,7 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		msgData := gin.H{
 			"id":                aiMessage.ID,
 			"conversation_id":   conversationID,
-			"sender_id":         0,
+			"sender_id":         senderID,
 			"type":              "text",
 			"content":           content,
 			"is_ai_message":     true,
