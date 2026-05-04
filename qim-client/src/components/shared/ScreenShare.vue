@@ -582,9 +582,18 @@ const toggleMinimize = () => {
       // 根据当前模式获取正确的视频源
       const sourceVideo = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
       if (minimizedVideoRef.value && sourceVideo?.srcObject) {
+        // 先暂停当前播放，避免 AbortError
+        try {
+          minimizedVideoRef.value.pause()
+        } catch (e) {
+          // 忽略暂停错误
+        }
+        
         minimizedVideoRef.value.srcObject = sourceVideo.srcObject
         minimizedVideoRef.value.play().catch(err => {
-          console.error('最小化视频播放失败:', err)
+          if (err.name !== 'AbortError') {
+            console.error('最小化视频播放失败:', err)
+          }
         })
       }
     })
@@ -805,9 +814,25 @@ defineExpose({
           if (floatingMode.value && floatingVideoRef.value) {
             logger.log('ScreenShare: 同步流到浮窗')
             floatingStream.value = stream
+            
+            // 先暂停当前播放，避免 AbortError
+            try {
+              floatingVideoRef.value.pause()
+            } catch (e) {
+              // 忽略暂停错误
+            }
+            
+            // 设置新的视频流
             floatingVideoRef.value.srcObject = stream
+            
+            // 播放视频，忽略 AbortError
             floatingVideoRef.value.play().catch(err => {
-              console.error('浮窗视频播放失败:', err)
+              if (err.name !== 'AbortError') {
+                console.error('浮窗视频播放失败:', err)
+              } else {
+                // AbortError 是正常的，表示之前的播放请求被新的加载请求中断
+                logger.log('ScreenShare: 视频播放被新的加载请求中断，这是正常的')
+              }
             })
           }
         })
