@@ -1,118 +1,80 @@
 import { ref } from 'vue'
-import axios from 'axios'
-import { API_BASE_URL } from '../config'
+import { useRequest } from './useRequest'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
-
-function getToken() {
-  return localStorage.getItem('token')
-}
-
+/**
+ * Bot 管理 composable
+ * 提供 Bot 的增删改查功能
+ */
 export function useBots() {
-  const loading = ref(false)
-  const error = ref('')
+  const { get, post, put, delete: del, isRequesting: loading, lastError: error } = useRequest()
   const botCount = ref(0)
 
+  /**
+   * 获取所有 Bot
+   */
   const fetchBots = async () => {
-    loading.value = true
-    try {
-      const response = await axios.get(`${serverUrl.value}/api/v1/bots`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data.data
-    } catch (e: any) {
-      error.value = e.message
-      return []
-    } finally {
-      loading.value = false
-    }
+    const response = await get<any>('/api/v1/bots')
+    return response?.data || []
   }
 
+  /**
+   * 获取 Bot 模板
+   */
   const fetchTemplates = async () => {
-    loading.value = true
-    try {
-      const response = await axios.get(`${serverUrl.value}/api/v1/bots/templates`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data.data
-    } catch (e: any) {
-      error.value = e.message
-      return []
-    } finally {
-      loading.value = false
-    }
+    const response = await get<any>('/api/v1/bots/templates')
+    return response?.data || []
   }
 
+  /**
+   * 获取当前用户的 Bot
+   */
   const fetchMyBots = async () => {
-    loading.value = true
-    try {
-      const response = await axios.get(`${serverUrl.value}/api/v1/bots/my`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data.data
-    } catch (e: any) {
-      error.value = e.message
-      return []
-    } finally {
-      loading.value = false
-    }
+    const response = await get<any>('/api/v1/bots/my')
+    return response?.data || []
   }
 
+  /**
+   * 获取当前用户的 Bot 数量
+   */
   const fetchMyBotCount = async () => {
-    try {
-      const response = await axios.get(`${serverUrl.value}/api/v1/bots/my-count`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      botCount.value = response.data.data.count
-      return botCount.value
-    } catch {
-      return 0
+    const response = await get<any>('/api/v1/bots/my-count')
+    if (response?.data?.count !== undefined) {
+      botCount.value = response.data.count
     }
+    return botCount.value
   }
 
+  /**
+   * 创建 Bot
+   */
   const createBot = async (data: Record<string, unknown>) => {
-    loading.value = true
-    try {
-      const response = await axios.post(`${serverUrl.value}/api/v1/bots`, data, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data
-    } catch (e: any) {
-      error.value = e.message
-      throw e
-    } finally {
-      loading.value = false
+    const response = await post<any>('/api/v1/bots', data)
+    if (!response) {
+      throw new Error(error.value || '创建 Bot 失败')
     }
+    return response
   }
 
+  /**
+   * 更新 Bot
+   */
   const updateBot = async (id: number, data: Record<string, unknown>) => {
-    loading.value = true
-    try {
-      const response = await axios.put(`${serverUrl.value}/api/v1/bots/${id}`, data, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data
-    } catch (e: any) {
-      error.value = e.message
-      throw e
-    } finally {
-      loading.value = false
+    const response = await put<any>(`/api/v1/bots/${id}`, data)
+    if (!response) {
+      throw new Error(error.value || '更新 Bot 失败')
     }
+    return response
   }
 
+  /**
+   * 删除 Bot
+   */
   const deleteBot = async (id: number) => {
-    loading.value = true
-    try {
-      const response = await axios.delete(`${serverUrl.value}/api/v1/bots/${id}`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      return response.data
-    } catch (e: any) {
-      error.value = e.message
-      throw e
-    } finally {
-      loading.value = false
+    const response = await del<any>(`/api/v1/bots/${id}`)
+    if (!response) {
+      throw new Error(error.value || '删除 Bot 失败')
     }
+    return response
   }
 
   return {
