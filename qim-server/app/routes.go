@@ -4,6 +4,7 @@ import (
 	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/handler"
+	adminhandler "qim-server/handler/admin"
 	"qim-server/middleware"
 	"qim-server/service"
 	"qim-server/ws"
@@ -350,6 +351,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.PATCH("/bot-approvals/:id/approve", handler.ApproveBot)
 				admin.PATCH("/bot-approvals/:id/reject", handler.RejectBot)
 				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
+				// 分身审批
+				admin.GET("/avatar-approvals", adminhandler.ListPendingAvatars)
+				admin.POST("/avatar-approvals/:id/approve", adminhandler.ApproveAvatar)
+				admin.POST("/avatar-approvals/:id/reject", adminhandler.RejectAvatar)
 			}
 
 			// 节点间通信

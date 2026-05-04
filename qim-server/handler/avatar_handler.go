@@ -40,6 +40,10 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.POST("/sessions/:convId/takeover", h.TakeoverSession)
 
 		avatar.POST("/preview", h.PreviewReply)
+
+		// 审批相关
+		avatar.POST("/apply", h.ApplyForApproval)
+		avatar.POST("/cancel-apply", h.CancelApplication)
 	}
 }
 
@@ -78,8 +82,13 @@ type AvatarConfigResponse struct {
 	ModelConfigID      *uint                      `json:"model_config_id"`
 	UseSystemConfig    bool                       `json:"use_system_config"`
 	TakeoverCooldown   int                        `json:"takeover_cooldown"`
-	CreatedAt          time.Time                  `json:"created_at"`
-	UpdatedAt          time.Time                  `json:"updated_at"`
+	// 审批相关
+	ApprovalStatus string     `json:"approval_status"`
+	RejectReason   string     `json:"reject_reason"`
+	AppliedAt      *time.Time `json:"applied_at"`
+	ApprovedAt     *time.Time `json:"approved_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfigResponse {
@@ -112,6 +121,10 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 		ModelConfigID:      config.ModelConfigID,
 		UseSystemConfig:    config.UseSystemConfig,
 		TakeoverCooldown:   config.TakeoverCooldown,
+		ApprovalStatus:     config.ApprovalStatus,
+		RejectReason:       config.RejectReason,
+		AppliedAt:          config.AppliedAt,
+		ApprovedAt:         config.ApprovedAt,
 		CreatedAt:          config.CreatedAt,
 		UpdatedAt:          config.UpdatedAt,
 	}
@@ -442,4 +455,77 @@ func (h *AvatarHandler) PreviewReply(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"reply": reply}})
+}
+
+// ApplyForApproval 申请启用分身
+func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "请先创建分身配置"})
+		return
+	}
+
+	// 检查当前状态
+	if config.ApprovalStatus == "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的申请"})
+		return
+	}
+
+	if config.ApprovalStatus == "approved" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "分身已通过审批"})
+		return
+	}
+
+	// 更新审批状态
+	now := time.Now()
+	updates := map[string]interface{}{
+		"approval_status": "pending",
+		"applied_at":      &now,
+		"reject_reason":   "", // 清空之前的拒绝原因
+	}
+
+	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "申请失败"})
+		return
+	}
+
+	h.db.Where("user_id = ?", userID).First(&config)
+	response := h.toConfigResponse(config)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "申请已提交", "data": response})
+}
+
+// CancelApplication 取消申请
+func (h *AvatarHandler) CancelApplication(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "分身配置不存在"})
+		return
+	}
+
+	// 只有待审批状态才能取消
+	if config.ApprovalStatus != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前状态无法取消申请"})
+		return
+	}
+
+	// 更新审批状态
+	updates := map[string]interface{}{
+		"approval_status": "none",
+		"applied_at":      nil,
+	}
+
+	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消失败"})
+		return
+	}
+
+	h.db.Where("user_id = ?", userID).First(&config)
+	response := h.toConfigResponse(config)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已取消申请", "data": response})
 }

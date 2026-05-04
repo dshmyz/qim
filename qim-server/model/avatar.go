@@ -31,12 +31,20 @@ type AvatarConfig struct {
 	// 接管冷却时间（分钟）
 	TakeoverCooldown int `json:"takeover_cooldown" gorm:"default:10"`
 
+	// 审批相关
+	ApprovalStatus string     `json:"approval_status" gorm:"size:20;default:'none'"` // none, pending, approved, rejected
+	RejectReason   string     `json:"reject_reason" gorm:"type:text"`
+	AppliedAt      *time.Time `json:"applied_at"`
+	ApprovedAt     *time.Time `json:"approved_at"`
+	ApprovedBy     *uint      `json:"approved_by"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	User        User          `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	ModelConfig *UserAIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
+	Approver    *User         `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
 }
 
 // AvatarSession 会话级分身状态
