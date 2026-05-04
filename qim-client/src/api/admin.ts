@@ -29,5 +29,14 @@ export const adminAPI = {
       body: JSON.stringify({ reason }),
       headers: { 'Content-Type': 'application/json' }
     })
+  },
+
+  // 管理员主动开启用户分身
+  async enableAvatar(userId: number): Promise<void> {
+    await request('/api/v1/admin/avatar-approvals/enable', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 }

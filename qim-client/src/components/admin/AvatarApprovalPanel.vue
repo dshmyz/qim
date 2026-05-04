@@ -14,6 +14,12 @@
           <span class="subtitle">审核用户的分身功能启用申请</span>
         </div>
       </div>
+      <div class="header-right">
+        <button class="btn btn-primary" @click="showEnableDialog">
+          <i class="fas fa-user-plus"></i>
+          主动开启
+        </button>
+      </div>
     </div>
 
     <!-- 筛选栏 -->
@@ -119,17 +125,78 @@
         </button>
       </template>
     </QDialog>
+
+    <!-- 主动开启弹窗 -->
+    <QDialog
+      v-model:visible="enableDialogVisible"
+      title="主动开启用户分身"
+      width="500px"
+    >
+      <div class="enable-form">
+        <p class="enable-hint">搜索用户并为其开启分身功能，用户将收到系统通知</p>
+        <div class="search-box">
+          <i class="fas fa-search search-icon"></i>
+          <input
+            v-model="searchKeyword"
+            type="text"
+            class="search-input"
+            placeholder="输入用户名或昵称搜索..."
+            @input="handleSearch"
+          />
+        </div>
+        <div v-if="searching" class="search-loading">
+          <LoadingSpinner :size="16" />
+          <span>搜索中...</span>
+        </div>
+        <div v-else-if="searchResults.length > 0" class="search-results">
+          <div
+            v-for="user in searchResults"
+            :key="user.id"
+            class="search-result-item"
+            @click="selectUser(user)"
+          >
+            <CssAvatar :name="user.nickname || user.username" :avatar="user.avatar" :size="32" />
+            <div class="result-info">
+              <span class="result-name">{{ user.nickname || user.username }}</span>
+              <span class="result-username">@{{ user.username }}</span>
+            </div>
+            <i class="fas fa-plus add-icon"></i>
+          </div>
+        </div>
+        <div v-else-if="searchKeyword && !searching" class="no-results">
+          未找到匹配的用户
+        </div>
+        <div v-if="selectedUser" class="selected-user">
+          <span>已选择：</span>
+          <strong>{{ selectedUser.nickname || selectedUser.username }}</strong>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="closeEnableDialog">取消</button>
+        <button class="btn btn-primary" @click="handleEnable" :disabled="!selectedUser || enabling">
+          {{ enabling ? '处理中...' : '确认开启' }}
+        </button>
+      </template>
+    </QDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { adminAPI } from '../../api/admin'
+import { request } from '../../composables/useRequest'
 import type { AvatarApprovalRecord, AvatarApprovalStatus } from '../../types/avatar'
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import CssAvatar from '../shared/CssAvatar.vue'
 import QDialog from '../shared/QDialog.vue'
 import { formatDate } from '../../utils/date'
+
+interface User {
+  id: number
+  username: string
+  nickname: string
+  avatar?: string
+}
 
 const emit = defineEmits<{
   back: []
@@ -146,6 +213,17 @@ const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejecting = ref(false)
 const selectedApproval = ref<AvatarApprovalRecord | null>(null)
+
+// 主动开启弹窗相关
+const enableDialogVisible = ref(false)
+const searchKeyword = ref('')
+const searching = ref(false)
+const searchResults = ref<User[]>([])
+const selectedUser = ref<User | null>(null)
+const enabling = ref(false)
+
+// 搜索防抖
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 // 状态选项卡
 const statusTabs = computed(() => [
@@ -229,6 +307,81 @@ async function handleReject() {
     window.$QMessage.error(e.response?.data?.message || '拒绝失败')
   } finally {
     rejecting.value = false
+  }
+}
+
+// 显示主动开启弹窗
+function showEnableDialog() {
+  enableDialogVisible.value = true
+  searchKeyword.value = ''
+  searchResults.value = []
+  selectedUser.value = null
+}
+
+// 关闭主动开启弹窗
+function closeEnableDialog() {
+  enableDialogVisible.value = false
+  searchKeyword.value = ''
+  searchResults.value = []
+  selectedUser.value = null
+}
+
+// 搜索用户
+async function handleSearch() {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+
+  if (!searchKeyword.value.trim()) {
+    searchResults.value = []
+    return
+  }
+
+  searchTimer = setTimeout(async () => {
+    searching.value = true
+    try {
+      const response = await request<{ code: number; data: User[] }>(
+        `/api/v1/users/search?q=${encodeURIComponent(searchKeyword.value.trim())}`
+      )
+      searchResults.value = response?.data ?? []
+    } catch (e: any) {
+      window.$QMessage.error(e.response?.data?.message || '搜索失败')
+      searchResults.value = []
+    } finally {
+      searching.value = false
+    }
+  }, 300)
+}
+
+// 选择用户
+function selectUser(user: User) {
+  selectedUser.value = user
+  searchResults.value = []
+  searchKeyword.value = ''
+}
+
+// 主动开启分身
+async function handleEnable() {
+  if (!selectedUser.value) return
+
+  try {
+    await window.$QMessageBox.confirm(
+      `确定要为 ${selectedUser.value.nickname || selectedUser.value.username} 开启分身功能吗？`,
+      '开启确认'
+    )
+    enabling.value = true
+    try {
+      await adminAPI.enableAvatar(selectedUser.value.id)
+      window.$QMessage.success('已开启分身功能')
+      closeEnableDialog()
+      await loadApprovals()
+    } catch (e: any) {
+      window.$QMessage.error(e.response?.data?.message || '开启失败')
+    } finally {
+      enabling.value = false
+    }
+  } catch {
+    // 用户取消
   }
 }
 
@@ -556,5 +709,129 @@ onMounted(() => {
 
 .reject-input::placeholder {
   color: var(--text-secondary);
+}
+
+/* 头部右侧 */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--primary-color);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+
+/* 主动开启弹窗 */
+.enable-form {
+  padding: 8px 0;
+}
+
+.enable-hint {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+}
+
+.search-box {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.search-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.search-results {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-result-item:hover {
+  background: var(--hover-color);
+}
+
+.result-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.result-username {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.add-icon {
+  color: var(--primary-color);
+  font-size: 12px;
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.selected-user {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--primary-light);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--primary-color);
 }
 </style>

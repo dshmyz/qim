@@ -355,6 +355,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/avatar-approvals", adminhandler.ListPendingAvatars)
 				admin.POST("/avatar-approvals/:id/approve", adminhandler.ApproveAvatar)
 				admin.POST("/avatar-approvals/:id/reject", adminhandler.RejectAvatar)
+				admin.POST("/avatar-approvals/enable", adminhandler.EnableAvatarByAdmin)
 			}
 
 			// 节点间通信
