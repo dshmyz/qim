@@ -181,7 +181,8 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -191,7 +192,8 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -813,7 +815,8 @@ class ScreenShareReceiver {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: senderId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -823,7 +826,8 @@ class ScreenShareReceiver {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: senderId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -901,7 +905,8 @@ class ScreenShareReceiver {
             type: 'webrtc_answer',
             data: {
               target_user_id: senderId,
-              signal: answer
+              signal: answer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           }));
           logger.log('answer 发送成功');
@@ -911,7 +916,8 @@ class ScreenShareReceiver {
             type: 'webrtc_answer',
             data: {
               target_user_id: senderId,
-              signal: answer
+              signal: answer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           });
           logger.log('answer 发送成功（通过 IPC）');

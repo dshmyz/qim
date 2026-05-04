@@ -342,11 +342,37 @@ const handleWebRTCOfferGlobal = (data: any) => {
 }
 
 const handleWebRTCAnswerGlobal = (data: any) => {
-  handleWebRTCAnswer(data)
+  console.log('RealtimeCommunication: 收到 webrtc_answer', data)
+  
+  // 检查消息类型，区分屏幕共享和语音/视频通话
+  if (data.share_type === 'screen') {
+    // 屏幕共享
+    console.log('RealtimeCommunication: 处理屏幕共享 answer')
+    handleWebRTCAnswer(data)
+  } else if (data.call_type) {
+    // 语音/视频通话
+    console.log('RealtimeCommunication: 处理语音/视频通话 answer, call_type:', data.call_type)
+    handleVideoCallSignalingGlobal({ type: 'webrtc_answer', data })
+  } else {
+    console.warn('RealtimeCommunication: 未知的 webrtc_answer 类型', data)
+  }
 }
 
 const handleWebRTCIceCandidateGlobal = (data: any) => {
-  handleWebRTCIceCandidate(data)
+  console.log('RealtimeCommunication: 收到 webrtc_ice_candidate', data)
+  
+  // 检查消息类型，区分屏幕共享和语音/视频通话
+  if (data.share_type === 'screen') {
+    // 屏幕共享
+    console.log('RealtimeCommunication: 处理屏幕共享 ICE candidate')
+    handleWebRTCIceCandidate(data)
+  } else if (data.call_type) {
+    // 语音/视频通话
+    console.log('RealtimeCommunication: 处理语音/视频通话 ICE candidate, call_type:', data.call_type)
+    handleVideoCallSignalingGlobal({ type: 'webrtc_ice_candidate', data })
+  } else {
+    console.warn('RealtimeCommunication: 未知的 webrtc_ice_candidate 类型', data)
+  }
 }
 
 const handleScreenShareStartGlobal = (data: any) => {
