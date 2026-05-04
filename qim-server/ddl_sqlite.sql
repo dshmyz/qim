@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS `bots` (
 
 CREATE INDEX IF NOT EXISTS `idx_bots_deleted_at` ON `bots`(`deleted_at`);
 CREATE INDEX IF NOT EXISTS `idx_bots_user_config_id` ON `bots`(`user_config_id`);
+CREATE INDEX IF NOT EXISTS `idx_bots_virtual_user_id` ON `bots`(`virtual_user_id`);
 
 -- Bot conversations table
 CREATE TABLE IF NOT EXISTS `bot_conversations` (

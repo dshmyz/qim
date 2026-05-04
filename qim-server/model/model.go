@@ -222,7 +222,7 @@ type Bot struct {
 	ApprovalStatus  string         `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
 	CreatorID       uint           `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
 	CreatorName     string         `json:"creator_name" gorm:"size:100;default:''"`
-	VirtualUserID   *uint          `json:"virtual_user_id"` // 关联虚拟用户 ID
+	VirtualUserID   *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
 	RejectReason    string         `json:"reject_reason" gorm:"type:text"`
 	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
 	UserConfigID    *uint          `json:"user_config_id" gorm:"index"`

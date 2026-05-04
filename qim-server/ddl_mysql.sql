@@ -223,7 +223,8 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `user_config_id` INT UNSIGNED,
   `use_system_config` BOOLEAN DEFAULT TRUE,
   INDEX `idx_bots_deleted_at` (`deleted_at`),
-  INDEX `idx_bots_user_config_id` (`user_config_id`)
+  INDEX `idx_bots_user_config_id` (`user_config_id`),
+  INDEX `idx_bots_virtual_user_id` (`virtual_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Bot conversations table
