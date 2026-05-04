@@ -317,6 +317,16 @@ class ScreenShareSender {
         if (this.peerConnection.signalingState !== 'have-local-offer') {
           console.warn('当前信令状态不是 have-local-offer，跳过设置 answer');
           console.warn('当前状态:', this.peerConnection.signalingState);
+          console.warn('这可能意味着：');
+          console.warn('1. 连接已经建立完成（stable）');
+          console.warn('2. answer 已经被处理过了');
+          console.warn('3. 有重复的 answer 被发送');
+          return;
+        }
+        
+        // 再次检查连接是否已关闭
+        if (this.peerConnection.connectionState === 'closed') {
+          console.error('连接已关闭，无法设置 answer');
           return;
         }
         
@@ -348,6 +358,7 @@ class ScreenShareSender {
       }
     } catch (error) {
       console.error('处理 answer 失败:', error);
+      console.error('错误堆栈:', error.stack);
     }
   }
 
