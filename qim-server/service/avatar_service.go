@@ -42,7 +42,7 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 	}
 
 	s.db.Model(&task).Updates(map[string]interface{}{
-		"status":     "learning",
+		"status":     "processing",
 		"started_at": time.Now(),
 	})
 

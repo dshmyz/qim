@@ -3,9 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 	"qim-server/model"
 	"qim-server/service"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -367,7 +367,7 @@ func (h *AvatarHandler) TriggerLearnPersona(c *gin.Context) {
 	}
 
 	var existingTask model.AvatarLearnTask
-	err := h.db.Where("user_id = ? AND status IN ?", userID, []string{"pending", "learning"}).First(&existingTask).Error
+	err := h.db.Where("user_id = ? AND status IN ?", userID, []string{"pending", "processing"}).First(&existingTask).Error
 	if err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有学习任务在进行中"})
 		return
