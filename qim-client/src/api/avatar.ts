@@ -3,12 +3,13 @@ import type {
   AvatarConfig,
   AvatarSession,
   AvatarLearnStatus,
-  CreateAvatarConfigRequest
+  CreateAvatarConfigRequest,
+  AvatarConfigWithApproval
 } from '../types/avatar'
 
 export const avatarAPI = {
-  async getConfig(): Promise<AvatarConfig | null> {
-    const response = await request<{ code: number; data: AvatarConfig | null }>(
+  async getConfig(): Promise<AvatarConfigWithApproval | null> {
+    const response = await request<{ code: number; data: AvatarConfigWithApproval | null }>(
       '/api/v1/avatar/config',
       { method: 'GET' }
     )
@@ -27,8 +28,8 @@ export const avatarAPI = {
     return response!.data
   },
 
-  async updateConfig(data: Partial<AvatarConfig>): Promise<AvatarConfig> {
-    const response = await request<{ code: number; data: AvatarConfig }>(
+  async updateConfig(data: Partial<AvatarConfig>): Promise<AvatarConfigWithApproval> {
+    const response = await request<{ code: number; data: AvatarConfigWithApproval }>(
       '/api/v1/avatar/config',
       {
         method: 'PUT',
@@ -113,5 +114,22 @@ export const avatarAPI = {
       }
     )
     return response!.data.reply
+  },
+
+  // Avatar 审批相关 API
+  async applyForApproval(): Promise<AvatarConfigWithApproval> {
+    const response = await request<{ code: number; data: AvatarConfigWithApproval }>(
+      '/api/v1/avatar/apply',
+      { method: 'POST' }
+    )
+    return response!.data
+  },
+
+  async cancelApplication(): Promise<AvatarConfigWithApproval> {
+    const response = await request<{ code: number; data: AvatarConfigWithApproval }>(
+      '/api/v1/avatar/cancel-apply',
+      { method: 'POST' }
+    )
+    return response!.data
   }
 }

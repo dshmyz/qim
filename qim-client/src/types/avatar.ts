@@ -99,3 +99,29 @@ export const DEFAULT_AVATAR_CONFIG: CreateAvatarConfigRequest = {
   takeoverCooldown: 10,
   customPersonaAddon: ''
 }
+
+// Avatar 审批状态类型
+export type AvatarApprovalStatus = 'none' | 'pending' | 'approved' | 'rejected'
+
+// 扩展 AvatarConfig 添加审批相关字段
+export interface AvatarConfigWithApproval extends AvatarConfig {
+  approvalStatus: AvatarApprovalStatus
+  approvalRejectedReason?: string
+  approvalAppliedAt?: string
+  approvalReviewedAt?: string
+}
+
+// Avatar 审批申请记录（管理员视角）
+export interface AvatarApprovalRecord {
+  id: number
+  userId: number
+  username: string
+  nickname: string
+  avatar?: string
+  status: AvatarApprovalStatus
+  appliedAt: string
+  reviewedAt?: string
+  reviewedBy?: number
+  reviewerName?: string
+  rejectedReason?: string
+}

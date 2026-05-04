@@ -264,6 +264,11 @@
         <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
 
+      <!-- Avatar 审批管理（管理员） -->
+      <div v-else-if="activeOption === 'apps' && selectedAppId === 'avatar-approval'" class="right-content">
+        <AvatarApprovalPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
+      </div>
+
       <!-- 短链接管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'short-link'" class="right-content">
         <ShortLinkManager @back="backToAppList" @toggleSidebar="toggleSidebar" />
@@ -522,6 +527,7 @@ import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
 import AvatarSettingsPanel from '../components/avatar/AvatarSettingsPanel.vue'
+import AvatarApprovalPanel from '../components/admin/AvatarApprovalPanel.vue'
 import * as storage from '../utils/storage'
 
 // 声明 window.electron 变量
@@ -2894,9 +2900,14 @@ const mainApps = computed(() => {
 
 // 系统应用列表
 const systemApps = computed(() => {
-  return [
+  const apps = [
     { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
   ]
+  // 仅管理员可见 Avatar 审批入口
+  if (currentUser.value?.isAdmin) {
+    apps.push({ id: 'avatar-approval', name: 'Avatar 审批', icon: 'fas fa-user-check' })
+  }
+  return apps
 })
 
 // 自定义应用列表

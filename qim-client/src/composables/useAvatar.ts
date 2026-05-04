@@ -2,12 +2,13 @@ import { ref } from 'vue'
 import { avatarAPI } from '../api/avatar'
 import type {
   AvatarConfig,
+  AvatarConfigWithApproval,
   AvatarSession,
   CreateAvatarConfigRequest
 } from '../types/avatar'
 
 export function useAvatar() {
-  const config = ref<AvatarConfig | null>(null)
+  const config = ref<AvatarConfigWithApproval | null>(null)
   const sessions = ref<AvatarSession[]>([])
   const loading = ref(false)
   const error = ref('')
@@ -28,7 +29,9 @@ export function useAvatar() {
     loading.value = true
     error.value = ''
     try {
-      config.value = await avatarAPI.createConfig(data)
+      const result = await avatarAPI.createConfig(data)
+      // 创建后重新获取配置以包含审批状态
+      await fetchConfig()
       return config.value
     } catch (e: any) {
       error.value = e.response?.data?.message || '创建分身配置失败'
@@ -132,6 +135,35 @@ export function useAvatar() {
     return true
   }
 
+  // 审批相关方法
+  async function applyForApproval() {
+    loading.value = true
+    error.value = ''
+    try {
+      config.value = await avatarAPI.applyForApproval()
+      return config.value
+    } catch (e: any) {
+      error.value = e.response?.data?.message || '申请失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function cancelApplication() {
+    loading.value = true
+    error.value = ''
+    try {
+      config.value = await avatarAPI.cancelApplication()
+      return config.value
+    } catch (e: any) {
+      error.value = e.response?.data?.message || '取消申请失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     config,
     sessions,
@@ -146,6 +178,8 @@ export function useAvatar() {
     toggleSession,
     takeoverSession,
     getSession,
-    isAvatarActive
+    isAvatarActive,
+    applyForApproval,
+    cancelApplication
   }
 }
