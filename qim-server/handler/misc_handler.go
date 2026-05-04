@@ -209,6 +209,13 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 
 	var bot model.Bot
 	if err := db.First(&bot, botConv.BotID).Error; err != nil {
+		log.Printf("[HandleBotMessage] 查找 Bot 失败: %v", err)
+		return
+	}
+
+	// 检查是否有虚拟用户
+	if bot.VirtualUserID == nil {
+		log.Printf("[HandleBotMessage] Bot 没有虚拟用户: %d", botConv.BotID)
 		return
 	}
 
