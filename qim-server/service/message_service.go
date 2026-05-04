@@ -119,8 +119,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var aiMessages []ai.Message
 	for _, msg := range messages {
 		role := "user"
-		// 判断是否为 AI 消息：sender_id = 0（兼容旧数据）或 sender_id = 系统用户 ID
-		if msg.SenderID == 0 || (systemUserID > 0 && msg.SenderID == systemUserID) {
+		if msg.SenderID == systemUserID {
 			role = "assistant"
 		}
 		aiMessages = append(aiMessages, ai.Message{

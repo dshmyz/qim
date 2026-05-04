@@ -518,8 +518,7 @@ func StreamMessage(c *gin.Context) {
 		// 加载历史消息，正确识别 Bot 消息
 		for _, msg := range messages {
 			role := "user"
-			// 判断是否为 Bot 消息：sender_id = 0 或 sender_id = VirtualUserID
-			if msg.SenderID == 0 || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
+			if bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID {
 				role = "assistant"
 			}
 			aiMessages = append(aiMessages, ai.Message{

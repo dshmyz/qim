@@ -24,11 +24,8 @@ func GetSystemUserID(db *gorm.DB) uint {
 	return 0
 }
 
-// IsAIMessage 判断消息是否为 AI 消息（兼容旧数据 sender_id=0 和新数据 sender_id=系统用户ID）
+// IsAIMessage 判断消息是否为 AI 消息
 func IsAIMessage(db *gorm.DB, senderID uint) bool {
-	if senderID == 0 {
-		return true
-	}
 	systemUserID := GetSystemUserID(db)
 	return systemUserID > 0 && senderID == systemUserID
 }
