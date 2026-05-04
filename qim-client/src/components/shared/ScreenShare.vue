@@ -191,6 +191,7 @@ const internalSenderId = ref<number | null>(null)
 
 const remoteVideoRef = ref<HTMLVideoElement | null>(null)
 const floatingVideoRef = ref<HTMLVideoElement | null>(null)
+const minimizedVideoRef = ref<HTMLVideoElement | null>(null)
 const floatingStream = ref<MediaStream | null>(null)
 
 const floatingPosition = ref({ x: 20, y: 20 })
@@ -548,9 +549,26 @@ const stopReceivingStream = () => {
 
 const toggleMinimize = () => {
   isMinimized.value = !isMinimized.value
-  if (isMinimized.value && !floatingMode.value) {
-    floatingMode.value = true
-    floatingStream.value = remoteVideoRef.value?.srcObject as MediaStream
+  
+  if (isMinimized.value) {
+    nextTick(() => {
+      if (minimizedVideoRef.value && remoteVideoRef.value?.srcObject) {
+        minimizedVideoRef.value.srcObject = remoteVideoRef.value.srcObject
+        minimizedVideoRef.value.play().catch(err => {
+          console.error('最小化视频播放失败:', err)
+        })
+      }
+    })
+  }
+}
+
+const expandFromMinimized = () => {
+  isMinimized.value = false
+}
+
+const handleHeaderDblClick = () => {
+  if (isMinimized.value) {
+    expandFromMinimized()
   }
 }
 
