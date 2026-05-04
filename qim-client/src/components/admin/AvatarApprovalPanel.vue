@@ -129,6 +129,7 @@ import type { AvatarApprovalRecord, AvatarApprovalStatus } from '../../types/ava
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import CssAvatar from '../shared/CssAvatar.vue'
 import QDialog from '../shared/QDialog.vue'
+import { formatDate } from '../../utils/date'
 
 const emit = defineEmits<{
   back: []
@@ -163,18 +164,6 @@ function getStatusText(status: AvatarApprovalStatus): string {
     rejected: '已拒绝'
   }
   return texts[status]
-}
-
-// 格式化日期
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 // 加载审批列表
