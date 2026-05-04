@@ -42,8 +42,8 @@ type AvatarConfig struct {
 // AvatarSession 会话级分身状态
 type AvatarSession struct {
 	ID             uint       `json:"id" gorm:"primarykey"`
-	ConversationID uint       `json:"conversation_id" gorm:"not null;uniqueIndex:idx_user_conv"`
-	UserID         uint       `json:"user_id" gorm:"not null;uniqueIndex:idx_user_conv"`
+	ConversationID uint       `json:"conversation_id" gorm:"not null;uniqueIndex:idx_avatar_user_conv"`
+	UserID         uint       `json:"user_id" gorm:"not null;uniqueIndex:idx_avatar_user_conv"`
 	AvatarEnabled  bool       `json:"avatar_enabled" gorm:"default:false"`
 	TakeoverUntil  *time.Time `json:"takeover_until"`
 	LastReplyAt    *time.Time `json:"last_reply_at"`

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -77,8 +78,17 @@ func GetTemplates(c *gin.Context) {
 
 // CreateBot 创建 Bot
 func CreateBot(c *gin.Context) {
-	userIDVal, _ := c.Get("user_id")
-	userID := userIDVal.(uint)
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		return
+	}
+
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		return
+	}
 	db := database.GetDB()
 
 	var req CreateBotRequest
@@ -134,14 +144,50 @@ func CreateBot(c *gin.Context) {
 		IsTemplate:     false,
 	}
 
-	if err := db.Create(&bot).Error; err != nil {
+	// 开启事务
+	tx := db.Begin()
+
+	// 创建 Bot
+	if err := tx.Create(&bot).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建 Bot 失败"})
+		return
+	}
+
+	// 创建虚拟用户
+	virtualUser := model.User{
+		Username: fmt.Sprintf("bot_%d", bot.ID),
+		Nickname: bot.Name,
+		Avatar:   bot.Avatar,
+		Type:     "bot",
+	}
+	if err := tx.Create(&virtualUser).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建虚拟用户失败"})
+		return
+	}
+
+	// 更新 Bot 的 VirtualUserID
+	bot.VirtualUserID = &virtualUser.ID
+	if err := tx.Save(&bot).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新 Bot 失败"})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": bot,
+		"data": gin.H{
+			"id":              bot.ID,
+			"name":            bot.Name,
+			"virtual_user_id": virtualUser.ID,
+			"approval_status": bot.ApprovalStatus,
+		},
 	})
 }
 

@@ -25,6 +25,37 @@ func GetDB() *gorm.DB {
 	return globalDB
 }
 
+// initSystemUser 初始化系统用户
+func initSystemUser() {
+	db := database.GetDB()
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.User{}).Where("type = ?", "system").Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+
+		systemUser := model.User{
+			Username: "system",
+			Nickname: "系统",
+			Avatar:   "/system.png",
+			Type:     "system",
+		}
+		if err := tx.Create(&systemUser).Error; err != nil {
+			return err
+		}
+		log.Printf("[Init] 创建系统用户成功: ID=%d", systemUser.ID)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[Init] 创建系统用户失败: %v", err)
+	}
+}
+
 // InitApp 初始化应用
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
@@ -44,6 +75,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化测试数据
 	test.InitTestData(db)
+
+	// 初始化系统用户
+	initSystemUser()
 
 	// 初始化WebSocket Hub
 	hub := ws.NewHub()
