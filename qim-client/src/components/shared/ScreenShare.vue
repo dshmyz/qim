@@ -578,8 +578,10 @@ const toggleMinimize = () => {
   
   if (isMinimized.value) {
     nextTick(() => {
-      if (minimizedVideoRef.value && remoteVideoRef.value?.srcObject) {
-        minimizedVideoRef.value.srcObject = remoteVideoRef.value.srcObject
+      // 根据当前模式获取正确的视频源
+      const sourceVideo = floatingMode.value ? floatingVideoRef.value : remoteVideoRef.value
+      if (minimizedVideoRef.value && sourceVideo?.srcObject) {
+        minimizedVideoRef.value.srcObject = sourceVideo.srcObject
         minimizedVideoRef.value.play().catch(err => {
           console.error('最小化视频播放失败:', err)
         })
