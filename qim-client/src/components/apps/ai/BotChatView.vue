@@ -4,7 +4,18 @@
       <button class="back-btn" @click="$emit('back')">
         <i class="fas fa-arrow-left"></i>
       </button>
-      <h3>{{ bot?.name || 'AI助手' }}</h3>
+      <div class="bot-info">
+        <img v-if="bot?.avatar" :src="bot.avatar" class="bot-avatar" />
+        <span class="bot-name">{{ bot?.name || 'AI助手' }}</span>
+      </div>
+      <div class="header-actions">
+        <button class="action-btn" @click="handleClearMessages" title="清空对话">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+        <button class="action-btn" @click="handleNewConversation" title="新建对话">
+          <i class="fas fa-plus"></i>
+        </button>
+      </div>
       <div v-if="isLoading" class="loading-badge">加载中...</div>
     </div>
 
@@ -85,6 +96,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   back: []
   send: [content: string]
+  clearMessages: []
+  newConversation: []
 }>()
 
 const input = ref('')
@@ -105,6 +118,22 @@ async function sendMessage() {
   emit('send', input.value.trim())
   input.value = ''
   await scrollToBottom()
+}
+
+/**
+ * 清空对话
+ */
+function handleClearMessages() {
+  if (confirm('确定要清空对话记录吗？')) {
+    emit('clearMessages')
+  }
+}
+
+/**
+ * 新建对话
+ */
+function handleNewConversation() {
+  emit('newConversation')
 }
 
 /**
@@ -169,6 +198,51 @@ watch(() => props.isStreaming, () => {
 
 .back-btn:hover {
   background: var(--hover-color);
+}
+
+.bot-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.bot-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.bot-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-primary);
 }
 
 .loading-badge {

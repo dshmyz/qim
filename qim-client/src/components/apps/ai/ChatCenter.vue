@@ -17,6 +17,8 @@
       :error="chatError"
       @back="handleBack"
       @send="handleSendMessage"
+      @clear-messages="handleClearMessages"
+      @new-conversation="handleNewConversation"
     />
   </div>
 </template>
@@ -54,6 +56,7 @@ const {
   error: chatError,
   loadMessages,
   sendMessage,
+  clearMessages,
   reset
 } = useBotChat(selectedBotId)
 
@@ -93,6 +96,22 @@ function handleBack() {
  */
 async function handleSendMessage(content: string) {
   await sendMessage(content)
+}
+
+/**
+ * 清空对话
+ */
+function handleClearMessages() {
+  clearMessages()
+}
+
+/**
+ * 新建对话
+ */
+async function handleNewConversation() {
+  reset()
+  // 重新初始化会话并加载消息
+  await loadMessages()
 }
 
 // 监听 selectedBotId 变化，重置状态
