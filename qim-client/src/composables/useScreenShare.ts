@@ -130,13 +130,25 @@ export function useScreenShare(conversation: { value: any }) {
    */
   const handleWebRTCIceCandidate = async (data: any) => {
     try {
+      console.log('=== 开始处理 WebRTC ICE candidate ===')
+      console.log('data:', JSON.stringify(data, null, 2))
+      
+      const candidate = data.candidate || data.signal
+      if (!candidate) {
+        console.error('ICE candidate 数据为空')
+        return
+      }
+      
       if (screenShareSender.getIsSharing()) {
-        screenShareSender.addIceCandidate(data.signal)
+        console.log('发起方添加 ICE candidate')
+        screenShareSender.addIceCandidate(candidate)
       } else if (screenShareComponent.value) {
-      screenShareComponent.value.handleIceCandidate(data.signal)
-    } else {
-      screenShareReceiver.addIceCandidate(data.signal)
-    }
+        console.log('组件添加 ICE candidate')
+        screenShareComponent.value.handleIceCandidate(candidate)
+      } else {
+        console.log('接收方添加 ICE candidate')
+        screenShareReceiver.addIceCandidate(candidate)
+      }
     } catch (error) {
       console.error('处理 WebRTC ICE candidate 失败:', error)
     }

@@ -2,7 +2,13 @@
   <div class="chat-header">
     <div class="header-info">
       <div class="avatar-wrapper">
-        <img :src="avatarUrl" :alt="displayName" class="header-avatar" />
+        <Avatar
+          :src="conversation?.avatar"
+          :name="displayName"
+          :server-url="serverUrl"
+          :alt="displayName"
+          size="lg"
+        />
         <span
           v-if="isSingleChat"
           :class="['status-dot', conversation?.status === 'online' ? 'online' : 'offline']"
@@ -79,6 +85,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Conversation } from '../../types'
+import Avatar from '../shared/Avatar.vue'
 import GroupPanel from './GroupPanel.vue'
 import AvatarSessionToggle from '../avatar/AvatarSessionToggle.vue'
 import { getAvatarUrl } from '../../utils/avatar'

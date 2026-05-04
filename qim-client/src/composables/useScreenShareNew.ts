@@ -53,11 +53,16 @@ export function useScreenShareNew() {
   
   const acceptShare = async (signal: RTCSessionDescriptionInit, fromUserId: number) => {
     console.log('[ScreenShare] Accepting share from user:', fromUserId)
+    console.log('[ScreenShare] Signal:', signal)
+    console.log('[ScreenShare] session object:', session)
+    console.log('[ScreenShare] session.join:', session.join)
     
     try {
       signaling.sendScreenShareResponse(fromUserId, true)
       
+      console.log('[ScreenShare] Calling session.join...')
       await session.join(signal, fromUserId)
+      console.log('[ScreenShare] session.join completed')
       
       console.log('[ScreenShare] Share accepted successfully')
     } catch (error) {

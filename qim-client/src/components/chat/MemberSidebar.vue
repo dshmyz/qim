@@ -29,7 +29,13 @@
     </div>
     <div v-if="isExpanded" class="members-content">
       <div v-for="member in filteredMembers" :key="member.id" class="member-item" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="handleStartPrivateChat(member)">
-        <img :src="member.avatar" :alt="member.name || '未知用户'" class="member-avatar" />
+        <Avatar
+          :src="member.avatar"
+          :name="member.name || '未知用户'"
+          :alt="member.name || '未知用户'"
+          size="sm"
+          class="member-avatar"
+        />
         <div class="member-info">
           <span class="member-name">{{ member.name || '未知用户' }}</span>
           <span v-if="member.role === 'owner'" class="member-role owner" title="群主"><i class="fas fa-crown"></i></span>
@@ -42,6 +48,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 
 interface Member {
   id: string

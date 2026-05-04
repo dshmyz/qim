@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useRealtimeCommunication } from './useRealtimeCommunication'
 import type { SessionType, MediaType, SessionState, Participant } from '@/types/realtime'
 
@@ -25,7 +25,7 @@ export function useSession(type: SessionType) {
     
     if (sessionState.value !== 'idle') {
       console.warn(`[Session] Cannot start session in state: ${sessionState.value}`)
-      return
+      throw new Error(`Cannot start session in state: ${sessionState.value}`)
     }
     
     sessionState.value = 'connecting'
@@ -49,16 +49,21 @@ export function useSession(type: SessionType) {
   
   const join = async (signal: RTCSessionDescriptionInit, fromUserId: number) => {
     console.log(`[Session] Joining ${type} session from user ${fromUserId}`)
+    console.log(`[Session] Signal type:`, signal.type)
+    console.log(`[Session] Current session state:`, sessionState.value)
     
     if (sessionState.value !== 'idle') {
       console.warn(`[Session] Cannot join session in state: ${sessionState.value}`)
-      return
+      throw new Error(`Cannot join session in state: ${sessionState.value}`)
     }
     
     sessionState.value = 'connecting'
+    console.log(`[Session] Session state set to connecting`)
     
     try {
+      console.log(`[Session] Calling rtc.receive...`)
       await rtc.receive(signal, fromUserId)
+      console.log(`[Session] rtc.receive completed`)
       
       participants.value.push({
         userId: fromUserId,
@@ -116,6 +121,20 @@ export function useSession(type: SessionType) {
   const isConnected = () => {
     return sessionState.value === 'active' && rtc.state.value === 'connected'
   }
+  
+  watch(rtc.state, (newState) => {
+    console.log(`[Session] Connection state changed to: ${newState}, session state: ${sessionState.value}`)
+    
+    if (newState === 'disconnected' && sessionState.value !== 'idle' && sessionState.value !== 'ended') {
+      console.log(`[Session] Connection lost, resetting session state`)
+      end()
+    }
+    
+    if (newState === 'connected' && sessionState.value === 'connecting') {
+      console.log(`[Session] Connection established, setting session to active`)
+      sessionState.value = 'active'
+    }
+  })
   
   return {
     sessionState,

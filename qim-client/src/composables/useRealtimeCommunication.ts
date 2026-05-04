@@ -54,15 +54,19 @@ export function useRealtimeCommunication(mediaType: MediaType) {
   
   const receive = async (signal: RTCSessionDescriptionInit, fromUserId: number) => {
     console.log(`[RealtimeCommunication] Receiving ${mediaType} connection from user ${fromUserId}`)
+    console.log(`[RealtimeCommunication] Signal:`, signal)
     
     targetUserId.value = fromUserId
     
     try {
       await connection.createConnection()
+      console.log(`[RealtimeCommunication] Connection created for ${mediaType}`)
       
       setupRemoteStreamHandler()
+      console.log(`[RealtimeCommunication] Remote stream handler set up for ${mediaType}`)
       
       await connection.setRemoteDescription(signal)
+      console.log(`[RealtimeCommunication] Remote description set for ${mediaType}`)
       
       const answer = await connection.createAnswer()
       await connection.setLocalDescription(answer!)
@@ -110,14 +114,19 @@ export function useRealtimeCommunication(mediaType: MediaType) {
   
   const setupRemoteStreamHandler = () => {
     if (connection.peerConnection.value) {
+      console.log(`[RealtimeCommunication] Setting up remote stream handler for ${mediaType}`)
       connection.peerConnection.value.ontrack = (event) => {
-        console.log(`[RealtimeCommunication] Received remote track:`, event.track.kind)
+        console.log(`[RealtimeCommunication] Received remote track:`, event.track.kind, event.track.id)
+        console.log(`[RealtimeCommunication] Track state:`, event.track.readyState)
+        console.log(`[RealtimeCommunication] Current remoteStream:`, remoteStream.value)
         
         if (!remoteStream.value) {
           remoteStream.value = new MediaStream()
+          console.log(`[RealtimeCommunication] Created new MediaStream for remote`)
         }
         
         remoteStream.value.addTrack(event.track)
+        console.log(`[RealtimeCommunication] Added track to remoteStream, total tracks:`, remoteStream.value.getTracks().length)
         
         event.track.onended = () => {
           console.log(`[RealtimeCommunication] Remote track ended:`, event.track.kind)
@@ -126,6 +135,8 @@ export function useRealtimeCommunication(mediaType: MediaType) {
           }
         }
       }
+    } else {
+      console.warn(`[RealtimeCommunication] No peer connection available for setting up remote stream handler`)
     }
   }
   
@@ -139,10 +150,6 @@ export function useRealtimeCommunication(mediaType: MediaType) {
   
   const close = () => {
     cleanup()
-  }
-  
-  if (mediaType === 'screen') {
-    setupRemoteStreamHandler()
   }
   
   onUnmounted(() => {

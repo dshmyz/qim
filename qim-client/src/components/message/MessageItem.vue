@@ -10,9 +10,12 @@
 
     <!-- 普通消息 -->
     <template v-else>
-      <img
-        :src="getAvatarUrlUtil(message.sender.avatar, message.sender.name || '用户', serverUrl)"
+      <Avatar
+        :src="message.sender.avatar"
+        :name="message.sender.name || '用户'"
+        :server-url="serverUrl"
         :alt="message.sender.name || '未知用户'"
+        size="md"
         class="message-avatar"
         @click="$emit('showUserProfile', message.sender)"
       />
@@ -165,6 +168,7 @@
 </template>
 
 <script setup lang="ts">
+import Avatar from '../shared/Avatar.vue'
 import TextMessage from './TextMessage.vue'
 import ImageMessage from './ImageMessage.vue'
 import FileMessage from './FileMessage.vue'

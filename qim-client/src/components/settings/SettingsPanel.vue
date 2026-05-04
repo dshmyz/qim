@@ -36,7 +36,13 @@
               <div class="settings-item-content">
                 <div class="avatar-setting">
                   <div class="current-avatar">
-                    <img :src="currentUserAvatar" :alt="currentUser?.username || 'avatar'" />
+                    <Avatar
+                      :src="currentUser?.avatar"
+                      :name="currentUser?.username || '用户'"
+                      :server-url="serverUrl"
+                      :alt="currentUser?.username || 'avatar'"
+                      size="lg"
+                    />
                     <button class="change-avatar-btn">更换</button>
                   </div>
                 </div>
@@ -223,6 +229,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {

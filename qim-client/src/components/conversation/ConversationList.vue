@@ -9,7 +9,13 @@
       @contextmenu.prevent="$emit('contextMenu', $event, conversation)"
     >
       <div class="conversation-avatar">
-        <img :src="getAvatarUrl(conversation.avatar, conversation.name || '用户', serverUrl)" :alt="conversation.name" />
+        <Avatar
+          :src="conversation.avatar"
+          :name="conversation.name || '用户'"
+          :server-url="serverUrl"
+          :alt="conversation.name"
+          size="md"
+        />
         <span v-if="conversation.type === 'group'" class="group-badge">群</span>
         <span v-if="conversation.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
         <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
@@ -43,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { getAvatarUrl } from '../../utils/avatar'
+import Avatar from '../shared/Avatar.vue'
 
 interface User {
   id: string

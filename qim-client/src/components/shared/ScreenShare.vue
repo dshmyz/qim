@@ -101,11 +101,6 @@
             <span>正在连接...</span>
           </div>
 
-          <!-- 调试信息 -->
-          <div v-if="remoteStreamActive" class="debug-info" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; z-index: 1000;">
-            流已接收
-          </div>
-
         </div>
       </div>
 
@@ -488,19 +483,35 @@ const switchSource = async () => {
 }
 
 const stopShare = () => {
+  logger.log('ScreenShare: stopShare 被调用')
+  logger.log('ScreenShare: isInitiator:', isInitiator.value, 'isViewer:', isViewer.value)
+  
   // 使用 screenShareSender 停止共享
   if (isInitiator.value) {
+    logger.log('ScreenShare: 停止发起方共享')
     screenShareSender.stopScreenShare()
   } else if (isViewer.value) {
+    logger.log('ScreenShare: 停止接收方共享')
     screenShareReceiver.stop()
   }
 
+  // 清理视频流
   if (remoteVideoRef.value?.srcObject) {
+    logger.log('ScreenShare: 清理视频流')
     const stream = remoteVideoRef.value.srcObject as MediaStream
     stream.getTracks().forEach(track => track.stop())
     remoteVideoRef.value.srcObject = null
   }
+  
+  // 清理最小化视频流
+  if (minimizedVideoRef.value?.srcObject) {
+    logger.log('ScreenShare: 清理最小化视频流')
+    const stream = minimizedVideoRef.value.srcObject as MediaStream
+    stream.getTracks().forEach(track => track.stop())
+    minimizedVideoRef.value.srcObject = null
+  }
 
+  // 重置所有状态
   isSharing.value = false
   isInitiator.value = false
   isViewer.value = false
@@ -512,11 +523,13 @@ const stopShare = () => {
   selectedSource.value = null
   screenShareName.value = ''
   floatingStream.value = null
+  internalSenderId.value = null
 
   if (floatingMode.value) {
     closeFloating()
   }
 
+  logger.log('ScreenShare: 所有状态已重置')
   emit('screen-share-stop')
 }
 

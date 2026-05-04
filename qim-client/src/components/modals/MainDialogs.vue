@@ -8,7 +8,7 @@
       </div>
       <div class="about-dialog-content">
         <div class="about-dialog-logo">
-          <i class="fas fa-comments fa-4x"></i>
+          <AppLogo size="large" />
         </div>
         <h2>QIM（青鸟）</h2>
         <p class="version">版本: 1.0.0</p>
@@ -176,6 +176,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import AppLogo from '../shared/AppLogo.vue'
 
 interface Conversation {
   id: string | number
@@ -290,6 +291,12 @@ watch(() => props.systemMessage, (val) => {
 .about-dialog-logo {
   margin-bottom: 16px;
   color: var(--primary-color, #409eff);
+}
+
+.about-dialog-logo img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
 }
 
 .about-dialog-content h2 {

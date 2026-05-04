@@ -256,22 +256,47 @@ export function useVideoCall() {
 
   // 处理 WebRTC offer
   const handleWebRtcOffer = async (data: {
-    sender_id: string
+    sender_id?: number
+    from_user_id?: number
     signal: RTCSessionDescriptionInit
     user_info?: RemoteUser
+    call_type?: string
+    share_type?: string
+    media_type?: string
   }) => {
     try {
-      console.log('收到 WebRTC offer:', data)
+      console.log('VideoCall: 收到 WebRTC offer:', data)
+      console.log('VideoCall: call_type:', data.call_type)
+      console.log('VideoCall: share_type:', data.share_type)
+      console.log('VideoCall: media_type:', data.media_type)
+      
+      // 检查消息类型，只处理视频/语音通话
+      if (data.share_type === 'screen' || data.media_type === 'screen') {
+        console.log('VideoCall: 这是屏幕共享消息，跳过处理')
+        return
+      }
+      
+      if (!data.call_type && !data.media_type) {
+        console.log('VideoCall: 没有call_type或media_type，跳过处理')
+        return
+      }
 
       // 从缓存或数据中获取用户信息
-      let userInfo = getUserInfo(data.sender_id)
+      const senderId = data.sender_id || data.from_user_id
+      if (!senderId) {
+        console.error('VideoCall: 缺少 sender_id 和 from_user_id')
+        return
+      }
+      
+      const senderIdStr = String(senderId)
+      let userInfo = getUserInfo(senderIdStr)
       if (!userInfo && data.user_info) {
         userInfo = data.user_info
-        setUserInfo(data.sender_id, userInfo)
+        setUserInfo(senderIdStr, userInfo)
         remoteUser.value = userInfo
       }
 
-      await videoCallManager.handleOffer(data.signal, data.sender_id)
+      await videoCallManager.handleOffer(data.signal, senderIdStr)
     } catch (error) {
       console.error('处理 WebRTC offer 失败:', error)
     }

@@ -7,7 +7,13 @@
       </div>
       <div class="user-profile-body">
         <div class="profile-avatar">
-          <img :src="avatarUrl" :alt="user.name" />
+          <Avatar
+            :src="user.avatar"
+            :name="user.name"
+            :server-url="serverUrl"
+            :alt="user.name"
+            size="xl"
+          />
         </div>
         <div class="profile-info">
           <div class="info-item">
@@ -52,6 +58,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { API_BASE_URL } from '../../config'
+import Avatar from '../shared/Avatar.vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface User {

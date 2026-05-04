@@ -1,18 +1,13 @@
 <template>
   <div class="channel-avatar-wrapper">
-    <img
-      v-if="!imageError"
-      :src="avatarUrl"
-      :alt="`${name}的头像`"
-      class="channel-avatar"
-      :class="[`avatar-${size}`, `avatar-${shape}`]"
-      @error="onImageError"
-    />
-    <CssAvatar
-      v-else
+    <Avatar
+      :src="avatar"
       :name="name"
+      :server-url="serverUrl"
+      :alt="`${name}的头像`"
       :size="size"
       :shape="shape"
+      class="channel-avatar"
     />
     <span
       v-if="showTypeIcon"
@@ -25,10 +20,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { getAvatarUrl } from '../../utils/avatar'
+import { computed } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import { API_BASE_URL } from '../../config'
-import CssAvatar from '../shared/CssAvatar.vue'
 
 interface Props {
   avatar?: string | null
@@ -46,19 +40,9 @@ const props = withDefaults(defineProps<Props>(), {
   serverUrl: () => localStorage.getItem('serverUrl') || API_BASE_URL
 })
 
-const imageError = ref(false)
-
-const avatarUrl = computed(() => {
-  return getAvatarUrl(props.avatar, props.name, props.serverUrl)
-})
-
 const showTypeIcon = computed(() => {
   return props.publishPermission === 'creator_only' || props.publishPermission === 'anyone'
 })
-
-const onImageError = () => {
-  imageError.value = true
-}
 </script>
 
 <style scoped>

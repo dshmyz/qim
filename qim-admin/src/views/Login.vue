@@ -12,9 +12,7 @@
     <div class="login-card-wrapper">
       <div class="login-card">
         <div class="login-header">
-          <div class="brand-logo">
-            <el-icon :size="32"><ChatDotRound /></el-icon>
-          </div>
+          <img src="/app-logo.png" alt="QIM Logo" class="logo-img" />
           <h1 class="login-title">QIM Admin</h1>
           <p class="login-subtitle">企业级即时通讯管理后台</p>
         </div>
@@ -73,7 +71,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, ArrowRight, ChatDotRound } from '@element-plus/icons-vue'
+import { User, Lock, ArrowRight } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -232,17 +230,12 @@ const handleLogin = async () => {
   margin-bottom: var(--space-8);
 }
 
-.brand-logo {
-  width: 64px;
-  height: 64px;
+.logo-img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
   margin: 0 auto var(--space-4);
-  background: var(--gradient-primary);
-  border-radius: var(--radius-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  box-shadow: 0 8px 20px -4px rgba(14, 165, 233, 0.35);
+  display: block;
 }
 
 .login-title {

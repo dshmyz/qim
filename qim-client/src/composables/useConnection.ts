@@ -119,9 +119,34 @@ export function useConnection() {
     }
     
     console.log('Adding ICE candidate:', candidate)
-    const iceCandidate = new RTCIceCandidate(candidate)
-    await peerConnection.value.addIceCandidate(iceCandidate)
-    console.log('ICE candidate added successfully')
+    
+    // 验证 candidate 对象
+    if (!candidate || (!candidate.candidate && !candidate.sdpMid && !candidate.sdpMLineIndex)) {
+      console.warn('Invalid ICE candidate, skipping:', candidate)
+      return
+    }
+    
+    // 如果 sdpMid 和 sdpMLineIndex 都为 null，尝试从 candidate 字符串中提取
+    let iceCandidate: RTCIceCandidate
+    try {
+      if (candidate.sdpMid === null && candidate.sdpMLineIndex === null) {
+        // 创建一个简单的 candidate 对象
+        iceCandidate = new RTCIceCandidate({
+          candidate: candidate.candidate || '',
+          sdpMid: '0',
+          sdpMLineIndex: 0
+        })
+      } else {
+        iceCandidate = new RTCIceCandidate(candidate)
+      }
+      
+      await peerConnection.value.addIceCandidate(iceCandidate)
+      console.log('ICE candidate added successfully')
+    } catch (error) {
+      console.error('Failed to add ICE candidate:', error)
+      console.error('Candidate data:', candidate)
+      // 不抛出错误，继续处理
+    }
   }
   
   const getStats = async () => {

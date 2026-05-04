@@ -16,7 +16,7 @@
       
       <div class="login-header">
         <div class="app-logo">
-          <img src="/app-logo.png" alt="QIM Logo" />
+          <AppLogo size="large" />
         </div>
         <h2>QIM</h2>
         <p>即时通讯应用</p>
@@ -159,6 +159,7 @@ import { ref, reactive } from 'vue'
 import packageJson from '../../package.json'
 import { API_BASE_URL } from '../config'
 import QMessage from '../utils/qmessage'
+import AppLogo from '../components/shared/AppLogo.vue'
 
 declare global {
   interface Window {

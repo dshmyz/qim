@@ -1296,13 +1296,20 @@ const initWebSocketMessageHandler = () => {
   
   uniqueMessageTypes.forEach(type => {
     handlerMap[type] = (data: any) => {
-      if (screenShareMessageTypes.includes(type)) {
-        handleScreenShareMessage(type, data);
-      }
+      // 屏幕共享消息由 RealtimeCommunication 组件统一处理
+      // if (screenShareMessageTypes.includes(type)) {
+      //   handleScreenShareMessage(type, data);
+      // }
       if (videoCallMessageTypes.includes(type)) {
-        videoCallHandleSignaling({ type, data });
-        if (type === 'call_invite' || type === 'webrtc_offer') {
-          showCallModal.value = true
+        // 检查消息类型，只处理视频通话，不处理屏幕共享
+        const mediaType = data.media_type || data.share_type || data.call_type
+        const isScreenShare = mediaType === 'screen' || data.share_type === 'screen'
+        
+        if (!isScreenShare) {
+          videoCallHandleSignaling({ type, data });
+          if (type === 'call_invite' || type === 'webrtc_offer') {
+            showCallModal.value = true
+          }
         }
       }
       if (realtimeMessageTypes.includes(type)) {
@@ -1315,13 +1322,21 @@ const initWebSocketMessageHandler = () => {
   
   if (window.electron && window.electron.websocket) {
     electronWsHandler = (message) => {
-      if (screenShareMessageTypes.includes(message.type)) {
-        handleScreenShareMessage(message.type, message.data);
-      }
+      // 屏幕共享消息由 RealtimeCommunication 组件统一处理
+      // if (screenShareMessageTypes.includes(message.type)) {
+      //   handleScreenShareMessage(message.type, message.data);
+      // }
       if (videoCallMessageTypes.includes(message.type)) {
-        videoCallHandleSignaling(message);
-        if (message.type === 'call_invite' || message.type === 'webrtc_offer') {
-          showCallModal.value = true
+        // 检查消息类型，只处理视频通话，不处理屏幕共享
+        const data = message.data
+        const mediaType = data.media_type || data.share_type || data.call_type
+        const isScreenShare = mediaType === 'screen' || data.share_type === 'screen'
+        
+        if (!isScreenShare) {
+          videoCallHandleSignaling(message);
+          if (message.type === 'call_invite' || message.type === 'webrtc_offer') {
+            showCallModal.value = true
+          }
         }
       }
       if (realtimeMessageTypes.includes(message.type)) {

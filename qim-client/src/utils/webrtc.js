@@ -14,7 +14,23 @@ class ScreenShareSender {
   // 开始屏幕共享
   async startScreenShare(receiverId) {
     try {
+      // 清理之前的连接
+      if (this.peerConnection) {
+        logger.log('清理旧的 peerConnection');
+        this.peerConnection.close();
+        this.peerConnection = null;
+      }
+      
+      if (this.screenStream) {
+        logger.log('清理旧的 screenStream');
+        this.screenStream.getTracks().forEach(track => track.stop());
+        this.screenStream = null;
+      }
+      
       this.receiverId = receiverId;
+      this.isSharing = false;
+      this.iceCandidateCache = [];
+      this.enableDirectConnect = true;
       
       // 检查浏览器支持
       logger.log('检查浏览器支持...');
@@ -584,7 +600,8 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               }));
               logger.log('ICE 候选者发送成功');
@@ -594,7 +611,8 @@ class ScreenShareSender {
                 type: 'webrtc_ice_candidate',
                 data: {
                   target_user_id: receiverId,
-                  candidate: event.candidate
+                  candidate: event.candidate,
+                  share_type: 'screen'  // 标识为屏幕共享
                 }
               });
               logger.log('ICE 候选者发送成功（通过 IPC）');
@@ -662,7 +680,8 @@ class ScreenShareSender {
             type: 'webrtc_offer',
             data: {
               target_user_id: receiverId,
-              signal: offer
+              signal: offer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           }));
           logger.log('offer 发送成功');
@@ -672,7 +691,8 @@ class ScreenShareSender {
             type: 'webrtc_offer',
             data: {
               target_user_id: receiverId,
-              signal: offer
+              signal: offer,
+              share_type: 'screen'  // 标识为屏幕共享
             }
           });
           logger.log('offer 发送成功（通过 IPC）');
@@ -713,8 +733,23 @@ class ScreenShareReceiver {
 
   // 初始化
   init(videoElement, onStreamReceived) {
+    // 清理之前的连接
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
+    }
+    
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach(track => track.stop());
+      this.remoteStream = null;
+    }
+    
     this.videoElement = videoElement;
     this.onStreamReceived = onStreamReceived;
+    this.senderId = null;
+    this.iceCandidateCache = [];
+    this.enableDirectConnect = true;
+    
     logger.log('ScreenShareReceiver 初始化成功，视频元素:', videoElement);
   }
 

@@ -4,9 +4,12 @@
     <div class="card-body">
       <div class="card-top">
         <div class="card-author">
-          <img
-            :src="getAvatarUrl(message.sender?.avatar, getDisplayName(message.sender), serverUrl)"
+          <Avatar
+            :src="message.sender?.avatar"
+            :name="getDisplayName(message.sender)"
+            :server-url="serverUrl"
             :alt="`${senderName}的头像`"
+            size="sm"
             class="author-avatar"
           />
           <div class="author-info">
@@ -55,7 +58,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { getAvatarUrl, getDisplayName } from '../../utils/avatar'
+import Avatar from '../shared/Avatar.vue'
+import { getDisplayName } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import { useChatUtils } from '../../composables/useChatUtils'
 import type { ChannelMessage } from '../../types'

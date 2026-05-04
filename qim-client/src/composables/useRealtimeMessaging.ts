@@ -2,7 +2,9 @@ import { useScreenShareNew } from './useScreenShareNew'
 import { useVideoCallNew } from './useVideoCallNew'
 import type { MediaType } from '@/types/realtime'
 
-export function useRealtimeMessaging() {
+let realtimeMessagingInstance: ReturnType<typeof createRealtimeMessaging> | null = null
+
+function createRealtimeMessaging() {
   const screenShare = useScreenShareNew()
   const videoCall = useVideoCallNew()
   
@@ -86,14 +88,23 @@ export function useRealtimeMessaging() {
     
     console.log('[RealtimeMessaging] Media type:', mediaType)
     
+    const candidate = data.candidate || data.signal
+    
+    if (!candidate) {
+      console.error('[RealtimeMessaging] No ICE candidate data found in:', data)
+      return
+    }
+    
+    console.log('[RealtimeMessaging] ICE candidate object:', candidate)
+    
     try {
       switch (mediaType) {
         case 'screen':
-          await screenShare.handleIceCandidate(data.candidate)
+          await screenShare.handleIceCandidate(candidate)
           break
         case 'video':
         case 'audio':
-          await videoCall.handleIceCandidate(data.candidate)
+          await videoCall.handleIceCandidate(candidate)
           break
         default:
           console.warn('[RealtimeMessaging] Unknown media type:', mediaType)
@@ -146,4 +157,12 @@ export function useRealtimeMessaging() {
     handleCallAnswer,
     handleCallEnd
   }
+}
+
+export function useRealtimeMessaging() {
+  if (!realtimeMessagingInstance) {
+    realtimeMessagingInstance = createRealtimeMessaging()
+  }
+  
+  return realtimeMessagingInstance
 }

@@ -119,7 +119,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
+import type { Ref } from 'vue'
 import { useScreenShareNew } from '@/composables/useScreenShareNew'
 
 const props = defineProps<{
@@ -133,7 +134,15 @@ const emit = defineEmits<{
   'screen-share-stop': []
 }>()
 
-const screenShare = useScreenShareNew()
+const injectedScreenShare = inject('screenShare')
+const screenShare = injectedScreenShare || useScreenShareNew()
+
+console.log('[ScreenShareSimple] ===== COMPONENT SETUP START =====')
+console.log('[ScreenShareSimple] injectedScreenShare:', injectedScreenShare)
+console.log('[ScreenShareSimple] screenShare:', screenShare)
+console.log('[ScreenShareSimple] screenShare.sessionState:', screenShare.sessionState.value)
+console.log('[ScreenShareSimple] screenShare.remoteStream:', screenShare.remoteStream.value)
+console.log('[ScreenShareSimple] ===== COMPONENT SETUP END =====')
 
 const screenShareOverlayRef = ref<HTMLElement | null>(null)
 const localVideoRef = ref<HTMLVideoElement | null>(null)
@@ -281,18 +290,56 @@ const stopDurationTimer = () => {
 }
 
 watch(localStream, (stream) => {
+  console.log('[ScreenShareSimple] localStream changed:', stream)
   if (stream && localVideoRef.value) {
+    console.log('[ScreenShareSimple] Setting local video srcObject')
     localVideoRef.value.srcObject = stream
   }
 })
 
 watch(remoteStream, (stream) => {
-  if (stream && remoteVideoRef.value) {
-    remoteVideoRef.value.srcObject = stream
+  console.log('[ScreenShareSimple] remoteStream changed:', stream)
+  console.log('[ScreenShareSimple] remoteStream tracks:', stream?.getTracks().map(t => ({ kind: t.kind, id: t.id, state: t.readyState, enabled: t.enabled, muted: t.muted })))
+  
+  if (!stream) {
+    console.log('[ScreenShareSimple] No stream, skipping')
+    return
   }
+  
+  const attemptPlay = (attempts = 0) => {
+    console.log(`[ScreenShareSimple] Attempt ${attempts + 1}: Checking remoteVideoRef...`)
+    
+    if (remoteVideoRef.value) {
+      console.log('[ScreenShareSimple] remoteVideoRef found!')
+      console.log('[ScreenShareSimple] Setting remote video srcObject')
+      remoteVideoRef.value.srcObject = stream
+      
+      console.log('[ScreenShareSimple] Attempting to play video...')
+      remoteVideoRef.value.play()
+        .then(() => {
+          console.log('[ScreenShareSimple] Video playing successfully')
+          console.log('[ScreenShareSimple] Video readyState:', remoteVideoRef.value?.readyState)
+          console.log('[ScreenShareSimple] Video paused:', remoteVideoRef.value?.paused)
+          console.log('[ScreenShareSimple] Video currentTime:', remoteVideoRef.value?.currentTime)
+        })
+        .catch(err => {
+          console.error('[ScreenShareSimple] Failed to play remote video:', err)
+        })
+    } else if (attempts < 10) {
+      console.log('[ScreenShareSimple] remoteVideoRef not found, retrying in 100ms...')
+      setTimeout(() => attemptPlay(attempts + 1), 100)
+    } else {
+      console.error('[ScreenShareSimple] Failed to find remoteVideoRef after 10 attempts')
+    }
+  }
+  
+  nextTick(() => {
+    attemptPlay()
+  })
 })
 
 watch(sessionState, (state) => {
+  console.log('[ScreenShareSimple] sessionState changed:', state)
   if (state === 'active') {
     startDurationTimer()
     emit('screen-share-start', { conversationId: props.conversationId || props.receiverId || 0 })
@@ -308,6 +355,48 @@ watch(isDragging, (dragging) => {
     } else {
       screenShareOverlayRef.value.classList.remove('dragging')
     }
+  }
+})
+
+onMounted(() => {
+  console.log('[ScreenShareSimple] Component mounted')
+  console.log('[ScreenShareSimple] isInitiator:', isInitiator.value)
+  console.log('[ScreenShareSimple] localStream:', localStream.value)
+  console.log('[ScreenShareSimple] remoteStream:', remoteStream.value)
+  
+  if (remoteVideoRef.value) {
+    console.log('[ScreenShareSimple] Adding video event listeners')
+    
+    remoteVideoRef.value.addEventListener('loadedmetadata', () => {
+      console.log('[ScreenShareSimple] Video loadedmetadata event')
+      console.log('[ScreenShareSimple] Video videoWidth:', remoteVideoRef.value?.videoWidth)
+      console.log('[ScreenShareSimple] Video videoHeight:', remoteVideoRef.value?.videoHeight)
+    })
+    
+    remoteVideoRef.value.addEventListener('canplay', () => {
+      console.log('[ScreenShareSimple] Video canplay event')
+    })
+    
+    remoteVideoRef.value.addEventListener('playing', () => {
+      console.log('[ScreenShareSimple] Video playing event')
+    })
+    
+    remoteVideoRef.value.addEventListener('error', (e) => {
+      console.error('[ScreenShareSimple] Video error event:', e)
+    })
+  }
+  
+  if (localStream.value && localVideoRef.value && isInitiator.value) {
+    console.log('[ScreenShareSimple] Setting local video srcObject on mount')
+    localVideoRef.value.srcObject = localStream.value
+  }
+  
+  if (remoteStream.value && remoteVideoRef.value && !isInitiator.value) {
+    console.log('[ScreenShareSimple] Setting remote video srcObject on mount')
+    remoteVideoRef.value.srcObject = remoteStream.value
+    remoteVideoRef.value.play().catch(err => {
+      console.error('[ScreenShareSimple] Failed to play remote video on mount:', err)
+    })
   }
 })
 

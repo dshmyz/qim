@@ -1472,6 +1472,438 @@ git commit -m "feat: update AI_PROVIDERS with latest models and add DeepSeek"
 
 ---
 
+### 任务 15：后端 - Avatar 审批流程
+
+**背景：** 用户开启分身需要管理员审批，以控制 AI 请求量。
+
+**文件：**
+- 修改：`model/avatar.go`
+- 修改：`handler/avatar_handler.go`
+- 创建：`handler/admin/avatar_approval_handler.go`
+- 修改：`app/routes.go`
+
+- [ ] **步骤 1：修改 AvatarConfig 模型添加审批字段**
+
+```go
+// model/avatar.go - AvatarConfig 结构体
+type AvatarConfig struct {
+    ID        uint           `json:"id" gorm:"primarykey"`
+    UserID    uint           `json:"user_id" gorm:"uniqueIndex;not null"`
+    Name      string         `json:"name" gorm:"size:100;default:'我的分身'"`
+    Enabled   bool           `json:"enabled" gorm:"default:false"`
+
+    // 人设相关
+    AutoLearnedPersona string     `json:"auto_learned_persona" gorm:"type:text"`
+    CustomPersonaAddon string     `json:"custom_persona_addon" gorm:"type:text"`
+    PersonaVersion     int        `json:"persona_version" gorm:"default:0"`
+    LastLearnedAt      *time.Time `json:"last_learned_at"`
+
+    // 配置 JSON 字段
+    KnowledgeScopeJSON string `json:"-" gorm:"type:text"`
+    TriggerRulesJSON   string `json:"-" gorm:"type:text"`
+    ReplyStrategyJSON  string `json:"-" gorm:"type:text"`
+
+    // 模型配置
+    ModelConfigID   *uint `json:"model_config_id"`
+    UseSystemConfig bool  `json:"use_system_config" gorm:"default:true"`
+
+    // 接管冷却时间（分钟）
+    TakeoverCooldown int `json:"takeover_cooldown" gorm:"default:10"`
+
+    // 审批相关
+    ApprovalStatus string     `json:"approval_status" gorm:"size:20;default:'none'"` // none, pending, approved, rejected
+    RejectReason   string     `json:"reject_reason" gorm:"type:text"`
+    AppliedAt      *time.Time `json:"applied_at"`
+    ApprovedAt     *time.Time `json:"approved_at"`
+    ApprovedBy     *uint      `json:"approved_by"`
+
+    CreatedAt time.Time      `json:"created_at"`
+    UpdatedAt time.Time      `json:"updated_at"`
+    DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+
+    User        User          `json:"user,omitempty" gorm:"foreignkey:UserID"`
+    ModelConfig *UserAIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
+    Approver    *User         `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
+}
+```
+
+- [ ] **步骤 2：添加用户申请 API**
+
+```go
+// handler/avatar_handler.go - 添加申请和取消申请方法
+
+// ApplyForApproval 申请启用分身
+func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
+    userIDAny, _ := c.Get("user_id")
+    userID := userIDAny.(uint)
+
+    var config model.AvatarConfig
+    if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "请先创建分身配置"})
+        return
+    }
+
+    // 检查当前状态
+    if config.ApprovalStatus == "pending" {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的申请"})
+        return
+    }
+    if config.ApprovalStatus == "approved" {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "分身已通过审批"})
+        return
+    }
+
+    // 更新状态为待审批
+    now := time.Now()
+    updates := map[string]interface{}{
+        "approval_status": "pending",
+        "applied_at":      &now,
+        "reject_reason":   "",
+    }
+
+    if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "申请失败"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"code": 0, "message": "申请已提交，请等待管理员审批"})
+}
+
+// CancelApplication 取消申请
+func (h *AvatarHandler) CancelApplication(c *gin.Context) {
+    userIDAny, _ := c.Get("user_id")
+    userID := userIDAny.(uint)
+
+    var config model.AvatarConfig
+    if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+        return
+    }
+
+    if config.ApprovalStatus != "pending" {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前没有待审批的申请"})
+        return
+    }
+
+    updates := map[string]interface{}{
+        "approval_status": "none",
+        "applied_at":      nil,
+    }
+
+    if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消失败"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已取消申请"})
+}
+```
+
+- [ ] **步骤 3：创建管理员审批 API**
+
+```go
+// handler/admin/avatar_approval_handler.go
+package admin
+
+import (
+    "net/http"
+    "qim-server/model"
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "gorm.io/gorm"
+)
+
+type AvatarApprovalHandler struct {
+    db *gorm.DB
+}
+
+func NewAvatarApprovalHandler(db *gorm.DB) *AvatarApprovalHandler {
+    return &AvatarApprovalHandler{db: db}
+}
+
+func (h *AvatarApprovalHandler) RegisterRoutes(router *gin.RouterGroup) {
+    approvals := router.Group("/avatar-approvals")
+    {
+        approvals.GET("", h.ListPending)
+        approvals.POST("/:id/approve", h.Approve)
+        approvals.POST("/:id/reject", h.Reject)
+    }
+}
+
+// ListPending 获取待审批列表
+func (h *AvatarApprovalHandler) ListPending(c *gin.Context) {
+    var configs []model.AvatarConfig
+    if err := h.db.Where("approval_status = ?", "pending").
+        Preload("User").
+        Order("applied_at DESC").
+        Find(&configs).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询失败"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"code": 0, "data": configs})
+}
+
+// Approve 审批通过
+func (h *AvatarApprovalHandler) Approve(c *gin.Context) {
+    adminID, _ := c.Get("user_id")
+    configID := c.Param("id")
+
+    var config model.AvatarConfig
+    if err := h.db.First(&config, configID).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "申请不存在"})
+        return
+    }
+
+    if config.ApprovalStatus != "pending" {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该申请已处理"})
+        return
+    }
+
+    now := time.Now()
+    adminIDUint := adminID.(uint)
+    updates := map[string]interface{}{
+        "approval_status": "approved",
+        "enabled":         true,
+        "approved_at":     &now,
+        "approved_by":     &adminIDUint,
+    }
+
+    if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "审批失败"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"code": 0, "message": "审批通过"})
+}
+
+// Reject 审批拒绝
+func (h *AvatarApprovalHandler) Reject(c *gin.Context) {
+    adminID, _ := c.Get("user_id")
+    configID := c.Param("id")
+
+    var req struct {
+        Reason string `json:"reason" binding:"required"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请填写拒绝原因"})
+        return
+    }
+
+    var config model.AvatarConfig
+    if err := h.db.First(&config, configID).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "申请不存在"})
+        return
+    }
+
+    if config.ApprovalStatus != "pending" {
+        c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该申请已处理"})
+        return
+    }
+
+    now := time.Now()
+    adminIDUint := adminID.(uint)
+    updates := map[string]interface{}{
+        "approval_status": "rejected",
+        "reject_reason":   req.Reason,
+        "approved_at":     &now,
+        "approved_by":     &adminIDUint,
+    }
+
+    if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "审批失败"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已拒绝"})
+}
+```
+
+- [ ] **步骤 4：注册路由**
+
+```go
+// app/routes.go - 添加路由
+func SetupRoutes(r *gin.Engine, db *gorm.DB) {
+    // ... 现有路由 ...
+
+    // Avatar 路由
+    avatarHandler := handler.NewAvatarHandler(db, avatarService)
+    avatar := api.Group("/avatar")
+    {
+        // ... 现有路由 ...
+        avatar.POST("/apply", avatarHandler.ApplyForApproval)
+        avatar.POST("/cancel-apply", avatarHandler.CancelApplication)
+    }
+
+    // Admin 路由
+    adminGroup := api.Group("/admin")
+    adminGroup.Use(middleware.AdminRequired())
+    {
+        avatarApprovalHandler := admin.NewAvatarApprovalHandler(db)
+        avatarApprovalHandler.RegisterRoutes(adminGroup)
+    }
+}
+```
+
+- [ ] **步骤 5：更新 AvatarConfigResponse**
+
+```go
+// handler/avatar_handler.go - 更新响应结构
+type AvatarConfigResponse struct {
+    // ... 现有字段 ...
+    
+    // 审批相关
+    ApprovalStatus string     `json:"approval_status"`
+    RejectReason   string     `json:"reject_reason"`
+    AppliedAt      *time.Time `json:"applied_at"`
+    ApprovedAt     *time.Time `json:"approved_at"`
+    Approver       *model.User `json:"approver,omitempty"`
+}
+```
+
+- [ ] **步骤 6：Commit**
+
+```bash
+git add model/avatar.go handler/avatar_handler.go handler/admin/avatar_approval_handler.go app/routes.go
+git commit -m "feat: add avatar approval workflow"
+```
+
+---
+
+### 任务 16：前端 - Avatar 审批流程 UI
+
+**文件：**
+- 修改：`src/components/apps/MyAvatarPanel.vue`（或相关组件）
+- 创建：`src/components/admin/AvatarApprovalPanel.vue`
+
+- [ ] **步骤 1：更新 Avatar 配置组件显示审批状态**
+
+```vue
+<!-- Avatar 配置面板中显示审批状态 -->
+<template>
+  <div class="avatar-status">
+    <template v-if="config">
+      <!-- 未申请 -->
+      <div v-if="config.approval_status === 'none'" class="status-none">
+        <p>分身功能需要管理员审批后才能启用</p>
+        <button @click="applyForApproval" :disabled="!isConfigComplete">
+          申请启用
+        </button>
+      </div>
+      
+      <!-- 待审批 -->
+      <div v-else-if="config.approval_status === 'pending'" class="status-pending">
+        <p>⏳ 申请审批中，请等待管理员审核...</p>
+        <p class="apply-time">申请时间：{{ formatTime(config.applied_at) }}</p>
+        <button @click="cancelApplication">取消申请</button>
+      </div>
+      
+      <!-- 已通过 -->
+      <div v-else-if="config.approval_status === 'approved'" class="status-approved">
+        <p>✅ 已通过审批</p>
+        <p class="approve-time">审批时间：{{ formatTime(config.approved_at) }}</p>
+        <div class="toggle-wrapper">
+          <span>启用分身</span>
+          <ToggleSwitch v-model="config.enabled" @change="toggleEnabled" />
+        </div>
+      </div>
+      
+      <!-- 已拒绝 -->
+      <div v-else-if="config.approval_status === 'rejected'" class="status-rejected">
+        <p>❌ 申请被拒绝</p>
+        <p class="reject-reason">原因：{{ config.reject_reason }}</p>
+        <button @click="applyForApproval">重新申请</button>
+      </div>
+    </template>
+  </div>
+</template>
+```
+
+- [ ] **步骤 2：创建管理员审批面板**
+
+```vue
+<!-- src/components/admin/AvatarApprovalPanel.vue -->
+<template>
+  <div class="avatar-approval-panel">
+    <h3>分身启用审批</h3>
+    
+    <div v-if="loading" class="loading">加载中...</div>
+    
+    <div v-else-if="approvals.length === 0" class="empty">
+      暂无待审批的申请
+    </div>
+    
+    <div v-else class="approval-list">
+      <div v-for="item in approvals" :key="item.id" class="approval-item">
+        <div class="user-info">
+          <img :src="item.user?.avatar" class="avatar" />
+          <div>
+            <div class="nickname">{{ item.user?.nickname }}</div>
+            <div class="apply-time">申请时间：{{ formatTime(item.applied_at) }}</div>
+          </div>
+        </div>
+        
+        <div class="config-preview">
+          <p><strong>分身名称：</strong>{{ item.name }}</p>
+          <p><strong>使用系统配置：</strong>{{ item.use_system_config ? '是' : '否' }}</p>
+        </div>
+        
+        <div class="actions">
+          <button class="approve-btn" @click="handleApprove(item.id)">通过</button>
+          <button class="reject-btn" @click="showRejectDialog(item.id)">拒绝</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 拒绝原因弹窗 -->
+    <QDialog v-model:visible="showRejectModal" title="拒绝原因">
+      <textarea v-model="rejectReason" placeholder="请输入拒绝原因" />
+      <template #footer>
+        <button @click="showRejectModal = false">取消</button>
+        <button @click="handleReject" :disabled="!rejectReason">确认拒绝</button>
+      </template>
+    </QDialog>
+  </div>
+</template>
+```
+
+- [ ] **步骤 3：添加 API 调用**
+
+```typescript
+// src/api/avatar.ts
+export const avatarAPI = {
+  // ... 现有 API ...
+  
+  applyForApproval: () => 
+    request.post('/api/v1/avatar/apply'),
+  
+  cancelApplication: () => 
+    request.post('/api/v1/avatar/cancel-apply'),
+}
+
+// src/api/admin.ts
+export const adminAPI = {
+  getAvatarApprovals: () => 
+    request.get('/api/v1/admin/avatar-approvals'),
+  
+  approveAvatar: (id: number) => 
+    request.post(`/api/v1/admin/avatar-approvals/${id}/approve`),
+  
+  rejectAvatar: (id: number, reason: string) => 
+    request.post(`/api/v1/admin/avatar-approvals/${id}/reject`, { reason }),
+}
+```
+
+- [ ] **步骤 4：Commit**
+
+```bash
+git add src/components/apps/MyAvatarPanel.vue src/components/admin/AvatarApprovalPanel.vue src/api/avatar.ts src/api/admin.ts
+git commit -m "feat: add avatar approval UI"
+```
+
+---
+
 ## 验收测试
 
 ### 后端测试
@@ -1487,6 +1919,13 @@ git commit -m "feat: update AI_PROVIDERS with latest models and add DeepSeek"
    - 验证 Bot 回复使用虚拟用户 ID
    - 验证系统提示词生效
 
+3. **Avatar 审批测试**
+   - 用户创建 Avatar 配置，验证 approval_status = 'none'
+   - 用户申请启用，验证 approval_status = 'pending'
+   - 管理员审批通过，验证 enabled = true, approval_status = 'approved'
+   - 管理员审批拒绝，验证 reject_reason 正确保存
+   - 用户取消申请，验证 approval_status = 'none'
+
 ### 前端测试
 
 1. **Bot 对话测试**
@@ -1498,6 +1937,11 @@ git commit -m "feat: update AI_PROVIDERS with latest models and add DeepSeek"
 2. **组件复用测试**
    - 验证 MarkdownRenderer 在多个组件中正常工作
    - 验证 ThinkingIndicator 正确显示
+
+3. **Avatar 审批测试**
+   - 验证审批状态正确显示
+   - 验证申请/取消申请功能
+   - 管理员验证审批/拒绝功能
 
 ---
 
