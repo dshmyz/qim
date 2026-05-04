@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 	"qim-server/model"
+	"qim-server/ws"
 
 	"golang.org/x/time/rate"
 	"gorm.io/gorm"
@@ -108,15 +111,151 @@ func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
 
 // sendPrivateReply 发送私聊回复（群聊场景）
 func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
-	// TODO: 实现私聊回复逻辑
 	// 1. 找到或创建分身用户与触发者的私聊会话
-	// 2. 发送消息，标记 is_avatar_reply: true
-	// 3. 通知分身用户
+	convService := NewConversationService()
+	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
+	if err != nil {
+		log.Printf("[AvatarWorkerPool] 创建私聊会话失败: user=%d, trigger=%d, error=%v", 
+			task.UserID, task.TriggerUserID, err)
+		return
+	}
+
+	// 2. 获取分身用户的昵称
+	var avatarUser model.User
+	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
+		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
+		return
+	}
+
+	avatarName := avatarUser.Nickname
+	if avatarName == "" {
+		avatarName = avatarUser.Username
+	}
+
+	// 3. 构建消息内容
+	content := fmt.Sprintf("[群聊 %s 中 @你] %s 的分身代为回复：%s", task.GroupName, avatarName, reply)
+
+	// 4. 创建消息
+	msg := model.Message{
+		ConversationID: conv.ID,
+		SenderID:       task.UserID,
+		Type:           "text",
+		Content:        content,
+		IsRead:         false,
+	}
+
+	if err := p.db.Create(&msg).Error; err != nil {
+		log.Printf("[AvatarWorkerPool] 保存分身消息失败: conv=%d, error=%v", conv.ID, err)
+		return
+	}
+
+	// 5. 预加载发送者信息
+	p.db.Preload("Sender").First(&msg, msg.ID)
+
+	// 6. 更新会话最后消息
+	now := time.Now()
+	p.db.Model(&model.Conversation{}).Where("id = ?", conv.ID).Updates(map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
+
+	// 7. 增加触发者的未读数
+	p.db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id != ?", conv.ID, task.UserID).
+		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
+
+	// 8. 广播消息到私聊会话
+	responseData := map[string]interface{}{
+		"id":              msg.ID,
+		"conversation_id": msg.ConversationID,
+		"sender_id":       msg.SenderID,
+		"type":            msg.Type,
+		"content":         msg.Content,
+		"is_read":         msg.IsRead,
+		"created_at":      msg.CreatedAt,
+		"sender":          msg.Sender,
+		"is_avatar_reply": true,
+	}
+
+	if ws.GlobalHub != nil {
+		wsMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: responseData,
+		}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		ws.GlobalHub.SendToConversation(conv.ID, task.UserID, jsonMsg)
+	}
+
+	log.Printf("[AvatarWorkerPool] 分身私聊回复已发送: conv=%d, msgID=%d", conv.ID, msg.ID)
 }
 
 // sendDirectReply 发送直接回复（私聊场景）
 func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
-	// TODO: 实现直接回复逻辑
-	// 1. 在当前会话中发送消息
-	// 2. 标记 is_avatar_reply: true
+	// 1. 获取分身用户的昵称
+	var avatarUser model.User
+	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
+		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
+		return
+	}
+
+	avatarName := avatarUser.Nickname
+	if avatarName == "" {
+		avatarName = avatarUser.Username
+	}
+
+	// 2. 构建消息内容
+	content := fmt.Sprintf("%s 的分身代为回复：%s", avatarName, reply)
+
+	// 3. 创建消息
+	msg := model.Message{
+		ConversationID: task.ConversationID,
+		SenderID:       task.UserID,
+		Type:           "text",
+		Content:        content,
+		IsRead:         false,
+	}
+
+	if err := p.db.Create(&msg).Error; err != nil {
+		log.Printf("[AvatarWorkerPool] 保存分身消息失败: conv=%d, error=%v", task.ConversationID, err)
+		return
+	}
+
+	// 4. 预加载发送者信息
+	p.db.Preload("Sender").First(&msg, msg.ID)
+
+	// 5. 更新会话最后消息
+	now := time.Now()
+	p.db.Model(&model.Conversation{}).Where("id = ?", task.ConversationID).Updates(map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
+
+	// 6. 增加其他成员的未读数
+	p.db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id != ?", task.ConversationID, task.UserID).
+		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
+
+	// 7. 广播消息到当前会话
+	responseData := map[string]interface{}{
+		"id":              msg.ID,
+		"conversation_id": msg.ConversationID,
+		"sender_id":       msg.SenderID,
+		"type":            msg.Type,
+		"content":         msg.Content,
+		"is_read":         msg.IsRead,
+		"created_at":      msg.CreatedAt,
+		"sender":          msg.Sender,
+		"is_avatar_reply": true,
+	}
+
+	if ws.GlobalHub != nil {
+		wsMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: responseData,
+		}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		ws.GlobalHub.SendToConversation(task.ConversationID, task.UserID, jsonMsg)
+	}
+
+	log.Printf("[AvatarWorkerPool] 分身直接回复已发送: conv=%d, msgID=%d", task.ConversationID, msg.ID)
 }
