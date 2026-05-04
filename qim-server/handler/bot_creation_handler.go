@@ -193,8 +193,17 @@ func CreateBot(c *gin.Context) {
 
 // UpdateMyBot 更新我的 Bot（仅允许待审批和已拒绝状态）
 func UpdateMyBot(c *gin.Context) {
-	userIDVal, _ := c.Get("user_id")
-	userID := userIDVal.(uint)
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		return
+	}
+
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		return
+	}
 
 	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -252,8 +261,17 @@ func UpdateMyBot(c *gin.Context) {
 
 // DeleteMyBot 删除我的 Bot
 func DeleteMyBot(c *gin.Context) {
-	userIDVal, _ := c.Get("user_id")
-	userID := userIDVal.(uint)
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		return
+	}
+
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		return
+	}
 
 	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
