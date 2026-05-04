@@ -32,28 +32,28 @@ export const AI_PROVIDERS: AIProvider[] = [
     id: 'openai',
     name: 'OpenAI',
     icon: '\ud83e\udd16',
-    defaultModel: 'gpt-3.5-turbo',
+    defaultModel: 'gpt-4o',
     defaultBaseURL: 'https://api.openai.com/v1'
   },
   {
     id: 'alibaba',
     name: '\u963f\u91cc\u901a\u4e49\u5343\u95ee',
     icon: '\ud83d\udd2e',
-    defaultModel: 'qwen-plus',
+    defaultModel: 'qwen-turbo',
     defaultBaseURL: 'https://dashscope.aliyuncs.com/api/v1'
   },
   {
     id: 'tencent',
     name: '\u817e\u8baf\u6df7\u5143',
     icon: '\ud83d\udcab',
-    defaultModel: 'hunyuan-pro',
+    defaultModel: 'hunyuan-lite',
     defaultBaseURL: 'https://hunyuan.tencentcloudapi.com'
   },
   {
     id: 'bytedance',
     name: '\u5b57\u8282\u8c46\u5305',
     icon: '\ud83c\udfaf',
-    defaultModel: 'doubao-pro-1.0',
+    defaultModel: 'doubao-pro-32k',
     defaultBaseURL: 'https://ark.cn-beijing.volces.com/api/v3'
   },
   {
@@ -62,6 +62,13 @@ export const AI_PROVIDERS: AIProvider[] = [
     icon: '\ud83e\udde0',
     defaultModel: 'claude-3-5-sonnet-20241022',
     defaultBaseURL: 'https://api.anthropic.com/v1'
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    icon: '\ud83d\udd0d',
+    defaultModel: 'deepseek-chat',
+    defaultBaseURL: 'https://api.deepseek.com/v1'
   }
 ]
 
