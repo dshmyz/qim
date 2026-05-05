@@ -33,7 +33,7 @@
         @use-bot="handleUseBot"
       />
       <MyModelConfigs v-if="activeTab === 'configs'" />
-      <AvatarSettingsPanel v-if="activeTab === 'avatar'" />
+      <MyAvatar v-if="activeTab === 'avatar'" />
 
       <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
         <CreateBotWizard @close="showCreateModal = false" />
@@ -50,6 +50,7 @@ import MyModelConfigs from './ai/MyModelConfigs.vue'
 import CreateBotWizard from './ai/CreateBotWizard.vue'
 import QDialog from '../shared/QDialog.vue'
 import AvatarSettingsPanel from '../avatar/AvatarSettingsPanel.vue'
+import MyAvatar from './ai/MyAvatar.vue'
 
 defineEmits(['back', 'toggleSidebar'])
 
