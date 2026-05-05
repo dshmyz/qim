@@ -125,3 +125,20 @@ export interface AvatarApprovalRecord {
   reviewerName?: string
   rejectedReason?: string
 }
+
+// 工具绑定 - 用于 Avatar 与 AI工具的关联
+export interface AvatarToolBinding {
+  avatarId: string
+  toolId: string
+  enabled: boolean
+  priority: number
+}
+
+// 带工具的Avatar - 包含可用工具列表的Avatar视图
+export interface AvatarWithTools {
+  id: string
+  enabled: boolean
+  persona: AvatarPersona
+  availableTools: AITool[]
+  lastActiveAt: Date
+}
