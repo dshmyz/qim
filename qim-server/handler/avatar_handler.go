@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/service"
 	"time"
@@ -11,15 +13,24 @@ import (
 	"gorm.io/gorm"
 )
 
+// AvatarTool 工具信息
+type AvatarTool struct {
+	ID          string
+	Name        string
+	Description string
+}
+
 type AvatarHandler struct {
 	db            *gorm.DB
 	avatarService *service.AvatarService
+	mcpServer     *ai.MCPServer
 }
 
-func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService) *AvatarHandler {
+func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService, mcpServer *ai.MCPServer) *AvatarHandler {
 	return &AvatarHandler{
 		db:            db,
 		avatarService: avatarService,
+		mcpServer:     mcpServer,
 	}
 }
 
@@ -44,6 +55,11 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// 审批相关
 		avatar.POST("/apply", h.ApplyForApproval)
 		avatar.POST("/cancel-apply", h.CancelApplication)
+
+		// 工具绑定相关
+		avatar.GET("/:id/tools", h.GetAvatarTools)
+		avatar.POST("/:id/tools/:toolId", h.BindTool)
+		avatar.DELETE("/:id/tools/:toolId", h.UnbindTool)
 	}
 }
 
@@ -530,4 +546,120 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 	h.db.Where("user_id = ?", userID).First(&config)
 	response := h.toConfigResponse(config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已取消申请", "data": response})
+}
+
+// getAvailableTools 获取可用的工具列表
+func (h *AvatarHandler) getAvailableTools() []AvatarTool {
+	tools := make([]AvatarTool, 0)
+	if h.mcpServer != nil {
+		toolList := h.mcpServer.ListTools()
+		for _, t := range toolList {
+			tools = append(tools, AvatarTool{
+				ID:          t["name"].(string),
+				Name:        t["name"].(string),
+				Description: t["description"].(string),
+			})
+		}
+	}
+	return tools
+}
+
+// GetAvatarTools 获取分身已绑定的工具列表
+func (h *AvatarHandler) GetAvatarTools(c *gin.Context) {
+	avatarID := c.Param("id")
+
+	var bindings []model.AvatarToolBinding
+	if err := h.db.Where("avatar_id = ?", avatarID).Find(&bindings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	tools := h.getAvailableTools()
+	result := make([]map[string]interface{}, 0)
+	for _, tool := range tools {
+		bound := false
+		priority := 1
+		for _, b := range bindings {
+			if b.ToolID == tool.ID {
+				bound = b.Enabled
+				priority = b.Priority
+				break
+			}
+		}
+		result = append(result, map[string]interface{}{
+			"id":          tool.ID,
+			"name":        tool.Name,
+			"description": tool.Description,
+			"enabled":      bound,
+			"priority":     priority,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": result})
+}
+
+// BindTool 绑定工具到分身
+func (h *AvatarHandler) BindTool(c *gin.Context) {
+	avatarID := c.Param("id")
+	toolID := c.Param("toolId")
+
+	avatarIDUint, err := parseUintWrapper(avatarID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的avatar ID"})
+		return
+	}
+
+	var binding model.AvatarToolBinding
+	if err := h.db.Where("avatar_id = ? AND tool_id = ?", avatarID, toolID).First(&binding).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			binding = model.AvatarToolBinding{
+				AvatarID: avatarIDUint,
+				ToolID:   toolID,
+				Enabled:  true,
+				Priority: 1,
+			}
+			if err := h.db.Create(&binding).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+	} else {
+		binding.Enabled = true
+		if err := h.db.Save(&binding).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "success": true})
+}
+
+// UnbindTool 解绑分身工具
+func (h *AvatarHandler) UnbindTool(c *gin.Context) {
+	avatarID := c.Param("id")
+	toolID := c.Param("toolId")
+
+	if err := h.db.Where("avatar_id = ? AND tool_id = ?", avatarID, toolID).
+		Update("enabled", false).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "success": true})
+}
+
+// parseUintWrapper 解析uint字符串，带错误处理
+func parseUintWrapper(s string) (uint, error) {
+	var result uint
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			result = result*10 + uint(c-'0')
+		} else {
+			return 0, errors.New("invalid number")
+		}
+	}
+	return result, nil
 }

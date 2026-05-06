@@ -80,6 +80,17 @@ type AvatarSession struct {
 	User         User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
+// AvatarToolBinding 分身工具绑定
+type AvatarToolBinding struct {
+	ID        uint      `gorm:"primaryKey"`
+	AvatarID  uint      `gorm:"index"`
+	ToolID    string    `gorm:"size:64"`
+	Enabled   bool      `gorm:"default:true"`
+	Priority  int       `gorm:"default:1"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // AvatarLearnTask 人设学习任务
 type AvatarLearnTask struct {
 	ID           uint       `json:"id" gorm:"primarykey"`

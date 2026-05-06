@@ -33,7 +33,8 @@
         @use-bot="handleUseBot"
       />
       <MyModelConfigs v-if="activeTab === 'configs'" />
-      
+      <MyAvatar v-if="activeTab === 'avatar'" />
+
       <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
         <CreateBotWizard @close="showCreateModal = false" />
       </QDialog>
@@ -48,6 +49,8 @@ import MyBotsPanel from './MyBotsPanel.vue'
 import MyModelConfigs from './ai/MyModelConfigs.vue'
 import CreateBotWizard from './ai/CreateBotWizard.vue'
 import QDialog from '../shared/QDialog.vue'
+import AvatarSettingsPanel from '../avatar/AvatarSettingsPanel.vue'
+import MyAvatar from './ai/MyAvatar.vue'
 
 defineEmits(['back', 'toggleSidebar'])
 
@@ -57,7 +60,8 @@ const showCreateModal = ref(false)
 const tabs = [
   { id: 'chat', label: '对话', icon: 'fas fa-comments' },
   { id: 'my-bots', label: '我的机器人', icon: 'fas fa-robot' },
-  { id: 'configs', label: '我的模型配置', icon: 'fas fa-key' }
+  { id: 'configs', label: '我的模型配置', icon: 'fas fa-key' },
+  { id: 'avatar', label: '我的分身', icon: 'fas fa-user-circle' }
 ]
 
 function switchTab(tabId: string) {

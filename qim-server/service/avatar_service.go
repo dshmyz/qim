@@ -19,6 +19,16 @@ type AvatarService struct {
 	workerPool *AvatarWorkerPool
 }
 
+// LearningData 多来源学习数据结构
+type LearningData struct {
+	Messages      []string
+	BotConfigs    []string
+	AIActions     []string
+	MessageWeight float64
+	BotWeight     float64
+	ActionWeight  float64
+}
+
 // NewAvatarService 创建分身服务实例
 func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 	service := &AvatarService{
@@ -304,4 +314,132 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// LearnFromMultipleSources 从多个来源学习用户风格
+func (s *AvatarService) LearnFromMultipleSources(userID uint) error {
+	db := s.db
+
+	messages := make([]model.Message, 0)
+	db.Where("sender_id = ?", userID).Order("created_at DESC").Limit(500).Find(&messages)
+
+	var botConfigs []model.Bot
+	db.Where("creator_id = ?", userID).Find(&botConfigs)
+
+	var aiActions []model.AIUsageLog
+	db.Where("user_id = ?", userID).Order("created_at DESC").Limit(100).Find(&aiActions)
+
+	learningData := LearningData{
+		Messages:      processMessages(messages),
+		BotConfigs:    processBotConfigs(botConfigs),
+		AIActions:     processAIActions(aiActions),
+		MessageWeight: 0.6,
+		BotWeight:     0.2,
+		ActionWeight:  0.2,
+	}
+
+	return s.UpdatePersona(userID, learningData)
+}
+
+// UpdatePersona 根据学习数据更新人设
+func (s *AvatarService) UpdatePersona(userID uint, data LearningData) error {
+	sampleText := buildLearningPrompt(data)
+
+	prompt := fmt.Sprintf(`分析以下从多个来源收集的用户数据，总结这个用户的说话风格和特征。
+
+%s
+
+请从以下维度分析：
+1. 语气特点（正式/随意/幽默/严肃等）
+2. 常用表达方式和口头禅
+3. 回复长度偏好（简短/详细）
+4. 表情符号使用习惯
+5. 专业领域或兴趣话题
+6. 其他显著的说话风格特征
+
+请用简洁的中文描述，不超过200字。`, sampleText)
+
+	aiMessages := []ai.Message{
+		{Role: "user", Content: prompt},
+	}
+	persona, err := s.aiService.GetCompletion(aiMessages)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	return s.db.Model(&model.AvatarConfig{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
+		"auto_learned_persona": persona,
+		"persona_version":      gorm.Expr("persona_version + 1"),
+		"last_learned_at":      now,
+	}).Error
+}
+
+// buildLearningPrompt 构建学习提示词
+func buildLearningPrompt(data LearningData) string {
+	var sb strings.Builder
+
+	if len(data.Messages) > 0 {
+		sb.WriteString("【聊天消息样本】（权重 60%%）\n")
+		for i, msg := range data.Messages {
+			if i >= 30 {
+				break
+			}
+			sb.WriteString("- " + msg + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(data.BotConfigs) > 0 {
+		sb.WriteString("【机器人配置】（权重 20%%）\n")
+		for _, config := range data.BotConfigs {
+			sb.WriteString("- " + config + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(data.AIActions) > 0 {
+		sb.WriteString("【AI使用行为】（权重 20%%）\n")
+		for _, action := range data.AIActions {
+			sb.WriteString("- " + action + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// processMessages 处理消息数据
+func processMessages(messages []model.Message) []string {
+	var result []string
+	for _, msg := range messages {
+		if len(msg.Content) > 10 && len(msg.Content) < 500 {
+			result = append(result, msg.Content)
+		}
+	}
+	if len(result) > 50 {
+		result = result[:50]
+	}
+	return result
+}
+
+// processBotConfigs 处理机器人配置数据
+func processBotConfigs(bots []model.Bot) []string {
+	var result []string
+	for _, bot := range bots {
+		desc := bot.Description
+		if desc == "" {
+			desc = bot.Name
+		}
+		result = append(result, fmt.Sprintf("机器人[%s]: %s", bot.Name, desc))
+	}
+	return result
+}
+
+// processAIActions 处理AI使用行为数据
+func processAIActions(actions []model.AIUsageLog) []string {
+	var result []string
+	for _, action := range actions {
+		result = append(result, action.MessagePreview)
+	}
+	return result
 }

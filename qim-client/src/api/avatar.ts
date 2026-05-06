@@ -4,7 +4,8 @@ import type {
   AvatarSession,
   AvatarLearnStatus,
   CreateAvatarConfigRequest,
-  AvatarConfigWithApproval
+  AvatarConfigWithApproval,
+  AvatarWithTools
 } from '../types/avatar'
 
 export const avatarAPI = {
@@ -131,5 +132,43 @@ export const avatarAPI = {
       { method: 'POST' }
     )
     return response!.data
+  },
+
+  // 工具绑定相关 API
+  async getAvailableTools(): Promise<any[]> {
+    const response = await request<{ code: number; data: any[] }>(
+      '/api/v1/avatar/tools',
+      { method: 'GET' }
+    )
+    return response?.data ?? []
+  },
+
+  async getAvatarWithTools(): Promise<AvatarWithTools | null> {
+    const [avatar, tools] = await Promise.all([
+      this.getConfig(),
+      this.getAvailableTools()
+    ])
+    if (!avatar) return null
+    return {
+      id: String(avatar.id),
+      enabled: avatar.enabled,
+      persona: avatar.persona,
+      availableTools: tools,
+      lastActiveAt: new Date()
+    }
+  },
+
+  async bindToolToAvatar(toolId: string): Promise<void> {
+    await request(
+      `/api/v1/avatar/tools/${toolId}`,
+      { method: 'POST' }
+    )
+  },
+
+  async unbindToolFromAvatar(toolId: string): Promise<void> {
+    await request(
+      `/api/v1/avatar/tools/${toolId}`,
+      { method: 'DELETE' }
+    )
   }
 }
