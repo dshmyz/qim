@@ -126,7 +126,7 @@ const messageForm = reactive({
   content: '',
   target_type: 'all' as string,
   target_id: undefined as number | undefined,
-  status: 'draft' as 'published' | 'draft',
+  status: 'draft' as 'published' | 'draft' | 'active',
 })
 
 const messageRules: FormRules = {
@@ -210,7 +210,7 @@ const handleSubmit = async () => {
         await updateSystemMessage(messageForm.id, {
           title: messageForm.title,
           content: messageForm.content,
-          status: messageForm.status === 'published' ? 'active' : 'draft',
+          status: messageForm.status === 'published' ? 'published' : 'draft',
         })
         ElMessage.success('更新成功')
       } else {

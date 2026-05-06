@@ -1,5 +1,28 @@
 <template>
   <div class="unified-approval-panel">
+    <!-- 审批配置卡片 -->
+    <el-card class="config-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span class="title">审批配置</span>
+          <el-tag type="info" size="small">控制各类操作的审批开关</el-tag>
+        </div>
+      </template>
+      <div class="config-grid">
+        <div v-for="config in approvalConfigs" :key="config.type" class="config-item">
+          <div class="config-info">
+            <span class="config-name">{{ getApprovalTypeName(config.type) }}</span>
+            <span class="config-desc">{{ config.description || '暂无描述' }}</span>
+          </div>
+          <el-switch
+            v-model="config.enabled"
+            @change="handleConfigChange(config)"
+            :loading="config.loading"
+          />
+        </div>
+      </div>
+    </el-card>
+
     <!-- 操作栏 -->
     <div class="action-bar">
       <div class="filter-left">
@@ -7,6 +30,7 @@
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="avatar">Avatar</el-radio-button>
           <el-radio-button value="bot">Bot</el-radio-button>
+          <el-radio-button value="group_ai">群聊AI</el-radio-button>
         </el-radio-group>
         <el-radio-group v-model="filterStatus" @change="fetchApprovals" style="margin-left: 16px">
           <el-radio-button value="pending">待审批 ({{ pendingCount }})</el-radio-button>
@@ -22,10 +46,10 @@
 
     <!-- 审批列表 -->
     <el-table :data="approvals" v-loading="loading" style="width: 100%">
-      <el-table-column label="类型" width="100">
+      <el-table-column label="类型" width="120">
         <template #default="{ row }">
-          <el-tag :type="row.type === 'avatar' ? 'success' : 'primary'" size="small">
-            {{ row.type === 'avatar' ? 'Avatar' : 'Bot' }}
+          <el-tag :type="getTypeTagType(row.type)" size="small">
+            {{ getApprovalTypeName(row.type) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -142,10 +166,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Loading } from '@element-plus/icons-vue'
-import { getApprovals, approveEntity, rejectEntity, enableAvatar, type ApprovalItem, type ApprovalType } from '@/api/approvals'
+import { 
+  getApprovals, 
+  approveEntity, 
+  rejectEntity, 
+  enableAvatar, 
+  getApprovalConfigs,
+  updateApprovalConfig,
+  type ApprovalItem, 
+  type ApprovalType,
+  type ApprovalConfig 
+} from '@/api/approvals'
 import { request } from '@/utils/request'
 
 interface User {
@@ -162,6 +196,63 @@ const approvals = ref<ApprovalItem[]>([])
 const pendingCount = ref(0)
 
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
+
+// 审批配置相关
+const approvalConfigs = ref<(ApprovalConfig & { loading?: boolean })[]>([])
+
+const getApprovalTypeName = (type: ApprovalType): string => {
+  const names: Record<string, string> = {
+    avatar: '分身功能',
+    bot: '机器人创建',
+    channel: '频道创建',
+    group_ai: '群聊AI助手',
+  }
+  return names[type] || type
+}
+
+const getTypeTagType = (type: ApprovalType): string => {
+  const types: Record<string, string> = {
+    avatar: 'success',
+    bot: 'primary',
+    channel: 'warning',
+    group_ai: 'info',
+  }
+  return types[type] || ''
+}
+
+const fetchApprovalConfigs = async () => {
+  try {
+    const { data } = await getApprovalConfigs()
+    if (data.code === 0) {
+      approvalConfigs.value = data.data.map(config => ({ ...config, loading: false }))
+    }
+  } catch (error) {
+    console.error('获取审批配置失败:', error)
+  }
+}
+
+const handleConfigChange = async (config: ApprovalConfig & { loading?: boolean }) => {
+  config.loading = true
+  try {
+    const { data } = await updateApprovalConfig(config.type, {
+      enabled: config.enabled,
+      description: config.description,
+    })
+    if (data.code === 0) {
+      ElMessage.success(`${getApprovalTypeName(config.type)}审批已${config.enabled ? '启用' : '关闭'}`)
+    } else {
+      // 恢复原状态
+      config.enabled = !config.enabled
+      ElMessage.error(data.message || '更新失败')
+    }
+  } catch (error) {
+    // 恢复原状态
+    config.enabled = !config.enabled
+    ElMessage.error('更新审批配置失败')
+  } finally {
+    config.loading = false
+  }
+}
 
 // 拒绝弹窗
 const rejectDialogVisible = ref(false)
@@ -263,8 +354,8 @@ const handleSearch = () => {
       const { data } = await request({
         url: `/v1/users/search?q=${encodeURIComponent(searchKeyword.value.trim())}`,
         method: 'get',
-      })
-      searchResults.value = data.data || []
+      }) as any
+      searchResults.value = (data?.data?.list || data?.data || []) as User[]
     } catch {
       searchResults.value = []
     } finally {
@@ -321,20 +412,74 @@ const formatTime = (time: string) => {
   })
 }
 
-onMounted(fetchApprovals)
+onMounted(() => {
+  fetchApprovalConfigs()
+  fetchApprovals()
+})
 </script>
 
 <style scoped>
 .unified-approval-panel {
+  padding: 20px;
+}
+
+.config-card {
+  margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-header .title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.config-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.config-item:hover {
+  background: var(--el-fill-color);
+}
+
+.config-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: 4px;
+}
+
+.config-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.config-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .action-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 16px;
 }
 
 .filter-left {

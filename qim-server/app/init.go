@@ -70,13 +70,16 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 自动迁移表
 	MigrateDB(db)
 
-	// 添加测试数据
-	test.AddTestData()
+	// 仅在非生产环境初始化测试数据
+	if cfg.Server.Mode != "release" {
+		// 添加测试数据
+		test.AddTestData()
 
-	// 初始化测试数据
-	test.InitTestData(db)
+		// 初始化测试数据
+		test.InitTestData(db)
+	}
 
-	// 初始化系统用户
+	// 初始化系统用户（无论什么环境都需要）
 	initSystemUser()
 
 	// 初始化WebSocket Hub
@@ -126,6 +129,7 @@ func MigrateDB(db *gorm.DB) {
 		&model.OperationLog{},        // 操作日志
 		&model.ClientVersion{},       // 客户端版本
 		&model.Blacklist{},           // 黑名单
+		&model.AIProvider{},          // AI提供商
 		&model.AvatarConfig{},        // 分身配置
 		&model.AvatarSession{},       // 分身会话状态
 		&model.AvatarLearnTask{},     // 分身学习任务
@@ -179,7 +183,6 @@ func migrateGroupData(db *gorm.DB) {
 			CreatorID:        0,
 			Announcement:     "",
 			InvitePermission: "owner_admin",
-			AIEnabled:        false,
 			CreatedAt:        conv.CreatedAt,
 			UpdatedAt:        conv.UpdatedAt,
 		}

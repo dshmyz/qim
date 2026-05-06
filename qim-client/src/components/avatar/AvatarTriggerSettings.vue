@@ -2,7 +2,7 @@
   <div class="avatar-trigger-settings">
     <div class="setting-item">
       <label>触发模式</label>
-      <select :value="modelValue.triggerRules.mode" @change="updateTrigger('mode', ($event.target as HTMLSelectElement).value)" class="form-select">
+      <select :value="modelValue.triggerRules?.mode ?? 'mention'" @change="updateTrigger('mode', ($event.target as HTMLSelectElement).value)" class="form-select">
         <option value="mention">被 @ 时回复</option>
         <option value="offline">离线时自动回复</option>
         <option value="keyword">关键词触发</option>
@@ -14,7 +14,7 @@
       </span>
     </div>
 
-    <div v-if="modelValue.triggerRules.mode === 'keyword' || modelValue.triggerRules.mode === 'custom'" class="setting-item">
+    <div v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'custom'" class="setting-item">
       <label>触发关键词</label>
       <div class="keyword-input-wrapper">
         <input
@@ -25,7 +25,7 @@
           placeholder="输入关键词后按回车"
         />
         <div class="keyword-tags">
-          <span v-for="(kw, i) in modelValue.triggerRules.keywords" :key="i" class="keyword-tag">
+          <span v-for="(kw, i) in modelValue.triggerRules?.keywords ?? []" :key="i" class="keyword-tag">
             {{ kw }}
             <button class="remove-tag" @click="removeKeyword(i)">x</button>
           </span>
@@ -68,7 +68,7 @@ const triggerModeHint = computed(() => {
     all: '分身会回复所有消息（请谨慎使用）',
     custom: '自定义触发规则，结合关键词和时间段'
   }
-  return hints[props.modelValue.triggerRules.mode] || ''
+  return hints[props.modelValue.triggerRules?.mode ?? ''] || ''
 })
 
 function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
@@ -78,18 +78,19 @@ function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
 function updateTrigger(key: string, value: any) {
   emit('update:modelValue', {
     ...props.modelValue,
-    triggerRules: { ...props.modelValue.triggerRules, [key]: value }
+    triggerRules: { ...props.modelValue.triggerRules ?? {}, [key]: value }
   })
 }
 
 function addKeyword() {
   const kw = keywordInput.value.trim()
-  if (kw && !props.modelValue.triggerRules.keywords.includes(kw)) {
+  const keywords = props.modelValue.triggerRules?.keywords ?? []
+  if (kw && !keywords.includes(kw)) {
     emit('update:modelValue', {
       ...props.modelValue,
       triggerRules: {
         ...props.modelValue.triggerRules,
-        keywords: [...props.modelValue.triggerRules.keywords, kw]
+        keywords: [...keywords, kw]
       }
     })
   }
@@ -97,7 +98,7 @@ function addKeyword() {
 }
 
 function removeKeyword(index: number) {
-  const keywords = [...props.modelValue.triggerRules.keywords]
+  const keywords = [...(props.modelValue.triggerRules?.keywords ?? [])]
   keywords.splice(index, 1)
   emit('update:modelValue', {
     ...props.modelValue,

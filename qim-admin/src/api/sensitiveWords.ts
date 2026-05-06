@@ -35,7 +35,7 @@ export const deleteSensitiveWord = (id: number): Promise<AxiosResponse<ApiRespon
 
 export const toggleSensitiveWordStatus = (id: number, status: 'active' | 'inactive'): Promise<AxiosResponse<ApiResponse<SensitiveWord>>> => {
   return request({
-    url: `/v1/sensitive-words/${id}/status`,
+    url: `/v1/sensitive-words/${id}/toggle`,
     method: 'patch',
     data: { status },
   })

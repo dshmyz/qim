@@ -1,5 +1,7 @@
 -- DDL for QIM Server Database
 -- SQLite DDL
+-- Version: 1.0.0
+-- Updated: 2026-05-05
 
 -- Users table
 CREATE TABLE IF NOT EXISTS `users` (
@@ -63,6 +65,36 @@ CREATE TABLE IF NOT EXISTS `conversations` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Groups table
+CREATE TABLE IF NOT EXISTS `groups` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `conversation_id` INTEGER NOT NULL UNIQUE,
+  `group_type` VARCHAR(20) NOT NULL DEFAULT 'group',
+  `name` VARCHAR(200) NOT NULL,
+  `avatar` VARCHAR(500),
+  `creator_id` INTEGER NOT NULL,
+  `announcement` TEXT,
+  `invite_permission` VARCHAR(20) DEFAULT 'owner_admin',
+  `ai_config` TEXT,
+  `approval_status` VARCHAR(20) DEFAULT 'approved',
+  `applied_at` DATETIME,
+  `approved_at` DATETIME,
+  `approved_by` INTEGER,
+  `reject_reason` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Group documents table
+CREATE TABLE IF NOT EXISTS `group_documents` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `group_id` INTEGER NOT NULL,
+  `file_id` INTEGER NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS `idx_group_documents_group_id` ON `group_documents`(`group_id`);
 
 -- Conversation members table
 CREATE TABLE IF NOT EXISTS `conversation_members` (
@@ -153,6 +185,8 @@ CREATE TABLE IF NOT EXISTS `notes` (
   `content` TEXT NOT NULL,
   `type` VARCHAR(20) DEFAULT 'note',
   `style` TEXT DEFAULT '{}',
+  `tags` TEXT,
+  `summary` TEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -167,7 +201,9 @@ CREATE TABLE IF NOT EXISTS `conversation_sessions` (
   `user_id` INTEGER NOT NULL,
   `conversation_id` INTEGER NOT NULL,
   `is_pinned` BOOLEAN DEFAULT FALSE,
+  `is_hidden` BOOLEAN DEFAULT FALSE,
   `pinned_at` DATETIME,
+  `hidden_at` DATETIME,
   `last_visited_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -228,6 +264,19 @@ CREATE INDEX IF NOT EXISTS `idx_bot_conversations_bot_id` ON `bot_conversations`
 CREATE INDEX IF NOT EXISTS `idx_bot_conversations_user_id` ON `bot_conversations`(`user_id`);
 CREATE INDEX IF NOT EXISTS `idx_bot_conversations_conversation_id` ON `bot_conversations`(`conversation_id`);
 
+-- AI usage logs table
+CREATE TABLE IF NOT EXISTS `ai_usage_logs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `bot_id` INTEGER NOT NULL,
+  `message_preview` VARCHAR(100),
+  `call_type` VARCHAR(20),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS `idx_ai_usage_logs_user_id` ON `ai_usage_logs`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_ai_usage_logs_bot_id` ON `ai_usage_logs`(`bot_id`);
+
 -- Events table
 CREATE TABLE IF NOT EXISTS `events` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,6 +294,27 @@ CREATE TABLE IF NOT EXISTS `events` (
 
 CREATE INDEX IF NOT EXISTS `idx_events_user_id` ON `events`(`user_id`);
 CREATE INDEX IF NOT EXISTS `idx_events_deleted_at` ON `events`(`deleted_at`);
+
+-- Tasks table
+CREATE TABLE IF NOT EXISTS `tasks` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `title` VARCHAR(500) NOT NULL,
+  `description` TEXT,
+  `due_date` DATETIME,
+  `priority` VARCHAR(20) DEFAULT 'medium',
+  `status` VARCHAR(20) DEFAULT 'todo',
+  `assignee_id` VARCHAR(100),
+  `tags` TEXT,
+  `sub_tasks` TEXT,
+  `position` INTEGER DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS `idx_tasks_user_id` ON `tasks`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_tasks_deleted_at` ON `tasks`(`deleted_at`);
 
 -- User roles table
 CREATE TABLE IF NOT EXISTS `user_roles` (
@@ -280,7 +350,8 @@ CREATE TABLE IF NOT EXISTS `mini_apps` (
   `description` TEXT,
   `icon` VARCHAR(500),
   `path` VARCHAR(500),
-  `status` VARCHAR(20) DEFAULT 'active',
+  `status` VARCHAR(20) DEFAULT 'inactive',
+  `permissions` TEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -298,6 +369,7 @@ CREATE TABLE IF NOT EXISTS `apps` (
   `url` VARCHAR(500),
   `status` VARCHAR(20) DEFAULT 'active',
   `open_type` VARCHAR(20) DEFAULT 'in-app',
+  `is_global` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -310,11 +382,17 @@ CREATE INDEX IF NOT EXISTS `idx_apps_deleted_at` ON `apps`(`deleted_at`);
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `user_id` INTEGER NOT NULL,
-  `type` VARCHAR(20) NOT NULL,
+  `type` VARCHAR(30) NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `content` TEXT NOT NULL,
   `read` BOOLEAN DEFAULT FALSE,
   `read_at` DATETIME,
+  `priority` VARCHAR(10) DEFAULT 'normal',
+  `action_type` VARCHAR(30) DEFAULT '',
+  `action_payload` TEXT DEFAULT '',
+  `pinned` BOOLEAN DEFAULT FALSE,
+  `important` BOOLEAN DEFAULT FALSE,
+  `handled` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -331,6 +409,7 @@ CREATE TABLE IF NOT EXISTS `channels` (
   `avatar` VARCHAR(500),
   `creator_id` INTEGER NOT NULL,
   `status` VARCHAR(20) DEFAULT 'active',
+  `publish_permission` VARCHAR(20) DEFAULT 'creator_only',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
@@ -364,7 +443,40 @@ CREATE TABLE IF NOT EXISTS `channel_messages` (
 CREATE INDEX IF NOT EXISTS `idx_channel_messages_channel_id` ON `channel_messages`(`channel_id`);
 CREATE INDEX IF NOT EXISTS `idx_channel_messages_deleted_at` ON `channel_messages`(`deleted_at`);
 
--- User ai configs table
+-- AI configs table
+CREATE TABLE IF NOT EXISTS `ai_configs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL UNIQUE,
+  `provider` VARCHAR(50) DEFAULT 'openai',
+  `openai_api_key` VARCHAR(500),
+  `openai_model` VARCHAR(100),
+  `openai_base_url` VARCHAR(500),
+  `baidu_api_key` VARCHAR(500),
+  `baidu_secret_key` VARCHAR(500),
+  `baidu_model` VARCHAR(100),
+  `baidu_base_url` VARCHAR(500),
+  `alibaba_api_key` VARCHAR(500),
+  `alibaba_model` VARCHAR(100),
+  `alibaba_base_url` VARCHAR(500),
+  `tencent_secret_id` VARCHAR(500),
+  `tencent_secret_key` VARCHAR(500),
+  `tencent_model` VARCHAR(100),
+  `tencent_base_url` VARCHAR(500),
+  `bytedance_api_key` VARCHAR(500),
+  `bytedance_model` VARCHAR(100),
+  `bytedance_base_url` VARCHAR(500),
+  `anthropic_api_key` VARCHAR(500),
+  `anthropic_model` VARCHAR(100),
+  `anthropic_base_url` VARCHAR(500),
+  `ai_enabled` BOOLEAN DEFAULT TRUE,
+  `daily_limit` INTEGER DEFAULT 0,
+  `max_tokens` INTEGER DEFAULT 1000,
+  `temperature` DECIMAL(3,2) DEFAULT 0.70,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User AI configs table
 CREATE TABLE IF NOT EXISTS `user_ai_configs` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `user_id` INTEGER NOT NULL,
@@ -373,14 +485,126 @@ CREATE TABLE IF NOT EXISTS `user_ai_configs` (
   `api_key_encrypted` TEXT NOT NULL,
   `model_name` VARCHAR(50) NOT NULL,
   `base_url` VARCHAR(255),
-  `temperature` DECIMAL(3,2) DEFAULT 0.7,
+  `temperature` DECIMAL(3,2) DEFAULT 0.70,
   `max_tokens` INTEGER DEFAULT 1000,
   `is_verified` BOOLEAN DEFAULT FALSE,
   `last_tested_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`),
   UNIQUE(`user_id`, `config_name`)
 );
 
 CREATE INDEX IF NOT EXISTS `idx_user_ai_configs_user_id` ON `user_ai_configs`(`user_id`);
+
+-- Sensitive words table
+CREATE TABLE IF NOT EXISTS `sensitive_words` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `word` VARCHAR(100) NOT NULL UNIQUE,
+  `level` VARCHAR(20) DEFAULT 'medium',
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS `idx_sensitive_words_deleted_at` ON `sensitive_words`(`deleted_at`);
+
+-- System configs table
+CREATE TABLE IF NOT EXISTS `system_configs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `key` VARCHAR(100) NOT NULL UNIQUE,
+  `value` TEXT NOT NULL,
+  `type` VARCHAR(20) DEFAULT 'string',
+  `desc` VARCHAR(500),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Operation logs table
+CREATE TABLE IF NOT EXISTS `operation_logs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `username` VARCHAR(100),
+  `action` VARCHAR(100) NOT NULL,
+  `module` VARCHAR(50),
+  `ip` VARCHAR(50),
+  `user_agent` TEXT,
+  `request_url` VARCHAR(500),
+  `request_body` TEXT,
+  `response` TEXT,
+  `duration` INTEGER,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS `idx_operation_logs_user_id` ON `operation_logs`(`user_id`);
+
+-- Client versions table
+CREATE TABLE IF NOT EXISTS `client_versions` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `version` VARCHAR(50) NOT NULL UNIQUE,
+  `platform` VARCHAR(20) NOT NULL,
+  `type` VARCHAR(20) DEFAULT 'full',
+  `download_url` VARCHAR(500),
+  `changelog` TEXT,
+  `force_update` BOOLEAN DEFAULT FALSE,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS `idx_client_versions_deleted_at` ON `client_versions`(`deleted_at`);
+
+-- Blacklist table
+CREATE TABLE IF NOT EXISTS `blacklists` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL UNIQUE,
+  `reason` TEXT,
+  `operator` VARCHAR(100),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS `idx_blacklists_user_id` ON `blacklists`(`user_id`);
+
+-- Short links table
+CREATE TABLE IF NOT EXISTS `short_links` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `original_url` TEXT NOT NULL,
+  `code` VARCHAR(20) NOT NULL UNIQUE,
+  `custom_code` VARCHAR(50),
+  `expires_at` DATETIME,
+  `password` VARCHAR(255),
+  `visit_count` INTEGER DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS `idx_short_links_user_id` ON `short_links`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_short_links_deleted_at` ON `short_links`(`deleted_at`);
+
+-- Approval configs table
+CREATE TABLE IF NOT EXISTS `approval_configs` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `type` VARCHAR(20) NOT NULL UNIQUE,
+  `enabled` BOOLEAN DEFAULT FALSE,
+  `description` VARCHAR(200),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Avatars table
+CREATE TABLE IF NOT EXISTS `avatars` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `avatar_url` VARCHAR(500) NOT NULL,
+  `avatar_style` TEXT,
+  `is_active` BOOLEAN DEFAULT TRUE,
+  `is_default` BOOLEAN DEFAULT FALSE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS `idx_avatars_user_id` ON `avatars`(`user_id`);

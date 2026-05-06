@@ -29,8 +29,29 @@ func GetVersions(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&versions)
 
+	// 转换为前端期望格式
+	var frontendList []gin.H
+	for _, v := range versions {
+		status := "inactive"
+		if v.Enabled {
+			status = "active"
+		}
+
+		frontendList = append(frontendList, gin.H{
+			"id":           v.ID,
+			"version":      v.Version,
+			"platform":     v.Platform,
+			"downloadUrl":  v.DownloadURL,
+			"updateNotes":  v.Changelog,
+			"forceUpdate":  v.ForceUpdate,
+			"status":       status,
+			"releaseDate":  v.CreatedAt.Format("2006-01-02"),
+			"createdAt":    v.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	response.Success(c, gin.H{
-		"list":     versions,
+		"list":     frontendList,
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
@@ -39,13 +60,12 @@ func GetVersions(c *gin.Context) {
 
 func CreateVersion(c *gin.Context) {
 	var req struct {
-		Version     string `json:"version" binding:"required"`
-		Platform    string `json:"platform" binding:"required"`
-		Type        string `json:"type"`
-		DownloadURL string `json:"download_url"`
-		Changelog   string `json:"changelog"`
-		ForceUpdate bool   `json:"force_update"`
-		Enabled     bool   `json:"enabled"`
+		Version      string `json:"version" binding:"required"`
+		Platform     string `json:"platform" binding:"required"`
+		ReleaseDate  string `json:"releaseDate"`
+		DownloadUrl  string `json:"downloadUrl"`
+		UpdateNotes  string `json:"updateNotes"`
+		ForceUpdate  bool   `json:"forceUpdate"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -61,19 +81,13 @@ func CreateVersion(c *gin.Context) {
 		return
 	}
 
-	versionType := req.Type
-	if versionType == "" {
-		versionType = "full"
-	}
-
 	version := model.ClientVersion{
 		Version:     req.Version,
 		Platform:    req.Platform,
-		Type:        versionType,
-		DownloadURL: req.DownloadURL,
-		Changelog:   req.Changelog,
+		DownloadURL: req.DownloadUrl,
+		Changelog:   req.UpdateNotes,
 		ForceUpdate: req.ForceUpdate,
-		Enabled:     req.Enabled,
+		Enabled:     true,
 	}
 
 	if err := db.Create(&version).Error; err != nil {
@@ -88,13 +102,9 @@ func UpdateVersion(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
 	var req struct {
-		Version     string `json:"version"`
-		Platform    string `json:"platform"`
-		Type        string `json:"type"`
-		DownloadURL string `json:"download_url"`
-		Changelog   string `json:"changelog"`
-		ForceUpdate *bool  `json:"force_update"`
-		Enabled     *bool  `json:"enabled"`
+		UpdateNotes *string `json:"updateNotes"`
+		ForceUpdate *bool   `json:"forceUpdate"`
+		Status      *string `json:"status"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -109,26 +119,14 @@ func UpdateVersion(c *gin.Context) {
 		return
 	}
 
-	if req.Version != "" {
-		version.Version = req.Version
-	}
-	if req.Platform != "" {
-		version.Platform = req.Platform
-	}
-	if req.Type != "" {
-		version.Type = req.Type
-	}
-	if req.DownloadURL != "" {
-		version.DownloadURL = req.DownloadURL
-	}
-	if req.Changelog != "" {
-		version.Changelog = req.Changelog
+	if req.UpdateNotes != nil {
+		version.Changelog = *req.UpdateNotes
 	}
 	if req.ForceUpdate != nil {
 		version.ForceUpdate = *req.ForceUpdate
 	}
-	if req.Enabled != nil {
-		version.Enabled = *req.Enabled
+	if req.Status != nil {
+		version.Enabled = *req.Status == "active"
 	}
 
 	if err := db.Save(&version).Error; err != nil {
@@ -160,6 +158,14 @@ func DeleteVersion(c *gin.Context) {
 func ToggleVersionStatus(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
 	db := database.GetDB()
 	var version model.ClientVersion
 	if err := db.First(&version, uint(id)).Error; err != nil {
@@ -167,7 +173,7 @@ func ToggleVersionStatus(c *gin.Context) {
 		return
 	}
 
-	version.Enabled = !version.Enabled
+	version.Enabled = req.Status == "active"
 	if err := db.Save(&version).Error; err != nil {
 		response.InternalServerError(c, "更新失败")
 		return

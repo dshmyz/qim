@@ -43,20 +43,6 @@
           <span class="tag-label">我的任务</span>
         </button>
       </div>
-      <div class="search-box">
-        <i class="fas fa-search"></i>
-        <input
-          type="text"
-          :value="store.filters.search"
-          @input="onSearch"
-          placeholder="搜索任务..."
-          class="search-input"
-        />
-      </div>
-      <button class="create-btn" @click="$emit('create')" title="新建任务">
-        <i class="fas fa-plus"></i>
-        <span class="create-label">新建任务</span>
-      </button>
     </div>
   </div>
 </template>
@@ -75,10 +61,6 @@ const views: { id: TaskView; label: string; icon: string }[] = [
   { id: 'calendar', label: '日历', icon: 'fas fa-calendar-alt' },
   { id: 'workspace', label: '工作台', icon: 'fas fa-user-circle' }
 ]
-
-function onSearch(event: Event) {
-  store.setFilters({ search: (event.target as HTMLInputElement).value })
-}
 
 function togglePriorityFilter(priority: 'high') {
   store.setFilters({ priority: store.filters.priority === priority ? null : priority })
@@ -111,7 +93,6 @@ onMounted(() => document.addEventListener('keydown', onKeydown))
 onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 
 defineEmits<{
-  create: []
 }>()
 </script>
 

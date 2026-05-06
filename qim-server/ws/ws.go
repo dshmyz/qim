@@ -16,6 +16,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const (
+	StatusOnline  = "online"
+	StatusOffline = "offline"
+	StatusBusy    = "busy"
+
+	// 状态变更防抖延迟
+	StatusDebounceDelay = 500 * time.Millisecond
+)
+
 var GlobalHub *Hub
 
 var upgrader = websocket.Upgrader{
@@ -37,6 +46,11 @@ type Hub struct {
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
+
+	// 状态变更防抖器
+	statusDebouncer *StatusDebouncer
+	// 用户状态订阅关系 (用户ID -> 订阅者列表)
+	userSubscribers sync.Map
 }
 
 type Client struct {
@@ -74,6 +88,7 @@ func NewHub() *Hub {
 		conversationMembers: make(map[uint][]uint),
 		nodes:               nodes,
 		nodeID:              nodeID,
+		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
 	}
 }
 
@@ -109,9 +124,8 @@ func (h *Hub) Run() {
 			}
 			log.Printf("用户 %d 连接", client.userID)
 
-			// 更新用户在线状态
-			db := database.GetDB()
-			db.Model(&model.User{}).Where("id = ?", client.userID).Update("status", "online")
+			// 更新用户在线状态并广播
+			h.UpdateUserStatus(client.userID, StatusOnline)
 
 		case client := <-h.unregister:
 			if _, ok := h.clients.Load(client); ok {
@@ -129,13 +143,16 @@ func (h *Hub) Run() {
 
 					if len(clients) == 0 {
 						h.userClients.Delete(client.userID)
-						db := database.GetDB()
-						db.Model(&model.User{}).Where("id = ?", client.userID).Update("status", "offline")
+						// 更新用户离线状态并广播
+						h.UpdateUserStatus(client.userID, StatusOffline)
 					} else {
 						h.userClients.Store(client.userID, clients)
 					}
 				}
 			}
+
+			// 清理用户的订阅
+			h.CleanupUserSubscriptions(client.userID)
 			log.Printf("用户 %d 断开连接", client.userID)
 
 		case message := <-h.broadcast:
@@ -332,6 +349,10 @@ func (c *Client) readPump() {
 		switch msg.Type {
 		case "heartbeat":
 			// 心跳，无需处理
+		case "subscribe_user_status":
+			handleSubscribeUserStatus(c, msg.Data)
+		case "unsubscribe_user_status":
+			handleUnsubscribeUserStatus(c, msg.Data)
 		case "send_message":
 			handleSendMessage(c, msg.Data)
 		case "read_message":
@@ -342,6 +363,13 @@ func (c *Client) readPump() {
 			handleWebRTCSignal(c, msg.Data, "webrtc_answer")
 		case "webrtc_ice_candidate":
 			handleWebRTCSignal(c, msg.Data, "webrtc_ice_candidate")
+		// 新的消息格式（点分隔）
+		case "webrtc.offer":
+			handleWebRTCSignal(c, msg.Data, "webrtc.offer")
+		case "webrtc.answer":
+			handleWebRTCSignal(c, msg.Data, "webrtc.answer")
+		case "webrtc.ice-candidate":
+			handleWebRTCSignal(c, msg.Data, "webrtc.ice-candidate")
 		case "call_invite":
 			handleCallInvite(c, msg.Data)
 		case "call_accept":
@@ -349,6 +377,13 @@ func (c *Client) readPump() {
 		case "call_reject":
 			handleCallReject(c, msg.Data)
 		case "call_end":
+			handleCallEnd(c, msg.Data)
+		// 新的通话消息格式（点分隔）
+		case "call.start":
+			handleCallInvite(c, msg.Data)
+		case "call.answer":
+			handleCallAccept(c, msg.Data)
+		case "call.end":
 			handleCallEnd(c, msg.Data)
 		case "screen-share-start":
 			handleScreenShareStart(c, msg.Data)
@@ -359,6 +394,17 @@ func (c *Client) readPump() {
 		case "screen-share-request":
 			handleScreenShareRequest(c, msg.Data)
 		case "screen-share-response":
+			handleScreenShareResponse(c, msg.Data)
+		// 新的屏幕共享消息格式（点分隔）
+		case "screen-share.start":
+			handleScreenShareStart(c, msg.Data)
+		case "screen-share.stop":
+			handleScreenShareStop(c, msg.Data)
+		case "screen-share.data":
+			handleScreenShareData(c, msg.Data)
+		case "screen-share.request":
+			handleScreenShareRequest(c, msg.Data)
+		case "screen-share.response":
 			handleScreenShareResponse(c, msg.Data)
 		// 实时通信事件
 		case "realtime:session:create":
@@ -581,7 +627,8 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 	// 构建转发的信令消息
 	// ICE 候选者使用 candidate 字段，其他信令使用 signal 字段
 	signalData := msgData["signal"]
-	if signalType == "webrtc_ice_candidate" {
+	// 支持新旧两种 ICE candidate 消息格式
+	if signalType == "webrtc_ice_candidate" || signalType == "webrtc.ice-candidate" {
 		signalData = msgData["candidate"]
 	}
 
@@ -922,10 +969,11 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 
 	// 构建屏幕共享请求消息
 	wsMsg := WSMessage{
-		Type: "screen-share-request",
+		Type: "screen-share.request",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         c.userID,
+			"from_user_id":    c.userID,
 			"from_user_name":  senderNickname,
 			"timestamp":       time.Now().Unix(),
 		},
@@ -1172,4 +1220,240 @@ func handleCallEnd(c *Client, data interface{}) {
 	}
 	jsonMsg, _ := json.Marshal(callMsg)
 	c.hub.SendToUser(targetUserID, jsonMsg)
+}
+
+// StatusDebouncer 状态变更防抖器
+type StatusDebouncer struct {
+	mu     sync.Mutex
+	timers map[uint]*time.Timer
+	delay  time.Duration
+}
+
+func NewStatusDebouncer(delay time.Duration) *StatusDebouncer {
+	return &StatusDebouncer{
+		timers: make(map[uint]*time.Timer),
+		delay:  delay,
+	}
+}
+
+func (d *StatusDebouncer) Debounce(userID uint, fn func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if timer, exists := d.timers[userID]; exists {
+		timer.Stop()
+	}
+
+	d.timers[userID] = time.AfterFunc(d.delay, func() {
+		fn()
+		d.mu.Lock()
+		delete(d.timers, userID)
+		d.mu.Unlock()
+	})
+}
+
+// UpdateUserStatus 更新用户状态并广播
+func (h *Hub) UpdateUserStatus(userID uint, status string) {
+	db := database.GetDB()
+	now := time.Now()
+
+	result := db.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"status":      status,
+		"last_online": now,
+	})
+	if result.Error != nil {
+		log.Printf("更新用户状态失败: userID=%d, error=%v", userID, result.Error)
+		return
+	}
+
+	if result.RowsAffected > 0 {
+		log.Printf("用户 %d 状态变更为 %s", userID, status)
+		h.statusDebouncer.Debounce(userID, func() {
+			h.BroadcastUserStatus(userID, status)
+		})
+	}
+}
+
+// BroadcastUserStatus 广播用户状态变更
+func (h *Hub) BroadcastUserStatus(userID uint, status string) {
+	db := database.GetDB()
+	var user model.User
+	if err := db.Select("id", "username", "nickname", "avatar", "status", "last_online").
+		First(&user, userID).Error; err != nil {
+		log.Printf("获取用户信息失败: userID=%d, error=%v", userID, err)
+		return
+	}
+
+	msg := WSMessage{
+		Type: "user_status_changed",
+		Data: map[string]interface{}{
+			"user_id":  user.ID,
+			"username": user.Username,
+			"nickname": user.Nickname,
+			"avatar":   user.Avatar,
+			"status":   status,
+			"last_online": func() int64 {
+				if user.LastOnline != nil {
+					return user.LastOnline.Unix()
+				}
+				return 0
+			}(),
+			"timestamp": time.Now().Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(msg)
+
+	if subscribers, ok := h.userSubscribers.Load(userID); ok {
+		for _, subscriberID := range subscribers.([]uint) {
+			h.SendToUser(subscriberID, jsonMsg)
+		}
+	}
+
+	h.BroadcastToConversationMembers(userID, jsonMsg)
+
+	log.Printf("已向订阅者广播用户 %d 的状态变更: %s", userID, status)
+}
+
+// BroadcastToConversationMembers 向用户所在会话的成员广播状态变更
+func (h *Hub) BroadcastToConversationMembers(userID uint, message []byte) {
+	db := database.GetDB()
+
+	var members []model.ConversationMember
+	if err := db.Select("conversation_id").
+		Where("user_id = ?", userID).
+		Group("conversation_id").
+		Find(&members).Error; err != nil {
+		log.Printf("获取用户会话失败: userID=%d, error=%v", userID, err)
+		return
+	}
+
+	for _, member := range members {
+		h.SendToConversation(member.ConversationID, userID, message)
+	}
+}
+
+// SubscribeUserStatus 订阅用户状态变更
+func (h *Hub) SubscribeUserStatus(subscriberID, targetUserID uint) {
+	h.userSubscribers.Range(func(key, value interface{}) bool {
+		if key.(uint) == targetUserID {
+			subscribers := value.([]uint)
+			for _, sid := range subscribers {
+				if sid == subscriberID {
+					return false
+				}
+			}
+			subscribers = append(subscribers, subscriberID)
+			h.userSubscribers.Store(targetUserID, subscribers)
+			return false
+		}
+		return true
+	})
+
+	h.userSubscribers.CompareAndSwap(targetUserID, nil, []uint{subscriberID})
+}
+
+// UnsubscribeUserStatus 取消订阅用户状态变更
+func (h *Hub) UnsubscribeUserStatus(subscriberID, targetUserID uint) {
+	h.userSubscribers.Range(func(key, value interface{}) bool {
+		if key.(uint) == targetUserID {
+			subscribers := value.([]uint)
+			for i, sid := range subscribers {
+				if sid == subscriberID {
+					subscribers = append(subscribers[:i], subscribers[i+1:]...)
+					if len(subscribers) == 0 {
+						h.userSubscribers.Delete(key)
+					} else {
+						h.userSubscribers.Store(key, subscribers)
+					}
+					return false
+				}
+			}
+		}
+		return true
+	})
+}
+
+// CleanupUserSubscriptions 清理用户的所有订阅
+func (h *Hub) CleanupUserSubscriptions(userID uint) {
+	h.userSubscribers.Range(func(key, value interface{}) bool {
+		subscribers := value.([]uint)
+		for i, sid := range subscribers {
+			if sid == userID {
+				subscribers = append(subscribers[:i], subscribers[i+1:]...)
+				if len(subscribers) == 0 {
+					h.userSubscribers.Delete(key)
+				} else {
+					h.userSubscribers.Store(key, subscribers)
+				}
+				break
+			}
+		}
+		return true
+	})
+}
+
+// handleSubscribeUserStatus 处理订阅用户状态请求
+func handleSubscribeUserStatus(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("订阅用户状态数据格式错误")
+		return
+	}
+
+	targetUserIDFloat, ok := msgData["user_id"].(float64)
+	if !ok {
+		log.Printf("订阅用户状态缺少 user_id")
+		return
+	}
+
+	targetUserID := uint(targetUserIDFloat)
+	log.Printf("用户 %d 订阅用户 %d 的状态变更", c.userID, targetUserID)
+
+	c.hub.SubscribeUserStatus(c.userID, targetUserID)
+
+	// 立即返回当前状态
+	db := database.GetDB()
+	var user model.User
+	if err := db.Select("id", "username", "nickname", "avatar", "status", "last_online").
+		First(&user, targetUserID).Error; err == nil {
+		msg := WSMessage{
+			Type: "user_status_changed",
+			Data: map[string]interface{}{
+				"user_id":  user.ID,
+				"username": user.Username,
+				"nickname": user.Nickname,
+				"avatar":   user.Avatar,
+				"status":   user.Status,
+				"last_online": func() int64 {
+					if user.LastOnline != nil {
+						return user.LastOnline.Unix()
+					}
+					return 0
+				}(),
+				"timestamp": time.Now().Unix(),
+			},
+		}
+		jsonMsg, _ := json.Marshal(msg)
+		c.hub.SendToUser(c.userID, jsonMsg)
+	}
+}
+
+// handleUnsubscribeUserStatus 处理取消订阅用户状态请求
+func handleUnsubscribeUserStatus(c *Client, data interface{}) {
+	msgData, ok := data.(map[string]interface{})
+	if !ok {
+		log.Printf("取消订阅用户状态数据格式错误")
+		return
+	}
+
+	targetUserIDFloat, ok := msgData["user_id"].(float64)
+	if !ok {
+		log.Printf("取消订阅用户状态缺少 user_id")
+		return
+	}
+
+	targetUserID := uint(targetUserIDFloat)
+	log.Printf("用户 %d 取消订阅用户 %d 的状态变更", c.userID, targetUserID)
+
+	c.hub.UnsubscribeUserStatus(c.userID, targetUserID)
 }

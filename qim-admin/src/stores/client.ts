@@ -12,7 +12,7 @@ export const useClientStore = defineStore('client', () => {
     loading.value = true
     try {
       const { data } = await getVersions()
-      versions.value = data.data
+      versions.value = data.data.list || []
     } finally {
       loading.value = false
     }

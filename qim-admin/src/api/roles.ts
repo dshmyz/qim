@@ -4,23 +4,23 @@ import type { AxiosResponse } from 'axios'
 
 export const getRoles = (params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<Role>>>> => {
   return request({
-    url: '/v1/roles',
+    url: '/v1/admin/roles',
     method: 'get',
     params,
   })
 }
 
-export const createRole = (data: { name: string; code: string; description: string; permissions: string[] }): Promise<AxiosResponse<ApiResponse<Role>>> => {
+export const createRole = (data: { user_id: number; role: string }): Promise<AxiosResponse<ApiResponse<{ id: number; user_id: number; role: string }>>> => {
   return request({
-    url: '/v1/roles',
+    url: '/v1/admin/roles',
     method: 'post',
     data,
   })
 }
 
-export const updateRole = (id: number, data: { name?: string; description?: string; permissions?: string[] }): Promise<AxiosResponse<ApiResponse<Role>>> => {
+export const updateRole = (id: number, data: { role?: string }): Promise<AxiosResponse<ApiResponse<{ id: number; role: string }>>> => {
   return request({
-    url: `/v1/roles/${id}`,
+    url: `/v1/admin/roles/${id}`,
     method: 'put',
     data,
   })
@@ -28,14 +28,14 @@ export const updateRole = (id: number, data: { name?: string; description?: stri
 
 export const deleteRole = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/v1/roles/${id}`,
+    url: `/v1/admin/roles/${id}`,
     method: 'delete',
   })
 }
 
-export const getRoleUsers = (id: number, params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<{ id: number; username: string; nickname?: string; avatar?: string }>>>> => {
+export const getRoleUsers = (role: string, params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<{ id: number; username: string; nickname?: string; avatar?: string }>>>> => {
   return request({
-    url: `/v1/roles/${id}/users`,
+    url: `/v1/admin/roles/${role}/users`,
     method: 'get',
     params,
   })

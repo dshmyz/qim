@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import type { StreamState, MediaStreamSourceType } from '@/types/realtime'
 
 export function useMediaStream(source: MediaStreamSourceType) {
@@ -148,10 +148,6 @@ export function useMediaStream(source: MediaStreamSourceType) {
     stream.value.addTrack(newTrack)
     console.log(`Replaced ${kind} track`)
   }
-  
-  onUnmounted(() => {
-    stop()
-  })
   
   return {
     stream,

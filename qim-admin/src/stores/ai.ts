@@ -19,7 +19,7 @@ export const useAIStore = defineStore('ai', () => {
     loading.value = true
     try {
       const { data } = await getProviders()
-      providers.value = data.data
+      providers.value = data.data.list || []
     } finally {
       loading.value = false
     }

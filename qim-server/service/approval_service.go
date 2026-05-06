@@ -49,6 +49,8 @@ func (s *ApprovalService) ListApprovals(entityType string, status string) ([]mod
 		return s.listBotApprovals(status)
 	case model.ApprovalTypeChannel:
 		return s.listChannelApprovals(status)
+	case model.ApprovalTypeGroupAI:
+		return s.listGroupAIApprovals(status)
 	default:
 		return items, 0, nil
 	}
@@ -141,6 +143,56 @@ func (s *ApprovalService) listChannelApprovals(status string) ([]model.ApprovalL
 	return []model.ApprovalListItem{}, 0, nil
 }
 
+func (s *ApprovalService) listGroupAIApprovals(status string) ([]model.ApprovalListItem, int64, error) {
+	var groups []model.Group
+	query := s.db.Model(&model.Group{}).Where("ai_config != '' AND ai_config != '{}'")
+
+	if status != "all" {
+		query = query.Where("approval_status = ?", status)
+	}
+
+	if err := query.Order("applied_at DESC").Find(&groups).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]model.ApprovalListItem, 0, len(groups))
+	for _, group := range groups {
+		aiConfig := group.GetAIConfig()
+		// 如果不是显示待审批状态，且AI未启用，则跳过
+		if status != model.ApprovalStatusPending && !aiConfig.Enabled {
+			continue
+		}
+
+		item := model.ApprovalListItem{
+			ID:             group.ID,
+			Type:           model.ApprovalTypeGroupAI,
+			CreatorID:      group.CreatorID,
+			Name:           group.Name,
+			Description:    "群聊AI助手",
+			ApprovalStatus: group.ApprovalStatus,
+			AppliedAt:      group.AppliedAt,
+			ApprovedAt:     group.ApprovedAt,
+			RejectReason:   group.RejectReason,
+			CreatedAt:      group.CreatedAt,
+		}
+
+		var creator model.User
+		if err := s.db.Where("id = ?", group.CreatorID).First(&creator).Error; err == nil {
+			item.CreatorName = creator.Nickname
+			item.CreatorAvatar = creator.Avatar
+		}
+
+		item.Extra = map[string]any{
+			"group_id":        group.ID,
+			"conversation_id": group.ConversationID,
+			"assistant_name":  aiConfig.AssistantName,
+		}
+		items = append(items, item)
+	}
+
+	return items, int64(len(items)), nil
+}
+
 func (s *ApprovalService) Approve(entityType string, id uint, adminID uint) error {
 	now := time.Now()
 
@@ -151,6 +203,8 @@ func (s *ApprovalService) Approve(entityType string, id uint, adminID uint) erro
 		return s.approveBot(id, adminID, &now)
 	case model.ApprovalTypeChannel:
 		return s.approveChannel(id, adminID, &now)
+	case model.ApprovalTypeGroupAI:
+		return s.approveGroupAI(id, adminID, &now)
 	default:
 		return gorm.ErrRecordNotFound
 	}
@@ -213,6 +267,39 @@ func (s *ApprovalService) approveChannel(id uint, adminID uint, now *time.Time) 
 	return nil
 }
 
+func (s *ApprovalService) approveGroupAI(id uint, adminID uint, now *time.Time) error {
+	var group model.Group
+	if err := s.db.Where("id = ? AND approval_status = ?", id, model.ApprovalStatusPending).First(&group).Error; err != nil {
+		return err
+	}
+
+	// 审批通过时启用AI助手
+	aiConfig := group.GetAIConfig()
+	aiConfig.Enabled = true
+	group.SetAIConfig(aiConfig)
+
+	if err := s.db.Model(&group).Updates(map[string]interface{}{
+		"approval_status": model.ApprovalStatusApproved,
+		"approved_at":     now,
+		"approved_by":     adminID,
+		"ai_config":       group.AIConfigJSON,
+	}).Error; err != nil {
+		return err
+	}
+
+	s.SendNotification(ApprovalNotification{
+		EntityName: group.Name,
+		EntityType: model.ApprovalTypeGroupAI,
+		UserID:     group.CreatorID,
+		Action:     ApprovalActionApproved,
+		ExtraContext: map[string]any{
+			"group_name": group.Name,
+		},
+	})
+
+	return nil
+}
+
 func (s *ApprovalService) Reject(entityType string, id uint, adminID uint, reason string) error {
 	now := time.Now()
 
@@ -223,6 +310,8 @@ func (s *ApprovalService) Reject(entityType string, id uint, adminID uint, reaso
 		return s.rejectBot(id, adminID, &now, reason)
 	case model.ApprovalTypeChannel:
 		return s.rejectChannel(id, adminID, &now, reason)
+	case model.ApprovalTypeGroupAI:
+		return s.rejectGroupAI(id, adminID, &now, reason)
 	default:
 		return gorm.ErrRecordNotFound
 	}
@@ -289,6 +378,41 @@ func (s *ApprovalService) rejectChannel(id uint, adminID uint, now *time.Time, r
 	return nil
 }
 
+func (s *ApprovalService) rejectGroupAI(id uint, adminID uint, now *time.Time, reason string) error {
+	var group model.Group
+	if err := s.db.Where("id = ? AND approval_status = ?", id, model.ApprovalStatusPending).First(&group).Error; err != nil {
+		return err
+	}
+
+	// 拒绝时关闭AI助手
+	aiConfig := group.GetAIConfig()
+	aiConfig.Enabled = false
+	group.SetAIConfig(aiConfig)
+
+	if err := s.db.Model(&group).Updates(map[string]interface{}{
+		"approval_status": model.ApprovalStatusRejected,
+		"reject_reason":   reason,
+		"approved_at":     now,
+		"approved_by":     adminID,
+		"ai_config":       group.AIConfigJSON,
+	}).Error; err != nil {
+		return err
+	}
+
+	s.SendNotification(ApprovalNotification{
+		EntityName: group.Name,
+		EntityType: model.ApprovalTypeGroupAI,
+		UserID:     group.CreatorID,
+		Action:     ApprovalActionRejected,
+		Reason:     reason,
+		ExtraContext: map[string]any{
+			"group_name": group.Name,
+		},
+	})
+
+	return nil
+}
+
 func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 	now := time.Now()
 
@@ -327,6 +451,67 @@ func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 	})
 
 	return nil
+}
+
+// IsApprovalEnabled 检查审批类型是否启用
+func (s *ApprovalService) IsApprovalEnabled(approvalType string) bool {
+	var config model.ApprovalConfig
+	err := s.db.Where("type = ?", approvalType).First(&config).Error
+	if err != nil {
+		// 如果配置不存在，默认不启用审批
+		return false
+	}
+	return config.Enabled
+}
+
+// GetApprovalConfigs 获取所有审批配置
+func (s *ApprovalService) GetApprovalConfigs() ([]model.ApprovalConfig, error) {
+	var configs []model.ApprovalConfig
+
+	// 确保所有审批类型都有配置
+	allTypes := []string{
+		model.ApprovalTypeAvatar,
+		model.ApprovalTypeBot,
+		model.ApprovalTypeChannel,
+		model.ApprovalTypeGroupAI,
+	}
+
+	for _, approvalType := range allTypes {
+		var config model.ApprovalConfig
+		err := s.db.Where("type = ?", approvalType).First(&config).Error
+		if err != nil {
+			// 如果不存在，创建默认配置
+			config = model.ApprovalConfig{
+				Type:        approvalType,
+				Enabled:     false,
+				Description: model.ApprovalTypeNames[approvalType],
+			}
+			s.db.Create(&config)
+		}
+	}
+
+	err := s.db.Order("type ASC").Find(&configs).Error
+	return configs, err
+}
+
+// UpdateApprovalConfig 更新审批配置
+func (s *ApprovalService) UpdateApprovalConfig(approvalType string, enabled bool, description string) error {
+	var config model.ApprovalConfig
+	err := s.db.Where("type = ?", approvalType).First(&config).Error
+	if err != nil {
+		// 如果不存在，创建新配置
+		config = model.ApprovalConfig{
+			Type:        approvalType,
+			Enabled:     enabled,
+			Description: description,
+		}
+		return s.db.Create(&config).Error
+	}
+
+	return s.db.Model(&config).Updates(map[string]interface{}{
+		"enabled":     enabled,
+		"description": description,
+	}).Error
 }
 
 func (s *ApprovalService) SendNotification(n ApprovalNotification) {
@@ -385,6 +570,39 @@ func (s *ApprovalService) SendNotification(n ApprovalNotification) {
 				}
 			}
 		}
+
+	case model.ApprovalTypeGroupAI:
+		groupName := ""
+		if n.ExtraContext != nil {
+			if name, ok := n.ExtraContext["group_name"].(string); ok {
+				groupName = name
+			}
+		}
+		switch n.Action {
+		case ApprovalActionApproved:
+			title = "群聊AI助手审批通过"
+			if groupName != "" {
+				content = "您申请的群聊「" + groupName + "」AI助手已通过审批，现在可以使用了。"
+			} else {
+				content = "您申请的群聊AI助手已通过审批，现在可以使用了。"
+			}
+			priority = "important"
+		case ApprovalActionRejected:
+			title = "群聊AI助手审批被拒绝"
+			if groupName != "" {
+				if n.Reason != "" {
+					content = "您申请的群聊「" + groupName + "」AI助手被拒绝，原因：" + n.Reason
+				} else {
+					content = "您申请的群聊「" + groupName + "」AI助手被拒绝。"
+				}
+			} else {
+				if n.Reason != "" {
+					content = "您申请的群聊AI助手被拒绝，原因：" + n.Reason
+				} else {
+					content = "您申请的群聊AI助手被拒绝。"
+				}
+			}
+		}
 	}
 
 	notification := model.Notification{
@@ -426,6 +644,10 @@ func (h *ApprovalHandler) RegisterRoutes(r *gin.RouterGroup) {
 		approvals.POST("/:type/:id/approve", h.Approve)
 		approvals.POST("/:type/:id/reject", h.Reject)
 		approvals.POST("/avatar/enable", h.EnableAvatar)
+
+		// 审批配置相关
+		approvals.GET("/configs", h.GetConfigs)
+		approvals.PUT("/configs/:type", h.UpdateConfig)
 	}
 }
 
@@ -437,7 +659,7 @@ func (h *ApprovalHandler) List(c *gin.Context) {
 	var total int64
 
 	if entityType == "all" {
-		for _, t := range []string{model.ApprovalTypeAvatar, model.ApprovalTypeBot} {
+		for _, t := range []string{model.ApprovalTypeAvatar, model.ApprovalTypeBot, model.ApprovalTypeGroupAI} {
 			items, count, err := h.service.ListApprovals(t, status)
 			if err == nil {
 				allItems = append(allItems, items...)
@@ -532,4 +754,58 @@ func (h *ApprovalHandler) EnableAvatar(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "分身已启用"})
+}
+
+func (h *ApprovalHandler) GetConfigs(c *gin.Context) {
+	configs, err := h.service.GetApprovalConfigs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取审批配置失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": configs,
+	})
+}
+
+func (h *ApprovalHandler) UpdateConfig(c *gin.Context) {
+	approvalType := c.Param("type")
+
+	var req struct {
+		Enabled     *bool   `json:"enabled"`
+		Description *string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	// 验证审批类型
+	validTypes := map[string]bool{
+		model.ApprovalTypeAvatar:  true,
+		model.ApprovalTypeBot:     true,
+		model.ApprovalTypeChannel: true,
+		model.ApprovalTypeGroupAI: true,
+	}
+	if !validTypes[approvalType] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的审批类型"})
+		return
+	}
+
+	enabled := false
+	description := ""
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	if req.Description != nil {
+		description = *req.Description
+	}
+
+	if err := h.service.UpdateApprovalConfig(approvalType, enabled, description); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新审批配置失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "审批配置已更新"})
 }

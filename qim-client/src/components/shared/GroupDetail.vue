@@ -65,7 +65,14 @@
               <div class="info-item full-width">
                 <span class="info-label">邀请权限</span>
                 <div class="permission-setting" v-if="isGroupOwner(group)">
-                  <select v-model="invitePermission" @change="updateInvitePermission" class="permission-select">
+                  <select 
+                    v-model="invitePermission" 
+                    @change="updateInvitePermission" 
+                    @click.stop
+                    @mousedown.stop
+                    @mouseup.stop
+                    class="permission-select"
+                  >
                     <option value="owner_admin">群主和管理员</option>
                     <option value="all">所有成员</option>
                   </select>
@@ -116,12 +123,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';
 import QMessage from '../../utils/qmessage'
+import { getCurrentUser } from '../../utils/user'
 
 const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -167,9 +175,19 @@ const getGroupOwner = (group: Conversation | null) => {
 // 检查当前用户是否是群主
 const isGroupOwner = (group: Conversation | null) => {
   if (!group || !group.members) return false
-  const currentUserId = localStorage.getItem('userId') || ''
+  const currentUser = getCurrentUser()
+  if (!currentUser || !currentUser.id) return false
   const owner = group.members.find((member: User) => member.role === 'owner')
-  return owner ? owner.id === currentUserId : false
+  if (!owner) return false
+  // 转换为字符串进行比较，避免类型不匹配
+  const isOwner = String(owner.id) === String(currentUser.id)
+  logger.log('权限检查:', { 
+    currentUserId: currentUser.id, 
+    ownerId: owner.id, 
+    ownerName: owner.name,
+    isOwner 
+  })
+  return isOwner
 }
 
 // 邀请权限
@@ -679,28 +697,33 @@ const handleAvatarChange = async (event: Event) => {
 
 /* 权限设置样式 */
 .permission-setting {
-  padding: 5px 8px;
-  background: var(--input-bg);
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.permission-setting:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+  display: block;
+  width: 100%;
 }
 
 .permission-select {
   width: 100%;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--input-bg);
   font-size: 13px;
   color: var(--text-color);
   font-weight: 500;
   cursor: pointer;
   outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  min-height: 36px;
+}
+
+.permission-select:hover {
+  border-color: var(--primary-color);
+}
+
+.permission-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 .permission-select option {

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"qim-server/database"
 	"qim-server/model"
@@ -241,12 +242,28 @@ func GetUserByID(c *gin.Context) {
 		return
 	}
 
+	var departmentName string
+	var position string
+	var deptEmployee model.DepartmentEmployee
+	if err := db.Where("user_id = ? AND is_primary = ?", user.ID, true).Preload("Department").First(&deptEmployee).Error; err == nil {
+		if deptEmployee.Department.ID > 0 {
+			departmentName = deptEmployee.Department.Name
+		}
+		position = deptEmployee.Position
+	}
+
 	response.Success(c, gin.H{
-		"id":       user.ID,
-		"username": user.Username,
-		"nickname": user.Nickname,
-		"avatar":   user.Avatar,
-		"status":   user.Status,
+		"id":         user.ID,
+		"username":   user.Username,
+		"nickname":   user.Nickname,
+		"avatar":     user.Avatar,
+		"status":     user.Status,
+		"email":      user.Email,
+		"phone":      user.Phone,
+		"ip":         user.IP,
+		"signature":  user.Signature,
+		"department": departmentName,
+		"position":   position,
 	})
 }
 
@@ -560,4 +577,79 @@ func UpdateAIConfig(c *gin.Context) {
 	}
 
 	response.Success(c, aiConfig)
+}
+
+func GetUserStatus(c *gin.Context) {
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		response.BadRequest(c, "用户ID不能为空")
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	db := database.GetDB()
+	var user model.User
+	if err := db.Select("id", "status", "last_online").First(&user, uint(userID)).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"user_id": user.ID,
+		"status":  user.Status,
+		"last_online": func() int64 {
+			if user.LastOnline != nil {
+				return user.LastOnline.Unix()
+			}
+			return 0
+		}(),
+	})
+}
+
+func GetUserStatusBatch(c *gin.Context) {
+	userIDsStr := c.Query("user_ids")
+	if userIDsStr == "" {
+		response.BadRequest(c, "用户ID列表不能为空")
+		return
+	}
+
+	var userIDs []uint
+	for _, idStr := range strings.Split(userIDsStr, ",") {
+		id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32)
+		if err != nil {
+			response.BadRequest(c, "无效的用户ID")
+			return
+		}
+		userIDs = append(userIDs, uint(id))
+	}
+
+	db := database.GetDB()
+	var users []model.User
+	if err := db.Select("id", "status", "last_online").
+		Where("id IN ?", userIDs).
+		Find(&users).Error; err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	var result []gin.H
+	for _, user := range users {
+		result = append(result, gin.H{
+			"user_id": user.ID,
+			"status":  user.Status,
+			"last_online": func() int64 {
+				if user.LastOnline != nil {
+					return user.LastOnline.Unix()
+				}
+				return 0
+			}(),
+		})
+	}
+
+	response.Success(c, result)
 }

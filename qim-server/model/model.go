@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -42,6 +43,7 @@ type User struct {
 	Phone            string         `json:"phone" gorm:"size:20"`
 	Email            string         `json:"email" gorm:"size:100"`
 	Status           string         `json:"status" gorm:"size:20;default:'offline'"`
+	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
 	CreatedAt        time.Time      `json:"created_at"`
@@ -91,29 +93,116 @@ type Conversation struct {
 
 // 群聊
 type Group struct {
-	ID                 uint            `json:"id" gorm:"primarykey"`
-	ConversationID     uint            `json:"conversation_id" gorm:"uniqueIndex;not null"`
-	GroupType          string          `json:"group_type" gorm:"size:20;not null"` // "group" 或 "discussion"
-	Name               string          `json:"name" gorm:"size:200;not null"`
-	Avatar             string          `json:"avatar" gorm:"size:500"`
-	CreatorID          uint            `json:"creator_id" gorm:"not null"`
-	Announcement       string          `json:"announcement" gorm:"type:text"`
-	InvitePermission   string          `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
-	AIEnabled          bool            `json:"ai_enabled" gorm:"default:false"`
-	AIReplyMode        string          `json:"ai_reply_mode" gorm:"size:20;default:'mention_only'"` // always/mention_only/smart/off
-	AIAssistantName    string          `json:"ai_assistant_name" gorm:"size:100;default:'AI助手'"`
-	AIPersonality      string          `json:"ai_personality" gorm:"size:20;default:'professional'"`
-	AICustomPrompt     string          `json:"ai_custom_prompt" gorm:"type:text"`
-	AILanguage         string          `json:"ai_language" gorm:"size:10;default:'auto'"`
-	AIMaxLength        string          `json:"ai_max_length" gorm:"size:10;default:'medium'"`
-	AIMentionReplyMode string          `json:"ai_mention_reply_mode" gorm:"size:10;default:'mention'"`
-	AIAntiSpamInterval int             `json:"ai_anti_spam_interval" gorm:"default:5"`
-	AITriggerKeywords  string          `json:"ai_trigger_keywords" gorm:"type:text"`
-	AILearnEnabled     bool            `json:"ai_learn_enabled" gorm:"default:false"`
-	Documents          []GroupDocument `json:"documents,omitempty" gorm:"foreignkey:GroupID"`
-	CreatedAt          time.Time       `json:"created_at"`
-	UpdatedAt          time.Time       `json:"updated_at"`
-	Conversation       Conversation    `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+	ID               uint            `json:"id" gorm:"primarykey"`
+	ConversationID   uint            `json:"conversation_id" gorm:"uniqueIndex;not null"`
+	GroupType        string          `json:"group_type" gorm:"size:20;not null"` // "group" 或 "discussion"
+	Name             string          `json:"name" gorm:"size:200;not null"`
+	Avatar           string          `json:"avatar" gorm:"size:500"`
+	CreatorID        uint            `json:"creator_id" gorm:"not null"`
+	Announcement     string          `json:"announcement" gorm:"type:text"`
+	InvitePermission string          `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
+	AIConfigJSON     string          `json:"-" gorm:"type:text;column:ai_config"`               // AI配置JSON存储
+	ApprovalStatus   string          `json:"approval_status" gorm:"size:20;default:'approved'"` // AI审批状态
+	AppliedAt        *time.Time      `json:"applied_at"`                                        // 申请时间
+	ApprovedAt       *time.Time      `json:"approved_at"`                                       // 审批时间
+	ApprovedBy       *uint           `json:"approved_by"`                                       // 审批人
+	RejectReason     string          `json:"reject_reason" gorm:"type:text"`                    // 拒绝理由
+	Documents        []GroupDocument `json:"documents,omitempty" gorm:"foreignkey:GroupID"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Conversation     Conversation    `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+}
+
+// 实现 ApprovalEntity 接口
+func (g *Group) GetID() uint {
+	return g.ID
+}
+
+func (g *Group) GetCreatorID() uint {
+	return g.CreatorID
+}
+
+func (g *Group) GetApprovalStatus() string {
+	return g.ApprovalStatus
+}
+
+func (g *Group) GetApprovalType() string {
+	return ApprovalTypeGroupAI
+}
+
+func (g *Group) SetApprovalStatus(status string) {
+	g.ApprovalStatus = status
+}
+
+func (g *Group) SetApprovedAt(t *time.Time) {
+	g.ApprovedAt = t
+}
+
+func (g *Group) SetApprovedBy(adminID uint) {
+	g.ApprovedBy = &adminID
+}
+
+func (g *Group) SetRejectReason(reason string) {
+	g.RejectReason = reason
+}
+
+func (g *Group) GetRejectReason() string {
+	return g.RejectReason
+}
+
+// GroupAIConfig 群聊AI配置
+type GroupAIConfig struct {
+	Enabled          bool   `json:"enabled"`
+	AssistantName    string `json:"assistant_name"`
+	ReplyMode        string `json:"reply_mode"` // always/mention_only/smart/off
+	Personality      string `json:"personality"`
+	CustomPrompt     string `json:"custom_prompt"`
+	Language         string `json:"language"`
+	MaxLength        string `json:"max_length"`
+	MentionReplyMode string `json:"mention_reply_mode"`
+	AntiSpamInterval int    `json:"anti_spam_interval"`
+	TriggerKeywords  string `json:"trigger_keywords"`
+	LearnEnabled     bool   `json:"learn_enabled"`
+}
+
+// GetAIConfig 获取AI配置
+func (g *Group) GetAIConfig() *GroupAIConfig {
+	if g.AIConfigJSON == "" {
+		return &GroupAIConfig{
+			Enabled:          false,
+			AssistantName:    "AI助手",
+			ReplyMode:        "mention_only",
+			Personality:      "professional",
+			Language:         "auto",
+			MaxLength:        "medium",
+			MentionReplyMode: "mention",
+			AntiSpamInterval: 5,
+		}
+	}
+	var config GroupAIConfig
+	if err := json.Unmarshal([]byte(g.AIConfigJSON), &config); err != nil {
+		return &GroupAIConfig{
+			Enabled:          false,
+			AssistantName:    "AI助手",
+			ReplyMode:        "mention_only",
+			Personality:      "professional",
+			Language:         "auto",
+			MaxLength:        "medium",
+			MentionReplyMode: "mention",
+			AntiSpamInterval: 5,
+		}
+	}
+	return &config
+}
+
+// SetAIConfig 设置AI配置
+func (g *Group) SetAIConfig(config *GroupAIConfig) error {
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	g.AIConfigJSON = string(data)
+	return nil
 }
 
 // 群聊文档关联
@@ -437,6 +526,54 @@ type ShortLink struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 	User        User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
+// AI提供商
+type AIProvider struct {
+	ID         uint        `json:"id" gorm:"primarykey"`
+	Name       string      `json:"name" gorm:"size:100;not null"`
+	Provider   string      `json:"provider" gorm:"size:50;not null"` // openai, anthropic, baidu, etc.
+	APIType    string      `json:"api_type" gorm:"size:20;not null"` // openai, azure, claude, etc.
+	Endpoint   string      `json:"endpoint" gorm:"size:500"`
+	APIKey     string      `json:"api_key" gorm:"size:500"`
+	Models     StringArray `json:"models" gorm:"type:text"` // JSON array of model names
+	Enabled    bool        `json:"enabled" gorm:"default:true"`
+	Status     string      `json:"status" gorm:"size:20;default:'connected'"` // connected, error, testing
+	Priority   int         `json:"priority" gorm:"default:0"`
+	Config     string      `json:"config" gorm:"type:text"` // JSON configuration
+	LastTestAt *time.Time  `json:"last_test_at"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
+// StringArray 自定义类型用于存储字符串数组
+type StringArray []string
+
+func (s StringArray) Value() (string, error) {
+	if s == nil {
+		return "[]", nil
+	}
+	return "[" + joinStrings(s) + "]", nil
+}
+
+func (s *StringArray) Scan(value interface{}) error {
+	if value == nil {
+		*s = StringArray{}
+		return nil
+	}
+	*s = StringArray{}
+	return nil
+}
+
+func joinStrings(strs []string) string {
+	result := ""
+	for i, s := range strs {
+		if i > 0 {
+			result += ","
+		}
+		result += "\"" + s + "\""
+	}
+	return result
 }
 
 // AI配置

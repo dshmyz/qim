@@ -88,10 +88,11 @@ export function useSignaling() {
     })
   }
   
-  const sendScreenShareResponse = (targetUserId: number, accepted: boolean) => {
+  const sendScreenShareResponse = (conversationId: number, requesterId: number, accepted: boolean) => {
     sendMessage('screen-share.response', {
-      target_user_id: targetUserId,
-      accepted
+      conversation_id: conversationId,
+      requester_id: requesterId,
+      status: accepted ? 'accepted' : 'rejected'
     })
   }
   
@@ -99,22 +100,22 @@ export function useSignaling() {
     sendMessage('screen-share.stop', {})
   }
   
-  const sendCallStart = (targetUserId: number, mediaType: 'video' | 'audio') => {
-    sendMessage('call.start', {
+  const sendCallStart = (targetUserId: number, callType: 'voice' | 'video') => {
+    sendMessage('call_invite', {
       target_user_id: targetUserId,
-      media_type: mediaType
+      call_type: callType
     })
   }
-  
+
   const sendCallAnswer = (targetUserId: number, accepted: boolean) => {
-    sendMessage('call.answer', {
+    sendMessage('call_accept', {
       target_user_id: targetUserId,
       accepted
     })
   }
-  
+
   const sendCallEnd = () => {
-    sendMessage('call.end', {})
+    sendMessage('call_end', {})
   }
   
   return {

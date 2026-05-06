@@ -186,7 +186,6 @@ func (s *ConversationService) CreateGroupConversation(name string, creatorID uin
 		Avatar:           avatar,
 		CreatorID:        creatorID,
 		InvitePermission: "owner_admin",
-		AIEnabled:        false,
 	}
 	if err := db.Create(&group).Error; err != nil {
 		return nil, err
@@ -226,7 +225,6 @@ func (s *ConversationService) CreateDiscussionConversation(name string, creatorI
 		Avatar:           avatar,
 		CreatorID:        creatorID,
 		InvitePermission: "owner_admin",
-		AIEnabled:        false,
 	}
 	if err := db.Create(&group).Error; err != nil {
 		return nil, err

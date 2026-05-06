@@ -13,7 +13,7 @@ export interface User {
   location?: string
   createdAt?: number
   lastOnline?: number
-  role?: 'admin' | 'user' | 'guest'
+  role?: 'owner' | 'admin' | 'user' | 'guest'
   isBot?: boolean
   tags?: string[]
   preferences?: {
@@ -72,18 +72,25 @@ export interface Conversation {
   other_member_name?: string
   user_id?: number
   is_deleted?: boolean
-  ai_personality?: string
-  ai_custom_prompt?: string
-  ai_language?: string
-  ai_max_length?: string
-  ai_mention_reply_mode?: string
-  ai_anti_spam_interval?: number
-  ai_trigger_keywords?: string
-  ai_learn_enabled?: boolean
-  ai_enabled?: boolean
-  ai_assistant_name?: string
-  ai_reply_mode?: string
+  ai_config?: {
+    ai_enabled?: boolean
+    ai_assistant_name?: string
+    ai_reply_mode?: string
+    ai_personality?: string
+    ai_custom_prompt?: string
+    ai_language?: string
+    ai_max_length?: string
+    ai_mention_reply_mode?: string
+    ai_anti_spam_interval?: number
+    ai_trigger_keywords?: string
+    ai_learn_enabled?: boolean
+  }
+  approval_status?: 'pending' | 'approved' | 'rejected'
+  applied_at?: string
+  approved_at?: string
+  reject_reason?: string
   context_messages?: number
+  invite_permission?: 'owner_admin' | 'all'
 }
 
 export interface Channel {

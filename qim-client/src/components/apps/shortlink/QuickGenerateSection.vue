@@ -78,11 +78,12 @@ defineExpose({
 
 <style scoped>
 .quick-generate-section {
-  background: linear-gradient(135deg, var(--accent-gradient-start, #667eea), var(--accent-gradient-end, #764ba2));
+  background: var(--card-bg, #fff);
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 10px 30px var(--accent-shadow, rgba(102, 126, 234, 0.2));
+  box-shadow: 0 2px 8px var(--shadow-color, rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--border-color, #eee);
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -100,7 +101,7 @@ defineExpose({
 
 .generate-header h3 {
   margin: 0;
-  color: white;
+  color: var(--text-primary, #1f2937);
   font-size: 18px;
   font-weight: 600;
   flex-shrink: 0;
@@ -118,9 +119,9 @@ defineExpose({
 
 .action-btn {
   padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--bg-color, #f5f5f5);
+  color: var(--text-secondary, #666);
+  border: 1px solid var(--border-color, #ddd);
   border-radius: 8px;
   font-size: 12px;
   cursor: pointer;
@@ -129,7 +130,9 @@ defineExpose({
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--hover-color, #e8e8e8);
+  border-color: var(--primary-color, #409eff);
+  color: var(--primary-color, #409eff);
 }
 
 .generate-input-group {
@@ -175,20 +178,20 @@ defineExpose({
 
 .generate-btn {
   padding: 14px 32px;
-  background: white;
-  color: var(--accent-color, #667eea);
+  background: var(--primary-color, #409eff);
+  color: white;
   border: none;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
   transition: all 0.2s;
 }
 
 .generate-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
 }
 
 .generate-btn:disabled {
@@ -198,7 +201,7 @@ defineExpose({
 
 .generate-result {
   margin-top: 16px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-color, #f9fafb);
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -207,6 +210,7 @@ defineExpose({
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  border: 1px solid var(--border-color, #eee);
 }
 
 .result-info {
@@ -216,13 +220,13 @@ defineExpose({
 }
 
 .result-label {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary, #6b7280);
   font-size: 12px;
   margin-bottom: 4px;
 }
 
 .result-url {
-  color: white;
+  color: var(--text-primary, #1f2937);
   font-size: 16px;
   font-weight: 600;
   word-break: break-all;
@@ -231,8 +235,8 @@ defineExpose({
 
 .copy-btn {
   padding: 8px 20px;
-  background: white;
-  color: var(--accent-color, #667eea);
+  background: var(--primary-color, #409eff);
+  color: white;
   border: none;
   border-radius: 8px;
   font-size: 13px;
@@ -242,6 +246,7 @@ defineExpose({
 }
 
 .copy-btn:hover:not(:disabled) {
+  background: var(--active-color, #66b1ff);
   transform: translateY(-1px);
 }
 

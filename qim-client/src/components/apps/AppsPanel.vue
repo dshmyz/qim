@@ -263,13 +263,13 @@ defineEmits<{
 
 /* 短链接管理突出显示样式 */
 .quick-tool-highlight {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)) !important;
-  border: 2px solid rgba(102, 126, 234, 0.3) !important;
+  background: var(--card-bg, #fff) !important;
+  border: 2px solid var(--primary-color, #409eff) !important;
 }
 
 .quick-tool-highlight:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.15)) !important;
-  border-color: rgba(102, 126, 234, 0.5) !important;
+  background: var(--hover-color, #f5f5f5) !important;
+  border-color: var(--active-color, #66b1ff) !important;
 }
 
 .quick-tool-icon {
@@ -278,7 +278,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary-color, #409eff), var(--accent-color, #667eea));
+  background: var(--primary-color, #409eff);
   border-radius: 10px;
   color: white;
   font-size: 18px;
@@ -307,7 +307,7 @@ defineEmits<{
   top: 8px;
   right: 8px;
   padding: 2px 8px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--primary-color, #409eff);
   color: white;
   font-size: 10px;
   border-radius: 8px;

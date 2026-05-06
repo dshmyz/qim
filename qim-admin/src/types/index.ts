@@ -61,11 +61,15 @@ export interface SystemMessage {
   title: string
   content: string
   type: 'notification' | 'warning' | 'info'
-  senderId: number
-  readCount: number
-  status: 'published' | 'draft'
+  priority?: 'low' | 'medium' | 'high'
+  target_type?: string
+  target_id?: number
+  senderId?: number
+  sender?: any
+  readCount?: number
+  status: 'published' | 'draft' | 'active'
   createdAt: string
-  updatedAt: string
+  updatedAt?: string
 }
 
 export interface Channel {

@@ -1,5 +1,6 @@
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRealtimeCommunication } from './useRealtimeCommunication'
+import type { InitiateOptions, ReceiveOptions } from './useRealtimeCommunication'
 import type { SessionType, MediaType, SessionState, Participant } from '@/types/realtime'
 
 function getMediaTypeFromSessionType(type: SessionType): MediaType {
@@ -13,14 +14,23 @@ function getMediaTypeFromSessionType(type: SessionType): MediaType {
   }
 }
 
+const sessionInstances = new Map<SessionType, ReturnType<typeof createSession>>()
+
 export function useSession(type: SessionType) {
+  if (!sessionInstances.has(type)) {
+    sessionInstances.set(type, createSession(type))
+  }
+  return sessionInstances.get(type)!
+}
+
+function createSession(type: SessionType) {
   const mediaType = getMediaTypeFromSessionType(type)
   const rtc = useRealtimeCommunication(mediaType)
   
   const sessionState = ref<SessionState>('idle')
   const participants = ref<Participant[]>([])
   
-  const start = async (targetUserId: number) => {
+  const start = async (targetUserId: number, options?: InitiateOptions) => {
     console.log(`[Session] Starting ${type} session with user ${targetUserId}`)
     
     if (sessionState.value !== 'idle') {
@@ -31,7 +41,7 @@ export function useSession(type: SessionType) {
     sessionState.value = 'connecting'
     
     try {
-      await rtc.initiate(targetUserId)
+      await rtc.initiate(targetUserId, options)
       
       participants.value.push({
         userId: targetUserId,
@@ -47,7 +57,7 @@ export function useSession(type: SessionType) {
     }
   }
   
-  const join = async (signal: RTCSessionDescriptionInit, fromUserId: number) => {
+  const join = async (signal: RTCSessionDescriptionInit, fromUserId: number, options?: ReceiveOptions) => {
     console.log(`[Session] Joining ${type} session from user ${fromUserId}`)
     console.log(`[Session] Signal type:`, signal.type)
     console.log(`[Session] Current session state:`, sessionState.value)
@@ -62,7 +72,7 @@ export function useSession(type: SessionType) {
     
     try {
       console.log(`[Session] Calling rtc.receive...`)
-      await rtc.receive(signal, fromUserId)
+      const answer = await rtc.receive(signal, fromUserId, options)
       console.log(`[Session] rtc.receive completed`)
       
       participants.value.push({
@@ -72,6 +82,7 @@ export function useSession(type: SessionType) {
       })
       
       console.log(`[Session] ${type} session joined successfully`)
+      return answer
     } catch (error) {
       console.error(`[Session] Failed to join ${type} session:`, error)
       sessionState.value = 'idle'
@@ -124,6 +135,8 @@ export function useSession(type: SessionType) {
   
   watch(rtc.state, (newState) => {
     console.log(`[Session] Connection state changed to: ${newState}, session state: ${sessionState.value}`)
+    console.log(`[Session] rtc.state is ref:`, typeof rtc.state === 'object' && 'value' in rtc.state)
+    console.log(`[Session] rtc.state.value:`, rtc.state.value)
     
     if (newState === 'disconnected' && sessionState.value !== 'idle' && sessionState.value !== 'ended') {
       console.log(`[Session] Connection lost, resetting session state`)
@@ -134,7 +147,7 @@ export function useSession(type: SessionType) {
       console.log(`[Session] Connection established, setting session to active`)
       sessionState.value = 'active'
     }
-  })
+  }, { immediate: true })
   
   return {
     sessionState,

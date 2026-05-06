@@ -129,17 +129,11 @@
       :confirm-dialog-message="confirmDialogMessage"
       :show-screenshot-preview="showScreenshotPreview"
       :screenshot-image-data="screenshotImageData"
-      :show-call-modal="showCallModal || videoCallStatus !== 'idle'"
-      :call-type="videoCallType"
-      :call-status="(videoCallStatus === 'idle' || videoCallStatus === 'calling') ? '' : videoCallStatus"
-      :call-avatar="getAvatarUrl(videoCallRemoteUser?.avatar || props.conversation?.avatar, 'user', serverUrl)"
-      :call-name="videoCallRemoteUser?.name || props.conversation?.name || '未知'"
       :show-image-preview="showImagePreview"
       :preview-image-url="previewImageUrl"
       :show-share-preview="showSharePreview"
       :share-preview-data="sharePreviewData"
       :other-user-id="otherUserId"
-      :remote-screen-user-id="remoteScreenUserId"
       :active-mini-app="activeMiniApp"
       :get-file-icon="getFileIcon"
       :format-file-size="formatFileSize"
@@ -171,16 +165,8 @@
       @cancel-screenshot="cancelScreenshot"
       @retake-screenshot="retakeScreenshot"
       @send-screenshot="uploadScreenshot"
-      @reject-call="rejectCall"
-      @answer-call="answerCall"
-      @end-call="endCall"
-      @close-call-modal="handleCallModalClose"
       @close-image-preview="closeImagePreview"
       @close-share-preview="closeSharePreview"
-      @screen-share-start="handleScreenShareStartFromComponent"
-      @screen-share-stop="handleScreenShareStopFromComponent"
-      @screen-share-join="handleScreenShareJoinFromComponent"
-      @screen-share-leave="handleScreenShareLeaveFromComponent"
       @close-mini-app="activeMiniApp = null"
       @mini-app-toast="handleMiniAppToast"
     />
@@ -240,12 +226,8 @@ import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
 import { API_BASE_URL } from '../../config'
 import { getCurrentUser } from '../../utils/user'
-// @ts-ignore - WebRTC module has no type declarations
-import { screenShareSender, screenShareReceiver } from '../../utils/webrtc'
 import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
-import { useScreenShare } from '../../composables/useScreenShare'
-import { useVideoCall } from '../../composables/useVideoCall'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
@@ -283,12 +265,8 @@ const viewerConnection = new RealtimeViewerConnection()
 
 // 设置观看者连接的回调
 viewerConnection.setCallbacks({
-  onRemoteStream: (stream: MediaStream) => {
-    console.log('ChatWindow: 收到远程流', stream)
-    // 将远程流设置到 ScreenShare 组件的视频元素
-    if (overlayRef.value && overlayRef.value.setRemoteStream) {
-      overlayRef.value.setRemoteStream(stream)
-    }
+  onRemoteStream: (_stream: MediaStream) => {
+    console.log('ChatWindow: 收到远程流（由 RealtimeCommunication 处理）')
   },
   onConnectionStateChange: (state: RTCPeerConnectionState) => {
     console.log('ChatWindow: WebRTC 连接状态变化', state)
@@ -408,9 +386,6 @@ interface Props {
   currentUser: any
   hasMoreMessages: boolean
   updateConversation?: (conversation: Conversation) => void
-  remoteScreenSharing?: boolean
-  remoteScreenUserId?: number | null
-  remoteScreenData?: string | null
 }
 
 const props = defineProps<Props>()
@@ -423,9 +398,9 @@ const emit = defineEmits<{
   'loadMore': [messages: any[]]
   'switchConversation': [conversationId: string]
   'retry-send': [message: any]
-  'send-screen-share-start': [data: { conversationId: number; requester_id: number }]
-  'send-screen-share-stop': [data: { conversationId: number }]
-  'send-screen-share-data': [data: { conversationId: number; data: string }]
+  'start-screen-share': []
+  'start-voice-call': []
+  'start-video-call': []
 }>()
 
 // 消息操作相关逻辑
@@ -446,92 +421,11 @@ const {
   cleanup: cleanupMessageActions
 } = messageActions
 
-// 屏幕共享相关逻辑
-const screenShare = useScreenShare(ref(props.conversation))
-const {
-  screenShareComponent,
-  remoteScreenUserId,
-  showScreenShareViewer,
-  handleScreenShareMessage,
-  handleWebRTCOffer,
-  handleWebRTCAnswer,
-  handleWebRTCIceCandidate,
-  handleScreenShareRequest,
-  handleScreenShareAccepted,
-  handleScreenShareRejected,
-  handleScreenShareStart,
-  handleScreenShareStop,
-  sendScreenShareSignal,
-  startScreenShare: _startScreenShare,
-  receiveScreenShareStream,
-  stopScreenShare,
-  cleanupScreenShare
-} = screenShare
+const remoteScreenUserId = ref<number | null>(null)
 
-// 覆盖 startScreenShare 方法，使用 OverlayManager 暴露的方法
 const startScreenShare = () => {
-  if (!props.conversation) {
-    QMessage.warning('请先选择一个会话')
-    return
-  }
-  
-  const user = getCurrentUser()
-  if (!user || !user.id) {
-    QMessage.warning('用户信息未加载，无法使用屏幕共享')
-    return
-  }
-  
-  overlayRef.value?.startScreenShare()
+  emit('start-screen-share')
 }
-
-// 视频通话相关逻辑
-const videoCall = useVideoCall()
-const {
-  callStatus: videoCallStatus,
-  callType: videoCallType,
-  localStream: videoCallLocalStream,
-  remoteStream: videoCallRemoteStream,
-  isMuted: videoCallIsMuted,
-  isVideoEnabled: videoCallIsVideoEnabled,
-  remoteUser: videoCallRemoteUser,
-  incomingCall: videoCallIncomingCall,
-  startCall: videoCallStart,
-  answerCall: videoCallAnswer,
-  endCall: videoCallEnd,
-  rejectCall: videoCallReject,
-  toggleMute: videoCallToggleMute,
-  toggleVideo: videoCallToggleVideo,
-  handleSignalingMessage: videoCallHandleSignaling
-} = videoCall
-
-// 向后兼容：保留原来的 ref 声明（逐步迁移后可删除）
-
-// 同步 OverlayManager 中的 ScreenShare 组件引用到 screenShareComponent
-// watch(
-//   () => overlayRef.value,
-//   (overlay) => {
-//     if (overlay) {
-//       screenShareComponent.value = overlay.screenShareRef
-//     }
-//   },
-//   { immediate: true }
-// )
-
-// 监听远程屏幕共享
-watch(() => props.remoteScreenSharing, (newVal) => {
-  if (newVal && props.remoteScreenData === null) {
-    // 开始接收远程屏幕共享
-  } else if (!newVal) {
-    // 停止接收远程屏幕共享
-    overlayRef.value?.stopReceiving()
-  }
-})
-
-// 监听远程屏幕共享数据
-watch(() => props.remoteScreenData, (newVal) => {
-  if (newVal) {
-  }
-})
 
 const inputMessage = ref('')
 const quotedMessage = ref<any>(null)
@@ -1026,8 +920,6 @@ let electronWsHandler: ((message: any) => void) | null = null
 // 跟踪 context menu 的 setTimeout ID 以便清理
 let memberContextMenuTimeoutId: number | null = null
 let messageContextMenuTimeoutId: number | null = null
-// 跟踪 IPC 截图监听器的清理函数
-let screenshotCleanup: (() => void) | null = null
 
 
 
@@ -1266,16 +1158,6 @@ const initWebSocketMessageHandler = () => {
     'webrtc_answer'
   ];
   
-  const videoCallMessageTypes = [
-    'call_invite',
-    'call_accept',
-    'call_reject',
-    'call_end',
-    'webrtc_offer',
-    'webrtc_answer',
-    'webrtc_ice_candidate'
-  ];
-  
   const realtimeMessageTypes = [
     'realtime:session:created',
     'realtime:join:requested',
@@ -1288,7 +1170,7 @@ const initWebSocketMessageHandler = () => {
     'realtime:webrtc:ice'
   ];
   
-  const allMessageTypes = [...screenShareMessageTypes, ...videoCallMessageTypes, ...realtimeMessageTypes];
+  const allMessageTypes = [...screenShareMessageTypes, ...realtimeMessageTypes];
   const uniqueMessageTypes = [...new Set(allMessageTypes)];
   
   // 使用新的 addWsHandlers 批量注册，返回统一清理函数
@@ -1300,18 +1182,7 @@ const initWebSocketMessageHandler = () => {
       // if (screenShareMessageTypes.includes(type)) {
       //   handleScreenShareMessage(type, data);
       // }
-      if (videoCallMessageTypes.includes(type)) {
-        // 检查消息类型，只处理视频通话，不处理屏幕共享
-        const mediaType = data.media_type || data.share_type || data.call_type
-        const isScreenShare = mediaType === 'screen' || data.share_type === 'screen'
-        
-        if (!isScreenShare) {
-          videoCallHandleSignaling({ type, data });
-          if (type === 'call_invite' || type === 'webrtc_offer') {
-            showCallModal.value = true
-          }
-        }
-      }
+      // 视频通话消息由 RealtimeCommunication 组件统一处理
       if (realtimeMessageTypes.includes(type)) {
         handleRealtimeMessage(type, data);
       }
@@ -1326,19 +1197,7 @@ const initWebSocketMessageHandler = () => {
       // if (screenShareMessageTypes.includes(message.type)) {
       //   handleScreenShareMessage(message.type, message.data);
       // }
-      if (videoCallMessageTypes.includes(message.type)) {
-        // 检查消息类型，只处理视频通话，不处理屏幕共享
-        const data = message.data
-        const mediaType = data.media_type || data.share_type || data.call_type
-        const isScreenShare = mediaType === 'screen' || data.share_type === 'screen'
-        
-        if (!isScreenShare) {
-          videoCallHandleSignaling(message);
-          if (message.type === 'call_invite' || message.type === 'webrtc_offer') {
-            showCallModal.value = true
-          }
-        }
-      }
+      // 视频通话消息由 RealtimeCommunication 组件统一处理
       if (realtimeMessageTypes.includes(message.type)) {
         handleRealtimeMessage(message.type, message.data);
       }
@@ -1380,21 +1239,12 @@ onUnmounted(() => {
     electronWsHandler = null
   }
   
-  // 清理截图 IPC 监听器
-  if (screenshotCleanup) {
-    screenshotCleanup()
-    screenshotCleanup = null
-  }
-  
   // 清理 context menu 监听器和定时器
   if (memberContextMenuTimeoutId !== null) {
     clearTimeout(memberContextMenuTimeoutId)
     memberContextMenuTimeoutId = null
   }
   document.removeEventListener('click', closeMemberContextMenu)
-  
-  // 停止屏幕共享
-  overlayRef.value?.stopReceiving()
 })
 
 // 加载小程序列表
@@ -1614,9 +1464,36 @@ const removeMemberFromGroup = async () => {
   })
 }
 
-const viewMemberInfo = () => {
+const viewMemberInfo = async () => {
   if (selectedMember.value) {
-    showUserProfile(selectedMember.value)
+    try {
+      const userId = selectedMember.value.user?.id || selectedMember.value.id
+      if (!userId) {
+        $message.error('无法获取用户ID')
+        return
+      }
+      
+      const response = await request(`/api/v1/users/${userId}`)
+      if (response.code === 0 && response.data) {
+        const userData = response.data
+        const userProfile = {
+          id: userData.id,
+          name: userData.nickname || userData.username || selectedMember.value.name,
+          username: userData.username,
+          email: userData.email,
+          mobile: userData.phone,
+          department: userData.department,
+          ip: userData.ip,
+          avatar: userData.avatar || selectedMember.value.avatar
+        }
+        showUserProfile(userProfile)
+      } else {
+        $message.error('获取用户信息失败')
+      }
+    } catch (error) {
+      console.error('获取用户信息失败:', error)
+      $message.error('获取用户信息失败')
+    }
   }
   closeMemberContextMenu()
 }
@@ -2035,50 +1912,55 @@ const isElectron = computed(() => {
 })
 
 const takeScreenshot = () => {
-  // 检查是否在Electron环境中，并且ipcRenderer有once方法
-  if (window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.once === 'function') {
-    // 清理之前可能存在的监听器
-    if (screenshotCleanup) {
-      screenshotCleanup()
-      screenshotCleanup = null
-    }
+  // 检查是否在Electron环境中
+  if (window.electron && window.electron.ipcRenderer) {
+    console.log('[Screenshot] takeScreenshot called')
+    
+    // 移除所有之前的监听器，确保不会有重复监听
+    console.log('[Screenshot] Removing all previous listeners')
+    window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
 
     try {
-      // 发送截图请求到主进程
-      window.electron.ipcRenderer.send('take-screenshot')
-      
-      // 定义处理函数以便后续清理
+      // 定义处理函数
       const screenshotHandler = async (_event: any, imageData: string) => {
+        console.log('[Screenshot] screenshotHandler triggered, imageData exists:', !!imageData)
+        
+        // 监听器触发后立即移除所有监听器，避免重复触发
+        console.log('[Screenshot] Removing all listeners after trigger')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+        
         // 确保组件仍然挂载
         if (!isMounted.value) return
         
         try {
           // 处理截图结果
           if (imageData) {
+            console.log('[Screenshot] Processing screenshot, adding to pendingFiles')
             // 将base64转换为File对象并添加到待发送文件列表
             const file = await base64ToFile(imageData, 'screenshot.png')
             pendingFiles.value.push({
               file,
               name: 'screenshot.png'
             })
+            console.log('[Screenshot] Screenshot added to pendingFiles, count:', pendingFiles.value.length)
           } else {
-            // 用户取消了截图
+            console.log('[Screenshot] User cancelled screenshot')
           }
         } catch (error) {
-          console.error('处理截图结果失败:', error)
+          console.error('[Screenshot] Error processing screenshot:', error)
           $message.error('处理截图失败')
         }
       }
       
-      // 监听截图结果
-      window.electron.ipcRenderer.once('screenshot-taken', screenshotHandler)
+      console.log('[Screenshot] Registering new listener')
+      // 注册新的监听器
+      window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
       
-      // 保存清理函数
-      screenshotCleanup = () => {
-        window.electron.ipcRenderer.removeListener?.('screenshot-taken', screenshotHandler)
-      }
+      console.log('[Screenshot] Sending take-screenshot request')
+      // 发送截图请求到主进程
+      window.electron.ipcRenderer.send('take-screenshot')
     } catch (error) {
-      console.error('触发截图失败:', error)
+      console.error('[Screenshot] Error triggering screenshot:', error)
       $message.error('截图功能不可用')
     }
   } else {
@@ -2189,7 +2071,6 @@ const retakeScreenshot = () => {
 }
 
 // 通话相关状态
-const showCallModal = ref(false)
 const isScreenSharing = ref(false) // 是否正在共享屏幕
 
 // 小程序列表
@@ -2206,126 +2087,14 @@ const handleMiniAppToast = (message: string) => {
   window.$message?.info(message)
 }
 
-// 开始语音通话
-const startVoiceCall = async () => {
-  if (!props.conversation) return
-  
-  if (videoCallStatus.value !== 'idle' && videoCallStatus.value !== 'ended') {
-    $message.warning('您已经在通话中')
-    return
-  }
-  
-  const targetUser = getTargetUserForCall()
-  if (!targetUser) {
-    $message.warning('无法找到通话对象')
-    return
-  }
-  
-  try {
-    await videoCallStart(targetUser, 'voice')
-    showCallModal.value = true
-    $message.info('正在发起语音通话...')
-  } catch (error: any) {
-    console.error('发起语音通话失败:', error)
-    $message.error(`通话失败: ${error.message || '未知错误'}`)
-  }
+// 开始语音通话 - 由 RealtimeCommunication 组件统一处理
+const startVoiceCall = () => {
+  emit('start-voice-call')
 }
 
-// 开始视频通话
-const startVideoCall = async () => {
-  if (!props.conversation) return
-  
-  if (videoCallStatus.value !== 'idle' && videoCallStatus.value !== 'ended') {
-    $message.warning('您已经在通话中')
-    return
-  }
-  
-  const targetUser = getTargetUserForCall()
-  if (!targetUser) {
-    $message.warning('无法找到通话对象')
-    return
-  }
-  
-  try {
-    await videoCallStart(targetUser, 'video')
-    showCallModal.value = true
-    $message.info('正在发起视频通话...')
-  } catch (error: any) {
-    console.error('发起视频通话失败:', error)
-    $message.error(`通话失败: ${error.message || '未知错误'}`)
-  }
-}
-
-const getTargetUserForCall = () => {
-  if (!props.conversation) {
-    $message.warning('未选择会话')
-    return null
-  }
-  
-  console.log('通话会话信息:', props.conversation)
-  console.log('会话类型:', props.conversation.type)
-  
-  // 单聊：从 members 中获取对方用户
-  if (props.conversation.type === 'single') {
-    const currentUserId = currentUser.value?.id?.toString() || ''
-    console.log('当前用户ID:', currentUserId)
-    console.log('会话成员:', props.conversation.members)
-    
-    if (props.conversation.members && props.conversation.members.length === 2) {
-      const otherMember = props.conversation.members.find(member => String(member.id) !== currentUserId)
-      
-      if (!otherMember) {
-        $message.warning('未找到对方用户')
-        return null
-      }
-      
-      console.log('找到对方用户:', otherMember)
-      
-      return {
-        id: otherMember.id,
-        name: otherMember.nickname || otherMember.name || props.conversation.name,
-        avatar: otherMember.avatar || props.conversation.avatar || '',
-        nickname: otherMember.nickname || otherMember.name || props.conversation.name
-      }
-    }
-    
-    // 备用方案：使用 other_member_id 或 user_id
-    const targetUserId = props.conversation.other_member_id || props.conversation.user_id
-    if (targetUserId) {
-      return {
-        id: targetUserId,
-        name: props.conversation.other_member_name || props.conversation.name,
-        avatar: props.conversation.avatar || '',
-        nickname: props.conversation.other_member_name || props.conversation.name
-      }
-    }
-    
-    $message.warning('无法获取对方用户ID')
-    return null
-  }
-  
-  // 群聊不支持通话
-  $message.warning('仅支持单聊发起通话')
-  return null
-}
-
-
-
-const handleScreenShareStartFromComponent = (data: { conversationId: string | number }) => {
-  // 只发送屏幕共享开始事件，不立即建立连接
-  // 连接会在对方接受后通过 handleScreenShareAccepted 方法建立
-  emit('send-screen-share-start', { conversationId: props.conversation?.id || 0, requester_id: currentUser?.id || 0 })
-  
-}
-
-const handleScreenShareStopFromComponent = () => {
-  emit('send-screen-share-stop', { conversationId: props.conversation?.id || 0 })
-}
-
-const handleScreenShareJoinFromComponent = () => {
-}
-
-const handleScreenShareLeaveFromComponent = () => {
+// 开始视频通话 - 由 RealtimeCommunication 组件统一处理
+const startVideoCall = () => {
+  emit('start-video-call')
 }
 
 
@@ -2347,50 +2116,6 @@ const handleScreenShareLeaveFromComponent = () => {
 // 注意：此函数已移至 ScreenShare 组件中，此处保留空实现以避免引用错误
 const enhanceErrorHandling = () => {
   console.warn('enhanceErrorHandling 已废弃，错误处理逻辑已移至 ScreenShare 组件')
-}
-
-// 结束通话
-const endCall = async () => {
-  try {
-    await videoCallEnd()
-    showCallModal.value = false
-    $message.info('通话已结束')
-  } catch (error) {
-    console.error('结束通话失败:', error)
-  }
-}
-
-// 处理通话模态框关闭
-const handleCallModalClose = async () => {
-  try {
-    await videoCallEnd()
-    showCallModal.value = false
-  } catch (error) {
-    console.error('关闭通话模态框时清理资源失败:', error)
-    showCallModal.value = false
-  }
-}
-
-// 拒绝通话
-const rejectCall = async () => {
-  try {
-    await videoCallReject()
-    showCallModal.value = false
-    $message.info('已拒绝通话')
-  } catch (error) {
-    console.error('拒绝通话失败:', error)
-  }
-}
-
-// 接听通话
-const answerCall = async () => {
-  try {
-    await videoCallAnswer()
-    $message.success('通话已接听')
-  } catch (error) {
-    console.error('接听通话失败:', error)
-    $message.error('接听失败')
-  }
 }
 
 
@@ -2754,7 +2479,7 @@ const handleUpdateAISettings = async (settings: any) => {
   if (!props.conversation?.id) return
 
   try {
-    const response = await request(`/api/v1/conversations/${props.conversation.id}/ai-settings`, {
+    const data = await request(`/api/v1/conversations/${props.conversation.id}/ai-settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2772,14 +2497,40 @@ const handleUpdateAISettings = async (settings: any) => {
       })
     })
 
-    const data = await response.json()
     if (data.code === 0) {
-      QMessage.success('AI 设置已更新')
+      // 更新本地状态，实现回显
+      if (props.updateConversation && props.conversation) {
+        props.updateConversation({
+          ...props.conversation,
+          ai_config: {
+            ai_enabled: settings.aiEnabled,
+            ai_assistant_name: settings.aiAssistantName,
+            ai_reply_mode: settings.aiReplyMode,
+            ai_personality: settings.aiPersonality,
+            ai_custom_prompt: settings.aiCustomPrompt,
+            ai_language: settings.aiLanguage,
+            ai_max_length: settings.aiMaxLength,
+            ai_mention_reply_mode: settings.aiMentionReplyMode,
+            ai_anti_spam_interval: settings.aiAntiSpamInterval,
+            ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+            ai_learn_enabled: settings.aiLearnEnabled
+          }
+        })
+      }
+      if (data.message && data.message.includes('等待审批')) {
+        QMessage.info(data.message)
+      } else {
+        QMessage.success('AI 设置已更新')
+      }
     } else {
       QMessage.error(data.message || 'AI 设置更新失败')
     }
   } catch (error: any) {
-    QMessage.error('AI 设置更新失败')
+    if (error.data && error.data.message && (error.data.message.includes('等待审批') || error.data.message.includes('已有待审批'))) {
+      QMessage.info(error.data.message)
+    } else {
+      QMessage.error(error.data?.message || 'AI 设置更新失败')
+    }
   }
 }
 
@@ -2994,8 +2745,6 @@ const saveAnnouncement = async (announcement?: string) => {
 // 暴露方法
 defineExpose({
   startScreenShare,
-  receiveScreenShareStream,
-  handleScreenShareAccepted,
   scrollToBottom
 })
 </script>

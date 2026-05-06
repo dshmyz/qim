@@ -39,6 +39,15 @@ class Screenshots extends node_events_1.default {
         });
         this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
         this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
+        this.onWindowShow = () => {
+            var _a, _b;
+            (_a = this.$win) === null || _a === void 0 ? void 0 : _a.focus();
+            (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
+        };
+        this.onWindowClosed = () => {
+            this.emit('windowClosed', this.$win);
+            this.$win = null;
+        };
         this.listenIpc();
         this.$view.webContents.loadURL(`file://${require.resolve('../src/dist/electron.html')}`);
         if (opts === null || opts === void 0 ? void 0 : opts.lang) {
@@ -161,15 +170,10 @@ class Screenshots extends node_events_1.default {
                     acceptFirstMouse: true,
                 });
                 this.emit('windowCreated', this.$win);
-                this.$win.on('show', () => {
-                    var _a, _b;
-                    (_a = this.$win) === null || _a === void 0 ? void 0 : _a.focus();
-                    (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
-                });
-                this.$win.on('closed', () => {
-                    this.emit('windowClosed', this.$win);
-                    this.$win = null;
-                });
+                this.$win.removeListener('show', this.onWindowShow);
+                this.$win.on('show', this.onWindowShow);
+                this.$win.removeListener('closed', this.onWindowClosed);
+                this.$win.on('closed', this.onWindowClosed);
             }
             this.$win.setBrowserView(this.$view);
             // 适定平台

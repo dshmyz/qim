@@ -910,6 +910,24 @@ func SearchMessages(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 	msgType := c.Query("type")
+	pageStr := c.Query("page")
+	pageSizeStr := c.Query("pageSize")
+
+	page := 1
+	pageSize := 20
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	offset := (page - 1) * pageSize
 
 	db := database.GetDB()
 
@@ -935,10 +953,17 @@ func SearchMessages(c *gin.Context) {
 		query = query.Where("messages.type = ?", msgType)
 	}
 
-	var messages []model.Message
-	query.Preload("Sender").Preload("Conversation").Order("messages.created_at DESC").Find(&messages)
+	var total int64
+	query.Model(&model.Message{}).Count(&total)
 
-	response.Success(c, messages)
+	var messages []model.Message
+	query.Preload("Sender").Preload("Conversation").Order("messages.created_at DESC").Offset(offset).Limit(pageSize).Find(&messages)
+
+	response.Success(c, gin.H{
+		"list":  messages,
+		"total": total,
+		"page":  page,
+	})
 }
 
 func GetMessageQuoteChain(c *gin.Context) {

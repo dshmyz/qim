@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { useScreenShareNew } from './useScreenShareNew'
 import { useVideoCallNew } from './useVideoCallNew'
 import type { MediaType } from '@/types/realtime'
@@ -23,23 +24,26 @@ function createRealtimeMessaging() {
   
   const handleWebRTCOffer = async (data: any) => {
     console.log('[RealtimeMessaging] Handling WebRTC offer:', data)
-    
+
     const mediaType = getMediaType(data)
     if (!mediaType) {
       console.warn('[RealtimeMessaging] No media_type in offer, skipping')
       return
     }
-    
+
     console.log('[RealtimeMessaging] Media type:', mediaType)
-    
+
     try {
       switch (mediaType) {
         case 'screen':
-          await screenShare.acceptShare(data.signal, data.from_user_id)
+          console.log('[RealtimeMessaging] Screen share offer - NOT auto-accepting, waiting for UI acceptance')
           break
         case 'video':
         case 'audio':
-          await videoCall.acceptCall(data.signal, data.from_user_id)
+          console.log('[RealtimeMessaging] Call offer - routing to UI for acceptance')
+          if (onCallOffer.value) {
+            onCallOffer.value(data)
+          }
           break
         default:
           console.warn('[RealtimeMessaging] Unknown media type:', mediaType)
@@ -114,14 +118,42 @@ function createRealtimeMessaging() {
     }
   }
   
+  const onScreenShareRequest = ref<((data: any) => void) | null>(null)
+  const onScreenShareAccepted = ref<((data: any) => void) | null>(null)
+  const onScreenShareRejected = ref<((data: any) => void) | null>(null)
+  const onWebRTCOffer = ref<((data: any) => void) | null>(null)
+  const onCallOffer = ref<((data: any) => void) | null>(null)
+
   const handleScreenShareRequest = (data: any) => {
     console.log('[RealtimeMessaging] Handling screen share request:', data)
-    
+    if (onScreenShareRequest.value) {
+      onScreenShareRequest.value(data)
+    }
   }
-  
+
   const handleScreenShareResponse = (data: any) => {
     console.log('[RealtimeMessaging] Handling screen share response:', data)
-    
+  }
+
+  const handleScreenShareAccepted = (data: any) => {
+    console.log('[RealtimeMessaging] Screen share accepted:', data)
+    if (onScreenShareAccepted.value) {
+      onScreenShareAccepted.value(data)
+    }
+  }
+
+  const handleScreenShareRejected = (data: any) => {
+    console.log('[RealtimeMessaging] Screen share rejected:', data)
+    if (onScreenShareRejected.value) {
+      onScreenShareRejected.value(data)
+    }
+  }
+
+  const handleWebRTCOfferForScreen = (data: any) => {
+    console.log('[RealtimeMessaging] Routing WebRTC offer for screen to UI')
+    if (onWebRTCOffer.value) {
+      onWebRTCOffer.value(data)
+    }
   }
   
   const handleScreenShareStop = (data: any) => {
@@ -147,11 +179,19 @@ function createRealtimeMessaging() {
   return {
     screenShare,
     videoCall,
+    onScreenShareRequest,
+    onScreenShareAccepted,
+    onScreenShareRejected,
+    onWebRTCOffer,
+    onCallOffer,
     handleWebRTCOffer,
     handleWebRTCAnswer,
     handleWebRTCIceCandidate,
     handleScreenShareRequest,
     handleScreenShareResponse,
+    handleScreenShareAccepted,
+    handleScreenShareRejected,
+    handleWebRTCOfferForScreen,
     handleScreenShareStop,
     handleCallStart,
     handleCallAnswer,

@@ -1,8 +1,19 @@
-import { ref, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useConnection } from './useConnection'
 import { useMediaStream } from './useMediaStream'
 import { useSignaling } from './useSignaling'
 import type { MediaType, MediaStreamSourceType } from '@/types/realtime'
+
+export interface InitiateOptions {
+  stream?: MediaStream
+  needVideo?: boolean
+  offerMediaType?: MediaType
+}
+
+export interface ReceiveOptions {
+  needVideo?: boolean
+  answerMediaType?: MediaType
+}
 
 function getSourceFromMediaType(mediaType: MediaType): MediaStreamSourceType {
   switch (mediaType) {
@@ -15,154 +26,309 @@ function getSourceFromMediaType(mediaType: MediaType): MediaStreamSourceType {
   }
 }
 
+const rtcInstances = new Map<MediaType, ReturnType<typeof createRealtimeCommunication>>()
+
 export function useRealtimeCommunication(mediaType: MediaType) {
+  if (!rtcInstances.has(mediaType)) {
+    rtcInstances.set(mediaType, createRealtimeCommunication(mediaType))
+  }
+  return rtcInstances.get(mediaType)!
+}
+
+function createRealtimeCommunication(mediaType: MediaType) {
   const connection = useConnection()
   const mediaStream = useMediaStream(getSourceFromMediaType(mediaType))
   const signaling = useSignaling()
-  
+
   const remoteStream = ref<MediaStream | null>(null)
   const targetUserId = ref<number | null>(null)
-  
-  const initiate = async (userId: number) => {
-    console.log(`[RealtimeCommunication] Initiating ${mediaType} connection to user ${userId}`)
-    
+  const localOffer = ref<RTCSessionDescriptionInit | null>(null)
+  const iceCandidateCache: RTCIceCandidateInit[] = []
+
+  const flushIceCandidates = async () => {
+    const pc = connection.peerConnection.value
+    if (!pc || !pc.remoteDescription) {
+      console.log(`[RTC] Cannot flush ICE candidates: peerConnection=${!!pc}, remoteDescription=${!!pc?.remoteDescription}`)
+      return
+    }
+
+    if (iceCandidateCache.length === 0) {
+      console.log(`[RTC] No cached ICE candidates to flush for ${mediaType}`)
+      return
+    }
+
+    console.log(`[RTC] Flushing ${iceCandidateCache.length} cached ICE candidates for ${mediaType}`)
+
+    while (iceCandidateCache.length > 0) {
+      const candidate = iceCandidateCache.shift()!
+      try {
+        const iceCandidate = new RTCIceCandidate({
+          candidate: candidate.candidate || '',
+          sdpMid: candidate.sdpMid || '',
+          sdpMLineIndex: candidate.sdpMLineIndex ?? 0
+        })
+        await pc.addIceCandidate(iceCandidate)
+        console.log(`[RTC] Cached ICE candidate added successfully`)
+      } catch (error) {
+        console.error(`[RTC] Failed to add cached ICE candidate:`, error)
+      }
+    }
+  }
+
+  const addIceCandidate = async (candidate: RTCIceCandidateInit) => {
+    if (!candidate || !candidate.candidate) {
+      console.log(`[RTC] Invalid ICE candidate, skipping:`, candidate)
+      return
+    }
+
+    const pc = connection.peerConnection.value
+
+    if (!pc) {
+      console.log(`[RTC] peerConnection not created, caching ICE candidate`)
+      iceCandidateCache.push(candidate)
+      return
+    }
+
+    if (pc.remoteDescription) {
+      try {
+        const iceCandidate = new RTCIceCandidate({
+          candidate: candidate.candidate || '',
+          sdpMid: candidate.sdpMid || '',
+          sdpMLineIndex: candidate.sdpMLineIndex ?? 0
+        })
+        await pc.addIceCandidate(iceCandidate)
+        console.log(`[RTC] ICE candidate added successfully`)
+      } catch (error) {
+        console.error(`[RTC] Failed to add ICE candidate:`, error)
+      }
+    } else {
+      console.log(`[RTC] remoteDescription not set, caching ICE candidate`)
+      iceCandidateCache.push(candidate)
+    }
+  }
+
+  const resolveStream = async (options?: InitiateOptions): Promise<MediaType> => {
+    const offerMediaType = options?.offerMediaType ?? mediaType
+
+    if (options?.stream) {
+      mediaStream.stream.value = options.stream
+      return offerMediaType
+    }
+
+    if (options?.needVideo !== undefined) {
+      const constraints = options.needVideo ? { video: true, audio: true } : { video: false, audio: true }
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      mediaStream.stream.value = newStream
+      console.log(`[RTC] Got media stream:`, newStream.getTracks().map(t => `${t.kind}:${t.readyState}`))
+      return options.needVideo ? 'video' : 'audio'
+    }
+
+    await mediaStream.start()
+    return offerMediaType
+  }
+
+  const addLocalTracks = () => {
+    if (mediaStream.stream.value) {
+      mediaStream.stream.value.getTracks().forEach(track => {
+        connection.addTrack(track, mediaStream.stream.value!)
+      })
+    }
+  }
+
+  const initiate = async (userId: number, options?: InitiateOptions) => {
+    console.log(`[RTC] Initiating ${mediaType} connection to user ${userId}`, options ? `with options: stream=${!!options.stream}, needVideo=${options.needVideo}` : '')
+
     targetUserId.value = userId
-    
+
     try {
       await connection.createConnection()
-      
-      await mediaStream.start()
-      
-      if (mediaStream.stream.value) {
-        mediaStream.stream.value.getTracks().forEach(track => {
-          connection.addTrack(track, mediaStream.stream.value!)
-        })
-      }
-      
+      setupIceCandidateHandler()
+      setupRemoteStreamHandler()
+
+      const actualMediaType = await resolveStream(options)
+      addLocalTracks()
+
       const offer = await connection.createOffer()
       await connection.setLocalDescription(offer!)
-      
-      signaling.sendOffer(userId, mediaType, offer!)
-      
-      console.log(`[RealtimeCommunication] Offer sent to user ${userId}`)
+      localOffer.value = offer!
+
+      signaling.sendOffer(userId, actualMediaType, offer!)
+
+      console.log(`[RTC] Offer sent to user ${userId}, mediaType: ${actualMediaType}`)
     } catch (error) {
-      console.error(`[RealtimeCommunication] Failed to initiate connection:`, error)
+      console.error(`[RTC] Failed to initiate connection:`, error)
       cleanup()
       throw error
     }
   }
-  
-  const receive = async (signal: RTCSessionDescriptionInit, fromUserId: number) => {
-    console.log(`[RealtimeCommunication] Receiving ${mediaType} connection from user ${fromUserId}`)
-    console.log(`[RealtimeCommunication] Signal:`, signal)
-    
+
+  const resolveReceiveStream = async (options?: ReceiveOptions): Promise<MediaType> => {
+    const answerMediaType = options?.answerMediaType ?? mediaType
+
+    if (options?.needVideo !== undefined) {
+      const constraints = options.needVideo ? { video: true, audio: true } : { video: false, audio: true }
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      mediaStream.stream.value = newStream
+      console.log(`[RTC] receiveWithMedia got media stream:`, newStream.getTracks().map(t => `${t.kind}:${t.readyState}`))
+      return options.needVideo ? 'video' : 'audio'
+    }
+
+    return answerMediaType
+  }
+
+  const receive = async (signal: RTCSessionDescriptionInit, fromUserId: number, options?: ReceiveOptions) => {
+    console.log(`[RTC] Receiving ${mediaType} connection from user ${fromUserId}`, options ? `with options: needVideo=${options.needVideo}` : '')
+
     targetUserId.value = fromUserId
-    
+
     try {
       await connection.createConnection()
-      console.log(`[RealtimeCommunication] Connection created for ${mediaType}`)
-      
+      setupIceCandidateHandler()
       setupRemoteStreamHandler()
-      console.log(`[RealtimeCommunication] Remote stream handler set up for ${mediaType}`)
-      
+
+      const actualMediaType = await resolveReceiveStream(options)
+      addLocalTracks()
+
       await connection.setRemoteDescription(signal)
-      console.log(`[RealtimeCommunication] Remote description set for ${mediaType}`)
-      
+      await flushIceCandidates()
+
       const answer = await connection.createAnswer()
       await connection.setLocalDescription(answer!)
-      
-      signaling.sendAnswer(fromUserId, mediaType, answer!)
-      
-      console.log(`[RealtimeCommunication] Answer sent to user ${fromUserId}`)
+
+      signaling.sendAnswer(fromUserId, actualMediaType, answer!)
+
+      console.log(`[RTC] Answer sent to user ${fromUserId}, mediaType: ${actualMediaType}`)
+      return answer
     } catch (error) {
-      console.error(`[RealtimeCommunication] Failed to receive connection:`, error)
+      console.error(`[RTC] Failed to receive connection:`, error)
       cleanup()
       throw error
     }
   }
-  
-  const handleAnswer = async (signal: RTCSessionDescriptionInit) => {
-    console.log(`[RealtimeCommunication] Handling answer for ${mediaType}`)
-    
+
+  const startMedia = async (needVideo: boolean = true) => {
+    console.log(`[RTC] Starting media stream for ${mediaType}, needVideo: ${needVideo}`)
+
     try {
-      const signalingState = connection.getSignalingState()
-      console.log(`[RealtimeCommunication] Current signaling state:`, signalingState)
-      
-      if (signalingState !== 'have-local-offer') {
-        console.warn(`[RealtimeCommunication] Invalid signaling state for answer: ${signalingState}`)
-        return
+      const constraints = needVideo ? { video: true, audio: true } : { video: false, audio: true }
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      mediaStream.stream.value = newStream
+
+      const pc = connection.peerConnection.value
+      if (pc && mediaStream.stream.value) {
+        mediaStream.stream.value.getTracks().forEach(track => {
+          pc.addTrack(track, mediaStream.stream.value!)
+        })
       }
-      
-      await connection.setRemoteDescription(signal)
-      console.log(`[RealtimeCommunication] Answer processed successfully`)
+
+      console.log(`[RTC] Media stream started successfully`)
     } catch (error) {
-      console.error(`[RealtimeCommunication] Failed to handle answer:`, error)
+      console.error(`[RTC] Failed to start media stream:`, error)
       throw error
     }
   }
-  
-  const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
-    console.log(`[RealtimeCommunication] Handling ICE candidate for ${mediaType}`)
-    
+
+  const handleAnswer = async (signal: RTCSessionDescriptionInit) => {
+    console.log(`[RTC] Handling answer for ${mediaType}`)
+
     try {
-      await connection.addIceCandidate(candidate)
-      console.log(`[RealtimeCommunication] ICE candidate processed successfully`)
+      const signalingState = connection.getSignalingState()
+      console.log(`[RTC] Current signaling state:`, signalingState)
+
+      if (signalingState !== 'have-local-offer') {
+        console.warn(`[RTC] Invalid signaling state for answer: ${signalingState}`)
+        return
+      }
+
+      await connection.setRemoteDescription(signal)
+      await flushIceCandidates()
+
+      console.log(`[RTC] Answer processed successfully`)
     } catch (error) {
-      console.error(`[RealtimeCommunication] Failed to handle ICE candidate:`, error)
+      console.error(`[RTC] Failed to handle answer:`, error)
+      throw error
     }
   }
-  
-  const setupRemoteStreamHandler = () => {
-    if (connection.peerConnection.value) {
-      console.log(`[RealtimeCommunication] Setting up remote stream handler for ${mediaType}`)
-      connection.peerConnection.value.ontrack = (event) => {
-        console.log(`[RealtimeCommunication] Received remote track:`, event.track.kind, event.track.id)
-        console.log(`[RealtimeCommunication] Track state:`, event.track.readyState)
-        console.log(`[RealtimeCommunication] Current remoteStream:`, remoteStream.value)
-        
-        if (!remoteStream.value) {
-          remoteStream.value = new MediaStream()
-          console.log(`[RealtimeCommunication] Created new MediaStream for remote`)
+
+  const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
+    console.log(`[RTC] Handling ICE candidate for ${mediaType}`)
+    await addIceCandidate(candidate)
+  }
+
+  const setupIceCandidateHandler = () => {
+    const pc = connection.peerConnection.value
+    if (pc) {
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log(`[RTC] Generated ICE candidate for ${mediaType}`)
+          if (targetUserId.value) {
+            signaling.sendIceCandidate(targetUserId.value, mediaType, event.candidate)
+          } else {
+            console.error(`[RTC] Cannot send ICE candidate: targetUserId is null`)
+          }
+        } else {
+          console.log(`[RTC] ICE candidate gathering complete for ${mediaType}`)
         }
-        
-        remoteStream.value.addTrack(event.track)
-        console.log(`[RealtimeCommunication] Added track to remoteStream, total tracks:`, remoteStream.value.getTracks().length)
-        
+      }
+    } else {
+      console.error(`[RTC] Cannot setup ICE candidate handler: peerConnection is null`)
+    }
+  }
+
+  const setupRemoteStreamHandler = () => {
+    const pc = connection.peerConnection.value
+    if (pc) {
+      console.log(`[RTC] Setting up remote stream handler for ${mediaType}`)
+      pc.ontrack = (event) => {
+        console.log(`[RTC] Received remote track:`, event.track.kind, event.track.readyState)
+        console.log(`[RTC] Track event streams:`, event.streams.length)
+
+        if (event.streams && event.streams.length > 0) {
+          remoteStream.value = event.streams[0]
+          console.log(`[RTC] Set remote stream from event.streams[0]`)
+        } else {
+          if (!remoteStream.value) {
+            remoteStream.value = new MediaStream()
+          }
+          remoteStream.value.addTrack(event.track)
+          console.log(`[RTC] Added track to new/existing remote stream`)
+        }
+
         event.track.onended = () => {
-          console.log(`[RealtimeCommunication] Remote track ended:`, event.track.kind)
+          console.log(`[RTC] Remote track ended:`, event.track.kind)
           if (remoteStream.value) {
             remoteStream.value.removeTrack(event.track)
           }
         }
       }
     } else {
-      console.warn(`[RealtimeCommunication] No peer connection available for setting up remote stream handler`)
+      console.error(`[RTC] PeerConnection not available for setting up remote stream handler`)
     }
   }
-  
+
   const cleanup = () => {
-    console.log(`[RealtimeCommunication] Cleaning up ${mediaType} connection`)
+    console.log(`[RTC] Cleaning up ${mediaType} connection`)
+    iceCandidateCache.length = 0
     mediaStream.stop()
     connection.close()
     remoteStream.value = null
     targetUserId.value = null
   }
-  
+
   const close = () => {
     cleanup()
+    rtcInstances.delete(mediaType)
   }
-  
-  onUnmounted(() => {
-    cleanup()
-  })
-  
+
   return {
     state: connection.state,
     localStream: mediaStream.stream,
     remoteStream,
     targetUserId,
+    localOffer,
     initiate,
     receive,
+    startMedia,
     handleAnswer,
     handleIceCandidate,
     close,
