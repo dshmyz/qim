@@ -1,15 +1,19 @@
 import { ref } from 'vue'
 import { avatarAPI } from '../api/avatar'
+import { useCurrentUser } from './useCurrentUser'
 import type {
   AvatarConfig,
   AvatarConfigWithApproval,
   AvatarSession,
-  CreateAvatarConfigRequest
+  CreateAvatarConfigRequest,
+  AvatarWithTools
 } from '../types/avatar'
 
 export function useAvatar() {
+  const { currentUser } = useCurrentUser()
   const config = ref<AvatarConfigWithApproval | null>(null)
   const sessions = ref<AvatarSession[]>([])
+  const avatarWithTools = ref<AvatarWithTools | null>(null)
   const loading = ref(false)
   const error = ref('')
 
@@ -164,9 +168,46 @@ export function useAvatar() {
     }
   }
 
+  // 工具相关方法
+  async function fetchAvatarWithTools() {
+    loading.value = true
+    error.value = ''
+    try {
+      avatarWithTools.value = await avatarAPI.getAvatarWithTools()
+      return avatarWithTools.value
+    } catch (e: any) {
+      error.value = e.response?.data?.message || '加载工具列表失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function toggleTool(toolId: string) {
+    const tool = avatarWithTools.value?.availableTools.find(t => t.id === toolId)
+    if (!tool) return
+
+    loading.value = true
+    error.value = ''
+    try {
+      if (tool.enabled) {
+        await avatarAPI.unbindToolFromAvatar(toolId)
+      } else {
+        await avatarAPI.bindToolToAvatar(toolId)
+      }
+      await fetchAvatarWithTools()
+    } catch (e: any) {
+      error.value = e.response?.data?.message || '切换工具失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     config,
     sessions,
+    avatarWithTools,
     loading,
     error,
     fetchConfig,
@@ -180,6 +221,8 @@ export function useAvatar() {
     getSession,
     isAvatarActive,
     applyForApproval,
-    cancelApplication
+    cancelApplication,
+    fetchAvatarWithTools,
+    toggleTool
   }
 }
