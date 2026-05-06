@@ -518,17 +518,17 @@ func UpdateGroupAISettings(c *gin.Context) {
 	}
 
 	var req struct {
-		AIEnabled          *bool  `json:"ai_enabled"`
-		AIReplyMode        string `json:"ai_reply_mode"`
-		AIAssistantName    string `json:"ai_assistant_name"`
-		AIPersonality      string `json:"ai_personality"`
-		AICustomPrompt     string `json:"ai_custom_prompt"`
-		AILanguage         string `json:"ai_language"`
-		AIMaxLength        string `json:"ai_max_length"`
-		AIMentionReplyMode string `json:"ai_mention_reply_mode"`
-		AIAntiSpamInterval *int   `json:"ai_anti_spam_interval"`
-		AITriggerKeywords  string `json:"ai_trigger_keywords"`
-		AILearnEnabled     *bool  `json:"ai_learn_enabled"`
+		AIEnabled          *bool   `json:"ai_enabled"`
+		AIReplyMode        *string `json:"ai_reply_mode"`
+		AIAssistantName    *string `json:"ai_assistant_name"`
+		AIPersonality      *string `json:"ai_personality"`
+		AICustomPrompt     *string `json:"ai_custom_prompt"`
+		AILanguage         *string `json:"ai_language"`
+		AIMaxLength        *string `json:"ai_max_length"`
+		AIMentionReplyMode *string `json:"ai_mention_reply_mode"`
+		AIAntiSpamInterval *int    `json:"ai_anti_spam_interval"`
+		AITriggerKeywords  *string `json:"ai_trigger_keywords"`
+		AILearnEnabled     *bool   `json:"ai_learn_enabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -569,35 +569,35 @@ func UpdateGroupAISettings(c *gin.Context) {
 	if req.AIEnabled != nil {
 		group.AIEnabled = *req.AIEnabled
 	}
-	if req.AIReplyMode != "" {
+	if req.AIReplyMode != nil {
 		validModes := map[string]bool{"always": true, "mention_only": true, "smart": true, "off": true}
-		if validModes[req.AIReplyMode] {
-			group.AIReplyMode = req.AIReplyMode
+		if validModes[*req.AIReplyMode] {
+			group.AIReplyMode = *req.AIReplyMode
 		}
 	}
-	if req.AIAssistantName != "" {
-		group.AIAssistantName = req.AIAssistantName
+	if req.AIAssistantName != nil {
+		group.AIAssistantName = *req.AIAssistantName
 	}
-	if req.AIPersonality != "" {
-		group.AIPersonality = req.AIPersonality
+	if req.AIPersonality != nil {
+		group.AIPersonality = *req.AIPersonality
 	}
-	if req.AICustomPrompt != "" {
-		group.AICustomPrompt = req.AICustomPrompt
+	if req.AICustomPrompt != nil {
+		group.AICustomPrompt = *req.AICustomPrompt
 	}
-	if req.AILanguage != "" {
-		group.AILanguage = req.AILanguage
+	if req.AILanguage != nil {
+		group.AILanguage = *req.AILanguage
 	}
-	if req.AIMaxLength != "" {
-		group.AIMaxLength = req.AIMaxLength
+	if req.AIMaxLength != nil {
+		group.AIMaxLength = *req.AIMaxLength
 	}
-	if req.AIMentionReplyMode != "" {
-		group.AIMentionReplyMode = req.AIMentionReplyMode
+	if req.AIMentionReplyMode != nil {
+		group.AIMentionReplyMode = *req.AIMentionReplyMode
 	}
 	if req.AIAntiSpamInterval != nil {
 		group.AIAntiSpamInterval = *req.AIAntiSpamInterval
 	}
-	if req.AITriggerKeywords != "" {
-		group.AITriggerKeywords = req.AITriggerKeywords
+	if req.AITriggerKeywords != nil {
+		group.AITriggerKeywords = *req.AITriggerKeywords
 	}
 	if req.AILearnEnabled != nil {
 		group.AILearnEnabled = *req.AILearnEnabled
