@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"qim-server/database"
+	"qim-server/model"
+	"qim-server/service"
+	"qim-server/ws"
 	"strconv"
 	"strings"
 	"time"
-
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 )
@@ -474,9 +474,13 @@ func UpdateGroupInfo(c *gin.Context) {
 		}
 	}
 	if req.AIEnabled != nil {
-		group.AIEnabled = *req.AIEnabled
+		aiConfig := group.GetAIConfig()
+		aiConfig.Enabled = *req.AIEnabled
+		group.SetAIConfig(aiConfig)
 	}
 	db.Save(&group)
+
+	aiConfig := group.GetAIConfig()
 
 	if ws.GlobalHub != nil {
 		updateMsg := ws.WSMessage{
@@ -488,11 +492,23 @@ func UpdateGroupInfo(c *gin.Context) {
 				"avatar":            group.Avatar,
 				"announcement":      group.Announcement,
 				"invite_permission": group.InvitePermission,
-				"ai_enabled":        group.AIEnabled,
-				"last_message_id":   conv.LastMessageID,
-				"last_message_at":   conv.LastMessageAt,
-				"created_at":        conv.CreatedAt,
-				"updated_at":        conv.UpdatedAt,
+				"ai_config": gin.H{
+					"ai_enabled":            aiConfig.Enabled,
+					"ai_assistant_name":     aiConfig.AssistantName,
+					"ai_reply_mode":         aiConfig.ReplyMode,
+					"ai_personality":        aiConfig.Personality,
+					"ai_custom_prompt":      aiConfig.CustomPrompt,
+					"ai_language":           aiConfig.Language,
+					"ai_max_length":         aiConfig.MaxLength,
+					"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+					"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+					"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+					"ai_learn_enabled":      aiConfig.LearnEnabled,
+				},
+				"last_message_id": conv.LastMessageID,
+				"last_message_at": conv.LastMessageAt,
+				"created_at":      conv.CreatedAt,
+				"updated_at":      conv.UpdatedAt,
 			},
 		}
 		jsonMsg, _ := json.Marshal(updateMsg)
@@ -503,7 +519,85 @@ func UpdateGroupInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "群聊信息更新成功",
-		"data":    group,
+		"data": gin.H{
+			"id":                conv.ID,
+			"type":              conv.Type,
+			"name":              group.Name,
+			"avatar":            group.Avatar,
+			"announcement":      group.Announcement,
+			"invite_permission": group.InvitePermission,
+			"ai_config": gin.H{
+				"ai_enabled":            aiConfig.Enabled,
+				"ai_assistant_name":     aiConfig.AssistantName,
+				"ai_reply_mode":         aiConfig.ReplyMode,
+				"ai_personality":        aiConfig.Personality,
+				"ai_custom_prompt":      aiConfig.CustomPrompt,
+				"ai_language":           aiConfig.Language,
+				"ai_max_length":         aiConfig.MaxLength,
+				"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+				"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+				"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+				"ai_learn_enabled":      aiConfig.LearnEnabled,
+			},
+		},
+	})
+}
+
+func GetGroupAISettings(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		return
+	}
+
+	db := database.GetDB()
+
+	var conv model.Conversation
+	if err := db.First(&conv, uint(convID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		return
+	}
+
+	if conv.Type != "group" && conv.Type != "discussion" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能获取群聊或讨论组的 AI 设置"})
+		return
+	}
+
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
+		return
+	}
+
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		return
+	}
+
+	aiConfig := group.GetAIConfig()
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"ai_enabled":            aiConfig.Enabled,
+			"ai_assistant_name":     aiConfig.AssistantName,
+			"ai_reply_mode":         aiConfig.ReplyMode,
+			"ai_personality":        aiConfig.Personality,
+			"ai_custom_prompt":      aiConfig.CustomPrompt,
+			"ai_language":           aiConfig.Language,
+			"ai_max_length":         aiConfig.MaxLength,
+			"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+			"ai_learn_enabled":      aiConfig.LearnEnabled,
+			"approval_status":       group.ApprovalStatus,
+			"reject_reason":         group.RejectReason,
+		},
 	})
 }
 
@@ -518,17 +612,17 @@ func UpdateGroupAISettings(c *gin.Context) {
 	}
 
 	var req struct {
-		AIEnabled          *bool  `json:"ai_enabled"`
-		AIReplyMode        string `json:"ai_reply_mode"`
-		AIAssistantName    string `json:"ai_assistant_name"`
-		AIPersonality      string `json:"ai_personality"`
-		AICustomPrompt     string `json:"ai_custom_prompt"`
-		AILanguage         string `json:"ai_language"`
-		AIMaxLength        string `json:"ai_max_length"`
-		AIMentionReplyMode string `json:"ai_mention_reply_mode"`
-		AIAntiSpamInterval *int   `json:"ai_anti_spam_interval"`
-		AITriggerKeywords  string `json:"ai_trigger_keywords"`
-		AILearnEnabled     *bool  `json:"ai_learn_enabled"`
+		AIEnabled          *bool   `json:"ai_enabled"`
+		AIReplyMode        *string `json:"ai_reply_mode"`
+		AIAssistantName    *string `json:"ai_assistant_name"`
+		AIPersonality      *string `json:"ai_personality"`
+		AICustomPrompt     *string `json:"ai_custom_prompt"`
+		AILanguage         *string `json:"ai_language"`
+		AIMaxLength        *string `json:"ai_max_length"`
+		AIMentionReplyMode *string `json:"ai_mention_reply_mode"`
+		AIAntiSpamInterval *int    `json:"ai_anti_spam_interval"`
+		AITriggerKeywords  *string `json:"ai_trigger_keywords"`
+		AILearnEnabled     *bool   `json:"ai_learn_enabled"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -566,48 +660,145 @@ func UpdateGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	if req.AIEnabled != nil {
-		group.AIEnabled = *req.AIEnabled
+	// 获取当前配置
+	aiConfig := group.GetAIConfig()
+	oldEnabled := aiConfig.Enabled
+
+	// 如果是开启AI助手，检查是否需要审批
+	if req.AIEnabled != nil && *req.AIEnabled && !oldEnabled {
+		// 检查审批配置是否启用
+		approvalService := service.NewApprovalService()
+		needsApproval := approvalService.IsApprovalEnabled(model.ApprovalTypeGroupAI)
+
+		if needsApproval {
+			// 需要审批：创建审批请求
+			// 检查是否已经有待审批的请求
+			if group.ApprovalStatus == model.ApprovalStatusPending {
+				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的AI助手申请"})
+				return
+			}
+
+			// 更新AI配置（但不启用）
+			aiConfig.Enabled = false
+			if req.AIAssistantName != nil {
+				aiConfig.AssistantName = *req.AIAssistantName
+			}
+			if req.AIReplyMode != nil {
+				validModes := map[string]bool{"always": true, "mention_only": true, "smart": true, "off": true}
+				if validModes[*req.AIReplyMode] {
+					aiConfig.ReplyMode = *req.AIReplyMode
+				}
+			}
+			if req.AIPersonality != nil {
+				aiConfig.Personality = *req.AIPersonality
+			}
+			if req.AICustomPrompt != nil {
+				aiConfig.CustomPrompt = *req.AICustomPrompt
+			}
+			if req.AILanguage != nil {
+				aiConfig.Language = *req.AILanguage
+			}
+			if req.AIMaxLength != nil {
+				aiConfig.MaxLength = *req.AIMaxLength
+			}
+			if req.AIMentionReplyMode != nil {
+				aiConfig.MentionReplyMode = *req.AIMentionReplyMode
+			}
+			if req.AIAntiSpamInterval != nil {
+				aiConfig.AntiSpamInterval = *req.AIAntiSpamInterval
+			}
+			if req.AITriggerKeywords != nil {
+				aiConfig.TriggerKeywords = *req.AITriggerKeywords
+			}
+			if req.AILearnEnabled != nil {
+				aiConfig.LearnEnabled = *req.AILearnEnabled
+			}
+
+			group.SetAIConfig(aiConfig)
+
+			// 设置审批状态为待审批
+			now := time.Now()
+			group.ApprovalStatus = model.ApprovalStatusPending
+			group.AppliedAt = &now
+			group.RejectReason = ""
+
+			db.Save(&group)
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "AI助手申请已提交，等待系统管理员审批",
+				"data": gin.H{
+					"approval_status": model.ApprovalStatusPending,
+					"applied_at":      now,
+				},
+			})
+			return
+		}
+		// 不需要审批：直接开启
+		aiConfig.Enabled = true
 	}
-	if req.AIReplyMode != "" {
+
+	// 如果是关闭AI助手或其他配置更新，直接操作
+	if req.AIEnabled != nil {
+		aiConfig.Enabled = *req.AIEnabled
+	}
+	if req.AIReplyMode != nil {
 		validModes := map[string]bool{"always": true, "mention_only": true, "smart": true, "off": true}
-		if validModes[req.AIReplyMode] {
-			group.AIReplyMode = req.AIReplyMode
+		if validModes[*req.AIReplyMode] {
+			aiConfig.ReplyMode = *req.AIReplyMode
 		}
 	}
-	if req.AIAssistantName != "" {
-		group.AIAssistantName = req.AIAssistantName
+	if req.AIAssistantName != nil {
+		aiConfig.AssistantName = *req.AIAssistantName
 	}
-	if req.AIPersonality != "" {
-		group.AIPersonality = req.AIPersonality
+	if req.AIPersonality != nil {
+		aiConfig.Personality = *req.AIPersonality
 	}
-	if req.AICustomPrompt != "" {
-		group.AICustomPrompt = req.AICustomPrompt
+	if req.AICustomPrompt != nil {
+		aiConfig.CustomPrompt = *req.AICustomPrompt
 	}
-	if req.AILanguage != "" {
-		group.AILanguage = req.AILanguage
+	if req.AILanguage != nil {
+		aiConfig.Language = *req.AILanguage
 	}
-	if req.AIMaxLength != "" {
-		group.AIMaxLength = req.AIMaxLength
+	if req.AIMaxLength != nil {
+		aiConfig.MaxLength = *req.AIMaxLength
 	}
-	if req.AIMentionReplyMode != "" {
-		group.AIMentionReplyMode = req.AIMentionReplyMode
+	if req.AIMentionReplyMode != nil {
+		aiConfig.MentionReplyMode = *req.AIMentionReplyMode
 	}
 	if req.AIAntiSpamInterval != nil {
-		group.AIAntiSpamInterval = *req.AIAntiSpamInterval
+		aiConfig.AntiSpamInterval = *req.AIAntiSpamInterval
 	}
-	if req.AITriggerKeywords != "" {
-		group.AITriggerKeywords = req.AITriggerKeywords
+	if req.AITriggerKeywords != nil {
+		aiConfig.TriggerKeywords = *req.AITriggerKeywords
 	}
 	if req.AILearnEnabled != nil {
-		group.AILearnEnabled = *req.AILearnEnabled
+		aiConfig.LearnEnabled = *req.AILearnEnabled
+	}
+
+	// 保存配置
+	if err := group.SetAIConfig(aiConfig); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存AI配置失败"})
+		return
 	}
 	db.Save(&group)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "AI 设置更新成功",
-		"data":    group,
+		"data": gin.H{
+			"ai_enabled":            aiConfig.Enabled,
+			"ai_assistant_name":     aiConfig.AssistantName,
+			"ai_reply_mode":         aiConfig.ReplyMode,
+			"ai_personality":        aiConfig.Personality,
+			"ai_custom_prompt":      aiConfig.CustomPrompt,
+			"ai_language":           aiConfig.Language,
+			"ai_max_length":         aiConfig.MaxLength,
+			"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+			"ai_learn_enabled":      aiConfig.LearnEnabled,
+		},
 	})
 }
 

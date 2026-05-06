@@ -76,19 +76,6 @@
     @send="emit('send-screenshot')"
   />
 
-  <!-- 通话模态框 -->
-  <CallModal
-    :visible="showCallModal"
-    :call-type="callType"
-    :status="callStatus"
-    :avatar="callAvatar"
-    :name="callName"
-    @reject-call="emit('reject-call')"
-    @answer-call="emit('answer-call')"
-    @end="emit('end-call')"
-    @close="emit('close-call-modal')"
-  />
-
   <!-- 图片预览弹窗 -->
   <ImagePreviewDialog
     :visible="showImagePreview"
@@ -110,19 +97,6 @@
     @save-file-as="emit('save-file-as', $event)"
   />
 
-  <!-- 屏幕共享组件 -->
-  <ScreenShare
-    :receiver-id="otherUserId ?? undefined"
-    :sender-id="remoteScreenUserId"
-    :sender-name="senderName"
-    :conversation-id="conversationId ?? undefined"
-    ref="screenShareRef"
-    @screen-share-start="(data) => emit('screen-share-start', data)"
-    @screen-share-stop="emit('screen-share-stop')"
-    @screen-share-join="emit('screen-share-join')"
-    @screen-share-leave="emit('screen-share-leave')"
-  />
-
   <!-- 小程序加载器 -->
   <div style="display: contents">
     <MiniAppLoader
@@ -134,7 +108,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import type { Conversation, Message, User } from '../../types'
 import UserProfile from '../modals/UserProfile.vue'
 import ReadUsersModal from './ReadUsersModal.vue'
@@ -143,10 +116,8 @@ import MemberContextMenu from './MemberContextMenu.vue'
 import MessageManager from './MessageManager.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
-import CallModal from './CallModal.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
 import SharePreviewDialog from './SharePreviewDialog.vue'
-import ScreenShare from '../shared/ScreenShare.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
@@ -182,17 +153,11 @@ interface Props {
   confirmDialogMessage: string
   showScreenshotPreview: boolean
   screenshotImageData: string
-  showCallModal: boolean
-  callType: 'voice' | 'video' | ''
-  callStatus: 'ringing' | 'answered' | 'ended' | ''
-  callAvatar: string
-  callName: string
   showImagePreview: boolean
   previewImageUrl: string
   showSharePreview: boolean
   sharePreviewData: SharePreviewData
   otherUserId: string | number | null
-  remoteScreenUserId: number | null
   activeMiniApp: MiniAppData | null
   getFileIcon: (fileName: string) => string
   formatFileSize: (size: number) => string
@@ -229,30 +194,16 @@ const emit = defineEmits<{
   'cancel-screenshot': []
   'retake-screenshot': []
   'send-screenshot': []
-  'reject-call': []
-  'answer-call': []
-  'end-call': []
-  'close-call-modal': []
   'close-image-preview': []
   'close-share-preview': []
-  'screen-share-start': [data: { conversationId: string | number }]
-  'screen-share-stop': []
-  'screen-share-join': []
-  'screen-share-leave': []
   'close-mini-app': []
   'mini-app-toast': [message: string]
 }>()
-
-const screenShareRef = ref<InstanceType<typeof ScreenShare>>()
 
 const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => {
   if (timestamp == null) return ''
   return props.formatTime(Number(timestamp))
 }
 
-defineExpose({
-  startScreenShare: () => screenShareRef.value?.startScreenShare(),
-  stopReceiving: () => screenShareRef.value?.stopReceiving(),
-  setRemoteStream: (stream: MediaStream) => screenShareRef.value?.setRemoteStream(stream)
-})
+defineExpose({})
 </script>

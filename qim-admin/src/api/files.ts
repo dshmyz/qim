@@ -5,14 +5,14 @@ import type { FileStatistics, LargeFile, CleanupRule, FileAccessLog } from '@/ty
 
 export function getFileStatistics(): Promise<AxiosResponse<ApiResponse<FileStatistics>>> {
   return request({
-    url: '/files/statistics',
+    url: '/v1/admin/files/statistics',
     method: 'get',
   })
 }
 
 export function getLargeFiles(limit: number = 10): Promise<AxiosResponse<ApiResponse<LargeFile[]>>> {
   return request({
-    url: '/files/large',
+    url: '/v1/admin/files/large',
     method: 'get',
     params: { limit },
   })
@@ -28,7 +28,7 @@ export function getFileAccessLogs(params: {
   pageSize: number
 }): Promise<AxiosResponse<ApiResponse<{ list: FileAccessLog[]; total: number }>>> {
   return request({
-    url: '/files/access-logs',
+    url: '/v1/files/access-logs',
     method: 'get',
     params,
   })
@@ -36,14 +36,14 @@ export function getFileAccessLogs(params: {
 
 export function getCleanupRules(): Promise<AxiosResponse<ApiResponse<CleanupRule[]>>> {
   return request({
-    url: '/files/cleanup/rules',
+    url: '/v1/files/cleanup/rules',
     method: 'get',
   })
 }
 
 export function createCleanupRule(rule: Omit<CleanupRule, 'id' | 'createdAt'>): Promise<AxiosResponse<ApiResponse<CleanupRule>>> {
   return request({
-    url: '/files/cleanup/rules',
+    url: '/v1/files/cleanup/rules',
     method: 'post',
     data: rule,
   })
@@ -51,7 +51,7 @@ export function createCleanupRule(rule: Omit<CleanupRule, 'id' | 'createdAt'>): 
 
 export function updateCleanupRule(id: number, rule: Partial<CleanupRule>): Promise<AxiosResponse<ApiResponse<CleanupRule>>> {
   return request({
-    url: `/files/cleanup/rules/${id}`,
+    url: `/v1/files/cleanup/rules/${id}`,
     method: 'put',
     data: rule,
   })
@@ -59,21 +59,21 @@ export function updateCleanupRule(id: number, rule: Partial<CleanupRule>): Promi
 
 export function deleteCleanupRule(id: number): Promise<AxiosResponse<ApiResponse<void>>> {
   return request({
-    url: `/files/cleanup/rules/${id}`,
+    url: `/v1/files/cleanup/rules/${id}`,
     method: 'delete',
   })
 }
 
 export function previewCleanup(ruleId: number): Promise<AxiosResponse<ApiResponse<{ count: number; size: number }>>> {
   return request({
-    url: `/files/cleanup/preview/${ruleId}`,
+    url: `/v1/files/cleanup/preview/${ruleId}`,
     method: 'get',
   })
 }
 
 export function executeCleanup(ruleId: number): Promise<AxiosResponse<ApiResponse<void>>> {
   return request({
-    url: `/files/cleanup/execute/${ruleId}`,
+    url: `/v1/files/cleanup/execute/${ruleId}`,
     method: 'post',
   })
 }

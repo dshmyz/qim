@@ -79,15 +79,16 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 			return
 		}
 		group = &g
-		log.Printf("[SmartReply] 群聊类型: %s, AI启用状态: %v", group.GroupType, group.AIEnabled)
-		if !group.AIEnabled {
+		aiConfig := group.GetAIConfig()
+		log.Printf("[SmartReply] 群聊类型: %s, AI启用状态: %v", group.GroupType, aiConfig.Enabled)
+		if !aiConfig.Enabled {
 			log.Printf("[SmartReply] 群聊未开启AI助手，跳过")
 			return
 		}
 
 		// 触发关键词过滤
-		if group.AITriggerKeywords != "" {
-			keywords := strings.Split(group.AITriggerKeywords, ",")
+		if aiConfig.TriggerKeywords != "" {
+			keywords := strings.Split(aiConfig.TriggerKeywords, ",")
 			hasKeyword := false
 			for _, kw := range keywords {
 				kw = strings.TrimSpace(kw)
@@ -103,11 +104,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		}
 
 		// 防刷屏检查
-		if group.AIAntiSpamInterval > 0 {
+		if aiConfig.AntiSpamInterval > 0 {
 			systemUserID := model.GetSystemUserID(db)
 			var lastAIMsg model.Message
 			err := db.Where("conversation_id = ? AND sender_id = ? AND created_at > ?",
-				conversationID, systemUserID, time.Now().Add(-time.Duration(group.AIAntiSpamInterval)*time.Minute)).
+				conversationID, systemUserID, time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
 				Order("created_at DESC").First(&lastAIMsg).Error
 			if err == nil {
 				log.Printf("[SmartReply] 防刷屏间隔内，跳过回复")
@@ -118,9 +119,10 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 	// 群聊场景下：获取 AI 助手名称，检测 @AI
 	if group != nil {
+		aiConfig := group.GetAIConfig()
 		assistantName := "AI助手"
-		if group.AIAssistantName != "" {
-			assistantName = group.AIAssistantName
+		if aiConfig.AssistantName != "" {
+			assistantName = aiConfig.AssistantName
 		}
 
 		// 检测是否 @AI
@@ -131,7 +133,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		}
 
 		// 根据回复模式决定是否自动回复
-		if group.AIReplyMode == "off" {
+		if aiConfig.ReplyMode == "off" {
 			log.Printf("[SmartReply] AI 回复已关闭")
 			return
 		}
@@ -289,30 +291,28 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 
 	messages = append(messages, ai.Message{Role: "user", Content: fmt.Sprintf("[用户提问]: %s", question)})
 
-	var reply string
-	var err error
-
-	if e.aiService.GetMCPServer() != nil {
-		callerCtx := &ai.CallerContext{UserID: userID}
-		reply, err = e.aiService.GetCompletionWithTools(messages, callerCtx)
-	} else {
-		reply, err = e.aiService.GetCompletion(messages)
-	}
-
+	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
-		log.Printf("[SmartReply] AI 回复生成失败: %v", err)
+		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
 	}
 
-	reply = e.aiService.FilterOutput(reply, "ai_reply")
+	err = e.aiService.GetCompletionStream(messages, func(chunk ai.StreamChunk) error {
+		return sendChunk(chunk.Content)
+	})
 
-	err = e.messageSender.SendAIMessage(conversationID, reply, assistantName)
 	if err != nil {
-		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		log.Printf("[SmartReply] AI 流式回复失败: %v", err)
 		return
 	}
 
-	log.Printf("[SmartReply] @AI 回复已发送，消息ID已记录")
+	err = finish()
+	if err != nil {
+		log.Printf("[SmartReply] 完成流式消息失败: %v", err)
+		return
+	}
+
+	log.Printf("[SmartReply] @AI 流式回复已完成")
 }
 
 // GroupSummaryJob 群聊总结定时任务

@@ -11,6 +11,7 @@
     <div v-else class="avatar-fallback" :style="fallbackStyle">
       {{ initial }}
     </div>
+    <span v-if="status" class="avatar-status" :class="`status-${status}`"></span>
   </div>
 </template>
 
@@ -25,6 +26,7 @@ interface Props {
   shape?: 'circle' | 'rounded'
   serverUrl?: string
   alt?: string
+  status?: 'online' | 'offline' | 'busy'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -32,7 +34,8 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'md',
   shape: 'circle',
   serverUrl: '',
-  alt: '头像'
+  alt: '头像',
+  status: undefined
 })
 
 const imageError = ref(false)
@@ -143,5 +146,27 @@ watch(() => props.src, () => {
 
 .avatar-rounded {
   border-radius: 10px;
+}
+
+.avatar-status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+
+.status-online {
+  background-color: #52c41a;
+}
+
+.status-offline {
+  background-color: #d9d9d9;
+}
+
+.status-busy {
+  background-color: #ff4d4f;
 }
 </style>

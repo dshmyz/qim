@@ -34,14 +34,39 @@ func GetBots(c *gin.Context) {
 }
 
 func GetSystemMessages(c *gin.Context) {
-	db := database.GetDB()
+	pageStr := c.Query("page")
+	pageSizeStr := c.Query("pageSize")
 
+	page := 1
+	pageSize := 10
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	offset := (page - 1) * pageSize
+
+	db := database.GetDB()
 	var systemMessages []model.SystemMessage
-	db.Preload("Sender").Order("created_at DESC").Find(&systemMessages)
+	var total int64
+
+	db.Model(&model.SystemMessage{}).Count(&total)
+	db.Preload("Sender").Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&systemMessages)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": systemMessages,
+		"data": gin.H{
+			"list":  systemMessages,
+			"total": total,
+			"page":  page,
+		},
 	})
 }
 

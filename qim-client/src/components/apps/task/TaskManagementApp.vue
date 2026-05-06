@@ -6,9 +6,25 @@
           <i class="fas fa-compress"></i>
         </button>
       </template>
+      <template #actions>
+        <div class="header-search">
+          <i class="fas fa-search"></i>
+          <input
+            type="text"
+            :value="store.filters.search"
+            @input="onSearch"
+            placeholder="搜索任务..."
+            class="header-search-input"
+          />
+        </div>
+        <button class="create-task-btn" @click="showCreateModal = true">
+          <i class="fas fa-plus"></i>
+          新建任务
+        </button>
+      </template>
     </AppHeader>
     <div class="task-app-body">
-      <TaskSidebar @create="showCreateModal = true" />
+      <TaskSidebar />
       <div class="task-app-main">
         <div class="task-app-content">
           <div v-if="store.loading" class="task-loading">
@@ -164,6 +180,10 @@ function onTaskClick(task: Task) {
   store.selectTask(task.id)
 }
 
+function onSearch(event: Event) {
+  store.setFilters({ search: (event.target as HTMLInputElement).value })
+}
+
 function onTaskContextmenu(event: MouseEvent, task: Task) {
   contextMenu.visible = true
   contextMenu.x = event.clientX
@@ -272,6 +292,49 @@ async function onSubmitTask(data: {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
   min-width: 0;
+}
+.header-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+}
+.header-search i {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.header-search-input {
+  width: 140px;
+  height: 100%;
+  border: none;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  outline: none;
+}
+.header-search-input::placeholder {
+  color: var(--text-secondary);
+}
+.create-task-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 32px;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.create-task-btn:hover {
+  background: #7c3aed;
 }
 .task-app-body {
   flex: 1;

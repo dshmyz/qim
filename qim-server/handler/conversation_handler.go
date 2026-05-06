@@ -19,20 +19,35 @@ func GetConversations(c *gin.Context) {
 	var convMembers []model.ConversationMember
 	db.Where("user_id = ?", userID).Preload("Conversation").Preload("Conversation.LastMessage").Preload("Conversation.Members").Preload("Conversation.Members.User").Find(&convMembers)
 
+	// AI配置信息（仅群聊和讨论组）
+	type AIConfig struct {
+		AIEnabled          bool   `json:"ai_enabled,omitempty"`
+		AIAssistantName    string `json:"ai_assistant_name,omitempty"`
+		AIReplyMode        string `json:"ai_reply_mode,omitempty"`
+		AIPersonality      string `json:"ai_personality,omitempty"`
+		AICustomPrompt     string `json:"ai_custom_prompt,omitempty"`
+		AILanguage         string `json:"ai_language,omitempty"`
+		AIMaxLength        string `json:"ai_max_length,omitempty"`
+		AIMentionReplyMode string `json:"ai_mention_reply_mode,omitempty"`
+		AIAntiSpamInterval int    `json:"ai_anti_spam_interval,omitempty"`
+		AITriggerKeywords  string `json:"ai_trigger_keywords,omitempty"`
+		AILearnEnabled     bool   `json:"ai_learn_enabled,omitempty"`
+	}
+
 	type ConversationWithPin struct {
 		model.Conversation
-		Name             string `json:"name,omitempty"`
-		Avatar           string `json:"avatar,omitempty"`
-		CreatorID        uint   `json:"creator_id,omitempty"`
-		Announcement     string `json:"announcement,omitempty"`
-		InvitePermission string `json:"invite_permission,omitempty"`
-		AIEnabled        bool   `json:"ai_enabled,omitempty"`
-		IsPinned         bool   `json:"is_pinned"`
-		IP               string `json:"ip,omitempty"`
-		Status           string `json:"status,omitempty"`
-		Signature        string `json:"signature,omitempty"`
-		OtherMemberID    uint   `json:"other_member_id,omitempty"`
-		OtherMemberName  string `json:"other_member_name,omitempty"`
+		Name             string    `json:"name,omitempty"`
+		Avatar           string    `json:"avatar,omitempty"`
+		CreatorID        uint      `json:"creator_id,omitempty"`
+		Announcement     string    `json:"announcement,omitempty"`
+		InvitePermission string    `json:"invite_permission,omitempty"`
+		AIConfig         *AIConfig `json:"ai_config,omitempty"`
+		IsPinned         bool      `json:"is_pinned"`
+		IP               string    `json:"ip,omitempty"`
+		Status           string    `json:"status,omitempty"`
+		Signature        string    `json:"signature,omitempty"`
+		OtherMemberID    uint      `json:"other_member_id,omitempty"`
+		OtherMemberName  string    `json:"other_member_name,omitempty"`
 	}
 
 	var conversations []ConversationWithPin
@@ -52,12 +67,25 @@ func GetConversations(c *gin.Context) {
 		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
 			var group model.Group
 			if err := db.Where("conversation_id = ?", cm.Conversation.ID).First(&group).Error; err == nil {
+				aiConfig := group.GetAIConfig()
 				convWithPin.Name = group.Name
 				convWithPin.Avatar = group.Avatar
 				convWithPin.CreatorID = group.CreatorID
 				convWithPin.Announcement = group.Announcement
 				convWithPin.InvitePermission = group.InvitePermission
-				convWithPin.AIEnabled = group.AIEnabled
+				convWithPin.AIConfig = &AIConfig{
+					AIEnabled:          aiConfig.Enabled,
+					AIAssistantName:    aiConfig.AssistantName,
+					AIReplyMode:        aiConfig.ReplyMode,
+					AIPersonality:      aiConfig.Personality,
+					AICustomPrompt:     aiConfig.CustomPrompt,
+					AILanguage:         aiConfig.Language,
+					AIMaxLength:        aiConfig.MaxLength,
+					AIMentionReplyMode: aiConfig.MentionReplyMode,
+					AIAntiSpamInterval: aiConfig.AntiSpamInterval,
+					AITriggerKeywords:  aiConfig.TriggerKeywords,
+					AILearnEnabled:     aiConfig.LearnEnabled,
+				}
 			}
 		}
 
@@ -109,6 +137,7 @@ func GetConversation(c *gin.Context) {
 	if conv.Type == "group" || conv.Type == "discussion" {
 		var group model.Group
 		if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
+			aiConfig := group.GetAIConfig()
 			name := group.Name
 
 			// 构建包含群聊信息的响应
@@ -120,13 +149,25 @@ func GetConversation(c *gin.Context) {
 				"creator_id":        group.CreatorID,
 				"announcement":      group.Announcement,
 				"invite_permission": group.InvitePermission,
-				"ai_enabled":        group.AIEnabled,
-				"is_deleted":        conv.IsDeleted,
-				"last_message_id":   conv.LastMessageID,
-				"last_message_at":   conv.LastMessageAt,
-				"created_at":        conv.CreatedAt,
-				"updated_at":        conv.UpdatedAt,
-				"members":           conv.Members,
+				"ai_config": gin.H{
+					"ai_enabled":            aiConfig.Enabled,
+					"ai_assistant_name":     aiConfig.AssistantName,
+					"ai_reply_mode":         aiConfig.ReplyMode,
+					"ai_personality":        aiConfig.Personality,
+					"ai_custom_prompt":      aiConfig.CustomPrompt,
+					"ai_language":           aiConfig.Language,
+					"ai_max_length":         aiConfig.MaxLength,
+					"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+					"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+					"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+					"ai_learn_enabled":      aiConfig.LearnEnabled,
+				},
+				"is_deleted":      conv.IsDeleted,
+				"last_message_id": conv.LastMessageID,
+				"last_message_at": conv.LastMessageAt,
+				"created_at":      conv.CreatedAt,
+				"updated_at":      conv.UpdatedAt,
+				"members":         conv.Members,
 			}
 			response.Success(c, responseData)
 			return
@@ -326,7 +367,6 @@ func CreateGroupConversation(c *gin.Context) {
 		Avatar:           req.Avatar,
 		CreatorID:        userID.(uint),
 		InvitePermission: "owner_admin",
-		AIEnabled:        false,
 	}
 	db.Create(&group)
 
@@ -339,6 +379,7 @@ func CreateGroupConversation(c *gin.Context) {
 	}
 
 	// 构建包含群聊信息的响应
+	aiConfig := group.GetAIConfig()
 	responseData := gin.H{
 		"id":                conv.ID,
 		"type":              conv.Type,
@@ -347,12 +388,24 @@ func CreateGroupConversation(c *gin.Context) {
 		"creator_id":        group.CreatorID,
 		"announcement":      group.Announcement,
 		"invite_permission": group.InvitePermission,
-		"ai_enabled":        group.AIEnabled,
-		"is_deleted":        conv.IsDeleted,
-		"last_message_id":   conv.LastMessageID,
-		"last_message_at":   conv.LastMessageAt,
-		"created_at":        conv.CreatedAt,
-		"updated_at":        conv.UpdatedAt,
+		"ai_config": gin.H{
+			"ai_enabled":            aiConfig.Enabled,
+			"ai_assistant_name":     aiConfig.AssistantName,
+			"ai_reply_mode":         aiConfig.ReplyMode,
+			"ai_personality":        aiConfig.Personality,
+			"ai_custom_prompt":      aiConfig.CustomPrompt,
+			"ai_language":           aiConfig.Language,
+			"ai_max_length":         aiConfig.MaxLength,
+			"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+			"ai_learn_enabled":      aiConfig.LearnEnabled,
+		},
+		"is_deleted":      conv.IsDeleted,
+		"last_message_id": conv.LastMessageID,
+		"last_message_at": conv.LastMessageAt,
+		"created_at":      conv.CreatedAt,
+		"updated_at":      conv.UpdatedAt,
 	}
 
 	response.Success(c, responseData)
@@ -387,7 +440,6 @@ func CreateDiscussionConversation(c *gin.Context) {
 		Avatar:           req.Avatar,
 		CreatorID:        userID.(uint),
 		InvitePermission: "owner_admin",
-		AIEnabled:        false,
 	}
 	db.Create(&group)
 
@@ -400,6 +452,7 @@ func CreateDiscussionConversation(c *gin.Context) {
 	}
 
 	// 构建包含群聊信息的响应
+	aiConfig := group.GetAIConfig()
 	responseData := gin.H{
 		"id":                conv.ID,
 		"type":              conv.Type,
@@ -408,12 +461,24 @@ func CreateDiscussionConversation(c *gin.Context) {
 		"creator_id":        group.CreatorID,
 		"announcement":      group.Announcement,
 		"invite_permission": group.InvitePermission,
-		"ai_enabled":        group.AIEnabled,
-		"is_deleted":        conv.IsDeleted,
-		"last_message_id":   conv.LastMessageID,
-		"last_message_at":   conv.LastMessageAt,
-		"created_at":        conv.CreatedAt,
-		"updated_at":        conv.UpdatedAt,
+		"ai_config": gin.H{
+			"ai_enabled":            aiConfig.Enabled,
+			"ai_assistant_name":     aiConfig.AssistantName,
+			"ai_reply_mode":         aiConfig.ReplyMode,
+			"ai_personality":        aiConfig.Personality,
+			"ai_custom_prompt":      aiConfig.CustomPrompt,
+			"ai_language":           aiConfig.Language,
+			"ai_max_length":         aiConfig.MaxLength,
+			"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+			"ai_learn_enabled":      aiConfig.LearnEnabled,
+		},
+		"is_deleted":      conv.IsDeleted,
+		"last_message_id": conv.LastMessageID,
+		"last_message_at": conv.LastMessageAt,
+		"created_at":      conv.CreatedAt,
+		"updated_at":      conv.UpdatedAt,
 	}
 
 	response.Success(c, responseData)

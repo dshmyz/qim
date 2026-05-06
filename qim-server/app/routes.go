@@ -102,6 +102,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户
 			authed.GET("/users/me", handler.GetCurrentUser)
 			authed.PUT("/users/me", handler.UpdateUser)
+			authed.GET("/users/:id", handler.GetUserByID)
+			// 用户状态查询
+			authed.GET("/users/status", handler.GetUserStatus)
+			authed.GET("/users/status/batch", handler.GetUserStatusBatch)
 			// AI配置
 			authed.GET("/ai/config", handler.GetAIConfig)
 			authed.PUT("/ai/config", handler.UpdateAIConfig)
@@ -166,6 +170,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/conversations/:id/join-requests/:user_id", handler.RejectJoinRequest)
 			// 更新群聊信息
 			authed.PUT("/conversations/:id", handler.UpdateGroupInfo)
+			// 获取群聊 AI 设置
+			authed.GET("/conversations/:id/ai-settings", handler.GetGroupAISettings)
 			// 更新群聊 AI 设置
 			authed.PUT("/conversations/:id/ai-settings", handler.UpdateGroupAISettings)
 			// 群知识库管理
@@ -347,6 +353,25 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
 				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
+
+				// 角色管理
+				admin.GET("/roles", handler.GetRoles)
+				admin.POST("/roles", handler.CreateRole)
+				admin.PUT("/roles/:id", handler.UpdateRole)
+				admin.DELETE("/roles/:id", handler.DeleteRole)
+				admin.GET("/roles/:role/users", handler.GetRoleUsers)
+
+				// AI提供商管理
+				admin.GET("/ai/providers", handler.GetProviders)
+				admin.POST("/ai/providers", handler.CreateProvider)
+				admin.PUT("/ai/providers/:id", handler.UpdateProvider)
+				admin.DELETE("/ai/providers/:id", handler.DeleteProvider)
+				admin.PATCH("/ai/providers/:id/status", handler.ToggleProviderStatus)
+				admin.POST("/ai/providers/:id/test", handler.TestProviderConnection)
+
+				// 文件存储管理
+				admin.GET("/files/statistics", handler.GetAdminFileStatistics)
+				admin.GET("/files/large", handler.GetAdminLargeFiles)
 
 				// 统一审批 API
 				approvalHandler := service.NewApprovalHandler()

@@ -18,13 +18,39 @@ import (
 func GetNotifications(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
+	pageStr := c.Query("page")
+	pageSizeStr := c.Query("pageSize")
+
+	page := 1
+	pageSize := 10
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	offset := (page - 1) * pageSize
+
 	db := database.GetDB()
 	var notifications []model.Notification
-	db.Where("user_id = ?", userID).Order("created_at DESC").Find(&notifications)
+	var total int64
+
+	db.Model(&model.Notification{}).Where("user_id = ?", userID).Count(&total)
+	db.Where("user_id = ?", userID).Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&notifications)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": notifications,
+		"data": gin.H{
+			"list":  notifications,
+			"total": total,
+			"page":  page,
+		},
 	})
 }
 

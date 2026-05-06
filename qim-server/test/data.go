@@ -311,7 +311,6 @@ func InitTestData(db *gorm.DB) {
 			Avatar:           "",
 			CreatorID:        users[0].ID,
 			InvitePermission: "owner_admin",
-			AIEnabled:        false,
 		}
 		db.Create(&group)
 
@@ -448,7 +447,6 @@ func InitTestData(db *gorm.DB) {
 					Avatar:           systemBot.Avatar,
 					CreatorID:        user.ID,
 					InvitePermission: "owner_admin",
-					AIEnabled:        false,
 				}
 				db.Create(&systemGroup)
 
@@ -480,7 +478,6 @@ func InitTestData(db *gorm.DB) {
 					Avatar:           aiBot.Avatar,
 					CreatorID:        user.ID,
 					InvitePermission: "owner_admin",
-					AIEnabled:        false,
 				}
 				db.Create(&aiGroup)
 

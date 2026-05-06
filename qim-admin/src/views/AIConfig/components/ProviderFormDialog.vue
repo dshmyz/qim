@@ -1,9 +1,10 @@
 <template>
   <el-dialog
-    v-model="visible"
+    :model-value="visible"
     :title="isEdit ? '编辑提供商' : '添加提供商'"
     width="650px"
     @closed="handleReset"
+    @update:model-value="(val: boolean) => emit('update:visible', val)"
   >
     <el-form
       ref="formRef"
@@ -93,7 +94,7 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" :loading="submitLoading" @click="handleConfirm">确定</el-button>
     </template>
   </el-dialog>
@@ -198,6 +199,10 @@ function handleReset() {
   form.priority = 0
   form.enabled = true
   form.remark = ''
+}
+
+function handleClose() {
+  emit('update:visible', false)
 }
 
 async function handleConfirm() {

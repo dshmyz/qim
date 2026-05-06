@@ -116,6 +116,7 @@
       :getReadUsers="getMessageReadUsers"
       :currentUser="currentUser.value"
       :hasMoreMessages="hasMoreMessages"
+      :updateConversation="updateConversation"
       @send="handleSendMessage"
       @recall="handleRecallMessage"
       @inviteMembers="handleInviteMembers"
@@ -393,6 +394,7 @@
       title="创建频道"
       width="500px"
       @close="closeCreateChannelModal"
+      @cancel="closeCreateChannelModal"
       @confirm="handleCreateChannelSubmit"
     >
       <div class="form-group">
@@ -556,8 +558,6 @@ import MainDialogs from '../components/modals/MainDialogs.vue'
 import SettingsPanel from '../components/settings/SettingsPanel.vue'
 import { API_BASE_URL } from '../config'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
-// @ts-ignore - WebRTC module has no type declarations
-import { screenShareSender, screenShareReceiver } from '../utils/webrtc'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
 import { useCurrentUser } from '../composables/useCurrentUser'
@@ -1098,22 +1098,41 @@ const connectWebSocket = () => {
     'new_notification': handleNewNotification,
     'system_message': handleSystemMessage,
     // 屏幕共享和视频通话消息路由到 RealtimeCommunication 组件
+    // 旧格式（连字符）
     'screen-share-start': (data: any) => realtimeRef.value?.handleScreenShareStart(data),
     'screen-share-stop': (data: any) => realtimeRef.value?.handleScreenShareStop(data),
     'screen-share-data': (data: any) => realtimeRef.value?.handleScreenShareMessage('screen-share-data', data),
     'screen-share-request': (data: any) => realtimeRef.value?.handleScreenShareRequest(data),
     'screen-share-accepted': (data: any) => realtimeRef.value?.handleScreenShareAccepted(data),
     'screen-share-rejected': (data: any) => realtimeRef.value?.handleScreenShareRejected(data),
+    // 新格式（点分隔）
+    'screen-share.start': (data: any) => realtimeRef.value?.handleScreenShareStart(data),
+    'screen-share.stop': (data: any) => realtimeRef.value?.handleScreenShareStop(data),
+    'screen-share.data': (data: any) => realtimeRef.value?.handleScreenShareMessage('screen-share.data', data),
+    'screen-share.request': (data: any) => realtimeRef.value?.handleScreenShareRequest(data),
+    'screen-share.accepted': (data: any) => realtimeRef.value?.handleScreenShareAccepted(data),
+    'screen-share.rejected': (data: any) => realtimeRef.value?.handleScreenShareRejected(data),
+    // WebRTC 信令消息
+    // 旧格式（下划线）
     'webrtc_offer': (data: any) => realtimeRef.value?.handleWebRTCOffer(data),
     'webrtc_answer': (data: any) => realtimeRef.value?.handleWebRTCAnswer(data),
     'webrtc_ice_candidate': (data: any) => realtimeRef.value?.handleWebRTCIceCandidate(data),
+    // 新格式（点分隔）
+    'webrtc.offer': (data: any) => realtimeRef.value?.handleWebRTCOffer(data),
+    'webrtc.answer': (data: any) => realtimeRef.value?.handleWebRTCAnswer(data),
+    'webrtc.ice-candidate': (data: any) => realtimeRef.value?.handleWebRTCIceCandidate(data),
     // 实时会话消息
     'realtime:session:created': (data: any) => realtimeRef.value?.handleRealtimeSessionCreated(data),
     // 视频通话消息
+    // 旧格式（下划线）
     'call_invite': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_invite', data: msg }),
     'call_accept': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_accept', data: msg }),
     'call_reject': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_reject', data: msg }),
-    'call_end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_end', data: msg })
+    'call_end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_end', data: msg }),
+    // 新格式（点分隔）
+    'call.start': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.start', data: msg }),
+    'call.answer': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.answer', data: msg }),
+    'call.end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.end', data: msg })
   }
   
   // 使用WebSocket管理器连接
@@ -1350,17 +1369,35 @@ const handleNotification = (data: any) => {
 // 处理会话更新
 const handleConversationUpdated = (data: any) => {
   console.log('会话更新:', data)
-  // 更新会话列表中的会话信息
-  const conversationIndex = conversations.value.findIndex(c => c.id === data.id.toString())
-  if (conversationIndex !== -1) {
-    conversations.value[conversationIndex] = {
-      ...conversations.value[conversationIndex],
-      ...data
+  
+  // 防御性检查：确保数据存在且包含必要字段
+  if (!data || !data.id) {
+    console.warn('会话更新数据无效:', data)
+    return
+  }
+  
+  try {
+    const conversationIndex = conversations.value.findIndex(c => c.id === data.id.toString())
+    if (conversationIndex !== -1) {
+      // 保留原有数据，只更新传入的字段，避免覆盖重要信息
+      const existingConversation = conversations.value[conversationIndex]
+      conversations.value[conversationIndex] = {
+        ...existingConversation,
+        ...data
+      }
+      
+      // 确保 members 字段不会被清空
+      if (data.members === undefined || data.members === null) {
+        conversations.value[conversationIndex].members = existingConversation.members
+      }
+      
+      // 强制触发响应式更新
+      conversations.value = [...conversations.value]
+      // 保存会话到本地存储
+      storage.saveConversations(conversations.value)
     }
-    // 强制触发响应式更新
-    conversations.value = [...conversations.value]
-    // 保存会话到本地存储
-    storage.saveConversations(conversations.value)
+  } catch (error) {
+    console.error('处理会话更新失败:', error)
   }
 }
 
@@ -2482,14 +2519,8 @@ const handleRetrySendMessage = (failedMessage: any) => {
 
 // 处理屏幕共享开始
 const handleScreenShareStart = (data: { conversationId: number; userId: number }) => {
-  console.log('===== 发送屏幕共享请求 =====', data)
-
-  const wsMsg = {
-    type: 'screen-share-request',
-    data: data
-  }
-  console.log('发送的WebSocket消息:', wsMsg)
-  sendMessage(wsMsg)
+  console.log('===== 屏幕共享已开始 =====', data)
+  // 不需要发送消息，请求已经由 ScreenShare 组件内部发送
 }
 
 // 处理屏幕共享停止
@@ -3467,7 +3498,8 @@ const handleCreateChannelSubmit = async () => {
     }
   } catch (error) {
     console.error('创建频道失败:', error)
-    QMessage.error('创建频道失败')
+    const errorMessage = error instanceof Error ? error.message : '创建频道失败'
+    QMessage.error(errorMessage)
   }
 }
 
@@ -3645,10 +3677,36 @@ const removeMemberFromGroup = async () => {
   closeMemberContextMenu()
 }
 
-const viewMemberInfo = () => {
+const viewMemberInfo = async () => {
   if (selectedMember.value) {
-    QMessage.info(`查看${selectedMember.value.name}的资料`)
-    console.log('查看成员资料:', selectedMember.value)
+    try {
+      const userId = selectedMember.value.user?.id || selectedMember.value.id
+      if (!userId) {
+        QMessage.error('无法获取用户ID')
+        return
+      }
+      
+      const response = await request(`/api/v1/users/${userId}`)
+      if (response.code === 0 && response.data) {
+        const userData = response.data
+        const userProfile = {
+          id: userData.id,
+          name: userData.nickname || userData.username || selectedMember.value.name,
+          username: userData.username,
+          email: userData.email,
+          mobile: userData.phone,
+          department: userData.department,
+          ip: userData.ip,
+          avatar: userData.avatar || selectedMember.value.avatar
+        }
+        openUserProfile(userProfile)
+      } else {
+        QMessage.error('获取用户信息失败')
+      }
+    } catch (error) {
+      console.error('获取用户信息失败:', error)
+      QMessage.error('获取用户信息失败')
+    }
   }
   closeMemberContextMenu()
 }
@@ -3727,17 +3785,23 @@ const handleSwitchApp = (app) => {
 }
 
 // 处理语音通话
-const handleStartVoiceCall = () => {
+const handleStartVoiceCall = async () => {
   console.log('Main: 开始语音通话')
-  // TODO: 调用 RealtimeCommunication 组件的语音通话方法
-  QMessage.info('语音通话功能开发中')
+  if (realtimeRef.value) {
+    await realtimeRef.value.startCall('voice')
+  } else {
+    QMessage.error('实时通信组件未初始化')
+  }
 }
 
 // 处理视频通话
-const handleStartVideoCall = () => {
+const handleStartVideoCall = async () => {
   console.log('Main: 开始视频通话')
-  // TODO: 调用 RealtimeCommunication 组件的视频通话方法
-  QMessage.info('视频通话功能开发中')
+  if (realtimeRef.value) {
+    await realtimeRef.value.startCall('video')
+  } else {
+    QMessage.error('实时通信组件未初始化')
+  }
 }
 
 // 处理屏幕共享

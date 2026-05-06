@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { Channel, ChannelMessage } from '../types'
 import { request, type ApiResponse } from '../composables/useRequest'
 import QMessage from '../utils/qmessage'
+import { getCurrentUser } from '../utils/user'
 
 export const useChannelStore = defineStore('channel', () => {
   const channels = ref<Channel[]>([])
@@ -156,9 +157,20 @@ export const useChannelStore = defineStore('channel', () => {
   }
 
   function isChannelCreator(channel: Channel): boolean {
-    const userId = localStorage.getItem('userId')
-    if (!userId || !channel.creator_id) return false
-    return userId === channel.creator_id || userId.toString() === channel.creator_id.toString()
+    const currentUser = getCurrentUser()
+    console.log('=== isChannelCreator 调试信息 ===')
+    console.log('currentUser:', currentUser ? '存在' : '不存在')
+    console.log('channel.creator_id:', channel.creator_id, typeof channel.creator_id)
+    
+    if (!currentUser || !currentUser.id || !channel.creator_id) {
+      console.log('返回 false: currentUser、currentUser.id 或 creator_id 不存在')
+      return false
+    }
+    
+    const result = String(currentUser.id) === String(channel.creator_id)
+    console.log('比较结果:', String(currentUser.id), '===', String(channel.creator_id), '=', result)
+    console.log('=== 调试信息结束 ===')
+    return result
   }
 
   async function sendChannelMessage(channel: Channel, message: string) {

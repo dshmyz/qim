@@ -34,17 +34,20 @@ func NewSmartPromptBuilder(knowledgeSvc *KnowledgeService) *SmartPromptBuilder {
 }
 
 func (b *SmartPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
-	if ctx.Group != nil && ctx.Group.AICustomPrompt != "" {
-		prompt := ctx.Group.AICustomPrompt
-		prompt += b.buildTimeInfo()
-		prompt += b.buildGroupInfo(ctx)
-		prompt += b.buildMessageHistory(ctx)
-		prompt += b.buildUserInfo(ctx)
-		prompt += b.buildTaskInfo(ctx)
-		prompt += b.buildKnowledgeContext(ctx)
-		prompt += b.buildGroupStats(ctx)
-		prompt += b.buildRules(ctx)
-		return prompt
+	if ctx.Group != nil {
+		aiConfig := ctx.Group.GetAIConfig()
+		if aiConfig.CustomPrompt != "" {
+			prompt := aiConfig.CustomPrompt
+			prompt += b.buildTimeInfo()
+			prompt += b.buildGroupInfo(ctx)
+			prompt += b.buildMessageHistory(ctx)
+			prompt += b.buildUserInfo(ctx)
+			prompt += b.buildTaskInfo(ctx)
+			prompt += b.buildKnowledgeContext(ctx)
+			prompt += b.buildGroupStats(ctx)
+			prompt += b.buildRules(ctx)
+			return prompt
+		}
 	}
 
 	personalityPrompt := b.buildPersonalityPrompt(ctx)
@@ -67,7 +70,8 @@ func (b *SmartPromptBuilder) buildPersonalityPrompt(ctx *PromptContext) string {
 		return "你是 QIM 企业即时通讯系统中的智能助手。"
 	}
 
-	switch ctx.Group.AIPersonality {
+	aiConfig := ctx.Group.GetAIConfig()
+	switch aiConfig.Personality {
 	case "casual":
 		return "你是 QIM 企业即时通讯系统中的 AI 助手，性格轻松幽默。在回答中可以适当使用表情和emoji，语气活泼。"
 	case "concise":
@@ -195,24 +199,26 @@ func (b *SmartPromptBuilder) buildRules(ctx *PromptContext) string {
 	var rules []string
 
 	if ctx.Group != nil {
-		switch ctx.Group.AILanguage {
+		aiConfig := ctx.Group.GetAIConfig()
+		switch aiConfig.Language {
 		case "zh":
-			rules = append(rules, "使用中文回复")
+			rules = append(rules, "请使用中文回答")
 		case "en":
-			rules = append(rules, "Reply in English")
-		case "ja":
-			rules = append(rules, "日本語で回答してください")
+			rules = append(rules, "Please answer in English")
 		default:
-			rules = append(rules, "使用与提问者相同的语言回复")
 		}
+	}
 
-		switch ctx.Group.AIMaxLength {
+	if ctx.Group != nil {
+		aiConfig := ctx.Group.GetAIConfig()
+		switch aiConfig.MaxLength {
 		case "short":
-			rules = append(rules, "回答要简短，控制在1-2句话以内")
+			rules = append(rules, "回答要简短，控制在50字以内")
+		case "medium":
+			rules = append(rules, "回答适中，控制在150字以内")
 		case "long":
-			rules = append(rules, "可以详细展开回答，不限制长度")
+			rules = append(rules, "回答详细，可以展开说明")
 		default:
-			rules = append(rules, "回答长度控制在3-5句话")
 		}
 	} else {
 		rules = append(rules, "使用中文回复")
@@ -222,8 +228,11 @@ func (b *SmartPromptBuilder) buildRules(ctx *PromptContext) string {
 	rules = append(rules, "优先使用知识库中的内容回答")
 	rules = append(rules, "如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"")
 
-	if ctx.Group != nil && ctx.Group.AICustomPrompt != "" {
-		rules = append(rules, "额外要求: "+ctx.Group.AICustomPrompt)
+	if ctx.Group != nil {
+		aiConfig := ctx.Group.GetAIConfig()
+		if aiConfig.CustomPrompt != "" {
+			rules = append(rules, "额外要求: "+aiConfig.CustomPrompt)
+		}
 	}
 
 	return "\n\n回复规则：\n- " + strings.Join(rules, "\n- ")

@@ -35,3 +35,23 @@ export interface UpdateVersionParams {
   rolloutPercentage?: number
   status?: 'active' | 'inactive'
 }
+
+export interface CrashLog {
+  id: number
+  platform: string
+  appVersion: string
+  crashType: string
+  crashMessage: string
+  stackTrace: string
+  deviceInfo: string
+  createdAt: string
+}
+
+export interface UserFeedback {
+  id: number
+  userId: number
+  type: string
+  content: string
+  status: string
+  createdAt: string
+}

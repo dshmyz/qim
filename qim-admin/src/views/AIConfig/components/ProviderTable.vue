@@ -170,13 +170,6 @@ function formatTime(time?: string): string {
 function handleToggle(row: AIProvider) {
   emit('toggle', row)
 }
-
-const emit = defineEmits<{
-  test: [row: AIProvider]
-  edit: [row: AIProvider]
-  delete: [id: number]
-  toggle: [row: AIProvider]
-}>()
 </script>
 
 <style scoped>

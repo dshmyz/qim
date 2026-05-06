@@ -4,7 +4,7 @@ import type { AxiosResponse } from 'axios'
 
 export const getBlacklist = (params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<BlacklistEntry>>>> => {
   return request({
-    url: '/v1/blacklist',
+    url: '/v1/users/blacklist',
     method: 'get',
     params,
   })
@@ -12,7 +12,7 @@ export const getBlacklist = (params?: PaginationParams): Promise<AxiosResponse<A
 
 export const removeBlacklistEntry = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/v1/blacklist/${id}`,
+    url: `/v1/users/blacklist/${id}`,
     method: 'delete',
   })
 }
