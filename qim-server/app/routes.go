@@ -371,7 +371,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			aiHandler.RegisterRoutes(authed)
 
 			// 分身服务路由
-			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService)
+			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, mcpServer)
 			avatarHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）
