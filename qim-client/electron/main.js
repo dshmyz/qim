@@ -95,10 +95,31 @@ function createWindow() {
 
   const icon = loadIcon(256)
 
+  // 创建启动页面窗口
+  const splashWindow = new BrowserWindow({
+    width: 360,
+    height: 320,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  })
+
+  const splashPath = `file://${path.join(__dirname, 'splash.html')}`
+  splashWindow.loadURL(splashPath)
+  console.log(`Loading splash: ${splashPath}`)
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     icon: icon,
+    show: false,
+    backgroundColor: '#e8ecf1',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -130,7 +151,16 @@ function createWindow() {
     }
   })
 
+  mainWindow.once('ready-to-show', () => {
+    console.log('Main window ready to show, closing splash')
+    splashWindow.close()
+    mainWindow.show()
+  })
+
   mainWindow.on('close', function () {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
     mainWindow = null
   })
 

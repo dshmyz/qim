@@ -18,7 +18,7 @@
         <div class="app-logo">
           <AppLogo size="large" />
         </div>
-        <h2>QIM</h2>
+        <h2>QIM 青雀</h2>
         <p>即时通讯应用</p>
       </div>
       
@@ -452,7 +452,7 @@ const closeWindow = () => {
 .login-container {
   width: 100vw;
   height: 100vh;
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  background: linear-gradient(135deg, #e8ecf1 0%, #d5dde5 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -473,7 +473,7 @@ const closeWindow = () => {
 .circle {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(100, 181, 246, 0.08);
   animation: float 6s ease-in-out infinite;
 }
 
@@ -511,14 +511,12 @@ const closeWindow = () => {
 }
 
 .login-form {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: #ffffff;
   border-radius: 16px;
-  padding: 56px 48px;
-  width: 560px;
-  min-height: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 48px 40px;
+  width: 360px;
+  min-height: 460px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   z-index: 1;
   animation: slideIn 0.5s ease-out;
   -webkit-app-region: no-drag;
@@ -582,26 +580,19 @@ const closeWindow = () => {
 
 .login-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .app-logo {
-  width: 80px;
-  height: 80px;
+  width: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 24px;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
 }
 
 .app-logo img {
@@ -611,17 +602,17 @@ const closeWindow = () => {
 }
 
 .login-header h2 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 700;
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 600;
   color: #333;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
 }
 
 .login-header p {
   margin: 0;
-  font-size: 16px;
-  color: #666;
+  font-size: 13px;
+  color: #888;
 }
 
 .login-form-content {
@@ -629,23 +620,23 @@ const closeWindow = () => {
 }
 
 .form-item {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .input-wrapper {
   position: relative;
   border-radius: 8px;
-  background: rgba(240, 242, 245, 0.8);
+  background: #f5f7fa;
   transition: all 0.3s ease;
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid transparent;
+  border: 1px solid #e8ecf1;
 }
 
 .input-wrapper:focus-within {
-  background: white;
-  box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.2);
-  transform: translateY(-2px);
+  background: #ffffff;
+  border-color: #64b5f6;
+  box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.1);
 }
 
 .input-wrapper.input-error {
@@ -677,11 +668,11 @@ const closeWindow = () => {
 
 .login-input {
   width: 100%;
-  padding: 16px 16px 16px 48px;
+  padding: 14px 14px 14px 48px;
   border: none;
   background: transparent;
   border-radius: 8px;
-  font-size: 16px;
+  font-size: 15px;
   transition: all 0.3s ease;
   outline: none;
   box-sizing: border-box;
@@ -698,7 +689,7 @@ const closeWindow = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .remember-checkbox {
@@ -833,10 +824,10 @@ const closeWindow = () => {
 
 .login-button {
   width: 100%;
-  height: 56px;
+  height: 48px;
   border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
   background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
   border: none;
   cursor: pointer;
@@ -845,8 +836,7 @@ const closeWindow = () => {
 }
 
 .login-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.4);
+  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
   background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
 }
 
@@ -990,7 +980,7 @@ const closeWindow = () => {
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  color: rgba(102, 102, 102, 0.6);
+  color: rgba(102, 102, 102, 0.5);
 }
 
 .info-item {

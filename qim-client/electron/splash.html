@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(135deg, #e8ecf1 0%, #d5dde5 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+
+    .splash-container {
+      text-align: center;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .splash-logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+      border-radius: 16px;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 28px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
+    }
+
+    .splash-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #333;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .splash-subtitle {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 28px;
+    }
+
+    .splash-loader {
+      width: 120px;
+      height: 3px;
+      background: rgba(0, 0, 0, 0.08);
+      border-radius: 2px;
+      margin: 0 auto;
+      overflow: hidden;
+    }
+
+    .splash-loader-bar {
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(90deg, #64b5f6, #4fc3f7);
+      border-radius: 2px;
+      animation: loading 1.5s ease-in-out infinite;
+    }
+
+    @keyframes loading {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    .splash-version {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="splash-container">
+    <div class="splash-logo">Q</div>
+    <div class="splash-title">QIM 青雀</div>
+    <div class="splash-subtitle">即时通讯应用</div>
+    <div class="splash-loader">
+      <div class="splash-loader-bar"></div>
+    </div>
+  </div>
+  <div class="splash-version">v1.0.0</div>
+</body>
+</html>
