@@ -536,6 +536,7 @@ import { API_BASE_URL } from '../config'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
+import { useChatStore } from '../stores/chat'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
 import { useSettings } from '../composables/useSettings'
@@ -562,6 +563,9 @@ const { currentUser, userProfile, syncUserProfile, getProfileAvatar, refreshUser
 // 使用频道 store
 const channelStore = useChannelStore()
 const { isChannelCreator, sendChannelMessage } = channelStore
+
+// 使用聊天 store（镜像同步）
+const chatStore = useChatStore()
 
 // 会话数据处理
 const { processConversation } = useProcessConversation(serverUrl, currentUser)
@@ -800,10 +804,10 @@ const {
   handleConversationSelect: _handleConversationSelect,
   handleGroupChatSelect,
   handleChannelSelect,
-  handlePin,
-  handleMute,
-  handleRemove,
-  handleMarkRead,
+  handlePin: _handlePin,
+  handleMute: _handleMute,
+  handleRemove: _handleRemove,
+  handleMarkRead: _handleMarkRead,
   updateConversation,
   addMessage: _addMessage,
   clearMessages: _clearMessages,
@@ -833,12 +837,89 @@ const handleConversationSelect = (conversation: Conversation) => {
   _handleConversationSelect(conversation)
   activeOption.value = 'recent'
   loadMessages(conversation.id)
+  // 使用 Store Action 清除未读计数
+  chatStore.markConversationRead(conversation.id)
+  // 同步回 composable 的 ref（兼容其他未迁移的代码）
   const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
   if (conversationIndex !== -1) {
-    conversations.value[conversationIndex].unreadCount = 0
+    conversations.value[conversationIndex] = { ...conversations.value[conversationIndex], unreadCount: 0 }
   }
   if (window.electron?.tray) {
     window.electron.tray.stopFlash()
+  }
+}
+
+// 重写置顶处理，使用 Store Action（阶段二：单点验证）
+const handlePin = async (conversation: Conversation) => {
+  try {
+    await request(`/api/v1/conversations/${conversation.id}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ pinned: !conversation.pinned })
+    })
+    // 使用 Store Action 更新状态
+    chatStore.pinConversation(conversation.id, !conversation.pinned)
+    // 同步回 composable 的 ref（兼容其他未迁移的代码）
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index !== -1) {
+      conversations.value[index] = { ...conversations.value[index], pinned: !conversation.pinned }
+    }
+  } catch (error) {
+    console.error('置顶会话失败:', error)
+  }
+}
+
+// 重写免打扰处理，使用 Store Action
+const handleMute = async (conversation: Conversation) => {
+  try {
+    await request(`/api/v1/conversations/${conversation.id}/mute`, {
+      method: 'PUT',
+      body: JSON.stringify({ muted: !conversation.muted })
+    })
+    // 使用 Store Action 更新状态
+    chatStore.muteConversation(conversation.id, !conversation.muted)
+    // 同步回 composable 的 ref（兼容其他未迁移的代码）
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index !== -1) {
+      conversations.value[index] = { ...conversations.value[index], muted: !conversation.muted }
+    }
+  } catch (error) {
+    console.error('静音会话失败:', error)
+  }
+}
+
+// 重写标记已读处理，使用 Store Action
+const handleMarkRead = async (conversation: Conversation) => {
+  try {
+    await request(`/api/v1/conversations/${conversation.id}/read`, {
+      method: 'PUT'
+    })
+    // 使用 Store Action 更新状态
+    chatStore.markConversationRead(conversation.id)
+    // 同步回 composable 的 ref（兼容其他未迁移的代码）
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index !== -1) {
+      conversations.value[index] = { ...conversations.value[index], unreadCount: 0 }
+    }
+  } catch (error) {
+    console.error('标记已读失败:', error)
+  }
+}
+
+// 重写移除会话处理，使用 Store Action
+const handleRemove = async (conversation: Conversation) => {
+  try {
+    await request(`/api/v1/conversations/${conversation.id}`, {
+      method: 'DELETE'
+    })
+    // 使用 Store Action 更新状态
+    chatStore.removeConversation(conversation.id)
+    // 同步回 composable 的 ref（兼容其他未迁移的代码）
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index !== -1) {
+      conversations.value.splice(index, 1)
+    }
+  } catch (error) {
+    console.error('移除会话失败:', error)
   }
 }
 
@@ -1015,6 +1096,23 @@ const unregisterCustomEventListeners = () => {
   window.removeEventListener('openShareModal', handleOpenShareModal)
   window.removeEventListener('refresh-user-apps', handleRefreshUserApps)
 }
+
+// 镜像同步：将会话状态同步到 Pinia Store（零风险，不改变现有行为）
+watch(conversations, (newConvs) => {
+  if (newConvs && newConvs.length > 0) {
+    chatStore.setConversations(newConvs)
+  }
+}, { deep: true })
+
+watch(currentConversationId, (newId) => {
+  chatStore.setCurrentConversation(newId)
+})
+
+watch(messages, (newMsgs) => {
+  if (currentConversationId.value && newMsgs) {
+    chatStore.setMessages(currentConversationId.value, newMsgs)
+  }
+}, { deep: true })
 
 
 // 初始化数据
@@ -1252,42 +1350,29 @@ const handleGroupMemberLeft = (data: any) => {
   const conversationId = data.conversation_id.toString()
   const userId = data.user_id.toString()
   
-  // 更新会话列表中的群聊成员信息
+  // 使用 Store Action 更新成员列表
+  chatStore.removeGroupMember(conversationId, userId)
+  
+  // 同步回 composable 的 ref（兼容其他未迁移的代码）
   const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex !== -1) {
     const conversation = conversations.value[conversationIndex]
     if (conversation.members) {
-      // 过滤掉退出的成员
-      const updatedMembers = conversation.members.filter(member => member.id !== userId)
-      
-      // 创建新的会话对象，确保响应式更新
-      const updatedConversation = {
+      conversations.value[conversationIndex] = {
         ...conversation,
-        members: updatedMembers
+        members: conversation.members.filter(member => member.id !== userId)
       }
-      
-      // 替换会话对象，触发响应式更新
-      conversations.value.splice(conversationIndex, 1, updatedConversation)
-      
-      // 强制触发响应式更新
       conversations.value = [...conversations.value]
-      
-      // 保存会话到本地存储
-      storage.saveConversations(conversations.value)
     }
   }
   
   // 如果是当前用户退出群聊，标记为已退出
   if (userId === currentUser.value?.id?.toString()) {
-    const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-    if (conversationIndex !== -1) {
-      const updatedConversation = {
-        ...conversations.value[conversationIndex],
-        isExited: true
-      }
-      conversations.value.splice(conversationIndex, 1, updatedConversation)
+    chatStore.patchConversation(conversationId, { isExited: true })
+    const idx = conversations.value.findIndex(c => c.id === conversationId)
+    if (idx !== -1) {
+      conversations.value[idx] = { ...conversations.value[idx], isExited: true }
       conversations.value = [...conversations.value]
-      storage.saveConversations(conversations.value)
     }
   }
 }
@@ -1299,47 +1384,46 @@ const handleGroupMemberJoined = (data: any) => {
   const conversationId = data.conversation_id.toString()
   const newMember = data.member
   const memberName = newMember.nickname || newMember.username || (newMember.name !== undefined ? newMember.name : '未知用户')
+  const memberData = {
+    id: newMember.id?.toString() || '',
+    name: memberName,
+    avatar: newMember.avatar || ''
+  }
 
+  // 使用 Store Action 添加成员
+  chatStore.addGroupMember(conversationId, memberData)
+  
+  // 同步回 composable 的 ref（兼容其他未迁移的代码）
   const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex !== -1) {
     const conversation = conversations.value[conversationIndex]
-
     const memberExists = conversation.members && conversation.members.some(member => member.id === newMember.id?.toString())
-
     if (!memberExists) {
-      const updatedMembers = [...(conversation.members || []), {
-        id: newMember.id?.toString() || '',
-        name: memberName,
-        avatar: newMember.avatar || ''
-      }]
-
-      const updatedConversation = {
+      conversations.value[conversationIndex] = {
         ...conversation,
-        members: updatedMembers
+        members: [...(conversation.members || []), memberData]
       }
-
-      conversations.value.splice(conversationIndex, 1, updatedConversation)
       conversations.value = [...conversations.value]
-      storage.saveConversations(conversations.value)
-
-      if (currentConversationId.value === conversationId) {
-        const systemMessage = {
-          id: `system_${Date.now()}`,
-          type: 'system',
-          content: `${memberName} 加入了群聊`,
-          timestamp: Date.now(),
-          sender: {
-            id: 'system',
-            name: '系统',
-            avatar: ''
-          },
-          isSelf: false,
-          isRead: true,
-          conversationId: String(conversationId)
-        }
-        messages.value.push(systemMessage)
-      }
     }
+  }
+
+  // 添加系统消息
+  if (currentConversationId.value === conversationId) {
+    const systemMessage = {
+      id: `system_${Date.now()}`,
+      type: 'system',
+      content: `${memberName} 加入了群聊`,
+      timestamp: Date.now(),
+      sender: {
+        id: 'system',
+        name: '系统',
+        avatar: ''
+      },
+      isSelf: false,
+      isRead: true,
+      conversationId: String(conversationId)
+    }
+    messages.value.push(systemMessage)
   }
 }
 
@@ -1408,31 +1492,26 @@ const handleNotification = (data: any) => {
 const handleConversationUpdated = (data: any) => {
   console.log('会话更新:', data)
   
-  // 防御性检查：确保数据存在且包含必要字段
   if (!data || !data.id) {
     console.warn('会话更新数据无效:', data)
     return
   }
   
   try {
+    // 使用 Store Action 更新会话
+    chatStore.patchConversation(data.id.toString(), data)
+    // 同步回 composable 的 ref（兼容其他未迁移的代码）
     const conversationIndex = conversations.value.findIndex(c => c.id === data.id.toString())
     if (conversationIndex !== -1) {
-      // 保留原有数据，只更新传入的字段，避免覆盖重要信息
       const existingConversation = conversations.value[conversationIndex]
       conversations.value[conversationIndex] = {
         ...existingConversation,
         ...data
       }
-      
-      // 确保 members 字段不会被清空
       if (data.members === undefined || data.members === null) {
         conversations.value[conversationIndex].members = existingConversation.members
       }
-      
-      // 强制触发响应式更新
       conversations.value = [...conversations.value]
-      // 保存会话到本地存储
-      storage.saveConversations(conversations.value)
     }
   } catch (error) {
     console.error('处理会话更新失败:', error)
@@ -1479,19 +1558,23 @@ const handleGroupAnnouncementUpdated = (data: any) => {
 // 处理群成员角色更新
 const handleGroupMemberRoleUpdated = (data: any) => {
   console.log('群成员角色更新:', data)
-  // 更新群成员列表中的角色信息
-  const conversationIndex = conversations.value.findIndex(c => c.id === data.conversation_id.toString())
+  const conversationId = data.conversation_id.toString()
+  const userId = data.user_id.toString()
+  const role = data.role
+  
+  // 使用 Store Action 更新角色
+  chatStore.updateMemberRole(conversationId, userId, role)
+  
+  // 同步回 composable 的 ref（兼容其他未迁移的代码）
+  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex !== -1) {
     const conversation = conversations.value[conversationIndex]
     if (conversation.members) {
-      const memberIndex = conversation.members.findIndex(m => m.id === data.user_id.toString())
-      if (memberIndex !== -1) {
-        conversation.members[memberIndex].role = data.role
-        // 强制触发响应式更新
-        conversations.value = [...conversations.value]
-        // 保存会话到本地存储
-        storage.saveConversations(conversations.value)
+      conversations.value[conversationIndex] = {
+        ...conversation,
+        members: conversation.members.map(m => m.id === userId ? { ...m, role } : m)
       }
+      conversations.value = [...conversations.value]
     }
   }
 }
@@ -1561,21 +1644,26 @@ const handleMessageRecalled = (data: any) => {
   
   console.log('收到消息撤回通知:', data)
   
+  // 使用 Store Action 更新消息状态
+  chatStore.recallMessage(conversationId, messageId)
+  
+  // 同步回 composable 的 ref（兼容其他未迁移的代码）
   // 更新消息列表中的消息状态
-  messages.value = messages.value.map(msg => {
-    if (msg.id === messageId) {
-      return { ...msg, content: '[消息已撤回]', isRecalled: true }
-    }
-    return msg
-  })
+  if (currentConversationId.value === conversationId) {
+    messages.value = messages.value.map(msg => {
+      if (msg.id === messageId) {
+        return { ...msg, content: '[消息已撤回]', isRecalled: true }
+      }
+      return msg
+    })
+  }
   
   // 更新会话列表中的最后消息
   const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex !== -1) {
     const conversation = conversations.value[conversationIndex]
     if (conversation.lastMessage && conversation.lastMessage.id === messageId) {
-      // 创建新的会话对象，确保响应式更新
-      const updatedConversation = {
+      conversations.value[conversationIndex] = {
         ...conversation,
         lastMessage: {
           ...conversation.lastMessage,
@@ -1583,11 +1671,6 @@ const handleMessageRecalled = (data: any) => {
           isRecalled: true
         }
       }
-      
-      // 替换会话对象，触发响应式更新
-      conversations.value.splice(conversationIndex, 1, updatedConversation)
-      
-      // 强制触发响应式更新
       conversations.value = [...conversations.value]
     }
   }
@@ -1630,117 +1713,64 @@ const formatNotificationContent = (message: any): string => {
 const handleNewMessage = (data: any) => {
   const conversationId = data.conversation_id.toString()
   
-  let quotedMessageData = undefined
-  if (data.quoted_message) {
-    quotedMessageData = {
-      id: data.quoted_message.id?.toString() || '',
-      content: data.quoted_message.content || '',
-      file_name: data.quoted_message.file_name,
-      file_size: data.quoted_message.file_size,
-      sender: data.quoted_message.sender ? {
-        id: data.quoted_message.sender?.id?.toString() || '',
-        name: data.quoted_message.sender?.nickname || data.quoted_message.sender?.username || data.quoted_message.sender?.name || '未知用户',
-        avatar: data.quoted_message.sender?.avatar || ''
-      } : {
-        id: '',
-        name: data.quoted_message.name || '未知用户',
-        avatar: ''
-      },
-      timestamp: data.quoted_message.created_at ? new Date(data.quoted_message.created_at).getTime() : Date.now(),
-      type: data.quoted_message.type || 'text',
-      isSelf: data.quoted_message.sender?.id?.toString() === currentUser.value?.id?.toString()
-    }
-  }
-  
   const newMessage = processMessage(data, conversationId)
+  const isCurrentConv = currentConversationId.value === conversationId
   
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    const updatedConversation = {
-      ...conversations.value[conversationIndex],
-      lastMessage: newMessage,
-      timestamp: newMessage.timestamp
-    }
-    
-    if (currentConversationId.value !== conversationId) {
-      // 流式消息不增加未读计数和触发通知
-      if (!newMessage.isStreaming) {
-        updatedConversation.unreadCount = (updatedConversation.unreadCount || 0) + 1
-        
-        if (messageSettings.value.notificationsEnabled) {
-          showMessage({
-            message: `收到来自 ${newMessage.sender.name} 的新消息`,
-            type: 'info',
-            duration: 3000
-          })
-          
-          if (messageSettings.value.soundEnabled) {
-            playMessageSound()
-          }
+  // 使用 Store Action 更新状态
+  chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
+  
+  // Store 更新后，watch 会自动同步到 composable 的 ref
+  // 下面处理通知逻辑和 UI 逻辑
+  
+  // 非当前会话且非流式消息，触发通知
+  if (!isCurrentConv && !newMessage.isStreaming) {
+    if (messageSettings.value.notificationsEnabled) {
+      showMessage({
+        message: `收到来自 ${newMessage.sender.name} 的新消息`,
+        type: 'info',
+        duration: 3000
+      })
+      
+      if (messageSettings.value.soundEnabled) {
+        playMessageSound()
+      }
 
-          if (window.electron?.tray) {
-            window.electron.tray.flash()
-          }
-          
-          if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
-            const notificationBody = formatNotificationContent(newMessage)
-            if (Notification.permission === 'granted') {
+      if (window.electron?.tray) {
+        window.electron.tray.flash()
+      }
+      
+      if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+        const notificationBody = formatNotificationContent(newMessage)
+        if (Notification.permission === 'granted') {
+          new Notification('新消息', {
+            body: notificationBody,
+            icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
+          })
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
               new Notification('新消息', {
                 body: notificationBody,
                 icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
               })
-            } else if (Notification.permission !== 'denied') {
-              Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                  new Notification('新消息', {
-                    body: notificationBody,
-                    icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
-                  })
-                }
-              })
             }
-          }
+          })
         }
       }
     }
-    
-    conversations.value.splice(conversationIndex, 1, updatedConversation)
-    scheduleConversationSort()
-  } else {
-    loadConversations().then(() => {
-      const newConversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-      if (newConversationIndex !== -1 && currentConversationId.value !== conversationId) {
-        const conversation = conversations.value[newConversationIndex]
-        // 流式消息不增加未读计数
-        if (!newMessage.isStreaming && (!conversation.unreadCount || conversation.unreadCount === 0)) {
-          const updatedConv = {
-            ...conversation,
-            unreadCount: 1
-          }
-          conversations.value.splice(newConversationIndex, 1, updatedConv)
-          scheduleConversationSort()
-        }
-        
-        // 流式消息不触发通知
-        if (!newMessage.isStreaming && messageSettings.value.notificationsEnabled) {
-          showMessage({
-            message: `收到来自 ${newMessage.sender.name} 的新消息`,
-            type: 'info',
-            duration: 3000
-          })
-          
-          if (messageSettings.value.soundEnabled) {
-            playMessageSound()
-          }
-        }
-      }
-    })
   }
   
-  if (currentConversationId.value === conversationId) {
+  // 如果会话不存在于列表中，重新加载会话列表
+  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
+  if (conversationIndex === -1) {
+    loadConversations()
+  }
+  
+  // 当前会话：处理消息列表和滚动
+  if (isCurrentConv) {
     const messageIndex = messages.value.findIndex(msg => msg.id === newMessage.id)
     if (messageIndex === -1) {
-      // 消息不存在，添加新消息
+      // 消息不存在，添加新消息（watch 会从 Store 同步）
       messages.value.push(newMessage)
       
       nextTick(() => {
@@ -2458,10 +2488,29 @@ const handleSendMessage = async (messageData: any) => {
 // 处理消息撤回
 const handleRecallMessage = async (messageId: number) => {
   try {
-    const index = messages.value.findIndex(m => m.id === messageId.toString())
-    if (index !== -1) {
-      messages.value[index].content = '[消息已撤回]'
-      messages.value[index].isRecalled = true
+    // 使用 Store Action 更新消息状态
+    if (currentConversationId.value) {
+      chatStore.recallMessage(currentConversationId.value, messageId.toString())
+      // 同步回 composable 的 ref（兼容其他未迁移的代码）
+      const index = messages.value.findIndex(m => m.id === messageId.toString())
+      if (index !== -1) {
+        messages.value[index].content = '[消息已撤回]'
+        messages.value[index].isRecalled = true
+        messages.value = [...messages.value]
+      }
+      // 更新会话列表中的 lastMessage（如果撤回的是最后一条消息）
+      const convIndex = conversations.value.findIndex(c => c.id === currentConversationId.value)
+      if (convIndex !== -1 && conversations.value[convIndex].lastMessage?.id === messageId.toString()) {
+        conversations.value[convIndex] = {
+          ...conversations.value[convIndex],
+          lastMessage: {
+            ...conversations.value[convIndex].lastMessage,
+            content: '[消息已撤回]',
+            isRecalled: true
+          }
+        }
+        conversations.value = [...conversations.value]
+      }
     }
   } catch (error) {
     console.error('撤回消息失败:', error)
