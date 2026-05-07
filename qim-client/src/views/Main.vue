@@ -3835,23 +3835,19 @@ const handleShareConfirm = async (selection) => {
           body: JSON.stringify(messageData)
         })
         
-        // 如果当前正在查看这个会话，手动添加消息到前端列表
-        if (currentConversationId.value === convResponse.data.id.toString()) {
-          const newMessage = {
-            id: messageResponse.data.id.toString(),
-            content: messageData.content,
-            sender: currentUser.value,
-            timestamp: Date.now(),
-            type: messageData.type,
-            isSelf: true,
-            isRead: false
-          }
-          // 检查消息是否已经存在，避免重复添加
-          const messageExists = messages.value.some(msg => msg.id === newMessage.id)
-          if (!messageExists) {
-            messages.value.push(newMessage)
-          }
+        // 使用 Store 方法添加消息
+        const newMessage = {
+          id: messageResponse.data.id.toString(),
+          content: messageData.content,
+          sender: currentUser.value,
+          timestamp: Date.now(),
+          type: messageData.type,
+          isSelf: true,
+          isRead: false,
+          conversationId: convResponse.data.id.toString()
         }
+        chatStore.receiveMessage(convResponse.data.id.toString(), newMessage as any, 
+          currentConversationId.value === convResponse.data.id.toString())
       }
     }
     
@@ -3888,23 +3884,18 @@ const handleShareConfirm = async (selection) => {
         body: JSON.stringify(messageData)
       })
       
-      // 如果当前正在查看这个会话，手动添加消息到前端列表
-      if (currentConversationId.value === groupId) {
-        const newMessage = {
-          id: messageResponse.data.id.toString(),
-          content: messageData.content,
-          sender: currentUser.value,
-          timestamp: Date.now(),
-          type: messageData.type,
-          isSelf: true,
-          isRead: false
-        }
-        // 检查消息是否已经存在，避免重复添加
-        const messageExists = messages.value.some(msg => msg.id === newMessage.id)
-        if (!messageExists) {
-          messages.value.push(newMessage)
-        }
+      // 使用 Store 方法添加消息
+      const newMessage = {
+        id: messageResponse.data.id.toString(),
+        content: messageData.content,
+        sender: currentUser.value,
+        timestamp: Date.now(),
+        type: messageData.type,
+        isSelf: true,
+        isRead: false,
+        conversationId: groupId
       }
+      chatStore.receiveMessage(groupId, newMessage as any, currentConversationId.value === groupId)
     }
     
     showMessage({ message: '分享成功', type: 'success' })
