@@ -37,9 +37,9 @@ type BaseProvider struct {
 func NewBaseProvider() *BaseProvider {
 	return &BaseProvider{
 		Client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 30 * time.Second,
 		},
-		MaxRetries: 3,
+		MaxRetries: 2,
 	}
 }
 

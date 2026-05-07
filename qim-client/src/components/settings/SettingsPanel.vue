@@ -43,15 +43,15 @@
                       :alt="currentUser?.username || 'avatar'"
                       size="lg"
                     />
-                    <button class="change-avatar-btn">更换</button>
+                    <button class="change-avatar-btn" @click="triggerAvatarUpload">更换</button>
                   </div>
                 </div>
               </div>
             </div>
             <div class="settings-item">
-              <label>昵称</label>
+              <label>姓名</label>
               <div class="settings-item-content">
-                <input type="text" v-model="localProfile.nickname" class="settings-input" />
+                <span class="settings-value">{{ localProfile.nickname || '' }}</span>
               </div>
             </div>
             <div class="settings-item">
@@ -225,11 +225,19 @@
       </div>
     </div>
   </div>
+  
+  <AvatarCropper
+    v-if="showCropper"
+    :image-url="pendingImageUrl"
+    @confirm="handleCropConfirm"
+    @cancel="handleCropCancel"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import AvatarCropper from '../modals/AvatarCropper.vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {
@@ -266,7 +274,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close': []
-  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any }]
+  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File }]
   'clearCache': []
   'saveTwoFactor': [enabled: boolean]
   'openSecurity': []
@@ -279,6 +287,11 @@ const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
 const localAdvancedSettings = ref({ ...props.advancedSettings })
 const localFileSettings = ref({ ...props.fileSettings })
+
+const avatarInputRef = ref<HTMLInputElement | null>(null)
+const showCropper = ref(false)
+const pendingImageUrl = ref('')
+const pendingAvatarFile = ref<File | null>(null)
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -297,12 +310,49 @@ const currentUserAvatar = computed(() => {
   return props.serverUrl + props.currentUser.avatar
 })
 
+const triggerAvatarUpload = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = (e: Event) => {
+    const target = e.target as HTMLInputElement
+    if (target.files && target.files.length > 0) {
+      const file = target.files[0]
+      if (!file.type.startsWith('image/')) return
+      if (file.size > 5 * 1024 * 1024) return
+      pendingImageUrl.value = URL.createObjectURL(file)
+      showCropper.value = true
+    }
+  }
+  input.click()
+}
+
+const handleCropConfirm = (croppedFile: File) => {
+  pendingAvatarFile.value = croppedFile
+  showCropper.value = false
+  if (pendingImageUrl.value) {
+    URL.revokeObjectURL(pendingImageUrl.value)
+    pendingImageUrl.value = ''
+  }
+}
+
+const handleCropCancel = () => {
+  showCropper.value = false
+  if (pendingImageUrl.value) {
+    URL.revokeObjectURL(pendingImageUrl.value)
+    pendingImageUrl.value = ''
+  }
+}
+
 const save = () => {
   emit('save', {
     profile: { ...localProfile.value },
     messageSettings: { ...localMessageSettings.value },
-    appearanceSettings: { ...localAppearanceSettings.value }
+    appearanceSettings: { ...localAppearanceSettings.value },
+    fileSettings: { ...localFileSettings.value },
+    avatarFile: pendingAvatarFile.value || undefined
   })
+  pendingAvatarFile.value = null
 }
 
 const handleTwoFactorChange = (event: Event) => {

@@ -3,7 +3,9 @@
     <div class="read-users-content" @click.stop>
       <div class="read-users-header">
         <h3>已读用户 ({{ readUsers.read_users?.length || 0 }}/{{ Math.max(0, (readUsers.total_members || 0) - 1) }})</h3>
-        <button class="close-btn" @click.stop="handleClose">&times;</button>
+        <button class="close-btn" @click.stop="handleClose">
+          <i class="fas fa-times"></i>
+        </button>
       </div>
       <div class="read-users-body">
         <div v-if="readUsers.read_users?.length === 0" class="empty-read">
@@ -99,6 +101,34 @@ const getReadUserAvatar = (user: ReadUser): string => {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-color);
+}
+
+.read-users-header .close-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.read-users-header .close-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+  transform: scale(1.05);
+}
+
+.read-users-header .close-btn i {
+  display: block !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
 }
 
 .read-users-body {

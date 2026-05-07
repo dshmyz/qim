@@ -1,24 +1,20 @@
 <template>
   <div class="statistics-app">
-    <div class="statistics-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-arrow-left"></i>
-        </button>
-        <h2>统计报表</h2>
-      </div>
-      <div class="statistics-period-selector">
-        <button 
-          v-for="period in periods" 
-          :key="period.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === period.value }"
-          @click="changeStatisticsPeriod(period.value)"
-        >
-          {{ period.label }}
-        </button>
-      </div>
-    </div>
+    <AppHeader title="统计报表" @back="$emit('back')">
+      <template #actions>
+        <div class="statistics-period-selector">
+          <button 
+            v-for="period in periods" 
+            :key="period.value"
+            class="period-btn"
+            :class="{ active: selectedPeriod === period.value }"
+            @click="changeStatisticsPeriod(period.value)"
+          >
+            {{ period.label }}
+          </button>
+        </div>
+      </template>
+    </AppHeader>
     <div class="statistics-content">
       <div class="statistics-overview">
         <div class="stat-card">
@@ -161,6 +157,7 @@ import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import AppHeader from './AppHeader.vue'
 
 // 服务器URL
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -250,56 +247,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   background-color: var(--bg-color);
-}
-
-.statistics-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  /* border-bottom: 1px solid var(--border-color); */
-  background-color: var(--card-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-  height: 72px;
-  box-sizing: border-box;
-}
-
-.statistics-header:hover {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.2s;
-  color: var(--primary-color);
-}
-
-.back-btn:hover {
-  background: var(--primary-light);
-}
-
-.statistics-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  transition: color 0.3s ease;
 }
 
 .statistics-period-selector {

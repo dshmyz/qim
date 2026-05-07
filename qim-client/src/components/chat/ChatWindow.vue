@@ -6,6 +6,8 @@
       :conversation="conversation"
       :current-user="currentUser"
       :server-url="serverUrl"
+      :avatar-enabled="avatarEnabled"
+      :avatar-approval-status="avatarApprovalStatus"
       @invite-members="handleInviteMembers"
       @delete-group="confirmDeleteConversation"
       @save-group-info="saveGroupInfo"
@@ -18,6 +20,7 @@
       @start-private-chat="handleStartPrivateChat"
       @edit-group-info="editGroupInfo"
       @update-ai-settings="handleUpdateAISettings"
+      @update-avatar-enabled="handleUpdateAvatarEnabled"
     />
 
     <!-- 分身接管横幅 -->
@@ -45,7 +48,6 @@
       @preview-image="previewImage"
       @download-file="downloadFile"
       @save-as="saveFileAs"
-      @view-shared-content="viewSharedContent"
       @open-mini-app="(app) => app && openMiniApp(app as MiniAppData)"
       @open-news-link="openNewsLink"
       @retry-send-message="retrySendMessage"
@@ -131,8 +133,6 @@
       :screenshot-image-data="screenshotImageData"
       :show-image-preview="showImagePreview"
       :preview-image-url="previewImageUrl"
-      :show-share-preview="showSharePreview"
-      :share-preview-data="sharePreviewData"
       :other-user-id="otherUserId"
       :active-mini-app="activeMiniApp"
       :get-file-icon="getFileIcon"
@@ -166,7 +166,6 @@
       @retake-screenshot="retakeScreenshot"
       @send-screenshot="uploadScreenshot"
       @close-image-preview="closeImagePreview"
-      @close-share-preview="closeSharePreview"
       @close-mini-app="activeMiniApp = null"
       @mini-app-toast="handleMiniAppToast"
     />
@@ -286,10 +285,25 @@ const {
 } = useAIActions()
 
 // 分身 composable
-const { takeoverSession, getSession } = useAvatar()
+const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, updateConfig, fetchConfig, fetchSessions } = useAvatar()
+const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
+
+// 处理分身启用状态更新
+const handleUpdateAvatarEnabled = async (enabled: boolean) => {
+  try {
+    await updateConfig({ enabled })
+    if (enabled) {
+      $message.success('分身已开启')
+    } else {
+      $message.success('分身已关闭')
+    }
+  } catch (error) {
+    $message.error('切换分身状态失败')
+  }
+}
 
 // AI 快捷操作处理
 const handleAIAction = async (actionId: string) => {
@@ -386,6 +400,7 @@ interface Props {
   currentUser: any
   hasMoreMessages: boolean
   updateConversation?: (conversation: Conversation) => void
+  fileSettings?: { defaultSaveDirectory?: string }
 }
 
 const props = defineProps<Props>()
@@ -932,6 +947,8 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
   const oldLength = oldMessages?.length ?? 0
   const newLength = newMessages?.length ?? 0
   
+  let shouldScroll = false
+  
   if (newLength > oldLength) {
     // 消息增加了，判断是加载历史消息还是收到新消息
     const oldFirstId = oldMessages?.[0]?.id
@@ -944,6 +961,17 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
     }
     
     // 新消息到达（添加到末尾），滚动到底部
+    shouldScroll = true
+  } else if (newLength === oldLength && newLength > 0) {
+    // 消息数量不变，但可能是流式消息更新内容
+    // 检查最后一条消息是否正在流式传输
+    const lastMessage = newMessages[newLength - 1]
+    if (lastMessage?.isStreaming) {
+      shouldScroll = true
+    }
+  }
+  
+  if (shouldScroll) {
     scrollToBottom()
   }
   
@@ -993,8 +1021,6 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     if (showImagePreview.value) {
       closeImagePreview()
-    } else if (showSharePreview.value) {
-      closeSharePreview()
     }
   }
 }
@@ -1010,6 +1036,9 @@ onMounted(async () => {
   if (props.conversation?.id) {
     markMessagesAsRead(props.conversation.id)
   }
+  // 加载分身配置
+  await fetchConfig()
+  await fetchSessions()
   // 初始加载已读用户列表
   await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
   // 加载小程序列表
@@ -1022,6 +1051,24 @@ onMounted(async () => {
   window.addEventListener('shareFileToChat', handleShareFile as EventListener)
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleGlobalKeydown)
+  
+  if (window.electron?.ipcRenderer) {
+    window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
+      if (result.success) {
+        $message.success(`文件已下载到: ${result.filePath}`)
+      } else {
+        $message.error('文件下载失败: ' + (result.error || '未知错误'))
+      }
+    })
+    
+    window.electron.ipcRenderer.on('save-file-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
+      if (result.success) {
+        $message.success(`文件已保存到: ${result.filePath}`)
+      } else {
+        $message.error('文件保存失败: ' + (result.error || '未知错误'))
+      }
+    })
+  }
 })
 
 // 初始化 WebSocket 消息处理
@@ -1617,7 +1664,7 @@ const sendPrivateMessageToUser = () => {
   closeUserProfile()
 }
 
-// GroupPanel 事件处理方法
+// ChatHeaderActions 事件处理方法
 const handleSwitchConversation = (conversationId: string) => {
   emit('switchConversation', conversationId)
 }
@@ -2176,38 +2223,23 @@ const handleFileSelect = (event: Event) => {
   }
 }
 
-const saveFileAs = async (fileContent: string, fileName?: string) => {
+const downloadFile = async (fileContent: string, fileName?: string) => {
   try {
-    let finalFileName: string
-    let fileUrl: string
+    const parsedContent = JSON.parse(fileContent)
+    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+    let fileUrl = parsedContent.url
     
-    // 检查fileContent是否为JSON字符串
-    if (fileContent.startsWith('{') && fileContent.endsWith('}')) {
-      try {
-        // 尝试解析fileContent为JSON
-        const parsedContent = JSON.parse(fileContent)
-        // 使用解析后的数据
-        finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-        fileUrl = parsedContent.url.startsWith('http') ? parsedContent.url : `${serverUrl.value}${parsedContent.url}`
-      } catch (parseError) {
-        // 解析失败，将fileContent视为URL
-        finalFileName = fileName || fileContent.split('/').pop() || '文件'
-        fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
-      }
-    } else {
-      // fileContent不是JSON，视为URL
-      finalFileName = fileName || fileContent.split('/').pop() || '文件'
-      fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
+    if (fileUrl && !fileUrl.startsWith('http')) {
+      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
+      const cleanFileUrl = fileUrl.replace(/^\//, '')
+      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
     }
     
-    
-    // 检查URL是否为空
     if (!fileUrl) {
-      $message.error('文件URL为空，无法保存')
+      $message.error('文件URL为空，无法下载')
       return
     }
     
-    // 发起下载请求
     const response = await fetch(fileUrl, {
       method: 'GET',
       headers: {
@@ -2215,11 +2247,29 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
       }
     })
     
-    if (response.ok) {
-      // 创建Blob对象
-      const blob = await response.blob()
-      
-      // 创建下载链接
+    if (!response.ok) {
+      if (response.status === 403) {
+        $message.error('文件下载失败: 权限不足，请检查您的权限')
+      } else {
+        $message.error('文件下载失败: 服务器错误')
+      }
+      return
+    }
+    
+    const blob = await response.blob()
+    
+    if (window.electron?.ipcRenderer) {
+      const arrayBuffer = await blob.arrayBuffer()
+      const buffer = Array.from(new Uint8Array(arrayBuffer))
+      const saveDir = props.fileSettings?.defaultSaveDirectory
+      window.electron.ipcRenderer.send('download-file', {
+        buffer,
+        fileName: finalFileName,
+        mime: blob.type || 'application/octet-stream',
+        saveDir
+      })
+      $message.success(`文件 ${finalFileName} 已下载到默认目录`)
+    } else {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -2228,12 +2278,68 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
-      
-      // $message.success(`文件 ${finalFileName} 保存成功`)
-    } else if (response.status === 403) {
-      $message.error('文件保存失败: 权限不足，请检查您的权限')
+      $message.success(`文件 ${finalFileName} 已下载到默认目录`)
+    }
+  } catch (error) {
+    console.error('文件下载失败:', error)
+    $message.error('文件下载失败: 网络错误')
+  }
+}
+
+const saveFileAs = async (fileContent: string, fileName?: string) => {
+  try {
+    const parsedContent = JSON.parse(fileContent)
+    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+    let fileUrl = parsedContent.url
+    
+    if (fileUrl && !fileUrl.startsWith('http')) {
+      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
+      const cleanFileUrl = fileUrl.replace(/^\//, '')
+      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
+    }
+    
+    if (!fileUrl) {
+      $message.error('文件URL为空，无法保存')
+      return
+    }
+    
+    const response = await fetch(fileUrl, {
+      method: 'GET',
+      headers: {
+        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+      }
+    })
+    
+    if (!response.ok) {
+      if (response.status === 403) {
+        $message.error('文件保存失败: 权限不足，请检查您的权限')
+      } else {
+        $message.error('文件保存失败: 服务器错误')
+      }
+      return
+    }
+    
+    const blob = await response.blob()
+    
+    if (window.electron?.ipcRenderer) {
+      const arrayBuffer = await blob.arrayBuffer()
+      const buffer = Array.from(new Uint8Array(arrayBuffer))
+      window.electron.ipcRenderer.send('save-file-as', {
+        buffer,
+        fileName: finalFileName,
+        mime: blob.type || 'application/octet-stream'
+      })
+      $message.success(`文件 ${finalFileName} 保存成功`)
     } else {
-      $message.error('文件保存失败: 服务器错误')
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = finalFileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      $message.success(`文件 ${finalFileName} 已保存`)
     }
   } catch (error) {
     console.error('文件保存失败:', error)
@@ -2241,39 +2347,7 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
   }
 }
 
-// 查看分享的内容
-// 分享内容预览相关
-const showSharePreview = ref(false)
-const sharePreviewData = ref<any>({})
-
-const viewSharedContent = (content: string) => {
-  if (!content || content === '[消息已撤回]') return
-  
-  try {
-    const shareData = JSON.parse(content)
-    // 根据分享的类型和ID，跳转到对应的应用或页面
-    if (shareData.type === 'file' || shareData.type === 'note' || shareData.type === 'sticky') {
-      // 对于文件、笔记和便签，在当前页展示
-      // 如果是便签，使用originalContent作为实际内容
-      if (shareData.type === 'sticky' && shareData.originalContent) {
-        shareData.content = shareData.originalContent
-      }
-      sharePreviewData.value = shareData
-      showSharePreview.value = true
-    } else {
-      $message.info(`查看分享内容: ${shareData.name}`)
-    }
-  } catch (e) {
-    console.error('解析分享数据失败:', e)
-    $message.error('查看分享内容失败')
-  }
-}
-
-const closeSharePreview = () => {
-  showSharePreview.value = false
-  sharePreviewData.value = null
-}
-
+// 图片预览相关
 const showImagePreview = ref(false)
 const previewImageUrl = ref('')
 
@@ -2309,98 +2383,6 @@ const previewImage = (imageData: string | any) => {
 const closeImagePreview = () => {
   showImagePreview.value = false
   previewImageUrl.value = ''
-}
-
-const downloadFile = async (fileContent: string, fileName?: string) => {
-  try {
-    // 尝试解析fileContent为JSON
-    const parsedContent = JSON.parse(fileContent)
-    // 使用解析后的数据
-    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-    let fileUrl = parsedContent.url
-    
-    // 确保文件URL包含服务器地址
-    if (fileUrl && !fileUrl.startsWith('http')) {
-      // 确保serverUrl末尾没有斜杠，fileUrl开头没有斜杠
-      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
-      const cleanFileUrl = fileUrl.replace(/^\//, '')
-      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
-    }
-    
-    
-    // 检查URL是否为空
-    if (!fileUrl) {
-      $message.error('文件URL为空，无法下载')
-      return
-    }
-    
-    // 发起下载请求
-    const response = await fetch(fileUrl, {
-      method: 'GET',
-      headers: {
-        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-      }
-    })
-    
-    if (response.ok) {
-      // 创建Blob对象
-      const blob = await response.blob()
-      
-      // 创建下载链接
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = finalFileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      
-      // $message.success(`文件 ${finalFileName} 下载成功`)
-    } else if (response.status === 403) {
-      $message.error('文件下载失败: 权限不足，请检查您的权限')
-    } else {
-      $message.error('文件下载失败: 服务器错误')
-    }
-  } catch (error) {
-    // 解析失败，将fileContent视为字符串
-    const finalFileName = fileName || fileContent.split('/').pop() || fileContent
-    const fileUrl = fileContent.startsWith('http') ? fileContent : `${serverUrl.value}${fileContent}`
-    
-    try {
-      // 发起下载请求
-      const response = await fetch(fileUrl, {
-        method: 'GET',
-        headers: {
-          ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-        }
-      })
-      
-      if (response.ok) {
-        // 创建Blob对象
-        const blob = await response.blob()
-        
-        // 创建下载链接
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = finalFileName
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
-        
-        $message.success(`文件 ${finalFileName} 下载成功`)
-      } else if (response.status === 403) {
-        $message.error('文件下载失败: 权限不足，请检查您的权限')
-      } else {
-        $message.error('文件下载失败: 服务器错误')
-      }
-    } catch (fetchError) {
-      console.error('文件下载失败:', fetchError)
-      $message.error('文件下载失败: 网络错误')
-    }
-  }
 }
 
 // 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示
@@ -2478,6 +2460,10 @@ const handleInviteMembers = () => {
 const handleUpdateAISettings = async (settings: any) => {
   if (!props.conversation?.id) return
 
+  const triggerKeywords = Array.isArray(settings.aiTriggerKeywords) 
+    ? settings.aiTriggerKeywords.join(',') 
+    : ''
+
   try {
     const data = await request(`/api/v1/conversations/${props.conversation.id}/ai-settings`, {
       method: 'PUT',
@@ -2492,7 +2478,7 @@ const handleUpdateAISettings = async (settings: any) => {
         ai_max_length: settings.aiMaxLength,
         ai_mention_reply_mode: settings.aiMentionReplyMode,
         ai_anti_spam_interval: settings.aiAntiSpamInterval,
-        ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+        ai_trigger_keywords: triggerKeywords,
         ai_learn_enabled: settings.aiLearnEnabled
       })
     })
@@ -2512,7 +2498,7 @@ const handleUpdateAISettings = async (settings: any) => {
             ai_max_length: settings.aiMaxLength,
             ai_mention_reply_mode: settings.aiMentionReplyMode,
             ai_anti_spam_interval: settings.aiAntiSpamInterval,
-            ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+            ai_trigger_keywords: triggerKeywords,
             ai_learn_enabled: settings.aiLearnEnabled
           }
         })
@@ -2751,44 +2737,7 @@ defineExpose({
 
 <style scoped>
 /* ===== ChatWindow 组件自身使用的样式 ===== */
-
-.chat-window {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: var(--sidebar-bg);
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
-  border-radius: 0;
-  margin: 0;
-  overflow: hidden;
-}
-
-.chat-main {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
-}
-
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  background: var(--sidebar-bg);
-  height: 72px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  margin: 0;
-  margin-bottom: 1px;
-  border-radius: 0;
-}
-
-.chat-body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
+/* 基础布局样式已移至全局 chat.css */
 
 /* ===== 小程序面板样式 ===== */
 
@@ -2898,53 +2847,5 @@ defineExpose({
 
 .mini-app-action-btn:hover {
   background: var(--primary-hover);
-}
-
-/* ===== 按钮样式 ===== */
-
-.screenshot-btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.screenshot-btn:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-}
-
-.call-btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.call-btn:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-}
-
-/* ===== 主题样式 ===== */
-
-[data-theme="dark"] .chat-window {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .chat-main {
-  background: var(--secondary-color) !important;
-  border-top: none !important;
-}
-
-[data-theme="dark"] .chat-header {
-  background: var(--sidebar-bg) !important;
-  box-shadow: var(--shadow-md) !important;
 }
 </style>

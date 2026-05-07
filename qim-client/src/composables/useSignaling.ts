@@ -101,21 +101,21 @@ export function useSignaling() {
   }
   
   const sendCallStart = (targetUserId: number, callType: 'voice' | 'video') => {
-    sendMessage('call_invite', {
+    sendMessage('call.start', {
       target_user_id: targetUserId,
       call_type: callType
     })
   }
 
   const sendCallAnswer = (targetUserId: number, accepted: boolean) => {
-    sendMessage('call_accept', {
+    sendMessage('call.answer', {
       target_user_id: targetUserId,
       accepted
     })
   }
 
   const sendCallEnd = () => {
-    sendMessage('call_end', {})
+    sendMessage('call.end', {})
   }
   
   return {

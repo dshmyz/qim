@@ -1,47 +1,62 @@
 <template>
   <div class="avatar-reply-settings">
-    <div class="setting-item">
-      <label>回复长度</label>
-      <select :value="modelValue.replyStrategy.maxReplyLength" @change="updateStrategy('maxReplyLength', ($event.target as HTMLSelectElement).value as 'short' | 'medium' | 'long')" class="form-select">
-        <option value="short">简短（1-2 句）</option>
-        <option value="medium">适中（3-5 句）</option>
-        <option value="long">详细（6 句以上）</option>
-      </select>
-    </div>
-
-    <div class="setting-item">
-      <label>回复延迟</label>
-      <select :value="modelValue.replyStrategy.replyDelay" @change="updateStrategy('replyDelay', Number(($event.target as HTMLSelectElement).value))" class="form-select">
-        <option :value="0">无延迟</option>
-        <option :value="3">3 秒</option>
-        <option :value="5">5 秒</option>
-        <option :value="10">10 秒</option>
-      </select>
-      <span class="setting-hint">模拟真人思考时间，避免回复过快显得不自然</span>
-    </div>
-
-    <div class="setting-item">
-      <label>置信度阈值</label>
-      <div class="threshold-slider">
-        <input type="range" :value="modelValue.replyStrategy.confidenceThreshold" @input="updateStrategy('confidenceThreshold', Number(($event.target as HTMLInputElement).value))" min="0" max="1" step="0.1" class="slider-input" />
-        <span class="threshold-value">{{ (modelValue.replyStrategy.confidenceThreshold * 100).toFixed(0) }}%</span>
+    <div class="setting-section">
+      <div class="section-header">
+        <i class="fas fa-sliders-h"></i>
+        <h4>回复控制</h4>
       </div>
-      <span class="setting-hint">低于此阈值时分身不会回复，而是通知你亲自回复</span>
+
+      <div class="setting-item">
+        <label class="setting-label">回复长度</label>
+        <select :value="replyStrategy?.maxReplyLength ?? 'medium'" @change="updateStrategy('maxReplyLength', ($event.target as HTMLSelectElement).value as 'short' | 'medium' | 'long')" class="form-select">
+          <option value="short">简短（1-2 句）</option>
+          <option value="medium">适中（3-5 句）</option>
+          <option value="long">详细（6 句以上）</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <label class="setting-label">回复延迟</label>
+        <select :value="replyStrategy?.replyDelay ?? 3" @change="updateStrategy('replyDelay', Number(($event.target as HTMLSelectElement).value))" class="form-select">
+          <option :value="0">无延迟</option>
+          <option :value="3">3 秒</option>
+          <option :value="5">5 秒</option>
+          <option :value="10">10 秒</option>
+        </select>
+        <span class="setting-hint">模拟真人思考时间，避免回复过快显得不自然</span>
+      </div>
+
+      <div class="setting-item">
+        <label class="setting-label">置信度阈值</label>
+        <div class="threshold-slider">
+          <input type="range" :value="replyStrategy?.confidenceThreshold ?? 0.6" @input="updateStrategy('confidenceThreshold', Number(($event.target as HTMLInputElement).value))" min="0" max="1" step="0.1" class="slider-input" />
+          <span class="threshold-value">{{ ((replyStrategy?.confidenceThreshold ?? 0.6) * 100).toFixed(0) }}%</span>
+        </div>
+        <span class="setting-hint">低于此阈值时分身不会回复，而是通知你亲自回复</span>
+      </div>
     </div>
 
-    <div class="setting-item">
-      <label>AI 标记样式</label>
-      <select :value="modelValue.replyStrategy.disclaimerStyle" @change="updateStrategy('disclaimerStyle', ($event.target as HTMLSelectElement).value as 'badge' | 'footer' | 'both')" class="form-select">
-        <option value="badge">徽章标记</option>
-        <option value="footer">底部标注</option>
-        <option value="both">两者都有</option>
-      </select>
-      <span class="setting-hint">分身回复消息中"AI 代回复"标记的展示方式</span>
+    <div class="setting-section">
+      <div class="section-header">
+        <i class="fas fa-tag"></i>
+        <h4>回复标记</h4>
+      </div>
+
+      <div class="setting-item">
+        <label class="setting-label">AI 标记样式</label>
+        <select :value="replyStrategy?.disclaimerStyle ?? 'badge'" @change="updateStrategy('disclaimerStyle', ($event.target as HTMLSelectElement).value as 'badge' | 'footer' | 'both')" class="form-select">
+          <option value="badge">徽章标记</option>
+          <option value="footer">底部标注</option>
+          <option value="both">两者都有</option>
+        </select>
+        <span class="setting-hint">分身回复消息中"AI 代回复"标记的展示方式</span>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { AvatarConfig, AvatarReplyStrategy } from '../../types/avatar'
 
 const props = defineProps<{
@@ -52,22 +67,161 @@ const emit = defineEmits<{
   'update:modelValue': [value: AvatarConfig]
 }>()
 
+const replyStrategy = computed(() => props.modelValue?.replyStrategy)
+
 function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: AvatarReplyStrategy[K]) {
+  const currentStrategy = props.modelValue.replyStrategy || {
+    maxReplyLength: 'medium',
+    replyDelay: 3,
+    confidenceThreshold: 0.6,
+    disclaimerStyle: 'badge'
+  }
   emit('update:modelValue', {
     ...props.modelValue,
-    replyStrategy: { ...props.modelValue.replyStrategy, [key]: value }
+    replyStrategy: { ...currentStrategy, [key]: value }
   })
 }
 </script>
 
 <style scoped>
-.avatar-reply-settings { padding: 16px; }
-.setting-item { margin-bottom: 16px; }
-.setting-item > label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.form-select { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; }
-.form-select:focus { outline: none; border-color: var(--primary-color); }
-.threshold-slider { display: flex; align-items: center; gap: 12px; }
-.slider-input { flex: 1; }
-.threshold-value { font-size: 14px; font-weight: 500; color: var(--primary-color); min-width: 40px; }
+.avatar-reply-settings { 
+  padding: 16px; 
+  min-height: 100%;
+}
+
+.setting-section {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.setting-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section-header i {
+  color: var(--primary-color);
+  font-size: 16px;
+}
+
+.section-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.setting-item { 
+  margin-bottom: 16px; 
+  padding: 12px;
+  background: var(--bg-color);
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.setting-item:hover {
+  background: var(--hover-color);
+}
+
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label { 
+  display: block; 
+  margin-bottom: 8px; 
+  font-size: 14px; 
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.setting-hint { 
+  display: block; 
+  margin-top: 6px; 
+  font-size: 12px; 
+  color: var(--text-secondary); 
+}
+
+.form-select { 
+  width: 100%; 
+  padding: 10px 12px; 
+  border: 1px solid var(--border-color); 
+  border-radius: 6px; 
+  background: var(--bg-color); 
+  color: var(--text-color); 
+  font-size: 14px; 
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+}
+
+.form-select:focus { 
+  outline: none; 
+  border-color: var(--primary-color); 
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.threshold-slider { 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+}
+
+.slider-input { 
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border-color);
+  border-radius: 3px;
+  outline: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--primary-color);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s;
+}
+
+.slider-input::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+.slider-input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: var(--primary-color);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.threshold-value { 
+  font-size: 14px; 
+  font-weight: 600; 
+  color: var(--primary-color); 
+  min-width: 50px;
+  text-align: right;
+}
 </style>

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/database"
@@ -14,6 +15,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+type fileStatsCacheEntry struct {
+	data      gin.H
+	expiredAt time.Time
+}
+
+var fileStatsCache = make(map[uint]fileStatsCacheEntry)
+var fileStatsCacheMu sync.RWMutex
+
+func invalidateFileStatsCache(userID uint) {
+	fileStatsCacheMu.Lock()
+	delete(fileStatsCache, userID)
+	fileStatsCacheMu.Unlock()
+}
 
 func UploadFile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
@@ -60,11 +75,16 @@ func UploadFile(c *gin.Context) {
 		}
 
 		db := database.GetDB()
+
+		// 获取上传文件的 MIME 类型
+		mimeType := file.Header.Get("Content-Type")
+
 		fileRecord := model.File{
 			Name:         file.Filename,
 			OriginalName: file.Filename,
 			StoragePath:  "/uploads/" + filename,
 			Size:         file.Size,
+			MimeType:     mimeType,
 			UserID:       userID.(uint),
 			Source:       source,
 			CreatedAt:    time.Now(),
@@ -73,6 +93,8 @@ func UploadFile(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
 			return
 		}
+
+		invalidateFileStatsCache(userID.(uint))
 
 		c.JSON(http.StatusOK, gin.H{
 			"code": 0,
@@ -465,22 +487,31 @@ func GetStarredFiles(c *gin.Context) {
 
 func GetFileStats(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	fileStatsCacheMu.RLock()
+	cached, found := fileStatsCache[uid]
+	fileStatsCacheMu.RUnlock()
+
+	if found && time.Now().Before(cached.expiredAt) {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 0,
+			"data": cached.data,
+		})
+		return
+	}
 
 	db := database.GetDB()
 
-	// 总文件数
 	var totalFiles int64
 	db.Model(&model.File{}).Where("user_id = ?", userID).Count(&totalFiles)
 
-	// 星标文件数
 	var starredFiles int64
 	db.Model(&model.File{}).Where("user_id = ? AND is_starred = ?", userID, true).Count(&starredFiles)
 
-	// 总大小
 	var totalSize int64
 	db.Model(&model.File{}).Where("user_id = ?", userID).Select("COALESCE(SUM(size), 0)").Scan(&totalSize)
 
-	// 按类型统计
 	type FileTypeInfo struct {
 		Type  string `json:"type"`
 		Count int64  `json:"count"`
@@ -511,19 +542,27 @@ func GetFileStats(c *gin.Context) {
 		`).
 		Scan(&typeStats)
 
-	// 文件夹数
 	var folderCount int64
 	db.Model(&model.Folder{}).Where("user_id = ?", userID).Count(&folderCount)
 
+	resultData := gin.H{
+		"total_files":   totalFiles,
+		"starred_files": starredFiles,
+		"total_size":    totalSize,
+		"folder_count":  folderCount,
+		"type_stats":    typeStats,
+	}
+
+	fileStatsCacheMu.Lock()
+	fileStatsCache[uid] = fileStatsCacheEntry{
+		data:      resultData,
+		expiredAt: time.Now().Add(5 * time.Minute),
+	}
+	fileStatsCacheMu.Unlock()
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": gin.H{
-			"total_files":   totalFiles,
-			"starred_files": starredFiles,
-			"total_size":    totalSize,
-			"folder_count":  folderCount,
-			"type_stats":    typeStats,
-		},
+		"data": resultData,
 	})
 }
 
@@ -864,6 +903,7 @@ func DeleteFile(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
 			return
 		}
+		invalidateFileStatsCache(userID.(uint))
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "S3存储文件删除功能暂未完全实现，仅删除了文件记录",
@@ -878,6 +918,7 @@ func DeleteFile(c *gin.Context) {
 			return
 		}
 
+		invalidateFileStatsCache(userID.(uint))
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "删除文件成功",

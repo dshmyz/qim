@@ -5,6 +5,7 @@ import (
 	"qim-server/database"
 	"qim-server/model"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,15 @@ type PromptContext struct {
 type PromptBuilder interface {
 	BuildSystemPrompt(ctx *PromptContext) string
 }
+
+type groupStatsCache struct {
+	totalMessages int64
+	memberCount   int64
+	expiredAt     time.Time
+}
+
+var groupStatsCacheMap = make(map[uint]groupStatsCache)
+var groupStatsCacheMu sync.RWMutex
 
 type SmartPromptBuilder struct {
 	knowledgeSvc *KnowledgeService
@@ -184,6 +194,14 @@ func (b *SmartPromptBuilder) buildKnowledgeContext(ctx *PromptContext) string {
 }
 
 func (b *SmartPromptBuilder) buildGroupStats(ctx *PromptContext) string {
+	groupStatsCacheMu.RLock()
+	cached, found := groupStatsCacheMap[ctx.ConversationID]
+	groupStatsCacheMu.RUnlock()
+
+	if found && time.Now().Before(cached.expiredAt) {
+		return fmt.Sprintf("\n\n📊 当前群状态：\n- 总消息数：%d\n- 成员数：%d", cached.totalMessages, cached.memberCount)
+	}
+
 	db := database.GetDB()
 
 	var totalMessages int64
@@ -191,6 +209,14 @@ func (b *SmartPromptBuilder) buildGroupStats(ctx *PromptContext) string {
 
 	var memberCount int64
 	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", ctx.ConversationID).Count(&memberCount)
+
+	groupStatsCacheMu.Lock()
+	groupStatsCacheMap[ctx.ConversationID] = groupStatsCache{
+		totalMessages: totalMessages,
+		memberCount:   memberCount,
+		expiredAt:     time.Now().Add(5 * time.Minute),
+	}
+	groupStatsCacheMu.Unlock()
 
 	return fmt.Sprintf("\n\n📊 当前群状态：\n- 总消息数：%d\n- 成员数：%d", totalMessages, memberCount)
 }

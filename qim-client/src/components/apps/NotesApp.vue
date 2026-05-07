@@ -1,19 +1,15 @@
 <template>
   <div class="notes-app" :class="{ fullscreen: isFullscreen }">
-    <div class="notes-header" v-show="!isFullscreen">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-chevron-left"></i>
-        </button>
+    <AppHeader title="笔记" @back="$emit('back')" v-show="!isFullscreen">
+      <template #extra-buttons>
         <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
           <i class="fas fa-compress"></i>
         </button>
-        <div class="notes-header-info">
-          <h2>笔记</h2>
-        </div>
-      </div>
-      <button class="create-note-btn" @click="handleCreate">+ 新建笔记</button>
-    </div>
+      </template>
+      <template #actions>
+        <button class="create-note-btn" @click="handleCreate">+ 新建笔记</button>
+      </template>
+    </AppHeader>
     
     <div class="notes-content">
       <div class="notes-sidebar" v-show="!isFullscreen">
@@ -96,6 +92,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import AppHeader from './AppHeader.vue'
 import NoteCard from './notes/NoteCard.vue'
 import NoteToolbar from './notes/NoteToolbar.vue'
 import NoteEditor from './notes/NoteEditor.vue'
@@ -302,79 +299,6 @@ function handleKeydown(e: KeyboardEvent) {
 
 .notes-app.fullscreen .note-main {
   padding: var(--spacing-4);
-}
-
-.notes-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--spacing-4) var(--spacing-5);
-  background: var(--card-bg);
-  box-shadow: var(--shadow-sm);
-  height: 72px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-}
-
-.back-btn,
-.toggle-sidebar-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border-color);
-  background: var(--btn-bg);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  transition: all var(--transition-base);
-}
-
-.back-btn:hover,
-.toggle-sidebar-btn:hover {
-  background: var(--primary-light);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.notes-header-info h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-color);
-  letter-spacing: -0.02em;
-}
-
-.create-note-btn {
-  padding: var(--spacing-2) var(--spacing-4);
-  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  box-shadow: 0 2px 8px rgba(51, 133, 255, 0.3);
-}
-
-.create-note-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(51, 133, 255, 0.4);
-}
-
-.create-note-btn:active {
-  transform: translateY(0);
 }
 
 .notes-content {

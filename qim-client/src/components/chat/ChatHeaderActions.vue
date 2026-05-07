@@ -5,7 +5,13 @@
       <span v-if="isGroupOrDiscussion" class="header-icon" title="邀请成员" @click.stop="handleInviteMembers">
         <i class="fas fa-user-plus"></i>
       </span>
-      <span v-if="isGroupOrDiscussion" class="header-icon" @click.stop="handleToggleHeaderMenu" ref="moreButtonRef">
+      <span 
+        v-if="isGroupOrDiscussion || showAvatarToggle" 
+        class="header-icon" 
+        title="更多选项" 
+        @click.stop="handleToggleHeaderMenu" 
+        ref="moreButtonRef"
+      >
         <i class="fas fa-ellipsis-v"></i>
       </span>
     </div>
@@ -14,16 +20,29 @@
     <Teleport to="body">
       <Transition name="dropdown">
         <div v-if="showHeaderMenu" class="header-menu-teleport" :style="headerMenuPosition" @click.stop>
-          <div class="menu-item" @click="handleEditGroupInfo">
+          <!-- 群聊相关菜单项 -->
+          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupInfo">
             <i class="fas fa-edit"></i> 修改群名称
           </div>
-          <div class="menu-item" @click="handleEditGroupAnnouncement">
+          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupAnnouncement">
             <i class="fas fa-bullhorn"></i> 编辑群公告
           </div>
-          <div class="menu-item" @click="handleOpenAISettings">
+          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleOpenAISettings">
             <i class="fas fa-robot"></i> AI 助手设置
           </div>
-          <div v-if="isOwner" class="menu-item" @click="handleConfirmDeleteGroup">
+          <!-- 私聊相关菜单项 -->
+          <div v-if="showAvatarToggle" class="menu-item menu-item--toggle">
+            <i class="fas fa-user-circle"></i>
+            <span>AI分身</span>
+            <Switch 
+              :model-value="avatarEnabled ?? false" 
+              :size="'small'"
+              :disabled="avatarApprovalStatus !== 'approved'"
+              @change="(value) => handleToggleAvatar(value)"
+            />
+          </div>
+          <!-- 群聊解散 -->
+          <div v-if="isGroupOrDiscussion && isOwner" class="menu-item" @click="handleConfirmDeleteGroup">
             <i class="fas fa-trash"></i> 解散群聊
           </div>
         </div>
@@ -107,34 +126,31 @@
     </Teleport>
 
     <!-- AI 助手设置模态框 -->
-    <Teleport to="body">
-      <div v-if="showAISettingsModal" class="modal-overlay" @click="handleCloseAISettingsModal">
-        <div class="modal-content ai-settings-modal" @click.stop>
-          <div class="modal-header">
-            <h3>AI 助手设置</h3>
-            <button class="close-btn" @click="handleCloseAISettingsModal">&times;</button>
-          </div>
-          <div class="modal-body">
-            <GroupAIPanel
-              :group-id="groupId"
-              :server-url="serverUrl"
-              :ai-enabled="aiEnabled"
-              :ai-assistant-name="aiAssistantName"
-              :ai-reply-mode="aiReplyMode"
-              :ai-personality="aiPersonality"
-              :ai-custom-prompt="aiCustomPrompt"
-              :ai-language="aiLanguage"
-              :ai-max-length="aiMaxLength"
-              :ai-mention-reply-mode="aiMentionReplyMode"
-              :ai-anti-spam-interval="aiAntiSpamInterval"
-              :ai-trigger-keywords="aiTriggerKeywords"
-              :ai-learn-enabled="aiLearnEnabled"
-              @update="handleUpdateAISettings"
-            />
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <ModalContainer
+      :visible="showAISettingsModal"
+      title="AI 助手设置"
+      @close="handleCloseAISettingsModal"
+      @cancel="handleCloseAISettingsModal"
+      :show-footer="false"
+      :content-style="{ width: '480px', minWidth: '480px' }"
+    >
+      <GroupAIPanel
+        :group-id="groupId"
+        :server-url="serverUrl"
+        :ai-enabled="aiEnabled"
+        :ai-assistant-name="aiAssistantName"
+        :ai-reply-mode="aiReplyMode"
+        :ai-personality="aiPersonality"
+        :ai-custom-prompt="aiCustomPrompt"
+        :ai-language="aiLanguage"
+        :ai-max-length="aiMaxLength"
+        :ai-mention-reply-mode="aiMentionReplyMode"
+        :ai-anti-spam-interval="aiAntiSpamInterval"
+        :ai-trigger-keywords="aiTriggerKeywords"
+        :ai-learn-enabled="aiLearnEnabled"
+        @update="handleUpdateAISettings"
+      />
+    </ModalContainer>
   </div>
 </template>
 
@@ -146,6 +162,8 @@ import { getCurrentUser } from '../../utils/user'
 import MemberSidebar from './MemberSidebar.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
 import GroupAIPanel from '../ai/GroupAIPanel.vue'
+import Switch from '../common/Switch.vue'
+import ModalContainer from '../shared/ModalContainer.vue'
 
 // 类型定义
 interface GroupMember {
@@ -183,6 +201,8 @@ interface Props {
   aiAntiSpamInterval?: number
   aiTriggerKeywords?: string[]
   aiLearnEnabled?: boolean
+  avatarEnabled?: boolean
+  avatarApprovalStatus?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -230,6 +250,7 @@ const emit = defineEmits<{
     aiTriggerKeywords: string[];
     aiLearnEnabled: boolean;
   }]
+  'update-avatar-enabled': [value: boolean]
 }>()
 
 // Refs
@@ -286,6 +307,16 @@ const currentUserRole = computed((): string => {
   const member = props.conversation.members.find((m) => String(m.id) === String(currentUser.id))
   return (member?.role as string) || 'member'
 })
+
+// 是否显示分身开关（私聊时显示）
+const showAvatarToggle = computed(() => {
+  return props.conversation?.type === 'single'
+})
+
+// 处理分身开关切换
+function handleToggleAvatar(enabled: boolean) {
+  emit('update-avatar-enabled', enabled)
+}
 
 // 方法
 function isGroupOwner(conversation: Conversation | null): boolean {
@@ -593,7 +624,7 @@ onUnmounted(() => {
   padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .menu-item:hover {
@@ -603,6 +634,15 @@ onUnmounted(() => {
 .menu-item i {
   margin-right: 8px;
   color: var(--text-secondary);
+}
+
+.menu-item--toggle {
+  justify-content: space-between;
+}
+
+.menu-item--toggle span {
+  flex: 1;
+  margin-left: 8px;
 }
 
 /* 模态框样式 */
@@ -902,53 +942,6 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
   transform: translateY(-1px);
-}
-
-/* 暗黑主题 */
-[data-theme="dark"] .modal-content,
-[data-theme="dark"] .confirm-dialog-content {
-  background: var(--panel-bg) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
-}
-
-[data-theme="dark"] .confirm-dialog-header .close-btn {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="dark"] .confirm-dialog-header .close-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-[data-theme="dark"] .confirm-dialog-footer button.cancel {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-[data-theme="dark"] .confirm-dialog-footer button.cancel:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-[data-theme="dark"] .form-input,
-[data-theme="dark"] .form-textarea {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .form-input:focus,
-[data-theme="dark"] .form-textarea:focus {
-  border-color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .btn-secondary {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border-color: var(--border-color) !important;
-}
-
-[data-theme="dark"] .btn-secondary:hover {
-  background: var(--hover-bg) !important;
 }
 
 /* 下拉动画 */

@@ -64,6 +64,40 @@ func AddGroupDocument(c *gin.Context) {
 		return
 	}
 
+	// 验证文件类型，只允许文档类型
+	var file model.File
+	if err := db.First(&file, req.FileID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		return
+	}
+
+	allowedTypes := []string{
+		"application/pdf",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"text/plain",
+		"text/html",
+		"text/csv",
+		"text/markdown",
+	}
+
+	isAllowed := false
+	for _, t := range allowedTypes {
+		if file.MimeType == t {
+			isAllowed = true
+			break
+		}
+	}
+
+	if !isAllowed {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只支持添加文档类型的文件（PDF、Word、Excel、PPT、TXT等）"})
+		return
+	}
+
 	doc := model.GroupDocument{GroupID: group.ID, FileID: req.FileID}
 	db.Create(&doc)
 

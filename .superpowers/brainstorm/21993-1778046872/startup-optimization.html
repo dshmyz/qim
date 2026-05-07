@@ -1,0 +1,86 @@
+<h2>启动白板优化方案</h2>
+<p class="subtitle">Electron 应用启动时显示白屏是因为需要等待页面加载，以下是几种优化方案</p>
+
+<div class="mockup">
+  <div class="mockup-header">问题说明</div>
+  <div class="mockup-body" style="padding: 20px; font-size: 14px; color: #666; line-height: 1.6;">
+    <p>当前应用在 <code>main.js</code> 中创建窗口后直接加载 URL，在页面渲染完成前会显示白色空白窗口。可以通过以下方式优化：</p>
+  </div>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>启动画面 (Splash Screen)</h3>
+      <p>先显示一个小的启动画面窗口（带 Logo 和加载动画），主窗口加载完成后再切换</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">效果预览</div>
+        <div class="mockup-body" style="background: #f5f7fa; padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 180px;">
+          <div style="background: white; padding: 32px 48px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); text-align: center;">
+            <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%); border-radius: 12px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px;">Q</div>
+            <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 12px;">QIM 青雀</div>
+            <div style="display: flex; gap: 6px; justify-content: center;">
+              <div style="width: 8px; height: 8px; background: #64b5f6; border-radius: 50%; animation: bounce 1s ease-in-out infinite;"></div>
+              <div style="width: 8px; height: 8px; background: #64b5f6; border-radius: 50%; animation: bounce 1s ease-in-out 0.2s infinite;"></div>
+              <div style="width: 8px; height: 8px; background: #64b5f6; border-radius: 50%; animation: bounce 1s ease-in-out 0.4s infinite;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>背景色 + 隐藏窗口</h3>
+      <p>设置窗口背景色，先隐藏窗口，等页面加载完成后再显示，避免白屏闪烁</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">实现思路</div>
+        <div class="mockup-body" style="padding: 16px; font-size: 12px; color: #666; line-height: 1.6;">
+          <pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto;"><code>// 创建窗口时设置背景色
+mainWindow = new BrowserWindow({
+  backgroundColor: '#e8ecf1',
+  show: false, // 先不显示
+  ...
+})
+
+// 页面加载完成后再显示
+mainWindow.webContents.on('did-finish-load', () => {
+  mainWindow.show()
+})</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>内联启动 HTML</h3>
+      <p>在 Electron 中先加载一个本地的小型 HTML 启动页面，包含 Logo 和加载动画，等主页面准备好再切换</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">效果预览</div>
+        <div class="mockup-body" style="background: linear-gradient(135deg, #e8ecf1 0%, #d5dde5 100%); padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 180px;">
+          <div style="text-align: center;">
+            <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%); border-radius: 14px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 24px;">Q</div>
+            <div style="font-size: 18px; font-weight: 600; color: #333; margin-bottom: 8px;">QIM 青雀</div>
+            <div style="width: 120px; height: 3px; background: #ddd; border-radius: 2px; margin: 12px auto 0; overflow: hidden;">
+              <div style="width: 40%; height: 100%; background: linear-gradient(90deg, #64b5f6, #4fc3f7); border-radius: 2px; animation: loading-bar 1.5s ease-in-out infinite;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes loading-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+</style>

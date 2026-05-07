@@ -1,40 +1,58 @@
 <template>
   <div class="my-avatar-panel">
-    <div class="avatar-header">
-      <div class="avatar-avatar">
-        <img :src="currentUser.avatar || generateAvatar(currentUser.username)" alt="avatar" />
-        <span class="learning-badge" v-if="learningStatus === 'learning'">学习中</span>
-      </div>
-      <div class="avatar-info">
-        <h3>{{ currentUser.nickname || currentUser.username }}的分身</h3>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
-        </div>
-        <span class="progress-text">学习进度: {{ learningProgress }}%</span>
-      </div>
-    </div>
-
-    <div class="persona-preview" v-if="persona">
-      <h4>人设预览:</h4>
-      <p>{{ persona }}</p>
-    </div>
-
-    <div class="tools-section">
-      <h4>可用能力:</h4>
-      <div class="tools-grid">
-        <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox">
-          <input type="checkbox" :checked="tool.enabled" @change="toggleTool(tool.id)" />
-          <span>{{ tool.name }}</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="btn-primary" @click="toggleAvatar">
-        {{ avatarEnabled ? '关闭分身' : '开启分身' }}
+    <div class="avatar-view-toggle">
+      <button
+        :class="['toggle-btn', { active: viewMode === 'overview' }]"
+        @click="viewMode = 'overview'"
+      >
+        <i class="fas fa-chart-pie"></i> 概览
       </button>
-      <button class="btn-secondary" @click="goToSettings">详细设置</button>
+      <button
+        :class="['toggle-btn', { active: viewMode === 'settings' }]"
+        @click="viewMode = 'settings'"
+      >
+        <i class="fas fa-cog"></i> 详细设置
+      </button>
     </div>
+
+    <div v-if="viewMode === 'overview'" class="overview-section">
+      <div class="avatar-header">
+        <div class="avatar-avatar">
+          <img v-if="currentUser" :src="currentUser.avatar || generateAvatar(currentUser.username)" alt="avatar" />
+          <span class="learning-badge" v-if="learningStatus === 'learning'">学习中</span>
+        </div>
+        <div class="avatar-info">
+          <h3>{{ currentUser ? (currentUser.nickname || currentUser.username) : '' }}的分身</h3>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
+          </div>
+          <span class="progress-text">学习进度: {{ learningProgress }}%</span>
+        </div>
+      </div>
+
+      <div class="persona-preview" v-if="persona">
+        <h4>人设预览:</h4>
+        <p>{{ persona }}</p>
+      </div>
+
+      <div class="tools-section">
+        <h4>可用能力:</h4>
+        <div class="tools-grid">
+          <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox">
+            <input type="checkbox" :checked="tool.enabled" @change="toggleTool(tool.id)" />
+            <span>{{ tool.name }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" @click="toggleAvatar">
+          {{ avatarEnabled ? '关闭分身' : '开启分身' }}
+        </button>
+      </div>
+    </div>
+
+    <AvatarSettingsPanel v-else-if="viewMode === 'settings'" />
   </div>
 </template>
 
@@ -44,8 +62,11 @@ import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useAvatar } from '@/composables/useAvatar'
 import { useAvatarPersona } from '@/composables/useAvatarPersona'
 import { generateAvatar } from '@/utils/avatar'
+import AvatarSettingsPanel from '../../avatar/AvatarSettingsPanel.vue'
 
-const currentUser = useCurrentUser()
+const viewMode = ref<'overview' | 'settings'>('overview')
+
+const { currentUser } = useCurrentUser()
 const avatar = useAvatar()
 const personaState = useAvatarPersona()
 
@@ -82,11 +103,6 @@ async function toggleAvatar() {
   }
 }
 
-function goToSettings() {
-  // 后续实现跳转分身设置
-  console.log('跳转到分身设置页面')
-}
-
 onMounted(async () => {
   // 初始化数据
   await avatar.fetchConfig()
@@ -99,9 +115,51 @@ onMounted(async () => {
 
 <style scoped>
 .my-avatar-panel {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.avatar-view-toggle {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toggle-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+  background: var(--hover-color);
+}
+
+.toggle-btn.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.overview-section {
   padding: 20px;
   max-width: 600px;
   margin: 0 auto;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .avatar-header {
@@ -230,20 +288,5 @@ onMounted(async () => {
 
 .btn-primary:hover {
   opacity: 0.9;
-}
-
-.btn-secondary {
-  flex: 1;
-  padding: 10px 20px;
-  background: white;
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-secondary:hover {
-  background: #f5f5f5;
 }
 </style>

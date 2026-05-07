@@ -1,79 +1,106 @@
 <template>
   <div class="ai-assistant-app">
-    <div class="ai-assistant-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-chevron-left"></i>
-        </button>
+    <AppHeader :title="showChatView ? currentBotName : 'AI 工作台'" @back="handleBack">
+      <template #extra-buttons>
         <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
           <i class="fas fa-compress"></i>
         </button>
-        <h2>AI 助手</h2>
-      </div>
-    </div>
+      </template>
+      <template #actions>
+        <button v-if="showChatView" class="header-action-btn" @click="backToDashboard">
+          <i class="fas fa-th"></i>
+          工作台
+        </button>
+      </template>
+    </AppHeader>
 
-    <div class="tab-nav">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="['tab-btn', { active: activeTab === tab.id }]"
-        @click="activeTab = tab.id"
-      >
-        <i :class="tab.icon"></i>
-        {{ tab.label }}
-      </button>
-    </div>
-
-    <div class="tab-content">
-      <ChatCenter v-if="activeTab === 'chat'" @switch-tab="switchTab" />
-      <MyBotsPanel
-        v-if="activeTab === 'my-bots'"
-        @create="showCreateModal = true"
-        @edit-bot="handleEditBot"
+    <div class="ai-content">
+      <AIWorkbenchDashboard
+        v-if="!showChatView"
         @use-bot="handleUseBot"
       />
-      <MyModelConfigs v-if="activeTab === 'configs'" />
-      <MyAvatar v-if="activeTab === 'avatar'" />
-
-      <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
-        <CreateBotWizard @close="showCreateModal = false" />
-      </QDialog>
+      <BotChatView
+        v-else
+        :bot="selectedBot"
+        :messages="botMessages"
+        :is-loading="isLoading"
+        :is-sending="isSending"
+        :is-streaming="isStreaming"
+        :error="chatError"
+        @back="backToDashboard"
+        @send="handleSendMessage"
+        @clear-messages="handleClearMessages"
+        @new-conversation="handleNewConversation"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import ChatCenter from './ai/ChatCenter.vue'
-import MyBotsPanel from './MyBotsPanel.vue'
-import MyModelConfigs from './ai/MyModelConfigs.vue'
-import CreateBotWizard from './ai/CreateBotWizard.vue'
-import QDialog from '../shared/QDialog.vue'
-import AvatarSettingsPanel from '../avatar/AvatarSettingsPanel.vue'
-import MyAvatar from './ai/MyAvatar.vue'
+import { ref, computed } from 'vue'
+import AppHeader from './AppHeader.vue'
+import AIWorkbenchDashboard from './ai/AIWorkbenchDashboard.vue'
+import BotChatView from './ai/BotChatView.vue'
+import { useBotChat } from '../../composables/useBotChat'
 
 defineEmits(['back', 'toggleSidebar'])
 
-const activeTab = ref('chat')
-const showCreateModal = ref(false)
-
-const tabs = [
-  { id: 'chat', label: '对话', icon: 'fas fa-comments' },
-  { id: 'my-bots', label: '我的机器人', icon: 'fas fa-robot' },
-  { id: 'configs', label: '我的模型配置', icon: 'fas fa-key' },
-  { id: 'avatar', label: '我的分身', icon: 'fas fa-user-circle' }
-]
-
-function switchTab(tabId: string) {
-  activeTab.value = tabId
+interface Bot {
+  id: number
+  name: string
+  description?: string
+  avatar?: string
 }
 
-function handleEditBot(bot: any) {
-  console.log('Edit bot:', bot)
+const showChatView = ref(false)
+const selectedBot = ref<Bot | null>(null)
+
+const selectedBotId = computed(() => selectedBot.value?.id ?? null)
+
+const {
+  messages: botMessages,
+  isLoading,
+  isSending,
+  isStreaming,
+  error: chatError,
+  loadMessages,
+  sendMessage,
+  clearMessages,
+  reset
+} = useBotChat(selectedBotId)
+
+const currentBotName = computed(() => selectedBot.value?.name || 'AI 对话')
+
+function handleBack() {
+  if (showChatView.value) {
+    backToDashboard()
+  } else {
+  }
 }
 
-function handleUseBot(bot: any) {
-  activeTab.value = 'chat'
+function backToDashboard() {
+  showChatView.value = false
+  selectedBot.value = null
+  reset()
+}
+
+async function handleUseBot(bot: Bot | null) {
+  selectedBot.value = bot
+  showChatView.value = true
+  await loadMessages()
+}
+
+async function handleSendMessage(content: string) {
+  await sendMessage(content)
+}
+
+function handleClearMessages() {
+  clearMessages()
+}
+
+async function handleNewConversation() {
+  reset()
+  await loadMessages()
 }
 </script>
 
@@ -86,73 +113,10 @@ function handleUseBot(bot: any) {
   overflow: hidden;
 }
 
-.ai-assistant-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--card-bg);
-  height: 72px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn,
-.toggle-sidebar-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-color);
-}
-
-.tab-nav {
-  display: flex;
-  border-bottom: 2px solid var(--border-color);
-}
-
-.tab-btn {
-  padding: 12px 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tab-btn:hover {
-  color: var(--text-primary);
-}
-
-.tab-btn.active {
-  color: var(--primary-color);
-  border-bottom-color: var(--primary-color);
-}
-
-.tab-content {
+.ai-content {
   flex: 1;
-  overflow-y: auto;
-}
-
-.placeholder-tab {
-  padding: 60px 20px;
-  text-align: center;
-  color: var(--text-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { avatarAPI } from '../api/avatar'
 import { useCurrentUser } from './useCurrentUser'
 import type {
@@ -16,12 +16,18 @@ export function useAvatar() {
   const avatarWithTools = ref<AvatarWithTools | null>(null)
   const loading = ref(false)
   const error = ref('')
+  const configLoaded = ref(false)  // 标记配置是否已加载
 
-  async function fetchConfig() {
+  async function fetchConfig(force = false) {
+    // 如果已经加载过且不是强制刷新，直接返回
+    if (configLoaded.value && !force) {
+      return
+    }
     loading.value = true
     error.value = ''
     try {
       config.value = await avatarAPI.getConfig()
+      configLoaded.value = true
     } catch (e: any) {
       error.value = e.response?.data?.message || '加载分身配置失败'
     } finally {
@@ -204,8 +210,13 @@ export function useAvatar() {
     }
   }
 
+  const avatarConfig = config
+  const avatarApprovalStatus = computed(() => config.value?.approvalStatus || 'none')
+
   return {
     config,
+    avatarConfig,
+    avatarApprovalStatus,
     sessions,
     avatarWithTools,
     loading,

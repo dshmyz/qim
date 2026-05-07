@@ -114,13 +114,7 @@ func GetMessages(c *gin.Context) {
 	if afterID > 0 {
 		query = query.Where("id > ?", afterID)
 	}
-	query.Preload("Sender").Preload("QuotedMessage").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
-
-	for i := range messages {
-		if messages[i].QuotedMessage != nil {
-			db.Model(&messages[i].QuotedMessage).Association("Sender").Find(&messages[i].QuotedMessage.Sender)
-		}
-	}
+	query.Preload("Sender").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
 
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
@@ -214,13 +208,7 @@ func GetMessagesByFilter(c *gin.Context) {
 	query.Model(&model.Message{}).Count(&total)
 
 	var messages []model.Message
-	query.Preload("Sender").Preload("QuotedMessage").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
-
-	for i := range messages {
-		if messages[i].QuotedMessage != nil {
-			db.Model(&messages[i].QuotedMessage).Association("Sender").Find(&messages[i].QuotedMessage.Sender)
-		}
-	}
+	query.Preload("Sender").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
 
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
@@ -272,23 +260,20 @@ func SendMessage(c *gin.Context) {
 		QuotedMessageID: req.QuotedMessageID,
 		IsRead:          false,
 	}
-	db.Create(&msg)
+	if err := db.Create(&msg).Error; err != nil {
+		response.InternalServerError(c, "消息创建失败")
+		return
+	}
 
-	// 创建消息后，如果是文件/图片消息，更新文件的source字段
 	if req.Type == "file" || req.Type == "image" {
 		var fileData struct {
 			URL string `json:"url"`
 			ID  uint   `json:"id"`
 		}
-		if err := json.Unmarshal([]byte(req.Content), &fileData); err != nil {
-			log.Printf("[SendMessage] 解析文件消息失败: %v, content: %s", err, req.Content)
-		} else if fileData.ID > 0 {
-			result := db.Model(&model.File{}).
+		if err := json.Unmarshal([]byte(req.Content), &fileData); err == nil && fileData.ID > 0 {
+			db.Model(&model.File{}).
 				Where("id = ? AND user_id = ?", fileData.ID, userID.(uint)).
 				Update("source", "chat")
-			if result.RowsAffected == 0 {
-				log.Printf("[SendMessage] 文件不存在或无权限: fileID=%d, userID=%d", fileData.ID, userID.(uint))
-			}
 		}
 	}
 
@@ -314,13 +299,15 @@ func SendMessage(c *gin.Context) {
 	}
 
 	now := time.Now()
-	var conv model.Conversation
-	db.First(&conv, convID)
-	conv.LastMessageID = &msg.ID
-	conv.LastMessageAt = &now
-	db.Save(&conv)
+	db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
 
-	if conv.Type == "bot" {
+	var convType string
+	db.Model(&model.Conversation{}).Select("type").Where("id = ?", convID).Scan(&convType)
+
+	if convType == "bot" {
 		go HandleBotMessage(userID.(uint), uint(convIDUint), req.Content)
 	} else {
 		db.Model(&model.ConversationMember{}).
@@ -334,16 +321,12 @@ func SendMessage(c *gin.Context) {
 			}
 			jsonMsg, _ := json.Marshal(newMsg)
 
-			log.Printf("发送WebSocket消息到会话 %d，排除用户 %d", uint(convIDUint), userID.(uint))
-			ws.GlobalHub.SendToConversation(uint(convIDUint), userID.(uint), jsonMsg)
+			go ws.GlobalHub.SendToConversationAsync(uint(convIDUint), userID.(uint), jsonMsg)
 		}
 
 		// AI 意图检测 + 智能回复（非阻塞）
 		if smartReplyEngine != nil {
-			log.Printf("[SmartReply] 引擎已初始化，开始处理消息: convID=%d, content=%s", uint(convIDUint), req.Content[:min(30, len(req.Content))])
 			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content)
-		} else {
-			log.Printf("[SmartReply] 警告：智能回复引擎未初始化")
 		}
 
 		// 异常检测（非阻塞）
@@ -371,21 +354,18 @@ func SendMessage(c *gin.Context) {
 func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Conversation) {
 	db := database.GetDB()
 
-	// 更新会话的最后消息
 	now := time.Now()
 	db.Model(&model.Conversation{}).Where("id = ?", msg.ConversationID).Updates(map[string]interface{}{
 		"last_message_id": msg.ID,
 		"last_message_at": now,
 	})
 
-	// 增加其他成员的未读数
 	if excludeUserID > 0 {
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", msg.ConversationID, excludeUserID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 	}
 
-	// 构建响应数据
 	responseData := gin.H{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -407,7 +387,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(newMsg)
-		ws.GlobalHub.SendToConversation(msg.ConversationID, excludeUserID, jsonMsg)
+		go ws.GlobalHub.SendToConversationAsync(msg.ConversationID, excludeUserID, jsonMsg)
 	}
 }
 

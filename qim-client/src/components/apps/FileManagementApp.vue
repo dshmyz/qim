@@ -10,6 +10,7 @@
       <template #actions>
         <button class="action-btn" @click="showCreateFolderModal = true" title="新建文件夹">
           <i class="fas fa-folder-plus"></i>
+          <span>新建</span>
         </button>
         <button class="action-btn primary" @click="triggerFileUpload" title="上传文件">
           <i class="fas fa-cloud-upload-alt"></i>

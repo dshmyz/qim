@@ -218,6 +218,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick, inject } from 'vue'
 import { useScreenShareNew } from '@/composables/useScreenShareNew'
+import QMessage from '@/utils/qmessage'
 
 interface ScreenSource {
   id: string
@@ -801,6 +802,7 @@ const stopWaitingAccept = async () => {
   if (savedStream.value && props.receiverId) {
     if (screenShare.sessionState.value !== 'idle') {
       console.warn('[ScreenShareSimple] Session not idle, cannot start connection. State:', screenShare.sessionState.value)
+      QMessage.warning('当前已有屏幕共享连接，请先结束')
       return
     }
 
@@ -813,11 +815,18 @@ const stopWaitingAccept = async () => {
         await screenShare.startConnectionWithStream(props.receiverId, savedStream.value)
       }
       console.log('[ScreenShareSimple] Connection started successfully')
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ScreenShareSimple] 建立连接失败:', error)
+      if (error.message) {
+        QMessage.warning(error.message)
+      } else {
+        QMessage.error('建立屏幕共享连接失败，请稍后重试')
+      }
+      showWaitingAccept.value = false
     }
   } else {
     console.warn('[ScreenShareSimple] Missing savedStream or receiverId, cannot start connection')
+    QMessage.warning('无法开始屏幕共享，请检查连接信息')
   }
 }
 

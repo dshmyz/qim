@@ -43,6 +43,7 @@
       <AIKnowledgeSettings
         v-if="activeTab === 'knowledge'"
         :group-id="groupId"
+        :server-url="serverUrl"
         :documents="documents"
         @add="handleAddDocuments"
         @remove="handleRemoveDocument"
@@ -147,7 +148,7 @@ async function loadAISettings() {
         aiMaxLength: data.ai_max_length || props.aiMaxLength,
         aiMentionReplyMode: data.ai_mention_reply_mode || props.aiMentionReplyMode,
         aiAntiSpamInterval: data.ai_anti_spam_interval !== undefined ? data.ai_anti_spam_interval : props.aiAntiSpamInterval,
-        aiTriggerKeywords: data.ai_trigger_keywords ? data.ai_trigger_keywords.split(',').filter(k => k.trim()) : [...props.aiTriggerKeywords],
+        aiTriggerKeywords: data.ai_trigger_keywords ? data.ai_trigger_keywords.split(',').filter((k: string) => k.trim()) : [...props.aiTriggerKeywords],
         aiLearnEnabled: data.ai_learn_enabled !== undefined ? data.ai_learn_enabled : props.aiLearnEnabled
       }
       if (data.approval_status) {
@@ -164,7 +165,8 @@ async function loadAISettings() {
   }
 }
 
-watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.aiPersonality, props.aiCustomPrompt, props.aiLanguage, props.aiMaxLength, props.aiMentionReplyMode, props.aiAntiSpamInterval, props.aiTriggerKeywords, props.aiLearnEnabled, props.approvalStatus, props.rejectReason], () => {
+watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.aiPersonality, props.aiCustomPrompt, props.aiLanguage, props.aiMaxLength, props.aiMentionReplyMode, props.aiAntiSpamInterval, props.aiTriggerKeywords, props.aiLearnEnabled, props.approvalStatus, props.rejectReason], (newVal, oldVal) => {
+  if (!oldVal) return
   settings.value = {
     aiEnabled: props.aiEnabled,
     aiAssistantName: props.aiAssistantName,
@@ -180,7 +182,7 @@ watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.ai
   }
   approvalStatus.value = props.approvalStatus
   rejectReason.value = props.rejectReason
-}, { immediate: true })
+})
 
 const saving = ref(false)
 

@@ -9,7 +9,7 @@ interface MessageHandlers {
 }
 
 export function useWebSocketManager(serverUrl: any) {
-  const { connectWithHandlers, disconnect, sendMessage, addHandler, isConnected, getWs } = useWebSocket(serverUrl.value)
+  const { connectWithHandlers, disconnect, sendMessage, addHandler, isConnected, getWs, setOnConnectedCallback } = useWebSocket(serverUrl.value)
 
   const localWs = {
     get readyState() { return getWs()?.readyState ?? WebSocket.CLOSED },
@@ -97,6 +97,7 @@ export function useWebSocketManager(serverUrl: any) {
     connectWebSocket,
     disconnectWebSocket,
     sendMessage,
-    addHandler: addMessageHandler
+    addHandler: addMessageHandler,
+    setOnConnectedCallback
   }
 }

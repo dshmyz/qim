@@ -104,14 +104,4 @@ const getFileName = (content: string): string => {
   color: var(--text-color);
   line-height: 1.4;
 }
-
-/* 暗黑主题下的引用消息样式 */
-[data-theme="dark"] .quoted-message-remove {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .quoted-message-remove:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: var(--text-color) !important;
-}
 </style>

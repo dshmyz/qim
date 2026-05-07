@@ -35,6 +35,11 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type cachedMembers struct {
+	memberIDs []uint
+	expiredAt time.Time
+}
+
 type Hub struct {
 	clients             sync.Map
 	register            chan *Client
@@ -42,14 +47,12 @@ type Hub struct {
 	broadcast           chan []byte
 	Broadcast           chan []byte
 	userClients         sync.Map
-	conversationMembers map[uint][]uint
+	conversationMembers map[uint]cachedMembers
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
 
-	// 状态变更防抖器
 	statusDebouncer *StatusDebouncer
-	// 用户状态订阅关系 (用户ID -> 订阅者列表)
 	userSubscribers sync.Map
 }
 
@@ -85,7 +88,7 @@ func NewHub() *Hub {
 		broadcast:           broadcastChan,
 		Broadcast:           broadcastChan,
 		userClients:         sync.Map{},
-		conversationMembers: make(map[uint][]uint),
+		conversationMembers: make(map[uint]cachedMembers),
 		nodes:               nodes,
 		nodeID:              nodeID,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
@@ -207,15 +210,10 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 func (h *Hub) SendToUser(userID uint, message []byte) {
 	if existingClients, ok := h.userClients.Load(userID); ok {
 		clients := existingClients.([]*Client)
-		log.Printf("找到用户 %d 的本地WebSocket连接数量: %d", userID, len(clients))
-
-		for i, client := range clients {
-			log.Printf("向用户 %d 的第 %d 个本地连接发送WebSocket消息", userID, i+1)
+		for _, client := range clients {
 			select {
 			case client.send <- message:
-				log.Printf("消息发送成功")
 			default:
-				log.Printf("消息发送失败，连接可能已关闭")
 			}
 		}
 	}
@@ -249,9 +247,12 @@ func (h *Hub) UpdateConversationMembers(convID uint) {
 		memberIDs[i] = member.UserID
 	}
 
-	// 更新缓存
+	// 更新缓存，5分钟过期
 	h.mu.Lock()
-	h.conversationMembers[convID] = memberIDs
+	h.conversationMembers[convID] = cachedMembers{
+		memberIDs: memberIDs,
+		expiredAt: time.Now().Add(5 * time.Minute),
+	}
 	h.mu.Unlock()
 	log.Printf("更新会话 %d 成员缓存，成员数量: %d", convID, len(memberIDs))
 }
@@ -286,45 +287,83 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 }
 
 func (h *Hub) SendToConversation(convID uint, excludeUserID uint, message []byte) {
-	log.Printf("开始向会话 %d 发送WebSocket消息，排除用户 %d", convID, excludeUserID)
-
-	// 先尝试从缓存获取会话成员
 	h.mu.RLock()
-	memberIDs, found := h.conversationMembers[convID]
+	cached, found := h.conversationMembers[convID]
 	h.mu.RUnlock()
 
-	if !found {
-		// 缓存未命中，从数据库查询
+	var memberIDs []uint
+	if found && time.Now().Before(cached.expiredAt) {
+		memberIDs = cached.memberIDs
+	} else {
 		db := database.GetDB()
 		var members []model.ConversationMember
 		result := db.Where("conversation_id = ?", convID).Find(&members)
-		log.Printf("找到会话 %d 的成员数量: %d", convID, len(members))
 		if result.Error != nil {
 			log.Printf("查询会话成员失败: %v", result.Error)
 			return
 		}
 
-		// 提取用户ID
 		memberIDs = make([]uint, len(members))
 		for i, member := range members {
 			memberIDs[i] = member.UserID
 		}
 
-		// 更新缓存
 		h.mu.Lock()
-		h.conversationMembers[convID] = memberIDs
+		h.conversationMembers[convID] = cachedMembers{
+			memberIDs: memberIDs,
+			expiredAt: time.Now().Add(5 * time.Minute),
+		}
 		h.mu.Unlock()
 	}
 
-	// 向所有成员发送消息（排除指定用户）
 	for _, userID := range memberIDs {
 		if userID != excludeUserID {
-			log.Printf("向用户 %d 发送WebSocket消息", userID)
 			h.SendToUser(userID, message)
-		} else {
-			log.Printf("排除用户 %d，不发送消息", userID)
 		}
 	}
+}
+
+func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message []byte) {
+	h.mu.RLock()
+	cached, found := h.conversationMembers[convID]
+	h.mu.RUnlock()
+
+	var memberIDs []uint
+	if found && time.Now().Before(cached.expiredAt) {
+		memberIDs = cached.memberIDs
+	} else {
+		db := database.GetDB()
+		var members []model.ConversationMember
+		result := db.Where("conversation_id = ?", convID).Find(&members)
+		if result.Error != nil {
+			log.Printf("查询会话成员失败: %v", result.Error)
+			return
+		}
+
+		memberIDs = make([]uint, len(members))
+		for i, member := range members {
+			memberIDs[i] = member.UserID
+		}
+
+		h.mu.Lock()
+		h.conversationMembers[convID] = cachedMembers{
+			memberIDs: memberIDs,
+			expiredAt: time.Now().Add(5 * time.Minute),
+		}
+		h.mu.Unlock()
+	}
+
+	var wg sync.WaitGroup
+	for _, userID := range memberIDs {
+		if userID != excludeUserID {
+			wg.Add(1)
+			go func(uid uint) {
+				defer wg.Done()
+				h.SendToUser(uid, message)
+			}(userID)
+		}
+	}
+	wg.Wait()
 }
 
 func (c *Client) readPump() {
@@ -357,45 +396,20 @@ func (c *Client) readPump() {
 			handleSendMessage(c, msg.Data)
 		case "read_message":
 			handleReadMessage(c, msg.Data)
-		case "webrtc_offer":
-			handleWebRTCSignal(c, msg.Data, "webrtc_offer")
-		case "webrtc_answer":
-			handleWebRTCSignal(c, msg.Data, "webrtc_answer")
-		case "webrtc_ice_candidate":
-			handleWebRTCSignal(c, msg.Data, "webrtc_ice_candidate")
-		// 新的消息格式（点分隔）
 		case "webrtc.offer":
 			handleWebRTCSignal(c, msg.Data, "webrtc.offer")
 		case "webrtc.answer":
 			handleWebRTCSignal(c, msg.Data, "webrtc.answer")
 		case "webrtc.ice-candidate":
 			handleWebRTCSignal(c, msg.Data, "webrtc.ice-candidate")
-		case "call_invite":
-			handleCallInvite(c, msg.Data)
-		case "call_accept":
-			handleCallAccept(c, msg.Data)
-		case "call_reject":
-			handleCallReject(c, msg.Data)
-		case "call_end":
-			handleCallEnd(c, msg.Data)
-		// 新的通话消息格式（点分隔）
 		case "call.start":
 			handleCallInvite(c, msg.Data)
 		case "call.answer":
 			handleCallAccept(c, msg.Data)
+		case "call.reject":
+			handleCallReject(c, msg.Data)
 		case "call.end":
 			handleCallEnd(c, msg.Data)
-		case "screen-share-start":
-			handleScreenShareStart(c, msg.Data)
-		case "screen-share-stop":
-			handleScreenShareStop(c, msg.Data)
-		case "screen-share-data":
-			handleScreenShareData(c, msg.Data)
-		case "screen-share-request":
-			handleScreenShareRequest(c, msg.Data)
-		case "screen-share-response":
-			handleScreenShareResponse(c, msg.Data)
-		// 新的屏幕共享消息格式（点分隔）
 		case "screen-share.start":
 			handleScreenShareStart(c, msg.Data)
 		case "screen-share.stop":
@@ -627,8 +641,7 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 	// 构建转发的信令消息
 	// ICE 候选者使用 candidate 字段，其他信令使用 signal 字段
 	signalData := msgData["signal"]
-	// 支持新旧两种 ICE candidate 消息格式
-	if signalType == "webrtc_ice_candidate" || signalType == "webrtc.ice-candidate" {
+	if signalType == "webrtc.ice-candidate" {
 		signalData = msgData["candidate"]
 	}
 
@@ -754,7 +767,7 @@ func handleScreenShareStart(c *Client, data interface{}) {
 
 	// 构建屏幕共享开始消息
 	wsMsg := WSMessage{
-		Type: "screen-share-start",
+		Type: "screen-share.start",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         userId,
@@ -796,7 +809,7 @@ func handleScreenShareStop(c *Client, data interface{}) {
 
 	// 构建屏幕共享停止消息
 	wsMsg := WSMessage{
-		Type: "screen-share-stop",
+		Type: "screen-share.stop",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         c.userID,
@@ -1032,7 +1045,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 	if status == "accepted" {
 		// 向请求者发送接受消息
 		acceptMsg := WSMessage{
-			Type: "screen-share-accepted",
+			Type: "screen-share.accepted",
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         c.userID,
@@ -1044,7 +1057,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 
 		// 向响应者发送开始消息
 		startMsg := WSMessage{
-			Type: "screen-share-start",
+			Type: "screen-share.start",
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         requesterID,
@@ -1053,12 +1066,10 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 		}
 		startJson, _ := json.Marshal(startMsg)
 		c.hub.SendToUser(c.userID, startJson)
-
-		log.Printf("用户 %d 接受了屏幕共享请求，会话 %d", c.userID, convID)
 	} else if status == "rejected" {
 		// 向请求者发送拒绝消息
 		rejectMsg := WSMessage{
-			Type: "screen-share-rejected",
+			Type: "screen-share.rejected",
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         c.userID,
@@ -1102,7 +1113,7 @@ func handleCallInvite(c *Client, data interface{}) {
 
 	// 转发通话邀请给目标用户
 	callMsg := WSMessage{
-		Type: "call_invite",
+		Type: "call.start",
 		Data: map[string]interface{}{
 			"from_user_id": c.userID,
 			"call_type":    callType,
@@ -1141,7 +1152,7 @@ func handleCallAccept(c *Client, data interface{}) {
 
 	// 转发接听消息给发起方
 	callMsg := WSMessage{
-		Type: "call_accept",
+		Type: "call.answer",
 		Data: map[string]interface{}{
 			"from_user_id": c.userID,
 			"signal":       signal,
@@ -1177,7 +1188,7 @@ func handleCallReject(c *Client, data interface{}) {
 
 	// 转发拒绝消息给发起方
 	callMsg := WSMessage{
-		Type: "call_reject",
+		Type: "call.reject",
 		Data: map[string]interface{}{
 			"from_user_id": c.userID,
 			"timestamp":    time.Now().Unix(),
@@ -1212,7 +1223,7 @@ func handleCallEnd(c *Client, data interface{}) {
 
 	// 转发通话结束消息给对方
 	callMsg := WSMessage{
-		Type: "call_end",
+		Type: "call.end",
 		Data: map[string]interface{}{
 			"from_user_id": c.userID,
 			"timestamp":    time.Now().Unix(),

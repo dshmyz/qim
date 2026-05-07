@@ -20,6 +20,9 @@ export function useBotChat(botId: Ref<number | null>) {
   const streamingMessageId = ref<string | null>(null)
   const abortController = ref<AbortController | null>(null)
 
+  // 无会话模式下的对话历史（用于多轮对话）
+  const chatHistory = ref<{ role: 'system' | 'user' | 'assistant'; content: string }[]>([])
+
   // 分页状态
   const currentPage = ref(1)
   const pageSize = ref(20)
@@ -50,11 +53,13 @@ export function useBotChat(botId: Ref<number | null>) {
   /**
    * 初始化 Bot 会话
    * 创建或获取与指定 Bot 的会话
+   * 如果没有 botId，则跳过会话初始化（直接使用 AI completion 接口）
    */
   const initConversation = async (): Promise<boolean> => {
+    // 没有 botId 时，跳过会话初始化，后续直接使用 AI completion 接口
     if (!botId.value) {
-      error.value = 'Bot ID 不能为空'
-      return false
+      conversationId.value = null
+      return true
     }
 
     isLoading.value = true
@@ -63,7 +68,7 @@ export function useBotChat(botId: Ref<number | null>) {
     try {
       const response: any = await request('/api/v1/conversations/bot', {
         method: 'POST',
-        body: JSON.stringify({ botId: botId.value })
+        body: JSON.stringify({ bot_id: botId.value })
       })
 
       if (response.code === 0 && response.data) {
@@ -88,9 +93,8 @@ export function useBotChat(botId: Ref<number | null>) {
    */
   const loadMessages = async (reset: boolean = true): Promise<void> => {
     if (!conversationId.value) {
-      // 如果没有会话 ID，先初始化会话
-      const success = await initConversation()
-      if (!success) return
+      // 无会话模式，没有服务端历史，直接返回
+      return
     }
 
     if (isLoading.value) return
@@ -160,11 +164,6 @@ export function useBotChat(botId: Ref<number | null>) {
    * @param content 消息内容
    */
   const sendMessage = async (content: string): Promise<void> => {
-    if (!conversationId.value) {
-      error.value = '会话未初始化'
-      return
-    }
-
     if (!content.trim()) {
       error.value = '消息内容不能为空'
       return
@@ -207,18 +206,33 @@ export function useBotChat(botId: Ref<number | null>) {
       const token = getToken()
       const serverUrl = localStorage.getItem('serverUrl') || import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
-      const response = await fetch(
-        `${serverUrl}/api/v1/conversations/${conversationId.value}/messages/stream`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({ content: content.trim() }),
-          signal: abortController.value.signal
-        }
-      )
+      let streamUrl: string
+      let requestBody: string
+
+      if (conversationId.value) {
+        // 有会话 ID，使用 Bot 会话流式接口
+        streamUrl = `${serverUrl}/api/v1/conversations/${conversationId.value}/messages/stream`
+        requestBody = JSON.stringify({ type: 'text', content: content.trim() })
+      } else {
+        // 无会话 ID，直接使用 AI completion 接口，带上对话历史
+        streamUrl = `${serverUrl}/api/v1/ai/completion/stream`
+        const messages = [
+          { role: 'system' as const, content: '你是一个智能助手，帮助用户解决问题。' },
+          ...chatHistory.value,
+          { role: 'user' as const, content: content.trim() }
+        ]
+        requestBody = JSON.stringify({ messages })
+      }
+
+      const response = await fetch(streamUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: requestBody,
+        signal: abortController.value.signal
+      })
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -277,6 +291,12 @@ export function useBotChat(botId: Ref<number | null>) {
         messages.value[messageIndex].isStreaming = false
         messages.value[messageIndex].type = 'markdown'
       }
+
+      // 无会话模式下，将对话加入历史以支持多轮对话
+      if (!conversationId.value) {
+        chatHistory.value.push({ role: 'user', content: content.trim() })
+        chatHistory.value.push({ role: 'assistant', content: accumulatedContent })
+      }
     } catch (e: any) {
       if (e.name === 'AbortError') {
         console.log('消息发送已取消')
@@ -313,6 +333,7 @@ export function useBotChat(botId: Ref<number | null>) {
     messages.value = []
     currentPage.value = 1
     hasMoreMessages.value = false
+    chatHistory.value = []
   }
 
   /**

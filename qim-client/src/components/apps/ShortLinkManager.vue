@@ -1,20 +1,15 @@
 <template>
   <div class="short-link-manager">
-    <!-- 短链接管理标题 -->
-    <div class="short-link-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-chevron-left"></i>
-        </button>
+    <AppHeader title="短链接管理" @back="$emit('back')">
+      <template #extra-buttons>
         <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
           <i class="fas fa-compress"></i>
         </button>
-        <div class="short-link-header-info">
-          <h2>短链接管理</h2>
-          <p class="header-description">生成、管理和跟踪你的短链接</p>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #subtitle>
+        <p class="header-description">生成、管理和跟踪你的短链接</p>
+      </template>
+    </AppHeader>
 
     <div class="short-link-content">
       <!-- 快速生成区 -->
@@ -79,6 +74,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { API_BASE_URL } from '../../config'
+import AppHeader from './AppHeader.vue'
 import QuickGenerateSection from './shortlink/QuickGenerateSection.vue'
 import StatsCards from './shortlink/StatsCards.vue'
 import ShortLinkList from './shortlink/ShortLinkList.vue'
@@ -400,81 +396,6 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-color, #f5f7fa);
-}
-
-.short-link-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  background: var(--card-bg, white);
-  height: 72px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 4px var(--shadow-color, rgba(0, 0, 0, 0.05));
-  transition: all 0.3s ease;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
-}
-
-.short-link-header:hover {
-  box-shadow: 0 2px 6px var(--shadow-color-hover, rgba(0, 0, 0, 0.1));
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color, #f3f4f6);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.2s;
-  color: var(--primary-color, #667eea);
-}
-
-.back-btn:hover {
-  background: var(--primary-light, rgba(102, 126, 234, 0.1));
-}
-
-.toggle-sidebar-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color, #f3f4f6);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: var(--primary-color, #667eea);
-}
-
-.toggle-sidebar-btn:hover {
-  background: var(--primary-light, rgba(102, 126, 234, 0.1));
-}
-
-.short-link-header-info h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary, #1f2937);
-  margin: 0 0 4px 0;
-  transition: color 0.3s ease;
-}
-
-.header-description {
-  margin: 0;
-  color: var(--text-secondary, #6b7280);
-  font-size: 14px;
 }
 
 .short-link-content {

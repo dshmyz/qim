@@ -25,7 +25,7 @@ export interface BotConfig {
 
 export interface BotMessage {
   id: number
-  conversationId: number
+  conversationId: number | null
   senderId: number
   senderType: 'user' | 'bot' | 'system' | 'api'
   sender?: {

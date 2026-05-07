@@ -41,13 +41,9 @@
           </span>
         </div>
       </div>
-      <AvatarSessionToggle
-        v-if="currentUser"
-        :conversation-id="conversation.id"
-      />
     </div>
 
-    <GroupPanel
+    <ChatHeaderActions
       :conversation="conversation"
       :current-user="currentUser"
       :server-url="serverUrl"
@@ -67,6 +63,8 @@
       :ai-anti-spam-interval="aiAntiSpamInterval"
       :ai-trigger-keywords="aiTriggerKeywords"
       :ai-learn-enabled="aiLearnEnabled"
+      :avatar-enabled="avatarEnabled"
+      :avatar-approval-status="avatarApprovalStatus"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
       @save-group-info="(name: string) => emit('save-group-info', name)"
@@ -78,6 +76,7 @@
       @transfer-owner="(id: string, name: string) => emit('transfer-owner', id, name)"
       @start-private-chat="(id: string) => emit('start-private-chat', id)"
       @update-ai-settings="(settings) => emit('update-ai-settings', settings)"
+      @update-avatar-enabled="(value) => emit('update-avatar-enabled', value)"
     />
   </div>
 </template>
@@ -86,8 +85,7 @@
 import { computed } from 'vue'
 import type { Conversation } from '../../types'
 import Avatar from '../shared/Avatar.vue'
-import GroupPanel from './GroupPanel.vue'
-import AvatarSessionToggle from '../avatar/AvatarSessionToggle.vue'
+import ChatHeaderActions from './ChatHeaderActions.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { ref } from 'vue'
 
@@ -95,6 +93,8 @@ interface Props {
   conversation: Conversation
   currentUser: any
   serverUrl: string
+  avatarEnabled?: boolean
+  avatarApprovalStatus?: string
 }
 
 interface Emits {
@@ -114,6 +114,7 @@ interface Emits {
   (e: 'update:editGroupName', value: string): void
   (e: 'update:editAnnouncement', value: string): void
   (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
+  (e: 'update-avatar-enabled', value: boolean): void
 }
 
 const props = defineProps<Props>()
@@ -195,7 +196,8 @@ defineExpose({
   background: var(--sidebar-bg);
   height: 72px;
   box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
+  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); */
   margin: 0;
   margin-bottom: 1px;
   border-radius: 0;
@@ -326,5 +328,32 @@ defineExpose({
 
 .member-count:hover {
   text-decoration: underline;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--hover-color);
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.avatar-toggle-wrapper:hover {
+  background: var(--input-bg);
+}
+
+.avatar-toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 </style>

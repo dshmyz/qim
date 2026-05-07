@@ -1,0 +1,91 @@
+<h2>登录页设计方向</h2>
+<p class="subtitle">展示了 3 种不同的登录页设计方案，点击选择你喜欢的风格</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>现代简约</h3>
+      <p>干净的白色背景，居中的简洁表单，微妙的阴影和圆角，去掉多余的装饰，专注核心功能</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">预览</div>
+        <div class="mockup-body" style="background: #fafafa; padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 200px;">
+          <div style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); width: 280px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <div style="width: 48px; height: 48px; background: #409eff; border-radius: 12px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">Q</div>
+              <div style="font-size: 18px; font-weight: 600; color: #333;">QIM</div>
+              <div style="font-size: 12px; color: #999;">即时通讯应用</div>
+            </div>
+            <div style="margin-bottom: 12px;">
+              <div style="background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #999;">👤 用户名</div>
+            </div>
+            <div style="margin-bottom: 16px;">
+              <div style="background: #f5f5f5; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #999;">🔒 密码</div>
+            </div>
+            <div style="background: #409eff; color: white; padding: 12px; border-radius: 6px; text-align: center; font-size: 14px;">登录</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>分屏布局</h3>
+      <p>左侧品牌展示区（插图/渐变/产品特色），右侧登录表单，视觉层次分明，品牌感更强</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">预览</div>
+        <div class="mockup-body" style="display: flex; min-height: 200px;">
+          <div style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;">
+            <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;">Q</div>
+            <div style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">QIM 青雀</div>
+            <div style="font-size: 12px; opacity: 0.8; text-align: center;">简洁 · 高效 · 智能</div>
+            <div style="margin-top: 20px; display: flex; gap: 8px;">
+              <div style="width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 50%;"></div>
+              <div style="width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 50%;"></div>
+              <div style="width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 50%;"></div>
+            </div>
+          </div>
+          <div style="flex: 1; background: white; padding: 24px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 20px; font-weight: 600; color: #333; margin-bottom: 20px;">欢迎回来</div>
+            <div style="margin-bottom: 12px;">
+              <div style="border: 1px solid #e4e7ed; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #999;">👤 用户名</div>
+            </div>
+            <div style="margin-bottom: 16px;">
+              <div style="border: 1px solid #e4e7ed; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #999;">🔒 密码</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; border-radius: 6px; text-align: center; font-size: 14px;">登录</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>毛玻璃风格</h3>
+      <p>全屏渐变/图片背景，毛玻璃效果的登录卡片，更强的视觉冲击力，现代感更强</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-header">预览</div>
+        <div class="mockup-body" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 50%, #4facfe 100%); padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 200px; position: relative; overflow: hidden;">
+          <div style="position: absolute; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; top: -20px; left: -20px;"></div>
+          <div style="position: absolute; width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 50%; bottom: -10px; right: 20px;"></div>
+          <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); padding: 32px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.3); width: 280px; position: relative; z-index: 1;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <div style="width: 48px; height: 48px; background: rgba(255,255,255,0.2); border-radius: 12px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">Q</div>
+              <div style="font-size: 18px; font-weight: 600; color: white;">QIM 青雀</div>
+              <div style="font-size: 12px; color: rgba(255,255,255,0.7);;">即时通讯应用</div>
+            </div>
+            <div style="margin-bottom: 12px;">
+              <div style="background: rgba(255,255,255,0.2); padding: 10px 12px; border-radius: 6px; font-size: 12px; color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.3);">👤 用户名</div>
+            </div>
+            <div style="margin-bottom: 16px;">
+              <div style="background: rgba(255,255,255,0.2); padding: 10px 12px; border-radius: 6px; font-size: 12px; color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.3);">🔒 密码</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.9); color: #333; padding: 12px; border-radius: 6px; text-align: center; font-size: 14px; font-weight: 500;">登录</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

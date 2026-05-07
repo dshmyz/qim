@@ -265,102 +265,6 @@ const avatarUrl = computed(() => {
   border-color: var(--active-color, #2563eb);
 }
 
-/* 炫酷黑主题 */
-[data-theme="dark"] .user-profile-content {
-  background-color: var(--card-bg, #161616);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-[data-theme="dark"] .user-profile-header {
-  background-color: var(--sidebar-bg, #0f0f0f);
-  border-bottom: 1px solid var(--border-color, #374151);
-}
-
-[data-theme="dark"] .user-profile-header h3 {
-  color: var(--text-color, #e5e7eb);
-}
-
-[data-theme="dark"] .user-profile-header .close-btn {
-  color: var(--text-color, #e5e7eb);
-  opacity: 0.8;
-}
-
-[data-theme="dark"] .user-profile-header .close-btn:hover {
-  background: var(--hover-color, #2d3748);
-  opacity: 1;
-}
-
-[data-theme="dark"] .user-profile-body {
-  background: transparent;
-}
-
-[data-theme="dark"] .profile-avatar img {
-  border-color: var(--border-color, #374151);
-}
-
-[data-theme="dark"] .info-item {
-  background-color: var(--list-bg, #1a1a1a);
-}
-
-[data-theme="dark"] .info-item:hover {
-  background-color: var(--hover-color, #2d3748);
-}
-
-[data-theme="dark"] .info-item label {
-  color: var(--text-secondary, #9ca3af);
-}
-
-[data-theme="dark"] .info-item .info-value {
-  color: var(--text-color, #e5e7eb);
-}
-
-[data-theme="dark"] .user-profile-footer {
-  background-color: var(--sidebar-bg, #0f0f0f);
-  border-top: 1px solid var(--border-color, #374151);
-}
-
-[data-theme="dark"] .action-btn {
-  background: var(--card-bg, #161616);
-  border: 1px solid var(--border-color, #374151);
-  color: var(--text-color, #e5e7eb);
-}
-
-[data-theme="dark"] .action-btn:hover {
-  background: var(--hover-color, #2d3748);
-  border-color: var(--primary-color, #4b5563);
-}
-
-[data-theme="dark"] .action-btn.primary {
-  background: var(--primary-color, #4b5563);
-  border-color: var(--primary-color, #4b5563);
-  color: #fff;
-}
-
-[data-theme="dark"] .action-btn.primary:hover {
-  background: var(--active-color, #6b7280);
-  border-color: var(--active-color, #6b7280);
-}
-
-/* 天青蓝主题 */
-[data-theme="netblue"] .user-profile-header {
-  background-color: var(--sidebar-bg, #ffffff);
-  border-bottom: 1px solid var(--border-color, #bae6fd);
-}
-
-[data-theme="netblue"] .user-profile-header h3 {
-  color: var(--text-color, #0c4a6e);
-}
-
-[data-theme="netblue"] .action-btn.primary {
-  background: var(--primary-color, #49bccf);
-  border-color: var(--primary-color, #49bccf);
-}
-
-[data-theme="netblue"] .action-btn.primary:hover {
-  background: var(--active-color, #3aa8b9);
-  border-color: var(--active-color, #3aa8b9);
-}
-
 /* 高雅紫主题 */
 [data-theme="elegant-purple"] .user-profile-header {
   background-color: var(--sidebar-bg, #ffffff);
@@ -379,27 +283,6 @@ const avatarUrl = computed(() => {
 [data-theme="elegant-purple"] .action-btn.primary:hover {
   background: var(--active-color, #6b21a8);
   border-color: var(--active-color, #6b21a8);
-}
-
-/* 神圣黄主题 */
-[data-theme="sacredyellow"] .user-profile-header {
-  background-color: var(--sidebar-bg, #ffffff);
-  border-bottom: 1px solid var(--border-color, #fef08a);
-}
-
-[data-theme="sacredyellow"] .user-profile-header h3 {
-  color: var(--text-color, #6b5a2f);
-}
-
-[data-theme="sacredyellow"] .action-btn.primary {
-  background: var(--primary-color, #d4b85f);
-  border-color: var(--primary-color, #d4b85f);
-  color: #fff;
-}
-
-[data-theme="sacredyellow"] .action-btn.primary:hover {
-  background: var(--active-color, #c4a74f);
-  border-color: var(--active-color, #c4a74f);
 }
 
 /* 中国红主题 */
@@ -421,26 +304,5 @@ const avatarUrl = computed(() => {
 [data-theme="chinesered"] .action-btn.primary:hover {
   background: var(--active-color, #a31d32);
   border-color: var(--active-color, #a31d32);
-}
-
-/* 草原绿主题 */
-[data-theme="grassgreen"] .user-profile-header {
-  background-color: var(--sidebar-bg, #ffffff);
-  border-bottom: 1px solid var(--border-color, #bbf7d0);
-}
-
-[data-theme="grassgreen"] .user-profile-header h3 {
-  color: var(--text-color, #1a4a2e);
-}
-
-[data-theme="grassgreen"] .action-btn.primary {
-  background: var(--primary-color, #2e8b57);
-  border-color: var(--primary-color, #2e8b57);
-  color: #fff;
-}
-
-[data-theme="grassgreen"] .action-btn.primary:hover {
-  background: var(--active-color, #276a49);
-  border-color: var(--active-color, #276a49);
 }
 </style>

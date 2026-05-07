@@ -102,9 +102,9 @@
       :conversations="conversations"
       :on-conversation-switch="handleConversationSelect"
       :on-send-message="handleSendMessage"
-      @screen-share-start="handleScreenShareStart"
-      @screen-share-stop="handleScreenShareStop"
-      @screen-share-data="handleScreenShareData"
+      @screen-share.start="handleScreenShareStart"
+      @screen-share.stop="handleScreenShareStop"
+      @screen-share.data="handleScreenShareData"
     />
 
     <!-- 聊天窗口 -->
@@ -117,6 +117,7 @@
       :currentUser="currentUser.value"
       :hasMoreMessages="hasMoreMessages"
       :updateConversation="updateConversation"
+      :fileSettings="fileSettings"
       @send="handleSendMessage"
       @recall="handleRecallMessage"
       @inviteMembers="handleInviteMembers"
@@ -222,32 +223,11 @@
       
       <!-- 用户创建的应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'user-app' && currentUserApp" class="right-content">
-        <div class="right-content-header">
-          <div class="header-left-group">
-            <button class="toggle-sidebar-btn" @click="toggleSidebar">
-              <i class="fas fa-compress"></i>
-            </button>
-            <button class="back-button" @click="backToAppList">
-              <i class="fas fa-arrow-left"></i>
-            </button>
-            <h2>{{ currentUserApp.name }}</h2>
-          </div>
-        </div>
-        <div class="user-app-content">
-          <div v-if="currentUserApp.url" class="user-app-iframe-container">
-            <iframe 
-              :src="currentUserApp.url" 
-              class="user-app-iframe"
-              frameborder="0"
-              allowfullscreen
-            ></iframe>
-          </div>
-          <div v-else class="empty-user-app">
-            <div class="empty-icon"><i class="fas fa-link"></i></div>
-            <p>该应用没有配置URL</p>
-            <p class="empty-hint">请在应用管理中编辑应用，添加URL地址</p>
-          </div>
-        </div>
+        <UserAppContainer 
+          :app="currentUserApp" 
+          @back="backToAppList" 
+          @toggleSidebar="toggleSidebar" 
+        />
       </div>
       
       <!-- 应用管理 -->
@@ -260,10 +240,7 @@
         <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
 
-      <!-- AI 分身 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'avatar'" class="right-content">
-        <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
+
 
       <!-- 短链接管理应用 -->
       <div v-else-if="activeOption === 'apps' && selectedAppId === 'short-link'" class="right-content">
@@ -374,8 +351,6 @@
       :profile="userProfile"
       @close="closeUserProfile"
       @save="saveUserProfile"
-      @avatarClick="triggerAvatarInput"
-      @avatarChange="handleAvatarChange"
     />
     
     <!-- 创建群聊/讨论组弹窗 -->
@@ -523,6 +498,7 @@ import AppManagementApp from '../components/apps/AppManagementApp.vue'
 import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
 import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
+import UserAppContainer from '../components/apps/UserAppContainer.vue'
 import AvatarSettingsPanel from '../components/avatar/AvatarSettingsPanel.vue'
 import * as storage from '../utils/storage'
 
@@ -656,7 +632,8 @@ const {
   connectWebSocket: connectWSManager,
   disconnectWebSocket,
   sendMessage,
-  addHandler
+  addHandler,
+  setOnConnectedCallback
 } = useWebSocketManager(serverUrl)
 
 // 群组相关（使用别名避免与 useUI 中的同名变量冲突）
@@ -827,7 +804,7 @@ const {
   handleMute,
   handleRemove,
   handleMarkRead,
-  updateConversation: _updateConversation,
+  updateConversation,
   addMessage: _addMessage,
   clearMessages: _clearMessages,
   addConversation,
@@ -1041,6 +1018,7 @@ const unregisterCustomEventListeners = () => {
 
 
 // 初始化数据
+let isFirstConnect = true
 onMounted(async () => {
   isLoading.value = true
   try {
@@ -1057,6 +1035,15 @@ onMounted(async () => {
   } finally {
     isLoading.value = false
   }
+  
+  // 设置 WebSocket 连接成功回调，重连时刷新会话列表获取最新未读计数
+  setOnConnectedCallback(() => {
+    // 首次连接时已在 onMounted 中加载过，避免重复请求
+    if (!isFirstConnect) {
+      loadConversations()
+    }
+    isFirstConnect = false
+  })
   
   // 连接WebSocket（不再使用轮询，完全依赖WebSocket）
   connectWebSocket()
@@ -1078,6 +1065,66 @@ import { useConversation } from '../composables/useConversation'
 
 // WebSocket连接
 
+// 处理通话和屏幕共享通知
+const handleCallNotification = (type: string, data: any) => {
+  const fromUserId = data.from_user_id || data.user_id
+  const fromUserName = data.from_user_name || data.sender_name || '对方'
+  const fromUserAvatar = data.from_user_avatar || data.sender_avatar || ''
+  
+  let title = ''
+  let body = ''
+  
+  switch (type) {
+    case '来电':
+      title = '来电提醒'
+      body = `${fromUserName} 正在呼叫您`
+      break
+    case '屏幕共享':
+      title = '屏幕共享'
+      body = `${fromUserName} 开始了屏幕共享`
+      break
+    case '屏幕共享请求':
+      title = '屏幕共享请求'
+      body = `${fromUserName} 请求与您屏幕共享`
+      break
+    default:
+      title = type
+      body = data.content || '您有一条新通知'
+  }
+  
+  showMessage({
+    message: body,
+    type: 'info',
+    duration: 5000
+  })
+  
+  if (window.electron?.tray) {
+    window.electron.tray.flash()
+  }
+  
+  if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+    const notificationIcon = fromUserAvatar 
+      ? getAvatarUrl(fromUserAvatar, fromUserName, serverUrl.value)
+      : undefined
+    
+    if (Notification.permission === 'granted') {
+      new Notification(title, {
+        body: body,
+        icon: notificationIcon
+      })
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification(title, {
+            body: body,
+            icon: notificationIcon
+          })
+        }
+      })
+    }
+  }
+}
+
 // 连接WebSocket
 const connectWebSocket = () => {
   // 为每种消息类型添加专门的处理器
@@ -1097,41 +1144,32 @@ const connectWebSocket = () => {
     'notification': handleNotification,
     'new_notification': handleNewNotification,
     'system_message': handleSystemMessage,
-    // 屏幕共享和视频通话消息路由到 RealtimeCommunication 组件
-    // 旧格式（连字符）
-    'screen-share-start': (data: any) => realtimeRef.value?.handleScreenShareStart(data),
-    'screen-share-stop': (data: any) => realtimeRef.value?.handleScreenShareStop(data),
-    'screen-share-data': (data: any) => realtimeRef.value?.handleScreenShareMessage('screen-share-data', data),
-    'screen-share-request': (data: any) => realtimeRef.value?.handleScreenShareRequest(data),
-    'screen-share-accepted': (data: any) => realtimeRef.value?.handleScreenShareAccepted(data),
-    'screen-share-rejected': (data: any) => realtimeRef.value?.handleScreenShareRejected(data),
-    // 新格式（点分隔）
-    'screen-share.start': (data: any) => realtimeRef.value?.handleScreenShareStart(data),
+    // 屏幕共享消息路由到 RealtimeCommunication 组件
+    'screen-share.start': (data: any) => {
+      realtimeRef.value?.handleScreenShareStart(data)
+      handleCallNotification('屏幕共享', data)
+    },
     'screen-share.stop': (data: any) => realtimeRef.value?.handleScreenShareStop(data),
     'screen-share.data': (data: any) => realtimeRef.value?.handleScreenShareMessage('screen-share.data', data),
-    'screen-share.request': (data: any) => realtimeRef.value?.handleScreenShareRequest(data),
+    'screen-share.request': (data: any) => {
+      realtimeRef.value?.handleScreenShareRequest(data)
+      handleCallNotification('屏幕共享请求', data)
+    },
     'screen-share.accepted': (data: any) => realtimeRef.value?.handleScreenShareAccepted(data),
     'screen-share.rejected': (data: any) => realtimeRef.value?.handleScreenShareRejected(data),
     // WebRTC 信令消息
-    // 旧格式（下划线）
-    'webrtc_offer': (data: any) => realtimeRef.value?.handleWebRTCOffer(data),
-    'webrtc_answer': (data: any) => realtimeRef.value?.handleWebRTCAnswer(data),
-    'webrtc_ice_candidate': (data: any) => realtimeRef.value?.handleWebRTCIceCandidate(data),
-    // 新格式（点分隔）
     'webrtc.offer': (data: any) => realtimeRef.value?.handleWebRTCOffer(data),
     'webrtc.answer': (data: any) => realtimeRef.value?.handleWebRTCAnswer(data),
     'webrtc.ice-candidate': (data: any) => realtimeRef.value?.handleWebRTCIceCandidate(data),
     // 实时会话消息
     'realtime:session:created': (data: any) => realtimeRef.value?.handleRealtimeSessionCreated(data),
     // 视频通话消息
-    // 旧格式（下划线）
-    'call_invite': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_invite', data: msg }),
-    'call_accept': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_accept', data: msg }),
-    'call_reject': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_reject', data: msg }),
-    'call_end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call_end', data: msg }),
-    // 新格式（点分隔）
-    'call.start': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.start', data: msg }),
+    'call.start': (msg: any) => {
+      realtimeRef.value?.handleVideoCallSignaling({ type: 'call.start', data: msg })
+      handleCallNotification('来电', msg)
+    },
     'call.answer': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.answer', data: msg }),
+    'call.reject': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.reject', data: msg }),
     'call.end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.end', data: msg })
   }
   
@@ -1555,6 +1593,39 @@ const handleMessageRecalled = (data: any) => {
   }
 }
 
+// 格式化通知内容，避免显示原始 JSON
+const formatNotificationContent = (message: any): string => {
+  if (message.type === 'share' && message.shareData) {
+    const shareType = message.shareData.type === 'file' ? '文件' : 
+                      message.shareData.type === 'note' ? '笔记' : 
+                      message.shareData.type === 'sticky' ? '便签' : '分享'
+    return `[${shareType}] ${message.shareData.name || '分享内容'}`
+  }
+  
+  if (message.type === 'miniApp' && message.miniAppData) {
+    return `[小程序] ${message.miniAppData.name || '小程序'}`
+  }
+  
+  if (message.type === 'news' && message.newsData) {
+    return `[资讯] ${message.newsData.title || '资讯'}`
+  }
+  
+  if (message.type === 'image') {
+    return '[图片]'
+  }
+  
+  if (message.type === 'file') {
+    try {
+      const fileData = JSON.parse(message.content || '{}')
+      return `[文件] ${fileData.name || fileData.fileName || '文件'}`
+    } catch {
+      return '[文件]'
+    }
+  }
+  
+  return message.content || '无内容'
+}
+
 // 处理新消息
 const handleNewMessage = (data: any) => {
   const conversationId = data.conversation_id.toString()
@@ -1592,38 +1663,42 @@ const handleNewMessage = (data: any) => {
     }
     
     if (currentConversationId.value !== conversationId) {
-      updatedConversation.unreadCount = (updatedConversation.unreadCount || 0) + 1
-      
-      if (messageSettings.value.notificationsEnabled) {
-        showMessage({
-          message: `收到来自 ${newMessage.sender.name} 的新消息`,
-          type: 'info',
-          duration: 3000
-        })
+      // 流式消息不增加未读计数和触发通知
+      if (!newMessage.isStreaming) {
+        updatedConversation.unreadCount = (updatedConversation.unreadCount || 0) + 1
         
-        if (messageSettings.value.soundEnabled) {
-          playMessageSound()
-        }
+        if (messageSettings.value.notificationsEnabled) {
+          showMessage({
+            message: `收到来自 ${newMessage.sender.name} 的新消息`,
+            type: 'info',
+            duration: 3000
+          })
+          
+          if (messageSettings.value.soundEnabled) {
+            playMessageSound()
+          }
 
-        if (window.electron?.tray) {
-          window.electron.tray.flash()
-        }
-        
-        if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
-          if (Notification.permission === 'granted') {
-            new Notification('新消息', {
-              body: newMessage.content,
-              icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
-            })
-          } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(permission => {
-              if (permission === 'granted') {
-                new Notification('新消息', {
-                  body: newMessage.content,
-                  icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
-                })
-              }
-            })
+          if (window.electron?.tray) {
+            window.electron.tray.flash()
+          }
+          
+          if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+            const notificationBody = formatNotificationContent(newMessage)
+            if (Notification.permission === 'granted') {
+              new Notification('新消息', {
+                body: notificationBody,
+                icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
+              })
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                  new Notification('新消息', {
+                    body: notificationBody,
+                    icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
+                  })
+                }
+              })
+            }
           }
         }
       }
@@ -1636,7 +1711,8 @@ const handleNewMessage = (data: any) => {
       const newConversationIndex = conversations.value.findIndex(c => c.id === conversationId)
       if (newConversationIndex !== -1 && currentConversationId.value !== conversationId) {
         const conversation = conversations.value[newConversationIndex]
-        if (!conversation.unreadCount || conversation.unreadCount === 0) {
+        // 流式消息不增加未读计数
+        if (!newMessage.isStreaming && (!conversation.unreadCount || conversation.unreadCount === 0)) {
           const updatedConv = {
             ...conversation,
             unreadCount: 1
@@ -1645,7 +1721,8 @@ const handleNewMessage = (data: any) => {
           scheduleConversationSort()
         }
         
-        if (messageSettings.value.notificationsEnabled) {
+        // 流式消息不触发通知
+        if (!newMessage.isStreaming && messageSettings.value.notificationsEnabled) {
           showMessage({
             message: `收到来自 ${newMessage.sender.name} 的新消息`,
             type: 'info',
@@ -1661,8 +1738,9 @@ const handleNewMessage = (data: any) => {
   }
   
   if (currentConversationId.value === conversationId) {
-    const messageExists = messages.value.some(msg => msg.id === newMessage.id)
-    if (!messageExists) {
+    const messageIndex = messages.value.findIndex(msg => msg.id === newMessage.id)
+    if (messageIndex === -1) {
+      // 消息不存在，添加新消息
       messages.value.push(newMessage)
       
       nextTick(() => {
@@ -1671,6 +1749,10 @@ const handleNewMessage = (data: any) => {
           messageContainer.scrollTop = messageContainer.scrollHeight
         }
       })
+    } else {
+      // 消息已存在，更新内容（包括流式消息和普通消息的更新）
+      messages.value[messageIndex].content = newMessage.content
+      messages.value[messageIndex].isStreaming = newMessage.isStreaming
     }
   }
 }
@@ -1875,6 +1957,7 @@ const processMessage = (msg: any, conversationId?: string) => {
     isRead: msg.is_read || false,
     isRecalled: msg.is_recalled || false,
     isFailed: msg.is_failed || false,
+    isStreaming: msg.is_streaming || false,
     conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',
@@ -2536,7 +2619,7 @@ const handleScreenShareStop = (data: { conversationId: number }) => {
 const handleScreenShareData = (data: { conversationId: number; data: string }) => {
   // console.log('发送屏幕共享数据:', data)
   sendMessage({
-    type: 'screen-share-data',
+    type: 'screen-share.data',
     data: data
   })
 }
@@ -2804,23 +2887,44 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 // 保存用户资料
-const saveUserProfile = async () => {
+const saveUserProfile = async (profile: any) => {
   try {
+    const updateData: any = {
+      nickname: profile.nickname,
+      signature: profile.signature
+    }
+    
+    if (profile.avatarFile) {
+      const formData = new FormData()
+      formData.append('file', profile.avatarFile)
+      
+      const uploadResponse = await request('/api/v1/upload', {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (uploadResponse.code === 0 && uploadResponse.data && uploadResponse.data.url) {
+        updateData.avatar = uploadResponse.data.url
+      } else {
+        showMessage({ message: '头像上传失败: ' + uploadResponse.message, type: 'error' })
+        return
+      }
+    }
+    
     const response = await request('/api/v1/users/me', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        nickname: userProfile.value.nickname,
-        signature: userProfile.value.signature
-      })
+      body: JSON.stringify(updateData)
     })
     
     if (response.code === 0) {
-      // 更新当前用户信息
       if (currentUser.value) {
-        currentUser.value.nickname = userProfile.value.nickname
+        currentUser.value.nickname = profile.nickname
+        if (updateData.avatar) {
+          currentUser.value.avatar = updateData.avatar
+        }
       }
       showMessage({ message: '保存成功', type: 'success' })
       closeUserProfile()
@@ -2918,8 +3022,7 @@ const mainApps = computed(() => {
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
     { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
-    { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' },
-    { id: 'avatar', name: 'AI 分身', icon: 'fas fa-user-astronaut' }
+    { id: 'ai-assistant', name: 'AI 中心', icon: 'fas fa-robot' }
   ]
 })
 
@@ -4426,20 +4529,59 @@ const openSecuritySettings = () => {
   // 这里可以实现打开安全设置页面的逻辑
 }
 
-const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any }) => {
-  settingsProfile.value = { ...settingsProfile.value, ...data.profile }
-  messageSettings.value = { ...messageSettings.value, ...data.messageSettings }
-  appearanceSettings.value = { ...appearanceSettings.value, ...data.appearanceSettings }
-  
-  if (data.appearanceSettings.theme && data.appearanceSettings.theme !== currentTheme.value) {
-    setTheme(data.appearanceSettings.theme)
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File }) => {
+  try {
+    if (data.avatarFile) {
+      const formData = new FormData()
+      formData.append('file', data.avatarFile)
+      
+      const uploadResponse = await request('/api/v1/upload', {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (uploadResponse.code === 0 && uploadResponse.data && uploadResponse.data.url) {
+        const updateResponse = await request('/api/v1/users/me', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            avatar: uploadResponse.data.url
+          })
+        })
+        
+        if (updateResponse.code === 0 && updateResponse.data) {
+          if (currentUser.value) {
+            currentUser.value.avatar = updateResponse.data.avatar || uploadResponse.data.url
+            localStorage.setItem('user', JSON.stringify(currentUser.value))
+          }
+          showMessage({ message: '头像更新成功', type: 'success' })
+        }
+      } else {
+        showMessage({ message: '头像上传失败: ' + uploadResponse.message, type: 'error' })
+        return
+      }
+    }
+    
+    settingsProfile.value = { ...settingsProfile.value, ...data.profile }
+    messageSettings.value = { ...messageSettings.value, ...data.messageSettings }
+    appearanceSettings.value = { ...appearanceSettings.value, ...data.appearanceSettings }
+    fileSettings.value = { ...fileSettings.value, ...data.fileSettings }
+    
+    if (data.appearanceSettings.theme && data.appearanceSettings.theme !== currentTheme.value) {
+      setTheme(data.appearanceSettings.theme)
+    }
+    if (data.appearanceSettings.fontSize) {
+      applyFontSize(data.appearanceSettings.fontSize)
+    }
+    
+    await saveSettings()
+    closeSettingsModal()
+  } catch (error) {
+    console.error('保存设置失败:', error)
+    showMessage({ message: '保存失败: ' + error.message, type: 'error' })
   }
-  if (data.appearanceSettings.fontSize) {
-    applyFontSize(data.appearanceSettings.fontSize)
-  }
-  
-  await saveSettings()
-  closeSettingsModal()
 }
 
 // setTheme, applyFontSize, initTheme 已从 useSettings composable 导入
@@ -4825,52 +4967,6 @@ button:active {
 .empty-icon {
   font-size: 64px;
   margin-bottom: 16px;
-}
-
-/* ===== 用户应用 ===== */
-.user-app-content {
-  height: calc(100% - 60px);
-  padding: 20px;
-  overflow: hidden;
-}
-
-.user-app-iframe-container {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-.user-app-iframe {
-  height: 100%;
-  width: 100%;
-  border: none;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.empty-user-app {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #666;
-}
-
-.empty-user-app .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #ccc;
-}
-
-.empty-user-app p {
-  margin: 8px 0;
-}
-
-.empty-user-app .empty-hint {
-  font-size: 14px;
-  color: #999;
 }
 
 /* ===== 应用头部返回按钮 ===== */

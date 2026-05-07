@@ -19,7 +19,7 @@
           <AppLogo size="large" />
         </div>
         <h2>QIM 青雀</h2>
-        <p>即时通讯应用</p>
+        <p>简洁 · 高效 · 智能</p>
       </div>
       
       <form v-if="!show2FAForm" @submit.prevent="login" class="login-form-content">
@@ -513,10 +513,10 @@ const closeWindow = () => {
 .login-form {
   background: #ffffff;
   border-radius: 16px;
-  padding: 48px 40px;
-  width: 360px;
-  min-height: 460px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 56px 48px;
+  width: 420px;
+  min-height: 500px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
   z-index: 1;
   animation: slideIn 0.5s ease-out;
   -webkit-app-region: no-drag;
@@ -530,6 +530,9 @@ const closeWindow = () => {
   gap: 8px;
   z-index: 1000;
   -webkit-app-region: no-drag;
+  box-shadow: none !important;
+  padding: 0;
+  height: auto;
 }
 
 .window-control-btn {
@@ -543,7 +546,7 @@ const closeWindow = () => {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  background: rgba(240, 242, 245, 0.8);
+  background: transparent;
   color: #666;
 }
 
@@ -590,9 +593,6 @@ const closeWindow = () => {
   align-items: center;
   justify-content: center;
   margin: 0 auto 16px;
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
-  border-radius: 14px;
-  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
 }
 
 .app-logo img {
@@ -709,16 +709,16 @@ const closeWindow = () => {
 
 .server-settings-btn {
   font-size: 14px;
-  color: #64b5f6;
+  color: #666666;
   background: none;
   border: none;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   padding: 0;
 }
 
 .server-settings-btn:hover {
-  color: #42a5f5;
+  color: #333333;
 }
 
 .twofa-form {
@@ -779,17 +779,15 @@ const closeWindow = () => {
   font-size: 14px;
   font-weight: 500;
   border-radius: 8px;
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  background: #1a1a1a;
   border: none;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   color: white;
 }
 
 .twofa-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(100, 181, 246, 0.3);
+  background: #333333;
 }
 
 .twofa-button:disabled {
@@ -828,16 +826,15 @@ const closeWindow = () => {
   border-radius: 8px;
   font-size: 15px;
   font-weight: 500;
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  background: #1a1a1a;
   border: none;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   color: white;
 }
 
 .login-button:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
-  background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
+  background: #333333;
 }
 
 .login-button:active:not(:disabled) {
@@ -957,13 +954,13 @@ const closeWindow = () => {
 }
 
 .dialog-footer .btn-primary {
-  background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
+  background: #1a1a1a;
   border: none;
   color: white;
 }
 
 .dialog-footer .btn-primary:hover {
-  background: linear-gradient(135deg, #42a5f5 0%, #29b6f6 100%);
+  background: #333333;
 }
 
 .version-info {

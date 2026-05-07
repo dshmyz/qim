@@ -14,7 +14,6 @@
       @preview-image="(d) => emit('preview-image', d)"
       @download-file="(d) => emit('download-file', d)"
       @save-as="(d) => emit('save-as', d)"
-      @view-shared-content="(c) => emit('view-shared-content', c)"
       @open-mini-app="(a) => emit('open-mini-app', a)"
       @open-news-link="(u) => emit('open-news-link', u)"
       @retry-send-message="(m) => emit('retry-send-message', m)"
@@ -80,7 +79,6 @@ const emit = defineEmits<{
   'preview-image': [data: string]
   'download-file': [data: string]
   'save-as': [data: string]
-  'view-shared-content': [content: string]
   'open-mini-app': [app: Message['miniAppData']]
   'open-news-link': [url: string]
   'retry-send-message': [msg: Message]

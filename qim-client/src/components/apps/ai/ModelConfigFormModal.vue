@@ -1,55 +1,57 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>{{ isEdit ? '编辑配置' : '添加配置' }}</h3>
-        <button class="close-btn" @click="$emit('close')">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>配置名称</label>
-          <input v-model="form.config_name" placeholder="例如：我的GPT-4">
+  <Teleport to="body">
+    <div class="modal-overlay" @click.self="$emit('close')">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>{{ isEdit ? '编辑配置' : '添加配置' }}</h3>
+          <button class="close-btn" @click="$emit('close')">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
-        <div class="form-group">
-          <label>提供商</label>
-          <select v-model="form.provider" @change="onProviderChange">
-            <option v-for="p in providers" :key="p.id" :value="p.id">
-              {{ p.icon }} {{ p.name }}
-            </option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>API Key</label>
-          <div class="input-wrapper">
-            <input v-model="form.api_key" :type="showKey ? 'text' : 'password'" placeholder="sk-...">
-            <button class="toggle-btn" @click="showKey = !showKey" type="button">
-              <i :class="showKey ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-            </button>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>配置名称</label>
+            <input v-model="form.config_name" placeholder="例如：我的GPT-4">
+          </div>
+          <div class="form-group">
+            <label>提供商</label>
+            <select v-model="form.provider" @change="onProviderChange">
+              <option v-for="p in providers" :key="p.id" :value="p.id">
+                {{ p.icon }} {{ p.name }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <div class="input-wrapper">
+              <input v-model="form.api_key" :type="showKey ? 'text' : 'password'" placeholder="sk-...">
+              <button class="toggle-btn" @click="showKey = !showKey" type="button">
+                <i :class="showKey ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>模型名称</label>
+            <input v-model="form.model_name" placeholder="gpt-3.5-turbo">
+          </div>
+          <div class="form-group">
+            <label>Base URL（可选）</label>
+            <input v-model="form.base_url" placeholder="https://api.openai.com/v1">
+          </div>
+          <div v-if="error" class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            {{ error }}
           </div>
         </div>
-        <div class="form-group">
-          <label>模型名称</label>
-          <input v-model="form.model_name" placeholder="gpt-3.5-turbo">
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="$emit('close')">取消</button>
+          <button class="btn-primary" @click="handleSubmit" :disabled="loading">
+            {{ loading ? '保存中...' : '保存' }}
+          </button>
         </div>
-        <div class="form-group">
-          <label>Base URL（可选）</label>
-          <input v-model="form.base_url" placeholder="https://api.openai.com/v1">
-        </div>
-        <div v-if="error" class="error-message">
-          <i class="fas fa-exclamation-circle"></i>
-          {{ error }}
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" @click="$emit('close')">取消</button>
-        <button class="btn-primary" @click="handleSubmit" :disabled="loading">
-          {{ loading ? '保存中...' : '保存' }}
-        </button>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

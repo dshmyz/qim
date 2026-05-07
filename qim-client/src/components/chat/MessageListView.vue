@@ -33,7 +33,6 @@
         @preview-image="(data: string) => emit('preview-image', data)"
         @download-file="(data: string) => emit('download-file', data)"
         @save-as="(data: string) => emit('save-as', data)"
-        @view-shared-content="(content: string) => emit('view-shared-content', content)"
         @open-mini-app="(app: any) => emit('open-mini-app', app)"
         @open-news-link="(url: string) => emit('open-news-link', url)"
         @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
@@ -70,7 +69,6 @@ interface Emits {
   'preview-image': [data: string]
   'download-file': [data: string]
   'save-as': [data: string]
-  'view-shared-content': [content: string]
   'open-mini-app': [app: Message['miniAppData']]
   'open-news-link': [url: string]
   'retry-send-message': [msg: Message]

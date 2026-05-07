@@ -195,6 +195,10 @@ export function useConnection() {
 
   const close = () => {
     if (peerConnection.value) {
+      peerConnection.value.onconnectionstatechange = null
+      peerConnection.value.oniceconnectionstatechange = null
+      peerConnection.value.onicecandidate = null
+      peerConnection.value.ontrack = null
       peerConnection.value.close()
       peerConnection.value = null
       state.value = 'disconnected'

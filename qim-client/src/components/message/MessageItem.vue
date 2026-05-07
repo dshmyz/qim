@@ -105,7 +105,6 @@
             :content="message.content"
             :share-data="message.shareData"
             :is-self="isSelf"
-            @view="$emit('viewSharedContent', message.content)"
           />
 
           <!-- 小程序消息 -->
@@ -214,7 +213,6 @@ const emit = defineEmits<{
   previewImage: [url: string]
   downloadFile: [url: string, fileName?: string]
   saveAs: [url: string, fileName?: string]
-  viewSharedContent: [content: string]
   openMiniApp: [data: any]
   openNewsLink: [url: string]
   retrySendMessage: [message: any]

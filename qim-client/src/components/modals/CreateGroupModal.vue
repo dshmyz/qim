@@ -402,7 +402,6 @@ const createConversation = async () => {
 
 .user-profile-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #f0f0f0);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -827,7 +826,6 @@ const createConversation = async () => {
 /* 底部按钮样式 */
 .user-profile-footer {
   padding: 20px 24px;
-  border-top: 1px solid var(--border-color, #f0f0f0);
   display: flex;
   justify-content: flex-end;
   gap: 12px;

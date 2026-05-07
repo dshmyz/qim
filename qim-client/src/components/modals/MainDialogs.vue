@@ -259,7 +259,6 @@ watch(() => props.systemMessage, (val) => {
 .logout-dialog-header,
 .update-dialog-header {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -357,7 +356,6 @@ watch(() => props.systemMessage, (val) => {
 .logout-dialog-footer,
 .update-dialog-footer {
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #eee);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -503,7 +501,6 @@ watch(() => props.systemMessage, (val) => {
 
 .voice-call-header {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
 }
 
 .voice-call-header h3 {
@@ -582,7 +579,6 @@ watch(() => props.systemMessage, (val) => {
 
 .user-profile-header {
   padding: 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -639,7 +635,6 @@ watch(() => props.systemMessage, (val) => {
 
 .user-profile-footer {
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #eee);
   display: flex;
   justify-content: flex-end;
   gap: 12px;

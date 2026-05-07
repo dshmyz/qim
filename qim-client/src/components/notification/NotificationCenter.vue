@@ -894,20 +894,6 @@ defineExpose({
   color: var(--primary-color);
 }
 
-[data-theme="dark"] .tool-btn.active {
-  color: var(--primary-color) !important;
-}
-
-[data-theme="dark"] .text-btn {
-  border-color: var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .text-btn:hover {
-  background: var(--hover-color) !important;
-  color: var(--text-color) !important;
-}
-
 .empty-notifications {
   display: flex;
   flex-direction: column;
@@ -927,79 +913,5 @@ defineExpose({
 .empty-notifications p {
   margin: 0;
   font-size: 13px;
-}
-
-[data-theme="dark"] .notification-center {
-  background: var(--modal-bg) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
-}
-
-[data-theme="dark"] .notification-center-header {
-  background: var(--header-panel-bg) !important;
-}
-
-[data-theme="dark"] .notification-search {
-  background: var(--modal-bg) !important;
-}
-
-[data-theme="dark"] .search-input {
-  background: var(--list-bg) !important;
-  border-color: var(--border-color) !important;
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .notification-center-tabs {
-  background: var(--modal-bg) !important;
-}
-
-[data-theme="dark"] .notification-sort-bar {
-  background: var(--modal-bg) !important;
-}
-
-[data-theme="dark"] .notification-item {
-  background: var(--list-bg) !important;
-  border-color: var(--border-color) !important;
-}
-
-[data-theme="dark"] .notification-item:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="dark"] .notification-item.unread {
-  background: var(--primary-light) !important;
-}
-
-[data-theme="dark"] .notification-icon {
-  background: var(--primary-light) !important;
-}
-
-[data-theme="dark"] .notification-title {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .notification-text {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .notification-time {
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .notification-footer {
-  border-top-color: var(--border-color) !important;
-}
-
-[data-theme="dark"] .action-btn.secondary {
-  border-color: var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-[data-theme="dark"] .action-btn.secondary:hover {
-  background: var(--hover-color) !important;
-}
-
-[data-theme="dark"] .tool-btn.active {
-  color: var(--primary-color) !important;
 }
 </style>

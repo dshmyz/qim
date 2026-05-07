@@ -212,48 +212,8 @@ const handleClick = () => {
   font-size: 10px;
 }
 
-/* 暗黑主题 */
-[data-theme='dark'] .quoted-message-preview {
-  background: var(--hover-color, rgba(255, 255, 255, 0.06));
-}
-
-[data-theme='dark'] .quoted-message-preview:hover {
-  background: var(--border-color, rgba(255, 255, 255, 0.1));
-}
-
-[data-theme='dark'] .quoted-message-preview__sender {
-  color: var(--text-color, #e5e7eb);
-}
-
-[data-theme='dark'] .quoted-message-preview__type {
-  color: var(--text-secondary, #9ca3af);
-}
-
-[data-theme='dark'] .quoted-message-preview__text {
-  color: var(--text-color, #e5e7eb);
-}
-
-[data-theme='dark'] .quoted-message-preview__close {
-  color: var(--text-secondary, #9ca3af);
-}
-
-[data-theme='dark'] .quoted-message-preview__close:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--text-color, #e5e7eb);
-}
-
 /* 优雅紫色主题 */
 [data-theme='elegant-purple'] .quoted-message-preview {
   border-left-color: #8b5cf6;
-}
-
-/* 中国红主题 */
-[data-theme='chinesered'] .quoted-message-preview {
-  border-left-color: #dc2626;
-}
-
-/* 翡翠绿主题 */
-[data-theme='grassgreen'] .quoted-message-preview {
-  border-left-color: #10b981;
 }
 </style>

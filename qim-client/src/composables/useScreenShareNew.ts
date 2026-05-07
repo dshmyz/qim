@@ -2,6 +2,28 @@ import { ref } from 'vue'
 import { useSession } from './useSession'
 import { useSignaling } from './useSignaling'
 
+function getScreenShareErrorMessage(error: any): string {
+  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+    return '屏幕共享权限被拒绝，请在浏览器权限设置中允许访问'
+  }
+  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+    return '未检测到可用的屏幕共享源'
+  }
+  if (error.name === 'NotSupportedError') {
+    return '浏览器不支持屏幕共享功能，请更换浏览器'
+  }
+  if (error.message && error.message.includes('超时')) {
+    return '连接超时，对方可能不在线或网络不稳定，请稍后重试'
+  }
+  if (error.message && error.message.includes('对方拒绝') || error.message && error.message.includes('拒绝')) {
+    return '对方拒绝了屏幕共享请求'
+  }
+  if (error.message && error.message.includes('网络')) {
+    return '网络连接失败，请检查网络设置后重试'
+  }
+  return '建立屏幕共享连接失败，请检查网络连接后重试'
+}
+
 let instance: ReturnType<typeof createScreenShare> | null = null
 
 function createScreenShare() {
@@ -108,12 +130,16 @@ function createScreenShare() {
       pendingConversationId.value = null
 
       console.log('[ScreenShare] Connection started successfully')
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ScreenShare] Failed to start connection:', error)
       pendingStream.value = null
       pendingTargetUserId.value = null
       pendingConversationId.value = null
-      throw error
+      
+      const errorMessage = getScreenShareErrorMessage(error)
+      const friendlyError = new Error(errorMessage)
+      ;(friendlyError as any).code = error.name || error.code || 'UnknownError'
+      throw friendlyError
     }
   }
 
@@ -149,9 +175,10 @@ function createScreenShare() {
       await session.start(targetUserId)
 
       console.log('[ScreenShare] Share started successfully')
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ScreenShare] Failed to start share:', error)
-      throw error
+      const errorMessage = getScreenShareErrorMessage(error)
+      throw new Error(errorMessage)
     }
   }
 
@@ -164,9 +191,10 @@ function createScreenShare() {
       await session.start(targetUserId, { stream })
 
       console.log('[ScreenShare] Share started successfully with external stream')
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ScreenShare] Failed to start share with stream:', error)
-      throw error
+      const errorMessage = getScreenShareErrorMessage(error)
+      throw new Error(errorMessage)
     }
   }
   

@@ -145,29 +145,4 @@ defineEmits<{
 .search-no-results {
   color: #999;
 }
-
-/* 暗色主题 */
-:deep([data-theme="dark"]) .search-status {
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-:deep([data-theme="dark"]) .search-results-header {
-  color: var(--text-color);
-  border-bottom: 1px solid var(--border-color);
-}
-
-:deep([data-theme="dark"]) .clear-search-btn {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
-}
-
-:deep([data-theme="dark"]) .clear-search-btn:hover {
-  background: var(--hover-color);
-}
-
-:deep([data-theme="dark"]) .search-no-results {
-  color: var(--text-color);
-  opacity: 0.6;
-}
 </style>

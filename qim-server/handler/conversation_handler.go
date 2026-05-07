@@ -14,12 +14,21 @@ import (
 
 func GetConversations(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
 
 	db := database.GetDB()
-	var convMembers []model.ConversationMember
-	db.Where("user_id = ?", userID).Preload("Conversation").Preload("Conversation.LastMessage").Preload("Conversation.Members").Preload("Conversation.Members.User").Find(&convMembers)
 
-	// AI配置信息（仅群聊和讨论组）
+	var convMembers []model.ConversationMember
+	db.Where("user_id = ?", uid).
+		Preload("Conversation").
+		Preload("Conversation.LastMessage").
+		Find(&convMembers)
+
+	if len(convMembers) == 0 {
+		response.Success(c, []interface{}{})
+		return
+	}
+
 	type AIConfig struct {
 		AIEnabled          bool   `json:"ai_enabled,omitempty"`
 		AIAssistantName    string `json:"ai_assistant_name,omitempty"`
@@ -43,6 +52,8 @@ func GetConversations(c *gin.Context) {
 		InvitePermission string    `json:"invite_permission,omitempty"`
 		AIConfig         *AIConfig `json:"ai_config,omitempty"`
 		IsPinned         bool      `json:"is_pinned"`
+		UnreadCount      int       `json:"unread_count"`
+		Muted            bool      `json:"muted"`
 		IP               string    `json:"ip,omitempty"`
 		Status           string    `json:"status,omitempty"`
 		Signature        string    `json:"signature,omitempty"`
@@ -50,23 +61,93 @@ func GetConversations(c *gin.Context) {
 		OtherMemberName  string    `json:"other_member_name,omitempty"`
 	}
 
-	var conversations []ConversationWithPin
+	groupConvIDs := make([]uint, 0, len(convMembers))
+	singleConvIDs := make([]uint, 0, len(convMembers))
 	for _, cm := range convMembers {
-		var session model.ConversationSession
-		db.Where("user_id = ? AND conversation_id = ?", userID, cm.Conversation.ID).FirstOrCreate(&session, model.ConversationSession{
-			IsPinned:      false,
-			LastVisitedAt: time.Now(),
-		})
+		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
+			groupConvIDs = append(groupConvIDs, cm.Conversation.ID)
+		} else if cm.Conversation.Type == "single" {
+			singleConvIDs = append(singleConvIDs, cm.Conversation.ID)
+		}
+	}
+
+	groupMap := make(map[uint]model.Group, len(groupConvIDs))
+	if len(groupConvIDs) > 0 {
+		var groups []model.Group
+		db.Where("conversation_id IN ?", groupConvIDs).Find(&groups)
+		for _, g := range groups {
+			groupMap[g.ConversationID] = g
+		}
+	}
+
+	otherMemberMap := make(map[uint]uint, len(singleConvIDs))
+	if len(singleConvIDs) > 0 {
+		var otherMembers []model.ConversationMember
+		db.Where("conversation_id IN ? AND user_id != ?", singleConvIDs, uid).Find(&otherMembers)
+		for _, om := range otherMembers {
+			otherMemberMap[om.ConversationID] = om.UserID
+		}
+	}
+
+	uniqueUserIDs := make([]uint, 0, len(otherMemberMap))
+	seenUsers := make(map[uint]struct{}, len(otherMemberMap))
+	for _, uid := range otherMemberMap {
+		if _, exists := seenUsers[uid]; !exists {
+			uniqueUserIDs = append(uniqueUserIDs, uid)
+			seenUsers[uid] = struct{}{}
+		}
+	}
+
+	userMap := make(map[uint]model.User, len(uniqueUserIDs))
+	if len(uniqueUserIDs) > 0 {
+		var users []model.User
+		db.Where("id IN ?", uniqueUserIDs).Find(&users)
+		for _, u := range users {
+			userMap[u.ID] = u
+		}
+	}
+
+	allConvIDs := make([]uint, 0, len(convMembers))
+	for _, cm := range convMembers {
+		allConvIDs = append(allConvIDs, cm.Conversation.ID)
+	}
+
+	sessionMap := make(map[uint]model.ConversationSession, len(convMembers))
+	if len(allConvIDs) > 0 {
+		var sessions []model.ConversationSession
+		db.Where("user_id = ? AND conversation_id IN ?", uid, allConvIDs).Find(&sessions)
+		for _, s := range sessions {
+			sessionMap[s.ConversationID] = s
+		}
+	}
+
+	var conversations []ConversationWithPin
+	var sessionsToCreate []model.ConversationSession
+	now := time.Now()
+
+	for _, cm := range convMembers {
+		convID := cm.Conversation.ID
+
+		session, exists := sessionMap[convID]
+		if !exists {
+			session = model.ConversationSession{
+				UserID:         uid,
+				ConversationID: convID,
+				IsPinned:       false,
+				LastVisitedAt:  now,
+			}
+			sessionsToCreate = append(sessionsToCreate, session)
+		}
 
 		convWithPin := ConversationWithPin{
 			Conversation: cm.Conversation,
 			IsPinned:     session.IsPinned,
+			UnreadCount:  cm.UnreadCount,
+			Muted:        cm.Muted,
 		}
 
-		// 对于群聊和讨论组，从Group表获取名称、头像等信息
 		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
-			var group model.Group
-			if err := db.Where("conversation_id = ?", cm.Conversation.ID).First(&group).Error; err == nil {
+			if group, ok := groupMap[convID]; ok {
 				aiConfig := group.GetAIConfig()
 				convWithPin.Name = group.Name
 				convWithPin.Avatar = group.Avatar
@@ -90,23 +171,24 @@ func GetConversations(c *gin.Context) {
 		}
 
 		if cm.Conversation.Type == "single" {
-			var otherMember model.ConversationMember
-			db.Where("conversation_id = ? AND user_id != ?", cm.Conversation.ID, userID).First(&otherMember)
-			if otherMember.UserID > 0 {
-				var otherUser model.User
-				db.First(&otherUser, otherMember.UserID)
-				convWithPin.IP = otherUser.IP
-				convWithPin.Status = otherUser.Status
-				convWithPin.Signature = otherUser.Signature
-				convWithPin.OtherMemberID = otherUser.ID
-				convWithPin.OtherMemberName = otherUser.Nickname
-				// 对于单聊，使用对方的昵称作为会话名称
-				convWithPin.Name = otherUser.Nickname
-				convWithPin.Avatar = otherUser.Avatar
+			if otherUserID, ok := otherMemberMap[convID]; ok {
+				if otherUser, ok := userMap[otherUserID]; ok {
+					convWithPin.IP = otherUser.IP
+					convWithPin.Status = otherUser.Status
+					convWithPin.Signature = otherUser.Signature
+					convWithPin.OtherMemberID = otherUser.ID
+					convWithPin.OtherMemberName = otherUser.Nickname
+					convWithPin.Name = otherUser.Nickname
+					convWithPin.Avatar = otherUser.Avatar
+				}
 			}
 		}
 
 		conversations = append(conversations, convWithPin)
+	}
+
+	if len(sessionsToCreate) > 0 {
+		db.CreateInBatches(sessionsToCreate, 50)
 	}
 
 	response.Success(c, conversations)
@@ -329,7 +411,7 @@ func CreateBotConversation(c *gin.Context) {
 
 	// 创建 Bot 会话关联
 	db.Create(&model.BotConversation{
-		BotID:          req.BotID,
+		BotID:          bot.ID,
 		UserID:         userID.(uint),
 		ConversationID: conv.ID,
 	})

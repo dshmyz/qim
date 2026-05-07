@@ -20,10 +20,11 @@
           placeholder="搜索成员..."
           class="at-mention-search-input"
           @input="handleSearchInput"
+          @keydown="handleKeyDown"
         />
       </div>
 
-      <div class="at-mention-panel-list" role="list">
+      <div ref="listRef" class="at-mention-panel-list" role="list">
         <div
           class="at-mention-item"
           :class="{ 'at-mention-item--active': activeIndex === -1 }"
@@ -100,6 +101,7 @@ const emit = defineEmits<{
 
 const panelRef = ref<HTMLDivElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const listRef = ref<HTMLDivElement | null>(null)
 const activeIndex = ref<number>(-1) // -1 represents "All" option
 
 // 本地搜索 query
@@ -157,6 +159,30 @@ const handleSelectAll = () => {
   emit('selectAll')
 }
 
+// 滚动到活跃项
+const scrollToActiveItem = () => {
+  nextTick(() => {
+    const items = listRef.value?.querySelectorAll('.at-mention-item')
+    if (!items || !items[activeIndex.value + 1]) return // +1 because first item is "All"
+    
+    const activeItem = items[activeIndex.value + 1] as HTMLElement
+    const container = listRef.value
+    if (!container) return
+
+    const containerRect = container.getBoundingClientRect()
+    const itemRect = activeItem.getBoundingClientRect()
+
+    // 如果项在可视区域上方，滚动到顶部
+    if (itemRect.top < containerRect.top) {
+      container.scrollTop = container.scrollTop + (itemRect.top - containerRect.top)
+    }
+    // 如果项在可视区域下方，滚动到底部
+    else if (itemRect.bottom > containerRect.bottom) {
+      container.scrollTop = container.scrollTop + (itemRect.bottom - containerRect.bottom)
+    }
+  })
+}
+
 // 键盘导航
 const handleKeyDown = (event: KeyboardEvent) => {
   const totalOptions = filteredMembers.value.length + 1 // +1 for "All" option
@@ -165,10 +191,12 @@ const handleKeyDown = (event: KeyboardEvent) => {
     case 'ArrowDown':
       event.preventDefault()
       activeIndex.value = (activeIndex.value + 1) % totalOptions
+      scrollToActiveItem()
       break
     case 'ArrowUp':
       event.preventDefault()
       activeIndex.value = (activeIndex.value - 1 + totalOptions) % totalOptions
+      scrollToActiveItem()
       break
     case 'Enter':
       event.preventDefault()
@@ -333,10 +361,5 @@ watch(
 .at-mention-panel-list::-webkit-scrollbar-thumb:hover {
   background: var(--text-color);
   opacity: 0.3;
-}
-
-/* 暗色主题适配 */
-[data-theme='dark'] .at-mention-panel {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 </style>

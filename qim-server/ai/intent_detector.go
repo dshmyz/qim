@@ -249,32 +249,6 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 		return true
 	}
 
-	// 所有群聊消息都尝试回复（降低到更保守的模式）
-	if conversationType == "group" {
-		log.Printf("[IntentDetector] 群聊消息，尝试回复")
-		return true
-	}
-
 	log.Printf("[IntentDetector] 不触发回复")
 	return false
-}
-
-// ShouldTriggerAdminAction 判断是否应该触发管理操作
-func (d *IntentDetector) ShouldTriggerAdminAction(intent *MessageIntent, userRole string) bool {
-	// 只有管理员才能触发管理操作
-	if userRole != "admin" && userRole != "owner" {
-		return false
-	}
-
-	return intent.Type == "command" && intent.Confidence >= 0.6
-}
-
-// ShouldCreateTodo 判断是否应该创建待办
-func (d *IntentDetector) ShouldCreateTodo(intent *MessageIntent) bool {
-	return intent.Type == "todo" && intent.Confidence >= 0.6
-}
-
-// ShouldTriggerAlert 判断是否应该触发告警
-func (d *IntentDetector) ShouldTriggerAlert(intent *MessageIntent) bool {
-	return intent.Type == "alert" && intent.Confidence >= 0.7
 }

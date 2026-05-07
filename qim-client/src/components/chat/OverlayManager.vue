@@ -83,20 +83,6 @@
     @close="emit('close-image-preview')"
   />
 
-  <!-- 分享内容预览弹窗 -->
-  <SharePreviewDialog
-    v-if="showSharePreview"
-    :visible="showSharePreview"
-    :preview-data="sharePreviewData"
-    :get-file-icon="getFileIcon"
-    :format-file-size="formatFileSize"
-    :render-markdown="renderMarkdown"
-    :format-time="formatTimeWithCoerce"
-    @close="emit('close-share-preview')"
-    @download-file="emit('download-file', $event)"
-    @save-file-as="emit('save-file-as', $event)"
-  />
-
   <!-- 小程序加载器 -->
   <div style="display: contents">
     <MiniAppLoader
@@ -117,19 +103,8 @@ import MessageManager from './MessageManager.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
-import SharePreviewDialog from './SharePreviewDialog.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
-
-interface SharePreviewData {
-  type: 'file' | 'note' | 'sticky'
-  name: string
-  content?: string
-  url?: string
-  path?: string
-  size?: number
-  created_at?: string
-}
 
 interface Props {
   conversation: Conversation | null
@@ -155,8 +130,6 @@ interface Props {
   screenshotImageData: string
   showImagePreview: boolean
   previewImageUrl: string
-  showSharePreview: boolean
-  sharePreviewData: SharePreviewData
   otherUserId: string | number | null
   activeMiniApp: MiniAppData | null
   getFileIcon: (fileName: string) => string
@@ -195,7 +168,6 @@ const emit = defineEmits<{
   'retake-screenshot': []
   'send-screenshot': []
   'close-image-preview': []
-  'close-share-preview': []
   'close-mini-app': []
   'mini-app-toast': [message: string]
 }>()

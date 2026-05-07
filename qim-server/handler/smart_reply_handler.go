@@ -10,6 +10,7 @@ import (
 	"qim-server/service"
 	"qim-server/ws"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -42,51 +43,37 @@ func (e *SmartReplyEngine) SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
 
 // HandleMessage 处理消息并决定是否需要智能回复
 func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string) {
-	log.Printf("[SmartReply] HandleMessage: userID=%d, convID=%d, content=%s", userID, conversationID, content[:min(30, len(content))])
-
 	if e.aiService == nil || !e.aiService.IsConfigured() {
-		log.Printf("[SmartReply] AI 服务未配置，跳过")
 		return
 	}
-	log.Printf("[SmartReply] AI 服务已配置")
 
 	db := database.GetDB()
 
 	var conv model.Conversation
 	if err := db.First(&conv, conversationID).Error; err != nil {
-		log.Printf("[SmartReply] 获取会话失败: %v", err)
 		return
 	}
 
-	log.Printf("[SmartReply] 会话类型: %s", conv.Type)
-
-	// 检查分身触发（在处理其他逻辑之前）
 	if e.avatarWorkerPool != nil {
 		e.checkAvatarTriggers(userID, &conv, content)
 	}
 
 	if conv.Type == "bot" {
-		log.Printf("[SmartReply] 机器人会话，由现有逻辑处理")
-		return // 机器人会话由现有逻辑处理
+		return
 	}
 
-	// 检查群聊是否开启了AI助手
 	var group *model.Group
 	if conv.Type == "group" || conv.Type == "discussion" {
 		var g model.Group
 		if err := db.Where("conversation_id = ?", conversationID).First(&g).Error; err != nil {
-			log.Printf("[SmartReply] 获取群聊配置失败: %v", err)
 			return
 		}
 		group = &g
 		aiConfig := group.GetAIConfig()
-		log.Printf("[SmartReply] 群聊类型: %s, AI启用状态: %v", group.GroupType, aiConfig.Enabled)
 		if !aiConfig.Enabled {
-			log.Printf("[SmartReply] 群聊未开启AI助手，跳过")
 			return
 		}
 
-		// 触发关键词过滤
 		if aiConfig.TriggerKeywords != "" {
 			keywords := strings.Split(aiConfig.TriggerKeywords, ",")
 			hasKeyword := false
@@ -98,12 +85,10 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 				}
 			}
 			if !hasKeyword {
-				log.Printf("[SmartReply] 消息不包含触发关键词，跳过")
 				return
 			}
 		}
 
-		// 防刷屏检查
 		if aiConfig.AntiSpamInterval > 0 {
 			systemUserID := model.GetSystemUserID(db)
 			var lastAIMsg model.Message
@@ -111,13 +96,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 				conversationID, systemUserID, time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
 				Order("created_at DESC").First(&lastAIMsg).Error
 			if err == nil {
-				log.Printf("[SmartReply] 防刷屏间隔内，跳过回复")
 				return
 			}
 		}
 	}
 
-	// 群聊场景下：获取 AI 助手名称，检测 @AI
 	if group != nil {
 		aiConfig := group.GetAIConfig()
 		assistantName := "AI助手"
@@ -125,35 +108,30 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 			assistantName = aiConfig.AssistantName
 		}
 
-		// 检测是否 @AI
 		if e.isAIMention(content, assistantName) {
 			question := extractAIQuestion(content, assistantName)
 			e.handleAIMention(userID, conversationID, question, &conv, assistantName)
 			return
 		}
 
-		// 根据回复模式决定是否自动回复
 		if aiConfig.ReplyMode == "off" {
-			log.Printf("[SmartReply] AI 回复已关闭")
+			return
+		}
+
+		if aiConfig.ReplyMode == "mention_only" {
 			return
 		}
 	}
 
 	intent, err := e.intentDetector.Detect(content, userID, conversationID)
 	if err != nil {
-		log.Printf("[SmartReply] 意图检测失败: %v", err)
 		return
 	}
 
-	log.Printf("[SmartReply] 检测到意图: type=%s, confidence=%.2f", intent.Type, intent.Confidence)
-
 	shouldReply := e.intentDetector.ShouldTriggerAIReply(intent, conv.Type)
-	log.Printf("[SmartReply] 是否触发 AI 回复: %v", shouldReply)
 
 	if shouldReply {
 		go e.generateAndSendReply(userID, conversationID, content, intent)
-	} else {
-		log.Printf("[SmartReply] 不满足触发条件，不发送回复")
 	}
 
 	// 待办提取（所有群聊消息都尝试提取）
@@ -341,21 +319,46 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 
 	log.Printf("[GroupSummary] 开始为 %d 个群生成每日总结", len(groups))
 
+	const workerCount = 5
+	sem := make(chan struct{}, workerCount)
+	var wg sync.WaitGroup
+	successCount := 0
+	failCount := 0
+	var mu sync.Mutex
+
 	for _, group := range groups {
-		j.generateGroupSummary(&group)
-		time.Sleep(2 * time.Second) // 避免 API 限流
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(g model.Conversation) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			if j.generateGroupSummary(&g) {
+				mu.Lock()
+				successCount++
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				failCount++
+				mu.Unlock()
+			}
+
+			time.Sleep(2 * time.Second) // 避免 API 限流
+		}(group)
 	}
+
+	wg.Wait()
+	log.Printf("[GroupSummary] 每日总结生成完成，成功: %d, 失败: %d", successCount, failCount)
 }
 
 // generateGroupSummary 生成单个群的总结
-func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) {
+func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 	db := database.GetDB()
 
-	// 获取群聊详细信息
 	var groupInfo model.Group
 	if err := db.Where("conversation_id = ?", group.ID).First(&groupInfo).Error; err != nil {
 		log.Printf("[GroupSummary] 获取群聊信息失败: %v", err)
-		return
+		return false
 	}
 
 	today := time.Now().Truncate(24 * time.Hour)
@@ -370,7 +373,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) {
 		Find(&messages)
 
 	if len(messages) < 5 {
-		return // 消息太少，不需要总结
+		return false
 	}
 
 	messagesText := ""
@@ -413,7 +416,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) {
 	summary, err := j.aiService.GetCompletion(messages_input)
 	if err != nil {
 		log.Printf("[GroupSummary] 群 %d 总结生成失败: %v", group.ID, err)
-		return
+		return false
 	}
 
 	summaryMsg := model.SystemMessage{
@@ -428,6 +431,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) {
 	db.Create(&summaryMsg)
 
 	log.Printf("[GroupSummary] 群 %d (%s) 总结已生成", group.ID, groupInfo.Name)
+	return true
 }
 
 // checkAvatarTriggers 检查是否有用户的分身需要触发
@@ -444,14 +448,15 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 			continue
 		}
 
-		if e.shouldTriggerAvatar(&session, senderID, content) {
+		isGroupChat := conv.Type == "group" || conv.Type == "discussion"
+		if e.shouldTriggerAvatar(&session, senderID, content, isGroupChat) {
 			// 获取发送者信息
 			var sender model.User
 			db.First(&sender, senderID)
 
 			// 获取群聊名称（如果是群聊）
 			groupName := ""
-			if conv.Type == "group" || conv.Type == "discussion" {
+			if isGroupChat {
 				var group model.Group
 				if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
 					groupName = group.Name
@@ -463,7 +468,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 				ConversationID: conv.ID,
 				TriggerMessage: content,
 				TriggerUserID:  senderID,
-				IsGroupChat:    conv.Type == "group" || conv.Type == "discussion",
+				IsGroupChat:    isGroupChat,
 				GroupName:      groupName,
 				TriggerName:    sender.Nickname,
 			}
@@ -478,7 +483,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 }
 
 // shouldTriggerAvatar 判断是否应该触发分身
-func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string) bool {
+func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string, isGroupChat bool) bool {
 	db := database.GetDB()
 
 	// 检查是否在接管期内
@@ -504,6 +509,11 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 			log.Printf("[SmartReply] 解析触发规则失败: %v", err)
 			return false
 		}
+	}
+
+	// 私聊场景：如果是 mention 模式，默认改为 all（因为私聊中不会有 @ 操作）
+	if !isGroupChat && triggerRules.Mode == "mention" {
+		return true
 	}
 
 	// 根据触发模式判断

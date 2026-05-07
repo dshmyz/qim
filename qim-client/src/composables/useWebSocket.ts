@@ -28,6 +28,7 @@ const RECONNECT_JITTER_MAX = 8000
 let onSessionExpiredCallback: (() => void) | null = null
 let externalShowNetworkError: typeof showNetworkError | null = null
 let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
+let onConnectedCallback: (() => void) | null = null
 let reconnectAttempts = 0
 
 /**
@@ -96,6 +97,17 @@ export const addWsHandlers = (handlerMap: Record<string, (data: any) => void>): 
 
   return () => {
     cleanups.forEach(cleanup => cleanup())
+  }
+}
+
+/**
+ * 发送消息
+ */
+export const sendMessage = (data: any) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data))
+  } else {
+    QMessage.error('网络连接已断开')
   }
 }
 
@@ -205,6 +217,10 @@ export function useWebSocket(wsUrl: string) {
         reconnectAttempts = 0
         startHeartbeat()
         console.log('WebSocket connected')
+        
+        if (onConnectedCallback) {
+          onConnectedCallback()
+        }
       }
 
       ws.onmessage = handleMessage
@@ -280,23 +296,28 @@ export function useWebSocket(wsUrl: string) {
       ws = null
     }
     isConnected.value = false
-  }
 
-  /**
-   * 发送消息
-   */
-  const sendMessage = (data: any) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data))
-    } else {
-      QMessage.error('网络连接已断开')
-    }
+    handlers.clear()
+    generalHandlers.clear()
+    onSessionExpiredCallback = null
+    externalShowNetworkError = null
+    externalNetworkErrorMsg = null
+    onConnectedCallback = null
+    reconnectAttempts = 0
   }
 
   /**
    * 获取 WebSocket 实例
    */
   const getWs = () => ws
+
+  /**
+   * 设置连接成功回调
+   * @param callback 连接成功时执行的回调函数
+   */
+  const setOnConnectedCallback = (callback: () => void) => {
+    onConnectedCallback = callback
+  }
 
   return {
     isConnected: readonly(isConnected),
@@ -308,7 +329,8 @@ export function useWebSocket(wsUrl: string) {
     disconnect,
     sendMessage,
     addHandler: addWsHandler,
-    getWs
+    getWs,
+    setOnConnectedCallback
   }
 }
 

@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 工作台 - 原型设计</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #3385ff;
+      --primary-light: #e6f0ff;
+      --primary-dark: #0052cc;
+      --success: #26b361;
+      --success-light: #ecfdf5;
+      --warning: #f7a826;
+      --warning-light: #fffdf6;
+      --error: #f34040;
+      --error-light: #fff6f6;
+      --gray-50: #fefefe;
+      --gray-100: #f8f8f8;
+      --gray-200: #f0f0f0;
+      --gray-300: #e0e0e0;
+      --gray-400: #c0c0c0;
+      --gray-500: #a0a0a0;
+      --gray-600: #808080;
+      --gray-700: #606060;
+      --gray-800: #404040;
+      --gray-900: #202020;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+      --shadow-lg: 0 10px 24px rgba(0,0,0,0.12);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--gray-100);
+      color: var(--gray-800);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 40px;
+    }
+
+    .prototype-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: var(--gray-50);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--gray-200);
+      background: white;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--gray-900);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--primary);
+      border-radius: 50%;
+    }
+
+    .settings-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      background: white;
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .settings-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .content {
+      padding: 32px;
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-500);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+
+    .quick-start {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .quick-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      border: 1px solid var(--gray-200);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .quick-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+
+    .quick-card.chat::before { background: var(--primary); }
+    .quick-card.create::before { background: var(--success); }
+    .quick-card.avatar::before { background: var(--warning); }
+
+    .quick-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: transparent;
+    }
+
+    .quick-card:hover::before {
+      opacity: 1;
+    }
+
+    .quick-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 24px;
+    }
+
+    .quick-card.chat .quick-icon {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .quick-card.create .quick-icon {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .quick-card.avatar .quick-icon {
+      background: var(--warning-light);
+      color: var(--warning);
+    }
+
+    .quick-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin-bottom: 6px;
+    }
+
+    .quick-card p {
+      font-size: 13px;
+      color: var(--gray-500);
+    }
+
+    .asset-section {
+      background: white;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--gray-200);
+      overflow: hidden;
+    }
+
+    .asset-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    .asset-header h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--gray-900);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .asset-header h3 i {
+      color: var(--gray-500);
+      font-size: 14px;
+    }
+
+    .add-btn {
+      padding: 8px 14px;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-sm);
+      background: white;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .add-btn:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .bot-card {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .bot-card:hover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .bot-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+
+    .bot-card h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin-bottom: 4px;
+    }
+
+    .bot-card p {
+      font-size: 12px;
+      color: var(--gray-500);
+      margin-bottom: 12px;
+    }
+
+    .use-btn {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--primary);
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .use-btn:hover {
+      background: var(--primary-dark);
+    }
+
+    .config-list {
+      padding: 16px 20px;
+    }
+
+    .config-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--gray-100);
+    }
+
+    .config-item:last-child {
+      border-bottom: none;
+    }
+
+    .config-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .config-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: var(--gray-100);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-600);
+    }
+
+    .config-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--gray-900);
+    }
+
+    .config-status {
+      font-size: 12px;
+      color: var(--gray-500);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.active {
+      background: var(--success);
+    }
+
+    .status-dot.inactive {
+      background: var(--gray-400);
+    }
+
+    .avatar-section .asset-header {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .avatar-overview {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 20px;
+      background: var(--gray-50);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+      border: 1px solid var(--gray-200);
+      border-top: none;
+    }
+
+    .avatar-img {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--warning) 0%, #e09100 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 32px;
+    }
+
+    .avatar-info {
+      flex: 1;
+    }
+
+    .avatar-info h4 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--gray-200);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 75%;
+      background: linear-gradient(90deg, var(--warning) 0%, var(--success) 100%);
+      border-radius: 4px;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: var(--gray-500);
+    }
+
+    .toggle-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--success);
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn:hover {
+      opacity: 0.9;
+    }
+
+    .footer {
+      padding: 16px 32px;
+      border-top: 1px solid var(--gray-200);
+      background: var(--gray-50);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-hint {
+      font-size: 12px;
+      color: var(--gray-500);
+    }
+
+    .click-depth {
+      display: flex;
+      gap: 24px;
+    }
+
+    .depth-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--gray-600);
+    }
+
+    .depth-badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .depth-badge.one {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .depth-badge.zero {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px;
+      }
+
+      .quick-start {
+        grid-template-columns: 1fr;
+      }
+
+      .avatar-overview {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-container">
+    <header class="header">
+      <h1>AI 工作台</h1>
+      <button class="settings-btn">
+        <i class="fas fa-cog"></i>
+      </button>
+    </header>
+
+    <div class="content">
+      <section class="section">
+        <h2 class="section-title">快速开始</h2>
+        <div class="quick-start">
+          <div class="quick-card chat">
+            <div class="quick-icon">
+              <i class="fas fa-comment-dots"></i>
+            </div>
+            <h3>找AI聊聊</h3>
+            <p>选择助手开始对话</p>
+          </div>
+          <div class="quick-card create">
+            <div class="quick-icon">
+              <i class="fas fa-robot"></i>
+            </div>
+            <h3>创建助手</h3>
+            <p>打造专属AI伙伴</p>
+          </div>
+          <div class="quick-card avatar">
+            <div class="quick-icon">
+              <i class="fas fa-user-circle"></i>
+            </div>
+            <h3>数字分身</h3>
+            <p>AI驱动的另一个你</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">我的机器人</h2>
+        <div class="asset-section">
+          <div class="asset-header">
+            <h3><i class="fas fa-robot"></i> 已创建的助手</h3>
+            <button class="add-btn">
+              <i class="fas fa-plus"></i> 创建
+            </button>
+          </div>
+          <div class="asset-grid">
+            <div class="bot-card">
+              <div class="bot-avatar">
+                <i class="fas fa-brain"></i>
+              </div>
+              <h4>写作助手</h4>
+              <p>GPT-4 · 写作辅助</p>
+              <button class="use-btn">
+                <i class="fas fa-comment"></i> 使用
+              </button>
+            </div>
+            <div class="bot-card">
+              <div class="bot-avatar" style="background: linear-gradient(135deg, #26b361 0%, #1a8c4a 100%);">
+                <i class="fas fa-code"></i>
+              </div>
+              <h4>编程助手</h4>
+              <p>Claude · 代码审查</p>
+              <button class="use-btn">
+                <i class="fas fa-comment"></i> 使用
+              </button>
+            </div>
+            <div class="bot-card">
+              <div class="bot-avatar" style="background: linear-gradient(135deg, #f7a826 0%, #c6861a 100%);">
+                <i class="fas fa-language"></i>
+              </div>
+              <h4>翻译助手</h4>
+              <p>GPT-4 · 多语言翻译</p>
+              <button class="use-btn">
+                <i class="fas fa-comment"></i> 使用
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">我的模型配置</h2>
+        <div class="asset-section">
+          <div class="asset-header">
+            <h3><i class="fas fa-key"></i> API 配置</h3>
+            <button class="add-btn">
+              <i class="fas fa-plus"></i> 添加
+            </button>
+          </div>
+          <div class="config-list">
+            <div class="config-item">
+              <div class="config-info">
+                <div class="config-icon">
+                  <i class="fas fa-cube"></i>
+                </div>
+                <div>
+                  <div class="config-name">OpenAI GPT-4</div>
+                  <div class="config-status">
+                    <span class="status-dot active"></span>使用中
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="config-item">
+              <div class="config-info">
+                <div class="config-icon">
+                  <i class="fas fa-cube"></i>
+                </div>
+                <div>
+                  <div class="config-name">Anthropic Claude</div>
+                  <div class="config-status">
+                    <span class="status-dot inactive"></span>未启用
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">我的分身</h2>
+        <div class="asset-section avatar-section">
+          <div class="asset-header">
+            <h3><i class="fas fa-user"></i> 数字分身</h3>
+          </div>
+          <div class="avatar-overview">
+            <div class="avatar-img">
+              <i class="fas fa-user"></i>
+            </div>
+            <div class="avatar-info">
+              <h4>你的数字分身</h4>
+              <div class="progress-bar">
+                <div class="progress-fill"></div>
+              </div>
+              <span class="progress-text">学习进度: 75% · 预计还需 2 小时</span>
+            </div>
+            <button class="toggle-btn">
+              <i class="fas fa-power-off"></i> 开启
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <div class="footer-hint">
+        <i class="fas fa-lightbulb" style="color: var(--warning); margin-right: 6px;"></i>
+        优化点：减少点击深度，所有功能一步可达
+      </div>
+      <div class="click-depth">
+        <div class="depth-item">
+          <span>对话</span>
+          <span class="depth-badge one">1步</span>
+        </div>
+        <div class="depth-item">
+          <span>机器人</span>
+          <span class="depth-badge zero">首页可见</span>
+        </div>
+        <div class="depth-item">
+          <span>配置</span>
+          <span class="depth-badge zero">首页可见</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

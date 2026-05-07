@@ -1,5 +1,5 @@
 <template>
-  <div class="markdown-message" v-html="renderedContent" @click="handleLinkClick"></div>
+  <div class="markdown-message" :class="{ self: isSelf }" v-html="renderedContent" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -36,9 +36,15 @@ const renderedContent = computed(() => {
 
 <style scoped>
 .markdown-message {
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #ffffff;
+  color: var(--text-color);
+  font-size: 15px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .markdown-message h1 {
@@ -75,7 +81,7 @@ const renderedContent = computed(() => {
 .markdown-message pre {
   background-color: var(--hover-color);
   padding: 12px;
-  border-radius: 4px;
+  border-radius: 8px;
   margin: 10px 0;
   overflow-x: auto;
   font-family: 'Courier New', Courier, monospace;
@@ -86,8 +92,8 @@ const renderedContent = computed(() => {
 
 .markdown-message code {
   background-color: var(--hover-color);
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   font-family: 'Courier New', Courier, monospace;
   font-size: 13px;
   color: var(--text-color);
@@ -124,5 +130,65 @@ const renderedContent = computed(() => {
 .markdown-message p {
   margin: 10px 0;
   color: var(--text-color);
+}
+
+/* 炫酷黑主题适配 */
+[data-theme="elegant-dark"] .markdown-message {
+  background: #1e1e1e;
+  color: #e5e7eb;
+}
+
+[data-theme="elegant-dark"] .markdown-message h1,
+[data-theme="elegant-dark"] .markdown-message h2,
+[data-theme="elegant-dark"] .markdown-message h3,
+[data-theme="elegant-dark"] .markdown-message strong,
+[data-theme="elegant-dark"] .markdown-message em,
+[data-theme="elegant-dark"] .markdown-message li,
+[data-theme="elegant-dark"] .markdown-message p {
+  color: #e5e7eb;
+}
+
+[data-theme="elegant-dark"] .markdown-message code {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+}
+
+[data-theme="elegant-dark"] .markdown-message pre {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #e5e7eb;
+}
+
+/* 自己发送的 Markdown 消息 */
+.markdown-message.self {
+  background: var(--primary-color);
+  color: white;
+}
+
+.markdown-message.self h1,
+.markdown-message.self h2,
+.markdown-message.self h3,
+.markdown-message.self strong,
+.markdown-message.self em,
+.markdown-message.self li,
+.markdown-message.self p {
+  color: white;
+}
+
+.markdown-message.self code {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.markdown-message.self pre {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.markdown-message.self a {
+  color: #e3f2fd;
+}
+
+.markdown-message.self a:hover {
+  color: white;
 }
 </style>

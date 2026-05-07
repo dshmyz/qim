@@ -643,6 +643,54 @@ ipcMain.on('download-update', () => {
     }
   })
 
+  // 处理文件下载（下载到指定目录）
+  ipcMain.on('download-file', async (event, { buffer, fileName, mime, saveDir }) => {
+    try {
+      const targetDir = saveDir || app.getPath('downloads')
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true })
+      }
+      const filePath = path.join(targetDir, fileName)
+      fs.writeFileSync(filePath, Buffer.from(buffer))
+      mainWindow?.webContents.send('download-complete', { success: true, filePath })
+    } catch (error) {
+      console.error('文件下载失败:', error)
+      mainWindow?.webContents.send('download-complete', { success: false, error: error.message })
+    }
+  })
+
+  // 处理文件另存为（弹出文件选择器）
+  ipcMain.on('save-file-as', async (event, { buffer, fileName, mime }) => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: '保存文件',
+        defaultPath: fileName,
+        filters: [{ name: 'All Files', extensions: ['*'] }]
+      })
+
+      if (!result.canceled && result.filePath) {
+        fs.writeFileSync(result.filePath, Buffer.from(buffer))
+        mainWindow?.webContents.send('save-file-complete', { success: true, filePath: result.filePath })
+      }
+    } catch (error) {
+      console.error('文件保存失败:', error)
+      mainWindow?.webContents.send('save-file-complete', { success: false, error: error.message })
+    }
+  })
+
+  // 处理选择目录
+  ipcMain.on('open-file-dialog', async (event, { properties }) => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: properties || ['openDirectory']
+      })
+      event.sender.send('file-dialog-result', result)
+    } catch (error) {
+      console.error('打开文件对话框失败:', error)
+      event.sender.send('file-dialog-result', { canceled: true })
+    }
+  })
+
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit()
 

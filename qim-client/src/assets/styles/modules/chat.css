@@ -4,6 +4,90 @@
    ======================================== */
 
 /* ========================================
+   聊天窗口基础布局
+   ======================================== */
+
+.chat-window {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+  border-radius: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.chat-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ========================================
+   聊天头部
+   ======================================== */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--sidebar-bg);
+  height: 72px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin: 0;
+  margin-bottom: 1px;
+  border-radius: 0;
+}
+
+.chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-header-avatar {
+  position: relative;
+}
+
+.chat-header-avatar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-header-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.chat-header-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chat-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ========================================
    聊天内容区域
    ======================================== */
 
@@ -83,7 +167,8 @@
 .chat-input-area {
   padding: 12px 16px;
   background: var(--sidebar-bg);
-  border-top: 1px solid var(--border-color);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
+  /* border-top: 1px solid var(--border-color); */
 }
 
 .chat-input-container {
@@ -194,7 +279,8 @@
   background: var(--sidebar-bg);
   height: 72px;
   box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
+  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); */
   margin: 0;
   margin-bottom: 1px;
   border-radius: 0;
@@ -263,7 +349,28 @@
 }
 
 /* ========================================
-   主题切换样式 - 炫酷黑主题
+   通用按钮样式
+   ======================================== */
+
+.screenshot-btn,
+.call-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.screenshot-btn:hover,
+.call-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+/* ========================================
+   主题切换样式
    ======================================== */
 
 [data-theme="elegant-dark"] .chat-messages {

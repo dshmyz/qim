@@ -19,3 +19,4 @@ qim-server/config/config.yaml
 *.backup
 *.bak
 *.tmp
+main

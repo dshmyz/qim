@@ -32,17 +32,44 @@
     
     <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" class="at-members-panel-container">
       <div class="at-members-panel-backdrop" @click="$emit('close-at-members-panel')"></div>
-      <div class="at-members-panel">
+      <div
+        ref="atMembersPanelRef"
+        class="at-members-panel"
+        role="listbox"
+        aria-label="选择提及成员"
+        @keydown="handleAtMembersKeyDown"
+      >
         <div class="at-members-header"><h4>选择成员</h4></div>
         <div class="at-members-search">
-          <input v-model="atMembersSearchQuery" type="text" placeholder="搜索成员..." class="at-members-search-input" />
+          <input
+            ref="atMembersSearchRef"
+            v-model="atMembersSearchQuery"
+            type="text"
+            placeholder="搜索成员..."
+            class="at-members-search-input"
+            @keydown="handleAtMembersKeyDown"
+          />
         </div>
-        <div class="at-members-list">
-          <div class="at-member-item" @click="$emit('select-at-all')">
+        <div ref="atMembersListRef" class="at-members-list" role="list">
+          <div
+            class="at-member-item"
+            :class="{ 'at-member-item--active': atMemberActiveIndex === -1 }"
+            role="option"
+            aria-selected="false"
+            @click="$emit('select-at-all')"
+          >
             <img :src="generateAvatar('所有人')" alt="所有人" class="at-member-avatar" />
             <span class="at-member-name">所有人</span>
           </div>
-          <div v-for="member in filteredAtMembers" :key="member.id" class="at-member-item" @click="$emit('select-at-member', member)">
+          <div
+            v-for="(member, index) in filteredAtMembers"
+            :key="member.id"
+            class="at-member-item"
+            :class="{ 'at-member-item--active': atMemberActiveIndex === index }"
+            role="option"
+            aria-selected="false"
+            @click="$emit('select-at-member', member)"
+          >
             <img :src="member.avatar" :alt="member.name || '未知用户'" class="at-member-avatar" />
             <span class="at-member-name">{{ member.name || '未知用户' }}</span>
           </div>
@@ -75,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import EmojiPanel from './EmojiPanel.vue'
 import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
@@ -134,7 +161,11 @@ const emit = defineEmits<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const messageInputRef = ref<HTMLTextAreaElement | null>(null)
+const atMembersSearchRef = ref<HTMLInputElement | null>(null)
+const atMembersPanelRef = ref<HTMLDivElement | null>(null)
+const atMembersListRef = ref<HTMLDivElement | null>(null)
 const atMembersSearchQuery = ref('')
+const atMemberActiveIndex = ref(-1)
 const localShowAIActions = ref(false)
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
@@ -158,6 +189,55 @@ const toggleAI = () => {
   localShowAIActions.value = !localShowAIActions.value
 }
 
+const scrollToActiveAtMember = () => {
+  nextTick(() => {
+    const items = atMembersListRef.value?.querySelectorAll('.at-member-item')
+    if (!items || !items[atMemberActiveIndex.value + 1]) return
+    
+    const activeItem = items[atMemberActiveIndex.value + 1] as HTMLElement
+    const container = atMembersListRef.value
+    if (!container) return
+
+    const containerRect = container.getBoundingClientRect()
+    const itemRect = activeItem.getBoundingClientRect()
+
+    if (itemRect.top < containerRect.top) {
+      container.scrollTop = container.scrollTop + (itemRect.top - containerRect.top)
+    } else if (itemRect.bottom > containerRect.bottom) {
+      container.scrollTop = container.scrollTop + (itemRect.bottom - containerRect.bottom)
+    }
+  })
+}
+
+const handleAtMembersKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === 'Escape') {
+    event.preventDefault()
+  }
+
+  const totalOptions = filteredAtMembers.value.length + 1
+
+  switch (event.key) {
+    case 'ArrowDown':
+      atMemberActiveIndex.value = (atMemberActiveIndex.value + 1) % totalOptions
+      scrollToActiveAtMember()
+      break
+    case 'ArrowUp':
+      atMemberActiveIndex.value = (atMemberActiveIndex.value - 1 + totalOptions) % totalOptions
+      scrollToActiveAtMember()
+      break
+    case 'Enter':
+      if (atMemberActiveIndex.value === -1) {
+        emit('select-at-all')
+      } else if (atMemberActiveIndex.value >= 0 && atMemberActiveIndex.value < filteredAtMembers.value.length) {
+        emit('select-at-member', filteredAtMembers.value[atMemberActiveIndex.value])
+      }
+      break
+    case 'Escape':
+      emit('close-at-members-panel')
+      break
+  }
+}
+
 const handleInputAndResize = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
   textarea.style.height = 'auto'
@@ -167,6 +247,18 @@ const handleInputAndResize = (event: Event) => {
   textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden'
   emit('input', event)
 }
+
+watch(
+  () => props.showAtMembersPanel,
+  async (newVal) => {
+    if (newVal) {
+      atMemberActiveIndex.value = -1
+      atMembersSearchQuery.value = ''
+      await nextTick()
+      atMembersSearchRef.value?.focus()
+    }
+  }
+)
 
 defineExpose({ messageInputRef })
 </script>
@@ -453,7 +545,8 @@ defineExpose({ messageInputRef })
   margin-bottom: 4px;
 }
 
-.at-member-item:hover {
+.at-member-item:hover,
+.at-member-item--active {
   background: var(--hover-color);
 }
 
@@ -545,76 +638,6 @@ defineExpose({ messageInputRef })
 
 .pending-file-remove:hover {
   background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
-}
-
-/* ==================== 暗黑主题样式 ==================== */
-
-[data-theme="dark"] .message-input {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-[data-theme="dark"] .emoji-panel {
-  background: var(--sidebar-bg) !important;
-  border: 1px solid var(--border-color) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* 炫酷黑主题 - 发送按钮样式 */
-[data-theme="dark"] .send-btn {
-  background: #2d3748 !important;
-  color: rgba(229, 231, 235, 1) !important;
-  border: 1px solid rgba(229, 231, 235, 0.3) !important;
-}
-
-[data-theme="dark"] .send-btn:hover:not(:disabled) {
-  background: #374151 !important;
-  opacity: 1 !important;
-}
-
-[data-theme="dark"] .send-btn:disabled {
-  background: #1a1a1a !important;
-  color: rgba(229, 231, 235, 0.7) !important;
-  border: 1px solid rgba(229, 231, 235, 0.3) !important;
-}
-
-[data-theme="dark"] .toolbar-btn {
-  color: var(--text-color) !important;
-}
-
-[data-theme="dark"] .send-btn {
-  color: white !important;
-}
-
-/* 暗黑主题下的待发送文件样式 */
-[data-theme="dark"] .pending-files {
-  background: var(--secondary-color);
-  border-color: var(--border-color);
-}
-
-[data-theme="dark"] .pending-file-item {
-  background: var(--sidebar-bg);
-  border-color: var(--border-color);
-}
-
-[data-theme="dark"] .pending-file-item:hover {
-  border-color: var(--primary-color);
-  background: rgba(59, 130, 246, 0.1);
-}
-
-[data-theme="dark"] .pending-file-icon {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--primary-color);
-}
-
-[data-theme="dark"] .pending-file-name {
-  color: var(--text-color);
-}
-
-[data-theme="dark"] .pending-file-remove:hover {
-  background: rgba(244, 67, 54, 0.15);
   color: #f44336;
 }
 </style>

@@ -328,23 +328,4 @@ const handleStartPrivateChat = (member: Member) => {
 .members-sidebar .member-role.admin {
   color: #4facfe;
 }
-
-/* 炫酷黑主题 */
-[data-theme="dark"] .members-header {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .members-content {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .members-search {
-  background: var(--sidebar-bg) !important;
-}
-
-[data-theme="dark"] .member-search-input {
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color) !important;
-}
 </style>

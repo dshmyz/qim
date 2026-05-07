@@ -27,6 +27,7 @@ import { ref, computed, onMounted, provide, nextTick } from 'vue'
 import ScreenShareSimple from '../shared/ScreenShareSimple.vue'
 import CallOverlay from '../shared/CallOverlay.vue'
 import { useRealtimeMessaging } from '../../composables/useRealtimeMessaging'
+import { useUserStatus } from '../../composables/useUserStatus'
 import { getCurrentUser } from '../../utils/user'
 import QMessage from '../../utils/qmessage'
 
@@ -53,11 +54,12 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'screen-share-start': [data: { conversationId: number; requester_id: number }]
-  'screen-share-stop': [data: { conversationId: number }]
-  'screen-share-data': [data: { conversationId: number; data: string }]
-  'screen-share-request': [data: any]
+  'screen-share.start': [data: { conversationId: number; requester_id: number }]
+  'screen-share.stop': [data: { conversationId: number }]
+  'screen-share.data': [data: { conversationId: number; data: string }]
+  'screen-share.request': [data: any]
   'call-state-change': [status: string]
+  'screenShare': []
 }>()
 
 const currentUser = computed(() => getCurrentUser())
@@ -118,14 +120,14 @@ const startScreenShare = async () => {
 
 const handleScreenShareStart = (data: any) => {
   console.log('[RealtimeCommunication] 收到屏幕共享开始', data)
-  emit('screen-share-start', {
+  emit('screen-share.start', {
     conversationId: Number(props.currentConversation?.id) || 0,
     requester_id: Number(currentUser.value?.id) || 0
   })
 }
 
 const handleScreenShareStop = () => {
-  emit('screen-share-stop', { conversationId: Number(props.currentConversation?.id) || 0 })
+  emit('screen-share.stop', { conversationId: Number(props.currentConversation?.id) || 0 })
   showScreenShare.value = false
   incomingRequestData.value = null
 }
@@ -143,12 +145,43 @@ const startCall = async (type: 'voice' | 'video') => {
   }
 
   const conv = props.currentConversation
-  if (conv?.type === 'single' && conv.members && conv.members.length === 2) {
+  
+  if (conv?.type === 'group' || conv?.type === 'discussion') {
+    QMessage.warning('群聊和讨论组暂不支持通话功能')
+    return
+  }
+  
+  if (conv?.type === 'bot') {
+    QMessage.warning('AI 助手不支持通话功能')
+    return
+  }
+  
+  if (conv?.type !== 'single') {
+    QMessage.warning('当前会话类型不支持通话功能')
+    return
+  }
+  
+  if (conv.members && conv.members.length === 2) {
     const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
-    if (otherMember) {
-      callReceiverId.value = Number(otherMember.id)
-      callConversationId.value = Number(conv.id)
+    
+    if (!otherMember) {
+      QMessage.warning('无法与自己发起通话')
+      return
     }
+    
+    callReceiverId.value = Number(otherMember.id)
+    callConversationId.value = Number(conv.id)
+    remoteCallUserName.value = otherMember.name || '未知用户'
+    
+    const { isUserOnline, subscribeUserStatus } = useUserStatus()
+    subscribeUserStatus(Number(otherMember.id))
+    
+    if (!isUserOnline(Number(otherMember.id))) {
+      QMessage.warning(`${otherMember.name || '对方'}当前不在线，可能无法接通`)
+    }
+  } else {
+    QMessage.warning('会话信息不完整，无法发起通话')
+    return
   }
 
   showCallOverlay.value = true
@@ -158,8 +191,11 @@ const startCall = async (type: 'voice' | 'video') => {
   if (callOverlayRef.value?.initiateCall) {
     try {
       await callOverlayRef.value.initiateCall(type)
-    } catch (error) {
+    } catch (error: any) {
       console.error('[RealtimeCommunication] 发起通话失败:', error)
+      if (error.message && !error.message.includes('当前正在通话中')) {
+        QMessage.warning(error.message)
+      }
       showCallOverlay.value = false
     }
   }
@@ -285,6 +321,8 @@ const handleScreenShareAccepted = async (data: any) => {
 
   QMessage.success('对方已接受屏幕共享')
 
+  showScreenShare.value = true
+
   if (screenShareRef.value) {
     console.log('[RealtimeCommunication] Calling stopWaitingAccept')
     await screenShareRef.value.stopWaitingAccept()
@@ -309,16 +347,15 @@ const handleVideoCallSignaling = (message: { type: string; data: any }) => {
   console.log('[RealtimeCommunication] 收到视频通话信令', message)
 
   switch (message.type) {
-    case 'call_invite':
     case 'call.start': {
       const fromUserId = message.data.from_user_id || message.data.user_info?.id
       
-      console.log('[RealtimeCommunication] call_invite from:', fromUserId, 'currentUserId:', props.currentUserId)
-      console.log('[RealtimeCommunication] call_invite data:', message.data)
+      console.log('[RealtimeCommunication] call.start from:', fromUserId, 'currentUserId:', props.currentUserId)
+      console.log('[RealtimeCommunication] call.start data:', message.data)
       console.log('[RealtimeCommunication] call_type:', message.data.call_type)
       
       if (fromUserId == props.currentUserId) {
-        console.log('[RealtimeCommunication] 忽略自己发送的 call_invite')
+        console.log('[RealtimeCommunication] 忽略自己发送的 call.start')
         return
       }
       
@@ -327,7 +364,7 @@ const handleVideoCallSignaling = (message: { type: string; data: any }) => {
       remoteCallUserName.value = memberInfo.name
       const callType = message.data.call_type === 'voice' || message.data.call_type === 'audio' ? 'voice' : 'video'
 
-      console.log('[RealtimeCommunication] call_invite callType:', callType, 'hasSignal:', !!message.data.signal)
+      console.log('[RealtimeCommunication] call.start callType:', callType, 'hasSignal:', !!message.data.signal)
 
       nextTick(() => {
         if (message.data.signal) {
@@ -342,11 +379,9 @@ const handleVideoCallSignaling = (message: { type: string; data: any }) => {
       })
       break
     }
-    case 'call_accept':
     case 'call.answer':
       break
-    case 'call_end':
-    case 'call_reject':
+    case 'call.reject':
     case 'call.end':
       console.log('[RealtimeCommunication] 对方挂断通话，清理本地资源')
       console.log('[RealtimeCommunication] callOverlayRef.value:', !!callOverlayRef.value)

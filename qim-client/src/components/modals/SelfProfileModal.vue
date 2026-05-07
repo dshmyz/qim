@@ -1,75 +1,121 @@
 <template>
-  <div v-if="visible" class="user-profile-modal" @click="$emit('close')">
-    <div class="user-profile-content" @click.stop>
-      <div class="user-profile-header">
+  <div v-if="visible" class="self-profile-modal" @click="$emit('close')">
+    <div class="self-profile-content" @click.stop>
+      <div class="modal-header">
         <h3>个人信息</h3>
-        <button class="close-btn" @click="$emit('close')">×</button>
+        <button class="close-btn" @click="$emit('close')">
+          <i class="fas fa-times"></i>
+        </button>
       </div>
-      <div class="user-profile-body">
-        <div class="profile-avatar">
-          <img 
-            :src="avatarUrl"
-            :alt="currentUser?.username || 'avatar'"
-            @click="$emit('avatarClick')"
-            class="avatar-clickable"
-          />
-          <input type="file" accept="image/*" class="avatar-input" @change="$emit('avatarChange', $event)" />
-        </div>
-        <div class="profile-info">
-          <div class="info-item">
-            <label>昵称</label>
-            <input type="text" v-model="localProfile.nickname" class="profile-input" />
+      
+      <div class="modal-body">
+        <div class="profile-layout">
+          <div class="avatar-section">
+            <div class="avatar-wrapper">
+              <img 
+                :src="avatarUrl"
+                :alt="currentUser?.username || 'avatar'"
+                class="avatar-image"
+              />
+              <div class="avatar-overlay" @click="triggerAvatarUpload">
+                <i class="fas fa-camera"></i>
+                <span>更换头像</span>
+              </div>
+            </div>
+            <input 
+              ref="avatarInputRef"
+              type="file" 
+              accept="image/*" 
+              class="avatar-input-hidden" 
+              @change="handleAvatarSelect" 
+            />
+            <p class="avatar-hint">点击头像可更换，支持 JPG、PNG 格式</p>
           </div>
-          <div class="info-item">
-            <label>账号</label>
-            <span class="profile-value">{{ localProfile.username }}</span>
-          </div>
-          <div class="info-item">
-            <label>签名</label>
-            <textarea v-model="localProfile.signature" class="profile-textarea" placeholder="输入个人签名"></textarea>
-          </div>
-          <div class="info-item">
-            <label>部门</label>
-            <span class="profile-value">无</span>
-          </div>
-          <div class="info-item">
-            <label>ID</label>
-            <span class="profile-value">{{ localProfile.id }}</span>
-          </div>
-          <div class="info-item">
-            <label>加入时间</label>
-            <span class="profile-value">{{ localProfile.joinDate }}</span>
+          
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">姓名</label>
+              <div class="form-value readonly">{{ localProfile.nickname }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label">账号</label>
+              <div class="form-value readonly">{{ localProfile.username }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label">签名</label>
+              <textarea 
+                v-model="localProfile.signature" 
+                class="form-textarea" 
+                placeholder="输入个人签名，让大家更了解你"
+                rows="3"
+              ></textarea>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group half">
+                <label class="form-label">部门</label>
+                <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
+              </div>
+              <div class="form-group half">
+                <label class="form-label">ID</label>
+                <div class="form-value readonly">{{ localProfile.id }}</div>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label">加入时间</label>
+              <div class="form-value readonly">{{ localProfile.joinDate }}</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="user-profile-footer">
-        <button class="cancel-btn" @click="$emit('close')">关闭</button>
-        <button class="save-btn" @click="$emit('save', { ...localProfile })">保存</button>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="$emit('close')">取消</button>
+        <button class="btn btn-primary" @click="handleSave">保存</button>
       </div>
     </div>
+    
+    <AvatarCropper
+      v-if="showCropper"
+      :image-url="pendingImageUrl"
+      @confirm="handleCropConfirm"
+      @cancel="handleCropCancel"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
+import AvatarCropper from './AvatarCropper.vue'
 
 interface Props {
   visible: boolean
-  currentUser?: { username?: string; avatar?: string; id?: string | number }
+  currentUser?: { username?: string; avatar?: string; id?: string | number; department?: string }
   serverUrl: string
-  profile: { nickname?: string; signature?: string; username?: string; id?: string | number; joinDate?: string }
+  profile: { 
+    nickname?: string
+    signature?: string
+    username?: string
+    id?: string | number
+    joinDate?: string
+    department?: string
+  }
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   'close': []
   'save': [profile: any]
-  'avatarClick': []
-  'avatarChange': [event: Event]
 }>()
 
 const localProfile = ref({ ...props.profile })
+const avatarInputRef = ref<HTMLInputElement | null>(null)
+const showCropper = ref(false)
+const pendingImageUrl = ref('')
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -82,138 +128,317 @@ const avatarUrl = computed(() => {
   if (isAbsoluteUrl(props.currentUser.avatar)) return props.currentUser.avatar
   return props.serverUrl + props.currentUser.avatar
 })
+
+const triggerAvatarUpload = () => {
+  avatarInputRef.value?.click()
+}
+
+const handleAvatarSelect = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    const file = input.files[0]
+    
+    if (!file.type.startsWith('image/')) {
+      return
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      return
+    }
+    
+    pendingImageUrl.value = URL.createObjectURL(file)
+    showCropper.value = true
+    input.value = ''
+  }
+}
+
+const handleCropConfirm = (croppedFile: File) => {
+  showCropper.value = false
+  if (pendingImageUrl.value) {
+    URL.revokeObjectURL(pendingImageUrl.value)
+    pendingImageUrl.value = ''
+  }
+  emit('save', { ...localProfile.value, avatarFile: croppedFile })
+}
+
+const handleCropCancel = () => {
+  showCropper.value = false
+  if (pendingImageUrl.value) {
+    URL.revokeObjectURL(pendingImageUrl.value)
+    pendingImageUrl.value = ''
+  }
+}
+
+const handleSave = () => {
+  emit('save', { ...localProfile.value })
+}
 </script>
 
 <style scoped>
-.user-profile-modal {
+.self-profile-modal {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
 }
 
-.user-profile-content {
-  background: var(--modal-bg, #fff);
-  border-radius: 12px;
-  width: 500px;
-  max-height: 80vh;
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.self-profile-content {
+  background: var(--modal-bg, #ffffff);
+  border-radius: 16px;
+  width: 680px;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
 }
 
-.user-profile-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.user-profile-header h3 {
+.modal-header h3 {
   margin: 0;
   font-size: 18px;
-  color: var(--text-color, #333);
+  font-weight: 600;
+  color: var(--text-color, #111827);
 }
 
 .close-btn {
-  background: none;
+  width: 32px;
+  height: 32px;
   border: none;
-  font-size: 24px;
+  background: var(--hover-color, #f3f4f6);
+  border-radius: 8px;
   cursor: pointer;
-  color: var(--text-secondary, #999);
+  color: var(--text-secondary, #6b7280);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
-.user-profile-body {
-  padding: 20px;
+.close-btn:hover {
+  background: var(--active-color, #e5e7eb);
+  color: var(--text-color, #111827);
+}
+
+.modal-body {
+  padding: 24px;
   overflow-y: auto;
   flex: 1;
 }
 
-.profile-avatar {
-  text-align: center;
-  margin-bottom: 20px;
-  position: relative;
+.profile-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 32px;
 }
 
-.avatar-clickable {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.avatar-input {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 80px;
-  height: 80px;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.profile-info {
+.avatar-section {
   display: flex;
   flex-direction: column;
+  align-items: center;
+}
+
+.avatar-wrapper {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: #ffffff;
+}
+
+.avatar-wrapper:hover .avatar-overlay {
+  opacity: 1;
+}
+
+.avatar-overlay i {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.avatar-overlay span {
+  font-size: 12px;
+}
+
+.avatar-input-hidden {
+  display: none;
+}
+
+.avatar-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  text-align: center;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.form-group.half {
+  flex: 1;
 }
 
-.info-item label {
-  font-size: 12px;
-  color: var(--text-secondary, #999);
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
 }
 
-.profile-input,
-.profile-textarea {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+.form-input,
+.form-textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-color, #111827);
+  background: var(--input-bg, #ffffff);
+  transition: all 0.2s;
 }
 
-.profile-textarea {
-  min-height: 60px;
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-textarea {
   resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
 }
 
-.profile-value {
-  color: var(--text-color, #333);
+.form-value.readonly {
+  padding: 10px 12px;
+  background: var(--secondary-color, #f9fafb);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-color, #111827);
 }
 
-.user-profile-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #eee);
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
 }
 
-.cancel-btn,
-.save-btn {
-  padding: 8px 24px;
+.btn {
+  padding: 10px 24px;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
-.cancel-btn {
-  background: var(--btn-bg, #f5f5f5);
-  color: var(--text-color, #333);
+.btn-secondary {
+  background: var(--secondary-color, #f3f4f6);
+  color: var(--text-color, #374151);
 }
 
-.save-btn {
-  background: var(--primary-color, #409eff);
-  color: white;
+.btn-secondary:hover {
+  background: var(--hover-color, #e5e7eb);
 }
+
+.btn-primary {
+  background: var(--primary-color, #3b82f6);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: var(--active-color, #2563eb);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+@media (max-width: 768px) {
+  .self-profile-content {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .profile-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  
+  .avatar-section {
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>

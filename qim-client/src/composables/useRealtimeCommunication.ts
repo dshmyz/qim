@@ -311,8 +311,16 @@ function createRealtimeCommunication(mediaType: MediaType) {
     iceCandidateCache.length = 0
     mediaStream.stop()
     connection.close()
-    remoteStream.value = null
+
+    if (remoteStream.value) {
+      remoteStream.value.getTracks().forEach(track => {
+        track.stop()
+      })
+      remoteStream.value = null
+    }
+
     targetUserId.value = null
+    localOffer.value = null
   }
 
   const close = () => {

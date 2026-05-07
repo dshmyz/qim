@@ -3,12 +3,13 @@
     <div class="setting-section">
       <div class="section-header">
         <label class="section-label">绑定文档</label>
-        <button class="add-btn" @click="showFilePicker = true">
-          <i class="fas fa-plus"></i> 添加文档
+        <button class="add-btn" @click="toggleFilePicker">
+          <i :class="showFilePicker ? 'fas fa-minus' : 'fas fa-plus'"></i>
+          {{ showFilePicker ? '收起' : '添加文档' }}
         </button>
       </div>
 
-      <div v-if="documents.length === 0" class="empty-state">
+      <div v-if="documents.length === 0 && !showFilePicker" class="empty-state">
         <i class="fas fa-folder-open"></i>
         <p>暂未绑定任何文档</p>
       </div>
@@ -25,26 +26,29 @@
           </button>
         </div>
       </div>
-    </div>
 
-    <div v-if="showFilePicker" class="modal-overlay" @click="showFilePicker = false">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>选择文档</h3>
-          <button class="close-btn" @click="showFilePicker = false">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="file-picker-list">
-            <div v-for="file in availableFiles" :key="file.id" class="file-option" @click="toggleFile(file)">
-              <input type="checkbox" :checked="isFileSelected(file.id)" />
-              <span>{{ file.name }}</span>
-            </div>
-            <div v-if="availableFiles.length === 0" class="empty-picker">暂无可用文件</div>
+      <div v-if="showFilePicker" class="file-picker-section">
+        <div class="picker-header">
+          <span class="picker-title">选择文档</span>
+          <div class="picker-actions">
+            <button class="btn btn-secondary" @click="cancelFilePicker">取消</button>
+            <button class="btn btn-primary" @click="confirmAddDocuments" :disabled="selectedFileIds.length === 0">
+              确认添加
+            </button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showFilePicker = false">取消</button>
-          <button class="btn btn-primary" @click="confirmAddDocuments">确认</button>
+
+        <div class="file-picker-list">
+          <div v-for="file in availableFiles" :key="file.id" class="file-option" @click="toggleFile(file)">
+            <input type="checkbox" :checked="isFileSelected(file.id)" />
+            <i :class="getFileIcon(file.type || '')" class="file-icon"></i>
+            <span class="file-name">{{ file.name }}</span>
+            <span class="file-size">{{ formatSize(file.size || 0) }}</span>
+          </div>
+          <div v-if="availableFiles.length === 0" class="empty-picker">
+            <i class="fas fa-spinner fa-spin" v-if="loadingFiles"></i>
+            <span v-else>暂无可用文件</span>
+          </div>
         </div>
       </div>
     </div>
@@ -57,6 +61,7 @@ import type { GroupDocument } from '../../../types/ai'
 
 interface Props {
   groupId: number
+  serverUrl: string
   documents: GroupDocument[]
 }
 
@@ -70,25 +75,29 @@ const emit = defineEmits<Emits>()
 const showFilePicker = ref(false)
 const availableFiles = ref<any[]>([])
 const selectedFileIds = ref<number[]>([])
+const loadingFiles = ref(false)
+
+function toggleFilePicker() {
+  showFilePicker.value = !showFilePicker.value
+  if (showFilePicker.value && availableFiles.value.length === 0) {
+    loadAvailableFiles()
+  }
+}
 
 async function loadAvailableFiles() {
+  loadingFiles.value = true
   try {
-    const response = await fetch('/api/v1/files?page_size=100', {
+    const response = await fetch(`${props.serverUrl}/api/v1/files?page_size=100&type=document`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const data = await response.json()
     availableFiles.value = data.data?.files || []
   } catch (e) {
     console.error('加载文件列表失败', e)
+  } finally {
+    loadingFiles.value = false
   }
 }
-
-watch(showFilePicker, async (val) => {
-  if (val) {
-    await loadAvailableFiles()
-    selectedFileIds.value = []
-  }
-})
 
 function isFileSelected(fileId: number) {
   return selectedFileIds.value.includes(fileId)
@@ -106,7 +115,13 @@ function toggleFile(file: any) {
 function confirmAddDocuments() {
   if (selectedFileIds.value.length > 0) {
     emit('add', [...selectedFileIds.value])
+    selectedFileIds.value = []
+    showFilePicker.value = false
   }
+}
+
+function cancelFilePicker() {
+  selectedFileIds.value = []
   showFilePicker.value = false
 }
 
@@ -146,18 +161,106 @@ function formatSize(bytes: number) {
 .doc-size { font-size: 12px; color: var(--text-secondary); }
 .remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: 14px; border-radius: 4px; }
 .remove-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; }
-.modal-content { background: var(--sidebar-bg); border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
-.modal-header { display: flex; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
-.modal-header h3 { margin: 0; font-size: 16px; }
-.modal-header .close-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-secondary); }
-.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
-.file-picker-list { display: flex; flex-direction: column; gap: 4px; }
-.file-option { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; }
-.file-option:hover { background: var(--hover-color); }
-.empty-picker { text-align: center; padding: 20px; color: var(--text-secondary); }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border-color); }
-.btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; }
-.btn-primary { background: var(--primary-color); color: white; }
-.btn-secondary { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); }
+
+.file-picker-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.picker-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.file-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.file-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.file-option:hover {
+  background: var(--hover-color);
+}
+
+.file-icon {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.file-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.file-size {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.empty-picker {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary);
+}
+
+.btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--primary-color);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
 </style>

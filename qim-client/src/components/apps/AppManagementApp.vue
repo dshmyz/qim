@@ -1,20 +1,15 @@
 <template>
   <div class="app-management-app">
-    <!-- 应用管理标题 -->
-    <div class="app-management-header">
-      <div class="header-left">
-        <button class="back-btn" @click="$emit('back')">
-          <i class="fas fa-chevron-left"></i>
-        </button>
+    <AppHeader title="应用管理" @back="$emit('back')">
+      <template #extra-buttons>
         <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
           <i class="fas fa-compress"></i>
         </button>
-        <div class="app-management-header-info">
-          <h2>应用管理</h2>
-        </div>
-      </div>
-      <button class="create-app-btn" @click="showCreateAppModal">+ 创建应用</button>
-    </div>
+      </template>
+      <template #actions>
+        <button class="create-app-btn" @click="showCreateAppModal">+ 创建应用</button>
+      </template>
+    </AppHeader>
     
     <!-- 应用列表 -->
     <div class="app-list" v-if="userApps.length > 0">
@@ -119,6 +114,7 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../../config'
 import { logger } from '../../utils/logger';
+import AppHeader from './AppHeader.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 定义事件
@@ -231,11 +227,11 @@ const saveApp = async () => {
     let response
     
     // 转换 openType 为后端期望的 open_type 字段
+    const { openType, ...restFormData } = formData.value
     const payload = {
-      ...formData.value,
-      open_type: formData.value.openType
+      ...restFormData,
+      open_type: openType
     }
-    delete payload.openType
     
     if (selectedApp.value) {
       logger.log('编辑应用:', payload)
@@ -304,97 +300,6 @@ onMounted(() => {
 .app-management-app {
   height: 100%;
   overflow-y: auto;
-}
-
-.app-management-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--card-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-  height: 72px;
-  box-sizing: border-box;
-}
-
-.app-management-header:hover {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.2s;
-  color: var(--primary-color);
-}
-
-.back-btn:hover {
-  background: var(--primary-light);
-}
-
-.toggle-sidebar-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: var(--primary-color);
-}
-
-.toggle-sidebar-btn:hover {
-  background: var(--primary-light);
-}
-
-.app-management-header-info h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-  transition: color 0.3s ease;
-}
-
-.create-app-btn {
-  padding: 8px 16px;
-  background-color: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.create-app-btn:hover {
-  background-color: var(--active-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .app-list {

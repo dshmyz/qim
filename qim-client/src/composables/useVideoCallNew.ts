@@ -2,6 +2,40 @@ import { ref, computed, watch } from 'vue'
 import { useSession } from './useSession'
 import { useSignaling } from './useSignaling'
 
+function getMediaErrorMessage(error: any, callType: 'voice' | 'video'): string {
+  const deviceLabel = callType === 'video' ? '摄像头和麦克风' : '麦克风'
+  
+  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+    return `无法访问${deviceLabel}，请在浏览器权限设置中允许访问`
+  }
+  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+    return `未检测到${deviceLabel}，请检查设备连接`
+  }
+  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+    return `${deviceLabel}正在被其他应用使用，请先关闭其他应用`
+  }
+  if (error.name === 'NotSupportedError') {
+    return `浏览器不支持${deviceLabel}访问，请更换浏览器`
+  }
+  if (error.name === 'OverconstrainedError') {
+    return `${deviceLabel}不支持所需的分辨率或格式`
+  }
+  return `无法获取${deviceLabel}权限，请检查设备连接和浏览器设置`
+}
+
+function getConnectionErrorMessage(error: any): string {
+  if (error.message && error.message.includes('超时')) {
+    return '连接超时，对方可能不在线或网络不稳定，请稍后重试'
+  }
+  if (error.message && error.message.includes('对方拒绝')) {
+    return '对方拒绝了通话请求'
+  }
+  if (error.message && error.message.includes('网络')) {
+    return '网络连接失败，请检查网络设置后重试'
+  }
+  return '建立通话连接失败，请检查网络连接后重试'
+}
+
 let videoCallInstance: ReturnType<typeof createVideoCall> | null = null
 
 function createVideoCall() {
@@ -13,6 +47,7 @@ function createVideoCall() {
 
   const callType = ref<'voice' | 'video'>('video')
   const callStatus = ref<'idle' | 'calling' | 'connecting' | 'connected'>('idle')
+  const isClosing = ref(false)
 
   const isVideoEnabled = computed(() => {
     return session.localStream.value?.getVideoTracks().some(t => t.enabled) ?? false
@@ -37,15 +72,29 @@ function createVideoCall() {
 
     try {
       signaling.sendCallStart(targetUserId, type)
-      console.log('[VideoCall] Sent call_invite with type:', type)
+      console.log('[VideoCall] Sent call.start with type:', type)
       
       await session.start(targetUserId, { needVideo: type !== 'voice' })
 
       console.log('[VideoCall] Call started successfully')
-    } catch (error) {
+    } catch (error: any) {
       console.error('[VideoCall] Failed to start call:', error)
       callStatus.value = 'idle'
-      throw error
+      
+      let friendlyError: Error
+      
+      if (error.name === 'NotAllowedError' || error.name === 'NotFoundError' || 
+          error.name === 'NotReadableError' || error.name === 'NotSupportedError' || 
+          error.name === 'OverconstrainedError') {
+        const errorMessage = getMediaErrorMessage(error, type)
+        friendlyError = new Error(errorMessage)
+      } else {
+        const errorMessage = getConnectionErrorMessage(error)
+        friendlyError = new Error(errorMessage)
+      }
+      
+      ;(friendlyError as any).code = error.name || error.code || 'UnknownError'
+      throw friendlyError
     }
   }
 
@@ -116,15 +165,21 @@ function createVideoCall() {
   const endCall = () => {
     console.log('[VideoCall] Ending call')
 
-    try {
-      signaling.sendCallEnd()
-      session.end()
-    } finally {
-      callStatus.value = 'idle'
-      pendingOffer.value = null
-    }
+    isClosing.value = true
+    callStatus.value = 'idle'
+    pendingOffer.value = null
 
-    console.log('[VideoCall] Call ended successfully')
+    setTimeout(() => {
+      try {
+        signaling.sendCallEnd()
+        session.end()
+        console.log('[VideoCall] Call ended successfully')
+      } catch (error) {
+        console.error('[VideoCall] Failed to end call:', error)
+      } finally {
+        isClosing.value = false
+      }
+    }, 50)
   }
 
   const handleRemoteEndCall = () => {
@@ -132,16 +187,21 @@ function createVideoCall() {
     console.log('[VideoCall] 当前 callStatus:', callStatus.value)
     console.log('[VideoCall] 当前 pendingOffer:', !!pendingOffer.value)
 
-    try {
-      session.end()
-      console.log('[VideoCall] session.end() 调用完成')
-    } catch (error) {
-      console.error('[VideoCall] session.end() 出错:', error)
-    } finally {
-      callStatus.value = 'idle'
-      pendingOffer.value = null
-      console.log('[VideoCall] callStatus 设置为 idle')
-    }
+    isClosing.value = true
+    callStatus.value = 'idle'
+    pendingOffer.value = null
+    console.log('[VideoCall] callStatus 设置为 idle')
+
+    setTimeout(() => {
+      try {
+        session.end()
+        console.log('[VideoCall] session.end() 调用完成')
+      } catch (error) {
+        console.error('[VideoCall] session.end() 出错:', error)
+      } finally {
+        isClosing.value = false
+      }
+    }, 50)
 
     console.log('[VideoCall] Remote call ended, local resources cleaned up')
   }
@@ -228,6 +288,30 @@ function createVideoCall() {
     }
   }, { immediate: true })
 
+  watch(session.rtc?.state, (newState) => {
+    console.log('[VideoCall] RTC connection state changed:', newState, 'callStatus:', callStatus.value)
+    if (newState === 'disconnected' && callStatus.value !== 'idle') {
+      console.log('[VideoCall] WebRTC connection lost, triggering remote end call')
+      handleRemoteEndCall()
+    }
+  }, { immediate: true })
+
+  const cleanupOnUnload = () => {
+    console.log('[VideoCall] Page unload detected, cleaning up media streams')
+    if (callStatus.value !== 'idle') {
+      endCall()
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', cleanupOnUnload)
+    window.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        cleanupOnUnload()
+      }
+    })
+  }
+
   return {
     ...session,
     // Explicitly expose remoteStream for clarity
@@ -238,6 +322,7 @@ function createVideoCall() {
     isMicrophoneEnabled,
     isVideoEnabled,
     isAudioEnabled,
+    isClosing,
     pendingOffer,
     startCall,
     handleIncomingCall,
