@@ -804,10 +804,10 @@ const {
   handleConversationSelect: _handleConversationSelect,
   handleGroupChatSelect,
   handleChannelSelect,
-  handlePin: _handlePin,
-  handleMute: _handleMute,
-  handleRemove: _handleRemove,
-  handleMarkRead: _handleMarkRead,
+  handlePin,
+  handleMute,
+  handleRemove,
+  handleMarkRead,
   updateConversation,
   addMessage: _addMessage,
   clearMessages: _clearMessages,
@@ -841,60 +841,6 @@ const handleConversationSelect = (conversation: Conversation) => {
   chatStore.markConversationRead(conversation.id)
   if (window.electron?.tray) {
     window.electron.tray.stopFlash()
-  }
-}
-
-// 重写置顶处理，使用 Store Action（阶段二：单点验证）
-const handlePin = async (conversation: Conversation) => {
-  try {
-    await request(`/api/v1/conversations/${conversation.id}/pin`, {
-      method: 'PUT',
-      body: JSON.stringify({ pinned: !conversation.pinned })
-    })
-    // Store Action 更新状态，watch 会自动同步
-    chatStore.pinConversation(conversation.id, !conversation.pinned)
-  } catch (error) {
-    console.error('置顶会话失败:', error)
-  }
-}
-
-// 重写免打扰处理，使用 Store Action
-const handleMute = async (conversation: Conversation) => {
-  try {
-    await request(`/api/v1/conversations/${conversation.id}/mute`, {
-      method: 'PUT',
-      body: JSON.stringify({ muted: !conversation.muted })
-    })
-    // Store Action 更新状态，watch 会自动同步
-    chatStore.muteConversation(conversation.id, !conversation.muted)
-  } catch (error) {
-    console.error('静音会话失败:', error)
-  }
-}
-
-// 重写标记已读处理，使用 Store Action
-const handleMarkRead = async (conversation: Conversation) => {
-  try {
-    await request(`/api/v1/conversations/${conversation.id}/read`, {
-      method: 'PUT'
-    })
-    // Store Action 更新状态，watch 会自动同步
-    chatStore.markConversationRead(conversation.id)
-  } catch (error) {
-    console.error('标记已读失败:', error)
-  }
-}
-
-// 重写移除会话处理，使用 Store Action
-const handleRemove = async (conversation: Conversation) => {
-  try {
-    await request(`/api/v1/conversations/${conversation.id}`, {
-      method: 'DELETE'
-    })
-    // Store Action 更新状态，watch 会自动同步
-    chatStore.removeConversation(conversation.id)
-  } catch (error) {
-    console.error('移除会话失败:', error)
   }
 }
 
