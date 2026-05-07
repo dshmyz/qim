@@ -1,216 +1,178 @@
-import { ref, computed, readonly } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import type { Conversation, Message } from '../types'
 import { request } from './useRequest'
+import { useChatStore } from '../stores/chat'
 
 /**
  * 会话管理 composable
- * 管理会话列表、群组、频道选择、会话操作等
+ * 作为 Pinia Store 的包装层，提供便捷的访问接口
+ * 返回可写的 ref，内部自动同步到 Store
  */
 export function useConversation() {
-  // 会话列表
-  const conversations = ref<Conversation[]>([])
+  const chatStore = useChatStore()
 
-  // 当前会话 ID
-  const currentConversationId = ref<string | null>(null)
+  // 可写 ref，内部同步到 Store
+  const conversations: Ref<Conversation[]> = ref([])
+  const currentConversationId: Ref<string | null> = ref(null)
+  const messages: Ref<Message[]> = ref([])
 
-  // 消息列表
-  const messages = ref<Message[]>([])
-
-  // 是否有更多消息
+  // composable 特有状态
   const hasMoreMessages = ref(false)
-
-  // 选中的会话
   const selectedConversation = ref<Conversation | null>(null)
-
-  // 选中的群组
   const selectedGroup = ref<any>(null)
-
-  // 选中的频道
   const selectedChannel = ref<any>(null)
-
-  // 群聊列表
   const groups = ref<any[]>([])
-
-  // 搜索相关
   const searchQuery = ref('')
   const searchResults = ref<Conversation[]>([])
   const isSearching = ref(false)
-
-  // 加载状态
   const isLoading = ref(false)
 
-  /**
-   * 当前会话计算属性
-   */
+  // Store → ref 同步
+  watch(() => chatStore.conversations, (newConvs) => {
+    if (JSON.stringify(newConvs) !== JSON.stringify(conversations.value)) {
+      conversations.value = [...newConvs]
+    }
+  }, { deep: true })
+
+  watch(() => chatStore.currentConversationId, (newId) => {
+    if (newId !== currentConversationId.value) {
+      currentConversationId.value = newId
+    }
+  })
+
+  watch(() => chatStore.currentMessages, (newMsgs) => {
+    if (JSON.stringify(newMsgs) !== JSON.stringify(messages.value)) {
+      messages.value = [...newMsgs]
+    }
+  }, { deep: true })
+
+  // ref → Store 同步（当外部直接修改 ref 时）
+  watch(conversations, (newConvs) => {
+    if (JSON.stringify(newConvs) !== JSON.stringify(chatStore.conversations)) {
+      chatStore.setConversations([...newConvs])
+    }
+  }, { deep: true })
+
+  watch(currentConversationId, (newId) => {
+    if (newId !== chatStore.currentConversationId) {
+      chatStore.setCurrentConversation(newId)
+    }
+  })
+
+  watch(messages, (newMsgs) => {
+    if (chatStore.currentConversationId && JSON.stringify(newMsgs) !== JSON.stringify(chatStore.currentMessages)) {
+      chatStore.setMessages(chatStore.currentConversationId, [...newMsgs])
+    }
+  }, { deep: true })
+
   const currentConversation = computed(() => {
     return conversations.value.find(c => c.id === currentConversationId.value) || null
   })
 
-  /**
-   * 置顶会话列表
-   */
   const pinnedConversations = computed(() => {
     return conversations.value.filter(c => c.pinned)
   })
 
-  /**
-   * 未置顶会话列表
-   */
   const unpinnedConversations = computed(() => {
     return conversations.value.filter(c => !c.pinned)
   })
 
-  /**
-   * 处理会话选择
-   */
   const handleConversationSelect = (conversation: Conversation) => {
     currentConversationId.value = String(conversation.id)
     selectedConversation.value = conversation
   }
 
-  /**
-   * 处理群聊选择
-   */
   const handleGroupChatSelect = (group: any) => {
     selectedGroup.value = group
     currentConversationId.value = group.id ? String(group.id) : null
   }
 
-  /**
-   * 处理频道选择
-   */
   const handleChannelSelect = (channel: any) => {
     selectedChannel.value = channel
   }
 
-  /**
-   * 置顶/取消置顶会话
-   */
   const handlePin = async (conversation: Conversation) => {
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index === -1) return
-
     try {
       await request(`/api/v1/conversations/${conversation.id}/pin`, {
         method: 'PUT',
         body: JSON.stringify({ pinned: !conversation.pinned })
       })
-      conversations.value[index] = { ...conversations.value[index], pinned: !conversations.value[index].pinned }
+      chatStore.pinConversation(conversation.id, !conversation.pinned)
     } catch (error) {
       console.error('置顶会话失败:', error)
     }
   }
 
-  /**
-   * 静音/取消静音会话
-   */
   const handleMute = async (conversation: Conversation) => {
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index === -1) return
-
     try {
       await request(`/api/v1/conversations/${conversation.id}/mute`, {
         method: 'PUT',
         body: JSON.stringify({ muted: !conversation.muted })
       })
-      conversations.value[index] = { ...conversations.value[index], muted: !conversations.value[index].muted }
+      chatStore.muteConversation(conversation.id, !conversation.muted)
     } catch (error) {
       console.error('静音会话失败:', error)
     }
   }
 
-  /**
-   * 移除会话
-   */
   const handleRemove = async (conversation: Conversation) => {
     try {
       await request(`/api/v1/conversations/${conversation.id}`, {
         method: 'DELETE'
       })
-      const index = conversations.value.findIndex(c => c.id === conversation.id)
-      if (index !== -1) {
-        conversations.value.splice(index, 1)
-      }
+      chatStore.removeConversation(conversation.id)
     } catch (error) {
       console.error('移除会话失败:', error)
     }
   }
 
-  /**
-   * 标记已读
-   */
   const handleMarkRead = async (conversation: Conversation) => {
     try {
       await request(`/api/v1/conversations/${conversation.id}/read`, {
         method: 'PUT'
       })
-      conversation.unreadCount = 0
+      chatStore.markConversationRead(conversation.id)
     } catch (error) {
       console.error('标记已读失败:', error)
     }
   }
 
-  /**
-   * 更新会话
-   */
   const updateConversation = (updated: Conversation) => {
-    const index = conversations.value.findIndex(c => c.id === updated.id)
-    if (index !== -1) {
-      conversations.value[index] = { ...conversations.value[index], ...updated }
-    } else {
-      conversations.value.unshift(updated)
+    chatStore.patchConversation(updated.id, updated)
+  }
+
+  const updateConversations = (newConversations: Conversation[]) => {
+    chatStore.setConversations(newConversations)
+  }
+
+  const addMessage = (message: Message) => {
+    if (currentConversationId.value) {
+      chatStore.addMessage(currentConversationId.value, message)
     }
   }
 
-  /**
-   * 批量更新会话列表
-   */
-  const updateConversations = (newConversations: Conversation[]) => {
-    conversations.value = newConversations
-  }
-
-  /**
-   * 添加消息
-   */
-  const addMessage = (message: Message) => {
-    messages.value.push(message)
-  }
-
-  /**
-   * 清空消息
-   */
   const clearMessages = () => {
-    messages.value = []
+    if (currentConversationId.value) {
+      chatStore.clearMessages(currentConversationId.value)
+    }
     hasMoreMessages.value = false
   }
 
-  /**
-   * 添加会话
-   */
   const addConversation = (conversation: Conversation) => {
-    conversations.value.unshift(conversation)
+    chatStore.addConversation(conversation)
   }
 
-  /**
-   * 退出群组
-   */
   const handleExitGroup = async (groupId: string) => {
     try {
       await request(`/api/v1/conversations/${groupId}/leave`, {
         method: 'POST'
       })
-      const index = conversations.value.findIndex(c => c.id === groupId)
-      if (index !== -1) {
-        conversations.value.splice(index, 1)
-      }
+      chatStore.removeConversation(groupId)
     } catch (error) {
       console.error('退出群组失败:', error)
     }
   }
 
-  /**
-   * 加载群组列表
-   */
   const loadGroups = async () => {
     try {
       const response: any = await request('/api/v1/groups')
@@ -222,29 +184,23 @@ export function useConversation() {
     }
   }
 
-  /**
-   * 加载会话列表
-   */
   const loadConversations = async () => {
     isLoading.value = true
     try {
       const response: any = await request('/api/v1/conversations')
       if (response.code === 0 && response.data) {
-        conversations.value = response.data
+        chatStore.setConversations(response.data)
       } else {
-        conversations.value = []
+        chatStore.setConversations([])
       }
     } catch (error) {
       console.error('加载会话失败:', error)
-      conversations.value = []
+      chatStore.setConversations([])
     } finally {
       isLoading.value = false
     }
   }
 
-  /**
-   * 搜索会话
-   */
   const searchConversations = async (query: string) => {
     searchQuery.value = query
 
@@ -268,43 +224,36 @@ export function useConversation() {
     }
   }
 
-  /**
-   * 设置当前会话 ID
-   */
   const setCurrentConversationId = (id: string | number | null) => {
     currentConversationId.value = id !== null ? String(id) : null
   }
 
-  /**
-   * 重置所有状态
-   */
   const resetState = () => {
     currentConversationId.value = null
     selectedConversation.value = null
     selectedGroup.value = null
     selectedChannel.value = null
-    messages.value = []
     searchQuery.value = ''
     searchResults.value = []
   }
 
   return {
     // 状态
-    conversations,  // 允许外部直接修改（WebSocket 消息处理等场景）
-    currentConversationId: readonly(currentConversationId),
-    messages,  // 不包 readonly，允许外部直接修改（用于消息加载）
-    hasMoreMessages,  // 不包 readonly，允许外部直接修改
-    selectedConversation: readonly(selectedConversation),
-    selectedGroup,  // 允许外部直接设置（群聊选择等场景）
-    selectedChannel,  // 允许外部直接设置（频道选择等场景）
-    groups: readonly(groups),
+    conversations,
+    currentConversationId: currentConversationId,
+    messages,
+    hasMoreMessages,
+    selectedConversation: selectedConversation,
+    selectedGroup,
+    selectedChannel,
+    groups: groups,
     currentConversation,
     pinnedConversations,
     unpinnedConversations,
-    searchQuery: readonly(searchQuery),
-    searchResults: readonly(searchResults),
-    isSearching: readonly(isSearching),
-    isLoading: readonly(isLoading),
+    searchQuery: searchQuery,
+    searchResults: searchResults,
+    isSearching: isSearching,
+    isLoading: isLoading,
 
     // 操作方法
     handleConversationSelect,

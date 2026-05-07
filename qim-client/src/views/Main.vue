@@ -1072,26 +1072,6 @@ const unregisterCustomEventListeners = () => {
   window.removeEventListener('refresh-user-apps', handleRefreshUserApps)
 }
 
-// Store → composable ref 同步（Store 是唯一状态源）
-watch(() => chatStore.conversations, (newConvs) => {
-  if (newConvs && newConvs.length > 0 && JSON.stringify(newConvs) !== JSON.stringify(conversations.value)) {
-    conversations.value = [...newConvs]
-  }
-}, { deep: true })
-
-watch(() => chatStore.currentConversationId, (newId) => {
-  if (newId !== currentConversationId.value) {
-    setCurrentConversationId(newId)
-  }
-})
-
-watch(() => chatStore.currentMessages, (newMsgs) => {
-  if (newMsgs && JSON.stringify(newMsgs) !== JSON.stringify(messages.value)) {
-    messages.value = [...newMsgs]
-  }
-}, { deep: true })
-
-
 // 初始化数据
 let isFirstConnect = true
 onMounted(async () => {
