@@ -517,10 +517,10 @@ defineEmits([
 
 .toggle-btn {
   padding: 10px 16px;
-  border: none;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  background: var(--text-tertiary);
-  color: white;
+  background: var(--card-bg);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -532,6 +532,8 @@ defineEmits([
 
 .toggle-btn.active {
   background: var(--color-success-500, #26b361);
+  border-color: var(--color-success-500, #26b361);
+  color: white;
 }
 
 .toggle-btn:hover {

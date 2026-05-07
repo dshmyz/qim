@@ -206,6 +206,7 @@ defineEmits<{
 }
 
 .header-right :deep(.action-btn),
+.header-right :deep(.header-action-btn),
 .header-right :deep(.create-task-btn),
 .header-right :deep(.create-event-btn) {
   display: flex;
@@ -224,6 +225,7 @@ defineEmits<{
 }
 
 .header-right :deep(.action-btn:hover),
+.header-right :deep(.header-action-btn:hover),
 .header-right :deep(.create-task-btn:hover),
 .header-right :deep(.create-event-btn:hover) {
   background: var(--hover-color);

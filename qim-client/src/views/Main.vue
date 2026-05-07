@@ -3022,7 +3022,7 @@ const mainApps = computed(() => {
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
     { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
-    { id: 'ai-assistant', name: 'AI 中心', icon: 'fas fa-robot' }
+    { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' }
   ]
 })
 
@@ -3087,7 +3087,7 @@ const appCategories = ref([
       { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
       { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
       { id: '7', name: '笔记', icon: 'fas fa-book' },
-      { id: 'ai-assistant', name: 'AI 助手', icon: 'fas fa-robot' },
+      { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
       { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' }
     ]
   },
