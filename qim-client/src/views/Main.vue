@@ -2023,22 +2023,13 @@ const handleSendMessage = async (messageData: any) => {
         quotedMessage: messageData.quotedMessage,
         miniAppData: miniAppData,
         newsData: newsData,
-        originalData: messageData // 保存原始消息数据，用于重新发送
+        originalData: messageData
       }
       
       console.log('添加发送失败的消息:', failedMessage)
       
-      messages.value.push(failedMessage)
-      
-      // 更新会话列表中的最后消息
-      const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
-      if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].lastMessage = failedMessage
-        conversations.value[conversationIndex].timestamp = failedMessage.timestamp
-        
-        // 保存会话到本地存储
-        storage.saveConversations(conversations.value)
-      }
+      // 使用 Store 方法添加消息和更新会话
+      chatStore.receiveMessage(conversationId, failedMessage as any, true)
       
       return
     }
@@ -2083,21 +2074,12 @@ const handleSendMessage = async (messageData: any) => {
         
         console.log('添加到消息列表的新消息:', newMessage)
         
-        messages.value.push(newMessage)
+        // 使用 Store 方法添加消息和更新会话
+        chatStore.receiveMessage(conversationId, newMessage as any, true)
         
         nextTick(() => {
           chatWindowRef.value?.scrollToBottom()
         })
-        
-        // 更新会话列表中的最后消息
-        const conversationIndex = conversations.value.findIndex(c => c.id.toString() === conversationId)
-        if (conversationIndex !== -1) {
-          conversations.value[conversationIndex].lastMessage = newMessage
-          conversations.value[conversationIndex].timestamp = newMessage.timestamp
-          
-          // 保存会话到本地存储
-          storage.saveConversations(conversations.value)
-        }
         
         // 播放消息发送成功的提示音
         // playMessageSound() // 暂时注释掉，因为该函数未定义
@@ -2139,22 +2121,13 @@ const handleSendMessage = async (messageData: any) => {
         quotedMessage: messageData.quotedMessage,
         miniAppData: miniAppData,
         newsData: newsData,
-        originalData: messageData // 保存原始消息数据，用于重新发送
+        originalData: messageData
       }
         
         console.log('添加发送失败的消息:', failedMessage)
         
-        messages.value.push(failedMessage)
-        
-        // 更新会话列表中的最后消息
-        const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
-        if (conversationIndex !== -1) {
-          conversations.value[conversationIndex].lastMessage = failedMessage
-          conversations.value[conversationIndex].timestamp = failedMessage.timestamp
-          
-          // 保存会话到本地存储
-          storage.saveConversations(conversations.value)
-        }
+        // 使用 Store 方法添加消息和更新会话
+        chatStore.receiveMessage(conversationId, failedMessage as any, true)
       }
     }
   } catch (error: any) {
@@ -2238,21 +2211,14 @@ const handleSendMessage = async (messageData: any) => {
       quotedMessage: messageData.quotedMessage,
       miniAppData: miniAppData,
       newsData: newsData,
-      originalData: messageData // 保存原始消息数据，用于重新发送
+      originalData: messageData
     }
     
     console.log('添加发送失败的消息:', failedMessage)
     
-    messages.value.push(failedMessage)
-    
-    // 更新会话列表中的最后消息
-    const conversationIndex = conversations.value.findIndex(c => c.id.toString() === String(currentConversationId.value))
-    if (conversationIndex !== -1) {
-      conversations.value[conversationIndex].lastMessage = failedMessage
-      conversations.value[conversationIndex].timestamp = failedMessage.timestamp
-      
-      // 保存会话到本地存储
-      storage.saveConversations(conversations.value)
+    // 使用 Store 方法添加消息和更新会话
+    if (currentConversationId.value) {
+      chatStore.receiveMessage(currentConversationId.value, failedMessage as any, true)
     }
   }
 }

@@ -110,6 +110,14 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function addConversation(conversation: Conversation) {
+    const exists = conversations.value.some(c => c.id === conversation.id)
+    if (!exists) {
+      conversations.value = [conversation, ...conversations.value]
+      saveToStorage(conversations.value)
+    }
+  }
+
   function setDraft(conversationId: string, text: string) {
     drafts.value.set(conversationId, text)
   }
@@ -326,6 +334,7 @@ export const useChatStore = defineStore('chat', () => {
     setConversations,
     updateConversation,
     patchConversation,
+    addConversation,
     setDraft,
     getDraft,
     clearDraft,
