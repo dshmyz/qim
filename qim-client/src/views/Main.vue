@@ -1213,30 +1213,19 @@ const handleAddedToGroup = (data: any) => {
     lastMessage: null,
     unreadCount: 0,
     timestamp: Date.now(),
-    type: 'group',
+    type: 'group' as const,
     members: data.members || []
   }
   
   // 检查会话是否已存在
   const existingIndex = conversations.value.findIndex(c => c.id === groupConversation.id)
   if (existingIndex === -1) {
-    // 添加到会话列表
-    conversations.value.unshift(groupConversation)
-    // 强制触发响应式更新
-    conversations.value = [...conversations.value]
+    // 使用 Store Action 添加会话
+    chatStore.addConversation(groupConversation as any)
   } else {
-    // 更新现有会话的成员列表
-    const updatedConversation = {
-      ...conversations.value[existingIndex],
-      members: data.members || []
-    }
-    conversations.value.splice(existingIndex, 1, updatedConversation)
-    // 强制触发响应式更新
-    conversations.value = [...conversations.value]
+    // 使用 Store Action 更新会话
+    chatStore.patchConversation(groupConversation.id, { members: data.members || [] })
   }
-  
-  // 保存会话到本地存储
-  storage.saveConversations(conversations.value)
   
   // 显示通知
   showMessage({
@@ -1383,33 +1372,26 @@ const handleGroupAnnouncementUpdated = (data: any) => {
   const conversationId = data.conversation_id.toString()
   const newAnnouncement = data.announcement || ''
 
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    conversations.value[conversationIndex] = {
-      ...conversations.value[conversationIndex],
-      announcement: newAnnouncement
-    }
-    conversations.value = [...conversations.value]
-    storage.saveConversations(conversations.value)
+  // 使用 Store Action 更新会话
+  chatStore.patchConversation(conversationId, { announcement: newAnnouncement })
 
-    if (currentConversationId.value === conversationId) {
-      const updaterName = data.updater_name || data.operator_name || '未知用户'
-      const systemMessage = {
-        id: `system_${Date.now()}`,
-        type: 'system',
-        content: `${updaterName} 更新了群公告: ${newAnnouncement || '(无)'}`,
-        timestamp: Date.now(),
-        sender: {
-          id: 'system',
-          name: '系统',
-          avatar: ''
-        },
-        isSelf: false,
-        isRead: true,
-        conversationId: String(conversationId)
-      }
-      messages.value.push(systemMessage)
+  if (currentConversationId.value === conversationId) {
+    const updaterName = data.updater_name || data.operator_name || '未知用户'
+    const systemMessage = {
+      id: `system_${Date.now()}`,
+      type: 'system' as const,
+      content: `${updaterName} 更新了群公告: ${newAnnouncement || '(无)'}`,
+      timestamp: Date.now(),
+      sender: {
+        id: 'system',
+        name: '系统',
+        avatar: ''
+      },
+      isSelf: false,
+      isRead: true,
+      conversationId: String(conversationId)
     }
+    messages.value.push(systemMessage)
   }
 }
 
@@ -1427,34 +1409,11 @@ const handleGroupMemberRoleUpdated = (data: any) => {
 // 处理群主转让
 const handleGroupOwnerTransferred = (data: any) => {
   console.log('群主转让:', data)
-  // 更新群成员列表中的角色信息
-  const conversationIndex = conversations.value.findIndex(c => c.id === data.conversation_id.toString())
-  if (conversationIndex !== -1) {
-    const conversation = conversations.value[conversationIndex]
-    if (conversation.members) {
-      // 创建新的成员数组，确保响应式更新
-      const updatedMembers = conversation.members.map(member => {
-        if (member.id === data.old_owner_id.toString()) {
-          return { ...member, role: 'member' }
-        }
-        if (member.id === data.new_owner_id.toString()) {
-          return { ...member, role: 'owner' }
-        }
-        return member
-      })
-      
-      // 创建新的会话对象
-      const updatedConversation = {
-        ...conversation,
-        members: updatedMembers
-      }
-      
-      conversations.value.splice(conversationIndex, 1, updatedConversation)
-      conversations.value = [...conversations.value]
-      // 保存会话到本地存储
-      storage.saveConversations(conversations.value)
-    }
-  }
+  const conversationId = data.conversation_id.toString()
+  
+  // 使用 Store Action 更新角色
+  chatStore.updateMemberRole(conversationId, data.old_owner_id.toString(), 'member')
+  chatStore.updateMemberRole(conversationId, data.new_owner_id.toString(), 'owner')
 }
 
 // 处理已读回执
@@ -1472,12 +1431,8 @@ const handleReadReceipt = (data: any) => {
     messages.value = [...messages.value]
   }
   
-  const conversationIndex = conversations.value.findIndex(c => c.id === convIdStr)
-  if (conversationIndex !== -1) {
-    conversations.value[conversationIndex].unreadCount = 0
-    conversations.value = [...conversations.value]
-    storage.saveConversations(conversations.value)
-  }
+  // 使用 Store Action 更新会话未读数
+  chatStore.markConversationRead(convIdStr)
   
   console.log('处理已读回执，会话:', convIdStr, '用户:', user_id)
 }
@@ -3559,16 +3514,11 @@ const dissolveGroup = async () => {
     // 调用 useGroup 中的实现
     const success = await groupState.dissolveGroup(selectedGroup.value)
     if (success) {
-      // 从会话列表中移除该群聊（副作用处理）
-      const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
-      if (conversationIndex !== -1) {
-       conversations.value[conversationIndex] = {
-          ...conversations.value[conversationIndex],
-          name: '[已解散] ' + conversations.value[conversationIndex].name,
-          is_deleted: true
-        }
-        conversations.value = [...conversations.value]
-      }
+      // 使用 Store Action 更新会话
+      chatStore.patchConversation(selectedGroup.value.id, {
+        name: '[已解散] ' + (conversations.value.find(c => c.id === selectedGroup.value?.id)?.name || ''),
+        is_deleted: true
+      })
       selectedGroup.value = null
     }
   }
@@ -3581,12 +3531,8 @@ const saveAnnouncement = async () => {
     if (success) {
       // 更新本地群聊信息（副作用处理）
       selectedGroup.value.announcement = editAnnouncementContent.value
-      // 更新会话列表中的群聊信息
-      const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
-      if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].announcement = editAnnouncementContent.value
-        conversations.value = [...conversations.value]
-      }
+      // 使用 Store Action 更新会话
+      chatStore.patchConversation(selectedGroup.value.id, { announcement: editAnnouncementContent.value })
       closeEditAnnouncementModal()
     }
   }
@@ -4050,20 +3996,8 @@ const exitGroup = async () => {
         })
         
         if (response.code === 200) {
-          // 标记群聊为已退出
-          const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value.id)
-          if (conversationIndex !== -1) {
-            // 更新会话状态为已退出
-            const updatedConversation = {
-              ...conversations.value[conversationIndex],
-              isExited: true
-            }
-            conversations.value.splice(conversationIndex, 1, updatedConversation)
-            // 强制触发响应式更新
-            conversations.value = [...conversations.value]
-            // 保存会话到本地存储
-            storage.saveConversations(conversations.value)
-          }
+          // 使用 Store Action 标记群聊为已退出
+          chatStore.patchConversation(selectedGroup.value.id, { isExited: true } as any)
           // 关闭群聊上下文菜单
           closeGroupContextMenu()
           showMessage({ message: '退出群聊成功', type: 'success' })
@@ -4093,13 +4027,8 @@ const removeMember = async (member) => {
         if (selectedGroup.value.members) {
           selectedGroup.value.members = selectedGroup.value.members.filter(m => m.id !== member.id)
         }
-        // 更新会话列表中对应群聊的成员数
-        const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value?.id)
-        if (conversationIndex !== -1) {
-          conversations.value[conversationIndex].members = selectedGroup.value?.members
-          // 强制触发响应式更新
-          conversations.value = [...conversations.value]
-        }
+        // 使用 Store Action 移除成员
+        chatStore.removeGroupMember(selectedGroup.value.id, member.id)
       }
     }
   }
@@ -4146,11 +4075,10 @@ const confirmAddMembers = async (members: any[]) => {
       
       groupMembers.value = selectedGroup.value.members || []
       
-      const conversationIndex = conversations.value.findIndex(c => c.id === selectedGroup.value.id)
-      if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].members = selectedGroup.value.members
-        conversations.value = [...conversations.value]
-      }
+      // 使用 Store Action 添加成员
+      newMembers.forEach(member => {
+        chatStore.addGroupMember(selectedGroup.value.id, member)
+      })
       
       QMessage.success('添加成员成功')
       closeAddMembersModal()
