@@ -837,13 +837,8 @@ const handleConversationSelect = (conversation: Conversation) => {
   _handleConversationSelect(conversation)
   activeOption.value = 'recent'
   loadMessages(conversation.id)
-  // 使用 Store Action 清除未读计数
+  // 使用 Store Action 清除未读计数（watch 会自动同步）
   chatStore.markConversationRead(conversation.id)
-  // 同步回 composable 的 ref（兼容其他未迁移的代码）
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversation.id)
-  if (conversationIndex !== -1) {
-    conversations.value[conversationIndex] = { ...conversations.value[conversationIndex], unreadCount: 0 }
-  }
   if (window.electron?.tray) {
     window.electron.tray.stopFlash()
   }
@@ -856,13 +851,8 @@ const handlePin = async (conversation: Conversation) => {
       method: 'PUT',
       body: JSON.stringify({ pinned: !conversation.pinned })
     })
-    // 使用 Store Action 更新状态
+    // Store Action 更新状态，watch 会自动同步
     chatStore.pinConversation(conversation.id, !conversation.pinned)
-    // 同步回 composable 的 ref（兼容其他未迁移的代码）
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index !== -1) {
-      conversations.value[index] = { ...conversations.value[index], pinned: !conversation.pinned }
-    }
   } catch (error) {
     console.error('置顶会话失败:', error)
   }
@@ -875,13 +865,8 @@ const handleMute = async (conversation: Conversation) => {
       method: 'PUT',
       body: JSON.stringify({ muted: !conversation.muted })
     })
-    // 使用 Store Action 更新状态
+    // Store Action 更新状态，watch 会自动同步
     chatStore.muteConversation(conversation.id, !conversation.muted)
-    // 同步回 composable 的 ref（兼容其他未迁移的代码）
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index !== -1) {
-      conversations.value[index] = { ...conversations.value[index], muted: !conversation.muted }
-    }
   } catch (error) {
     console.error('静音会话失败:', error)
   }
@@ -893,13 +878,8 @@ const handleMarkRead = async (conversation: Conversation) => {
     await request(`/api/v1/conversations/${conversation.id}/read`, {
       method: 'PUT'
     })
-    // 使用 Store Action 更新状态
+    // Store Action 更新状态，watch 会自动同步
     chatStore.markConversationRead(conversation.id)
-    // 同步回 composable 的 ref（兼容其他未迁移的代码）
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index !== -1) {
-      conversations.value[index] = { ...conversations.value[index], unreadCount: 0 }
-    }
   } catch (error) {
     console.error('标记已读失败:', error)
   }
@@ -911,13 +891,8 @@ const handleRemove = async (conversation: Conversation) => {
     await request(`/api/v1/conversations/${conversation.id}`, {
       method: 'DELETE'
     })
-    // 使用 Store Action 更新状态
+    // Store Action 更新状态，watch 会自动同步
     chatStore.removeConversation(conversation.id)
-    // 同步回 composable 的 ref（兼容其他未迁移的代码）
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
-    if (index !== -1) {
-      conversations.value.splice(index, 1)
-    }
   } catch (error) {
     console.error('移除会话失败:', error)
   }
@@ -1097,20 +1072,22 @@ const unregisterCustomEventListeners = () => {
   window.removeEventListener('refresh-user-apps', handleRefreshUserApps)
 }
 
-// 镜像同步：将会话状态同步到 Pinia Store（零风险，不改变现有行为）
-watch(conversations, (newConvs) => {
-  if (newConvs && newConvs.length > 0) {
-    chatStore.setConversations(newConvs)
+// Store → composable ref 同步（Store 是唯一状态源）
+watch(() => chatStore.conversations, (newConvs) => {
+  if (newConvs && newConvs.length > 0 && JSON.stringify(newConvs) !== JSON.stringify(conversations.value)) {
+    conversations.value = [...newConvs]
   }
 }, { deep: true })
 
-watch(currentConversationId, (newId) => {
-  chatStore.setCurrentConversation(newId)
+watch(() => chatStore.currentConversationId, (newId) => {
+  if (newId !== currentConversationId.value) {
+    setCurrentConversationId(newId)
+  }
 })
 
-watch(messages, (newMsgs) => {
-  if (currentConversationId.value && newMsgs) {
-    chatStore.setMessages(currentConversationId.value, newMsgs)
+watch(() => chatStore.currentMessages, (newMsgs) => {
+  if (newMsgs && JSON.stringify(newMsgs) !== JSON.stringify(messages.value)) {
+    messages.value = [...newMsgs]
   }
 }, { deep: true })
 
@@ -1350,30 +1327,12 @@ const handleGroupMemberLeft = (data: any) => {
   const conversationId = data.conversation_id.toString()
   const userId = data.user_id.toString()
   
-  // 使用 Store Action 更新成员列表
+  // Store Action 更新成员列表，watch 会自动同步
   chatStore.removeGroupMember(conversationId, userId)
-  
-  // 同步回 composable 的 ref（兼容其他未迁移的代码）
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    const conversation = conversations.value[conversationIndex]
-    if (conversation.members) {
-      conversations.value[conversationIndex] = {
-        ...conversation,
-        members: conversation.members.filter(member => member.id !== userId)
-      }
-      conversations.value = [...conversations.value]
-    }
-  }
   
   // 如果是当前用户退出群聊，标记为已退出
   if (userId === currentUser.value?.id?.toString()) {
-    chatStore.patchConversation(conversationId, { isExited: true })
-    const idx = conversations.value.findIndex(c => c.id === conversationId)
-    if (idx !== -1) {
-      conversations.value[idx] = { ...conversations.value[idx], isExited: true }
-      conversations.value = [...conversations.value]
-    }
+    chatStore.patchConversation(conversationId, { isExited: true } as any)
   }
 }
 
@@ -1390,22 +1349,8 @@ const handleGroupMemberJoined = (data: any) => {
     avatar: newMember.avatar || ''
   }
 
-  // 使用 Store Action 添加成员
+  // Store Action 添加成员，watch 会自动同步
   chatStore.addGroupMember(conversationId, memberData)
-  
-  // 同步回 composable 的 ref（兼容其他未迁移的代码）
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    const conversation = conversations.value[conversationIndex]
-    const memberExists = conversation.members && conversation.members.some(member => member.id === newMember.id?.toString())
-    if (!memberExists) {
-      conversations.value[conversationIndex] = {
-        ...conversation,
-        members: [...(conversation.members || []), memberData]
-      }
-      conversations.value = [...conversations.value]
-    }
-  }
 
   // 添加系统消息
   if (currentConversationId.value === conversationId) {
@@ -1498,21 +1443,8 @@ const handleConversationUpdated = (data: any) => {
   }
   
   try {
-    // 使用 Store Action 更新会话
+    // Store Action 更新会话，watch 会自动同步
     chatStore.patchConversation(data.id.toString(), data)
-    // 同步回 composable 的 ref（兼容其他未迁移的代码）
-    const conversationIndex = conversations.value.findIndex(c => c.id === data.id.toString())
-    if (conversationIndex !== -1) {
-      const existingConversation = conversations.value[conversationIndex]
-      conversations.value[conversationIndex] = {
-        ...existingConversation,
-        ...data
-      }
-      if (data.members === undefined || data.members === null) {
-        conversations.value[conversationIndex].members = existingConversation.members
-      }
-      conversations.value = [...conversations.value]
-    }
   } catch (error) {
     console.error('处理会话更新失败:', error)
   }
@@ -1562,21 +1494,8 @@ const handleGroupMemberRoleUpdated = (data: any) => {
   const userId = data.user_id.toString()
   const role = data.role
   
-  // 使用 Store Action 更新角色
+  // Store Action 更新角色，watch 会自动同步
   chatStore.updateMemberRole(conversationId, userId, role)
-  
-  // 同步回 composable 的 ref（兼容其他未迁移的代码）
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    const conversation = conversations.value[conversationIndex]
-    if (conversation.members) {
-      conversations.value[conversationIndex] = {
-        ...conversation,
-        members: conversation.members.map(m => m.id === userId ? { ...m, role } : m)
-      }
-      conversations.value = [...conversations.value]
-    }
-  }
 }
 
 // 处理群主转让
@@ -1644,36 +1563,8 @@ const handleMessageRecalled = (data: any) => {
   
   console.log('收到消息撤回通知:', data)
   
-  // 使用 Store Action 更新消息状态
+  // Store Action 更新消息状态，watch 会自动同步
   chatStore.recallMessage(conversationId, messageId)
-  
-  // 同步回 composable 的 ref（兼容其他未迁移的代码）
-  // 更新消息列表中的消息状态
-  if (currentConversationId.value === conversationId) {
-    messages.value = messages.value.map(msg => {
-      if (msg.id === messageId) {
-        return { ...msg, content: '[消息已撤回]', isRecalled: true }
-      }
-      return msg
-    })
-  }
-  
-  // 更新会话列表中的最后消息
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
-  if (conversationIndex !== -1) {
-    const conversation = conversations.value[conversationIndex]
-    if (conversation.lastMessage && conversation.lastMessage.id === messageId) {
-      conversations.value[conversationIndex] = {
-        ...conversation,
-        lastMessage: {
-          ...conversation.lastMessage,
-          content: '[消息已撤回]',
-          isRecalled: true
-        }
-      }
-      conversations.value = [...conversations.value]
-    }
-  }
 }
 
 // 格式化通知内容，避免显示原始 JSON
@@ -2488,29 +2379,9 @@ const handleSendMessage = async (messageData: any) => {
 // 处理消息撤回
 const handleRecallMessage = async (messageId: number) => {
   try {
-    // 使用 Store Action 更新消息状态
+    // Store Action 更新消息状态，watch 会自动同步
     if (currentConversationId.value) {
       chatStore.recallMessage(currentConversationId.value, messageId.toString())
-      // 同步回 composable 的 ref（兼容其他未迁移的代码）
-      const index = messages.value.findIndex(m => m.id === messageId.toString())
-      if (index !== -1) {
-        messages.value[index].content = '[消息已撤回]'
-        messages.value[index].isRecalled = true
-        messages.value = [...messages.value]
-      }
-      // 更新会话列表中的 lastMessage（如果撤回的是最后一条消息）
-      const convIndex = conversations.value.findIndex(c => c.id === currentConversationId.value)
-      if (convIndex !== -1 && conversations.value[convIndex].lastMessage?.id === messageId.toString()) {
-        conversations.value[convIndex] = {
-          ...conversations.value[convIndex],
-          lastMessage: {
-            ...conversations.value[convIndex].lastMessage,
-            content: '[消息已撤回]',
-            isRecalled: true
-          }
-        }
-        conversations.value = [...conversations.value]
-      }
     }
   } catch (error) {
     console.error('撤回消息失败:', error)
