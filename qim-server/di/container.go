@@ -58,7 +58,7 @@ func InitContainer(secret string, hub *ws.Hub) *Container {
 	avatarService := service.NewAvatarService(db, nil)
 	approvalService := service.NewApprovalService(db)
 
-	authMiddleware := middleware.AuthMiddleware(secret)
+	authMiddleware := middleware.AuthMiddleware(secret, userService)
 
 	container := &Container{
 		DB:                   db,

@@ -163,3 +163,15 @@ func (s *UserService) GetUsersByIDs(userIDs []uint) ([]model.User, error) {
 	}
 	return users, nil
 }
+
+func (s *UserService) GetUserRoles(userID uint) ([]string, error) {
+	var userRoles []model.UserRole
+	if err := s.db.Where("user_id = ?", userID).Find(&userRoles).Error; err != nil {
+		return nil, err
+	}
+	roleNames := make([]string, 0, len(userRoles))
+	for _, ur := range userRoles {
+		roleNames = append(roleNames, ur.Role)
+	}
+	return roleNames, nil
+}

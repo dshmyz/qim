@@ -75,7 +75,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")
-		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
+		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
 		{
 			authAuthed.POST("/logout", handler.Logout)
 			authAuthed.POST("/refresh", handler.RefreshToken)
@@ -83,7 +83,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 		// 需要认证的路由
 		authed := api.Group("")
-		authed.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
+		authed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
 		{
 			// 用户
 			authed.GET("/users/me", handler.GetCurrentUser)
@@ -230,11 +230,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 系统消息
 			authed.GET("/system-messages", handler.GetSystemMessages)
-			authed.POST("/system-messages", middleware.RequireRole("system_publisher", "system_admin"), handler.CreateSystemMessage)
-			authed.PUT("/system-messages/:id", middleware.RequireRole("system_admin"), handler.UpdateSystemMessage)
+			authed.POST("/system-messages", middleware.RequireRole(di.GlobalContainer.UserService, "system_publisher", "system_admin"), handler.CreateSystemMessage)
+			authed.PUT("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.UpdateSystemMessage)
 
 			// 频道
-			authed.POST("/channels", middleware.RequireRole("system_admin"), handler.CreateChannel)
+			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateChannel)
 			authed.GET("/channels", handler.GetChannels)
 			authed.POST("/channels/:id/subscribe", handler.SubscribeChannel)
 			authed.POST("/channels/:id/unsubscribe", handler.UnsubscribeChannel)
@@ -328,7 +328,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/users/blacklist/:id", handler.RemoveBlacklistEntry)
 			// 管理员接口（需要 system_admin 角色）
 			admin := authed.Group("/admin")
-			admin.Use(middleware.RequireRole("system_admin"))
+			admin.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
 			{
 				admin.GET("/users", handler.AdminGetUsers)
 				admin.GET("/groups", handler.AdminGetGroups)
@@ -369,12 +369,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/node/send-to-user", handler.SendToUserMessage)
 
 			// 用户角色管理
-			authed.POST("/users/:id/roles", middleware.RequireRole("system_admin"), handler.AddUserRole)
-			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole("system_admin"), handler.RemoveUserRole)
-			authed.POST("/users/:id/roles/batch", middleware.RequireRole("system_admin"), handler.BatchAssignUserRoles)
+			authed.POST("/users/:id/roles", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.AddUserRole)
+			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.RemoveUserRole)
+			authed.POST("/users/:id/roles/batch", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BatchAssignUserRoles)
 
 			// 用户删除（管理员）
-			authed.DELETE("/users/:id", middleware.RequireRole("system_admin"), handler.DeleteUser)
+			authed.DELETE("/users/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteUser)
 
 			// AI相关路由
 			userAIConfigHandler := handler.NewUserAIConfigHandler(GetDB())
