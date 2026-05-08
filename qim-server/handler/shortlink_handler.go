@@ -8,6 +8,7 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -24,7 +25,7 @@ func CreateShortLink(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -36,7 +37,7 @@ func CreateShortLink(c *gin.Context) {
 		// 验证自定义后缀的唯一性
 		var existingLink model.ShortLink
 		if err := db.Where("code = ?", req.CustomCode).First(&existingLink).Error; err == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "自定义后缀已被使用"})
+			response.BadRequest(c, "自定义后缀已被使用")
 			return
 		}
 		code = req.CustomCode
@@ -56,7 +57,7 @@ func CreateShortLink(c *gin.Context) {
 	if req.Password != "" {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "密码处理失败"})
+			response.InternalServerError(c, "密码处理失败")
 			return
 		}
 		passwordHash = string(hashedPassword)
@@ -73,7 +74,7 @@ func CreateShortLink(c *gin.Context) {
 	}
 
 	if err := db.Create(&shortLink).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成短链接失败"})
+		response.InternalServerError(c, "生成短链接失败")
 		return
 	}
 
@@ -106,7 +107,7 @@ func GetShortLinks(c *gin.Context) {
 
 	var shortLinks []model.ShortLink
 	if err := db.Where("user_id = ?", userID).Order("created_at DESC").Find(&shortLinks).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取短链接列表失败"})
+		response.InternalServerError(c, "获取短链接列表失败")
 		return
 	}
 
@@ -144,7 +145,7 @@ func RedirectShortLink(c *gin.Context) {
 
 	var shortLink model.ShortLink
 	if err := db.Where("code = ?", code).First(&shortLink).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "短链接不存在"})
+		response.NotFound(c, "短链接不存在")
 		return
 	}
 
@@ -163,13 +164,13 @@ func RedirectShortLink(c *gin.Context) {
 		}
 		
 		if password == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "需要访问密码"})
+			response.Unauthorized(c, "需要访问密码")
 			return
 		}
 
 		// 验证密码
 		if err := bcrypt.CompareHashAndPassword([]byte(shortLink.Password), []byte(password)); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "密码错误"})
+			response.Unauthorized(c, "密码错误")
 			return
 		}
 	}
@@ -185,7 +186,7 @@ func DeleteShortLink(c *gin.Context) {
 
 	linkID, err := strconv.ParseUint(linkIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的短链接ID"})
+		response.BadRequest(c, "无效的短链接ID")
 		return
 	}
 
@@ -193,12 +194,12 @@ func DeleteShortLink(c *gin.Context) {
 
 	var shortLink model.ShortLink
 	if err := db.Where("id = ? AND user_id = ?", linkID, userID).First(&shortLink).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "短链接不存在或无权操作"})
+		response.NotFound(c, "短链接不存在或无权操作")
 		return
 	}
 
 	if err := db.Delete(&shortLink).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除短链接失败"})
+		response.InternalServerError(c, "删除短链接失败")
 		return
 	}
 
@@ -222,17 +223,17 @@ func BatchCreateShortLinks(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if len(req.URLs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "URL列表不能为空"})
+		response.BadRequest(c, "URL列表不能为空")
 		return
 	}
 
 	if len(req.URLs) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "一次最多创建100个短链接"})
+		response.BadRequest(c, "一次最多创建100个短链接")
 		return
 	}
 
@@ -341,17 +342,17 @@ func BatchDeleteShortLinks(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if len(req.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ID列表不能为空"})
+		response.BadRequest(c, "ID列表不能为空")
 		return
 	}
 
 	if len(req.IDs) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "一次最多删除100个短链接"})
+		response.BadRequest(c, "一次最多删除100个短链接")
 		return
 	}
 
@@ -360,18 +361,18 @@ func BatchDeleteShortLinks(c *gin.Context) {
 	// 验证所有短链接都属于当前用户
 	var count int64
 	if err := db.Model(&model.ShortLink{}).Where("id IN ? AND user_id = ?", req.IDs, userID).Count(&count).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "验证权限失败"})
+		response.InternalServerError(c, "验证权限失败")
 		return
 	}
 
 	if count != int64(len(req.IDs)) {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "部分短链接不存在或无权操作"})
+		response.Forbidden(c, "部分短链接不存在或无权操作")
 		return
 	}
 
 	// 批量删除
 	if err := db.Where("id IN ?", req.IDs).Delete(&model.ShortLink{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量删除失败"})
+		response.InternalServerError(c, "批量删除失败")
 		return
 	}
 

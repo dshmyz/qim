@@ -11,6 +11,7 @@ import (
 
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +35,7 @@ func UploadFile(c *gin.Context) {
 
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件上传失败"})
+		response.BadRequest(c, "文件上传失败")
 		return
 	}
 
@@ -63,13 +64,13 @@ func UploadFile(c *gin.Context) {
 			uploadDir = "./uploads"
 		}
 		if err := os.MkdirAll(uploadDir, 0755); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建上传目录失败"})
+			response.InternalServerError(c, "创建上传目录失败")
 			return
 		}
 
 		filePath := filepath.Join(uploadDir, filename)
 		if err := c.SaveUploadedFile(file, filePath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存文件失败"})
+			response.InternalServerError(c, "保存文件失败")
 			return
 		}
 
@@ -87,7 +88,7 @@ func UploadFile(c *gin.Context) {
 			CreatedAt:    time.Now(),
 		}
 		if err := svc.CreateFile(&fileRecord); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
+			response.InternalServerError(c, "创建文件记录失败")
 			return
 		}
 
@@ -135,7 +136,7 @@ func GetFiles(c *gin.Context) {
 	svc := di.GlobalContainer.FileService
 	files, total, err := svc.GetFiles(userID.(uint), page, pageSize, filters)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件列表失败"})
+		response.InternalServerError(c, "获取文件列表失败")
 		return
 	}
 
@@ -156,7 +157,7 @@ func UpdateFile(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
+		response.BadRequest(c, "无效的文件ID")
 		return
 	}
 
@@ -167,21 +168,21 @@ func UpdateFile(c *gin.Context) {
 	}
 
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	_, err = svc.GetFile(userID.(uint), uint(fileID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
 	updates := make(map[string]interface{})
 	if req.Name != nil {
 		if *req.Name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件名不能为空"})
+			response.BadRequest(c, "文件名不能为空")
 			return
 		}
 		updates["name"] = *req.Name
@@ -189,7 +190,7 @@ func UpdateFile(c *gin.Context) {
 	if req.FolderID != nil {
 		_, folderErr := svc.GetFolder(userID.(uint), *req.FolderID)
 		if folderErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件夹不存在或无权限"})
+			response.BadRequest(c, "文件夹不存在或无权限")
 			return
 		}
 		updates["folder_id"] = *req.FolderID
@@ -199,13 +200,13 @@ func UpdateFile(c *gin.Context) {
 	}
 
 	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "没有需要更新的字段"})
+		response.BadRequest(c, "没有需要更新的字段")
 		return
 	}
 
 	file, updateErr := svc.UpdateFile(userID.(uint), uint(fileID), updates)
 	if updateErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新文件失败"})
+		response.InternalServerError(c, "更新文件失败")
 		return
 	}
 
@@ -222,14 +223,14 @@ func ToggleStar(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
+		response.BadRequest(c, "无效的文件ID")
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	file, err := svc.ToggleStar(userID.(uint), uint(fileID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
@@ -255,12 +256,12 @@ func BatchOperation(c *gin.Context) {
 	}
 
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if len(req.FileIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件列表不能为空"})
+		response.BadRequest(c, "文件列表不能为空")
 		return
 	}
 
@@ -270,7 +271,7 @@ func BatchOperation(c *gin.Context) {
 	case "delete":
 		count, err := svc.BatchDelete(userID.(uint), req.FileIDs)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量删除失败"})
+			response.InternalServerError(c, "批量删除失败")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -281,17 +282,17 @@ func BatchOperation(c *gin.Context) {
 
 	case "move":
 		if req.TargetFolderID == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "移动操作需要指定目标文件夹"})
+			response.BadRequest(c, "移动操作需要指定目标文件夹")
 			return
 		}
 		_, folderErr := svc.GetFolder(userID.(uint), *req.TargetFolderID)
 		if folderErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标文件夹不存在或无权限"})
+			response.BadRequest(c, "目标文件夹不存在或无权限")
 			return
 		}
 		count, err := svc.BatchMove(userID.(uint), req.FileIDs, *req.TargetFolderID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量移动失败"})
+			response.InternalServerError(c, "批量移动失败")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -303,7 +304,7 @@ func BatchOperation(c *gin.Context) {
 	case "star":
 		count, err := svc.BatchStar(userID.(uint), req.FileIDs, true)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量星标失败"})
+			response.InternalServerError(c, "批量星标失败")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -315,7 +316,7 @@ func BatchOperation(c *gin.Context) {
 	case "unstar":
 		count, err := svc.BatchStar(userID.(uint), req.FileIDs, false)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量取消星标失败"})
+			response.InternalServerError(c, "批量取消星标失败")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -325,7 +326,7 @@ func BatchOperation(c *gin.Context) {
 		})
 
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不支持的操作类型"})
+		response.BadRequest(c, "不支持的操作类型")
 	}
 }
 
@@ -347,7 +348,7 @@ func GetStarredFiles(c *gin.Context) {
 	svc := di.GlobalContainer.FileService
 	files, total, err := svc.GetStarredFiles(userID.(uint), page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取星标文件失败"})
+		response.InternalServerError(c, "获取星标文件失败")
 		return
 	}
 
@@ -381,7 +382,7 @@ func GetFileStats(c *gin.Context) {
 	svc := di.GlobalContainer.FileService
 	stats, err := svc.GetFileStats(uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件统计失败"})
+		response.InternalServerError(c, "获取文件统计失败")
 		return
 	}
 
@@ -416,7 +417,7 @@ func GetFolderTree(c *gin.Context) {
 	if parentIDStr != "" {
 		pid, err := strconv.ParseUint(parentIDStr, 10, 32)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的父文件夹ID"})
+			response.BadRequest(c, "无效的父文件夹ID")
 			return
 		}
 		pidVal := uint(pid)
@@ -425,7 +426,7 @@ func GetFolderTree(c *gin.Context) {
 
 	folders, err := svc.GetFolderTree(userID.(uint), parentID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件夹树失败"})
+		response.InternalServerError(c, "获取文件夹树失败")
 		return
 	}
 
@@ -441,7 +442,7 @@ func UpdateFolder(c *gin.Context) {
 
 	folderID, err := strconv.ParseUint(folderIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件夹ID"})
+		response.BadRequest(c, "无效的文件夹ID")
 		return
 	}
 
@@ -454,38 +455,38 @@ func UpdateFolder(c *gin.Context) {
 	}
 
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	folder, err := svc.GetFolder(userID.(uint), uint(folderID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
+		response.NotFound(c, "文件夹不存在")
 		return
 	}
 
 	updates := make(map[string]interface{})
 	if req.Name != nil {
 		if *req.Name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件夹名称不能为空"})
+			response.BadRequest(c, "文件夹名称不能为空")
 			return
 		}
 		updates["name"] = *req.Name
 	}
 	if req.ParentID != nil {
 		if *req.ParentID == folder.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能将文件夹移动到自己下面"})
+			response.BadRequest(c, "不能将文件夹移动到自己下面")
 			return
 		}
 		if *req.ParentID != 0 {
 			_, parentErr := svc.GetFolder(userID.(uint), *req.ParentID)
 			if parentErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "父文件夹不存在或无权限"})
+				response.BadRequest(c, "父文件夹不存在或无权限")
 				return
 			}
 			if svc.IsDescendant(userID.(uint), *req.ParentID, folder.ID) {
-				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能将文件夹移动到其子文件夹下"})
+				response.BadRequest(c, "不能将文件夹移动到其子文件夹下")
 				return
 			}
 		}
@@ -502,13 +503,13 @@ func UpdateFolder(c *gin.Context) {
 	}
 
 	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "没有需要更新的字段"})
+		response.BadRequest(c, "没有需要更新的字段")
 		return
 	}
 
 	updatedFolder, updateErr := svc.UpdateFolder(userID.(uint), uint(folderID), updates)
 	if updateErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新文件夹失败"})
+		response.InternalServerError(c, "更新文件夹失败")
 		return
 	}
 
@@ -525,7 +526,7 @@ func DeleteFolder(c *gin.Context) {
 
 	folderID, err := strconv.ParseUint(folderIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件夹ID"})
+		response.BadRequest(c, "无效的文件夹ID")
 		return
 	}
 
@@ -536,7 +537,7 @@ func DeleteFolder(c *gin.Context) {
 
 	_, err = svc.GetFolder(uid, fid)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
+		response.NotFound(c, "文件夹不存在")
 		return
 	}
 
@@ -564,7 +565,7 @@ func DeleteFolder(c *gin.Context) {
 	}
 
 	if deleteErr := svc.DeleteFolder(uid, fid); deleteErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件夹失败"})
+		response.InternalServerError(c, "删除文件夹失败")
 		return
 	}
 
@@ -580,7 +581,7 @@ func GetFolderFiles(c *gin.Context) {
 
 	folderID, err := strconv.ParseUint(folderIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件夹ID"})
+		response.BadRequest(c, "无效的文件夹ID")
 		return
 	}
 
@@ -602,13 +603,13 @@ func GetFolderFiles(c *gin.Context) {
 
 	folder, err := svc.GetFolder(uid, fid)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
+		response.NotFound(c, "文件夹不存在")
 		return
 	}
 
 	files, total, err := svc.GetFolderFiles(uid, fid, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件夹文件失败"})
+		response.InternalServerError(c, "获取文件夹文件失败")
 		return
 	}
 
@@ -630,14 +631,14 @@ func DownloadFile(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
+		response.BadRequest(c, "无效的文件ID")
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	file, err := svc.GetFile(userID.(uint), uint(fileID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
@@ -652,7 +653,7 @@ func DownloadFile(c *gin.Context) {
 		filePath := "." + file.StoragePath
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+			response.NotFound(c, "文件不存在")
 			return
 		}
 
@@ -666,20 +667,20 @@ func DeleteFile(c *gin.Context) {
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的文件ID"})
+		response.BadRequest(c, "无效的文件ID")
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	file, err := svc.GetFile(userID.(uint), uint(fileID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
 		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
+			response.InternalServerError(c, "删除文件失败")
 			return
 		}
 		invalidateFileStatsCache(userID.(uint))
@@ -693,7 +694,7 @@ func DeleteFile(c *gin.Context) {
 		os.Remove(filePath)
 
 		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
+			response.InternalServerError(c, "删除文件失败")
 			return
 		}
 
@@ -714,7 +715,7 @@ func CreateFolder(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -725,7 +726,7 @@ func CreateFolder(c *gin.Context) {
 		ParentID: req.ParentID,
 	}
 	if err := svc.CreateFolder(folder); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件夹失败"})
+		response.InternalServerError(c, "创建文件夹失败")
 		return
 	}
 

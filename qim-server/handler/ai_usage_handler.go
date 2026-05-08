@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -54,13 +55,13 @@ func GetAIUsageLogs(c *gin.Context) {
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取审计日志失败"})
+		response.InternalServerError(c, "获取审计日志失败")
 		return
 	}
 
 	var logs []model.AIUsageLog
 	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&logs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取审计日志失败"})
+		response.InternalServerError(c, "获取审计日志失败")
 		return
 	}
 

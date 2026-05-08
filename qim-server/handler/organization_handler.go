@@ -6,6 +6,7 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -16,7 +17,7 @@ func GetOrganizationTree(c *gin.Context) {
 
 	var departments []model.Department
 	if err := db.Where("parent_id IS NULL").Find(&departments).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
@@ -39,7 +40,7 @@ func CreateDepartment(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -50,7 +51,7 @@ func CreateDepartment(c *gin.Context) {
 	if req.ParentID != nil {
 		var parent model.Department
 		if err := db.First(&parent, *req.ParentID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "上级部门不存在"})
+			response.NotFound(c, "上级部门不存在")
 			return
 		}
 		level = parent.Level + 1
@@ -66,7 +67,7 @@ func CreateDepartment(c *gin.Context) {
 	}
 
 	if err := db.Create(&department).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建部门失败"})
+		response.InternalServerError(c, "创建部门失败")
 		return
 	}
 
@@ -85,7 +86,7 @@ func AddUserToDepartment(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -93,13 +94,13 @@ func AddUserToDepartment(c *gin.Context) {
 
 	var user model.User
 	if err := db.First(&user, req.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		response.NotFound(c, "用户不存在")
 		return
 	}
 
 	var department model.Department
 	if err := db.First(&department, req.DepartmentID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "部门不存在"})
+		response.NotFound(c, "部门不存在")
 		return
 	}
 
@@ -111,7 +112,7 @@ func AddUserToDepartment(c *gin.Context) {
 	}
 
 	if err := db.Create(&departmentEmployee).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "关联用户和部门失败"})
+		response.InternalServerError(c, "关联用户和部门失败")
 		return
 	}
 
@@ -139,7 +140,7 @@ func DeleteDepartment(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的部门ID"})
+		response.BadRequest(c, "无效的部门ID")
 		return
 	}
 
@@ -147,7 +148,7 @@ func DeleteDepartment(c *gin.Context) {
 
 	var department model.Department
 	if err := db.First(&department, uint(id)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "部门不存在"})
+		response.NotFound(c, "部门不存在")
 		return
 	}
 
@@ -155,7 +156,7 @@ func DeleteDepartment(c *gin.Context) {
 	var childCount int64
 	db.Model(&model.Department{}).Where("parent_id = ?", department.ID).Count(&childCount)
 	if childCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请先删除子部门"})
+		response.BadRequest(c, "请先删除子部门")
 		return
 	}
 
@@ -164,11 +165,11 @@ func DeleteDepartment(c *gin.Context) {
 
 	// 删除部门
 	if err := db.Delete(&department).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除部门失败"})
+		response.InternalServerError(c, "删除部门失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 // GetDepartmentEmployees 获取部门员工列表
@@ -176,7 +177,7 @@ func GetDepartmentEmployees(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的部门ID"})
+		response.BadRequest(c, "无效的部门ID")
 		return
 	}
 
@@ -197,7 +198,7 @@ func GetDepartmentEmployees(c *gin.Context) {
 	var deptEmployees []model.DepartmentEmployee
 	offset := (page - 1) * pageSize
 	if err := db.Where("department_id = ?", uint(id)).Preload("User").Offset(offset).Limit(pageSize).Find(&deptEmployees).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
@@ -240,13 +241,13 @@ func RemoveEmployeeFromDepartment(c *gin.Context) {
 
 	deptID, err := strconv.ParseUint(deptIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的部门ID"})
+		response.BadRequest(c, "无效的部门ID")
 		return
 	}
 
 	userID, err := strconv.ParseUint(userIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		response.BadRequest(c, "无效的用户ID")
 		return
 	}
 
@@ -254,9 +255,9 @@ func RemoveEmployeeFromDepartment(c *gin.Context) {
 
 	result := db.Where("department_id = ? AND user_id = ?", uint(deptID), uint(userID)).Delete(&model.DepartmentEmployee{})
 	if result.Error != nil || result.RowsAffected == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "移除失败或员工不在该部门"})
+		response.BadRequest(c, "移除失败或员工不在该部门")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "移出成功"})
+	response.SuccessWithMessage(c, "移出成功", nil)
 }

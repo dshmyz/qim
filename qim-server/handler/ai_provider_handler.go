@@ -7,6 +7,7 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -62,7 +63,7 @@ func CreateProvider(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -82,7 +83,7 @@ func CreateProvider(c *gin.Context) {
 	}
 
 	if err := db.Create(&provider).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建失败"})
+		response.InternalServerError(c, "创建失败")
 		return
 	}
 
@@ -97,7 +98,7 @@ func UpdateProvider(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的ID"})
+		response.BadRequest(c, "无效的ID")
 		return
 	}
 
@@ -112,7 +113,7 @@ func UpdateProvider(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -120,7 +121,7 @@ func UpdateProvider(c *gin.Context) {
 
 	var provider model.AIProvider
 	if err := db.First(&provider, uint(id)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "提供商不存在"})
+		response.NotFound(c, "提供商不存在")
 		return
 	}
 
@@ -150,7 +151,7 @@ func UpdateProvider(c *gin.Context) {
 
 	if len(updates) > 0 {
 		if err := db.Model(&provider).Updates(updates).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+			response.InternalServerError(c, "更新失败")
 			return
 		}
 	}
@@ -167,7 +168,7 @@ func DeleteProvider(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的ID"})
+		response.BadRequest(c, "无效的ID")
 		return
 	}
 
@@ -175,13 +176,13 @@ func DeleteProvider(c *gin.Context) {
 
 	var provider model.AIProvider
 	if err := db.First(&provider, uint(id)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "提供商不存在"})
+		response.NotFound(c, "提供商不存在")
 		return
 	}
 
 	db.Delete(&provider)
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 // ToggleProviderStatus 切换提供商状态
@@ -189,7 +190,7 @@ func ToggleProviderStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的ID"})
+		response.BadRequest(c, "无效的ID")
 		return
 	}
 
@@ -198,7 +199,7 @@ func ToggleProviderStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -206,13 +207,13 @@ func ToggleProviderStatus(c *gin.Context) {
 
 	var provider model.AIProvider
 	if err := db.First(&provider, uint(id)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "提供商不存在"})
+		response.NotFound(c, "提供商不存在")
 		return
 	}
 
 	provider.Enabled = req.Enabled
 	if err := db.Save(&provider).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+		response.InternalServerError(c, "更新失败")
 		return
 	}
 
@@ -227,7 +228,7 @@ func TestProviderConnection(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的ID"})
+		response.BadRequest(c, "无效的ID")
 		return
 	}
 
@@ -235,7 +236,7 @@ func TestProviderConnection(c *gin.Context) {
 
 	var provider model.AIProvider
 	if err := db.First(&provider, uint(id)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "提供商不存在"})
+		response.NotFound(c, "提供商不存在")
 		return
 	}
 

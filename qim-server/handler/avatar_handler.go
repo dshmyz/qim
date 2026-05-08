@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"qim-server/ai"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/service"
 	"strconv"
 	"time"
@@ -142,13 +143,13 @@ type CreateAvatarConfigRequest struct {
 func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	userIDAny, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未认证"})
+		response.Unauthorized(c, "未认证")
 		return
 	}
 
 	userID, ok := userIDAny.(uint)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID类型错误"})
+		response.BadRequest(c, "用户ID类型错误")
 		return
 	}
 
@@ -165,14 +166,14 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 				"approved_at":     nil,
 			}).Error; err != nil {
 				log.Printf("恢复软删除记录失败: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "恢复分身配置失败"})
+				response.InternalServerError(c, "恢复分身配置失败")
 				return
 			}
 			response := h.toConfigResponse(existingConfig)
 			c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已存在分身配置"})
+		response.BadRequest(c, "已存在分身配置")
 		return
 	}
 
@@ -186,21 +187,21 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	knowledgeScopeJSON, err := json.Marshal(req.KnowledgeScope)
 	if err != nil {
 		log.Printf("Create avatar config marshal knowledgeScope error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "知识范围序列化失败"})
+		response.BadRequest(c, "知识范围序列化失败")
 		return
 	}
 
 	triggerRulesJSON, err := json.Marshal(req.TriggerRules)
 	if err != nil {
 		log.Printf("Create avatar config marshal triggerRules error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "触发规则序列化失败"})
+		response.BadRequest(c, "触发规则序列化失败")
 		return
 	}
 
 	replyStrategyJSON, err := json.Marshal(req.ReplyStrategy)
 	if err != nil {
 		log.Printf("Create avatar config marshal replyStrategy error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "回复策略序列化失败"})
+		response.BadRequest(c, "回复策略序列化失败")
 		return
 	}
 
@@ -219,7 +220,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 
 	if err := h.db.Create(&config).Error; err != nil {
 		log.Printf("Create avatar config failed: %v, userID: %d, config: %+v", err, userID, config)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建失败"})
+		response.InternalServerError(c, "创建失败")
 		return
 	}
 
@@ -242,32 +243,32 @@ type UpdateAvatarConfigRequest struct {
 func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	userIDAny, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未认证"})
+		response.Unauthorized(c, "未认证")
 		return
 	}
 
 	userID, ok := userIDAny.(uint)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID类型错误"})
+		response.BadRequest(c, "用户ID类型错误")
 		return
 	}
 
 	var config model.AvatarConfig
 	if err := h.db.Unscoped().Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 	// 如果是软删除的记录，恢复它
 	if config.DeletedAt.Valid {
 		if err := h.db.Unscoped().Model(&config).Update("deleted_at", nil).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "恢复配置失败"})
+			response.InternalServerError(c, "恢复配置失败")
 			return
 		}
 	}
 
 	var req UpdateAvatarConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -288,7 +289,7 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	}
 
 	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+		response.InternalServerError(c, "更新失败")
 		return
 	}
 
@@ -300,13 +301,13 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 func (h *AvatarHandler) GetConfig(c *gin.Context) {
 	userIDAny, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未认证"})
+		response.Unauthorized(c, "未认证")
 		return
 	}
 
 	userID, ok := userIDAny.(uint)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID类型错误"})
+		response.BadRequest(c, "用户ID类型错误")
 		return
 	}
 
@@ -328,29 +329,29 @@ func (h *AvatarHandler) GetConfig(c *gin.Context) {
 func (h *AvatarHandler) DeleteConfig(c *gin.Context) {
 	userIDAny, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未认证"})
+		response.Unauthorized(c, "未认证")
 		return
 	}
 
 	userID, ok := userIDAny.(uint)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID类型错误"})
+		response.BadRequest(c, "用户ID类型错误")
 		return
 	}
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	// 软删除
 	if err := h.db.Delete(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除失败"})
+		response.InternalServerError(c, "删除失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 // TriggerLearnPersona 触发人设学习
@@ -360,7 +361,7 @@ func (h *AvatarHandler) TriggerLearnPersona(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
@@ -379,7 +380,7 @@ func (h *AvatarHandler) GetLearnStatus(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
@@ -401,7 +402,7 @@ func (h *AvatarHandler) GetLearnedPersona(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
@@ -415,7 +416,7 @@ func (h *AvatarHandler) GetSessions(c *gin.Context) {
 
 	var sessions []model.AvatarSession
 	if err := h.db.Where("user_id = ?", userID).Find(&sessions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取会话失败"})
+		response.InternalServerError(c, "获取会话失败")
 		return
 	}
 
@@ -432,13 +433,13 @@ func (h *AvatarHandler) UpdateSession(c *gin.Context) {
 		AvatarEnabled bool `json:"avatarEnabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	convId, err := strconv.ParseUint(convIdStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "会话ID格式错误"})
+		response.BadRequest(c, "会话ID格式错误")
 		return
 	}
 
@@ -455,7 +456,7 @@ func (h *AvatarHandler) UpdateSession(c *gin.Context) {
 	}
 
 	if err := h.db.Save(&session).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+		response.InternalServerError(c, "更新失败")
 		return
 	}
 
@@ -470,13 +471,13 @@ func (h *AvatarHandler) TakeoverSession(c *gin.Context) {
 
 	convId, err := strconv.ParseUint(convIdStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "会话ID格式错误"})
+		response.BadRequest(c, "会话ID格式错误")
 		return
 	}
 
 	var session model.AvatarSession
 	if err := h.db.Where("user_id = ? AND conversation_id = ?", userID, convId).First(&session).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
@@ -485,7 +486,7 @@ func (h *AvatarHandler) TakeoverSession(c *gin.Context) {
 	session.TakeoverUntil = &tenMinutesLater
 
 	if err := h.db.Save(&session).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "接管失败"})
+		response.InternalServerError(c, "接管失败")
 		return
 	}
 
@@ -501,13 +502,13 @@ func (h *AvatarHandler) PreviewReply(c *gin.Context) {
 		Message string `json:"message" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "消息不能为空"})
+		response.BadRequest(c, "消息不能为空")
 		return
 	}
 
 	reply, err := h.avatarService.PreviewReply(userID, req.Message)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成预览失败"})
+		response.InternalServerError(c, "生成预览失败")
 		return
 	}
 
@@ -521,12 +522,12 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	if !config.CanApply() {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前状态不允许申请"})
+		response.BadRequest(c, "当前状态不允许申请")
 		return
 	}
 
@@ -535,7 +536,7 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 	config.AppliedAt = &now
 
 	if err := h.db.Save(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "申请失败"})
+		response.InternalServerError(c, "申请失败")
 		return
 	}
 
@@ -550,12 +551,12 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	if !config.CanCancel() {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前状态不允许取消"})
+		response.BadRequest(c, "当前状态不允许取消")
 		return
 	}
 
@@ -563,7 +564,7 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 	config.AppliedAt = nil
 
 	if err := h.db.Save(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消失败"})
+		response.InternalServerError(c, "取消失败")
 		return
 	}
 
@@ -588,7 +589,7 @@ func (h *AvatarHandler) GetAvatarTools(c *gin.Context) {
 
 	var bindings []model.AvatarToolBinding
 	if err := h.db.Where("avatar_id = ?", avatarID).Find(&bindings).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取工具失败"})
+		response.InternalServerError(c, "获取工具失败")
 		return
 	}
 
@@ -607,7 +608,7 @@ func (h *AvatarHandler) BindTool(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&binding).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "绑定失败"})
+		response.InternalServerError(c, "绑定失败")
 		return
 	}
 
@@ -620,9 +621,9 @@ func (h *AvatarHandler) UnbindTool(c *gin.Context) {
 	toolID := c.Param("toolId")
 
 	if err := h.db.Where("avatar_id = ? AND tool_id = ?", avatarID, toolID).Delete(&model.AvatarToolBinding{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解绑失败"})
+		response.InternalServerError(c, "解绑失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "解绑成功"})
+	response.SuccessWithMessage(c, "解绑成功", nil)
 }

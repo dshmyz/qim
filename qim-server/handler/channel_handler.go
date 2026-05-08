@@ -9,6 +9,7 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ func CreateChannel(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -34,7 +35,7 @@ func CreateChannel(c *gin.Context) {
 		publishPermission = "creator_only"
 	}
 	if publishPermission != "creator_only" && publishPermission != "all_subscribers" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的发布权限"})
+		response.BadRequest(c, "无效的发布权限")
 		return
 	}
 
@@ -50,7 +51,7 @@ func CreateChannel(c *gin.Context) {
 	}
 
 	if err := db.Create(&channel).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建频道失败"})
+		response.InternalServerError(c, "创建频道失败")
 		return
 	}
 
@@ -102,7 +103,7 @@ func SubscribeChannel(c *gin.Context) {
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
@@ -110,13 +111,13 @@ func SubscribeChannel(c *gin.Context) {
 
 	var channel model.Channel
 	if err := db.First(&channel, uint(channelID)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		response.NotFound(c, "频道不存在")
 		return
 	}
 
 	var existingSubscription model.ChannelSubscriber
 	if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&existingSubscription).Error; err == nil {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已经订阅该频道"})
+		response.SuccessWithMessage(c, "已经订阅该频道", nil)
 		return
 	}
 
@@ -127,7 +128,7 @@ func SubscribeChannel(c *gin.Context) {
 	}
 
 	if err := db.Create(&subscription).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "订阅频道失败"})
+		response.InternalServerError(c, "订阅频道失败")
 		return
 	}
 
@@ -144,7 +145,7 @@ func UnsubscribeChannel(c *gin.Context) {
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
@@ -152,12 +153,12 @@ func UnsubscribeChannel(c *gin.Context) {
 
 	var subscription model.ChannelSubscriber
 	if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "未订阅该频道"})
+		response.BadRequest(c, "未订阅该频道")
 		return
 	}
 
 	if err := db.Delete(&subscription).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消订阅失败"})
+		response.InternalServerError(c, "取消订阅失败")
 		return
 	}
 
@@ -173,7 +174,7 @@ func CreateChannelMessage(c *gin.Context) {
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
@@ -183,7 +184,7 @@ func CreateChannelMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -191,18 +192,18 @@ func CreateChannelMessage(c *gin.Context) {
 
 	var channel model.Channel
 	if err := db.First(&channel, uint(channelID)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		response.NotFound(c, "频道不存在")
 		return
 	}
 
 	if channel.CreatorID != userID.(uint) {
 		if channel.PublishPermission == "creator_only" {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发布消息，仅频道创建者可发布"})
+			response.Forbidden(c, "无权限发布消息，仅频道创建者可发布")
 			return
 		}
 		var subscription model.ChannelSubscriber
 		if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限发布消息，需先订阅该频道"})
+			response.Forbidden(c, "无权限发布消息，需先订阅该频道")
 			return
 		}
 	}
@@ -215,7 +216,7 @@ func CreateChannelMessage(c *gin.Context) {
 	}
 
 	if err := db.Create(&channelMessage).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "发布消息失败"})
+		response.InternalServerError(c, "发布消息失败")
 		return
 	}
 
@@ -254,7 +255,7 @@ func GetChannelMessages(c *gin.Context) {
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
@@ -262,7 +263,7 @@ func GetChannelMessages(c *gin.Context) {
 
 	var channel model.Channel
 	if err := db.First(&channel, uint(channelID)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		response.NotFound(c, "频道不存在")
 		return
 	}
 

@@ -6,6 +6,7 @@ import (
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -35,7 +36,7 @@ type AISearchResult struct {
 func (h *AIHandler) AISearch(c *gin.Context) {
 	var req AISearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 

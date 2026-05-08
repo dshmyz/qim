@@ -6,6 +6,7 @@ import (
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,12 +24,12 @@ type GenerateSummaryRequest struct {
 func (h *AIHandler) GenerateSummary(c *gin.Context) {
 	var req GenerateSummaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
@@ -37,7 +38,7 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 	// 获取会话信息
 	var conv model.Conversation
 	if err := db.First(&conv, req.ConversationID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 

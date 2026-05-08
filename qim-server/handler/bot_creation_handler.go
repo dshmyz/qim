@@ -8,6 +8,7 @@ import (
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,7 +34,7 @@ func GetMyBots(c *gin.Context) {
 
 	var bots []model.Bot
 	if err := db.Where("creator_id = ?", userID).Order("created_at DESC").Find(&bots).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取 Bot 列表失败"})
+		response.InternalServerError(c, "获取 Bot 列表失败")
 		return
 	}
 
@@ -50,7 +51,7 @@ func GetMyBotCount(c *gin.Context) {
 
 	var count int64
 	if err := db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'ai')", userID).Count(&count).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取数量失败"})
+		response.InternalServerError(c, "获取数量失败")
 		return
 	}
 
@@ -66,7 +67,7 @@ func GetTemplates(c *gin.Context) {
 
 	var bots []model.Bot
 	if err := db.Where("is_template = ? AND is_active = ? AND approval_status = ?", true, true, "approved").Find(&bots).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取模板列表失败"})
+		response.InternalServerError(c, "获取模板列表失败")
 		return
 	}
 
@@ -80,26 +81,26 @@ func GetTemplates(c *gin.Context) {
 func CreateBot(c *gin.Context) {
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		response.Unauthorized(c, "未授权")
 		return
 	}
 
 	userID, ok := userIDVal.(uint)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		response.InternalServerError(c, "用户信息错误")
 		return
 	}
 	db := database.GetDB()
 
 	var req CreateBotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		response.BadRequest(c, "请求参数错误")
 		return
 	}
 
 	// 校验 Type 字段
 	if req.Type != "ai" && req.Type != "custom" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "Bot 类型无效"})
+		response.BadRequest(c, "Bot 类型无效")
 		return
 	}
 
@@ -150,7 +151,7 @@ func CreateBot(c *gin.Context) {
 	// 创建 Bot
 	if err := tx.Create(&bot).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建 Bot 失败"})
+		response.InternalServerError(c, "创建 Bot 失败")
 		return
 	}
 
@@ -163,7 +164,7 @@ func CreateBot(c *gin.Context) {
 	}
 	if err := tx.Create(&virtualUser).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建虚拟用户失败"})
+		response.InternalServerError(c, "创建虚拟用户失败")
 		return
 	}
 
@@ -171,12 +172,12 @@ func CreateBot(c *gin.Context) {
 	bot.VirtualUserID = &virtualUser.ID
 	if err := tx.Save(&bot).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新 Bot 失败"})
+		response.InternalServerError(c, "更新 Bot 失败")
 		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败"})
+		response.InternalServerError(c, "提交事务失败")
 		return
 	}
 
@@ -195,19 +196,19 @@ func CreateBot(c *gin.Context) {
 func UpdateMyBot(c *gin.Context) {
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		response.Unauthorized(c, "未授权")
 		return
 	}
 
 	userID, ok := userIDVal.(uint)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		response.InternalServerError(c, "用户信息错误")
 		return
 	}
 
 	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的 Bot ID"})
+		response.BadRequest(c, "无效的 Bot ID")
 		return
 	}
 
@@ -215,25 +216,25 @@ func UpdateMyBot(c *gin.Context) {
 
 	var bot model.Bot
 	if err := db.Where("id = ? AND creator_id = ?", uint(botID), userID).First(&bot).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "Bot 不存在或无权操作"})
+		response.NotFound(c, "Bot 不存在或无权操作")
 		return
 	}
 
 	// 仅允许待审批和已拒绝状态的 Bot 编辑
 	if bot.ApprovalStatus != "pending" && bot.ApprovalStatus != "rejected" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "仅可编辑待审批或已拒绝的 Bot"})
+		response.BadRequest(c, "仅可编辑待审批或已拒绝的 Bot")
 		return
 	}
 
 	var req CreateBotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		response.BadRequest(c, "请求参数错误")
 		return
 	}
 
 	// 校验 Type 字段
 	if req.Type != "ai" && req.Type != "custom" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "Bot 类型无效"})
+		response.BadRequest(c, "Bot 类型无效")
 		return
 	}
 
@@ -249,7 +250,7 @@ func UpdateMyBot(c *gin.Context) {
 		"avatar":      req.Avatar,
 		"config":      string(configJSON),
 	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新 Bot 失败"})
+		response.InternalServerError(c, "更新 Bot 失败")
 		return
 	}
 
@@ -263,19 +264,19 @@ func UpdateMyBot(c *gin.Context) {
 func DeleteMyBot(c *gin.Context) {
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权"})
+		response.Unauthorized(c, "未授权")
 		return
 	}
 
 	userID, ok := userIDVal.(uint)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户信息错误"})
+		response.InternalServerError(c, "用户信息错误")
 		return
 	}
 
 	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的 Bot ID"})
+		response.BadRequest(c, "无效的 Bot ID")
 		return
 	}
 
@@ -283,11 +284,11 @@ func DeleteMyBot(c *gin.Context) {
 
 	result := db.Where("id = ? AND creator_id = ?", uint(botID), userID).Delete(&model.Bot{})
 	if result.Error != nil || result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "Bot 不存在或无权操作"})
+		response.NotFound(c, "Bot 不存在或无权操作")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 // getMaxBotsPerUser 从系统配置获取每个用户的最大 Bot 数量

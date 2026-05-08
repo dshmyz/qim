@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"qim-server/ai"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,13 +72,13 @@ type GetCompletionRequest struct {
 func (h *AIHandler) GetCompletion(c *gin.Context) {
 	var req GetCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	// 检查AI服务是否配置
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
@@ -149,13 +150,13 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 	var req GetCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	// 检查AI服务是否配置
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
@@ -202,7 +203,7 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 // @Router /api/ai/tools [get]
 func (h *AIHandler) ListTools(c *gin.Context) {
 	if h.mcpServer == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "MCP服务器未初始化"})
+		response.InternalServerError(c, "MCP服务器未初始化")
 		return
 	}
 
@@ -234,12 +235,12 @@ type ExecuteToolRequest struct {
 func (h *AIHandler) ExecuteTool(c *gin.Context) {
 	var req ExecuteToolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if h.mcpServer == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "MCP服务器未初始化"})
+		response.InternalServerError(c, "MCP服务器未初始化")
 		return
 	}
 
@@ -278,7 +279,7 @@ type IntelligentTroubleshootingRequest struct {
 func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
 	var req IntelligentTroubleshootingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -323,7 +324,7 @@ type CommandGenerationRequest struct {
 func (h *AIHandler) CommandGeneration(c *gin.Context) {
 	var req CommandGenerationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -368,7 +369,7 @@ type LogAnalysisRequest struct {
 func (h *AIHandler) LogAnalysis(c *gin.Context) {
 	var req LogAnalysisRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -413,7 +414,7 @@ type IntelligentAlertRequest struct {
 func (h *AIHandler) IntelligentAlert(c *gin.Context) {
 	var req IntelligentAlertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -457,7 +458,7 @@ type OpsKnowledgeRequest struct {
 func (h *AIHandler) OpsKnowledge(c *gin.Context) {
 	var req OpsKnowledgeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 

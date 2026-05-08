@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -13,14 +14,14 @@ func GetGroupDocuments(c *gin.Context) {
 	convIDStr := c.Param("id")
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	db := database.GetDB()
 	var group model.Group
 	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊不存在"})
+		response.NotFound(c, "群聊不存在")
 		return
 	}
 
@@ -42,32 +43,32 @@ func AddGroupDocument(c *gin.Context) {
 		FileID uint `json:"file_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	db := database.GetDB()
 	var group model.Group
 	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊不存在"})
+		response.NotFound(c, "群聊不存在")
 		return
 	}
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, userID).First(&member).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
+		response.Forbidden(c, "您不是成员")
 		return
 	}
 
 	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以管理知识库"})
+		response.Forbidden(c, "只有群主或管理员可以管理知识库")
 		return
 	}
 
 	// 验证文件类型，只允许文档类型
 	var file model.File
 	if err := db.First(&file, req.FileID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
+		response.NotFound(c, "文件不存在")
 		return
 	}
 
@@ -94,7 +95,7 @@ func AddGroupDocument(c *gin.Context) {
 	}
 
 	if !isAllowed {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只支持添加文档类型的文件（PDF、Word、Excel、PPT、TXT等）"})
+		response.BadRequest(c, "只支持添加文档类型的文件（PDF、Word、Excel、PPT、TXT等）")
 		return
 	}
 
@@ -114,22 +115,22 @@ func RemoveGroupDocument(c *gin.Context) {
 	db := database.GetDB()
 	var group model.Group
 	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊不存在"})
+		response.NotFound(c, "群聊不存在")
 		return
 	}
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, userID).First(&member).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
+		response.Forbidden(c, "您不是成员")
 		return
 	}
 
 	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以管理知识库"})
+		response.Forbidden(c, "只有群主或管理员可以管理知识库")
 		return
 	}
 
 	db.Where("group_id = ? AND file_id = ?", group.ID, uint(fileID)).Delete(&model.GroupDocument{})
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "文档解绑成功"})
+	response.SuccessWithMessage(c, "文档解绑成功", nil)
 }

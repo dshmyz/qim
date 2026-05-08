@@ -8,6 +8,7 @@ import (
 
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
@@ -51,7 +52,7 @@ func GetApps(c *gin.Context) {
 		Category: category,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取应用列表失败"})
+		response.InternalServerError(c, "获取应用列表失败")
 		return
 	}
 
@@ -71,14 +72,14 @@ func ToggleAppStatus(c *gin.Context) {
 
 	appID, err := strconv.ParseUint(appIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的应用ID"})
+		response.BadRequest(c, "无效的应用ID")
 		return
 	}
 
 	appSvc := di.GlobalContainer.AppService
 	app, err := appSvc.GetApp(uint(appID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
+		response.NotFound(c, "应用不存在")
 		return
 	}
 
@@ -117,7 +118,7 @@ func GetAllApps(c *gin.Context) {
 		Status:   status,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取应用列表失败"})
+		response.InternalServerError(c, "获取应用列表失败")
 		return
 	}
 
@@ -146,14 +147,14 @@ func CreateApp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if req.IsGlobal {
 		roles, exists := c.Get("roles")
 		if !exists || !containsRole(roles.([]string), "system_admin") {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能创建全局应用"})
+			response.Forbidden(c, "只有管理员才能创建全局应用")
 			return
 		}
 	}
@@ -170,7 +171,7 @@ func CreateApp(c *gin.Context) {
 		IsGlobal: req.IsGlobal,
 	}
 	if err := appSvc.CreateApp(&app); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建应用失败"})
+		response.InternalServerError(c, "创建应用失败")
 		return
 	}
 
@@ -187,7 +188,7 @@ func UpdateApp(c *gin.Context) {
 
 	appID, err := strconv.ParseUint(appIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的应用ID"})
+		response.BadRequest(c, "无效的应用ID")
 		return
 	}
 
@@ -202,7 +203,7 @@ func UpdateApp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -215,20 +216,20 @@ func UpdateApp(c *gin.Context) {
 	} else {
 		globalApp, err2 := appSvc.GetGlobalApp(uint(appID))
 		if err2 != nil {
-			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
+			response.NotFound(c, "应用不存在")
 			return
 		}
 		app = globalApp
 
 		roles, exists := c.Get("roles")
 		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限更新此应用"})
+			response.Forbidden(c, "无权限更新此应用")
 			return
 		}
 
 		roleList, ok := roles.([]string)
 		if !ok || !containsRole(roleList, "system_admin") {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限更新此应用"})
+			response.Forbidden(c, "无权限更新此应用")
 			return
 		}
 	}
@@ -237,13 +238,13 @@ func UpdateApp(c *gin.Context) {
 	if req.IsGlobal != app.IsGlobal {
 		roles, exists := c.Get("roles")
 		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能修改应用的全局状态"})
+			response.Forbidden(c, "只有管理员才能修改应用的全局状态")
 			return
 		}
 
 		roleList, ok := roles.([]string)
 		if !ok || !containsRole(roleList, "system_admin") {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有管理员才能修改应用的全局状态"})
+			response.Forbidden(c, "只有管理员才能修改应用的全局状态")
 			return
 		}
 	}
@@ -272,13 +273,13 @@ func DeleteApp(c *gin.Context) {
 
 	appID, err := strconv.ParseUint(appIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的应用ID"})
+		response.BadRequest(c, "无效的应用ID")
 		return
 	}
 
 	appSvc := di.GlobalContainer.AppService
 	if err := appSvc.DeleteApp(uint(appID), userID.(uint)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除应用失败"})
+		response.InternalServerError(c, "删除应用失败")
 		return
 	}
 
@@ -310,7 +311,7 @@ func GetMiniApps(c *gin.Context) {
 		Status:   status,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询小程序失败"})
+		response.InternalServerError(c, "查询小程序失败")
 		return
 	}
 
@@ -331,7 +332,7 @@ func GetMiniApp(c *gin.Context) {
 	miniAppSvc := di.GlobalContainer.MiniAppService
 	miniApp, err := miniAppSvc.GetMiniAppByAppID(appID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "小程序不存在"})
+		response.NotFound(c, "小程序不存在")
 		return
 	}
 
@@ -352,7 +353,7 @@ func CreateMiniApp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -360,7 +361,7 @@ func CreateMiniApp(c *gin.Context) {
 
 	exists, _ := miniAppSvc.IsAppIDExists(req.AppID)
 	if exists {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "AppID已存在"})
+		response.BadRequest(c, "AppID已存在")
 		return
 	}
 
@@ -375,7 +376,7 @@ func CreateMiniApp(c *gin.Context) {
 	}
 
 	if err := miniAppSvc.CreateMiniApp(&miniApp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建小程序失败"})
+		response.InternalServerError(c, "创建小程序失败")
 		return
 	}
 
@@ -398,14 +399,14 @@ func UpdateMiniApp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	miniAppSvc := di.GlobalContainer.MiniAppService
 	miniApp, err := miniAppSvc.GetMiniApp(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "小程序不存在"})
+		response.NotFound(c, "小程序不存在")
 		return
 	}
 
@@ -429,7 +430,7 @@ func UpdateMiniApp(c *gin.Context) {
 	}
 
 	if err := miniAppSvc.UpdateMiniApp(miniApp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新小程序失败"})
+		response.InternalServerError(c, "更新小程序失败")
 		return
 	}
 
@@ -444,7 +445,7 @@ func DeleteMiniApp(c *gin.Context) {
 
 	miniAppSvc := di.GlobalContainer.MiniAppService
 	if err := miniAppSvc.DeleteMiniApp(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除小程序失败"})
+		response.InternalServerError(c, "删除小程序失败")
 		return
 	}
 
@@ -460,7 +461,7 @@ func GetNotes(c *gin.Context) {
 	noteSvc := di.GlobalContainer.NoteService
 	notes, err := noteSvc.GetNotes(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取笔记列表失败"})
+		response.InternalServerError(c, "获取笔记列表失败")
 		return
 	}
 
@@ -476,14 +477,14 @@ func GetNote(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	noteSvc := di.GlobalContainer.NoteService
 	note, err := noteSvc.GetNote(uint(noteID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
+		response.NotFound(c, "笔记不存在")
 		return
 	}
 
@@ -506,7 +507,7 @@ func CreateNote(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fmt.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -546,7 +547,7 @@ func UpdateNote(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
@@ -559,14 +560,14 @@ func UpdateNote(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	noteSvc := di.GlobalContainer.NoteService
 	note, err := noteSvc.GetNote(uint(noteID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
+		response.NotFound(c, "笔记不存在")
 		return
 	}
 
@@ -609,13 +610,13 @@ func DeleteNote(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	noteSvc := di.GlobalContainer.NoteService
 	if err := noteSvc.DeleteNote(uint(noteID), userID.(uint)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除笔记失败"})
+		response.InternalServerError(c, "删除笔记失败")
 		return
 	}
 

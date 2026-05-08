@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/utils"
 
 	"github.com/gin-gonic/gin"
@@ -64,7 +65,7 @@ func (h *UserAIConfigHandler) ListMyConfigs(c *gin.Context) {
 	if err := h.db.Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&configs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询配置失败"})
+		response.InternalServerError(c, "查询配置失败")
 		return
 	}
 
@@ -90,20 +91,20 @@ func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 
 	var req CreateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	var count int64
 	h.db.Model(&model.UserAIConfig{}).Where("user_id = ?", userID).Count(&count)
 	if count >= 5 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "配置数量已达上限（5个）"})
+		response.BadRequest(c, "配置数量已达上限（5个）")
 		return
 	}
 
 	encryptedKey, err := utils.EncryptAPIKey(req.APIKey)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "加密失败"})
+		response.InternalServerError(c, "加密失败")
 		return
 	}
 
@@ -123,7 +124,7 @@ func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 	config.LastTestedAt = &now
 
 	if err := h.db.Create(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建配置失败"})
+		response.InternalServerError(c, "创建配置失败")
 		return
 	}
 
@@ -143,20 +144,20 @@ func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 
 	var config model.UserAIConfig
 	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	var req CreateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if req.APIKey != "" {
 		encryptedKey, err := utils.EncryptAPIKey(req.APIKey)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "加密失败"})
+			response.InternalServerError(c, "加密失败")
 			return
 		}
 		config.APIKeyEncrypted = encryptedKey
@@ -173,7 +174,7 @@ func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 	config.LastTestedAt = &now
 
 	if err := h.db.Save(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新配置失败"})
+		response.InternalServerError(c, "更新配置失败")
 		return
 	}
 
@@ -193,23 +194,23 @@ func (h *UserAIConfigHandler) DeleteConfig(c *gin.Context) {
 
 	var config model.UserAIConfig
 	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	var botCount int64
 	h.db.Model(&model.Bot{}).Where("user_config_id = ?", id).Count(&botCount)
 	if botCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该配置正在被机器人使用，无法删除"})
+		response.BadRequest(c, "该配置正在被机器人使用，无法删除")
 		return
 	}
 
 	if err := h.db.Delete(&config).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除配置失败"})
+		response.InternalServerError(c, "删除配置失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 func (h *UserAIConfigHandler) TestConfig(c *gin.Context) {
@@ -219,13 +220,13 @@ func (h *UserAIConfigHandler) TestConfig(c *gin.Context) {
 
 	var config model.UserAIConfig
 	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "配置不存在"})
+		response.NotFound(c, "配置不存在")
 		return
 	}
 
 	apiKey, err := utils.DecryptAPIKey(config.APIKeyEncrypted)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解密失败"})
+		response.InternalServerError(c, "解密失败")
 		return
 	}
 

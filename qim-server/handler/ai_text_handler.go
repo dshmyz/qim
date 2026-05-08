@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"qim-server/ai"
+	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,12 +32,12 @@ type PolishTextRequest struct {
 func (h *AIHandler) TranslateText(c *gin.Context) {
 	var req TranslateTextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
@@ -75,12 +76,12 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 func (h *AIHandler) RewriteText(c *gin.Context) {
 	var req RewriteTextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
@@ -121,12 +122,12 @@ func (h *AIHandler) RewriteText(c *gin.Context) {
 func (h *AIHandler) PolishText(c *gin.Context) {
 	var req PolishTextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if !h.aiService.IsConfigured() {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI服务未配置"})
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
