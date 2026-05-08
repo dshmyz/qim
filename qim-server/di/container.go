@@ -1,6 +1,8 @@
 package di
 
 import (
+	"qim-server/ai"
+	"qim-server/config"
 	"qim-server/database"
 	"qim-server/middleware"
 	"qim-server/service"
@@ -12,6 +14,8 @@ import (
 
 type Container struct {
 	DB                   *gorm.DB
+	Config               *config.Config
+	AIService            *ai.AIService
 	UserService          *service.UserService
 	ConversationService  *service.ConversationService
 	MessageService       *service.MessageService

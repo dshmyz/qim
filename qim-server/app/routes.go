@@ -13,50 +13,35 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Global AI service instance
-var globalAIService *ai.AIService
-
 // GetAIService returns the global AI service instance
 func GetAIService() *ai.AIService {
-	return globalAIService
+	return di.GlobalContainer.AIService
 }
 
 // SetupRoutes 设置 API 路由
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
-	// 设置配置
 	handler.SetConfig(cfg)
 
-	// 初始化AI服务
-	globalAIService = ai.NewAIService(&cfg.AI)
+	aiSvc := di.GlobalContainer.AIService
 
-	// 初始化MCP服务器
 	mcpServer := ai.NewMCPServer(false)
 
-	// 将 MCP 服务器注入 AI 服务（启用工具调用）
-	globalAIService.SetMCPServer(mcpServer)
+	aiSvc.SetMCPServer(mcpServer)
 
-	// 注册管理操作工具（用户管理、群组管理、系统通知等）
 	handler.RegisterAdminTools(mcpServer)
 
-	// 初始化智能回复引擎（嵌入消息处理链路）
-	handler.InitSmartReplyEngine(globalAIService)
+	handler.InitSmartReplyEngine(aiSvc)
 
-	// 初始化异常检测器
 	handler.InitAnomalyDetector()
 
-	// 启动MCP服务器（在后台运行）
 	go func() {
 		if err := mcpServer.Start(":8081"); err != nil {
-			// 仅记录错误，不影响主服务启动
-			// log.Printf("MCP server start error: %v", err)
 		}
 	}()
 
-	// 初始化AI处理器
-	aiHandler := handler.NewAIHandler(globalAIService, mcpServer)
+	aiHandler := handler.NewAIHandler(aiSvc, mcpServer)
 
-	// 初始化分身服务并设置到智能回复引擎
-	avatarService := service.NewAvatarService(GetDB(), globalAIService)
+	avatarService := service.NewAvatarService(GetDB(), aiSvc)
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"qim-server/ai"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"strconv"
 
@@ -44,7 +45,8 @@ func AnalyzeNote(c *gin.Context) {
 		return
 	}
 
-	if aiService == nil || !aiService.IsConfigured() {
+	aiSvc := di.GlobalContainer.AIService
+	if aiSvc == nil || !aiSvc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "AI 服务未配置"})
 		return
 	}
@@ -61,7 +63,7 @@ func AnalyzeNote(c *gin.Context) {
 		{Role: "user", Content: note.Content},
 	}
 
-	result, err := aiService.GetCompletion(messages)
+	result, err := aiSvc.GetCompletion(messages)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI 分析失败"})
 		return

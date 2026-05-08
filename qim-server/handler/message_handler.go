@@ -459,7 +459,7 @@ func StreamMessage(c *gin.Context) {
 		}
 
 		var fullResponse string
-		err := aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+		err := di.GlobalContainer.AIService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
 			responseChan <- chunk
 			fullResponse += chunk.Content
 			return nil

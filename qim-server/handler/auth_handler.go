@@ -10,6 +10,7 @@ import (
 	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/middleware"
 	"qim-server/model"
 	"qim-server/pkg/response"
@@ -25,6 +26,8 @@ var aiService *ai.AIService
 func SetConfig(c *config.Config) {
 	cfg = c
 	aiService = ai.NewAIService(&c.AI)
+	di.GlobalContainer.Config = c
+	di.GlobalContainer.AIService = aiService
 }
 
 func Login(c *gin.Context) {

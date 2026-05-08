@@ -11,6 +11,7 @@ import (
 
 	"qim-server/ai"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/ws"
 
@@ -249,7 +250,8 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 	case "system":
 		reply = getSystemBotReply(content)
 	case "ai":
-		if aiService != nil && aiService.IsConfigured() {
+		aiSvc := di.GlobalContainer.AIService
+		if aiSvc != nil && aiSvc.IsConfigured() {
 			var messages []ai.Message
 
 			systemPrompt := "你是一个智能助手，帮助用户解决问题。"
@@ -291,7 +293,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 			})
 
 			var err error
-			reply, err = aiService.GetCompletion(messages)
+			reply, err = aiSvc.GetCompletion(messages)
 			if err != nil {
 				log.Printf("AI API error: %v", err)
 				reply = "抱歉，AI服务暂时不可用，请稍后再试。"
