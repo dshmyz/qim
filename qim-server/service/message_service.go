@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"qim-server/ai"
-	"qim-server/database"
 	"qim-server/model"
 	"qim-server/ws"
 
@@ -18,10 +17,16 @@ var ErrMessageNotFound = errors.New("message not found")
 var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 
-type MessageService struct{}
+type MessageService struct {
+	db  *gorm.DB
+	hub *ws.Hub
+}
 
-func NewMessageService() *MessageService {
-	return &MessageService{}
+func NewMessageService(db *gorm.DB, hub *ws.Hub) *MessageService {
+	return &MessageService{
+		db:  db,
+		hub: hub,
+	}
 }
 
 type MessageQuery struct {
@@ -45,7 +50,7 @@ type MessageResult struct {
 }
 
 func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
-	db := database.GetDB()
+	db := s.db
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {
@@ -84,13 +89,13 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
-		if ws.GlobalHub != nil {
+		if s.hub != nil {
 			newMsg := ws.WSMessage{
 				Type: "new_message",
 				Data: s.buildMessageResponse(msg),
 			}
 			jsonMsg, _ := json.Marshal(newMsg)
-			ws.GlobalHub.SendToConversation(convID, senderID, jsonMsg)
+			s.hub.SendToConversation(convID, senderID, jsonMsg)
 		}
 	}
 
@@ -98,7 +103,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 }
 
 func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
-	db := database.GetDB()
+	db := s.db
 
 	var botConv model.BotConversation
 	if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
@@ -156,7 +161,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 }
 
 func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error) {
-	db := database.GetDB()
+	db := s.db
 
 	if query.Limit <= 0 {
 		query.Limit = 20
@@ -211,7 +216,7 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 }
 
 func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult, error) {
-	db := database.GetDB()
+	db := s.db
 
 	if query.Limit <= 0 {
 		query.Limit = 10
@@ -270,7 +275,7 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 }
 
 func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uint, limit, offset int) ([]model.Message, error) {
-	db := database.GetDB()
+	db := s.db
 
 	if limit <= 0 {
 		limit = 20
@@ -301,7 +306,7 @@ func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uin
 }
 
 func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, error) {
-	db := database.GetDB()
+	db := s.db
 
 	var msg model.Message
 	if err := db.First(&msg, msgID).Error; err != nil {
@@ -327,20 +332,20 @@ func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, erro
 
 	db.Preload("Sender").First(&msg, msg.ID)
 
-	if ws.GlobalHub != nil {
+	if s.hub != nil {
 		recallMsg := ws.WSMessage{
 			Type: "message_recalled",
 			Data: msg,
 		}
 		jsonMsg, _ := json.Marshal(recallMsg)
-		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
+		s.hub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 	}
 
 	return &msg, nil
 }
 
 func (s *MessageService) DeleteMessage(msgID, userID uint) error {
-	db := database.GetDB()
+	db := s.db
 
 	var msg model.Message
 	if err := db.First(&msg, msgID).Error; err != nil {
@@ -358,7 +363,7 @@ func (s *MessageService) DeleteMessage(msgID, userID uint) error {
 		return err
 	}
 
-	if ws.GlobalHub != nil {
+	if s.hub != nil {
 		deleteMsg := ws.WSMessage{
 			Type: "message_deleted",
 			Data: map[string]interface{}{
@@ -367,14 +372,14 @@ func (s *MessageService) DeleteMessage(msgID, userID uint) error {
 			},
 		}
 		jsonMsg, _ := json.Marshal(deleteMsg)
-		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
+		s.hub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 	}
 
 	return nil
 }
 
 func (s *MessageService) MarkAsRead(convID, userID uint) error {
-	db := database.GetDB()
+	db := s.db
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
@@ -438,11 +443,11 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 }
 
 func (s *MessageService) notifyMessageRead(convID, userID uint) {
-	if ws.GlobalHub == nil {
+	if s.hub == nil {
 		return
 	}
 
-	db := database.GetDB()
+	db := s.db
 
 	var conv model.Conversation
 	if err := db.First(&conv, convID).Error; err != nil {
@@ -462,19 +467,19 @@ func (s *MessageService) notifyMessageRead(convID, userID uint) {
 	if conv.Type == "single" {
 		var otherMember model.ConversationMember
 		db.Where("conversation_id = ? AND user_id != ?", convID, userID).First(&otherMember)
-		ws.GlobalHub.SendToUser(otherMember.UserID, jsonMsg)
+		s.hub.SendToUser(otherMember.UserID, jsonMsg)
 	} else if conv.Type == "group" {
 		var members []model.ConversationMember
 		db.Where("conversation_id = ? AND user_id != ?", convID, userID).Find(&members)
 
 		for _, member := range members {
-			ws.GlobalHub.SendToUser(member.UserID, jsonMsg)
+			s.hub.SendToUser(member.UserID, jsonMsg)
 		}
 	}
 }
 
 func (s *MessageService) GetMessageByID(msgID uint) (*model.Message, error) {
-	db := database.GetDB()
+	db := s.db
 
 	var msg model.Message
 	if err := db.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").First(&msg, msgID).Error; err != nil {
@@ -488,7 +493,7 @@ func (s *MessageService) GetMessageByID(msgID uint) (*model.Message, error) {
 }
 
 func (s *MessageService) GetMessageQuoteChain(msgID, userID uint) ([]model.Message, error) {
-	db := database.GetDB()
+	db := s.db
 
 	var msg model.Message
 	if err := db.First(&msg, msgID).Error; err != nil {
@@ -520,7 +525,7 @@ func (s *MessageService) GetMessageQuoteChain(msgID, userID uint) ([]model.Messa
 }
 
 func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, int64, error) {
-	db := database.GetDB()
+	db := s.db
 
 	var msg model.Message
 	if err := db.First(&msg, msgID).Error; err != nil {
@@ -568,6 +573,6 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 }
 
 func (s *MessageService) CreateMessage(msg *model.Message) error {
-	db := database.GetDB()
+	db := s.db
 	return db.Create(msg).Error
 }

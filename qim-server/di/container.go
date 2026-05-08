@@ -39,7 +39,7 @@ func InitContainer(secret string, hub *ws.Hub) *Container {
 
 	userService := service.NewUserService(db)
 	conversationService := service.NewConversationService(db)
-	messageService := service.NewMessageService()
+	messageService := service.NewMessageService(db, hub)
 	notificationService := service.NewNotificationService(db)
 	eventService := service.NewEventService(db)
 	taskService := service.NewTaskService(db)
