@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"math/rand"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -28,10 +28,7 @@ func GetBots(c *gin.Context) {
 		true, true, true, "approved", "approved", true,
 	).Find(&bots)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": bots,
-	})
+	response.Success(c, bots)
 }
 
 func GetSystemMessages(c *gin.Context) {
@@ -61,13 +58,10 @@ func GetSystemMessages(c *gin.Context) {
 	db.Model(&model.SystemMessage{}).Count(&total)
 	db.Preload("Sender").Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&systemMessages)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  systemMessages,
-			"total": total,
-			"page":  page,
-		},
+	response.Success(c, gin.H{
+		"list":  systemMessages,
+		"total": total,
+		"page":  page,
 	})
 }
 
@@ -82,7 +76,7 @@ func CreateSystemMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -98,7 +92,7 @@ func CreateSystemMessage(c *gin.Context) {
 	}
 
 	if err := db.Create(&systemMessage).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建系统消息失败"})
+		response.InternalServerError(c, "创建系统消息失败")
 		return
 	}
 
@@ -148,10 +142,7 @@ func CreateSystemMessage(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": systemMessage,
-	})
+	response.Success(c, systemMessage)
 }
 
 func UpdateSystemMessage(c *gin.Context) {
@@ -159,7 +150,7 @@ func UpdateSystemMessage(c *gin.Context) {
 
 	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的消息ID"})
+		response.BadRequest(c, "无效的消息ID")
 		return
 	}
 
@@ -168,7 +159,7 @@ func UpdateSystemMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -176,20 +167,17 @@ func UpdateSystemMessage(c *gin.Context) {
 
 	var systemMessage model.SystemMessage
 	if err := db.First(&systemMessage, uint(messageID)).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "消息不存在"})
+		response.NotFound(c, "消息不存在")
 		return
 	}
 
 	systemMessage.Status = req.Status
 	if err := db.Save(&systemMessage).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新消息状态失败"})
+		response.InternalServerError(c, "更新消息状态失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": systemMessage,
-	})
+	response.Success(c, systemMessage)
 }
 
 func BroadcastMessage(c *gin.Context) {
@@ -197,7 +185,7 @@ func BroadcastMessage(c *gin.Context) {
 		Message string `json:"message"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		response.BadRequest(c, "请求参数错误")
 		return
 	}
 
@@ -205,7 +193,7 @@ func BroadcastMessage(c *gin.Context) {
 		ws.GlobalHub.Broadcast <- []byte(req.Message)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "消息广播成功"})
+	response.SuccessWithMessage(c, "消息广播成功", nil)
 }
 
 func SendToUserMessage(c *gin.Context) {
@@ -214,7 +202,7 @@ func SendToUserMessage(c *gin.Context) {
 		Message string `json:"message"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误"})
+		response.BadRequest(c, "请求参数错误")
 		return
 	}
 
@@ -222,7 +210,7 @@ func SendToUserMessage(c *gin.Context) {
 		ws.GlobalHub.SendToUser(req.UserID, []byte(req.Message))
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "消息发送成功"})
+	response.SuccessWithMessage(c, "消息发送成功", nil)
 }
 
 func HandleBotMessage(userID uint, convID uint, content string) {
