@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/ws"
 	"strconv"
 	"strings"
@@ -28,7 +28,7 @@ func AddMemberToGroup(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -40,31 +40,31 @@ func AddMemberToGroup(c *gin.Context) {
 
 	convIDUint, err := strconv.ParseUint(convID, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	conv, err := convSvc.GetConversation(uint(convIDUint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊或讨论组添加成员"})
+		response.BadRequest(c, "只能为群聊或讨论组添加成员")
 		return
 	}
 
 	currentMember, err := convSvc.GetMember(uint(convIDUint), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限操作"})
+		response.Forbidden(c, "无权限操作")
 		return
 	}
 
 	if conv.Type == "group" {
 		group, _ := groupSvc.GetGroupByConversationID(uint(convIDUint))
 		if group != nil && group.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主和管理员可以邀请成员"})
+			response.Forbidden(c, "只有群主和管理员可以邀请成员")
 			return
 		}
 	}
@@ -248,11 +248,7 @@ func AddMemberToGroup(c *gin.Context) {
 		ws.GlobalHub.UpdateConversationMembers(uint(convIDUint))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "添加成员成功",
-		"data":    addedMembers,
-	})
+	response.SuccessWithMessage(c, "添加成员成功", addedMembers)
 }
 
 func RemoveMemberFromGroup(c *gin.Context) {
@@ -266,13 +262,13 @@ func RemoveMemberFromGroup(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	memberID, err := strconv.ParseUint(memberIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		response.BadRequest(c, "无效的用户ID")
 		return
 	}
 
@@ -280,39 +276,39 @@ func RemoveMemberFromGroup(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能移除群聊成员"})
+		response.BadRequest(c, "只能移除群聊成员")
 		return
 	}
 
 	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	if currentMember.Role != "owner" && currentMember.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以移除成员"})
+		response.Forbidden(c, "只有群主或管理员可以移除成员")
 		return
 	}
 
 	targetMember, err := convSvc.GetMember(uint(convID), uint(memberID))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
+		response.BadRequest(c, "目标用户不是群成员")
 		return
 	}
 
 	if targetMember.Role == "owner" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "群主不能被移除"})
+		response.BadRequest(c, "群主不能被移除")
 		return
 	}
 
 	if err := convSvc.RemoveMember(uint(convID), uint(memberID)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "移除成员失败"})
+		response.InternalServerError(c, "移除成员失败")
 		return
 	}
 
@@ -329,10 +325,7 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "移除成员成功",
-	})
+	response.SuccessWithMessage(c, "移除成员成功", nil)
 }
 
 func ExitGroup(c *gin.Context) {
@@ -345,7 +338,7 @@ func ExitGroup(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
@@ -353,23 +346,23 @@ func ExitGroup(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能退出群聊"})
+		response.BadRequest(c, "只能退出群聊")
 		return
 	}
 
 	_, err = convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	if err := convSvc.RemoveMember(uint(convID), userID.(uint)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "退出群聊失败"})
+		response.InternalServerError(c, "退出群聊失败")
 		return
 	}
 
@@ -386,7 +379,7 @@ func ExitGroup(c *gin.Context) {
 		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "退出群聊成功"})
+	response.SuccessWithMessage(c, "退出群聊成功", nil)
 }
 
 func UpdateGroupInfo(c *gin.Context) {
@@ -395,7 +388,7 @@ func UpdateGroupInfo(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
@@ -407,7 +400,7 @@ func UpdateGroupInfo(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -416,29 +409,29 @@ func UpdateGroupInfo(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能更新群聊或讨论组信息"})
+		response.BadRequest(c, "只能更新群聊或讨论组信息")
 		return
 	}
 
 	member, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
+		response.Forbidden(c, "您不是成员")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		response.NotFound(c, "群聊信息不存在")
 		return
 	}
 
 	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以更新群聊信息"})
+		response.Forbidden(c, "只有群主或管理员可以更新群聊信息")
 		return
 	}
 
@@ -495,75 +488,14 @@ func UpdateGroupInfo(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "群聊信息更新成功",
-		"data": gin.H{
-			"id":                conv.ID,
-			"type":              conv.Type,
-			"name":              group.Name,
-			"avatar":            group.Avatar,
-			"announcement":      group.Announcement,
-			"invite_permission": group.InvitePermission,
-			"ai_config": gin.H{
-				"ai_enabled":            aiConfig.Enabled,
-				"ai_assistant_name":     aiConfig.AssistantName,
-				"ai_reply_mode":         aiConfig.ReplyMode,
-				"ai_personality":        aiConfig.Personality,
-				"ai_custom_prompt":      aiConfig.CustomPrompt,
-				"ai_language":           aiConfig.Language,
-				"ai_max_length":         aiConfig.MaxLength,
-				"ai_mention_reply_mode": aiConfig.MentionReplyMode,
-				"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
-				"ai_trigger_keywords":   aiConfig.TriggerKeywords,
-				"ai_learn_enabled":      aiConfig.LearnEnabled,
-			},
-		},
-	})
-}
-
-func GetGroupAISettings(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	convIDStr := c.Param("id")
-
-	convID, err := strconv.ParseUint(convIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
-		return
-	}
-
-	convSvc := di.GlobalContainer.ConversationService
-	groupSvc := di.GlobalContainer.GroupService
-
-	conv, err := convSvc.GetConversation(uint(convID))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
-		return
-	}
-
-	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能获取群聊或讨论组的 AI 设置"})
-		return
-	}
-
-	_, err = convSvc.GetMember(uint(convID), userID.(uint))
-	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
-		return
-	}
-
-	group, err := groupSvc.GetGroupByConversationID(uint(convID))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
-		return
-	}
-
-	aiConfig := group.GetAIConfig()
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data": gin.H{
+	response.SuccessWithMessage(c, "群聊信息更新成功", gin.H{
+		"id":                conv.ID,
+		"type":              conv.Type,
+		"name":              group.Name,
+		"avatar":            group.Avatar,
+		"announcement":      group.Announcement,
+		"invite_permission": group.InvitePermission,
+		"ai_config": gin.H{
 			"ai_enabled":            aiConfig.Enabled,
 			"ai_assistant_name":     aiConfig.AssistantName,
 			"ai_reply_mode":         aiConfig.ReplyMode,
@@ -575,9 +507,62 @@ func GetGroupAISettings(c *gin.Context) {
 			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
 			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
 			"ai_learn_enabled":      aiConfig.LearnEnabled,
-			"approval_status":       group.ApprovalStatus,
-			"reject_reason":         group.RejectReason,
 		},
+	})
+}
+
+func GetGroupAISettings(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的会话ID")
+		return
+	}
+
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
+		response.NotFound(c, "会话不存在")
+		return
+	}
+
+	if conv.Type != "group" && conv.Type != "discussion" {
+		response.BadRequest(c, "只能获取群聊或讨论组的 AI 设置")
+		return
+	}
+
+	_, err = convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
+		response.Forbidden(c, "您不是成员")
+		return
+	}
+
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
+		response.NotFound(c, "群聊信息不存在")
+		return
+	}
+
+	aiConfig := group.GetAIConfig()
+
+	response.Success(c, gin.H{
+		"ai_enabled":            aiConfig.Enabled,
+		"ai_assistant_name":     aiConfig.AssistantName,
+		"ai_reply_mode":         aiConfig.ReplyMode,
+		"ai_personality":        aiConfig.Personality,
+		"ai_custom_prompt":      aiConfig.CustomPrompt,
+		"ai_language":           aiConfig.Language,
+		"ai_max_length":         aiConfig.MaxLength,
+		"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+		"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+		"ai_learn_enabled":      aiConfig.LearnEnabled,
+		"approval_status":       group.ApprovalStatus,
+		"reject_reason":         group.RejectReason,
 	})
 }
 
@@ -587,7 +572,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
@@ -606,7 +591,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -615,29 +600,29 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能更新群聊或讨论组的 AI 设置"})
+		response.BadRequest(c, "只能更新群聊或讨论组的 AI 设置")
 		return
 	}
 
 	member, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
+		response.Forbidden(c, "您不是成员")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		response.NotFound(c, "群聊信息不存在")
 		return
 	}
 
 	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以更新 AI 设置"})
+		response.Forbidden(c, "只有群主或管理员可以更新 AI 设置")
 		return
 	}
 
@@ -650,7 +635,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 		if needsApproval {
 			if group.ApprovalStatus == model.ApprovalStatusPending {
-				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的AI助手申请"})
+				response.BadRequest(c, "已有待审批的AI助手申请")
 				return
 			}
 
@@ -698,13 +683,9 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 			groupSvc.UpdateGroup(group)
 
-			c.JSON(http.StatusOK, gin.H{
-				"code":    0,
-				"message": "AI助手申请已提交，等待系统管理员审批",
-				"data": gin.H{
-					"approval_status": model.ApprovalStatusPending,
-					"applied_at":      now,
-				},
+			response.SuccessWithMessage(c, "AI助手申请已提交，等待系统管理员审批", gin.H{
+				"approval_status": model.ApprovalStatusPending,
+				"applied_at":      now,
 			})
 			return
 		}
@@ -749,27 +730,23 @@ func UpdateGroupAISettings(c *gin.Context) {
 	}
 
 	if err := group.SetAIConfig(aiConfig); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存AI配置失败"})
+		response.InternalServerError(c, "保存AI配置失败")
 		return
 	}
 	groupSvc.UpdateGroup(group)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "AI 设置更新成功",
-		"data": gin.H{
-			"ai_enabled":            aiConfig.Enabled,
-			"ai_assistant_name":     aiConfig.AssistantName,
-			"ai_reply_mode":         aiConfig.ReplyMode,
-			"ai_personality":        aiConfig.Personality,
-			"ai_custom_prompt":      aiConfig.CustomPrompt,
-			"ai_language":           aiConfig.Language,
-			"ai_max_length":         aiConfig.MaxLength,
-			"ai_mention_reply_mode": aiConfig.MentionReplyMode,
-			"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
-			"ai_trigger_keywords":   aiConfig.TriggerKeywords,
-			"ai_learn_enabled":      aiConfig.LearnEnabled,
-		},
+	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
+		"ai_enabled":            aiConfig.Enabled,
+		"ai_assistant_name":     aiConfig.AssistantName,
+		"ai_reply_mode":         aiConfig.ReplyMode,
+		"ai_personality":        aiConfig.Personality,
+		"ai_custom_prompt":      aiConfig.CustomPrompt,
+		"ai_language":           aiConfig.Language,
+		"ai_max_length":         aiConfig.MaxLength,
+		"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+		"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+		"ai_learn_enabled":      aiConfig.LearnEnabled,
 	})
 }
 
@@ -780,13 +757,13 @@ func SetMemberRole(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	targetMemberID, err := strconv.ParseUint(memberIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		response.BadRequest(c, "无效的用户ID")
 		return
 	}
 
@@ -795,7 +772,7 @@ func SetMemberRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -803,34 +780,34 @@ func SetMemberRole(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊设置管理员"})
+		response.BadRequest(c, "只能为群聊设置管理员")
 		return
 	}
 
 	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	if currentMember.Role != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主可以设置管理员"})
+		response.Forbidden(c, "只有群主可以设置管理员")
 		return
 	}
 
 	targetMember, err := convSvc.GetMember(uint(convID), uint(targetMemberID))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
+		response.BadRequest(c, "目标用户不是群成员")
 		return
 	}
 
 	if targetMember.Role == "owner" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能修改群主角色"})
+		response.BadRequest(c, "不能修改群主角色")
 		return
 	}
 
@@ -850,11 +827,7 @@ func SetMemberRole(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "角色设置成功",
-		"data":    targetMember,
-	})
+	response.SuccessWithMessage(c, "角色设置成功", targetMember)
 }
 
 func TransferOwner(c *gin.Context) {
@@ -864,13 +837,13 @@ func TransferOwner(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	targetMemberID, err := strconv.ParseUint(memberIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		response.BadRequest(c, "无效的用户ID")
 		return
 	}
 
@@ -880,29 +853,29 @@ func TransferOwner(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能转让群主给群聊成员"})
+		response.BadRequest(c, "只能转让群主给群聊成员")
 		return
 	}
 
 	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	if currentMember.Role != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主可以转让群主"})
+		response.Forbidden(c, "只有群主可以转让群主")
 		return
 	}
 
 	targetMember, err := convSvc.GetMember(uint(convID), uint(targetMemberID))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
+		response.BadRequest(c, "目标用户不是群成员")
 		return
 	}
 
@@ -911,27 +884,27 @@ func TransferOwner(c *gin.Context) {
 	currentMember.Role = "admin"
 	if err := tx.Save(&currentMember).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "转让失败"})
+		response.InternalServerError(c, "转让失败")
 		return
 	}
 
 	targetMember.Role = "owner"
 	if err := tx.Save(&targetMember).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "转让失败"})
+		response.InternalServerError(c, "转让失败")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationIDWithTx(tx, uint(convID))
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取群聊信息失败"})
+		response.InternalServerError(c, "获取群聊信息失败")
 		return
 	}
 	group.CreatorID = targetMember.UserID
 	if err := groupSvc.UpdateGroupWithTx(tx, group); err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "转让失败"})
+		response.InternalServerError(c, "转让失败")
 		return
 	}
 
@@ -950,11 +923,7 @@ func TransferOwner(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "群主转让成功",
-		"data":    targetMember,
-	})
+	response.SuccessWithMessage(c, "群主转让成功", targetMember)
 }
 
 func UpdateAnnouncement(c *gin.Context) {
@@ -967,7 +936,7 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
@@ -976,7 +945,7 @@ func UpdateAnnouncement(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -987,35 +956,35 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能为群聊或讨论组设置公告"})
+		response.BadRequest(c, "只能为群聊或讨论组设置公告")
 		return
 	}
 
 	member, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		response.NotFound(c, "群聊信息不存在")
 		return
 	}
 
 	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以设置群公告"})
+		response.Forbidden(c, "只有群主或管理员可以设置群公告")
 		return
 	}
 
 	group.Announcement = req.Announcement
 	if err := groupSvc.UpdateGroup(group); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新群公告失败"})
+		response.InternalServerError(c, "更新群公告失败")
 		return
 	}
 
@@ -1093,7 +1062,7 @@ func UpdateAnnouncement(c *gin.Context) {
 		ws.GlobalHub.SendToConversation(uint(convID), 0, newMsgJson)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "群公告更新成功", "data": group})
+	response.SuccessWithMessage(c, "群公告更新成功", group)
 }
 
 func ApplyJoinGroup(c *gin.Context) {
@@ -1106,7 +1075,7 @@ func ApplyJoinGroup(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
@@ -1117,30 +1086,30 @@ func ApplyJoinGroup(c *gin.Context) {
 
 	conv, err := convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	if conv.Type != "group" && conv.Type != "discussion" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能申请加入群聊或讨论组"})
+		response.BadRequest(c, "只能申请加入群聊或讨论组")
 		return
 	}
 
 	existingMember, _ := convSvc.GetMember(uint(convID), userID.(uint))
 	if existingMember != nil {
-		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "您已经是群成员"})
+		response.Conflict(c, "您已经是群成员")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		response.NotFound(c, "群聊信息不存在")
 		return
 	}
 
 	currentUser, err := userSvc.GetUser(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败"})
+		response.InternalServerError(c, "获取用户信息失败")
 		return
 	}
 
@@ -1158,7 +1127,7 @@ func ApplyJoinGroup(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "申请已发送，请等待管理员审批"})
+	response.SuccessWithMessage(c, "申请已发送，请等待管理员审批", nil)
 }
 
 func RejectJoinRequest(c *gin.Context) {
@@ -1172,13 +1141,13 @@ func RejectJoinRequest(c *gin.Context) {
 
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的会话ID"})
+		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
 	targetUserID, err := strconv.ParseUint(targetUserIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的用户ID"})
+		response.BadRequest(c, "无效的用户ID")
 		return
 	}
 
@@ -1189,30 +1158,30 @@ func RejectJoinRequest(c *gin.Context) {
 
 	_, err = convSvc.GetConversation(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
+		response.NotFound(c, "会话不存在")
 		return
 	}
 
 	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
+		response.Forbidden(c, "您不是群成员")
 		return
 	}
 
 	if currentMember.Role != "owner" && currentMember.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主或管理员可以拒绝加入请求"})
+		response.Forbidden(c, "只有群主或管理员可以拒绝加入请求")
 		return
 	}
 
 	_, err = userSvc.GetUser(uint(targetUserID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		response.NotFound(c, "用户不存在")
 		return
 	}
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
+		response.NotFound(c, "群聊信息不存在")
 		return
 	}
 
@@ -1224,5 +1193,5 @@ func RejectJoinRequest(c *gin.Context) {
 		Priority: "normal",
 	})
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已拒绝加入请求"})
+	response.SuccessWithMessage(c, "已拒绝加入请求", nil)
 }
