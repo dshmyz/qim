@@ -9,6 +9,7 @@ import (
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -34,20 +35,20 @@ func AnalyzeNote(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	db := database.GetDB()
 	var note model.Note
 	if err := db.Where("id = ? AND user_id = ?", uint(noteID), userID).First(&note).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
+		response.NotFound(c, "笔记不存在")
 		return
 	}
 
 	aiSvc := di.GlobalContainer.AIService
 	if aiSvc == nil || !aiSvc.IsConfigured() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "AI 服务未配置"})
+		response.Error(c, http.StatusServiceUnavailable, 503, "AI 服务未配置")
 		return
 	}
 
@@ -65,7 +66,7 @@ func AnalyzeNote(c *gin.Context) {
 
 	result, err := aiSvc.GetCompletion(messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI 分析失败"})
+		response.InternalServerError(c, "AI 分析失败")
 		return
 	}
 
@@ -86,10 +87,7 @@ func AnalyzeNote(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": analyzeResult,
-	})
+	response.Success(c, analyzeResult)
 }
 
 func ExportNote(c *gin.Context) {
@@ -98,14 +96,14 @@ func ExportNote(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	db := database.GetDB()
 	var note model.Note
 	if err := db.Where("id = ? AND user_id = ?", uint(noteID), userID).First(&note).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
+		response.NotFound(c, "笔记不存在")
 		return
 	}
 
@@ -124,13 +122,13 @@ func UpdateNoteTags(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	var req NoteTagsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -138,11 +136,11 @@ func UpdateNoteTags(c *gin.Context) {
 
 	db := database.GetDB()
 	if err := db.Model(&model.Note{}).Where("id = ? AND user_id = ?", uint(noteID), userID).Update("tags", string(tagsJSON)).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+		response.InternalServerError(c, "更新失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "更新成功"})
+	response.SuccessWithMessage(c, "更新成功", nil)
 }
 
 func UpdateNoteSummary(c *gin.Context) {
@@ -151,23 +149,23 @@ func UpdateNoteSummary(c *gin.Context) {
 
 	noteID, err := strconv.ParseUint(noteIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的笔记ID"})
+		response.BadRequest(c, "无效的笔记ID")
 		return
 	}
 
 	var req NoteSummaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	db := database.GetDB()
 	if err := db.Model(&model.Note{}).Where("id = ? AND user_id = ?", uint(noteID), userID).Update("summary", req.Summary).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+		response.InternalServerError(c, "更新失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "更新成功"})
+	response.SuccessWithMessage(c, "更新成功", nil)
 }
 
 func findJSONStart(s string) int {
