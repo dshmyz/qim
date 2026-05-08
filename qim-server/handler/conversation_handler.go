@@ -293,15 +293,41 @@ func CreateSingleConversation(c *gin.Context) {
 			return
 		}
 
-		conv := model.Conversation{Type: "single"}
-		db.Create(&conv)
+		tx := db.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+			}
+		}()
 
-		db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
-		db.Create(&model.BotConversation{
+		conv := model.Conversation{Type: "single"}
+		if err := tx.Create(&conv).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+
+		if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+
+		if err := tx.Create(&model.BotConversation{
 			BotID:          *req.BotID,
 			UserID:         userID.(uint),
 			ConversationID: conv.ID,
-		})
+		}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
 
 		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
 		response.Success(c, conv)
@@ -327,36 +353,68 @@ func CreateSingleConversation(c *gin.Context) {
 		return
 	}
 
-	if userID.(uint) == req.UserID {
-		var targetUser model.User
-		db.First(&targetUser, req.UserID)
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
 
+	if userID.(uint) == req.UserID {
 		conv := model.Conversation{
 			Type: "single",
 		}
-		db.Create(&conv)
+		if err := tx.Create(&conv).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
 
-		db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
+		if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
 
 		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-
 		response.Success(c, conv)
 		return
 	}
 
-	var targetUser model.User
-	db.First(&targetUser, req.UserID)
-
 	conv := model.Conversation{
 		Type: "single",
 	}
-	db.Create(&conv)
+	if err := tx.Create(&conv).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
-	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"})
-	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: req.UserID, Role: "member"})
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
+
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: req.UserID, Role: "member"}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
 	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-
 	response.Success(c, conv)
 }
 
@@ -399,22 +457,45 @@ func CreateBotConversation(c *gin.Context) {
 	}
 
 	// 创建新会话
-	conv := model.Conversation{Type: "bot"}
-	db.Create(&conv)
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
 
-	// 添加用户为会话成员
-	db.Create(&model.ConversationMember{
+	conv := model.Conversation{Type: "bot"}
+	if err := tx.Create(&conv).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
+
+	if err := tx.Create(&model.ConversationMember{
 		ConversationID: conv.ID,
 		UserID:         userID.(uint),
 		Role:           "member",
-	})
+	}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
-	// 创建 Bot 会话关联
-	db.Create(&model.BotConversation{
+	if err := tx.Create(&model.BotConversation{
 		BotID:          bot.ID,
 		UserID:         userID.(uint),
 		ConversationID: conv.ID,
-	})
+	}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
 	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
 	response.Success(c, conv)
@@ -436,10 +517,21 @@ func CreateGroupConversation(c *gin.Context) {
 
 	db := database.GetDB()
 
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
 	conv := model.Conversation{
 		Type: "group",
 	}
-	db.Create(&conv)
+	if err := tx.Create(&conv).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
 	// 创建群聊记录
 	group := model.Group{
@@ -450,14 +542,32 @@ func CreateGroupConversation(c *gin.Context) {
 		CreatorID:        userID.(uint),
 		InvitePermission: "owner_admin",
 	}
-	db.Create(&group)
+	if err := tx.Create(&group).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建群聊失败")
+		return
+	}
 
-	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"})
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "添加成员失败")
+		return
+	}
 
 	for _, mid := range req.MemberIDs {
 		if mid != userID.(uint) {
-			db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"})
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+				tx.Rollback()
+				response.InternalServerError(c, "添加成员失败")
+				return
+			}
 		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建群聊失败")
+		return
 	}
 
 	// 构建包含群聊信息的响应
@@ -509,12 +619,22 @@ func CreateDiscussionConversation(c *gin.Context) {
 
 	db := database.GetDB()
 
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
 	conv := model.Conversation{
 		Type: "discussion",
 	}
-	db.Create(&conv)
+	if err := tx.Create(&conv).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
 
-	// 创建群聊记录
 	group := model.Group{
 		ConversationID:   conv.ID,
 		GroupType:        "discussion",
@@ -523,14 +643,32 @@ func CreateDiscussionConversation(c *gin.Context) {
 		CreatorID:        userID.(uint),
 		InvitePermission: "owner_admin",
 	}
-	db.Create(&group)
+	if err := tx.Create(&group).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建讨论组失败")
+		return
+	}
 
-	db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"})
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "添加成员失败")
+		return
+	}
 
 	for _, mid := range req.MemberIDs {
 		if mid != userID.(uint) {
-			db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"})
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+				tx.Rollback()
+				response.InternalServerError(c, "添加成员失败")
+				return
+			}
 		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建讨论组失败")
+		return
 	}
 
 	// 构建包含群聊信息的响应

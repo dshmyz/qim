@@ -446,55 +446,25 @@ CREATE INDEX IF NOT EXISTS `idx_channel_messages_deleted_at` ON `channel_message
 -- AI configs table
 CREATE TABLE IF NOT EXISTS `ai_configs` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `user_id` INTEGER NOT NULL UNIQUE,
+  `user_id` INTEGER NOT NULL,
+  `config_name` VARCHAR(50),
+  `is_default` BOOLEAN DEFAULT FALSE,
   `provider` VARCHAR(50) DEFAULT 'openai',
-  `openai_api_key` VARCHAR(500),
-  `openai_model` VARCHAR(100),
-  `openai_base_url` VARCHAR(500),
-  `baidu_api_key` VARCHAR(500),
-  `baidu_secret_key` VARCHAR(500),
-  `baidu_model` VARCHAR(100),
-  `baidu_base_url` VARCHAR(500),
-  `alibaba_api_key` VARCHAR(500),
-  `alibaba_model` VARCHAR(100),
-  `alibaba_base_url` VARCHAR(500),
-  `tencent_secret_id` VARCHAR(500),
-  `tencent_secret_key` VARCHAR(500),
-  `tencent_model` VARCHAR(100),
-  `tencent_base_url` VARCHAR(500),
-  `bytedance_api_key` VARCHAR(500),
-  `bytedance_model` VARCHAR(100),
-  `bytedance_base_url` VARCHAR(500),
-  `anthropic_api_key` VARCHAR(500),
-  `anthropic_model` VARCHAR(100),
-  `anthropic_base_url` VARCHAR(500),
+  `config_json` TEXT,
+  `api_key_encrypted` TEXT,
+  `model_name` VARCHAR(50),
+  `base_url` VARCHAR(255),
   `ai_enabled` BOOLEAN DEFAULT TRUE,
   `daily_limit` INTEGER DEFAULT 0,
   `max_tokens` INTEGER DEFAULT 1000,
   `temperature` DECIMAL(3,2) DEFAULT 0.70,
+  `is_verified` BOOLEAN DEFAULT FALSE,
+  `last_tested_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- User AI configs table
-CREATE TABLE IF NOT EXISTS `user_ai_configs` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `user_id` INTEGER NOT NULL,
-  `config_name` VARCHAR(50) NOT NULL,
-  `provider` VARCHAR(20) NOT NULL,
-  `api_key_encrypted` TEXT NOT NULL,
-  `model_name` VARCHAR(50) NOT NULL,
-  `base_url` VARCHAR(255),
-  `temperature` DECIMAL(3,2) DEFAULT 0.70,
-  `max_tokens` INTEGER DEFAULT 1000,
-  `is_verified` BOOLEAN DEFAULT FALSE,
-  `last_tested_at` DATETIME,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(`user_id`, `config_name`)
-);
-
-CREATE INDEX IF NOT EXISTS `idx_user_ai_configs_user_id` ON `user_ai_configs`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_ai_configs_user_id` ON `ai_configs`(`user_id`);
 
 -- Sensitive words table
 CREATE TABLE IF NOT EXISTS `sensitive_words` (

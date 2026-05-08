@@ -1,17 +1,17 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type UserHandler struct {
@@ -163,19 +163,19 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 // 向后兼容的包装函数
 func GetCurrentUser(c *gin.Context) {
-	userService := service.NewUserService(database.GetDB())
+	userService := di.GlobalContainer.UserService
 	handler := NewUserHandler(userService)
 	handler.GetCurrentUser(c)
 }
 
 func UpdateUser(c *gin.Context) {
-	userService := service.NewUserService(database.GetDB())
+	userService := di.GlobalContainer.UserService
 	handler := NewUserHandler(userService)
 	handler.UpdateUser(c)
 }
 
 func SearchUsers(c *gin.Context) {
-	userService := service.NewUserService(database.GetDB())
+	userService := di.GlobalContainer.UserService
 	handler := NewUserHandler(userService)
 	handler.SearchUsers(c)
 }
@@ -193,7 +193,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 
 	var count int64
 	db.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
@@ -242,7 +242,7 @@ func GetUser(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 	var user model.User
 	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
 		response.NotFound(c, "用户不存在")
@@ -267,7 +267,7 @@ func GetUserByID(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 	var user model.User
 	if err := db.First(&user, uint(userID)).Error; err != nil {
 		response.NotFound(c, "用户不存在")
@@ -316,7 +316,7 @@ func AddUserRole(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 
 	var targetUser model.User
 	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
@@ -324,9 +324,17 @@ func AddUserRole(c *gin.Context) {
 		return
 	}
 
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
 	var existingRole model.UserRole
-	result := db.Where("user_id = ? AND role = ?", uint(targetUserID), req.Role).First(&existingRole)
+	result := tx.Where("user_id = ? AND role = ?", uint(targetUserID), req.Role).First(&existingRole)
 	if result.Error == nil {
+		tx.Rollback()
 		response.BadRequest(c, "角色已存在")
 		return
 	}
@@ -336,7 +344,14 @@ func AddUserRole(c *gin.Context) {
 		Role:   req.Role,
 	}
 
-	if err := db.Create(&userRole).Error; err != nil {
+	if err := tx.Create(&userRole).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "添加角色失败")
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
 		response.InternalServerError(c, "添加角色失败")
 		return
 	}
@@ -361,7 +376,7 @@ func RemoveUserRole(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 
 	var targetUser model.User
 	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
@@ -405,7 +420,7 @@ func BatchAssignUserRoles(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 
 	var targetUser model.User
 	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
@@ -440,7 +455,7 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 
 	var targetUser model.User
 	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
@@ -463,49 +478,32 @@ func DeleteUser(c *gin.Context) {
 }
 
 func GetAIConfig(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
 
-	db := database.GetDB()
-	var aiConfig model.AIConfig
-	if err := db.Where("user_id = ?", userID).First(&aiConfig).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			response.Success(c, nil)
-			return
-		}
+	svc := di.GlobalContainer.AIConfigService
+	config, err := svc.GetDefaultConfig(userID)
+	if err != nil {
 		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	response.Success(c, aiConfig)
+	response.Success(c, config)
 }
 
 func UpdateAIConfig(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
 
 	var req struct {
-		Provider         string  `json:"provider"`
-		OpenAIAPIKey     string  `json:"openai_api_key"`
-		OpenAIModel      string  `json:"openai_model"`
-		OpenAIBaseURL    string  `json:"openai_base_url"`
-		BaiduAPIKey      string  `json:"baidu_api_key"`
-		BaiduSecretKey   string  `json:"baidu_secret_key"`
-		BaiduModel       string  `json:"baidu_model"`
-		BaiduBaseURL     string  `json:"baidu_base_url"`
-		AlibabaAPIKey    string  `json:"alibaba_api_key"`
-		AlibabaModel     string  `json:"alibaba_model"`
-		AlibabaBaseURL   string  `json:"alibaba_base_url"`
-		TencentSecretID  string  `json:"tencent_secret_id"`
-		TencentSecretKey string  `json:"tencent_secret_key"`
-		TencentModel     string  `json:"tencent_model"`
-		TencentBaseURL   string  `json:"tencent_base_url"`
-		BytedanceAPIKey  string  `json:"bytedance_api_key"`
-		BytedanceModel   string  `json:"bytedance_model"`
-		BytedanceBaseURL string  `json:"bytedance_base_url"`
-		AnthropicAPIKey  string  `json:"anthropic_api_key"`
-		AnthropicModel   string  `json:"anthropic_model"`
-		AnthropicBaseURL string  `json:"anthropic_base_url"`
-		MaxTokens        int     `json:"max_tokens"`
-		Temperature      float64 `json:"temperature"`
+		Provider    string  `json:"provider" binding:"required"`
+		APIKey      string  `json:"api_key"`
+		SecretKey   string  `json:"secret_key"`
+		SecretID    string  `json:"secret_id"`
+		Model       string  `json:"model"`
+		BaseURL     string  `json:"base_url"`
+		MaxTokens   int     `json:"max_tokens"`
+		Temperature float64 `json:"temperature"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -513,102 +511,28 @@ func UpdateAIConfig(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var aiConfig model.AIConfig
-	if err := db.Where("user_id = ?", userID).First(&aiConfig).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			aiConfig = model.AIConfig{
-				UserID: userID.(uint),
-			}
-		} else {
-			response.InternalServerError(c, "查询失败")
+	svc := di.GlobalContainer.AIConfigService
+	config, err := svc.UpdateDefaultConfig(userID, req.Provider, req.APIKey, req.SecretKey, req.SecretID, req.Model, req.BaseURL, req.MaxTokens, req.Temperature)
+	if err != nil {
+		if errors.Is(err, service.ErrUnsupportedProvider) {
+			response.BadRequest(c, "不支持的供应商")
 			return
 		}
+		response.InternalServerError(c, "更新失败")
+		return
 	}
 
-	if req.Provider != "" {
-		aiConfig.Provider = req.Provider
-	}
-	if req.OpenAIAPIKey != "" {
-		aiConfig.OpenAIAPIKey = req.OpenAIAPIKey
-	}
-	if req.OpenAIModel != "" {
-		aiConfig.OpenAIModel = req.OpenAIModel
-	}
-	if req.OpenAIBaseURL != "" {
-		aiConfig.OpenAIBaseURL = req.OpenAIBaseURL
-	}
-	if req.BaiduAPIKey != "" {
-		aiConfig.BaiduAPIKey = req.BaiduAPIKey
-	}
-	if req.BaiduSecretKey != "" {
-		aiConfig.BaiduSecretKey = req.BaiduSecretKey
-	}
-	if req.BaiduModel != "" {
-		aiConfig.BaiduModel = req.BaiduModel
-	}
-	if req.BaiduBaseURL != "" {
-		aiConfig.BaiduBaseURL = req.BaiduBaseURL
-	}
-	if req.AlibabaAPIKey != "" {
-		aiConfig.AlibabaAPIKey = req.AlibabaAPIKey
-	}
-	if req.AlibabaModel != "" {
-		aiConfig.AlibabaModel = req.AlibabaModel
-	}
-	if req.AlibabaBaseURL != "" {
-		aiConfig.AlibabaBaseURL = req.AlibabaBaseURL
-	}
-	if req.TencentSecretID != "" {
-		aiConfig.TencentSecretID = req.TencentSecretID
-	}
-	if req.TencentSecretKey != "" {
-		aiConfig.TencentSecretKey = req.TencentSecretKey
-	}
-	if req.TencentModel != "" {
-		aiConfig.TencentModel = req.TencentModel
-	}
-	if req.TencentBaseURL != "" {
-		aiConfig.TencentBaseURL = req.TencentBaseURL
-	}
-	if req.BytedanceAPIKey != "" {
-		aiConfig.BytedanceAPIKey = req.BytedanceAPIKey
-	}
-	if req.BytedanceModel != "" {
-		aiConfig.BytedanceModel = req.BytedanceModel
-	}
-	if req.BytedanceBaseURL != "" {
-		aiConfig.BytedanceBaseURL = req.BytedanceBaseURL
-	}
-	if req.AnthropicAPIKey != "" {
-		aiConfig.AnthropicAPIKey = req.AnthropicAPIKey
-	}
-	if req.AnthropicModel != "" {
-		aiConfig.AnthropicModel = req.AnthropicModel
-	}
-	if req.AnthropicBaseURL != "" {
-		aiConfig.AnthropicBaseURL = req.AnthropicBaseURL
-	}
-	if req.MaxTokens > 0 {
-		aiConfig.MaxTokens = req.MaxTokens
-	}
-	if req.Temperature > 0 {
-		aiConfig.Temperature = req.Temperature
-	}
-
-	if aiConfig.ID == 0 {
-		if err := db.Create(&aiConfig).Error; err != nil {
-			response.InternalServerError(c, "创建失败")
-			return
-		}
-	} else {
-		if err := db.Save(&aiConfig).Error; err != nil {
-			response.InternalServerError(c, "更新失败")
-			return
-		}
-	}
-
-	response.Success(c, aiConfig)
+	response.Success(c, gin.H{
+		"id":           config.ID,
+		"user_id":      config.UserID,
+		"provider":     config.Provider,
+		"ai_enabled":   config.AIEnabled,
+		"daily_limit":  config.DailyLimit,
+		"max_tokens":   config.MaxTokens,
+		"temperature":  config.Temperature,
+		"created_at":   config.CreatedAt,
+		"updated_at":   config.UpdatedAt,
+	})
 }
 
 func GetUserStatus(c *gin.Context) {
@@ -624,7 +548,7 @@ func GetUserStatus(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 	var user model.User
 	if err := db.Select("id", "status", "last_online").First(&user, uint(userID)).Error; err != nil {
 		response.NotFound(c, "用户不存在")
@@ -660,7 +584,7 @@ func GetUserStatusBatch(c *gin.Context) {
 		userIDs = append(userIDs, uint(id))
 	}
 
-	db := database.GetDB()
+	db := di.GlobalContainer.DB
 	var users []model.User
 	if err := db.Select("id", "status", "last_online").
 		Where("id IN ?", userIDs).

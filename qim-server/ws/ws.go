@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"qim-server/database"
 	"qim-server/model"
 	"strconv"
 	"sync"
@@ -51,6 +50,7 @@ type Hub struct {
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
+	db                  *gorm.DB
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
@@ -69,7 +69,7 @@ type WSMessage struct {
 	RequestID string      `json:"request_id,omitempty"`
 }
 
-func NewHub() *Hub {
+func NewHub(db *gorm.DB) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
@@ -91,6 +91,7 @@ func NewHub() *Hub {
 		conversationMembers: make(map[uint]cachedMembers),
 		nodes:               nodes,
 		nodeID:              nodeID,
+		db:                  db,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
 	}
 }
@@ -233,7 +234,7 @@ func (h *Hub) IsUserOnline(userID uint) bool {
 // UpdateConversationMembers 更新会话成员缓存
 func (h *Hub) UpdateConversationMembers(convID uint) {
 	// 从数据库查询最新的会话成员
-	db := database.GetDB()
+	db := h.db
 	var members []model.ConversationMember
 	result := db.Where("conversation_id = ?", convID).Find(&members)
 	if result.Error != nil {
@@ -295,7 +296,7 @@ func (h *Hub) SendToConversation(convID uint, excludeUserID uint, message []byte
 	if found && time.Now().Before(cached.expiredAt) {
 		memberIDs = cached.memberIDs
 	} else {
-		db := database.GetDB()
+		db := h.db
 		var members []model.ConversationMember
 		result := db.Where("conversation_id = ?", convID).Find(&members)
 		if result.Error != nil {
@@ -332,7 +333,7 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 	if found && time.Now().Before(cached.expiredAt) {
 		memberIDs = cached.memberIDs
 	} else {
-		db := database.GetDB()
+		db := h.db
 		var members []model.ConversationMember
 		result := db.Where("conversation_id = ?", convID).Find(&members)
 		if result.Error != nil {
@@ -463,7 +464,7 @@ func (c *Client) writePump() {
 }
 
 func handleSendMessage(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -531,7 +532,7 @@ func handleSendMessage(c *Client, data interface{}) {
 }
 
 func handleReadMessage(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -729,7 +730,7 @@ func ServeScreenShare(hub *Hub, c *gin.Context) {
 
 // 处理屏幕共享开始
 func handleScreenShareStart(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -783,7 +784,7 @@ func handleScreenShareStart(c *Client, data interface{}) {
 
 // 处理屏幕共享停止
 func handleScreenShareStop(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -825,7 +826,7 @@ func handleScreenShareStop(c *Client, data interface{}) {
 
 // 处理屏幕共享数据
 func handleScreenShareData(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -908,7 +909,7 @@ func handleScreenShareData(c *Client, data interface{}) {
 
 // 处理屏幕共享请求（支持离线用户）
 func handleScreenShareRequest(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -1001,7 +1002,7 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 
 // 处理屏幕共享响应
 func handleScreenShareResponse(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -1265,7 +1266,7 @@ func (d *StatusDebouncer) Debounce(userID uint, fn func()) {
 
 // UpdateUserStatus 更新用户状态并广播
 func (h *Hub) UpdateUserStatus(userID uint, status string) {
-	db := database.GetDB()
+	db := h.db
 	now := time.Now()
 
 	result := db.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
@@ -1287,7 +1288,7 @@ func (h *Hub) UpdateUserStatus(userID uint, status string) {
 
 // BroadcastUserStatus 广播用户状态变更
 func (h *Hub) BroadcastUserStatus(userID uint, status string) {
-	db := database.GetDB()
+	db := h.db
 	var user model.User
 	if err := db.Select("id", "username", "nickname", "avatar", "status", "last_online").
 		First(&user, userID).Error; err != nil {
@@ -1327,7 +1328,7 @@ func (h *Hub) BroadcastUserStatus(userID uint, status string) {
 
 // BroadcastToConversationMembers 向用户所在会话的成员广播状态变更
 func (h *Hub) BroadcastToConversationMembers(userID uint, message []byte) {
-	db := database.GetDB()
+	db := h.db
 
 	var members []model.ConversationMember
 	if err := db.Select("conversation_id").
@@ -1423,7 +1424,7 @@ func handleSubscribeUserStatus(c *Client, data interface{}) {
 	c.hub.SubscribeUserStatus(c.userID, targetUserID)
 
 	// 立即返回当前状态
-	db := database.GetDB()
+	db := c.hub.db
 	var user model.User
 	if err := db.Select("id", "username", "nickname", "avatar", "status", "last_online").
 		First(&user, targetUserID).Error; err == nil {

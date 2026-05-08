@@ -377,7 +377,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/users/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteUser)
 
 			// AI相关路由
-			userAIConfigHandler := handler.NewUserAIConfigHandler(GetDB())
+			userAIConfigHandler := handler.NewUserAIConfigHandler()
 			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
 

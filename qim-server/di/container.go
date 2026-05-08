@@ -42,6 +42,7 @@ type Container struct {
 	BotService           *service.BotService
 	AIProviderService    *service.AIProviderService
 	GroupDocumentService *service.GroupDocumentService
+	AIConfigService      *service.AIConfigService
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
 }
@@ -79,6 +80,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	botService := service.NewBotService(db)
 	aiProviderService := service.NewAIProviderService(db)
 	groupDocumentService := service.NewGroupDocumentService(db)
+	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 
 	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
@@ -112,6 +114,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		BotService:           botService,
 		AIProviderService:    aiProviderService,
 		GroupDocumentService: groupDocumentService,
+		AIConfigService:      aiConfigService,
 		WebSocketHub:         hub,
 		AuthMiddleware:       authMiddleware,
 	}

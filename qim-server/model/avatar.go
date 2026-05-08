@@ -50,9 +50,9 @@ type AvatarConfig struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
-	User        User          `json:"user,omitempty" gorm:"foreignkey:UserID"`
-	ModelConfig *UserAIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
-	Approver    *User         `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
+	User        User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ModelConfig *AIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
+	Approver    *User     `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
 }
 
 // CanApply 检查是否可以申请审批

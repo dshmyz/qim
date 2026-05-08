@@ -1,22 +1,21 @@
 package handler
 
 import (
-	"net/http"
+	"errors"
+	"strconv"
 	"time"
 	"qim-server/model"
+	"qim-server/di"
 	"qim-server/pkg/response"
-	"qim-server/utils"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-type UserAIConfigHandler struct {
-	db *gorm.DB
-}
+type UserAIConfigHandler struct{}
 
-func NewUserAIConfigHandler(db *gorm.DB) *UserAIConfigHandler {
-	return &UserAIConfigHandler{db: db}
+func NewUserAIConfigHandler() *UserAIConfigHandler {
+	return &UserAIConfigHandler{}
 }
 
 func (h *UserAIConfigHandler) RegisterRoutes(router *gin.RouterGroup) {
@@ -43,7 +42,7 @@ type ConfigResponse struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-func toConfigResponse(cfg model.UserAIConfig) ConfigResponse {
+func toConfigResponse(cfg model.AIConfig) ConfigResponse {
 	return ConfigResponse{
 		ID:           cfg.ID,
 		ConfigName:   cfg.ConfigName,
@@ -59,12 +58,21 @@ func toConfigResponse(cfg model.UserAIConfig) ConfigResponse {
 }
 
 func (h *UserAIConfigHandler) ListMyConfigs(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
 
-	var configs []model.UserAIConfig
-	if err := h.db.Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&configs).Error; err != nil {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	svc := di.GlobalContainer.AIConfigService
+	configs, total, err := svc.ListUserConfigs(userID, page, pageSize)
+	if err != nil {
 		response.InternalServerError(c, "查询配置失败")
 		return
 	}
@@ -74,7 +82,12 @@ func (h *UserAIConfigHandler) ListMyConfigs(c *gin.Context) {
 		responses[i] = toConfigResponse(cfg)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": responses})
+	response.Success(c, gin.H{
+		"list":     responses,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
 }
 
 type CreateConfigRequest struct {
@@ -95,56 +108,31 @@ func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 		return
 	}
 
-	var count int64
-	h.db.Model(&model.UserAIConfig{}).Where("user_id = ?", userID).Count(&count)
-	if count >= 5 {
-		response.BadRequest(c, "配置数量已达上限（5个）")
-		return
-	}
-
-	encryptedKey, err := utils.EncryptAPIKey(req.APIKey)
+	svc := di.GlobalContainer.AIConfigService
+	config, err := svc.CreateConfig(userID, req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
 	if err != nil {
-		response.InternalServerError(c, "加密失败")
-		return
-	}
-
-	verified := h.testConnection(req.Provider, req.APIKey, req.ModelName, req.BaseURL)
-
-	config := model.UserAIConfig{
-		UserID:          userID,
-		ConfigName:      req.ConfigName,
-		Provider:        req.Provider,
-		APIKeyEncrypted: encryptedKey,
-		ModelName:       req.ModelName,
-		BaseURL:         req.BaseURL,
-		IsVerified:      verified,
-	}
-
-	now := time.Now()
-	config.LastTestedAt = &now
-
-	if err := h.db.Create(&config).Error; err != nil {
+		if errors.Is(err, service.ErrConfigLimitExceeded) {
+			response.BadRequest(c, "配置数量已达上限（5个）")
+			return
+		}
 		response.InternalServerError(c, "创建配置失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"id":          config.ID,
-			"is_verified": verified,
-		},
+	response.Success(c, gin.H{
+		"id":          config.ID,
+		"is_verified": config.IsVerified,
 	})
 }
 
 func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 	userIDAny, _ := c.Get("user_id")
 	userID := userIDAny.(uint)
-	id := c.Param("id")
+	idStr := c.Param("id")
 
-	var config model.UserAIConfig
-	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -154,58 +142,45 @@ func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
-	if req.APIKey != "" {
-		encryptedKey, err := utils.EncryptAPIKey(req.APIKey)
-		if err != nil {
-			response.InternalServerError(c, "加密失败")
+	svc := di.GlobalContainer.AIConfigService
+	config, err := svc.UpdateConfig(userID, uint(id), req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
+	if err != nil {
+		if errors.Is(err, service.ErrConfigNotFound) {
+			response.NotFound(c, "配置不存在")
 			return
 		}
-		config.APIKeyEncrypted = encryptedKey
-	}
-
-	config.ConfigName = req.ConfigName
-	config.Provider = req.Provider
-	config.ModelName = req.ModelName
-	config.BaseURL = req.BaseURL
-
-	verified := h.testConnection(req.Provider, req.APIKey, req.ModelName, req.BaseURL)
-	config.IsVerified = verified
-	now := time.Now()
-	config.LastTestedAt = &now
-
-	if err := h.db.Save(&config).Error; err != nil {
 		response.InternalServerError(c, "更新配置失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"id":          config.ID,
-			"is_verified": verified,
-		},
+	response.Success(c, gin.H{
+		"id":          config.ID,
+		"is_verified": config.IsVerified,
 	})
 }
 
 func (h *UserAIConfigHandler) DeleteConfig(c *gin.Context) {
 	userIDAny, _ := c.Get("user_id")
 	userID := userIDAny.(uint)
-	id := c.Param("id")
+	idStr := c.Param("id")
 
-	var config model.UserAIConfig
-	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	var botCount int64
-	h.db.Model(&model.Bot{}).Where("user_config_id = ?", id).Count(&botCount)
-	if botCount > 0 {
-		response.BadRequest(c, "该配置正在被机器人使用，无法删除")
-		return
-	}
-
-	if err := h.db.Delete(&config).Error; err != nil {
+	svc := di.GlobalContainer.AIConfigService
+	err = svc.DeleteConfig(userID, uint(id))
+	if err != nil {
+		if errors.Is(err, service.ErrConfigNotFound) {
+			response.NotFound(c, "配置不存在")
+			return
+		}
+		if errors.Is(err, service.ErrConfigInUse) {
+			response.BadRequest(c, "该配置正在被机器人使用，无法删除")
+			return
+		}
 		response.InternalServerError(c, "删除配置失败")
 		return
 	}
@@ -216,44 +191,28 @@ func (h *UserAIConfigHandler) DeleteConfig(c *gin.Context) {
 func (h *UserAIConfigHandler) TestConfig(c *gin.Context) {
 	userIDAny, _ := c.Get("user_id")
 	userID := userIDAny.(uint)
-	id := c.Param("id")
+	idStr := c.Param("id")
 
-	var config model.UserAIConfig
-	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
-		return
-	}
-
-	apiKey, err := utils.DecryptAPIKey(config.APIKeyEncrypted)
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.InternalServerError(c, "解密失败")
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	verified := h.testConnection(config.Provider, apiKey, config.ModelName, config.BaseURL)
-
-	now := time.Now()
-	h.db.Model(&config).Updates(map[string]interface{}{
-		"is_verified":    verified,
-		"last_tested_at": now,
-	})
+	svc := di.GlobalContainer.AIConfigService
+	verified, err := svc.TestConfig(userID, uint(id))
+	if err != nil {
+		if errors.Is(err, service.ErrConfigNotFound) {
+			response.NotFound(c, "配置不存在")
+			return
+		}
+		response.InternalServerError(c, "测试失败")
+		return
+	}
 
 	if verified {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"success": true, "message": "连接成功"}})
+		response.Success(c, gin.H{"success": true, "message": "连接成功"})
 	} else {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"success": false, "message": "连接失败"}})
+		response.Success(c, gin.H{"success": false, "message": "连接失败"})
 	}
-}
-
-func (h *UserAIConfigHandler) testConnection(provider, apiKey, modelName, baseURL string) bool {
-	switch provider {
-	case "openai":
-		return testOpenAIConnection(apiKey, modelName, baseURL)
-	default:
-		return true
-	}
-}
-
-func testOpenAIConnection(apiKey, modelName, baseURL string) bool {
-	return true
 }

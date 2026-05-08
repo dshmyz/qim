@@ -8,6 +8,7 @@ import (
 	"qim-server/model"
 	"qim-server/test"
 	"qim-server/ws"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -83,7 +84,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	initSystemUser()
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub()
+	hub := ws.NewHub(database.GetDB())
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -121,7 +122,6 @@ func MigrateDB(db *gorm.DB) {
 		&model.ChannelMessage{},
 		&model.ShortLink{},
 		&model.Task{},
-		&model.UserAIConfig{},        // 用户AI配置
 		&model.RealtimeSession{},     // 实时会话
 		&model.RealtimeParticipant{}, // 实时参与者
 		&model.AIConfig{},            // AI配置
@@ -144,6 +144,8 @@ func MigrateDB(db *gorm.DB) {
 	migrateGroupData(db)
 	migrateFileSource(db)
 	migrateNoteStyle(db)
+	migrateAIConfigs(db)
+	migrateUserAIConfigs(db)
 }
 
 // cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
@@ -283,4 +285,244 @@ func migrateNoteStyle(db *gorm.DB) {
 		}
 		log.Printf("notes 表已添加 style 字段")
 	}
+}
+
+// migrateAIConfigs 迁移 AI 配置数据，将旧的冗余字段转换为新的 JSON 格式
+func migrateAIConfigs(db *gorm.DB) {
+	if !db.Migrator().HasTable("ai_configs") {
+		return
+	}
+
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_json") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_json"); err != nil {
+			log.Printf("为 ai_configs 表添加 config_json 字段失败: %v", err)
+			return
+		}
+	}
+
+	if db.Migrator().HasColumn(&model.AIConfig{}, "openai_api_key") {
+		var aiConfigs []map[string]interface{}
+		db.Table("ai_configs").Find(&aiConfigs)
+
+		migrated := 0
+		for _, cfg := range aiConfigs {
+			provider, _ := cfg["provider"].(string)
+			if provider == "" {
+				provider = "openai"
+			}
+
+			var configJSON map[string]interface{}
+			configJSON = map[string]interface{}{
+				"provider": provider,
+			}
+
+			switch provider {
+			case "openai":
+				if apiKey, ok := cfg["openai_api_key"].(string); ok && apiKey != "" {
+					configJSON["api_key"] = apiKey
+				}
+				if model, ok := cfg["openai_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["openai_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			case "baidu":
+				if apiKey, ok := cfg["baidu_api_key"].(string); ok && apiKey != "" {
+					configJSON["api_key"] = apiKey
+				}
+				if secretKey, ok := cfg["baidu_secret_key"].(string); ok && secretKey != "" {
+					configJSON["secret_key"] = secretKey
+				}
+				if model, ok := cfg["baidu_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["baidu_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			case "alibaba":
+				if apiKey, ok := cfg["alibaba_api_key"].(string); ok && apiKey != "" {
+					configJSON["api_key"] = apiKey
+				}
+				if model, ok := cfg["alibaba_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["alibaba_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			case "tencent":
+				if secretID, ok := cfg["tencent_secret_id"].(string); ok && secretID != "" {
+					configJSON["secret_id"] = secretID
+				}
+				if secretKey, ok := cfg["tencent_secret_key"].(string); ok && secretKey != "" {
+					configJSON["secret_key"] = secretKey
+				}
+				if model, ok := cfg["tencent_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["tencent_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			case "bytedance":
+				if apiKey, ok := cfg["bytedance_api_key"].(string); ok && apiKey != "" {
+					configJSON["api_key"] = apiKey
+				}
+				if model, ok := cfg["bytedance_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["bytedance_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			case "anthropic":
+				if apiKey, ok := cfg["anthropic_api_key"].(string); ok && apiKey != "" {
+					configJSON["api_key"] = apiKey
+				}
+				if model, ok := cfg["anthropic_model"].(string); ok && model != "" {
+					configJSON["model"] = model
+				}
+				if baseURL, ok := cfg["anthropic_base_url"].(string); ok && baseURL != "" {
+					configJSON["base_url"] = baseURL
+				}
+			}
+
+			if len(configJSON) > 1 {
+				if configBytes, err := json.Marshal(configJSON); err == nil {
+					db.Table("ai_configs").Where("id = ?", cfg["id"]).Update("config_json", string(configBytes))
+					migrated++
+				}
+			}
+		}
+
+		if migrated > 0 {
+			log.Printf("AI 配置数据迁移完成，共迁移 %d 条记录", migrated)
+		}
+
+		db.Migrator().DropColumn(&model.AIConfig{}, "openai_api_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "openai_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "openai_base_url")
+		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_api_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_secret_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_base_url")
+		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_api_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_base_url")
+		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_secret_id")
+		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_secret_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_base_url")
+		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_api_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_base_url")
+		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_api_key")
+		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_model")
+		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_base_url")
+		log.Printf("已删除 ai_configs 表的旧供应商字段")
+	}
+}
+
+// migrateUserAIConfigs 将 user_ai_configs 表的数据迁移到 ai_configs 表，然后删除旧表
+func migrateUserAIConfigs(db *gorm.DB) {
+	if !db.Migrator().HasTable("user_ai_configs") {
+		return
+	}
+
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_name") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_name"); err != nil {
+			log.Printf("为 ai_configs 表添加 config_name 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_default") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_default"); err != nil {
+			log.Printf("为 ai_configs 表添加 is_default 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "api_key_encrypted") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "api_key_encrypted"); err != nil {
+			log.Printf("为 ai_configs 表添加 api_key_encrypted 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "model_name") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "model_name"); err != nil {
+			log.Printf("为 ai_configs 表添加 model_name 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "base_url") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "base_url"); err != nil {
+			log.Printf("为 ai_configs 表添加 base_url 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_verified") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_verified"); err != nil {
+			log.Printf("为 ai_configs 表添加 is_verified 字段失败: %v", err)
+			return
+		}
+	}
+	if !db.Migrator().HasColumn(&model.AIConfig{}, "last_tested_at") {
+		if err := db.Migrator().AddColumn(&model.AIConfig{}, "last_tested_at"); err != nil {
+			log.Printf("为 ai_configs 表添加 last_tested_at 字段失败: %v", err)
+			return
+		}
+	}
+
+	var userConfigs []map[string]interface{}
+	db.Table("user_ai_configs").Find(&userConfigs)
+
+	migrated := 0
+	for _, cfg := range userConfigs {
+		userID, _ := cfg["user_id"].(uint64)
+		configName, _ := cfg["config_name"].(string)
+		provider, _ := cfg["provider"].(string)
+		apiKeyEncrypted, _ := cfg["api_key_encrypted"].(string)
+		modelName, _ := cfg["model_name"].(string)
+		baseURL, _ := cfg["base_url"].(string)
+		temperature, _ := cfg["temperature"].(float64)
+		maxTokens, _ := cfg["max_tokens"].(int64)
+		isVerified, _ := cfg["is_verified"].(bool)
+
+		var lastTestedAt interface{}
+		if v, ok := cfg["last_tested_at"]; ok && v != nil {
+			lastTestedAt = v
+		}
+
+		createdAt, _ := cfg["created_at"].(time.Time)
+		updatedAt, _ := cfg["updated_at"].(time.Time)
+
+		newConfig := model.AIConfig{
+			UserID:          uint(userID),
+			ConfigName:      configName,
+			IsDefault:       false,
+			Provider:        provider,
+			APIKeyEncrypted: apiKeyEncrypted,
+			ModelName:       modelName,
+			BaseURL:         baseURL,
+			Temperature:     temperature,
+			MaxTokens:       int(maxTokens),
+			IsVerified:      isVerified,
+			CreatedAt:       createdAt,
+			UpdatedAt:       updatedAt,
+		}
+
+		if lastTestedAt != nil {
+			if t, ok := lastTestedAt.(time.Time); ok {
+				newConfig.LastTestedAt = &t
+			}
+		}
+
+		if err := db.Create(&newConfig).Error; err == nil {
+			migrated++
+		}
+	}
+
+	if migrated > 0 {
+		log.Printf("User AI 配置数据迁移完成，共迁移 %d 条记录", migrated)
+	}
+
+	db.Migrator().DropTable("user_ai_configs")
+	log.Printf("已删除 user_ai_configs 表")
 }

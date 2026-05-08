@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -554,55 +555,156 @@ func joinStrings(strs []string) string {
 
 // AI配置
 type AIConfig struct {
-	ID               uint   `json:"id" gorm:"primarykey"`
-	UserID           uint   `json:"user_id" gorm:"not null;uniqueIndex"`
-	Provider         string `json:"provider" gorm:"size:50;default:'openai'"`
-	OpenAIAPIKey     string `json:"openai_api_key" gorm:"size:500"`
-	OpenAIModel      string `json:"openai_model" gorm:"size:100"`
-	OpenAIBaseURL    string `json:"openai_base_url" gorm:"size:500"`
-	BaiduAPIKey      string `json:"baidu_api_key" gorm:"size:500"`
-	BaiduSecretKey   string `json:"baidu_secret_key" gorm:"size:500"`
-	BaiduModel       string `json:"baidu_model" gorm:"size:100"`
-	BaiduBaseURL     string `json:"baidu_base_url" gorm:"size:500"`
-	AlibabaAPIKey    string `json:"alibaba_api_key" gorm:"size:500"`
-	AlibabaModel     string `json:"alibaba_model" gorm:"size:100"`
-	AlibabaBaseURL   string `json:"alibaba_base_url" gorm:"size:500"`
-	TencentSecretID  string `json:"tencent_secret_id" gorm:"size:500"`
-	TencentSecretKey string `json:"tencent_secret_key" gorm:"size:500"`
-	TencentModel     string `json:"tencent_model" gorm:"size:100"`
-	TencentBaseURL   string `json:"tencent_base_url" gorm:"size:500"`
-	BytedanceAPIKey  string `json:"bytedance_api_key" gorm:"size:500"`
-	BytedanceModel   string `json:"bytedance_model" gorm:"size:100"`
-	BytedanceBaseURL string `json:"bytedance_base_url" gorm:"size:500"`
-	AnthropicAPIKey  string `json:"anthropic_api_key" gorm:"size:500"`
-	AnthropicModel   string `json:"anthropic_model" gorm:"size:100"`
-	AnthropicBaseURL string `json:"anthropic_base_url" gorm:"size:500"`
-	// 全局管控字段
-	AIEnabled   bool      `json:"ai_enabled" gorm:"default:true"` // 是否可以使用 AI
-	DailyLimit  int       `json:"daily_limit" gorm:"default:0"`   // 每日调用限制，0=不限制
-	MaxTokens   int       `json:"max_tokens" gorm:"default:1000"`
-	Temperature float64   `json:"temperature" gorm:"default:0.7"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	User        User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
-}
-
-// 用户AI配置
-type UserAIConfig struct {
 	ID              uint       `json:"id" gorm:"primarykey"`
 	UserID          uint       `json:"user_id" gorm:"not null;index"`
-	ConfigName      string     `json:"config_name" gorm:"size:50;not null"`
-	Provider        string     `json:"provider" gorm:"size:20;not null"`
-	APIKeyEncrypted string     `json:"-" gorm:"type:text;not null"`
-	ModelName       string     `json:"model_name" gorm:"size:50;not null"`
+	ConfigName      string     `json:"config_name" gorm:"size:50"`
+	IsDefault       bool       `json:"is_default" gorm:"default:false"`
+	Provider        string     `json:"provider" gorm:"size:50;default:'openai'"`
+	ConfigJSON      string     `json:"-" gorm:"type:text"` // 存储 provider 特定的配置 JSON
+	APIKeyEncrypted string     `json:"-" gorm:"type:text"` // 加密存储的 API Key
+	ModelName       string     `json:"model_name" gorm:"size:50"`
 	BaseURL         string     `json:"base_url" gorm:"size:255"`
-	Temperature     float64    `json:"temperature" gorm:"default:0.7"`
+	AIEnabled       bool       `json:"ai_enabled" gorm:"default:true"`
+	DailyLimit      int        `json:"daily_limit" gorm:"default:0"`
 	MaxTokens       int        `json:"max_tokens" gorm:"default:1000"`
+	Temperature     float64    `json:"temperature" gorm:"default:0.7"`
 	IsVerified      bool       `json:"is_verified" gorm:"default:false"`
 	LastTestedAt    *time.Time `json:"last_tested_at"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	User            User       `json:"user,omitempty" gorm:"foreignkey:UserID"`
+}
+
+// AIProviderConfig 供应商配置接口
+type AIProviderConfig interface {
+	GetProvider() string
+}
+
+// OpenAIProviderConfig OpenAI 配置
+type OpenAIProviderConfig struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+}
+
+func (c OpenAIProviderConfig) GetProvider() string { return c.Provider }
+
+// BaiduProviderConfig 百度配置
+type BaiduProviderConfig struct {
+	Provider  string `json:"provider"`
+	APIKey    string `json:"api_key"`
+	SecretKey string `json:"secret_key"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"base_url"`
+}
+
+func (c BaiduProviderConfig) GetProvider() string { return c.Provider }
+
+// AlibabaProviderConfig 阿里配置
+type AlibabaProviderConfig struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+}
+
+func (c AlibabaProviderConfig) GetProvider() string { return c.Provider }
+
+// TencentProviderConfig 腾讯配置
+type TencentProviderConfig struct {
+	Provider  string `json:"provider"`
+	SecretID  string `json:"secret_id"`
+	SecretKey string `json:"secret_key"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"base_url"`
+}
+
+func (c TencentProviderConfig) GetProvider() string { return c.Provider }
+
+// BytedanceProviderConfig 字节跳动配置
+type BytedanceProviderConfig struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+}
+
+func (c BytedanceProviderConfig) GetProvider() string { return c.Provider }
+
+// AnthropicProviderConfig Anthropic 配置
+type AnthropicProviderConfig struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+}
+
+func (c AnthropicProviderConfig) GetProvider() string { return c.Provider }
+
+// GetProviderConfig 获取供应商配置
+func (a *AIConfig) GetProviderConfig() (AIProviderConfig, error) {
+	if a.ConfigJSON == "" {
+		return nil, fmt.Errorf("配置为空")
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal([]byte(a.ConfigJSON), &config); err != nil {
+		return nil, err
+	}
+
+	provider, _ := config["provider"].(string)
+	switch provider {
+	case "openai":
+		var cfg OpenAIProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	case "baidu":
+		var cfg BaiduProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	case "alibaba":
+		var cfg AlibabaProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	case "tencent":
+		var cfg TencentProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	case "bytedance":
+		var cfg BytedanceProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	case "anthropic":
+		var cfg AnthropicProviderConfig
+		if err := json.Unmarshal([]byte(a.ConfigJSON), &cfg); err != nil {
+			return nil, err
+		}
+		return cfg, nil
+	default:
+		return nil, fmt.Errorf("不支持的供应商: %s", provider)
+	}
+}
+
+// SetProviderConfig 设置供应商配置
+func (a *AIConfig) SetProviderConfig(cfg AIProviderConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	a.ConfigJSON = string(data)
+	a.Provider = cfg.GetProvider()
+	return nil
 }
 
 // 敏感词

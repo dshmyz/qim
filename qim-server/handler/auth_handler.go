@@ -227,7 +227,15 @@ func Register(c *gin.Context) {
 		Status:       "online",
 	}
 
-	if err := db.Create(&user).Error; err != nil {
+	tx := db.Begin()
+	if err := tx.Create(&user).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "注册失败")
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
 		response.InternalServerError(c, "注册失败")
 		return
 	}

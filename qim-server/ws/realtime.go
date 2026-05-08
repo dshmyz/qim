@@ -3,7 +3,6 @@ package ws
 import (
 	"encoding/json"
 	"log"
-	"qim-server/database"
 	"qim-server/model"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 
 // HandleRealtimeSessionCreate 处理创建实时会话
 func HandleRealtimeSessionCreate(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -125,7 +124,7 @@ func HandleRealtimeSessionCreate(c *Client, data interface{}) {
 
 // HandleRealtimeJoinRequest 处理申请加入实时会话
 func HandleRealtimeJoinRequest(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -234,7 +233,7 @@ func HandleRealtimeJoinRequest(c *Client, data interface{}) {
 
 // HandleRealtimeJoinApprove 处理批准加入实时会话
 func HandleRealtimeJoinApprove(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -323,7 +322,7 @@ func HandleRealtimeJoinApprove(c *Client, data interface{}) {
 
 // HandleRealtimeJoinReject 处理拒绝加入实时会话
 func HandleRealtimeJoinReject(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -386,7 +385,7 @@ func HandleRealtimeJoinReject(c *Client, data interface{}) {
 
 // HandleRealtimeLeave 处理离开实时会话
 func HandleRealtimeLeave(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -453,7 +452,7 @@ func HandleRealtimeLeave(c *Client, data interface{}) {
 
 // HandleRealtimeSessionEnd 处理结束实时会话
 func HandleRealtimeSessionEnd(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -526,7 +525,7 @@ func handleEndSession(db *gorm.DB, session *model.RealtimeSession) {
 
 // HandleRealtimeWebRTCOffer 处理 WebRTC offer
 func HandleRealtimeWebRTCOffer(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -570,7 +569,7 @@ func HandleRealtimeWebRTCOffer(c *Client, data interface{}) {
 
 // HandleRealtimeWebRTCAnswer 处理 WebRTC answer
 func HandleRealtimeWebRTCAnswer(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
@@ -614,7 +613,7 @@ func HandleRealtimeWebRTCAnswer(c *Client, data interface{}) {
 
 // HandleRealtimeWebRTCIce 处理 WebRTC ICE candidate
 func HandleRealtimeWebRTCIce(c *Client, data interface{}) {
-	db := database.GetDB()
+	db := c.hub.db
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {

@@ -256,7 +256,7 @@ func (s *AvatarService) getConversationHistory(conversationID uint, limit int) s
 
 // generateWithUserProvider 使用用户自定义模型配置生成回复
 func (s *AvatarService) generateWithUserProvider(configID uint, systemPrompt string, prompt string) (string, error) {
-	var config model.UserAIConfig
+	var config model.AIConfig
 	if err := s.db.First(&config, configID).Error; err != nil {
 		return "", err
 	}
