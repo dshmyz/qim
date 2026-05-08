@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"qim-server/di"
 	"qim-server/model"
-	"qim-server/service"
 	"qim-server/ws"
 	"strconv"
 	"strings"
@@ -646,7 +645,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 	oldEnabled := aiConfig.Enabled
 
 	if req.AIEnabled != nil && *req.AIEnabled && !oldEnabled {
-		approvalService := service.NewApprovalService()
+		approvalService := di.GlobalContainer.ApprovalService
 		needsApproval := approvalService.IsApprovalEnabled(model.ApprovalTypeGroupAI)
 
 		if needsApproval {

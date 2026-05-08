@@ -3,6 +3,7 @@ package app
 import (
 	"qim-server/ai"
 	"qim-server/config"
+	"qim-server/di"
 	"qim-server/handler"
 	"qim-server/middleware"
 	"qim-server/service"
@@ -374,7 +375,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/files/large", handler.GetAdminLargeFiles)
 
 				// 统一审批 API
-				approvalHandler := service.NewApprovalHandler()
+				approvalHandler := service.NewApprovalHandler(di.GlobalContainer.ApprovalService)
 				approvalHandler.RegisterRoutes(admin)
 			}
 

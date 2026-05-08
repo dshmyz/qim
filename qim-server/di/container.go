@@ -2,8 +2,11 @@ package di
 
 import (
 	"qim-server/database"
+	"qim-server/middleware"
 	"qim-server/service"
+	"qim-server/ws"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -23,11 +26,15 @@ type Container struct {
 	AdminService         *service.AdminService
 	RealtimeService      *service.RealtimeService
 	SensitiveWordService *service.SensitiveWordService
+	AvatarService        *service.AvatarService
+	ApprovalService      *service.ApprovalService
+	WebSocketHub         *ws.Hub
+	AuthMiddleware       gin.HandlerFunc
 }
 
 var GlobalContainer *Container
 
-func InitContainer() *Container {
+func InitContainer(secret string, hub *ws.Hub) *Container {
 	db := database.GetDB()
 
 	userService := service.NewUserService(db)
@@ -44,6 +51,10 @@ func InitContainer() *Container {
 	adminService := service.NewAdminService(db)
 	realtimeService := service.NewRealtimeService(db)
 	sensitiveWordService := service.NewSensitiveWordService(db)
+	avatarService := service.NewAvatarService(db, nil)
+	approvalService := service.NewApprovalService(db)
+
+	authMiddleware := middleware.AuthMiddleware(secret)
 
 	container := &Container{
 		DB:                   db,
@@ -61,6 +72,10 @@ func InitContainer() *Container {
 		AdminService:         adminService,
 		RealtimeService:      realtimeService,
 		SensitiveWordService: sensitiveWordService,
+		AvatarService:        avatarService,
+		ApprovalService:      approvalService,
+		WebSocketHub:         hub,
+		AuthMiddleware:       authMiddleware,
 	}
 
 	service.Init(userService, conversationService, messageService)

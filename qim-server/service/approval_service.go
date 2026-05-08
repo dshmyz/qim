@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"net/http"
-	"qim-server/database"
 	"qim-server/model"
 	"qim-server/ws"
 	"time"
@@ -16,9 +15,9 @@ type ApprovalService struct {
 	db *gorm.DB
 }
 
-func NewApprovalService() *ApprovalService {
+func NewApprovalService(db *gorm.DB) *ApprovalService {
 	return &ApprovalService{
-		db: database.GetDB(),
+		db: db,
 	}
 }
 
@@ -631,9 +630,9 @@ type ApprovalHandler struct {
 	service *ApprovalService
 }
 
-func NewApprovalHandler() *ApprovalHandler {
+func NewApprovalHandler(svc *ApprovalService) *ApprovalHandler {
 	return &ApprovalHandler{
-		service: NewApprovalService(),
+		service: svc,
 	}
 }
 
