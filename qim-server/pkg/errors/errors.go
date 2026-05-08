@@ -1,74 +1,58 @@
 package errors
 
-import (
-	"fmt"
+import "fmt"
+
+const (
+	ErrCodeSuccess         = 0
+	ErrCodeInternalError   = 1000
+	ErrCodeInvalidParams   = 1001
+	ErrCodeUnauthorized    = 1002
+	ErrCodeForbidden       = 1003
+	ErrCodeNotFound        = 1004
+	ErrCodeConflict        = 1005
+	ErrCodeTooManyRequests = 1006
+
+	ErrCodeUserNotFound      = 2000
+	ErrCodeUserAlreadyExists = 2001
+	ErrCodeInvalidPassword   = 2002
+	ErrCodeUserDisabled      = 2003
+
+	ErrCodeConversationNotFound  = 3000
+	ErrCodeConversationForbidden = 3001
+	ErrCodeNotMember             = 3002
+
+	ErrCodeMessageNotFound  = 4000
+	ErrCodeMessageForbidden = 4001
+	ErrCodeMessageRecalled  = 4002
+
+	ErrCodeFileNotFound     = 5000
+	ErrCodeFileTooLarge     = 5001
+	ErrCodeFileUploadFailed = 5002
+
+	ErrCodeGroupNotFound = 6000
+	ErrCodeNotGroupOwner = 6001
+	ErrCodeGroupFull     = 6002
 )
+
+type BusinessError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *BusinessError) Error() string {
+	return fmt.Sprintf("code=%d, message=%s", e.Code, e.Message)
+}
+
+func NewBusinessError(code int, message string) *BusinessError {
+	return &BusinessError{Code: code, Message: message}
+}
 
 var (
-	ErrBadRequest        = NewAppError(400, "请求参数错误")
-	ErrUnauthorized      = NewAppError(401, "未授权")
-	ErrForbidden         = NewAppError(403, "禁止访问")
-	ErrNotFound          = NewAppError(404, "资源不存在")
-	ErrConflict          = NewAppError(409, "资源冲突")
-	ErrInternalServer    = NewAppError(500, "服务器内部错误")
+	ErrInternalError   = NewBusinessError(ErrCodeInternalError, "服务器内部错误")
+	ErrInvalidParams   = NewBusinessError(ErrCodeInvalidParams, "参数错误")
+	ErrUnauthorized    = NewBusinessError(ErrCodeUnauthorized, "未授权")
+	ErrForbidden       = NewBusinessError(ErrCodeForbidden, "无权限")
+	ErrNotFound        = NewBusinessError(ErrCodeNotFound, "资源不存在")
+	ErrConflict        = NewBusinessError(ErrCodeConflict, "资源冲突")
+	ErrTooManyRequests = NewBusinessError(ErrCodeTooManyRequests, "请求过于频繁")
 )
-
-type AppError struct {
-	Code    int
-	Message string
-	Err     error
-}
-
-func (e *AppError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("code: %d, message: %s, error: %s", e.Code, e.Message, e.Err.Error())
-	}
-	return fmt.Sprintf("code: %d, message: %s", e.Code, e.Message)
-}
-
-func (e *AppError) Unwrap() error {
-	return e.Err
-}
-
-func NewAppError(code int, message string) *AppError {
-	return &AppError{
-		Code:    code,
-		Message: message,
-	}
-}
-
-func NewAppErrorWithError(code int, message string, err error) *AppError {
-	return &AppError{
-		Code:    code,
-		Message: message,
-		Err:     err,
-	}
-}
-
-func BadRequest(message string) *AppError {
-	return NewAppError(400, message)
-}
-
-func Unauthorized(message string) *AppError {
-	return NewAppError(401, message)
-}
-
-func Forbidden(message string) *AppError {
-	return NewAppError(403, message)
-}
-
-func NotFound(message string) *AppError {
-	return NewAppError(404, message)
-}
-
-func Conflict(message string) *AppError {
-	return NewAppError(409, message)
-}
-
-func InternalServer(message string) *AppError {
-	return NewAppError(500, message)
-}
-
-func InternalServerWithError(message string, err error) *AppError {
-	return NewAppErrorWithError(500, message, err)
-}
