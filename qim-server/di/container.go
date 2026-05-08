@@ -32,6 +32,16 @@ type Container struct {
 	SensitiveWordService *service.SensitiveWordService
 	AvatarService        *service.AvatarService
 	ApprovalService      *service.ApprovalService
+	AuthService          *service.AuthService
+	VersionService       *service.VersionService
+	BlacklistService     *service.BlacklistService
+	OperationLogService  *service.OperationLogService
+	SystemConfigService  *service.SystemConfigService
+	ShortLinkService     *service.ShortLinkService
+	ChannelService       *service.ChannelService
+	BotService           *service.BotService
+	AIProviderService    *service.AIProviderService
+	GroupDocumentService *service.GroupDocumentService
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
 }
@@ -59,6 +69,16 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	sensitiveWordService := service.NewSensitiveWordService(db)
 	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
+	authService := service.NewAuthService(db, cfg.JWT.Secret)
+	versionService := service.NewVersionService(db)
+	blacklistService := service.NewBlacklistService(db)
+	operationLogService := service.NewOperationLogService(db)
+	systemConfigService := service.NewSystemConfigService(db)
+	shortLinkService := service.NewShortLinkService(db)
+	channelService := service.NewChannelService(db)
+	botService := service.NewBotService(db)
+	aiProviderService := service.NewAIProviderService(db)
+	groupDocumentService := service.NewGroupDocumentService(db)
 
 	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
@@ -82,6 +102,16 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		SensitiveWordService: sensitiveWordService,
 		AvatarService:        avatarService,
 		ApprovalService:      approvalService,
+		AuthService:          authService,
+		VersionService:       versionService,
+		BlacklistService:     blacklistService,
+		OperationLogService:  operationLogService,
+		SystemConfigService:  systemConfigService,
+		ShortLinkService:     shortLinkService,
+		ChannelService:       channelService,
+		BotService:           botService,
+		AIProviderService:    aiProviderService,
+		GroupDocumentService: groupDocumentService,
 		WebSocketHub:         hub,
 		AuthMiddleware:       authMiddleware,
 	}
