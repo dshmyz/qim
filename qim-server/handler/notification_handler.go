@@ -3,12 +3,12 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/response"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -38,17 +38,14 @@ func GetNotifications(c *gin.Context) {
 	svc := di.GlobalContainer.NotificationService
 	notifications, total, err := svc.GetNotifications(userID.(uint), page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取通知失败"})
+		response.InternalServerError(c, "获取通知失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  notifications,
-			"total": total,
-			"page":  page,
-		},
+	response.Success(c, gin.H{
+		"list":  notifications,
+		"total": total,
+		"page":  page,
 	})
 }
 
@@ -58,22 +55,18 @@ func MarkNotificationAsRead(c *gin.Context) {
 
 	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		response.BadRequest(c, "无效的通知ID")
 		return
 	}
 
 	svc := di.GlobalContainer.NotificationService
 	notification, err := svc.MarkAsRead(userID.(uint), uint(notificationID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		response.NotFound(c, "通知不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "标记已读成功",
-		"data":    notification,
-	})
+	response.SuccessWithMessage(c, "标记已读成功", notification)
 }
 
 func MarkAllNotificationsAsRead(c *gin.Context) {
@@ -81,14 +74,11 @@ func MarkAllNotificationsAsRead(c *gin.Context) {
 
 	svc := di.GlobalContainer.NotificationService
 	if err := svc.MarkAllAsRead(userID.(uint)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "标记所有通知已读失败"})
+		response.InternalServerError(c, "标记所有通知已读失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "标记所有通知已读成功",
-	})
+	response.SuccessWithMessage(c, "标记所有通知已读成功", nil)
 }
 
 func ClearAllNotifications(c *gin.Context) {
@@ -96,14 +86,11 @@ func ClearAllNotifications(c *gin.Context) {
 
 	svc := di.GlobalContainer.NotificationService
 	if err := svc.ClearAll(userID.(uint)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "清空通知失败"})
+		response.InternalServerError(c, "清空通知失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "清空通知成功",
-	})
+	response.SuccessWithMessage(c, "清空通知成功", nil)
 }
 
 func HandleNotificationAction(c *gin.Context) {
@@ -112,7 +99,7 @@ func HandleNotificationAction(c *gin.Context) {
 
 	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		response.BadRequest(c, "无效的通知ID")
 		return
 	}
 
@@ -120,14 +107,14 @@ func HandleNotificationAction(c *gin.Context) {
 		Action string `json:"action" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	svc := di.GlobalContainer.NotificationService
 	notification, err := svc.GetByID(userID.(uint), uint(notificationID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		response.NotFound(c, "通知不存在")
 		return
 	}
 
@@ -142,7 +129,7 @@ func HandleNotificationAction(c *gin.Context) {
 	case "reschedule":
 		handleRescheduleAction(db, notification)
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不支持的操作"})
+		response.BadRequest(c, "不支持的操作")
 		return
 	}
 
@@ -151,11 +138,7 @@ func HandleNotificationAction(c *gin.Context) {
 	notification.ReadAt = &now
 	svc.Save(notification)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "操作成功",
-		"data":    notification,
-	})
+	response.SuccessWithMessage(c, "操作成功", notification)
 }
 
 func handleAcceptAction(db *gorm.DB, notification *model.Notification) {
@@ -199,19 +182,18 @@ func TogglePinNotification(c *gin.Context) {
 
 	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		response.BadRequest(c, "无效的通知ID")
 		return
 	}
 
 	svc := di.GlobalContainer.NotificationService
 	pinned, err := svc.TogglePin(userID.(uint), uint(notificationID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		response.NotFound(c, "通知不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
+	response.Success(c, gin.H{
 		"message": "操作成功",
 		"pinned":  pinned,
 	})
@@ -223,19 +205,18 @@ func ToggleImportantNotification(c *gin.Context) {
 
 	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的通知ID"})
+		response.BadRequest(c, "无效的通知ID")
 		return
 	}
 
 	svc := di.GlobalContainer.NotificationService
 	important, err := svc.ToggleImportant(userID.(uint), uint(notificationID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
+		response.NotFound(c, "通知不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":      0,
+	response.Success(c, gin.H{
 		"message":   "操作成功",
 		"important": important,
 	})
@@ -247,14 +228,11 @@ func GetEvents(c *gin.Context) {
 	svc := di.GlobalContainer.EventService
 	events, err := svc.GetEvents(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取事件失败"})
+		response.InternalServerError(c, "获取事件失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": events,
-	})
+	response.Success(c, events)
 }
 
 func CreateEvent(c *gin.Context) {
@@ -270,7 +248,7 @@ func CreateEvent(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -285,7 +263,7 @@ func CreateEvent(c *gin.Context) {
 		Reminder:    req.Reminder,
 	}
 	if err := svc.CreateEvent(event); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建事件失败"})
+		response.InternalServerError(c, "创建事件失败")
 		return
 	}
 
@@ -315,10 +293,7 @@ func CreateEvent(c *gin.Context) {
 		}()
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": event,
-	})
+	response.Success(c, event)
 }
 
 func GetEvent(c *gin.Context) {
@@ -327,21 +302,18 @@ func GetEvent(c *gin.Context) {
 
 	eventID, err := strconv.ParseUint(eventIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的事件ID"})
+		response.BadRequest(c, "无效的事件ID")
 		return
 	}
 
 	svc := di.GlobalContainer.EventService
 	event, err := svc.GetEvent(userID.(uint), uint(eventID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "事件不存在"})
+		response.NotFound(c, "事件不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": event,
-	})
+	response.Success(c, event)
 }
 
 func UpdateEvent(c *gin.Context) {
@@ -350,7 +322,7 @@ func UpdateEvent(c *gin.Context) {
 
 	eventID, err := strconv.ParseUint(eventIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的事件ID"})
+		response.BadRequest(c, "无效的事件ID")
 		return
 	}
 
@@ -364,7 +336,7 @@ func UpdateEvent(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -379,14 +351,11 @@ func UpdateEvent(c *gin.Context) {
 	}
 	event, err := svc.UpdateEvent(userID.(uint), uint(eventID), updates)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "事件不存在"})
+		response.NotFound(c, "事件不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": event,
-	})
+	response.Success(c, event)
 }
 
 func DeleteEvent(c *gin.Context) {
@@ -395,20 +364,17 @@ func DeleteEvent(c *gin.Context) {
 
 	eventID, err := strconv.ParseUint(eventIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的事件ID"})
+		response.BadRequest(c, "无效的事件ID")
 		return
 	}
 
 	svc := di.GlobalContainer.EventService
 	if err := svc.DeleteEvent(userID.(uint), uint(eventID)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除事件失败"})
+		response.InternalServerError(c, "删除事件失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "删除事件成功",
-	})
+	response.SuccessWithMessage(c, "删除事件成功", nil)
 }
 
 func GetTasks(c *gin.Context) {
@@ -417,14 +383,11 @@ func GetTasks(c *gin.Context) {
 	svc := di.GlobalContainer.TaskService
 	tasks, err := svc.GetTasks(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取任务失败"})
+		response.InternalServerError(c, "获取任务失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": tasks,
-	})
+	response.Success(c, tasks)
 }
 
 func CreateTask(c *gin.Context) {
@@ -443,7 +406,7 @@ func CreateTask(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -485,14 +448,11 @@ func CreateTask(c *gin.Context) {
 	}
 
 	if err := svc.CreateTask(task); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建任务失败"})
+		response.InternalServerError(c, "创建任务失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": task,
-	})
+	response.Success(c, task)
 }
 
 func UpdateTask(c *gin.Context) {
@@ -501,7 +461,7 @@ func UpdateTask(c *gin.Context) {
 
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		response.BadRequest(c, "无效的任务ID")
 		return
 	}
 
@@ -518,7 +478,7 @@ func UpdateTask(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -557,14 +517,11 @@ func UpdateTask(c *gin.Context) {
 	svc := di.GlobalContainer.TaskService
 	task, err := svc.UpdateTask(userID.(uint), uint(taskID), updates)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
+		response.NotFound(c, "任务不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": task,
-	})
+	response.Success(c, task)
 }
 
 func DeleteTask(c *gin.Context) {
@@ -573,20 +530,17 @@ func DeleteTask(c *gin.Context) {
 
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		response.BadRequest(c, "无效的任务ID")
 		return
 	}
 
 	svc := di.GlobalContainer.TaskService
 	if err := svc.DeleteTask(userID.(uint), uint(taskID)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除任务失败"})
+		response.InternalServerError(c, "删除任务失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "删除任务成功",
-	})
+	response.SuccessWithMessage(c, "删除任务成功", nil)
 }
 
 func UpdateTaskStatus(c *gin.Context) {
@@ -595,7 +549,7 @@ func UpdateTaskStatus(c *gin.Context) {
 
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的任务ID"})
+		response.BadRequest(c, "无效的任务ID")
 		return
 	}
 
@@ -604,19 +558,16 @@ func UpdateTaskStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	svc := di.GlobalContainer.TaskService
 	task, err := svc.UpdateTaskStatus(userID.(uint), uint(taskID), req.Status)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
+		response.NotFound(c, "任务不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": task,
-	})
+	response.Success(c, task)
 }

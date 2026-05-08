@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"net/http"
 	"strconv"
 
 	"qim-server/di"
+	"qim-server/pkg/response"
 	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
@@ -30,16 +30,13 @@ func GetRoles(c *gin.Context) {
 		Keyword:  keyword,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  roles,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  roles,
+		"total": total,
 	})
 }
 
@@ -50,7 +47,7 @@ func CreateRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
@@ -59,27 +56,24 @@ func CreateRole(c *gin.Context) {
 
 	_, err := userSvc.GetUser(req.UserID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		response.NotFound(c, "用户不存在")
 		return
 	}
 
 	userRole, err := adminSvc.CreateRole(req.UserID, req.Role)
 	if err != nil {
 		if err == gorm.ErrDuplicatedKey {
-			c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "用户已有此角色"})
+			response.Conflict(c, "用户已有此角色")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建失败"})
+		response.InternalServerError(c, "创建失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"id":      userRole.ID,
-			"user_id": userRole.UserID,
-			"role":    userRole.Role,
-		},
+	response.Success(c, gin.H{
+		"id":      userRole.ID,
+		"user_id": userRole.UserID,
+		"role":    userRole.Role,
 	})
 }
 
@@ -87,7 +81,7 @@ func UpdateRole(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的角色ID"})
+		response.BadRequest(c, "无效的角色ID")
 		return
 	}
 
@@ -96,14 +90,14 @@ func UpdateRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	adminSvc := di.GlobalContainer.AdminService
 	userRole, err := adminSvc.GetRole(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "角色不存在"})
+		response.NotFound(c, "角色不存在")
 		return
 	}
 
@@ -112,29 +106,26 @@ func UpdateRole(c *gin.Context) {
 		adminSvc.UpdateRole(userRole)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": userRole,
-	})
+	response.Success(c, userRole)
 }
 
 func DeleteRole(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的角色ID"})
+		response.BadRequest(c, "无效的角色ID")
 		return
 	}
 
 	adminSvc := di.GlobalContainer.AdminService
 	if _, err := adminSvc.GetRole(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "角色不存在"})
+		response.NotFound(c, "角色不存在")
 		return
 	}
 
 	adminSvc.DeleteRole(uint(id))
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 func GetRoleUsers(c *gin.Context) {
@@ -153,35 +144,31 @@ func GetRoleUsers(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	users, total, err := adminSvc.GetRoleUsers(role, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  users,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  users,
+		"total": total,
 	})
 }
 
-// AdminDeleteGroup 管理员删除群组
 func AdminDeleteGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的群组ID"})
+		response.BadRequest(c, "无效的群组ID")
 		return
 	}
 
 	adminSvc := di.GlobalContainer.AdminService
 	if err := adminSvc.DeleteGroup(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群组不存在"})
+		response.NotFound(c, "群组不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 func AdminGetUsers(c *gin.Context) {
@@ -199,16 +186,13 @@ func AdminGetUsers(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	users, total, err := adminSvc.GetUsers(page, pageSize, keyword)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  users,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  users,
+		"total": total,
 	})
 }
 
@@ -227,16 +211,13 @@ func AdminGetChannels(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	channels, total, err := adminSvc.GetChannels(page, pageSize, keyword)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  channels,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  channels,
+		"total": total,
 	})
 }
 
@@ -244,7 +225,7 @@ func AdminUpdateChannel(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
@@ -257,13 +238,13 @@ func AdminUpdateChannel(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	adminSvc := di.GlobalContainer.AdminService
 	if _, err := adminSvc.GetChannel(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		response.NotFound(c, "频道不存在")
 		return
 	}
 
@@ -279,14 +260,14 @@ func AdminUpdateChannel(c *gin.Context) {
 	}
 	if req.Status != nil {
 		if *req.Status != "active" && *req.Status != "inactive" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的状态值"})
+			response.BadRequest(c, "无效的状态值")
 			return
 		}
 		updates["status"] = *req.Status
 	}
 	if req.PublishPermission != nil {
 		if *req.PublishPermission != "creator_only" && *req.PublishPermission != "all_subscribers" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的发布权限"})
+			response.BadRequest(c, "无效的发布权限")
 			return
 		}
 		updates["publish_permission"] = *req.PublishPermission
@@ -294,33 +275,30 @@ func AdminUpdateChannel(c *gin.Context) {
 
 	if len(updates) > 0 {
 		if err := adminSvc.UpdateChannel(uint(id), updates); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新失败"})
+			response.InternalServerError(c, "更新失败")
 			return
 		}
 	}
 
 	channel, _ := adminSvc.GetChannel(uint(id))
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": channel,
-	})
+	response.Success(c, channel)
 }
 
 func AdminDeleteChannel(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的频道ID"})
+		response.BadRequest(c, "无效的频道ID")
 		return
 	}
 
 	adminSvc := di.GlobalContainer.AdminService
 	if err := adminSvc.DeleteChannel(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "频道不存在"})
+		response.NotFound(c, "频道不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 func AdminGetGroups(c *gin.Context) {
@@ -338,43 +316,36 @@ func AdminGetGroups(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	groups, total, err := adminSvc.GetGroups(page, pageSize, keyword)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  groups,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  groups,
+		"total": total,
 	})
 }
 
-// AdminGetStatistics 管理员获取详细统计数据
 func AdminGetStatistics(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	stats, err := adminSvc.GetStatistics()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"totalUsers":    stats.TotalUsers,
-			"onlineUsers":   stats.OnlineUsers,
-			"totalGroups":   stats.TotalGroups,
-			"totalChannels": stats.TotalChannels,
-			"totalMessages": stats.TotalMessages,
-			"activeUsers":   stats.ActiveUsers,
-			"messagesToday": stats.MessagesToday,
-			"growthRate": gin.H{
-				"users":    12.5,
-				"groups":   8.3,
-				"messages": 15.7,
-			},
+	response.Success(c, gin.H{
+		"totalUsers":    stats.TotalUsers,
+		"onlineUsers":   stats.OnlineUsers,
+		"totalGroups":   stats.TotalGroups,
+		"totalChannels": stats.TotalChannels,
+		"totalMessages": stats.TotalMessages,
+		"activeUsers":   stats.ActiveUsers,
+		"messagesToday": stats.MessagesToday,
+		"growthRate": gin.H{
+			"users":    12.5,
+			"groups":   8.3,
+			"messages": 15.7,
 		},
 	})
 }
@@ -393,15 +364,12 @@ func AdminGetRecentRegistrations(c *gin.Context) {
 	adminSvc := di.GlobalContainer.AdminService
 	registrations, total, err := adminSvc.GetRecentRegistrations(page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": gin.H{
-			"list":  registrations,
-			"total": total,
-		},
+	response.Success(c, gin.H{
+		"list":  registrations,
+		"total": total,
 	})
 }
