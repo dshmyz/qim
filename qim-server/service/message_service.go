@@ -566,3 +566,8 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 		"quoted_message":    msg.QuotedMessage,
 	}
 }
+
+func (s *MessageService) CreateMessage(msg *model.Message) error {
+	db := database.GetDB()
+	return db.Create(msg).Error
+}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/service"
 	"qim-server/ws"
@@ -33,7 +33,11 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	userSvc := di.GlobalContainer.UserService
+	notifSvc := di.GlobalContainer.NotificationService
+	msgSvc := di.GlobalContainer.MessageService
+	groupSvc := di.GlobalContainer.GroupService
 
 	convIDUint, err := strconv.ParseUint(convID, 10, 32)
 	if err != nil {
@@ -41,8 +45,8 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convIDUint)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convIDUint))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -52,17 +56,15 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convIDUint), userID).First(&currentMember).Error; err != nil {
+	currentMember, err := convSvc.GetMember(uint(convIDUint), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限操作"})
 		return
 	}
 
 	if conv.Type == "group" {
-		// 获取群聊信息
-		var group model.Group
-		db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
-		if group.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
+		group, _ := groupSvc.GetGroupByConversationID(uint(convIDUint))
+		if group != nil && group.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "只有群主和管理员可以邀请成员"})
 			return
 		}
@@ -70,17 +72,17 @@ func AddMemberToGroup(c *gin.Context) {
 
 	var addedMembers []model.User
 	for _, memberID := range req.MemberIDs {
-		var existingMember model.ConversationMember
-		if err := db.Where("conversation_id = ? AND user_id = ?", uint(convIDUint), memberID).First(&existingMember).Error; err == nil {
+		existingMember, _ := convSvc.GetMember(uint(convIDUint), memberID)
+		if existingMember != nil {
 			continue
 		}
 
-		var user model.User
-		if err := db.First(&user, memberID).Error; err != nil {
+		user, err := userSvc.GetUser(memberID)
+		if err != nil {
 			continue
 		}
 
-		newMember := model.ConversationMember{
+		newMember := &model.ConversationMember{
 			ConversationID: uint(convIDUint),
 			UserID:         memberID,
 			Role:           "member",
@@ -88,38 +90,29 @@ func AddMemberToGroup(c *gin.Context) {
 			Muted:          false,
 			JoinedAt:       time.Now(),
 		}
-		db.Create(&newMember)
+		convSvc.CreateMember(newMember)
 
-		// 获取群聊信息
-		var group model.Group
-		db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
+		group, _ := groupSvc.GetGroupByConversationID(uint(convIDUint))
+		groupName := ""
+		if group != nil {
+			groupName = group.Name
+		}
 
-		notification := model.Notification{
+		notifSvc.Create(&model.Notification{
 			UserID:        memberID,
 			Type:          "group_invitation",
 			Title:         "群聊邀请",
-			Content:       fmt.Sprintf("您被邀请加入群聊 %s", group.Name),
+			Content:       fmt.Sprintf("您被邀请加入群聊 %s", groupName),
 			Priority:      "important",
 			ActionType:    "accept_ignore",
 			ActionPayload: fmt.Sprintf(`{"conversation_id":%d}`, uint(convIDUint)),
-		}
-		db.Create(&notification)
+		})
 
-		if ws.GlobalHub != nil {
-			notificationMsg := ws.WSMessage{
-				Type: "notification",
-				Data: notification,
-			}
-			jsonMsg, _ := json.Marshal(notificationMsg)
-			ws.GlobalHub.SendToUser(memberID, jsonMsg)
-		}
-
-		addedMembers = append(addedMembers, user)
+		addedMembers = append(addedMembers, *user)
 	}
 
 	if len(addedMembers) > 0 {
-		var existingMembers []model.ConversationMember
-		db.Where("conversation_id = ? AND user_id != ?", uint(convIDUint), userID).Find(&existingMembers)
+		existingMembers, _ := convSvc.GetMembersExcept(uint(convIDUint), userID.(uint))
 
 		var memberNames []string
 		for _, member := range addedMembers {
@@ -127,22 +120,12 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 
 		for _, member := range existingMembers {
-			notification := model.Notification{
+			notifSvc.Create(&model.Notification{
 				UserID:  member.UserID,
 				Type:    "group_member_added",
 				Title:   "新成员加入",
 				Content: fmt.Sprintf("新成员 %s 加入了群聊", strings.Join(memberNames, "、")),
-			}
-			db.Create(&notification)
-
-			if ws.GlobalHub != nil {
-				notificationMsg := ws.WSMessage{
-					Type: "notification",
-					Data: notification,
-				}
-				jsonMsg, _ := json.Marshal(notificationMsg)
-				ws.GlobalHub.SendToUser(member.UserID, jsonMsg)
-			}
+			})
 		}
 	}
 
@@ -152,8 +135,8 @@ func AddMemberToGroup(c *gin.Context) {
 			memberNames = append(memberNames, member.Nickname)
 		}
 
-		var currentUser model.User
-		if err := db.First(&currentUser, userID).Error; err != nil {
+		currentUser, err := userSvc.GetUser(userID.(uint))
+		if err != nil {
 			log.Printf("获取用户信息失败: %v", err)
 		}
 
@@ -162,14 +145,14 @@ func AddMemberToGroup(c *gin.Context) {
 			systemMessageContent = fmt.Sprintf("%s 添加了新成员 %s", currentUser.Username, strings.Join(memberNames, "、"))
 		}
 
-		systemMsg := model.Message{
+		systemMsg := &model.Message{
 			ConversationID: conv.ID,
 			SenderID:       0,
 			Type:           "system",
 			Content:        systemMessageContent,
 			IsRead:         true,
 		}
-		if err := db.Create(&systemMsg).Error; err != nil {
+		if err := msgSvc.CreateMessage(systemMsg); err != nil {
 			log.Printf("创建系统消息失败: %v", err)
 		}
 
@@ -182,9 +165,10 @@ func AddMemberToGroup(c *gin.Context) {
 		systemMsg.Sender = systemUser
 
 		now := time.Now()
-		conv.LastMessageID = &systemMsg.ID
-		conv.LastMessageAt = &now
-		db.Save(&conv)
+		convSvc.UpdateConversation(conv.ID, map[string]interface{}{
+			"last_message_id": systemMsg.ID,
+			"last_message_at": now,
+		})
 
 		responseData := gin.H{
 			"id":                systemMsg.ID,
@@ -215,7 +199,6 @@ func AddMemberToGroup(c *gin.Context) {
 					},
 				}
 				jsonMsg, _ := json.Marshal(joinMsg)
-
 				ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
 			}
 
@@ -229,8 +212,7 @@ func AddMemberToGroup(c *gin.Context) {
 	}
 
 	if ws.GlobalHub != nil {
-		var groupMembers []model.ConversationMember
-		db.Where("conversation_id = ?", uint(convIDUint)).Preload("User").Find(&groupMembers)
+		groupMembers, _ := convSvc.GetMembersWithUser(uint(convIDUint))
 
 		var members []gin.H
 		for _, gm := range groupMembers {
@@ -243,21 +225,24 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 
 		for _, member := range addedMembers {
-			// 获取群聊信息
-			var group model.Group
-			db.Where("conversation_id = ?", uint(convIDUint)).First(&group)
+			group, _ := groupSvc.GetGroupByConversationID(uint(convIDUint))
+			groupName := ""
+			groupAvatar := ""
+			if group != nil {
+				groupName = group.Name
+				groupAvatar = group.Avatar
+			}
 
 			addedMsg := ws.WSMessage{
 				Type: "added_to_group",
 				Data: gin.H{
 					"conversation_id": conv.ID,
-					"group_name":      group.Name,
-					"group_avatar":    group.Avatar,
+					"group_name":      groupName,
+					"group_avatar":    groupAvatar,
 					"members":         members,
 				},
 			}
 			jsonMsg, _ := json.Marshal(addedMsg)
-
 			ws.GlobalHub.SendToUser(member.ID, jsonMsg)
 		}
 
@@ -292,10 +277,10 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -305,8 +290,8 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		return
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&currentMember).Error; err != nil {
+	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
@@ -316,8 +301,8 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		return
 	}
 
-	var targetMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), uint(memberID)).First(&targetMember).Error; err != nil {
+	targetMember, err := convSvc.GetMember(uint(convID), uint(memberID))
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
 		return
 	}
@@ -327,7 +312,7 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		return
 	}
 
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), uint(memberID)).Delete(&model.ConversationMember{}).Error; err != nil {
+	if err := convSvc.RemoveMember(uint(convID), uint(memberID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "移除成员失败"})
 		return
 	}
@@ -341,9 +326,7 @@ func RemoveMemberFromGroup(c *gin.Context) {
 			},
 		}
 		jsonMsg, _ := json.Marshal(removeMsg)
-
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
-
 		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
@@ -367,10 +350,10 @@ func ExitGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -380,13 +363,13 @@ func ExitGroup(c *gin.Context) {
 		return
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+	_, err = convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
 
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).Delete(&model.ConversationMember{}).Error; err != nil {
+	if err := convSvc.RemoveMember(uint(convID), userID.(uint)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "退出群聊失败"})
 		return
 	}
@@ -400,9 +383,7 @@ func ExitGroup(c *gin.Context) {
 			},
 		}
 		jsonMsg, _ := json.Marshal(exitMsg)
-
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
-
 		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}
 
@@ -431,10 +412,11 @@ func UpdateGroupInfo(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -444,15 +426,14 @@ func UpdateGroupInfo(c *gin.Context) {
 		return
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+	member, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
 		return
 	}
 
-	// 获取群聊信息
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
@@ -478,7 +459,7 @@ func UpdateGroupInfo(c *gin.Context) {
 		aiConfig.Enabled = *req.AIEnabled
 		group.SetAIConfig(aiConfig)
 	}
-	db.Save(&group)
+	groupSvc.UpdateGroup(group)
 
 	aiConfig := group.GetAIConfig()
 
@@ -512,7 +493,6 @@ func UpdateGroupInfo(c *gin.Context) {
 			},
 		}
 		jsonMsg, _ := json.Marshal(updateMsg)
-
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
 	}
 
@@ -553,10 +533,11 @@ func GetGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -566,14 +547,14 @@ func GetGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+	_, err = convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
 		return
 	}
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
@@ -630,10 +611,11 @@ func UpdateGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -643,14 +625,14 @@ func UpdateGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+	member, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是成员"})
 		return
 	}
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
@@ -660,25 +642,19 @@ func UpdateGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	// 获取当前配置
 	aiConfig := group.GetAIConfig()
 	oldEnabled := aiConfig.Enabled
 
-	// 如果是开启AI助手，检查是否需要审批
 	if req.AIEnabled != nil && *req.AIEnabled && !oldEnabled {
-		// 检查审批配置是否启用
 		approvalService := service.NewApprovalService()
 		needsApproval := approvalService.IsApprovalEnabled(model.ApprovalTypeGroupAI)
 
 		if needsApproval {
-			// 需要审批：创建审批请求
-			// 检查是否已经有待审批的请求
 			if group.ApprovalStatus == model.ApprovalStatusPending {
 				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "已有待审批的AI助手申请"})
 				return
 			}
 
-			// 更新AI配置（但不启用）
 			aiConfig.Enabled = false
 			if req.AIAssistantName != nil {
 				aiConfig.AssistantName = *req.AIAssistantName
@@ -716,13 +692,12 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 			group.SetAIConfig(aiConfig)
 
-			// 设置审批状态为待审批
 			now := time.Now()
 			group.ApprovalStatus = model.ApprovalStatusPending
 			group.AppliedAt = &now
 			group.RejectReason = ""
 
-			db.Save(&group)
+			groupSvc.UpdateGroup(group)
 
 			c.JSON(http.StatusOK, gin.H{
 				"code":    0,
@@ -734,11 +709,9 @@ func UpdateGroupAISettings(c *gin.Context) {
 			})
 			return
 		}
-		// 不需要审批：直接开启
 		aiConfig.Enabled = true
 	}
 
-	// 如果是关闭AI助手或其他配置更新，直接操作
 	if req.AIEnabled != nil {
 		aiConfig.Enabled = *req.AIEnabled
 	}
@@ -776,12 +749,11 @@ func UpdateGroupAISettings(c *gin.Context) {
 		aiConfig.LearnEnabled = *req.AILearnEnabled
 	}
 
-	// 保存配置
 	if err := group.SetAIConfig(aiConfig); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存AI配置失败"})
 		return
 	}
-	db.Save(&group)
+	groupSvc.UpdateGroup(group)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -828,10 +800,10 @@ func SetMemberRole(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -841,8 +813,8 @@ func SetMemberRole(c *gin.Context) {
 		return
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&currentMember).Error; err != nil {
+	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
@@ -852,8 +824,8 @@ func SetMemberRole(c *gin.Context) {
 		return
 	}
 
-	var targetMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), uint(targetMemberID)).First(&targetMember).Error; err != nil {
+	targetMember, err := convSvc.GetMember(uint(convID), uint(targetMemberID))
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
 		return
 	}
@@ -864,7 +836,7 @@ func SetMemberRole(c *gin.Context) {
 	}
 
 	targetMember.Role = req.Role
-	db.Save(&targetMember)
+	convSvc.UpdateMember(targetMember)
 
 	if ws.GlobalHub != nil {
 		updateMsg := ws.WSMessage{
@@ -903,10 +875,12 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+	db := di.GlobalContainer.DB
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -916,8 +890,8 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&currentMember).Error; err != nil {
+	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
@@ -927,8 +901,8 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	var targetMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), uint(targetMemberID)).First(&targetMember).Error; err != nil {
+	targetMember, err := convSvc.GetMember(uint(convID), uint(targetMemberID))
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标用户不是群成员"})
 		return
 	}
@@ -949,15 +923,14 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	// 更新群聊创建者
-	var group model.Group
-	if err := tx.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationIDWithTx(tx, uint(convID))
+	if err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取群聊信息失败"})
 		return
 	}
 	group.CreatorID = targetMember.UserID
-	if err := tx.Save(&group).Error; err != nil {
+	if err := groupSvc.UpdateGroupWithTx(tx, group); err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "转让失败"})
 		return
@@ -1008,10 +981,13 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+	userSvc := di.GlobalContainer.UserService
+	msgSvc := di.GlobalContainer.MessageService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -1021,15 +997,14 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
+	member, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
 
-	// 获取群聊信息
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
@@ -1040,13 +1015,13 @@ func UpdateAnnouncement(c *gin.Context) {
 	}
 
 	group.Announcement = req.Announcement
-	if err := db.Save(&group).Error; err != nil {
+	if err := groupSvc.UpdateGroup(group); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新群公告失败"})
 		return
 	}
 
-	var currentUser model.User
-	if err := db.First(&currentUser, userID).Error; err != nil {
+	currentUser, err := userSvc.GetUser(userID.(uint))
+	if err != nil {
 		log.Printf("获取用户信息失败: %v", err)
 	}
 
@@ -1055,14 +1030,14 @@ func UpdateAnnouncement(c *gin.Context) {
 		systemMessageContent = fmt.Sprintf("%s 修改群公告", currentUser.Username)
 	}
 
-	systemMsg := model.Message{
+	systemMsg := &model.Message{
 		ConversationID: conv.ID,
 		SenderID:       0,
 		Type:           "system",
 		Content:        systemMessageContent,
 		IsRead:         true,
 	}
-	if err := db.Create(&systemMsg).Error; err != nil {
+	if err := msgSvc.CreateMessage(systemMsg); err != nil {
 		log.Printf("创建系统消息失败: %v", err)
 	}
 
@@ -1075,9 +1050,10 @@ func UpdateAnnouncement(c *gin.Context) {
 	systemMsg.Sender = systemUser
 
 	now := time.Now()
-	conv.LastMessageID = &systemMsg.ID
-	conv.LastMessageAt = &now
-	db.Save(&conv)
+	convSvc.UpdateConversation(conv.ID, map[string]interface{}{
+		"last_message_id": systemMsg.ID,
+		"last_message_at": now,
+	})
 
 	responseData := gin.H{
 		"id":                systemMsg.ID,
@@ -1108,7 +1084,6 @@ func UpdateAnnouncement(c *gin.Context) {
 			},
 		}
 		jsonMsg, _ := json.Marshal(announcementMsg)
-
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
 
 		newMsg := ws.WSMessage{
@@ -1136,10 +1111,13 @@ func ApplyJoinGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+	userSvc := di.GlobalContainer.UserService
+	notifSvc := di.GlobalContainer.NotificationService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
@@ -1149,29 +1127,28 @@ func ApplyJoinGroup(c *gin.Context) {
 		return
 	}
 
-	var existingMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&existingMember).Error; err == nil {
+	existingMember, _ := convSvc.GetMember(uint(convID), userID.(uint))
+	if existingMember != nil {
 		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "您已经是群成员"})
 		return
 	}
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
 
-	var currentUser model.User
-	if err := db.First(&currentUser, userID).Error; err != nil {
+	currentUser, err := userSvc.GetUser(userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败"})
 		return
 	}
 
-	var ownersAndAdmins []model.ConversationMember
-	db.Where("conversation_id = ? AND role IN ?", uint(convID), []string{"owner", "admin"}).Find(&ownersAndAdmins)
+	ownersAndAdmins, _ := convSvc.GetMembersByRoles(uint(convID), []string{"owner", "admin"})
 
 	for _, admin := range ownersAndAdmins {
-		notification := model.Notification{
+		notifSvc.Create(&model.Notification{
 			UserID:        admin.UserID,
 			Type:          "group_join_request",
 			Title:         "入群申请",
@@ -1179,17 +1156,7 @@ func ApplyJoinGroup(c *gin.Context) {
 			Priority:      "important",
 			ActionType:    "approve_reject",
 			ActionPayload: fmt.Sprintf(`{"conversation_id":%d,"user_id":%d}`, uint(convID), userID.(uint)),
-		}
-		db.Create(&notification)
-
-		if ws.GlobalHub != nil {
-			notificationMsg := ws.WSMessage{
-				Type: "notification",
-				Data: notification,
-			}
-			jsonMsg, _ := json.Marshal(notificationMsg)
-			ws.GlobalHub.SendToUser(admin.UserID, jsonMsg)
-		}
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "申请已发送，请等待管理员审批"})
@@ -1216,16 +1183,19 @@ func RejectJoinRequest(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+	userSvc := di.GlobalContainer.UserService
+	notifSvc := di.GlobalContainer.NotificationService
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convID)).Error; err != nil {
+	_, err = convSvc.GetConversation(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "会话不存在"})
 		return
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&currentMember).Error; err != nil {
+	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是群成员"})
 		return
 	}
@@ -1235,35 +1205,25 @@ func RejectJoinRequest(c *gin.Context) {
 		return
 	}
 
-	var targetUser model.User
-	if err := db.First(&targetUser, targetUserID).Error; err != nil {
+	_, err = userSvc.GetUser(uint(targetUserID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
 		return
 	}
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "群聊信息不存在"})
 		return
 	}
 
-	notification := model.Notification{
+	notifSvc.Create(&model.Notification{
 		UserID:   uint(targetUserID),
 		Type:     "group_join_rejected",
 		Title:    "入群申请被拒绝",
 		Content:  fmt.Sprintf("您加入群聊 %s 的申请已被拒绝", group.Name),
 		Priority: "normal",
-	}
-	db.Create(&notification)
-
-	if ws.GlobalHub != nil {
-		notificationMsg := ws.WSMessage{
-			Type: "notification",
-			Data: notification,
-		}
-		jsonMsg, _ := json.Marshal(notificationMsg)
-		ws.GlobalHub.SendToUser(uint(targetUserID), jsonMsg)
-	}
+	})
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已拒绝加入请求"})
 }

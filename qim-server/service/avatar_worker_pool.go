@@ -7,6 +7,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"qim-server/database"
 	"qim-server/model"
 	"qim-server/ws"
 
@@ -112,7 +114,7 @@ func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
 // sendPrivateReply 发送私聊回复（群聊场景）
 func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 	// 1. 找到或创建分身用户与触发者的私聊会话
-	convService := NewConversationService()
+	convService := NewConversationService(database.GetDB())
 	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
 	if err != nil {
 		log.Printf("[AvatarWorkerPool] 创建私聊会话失败: user=%d, trigger=%d, error=%v", 

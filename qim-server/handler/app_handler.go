@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,7 +27,7 @@ func GetApps(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	userIDUint := userID.(uint)
 
-	db := database.GetDB()
+	appSvc := di.GlobalContainer.AppService
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -41,27 +42,15 @@ func GetApps(c *gin.Context) {
 		pageSize = 10
 	}
 
-	// 用户查看：自己的应用 + 全局应用
-	query := db.Model(&model.App{}).Where("(user_id = ? OR is_global = ?) AND deleted_at IS NULL", userIDUint, true)
-
-	if name != "" {
-		query = query.Where("name LIKE ?", "%"+name+"%")
-	}
-
-	if category != "" {
-		query = query.Where("category = ?", category)
-	}
-
-	if status != "" && status != "all" {
-		query = query.Where("status = ?", status)
-	}
-
-	var total int64
-	query.Count(&total)
-
-	var apps []model.App
-	offset := (page - 1) * pageSize
-	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&apps).Error; err != nil {
+	result, err := appSvc.GetUserApps(service.AppQuery{
+		UserID:   userIDUint,
+		Page:     page,
+		PageSize: pageSize,
+		Name:     name,
+		Status:   status,
+		Category: category,
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取应用列表失败"})
 		return
 	}
@@ -69,10 +58,10 @@ func GetApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     apps,
-			"total":    total,
-			"page":     page,
-			"pageSize": pageSize,
+			"list":     result.List,
+			"total":    result.Total,
+			"page":     result.Page,
+			"pageSize": result.PageSize,
 		},
 	})
 }
@@ -86,9 +75,9 @@ func ToggleAppStatus(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var app model.App
-	if err := db.First(&app, uint(appID)).Error; err != nil {
+	appSvc := di.GlobalContainer.AppService
+	app, err := appSvc.GetApp(uint(appID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
 		return
 	}
@@ -98,7 +87,7 @@ func ToggleAppStatus(c *gin.Context) {
 		"inactive": "active",
 	}[app.Status]
 
-	db.Save(&app)
+	appSvc.UpdateApp(app)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -107,7 +96,7 @@ func ToggleAppStatus(c *gin.Context) {
 }
 
 func GetAllApps(c *gin.Context) {
-	db := database.GetDB()
+	appSvc := di.GlobalContainer.AppService
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
@@ -121,34 +110,24 @@ func GetAllApps(c *gin.Context) {
 		pageSize = 20
 	}
 
-	query := db.Model(&model.App{})
-
-	if isGlobal != "" {
-		if isGlobal == "true" {
-			query = query.Where("is_global = ?", true)
-		} else {
-			query = query.Where("is_global = ?", false)
-		}
+	result, err := appSvc.GetAllApps(service.AppQuery{
+		Page:     page,
+		PageSize: pageSize,
+		IsGlobal: isGlobal,
+		Status:   status,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取应用列表失败"})
+		return
 	}
-
-	if status != "" && status != "all" {
-		query = query.Where("status = ?", status)
-	}
-
-	var total int64
-	query.Count(&total)
-
-	var apps []model.App
-	offset := (page - 1) * pageSize
-	query.Order("is_global DESC, created_at DESC").Offset(offset).Limit(pageSize).Find(&apps)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     apps,
-			"total":    total,
-			"page":     page,
-			"pageSize": pageSize,
+			"list":     result.List,
+			"total":    result.Total,
+			"page":     result.Page,
+			"pageSize": result.PageSize,
 		},
 	})
 }
@@ -171,7 +150,6 @@ func CreateApp(c *gin.Context) {
 		return
 	}
 
-	// 检查是否为全局应用，如果是则需要管理员权限
 	if req.IsGlobal {
 		roles, exists := c.Get("roles")
 		if !exists || !containsRole(roles.([]string), "system_admin") {
@@ -180,7 +158,7 @@ func CreateApp(c *gin.Context) {
 		}
 	}
 
-	db := database.GetDB()
+	appSvc := di.GlobalContainer.AppService
 	app := model.App{
 		UserID:   userID.(uint),
 		Name:     req.Name,
@@ -191,8 +169,7 @@ func CreateApp(c *gin.Context) {
 		OpenType: req.OpenType,
 		IsGlobal: req.IsGlobal,
 	}
-	result := db.Create(&app)
-	if result.Error != nil {
+	if err := appSvc.CreateApp(&app); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建应用失败"})
 		return
 	}
@@ -229,18 +206,20 @@ func UpdateApp(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var app model.App
+	appSvc := di.GlobalContainer.AppService
+	var app *model.App
 
-	// 先尝试查找用户自己的应用
-	if err := db.Where("id = ? AND user_id = ?", uint(appID), userIDUint).First(&app).Error; err != nil {
-		// 如果不是自己的应用，检查是否是全局应用
-		if err := db.Where("id = ? AND is_global = ?", uint(appID), true).First(&app).Error; err != nil {
+	userApp, err1 := appSvc.GetUserApp(uint(appID), userIDUint)
+	if err1 == nil {
+		app = userApp
+	} else {
+		globalApp, err2 := appSvc.GetGlobalApp(uint(appID))
+		if err2 != nil {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "应用不存在"})
 			return
 		}
+		app = globalApp
 
-		// 全局应用需要管理员权限才能更新
 		roles, exists := c.Get("roles")
 		if !exists {
 			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权限更新此应用"})
@@ -279,7 +258,7 @@ func UpdateApp(c *gin.Context) {
 	}
 	app.IsGlobal = req.IsGlobal
 
-	db.Save(&app)
+	appSvc.UpdateApp(app)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -297,8 +276,8 @@ func DeleteApp(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	if err := db.Where("id = ? AND user_id = ?", uint(appID), userID).Delete(&model.App{}).Error; err != nil {
+	appSvc := di.GlobalContainer.AppService
+	if err := appSvc.DeleteApp(uint(appID), userID.(uint)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除应用失败"})
 		return
 	}
@@ -310,7 +289,7 @@ func DeleteApp(c *gin.Context) {
 }
 
 func GetMiniApps(c *gin.Context) {
-	db := database.GetDB()
+	miniAppSvc := di.GlobalContainer.MiniAppService
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -324,22 +303,13 @@ func GetMiniApps(c *gin.Context) {
 		pageSize = 10
 	}
 
-	query := db.Model(&model.MiniApp{})
-
-	if name != "" {
-		query = query.Where("name LIKE ?", "%"+name+"%")
-	}
-
-	if status != "" && status != "all" {
-		query = query.Where("status = ?", status)
-	}
-
-	var total int64
-	query.Count(&total)
-
-	var miniApps []model.MiniApp
-	offset := (page - 1) * pageSize
-	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&miniApps).Error; err != nil {
+	result, err := miniAppSvc.GetMiniApps(service.MiniAppQuery{
+		Page:     page,
+		PageSize: pageSize,
+		Name:     name,
+		Status:   status,
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询小程序失败"})
 		return
 	}
@@ -347,10 +317,10 @@ func GetMiniApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     miniApps,
-			"total":    total,
-			"page":     page,
-			"pageSize": pageSize,
+			"list":     result.List,
+			"total":    result.Total,
+			"page":     result.Page,
+			"pageSize": result.PageSize,
 		},
 	})
 }
@@ -358,9 +328,9 @@ func GetMiniApps(c *gin.Context) {
 func GetMiniApp(c *gin.Context) {
 	appID := c.Param("id")
 
-	db := database.GetDB()
-	var miniApp model.MiniApp
-	if err := db.Where("app_id = ?", appID).First(&miniApp).Error; err != nil {
+	miniAppSvc := di.GlobalContainer.MiniAppService
+	miniApp, err := miniAppSvc.GetMiniAppByAppID(appID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "小程序不存在"})
 		return
 	}
@@ -386,11 +356,10 @@ func CreateMiniApp(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	miniAppSvc := di.GlobalContainer.MiniAppService
 
-	var count int64
-	db.Model(&model.MiniApp{}).Where("app_id = ?", req.AppID).Count(&count)
-	if count > 0 {
+	exists, _ := miniAppSvc.IsAppIDExists(req.AppID)
+	if exists {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "AppID已存在"})
 		return
 	}
@@ -405,7 +374,7 @@ func CreateMiniApp(c *gin.Context) {
 		Permissions: req.Permissions,
 	}
 
-	if err := db.Create(&miniApp).Error; err != nil {
+	if err := miniAppSvc.CreateMiniApp(&miniApp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建小程序失败"})
 		return
 	}
@@ -433,9 +402,9 @@ func UpdateMiniApp(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var miniApp model.MiniApp
-	if err := db.Where("id = ?", id).First(&miniApp).Error; err != nil {
+	miniAppSvc := di.GlobalContainer.MiniAppService
+	miniApp, err := miniAppSvc.GetMiniApp(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "小程序不存在"})
 		return
 	}
@@ -459,7 +428,7 @@ func UpdateMiniApp(c *gin.Context) {
 		miniApp.Permissions = req.Permissions
 	}
 
-	if err := db.Save(&miniApp).Error; err != nil {
+	if err := miniAppSvc.UpdateMiniApp(miniApp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新小程序失败"})
 		return
 	}
@@ -473,8 +442,8 @@ func UpdateMiniApp(c *gin.Context) {
 func DeleteMiniApp(c *gin.Context) {
 	id := c.Param("id")
 
-	db := database.GetDB()
-	if err := db.Where("id = ?", id).Delete(&model.MiniApp{}).Error; err != nil {
+	miniAppSvc := di.GlobalContainer.MiniAppService
+	if err := miniAppSvc.DeleteMiniApp(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除小程序失败"})
 		return
 	}
@@ -488,9 +457,12 @@ func DeleteMiniApp(c *gin.Context) {
 func GetNotes(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	db := database.GetDB()
-	var notes []model.Note
-	db.Where("user_id = ?", userID).Order("updated_at DESC").Find(&notes)
+	noteSvc := di.GlobalContainer.NoteService
+	notes, err := noteSvc.GetNotes(userID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取笔记列表失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -508,9 +480,9 @@ func GetNote(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var note model.Note
-	if err := db.Where("id = ? AND user_id = ?", uint(noteID), userID).First(&note).Error; err != nil {
+	noteSvc := di.GlobalContainer.NoteService
+	note, err := noteSvc.GetNote(uint(noteID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
 		return
 	}
@@ -542,7 +514,6 @@ func CreateNote(c *gin.Context) {
 	if style == "" {
 		style = "{}"
 	}
-	// If color is provided, merge it into style JSON
 	if req.Color != "" {
 		var styleMap map[string]interface{}
 		if err := json.Unmarshal([]byte(style), &styleMap); err == nil {
@@ -553,7 +524,7 @@ func CreateNote(c *gin.Context) {
 		}
 	}
 
-	db := database.GetDB()
+	noteSvc := di.GlobalContainer.NoteService
 	note := model.Note{
 		UserID:  userID.(uint),
 		Title:   req.Title,
@@ -561,7 +532,7 @@ func CreateNote(c *gin.Context) {
 		Type:    req.Type,
 		Style:   style,
 	}
-	db.Create(&note)
+	noteSvc.CreateNote(&note)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -592,9 +563,9 @@ func UpdateNote(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var note model.Note
-	if err := db.Where("id = ? AND user_id = ?", uint(noteID), userID).First(&note).Error; err != nil {
+	noteSvc := di.GlobalContainer.NoteService
+	note, err := noteSvc.GetNote(uint(noteID), userID.(uint))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "笔记不存在"})
 		return
 	}
@@ -603,7 +574,6 @@ func UpdateNote(c *gin.Context) {
 	note.Content = req.Content
 	note.Type = req.Type
 
-	// Merge color and style into style JSON
 	style := note.Style
 	if style == "" {
 		style = "{}"
@@ -625,7 +595,7 @@ func UpdateNote(c *gin.Context) {
 			note.Style = string(styleBytes)
 		}
 	}
-	db.Save(&note)
+	noteSvc.UpdateNote(note)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -643,8 +613,8 @@ func DeleteNote(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	if err := db.Where("id = ? AND user_id = ?", uint(noteID), userID).Delete(&model.Note{}).Error; err != nil {
+	noteSvc := di.GlobalContainer.NoteService
+	if err := noteSvc.DeleteNote(uint(noteID), userID.(uint)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除笔记失败"})
 		return
 	}

@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,25 +19,23 @@ func GetSensitiveWords(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 	keyword := c.Query("keyword")
 
-	db := database.GetDB()
+	swSvc := di.GlobalContainer.SensitiveWordService
 
-	query := db.Model(&model.SensitiveWord{})
-	if keyword != "" {
-		query = query.Where("word LIKE ?", "%"+keyword+"%")
+	result, err := swSvc.GetSensitiveWords(service.SensitiveWordQuery{
+		Page:     page,
+		PageSize: pageSize,
+		Keyword:  keyword,
+	})
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
 	}
 
-	var total int64
-	query.Count(&total)
-
-	var words []model.SensitiveWord
-	offset := (page - 1) * pageSize
-	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&words)
-
 	response.Success(c, gin.H{
-		"list":     words,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
+		"list":     result.List,
+		"total":    result.Total,
+		"page":     result.Page,
+		"pageSize": result.PageSize,
 	})
 }
 
@@ -51,10 +50,9 @@ func CreateSensitiveWord(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	swSvc := di.GlobalContainer.SensitiveWordService
 
-	var existing model.SensitiveWord
-	if err := db.Where("word = ? AND deleted_at IS NULL", req.Word).First(&existing).Error; err == nil {
+	if _, err := swSvc.GetByWord(req.Word); err == nil {
 		response.BadRequest(c, "敏感词已存在")
 		return
 	}
@@ -69,7 +67,7 @@ func CreateSensitiveWord(c *gin.Context) {
 		Level: level,
 	}
 
-	if err := db.Create(&word).Error; err != nil {
+	if err := swSvc.Create(&word); err != nil {
 		response.InternalServerError(c, "创建失败")
 		return
 	}
@@ -91,9 +89,10 @@ func UpdateSensitiveWord(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var word model.SensitiveWord
-	if err := db.First(&word, uint(id)).Error; err != nil {
+	swSvc := di.GlobalContainer.SensitiveWordService
+
+	word, err := swSvc.GetByID(uint(id))
+	if err != nil {
 		response.NotFound(c, "敏感词不存在")
 		return
 	}
@@ -108,7 +107,7 @@ func UpdateSensitiveWord(c *gin.Context) {
 		word.Enabled = *req.Enabled
 	}
 
-	if err := db.Save(&word).Error; err != nil {
+	if err := swSvc.Update(word); err != nil {
 		response.InternalServerError(c, "更新失败")
 		return
 	}
@@ -119,14 +118,14 @@ func UpdateSensitiveWord(c *gin.Context) {
 func DeleteSensitiveWord(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	db := database.GetDB()
-	var word model.SensitiveWord
-	if err := db.First(&word, uint(id)).Error; err != nil {
+	swSvc := di.GlobalContainer.SensitiveWordService
+
+	if _, err := swSvc.GetByID(uint(id)); err != nil {
 		response.NotFound(c, "敏感词不存在")
 		return
 	}
 
-	if err := db.Delete(&word).Error; err != nil {
+	if err := swSvc.Delete(uint(id)); err != nil {
 		response.InternalServerError(c, "删除失败")
 		return
 	}
@@ -137,15 +136,16 @@ func DeleteSensitiveWord(c *gin.Context) {
 func ToggleSensitiveWordStatus(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	db := database.GetDB()
-	var word model.SensitiveWord
-	if err := db.First(&word, uint(id)).Error; err != nil {
+	swSvc := di.GlobalContainer.SensitiveWordService
+
+	word, err := swSvc.GetByID(uint(id))
+	if err != nil {
 		response.NotFound(c, "敏感词不存在")
 		return
 	}
 
 	word.Enabled = !word.Enabled
-	if err := db.Save(&word).Error; err != nil {
+	if err := swSvc.Update(word); err != nil {
 		response.InternalServerError(c, "更新失败")
 		return
 	}
@@ -163,7 +163,7 @@ func BatchCreateSensitiveWords(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	swSvc := di.GlobalContainer.SensitiveWordService
 	count := 0
 
 	for _, w := range req.Words {
@@ -172,13 +172,12 @@ func BatchCreateSensitiveWords(c *gin.Context) {
 			continue
 		}
 
-		var existing model.SensitiveWord
-		if err := db.Where("word = ? AND deleted_at IS NULL", w).First(&existing).Error; err == nil {
+		if _, err := swSvc.GetByWord(w); err == nil {
 			continue
 		}
 
 		word := model.SensitiveWord{Word: w, Level: "medium"}
-		if err := db.Create(&word).Error; err == nil {
+		if err := swSvc.Create(&word); err == nil {
 			count++
 		}
 	}
@@ -201,7 +200,7 @@ func ImportSensitiveWords(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	swSvc := di.GlobalContainer.SensitiveWordService
 	count := 0
 
 	for i, record := range records {
@@ -217,13 +216,12 @@ func ImportSensitiveWords(c *gin.Context) {
 			continue
 		}
 
-		var existing model.SensitiveWord
-		if err := db.Where("word = ? AND deleted_at IS NULL", w).First(&existing).Error; err == nil {
+		if _, err := swSvc.GetByWord(w); err == nil {
 			continue
 		}
 
 		word := model.SensitiveWord{Word: w, Level: "medium"}
-		if err := db.Create(&word).Error; err == nil {
+		if err := swSvc.Create(&word); err == nil {
 			count++
 		}
 	}
@@ -232,9 +230,13 @@ func ImportSensitiveWords(c *gin.Context) {
 }
 
 func ExportSensitiveWords(c *gin.Context) {
-	db := database.GetDB()
-	var words []model.SensitiveWord
-	db.Find(&words)
+	swSvc := di.GlobalContainer.SensitiveWordService
+
+	words, err := swSvc.GetAll()
+	if err != nil {
+		response.InternalServerError(c, "导出失败")
+		return
+	}
 
 	c.Header("Content-Type", "text/csv")
 	c.Header("Content-Disposition", "attachment; filename=sensitive_words.csv")
@@ -262,9 +264,13 @@ func CheckSensitiveWords(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var words []model.SensitiveWord
-	db.Where("enabled = ?", true).Find(&words)
+	swSvc := di.GlobalContainer.SensitiveWordService
+
+	words, err := swSvc.GetAllEnabled()
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
 
 	found := []string{}
 	for _, word := range words {

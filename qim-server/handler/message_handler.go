@@ -9,14 +9,13 @@ import (
 
 	"qim-server/ai"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 	"qim-server/service"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Global smart reply engine instance
@@ -89,40 +88,42 @@ func GetMessages(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 
-	db := database.GetDB()
+	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		var count int64
-		db.Model(&model.Message{}).Where("conversation_id = ? AND sender_id = ?", convID, userID).Count(&count)
-		if count == 0 {
+	convSvc := di.GlobalContainer.ConversationService
+	msgSvc := di.GlobalContainer.MessageService
+
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	if !isMember {
+		query := service.MessageQuery{
+			ConvID: uint(convIDUint),
+			UserID: userID.(uint),
+			Limit:  1,
+		}
+		result, _ := msgSvc.GetMessages(query)
+		if result == nil || result.Total == 0 {
 			response.Forbidden(c, "无权限访问")
 			return
 		}
 	}
 
-	var total int64
-	db.Model(&model.Message{}).Where("conversation_id = ?", convID).Count(&total)
-
-	totalPages := int(total) / pageSize
-	if int(total)%pageSize > 0 {
-		totalPages++
+	query := service.MessageQuery{
+		ConvID:      uint(convIDUint),
+		UserID:      userID.(uint),
+		Limit:       pageSize,
+		Offset:      offset,
 	}
-
-	var messages []model.Message
-	query := db.Where("conversation_id = ?", convID)
 	if afterID > 0 {
-		query = query.Where("id > ?", afterID)
+		query.BeforeMsgID = afterID
 	}
-	query.Preload("Sender").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
-
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
+	result, err := msgSvc.GetMessages(query)
+	if err != nil {
+		response.InternalServerError(c, "获取消息失败")
+		return
 	}
 
 	var responseMessages []gin.H
-	for _, msg := range messages {
-
+	for _, msg := range result.Messages {
 		responseMsg := gin.H{
 			"id":                msg.ID,
 			"conversation_id":   msg.ConversationID,
@@ -140,12 +141,17 @@ func GetMessages(c *gin.Context) {
 		responseMessages = append(responseMessages, responseMsg)
 	}
 
+	totalPages := int(result.Total) / pageSize
+	if int(result.Total)%pageSize > 0 {
+		totalPages++
+	}
+
 	response.Success(c, gin.H{
 		"messages": responseMessages,
 		"pagination": gin.H{
 			"current_page": page,
 			"page_size":    pageSize,
-			"total":        total,
+			"total":        result.Total,
 			"total_pages":  totalPages,
 		},
 	})
@@ -166,9 +172,12 @@ func GetMessagesByFilter(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
+	convSvc := di.GlobalContainer.ConversationService
+	msgSvc := di.GlobalContainer.MessageService
+
+	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	if !isMember {
 		response.Forbidden(c, "无权限访问")
 		return
 	}
@@ -187,36 +196,25 @@ func GetMessagesByFilter(c *gin.Context) {
 	}
 	offset := (page - 1) * pageSize
 
-	query := db.Where("conversation_id = ? AND type != ?", convID, "system")
-
-	if messageType != "" {
-		query = query.Where("type = ?", messageType)
+	query := service.MessageQuery{
+		ConvID:      uint(convIDUint),
+		UserID:      userID.(uint),
+		Limit:       pageSize,
+		Offset:      offset,
+		MessageType: messageType,
+		Keyword:     search,
+		StartDate:   startDate,
+		EndDate:     endDate,
 	}
-
-	if search != "" {
-		query = query.Where("content LIKE ?", "%"+search+"%")
-	}
-
-	if startDate != "" {
-		query = query.Where("created_at >= ?", startDate)
-	}
-	if endDate != "" {
-		query = query.Where("created_at <= ?", endDate+" 23:59:59")
-	}
-
-	var total int64
-	query.Model(&model.Message{}).Count(&total)
-
-	var messages []model.Message
-	query.Preload("Sender").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&messages)
-
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
+	result, err := msgSvc.GetMessagesByFilter(query)
+	if err != nil {
+		response.InternalServerError(c, "获取消息失败")
+		return
 	}
 
 	response.Success(c, gin.H{
-		"messages": messages,
-		"total":    total,
+		"messages": result.Messages,
+		"total":    result.Total,
 	})
 }
 
@@ -240,28 +238,19 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限发送消息")
-		return
-	}
+	msgSvc := di.GlobalContainer.MessageService
+	convSvc := di.GlobalContainer.ConversationService
+	fileSvc := di.GlobalContainer.FileService
 
 	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
-	content := req.Content
-
-	msg := model.Message{
-		ConversationID:  uint(convIDUint),
-		SenderID:        userID.(uint),
-		Type:            req.Type,
-		Content:         content,
-		QuotedMessageID: req.QuotedMessageID,
-		IsRead:          false,
-	}
-	if err := db.Create(&msg).Error; err != nil {
-		response.InternalServerError(c, "消息创建失败")
+	msg, err := msgSvc.SendMessage(uint(convIDUint), userID.(uint), req.Type, req.Content, req.QuotedMessageID)
+	if err != nil {
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "无权限发送消息")
+			return
+		}
+		response.InternalServerError(c, "消息发送失败")
 		return
 	}
 
@@ -271,16 +260,8 @@ func SendMessage(c *gin.Context) {
 			ID  uint   `json:"id"`
 		}
 		if err := json.Unmarshal([]byte(req.Content), &fileData); err == nil && fileData.ID > 0 {
-			db.Model(&model.File{}).
-				Where("id = ? AND user_id = ?", fileData.ID, userID.(uint)).
-				Update("source", "chat")
+			fileSvc.UpdateFileSource(fileData.ID, userID.(uint), "chat")
 		}
-	}
-
-	db.Preload("Sender").Preload("QuotedMessage").First(&msg, msg.ID)
-
-	if msg.QuotedMessage != nil {
-		db.Model(&msg.QuotedMessage).Association("Sender").Find(&msg.QuotedMessage.Sender)
 	}
 
 	responseData := gin.H{
@@ -298,48 +279,20 @@ func SendMessage(c *gin.Context) {
 		"quoted_message":    msg.QuotedMessage,
 	}
 
-	now := time.Now()
-	db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
-		"last_message_id": msg.ID,
-		"last_message_at": now,
-	})
-
-	var convType string
-	db.Model(&model.Conversation{}).Select("type").Where("id = ?", convID).Scan(&convType)
-
-	if convType == "bot" {
-		go HandleBotMessage(userID.(uint), uint(convIDUint), req.Content)
-	} else {
-		db.Model(&model.ConversationMember{}).
-			Where("conversation_id = ? AND user_id != ?", convID, userID).
-			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
-
-		if ws.GlobalHub != nil {
-			newMsg := ws.WSMessage{
-				Type: "new_message",
-				Data: responseData,
-			}
-			jsonMsg, _ := json.Marshal(newMsg)
-
-			go ws.GlobalHub.SendToConversationAsync(uint(convIDUint), userID.(uint), jsonMsg)
-		}
-
-		// AI 意图检测 + 智能回复（非阻塞）
+	conv, _ := convSvc.GetConversation(uint(convIDUint))
+	if conv != nil && conv.Type != "bot" {
 		if smartReplyEngine != nil {
 			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content)
 		}
 
-		// 异常检测（非阻塞）
 		if anomalyDetector != nil {
 			go func() {
 				anomalyDetector.RecordMessage(uint(convIDUint))
 
-				// 检测敏感内容
 				if alert := anomalyDetector.CheckSensitiveContent(req.Content); alert != nil {
 					anomalyDetector.SendAlert(userID.(uint), alert)
 				}
 
-				// 检测消息频率
 				if alert := anomalyDetector.CheckMessageFrequency(userID.(uint), uint(convIDUint)); alert != nil {
 					anomalyDetector.SendAlert(userID.(uint), alert)
 				}
@@ -352,18 +305,16 @@ func SendMessage(c *gin.Context) {
 
 // broadcastNewMessage 广播新消息到会话并更新相关状态
 func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Conversation) {
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
 
 	now := time.Now()
-	db.Model(&model.Conversation{}).Where("id = ?", msg.ConversationID).Updates(map[string]interface{}{
+	convSvc.UpdateConversation(msg.ConversationID, map[string]interface{}{
 		"last_message_id": msg.ID,
 		"last_message_at": now,
 	})
 
 	if excludeUserID > 0 {
-		db.Model(&model.ConversationMember{}).
-			Where("conversation_id = ? AND user_id != ?", msg.ConversationID, excludeUserID).
-			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
+		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	}
 
 	responseData := gin.H{
@@ -411,16 +362,19 @@ func StreamMessage(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	convSvc := di.GlobalContainer.ConversationService
+	msgSvc := di.GlobalContainer.MessageService
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
+	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
+
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	if !isMember {
 		response.Forbidden(c, "无权限发送消息")
 		return
 	}
 
-	var conv model.Conversation
-	if err := db.First(&conv, convID).Error; err != nil {
+	conv, err := convSvc.GetConversation(uint(convIDUint))
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
@@ -429,8 +383,6 @@ func StreamMessage(c *gin.Context) {
 		response.BadRequest(c, "仅支持机器人会话的流式消息")
 		return
 	}
-
-	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
 	content := req.Content
 
@@ -442,12 +394,13 @@ func StreamMessage(c *gin.Context) {
 		QuotedMessageID: req.QuotedMessageID,
 		IsRead:          false,
 	}
-	db.Create(&msg)
+	msgSvc.CreateMessage(&msg)
 
 	now := time.Now()
-	conv.LastMessageID = &msg.ID
-	conv.LastMessageAt = &now
-	db.Save(&conv)
+	convSvc.UpdateConversation(conv.ID, map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
 
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -458,6 +411,7 @@ func StreamMessage(c *gin.Context) {
 	doneChan := make(chan bool)
 
 	go func() {
+		db := database.GetDB()
 		var botConv model.BotConversation
 		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
 			log.Printf("[StreamMessage] 查找机器人会话关联失败: %v", err)
@@ -474,7 +428,6 @@ func StreamMessage(c *gin.Context) {
 			return
 		}
 
-		// 解析 Bot 配置获取系统提示词
 		systemPrompt := "你是一个智能助手，帮助用户解决问题。"
 		if bot.Config != "" {
 			var botConfig map[string]interface{}
@@ -489,13 +442,11 @@ func StreamMessage(c *gin.Context) {
 		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
 		var aiMessages []ai.Message
-		// 先添加系统提示词
 		aiMessages = append(aiMessages, ai.Message{
 			Role:    "system",
 			Content: systemPrompt,
 		})
 
-		// 加载历史消息，正确识别 Bot 消息
 		for _, msg := range messages {
 			role := "user"
 			if bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID {
@@ -524,8 +475,7 @@ func StreamMessage(c *gin.Context) {
 		close(responseChan)
 		doneChan <- true
 
-		// 保存 Bot 回复时使用 VirtualUserID
-		senderID := uint(0) // 默认使用 0
+		senderID := uint(0)
 		if bot.VirtualUserID != nil {
 			senderID = *bot.VirtualUserID
 		}
@@ -579,44 +529,24 @@ func RecallMessage(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var msg model.Message
-	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
-		return
-	}
-
-	// 检查是否在2分钟内可撤回
-	if time.Since(msg.CreatedAt) > 2*time.Minute {
-		response.BadRequest(c, "消息已超过2分钟，无法撤回")
-		return
-	}
-
-	if msg.SenderID != userID.(uint) {
-		response.Forbidden(c, "只能撤回自己发送的消息")
-		return
-	}
-
-	if msg.IsRecalled {
-		response.BadRequest(c, "消息已经被撤回")
-		return
-	}
-
-	msg.IsRecalled = true
-	msg.Content = "[消息已撤回]"
-	db.Save(&msg)
-
-	db.Preload("Sender").First(&msg, msg.ID)
-
-	if ws.GlobalHub != nil {
-		recallMsg := ws.WSMessage{
-			Type: "message_recalled",
-			Data: msg,
+	msg, err := msgSvc.RecallMessage(uint(msgID), userID.(uint))
+	if err != nil {
+		if err == service.ErrMessageNotFound {
+			response.NotFound(c, "消息不存在")
+			return
 		}
-		jsonMsg, _ := json.Marshal(recallMsg)
-
-		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "只能撤回自己发送的消息")
+			return
+		}
+		if err == service.ErrMessageAlreadyRecalled {
+			response.BadRequest(c, "消息已经被撤回")
+			return
+		}
+		response.BadRequest(c, err.Error())
+		return
 	}
 
 	response.Success(c, gin.H{"message": "消息撤回成功", "data": msg})
@@ -632,10 +562,10 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var msg model.Message
-	if err := db.First(&msg, uint(msgID)).Error; err != nil {
+	msg, err := msgSvc.GetMessageByID(uint(msgID))
+	if err != nil {
 		response.NotFound(c, "消息不存在")
 		return
 	}
@@ -660,35 +590,20 @@ func DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var msg model.Message
-	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
-		return
-	}
-
-	if msg.SenderID != userID.(uint) {
-		response.Forbidden(c, "只能删除自己发送的消息")
-		return
-	}
-
-	if err := db.Delete(&msg).Error; err != nil {
+	err = msgSvc.DeleteMessage(uint(msgID), userID.(uint))
+	if err != nil {
+		if err == service.ErrMessageNotFound {
+			response.NotFound(c, "消息不存在")
+			return
+		}
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "只能删除自己发送的消息")
+			return
+		}
 		response.InternalServerError(c, "删除消息失败")
 		return
-	}
-
-	if ws.GlobalHub != nil {
-		deleteMsg := ws.WSMessage{
-			Type: "message_deleted",
-			Data: gin.H{
-				"message_id":      msg.ID,
-				"conversation_id": msg.ConversationID,
-			},
-		}
-		jsonMsg, _ := json.Marshal(deleteMsg)
-
-		ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 	}
 
 	response.Success(c, gin.H{
@@ -706,48 +621,25 @@ func GetMessageReadUsers(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var msg model.Message
-	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
-		return
-	}
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
-		return
-	}
-
-	var readReceipts []model.MessageReadReceipt
-	db.Where("message_id = ?", msgID).Preload("User").Order("created_at DESC").Find(&readReceipts)
-
-	var readUsers []map[string]interface{}
-	for _, receipt := range readReceipts {
-		if receipt.User != nil && receipt.User.ID != userID.(uint) {
-			name := receipt.User.Nickname
-			if name == "" {
-				name = receipt.User.Username
-			}
-			readUsers = append(readUsers, map[string]interface{}{
-				"id":       receipt.User.ID,
-				"name":     name,
-				"username": receipt.User.Username,
-				"avatar":   receipt.User.Avatar,
-			})
+	readUsers, totalMembers, err := msgSvc.GetMessageReadUsers(uint(msgID), userID.(uint))
+	if err != nil {
+		if err == service.ErrMessageNotFound {
+			response.NotFound(c, "消息不存在")
+			return
 		}
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "无权限访问")
+			return
+		}
+		response.InternalServerError(c, "获取已读用户失败")
+		return
 	}
-
-	var totalMembers int64
-	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", msg.ConversationID).Count(&totalMembers)
-
-	var readCount int64
-	db.Model(&model.MessageReadReceipt{}).Where("message_id = ?", msgID).Count(&readCount)
 
 	response.Success(c, gin.H{
 		"read_users":    readUsers,
-		"read_count":    readCount,
+		"read_count":    int64(len(readUsers)),
 		"total_members": totalMembers,
 	})
 }
@@ -766,115 +658,16 @@ func MarkConversationAsRead(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
-		return
-	}
-
-	// 检查是否已有未读消息，避免重复执行
-	var unreadCount int64
-	db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", uint(convID), userID).
-		Count(&unreadCount)
-
-	if unreadCount == 0 {
-		// 没有未读消息，直接返回
-		response.Success(c, gin.H{
-			"marked_count":    0,
-			"conversation_id": convID,
-		})
-		return
-	}
-
-	var unreadMsgIDs []uint
-	db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ?", uint(convID), userID).
-		Pluck("id", &unreadMsgIDs)
-
-	if len(unreadMsgIDs) > 0 {
-		batchSize := 500
-		for i := 0; i < len(unreadMsgIDs); i += batchSize {
-			end := i + batchSize
-			if end > len(unreadMsgIDs) {
-				end = len(unreadMsgIDs)
-			}
-			batch := unreadMsgIDs[i:end]
-
-			receipts := make([]model.MessageReadReceipt, 0, len(batch))
-			now := time.Now()
-			for _, msgID := range batch {
-				receipts = append(receipts, model.MessageReadReceipt{
-					MessageID:      msgID,
-					ConversationID: uint(convID),
-					UserID:         userID.(uint),
-					CreatedAt:      now,
-				})
-			}
-
-			db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
-				DoNothing: true,
-			}).Create(&receipts)
+	err = msgSvc.MarkAsRead(uint(convID), userID.(uint))
+	if err != nil {
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "无权限访问")
+			return
 		}
-	}
-
-	result := db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", uint(convID), userID).
-		UpdateColumn("is_read", true)
-
-	db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", uint(convID), userID).
-		UpdateColumn("unread_count", 0)
-
-	now := time.Now()
-	db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", uint(convID), userID).
-		UpdateColumn("last_read_at", now)
-
-	if result.RowsAffected > 0 {
-		var conv model.Conversation
-		db.First(&conv, uint(convID))
-
-		if conv.Type == "single" {
-			var otherMember model.ConversationMember
-			db.Where("conversation_id = ? AND user_id != ?", uint(convID), userID).First(&otherMember)
-
-			if ws.GlobalHub != nil {
-				readMsg := ws.WSMessage{
-					Type: "message_read",
-					Data: map[string]interface{}{
-						"conversation_id": convID,
-						"user_id":         userID,
-						"timestamp":       time.Now().Unix(),
-					},
-				}
-				jsonMsg, _ := json.Marshal(readMsg)
-
-				ws.GlobalHub.SendToUser(otherMember.UserID, jsonMsg)
-			}
-		} else if conv.Type == "group" {
-			var members []model.ConversationMember
-			db.Where("conversation_id = ? AND user_id != ?", uint(convID), userID).Find(&members)
-
-			if ws.GlobalHub != nil {
-				readMsg := ws.WSMessage{
-					Type: "message_read",
-					Data: map[string]interface{}{
-						"conversation_id": convID,
-						"user_id":         userID,
-						"timestamp":       time.Now().Unix(),
-					},
-				}
-				jsonMsg, _ := json.Marshal(readMsg)
-
-				for _, member := range members {
-					ws.GlobalHub.SendToUser(member.UserID, jsonMsg)
-				}
-			}
-		}
+		response.InternalServerError(c, "标记已读失败")
+		return
 	}
 
 	response.Success(c, gin.H{
@@ -887,9 +680,6 @@ func SearchMessages(c *gin.Context) {
 
 	keyword := c.Query("keyword")
 	convID := c.Query("conv_id")
-	startDate := c.Query("start_date")
-	endDate := c.Query("end_date")
-	msgType := c.Query("type")
 	pageStr := c.Query("page")
 	pageSizeStr := c.Query("pageSize")
 
@@ -909,39 +699,24 @@ func SearchMessages(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	query := db.Model(&model.Message{}).Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").Where("conversation_members.user_id = ?", userID)
-
-	if keyword != "" {
-		query = query.Where("messages.content LIKE ?", "%"+keyword+"%")
-	}
-
+	var convIDPtr *uint
 	if convID != "" {
-		query = query.Where("messages.conversation_id = ?", convID)
+		id, _ := strconv.ParseUint(convID, 10, 32)
+		cid := uint(id)
+		convIDPtr = &cid
 	}
 
-	if startDate != "" {
-		query = query.Where("messages.created_at >= ?", startDate)
+	messages, err := msgSvc.SearchMessages(userID.(uint), keyword, convIDPtr, pageSize, offset)
+	if err != nil {
+		response.InternalServerError(c, "搜索消息失败")
+		return
 	}
-
-	if endDate != "" {
-		query = query.Where("messages.created_at <= ?", endDate)
-	}
-
-	if msgType != "" {
-		query = query.Where("messages.type = ?", msgType)
-	}
-
-	var total int64
-	query.Model(&model.Message{}).Count(&total)
-
-	var messages []model.Message
-	query.Preload("Sender").Preload("Conversation").Order("messages.created_at DESC").Offset(offset).Limit(pageSize).Find(&messages)
 
 	response.Success(c, gin.H{
 		"list":  messages,
-		"total": total,
+		"total": len(messages),
 		"page":  page,
 	})
 }
@@ -956,31 +731,20 @@ func GetMessageQuoteChain(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	msgSvc := di.GlobalContainer.MessageService
 
-	var msg model.Message
-	if err := db.First(&msg, uint(msgID)).Error; err != nil {
-		response.NotFound(c, "消息不存在")
-		return
-	}
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
-		return
-	}
-
-	var quoteChain []model.Message
-	currentMsg := msg
-
-	for i := 0; i < 3 && currentMsg.QuotedMessageID != nil; i++ {
-		var quotedMsg model.Message
-		if err := db.Preload("Sender").First(&quotedMsg, *currentMsg.QuotedMessageID).Error; err == nil {
-			quoteChain = append(quoteChain, quotedMsg)
-			currentMsg = quotedMsg
-		} else {
-			break
+	quoteChain, err := msgSvc.GetMessageQuoteChain(uint(msgID), userID.(uint))
+	if err != nil {
+		if err == service.ErrMessageNotFound {
+			response.NotFound(c, "消息不存在")
+			return
 		}
+		if err == service.ErrMessageForbidden {
+			response.Forbidden(c, "无权限访问")
+			return
+		}
+		response.InternalServerError(c, "获取引用链失败")
+		return
 	}
 
 	response.Success(c, gin.H{

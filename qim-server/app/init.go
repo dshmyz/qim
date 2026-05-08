@@ -87,6 +87,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	ws.GlobalHub = hub
 	go hub.Run()
 
+	// 初始化依赖注入容器
+	InitContainer()
+
 	return cfg, db, hub
 }
 

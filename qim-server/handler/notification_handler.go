@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/ws"
 
@@ -35,14 +35,12 @@ func GetNotifications(c *gin.Context) {
 		}
 	}
 
-	offset := (page - 1) * pageSize
-
-	db := database.GetDB()
-	var notifications []model.Notification
-	var total int64
-
-	db.Model(&model.Notification{}).Where("user_id = ?", userID).Count(&total)
-	db.Where("user_id = ?", userID).Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&notifications)
+	svc := di.GlobalContainer.NotificationService
+	notifications, total, err := svc.GetNotifications(userID.(uint), page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取通知失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -64,17 +62,12 @@ func MarkNotificationAsRead(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var notification model.Notification
-	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+	svc := di.GlobalContainer.NotificationService
+	notification, err := svc.MarkAsRead(userID.(uint), uint(notificationID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
 		return
 	}
-
-	notification.Read = true
-	now := time.Now()
-	notification.ReadAt = &now
-	db.Save(&notification)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -86,13 +79,11 @@ func MarkNotificationAsRead(c *gin.Context) {
 func MarkAllNotificationsAsRead(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	db := database.GetDB()
-	now := time.Now()
-
-	db.Model(&model.Notification{}).Where("user_id = ? AND read = ?", userID, false).Updates(map[string]interface{}{
-		"read":    true,
-		"read_at": now,
-	})
+	svc := di.GlobalContainer.NotificationService
+	if err := svc.MarkAllAsRead(userID.(uint)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "标记所有通知已读失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -103,8 +94,8 @@ func MarkAllNotificationsAsRead(c *gin.Context) {
 func ClearAllNotifications(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	db := database.GetDB()
-	if err := db.Where("user_id = ?", userID).Delete(&model.Notification{}).Error; err != nil {
+	svc := di.GlobalContainer.NotificationService
+	if err := svc.ClearAll(userID.(uint)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "清空通知失败"})
 		return
 	}
@@ -133,22 +124,23 @@ func HandleNotificationAction(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var notification model.Notification
-	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+	svc := di.GlobalContainer.NotificationService
+	notification, err := svc.GetByID(userID.(uint), uint(notificationID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
 		return
 	}
 
+	db := di.GlobalContainer.DB
 	switch req.Action {
 	case "accept":
-		handleAcceptAction(db, &notification)
+		handleAcceptAction(db, notification)
 	case "ignore":
-		handleIgnoreAction(db, &notification)
+		handleIgnoreAction(db, notification)
 	case "confirm":
-		handleConfirmAction(db, &notification)
+		handleConfirmAction(db, notification)
 	case "reschedule":
-		handleRescheduleAction(db, &notification)
+		handleRescheduleAction(db, notification)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不支持的操作"})
 		return
@@ -157,7 +149,7 @@ func HandleNotificationAction(c *gin.Context) {
 	notification.Handled = true
 	now := time.Now()
 	notification.ReadAt = &now
-	db.Save(&notification)
+	svc.Save(notification)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -211,20 +203,17 @@ func TogglePinNotification(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var notification model.Notification
-	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+	svc := di.GlobalContainer.NotificationService
+	pinned, err := svc.TogglePin(userID.(uint), uint(notificationID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
 		return
 	}
 
-	notification.Pinned = !notification.Pinned
-	db.Model(&notification).Update("pinned", notification.Pinned)
-
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "操作成功",
-		"pinned":  notification.Pinned,
+		"pinned":  pinned,
 	})
 }
 
@@ -238,29 +227,29 @@ func ToggleImportantNotification(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var notification model.Notification
-	if err := db.Where("id = ? AND user_id = ?", uint(notificationID), userID).First(&notification).Error; err != nil {
+	svc := di.GlobalContainer.NotificationService
+	important, err := svc.ToggleImportant(userID.(uint), uint(notificationID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "通知不存在"})
 		return
 	}
 
-	notification.Important = !notification.Important
-	db.Model(&notification).Update("important", notification.Important)
-
 	c.JSON(http.StatusOK, gin.H{
 		"code":      0,
 		"message":   "操作成功",
-		"important": notification.Important,
+		"important": important,
 	})
 }
 
 func GetEvents(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	db := database.GetDB()
-	var events []model.Event
-	db.Where("user_id = ?", userID).Order("start DESC").Find(&events)
+	svc := di.GlobalContainer.EventService
+	events, err := svc.GetEvents(userID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取事件失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -285,8 +274,8 @@ func CreateEvent(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	event := model.Event{
+	svc := di.GlobalContainer.EventService
+	event := &model.Event{
 		UserID:      userID.(uint),
 		Title:       req.Title,
 		Description: req.Description,
@@ -295,40 +284,25 @@ func CreateEvent(c *gin.Context) {
 		AllDay:      req.AllDay,
 		Reminder:    req.Reminder,
 	}
-	db.Create(&event)
+	if err := svc.CreateEvent(event); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建事件失败"})
+		return
+	}
 
 	if req.Reminder > 0 {
 		go func() {
-			reminderTime := req.Start.Add(-time.Duration(req.Reminder) * time.Minute)
-			now := time.Now()
-
-			if reminderTime.Before(now) {
-				return
-			}
-
-			waitDuration := reminderTime.Sub(now)
-			timer := time.NewTimer(waitDuration)
-			<-timer.C
-
-			var currentEvent model.Event
-			if err := db.First(&currentEvent, event.ID).Error; err != nil {
-				return
-			}
-
-			if time.Now().After(currentEvent.End) {
-				return
-			}
+			svc.CreateReminderNotification(userID.(uint), event)
 
 			notification := model.Notification{
 				UserID:        userID.(uint),
 				Type:          "event_reminder",
 				Title:         "事件提醒",
-				Content:       fmt.Sprintf("您设置的事件「%s」即将开始", currentEvent.Title),
+				Content:       fmt.Sprintf("您设置的事件「%s」即将开始", event.Title),
 				Priority:      "important",
 				ActionType:    "confirm_reschedule",
-				ActionPayload: fmt.Sprintf(`{"event_id":%d}`, currentEvent.ID),
+				ActionPayload: fmt.Sprintf(`{"event_id":%d}`, event.ID),
 			}
-			db.Create(&notification)
+			di.GlobalContainer.NotificationService.Create(&notification)
 
 			if ws.GlobalHub != nil {
 				notificationMsg := ws.WSMessage{
@@ -357,9 +331,9 @@ func GetEvent(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var event model.Event
-	if err := db.Where("id = ? AND user_id = ?", uint(eventID), userID).First(&event).Error; err != nil {
+	svc := di.GlobalContainer.EventService
+	event, err := svc.GetEvent(userID.(uint), uint(eventID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "事件不存在"})
 		return
 	}
@@ -394,20 +368,20 @@ func UpdateEvent(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var event model.Event
-	if err := db.Where("id = ? AND user_id = ?", uint(eventID), userID).First(&event).Error; err != nil {
+	svc := di.GlobalContainer.EventService
+	updates := &model.Event{
+		Title:       req.Title,
+		Description: req.Description,
+		Start:       req.Start,
+		End:         req.End,
+		AllDay:      req.AllDay,
+		Reminder:    req.Reminder,
+	}
+	event, err := svc.UpdateEvent(userID.(uint), uint(eventID), updates)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "事件不存在"})
 		return
 	}
-
-	event.Title = req.Title
-	event.Description = req.Description
-	event.Start = req.Start
-	event.End = req.End
-	event.AllDay = req.AllDay
-	event.Reminder = req.Reminder
-	db.Save(&event)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -425,8 +399,8 @@ func DeleteEvent(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	if err := db.Where("id = ? AND user_id = ?", uint(eventID), userID).Delete(&model.Event{}).Error; err != nil {
+	svc := di.GlobalContainer.EventService
+	if err := svc.DeleteEvent(userID.(uint), uint(eventID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除事件失败"})
 		return
 	}
@@ -440,9 +414,12 @@ func DeleteEvent(c *gin.Context) {
 func GetTasks(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	db := database.GetDB()
-	var tasks []model.Task
-	db.Where("user_id = ?", userID).Order("created_at DESC").Find(&tasks)
+	svc := di.GlobalContainer.TaskService
+	tasks, err := svc.GetTasks(userID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取任务失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -470,8 +447,6 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-
 	var dueDate *time.Time
 	if req.DueDate != "" {
 		parsedDate, err := time.Parse("2006-01-02", req.DueDate)
@@ -495,7 +470,8 @@ func CreateTask(c *gin.Context) {
 		position = *req.Position
 	}
 
-	task := model.Task{
+	svc := di.GlobalContainer.TaskService
+	task := &model.Task{
 		UserID:      userID.(uint),
 		Title:       req.Title,
 		Description: req.Description,
@@ -508,7 +484,7 @@ func CreateTask(c *gin.Context) {
 		Position:    position,
 	}
 
-	if err := db.Create(&task).Error; err != nil {
+	if err := svc.CreateTask(task); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建任务失败"})
 		return
 	}
@@ -546,46 +522,42 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var task model.Task
-	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).First(&task).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
-		return
-	}
-
+	updates := make(map[string]interface{})
 	if req.Title != "" {
-		task.Title = req.Title
+		updates["title"] = req.Title
 	}
 	if req.Description != "" {
-		task.Description = req.Description
+		updates["description"] = req.Description
 	}
 	if req.DueDate != "" {
 		parsedDate, err := time.Parse("2006-01-02", req.DueDate)
 		if err == nil {
-			task.DueDate = &parsedDate
+			updates["due_date"] = &parsedDate
 		}
 	}
 	if req.Priority != "" {
-		task.Priority = req.Priority
+		updates["priority"] = req.Priority
 	}
 	if req.Status != "" {
-		task.Status = req.Status
+		updates["status"] = req.Status
 	}
 	if req.AssigneeID != "" {
-		task.AssigneeID = req.AssigneeID
+		updates["assignee_id"] = req.AssigneeID
 	}
 	if req.Tags != "" {
-		task.Tags = req.Tags
+		updates["tags"] = req.Tags
 	}
 	if req.SubTasks != "" {
-		task.SubTasks = req.SubTasks
+		updates["sub_tasks"] = req.SubTasks
 	}
 	if req.Position != nil {
-		task.Position = *req.Position
+		updates["position"] = *req.Position
 	}
 
-	if err := db.Save(&task).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新任务失败"})
+	svc := di.GlobalContainer.TaskService
+	task, err := svc.UpdateTask(userID.(uint), uint(taskID), updates)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
 		return
 	}
 
@@ -605,8 +577,8 @@ func DeleteTask(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).Delete(&model.Task{}).Error; err != nil {
+	svc := di.GlobalContainer.TaskService
+	if err := svc.DeleteTask(userID.(uint), uint(taskID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除任务失败"})
 		return
 	}
@@ -636,17 +608,10 @@ func UpdateTaskStatus(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var task model.Task
-	if err := db.Where("id = ? AND user_id = ?", uint(taskID), userID).First(&task).Error; err != nil {
+	svc := di.GlobalContainer.TaskService
+	task, err := svc.UpdateTaskStatus(userID.(uint), uint(taskID), req.Status)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "任务不存在"})
-		return
-	}
-
-	task.Status = req.Status
-
-	if err := db.Save(&task).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新任务状态失败"})
 		return
 	}
 

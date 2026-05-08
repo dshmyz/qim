@@ -1,26 +1,42 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 
 	"qim-server/cache"
-	"qim-server/database"
 	"qim-server/model"
+	"qim-server/repository"
+
+	"gorm.io/gorm"
 )
 
 var ErrUserNotFound = errors.New("user not found")
 
-type UserService struct{}
-
-func NewUserService() *UserService {
-	return &UserService{}
+type UserService struct {
+	db       *gorm.DB
+	userRepo repository.UserRepository
 }
 
-func (s *UserService) GetDB() interface{} {
-	return database.GetDB()
+func NewUserService(db *gorm.DB) *UserService {
+	return &UserService{
+		db:       db,
+		userRepo: repository.NewUserRepository(db),
+	}
+}
+
+func (s *UserService) WithRepo(repo repository.UserRepository) *UserService {
+	return &UserService{
+		db:       s.db,
+		userRepo: repo,
+	}
+}
+
+func (s *UserService) GetDB() *gorm.DB {
+	return s.db
 }
 
 func (s *UserService) GetUser(userID uint) (*model.User, error) {
@@ -35,46 +51,35 @@ func (s *UserService) GetUser(userID uint) (*model.User, error) {
 		}
 	}
 
-	db := database.GetDB()
-
-	var user model.User
-	if err := db.First(&user, userID).Error; err != nil {
+	user, err := s.userRepo.FindByID(context.Background(), userID)
+	if err != nil {
 		return nil, ErrUserNotFound
 	}
 
-	if jsonData, err := json.Marshal(&user); err == nil {
+	if jsonData, err := json.Marshal(user); err == nil {
 		cache.UserCache.Put(cacheKey, jsonData)
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (s *UserService) GetUserByUsername(username string) (*model.User, error) {
-	db := database.GetDB()
-
-	var user model.User
-	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+	user, err := s.userRepo.FindByUsername(context.Background(), username)
+	if err != nil {
 		return nil, ErrUserNotFound
 	}
-
-	return &user, nil
+	return user, nil
 }
 
 func (s *UserService) UpdateUserStatus(userID uint, status string) error {
-	db := database.GetDB()
-
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("status", status)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+	if err := s.userRepo.UpdateStatus(context.Background(), userID, status); err != nil {
+		return err
 	}
 
-	var user model.User
-	if err := db.First(&user, userID).Error; err == nil {
+	user, err := s.userRepo.FindByID(context.Background(), userID)
+	if err == nil {
 		cacheKey := fmt.Sprintf("user:%d", userID)
-		if jsonData, err := json.Marshal(&user); err == nil {
+		if jsonData, err := json.Marshal(user); err == nil {
 			cache.UserCache.Put(cacheKey, jsonData)
 		}
 	} else {
@@ -85,42 +90,36 @@ func (s *UserService) UpdateUserStatus(userID uint, status string) error {
 }
 
 func (s *UserService) SearchUsers(keyword string, limit int) ([]model.User, error) {
-	db := database.GetDB()
-
 	if limit <= 0 {
 		limit = 20
 	}
 
-	var users []model.User
-	query := db.Where("nickname LIKE ? OR username LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
-	if err := query.Find(&users).Error; err != nil {
+	users, err := s.userRepo.Search(context.Background(), keyword, limit)
+	if err != nil {
 		return nil, err
 	}
 
-	return users, nil
+	result := make([]model.User, len(users))
+	for i, u := range users {
+		result[i] = *u
+	}
+	return result, nil
 }
 
 func (s *UserService) UpdateUser(userID uint, updates map[string]interface{}) (*model.User, error) {
-	db := database.GetDB()
-
-	var user model.User
-	if err := db.First(&user, userID).Error; err != nil {
+	user, err := s.userRepo.FindByID(context.Background(), userID)
+	if err != nil {
 		return nil, ErrUserNotFound
 	}
 
-	if err := db.Model(&user).Updates(updates).Error; err != nil {
+	if err := s.db.Model(user).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (s *UserService) CreateUser(username, password, nickname, avatar string) (*model.User, error) {
-	db := database.GetDB()
-
 	nick := nickname
 	if nick == "" {
 		nick = username
@@ -138,7 +137,7 @@ func (s *UserService) CreateUser(username, password, nickname, avatar string) (*
 		Status:   "online",
 	}
 
-	if err := db.Create(user).Error; err != nil {
+	if err := s.userRepo.Create(context.Background(), user); err != nil {
 		return nil, err
 	}
 
@@ -146,23 +145,21 @@ func (s *UserService) CreateUser(username, password, nickname, avatar string) (*
 }
 
 func (s *UserService) IsUsernameExists(username string) (bool, error) {
-	db := database.GetDB()
-
-	var count int64
-	if err := db.Model(&model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
-		return false, err
+	_, err := s.userRepo.FindByUsername(context.Background(), username)
+	if err != nil {
+		return false, nil
 	}
-
-	return count > 0, nil
+	return true, nil
 }
 
 func (s *UserService) GetUsersByIDs(userIDs []uint) ([]model.User, error) {
-	db := database.GetDB()
-
 	var users []model.User
-	if err := db.Where("id IN ?", userIDs).Find(&users).Error; err != nil {
-		return nil, err
+	for _, id := range userIDs {
+		user, err := s.userRepo.FindByID(context.Background(), id)
+		if err != nil {
+			continue
+		}
+		users = append(users, *user)
 	}
-
 	return users, nil
 }

@@ -1,14 +1,15 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"qim-server/cache"
-	"qim-server/database"
 	"qim-server/model"
+	"qim-server/repository"
 	"qim-server/ws"
 
 	"gorm.io/gorm"
@@ -18,10 +19,24 @@ var ErrConversationNotFound = errors.New("conversation not found")
 var ErrConversationForbidden = errors.New("access forbidden")
 var ErrNotConversationOwner = errors.New("only owner can perform this action")
 
-type ConversationService struct{}
+type ConversationService struct {
+	db        *gorm.DB
+	convRepo  repository.ConversationRepository
+	userRepo  repository.UserRepository
+	groupRepo repository.GroupRepository
+}
 
-func NewConversationService() *ConversationService {
-	return &ConversationService{}
+func NewConversationService(db *gorm.DB) *ConversationService {
+	return &ConversationService{
+		db:        db,
+		convRepo:  repository.NewConversationRepository(db),
+		userRepo:  repository.NewUserRepository(db),
+		groupRepo: repository.NewGroupRepository(db),
+	}
+}
+
+func (s *ConversationService) GetDB() *gorm.DB {
+	return s.db
 }
 
 type ConversationWithPin struct {
@@ -35,28 +50,29 @@ type ConversationWithPin struct {
 }
 
 func (s *ConversationService) GetConversations(userID uint) ([]ConversationWithPin, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var convMembers []model.ConversationMember
-	if err := db.Where("user_id = ?", userID).Preload("Conversation").Preload("Conversation.LastMessage").Preload("Conversation.Members").Preload("Conversation.Members.User").Find(&convMembers).Error; err != nil {
+	conversations, err := s.convRepo.FindByUserID(ctx, userID)
+	if err != nil {
 		return nil, err
 	}
 
-	var conversations []ConversationWithPin
-	for _, cm := range convMembers {
+	var result []ConversationWithPin
+	for _, conv := range conversations {
 		var session model.ConversationSession
-		db.Where("user_id = ? AND conversation_id = ?", userID, cm.Conversation.ID).FirstOrCreate(&session, model.ConversationSession{
-			IsPinned:      false,
-			LastVisitedAt: time.Now(),
-		})
+		s.db.Where("user_id = ? AND conversation_id = ?", userID, conv.ID).
+			FirstOrCreate(&session, model.ConversationSession{
+				IsPinned:      false,
+				LastVisitedAt: time.Now(),
+			})
 
 		convWithPin := ConversationWithPin{
-			Conversation: cm.Conversation,
+			Conversation: *conv,
 			IsPinned:     session.IsPinned,
 		}
 
-		if cm.Conversation.Type == "single" {
-			for _, m := range cm.Conversation.Members {
+		if conv.Type == "single" {
+			for _, m := range conv.Members {
 				if m.UserID != userID && m.UserID > 0 {
 					convWithPin.IP = m.User.IP
 					convWithPin.Status = m.User.Status
@@ -68,118 +84,98 @@ func (s *ConversationService) GetConversations(userID uint) ([]ConversationWithP
 			}
 		}
 
-		conversations = append(conversations, convWithPin)
+		result = append(result, convWithPin)
 	}
 
-	return conversations, nil
+	return result, nil
 }
 
 func (s *ConversationService) GetConversation(convID uint) (*model.Conversation, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var conv model.Conversation
-	if err := db.Preload("Members").Preload("Members.User").First(&conv, convID).Error; err != nil {
+	conv, err := s.convRepo.FindByID(ctx, convID)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrConversationNotFound
 		}
 		return nil, err
 	}
 
-	return &conv, nil
+	return conv, nil
 }
 
 func (s *ConversationService) GetConversationWithAccessCheck(convID, userID uint) (*model.Conversation, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var conv model.Conversation
-	if err := db.Preload("Members").Preload("Members.User").First(&conv, convID).Error; err != nil {
+	conv, err := s.convRepo.FindByID(ctx, convID)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrConversationNotFound
 		}
 		return nil, err
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err != nil {
+	isMember, err := s.convRepo.IsMember(ctx, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
 		return nil, ErrConversationForbidden
 	}
 
-	return &conv, nil
+	return conv, nil
 }
 
 func (s *ConversationService) CreateSingleConversation(userID1, userID2 uint) (*model.Conversation, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var existingConv model.Conversation
-	err := db.Raw(`
-		SELECT c.* FROM conversations c
-		JOIN conversation_members cm1 ON c.id = cm1.conversation_id
-		JOIN conversation_members cm2 ON c.id = cm2.conversation_id
-		WHERE c.type = 'single'
-		AND cm1.user_id = ? AND cm2.user_id = ?
-	`, userID1, userID2).Scan(&existingConv).Error
-
-	if err == nil && existingConv.ID > 0 {
-		db.Preload("Members").Preload("Members.User").First(&existingConv, existingConv.ID)
-		return &existingConv, nil
+	existingConv, err := s.convRepo.FindSingleConversation(ctx, userID1, userID2)
+	if err == nil && existingConv != nil {
+		return existingConv, nil
 	}
 
 	if userID1 == userID2 {
-		var targetUser model.User
-		if err := db.First(&targetUser, userID1).Error; err != nil {
+		conv := &model.Conversation{Type: "single"}
+		if err := s.convRepo.Create(ctx, conv); err != nil {
 			return nil, err
 		}
 
-		conv := model.Conversation{
-			Type: "single",
-		}
-		if err := db.Create(&conv).Error; err != nil {
+		if err := s.convRepo.AddMember(ctx, conv.ID, userID1, "member"); err != nil {
 			return nil, err
 		}
 
-		if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID1, Role: "member"}).Error; err != nil {
-			return nil, err
-		}
-
-		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-		return &conv, nil
+		return s.convRepo.FindByID(ctx, conv.ID)
 	}
 
-	var targetUser model.User
-	if err := db.First(&targetUser, userID2).Error; err != nil {
+	_, err = s.userRepo.FindByID(ctx, userID2)
+	if err != nil {
 		return nil, err
 	}
 
-	conv := model.Conversation{
-		Type: "single",
-	}
-	if err := db.Create(&conv).Error; err != nil {
+	conv := &model.Conversation{Type: "single"}
+	if err := s.convRepo.Create(ctx, conv); err != nil {
 		return nil, err
 	}
 
-	if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID1, Role: "member"}).Error; err != nil {
+	if err := s.convRepo.AddMember(ctx, conv.ID, userID1, "member"); err != nil {
 		return nil, err
 	}
-	if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID2, Role: "member"}).Error; err != nil {
+	if err := s.convRepo.AddMember(ctx, conv.ID, userID2, "member"); err != nil {
 		return nil, err
 	}
 
-	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-	return &conv, nil
+	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
 func (s *ConversationService) CreateGroupConversation(name string, creatorID uint, memberIDs []uint, avatar string) (*model.Conversation, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	conv := model.Conversation{
-		Type: "group",
-	}
-	if err := db.Create(&conv).Error; err != nil {
+	conv := &model.Conversation{Type: "group"}
+	if err := s.convRepo.Create(ctx, conv); err != nil {
 		return nil, err
 	}
 
-	// 创建群聊记录
-	group := model.Group{
+	group := &model.Group{
 		ConversationID:   conv.ID,
 		GroupType:        "group",
 		Name:             name,
@@ -187,38 +183,34 @@ func (s *ConversationService) CreateGroupConversation(name string, creatorID uin
 		CreatorID:        creatorID,
 		InvitePermission: "owner_admin",
 	}
-	if err := db.Create(&group).Error; err != nil {
+	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
 
-	if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: creatorID, Role: "owner"}).Error; err != nil {
+	if err := s.convRepo.AddMember(ctx, conv.ID, creatorID, "owner"); err != nil {
 		return nil, err
 	}
 
 	for _, mid := range memberIDs {
 		if mid != creatorID {
-			if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+			if err := s.convRepo.AddMember(ctx, conv.ID, mid, "member"); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-	return &conv, nil
+	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
 func (s *ConversationService) CreateDiscussionConversation(name string, creatorID uint, memberIDs []uint, avatar string) (*model.Conversation, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	conv := model.Conversation{
-		Type: "discussion",
-	}
-	if err := db.Create(&conv).Error; err != nil {
+	conv := &model.Conversation{Type: "discussion"}
+	if err := s.convRepo.Create(ctx, conv); err != nil {
 		return nil, err
 	}
 
-	// 创建群聊记录
-	group := model.Group{
+	group := &model.Group{
 		ConversationID:   conv.ID,
 		GroupType:        "discussion",
 		Name:             name,
@@ -226,30 +218,34 @@ func (s *ConversationService) CreateDiscussionConversation(name string, creatorI
 		CreatorID:        creatorID,
 		InvitePermission: "owner_admin",
 	}
-	if err := db.Create(&group).Error; err != nil {
+	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
 
-	if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: creatorID, Role: "owner"}).Error; err != nil {
+	if err := s.convRepo.AddMember(ctx, conv.ID, creatorID, "owner"); err != nil {
 		return nil, err
 	}
 
 	for _, mid := range memberIDs {
 		if mid != creatorID {
-			if err := db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+			if err := s.convRepo.AddMember(ctx, conv.ID, mid, "member"); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-	return &conv, nil
+	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
 func (s *ConversationService) UpdateConversation(convID uint, updates map[string]interface{}) error {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	result := db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(updates)
+	_, err := s.convRepo.FindByID(ctx, convID)
+	if err != nil {
+		return ErrConversationNotFound
+	}
+
+	result := s.db.WithContext(ctx).Model(&model.Conversation{}).Where("id = ?", convID).Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -261,10 +257,10 @@ func (s *ConversationService) UpdateConversation(convID uint, updates map[string
 }
 
 func (s *ConversationService) DeleteConversation(convID, userID uint) error {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var conv model.Conversation
-	if err := db.First(&conv, convID).Error; err != nil {
+	conv, err := s.convRepo.FindByID(ctx, convID)
+	if err != nil {
 		return ErrConversationNotFound
 	}
 
@@ -272,22 +268,33 @@ func (s *ConversationService) DeleteConversation(convID, userID uint) error {
 		return errors.New("only group or discussion can be deleted")
 	}
 
-	var currentMember model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&currentMember).Error; err != nil {
+	isMember, err := s.convRepo.IsMember(ctx, convID, userID)
+	if err != nil || !isMember {
 		return ErrConversationForbidden
 	}
 
-	if currentMember.Role != "owner" {
+	members, err := s.convRepo.GetMembers(ctx, convID)
+	if err != nil {
+		return err
+	}
+
+	isOwner := false
+	for _, m := range members {
+		if m.UserID == userID && m.Role == "owner" {
+			isOwner = true
+			break
+		}
+	}
+	if !isOwner {
 		return ErrNotConversationOwner
 	}
 
-	tx := db.Begin()
+	tx := s.db.Begin()
 
-	// 获取群聊信息并更新
-	var group model.Group
-	if err := tx.Where("conversation_id = ?", convID).First(&group).Error; err == nil {
+	group, err := s.groupRepo.FindByConversationID(ctx, convID)
+	if err == nil {
 		group.Name = "[已解散] " + group.Name
-		if err := tx.Save(&group).Error; err != nil {
+		if err := tx.Save(group).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -299,7 +306,7 @@ func (s *ConversationService) DeleteConversation(convID, userID uint) error {
 	}
 
 	conv.IsDeleted = true
-	if err := tx.Save(&conv).Error; err != nil {
+	if err := tx.Save(conv).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -333,10 +340,9 @@ func (s *ConversationService) GetConversationMembers(convID uint) ([]model.Conve
 		}
 	}
 
-	db := database.GetDB()
-
-	var members []model.ConversationMember
-	if err := db.Where("conversation_id = ?", convID).Preload("User").Find(&members).Error; err != nil {
+	ctx := context.Background()
+	members, err := s.convRepo.GetMembers(ctx, convID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -348,54 +354,34 @@ func (s *ConversationService) GetConversationMembers(convID uint) ([]model.Conve
 }
 
 func (s *ConversationService) IsConversationMember(convID, userID uint) (bool, error) {
-	db := database.GetDB()
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return true, nil
+	ctx := context.Background()
+	return s.convRepo.IsMember(ctx, convID, userID)
 }
 
 func (s *ConversationService) UpdateMemberRole(convID, userID uint, role string) error {
-	db := database.GetDB()
-
-	result := db.Model(&model.ConversationMember{}).Where("conversation_id = ? AND user_id = ?", convID, userID).Update("role", role)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("member not found")
-	}
-
-	return nil
+	ctx := context.Background()
+	return s.convRepo.UpdateMemberRole(ctx, convID, userID, role)
 }
 
 func (s *ConversationService) SetConversationMute(convID, userID uint, muted bool) (*model.ConversationMember, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
+	isMember, err := s.convRepo.IsMember(ctx, convID, userID)
+	if err != nil || !isMember {
 		return nil, ErrConversationForbidden
 	}
 
-	member.Muted = muted
-	if err := db.Save(&member).Error; err != nil {
+	member, err := s.convRepo.SetMute(ctx, convID, userID, muted)
+	if err != nil {
 		return nil, err
 	}
 
-	return &member, nil
+	return member, nil
 }
 
 func (s *ConversationService) SetConversationPin(convID, userID uint, isPinned bool) (*model.ConversationSession, error) {
-	db := database.GetDB()
-
 	var session model.ConversationSession
-	result := db.Where("user_id = ? AND conversation_id = ?", userID, convID).First(&session)
+	result := s.db.Where("user_id = ? AND conversation_id = ?", userID, convID).First(&session)
 
 	if result.Error != nil {
 		session = model.ConversationSession{
@@ -408,7 +394,7 @@ func (s *ConversationService) SetConversationPin(convID, userID uint, isPinned b
 			now := time.Now()
 			session.PinnedAt = &now
 		}
-		if err := db.Create(&session).Error; err != nil {
+		if err := s.db.Create(&session).Error; err != nil {
 			return nil, err
 		}
 	} else {
@@ -419,10 +405,63 @@ func (s *ConversationService) SetConversationPin(convID, userID uint, isPinned b
 		} else {
 			session.PinnedAt = nil
 		}
-		if err := db.Save(&session).Error; err != nil {
+		if err := s.db.Save(&session).Error; err != nil {
 			return nil, err
 		}
 	}
 
 	return &session, nil
+}
+
+func (s *ConversationService) GetMember(convID, userID uint) (*model.ConversationMember, error) {
+	ctx := context.Background()
+	var member model.ConversationMember
+	err := s.db.WithContext(ctx).Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error
+	if err != nil {
+		return nil, err
+	}
+	return &member, nil
+}
+
+func (s *ConversationService) CreateMember(member *model.ConversationMember) error {
+	ctx := context.Background()
+	return s.db.WithContext(ctx).Create(member).Error
+}
+
+func (s *ConversationService) RemoveMember(convID, userID uint) error {
+	ctx := context.Background()
+	return s.db.WithContext(ctx).Where("conversation_id = ? AND user_id = ?", convID, userID).Delete(&model.ConversationMember{}).Error
+}
+
+func (s *ConversationService) GetMembersExcept(convID, excludeUserID uint) ([]model.ConversationMember, error) {
+	ctx := context.Background()
+	var members []model.ConversationMember
+	err := s.db.WithContext(ctx).Where("conversation_id = ? AND user_id != ?", convID, excludeUserID).Find(&members).Error
+	return members, err
+}
+
+func (s *ConversationService) GetMembersByRoles(convID uint, roles []string) ([]model.ConversationMember, error) {
+	ctx := context.Background()
+	var members []model.ConversationMember
+	err := s.db.WithContext(ctx).Where("conversation_id = ? AND role IN ?", convID, roles).Find(&members).Error
+	return members, err
+}
+
+func (s *ConversationService) GetMembersWithUser(convID uint) ([]model.ConversationMember, error) {
+	ctx := context.Background()
+	var members []model.ConversationMember
+	err := s.db.WithContext(ctx).Where("conversation_id = ?", convID).Preload("User").Find(&members).Error
+	return members, err
+}
+
+func (s *ConversationService) UpdateMember(member *model.ConversationMember) error {
+	ctx := context.Background()
+	return s.db.WithContext(ctx).Save(member).Error
+}
+
+func (s *ConversationService) IncrementUnreadCount(convID, excludeUserID uint) error {
+	ctx := context.Background()
+	return s.db.WithContext(ctx).Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id != ?", convID, excludeUserID).
+		UpdateColumn("unread_count", gorm.Expr("unread_count + 1")).Error
 }

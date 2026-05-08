@@ -9,11 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type fileStatsCacheEntry struct {
@@ -74,9 +73,7 @@ func UploadFile(c *gin.Context) {
 			return
 		}
 
-		db := database.GetDB()
-
-		// 获取上传文件的 MIME 类型
+		svc := di.GlobalContainer.FileService
 		mimeType := file.Header.Get("Content-Type")
 
 		fileRecord := model.File{
@@ -89,7 +86,7 @@ func UploadFile(c *gin.Context) {
 			Source:       source,
 			CreatedAt:    time.Now(),
 		}
-		if err := db.Create(&fileRecord).Error; err != nil {
+		if err := svc.CreateFile(&fileRecord); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件记录失败"})
 			return
 		}
@@ -111,7 +108,6 @@ func UploadFile(c *gin.Context) {
 func GetFiles(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	// 分页参数
 	pageStr := c.DefaultQuery("page", "1")
 	pageSizeStr := c.DefaultQuery("page_size", "20")
 
@@ -124,92 +120,24 @@ func GetFiles(c *gin.Context) {
 		pageSize = 20
 	}
 
-	// 过滤参数
-	folderIDStr := c.Query("folder_id")
-	source := c.Query("source")
-	starred := c.Query("starred")
-	fileType := c.Query("type")
-	search := c.Query("search")
-	sortBy := c.DefaultQuery("sort_by", "created_at")
-	sortOrder := c.DefaultQuery("sort_order", "desc")
-	dateFrom := c.Query("date_from")
-	dateTo := c.Query("date_to")
-
-	db := database.GetDB()
-	query := db.Model(&model.File{}).Where("user_id = ?", userID)
-
-	// 按文件夹过滤
-	if folderIDStr != "" {
-		folderID, parseErr := strconv.ParseUint(folderIDStr, 10, 32)
-		if parseErr == nil {
-			query = query.Where("folder_id = ?", uint(folderID))
-		}
+	filters := map[string]string{
+		"folder_id":  c.Query("folder_id"),
+		"source":     c.Query("source"),
+		"starred":    c.Query("starred"),
+		"type":       c.Query("type"),
+		"search":     c.Query("search"),
+		"sort_by":    c.DefaultQuery("sort_by", "created_at"),
+		"sort_order": c.DefaultQuery("sort_order", "desc"),
+		"date_from":  c.Query("date_from"),
+		"date_to":    c.Query("date_to"),
 	}
 
-	// 按来源过滤
-	if source != "" {
-		query = query.Where("source = ?", source)
+	svc := di.GlobalContainer.FileService
+	files, total, err := svc.GetFiles(userID.(uint), page, pageSize, filters)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件列表失败"})
+		return
 	}
-
-	// 按星标过滤
-	if starred == "true" {
-		query = query.Where("is_starred = ?", true)
-	} else if starred == "false" {
-		query = query.Where("is_starred = ?", false)
-	}
-
-	// 按文件类型过滤（通过 MIME 类型前缀）
-	if fileType != "" {
-		switch fileType {
-		case "image":
-			query = query.Where("mime_type LIKE ?", "image/%")
-		case "video":
-			query = query.Where("mime_type LIKE ?", "video/%")
-		case "audio":
-			query = query.Where("mime_type LIKE ?", "audio/%")
-		case "document":
-			query = query.Where("mime_type LIKE ? OR mime_type LIKE ? OR mime_type LIKE ? OR mime_type LIKE ?",
-				"application/pdf", "application/msword", "application/vnd.ms-excel", "text/%")
-		default:
-			query = query.Where("mime_type LIKE ?", fileType+"/%")
-		}
-	}
-
-	// 按文件名搜索
-	if search != "" {
-		query = query.Where("name LIKE ? OR original_name LIKE ?", "%"+search+"%", "%"+search+"%")
-	}
-
-	// 按日期范围筛选
-	if dateFrom != "" {
-		if t, err := time.Parse("2006-01-02", dateFrom); err == nil {
-			query = query.Where("created_at >= ?", t)
-		}
-	}
-	if dateTo != "" {
-		if t, err := time.Parse("2006-01-02", dateTo); err == nil {
-			query = query.Where("created_at <= ?", t.Add(24*time.Hour-1*time.Second))
-		}
-	}
-
-	// 排序
-	allowedSortFields := map[string]bool{"created_at": true, "name": true, "size": true, "updated_at": true}
-	if !allowedSortFields[sortBy] {
-		sortBy = "created_at"
-	}
-	if sortOrder != "asc" && sortOrder != "desc" {
-		sortOrder = "desc"
-	}
-	orderClause := sortBy + " " + sortOrder
-
-	// 统计总数
-	var total int64
-	query.Count(&total)
-
-	// 分页查询
-	var files []model.File
-	offset := (page - 1) * pageSize
-	query.Order(orderClause).Offset(offset).Limit(pageSize).Find(&files)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -243,9 +171,9 @@ func UpdateFile(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var file model.File
-	if findErr := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; findErr != nil {
+	svc := di.GlobalContainer.FileService
+	_, err = svc.GetFile(userID.(uint), uint(fileID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 		return
 	}
@@ -259,9 +187,8 @@ func UpdateFile(c *gin.Context) {
 		updates["name"] = *req.Name
 	}
 	if req.FolderID != nil {
-		// 验证文件夹属于当前用户
-		var folder model.Folder
-		if folderFindErr := db.Where("id = ? AND user_id = ?", *req.FolderID, userID).First(&folder).Error; folderFindErr != nil {
+		_, folderErr := svc.GetFolder(userID.(uint), *req.FolderID)
+		if folderErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "文件夹不存在或无权限"})
 			return
 		}
@@ -276,13 +203,11 @@ func UpdateFile(c *gin.Context) {
 		return
 	}
 
-	if updateErr := db.Model(&file).Updates(updates).Error; updateErr != nil {
+	file, updateErr := svc.UpdateFile(userID.(uint), uint(fileID), updates)
+	if updateErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新文件失败"})
 		return
 	}
-
-	// 获取更新后的文件记录
-	db.First(&file, file.ID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -301,26 +226,10 @@ func ToggleStar(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var file model.File
-	if findErr := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; findErr != nil {
+	svc := di.GlobalContainer.FileService
+	file, err := svc.ToggleStar(userID.(uint), uint(fileID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
-		return
-	}
-
-	now := time.Now()
-	if file.IsStarred {
-		// 取消星标
-		file.IsStarred = false
-		file.StarredAt = nil
-	} else {
-		// 添加星标
-		file.IsStarred = true
-		file.StarredAt = &now
-	}
-
-	if saveErr := db.Save(&file).Error; saveErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "操作失败"})
 		return
 	}
 
@@ -341,8 +250,8 @@ func BatchOperation(c *gin.Context) {
 
 	var req struct {
 		FileIDs        []uint `json:"file_ids" binding:"required"`
-		Operation      string `json:"operation" binding:"required"` // "delete", "move", "star", "unstar"
-		TargetFolderID *uint  `json:"target_folder_id"`             // 用于 move 操作
+		Operation      string `json:"operation" binding:"required"`
+		TargetFolderID *uint  `json:"target_folder_id"`
 	}
 
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
@@ -355,22 +264,19 @@ func BatchOperation(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	svc := di.GlobalContainer.FileService
 
 	switch req.Operation {
 	case "delete":
-		result := db.Where("id IN ? AND user_id = ?", req.FileIDs, userID).Delete(&model.File{})
-		if result.Error != nil {
+		count, err := svc.BatchDelete(userID.(uint), req.FileIDs)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量删除失败"})
 			return
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "批量删除成功",
-			"data": gin.H{
-				"deleted_count": result.RowsAffected,
-			},
+			"data":    gin.H{"deleted_count": count},
 		})
 
 	case "move":
@@ -378,68 +284,44 @@ func BatchOperation(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "移动操作需要指定目标文件夹"})
 			return
 		}
-
-		var folder model.Folder
-		if folderFindErr := db.Where("id = ? AND user_id = ?", *req.TargetFolderID, userID).First(&folder).Error; folderFindErr != nil {
+		_, folderErr := svc.GetFolder(userID.(uint), *req.TargetFolderID)
+		if folderErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "目标文件夹不存在或无权限"})
 			return
 		}
-
-		result := db.Model(&model.File{}).
-			Where("id IN ? AND user_id = ?", req.FileIDs, userID).
-			Update("folder_id", *req.TargetFolderID)
-		if result.Error != nil {
+		count, err := svc.BatchMove(userID.(uint), req.FileIDs, *req.TargetFolderID)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量移动失败"})
 			return
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "批量移动成功",
-			"data": gin.H{
-				"moved_count": result.RowsAffected,
-			},
+			"data":    gin.H{"moved_count": count},
 		})
 
 	case "star":
-		now := time.Now()
-		result := db.Model(&model.File{}).
-			Where("id IN ? AND user_id = ?", req.FileIDs, userID).
-			Updates(map[string]interface{}{
-				"is_starred": true,
-				"starred_at": now,
-			})
-		if result.Error != nil {
+		count, err := svc.BatchStar(userID.(uint), req.FileIDs, true)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量星标失败"})
 			return
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "批量星标成功",
-			"data": gin.H{
-				"starred_count": result.RowsAffected,
-			},
+			"data":    gin.H{"starred_count": count},
 		})
 
 	case "unstar":
-		result := db.Model(&model.File{}).
-			Where("id IN ? AND user_id = ?", req.FileIDs, userID).
-			Updates(map[string]interface{}{
-				"is_starred": false,
-				"starred_at": nil,
-			})
-		if result.Error != nil {
+		count, err := svc.BatchStar(userID.(uint), req.FileIDs, false)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "批量取消星标失败"})
 			return
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "批量取消星标成功",
-			"data": gin.H{
-				"unstarred_count": result.RowsAffected,
-			},
+			"data":    gin.H{"unstarred_count": count},
 		})
 
 	default:
@@ -462,17 +344,12 @@ func GetStarredFiles(c *gin.Context) {
 		pageSize = 20
 	}
 
-	db := database.GetDB()
-	var total int64
-	db.Model(&model.File{}).Where("user_id = ? AND is_starred = ?", userID, true).Count(&total)
-
-	var files []model.File
-	offset := (page - 1) * pageSize
-	db.Where("user_id = ? AND is_starred = ?", userID, true).
-		Order("starred_at DESC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&files)
+	svc := di.GlobalContainer.FileService
+	files, total, err := svc.GetStarredFiles(userID.(uint), page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取星标文件失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -501,56 +378,19 @@ func GetFileStats(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-
-	var totalFiles int64
-	db.Model(&model.File{}).Where("user_id = ?", userID).Count(&totalFiles)
-
-	var starredFiles int64
-	db.Model(&model.File{}).Where("user_id = ? AND is_starred = ?", userID, true).Count(&starredFiles)
-
-	var totalSize int64
-	db.Model(&model.File{}).Where("user_id = ?", userID).Select("COALESCE(SUM(size), 0)").Scan(&totalSize)
-
-	type FileTypeInfo struct {
-		Type  string `json:"type"`
-		Count int64  `json:"count"`
-		Size  int64  `json:"size"`
+	svc := di.GlobalContainer.FileService
+	stats, err := svc.GetFileStats(uid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件统计失败"})
+		return
 	}
-	var typeStats []FileTypeInfo
-	db.Model(&model.File{}).
-		Where("user_id = ?", userID).
-		Select(`
-			CASE
-				WHEN mime_type LIKE 'image/%' THEN 'image'
-				WHEN mime_type LIKE 'video/%' THEN 'video'
-				WHEN mime_type LIKE 'audio/%' THEN 'audio'
-				WHEN mime_type LIKE 'application/%' OR mime_type LIKE 'text/%' THEN 'document'
-				ELSE 'other'
-			END as type,
-			COUNT(*) as count,
-			COALESCE(SUM(size), 0) as size
-		`).
-		Group(`
-			CASE
-				WHEN mime_type LIKE 'image/%' THEN 'image'
-				WHEN mime_type LIKE 'video/%' THEN 'video'
-				WHEN mime_type LIKE 'audio/%' THEN 'audio'
-				WHEN mime_type LIKE 'application/%' OR mime_type LIKE 'text/%' THEN 'document'
-				ELSE 'other'
-			END
-		`).
-		Scan(&typeStats)
-
-	var folderCount int64
-	db.Model(&model.Folder{}).Where("user_id = ?", userID).Count(&folderCount)
 
 	resultData := gin.H{
-		"total_files":   totalFiles,
-		"starred_files": starredFiles,
-		"total_size":    totalSize,
-		"folder_count":  folderCount,
-		"type_stats":    typeStats,
+		"total_files":   stats.TotalFiles,
+		"starred_files": stats.StarredFiles,
+		"total_size":    stats.TotalSize,
+		"folder_count":  stats.FolderCount,
+		"type_stats":    stats.TypeStats,
 	}
 
 	fileStatsCacheMu.Lock()
@@ -569,27 +409,25 @@ func GetFileStats(c *gin.Context) {
 func GetFolderTree(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	// 支持懒加载模式：如果传了 parent_id 参数，只返回该父节点下的子文件夹
 	parentIDStr := c.Query("parent_id")
+	svc := di.GlobalContainer.FileService
 
-	db := database.GetDB()
-	var folders []model.Folder
-
-	query := db.Where("user_id = ?", userID)
-
+	var parentID *uint
 	if parentIDStr != "" {
-		parentID, err := strconv.ParseUint(parentIDStr, 10, 32)
+		pid, err := strconv.ParseUint(parentIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的父文件夹ID"})
 			return
 		}
-		query = query.Where("parent_id = ?", uint(parentID))
-	} else {
-		// 没有 parent_id 时，返回根级文件夹
-		query = query.Where("parent_id IS NULL")
+		pidVal := uint(pid)
+		parentID = &pidVal
 	}
 
-	query.Order("sort_order ASC, created_at ASC").Find(&folders)
+	folders, err := svc.GetFolderTree(userID.(uint), parentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件夹树失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -620,9 +458,9 @@ func UpdateFolder(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var folder model.Folder
-	if findErr := db.Where("id = ? AND user_id = ?", uint(folderID), userID).First(&folder).Error; findErr != nil {
+	svc := di.GlobalContainer.FileService
+	folder, err := svc.GetFolder(userID.(uint), uint(folderID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
 		return
 	}
@@ -636,19 +474,17 @@ func UpdateFolder(c *gin.Context) {
 		updates["name"] = *req.Name
 	}
 	if req.ParentID != nil {
-		// 防止将文件夹移动到自己或其子文件夹下（循环引用检测）
 		if *req.ParentID == folder.ID {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能将文件夹移动到自己下面"})
 			return
 		}
 		if *req.ParentID != 0 {
-			var parent model.Folder
-			if parentFindErr := db.Where("id = ? AND user_id = ?", *req.ParentID, userID).First(&parent).Error; parentFindErr != nil {
+			_, parentErr := svc.GetFolder(userID.(uint), *req.ParentID)
+			if parentErr != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "父文件夹不存在或无权限"})
 				return
 			}
-			// 检查是否会造成循环引用
-			if isDescendant(db, *req.ParentID, folder.ID, userID.(uint)) {
+			if svc.IsDescendant(userID.(uint), *req.ParentID, folder.ID) {
 				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "不能将文件夹移动到其子文件夹下"})
 				return
 			}
@@ -670,17 +506,16 @@ func UpdateFolder(c *gin.Context) {
 		return
 	}
 
-	if updateErr := db.Model(&folder).Updates(updates).Error; updateErr != nil {
+	updatedFolder, updateErr := svc.UpdateFolder(userID.(uint), uint(folderID), updates)
+	if updateErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新文件夹失败"})
 		return
 	}
 
-	db.First(&folder, folder.ID)
-
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "更新文件夹成功",
-		"data":    folder,
+		"data":    updatedFolder,
 	})
 }
 
@@ -695,18 +530,17 @@ func DeleteFolder(c *gin.Context) {
 	}
 
 	recursive := c.Query("recursive") == "true"
+	svc := di.GlobalContainer.FileService
+	uid := userID.(uint)
+	fid := uint(folderID)
 
-	db := database.GetDB()
-	var folder model.Folder
-	if findErr := db.Where("id = ? AND user_id = ?", uint(folderID), userID).First(&folder).Error; findErr != nil {
+	_, err = svc.GetFolder(uid, fid)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
 		return
 	}
 
-	// 检查是否有子文件夹
-	var childCount int64
-	db.Model(&model.Folder{}).Where("user_id = ? AND parent_id = ?", userID, folder.ID).Count(&childCount)
-
+	childCount, _ := svc.GetFolderChildCount(uid, fid)
 	if childCount > 0 && !recursive {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -715,10 +549,7 @@ func DeleteFolder(c *gin.Context) {
 		return
 	}
 
-	// 检查是否有文件
-	var fileCount int64
-	db.Model(&model.File{}).Where("user_id = ? AND folder_id = ?", userID, folder.ID).Count(&fileCount)
-
+	fileCount, _ := svc.GetFolderFileCount(uid, fid)
 	if fileCount > 0 && !recursive {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -728,15 +559,11 @@ func DeleteFolder(c *gin.Context) {
 	}
 
 	if recursive {
-		// 递归删除所有子文件夹
-		deleteFolderRecursive(db, folder.ID, userID.(uint))
-
-		// 删除文件夹下的所有文件记录
-		db.Where("user_id = ? AND folder_id = ?", userID, folder.ID).Delete(&model.File{})
+		svc.DeleteFolderRecursive(uid, fid)
+		svc.DeleteFolderFiles(uid, fid)
 	}
 
-	// 删除文件夹本身
-	if deleteErr := db.Delete(&folder).Error; deleteErr != nil {
+	if deleteErr := svc.DeleteFolder(uid, fid); deleteErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件夹失败"})
 		return
 	}
@@ -769,25 +596,21 @@ func GetFolderFiles(c *gin.Context) {
 		pageSize = 20
 	}
 
-	db := database.GetDB()
+	svc := di.GlobalContainer.FileService
+	uid := userID.(uint)
+	fid := uint(folderID)
 
-	// 验证文件夹存在且属于当前用户
-	var folder model.Folder
-	if findErr := db.Where("id = ? AND user_id = ?", uint(folderID), userID).First(&folder).Error; findErr != nil {
+	folder, err := svc.GetFolder(uid, fid)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件夹不存在"})
 		return
 	}
 
-	var total int64
-	db.Model(&model.File{}).Where("user_id = ? AND folder_id = ?", userID, folder.ID).Count(&total)
-
-	var files []model.File
-	offset := (page - 1) * pageSize
-	db.Where("user_id = ? AND folder_id = ?", userID, folder.ID).
-		Order("created_at DESC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&files)
+	files, total, err := svc.GetFolderFiles(uid, fid, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取文件夹文件失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -801,50 +624,6 @@ func GetFolderFiles(c *gin.Context) {
 	})
 }
 
-// isDescendant 检查 targetID 是否是 ancestorID 的后代（用于循环引用检测）
-func isDescendant(db *gorm.DB, targetID uint, ancestorID uint, userID uint) bool {
-	currentID := targetID
-	visited := make(map[uint]bool)
-
-	for currentID != 0 {
-		if visited[currentID] {
-			return false // 防止无限循环
-		}
-		visited[currentID] = true
-
-		if currentID == ancestorID {
-			return true
-		}
-
-		var folder model.Folder
-		if err := db.Where("id = ? AND user_id = ?", currentID, userID).First(&folder).Error; err != nil {
-			return false
-		}
-
-		if folder.ParentID == nil {
-			return false
-		}
-		currentID = *folder.ParentID
-	}
-
-	return false
-}
-
-// deleteFolderRecursive 递归删除文件夹及其所有子文件夹
-func deleteFolderRecursive(db *gorm.DB, folderID uint, userID uint) {
-	var children []model.Folder
-	db.Where("user_id = ? AND parent_id = ?", userID, folderID).Find(&children)
-
-	for _, child := range children {
-		// 递归删除子文件夹下的文件
-		db.Where("user_id = ? AND folder_id = ?", userID, child.ID).Delete(&model.File{})
-		// 递归删除子文件夹
-		deleteFolderRecursive(db, child.ID, userID)
-		// 删除子文件夹本身
-		db.Delete(&child)
-	}
-}
-
 func DownloadFile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	fileIDStr := c.Param("id")
@@ -855,9 +634,9 @@ func DownloadFile(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var file model.File
-	if err := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; err != nil {
+	svc := di.GlobalContainer.FileService
+	file, err := svc.GetFile(userID.(uint), uint(fileID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 		return
 	}
@@ -891,15 +670,15 @@ func DeleteFile(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var file model.File
-	if err := db.Where("id = ? AND user_id = ?", uint(fileID), userID).First(&file).Error; err != nil {
+	svc := di.GlobalContainer.FileService
+	file, err := svc.GetFile(userID.(uint), uint(fileID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "文件不存在"})
 		return
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		if err := db.Delete(&file).Error; err != nil {
+		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
 			return
 		}
@@ -913,7 +692,7 @@ func DeleteFile(c *gin.Context) {
 		filePath := "." + file.StoragePath
 		os.Remove(filePath)
 
-		if err := db.Delete(&file).Error; err != nil {
+		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除文件失败"})
 			return
 		}
@@ -939,13 +718,16 @@ func CreateFolder(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	folder := model.Folder{
+	svc := di.GlobalContainer.FileService
+	folder := &model.Folder{
 		UserID:   userID.(uint),
 		Name:     req.Name,
 		ParentID: req.ParentID,
 	}
-	db.Create(&folder)
+	if err := svc.CreateFolder(folder); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建文件夹失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,

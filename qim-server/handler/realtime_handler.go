@@ -2,9 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 	"qim-server/ws"
@@ -28,7 +29,7 @@ func CreateSession(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
 	session := model.RealtimeSession{
 		ID:             uuid.New().String(),
@@ -39,11 +40,12 @@ func CreateSession(c *gin.Context) {
 		Metadata:       req.Metadata,
 	}
 
-	if err := db.Create(&session).Error; err != nil {
+	if err := rtSvc.CreateSession(&session); err != nil {
 		response.InternalServerError(c, "创建会话失败")
 		return
 	}
 
+	now := time.Now()
 	participant := model.RealtimeParticipant{
 		ID:          uuid.New().String(),
 		SessionID:   session.ID,
@@ -51,15 +53,15 @@ func CreateSession(c *gin.Context) {
 		Role:        "initiator",
 		Status:      "approved",
 		RequestedAt: time.Now(),
-		ApprovedAt:  &[]time.Time{time.Now()}[0],
+		ApprovedAt:  &now,
 	}
 
-	if err := db.Create(&participant).Error; err != nil {
+	if err := rtSvc.CreateParticipant(&participant); err != nil {
 		response.InternalServerError(c, "创建参与者失败")
 		return
 	}
 
-	db.Preload("Initiator").Preload("Participants").Preload("Participants.User").First(&session, session.ID)
+	rtSvc.GetSession(session.ID)
 
 	msg, _ := json.Marshal(ws.WSMessage{
 		Type: "realtime:session:created",
@@ -77,17 +79,15 @@ func GetSession(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	var session model.RealtimeSession
-	if err := db.Preload("Initiator").Preload("Participants").Preload("Participants.User").
-		First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
 
-	var participant model.RealtimeParticipant
-	if err := db.Where("session_id = ? AND user_id = ?", sessionID, userID).First(&participant).Error; err != nil {
+	if _, err := rtSvc.GetParticipant(sessionID, userID); err != nil {
 		response.Forbidden(c, "无权限访问")
 		return
 	}
@@ -95,39 +95,27 @@ func GetSession(c *gin.Context) {
 	response.Success(c, session)
 }
 
-// GetActiveSessions 获取活跃会话列表
 func GetActiveSessions(c *gin.Context) {
 	userID := c.GetUint("user_id")
 
-	db := database.GetDB()
-
-	var participants []model.RealtimeParticipant
-	db.Where("user_id = ? AND status IN ?", userID, []string{"approved", "joined"}).
-		Find(&participants)
-
-	var sessions []model.RealtimeSession
-	for _, p := range participants {
-		var session model.RealtimeSession
-		if err := db.Preload("Initiator").Preload("Participants").Preload("Participants.User").
-			First(&session, "id = ?", p.SessionID).Error; err == nil {
-			if session.Status == "active" || session.Status == "pending" {
-				sessions = append(sessions, session)
-			}
-		}
+	rtSvc := di.GlobalContainer.RealtimeService
+	sessions, err := rtSvc.GetActiveSessions(userID)
+	if err != nil {
+		response.InternalServerError(c, "获取会话列表失败")
+		return
 	}
 
 	response.Success(c, sessions)
 }
 
-// EndSession 结束会话
 func EndSession(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	var session model.RealtimeSession
-	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
@@ -141,17 +129,12 @@ func EndSession(c *gin.Context) {
 	session.Status = "ended"
 	session.EndedAt = &now
 
-	if err := db.Save(&session).Error; err != nil {
+	if err := rtSvc.UpdateSession(session); err != nil {
 		response.InternalServerError(c, "结束会话失败")
 		return
 	}
 
-	db.Model(&model.RealtimeParticipant{}).
-		Where("session_id = ? AND status IN ?", sessionID, []string{"approved", "joined", "pending"}).
-		Updates(map[string]interface{}{
-			"status":  "left",
-			"left_at": now,
-		})
+	rtSvc.UpdateParticipantsStatus(sessionID, "left", now)
 
 	msg, _ := json.Marshal(ws.WSMessage{
 		Type: "realtime:session:ended",
@@ -169,10 +152,10 @@ func RequestJoin(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	var session model.RealtimeSession
-	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
@@ -182,8 +165,7 @@ func RequestJoin(c *gin.Context) {
 		return
 	}
 
-	var existingParticipant model.RealtimeParticipant
-	if err := db.Where("session_id = ? AND user_id = ?", sessionID, userID).First(&existingParticipant).Error; err == nil {
+	if _, err := rtSvc.GetParticipant(sessionID, userID); err == nil {
 		response.Conflict(c, "已申请或已加入")
 		return
 	}
@@ -197,12 +179,12 @@ func RequestJoin(c *gin.Context) {
 		RequestedAt: time.Now(),
 	}
 
-	if err := db.Create(&participant).Error; err != nil {
+	if err := rtSvc.CreateParticipant(&participant); err != nil {
 		response.InternalServerError(c, "申请失败")
 		return
 	}
 
-	db.Preload("User").First(&participant, participant.ID)
+	rtSvc.GetParticipantByID(participant.ID)
 
 	msg, _ := json.Marshal(ws.WSMessage{
 		Type: "realtime:join:requested",
@@ -216,16 +198,21 @@ func RequestJoin(c *gin.Context) {
 	response.Success(c, participant)
 }
 
-// ApproveJoin 审批加入请求
 func ApproveJoin(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
-	targetUserID := c.Param("user_id")
+	targetUserIDStr := c.Param("user_id")
 
-	db := database.GetDB()
+	targetUserID, err := strconv.ParseUint(targetUserIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
 
-	var session model.RealtimeSession
-	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+	rtSvc := di.GlobalContainer.RealtimeService
+
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
@@ -235,8 +222,8 @@ func ApproveJoin(c *gin.Context) {
 		return
 	}
 
-	var participant model.RealtimeParticipant
-	if err := db.Where("session_id = ? AND user_id = ?", sessionID, targetUserID).First(&participant).Error; err != nil {
+	participant, err := rtSvc.GetParticipant(sessionID, uint(targetUserID))
+	if err != nil {
 		response.NotFound(c, "申请不存在")
 		return
 	}
@@ -250,7 +237,7 @@ func ApproveJoin(c *gin.Context) {
 	participant.Status = "approved"
 	participant.ApprovedAt = &now
 
-	if err := db.Save(&participant).Error; err != nil {
+	if err := rtSvc.UpdateParticipant(participant); err != nil {
 		response.InternalServerError(c, "审批失败")
 		return
 	}
@@ -258,10 +245,10 @@ func ApproveJoin(c *gin.Context) {
 	if session.Status == "pending" {
 		session.Status = "active"
 		session.StartedAt = &now
-		db.Save(&session)
+		rtSvc.UpdateSession(session)
 	}
 
-	db.Preload("User").First(&participant, participant.ID)
+	rtSvc.GetParticipantByID(participant.ID)
 
 	msg, _ := json.Marshal(ws.WSMessage{
 		Type: "realtime:join:approved",
@@ -275,16 +262,21 @@ func ApproveJoin(c *gin.Context) {
 	response.Success(c, participant)
 }
 
-// RejectJoin 拒绝加入请求
 func RejectJoin(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
-	targetUserID := c.Param("user_id")
+	targetUserIDStr := c.Param("user_id")
 
-	db := database.GetDB()
+	targetUserID, err := strconv.ParseUint(targetUserIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
 
-	var session model.RealtimeSession
-	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+	rtSvc := di.GlobalContainer.RealtimeService
+
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
@@ -294,8 +286,8 @@ func RejectJoin(c *gin.Context) {
 		return
 	}
 
-	var participant model.RealtimeParticipant
-	if err := db.Where("session_id = ? AND user_id = ?", sessionID, targetUserID).First(&participant).Error; err != nil {
+	participant, err := rtSvc.GetParticipant(sessionID, uint(targetUserID))
+	if err != nil {
 		response.NotFound(c, "申请不存在")
 		return
 	}
@@ -307,7 +299,7 @@ func RejectJoin(c *gin.Context) {
 
 	participant.Status = "rejected"
 
-	if err := db.Save(&participant).Error; err != nil {
+	if err := rtSvc.UpdateParticipant(participant); err != nil {
 		response.InternalServerError(c, "拒绝失败")
 		return
 	}
@@ -323,21 +315,20 @@ func RejectJoin(c *gin.Context) {
 	response.Success(c, gin.H{"message": "已拒绝"})
 }
 
-// LeaveSession 离开会话
 func LeaveSession(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	sessionID := c.Param("id")
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	var session model.RealtimeSession
-	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+	session, err := rtSvc.GetSession(sessionID)
+	if err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
 
-	var participant model.RealtimeParticipant
-	if err := db.Where("session_id = ? AND user_id = ?", sessionID, userID).First(&participant).Error; err != nil {
+	participant, err := rtSvc.GetParticipant(sessionID, userID)
+	if err != nil {
 		response.NotFound(c, "未加入会话")
 		return
 	}
@@ -351,7 +342,7 @@ func LeaveSession(c *gin.Context) {
 	participant.Status = "left"
 	participant.LeftAt = &now
 
-	if err := db.Save(&participant).Error; err != nil {
+	if err := rtSvc.UpdateParticipant(participant); err != nil {
 		response.InternalServerError(c, "离开失败")
 		return
 	}
@@ -373,38 +364,31 @@ func LeaveSession(c *gin.Context) {
 func GetPendingRequests(c *gin.Context) {
 	userID := c.GetUint("user_id")
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	// 查询该用户所有待处理的参与请求
-	var participants []model.RealtimeParticipant
-	if err := db.Where("user_id = ? AND status = ?", userID, "pending").
-		Preload("User").
-		Preload("Session").
-		Preload("Session.Initiator").
-		Find(&participants).Error; err != nil {
+	participants, err := rtSvc.GetPendingRequests(userID)
+	if err != nil {
 		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	// 构建返回数据
 	type PendingRequest struct {
-		ID              string                 `json:"id"`
-		SessionID       string                 `json:"session_id"`
-		SessionType     string                 `json:"session_type"`
-		ConversationID  uint                   `json:"conversation_id"`
-		InitiatorID     uint                   `json:"initiator_id"`
-		InitiatorName   string                 `json:"initiator_name"`
-		RequestedAt     time.Time              `json:"requested_at"`
+		ID              string    `json:"id"`
+		SessionID       string    `json:"session_id"`
+		SessionType     string    `json:"session_type"`
+		ConversationID  uint      `json:"conversation_id"`
+		InitiatorID     uint      `json:"initiator_id"`
+		InitiatorName   string    `json:"initiator_name"`
+		RequestedAt     time.Time `json:"requested_at"`
 	}
 
 	var requests []PendingRequest
 	for _, p := range participants {
-		// 检查会话是否还有效（未结束）
 		if p.Session.Status == "ended" {
-			// 标记为已离开
-			db.Model(&p).Updates(map[string]interface{}{
-				"status": "left",
-				"left_at": time.Now(),
+			rtSvc.UpdateParticipant(&model.RealtimeParticipant{
+				ID:     p.ID,
+				Status: "left",
+				LeftAt: &[]time.Time{time.Now()}[0],
 			})
 			continue
 		}
@@ -423,13 +407,12 @@ func GetPendingRequests(c *gin.Context) {
 	response.Success(c, requests)
 }
 
-// RespondToShareRequest 响应共享请求（接受/拒绝）
 func RespondToShareRequest(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	participantID := c.Param("id")
 
 	var req struct {
-		Action string `json:"action" binding:"required"` // accept 或 reject
+		Action string `json:"action" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -442,12 +425,10 @@ func RespondToShareRequest(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	rtSvc := di.GlobalContainer.RealtimeService
 
-	var participant model.RealtimeParticipant
-	if err := db.Where("id = ? AND user_id = ?", participantID, userID).
-		Preload("Session").
-		First(&participant).Error; err != nil {
+	participant, err := rtSvc.GetParticipantWithSession(participantID, userID)
+	if err != nil {
 		response.NotFound(c, "请求不存在")
 		return
 	}
@@ -463,18 +444,17 @@ func RespondToShareRequest(c *gin.Context) {
 		participant.Status = "approved"
 		participant.ApprovedAt = &now
 
-		// 激活会话
 		if participant.Session.Status == "pending" {
 			participant.Session.Status = "active"
 			participant.Session.StartedAt = &now
-			db.Save(&participant.Session)
+			rtSvc.UpdateSession(&participant.Session)
 		}
 
 		msg, _ := json.Marshal(ws.WSMessage{
 			Type: "screen-share-accepted",
 			Data: map[string]interface{}{
-				"session_id":    participant.SessionID,
-				"user_id":       userID,
+				"session_id":      participant.SessionID,
+				"user_id":         userID,
 				"conversation_id": participant.Session.ConversationID,
 			},
 		})
@@ -485,15 +465,15 @@ func RespondToShareRequest(c *gin.Context) {
 		msg, _ := json.Marshal(ws.WSMessage{
 			Type: "screen-share-rejected",
 			Data: map[string]interface{}{
-				"session_id":    participant.SessionID,
-				"user_id":       userID,
+				"session_id":      participant.SessionID,
+				"user_id":         userID,
 				"conversation_id": participant.Session.ConversationID,
 			},
 		})
 		ws.GlobalHub.SendToUser(participant.Session.InitiatorID, msg)
 	}
 
-	if err := db.Save(&participant).Error; err != nil {
+	if err := rtSvc.UpdateParticipant(participant); err != nil {
 		response.InternalServerError(c, "操作失败")
 		return
 	}

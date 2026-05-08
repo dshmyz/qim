@@ -7,22 +7,34 @@ import (
 	"qim-server/database"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-func GetCurrentUser(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+type UserHandler struct {
+	userService *service.UserService
+}
 
-	db := database.GetDB()
-	var user model.User
-	if err := db.First(&user, userID).Error; err != nil {
+func NewUserHandler(userService *service.UserService) *UserHandler {
+	return &UserHandler{
+		userService: userService,
+	}
+}
+
+func (h *UserHandler) GetCurrentUser(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	user, err := h.userService.GetUser(uid)
+	if err != nil {
 		response.NotFound(c, "用户不存在")
 		return
 	}
 
+	db := h.userService.GetDB()
 	var userRoles []model.UserRole
 	db.Where("user_id = ?", user.ID).Find(&userRoles)
 	roleNames := make([]string, 0, len(userRoles))
@@ -44,8 +56,9 @@ func GetCurrentUser(c *gin.Context) {
 	})
 }
 
-func UpdateUser(c *gin.Context) {
+func (h *UserHandler) UpdateUser(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
 
 	var req struct {
 		Nickname         string `json:"nickname"`
@@ -61,38 +74,36 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var user model.User
-	if err := db.First(&user, userID).Error; err != nil {
-		response.NotFound(c, "用户不存在")
-		return
-	}
-
+	updates := make(map[string]interface{})
 	if req.Nickname != "" {
-		user.Nickname = req.Nickname
+		updates["nickname"] = req.Nickname
 	}
 	if req.Avatar != "" {
-		user.Avatar = req.Avatar
+		updates["avatar"] = req.Avatar
 	}
 	if req.Signature != "" {
-		user.Signature = req.Signature
+		updates["signature"] = req.Signature
 	}
 	if req.Phone != "" {
-		user.Phone = req.Phone
+		updates["phone"] = req.Phone
 	}
 	if req.Email != "" {
-		user.Email = req.Email
+		updates["email"] = req.Email
 	}
 	if req.TwoFactorEnabled != nil {
-		user.TwoFactorEnabled = *req.TwoFactorEnabled
+		updates["two_factor_enabled"] = *req.TwoFactorEnabled
 	}
 
-	db.Save(&user)
+	user, err := h.userService.UpdateUser(uid, updates)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
 
 	response.Success(c, user)
 }
 
-func SearchUsers(c *gin.Context) {
+func (h *UserHandler) SearchUsers(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	query := c.Query("q")
 
@@ -101,10 +112,13 @@ func SearchUsers(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	db := h.userService.GetDB()
 
-	var users []model.User
-	db.Where("nickname LIKE ? OR username LIKE ?", "%"+query+"%", "%"+query+"%").Find(&users)
+	users, err := h.userService.SearchUsers(query, 20)
+	if err != nil {
+		response.InternalServerError(c, "搜索失败")
+		return
+	}
 
 	var responseUsers []gin.H
 	for _, user := range users {
@@ -132,7 +146,6 @@ func SearchUsers(c *gin.Context) {
 			isMember = true
 		}
 
-		// 获取群聊信息
 		var group model.Group
 		db.Where("conversation_id = ?", conv.ID).First(&group)
 
@@ -146,6 +159,25 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	response.Success(c, responseUsers)
+}
+
+// 向后兼容的包装函数
+func GetCurrentUser(c *gin.Context) {
+	userService := service.NewUserService(database.GetDB())
+	handler := NewUserHandler(userService)
+	handler.GetCurrentUser(c)
+}
+
+func UpdateUser(c *gin.Context) {
+	userService := service.NewUserService(database.GetDB())
+	handler := NewUserHandler(userService)
+	handler.UpdateUser(c)
+}
+
+func SearchUsers(c *gin.Context) {
+	userService := service.NewUserService(database.GetDB())
+	handler := NewUserHandler(userService)
+	handler.SearchUsers(c)
 }
 
 func CreateUser(c *gin.Context) {
