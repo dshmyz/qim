@@ -14,13 +14,16 @@ func TestInitContainer(t *testing.T) {
 			Type: "sqlite",
 			Path: ":memory:",
 		},
+		JWT: config.JWTConfig{
+			Secret: "test-secret",
+		},
 	}
 	database.Init(cfg)
 
 	hub := ws.NewHub()
 	go hub.Run()
 
-	container := InitContainer("test-secret", hub)
+	container := InitContainer(cfg, hub)
 
 	if container == nil {
 		t.Fatal("InitContainer returned nil")

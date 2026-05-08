@@ -55,7 +55,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		},
 	}
 
-	di.InitContainer(cfg.JWT.Secret, nil)
+	di.InitContainer(cfg, nil)
 
 	database.DB = db
 	SetConfig(cfg)

@@ -175,3 +175,19 @@ func (s *UserService) GetUserRoles(userID uint) ([]string, error) {
 	}
 	return roleNames, nil
 }
+
+func (s *UserService) GetSystemUser() *model.User {
+	var systemUser model.User
+	if err := s.db.Where("type = ?", "system").First(&systemUser).Error; err != nil {
+		return nil
+	}
+	return &systemUser
+}
+
+func (s *UserService) GetSystemUserID() uint {
+	systemUser := s.GetSystemUser()
+	if systemUser != nil {
+		return systemUser.ID
+	}
+	return 0
+}

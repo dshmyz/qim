@@ -1,26 +1,4 @@
 package service
 
-import (
-	"qim-server/ai"
-)
-
-var (
-	UserSvc         *UserService
-	ConversationSvc *ConversationService
-	MessageSvc     *MessageService
-	aiSvc          *ai.AIService
-)
-
-func Init(userService *UserService, conversationService *ConversationService, messageService *MessageService) {
-	UserSvc = userService
-	ConversationSvc = conversationService
-	MessageSvc = messageService
-}
-
-func SetAIService(svc *ai.AIService) {
-	aiSvc = svc
-}
-
-func GetAIService() *ai.AIService {
-	return aiSvc
-}
+// 全局变量已废弃，统一使用 di.GlobalContainer 获取服务实例
+// 保留此文件仅作为向后兼容的占位

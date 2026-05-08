@@ -354,7 +354,7 @@ func TestUserService_GetUserRoles(t *testing.T) {
 
 func TestMessageService_SendMessage(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -379,7 +379,7 @@ func TestMessageService_SendMessage(t *testing.T) {
 
 func TestMessageService_SendMessage_NotMember(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -398,7 +398,7 @@ func TestMessageService_SendMessage_NotMember(t *testing.T) {
 
 func TestMessageService_GetMessages(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -424,7 +424,7 @@ func TestMessageService_GetMessages(t *testing.T) {
 
 func TestMessageService_RecallMessage(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -444,7 +444,7 @@ func TestMessageService_RecallMessage(t *testing.T) {
 
 func TestMessageService_RecallMessage_NotOwner(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -463,7 +463,7 @@ func TestMessageService_RecallMessage_NotOwner(t *testing.T) {
 
 func TestMessageService_DeleteMessage(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -485,7 +485,7 @@ func TestMessageService_DeleteMessage(t *testing.T) {
 
 func TestMessageService_MarkAsRead(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
@@ -507,7 +507,7 @@ func TestMessageService_MarkAsRead(t *testing.T) {
 
 func TestMessageService_GetMessageByID(t *testing.T) {
 	db := setupServiceTestDB(t)
-	svc := NewMessageService(db, nil)
+	svc := NewMessageService(db, nil, nil)
 
 	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
 	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}

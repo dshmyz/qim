@@ -88,7 +88,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	go hub.Run()
 
 	// 初始化依赖注入容器
-	InitContainer(cfg.JWT.Secret, hub)
+	InitContainer(cfg, hub)
 
 	return cfg, db, hub
 }

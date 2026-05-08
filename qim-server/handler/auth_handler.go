@@ -28,6 +28,13 @@ func SetConfig(c *config.Config) {
 	aiService = ai.NewAIService(&c.AI)
 	di.GlobalContainer.Config = c
 	di.GlobalContainer.AIService = aiService
+	
+	if di.GlobalContainer.MessageService != nil {
+		di.GlobalContainer.MessageService.SetAIService(aiService)
+	}
+	if di.GlobalContainer.AvatarService != nil {
+		di.GlobalContainer.AvatarService.SetAIService(aiService)
+	}
 }
 
 func Login(c *gin.Context) {

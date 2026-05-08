@@ -18,15 +18,21 @@ var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 
 type MessageService struct {
-	db  *gorm.DB
-	hub *ws.Hub
+	db        *gorm.DB
+	hub       *ws.Hub
+	aiService *ai.AIService
 }
 
-func NewMessageService(db *gorm.DB, hub *ws.Hub) *MessageService {
+func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *MessageService {
 	return &MessageService{
-		db:  db,
-		hub: hub,
+		db:        db,
+		hub:       hub,
+		aiService: aiService,
 	}
+}
+
+func (s *MessageService) SetAIService(aiService *ai.AIService) {
+	s.aiService = aiService
 }
 
 type MessageQuery struct {
@@ -118,8 +124,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
-	// 获取系统用户 ID
-	systemUserID := model.GetSystemUserID(db)
+	systemUserID := s.GetSystemUserID()
 
 	var aiMessages []ai.Message
 	for _, msg := range messages {
@@ -137,7 +142,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	responseChan := make(chan ai.StreamChunk)
 
 	go func() {
-		err := aiSvc.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+		err := s.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
 			responseChan <- chunk
 			fullResponse += chunk.Content
 			return nil
@@ -147,8 +152,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 			fullResponse = "抱歉，AI 服务暂时不可用，请稍后再试。"
 		}
 
-		// 获取系统用户 ID
-		senderID := model.GetSystemUserID(db)
+		senderID := s.GetSystemUserID()
 
 		botReply := model.Message{
 			ConversationID: convID,
@@ -575,4 +579,17 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 func (s *MessageService) CreateMessage(msg *model.Message) error {
 	db := s.db
 	return db.Create(msg).Error
+}
+
+func (s *MessageService) IsAIMessage(senderID uint) bool {
+	systemUserID := s.GetSystemUserID()
+	return systemUserID > 0 && senderID == systemUserID
+}
+
+func (s *MessageService) GetSystemUserID() uint {
+	var systemUser model.User
+	if err := s.db.Where("type = ?", "system").First(&systemUser).Error; err != nil {
+		return 0
+	}
+	return systemUser.ID
 }

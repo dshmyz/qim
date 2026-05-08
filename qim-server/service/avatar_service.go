@@ -39,6 +39,10 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 	return service
 }
 
+func (s *AvatarService) SetAIService(aiService *ai.AIService) {
+	s.aiService = aiService
+}
+
 // GetWorkerPool 获取 Worker Pool
 func (s *AvatarService) GetWorkerPool() *AvatarWorkerPool {
 	return s.workerPool

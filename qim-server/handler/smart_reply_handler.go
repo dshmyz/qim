@@ -6,6 +6,7 @@ import (
 	"log"
 	"qim-server/ai"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/service"
 	"qim-server/ws"
@@ -32,7 +33,7 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 		intentDetector: detector,
 		knowledgeSvc:   knowledgeSvc,
 		promptBuilder:  NewSmartPromptBuilder(knowledgeSvc),
-		messageSender:  NewWebSocketMessageSender(ws.GlobalHub),
+		messageSender:  NewWebSocketMessageSender(ws.GlobalHub, di.GlobalContainer.UserService),
 	}
 }
 
@@ -90,7 +91,8 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		}
 
 		if aiConfig.AntiSpamInterval > 0 {
-			systemUserID := model.GetSystemUserID(db)
+			userSvc := service.NewUserService(db)
+			systemUserID := userSvc.GetSystemUserID()
 			var lastAIMsg model.Message
 			err := db.Where("conversation_id = ? AND sender_id = ? AND created_at > ?",
 				conversationID, systemUserID, time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).

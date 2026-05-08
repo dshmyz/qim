@@ -6,6 +6,7 @@ import (
 	"log"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/service"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -19,20 +20,21 @@ type MessageSender interface {
 }
 
 type WebSocketMessageSender struct {
-	db  *gorm.DB
-	hub *ws.Hub
+	db        *gorm.DB
+	hub       *ws.Hub
+	userSvc   *service.UserService
 }
 
-func NewWebSocketMessageSender(hub *ws.Hub) *WebSocketMessageSender {
+func NewWebSocketMessageSender(hub *ws.Hub, userSvc *service.UserService) *WebSocketMessageSender {
 	return &WebSocketMessageSender{
-		db:  database.GetDB(),
-		hub: hub,
+		db:      database.GetDB(),
+		hub:     hub,
+		userSvc: userSvc,
 	}
 }
 
 func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string) error {
-	// 获取系统用户 ID
-	senderID := model.GetSystemUserID(s.db)
+	senderID := s.userSvc.GetSystemUserID()
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
@@ -46,8 +48,7 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
-	// 获取系统用户信息用于显示
-	systemUser := model.GetSystemUser(s.db)
+	systemUser := s.userSvc.GetSystemUser()
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
@@ -75,7 +76,7 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 }
 
 func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() error, error) {
-	senderID := model.GetSystemUserID(s.db)
+	senderID := s.userSvc.GetSystemUserID()
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
@@ -89,7 +90,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		return nil, nil, fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
-	systemUser := model.GetSystemUser(s.db)
+	systemUser := s.userSvc.GetSystemUser()
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
@@ -166,8 +167,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 }
 
 func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error {
-	// 获取系统用户 ID
-	senderID := model.GetSystemUserID(s.db)
+	senderID := s.userSvc.GetSystemUserID()
 
 	if msg == nil {
 		aiMessage := model.Message{
@@ -185,8 +185,7 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 		msg = &aiMessage
 	}
 
-	// 获取系统用户信息用于显示
-	systemUser := model.GetSystemUser(s.db)
+	systemUser := s.userSvc.GetSystemUser()
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",
@@ -215,9 +214,9 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 
 func BroadcastAIMessage(conversationID uint, content string, assistantName string) error {
 	db := database.GetDB()
+	userSvc := service.NewUserService(db)
 
-	// 获取系统用户 ID
-	senderID := model.GetSystemUserID(db)
+	senderID := userSvc.GetSystemUserID()
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
@@ -231,8 +230,7 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
-	// 获取系统用户信息用于显示
-	systemUser := model.GetSystemUser(db)
+	systemUser := userSvc.GetSystemUser()
 	aiSender := model.User{
 		ID:       0,
 		Username: "ai_assistant",

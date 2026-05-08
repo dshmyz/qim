@@ -38,12 +38,14 @@ type Container struct {
 
 var GlobalContainer *Container
 
-func InitContainer(secret string, hub *ws.Hub) *Container {
+func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	db := database.GetDB()
+
+	aiService := ai.NewAIService(&cfg.AI)
 
 	userService := service.NewUserService(db)
 	conversationService := service.NewConversationService(db)
-	messageService := service.NewMessageService(db, hub)
+	messageService := service.NewMessageService(db, hub, aiService)
 	notificationService := service.NewNotificationService(db)
 	eventService := service.NewEventService(db)
 	taskService := service.NewTaskService(db)
@@ -55,13 +57,15 @@ func InitContainer(secret string, hub *ws.Hub) *Container {
 	adminService := service.NewAdminService(db)
 	realtimeService := service.NewRealtimeService(db)
 	sensitiveWordService := service.NewSensitiveWordService(db)
-	avatarService := service.NewAvatarService(db, nil)
+	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
 
-	authMiddleware := middleware.AuthMiddleware(secret, userService)
+	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
 	container := &Container{
 		DB:                   db,
+		Config:               cfg,
+		AIService:            aiService,
 		UserService:          userService,
 		ConversationService:  conversationService,
 		MessageService:       messageService,
@@ -82,7 +86,6 @@ func InitContainer(secret string, hub *ws.Hub) *Container {
 		AuthMiddleware:       authMiddleware,
 	}
 
-	service.Init(userService, conversationService, messageService)
 	GlobalContainer = container
 
 	return container

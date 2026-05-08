@@ -24,36 +24,41 @@ Call log:
 # Page snapshot
 
 ```yaml
-- generic [ref=e4]:
-  - generic [ref=e8]: 加载中...
-  - generic [ref=e12]:
-    - button "—" [ref=e13] [cursor=pointer]
-    - button "☐" [ref=e14] [cursor=pointer]
-    - button "×" [ref=e15] [cursor=pointer]
-  - generic [ref=e16]:
-    - generic [ref=e17]: QIM
-    - generic "最近联系人" [ref=e18] [cursor=pointer]
-    - generic "组织架构" [ref=e21] [cursor=pointer]
-    - generic "群聊" [ref=e24] [cursor=pointer]
-    - generic "应用" [ref=e27] [cursor=pointer]
-    - generic "频道" [ref=e30] [cursor=pointer]
-    - generic "皮肤" [ref=e33] [cursor=pointer]
-    - generic "设置" [ref=e36] [cursor=pointer]
-  - generic [ref=e40]:
-    - generic [ref=e41]:
-      - generic [ref=e42]:
-        - generic [ref=e43] [cursor=pointer]:
-          - img "admin" [ref=e44]
-          - generic [ref=e45]: admin
-        - generic [ref=e46]:
-          - button "通知" [ref=e47] [cursor=pointer]
-          - button [ref=e49] [cursor=pointer]
-      - textbox "搜索用户或群组..." [ref=e52]
-    - generic [ref=e56]:
-      - generic [ref=e58]:
-        - button [ref=e59] [cursor=pointer]
-        - heading "最近会话" [level=2] [ref=e61]
-      - paragraph [ref=e66]: 选择一个会话开始聊天
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e8]:
+      - button "—" [ref=e9] [cursor=pointer]
+      - button "☐" [ref=e10] [cursor=pointer]
+      - button "×" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - generic [ref=e13]: QIM
+      - generic "最近联系人" [ref=e14] [cursor=pointer]
+      - generic "组织架构" [ref=e17] [cursor=pointer]
+      - generic "群聊" [ref=e20] [cursor=pointer]
+      - generic "应用" [ref=e23] [cursor=pointer]
+      - generic "频道" [ref=e26] [cursor=pointer]
+      - generic "皮肤" [ref=e29] [cursor=pointer]
+      - generic "设置" [ref=e32] [cursor=pointer]
+    - generic [ref=e36]:
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39] [cursor=pointer]:
+            - img "admin" [ref=e40]
+            - generic [ref=e41]: admin
+          - generic [ref=e42]:
+            - button "通知" [ref=e43] [cursor=pointer]
+            - button [ref=e45] [cursor=pointer]
+        - textbox "搜索用户或群组..." [ref=e48]
+      - generic [ref=e52]:
+        - generic [ref=e54]:
+          - button [ref=e55] [cursor=pointer]
+          - heading "最近会话" [level=2] [ref=e57]
+        - paragraph [ref=e62]: 选择一个会话开始聊天
+  - generic [ref=e63]:
+    - img [ref=e65]
+    - generic [ref=e68]: 加载便签失败，请稍后重试
+    - button [ref=e69] [cursor=pointer]:
+      - img [ref=e70]
 ```
 
 # Test source
