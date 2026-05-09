@@ -116,7 +116,19 @@ func (s *UserService) UpdateUser(userID uint, updates map[string]interface{}) (*
 		return nil, err
 	}
 
-	return user, nil
+	// 更新用户缓存：删除旧缓存，下次获取时会从数据库加载最新数据
+	cacheKey := fmt.Sprintf("user:%d", userID)
+	cache.UserCache.Delete(cacheKey)
+
+	// 重新获取更新后的用户信息并缓存
+	updatedUser, err := s.userRepo.FindByID(context.Background(), userID)
+	if err == nil {
+		if jsonData, err := json.Marshal(updatedUser); err == nil {
+			cache.UserCache.Put(cacheKey, jsonData)
+		}
+	}
+
+	return updatedUser, nil
 }
 
 func (s *UserService) CreateUser(username, password, nickname, avatar string) (*model.User, error) {
@@ -153,15 +165,54 @@ func (s *UserService) IsUsernameExists(username string) (bool, error) {
 }
 
 func (s *UserService) GetUsersByIDs(userIDs []uint) ([]model.User, error) {
-	var users []model.User
-	for _, id := range userIDs {
-		user, err := s.userRepo.FindByID(context.Background(), id)
-		if err != nil {
-			continue
-		}
-		users = append(users, *user)
+	if len(userIDs) == 0 {
+		return []model.User{}, nil
 	}
-	return users, nil
+
+	usersMap := make(map[uint]model.User, len(userIDs))
+	missingIDs := make([]uint, 0, len(userIDs))
+
+	// 检查缓存
+	for _, id := range userIDs {
+		cacheKey := fmt.Sprintf("user:%d", id)
+		if data, ok := cache.UserCache.Get(cacheKey); ok {
+			if jsonData, ok := data.([]byte); ok {
+				var user model.User
+				if err := json.Unmarshal(jsonData, &user); err == nil {
+					usersMap[id] = user
+					continue
+				}
+			}
+		}
+		missingIDs = append(missingIDs, id)
+	}
+
+	// 批量查询缺失的用户
+	if len(missingIDs) > 0 {
+		dbUsers, err := s.userRepo.FindByIDs(context.Background(), missingIDs)
+		if err != nil {
+			return nil, err
+		}
+
+		// 更新缓存并收集结果
+		for _, user := range dbUsers {
+			usersMap[user.ID] = *user
+			if jsonData, err := json.Marshal(user); err == nil {
+				cacheKey := fmt.Sprintf("user:%d", user.ID)
+				cache.UserCache.Put(cacheKey, jsonData)
+			}
+		}
+	}
+
+	// 按原始 ID 顺序返回结果
+	result := make([]model.User, 0, len(userIDs))
+	for _, id := range userIDs {
+		if user, ok := usersMap[id]; ok {
+			result = append(result, user)
+		}
+	}
+
+	return result, nil
 }
 
 func (s *UserService) GetUserRoles(userID uint) ([]string, error) {

@@ -638,6 +638,39 @@ func GetMessageReadUsers(c *gin.Context) {
 	})
 }
 
+func BatchGetMessageReadUsers(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req struct {
+		MessageIDs []uint `json:"message_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "无效的请求参数")
+		return
+	}
+
+	if len(req.MessageIDs) == 0 {
+		response.BadRequest(c, "消息ID列表不能为空")
+		return
+	}
+
+	if len(req.MessageIDs) > 50 {
+		response.BadRequest(c, "一次最多查询50条消息")
+		return
+	}
+
+	msgSvc := di.GlobalContainer.MessageService
+
+	result, err := msgSvc.BatchGetMessageReadUsers(req.MessageIDs, userID.(uint))
+	if err != nil {
+		response.InternalServerError(c, "批量获取已读用户失败")
+		return
+	}
+
+	response.Success(c, result)
+}
+
 func MarkConversationAsRead(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")

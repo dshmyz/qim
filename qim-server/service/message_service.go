@@ -10,7 +10,6 @@ import (
 	"qim-server/ws"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var ErrMessageNotFound = errors.New("message not found")
@@ -18,8 +17,10 @@ var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 
 type MessageService struct {
-	db        *gorm.DB
-	hub       *ws.Hub
+	db     *gorm.DB
+	hub    *ws.Hub
+	dbType string
+
 	aiService *ai.AIService
 }
 
@@ -27,6 +28,15 @@ func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *Messa
 	return &MessageService{
 		db:        db,
 		hub:       hub,
+		aiService: aiService,
+	}
+}
+
+func NewMessageServiceWithDBType(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService, dbType string) *MessageService {
+	return &MessageService{
+		db:        db,
+		hub:       hub,
+		dbType:    dbType,
 		aiService: aiService,
 	}
 }
@@ -139,11 +149,9 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	}
 
 	var fullResponse string
-	responseChan := make(chan ai.StreamChunk)
 
 	go func() {
 		err := s.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
-			responseChan <- chunk
 			fullResponse += chunk.Content
 			return nil
 		})
@@ -390,40 +398,25 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	var unreadMsgIDs []uint
-	if err := db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ?", convID, userID).
-		Pluck("id", &unreadMsgIDs).Error; err != nil {
-		return err
-	}
-
-	if len(unreadMsgIDs) > 0 {
-		batchSize := 500
-		for i := 0; i < len(unreadMsgIDs); i += batchSize {
-			end := i + batchSize
-			if end > len(unreadMsgIDs) {
-				end = len(unreadMsgIDs)
-			}
-			batch := unreadMsgIDs[i:end]
-
-			receipts := make([]model.MessageReadReceipt, 0, len(batch))
-			now := time.Now()
-			for _, msgID := range batch {
-				receipts = append(receipts, model.MessageReadReceipt{
-					MessageID:      msgID,
-					ConversationID: convID,
-					UserID:         userID,
-					CreatedAt:      now,
-				})
-			}
-
-			if err := db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
-				DoNothing: true,
-			}).Create(&receipts).Error; err != nil {
-				return err
-			}
-		}
+	// 使用单条 INSERT ... SELECT 语句批量创建已读回执，避免将消息 ID 加载到内存
+	// 根据数据库类型使用不同的语法
+	// SQLite: ON CONFLICT ... DO NOTHING
+	// MySQL: INSERT IGNORE
+	if s.dbType == "mysql" {
+		db.Exec(`
+			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
+			SELECT id, ?, ?, ?
+			FROM messages
+			WHERE conversation_id = ? AND sender_id != ?
+		`, convID, userID, time.Now(), convID, userID)
+	} else {
+		db.Exec(`
+			INSERT INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
+			SELECT id, ?, ?, ?
+			FROM messages
+			WHERE conversation_id = ? AND sender_id != ?
+			ON CONFLICT (message_id, user_id) DO NOTHING
+		`, convID, userID, time.Now(), convID, userID)
 	}
 
 	result := db.Model(&model.Message{}).
@@ -557,6 +550,37 @@ func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, 
 	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", msg.ConversationID).Count(&totalMembers)
 
 	return readUsers, totalMembers, nil
+}
+
+func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (map[uint]struct {
+	ReadUsers    []model.User
+	TotalMembers int64
+	ReadCount    int64
+}, error) {
+	result := make(map[uint]struct {
+		ReadUsers    []model.User
+		TotalMembers int64
+		ReadCount    int64
+	})
+
+	for _, msgID := range msgIDs {
+		readUsers, totalMembers, err := s.GetMessageReadUsers(msgID, userID)
+		if err != nil {
+			continue
+		}
+
+		result[msgID] = struct {
+			ReadUsers    []model.User
+			TotalMembers int64
+			ReadCount    int64
+		}{
+			ReadUsers:    readUsers,
+			TotalMembers: totalMembers,
+			ReadCount:    int64(len(readUsers)),
+		}
+	}
+
+	return result, nil
 }
 
 func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {

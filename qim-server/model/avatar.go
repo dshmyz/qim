@@ -109,31 +109,31 @@ type AvatarLearnTask struct {
 
 // AvatarKnowledgeScope 分身知识范围配置
 type AvatarKnowledgeScope struct {
-	ConversationHistory bool `json:"conversation_history"`
-	KnowledgeDocs       bool `json:"knowledge_docs"`
+	ConversationHistory bool `json:"conversationHistory"`
+	KnowledgeDocs       bool `json:"knowledgeDocs"`
 	Notes               bool `json:"notes"`
 	Tasks               bool `json:"tasks"`
 }
 
 // AvatarTriggerRules 分身触发规则
 type AvatarTriggerRules struct {
-	Mode                string             `json:"mode"` // auto, manual, keyword, schedule
-	Keywords            []string           `json:"keywords"`
-	TimeRanges          []AvatarTimeRange  `json:"time_ranges"`
-	ExcludedConversations []uint           `json:"excluded_conversations"`
+	Mode                  string            `json:"mode"` // auto, manual, keyword, schedule
+	Keywords              []string          `json:"keywords"`
+	TimeRanges            []AvatarTimeRange `json:"timeRanges"`
+	ExcludedConversations []uint            `json:"excludedConversations"`
 }
 
 // AvatarTimeRange 时间范围配置
 type AvatarTimeRange struct {
-	DayOfWeek []int `json:"day_of_week"` // 0-6, 0=Sunday
-	StartHour int   `json:"start_hour"`
-	EndHour   int   `json:"end_hour"`
+	DayOfWeek []int `json:"dayOfWeek"` // 0-6, 0=Sunday
+	StartHour int   `json:"startHour"`
+	EndHour   int   `json:"endHour"`
 }
 
 // AvatarReplyStrategy 分身回复策略
 type AvatarReplyStrategy struct {
-	MaxReplyLength       string  `json:"max_reply_length"` // short, medium, long
-	ReplyDelay           int     `json:"reply_delay"`      // 秒
-	ConfidenceThreshold  float64 `json:"confidence_threshold"`
-	DisclaimerStyle      string  `json:"disclaimer_style"` // none, subtle, explicit
+	MaxReplyLength      string  `json:"maxReplyLength"` // short, medium, long
+	ReplyDelay          int     `json:"replyDelay"`     // 秒
+	ConfidenceThreshold float64 `json:"confidenceThreshold"`
+	DisclaimerStyle     string  `json:"disclaimerStyle"` // none, subtle, explicit
 }

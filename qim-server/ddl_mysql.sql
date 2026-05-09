@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS `groups` (
   FOREIGN KEY (`creator_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Groups table index
+CREATE INDEX IF NOT EXISTS `idx_groups_name` ON `groups`(`name`);
+
 -- Group documents table
 CREATE TABLE IF NOT EXISTS `group_documents` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -138,6 +141,8 @@ CREATE TABLE IF NOT EXISTS `messages` (
   INDEX `idx_messages_conversation_id` (`conversation_id`),
   INDEX `idx_messages_sender_id` (`sender_id`),
   INDEX `idx_messages_deleted_at` (`deleted_at`),
+  INDEX `idx_messages_conversation_created_at` (`conversation_id`, `created_at`),
+  FULLTEXT INDEX `ft_messages_content` (`content`),
   FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`quoted_message_id`) REFERENCES `messages`(`id`) ON DELETE SET NULL
@@ -413,6 +418,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `deleted_at` DATETIME,
   INDEX `idx_notifications_user_id` (`user_id`),
   INDEX `idx_notifications_deleted_at` (`deleted_at`),
+  INDEX `idx_notifications_user_read_created_at` (`user_id`, `read`, `created_at`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

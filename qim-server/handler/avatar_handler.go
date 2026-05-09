@@ -131,13 +131,13 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 
 type CreateAvatarConfigRequest struct {
 	Name               string                     `json:"name"`
-	UseSystemConfig    bool                       `json:"use_system_config"`
-	ModelConfigID      *uint                      `json:"model_config_id"`
-	TriggerRules       model.AvatarTriggerRules   `json:"trigger_rules"`
-	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledge_scope"`
-	ReplyStrategy      model.AvatarReplyStrategy  `json:"reply_strategy"`
-	TakeoverCooldown   int                        `json:"takeover_cooldown"`
-	CustomPersonaAddon string                     `json:"custom_persona_addon"`
+	UseSystemConfig    bool                       `json:"useSystemConfig"`
+	ModelConfigID      *uint                      `json:"modelConfigId"`
+	TriggerRules       model.AvatarTriggerRules   `json:"triggerRules"`
+	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledgeScope"`
+	ReplyStrategy      model.AvatarReplyStrategy  `json:"replyStrategy"`
+	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	CustomPersonaAddon string                     `json:"customPersonaAddon"`
 }
 
 func (h *AvatarHandler) CreateConfig(c *gin.Context) {
@@ -231,13 +231,13 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 type UpdateAvatarConfigRequest struct {
 	Name               string                     `json:"name"`
 	Enabled            bool                       `json:"enabled"`
-	UseSystemConfig    bool                       `json:"use_system_config"`
-	ModelConfigID      *uint                      `json:"model_config_id"`
-	TriggerRules       model.AvatarTriggerRules   `json:"trigger_rules"`
-	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledge_scope"`
-	ReplyStrategy      model.AvatarReplyStrategy  `json:"reply_strategy"`
-	TakeoverCooldown   int                        `json:"takeover_cooldown"`
-	CustomPersonaAddon string                     `json:"custom_persona_addon"`
+	UseSystemConfig    bool                       `json:"useSystemConfig"`
+	ModelConfigID      *uint                      `json:"modelConfigId"`
+	TriggerRules       model.AvatarTriggerRules   `json:"triggerRules"`
+	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledgeScope"`
+	ReplyStrategy      model.AvatarReplyStrategy  `json:"replyStrategy"`
+	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	CustomPersonaAddon string                     `json:"customPersonaAddon"`
 }
 
 func (h *AvatarHandler) UpdateConfig(c *gin.Context) {

@@ -20,7 +20,7 @@ func TestInitContainer(t *testing.T) {
 	}
 	database.Init(cfg)
 
-	hub := ws.NewHub(database.GetDB())
+	hub := ws.NewHub(database.GetDB(), cfg.Database.Type)
 	go hub.Run()
 
 	container := InitContainer(cfg, hub)

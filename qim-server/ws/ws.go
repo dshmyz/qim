@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -51,6 +51,7 @@ type Hub struct {
 	nodes               []string
 	nodeID              string
 	db                  *gorm.DB
+	dbType              string
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
@@ -69,7 +70,7 @@ type WSMessage struct {
 	RequestID string      `json:"request_id,omitempty"`
 }
 
-func NewHub(db *gorm.DB) *Hub {
+func NewHub(db *gorm.DB, dbType string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
@@ -92,6 +93,7 @@ func NewHub(db *gorm.DB) *Hub {
 		nodes:               nodes,
 		nodeID:              nodeID,
 		db:                  db,
+		dbType:              dbType,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
 	}
 }
@@ -105,8 +107,15 @@ func generateNodeID() string {
 func randomString(n int) string {
 	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		// 降级方案（极少发生）
+		for i := range b {
+			b[i] = letterBytes[time.Now().UnixNano()%int64(len(letterBytes))]
+		}
+		return string(b)
+	}
 	for i := range b {
-		b[i] = letterBytes[time.Now().UnixNano()%int64(len(letterBytes))]
+		b[i] = letterBytes[int(b[i])%len(letterBytes)]
 	}
 	return string(b)
 }
@@ -160,24 +169,57 @@ func (h *Hub) Run() {
 			log.Printf("用户 %d 断开连接", client.userID)
 
 		case message := <-h.broadcast:
-			var toDelete []*Client
-			h.clients.Range(func(key, value interface{}) bool {
-				client := key.(*Client)
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					toDelete = append(toDelete, client)
-				}
-				return true
-			})
-			for _, client := range toDelete {
-				h.clients.Delete(client)
-			}
-
-			h.broadcastToOtherNodes(message)
+			// 异步广播，不阻塞事件循环
+			go h.asyncBroadcast(message)
 		}
 	}
+}
+
+// asyncBroadcast 异步广播消息给所有客户端，使用并发发送不阻塞事件循环
+func (h *Hub) asyncBroadcast(message []byte) {
+	// 收集所有客户端到切片
+	var clients []*Client
+	h.clients.Range(func(key, value interface{}) bool {
+		clients = append(clients, key.(*Client))
+		return true
+	})
+
+	if len(clients) == 0 {
+		h.broadcastToOtherNodes(message)
+		return
+	}
+
+	// 使用 goroutine 池并行发送
+	// 每个客户端一个 goroutine，由运行时调度器管理
+	var wg sync.WaitGroup
+	failedChan := make(chan *Client, len(clients))
+
+	for _, client := range clients {
+		wg.Add(1)
+		go func(c *Client) {
+			defer wg.Done()
+			select {
+			case c.send <- message:
+				// 发送成功
+			default:
+				// 发送通道已满，标记为待删除
+				failedChan <- c
+			}
+		}(client)
+	}
+
+	// 等待所有发送完成
+	wg.Wait()
+	close(failedChan)
+
+	// 清理发送失败的客户端
+	for client := range failedChan {
+		h.clients.Delete(client)
+		close(client.send)
+	}
+
+	// 广播到其他节点
+	h.broadcastToOtherNodes(message)
 }
 
 // startNodeCommunication 启动节点间通信服务
@@ -542,36 +584,23 @@ func handleReadMessage(c *Client, data interface{}) {
 	convIDFloat, _ := msgData["conversation_id"].(float64)
 	convID := uint(convIDFloat)
 
-	var unreadMsgIDs []uint
-	db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, c.userID).
-		Pluck("id", &unreadMsgIDs)
-
-	if len(unreadMsgIDs) > 0 {
-		batchSize := 500
-		for i := 0; i < len(unreadMsgIDs); i += batchSize {
-			end := i + batchSize
-			if end > len(unreadMsgIDs) {
-				end = len(unreadMsgIDs)
-			}
-			batch := unreadMsgIDs[i:end]
-
-			receipts := make([]model.MessageReadReceipt, 0, len(batch))
-			now := time.Now()
-			for _, msgID := range batch {
-				receipts = append(receipts, model.MessageReadReceipt{
-					MessageID:      msgID,
-					ConversationID: convID,
-					UserID:         c.userID,
-					CreatedAt:      now,
-				})
-			}
-
-			db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
-				DoNothing: true,
-			}).Create(&receipts)
-		}
+	// 使用单条 INSERT ... SELECT 语句批量创建已读回执，避免将消息 ID 加载到内存
+	// 根据数据库类型使用不同的语法
+	if c.hub.dbType == "mysql" {
+		db.Exec(`
+			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
+			SELECT id, ?, ?, ?
+			FROM messages
+			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
+		`, convID, c.userID, time.Now(), convID, c.userID)
+	} else {
+		db.Exec(`
+			INSERT INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
+			SELECT id, ?, ?, ?
+			FROM messages
+			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
+			ON CONFLICT (message_id, user_id) DO NOTHING
+		`, convID, c.userID, time.Now(), convID, c.userID)
 	}
 
 	// 更新成员未读数和最后读取

@@ -2,12 +2,14 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"qim-server/config"
 	"qim-server/database"
 	"qim-server/model"
 	"qim-server/test"
 	"qim-server/ws"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -84,7 +86,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	initSystemUser()
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub(database.GetDB())
+	hub := ws.NewHub(database.GetDB(), cfg.Database.Type)
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -140,12 +142,34 @@ func MigrateDB(db *gorm.DB) {
 		log.Fatal("数据库迁移失败:", err)
 	}
 
+	// 添加性能优化索引
+	addIndexes(db)
+
 	migrateMiniApps(db)
 	migrateGroupData(db)
 	migrateFileSource(db)
 	migrateNoteStyle(db)
 	migrateAIConfigs(db)
 	migrateUserAIConfigs(db)
+}
+
+// isMigrationCompleted 检查指定的迁移版本是否已完成
+func isMigrationCompleted(db *gorm.DB, migrationName string) bool {
+	var config model.SystemConfig
+	err := db.Where("key = ?", "migration:"+migrationName).First(&config).Error
+	return err == nil
+}
+
+// markMigrationCompleted 标记指定的迁移版本为已完成
+func markMigrationCompleted(db *gorm.DB, migrationName string) {
+	config := model.SystemConfig{
+		Key:   "migration:" + migrationName,
+		Value: time.Now().Format(time.RFC3339),
+		Type:  "string",
+		Desc:  "迁移版本: " + migrationName,
+	}
+	db.Where("key = ?", "migration:"+migrationName).FirstOrCreate(&config)
+	log.Printf("[Migration] 标记迁移 %s 为已完成", migrationName)
 }
 
 // cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
@@ -167,10 +191,16 @@ func cleanupDuplicateReadReceipts(db *gorm.DB) {
 
 // migrateGroupData 迁移群聊数据到Group表
 func migrateGroupData(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_group_data") {
+		return
+	}
+
 	// 检查Group表是否为空
 	var count int64
 	db.Model(&model.Group{}).Count(&count)
 	if count > 0 {
+		markMigrationCompleted(db, "migrate_group_data")
 		return // 已有数据，跳过迁移
 	}
 
@@ -194,14 +224,22 @@ func migrateGroupData(db *gorm.DB) {
 		db.Create(&group)
 	}
 	log.Printf("群聊数据迁移完成，共迁移 %d 个群聊", len(conversations))
+
+	markMigrationCompleted(db, "migrate_group_data")
 }
 
 // migrateMiniApps 手动迁移 mini_apps 表，避免 AutoMigrate 在 SQLite 上产生 DDL 错误
 func migrateMiniApps(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_mini_apps") {
+		return
+	}
+
 	if !db.Migrator().HasTable("mini_apps") {
 		if err := db.Migrator().CreateTable(&model.MiniApp{}); err != nil {
 			log.Fatal("创建 mini_apps 表失败:", err)
 		}
+		markMigrationCompleted(db, "migrate_mini_apps")
 		return
 	}
 
@@ -210,17 +248,26 @@ func migrateMiniApps(db *gorm.DB) {
 			log.Fatal("为 mini_apps 表添加 permissions 字段失败:", err)
 		}
 	}
+
+	markMigrationCompleted(db, "migrate_mini_apps")
 }
 
 // migrateFileSource 迁移文件来源字段，将聊天消息中引用的文件标记为chat来源
 func migrateFileSource(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_file_source") {
+		return
+	}
+
 	if !db.Migrator().HasTable("messages") || !db.Migrator().HasTable("files") {
+		markMigrationCompleted(db, "migrate_file_source")
 		return
 	}
 
 	var messages []model.Message
 	if err := db.Where("type IN ?", []string{"file", "image"}).Find(&messages).Error; err != nil {
 		log.Printf("查询聊天文件消息失败: %v", err)
+		markMigrationCompleted(db, "migrate_file_source")
 		return
 	}
 
@@ -244,11 +291,19 @@ func migrateFileSource(db *gorm.DB) {
 	if updated > 0 {
 		log.Printf("文件来源迁移完成，共更新 %d 个聊天文件", updated)
 	}
+
+	markMigrationCompleted(db, "migrate_file_source")
 }
 
 // migrateNoteStyle 为 notes 表添加 style 字段（兼容已存在的数据库）
 func migrateNoteStyle(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_note_style") {
+		return
+	}
+
 	if !db.Migrator().HasTable("notes") {
+		markMigrationCompleted(db, "migrate_note_style")
 		return
 	}
 
@@ -281,14 +336,22 @@ func migrateNoteStyle(db *gorm.DB) {
 	if !db.Migrator().HasColumn(&model.Note{}, "style") {
 		if err := db.Migrator().AddColumn(&model.Note{}, "style"); err != nil {
 			log.Printf("为 notes 表添加 style 字段失败: %v", err)
+			markMigrationCompleted(db, "migrate_note_style")
 			return
 		}
 		log.Printf("notes 表已添加 style 字段")
 	}
+
+	markMigrationCompleted(db, "migrate_note_style")
 }
 
 // migrateAIConfigs 迁移 AI 配置数据，将旧的冗余字段转换为新的 JSON 格式
 func migrateAIConfigs(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_ai_configs") {
+		return
+	}
+
 	if !db.Migrator().HasTable("ai_configs") {
 		return
 	}
@@ -419,10 +482,17 @@ func migrateAIConfigs(db *gorm.DB) {
 		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_base_url")
 		log.Printf("已删除 ai_configs 表的旧供应商字段")
 	}
+
+	markMigrationCompleted(db, "migrate_ai_configs")
 }
 
 // migrateUserAIConfigs 将 user_ai_configs 表的数据迁移到 ai_configs 表，然后删除旧表
 func migrateUserAIConfigs(db *gorm.DB) {
+	// 检查迁移版本是否已完成
+	if isMigrationCompleted(db, "migrate_user_ai_configs") {
+		return
+	}
+
 	if !db.Migrator().HasTable("user_ai_configs") {
 		return
 	}
@@ -525,4 +595,93 @@ func migrateUserAIConfigs(db *gorm.DB) {
 
 	db.Migrator().DropTable("user_ai_configs")
 	log.Printf("已删除 user_ai_configs 表")
+
+	markMigrationCompleted(db, "migrate_user_ai_configs")
+}
+
+// addIndexes 添加性能优化索引，确保索引已存在则跳过创建
+func addIndexes(db *gorm.DB) {
+	cfg := config.Load()
+	isMySQL := cfg.Database.Type == "mysql"
+
+	// 1. messages(conversation_id, created_at) 复合索引
+	if !db.Migrator().HasIndex(&model.Message{}, "idx_messages_conversation_created_at") {
+		if isMySQL {
+			db.Exec("CREATE INDEX idx_messages_conversation_created_at ON messages(conversation_id, created_at)")
+		} else {
+			db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_at ON messages(conversation_id, created_at)")
+		}
+		log.Printf("[Index] 添加 messages(conversation_id, created_at) 复合索引")
+	}
+
+	// 2. groups(name) 索引
+	if !db.Migrator().HasIndex(&model.Group{}, "idx_groups_name") {
+		if isMySQL {
+			db.Exec("CREATE INDEX idx_groups_name ON groups(name)")
+		} else {
+			db.Exec("CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)")
+		}
+		log.Printf("[Index] 添加 groups(name) 索引")
+	}
+
+	// 3. notifications(user_id, read, created_at) 复合索引
+	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_read_created_at") {
+		if isMySQL {
+			db.Exec("CREATE INDEX idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
+		} else {
+			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
+		}
+		log.Printf("[Index] 添加 notifications(user_id, read, created_at) 复合索引")
+	}
+
+	// 4. 消息全文搜索索引
+	if isMySQL {
+		// MySQL: 使用 FULLTEXT INDEX
+		if !hasFulltextIndex(db, "messages", "ft_messages_content") {
+			db.Exec("ALTER TABLE messages ADD FULLTEXT INDEX ft_messages_content (content)")
+			log.Printf("[Index] 添加 messages FULLTEXT 全文索引")
+		}
+	} else {
+		// SQLite: 使用 FTS5 虚拟表
+		if !hasFTS5Table(db, "messages_fts5") {
+			db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')")
+			// 同步现有数据到 FTS5
+			db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
+			log.Printf("[Index] 创建 messages FTS5 全文搜索虚拟表")
+		}
+	}
+}
+
+// hasFulltextIndex 检查 MySQL 表是否存在指定名称的 FULLTEXT 索引
+func hasFulltextIndex(db *gorm.DB, tableName, indexName string) bool {
+	var count int64
+	db.Raw(`SELECT COUNT(*) FROM information_schema.STATISTICS 
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = ? 
+		AND INDEX_NAME = ?`, tableName, indexName).Scan(&count)
+	return count > 0
+}
+
+// hasFTS5Table 检查 SQLite 是否存在 FTS5 虚拟表
+func hasFTS5Table(db *gorm.DB, tableName string) bool {
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", tableName).Scan(&count)
+	return count > 0
+}
+
+// createFulltextIndexMySQL 在 MySQL 上创建全文索引
+func createFulltextIndexMySQL(db *gorm.DB, tableName, indexName string, columns []string) bool {
+	var exists bool
+	db.Raw(`SELECT EXISTS(SELECT 1 FROM information_schema.STATISTICS 
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = ? 
+		AND INDEX_NAME = ?)`, tableName, indexName).Scan(&exists)
+
+	if exists {
+		return false
+	}
+
+	cols := strings.Join(columns, ", ")
+	db.Exec(fmt.Sprintf("ALTER TABLE %s ADD FULLTEXT INDEX %s (%s)", tableName, indexName, cols))
+	return true
 }

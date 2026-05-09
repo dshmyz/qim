@@ -18,15 +18,43 @@ func GetConversations(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// 1. 查询当前用户的会话成员记录（不 Preload，避免 N+1）
 	var convMembers []model.ConversationMember
-	db.Where("user_id = ?", uid).
-		Preload("Conversation").
-		Preload("Conversation.LastMessage").
-		Find(&convMembers)
+	db.Where("user_id = ?", uid).Find(&convMembers)
 
 	if len(convMembers) == 0 {
 		response.Success(c, []interface{}{})
 		return
+	}
+
+	// 提取所有会话 ID
+	conversationIDs := make([]uint, 0, len(convMembers))
+	for _, cm := range convMembers {
+		conversationIDs = append(conversationIDs, cm.ConversationID)
+	}
+
+	// 2. 批量查询会话信息
+	conversationMap := make(map[uint]model.Conversation, len(conversationIDs))
+	var convList []model.Conversation
+	db.Where("id IN ?", conversationIDs).Find(&convList)
+	for _, conv := range convList {
+		conversationMap[conv.ID] = conv
+	}
+
+	// 3. 批量查询最后一条消息
+	lastMessageIDs := make([]uint, 0, len(convList))
+	for _, conv := range convList {
+		if conv.LastMessageID != nil {
+			lastMessageIDs = append(lastMessageIDs, *conv.LastMessageID)
+		}
+	}
+	lastMessageMap := make(map[uint]model.Message, len(lastMessageIDs))
+	if len(lastMessageIDs) > 0 {
+		var lastMessages []model.Message
+		db.Where("id IN ?", lastMessageIDs).Find(&lastMessages)
+		for _, msg := range lastMessages {
+			lastMessageMap[msg.ID] = msg
+		}
 	}
 
 	type AIConfig struct {
@@ -64,10 +92,11 @@ func GetConversations(c *gin.Context) {
 	groupConvIDs := make([]uint, 0, len(convMembers))
 	singleConvIDs := make([]uint, 0, len(convMembers))
 	for _, cm := range convMembers {
-		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
-			groupConvIDs = append(groupConvIDs, cm.Conversation.ID)
-		} else if cm.Conversation.Type == "single" {
-			singleConvIDs = append(singleConvIDs, cm.Conversation.ID)
+		conv := conversationMap[cm.ConversationID]
+		if conv.Type == "group" || conv.Type == "discussion" {
+			groupConvIDs = append(groupConvIDs, cm.ConversationID)
+		} else if conv.Type == "single" {
+			singleConvIDs = append(singleConvIDs, cm.ConversationID)
 		}
 	}
 
@@ -77,6 +106,47 @@ func GetConversations(c *gin.Context) {
 		db.Where("conversation_id IN ?", groupConvIDs).Find(&groups)
 		for _, g := range groups {
 			groupMap[g.ConversationID] = g
+		}
+
+		// 批量查询群聊成员（避免 N+1）
+		var groupMembers []model.ConversationMember
+		db.Where("conversation_id IN ?", groupConvIDs).Find(&groupMembers)
+
+		// 提取群成员中的用户 ID
+		groupMemberUserIDs := make([]uint, 0, len(groupMembers))
+		seenGroupMemberUsers := make(map[uint]struct{})
+		for _, gm := range groupMembers {
+			if _, exists := seenGroupMemberUsers[gm.UserID]; !exists {
+				groupMemberUserIDs = append(groupMemberUserIDs, gm.UserID)
+				seenGroupMemberUsers[gm.UserID] = struct{}{}
+			}
+		}
+
+		// 批量查询群成员用户信息
+		groupMemberUserMap := make(map[uint]model.User, len(groupMemberUserIDs))
+		if len(groupMemberUserIDs) > 0 {
+			var groupMemberUsers []model.User
+			db.Where("id IN ?", groupMemberUserIDs).Find(&groupMemberUsers)
+			for _, u := range groupMemberUsers {
+				groupMemberUserMap[u.ID] = u
+			}
+		}
+
+		// 将成员信息按会话 ID 分组并填充 User 信息
+		groupMembersByConv := make(map[uint][]model.ConversationMember)
+		for _, gm := range groupMembers {
+			if user, ok := groupMemberUserMap[gm.UserID]; ok {
+				gm.User = user
+			}
+			groupMembersByConv[gm.ConversationID] = append(groupMembersByConv[gm.ConversationID], gm)
+		}
+
+		// 将成员信息设置到会话中
+		for convID, members := range groupMembersByConv {
+			if conv, ok := conversationMap[convID]; ok {
+				conv.Members = members
+				conversationMap[convID] = conv
+			}
 		}
 	}
 
@@ -109,7 +179,7 @@ func GetConversations(c *gin.Context) {
 
 	allConvIDs := make([]uint, 0, len(convMembers))
 	for _, cm := range convMembers {
-		allConvIDs = append(allConvIDs, cm.Conversation.ID)
+		allConvIDs = append(allConvIDs, cm.ConversationID)
 	}
 
 	sessionMap := make(map[uint]model.ConversationSession, len(convMembers))
@@ -126,7 +196,15 @@ func GetConversations(c *gin.Context) {
 	now := time.Now()
 
 	for _, cm := range convMembers {
-		convID := cm.Conversation.ID
+		convID := cm.ConversationID
+		conv := conversationMap[convID]
+
+		// 设置最后一条消息
+		if conv.LastMessageID != nil {
+			if msg, ok := lastMessageMap[*conv.LastMessageID]; ok {
+				conv.LastMessage = &msg
+			}
+		}
 
 		session, exists := sessionMap[convID]
 		if !exists {
@@ -140,13 +218,13 @@ func GetConversations(c *gin.Context) {
 		}
 
 		convWithPin := ConversationWithPin{
-			Conversation: cm.Conversation,
+			Conversation: conv,
 			IsPinned:     session.IsPinned,
 			UnreadCount:  cm.UnreadCount,
 			Muted:        cm.Muted,
 		}
 
-		if cm.Conversation.Type == "group" || cm.Conversation.Type == "discussion" {
+		if conv.Type == "group" || conv.Type == "discussion" {
 			if group, ok := groupMap[convID]; ok {
 				aiConfig := group.GetAIConfig()
 				convWithPin.Name = group.Name
@@ -170,7 +248,7 @@ func GetConversations(c *gin.Context) {
 			}
 		}
 
-		if cm.Conversation.Type == "single" {
+		if conv.Type == "single" {
 			if otherUserID, ok := otherMemberMap[convID]; ok {
 				if otherUser, ok := userMap[otherUserID]; ok {
 					convWithPin.IP = otherUser.IP

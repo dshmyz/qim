@@ -56,7 +56,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 
 	userService := service.NewUserService(db)
 	conversationService := service.NewConversationService(db)
-	messageService := service.NewMessageService(db, hub, aiService)
+	messageService := service.NewMessageServiceWithDBType(db, hub, aiService, cfg.Database.Type)
 	notificationService := service.NewNotificationService(db)
 	eventService := service.NewEventService(db)
 	taskService := service.NewTaskService(db)

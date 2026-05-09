@@ -57,19 +57,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 全局应用CORS中间件
 	r.Use(corsMiddleware)
-	
+
 	// 全局中间件
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.RecoveryMiddleware())
 	r.Use(middleware.LoggerMiddleware())
-	
-	// 请求限流（100 请求/分钟/IP）
-	rateLimiter := middleware.NewIPRateLimiter(100, time.Minute)
+
+	// 请求限流（500 请求/分钟/IP）
+	rateLimiter := middleware.NewIPRateLimiter(500, time.Minute)
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
-	
+
 	// 静态文件服务
 	r.Static("/uploads", "./uploads")
 	r.Static("/miniprograms", "./static/miniprograms")
+
+	// 客户端更新检查（无需认证）
+	r.GET("/api/v1/updates/:platform/latest.yml", handler.GetLatestYML)
+	r.GET("/api/v1/updates/:platform/files/:filename", handler.GetUpdateFile)
+
 	// 使用静态文件处理函数，并确保CORS中间件应用
 
 	// API路由
@@ -143,6 +148,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/conversations/:id/messages/stream", handler.StreamMessage)
 			authed.POST("/conversations/:id/read", handler.MarkConversationAsRead)
 			authed.GET("/messages/:id/read-users", handler.GetMessageReadUsers)
+			authed.POST("/messages/batch/read-users", handler.BatchGetMessageReadUsers)
 			// 消息撤回
 			authed.POST("/messages/:id/recall", handler.RecallMessage)
 

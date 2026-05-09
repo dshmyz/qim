@@ -47,6 +47,12 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return &user, nil
 }
 
+func (r *userRepository) FindByIDs(ctx context.Context, ids []uint) ([]*model.User, error) {
+	var users []*model.User
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}
+
 func (r *userRepository) Search(ctx context.Context, query string, limit int) ([]*model.User, error) {
 	var users []*model.User
 	searchPattern := "%" + query + "%"

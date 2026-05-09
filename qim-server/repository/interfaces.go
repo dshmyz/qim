@@ -27,6 +27,7 @@ type UserRepository interface {
 	FindByUsername(ctx context.Context, username string) (*model.User, error)
 	FindByPhone(ctx context.Context, phone string) (*model.User, error)
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByIDs(ctx context.Context, ids []uint) ([]*model.User, error)
 	Search(ctx context.Context, query string, limit int) ([]*model.User, error)
 	UpdateStatus(ctx context.Context, id uint, status string) error
 	UpdateLastOnline(ctx context.Context, id uint) error

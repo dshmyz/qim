@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS `groups` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS `idx_groups_name` ON `groups`(`name`);
+
 -- Group documents table
 CREATE TABLE IF NOT EXISTS `group_documents` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +133,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
 CREATE INDEX IF NOT EXISTS `idx_messages_conversation_id` ON `messages`(`conversation_id`);
 CREATE INDEX IF NOT EXISTS `idx_messages_sender_id` ON `messages`(`sender_id`);
 CREATE INDEX IF NOT EXISTS `idx_messages_deleted_at` ON `messages`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_messages_conversation_created_at` ON `messages`(`conversation_id`, `created_at`);
 
 -- Files table
 CREATE TABLE IF NOT EXISTS `files` (
@@ -400,6 +403,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 
 CREATE INDEX IF NOT EXISTS `idx_notifications_user_id` ON `notifications`(`user_id`);
 CREATE INDEX IF NOT EXISTS `idx_notifications_deleted_at` ON `notifications`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_notifications_user_read_created_at` ON `notifications`(`user_id`, `read`, `created_at`);
 
 -- Channels table
 CREATE TABLE IF NOT EXISTS `channels` (
@@ -578,3 +582,13 @@ CREATE TABLE IF NOT EXISTS `avatars` (
 );
 
 CREATE INDEX IF NOT EXISTS `idx_avatars_user_id` ON `avatars`(`user_id`);
+
+-- Messages Full-Text Search (FTS5) Virtual Table
+-- This virtual table enables full-text search on message content for SQLite databases
+-- Usage: SELECT * FROM messages_fts5 WHERE messages_fts5 MATCH 'search_term'
+CREATE VIRTUAL TABLE IF NOT EXISTS `messages_fts5` USING fts5(
+  `content`,
+  `conversation_id`,
+  `created_at`,
+  tokenize='unicode61'
+);
