@@ -1,13 +1,15 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
-	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetBlacklist(c *gin.Context) {
@@ -15,20 +17,19 @@ func GetBlacklist(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 	keyword := c.Query("keyword")
 
-	db := database.GetDB()
-
-	query := db.Model(&model.Blacklist{}).Preload("User")
-	if keyword != "" {
-		query = query.Joins("JOIN users ON users.id = blacklist.user_id").
-			Where("users.username LIKE ? OR users.nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
 	}
 
-	var total int64
-	query.Count(&total)
-
-	var blacklist []model.Blacklist
-	offset := (page - 1) * pageSize
-	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&blacklist)
+	blacklistSvc := di.GlobalContainer.BlacklistService
+	blacklist, total, err := blacklistSvc.GetBlacklist(page, pageSize, keyword)
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
 
 	response.Success(c, gin.H{
 		"list":     blacklist,
@@ -40,9 +41,8 @@ func GetBlacklist(c *gin.Context) {
 
 func AddToBlacklist(c *gin.Context) {
 	var req struct {
-		UserID   uint   `json:"user_id" binding:"required"`
-		Reason   string `json:"reason"`
-		Operator string `json:"operator"`
+		UserID uint   `json:"user_id" binding:"required"`
+		Reason string `json:"reason"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -50,21 +50,21 @@ func AddToBlacklist(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-
-	var existing model.Blacklist
-	if err := db.Where("user_id = ?", req.UserID).First(&existing).Error; err == nil {
-		response.BadRequest(c, "该用户已在黑名单中")
-		return
-	}
+	operatorName, _ := c.Get("username")
+	uname, _ := operatorName.(string)
 
 	entry := model.Blacklist{
 		UserID:   req.UserID,
 		Reason:   req.Reason,
-		Operator: req.Operator,
+		Operator: uname,
 	}
 
-	if err := db.Create(&entry).Error; err != nil {
+	blacklistSvc := di.GlobalContainer.BlacklistService
+	if err := blacklistSvc.AddToBlacklist(&entry); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			response.BadRequest(c, "该用户已在黑名单中")
+			return
+		}
 		response.InternalServerError(c, "添加到黑名单失败")
 		return
 	}
@@ -73,17 +73,15 @@ func AddToBlacklist(c *gin.Context) {
 }
 
 func RemoveBlacklistEntry(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-
-	db := database.GetDB()
-	var entry model.Blacklist
-	if err := db.First(&entry, uint(id)).Error; err != nil {
-		response.NotFound(c, "黑名单记录不存在")
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
 		return
 	}
 
-	if err := db.Delete(&entry).Error; err != nil {
-		response.InternalServerError(c, "移除失败")
+	blacklistSvc := di.GlobalContainer.BlacklistService
+	if err := blacklistSvc.RemoveFromBlacklist(uint(id)); err != nil {
+		response.NotFound(c, "黑名单记录不存在")
 		return
 	}
 

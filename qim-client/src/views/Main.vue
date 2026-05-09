@@ -1760,6 +1760,7 @@ const processMessage = (msg: any, conversationId?: string) => {
     isRecalled: msg.is_recalled || false,
     isFailed: msg.is_failed || false,
     isStreaming: msg.is_streaming || false,
+    isAtMention: msg.is_at_mention ?? false,
     conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',

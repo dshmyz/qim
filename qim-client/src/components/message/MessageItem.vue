@@ -1,7 +1,7 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.is_avatar_reply }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.is_avatar_reply, 'at-mention': message.isAtMention }"
     :data-message-id="message.id"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -26,6 +26,8 @@
           <AIMessageBadge v-if="isAIMessage" compact :assistant-name="message.ai_assistant_name" />
           <!-- 分身代回复标识 -->
           <AvatarReplyBadge v-if="message.is_avatar_reply" variant="badge" />
+          <!-- @ 我标识 -->
+          <AtMentionBadge v-if="message.isAtMention" :is-at-mention="true" />
         </div>
 
         <!-- 撤回消息 -->
@@ -181,6 +183,7 @@ import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AIMessageContent from '../ai/AIMessageContent.vue'
 import AIMessageContextMenu from '../ai/AIMessageContextMenu.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
+import AtMentionBadge from './AtMentionBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed, ref } from 'vue'
 import { useAIActions } from '../../composables/useAIActions'
@@ -820,5 +823,16 @@ const isFileContent = (content: string): boolean => {
 .message-item.self ::selection {
   background: rgba(0, 0, 0, 0.25);
   color: white;
+}
+
+/* @ 我消息特殊背景 */
+.message-item.at-mention .message-bubble {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #f59e0b;
+}
+
+.message-item.at-mention .message-sender {
+  color: #b45309;
+  font-weight: 600;
 }
 </style>

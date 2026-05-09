@@ -30,6 +30,7 @@ export function useAvatar() {
       configLoaded.value = true
     } catch (e: any) {
       error.value = e.response?.data?.message || '加载分身配置失败'
+      config.value = null
     } finally {
       loading.value = false
     }

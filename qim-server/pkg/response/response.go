@@ -73,6 +73,15 @@ func TooManyRequests(c *gin.Context, message string) {
 	Error(c, http.StatusTooManyRequests, errors.ErrCodeTooManyRequests, message)
 }
 
+func SuccessWithPagination(c *gin.Context, list interface{}, total int64, page, pageSize int) {
+	Success(c, gin.H{
+		"list":     list,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
 func FromBusinessError(c *gin.Context, err *errors.BusinessError) {
 	statusCode := http.StatusInternalServerError
 	switch err.Code {
