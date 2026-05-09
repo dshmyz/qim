@@ -22,6 +22,9 @@
           <div class="summary-actions">
             <button @click="copySummary">复制摘要</button>
             <button @click="exportSummary">导出 Markdown</button>
+            <button @click="saveToNote" :disabled="saving">
+              {{ saving ? '保存中...' : '保存到笔记' }}
+            </button>
           </div>
         </div>
 
@@ -37,8 +40,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useAIActions } from '../../composables/useAIActions'
+import { useNotes } from '../../composables/useNotes'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
+import QMessage from '../../utils/qmessage'
 
 const props = defineProps<{
   visible: boolean
@@ -51,7 +56,9 @@ const emit = defineEmits<{
 }>()
 
 const { generateSummary, isProcessing: isGenerating } = useAIActions()
+const { createNote } = useNotes()
 const summaryData = ref<any>(null)
+const saving = ref(false)
 
 watch(() => props.visible, async (newVal) => {
   if (newVal && props.conversationId) {
@@ -90,6 +97,29 @@ const exportSummary = () => {
     a.download = `session-summary-${Date.now()}.md`
     a.click()
     URL.revokeObjectURL(url)
+  }
+}
+
+const saveToNote = async () => {
+  if (!summaryData.value || saving.value) return
+  
+  saving.value = true
+  try {
+    const result = await createNote({
+      title: summaryData.value.time_range || '会话摘要',
+      content: summaryData.value.summary,
+      type: 'note'
+    })
+    
+    if (result) {
+      QMessage.success('已保存到笔记')
+    } else {
+      QMessage.error('保存失败，请稍后重试')
+    }
+  } catch (error) {
+    QMessage.error('保存失败，请稍后重试')
+  } finally {
+    saving.value = false
   }
 }
 
