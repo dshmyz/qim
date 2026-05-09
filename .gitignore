@@ -4,6 +4,7 @@ dist/
 qim-server/qim-server
 .DS_Store
 .trae.worktrees/
+.worktrees/
 
 # 上传文件目录
 qim-server/uploads/
