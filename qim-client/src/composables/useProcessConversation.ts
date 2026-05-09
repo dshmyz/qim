@@ -24,17 +24,17 @@ export interface Conversation {
     miniAppData?: any
     shareData?: any
   }
-  unreadCount: number
+  unread_count: number
   timestamp: number
   members: any[]
-  pinned: boolean
+  is_pinned: boolean
   muted: boolean
   announcement?: string
   ip?: string
   status?: string
   signature?: string
-  otherMemberId?: string
-  otherMemberName?: string
+  other_member_id?: string
+  other_member_name?: string
   [key: string]: any
 }
 
@@ -98,8 +98,8 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       ip: conv.ip || '',
       status: conv.status || 'offline',
       signature: conv.signature || '',
-      otherMemberId: conv.other_member_id || conv.OtherMemberID || '',
-      otherMemberName: conv.other_member_name || conv.OtherMemberName || '',
+      other_member_id: conv.other_member_id || conv.OtherMemberID || '',
+      other_member_name: conv.other_member_name || conv.OtherMemberName || '',
       lastMessage: conv.lastMessage || conv.last_message ? {
         id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
         content: conv.lastMessage?.content || conv.last_message?.content || '',
@@ -145,11 +145,11 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
           }
         })()
       } : undefined,
-      unreadCount: unreadCount,
+      unread_count: unreadCount,
       timestamp: conv.last_message_at ? new Date(conv.last_message_at).getTime() : (conv.created_at ? new Date(conv.created_at).getTime() : Date.now()),
       type: (conv.type === 'group' || conv.type === 'Group' || conv.type === 'GROUP') ? 'group' : (conv.type === 'discussion' || conv.type === 'Discussion' || conv.type === 'DISCUSSION') ? 'discussion' : (conv.type === 'bot' ? 'bot' : 'single'),
       members: members,
-      pinned: conv.is_pinned || false,
+      is_pinned: conv.is_pinned || false,
       muted: conv.muted || false,
       announcement: conv.announcement || ''
     }

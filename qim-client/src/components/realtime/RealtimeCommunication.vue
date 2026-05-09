@@ -96,11 +96,21 @@ const startScreenShare = async () => {
   }
 
   const conv = props.currentConversation
-  if (conv?.type === 'single' && conv.members && conv.members.length === 2) {
-    const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
-    if (otherMember) {
-      screenShareReceiverId.value = Number(otherMember.id)
+  if (conv?.type === 'single') {
+    // 优先使用后端返回的 other_member_id 字段
+    const otherMemberId = (conv as any).other_member_id
+    if (otherMemberId) {
+      screenShareReceiverId.value = Number(otherMemberId)
       screenShareConversationId.value = Number(conv.id)
+      remoteScreenUserName.value = (conv as any).other_member_name || conv.name || '未知用户'
+    } else if (conv.members && conv.members.length === 2) {
+      // 降级方案
+      const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
+      if (otherMember) {
+        screenShareReceiverId.value = Number(otherMember.id)
+        screenShareConversationId.value = Number(conv.id)
+        remoteScreenUserName.value = otherMember.name || '未知用户'
+      }
     }
   }
 
@@ -146,6 +156,13 @@ const startCall = async (type: 'voice' | 'video') => {
 
   const conv = props.currentConversation
   
+  console.log('[RealtimeCommunication] startCall - currentConversation:', conv)
+  console.log('[RealtimeCommunication] startCall - conv.type:', conv?.type)
+  console.log('[RealtimeCommunication] startCall - conv.members:', conv?.members)
+  console.log('[RealtimeCommunication] startCall - otherMemberId:', (conv as any).other_member_id)
+  console.log('[RealtimeCommunication] startCall - otherMemberName:', (conv as any).other_member_name)
+  console.log('[RealtimeCommunication] startCall - conv.name:', conv?.name)
+  
   if (conv?.type === 'group' || conv?.type === 'discussion') {
     QMessage.warning('群聊和讨论组暂不支持通话功能')
     return
@@ -161,7 +178,23 @@ const startCall = async (type: 'voice' | 'video') => {
     return
   }
   
-  if (conv.members && conv.members.length === 2) {
+  // 优先使用后端返回的 other_member_id 和 other_member_name 字段
+  const otherMemberId = (conv as any).other_member_id
+  const otherMemberName = (conv as any).other_member_name || conv.name || '未知用户'
+  
+  if (otherMemberId) {
+    callReceiverId.value = Number(otherMemberId)
+    callConversationId.value = Number(conv.id)
+    remoteCallUserName.value = otherMemberName
+    
+    const { isUserOnline, subscribeUserStatus } = useUserStatus()
+    subscribeUserStatus(Number(otherMemberId))
+    
+    if (!isUserOnline(Number(otherMemberId))) {
+      QMessage.warning(`${otherMemberName}当前不在线，可能无法接通`)
+    }
+  } else if (conv.members && conv.members.length === 2) {
+    // 降级方案：如果 otherMemberId 不存在，尝试从 members 中获取
     const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
     
     if (!otherMember) {

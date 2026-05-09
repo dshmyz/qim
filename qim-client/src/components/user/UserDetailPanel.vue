@@ -194,7 +194,7 @@ defineEmits<{
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--border-color);
+  /* border: 1px solid var(--border-color); */
   z-index: 2;
   margin-top: 40px;
   animation: cardSlideIn 0.4s ease-out;
@@ -262,7 +262,7 @@ defineEmits<{
 
 .info-section {
   margin-bottom: 16px;
-  background: var(--list-bg);
+  /* background: var(--list-bg); */
   border-radius: 8px;
   padding: 16px;
   /* border: 1px solid var(--border-color); */

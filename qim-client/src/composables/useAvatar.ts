@@ -56,7 +56,27 @@ export function useAvatar() {
     loading.value = true
     error.value = ''
     try {
-      config.value = await avatarAPI.updateConfig(updates)
+      // 只提交用户可编辑的字段，过滤掉只读字段
+      const editableFields: (keyof AvatarConfig)[] = [
+        'name',
+        'enabled',
+        'useSystemConfig',
+        'modelConfigId',
+        'triggerRules',
+        'knowledgeScope',
+        'replyStrategy',
+        'takeoverCooldown',
+        'customPersonaAddon'
+      ]
+      
+      const sanitizedUpdates: Partial<AvatarConfig> = {}
+      for (const key of editableFields) {
+        if (key in updates) {
+          (sanitizedUpdates as any)[key] = (updates as any)[key]
+        }
+      }
+      
+      config.value = await avatarAPI.updateConfig(sanitizedUpdates)
       return config.value
     } catch (e: any) {
       error.value = e.response?.data?.message || '更新分身配置失败'

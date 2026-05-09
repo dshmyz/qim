@@ -8,32 +8,21 @@
           :server-url="serverUrl"
           :alt="displayName"
           size="lg"
+          :status="shouldShowStatusBadge ? conversation?.status : undefined"
+          :user-type="otherUserType"
+          :conversation-type="conversation?.type"
         />
-        <span
-          v-if="isSingleChat"
-          :class="['status-dot', conversation?.status === 'online' ? 'online' : 'offline']"
-          :title="conversation?.status === 'online' ? '在线' : '离线'"
-        ></span>
       </div>
       <div class="header-text">
         <div class="header-name">{{ displayName }}</div>
         <div class="header-status">
-          <template v-if="isGroupOrDiscussion">
-            {{ conversation?.type === 'group' ? '群聊' : '讨论组' }}
-            <span v-if="memberCount" class="member-count">
-              ({{ memberCount }}人)
-            </span>
-          </template>
-          <template v-else-if="isSingleChat">
+          <template v-if="isSingleChat">
             <span v-if="conversation?.ip" class="ip-info">
               {{ conversation.ip }}
             </span>
             <span v-if="conversation?.signature" class="signature-info">
               {{ conversation.signature }}
             </span>
-          </template>
-          <template v-else>
-            在线
           </template>
           <span v-if="isGroupOrDiscussion && conversation?.announcement" class="header-announcement-inline">
             <i class="fas fa-bullhorn"></i>
@@ -86,7 +75,6 @@ import { computed } from 'vue'
 import type { Conversation } from '../../types'
 import Avatar from '../shared/Avatar.vue'
 import ChatHeaderActions from './ChatHeaderActions.vue'
-import { getAvatarUrl } from '../../utils/avatar'
 import { ref } from 'vue'
 
 interface Props {
@@ -150,19 +138,26 @@ const isGroupOrDiscussion = computed(() =>
 
 const isSingleChat = computed(() => props.conversation?.type === 'single')
 
-const memberCount = computed(() =>
-  props.conversation?.members?.length ?? 0
-)
+const isBotChat = computed(() => props.conversation?.type === 'bot')
+
+const shouldShowStatusBadge = computed(() => {
+  return isSingleChat.value || isBotChat.value
+})
+
+const otherUserType = computed(() => {
+  if (props.conversation?.type === 'bot') {
+    return 'bot'
+  }
+  
+  if (props.conversation?.type === 'single' && props.conversation.members) {
+    const otherUser = props.conversation.members.find(m => m.id !== props.currentUser?.id)
+    return otherUser?.type || 'user'
+  }
+  
+  return 'user'
+})
 
 const displayName = computed(() => props.conversation?.name || '未知会话')
-
-const avatarUrl = computed(() =>
-  getAvatarUrl(
-    props.conversation?.avatar,
-    props.conversation?.name || '用户',
-    props.serverUrl
-  )
-)
 
 defineExpose({
   showHeaderMenu,
@@ -183,7 +178,8 @@ defineExpose({
   aiLearnEnabled,
   contextMessages,
   approvalStatus,
-  rejectReason
+  rejectReason,
+  otherUserType
 })
 </script>
 
@@ -219,25 +215,6 @@ defineExpose({
 .avatar-wrapper {
   position: relative;
   flex-shrink: 0;
-}
-
-.status-dot {
-  position: absolute;
-  bottom: 4px;
-  right: 1px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--sidebar-bg);
-  flex-shrink: 0;
-}
-
-.status-dot.online {
-  background: var(--color-success-500);
-}
-
-.status-dot.offline {
-  background: var(--color-gray-500);
 }
 
 .header-text {
@@ -317,17 +294,6 @@ defineExpose({
   font-size: 11px;
   color: var(--text-secondary);
   flex-shrink: 0;
-}
-
-.member-count {
-  color: var(--primary-color);
-  cursor: pointer;
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.member-count:hover {
-  text-decoration: underline;
 }
 
 .header-actions {

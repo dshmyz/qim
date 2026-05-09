@@ -433,6 +433,7 @@ const {
   retrySendMessage,
   copyMessage,
   loadReadUsersForMessages,
+  debouncedLoadReadUsers,
   cleanup: cleanupMessageActions
 } = messageActions
 
@@ -455,22 +456,29 @@ const searchQuery = ref('')
 const searchResults = ref<Message[]>([])
 const isSearching = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const lastConversationId = ref<string | null>(null)
 
-// 草稿系统：使用 localStorage 按会话存储
-// 切换会话时加载草稿
-watch(() => props.conversation?.id, (newId) => {
-  if (newId) {
-    const draft = localStorage.getItem(`qim_draft_${newId}`)
-    if (draft) {
-      const { text, quoted } = JSON.parse(draft)
-      inputMessage.value = text
-      quotedMessage.value = quoted
-    } else {
-      inputMessage.value = ''
-      quotedMessage.value = null
-    }
+const loadDraft = (conversationId: string) => {
+  const draft = localStorage.getItem(`qim_draft_${conversationId}`)
+  if (draft) {
+    const { text, quoted } = JSON.parse(draft)
+    inputMessage.value = text
+    quotedMessage.value = quoted
+  } else {
+    inputMessage.value = ''
+    quotedMessage.value = null
   }
-}, { immediate: true })
+}
+
+watch(() => props.conversation?.id, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    loadDraft(newId)
+    
+    scrollToBottom()
+    
+    lastConversationId.value = newId
+  }
+})
 
 // 标记是否正在插入系统消息（本地操作），此时不应触发滚动
 const isInsertingSystemMessage = ref(false)
@@ -893,8 +901,12 @@ const handleKeydown = (event: KeyboardEvent) => {
   // Shift+Enter 会默认换行，不需要额外处理
 }
 
-const scrollToBottom = () => {
-  chatBodyRef.value?.scrollToBottom()
+const scrollToBottom = (instant: boolean = false) => {
+  if (instant) {
+    chatBodyRef.value?.scrollToBottom(true)
+  } else {
+    chatBodyRef.value?.scrollToBottomWithDelay(150)
+  }
 }
 
 // 节流函数 - 已由 MessageListView 组件处理
@@ -921,6 +933,10 @@ const loadMoreMessages = async () => {
 
 // 处理标记已读
 const handleMarkRead = () => {
+  console.log('[ChatWindow] handleMarkRead 被调用', {
+    conversationId: props.conversation?.id
+  })
+  
   if (props.conversation?.id) {
     markMessagesAsRead(props.conversation.id)
   }
@@ -938,10 +954,8 @@ let messageContextMenuTimeoutId: number | null = null
 
 
 
-// 监听组件挂载和消息变化
 watch(() => props.messages, async (newMessages, oldMessages) => {
   if (!isMounted.value) return
-  // 本地插入系统消息时不触发滚动
   if (isInsertingSystemMessage.value) return
   
   const oldLength = oldMessages?.length ?? 0
@@ -950,21 +964,16 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
   let shouldScroll = false
   
   if (newLength > oldLength) {
-    // 消息增加了，判断是加载历史消息还是收到新消息
     const oldFirstId = oldMessages?.[0]?.id
     const newFirstId = newMessages?.[0]?.id
     
     if (oldFirstId !== newFirstId) {
-      // 加载历史消息（在数组前面添加）：不滚动，保持当前浏览位置
-      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single')
+      debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single')
       return
     }
     
-    // 新消息到达（添加到末尾），滚动到底部
     shouldScroll = true
   } else if (newLength === oldLength && newLength > 0) {
-    // 消息数量不变，但可能是流式消息更新内容
-    // 检查最后一条消息是否正在流式传输
     const lastMessage = newMessages[newLength - 1]
     if (lastMessage?.isStreaming) {
       shouldScroll = true
@@ -972,31 +981,28 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
   }
   
   if (shouldScroll) {
-    scrollToBottom()
+    scrollToBottom(true)
   }
   
-  // 获取已读用户列表（只对新消息）
   if (newLength > oldLength) {
     const newMessagesOnly = newMessages.slice(oldLength)
     if (newMessagesOnly.length > 0) {
-      await loadReadUsersForMessages(newMessagesOnly, props.conversation?.type || 'single')
+      debouncedLoadReadUsers(newMessagesOnly, props.conversation?.type || 'single')
     }
   }
 }, { deep: true })
 
-// 监听消息的 isRead 状态变化，重新获取已读用户列表
 watch(
   () => props.messages,
   async (newMessages, oldMessages) => {
     if (!isMounted.value) return
-    // 检查是否有消息的 isRead 状态发生了变化
+    
     const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
       const oldMsg = oldMessages[index]
       return oldMsg && newMsg.isRead !== oldMsg.isRead
     })
     if (hasReadStatusChanged) {
-      // 当消息的已读状态变化时，重新获取已读用户列表（强制刷新）
-      await loadReadUsersForMessages(newMessages, props.conversation?.type || 'single', true)
+      debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single', true)
     }
   },
   { deep: true }
@@ -1032,20 +1038,15 @@ onMounted(async () => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
   }
-  // 初始标记消息为已读
-  if (props.conversation?.id) {
-    markMessagesAsRead(props.conversation.id)
-  }
   // 加载分身配置
   await fetchConfig()
   await fetchSessions()
-  // 初始加载已读用户列表
   await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
-  // 加载小程序列表
   loadMiniApps()
-  // 初始化 WebSocket 消息处理
   initWebSocketMessageHandler()
-  // 添加转发笔记事件监听器
+  
+  scrollToBottom()
+  
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   // 添加分享文件事件监听器
   window.addEventListener('shareFileToChat', handleShareFile as EventListener)
@@ -1264,6 +1265,9 @@ const initWebSocketMessageHandler = () => {
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
   isMounted.value = false
+  
+  cleanupMessageActions()
+  
   // 移除滚动事件监听器
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
@@ -2329,7 +2333,6 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
         fileName: finalFileName,
         mime: blob.type || 'application/octet-stream'
       })
-      $message.success(`文件 ${finalFileName} 保存成功`)
     } else {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -2728,7 +2731,6 @@ const saveAnnouncement = async (announcement?: string) => {
   }
   showEditAnnouncementModal.value = false
 }
-// 暴露方法
 defineExpose({
   startScreenShare,
   scrollToBottom

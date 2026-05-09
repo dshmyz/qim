@@ -19,6 +19,7 @@
         <span v-if="conversation.type === 'group'" class="group-badge">群</span>
         <span v-if="conversation.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
         <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
+        <span v-if="conversation.type === 'single' && conversation.status" class="status-indicator" :class="conversation.status"></span>
       </div>
       <div class="conversation-info">
         <div class="conversation-name">
@@ -82,7 +83,7 @@ interface Conversation {
   avatar?: string
   lastMessage?: LastMessage
   timestamp?: string | number
-  unreadCount?: number
+  unread_count?: number
   muted?: boolean
   members?: User[]
 }
@@ -220,7 +221,7 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
 }
 
 const getUnreadCount = (conversation: Conversation): number => {
-  return conversation.unreadCount ?? 0
+  return conversation.unread_count ?? 0
 }
 </script>
 
@@ -291,6 +292,28 @@ const getUnreadCount = (conversation: Conversation): number => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-bg);
+}
+
+.status-indicator.online {
+  background: #52c41a;
+}
+
+.status-indicator.offline {
+  background: #d9d9d9;
+}
+
+.status-indicator.busy {
+  background: #ff4d4f;
 }
 
 .conversation-info {

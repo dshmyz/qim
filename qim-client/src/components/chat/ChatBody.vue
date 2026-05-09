@@ -115,7 +115,8 @@ const sidebarMembers = computed<Member[]>(() => {
 })
 
 defineExpose({
-  scrollToBottom: () => messageListViewRef.value?.scrollToBottom()
+  scrollToBottom: (instant: boolean = false) => messageListViewRef.value?.scrollToBottom(instant),
+  scrollToBottomWithDelay: (delay: number = 100) => messageListViewRef.value?.scrollToBottomWithDelay(delay)
 })
 </script>
 

@@ -14,6 +14,7 @@ export interface User {
   createdAt?: number
   lastOnline?: number
   role?: 'owner' | 'admin' | 'user' | 'guest'
+  type?: 'user' | 'bot' | 'system' | 'api'
   isBot?: boolean
   tags?: string[]
   preferences?: {
@@ -58,12 +59,12 @@ export interface Conversation {
   name: string
   avatar: string
   lastMessage?: Message
-  unreadCount: number
+  unread_count: number
   timestamp: number
   type: 'single' | 'group' | 'bot' | 'discussion'
   members?: User[]
   muted?: boolean
-  pinned?: boolean
+  is_pinned?: boolean
   ip?: string
   status?: 'online' | 'offline' | 'busy'
   signature?: string

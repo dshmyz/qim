@@ -12,8 +12,8 @@
           <span v-if="conversation.type === 'discussion'" class="conversation-type-tag">讨论组</span>
         </div>
       </div>
-      <div v-if="conversation.unreadCount && conversation.unreadCount > 0" class="unread-badge">
-        {{ conversation.unreadCount > 99 ? '99+' : conversation.unreadCount }}
+      <div v-if="conversation.unread_count && conversation.unread_count > 0" class="unread-badge">
+        {{ conversation.unread_count > 99 ? '99+' : conversation.unread_count }}
       </div>
     </div>
   </div>
@@ -62,7 +62,7 @@ const getConversationAvatarUrl = (conversation: Conversation) => {
   margin: 8px 8px;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  background: #fafafa;
+  /* background: #fafafa; */
   max-height: calc(100vh - 200px);
 }
 

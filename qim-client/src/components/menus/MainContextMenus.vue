@@ -2,7 +2,7 @@
   <!-- 右键菜单 -->
   <div v-if="showMenu && selectedConversation" class="context-menu" :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }" @click.stop>
     <div class="context-menu-item" @click="handleContextMenuAction('pin', selectedConversation)">
-      {{ selectedConversation.pinned ? '取消置顶' : '置顶' }}
+      {{ selectedConversation.is_pinned ? '取消置顶' : '置顶' }}
     </div>
     <div class="context-menu-item" @click="handleContextMenuAction('mute', selectedConversation)">
       {{ selectedConversation.muted ? '取消免打扰' : '免打扰' }}

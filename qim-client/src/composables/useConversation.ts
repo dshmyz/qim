@@ -70,11 +70,11 @@ export function useConversation() {
   })
 
   const pinnedConversations = computed(() => {
-    return conversations.value.filter(c => c.pinned)
+    return conversations.value.filter(c => c.is_pinned)
   })
 
   const unpinnedConversations = computed(() => {
-    return conversations.value.filter(c => !c.pinned)
+    return conversations.value.filter(c => !c.is_pinned)
   })
 
   const handleConversationSelect = (conversation: Conversation) => {
@@ -95,9 +95,9 @@ export function useConversation() {
     try {
       await request(`/api/v1/conversations/${conversation.id}/pin`, {
         method: 'PUT',
-        body: JSON.stringify({ pinned: !conversation.pinned })
+        body: JSON.stringify({ is_pinned: !conversation.is_pinned })
       })
-      chatStore.pinConversation(conversation.id, !conversation.pinned)
+      chatStore.pinConversation(conversation.id, !conversation.is_pinned)
     } catch (error) {
       console.error('置顶会话失败:', error)
     }

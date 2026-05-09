@@ -2,10 +2,25 @@ import { ref } from 'vue'
 import type { Message } from '../types'
 import { request } from './useRequest'
 
-/**
- * 消息操作相关逻辑
- * 包含：消息已读、撤回、删除、转发、复制、已读回执等
- */
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+    timeoutId = setTimeout(() => {
+      func(...args)
+    }, wait)
+  }
+}
+
+// 全局节流变量，确保所有实例共享同一个节流状态
+const lastMarkReadTime = ref(0)
+
 export function useMessageActions(
   serverUrl: { value: string },
   currentUser: { value: any }
@@ -14,15 +29,10 @@ export function useMessageActions(
   const showReadUsersModal = ref(false)
   const currentReadUsers = ref<{ read_users: any[], total_members: number }>({ read_users: [], total_members: 0 })
   const isMounted = ref(true)
-  const lastMarkReadTime = ref(0)
 
-  /**
-   * 获取消息已读用户列表
-   */
   const fetchReadUsers = async (messageId: string, forceRefresh: boolean = false) => {
     if (!isMounted.value) return { read_users: [], total_members: 0 }
     
-    // 如果不是强制刷新且已有缓存，直接返回缓存数据
     if (!forceRefresh && readUsersMap.value[messageId]) {
       return readUsersMap.value[messageId]
     }
@@ -32,9 +42,10 @@ export function useMessageActions(
         method: 'GET'
       })
 
+      if (!isMounted.value) return { read_users: [], total_members: 0 }
+
       if (response.code === 0) {
         const data = response.data
-        // 对已读用户列表进行去重处理
         const uniqueReadUsers: any[] = []
         const seenUserIds = new Set<string>()
 
@@ -47,16 +58,74 @@ export function useMessageActions(
           }
         }
 
-        readUsersMap.value[messageId] = {
-          ...data,
-          read_users: uniqueReadUsers
+        if (isMounted.value) {
+          readUsersMap.value[messageId] = {
+            ...data,
+            read_users: uniqueReadUsers
+          }
         }
         return data
       }
     } catch (error) {
-      console.error('获取已读用户列表失败:', error)
+      if (isMounted.value) {
+        console.error('获取已读用户列表失败:', error)
+      }
     }
     return { read_users: [], total_members: 0 }
+  }
+
+  const batchFetchReadUsers = async (messageIds: string[], forceRefresh: boolean = false) => {
+    if (!isMounted.value || messageIds.length === 0) return
+
+    const idsToFetch = forceRefresh 
+      ? messageIds 
+      : messageIds.filter(id => !readUsersMap.value[id])
+
+    if (idsToFetch.length === 0) return
+
+    try {
+      const response = await request('/api/v1/messages/batch/read-users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message_ids: idsToFetch.map(id => parseInt(id))
+        })
+      })
+
+      if (!isMounted.value) return
+
+      if (response.code === 0) {
+        const data = response.data
+        
+        for (const [messageId, readData] of Object.entries(data)) {
+          if (!isMounted.value) return
+          
+          const typedData = readData as { read_users: any[], total_members: number, read_count: number }
+          const uniqueReadUsers: any[] = []
+          const seenUserIds = new Set<string>()
+
+          if (typedData.read_users) {
+            for (const user of typedData.read_users) {
+              if (user.id && !seenUserIds.has(user.id)) {
+                seenUserIds.add(user.id)
+                uniqueReadUsers.push(user)
+              }
+            }
+          }
+
+          readUsersMap.value[messageId] = {
+            ...typedData,
+            read_users: uniqueReadUsers
+          }
+        }
+      }
+    } catch (error) {
+      if (isMounted.value) {
+        console.error('批量获取已读用户列表失败:', error)
+      }
+    }
   }
 
   /**
@@ -76,12 +145,33 @@ export function useMessageActions(
    * 标记消息为已读
    */
   const markMessagesAsRead = async (conversationId: string) => {
-    if (!conversationId) return
+    console.log('[useMessageActions] markMessagesAsRead 被调用', {
+      conversationId,
+      isMounted: isMounted.value,
+      timeSinceLastCall: Date.now() - lastMarkReadTime.value
+    })
+    
+    if (!conversationId || !isMounted.value) {
+      console.log('[useMessageActions] markMessagesAsRead 提前返回', {
+        reason: !conversationId ? 'conversationId 为空' : '组件未挂载'
+      })
+      return
+    }
 
-    // 限制调用频率，避免短时间内重复调用
     const now = Date.now()
-    if (now - lastMarkReadTime.value < 2000) return
+    if (now - lastMarkReadTime.value < 1000) {
+      console.log('[useMessageActions] markMessagesAsRead 被节流', {
+        timeSinceLastCall: now - lastMarkReadTime.value,
+        threshold: 1000
+      })
+      return
+    }
     lastMarkReadTime.value = now
+
+    console.log('[useMessageActions] 发送标记已读请求', {
+      conversationId,
+      url: `/api/v1/conversations/${conversationId}/read`
+    })
 
     try {
       const response = await request(`/api/v1/conversations/${conversationId}/read`, {
@@ -91,11 +181,18 @@ export function useMessageActions(
         }
       })
 
+      if (!isMounted.value) {
+        console.log('[useMessageActions] 请求返回时组件已卸载')
+        return
+      }
+
       if (response.code === 0) {
-        // 标记成功，可以触发后续操作
+        console.log('[useMessageActions] 标记已读成功', { conversationId })
       }
     } catch (error) {
-      console.error('标记消息已读失败:', error)
+      if (isMounted.value) {
+        console.error('[useMessageActions] 标记消息已读失败:', error)
+      }
     }
   }
 
@@ -271,18 +368,33 @@ export function useMessageActions(
     }
   }
 
-  /**
-   * 加载消息后获取已读用户列表
-   */
+  const debouncedLoadReadUsers = debounce(
+    async (messages: Message[], conversationType: string, forceRefresh: boolean = false) => {
+      if (!isMounted.value || conversationType !== 'group') return
+
+      const messagesToLoad = messages
+        .filter(message => message.isSelf)
+        .filter(message => forceRefresh || !readUsersMap.value[message.id])
+
+      if (messagesToLoad.length === 0) return
+
+      const messageIds = messagesToLoad.map(message => message.id)
+      await batchFetchReadUsers(messageIds, forceRefresh)
+    },
+    500
+  )
+
   const loadReadUsersForMessages = async (messages: Message[], conversationType: string, forceRefresh: boolean = false) => {
     if (!isMounted.value || conversationType !== 'group') return
 
-    const promises = messages
+    const messagesToLoad = messages
       .filter(message => message.isSelf)
-      .filter(message => forceRefresh || !readUsersMap.value[message.id]) // 只请求需要刷新或未缓存的消息
-      .map(message => fetchReadUsers(message.id, forceRefresh))
+      .filter(message => forceRefresh || !readUsersMap.value[message.id])
 
-    await Promise.all(promises)
+    if (messagesToLoad.length === 0) return
+
+    const messageIds = messagesToLoad.map(message => message.id)
+    await batchFetchReadUsers(messageIds, forceRefresh)
   }
 
   /**
@@ -293,14 +405,13 @@ export function useMessageActions(
   }
 
   return {
-    // 状态
     readUsersMap,
     showReadUsersModal,
     currentReadUsers,
     isMounted,
     lastMarkReadTime,
-    // 方法
     fetchReadUsers,
+    batchFetchReadUsers,
     showReadUsers,
     markMessagesAsRead,
     recallMessage,
@@ -309,6 +420,7 @@ export function useMessageActions(
     retrySendMessage,
     copyMessage,
     loadReadUsersForMessages,
+    debouncedLoadReadUsers,
     cleanup
   }
 }

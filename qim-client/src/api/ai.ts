@@ -11,7 +11,8 @@ export const aiConfigAPI = {
     const response = await axios.get(`${API_BASE_URL}/api/v1/ai/configs/my`, {
       headers: { Authorization: `Bearer ${getToken()}` }
     })
-    return response.data.data
+    const data = response.data.data
+    return data?.list ?? data ?? []
   },
 
   async createConfig(data: CreateConfigRequest): Promise<{ id: number; is_verified: boolean }> {

@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { API_BASE_URL } from '../config'
+import QMessage from '../utils/qmessage'
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 
@@ -90,6 +91,11 @@ export async function request<T = any>(
       }
       if (response.status === 403) {
         throw new Error(errorData.message || '权限不足，请检查您的权限')
+      }
+      if (response.status === 429) {
+        const message = errorData.message || '请求过于频繁，请稍后再试'
+        QMessage.warning(message, 5000)
+        throw new Error(message)
       }
       throw new Error(errorData.message || `请求失败 (${response.status})`)
     }

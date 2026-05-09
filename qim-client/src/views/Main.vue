@@ -544,6 +544,10 @@ import { useNetwork } from '../composables/useNetwork'
 import { useWebSocketManager } from '../composables/useWebSocketManager'
 import { useGroup } from '../composables/useGroup'
 import { useMessageActions } from '../composables/useMessageActions'
+import { useNotifications } from '../composables/useNotifications'
+import { useAppState } from '../composables/useAppState'
+import { useUI } from '../composables/useUI'
+import { useConversation } from '../composables/useConversation'
 
 // 服务器地址
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -559,6 +563,10 @@ const showMessage = (options: { message: string, type?: 'success' | 'warning' | 
 
 // 当前用户信息
 const { currentUser, userProfile, syncUserProfile, getProfileAvatar, refreshUser } = useCurrentUser()
+
+// 使用消息操作
+const messageActions = useMessageActions(serverUrl, currentUser)
+const { markMessagesAsRead } = messageActions
 
 // 使用频道 store
 const channelStore = useChannelStore()
@@ -639,6 +647,23 @@ const {
   addHandler,
   setOnConnectedCallback
 } = useWebSocketManager(serverUrl)
+
+// 监听用户状态变化并更新会话列表
+const handleUserStatusChange = (data: any) => {
+  console.log('[Main] 收到用户状态变化:', data)
+  const userId = data.user_id || data.userId
+  const status = data.status
+  if (!userId || !status) return
+  
+  // 更新会话列表中对应的 single 类型会话
+  conversations.value = conversations.value.map(conv => {
+    const memberId = conv.other_member_id
+    if (conv.type === 'single' && Number(memberId) === Number(userId)) {
+      return { ...conv, status }
+    }
+    return conv
+  })
+}
 
 // 群组相关（使用别名避免与 useUI 中的同名变量冲突）
 const groupState = useGroup()
@@ -834,10 +859,22 @@ const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
 const handleConversationSelect = (conversation: Conversation) => {
+  const conversationId = String(conversation.id)
+  
+  console.log('[Main.vue] handleConversationSelect 被调用', {
+    conversationId,
+    currentConversationId: currentConversationId.value,
+    isSameConversation: currentConversationId.value === conversationId
+  })
+  
+  if (currentConversationId.value === conversationId) {
+    console.log('[Main.vue] 相同会话，跳过处理')
+    return
+  }
+  
   _handleConversationSelect(conversation)
   activeOption.value = 'recent'
   loadMessages(conversation.id)
-  // 使用 Store Action 清除未读计数（watch 会自动同步）
   chatStore.markConversationRead(conversation.id)
   if (window.electron?.tray) {
     window.electron.tray.stopFlash()
@@ -1056,12 +1093,6 @@ onMounted(async () => {
   registerCustomEventListeners()
 })
 
-// 导入 composables
-import { useNotifications } from '../composables/useNotifications'
-import { useAppState } from '../composables/useAppState'
-import { useUI } from '../composables/useUI'
-import { useConversation } from '../composables/useConversation'
-
 // WebSocket 实例代理变量（已从 useWebSocketManager composable 导入）
 
 // WebSocket连接
@@ -1145,6 +1176,8 @@ const connectWebSocket = () => {
     'notification': handleNotification,
     'new_notification': handleNewNotification,
     'system_message': handleSystemMessage,
+    // 用户状态变化
+    'user_status_changed': (data: any) => handleUserStatusChange(data),
     // 屏幕共享消息路由到 RealtimeCommunication 组件
     'screen-share.start': (data: any) => {
       realtimeRef.value?.handleScreenShareStart(data)
@@ -1211,7 +1244,7 @@ const handleAddedToGroup = (data: any) => {
     name: data.group_name,
     avatar: getAvatarUrl(data.group_avatar, 'group', serverUrl.value),
     lastMessage: null,
-    unreadCount: 0,
+    unread_count: 0,
     timestamp: Date.now(),
     type: 'group' as const,
     members: data.members || []
@@ -1358,8 +1391,12 @@ const handleConversationUpdated = (data: any) => {
   }
   
   try {
-    // Store Action 更新会话，watch 会自动同步
-    chatStore.patchConversation(data.id.toString(), data)
+    // 确保 id 字段为字符串类型，避免后端推送的数字类型覆盖 store 中的字符串类型
+    const normalizedData = {
+      ...data,
+      id: data.id.toString()
+    }
+    chatStore.patchConversation(normalizedData.id, normalizedData)
   } catch (error) {
     console.error('处理会话更新失败:', error)
   }
@@ -1637,8 +1674,8 @@ const filteredConversations = computed(() => {
   
   // 排序：置顶的会话排在前面，然后按时间戳降序
   return filtered.sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1
-    if (!a.pinned && b.pinned) return 1
+    if (a.is_pinned && !b.is_pinned) return -1
+    if (!a.is_pinned && b.is_pinned) return 1
     return b.timestamp - a.timestamp
   })
 })
@@ -1718,22 +1755,6 @@ watch(searchQuery, (newQuery) => {
 // 消息数据
 // 已处理的已读回执，用于避免重复处理
 const readReceiptsProcessed = ref<Set<string> | null>(null)
-
-// 标记消息为已读
-const markMessagesAsRead = async (conversationId: string) => {
-  try {
-    console.log('标记消息已读，conversationId:', conversationId)
-    const url = `/api/v1/conversations/${conversationId}/read`
-    console.log('请求URL:', url)
-    const response = await request(url, {
-      method: 'POST'
-    })
-    console.log('标记消息已读成功:', response)
-  } catch (error) {
-    console.error('标记消息已读失败:', error)
-    console.error('错误详情:', error)
-  }
-}
 
 // 处理消息数据，确保 sender 字段正确
 const processMessage = (msg: any, conversationId?: string) => {
@@ -1883,8 +1904,13 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       
       const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
       if (conversationIndex !== -1) {
-        conversations.value[conversationIndex].unreadCount = 0
+        conversations.value[conversationIndex].unread_count = 0
       }
+      
+      console.log('[Main.vue] loadMessages 准备调用 markMessagesAsRead', {
+        conversationId,
+        reset
+      })
       
       try {
         await markMessagesAsRead(conversationId)
@@ -2502,7 +2528,7 @@ const startPrivateChat = async (user: any) => {
       name: user.name,
       avatar: user.avatar,
       lastMessage: null,
-      unreadCount: 0,
+      unread_count: 0,
       timestamp: Date.now(),
       type: 'single',
       members: [

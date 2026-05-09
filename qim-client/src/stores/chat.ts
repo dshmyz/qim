@@ -51,8 +51,8 @@ export const useChatStore = defineStore('chat', () => {
 
   const sortedConversations = computed(() => {
     return [...conversations.value].sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1
-      if (!a.pinned && b.pinned) return 1
+      if (a.is_pinned && !b.is_pinned) return -1
+      if (!a.is_pinned && b.is_pinned) return 1
       return (b.timestamp || 0) - (a.timestamp || 0)
     })
   })
@@ -159,13 +159,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // 业务逻辑方法
-  function pinConversation(id: string, pinned: boolean) {
+  function pinConversation(id: string, is_pinned: boolean) {
     const index = conversations.value.findIndex(c => c.id === id)
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
-        pinned,
-        pinnedAt: pinned ? Date.now() : undefined
+        is_pinned,
+        pinnedAt: is_pinned ? Date.now() : undefined
       }
       conversations.value = [...conversations.value]
       saveToStorage(conversations.value)
@@ -232,7 +232,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       if (!isCurrentConversation && !message.isStreaming) {
-        updatedConv.unreadCount = (updatedConv.unreadCount || 0) + 1
+        updatedConv.unread_count = (updatedConv.unread_count || 0) + 1
       }
 
       conversations.value[convIndex] = updatedConv
@@ -246,7 +246,7 @@ export const useChatStore = defineStore('chat', () => {
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
-        unreadCount: 0
+        unread_count: 0
       }
       conversations.value = [...conversations.value]
       saveToStorage(conversations.value)
