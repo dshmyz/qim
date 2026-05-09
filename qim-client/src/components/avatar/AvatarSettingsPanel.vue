@@ -1,6 +1,6 @@
 <template>
   <div class="avatar-settings-panel">
-    <div v-if="loading && !config" class="loading-state">
+    <div v-if="loading" class="loading-state">
       <LoadingSpinner />
     </div>
 
@@ -8,7 +8,7 @@
       <EmptyState
         icon="fas fa-user-astronaut"
         title="还没有分身"
-        description="创建你的 AI 分身，在你不在时代替你回复消息"
+        description="创建你的 AI 分身，在你不在时代替回复消息"
       />
       <button class="create-btn" @click="handleCreate">
         <i class="fas fa-plus"></i> 创建分身
@@ -100,7 +100,7 @@ const tabs = [
 ]
 
 onMounted(async () => {
-  await Promise.all([fetchConfig(), fetchConfigs()])
+  await Promise.all([fetchConfig(true), fetchConfigs()])
 })
 
 async function handleCreate() {

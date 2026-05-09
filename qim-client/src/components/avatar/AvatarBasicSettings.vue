@@ -76,7 +76,7 @@ const emit = defineEmits<{
 
 const applying = ref(false)
 const localEnabled = computed({
-  get: () => props.modelValue.enabled,
+  get: () => props.modelValue?.enabled ?? false,
   set: (value: boolean) => {
     if (canEnable.value) {
       update('enabled', value)
