@@ -16,7 +16,7 @@ export function setupPermissionGuard() {
     }
 
     if (to.path === '/login' && token) {
-      next('/')
+      next('/admin')
       return
     }
 

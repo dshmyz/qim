@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/di"
@@ -55,6 +57,16 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 全局应用CORS中间件
 	r.Use(corsMiddleware)
+	
+	// 全局中间件
+	r.Use(middleware.RequestIDMiddleware())
+	r.Use(middleware.RecoveryMiddleware())
+	r.Use(middleware.LoggerMiddleware())
+	
+	// 请求限流（100 请求/分钟/IP）
+	rateLimiter := middleware.NewIPRateLimiter(100, time.Minute)
+	r.Use(middleware.RateLimitMiddleware(rateLimiter))
+	
 	// 静态文件服务
 	r.Static("/uploads", "./uploads")
 	r.Static("/miniprograms", "./static/miniprograms")
@@ -307,25 +319,32 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 敏感词管理
 			handler.RegisterSensitiveWordRoutes(authed)
 
-			// 系统配置
-			authed.GET("/system/config", handler.GetSystemConfig)
-			authed.PUT("/system/config", handler.UpdateSystemConfig)
+			// 管理后台路由（自动记录操作日志）
+			adminRoutes := authed.Group("")
+			adminRoutes.Use(middleware.OperationLogMiddleware())
+			{
+				// 系统配置
+				adminRoutes.GET("/system/config", handler.GetSystemConfig)
+				adminRoutes.PUT("/system/config", handler.UpdateSystemConfig)
 
-			// 操作日志
-			authed.GET("/logs/operation", handler.GetOperationLogs)
-			authed.GET("/logs/operation/export", handler.ExportOperationLogs)
+				// 操作日志
+				adminRoutes.GET("/logs/operation", handler.GetOperationLogs)
+				adminRoutes.GET("/logs/operation/:id", handler.GetOperationLogDetail)
+				adminRoutes.GET("/logs/operation/stats", handler.GetOperationLogStats)
+				adminRoutes.GET("/logs/operation/export", handler.ExportOperationLogs)
 
-			// 版本管理
-			authed.GET("/client/versions", handler.GetVersions)
-			authed.POST("/client/versions", handler.CreateVersion)
-			authed.PUT("/client/versions/:id", handler.UpdateVersion)
-			authed.DELETE("/client/versions/:id", handler.DeleteVersion)
-			authed.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
+				// 版本管理
+				adminRoutes.GET("/client/versions", handler.GetVersions)
+				adminRoutes.POST("/client/versions", handler.CreateVersion)
+				adminRoutes.PUT("/client/versions/:id", handler.UpdateVersion)
+				adminRoutes.DELETE("/client/versions/:id", handler.DeleteVersion)
+				adminRoutes.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
 
-			// 黑名单管理
-			authed.GET("/users/blacklist", handler.GetBlacklist)
-			authed.POST("/users/blacklist", handler.AddToBlacklist)
-			authed.DELETE("/users/blacklist/:id", handler.RemoveBlacklistEntry)
+				// 黑名单管理
+				adminRoutes.GET("/users/blacklist", handler.GetBlacklist)
+				adminRoutes.POST("/users/blacklist", handler.AddToBlacklist)
+				adminRoutes.DELETE("/users/blacklist/:id", handler.RemoveBlacklistEntry)
+			}
 			// 管理员接口（需要 system_admin 角色）
 			admin := authed.Group("/admin")
 			admin.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
