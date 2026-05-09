@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"qim-server/ai"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 	"qim-server/service"
@@ -63,6 +64,17 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.GET("/:id/tools", h.GetAvatarTools)
 		avatar.POST("/:id/tools/:toolId", h.BindTool)
 		avatar.DELETE("/:id/tools/:toolId", h.UnbindTool)
+
+		// 记忆管理
+		avatar.GET("/memories", h.GetMemories)
+		avatar.DELETE("/memory/:id", h.DeleteMemory)
+		avatar.POST("/memory/search", h.SearchMemories)
+
+		// 笔记搜索
+		avatar.POST("/note-search", h.SearchNotes)
+
+		// 触发检查
+		avatar.POST("/trigger-check", h.CheckTrigger)
 	}
 }
 
@@ -626,4 +638,127 @@ func (h *AvatarHandler) UnbindTool(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "解绑成功", nil)
+}
+
+func (h *AvatarHandler) GetMemories(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	memorySvc := di.GlobalContainer.AvatarMemoryService
+	if memorySvc == nil {
+		response.Success(c, []interface{}{})
+		return
+	}
+
+	memories, err := memorySvc.GetUserMemories(userID.(uint), 50)
+	if err != nil {
+		response.InternalServerError(c, "获取记忆失败")
+		return
+	}
+
+	response.Success(c, memories)
+}
+
+func (h *AvatarHandler) DeleteMemory(c *gin.Context) {
+	memoryID := c.Param("id")
+	memorySvc := di.GlobalContainer.AvatarMemoryService
+	if memorySvc == nil {
+		response.NotFound(c, "记忆不存在")
+		return
+	}
+
+	if err := memorySvc.DeleteMemory(memoryID); err != nil {
+		response.InternalServerError(c, "删除记忆失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "记忆已删除", nil)
+}
+
+func (h *AvatarHandler) SearchMemories(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req struct {
+		Query string `json:"query" binding:"required"`
+		TopK  int    `json:"top_k"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if req.TopK <= 0 {
+		req.TopK = 5
+	}
+
+	memorySvc := di.GlobalContainer.AvatarMemoryService
+	if memorySvc == nil {
+		response.Success(c, []interface{}{})
+		return
+	}
+
+	results, err := memorySvc.Recall(userID.(uint), req.Query, req.TopK)
+	if err != nil {
+		response.InternalServerError(c, "搜索记忆失败")
+		return
+	}
+
+	response.Success(c, results)
+}
+
+func (h *AvatarHandler) SearchNotes(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req struct {
+		Query string `json:"query" binding:"required"`
+		TopK  int    `json:"top_k"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if req.TopK <= 0 {
+		req.TopK = 5
+	}
+
+	noteSvc := di.GlobalContainer.NoteVectorService
+	if noteSvc == nil {
+		response.Success(c, []interface{}{})
+		return
+	}
+
+	results, err := noteSvc.SearchNotes(userID.(uint), req.Query, req.TopK)
+	if err != nil {
+		response.InternalServerError(c, "搜索笔记失败")
+		return
+	}
+
+	response.Success(c, results)
+}
+
+func (h *AvatarHandler) CheckTrigger(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req struct {
+		ConversationID uint   `json:"conversation_id" binding:"required"`
+		Message        string `json:"message" binding:"required"`
+		SenderName     string `json:"sender_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	triggerSvc := di.GlobalContainer.AvatarTriggerService
+	if triggerSvc == nil {
+		response.Success(c, gin.H{"should_reply": false, "reason": "触发服务未初始化"})
+		return
+	}
+
+	shouldReply, reason, err := triggerSvc.ShouldReply(userID.(uint), req.ConversationID, req.Message, req.SenderName)
+	if err != nil {
+		response.InternalServerError(c, "触发检查失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"should_reply": shouldReply,
+		"reason":       reason,
+	})
 }

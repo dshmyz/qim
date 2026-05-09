@@ -162,3 +162,72 @@ func (p *BaiduProvider) ChatStream(messages []Message, onChunk func(chunk Stream
 		return nil
 	})
 }
+
+// Embedding 将文本转换为向量（使用百度 embedding API）
+func (p *BaiduProvider) Embedding(text string) ([]float32, error) {
+	if !p.IsConfigured() {
+		return nil, fmt.Errorf("Baidu API key or secret key is not configured")
+	}
+
+	token, err := p.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Baidu access token: %w", err)
+	}
+
+	// 使用 embedding 专用模型（如果配置了的话），否则使用当前模型
+	embeddingModel := p.config.Model
+	if p.config.ExtraParams["embedding_model"] != nil {
+		if m, ok := p.config.ExtraParams["embedding_model"].(string); ok && m != "" {
+			embeddingModel = m
+		}
+	}
+
+	reqBody := map[string]interface{}{
+		"input": []string{text},
+		"model": embeddingModel,
+	}
+
+	apiURL := p.config.BaseURL + "/rpc/2.0/ai_custom/v1/wenxinworkshop/embeddings/embedding-v1?access_token=" + token
+
+	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
+		req, _, err := CreateJSONRequest(
+			"POST",
+			apiURL,
+			"",
+			reqBody,
+			nil,
+		)
+		return req, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Baidu embedding request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var response map[string]interface{}
+	if err := parseJSONResponse(resp, &response); err != nil {
+		return nil, err
+	}
+
+	if errMsg, ok := response["error_msg"].(string); ok {
+		return nil, fmt.Errorf("Baidu embedding API error: %s", errMsg)
+	}
+
+	// 百度 embedding 响应格式：{"data": [{"embedding": [...], "index": 0}], "usage": {...}}
+	if data, ok := response["data"].([]interface{}); ok && len(data) > 0 {
+		if item, ok := data[0].(map[string]interface{}); ok {
+			if embedding, ok := item["embedding"].([]interface{}); ok {
+				result := make([]float32, len(embedding))
+				for i, v := range embedding {
+					if f, ok := v.(float64); ok {
+						result[i] = float32(f)
+					}
+				}
+				log.Printf("[Baidu] Embedding completed, model=%s, dimension=%d", embeddingModel, len(result))
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("invalid Baidu embedding response")
+}

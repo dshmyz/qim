@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 	"strconv"
@@ -133,4 +135,114 @@ func RemoveGroupDocument(c *gin.Context) {
 	db.Where("group_id = ? AND file_id = ?", group.ID, uint(fileID)).Delete(&model.GroupDocument{})
 
 	response.SuccessWithMessage(c, "文档解绑成功", nil)
+}
+
+func GetGroupDocumentsWithStatus(c *gin.Context) {
+	convIDStr := c.Param("id")
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的会话ID")
+		return
+	}
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+
+	results, err := docSvc.GetDocumentsWithStatus(group.ID)
+	if err != nil {
+		response.InternalServerError(c, "获取文档列表失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": results,
+	})
+}
+
+func ProcessGroupDocument(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+	fileIDStr := c.Param("file_id")
+	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	fileID, _ := strconv.ParseUint(fileIDStr, 10, 32)
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, userID).First(&member).Error; err != nil {
+		response.Forbidden(c, "您不是成员")
+		return
+	}
+
+	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
+		response.Forbidden(c, "只有群主或管理员可以管理知识库")
+		return
+	}
+
+	var doc model.GroupDocument
+	if err := db.Where("group_id = ? AND file_id = ?", group.ID, uint(fileID)).First(&doc).Error; err != nil {
+		response.NotFound(c, "文档未绑定到该群")
+		return
+	}
+
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+
+	go func() {
+		if err := docSvc.ProcessDocument(doc.ID); err != nil {
+			log.Printf("[Handler] 文档处理失败 doc_id=%d: %v", doc.ID, err)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "文档处理任务已提交",
+	})
+}
+
+func GetDocumentProcessStatus(c *gin.Context) {
+	convIDStr := c.Param("id")
+	fileIDStr := c.Param("file_id")
+	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	fileID, _ := strconv.ParseUint(fileIDStr, 10, 32)
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	var doc model.GroupDocument
+	if err := db.Where("group_id = ? AND file_id = ?", group.ID, uint(fileID)).First(&doc).Error; err != nil {
+		response.NotFound(c, "文档未绑定到该群")
+		return
+	}
+
+	var status model.DocumentProcessStatus
+	db.Where("group_doc_id = ?", doc.ID).Order("created_at DESC").First(&status)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": status,
+	})
 }

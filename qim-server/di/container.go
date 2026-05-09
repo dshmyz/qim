@@ -1,6 +1,7 @@
 package di
 
 import (
+	"log"
 	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/database"
@@ -43,6 +44,11 @@ type Container struct {
 	AIProviderService    *service.AIProviderService
 	GroupDocumentService *service.GroupDocumentService
 	AIConfigService      *service.AIConfigService
+	// 新增：RAG 和智能分身相关服务
+	VectorService        *service.VectorService
+	NoteVectorService    *service.NoteVectorService
+	AvatarMemoryService  *service.AvatarMemoryService
+	AvatarTriggerService *service.AvatarTriggerService
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
 }
@@ -84,6 +90,32 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 
 	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
+	// 初始化 RAG 相关服务
+	var vectorSvc *service.VectorService
+	var noteVectorSvc *service.NoteVectorService
+	var avatarMemorySvc *service.AvatarMemoryService
+	var avatarTriggerSvc *service.AvatarTriggerService
+
+	// 尝试初始化向量服务（如果 cortexdb 可用）
+	vectorPath := "./data/vector.db"
+
+	var err error
+	vectorSvc, err = service.NewVectorService(vectorPath)
+	if err != nil {
+		log.Printf("[DI] Warning: VectorService 初始化失败: %v (RAG 功能将不可用)", err)
+	} else {
+		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
+		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService, db)
+		avatarTriggerSvc = service.NewAvatarTriggerService(aiService, db)
+	}
+
+	// 注入向量服务到相关服务
+	if noteVectorSvc != nil {
+		noteService.SetVectorService(noteVectorSvc)
+		groupDocumentService.SetVectorServices(vectorSvc, aiService)
+		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc, avatarTriggerSvc)
+	}
+
 	container := &Container{
 		DB:                   db,
 		Config:               cfg,
@@ -115,6 +147,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		AIProviderService:    aiProviderService,
 		GroupDocumentService: groupDocumentService,
 		AIConfigService:      aiConfigService,
+		VectorService:        vectorSvc,
+		NoteVectorService:    noteVectorSvc,
+		AvatarMemoryService:  avatarMemorySvc,
+		AvatarTriggerService: avatarTriggerSvc,
 		WebSocketHub:         hub,
 		AuthMiddleware:       authMiddleware,
 	}

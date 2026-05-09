@@ -132,3 +132,65 @@ func (p *BytedanceProvider) ChatStream(messages []Message, onChunk func(chunk St
 		return nil
 	})
 }
+
+// Embedding 将文本转换为向量（使用字节跳动 OpenAI 兼容的 /v1/embeddings 接口）
+func (p *BytedanceProvider) Embedding(text string) ([]float32, error) {
+	if !p.IsConfigured() {
+		return nil, fmt.Errorf("Bytedance API key is not configured")
+	}
+
+	type embeddingData struct {
+		Embedding []float32 `json:"embedding"`
+		Index     int       `json:"index"`
+	}
+
+	type embeddingResponse struct {
+		Data  []embeddingData `json:"data"`
+		Model string          `json:"model"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	// 使用 embedding 专用模型（如果配置了的话），否则使用当前模型
+	embeddingModel := p.config.Model
+	if p.config.ExtraParams["embedding_model"] != nil {
+		if m, ok := p.config.ExtraParams["embedding_model"].(string); ok && m != "" {
+			embeddingModel = m
+		}
+	}
+
+	reqBody := map[string]interface{}{
+		"model": embeddingModel,
+		"input": text,
+	}
+
+	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
+		req, _, err := CreateJSONRequest(
+			"POST",
+			p.config.BaseURL+"/embeddings",
+			p.config.APIKey,
+			reqBody,
+			nil,
+		)
+		return req, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Bytedance embedding request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var response embeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode Bytedance embedding response: %w", err)
+	}
+
+	if len(response.Data) == 0 {
+		return nil, fmt.Errorf("no embedding data in Bytedance response")
+	}
+
+	log.Printf("[Bytedance] Embedding completed, model=%s, dimension=%d", response.Model, len(response.Data[0].Embedding))
+
+	return response.Data[0].Embedding, nil
+}

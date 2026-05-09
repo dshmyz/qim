@@ -3,20 +3,23 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
 	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/utils"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
 
 // AvatarService 分身服务
 type AvatarService struct {
-	db         *gorm.DB
-	aiService  *ai.AIService
-	workerPool *AvatarWorkerPool
+	db            *gorm.DB
+	aiService     *ai.AIService
+	workerPool    *AvatarWorkerPool
+	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
+	memorySvc     *AvatarMemoryService  // 长期记忆
+	triggerSvc    *AvatarTriggerService // 智能触发
 }
 
 // LearningData 多来源学习数据结构
@@ -37,6 +40,13 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
 	return service
+}
+
+// SetRAGServices 设置 RAG 相关服务（可选）
+func (s *AvatarService) SetRAGServices(noteVectorSvc *NoteVectorService, memorySvc *AvatarMemoryService, triggerSvc *AvatarTriggerService) {
+	s.noteVectorSvc = noteVectorSvc
+	s.memorySvc = memorySvc
+	s.triggerSvc = triggerSvc
 }
 
 func (s *AvatarService) SetAIService(aiService *ai.AIService) {
@@ -134,7 +144,7 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 	})
 }
 
-// GenerateReply 生成分身回复
+// GenerateReply 生成分身回复（集成 RAG 知识库和长期记忆）
 func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerMessage string) (string, error) {
 	var config model.AvatarConfig
 	if err := s.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
@@ -154,9 +164,41 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 	var user model.User
 	s.db.First(&user, userID)
 
+	// RAG 增强：检索相关笔记
+	ragContext := ""
+	if s.noteVectorSvc != nil {
+		noteResults, err := s.noteVectorSvc.SearchNotes(userID, triggerMessage, 3)
+		if err == nil && len(noteResults) > 0 {
+			var parts []string
+			for _, r := range noteResults {
+				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
+			}
+			ragContext = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
+		}
+	}
+
+	// 长期记忆检索
+	memoryContext := ""
+	if s.memorySvc != nil {
+		memoryResults, err := s.memorySvc.Recall(userID, triggerMessage, 2)
+		if err == nil && len(memoryResults) > 0 {
+			var parts []string
+			for _, r := range memoryResults {
+				parts = append(parts, r.Content)
+			}
+			memoryContext = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+		}
+	}
+
 	systemPrompt := s.buildSystemPrompt(config, user, replyStrategy)
 
 	contextParts := []string{}
+	if ragContext != "" {
+		contextParts = append(contextParts, ragContext)
+	}
+	if memoryContext != "" {
+		contextParts = append(contextParts, memoryContext)
+	}
 	if knowledgeScope.ConversationHistory && conversationID > 0 {
 		history := s.getConversationHistory(conversationID, 10)
 		if history != "" {
@@ -198,6 +240,15 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 		reply = reply[:200] + "..."
 	} else if replyStrategy.MaxReplyLength == "medium" && len(reply) > 500 {
 		reply = reply[:500] + "..."
+	}
+
+	// 异步记忆存储：如果消息内容包含值得记忆的信息
+	if s.memorySvc != nil {
+		go func() {
+			if should, err := s.memorySvc.ShouldRemember(triggerMessage); should && err == nil {
+				s.memorySvc.Remember(userID, conversationID, triggerMessage)
+			}
+		}()
 	}
 
 	return reply, nil

@@ -23,6 +23,9 @@ type Provider interface {
 	// ChatStream 发送聊天请求并以流式方式返回回复（返回 JSON 编码的 StreamChunk）
 	ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error
 
+	// Embedding 将文本转换为向量
+	Embedding(text string) ([]float32, error)
+
 	// IsConfigured 检查提供商是否已正确配置
 	IsConfigured() bool
 }

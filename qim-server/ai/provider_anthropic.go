@@ -79,3 +79,8 @@ func (p *AnthropicProvider) Chat(messages []Message) (string, error) {
 func (p *AnthropicProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
 	return fmt.Errorf("Anthropic provider does not support streaming in this implementation")
 }
+
+// Embedding 将文本转换为向量（Anthropic 目前不直接支持 Embedding，使用 OpenAI 兼容方式）
+func (p *AnthropicProvider) Embedding(text string) ([]float32, error) {
+	return nil, fmt.Errorf("Anthropic provider does not support Embedding API")
+}

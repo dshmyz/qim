@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -123,4 +124,67 @@ func (p *AlibabaProvider) ChatStream(messages []Message, onChunk func(chunk Stre
 		}
 		return nil
 	})
+}
+
+// Embedding 将文本转换为向量（使用阿里 OpenAI 兼容的 /v1/embeddings 接口）
+func (p *AlibabaProvider) Embedding(text string) ([]float32, error) {
+	if !p.IsConfigured() {
+		return nil, fmt.Errorf("Alibaba API key is not configured")
+	}
+
+	type embeddingRequest struct {
+		Model string `json:"model"`
+		Input string `json:"input"`
+	}
+
+	type embeddingData struct {
+		Embedding []float32 `json:"embedding"`
+		Index     int       `json:"index"`
+	}
+
+	type embeddingResponse struct {
+		Data  []embeddingData `json:"data"`
+		Model string          `json:"model"`
+	}
+
+	// 使用 embedding 专用模型（如果配置了的话），否则使用当前模型
+	embeddingModel := p.config.Model
+	if p.config.ExtraParams["embedding_model"] != nil {
+		if m, ok := p.config.ExtraParams["embedding_model"].(string); ok && m != "" {
+			embeddingModel = m
+		}
+	}
+
+	reqBody := embeddingRequest{
+		Model: embeddingModel,
+		Input: text,
+	}
+
+	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
+		req, _, err := CreateJSONRequest(
+			"POST",
+			p.config.BaseURL+"/embeddings",
+			p.config.APIKey,
+			reqBody,
+			nil,
+		)
+		return req, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Alibaba embedding request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var response embeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode Alibaba embedding response: %w", err)
+	}
+
+	if len(response.Data) == 0 {
+		return nil, fmt.Errorf("no embedding data in Alibaba response")
+	}
+
+	log.Printf("[Alibaba] Embedding completed, model=%s, dimension=%d", response.Model, len(response.Data[0].Embedding))
+
+	return response.Data[0].Embedding, nil
 }

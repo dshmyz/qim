@@ -247,3 +247,16 @@ func (s *AIService) IsConfigured() bool {
 
 	return s.provider.IsConfigured()
 }
+
+// Embed 将文本转换为向量（使用当前 Provider 的 Embedding 能力）
+func (s *AIService) Embed(text string) ([]float32, error) {
+	s.mu.RLock()
+	provider := s.provider
+	s.mu.RUnlock()
+
+	if provider == nil {
+		return nil, fmt.Errorf("AI provider not initialized")
+	}
+
+	return provider.Embedding(text)
+}
