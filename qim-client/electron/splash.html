@@ -32,18 +32,21 @@
     }
 
     .splash-logo {
-      width: 64px;
-      height: 64px;
-      background: linear-gradient(135deg, #64b5f6 0%, #4fc3f7 100%);
-      border-radius: 16px;
+      width: 80px;
+      height: 80px;
       margin: 0 auto 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 28px;
-      font-weight: bold;
-      box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-radius: 20px;
+      background: white;
+      padding: 8px;
+    }
+
+    .splash-logo img {
+      width: 80px;
+      height: 80px;
     }
 
     .splash-title {
@@ -95,7 +98,9 @@
 </head>
 <body>
   <div class="splash-container">
-    <div class="splash-logo">Q</div>
+    <div class="splash-logo">
+      <img src="splash-logo.png" alt="QIM">
+    </div>
     <div class="splash-title">QIM 青雀</div>
     <div class="splash-subtitle">简洁 · 高效 · 智能</div>
     <div class="splash-loader">

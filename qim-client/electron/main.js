@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen, dialog } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -49,11 +49,11 @@ function getIconDataURL(size = 512) {
 const autoUpdaterConfig = {
   win7: {
     version: '22.3.27',
-    feedUrl: 'https://update.example.com/win7'
+    feedUrl: 'http://localhost:8080/api/v1/updates/win7/'
   },
   win10: {
-    version: '41.2.0',
-    feedUrl: 'https://update.example.com/win10'
+    version: '33.0.0',
+    feedUrl: 'http://localhost:8080/api/v1/updates/win10/'
   }
 }
 
@@ -114,7 +114,8 @@ function createWindow() {
   splashWindow.loadURL(splashPath)
   console.log(`Loading splash: ${splashPath}`)
 
-  mainWindow = new BrowserWindow({
+  const isMac = process.platform === 'darwin'
+  const windowOptions = {
     width: 1200,
     height: 800,
     icon: icon,
@@ -126,14 +127,20 @@ function createWindow() {
       contextIsolation: true,
       sandbox: false
     },
-    frame: false,
-    titleBarStyle: 'customButtonsOnHover',
-    titleBarOverlay: {
+    frame: false
+  }
+
+  // macOS 专属配置，Windows/Linux 不适用
+  if (isMac) {
+    windowOptions.titleBarStyle = 'customButtonsOnHover'
+    windowOptions.titleBarOverlay = {
       visible: false,
       height: 0
-    },
-    trafficLightPosition: { x: -100, y: -100 }
-  })
+    }
+    windowOptions.trafficLightPosition = { x: -100, y: -100 }
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
 
   const isDev = process.env.NODE_ENV !== 'production'
   const url = isDev
@@ -236,35 +243,14 @@ function createWindow() {
 
     console.log('[screenshot] Instance created successfully')
     
-    // 后台预初始化截图功能，避免第一次调用时卡顿
-    // 原理：首次 startCapture() 会创建窗口并进入 Kiosk 模式
-    // 我们监听窗口 show 事件，在显示瞬间就隐藏，用户不会感知
-    // 然后 endCapture() 会 hide() 窗口（singleWindow: true）
-    // 后续用户调用截图时，窗口已预热好，直接 show() 即可
-    let preheatDone = false
-    const onShowForPreheat = () => {
-      if (!preheatDone && screenshotInstance && screenshotInstance.$win) {
-        preheatDone = true
-        // 窗口一显示就隐藏，用户不会看到任何闪烁
-        screenshotInstance.$win.hide()
-        // 立即结束这次截图，让窗口回到隐藏状态
-        setTimeout(() => {
-          screenshotInstance.endCapture()
-          console.log('[screenshot] Pre-initialization completed')
-        }, 50)
-      }
-    }
-    
-    screenshotInstance.on('windowCreated', (win) => {
-      win.on('show', onShowForPreheat)
-    })
-    
+    // 预热截屏 API：提前调用 desktopCapturer 让系统准备就绪
+    // 首次截屏慢是因为系统需要授权和初始化捕获设备
+    // 预热后首次截屏速度会明显提升，且不会创建窗口，不会闪烁
     setTimeout(() => {
-      if (screenshotInstance && !preheatDone) {
-        // 启动一次截图用于预热，窗口会在显示后立即被隐藏
-        screenshotInstance.startCapture()
-      }
-    }, 1000)
+      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
+        .then(() => console.log('[screenshot] Capture API warmed up'))
+        .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
+    }, 2000)
     
     // 注册截图快捷键
     globalShortcut.register('CommandOrControl+Shift+A', () => {
