@@ -11,6 +11,7 @@ import (
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/mention"
 	"qim-server/pkg/response"
 	"qim-server/service"
 	"qim-server/ws"
@@ -50,6 +51,26 @@ func InitAnomalyDetector() {
 // GetSmartReplyEngine returns the smart reply engine instance
 func GetSmartReplyEngine() *SmartReplyEngine {
 	return smartReplyEngine
+}
+
+func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
+	isAtMention := msg.SenderID != currentUserID && mention.IsMentioned(msg.Content, currentUserID)
+
+	return gin.H{
+		"id":                msg.ID,
+		"conversation_id":   msg.ConversationID,
+		"sender_id":         msg.SenderID,
+		"type":              msg.Type,
+		"content":           msg.Content,
+		"quoted_message_id": msg.QuotedMessageID,
+		"is_recalled":       msg.IsRecalled,
+		"is_read":           msg.IsRead,
+		"recalled_at":       msg.RecalledAt,
+		"created_at":        msg.CreatedAt,
+		"sender":            msg.Sender,
+		"quoted_message":    msg.QuotedMessage,
+		"is_at_mention":     isAtMention,
+	}
 }
 
 func GetMessages(c *gin.Context) {
@@ -108,10 +129,10 @@ func GetMessages(c *gin.Context) {
 	}
 
 	query := service.MessageQuery{
-		ConvID:      uint(convIDUint),
-		UserID:      userID.(uint),
-		Limit:       pageSize,
-		Offset:      offset,
+		ConvID: uint(convIDUint),
+		UserID: userID.(uint),
+		Limit:  pageSize,
+		Offset: offset,
 	}
 	if afterID > 0 {
 		query.BeforeMsgID = afterID
@@ -124,21 +145,7 @@ func GetMessages(c *gin.Context) {
 
 	var responseMessages []gin.H
 	for _, msg := range result.Messages {
-		responseMsg := gin.H{
-			"id":                msg.ID,
-			"conversation_id":   msg.ConversationID,
-			"sender_id":         msg.SenderID,
-			"type":              msg.Type,
-			"content":           msg.Content,
-			"quoted_message_id": msg.QuotedMessageID,
-			"is_recalled":       msg.IsRecalled,
-			"is_read":           msg.IsRead,
-			"recalled_at":       msg.RecalledAt,
-			"created_at":        msg.CreatedAt,
-			"sender":            msg.Sender,
-			"quoted_message":    msg.QuotedMessage,
-		}
-		responseMessages = append(responseMessages, responseMsg)
+		responseMessages = append(responseMessages, buildMessageResponse(msg, userID.(uint)))
 	}
 
 	totalPages := int(result.Total) / pageSize
@@ -264,20 +271,7 @@ func SendMessage(c *gin.Context) {
 		}
 	}
 
-	responseData := gin.H{
-		"id":                msg.ID,
-		"conversation_id":   msg.ConversationID,
-		"sender_id":         msg.SenderID,
-		"type":              msg.Type,
-		"content":           msg.Content,
-		"quoted_message_id": msg.QuotedMessageID,
-		"is_recalled":       msg.IsRecalled,
-		"is_read":           msg.IsRead,
-		"recalled_at":       msg.RecalledAt,
-		"created_at":        msg.CreatedAt,
-		"sender":            msg.Sender,
-		"quoted_message":    msg.QuotedMessage,
-	}
+	responseData := buildMessageResponse(*msg, userID.(uint))
 
 	conv, _ := convSvc.GetConversation(uint(convIDUint))
 	if conv != nil && conv.Type != "bot" {
