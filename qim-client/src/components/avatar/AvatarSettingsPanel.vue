@@ -28,63 +28,65 @@
         </button>
       </div>
 
-      <div class="tab-content">
-        <!-- 普通设置 -->
-        <template v-if="activeMainTab === 'basic'">
-          <div class="settings-section">
-            <h3 class="section-title">基础配置</h3>
-            <AvatarBasicSettingsSimple
-              v-model="config"
-            />
-          </div>
+      <transition name="fade" mode="out-in">
+        <div class="tab-content" :key="activeMainTab">
+          <!-- 普通设置 -->
+          <template v-if="activeMainTab === 'basic'">
+            <div class="settings-section">
+              <h3 class="section-title">基础配置</h3>
+              <AvatarBasicSettingsSimple
+                v-model="config"
+              />
+            </div>
 
-          <div class="settings-section">
-            <h3 class="section-title">知识来源</h3>
-            <AvatarKnowledgeSettings
-              v-model="config"
-            />
-          </div>
+            <div class="settings-section">
+              <h3 class="section-title">知识来源</h3>
+              <AvatarKnowledgeSettings
+                v-model="config"
+              />
+            </div>
 
-          <div class="settings-section">
-            <h3 class="section-title">记忆管理</h3>
-            <AvatarMemoryPanel
-              :user-id="userId"
-            />
-          </div>
-        </template>
+            <div class="settings-section">
+              <h3 class="section-title">记忆管理</h3>
+              <AvatarMemoryPanel
+                :user-id="userId"
+              />
+            </div>
+          </template>
 
-        <!-- 高级设置 -->
-        <template v-else-if="activeMainTab === 'advanced'">
-          <div class="settings-section">
-            <h3 class="section-title">模型配置</h3>
-            <AvatarModelSettings
-              v-model="config"
-              :model-configs="modelConfigs"
-            />
-          </div>
+          <!-- 高级设置 -->
+          <template v-else-if="activeMainTab === 'advanced'">
+            <div class="settings-section">
+              <h3 class="section-title">模型配置</h3>
+              <AvatarModelSettings
+                v-model="config"
+                :model-configs="modelConfigs"
+              />
+            </div>
 
-          <div class="settings-section">
-            <h3 class="section-title">触发规则详细设置</h3>
-            <AvatarTriggerSettingsAdvanced
-              v-model="config"
-            />
-          </div>
+            <div class="settings-section">
+              <h3 class="section-title">触发规则详细设置</h3>
+              <AvatarTriggerSettingsAdvanced
+                v-model="config"
+              />
+            </div>
 
-          <div class="settings-section">
-            <h3 class="section-title">人设风格</h3>
-            <AvatarPersonaSettings
-              v-model="config"
-            />
-          </div>
+            <div class="settings-section">
+              <h3 class="section-title">人设风格</h3>
+              <AvatarPersonaSettings
+                v-model="config"
+              />
+            </div>
 
-          <div class="settings-section">
-            <h3 class="section-title">回复策略</h3>
-            <AvatarReplySettings
-              v-model="config"
-            />
-          </div>
-        </template>
-      </div>
+            <div class="settings-section">
+              <h3 class="section-title">回复策略</h3>
+              <AvatarReplySettings
+                v-model="config"
+              />
+            </div>
+          </template>
+        </div>
+      </transition>
 
       <div class="tab-footer">
         <button class="btn btn-danger" @click="handleDelete" v-if="config">
@@ -320,5 +322,15 @@ async function handleDelete() {
 
 .btn-danger:hover {
   background: #FFEBEE;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
