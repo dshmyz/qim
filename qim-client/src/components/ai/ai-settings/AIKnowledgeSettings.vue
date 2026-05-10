@@ -18,8 +18,25 @@
         <div v-for="doc in documents" :key="doc.id" class="document-item">
           <div class="doc-info">
             <i :class="getFileIcon(doc.file?.type || '')" class="doc-icon"></i>
-            <div class="doc-name">{{ doc.file?.name || '未知文件' }}</div>
-            <div class="doc-size">{{ formatSize(doc.file?.size || 0) }}</div>
+            <div class="doc-details">
+              <div class="doc-name">{{ doc.file?.name || '未知文件' }}</div>
+              <div class="doc-size">{{ formatSize(doc.file?.size || 0) }}</div>
+            </div>
+          </div>
+          <div class="doc-status">
+            <span v-if="!doc.process_status || doc.process_status === 'pending'" class="status-badge status-pending">
+              <i class="fas fa-clock"></i> 等待处理
+            </span>
+            <span v-else-if="doc.process_status === 'processing'" class="status-badge status-processing">
+              <i class="fas fa-spinner fa-spin"></i> 处理中...
+            </span>
+            <span v-else-if="doc.process_status === 'completed'" class="status-badge status-completed">
+              <i class="fas fa-check-circle"></i> 已就绪
+            </span>
+            <span v-else-if="doc.process_status === 'failed'" class="status-badge status-failed">
+              <i class="fas fa-exclamation-circle"></i> 失败
+              <button class="retry-btn" @click="retryDocument(doc)" title="重试">重试</button>
+            </span>
           </div>
           <button class="remove-btn" @click="removeDocument(doc)" title="移除">
             <i class="fas fa-trash-alt"></i>
@@ -68,6 +85,7 @@ interface Props {
 interface Emits {
   (e: 'add', fileIds: number[]): void
   (e: 'remove', fileId: number): void
+  (e: 'retry', doc: any): void
 }
 
 const props = defineProps<Props>()
@@ -125,8 +143,12 @@ function cancelFilePicker() {
   showFilePicker.value = false
 }
 
-function removeDocument(doc: GroupDocument) {
+function removeDocument(doc: any) {
   emit('remove', doc.file_id)
+}
+
+function retryDocument(doc: any) {
+  emit('retry', doc)
 }
 
 function getFileIcon(type: string) {
@@ -157,8 +179,18 @@ function formatSize(bytes: number) {
 .document-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; }
 .doc-info { display: flex; align-items: center; gap: 10px; }
 .doc-icon { font-size: 20px; color: var(--text-secondary); }
+.doc-details { display: flex; flex-direction: column; gap: 2px; }
 .doc-name { font-size: 14px; }
 .doc-size { font-size: 12px; color: var(--text-secondary); }
+.doc-status { display: flex; align-items: center; gap: 6px; }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+.status-badge i { font-size: 12px; }
+.status-pending { background: #f0f0f0; color: #666; }
+.status-processing { background: #e0f2fe; color: #0284c7; }
+.status-completed { background: #dcfce7; color: #16a34a; }
+.status-failed { background: #fee2e2; color: #dc2626; }
+.retry-btn { margin-left: 4px; padding: 1px 6px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; font-size: 11px; cursor: pointer; }
+.retry-btn:hover { background: #dc2626; color: white; }
 .remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: 14px; border-radius: 4px; }
 .remove-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 

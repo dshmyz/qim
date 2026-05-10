@@ -50,6 +50,11 @@
           v-if="activeTab === 'reply'"
           v-model="config"
         />
+        <AvatarMemoryPanel
+          v-if="activeTab === 'memory'"
+          :server-url="serverUrl"
+          :user-id="userId"
+        />
       </div>
 
       <div class="tab-footer">
@@ -75,6 +80,7 @@ import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
 import AvatarTriggerSettings from './AvatarTriggerSettings.vue'
 import AvatarKnowledgeSettings from './AvatarKnowledgeSettings.vue'
 import AvatarReplySettings from './AvatarReplySettings.vue'
+import AvatarMemoryPanel from './AvatarMemoryPanel.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
 
 const {
@@ -96,11 +102,25 @@ const tabs = [
   { key: 'persona', label: '人设风格', icon: 'fas fa-palette' },
   { key: 'trigger', label: '触发规则', icon: 'fas fa-bolt' },
   { key: 'knowledge', label: '知识范围', icon: 'fas fa-book' },
-  { key: 'reply', label: '回复策略', icon: 'fas fa-sliders-h' }
+  { key: 'reply', label: '回复策略', icon: 'fas fa-sliders-h' },
+  { key: 'memory', label: '记忆管理', icon: 'fas fa-brain' }
 ]
+
+const serverUrl = import.meta.env.VITE_SERVER_URL || ''
+const userId = ref(0)
 
 onMounted(async () => {
   await Promise.all([fetchConfig(true), fetchConfigs()])
+  // 从 localStorage 获取当前用户 ID
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    try {
+      const user = JSON.parse(userStr)
+      userId.value = user.id
+    } catch (e) {
+      console.error('解析用户信息失败', e)
+    }
+  }
 })
 
 async function handleCreate() {

@@ -37,7 +37,7 @@
     </QDialog>
 
     <ModelConfigFormModal
-      v-if="showConfigModal"
+      v-model="showConfigModal"
       :config="editingConfig"
       @close="closeConfigModal"
       @save="handleSaveConfig"
@@ -117,11 +117,14 @@ function showCreateBot() {
 }
 
 function showAddConfig() {
+  console.log('[AIWorkbench] showAddConfig called')
   editingConfig.value = null
   showConfigModal.value = true
+  console.log('[AIWorkbench] showConfigModal =', showConfigModal.value)
 }
 
 function handleEditConfig(config: UserAIConfig) {
+  console.log('[AIWorkbench] handleEditConfig called, config =', config)
   editingConfig.value = config
   showConfigModal.value = true
 }
@@ -141,8 +144,12 @@ async function handleSaveConfig(data: CreateConfigRequest) {
 }
 
 async function handleTestConfig(id: number) {
-  const result = await testConfig(id)
-  alert(result.success ? '连接测试成功' : `连接失败: ${result.message}`)
+  try {
+    const result = await testConfig(id)
+    alert(result.success ? '连接测试成功' : `连接失败: ${result.message}`)
+  } catch (e: any) {
+    alert(`测试失败: ${e?.response?.data?.message || '未知错误'}`)
+  }
 }
 
 async function handleDeleteConfig(config: UserAIConfig) {

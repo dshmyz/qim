@@ -47,6 +47,7 @@
         :documents="documents"
         @add="handleAddDocuments"
         @remove="handleRemoveDocument"
+        @retry="handleRetryDocument"
       />
     </div>
 
@@ -226,6 +227,17 @@ async function handleAddDocuments(fileIds: number[]) {
       console.error('添加文档失败', e)
     }
   }
+  // 提交向量化处理任务
+  for (const fileId of fileIds) {
+    try {
+      await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${fileId}/process`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+    } catch (e) {
+      console.error('提交处理任务失败', e)
+    }
+  }
   await loadDocuments()
 }
 
@@ -238,6 +250,18 @@ async function handleRemoveDocument(fileId: number) {
     await loadDocuments()
   } catch (e) {
     console.error('移除文档失败', e)
+  }
+}
+
+async function handleRetryDocument(doc: any) {
+  try {
+    await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${doc.file_id}/process`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+    await loadDocuments()
+  } catch (e) {
+    console.error('重试处理失败', e)
   }
 }
 
