@@ -99,6 +99,12 @@ func (s *NoteVectorService) DeleteNoteVectors(userID, noteID uint) error {
 }
 
 func (s *NoteVectorService) deleteNoteVectors(ctx context.Context, noteID uint) error {
-	docID := fmt.Sprintf("note_%d", noteID)
-	return s.vectorSvc.store.DeleteByDocID(ctx, docID)
+	noteIDStr := fmt.Sprintf("%d", noteID)
+	filter := map[string]string{"note_id": noteIDStr}
+	deleted, err := s.vectorSvc.DeleteByFilter(ctx, "", filter)
+	if err != nil {
+		return fmt.Errorf("删除笔记 %d 的向量失败: %w", noteID, err)
+	}
+	log.Printf("[NoteVectorService] 删除笔记 %d 的向量，共 %d 条", noteID, deleted)
+	return nil
 }

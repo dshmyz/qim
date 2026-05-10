@@ -15,7 +15,8 @@ type VectorService struct {
 
 // NewVectorService 创建向量服务实例
 func NewVectorService(path string) (*VectorService, error) {
-	cfg := core.DefaultConfig(path)
+	cfg := core.DefaultConfig()
+	cfg.Path = path
 	store, err := core.NewWithConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("打开向量数据库失败: %w", err)
@@ -85,7 +86,6 @@ func (s *VectorService) GetStore() *core.SQLiteStore {
 
 // GetByCollection 获取指定集合中的所有向量（用于管理界面）
 func (s *VectorService) GetByCollection(ctx context.Context, collection string, limit int) ([]core.ScoredEmbedding, error) {
-	// 使用一个零向量进行查询，返回集合中所有数据
 	zeroVector := make([]float32, 1536)
 	opts := core.SearchOptions{
 		Collection: collection,
@@ -97,6 +97,32 @@ func (s *VectorService) GetByCollection(ctx context.Context, collection string, 
 		return nil, fmt.Errorf("获取集合 %s 数据失败: %w", collection, err)
 	}
 	return results, nil
+}
+
+// DeleteByFilter 按 metadata 过滤条件删除向量
+func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, filter map[string]string) (int, error) {
+	zeroVector := make([]float32, 1536)
+	opts := core.SearchOptions{
+		Collection: collection,
+		TopK:       10000,
+		Filter:     filter,
+	}
+	
+	results, err := s.store.Search(ctx, zeroVector, opts)
+	if err != nil {
+		return 0, fmt.Errorf("按过滤条件搜索失败: %w", err)
+	}
+	
+	deletedCount := 0
+	for _, result := range results {
+		if err := s.store.DeleteByDocID(ctx, result.DocID); err != nil {
+			log.Printf("[VectorService] 删除向量失败 docID=%s: %v", result.DocID, err)
+			continue
+		}
+		deletedCount++
+	}
+	
+	return deletedCount, nil
 }
 
 // SearchResult 通用搜索结果结构

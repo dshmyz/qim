@@ -100,18 +100,11 @@ func (s *AvatarMemoryService) ForgetMemory(userID uint, memoryDocID string) erro
 
 // GetMemoryCount 获取用户的记忆条数
 func (s *AvatarMemoryService) GetMemoryCount(userID uint) (int64, error) {
-	// 简化实现：通过搜索所有记忆来统计
-	ctx := context.Background()
-	collectionName := fmt.Sprintf("avatar_memory_%d", userID)
-
-	// 使用一个空向量搜索所有（这里简化处理）
-	// 实际应该维护一个计数表
-	stats, err := s.vectorSvc.store.Stats(ctx)
+	memories, err := s.GetUserMemories(userID, 10000)
 	if err != nil {
 		return 0, err
 	}
-	_ = collectionName // 保留用于后续优化
-	return stats.Count, nil
+	return int64(len(memories)), nil
 }
 
 // GetUserMemories 获取用户的所有记忆列表（用于管理界面）

@@ -86,7 +86,7 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 
 func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 	var doc model.GroupDocument
-	if err := s.db.First(&doc, groupDocID).Error; err != nil {
+	if err := s.db.Preload("File").First(&doc, groupDocID).Error; err != nil {
 		return fmt.Errorf("文档不存在")
 	}
 
