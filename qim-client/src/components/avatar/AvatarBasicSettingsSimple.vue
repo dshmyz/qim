@@ -122,7 +122,7 @@ function update<K extends keyof AvatarConfigWithApproval>(key: K, value: AvatarC
 function updateTriggerMode(mode: string) {
   emit('update:modelValue', {
     ...props.modelValue,
-    triggerRules: { ...props.modelValue.triggerRules ?? {}, mode }
+    triggerRules: { ...props.modelValue.triggerRules ?? {}, mode: mode as any }
   })
 }
 

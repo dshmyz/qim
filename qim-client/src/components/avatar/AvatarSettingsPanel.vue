@@ -127,12 +127,11 @@ const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
 const activeMainTab = ref<'basic' | 'advanced'>('basic')
 const saving = ref(false)
 
-const mainTabs = [
+const mainTabs: Array<{ key: 'basic' | 'advanced'; label: string; icon: string }> = [
   { key: 'basic', label: '普通设置', icon: 'fas fa-cog' },
   { key: 'advanced', label: '高级设置', icon: 'fas fa-sliders-h' }
 ]
 
-const serverUrl = import.meta.env.VITE_SERVER_URL || ''
 const userId = ref(0)
 
 watch(activeMainTab, (newTab) => {
