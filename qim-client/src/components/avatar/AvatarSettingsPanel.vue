@@ -18,10 +18,10 @@
     <template v-else>
       <div class="tab-bar">
         <button
-          v-for="tab in tabs"
+          v-for="tab in mainTabs"
           :key="tab.key"
-          :class="['tab-btn', { active: activeTab === tab.key }]"
-          @click="activeTab = tab.key"
+          :class="['tab-btn', { active: activeMainTab === tab.key }]"
+          @click="activeMainTab = tab.key"
         >
           <i :class="tab.icon"></i>
           <span>{{ tab.label }}</span>
@@ -29,32 +29,61 @@
       </div>
 
       <div class="tab-content">
-        <AvatarBasicSettings
-          v-if="activeTab === 'basic'"
-          v-model="config"
-          :model-configs="modelConfigs"
-        />
-        <AvatarPersonaSettings
-          v-if="activeTab === 'persona'"
-          v-model="config"
-        />
-        <AvatarTriggerSettings
-          v-if="activeTab === 'trigger'"
-          v-model="config"
-        />
-        <AvatarKnowledgeSettings
-          v-if="activeTab === 'knowledge'"
-          v-model="config"
-        />
-        <AvatarReplySettings
-          v-if="activeTab === 'reply'"
-          v-model="config"
-        />
-        <AvatarMemoryPanel
-          v-if="activeTab === 'memory'"
-          :server-url="serverUrl"
-          :user-id="userId"
-        />
+        <!-- 普通设置 -->
+        <template v-if="activeMainTab === 'basic'">
+          <div class="settings-section">
+            <h3 class="section-title">基础配置</h3>
+            <AvatarBasicSettingsSimple
+              v-model="config"
+            />
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">知识来源</h3>
+            <AvatarKnowledgeSettings
+              v-model="config"
+            />
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">记忆管理</h3>
+            <AvatarMemoryPanel
+              :user-id="userId"
+            />
+          </div>
+        </template>
+
+        <!-- 高级设置 -->
+        <template v-else-if="activeMainTab === 'advanced'">
+          <div class="settings-section">
+            <h3 class="section-title">模型配置</h3>
+            <AvatarModelSettings
+              v-model="config"
+              :model-configs="modelConfigs"
+            />
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">触发规则详细设置</h3>
+            <AvatarTriggerSettingsAdvanced
+              v-model="config"
+            />
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">人设风格</h3>
+            <AvatarPersonaSettings
+              v-model="config"
+            />
+          </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">回复策略</h3>
+            <AvatarReplySettings
+              v-model="config"
+            />
+          </div>
+        </template>
       </div>
 
       <div class="tab-footer">
@@ -70,17 +99,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useAvatar } from '../../composables/useAvatar'
 import { useModelConfigs } from '../../composables/useModelConfigs'
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import EmptyState from '../shared/EmptyState.vue'
-import AvatarBasicSettings from './AvatarBasicSettings.vue'
-import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
-import AvatarTriggerSettings from './AvatarTriggerSettings.vue'
+import AvatarBasicSettingsSimple from './AvatarBasicSettingsSimple.vue'
 import AvatarKnowledgeSettings from './AvatarKnowledgeSettings.vue'
-import AvatarReplySettings from './AvatarReplySettings.vue'
 import AvatarMemoryPanel from './AvatarMemoryPanel.vue'
+import AvatarModelSettings from './AvatarModelSettings.vue'
+import AvatarTriggerSettingsAdvanced from './AvatarTriggerSettingsAdvanced.vue'
+import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
+import AvatarReplySettings from './AvatarReplySettings.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
 
 const {
@@ -94,24 +124,29 @@ const {
 
 const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
 
-const activeTab = ref('basic')
+const activeMainTab = ref<'basic' | 'advanced'>('basic')
 const saving = ref(false)
 
-const tabs = [
-  { key: 'basic', label: '基础设置', icon: 'fas fa-cog' },
-  { key: 'persona', label: '人设风格', icon: 'fas fa-palette' },
-  { key: 'trigger', label: '触发规则', icon: 'fas fa-bolt' },
-  { key: 'knowledge', label: '知识范围', icon: 'fas fa-book' },
-  { key: 'reply', label: '回复策略', icon: 'fas fa-sliders-h' },
-  { key: 'memory', label: '记忆管理', icon: 'fas fa-brain' }
+const mainTabs = [
+  { key: 'basic', label: '普通设置', icon: 'fas fa-cog' },
+  { key: 'advanced', label: '高级设置', icon: 'fas fa-sliders-h' }
 ]
 
 const serverUrl = import.meta.env.VITE_SERVER_URL || ''
 const userId = ref(0)
 
+watch(activeMainTab, (newTab) => {
+  localStorage.setItem('avatar-settings-tab', newTab)
+})
+
 onMounted(async () => {
   await Promise.all([fetchConfig(true), fetchConfigs()])
-  // 从 localStorage 获取当前用户 ID
+  
+  const savedTab = localStorage.getItem('avatar-settings-tab')
+  if (savedTab === 'basic' || savedTab === 'advanced') {
+    activeMainTab.value = savedTab
+  }
+  
   const userStr = localStorage.getItem('user')
   if (userStr) {
     try {
@@ -231,6 +266,18 @@ async function handleDelete() {
 .tab-content {
   flex: 1;
   overflow-y: auto;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  padding: 0 16px;
+  color: var(--text-color);
 }
 
 .tab-footer {
