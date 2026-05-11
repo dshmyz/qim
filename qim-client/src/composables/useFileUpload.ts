@@ -144,8 +144,20 @@ interface UploadManager {
 // 活跃的上传任务
 const activeUploads = new Map<string, UploadManager>()
 
-// 最大并发数
-const MAX_CONCURRENT_UPLOADS = 3
+/**
+ * 动态计算最大并发数
+ * 基于 CPU 核心数，最多 5 个并发
+ */
+function getMaxConcurrentUploads(): number {
+  // 获取 CPU 核心数，默认为 4
+  const cpuCores = navigator.hardwareConcurrency || 4
+  // 根据核心数计算并发数，最多 5 个
+  const maxConcurrent = Math.min(Math.max(Math.floor(cpuCores / 2), 2), 5)
+  return maxConcurrent
+}
+
+// 最大并发数（动态计算）
+const MAX_CONCURRENT_UPLOADS = getMaxConcurrentUploads()
 
 // 最大重试次数
 const MAX_RETRY_COUNT = 3
@@ -247,52 +259,114 @@ async function uploadChunkWithRetry(
 }
 
 /**
+ * 上传队列管理器
+ * 使用队列管理并发上传，优化内存使用
+ */
+class UploadQueueManager {
+  private queue: number[] = []
+  private activeCount = 0
+  private maxConcurrent: number
+  private manager: UploadManager
+  private onProgress?: (uploadedChunks: number) => void
+  private resolve?: () => void
+  private reject?: (error: Error) => void
+  private hasError = false
+
+  constructor(
+    manager: UploadManager,
+    maxConcurrent: number,
+    onProgress?: (uploadedChunks: number) => void
+  ) {
+    this.manager = manager
+    this.maxConcurrent = maxConcurrent
+    this.onProgress = onProgress
+  }
+
+  /**
+   * 添加分片到队列
+   */
+  addChunk(chunkIndex: number): void {
+    this.queue.push(chunkIndex)
+  }
+
+  /**
+   * 启动队列处理
+   */
+  async start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.resolve = resolve
+      this.reject = reject
+      this.processQueue()
+    })
+  }
+
+  /**
+   * 处理队列
+   */
+  private processQueue(): void {
+    // 如果有错误，停止处理
+    if (this.hasError) {
+      return
+    }
+
+    // 如果队列为空且没有活跃的上传，完成
+    if (this.queue.length === 0 && this.activeCount === 0) {
+      this.resolve?.()
+      return
+    }
+
+    // 启动新的上传任务，直到达到最大并发数
+    while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
+      const chunkIndex = this.queue.shift()!
+      this.activeCount++
+      
+      this.uploadChunk(chunkIndex)
+        .then(() => {
+          this.activeCount--
+          // 上传完成后，释放分片引用以优化内存
+          this.manager.chunks[chunkIndex] = new Blob([])
+          // 继续处理队列
+          this.processQueue()
+        })
+        .catch((error) => {
+          this.hasError = true
+          this.reject?.(error)
+        })
+    }
+  }
+
+  /**
+   * 上传单个分片
+   */
+  private async uploadChunk(chunkIndex: number): Promise<void> {
+    await uploadChunkWithRetry(this.manager, chunkIndex, this.onProgress)
+  }
+}
+
+/**
  * 并发上传分片
+ * 使用队列管理器优化并发控制和内存使用
  */
 async function uploadChunksConcurrently(
   manager: UploadManager,
   onProgress?: (uploadedChunks: number) => void
 ): Promise<void> {
-  const pendingChunks: number[] = []
+  // 创建队列管理器
+  const queueManager = new UploadQueueManager(
+    manager,
+    MAX_CONCURRENT_UPLOADS,
+    onProgress
+  )
 
-  // 找出需要上传的分片
+  // 找出需要上传的分片并添加到队列
   for (let i = 0; i < manager.chunks.length; i++) {
     if (!manager.uploadedChunks.has(i)) {
-      pendingChunks.push(i)
+      queueManager.addChunk(i)
     }
   }
 
-  // 并发上传，最多 3 个
-  const uploadQueue: Promise<void>[] = []
-
-  for (const chunkIndex of pendingChunks) {
-    // 如果已经有 3 个在上传，等待其中一个完成
-    if (uploadQueue.length >= MAX_CONCURRENT_UPLOADS) {
-      await Promise.race(uploadQueue)
-    }
-
-    const uploadPromise = uploadChunkWithRetry(manager, chunkIndex, onProgress)
-      .then(() => {
-        // 从队列中移除已完成的
-        const index = uploadQueue.indexOf(uploadPromise)
-        if (index > -1) {
-          uploadQueue.splice(index, 1)
-        }
-      })
-      .catch(error => {
-        // 从队列中移除失败的
-        const index = uploadQueue.indexOf(uploadPromise)
-        if (index > -1) {
-          uploadQueue.splice(index, 1)
-        }
-        throw error
-      })
-
-    uploadQueue.push(uploadPromise)
-  }
-
-  // 等待所有上传完成
-  await Promise.all(uploadQueue)
+  // 启动队列处理
+  await queueManager.start()
 }
 
 /**
