@@ -69,6 +69,39 @@ export interface FileListResponse {
   page_size: number
 }
 
+// 分片上传相关类型
+export interface InitUploadRequest {
+  filename: string
+  file_size: number
+  file_hash: string
+  folder_id?: number | null
+  mime_type: string
+}
+
+export interface InitUploadResponse {
+  upload_id: string
+  chunk_size: number
+  total_chunks: number
+  uploaded_chunks: number[]
+  is_quick_upload: boolean
+  file_id?: number
+}
+
+export interface UploadChunkResponse {
+  chunk_index: number
+  chunk_hash: string
+}
+
+export interface CompleteUploadRequest {
+  upload_id: string
+  file_hash: string
+  total_chunks: number
+}
+
+export interface CancelUploadRequest {
+  upload_id: string
+}
+
 // 文件相关 API
 export const fileApi = {
   // 获取文件列表
@@ -125,6 +158,28 @@ export const fileApi = {
   // 获取文件统计
   getStats() {
     return api.get<{ code: number; data: Record<string, any> }>('/api/v1/files/stats')
+  },
+
+  // 初始化分片上传
+  initUpload(data: InitUploadRequest) {
+    return api.post<{ code: number; data: InitUploadResponse }>('/api/v1/upload/init', data)
+  },
+
+  // 上传分片
+  uploadChunk(formData: FormData) {
+    return api.post<{ code: number; data: UploadChunkResponse }>('/api/v1/upload/chunk', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  // 完成上传
+  completeUpload(data: CompleteUploadRequest) {
+    return api.post<{ code: number; data: FileItem }>('/api/v1/upload/complete', data)
+  },
+
+  // 取消上传
+  cancelUpload(data: CancelUploadRequest) {
+    return api.post<{ code: number }>('/api/v1/upload/cancel', data)
   }
 }
 
