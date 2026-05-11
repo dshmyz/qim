@@ -138,6 +138,8 @@ func MigrateDB(db *gorm.DB) {
 		&model.AvatarConfig{},        // 分身配置
 		&model.AvatarSession{},       // 分身会话状态
 		&model.AvatarLearnTask{},     // 分身学习任务
+		&model.FileChunk{},           // 文件分片
+		&model.UploadTask{},          // 上传任务
 	); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
