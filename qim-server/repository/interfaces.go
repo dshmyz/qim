@@ -91,3 +91,22 @@ type TaskRepository interface {
 	FindByUserIDAndID(ctx context.Context, userID, id uint) (*model.Task, error)
 	DeleteByUserIDAndID(ctx context.Context, userID, id uint) error
 }
+
+type ChunkRepository interface {
+	// UploadTask 相关操作
+	CreateUploadTask(ctx context.Context, task *model.UploadTask) error
+	GetUploadTask(ctx context.Context, uploadID string) (*model.UploadTask, error)
+	UpdateUploadTask(ctx context.Context, task *model.UploadTask) error
+	DeleteUploadTask(ctx context.Context, uploadID string) error
+
+	// FileChunk 相关操作
+	CreateChunk(ctx context.Context, chunk *model.FileChunk) error
+	GetChunk(ctx context.Context, uploadID string, chunkIndex int) (*model.FileChunk, error)
+	GetChunksByUploadID(ctx context.Context, uploadID string) ([]model.FileChunk, error)
+	GetUploadedChunkIndexes(ctx context.Context, uploadID string) ([]int, error)
+	UpdateChunkStatus(ctx context.Context, uploadID string, chunkIndex int, status string) error
+	DeleteChunksByUploadID(ctx context.Context, uploadID string) error
+
+	// File 相关操作
+	GetFileByHash(ctx context.Context, fileHash string) (*model.File, error)
+}
