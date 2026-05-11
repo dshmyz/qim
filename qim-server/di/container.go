@@ -24,6 +24,7 @@ type Container struct {
 	EventService         *service.EventService
 	TaskService          *service.TaskService
 	FileService          *service.FileService
+	S3Service            *service.S3Service
 	GroupService         *service.GroupService
 	AppService           *service.AppService
 	MiniAppService       *service.MiniAppService
@@ -44,6 +45,7 @@ type Container struct {
 	AIProviderService    *service.AIProviderService
 	GroupDocumentService *service.GroupDocumentService
 	AIConfigService      *service.AIConfigService
+	ChunkService         *service.ChunkService
 	// 新增：RAG 和智能分身相关服务
 	VectorService        *service.VectorService
 	NoteVectorService    *service.NoteVectorService
@@ -67,6 +69,18 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	eventService := service.NewEventService(db)
 	taskService := service.NewTaskService(db)
 	fileService := service.NewFileService(db)
+
+	var s3Svc *service.S3Service
+	if cfg.Storage.Type == "s3" {
+		var err error
+		s3Svc, err = service.NewS3Service(cfg.Storage.S3)
+		if err != nil {
+			log.Printf("[DI] Warning: S3Service 初始化失败: %v (S3 存储功能将不可用)", err)
+		} else {
+			log.Printf("[DI] S3Service 初始化成功, bucket=%s", cfg.Storage.S3.Bucket)
+		}
+	}
+
 	groupService := service.NewGroupService(db)
 	appService := service.NewAppService(db)
 	miniAppService := service.NewMiniAppService(db)
@@ -88,6 +102,13 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	groupDocumentService := service.NewGroupDocumentService(db)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 
+	// 初始化 ChunkService
+	chunkStoragePath := cfg.Storage.Local.Path
+	if chunkStoragePath == "" {
+		chunkStoragePath = "./uploads/chunks"
+	}
+	chunkService := service.NewChunkService(db, chunkStoragePath)
+
 	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
 	// 初始化 RAG 相关服务
@@ -96,23 +117,25 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	var avatarMemorySvc *service.AvatarMemoryService
 	var avatarTriggerSvc *service.AvatarTriggerService
 
-	// 尝试初始化向量服务（如果 cortexdb 可用）
-	vectorPath := "./data/vector.db"
+	vectorPath := cfg.Vector.Path
+	embedder := service.NewCortexDBEmbedder(aiService)
 
 	var err error
-	vectorSvc, err = service.NewVectorService(vectorPath)
+	log.Printf("[DI] 开始初始化 VectorService, path=%s", vectorPath)
+	vectorSvc, err = service.NewVectorService(vectorPath, embedder)
 	if err != nil {
 		log.Printf("[DI] Warning: VectorService 初始化失败: %v (RAG 功能将不可用)", err)
 	} else {
+		log.Printf("[DI] VectorService 初始化成功")
 		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
-		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService, db)
+		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService)
 		avatarTriggerSvc = service.NewAvatarTriggerService(aiService, db)
 	}
 
 	// 注入向量服务到相关服务
 	if noteVectorSvc != nil {
 		noteService.SetVectorService(noteVectorSvc)
-		groupDocumentService.SetVectorServices(vectorSvc, aiService)
+		groupDocumentService.SetVectorServices(vectorSvc)
 		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc, avatarTriggerSvc)
 	}
 
@@ -127,6 +150,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		EventService:         eventService,
 		TaskService:          taskService,
 		FileService:          fileService,
+		S3Service:            s3Svc,
 		GroupService:         groupService,
 		AppService:           appService,
 		MiniAppService:       miniAppService,
@@ -147,6 +171,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		AIProviderService:    aiProviderService,
 		GroupDocumentService: groupDocumentService,
 		AIConfigService:      aiConfigService,
+		ChunkService:         chunkService,
 		VectorService:        vectorSvc,
 		NoteVectorService:    noteVectorSvc,
 		AvatarMemoryService:  avatarMemorySvc,

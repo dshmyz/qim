@@ -1,6 +1,8 @@
 package app
 
 import (
+	"encoding/json"
+	"net/http"
 	"time"
 
 	"qim-server/ai"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // GetAIService returns the global AI service instance
@@ -24,6 +28,16 @@ func GetAIService() *ai.AIService {
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.SetConfig(cfg)
 
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "ok",
+			"version":   "2.0",
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	aiSvc := di.GlobalContainer.AIService
 
 	mcpServer := ai.NewMCPServer(false)
@@ -31,6 +45,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	aiSvc.SetMCPServer(mcpServer)
 
 	handler.RegisterAdminTools(mcpServer)
+
+	groupDocSvc := di.GlobalContainer.GroupDocumentService
+	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
+		service.NewUnifiedMCPBridge(mcpServer, vectorSvc.GetDB())
+
+		fallback := &service.LegacyKnowledgeFallback{
+			SearchFunc: func(query string, groupID uint, limit int) []service.KnowledgeSnippet {
+				return nil
+			},
+		}
+		uk := service.NewUnifiedKnowledgeService(groupDocSvc, fallback)
+		uk.SetGraphEnhanced(true)
+		handler.SetUnifiedKnowledge(uk)
+
+		if avatarMemorySvc := di.GlobalContainer.AvatarMemoryService; avatarMemorySvc != nil {
+			handler.SetMemoryService(avatarMemorySvc)
+		}
+	}
 
 	handler.InitSmartReplyEngine(aiSvc)
 
@@ -45,6 +77,20 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	avatarService := service.NewAvatarService(GetDB(), aiSvc)
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
+
+	avatarService.SetGroupDocumentService(groupDocSvc)
+
+	// 注入 WebSocket 通知回调（分身学习完成时推送）
+	avatarService.SetWebSocketNotify(func(userID uint, eventType string, data map[string]interface{}) {
+		if ws.GlobalHub != nil {
+			payload := map[string]interface{}{
+				"type": eventType,
+				"data": data,
+			}
+			jsonData, _ := json.Marshal(payload)
+			ws.GlobalHub.SendToUser(userID, jsonData)
+		}
+	})
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
 	corsMiddleware := cors.New(cors.Config{
@@ -162,34 +208,38 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 获取消息引用链
 			authed.GET("/messages/:id/quote-chain", handler.GetMessageQuoteChain)
 
-			// 群聊成员管理
-			authed.POST("/conversations/:id/members", handler.AddMemberToGroup)
+			// 群聊管理（群特有功能）
+			authed.POST("/groups/:id/members", handler.AddMemberToGroup)
 			// 移除群成员
-			authed.DELETE("/conversations/:id/members/:user_id", handler.RemoveMemberFromGroup)
+			authed.DELETE("/groups/:id/members/:user_id", handler.RemoveMemberFromGroup)
 			// 退出群聊
-			authed.POST("/conversations/:id/exit", handler.ExitGroup)
+			authed.POST("/groups/:id/exit", handler.ExitGroup)
 			// 申请加入群聊
-			authed.POST("/conversations/:id/apply", handler.ApplyJoinGroup)
+			authed.POST("/groups/:id/apply", handler.ApplyJoinGroup)
 			// 拒绝加入请求
-			authed.DELETE("/conversations/:id/join-requests/:user_id", handler.RejectJoinRequest)
+			authed.DELETE("/groups/:id/join-requests/:user_id", handler.RejectJoinRequest)
 			// 更新群聊信息
-			authed.PUT("/conversations/:id", handler.UpdateGroupInfo)
+			authed.PUT("/groups/:id", handler.UpdateGroupInfo)
 			// 获取群聊 AI 设置
-			authed.GET("/conversations/:id/ai-settings", handler.GetGroupAISettings)
+			authed.GET("/groups/:id/ai-settings", handler.GetGroupAISettings)
 			// 更新群聊 AI 设置
-			authed.PUT("/conversations/:id/ai-settings", handler.UpdateGroupAISettings)
+			authed.PUT("/groups/:id/ai-settings", handler.UpdateGroupAISettings)
 			// 群知识库管理（带处理状态）
-			authed.GET("/conversations/:id/ai-documents", handler.GetGroupDocumentsWithStatus)
-			authed.POST("/conversations/:id/ai-documents", handler.AddGroupDocument)
-			authed.DELETE("/conversations/:id/ai-documents/:file_id", handler.RemoveGroupDocument)
-			authed.POST("/conversations/:id/ai-documents/:file_id/process", handler.ProcessGroupDocument)
-			authed.GET("/conversations/:id/ai-documents/:file_id/status", handler.GetDocumentProcessStatus)
+			authed.GET("/groups/:id/ai-documents", handler.GetGroupDocumentsWithStatus)
+			authed.POST("/groups/:id/ai-documents", handler.AddGroupDocument)
+			authed.DELETE("/groups/:id/ai-documents/:file_id", handler.RemoveGroupDocument)
+			authed.POST("/groups/:id/ai-documents/:file_id/process", handler.ProcessGroupDocument)
+			authed.GET("/groups/:id/ai-documents/:file_id/status", handler.GetDocumentProcessStatus)
+			authed.POST("/groups/:id/ai-documents/batch-process", handler.BatchProcessDocuments)
+			authed.POST("/groups/:id/ai-documents/batch-retry", handler.BatchRetryDocuments)
 			// 设置/取消管理员
-			authed.PUT("/conversations/:id/members/:user_id/role", handler.SetMemberRole)
+			authed.PUT("/groups/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
-			authed.POST("/conversations/:id/members/:user_id/transfer-owner", handler.TransferOwner)
+			authed.POST("/groups/:id/members/:user_id/transfer-owner", handler.TransferOwner)
 			// 更新群公告
-			authed.PUT("/conversations/:id/announcement", handler.UpdateAnnouncement)
+			authed.PUT("/groups/:id/announcement", handler.UpdateAnnouncement)
+			// 解散群聊
+			authed.DELETE("/groups/:id", handler.DissolveGroup)
 
 			// WebSocket
 			authed.GET("/ws", func(c *gin.Context) {
@@ -213,6 +263,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/files/:id/star", handler.ToggleStar)
 			authed.GET("/files/:id/download", handler.DownloadFile)
 			authed.DELETE("/files/:id", handler.DeleteFile)
+
+			// 分片上传
+			authed.POST("/files/upload/init", handler.InitUpload)
+			authed.POST("/files/upload/chunk", handler.UploadChunk)
+			authed.POST("/files/upload/complete", handler.CompleteUpload)
+			authed.POST("/files/upload/cancel", handler.CancelUpload)
 
 			// 笔记管理
 			authed.GET("/notes", handler.GetNotes)
@@ -416,6 +472,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			admin.GET("/ai/dashboard", func(c *gin.Context) {
 				aiHandler.OpsDashboard(c)
 			})
+
+			// MCP 工具管理（管理员）
+			admin.GET("/mcp/tools", aiHandler.ListMCPTools)
+			admin.PUT("/mcp/tools/:tool_name", aiHandler.UpdateMCPToolConfig)
+
+			// 知识图谱（管理员）
+			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)
 		}
 	}
 
