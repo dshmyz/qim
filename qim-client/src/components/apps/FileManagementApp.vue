@@ -208,6 +208,9 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 上传进度条 -->
+    <UploadProgressBar :visible="true" />
   </div>
 </template>
 
@@ -220,8 +223,11 @@ import FilePreviewModal from './file/FilePreviewModal.vue'
 import FileActionsModal from './file/FileActionsModal.vue'
 import FileDateFilter from './file/FileDateFilter.vue'
 import AppHeader from './AppHeader.vue'
+import UploadProgressBar from '../common/UploadProgressBar.vue'
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
+import { useFileUpload, uploadFile as uploadFileChunked } from '../../composables/useFileUpload'
+import { useUploadStore } from '../../stores/upload'
 import { fileApi, type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
 
@@ -253,7 +259,6 @@ const {
   changeSort,
   changeDateRange,
   clearDateRange,
-  uploadFile,
   deleteFile,
   toggleFileStar
 } = useFilePagination()
@@ -262,6 +267,9 @@ const {
   selectedFolder,
   loadRootFolders
 } = useFolderTree()
+
+const uploadStore = useUploadStore()
+const { tasks } = useFileUpload()
 
 const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
 const fileListRef = ref<InstanceType<typeof FileList> | null>(null)
@@ -410,26 +418,30 @@ const handleFileUpload = async (event: Event | FileList) => {
   const files = event instanceof Event ? (event.target as HTMLInputElement).files : event
   if (!files || files.length === 0) return
 
-  let successCount = 0
-  let failCount = 0
-
+  // 并发上传所有文件
+  const uploadPromises: Promise<void>[] = []
+  
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    const success = await uploadFile(file)
-    if (success) {
-      successCount++
-    } else {
-      failCount++
-    }
+    const uploadPromise = uploadFileChunked(file, selectedFolder.value?.id)
+      .then(() => {
+        // 上传成功，进度条会自动显示
+      })
+      .catch(error => {
+        console.error(`上传文件 ${file.name} 失败:`, error)
+        // 错误已经在 uploadStore 中处理
+      })
+    
+    uploadPromises.push(uploadPromise)
   }
 
-  if (successCount > 0) {
-    QMessage.success(`成功上传 ${successCount} 个文件`)
-  }
-  if (failCount > 0) {
-    QMessage.error(`${failCount} 个文件上传失败`)
-  }
-
+  // 等待所有上传完成
+  await Promise.all(uploadPromises)
+  
+  // 刷新文件列表
+  await refresh()
+  
+  // 清空文件输入
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
