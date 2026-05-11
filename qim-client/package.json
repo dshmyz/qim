@@ -99,6 +99,7 @@
     "electron-updater": "^6.8.3",
     "lunar-javascript": "^1.7.7",
     "marked": "^18.0.2",
+    "pdfjs-dist": "^5.7.284",
     "pinia": "^3.0.4",
     "spark-md5": "^3.0.2",
     "vue": "^3.4.0",

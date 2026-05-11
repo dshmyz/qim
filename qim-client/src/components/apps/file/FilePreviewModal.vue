@@ -48,6 +48,24 @@
               <p class="audio-filename">{{ file?.name }}</p>
             </div>
 
+            <!-- PDF 预览 -->
+            <div v-else-if="isPDF(file?.mime_type)" class="preview-wrapper pdf-preview-wrapper">
+              <PDFPreview
+                :url="previewUrl"
+                :filename="file?.name"
+                @error="handlePreviewError"
+              />
+            </div>
+
+            <!-- 文本预览 -->
+            <div v-else-if="isText(file?.mime_type, file?.name)" class="preview-wrapper text-preview-wrapper">
+              <TextPreview
+                :url="previewUrl"
+                :filename="file?.name"
+                @error="handlePreviewError"
+              />
+            </div>
+
             <!-- 不支持预览 -->
             <div v-else class="preview-wrapper unsupported-preview">
               <i :class="getFileIcon(file?.mime_type)" class="unsupported-icon"></i>
@@ -91,6 +109,8 @@
 import { computed, watch, ref } from 'vue'
 import { type FileItem } from '../../../api/file'
 import { API_BASE_URL } from '../../../config'
+import PDFPreview from './PDFPreview.vue'
+import TextPreview from './TextPreview.vue'
 
 interface Props {
   visible: boolean
@@ -152,6 +172,24 @@ function isVideo(mimeType?: string): boolean {
 
 function isAudio(mimeType?: string): boolean {
   return !!mimeType && mimeType.startsWith('audio/')
+}
+
+function isPDF(mimeType?: string): boolean {
+  return !!mimeType && mimeType === 'application/pdf'
+}
+
+function isText(mimeType?: string, filename?: string): boolean {
+  // 检查 MIME 类型
+  if (mimeType?.startsWith('text/')) return true
+
+  // 检查文件扩展名
+  if (filename) {
+    const ext = filename.split('.').pop()?.toLowerCase()
+    const textExtensions = ['txt', 'log', 'md', 'json', 'xml', 'csv', 'yml', 'yaml']
+    return textExtensions.includes(ext || '')
+  }
+
+  return false
 }
 
 // 获取对应的 FontAwesome 图标
@@ -302,6 +340,13 @@ function formatFileDate(dateString?: string): string {
   max-height: 60vh;
   object-fit: contain;
   border-radius: 8px;
+}
+
+.pdf-preview-wrapper,
+.text-preview-wrapper {
+  width: 100%;
+  height: 60vh;
+  min-height: 400px;
 }
 
 .audio-preview {
