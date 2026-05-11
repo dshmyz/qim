@@ -13,9 +13,7 @@
         <option value="all">所有消息（谨慎使用）</option>
         <option value="custom">自定义规则</option>
       </select>
-      <span class="setting-hint">
-        {{ triggerModeHint }}
-      </span>
+      <span class="setting-hint">{{ triggerModeHint }}</span>
     </div>
 
     <div v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'custom'" class="setting-item">

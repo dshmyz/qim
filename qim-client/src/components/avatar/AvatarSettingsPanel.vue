@@ -28,65 +28,61 @@
         </button>
       </div>
 
-      <transition name="fade" mode="out-in">
-        <div class="tab-content" :key="activeMainTab">
-          <!-- 普通设置 -->
-          <template v-if="activeMainTab === 'basic'">
-            <div class="settings-section">
-              <h3 class="section-title">基础配置</h3>
-              <AvatarBasicSettingsSimple
-                v-model="config"
-              />
-            </div>
+      <div class="tab-content">
+        <template v-if="activeMainTab === 'basic'">
+          <div class="settings-section">
+            <h3 class="section-title">基础配置</h3>
+            <AvatarBasicSettingsSimple
+              v-model="config"
+            />
+          </div>
 
-            <div class="settings-section">
-              <h3 class="section-title">知识来源</h3>
-              <AvatarKnowledgeSettings
-                v-model="config"
-              />
-            </div>
+          <div class="settings-section">
+            <h3 class="section-title">知识来源</h3>
+            <AvatarKnowledgeSettings
+              v-model="config"
+            />
+          </div>
 
-            <div class="settings-section">
-              <h3 class="section-title">记忆管理</h3>
-              <AvatarMemoryPanel
-                :user-id="userId"
-              />
-            </div>
-          </template>
+          <div class="settings-section">
+            <h3 class="section-title">记忆管理</h3>
+            <AvatarMemoryPanel
+              :user-id="userId"
+            />
+          </div>
+        </template>
 
-          <!-- 高级设置 -->
-          <template v-else-if="activeMainTab === 'advanced'">
-            <div class="settings-section">
-              <h3 class="section-title">模型配置</h3>
-              <AvatarModelSettings
-                v-model="config"
-                :model-configs="modelConfigs"
-              />
-            </div>
+        <template v-else-if="activeMainTab === 'advanced'">
+          <div class="settings-section">
+            <h3 class="section-title">模型配置</h3>
+            <AvatarModelSettings
+              v-model="config"
+              :model-configs="modelConfigs"
+            />
+          </div>
 
-            <div class="settings-section">
-              <h3 class="section-title">触发规则详细设置</h3>
-              <AvatarTriggerSettingsAdvanced
-                v-model="config"
-              />
-            </div>
+          <div class="settings-section">
+            <h3 class="section-title">触发规则详细设置</h3>
+            <AvatarTriggerSettingsAdvanced
+              v-model="config"
+            />
+          </div>
 
-            <div class="settings-section">
-              <h3 class="section-title">人设风格</h3>
-              <AvatarPersonaSettings
-                v-model="config"
-              />
-            </div>
+          <div class="settings-section">
+            <h3 class="section-title">人设风格</h3>
+            <AvatarPersonaSettings
+              v-model="config"
+            />
+          </div>
 
-            <div class="settings-section">
-              <h3 class="section-title">回复策略</h3>
-              <AvatarReplySettings
-                v-model="config"
-              />
-            </div>
-          </template>
-        </div>
-      </transition>
+          <div class="settings-section">
+            <h3 class="section-title">回复策略</h3>
+            <AvatarReplySettings
+              v-model="config"
+            />
+          </div>
+        </template>
+      </div>
 
       <div class="tab-footer">
         <button class="btn btn-danger" @click="handleDelete" v-if="config">
@@ -129,7 +125,7 @@ const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
 const activeMainTab = ref<'basic' | 'advanced'>('basic')
 const saving = ref(false)
 
-const mainTabs: Array<{ key: 'basic' | 'advanced'; label: string; icon: string }> = [
+const mainTabs = [
   { key: 'basic', label: '普通设置', icon: 'fas fa-cog' },
   { key: 'advanced', label: '高级设置', icon: 'fas fa-sliders-h' }
 ]
@@ -187,7 +183,6 @@ async function handleDelete() {
     await deleteConfig()
     window.$QMessage.success('分身已删除')
   } catch {
-    // 用户取消
   }
 }
 </script>
@@ -243,11 +238,12 @@ async function handleDelete() {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 12px 8px;
+  padding: 14px 12px;
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-secondary);
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
@@ -322,15 +318,5 @@ async function handleDelete() {
 
 .btn-danger:hover {
   background: #FFEBEE;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }
 </style>
