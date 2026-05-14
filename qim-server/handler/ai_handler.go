@@ -9,6 +9,7 @@ import (
 	"qim-server/di"
 	"qim-server/pkg/response"
 	"qim-server/service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
@@ -28,6 +29,7 @@ type AIHandler struct {
 	summaryGraph       *service.SummaryGraph
 	textProcessGraph   *service.TextProcessGraph
 	unifiedSearchGraph *service.UnifiedSearchGraph
+	smartDigestGraph   *service.SmartDigestGraph
 }
 
 // NewAIHandler 创建AI处理器
@@ -50,6 +52,10 @@ func (h *AIHandler) SetUnifiedSearchGraph(graph *service.UnifiedSearchGraph) {
 	h.unifiedSearchGraph = graph
 }
 
+func (h *AIHandler) SetSmartDigestGraph(graph *service.SmartDigestGraph) {
+	h.smartDigestGraph = graph
+}
+
 // RegisterRoutes 注册路由
 func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	aiGroup := router.Group("/ai")
@@ -69,6 +75,9 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		aiGroup.POST("/translate", h.TranslateText)
 		aiGroup.POST("/rewrite", h.RewriteText)
 		aiGroup.POST("/polish", h.PolishText)
+
+		// 新增: 智能消息速览
+		aiGroup.GET("/digest", h.GetDigest)
 
 		// 运维相关路由(已有)
 		aiGroup.POST("/ops/troubleshooting", h.IntelligentTroubleshooting)
@@ -121,6 +130,36 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 		"message": "success",
 		"data":    result,
 	})
+}
+
+// GetDigest 获取智能消息速览
+func (h *AIHandler) GetDigest(c *gin.Context) {
+	conversationIDStr := c.Query("conversation_id")
+	conversationID, _ := strconv.ParseUint(conversationIDStr, 10, 32)
+
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	if h.smartDigestGraph == nil {
+		response.BadRequest(c, "Digest 功能未启用")
+		return
+	}
+
+	input := &service.DigestInput{
+		UserID:         userID.(uint),
+		ConversationID: uint(conversationID),
+	}
+
+	result, err := h.smartDigestGraph.Execute(c.Request.Context(), input)
+	if err != nil {
+		response.InternalServerError(c, "生成摘要失败")
+		return
+	}
+
+	response.Success(c, result)
 }
 
 // KnowledgeGraphQueryRequest 知识图谱查询请求

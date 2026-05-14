@@ -113,6 +113,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		log.Printf("[DI] UnifiedSearchGraph 初始化成功")
 	}
 
+	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
+	if err := smartDigestGraph.Build(); err != nil {
+		log.Printf("[Routes] Failed to build SmartDigestGraph: %v", err)
+	} else {
+		aiHandler.SetSmartDigestGraph(smartDigestGraph)
+		log.Println("[Routes] SmartDigestGraph initialized successfully")
+	}
+
 	avatarService := service.NewAvatarService(GetDB(), aiSvc)
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 
