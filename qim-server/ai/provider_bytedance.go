@@ -29,6 +29,10 @@ func (p *BytedanceProvider) IsConfigured() bool {
 	return p.config.IsSet()
 }
 
+func (p *BytedanceProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	return nil, fmt.Errorf("Bytedance provider does not support native function calling, use prompt engineering instead")
+}
+
 func (p *BytedanceProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("Bytedance API key is not configured")

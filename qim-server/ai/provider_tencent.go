@@ -29,6 +29,10 @@ func (p *TencentProvider) IsConfigured() bool {
 	return p.config.IsDualKeySet()
 }
 
+func (p *TencentProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	return nil, fmt.Errorf("Tencent provider does not support native function calling, use prompt engineering instead")
+}
+
 func (p *TencentProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("Tencent Secret ID or Secret Key is not configured")

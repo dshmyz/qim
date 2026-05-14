@@ -56,6 +56,10 @@ func (p *BaiduProvider) getAccessToken() (string, error) {
 	return "", fmt.Errorf("failed to get Baidu access token")
 }
 
+func (p *BaiduProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	return nil, fmt.Errorf("Baidu provider does not support native function calling, use prompt engineering instead")
+}
+
 func (p *BaiduProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("Baidu API key or secret key is not configured")

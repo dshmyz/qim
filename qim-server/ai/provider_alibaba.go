@@ -29,6 +29,10 @@ func (p *AlibabaProvider) IsConfigured() bool {
 	return p.config.IsSet()
 }
 
+func (p *AlibabaProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	return nil, fmt.Errorf("Alibaba provider does not support native function calling, use prompt engineering instead")
+}
+
 func (p *AlibabaProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("Alibaba API key is not configured")
