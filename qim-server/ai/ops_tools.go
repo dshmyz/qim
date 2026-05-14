@@ -196,7 +196,13 @@ func (t *IntelligentTroubleshootingTool) generateSolutions(analysis string) []st
 }
 
 // CommandGenerationTool 命令生成工具
-type CommandGenerationTool struct{}
+type CommandGenerationTool struct {
+	aiService *AIService
+}
+
+func NewCommandGenerationTool(aiService *AIService) *CommandGenerationTool {
+	return &CommandGenerationTool{aiService: aiService}
+}
 
 func (t *CommandGenerationTool) Name() string {
 	return "command_generation"
@@ -244,7 +250,15 @@ func (t *CommandGenerationTool) Execute(params map[string]interface{}) (interfac
 		format = f
 	}
 
-	// 生成命令
+	if t.aiService != nil {
+		result, err := t.generateWithLLM(description, platform, format)
+		if err != nil {
+			log.Printf("[CommandGenerationTool] LLM generation failed, falling back to rule-based: %v", err)
+		} else {
+			return result, nil
+		}
+	}
+
 	command := t.generateCommand(description, platform, format)
 
 	return map[string]interface{}{
@@ -253,6 +267,59 @@ func (t *CommandGenerationTool) Execute(params map[string]interface{}) (interfac
 		"format":      format,
 		"command":     command,
 		"explanation": t.explainCommand(command),
+	}, nil
+}
+
+type commandGenerationResult struct {
+	Command      string   `json:"command"`
+	Explanation  string   `json:"explanation"`
+	Alternatives []string `json:"alternatives"`
+	Warnings     []string `json:"warnings"`
+}
+
+func (t *CommandGenerationTool) generateWithLLM(description, platform, format string) (interface{}, error) {
+	systemPrompt := `你是一个资深运维工程师，精通各种系统命令。请根据用户描述生成最合适的运维命令。
+
+严格按以下 JSON 格式输出，不要输出其他内容：
+{
+  "command": "主要命令（可直接执行）",
+  "explanation": "命令解释（说明命令的作用和参数）",
+  "alternatives": ["备选命令1", "备选命令2"],
+  "warnings": ["注意事项1", "注意事项2"]
+}
+
+要求：
+1. 命令必须准确、安全、高效
+2. 解释要清晰易懂
+3. 提供合理的备选方案
+4. 列出可能的风险和注意事项`
+
+	userPrompt := fmt.Sprintf("请生成命令：\n描述：%s\n平台：%s\n格式：%s", description, platform, format)
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := t.aiService.GetCompletion(messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM completion failed: %w", err)
+	}
+
+	var result commandGenerationResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+	}
+
+	return map[string]interface{}{
+		"description":   description,
+		"platform":      platform,
+		"format":        format,
+		"command":       result.Command,
+		"explanation":   result.Explanation,
+		"alternatives":  result.Alternatives,
+		"warnings":      result.Warnings,
+		"source":        "llm",
 	}, nil
 }
 
@@ -314,7 +381,13 @@ func (t *CommandGenerationTool) explainCommand(command string) string {
 }
 
 // LogAnalysisTool 日志分析工具
-type LogAnalysisTool struct{}
+type LogAnalysisTool struct {
+	aiService *AIService
+}
+
+func NewLogAnalysisTool(aiService *AIService) *LogAnalysisTool {
+	return &LogAnalysisTool{aiService: aiService}
+}
 
 func (t *LogAnalysisTool) Name() string {
 	return "log_analysis"
@@ -360,7 +433,15 @@ func (t *LogAnalysisTool) Execute(params map[string]interface{}) (interface{}, e
 		severity = sev
 	}
 
-	// 分析日志
+	if t.aiService != nil {
+		result, err := t.analyzeWithLLM(logContent, service, severity)
+		if err != nil {
+			log.Printf("[LogAnalysisTool] LLM analysis failed, falling back to rule-based: %v", err)
+		} else {
+			return result, nil
+		}
+	}
+
 	errorCount := t.countErrors(logContent)
 	warningCount := t.countWarnings(logContent)
 	patterns := t.extractPatterns(logContent)
@@ -373,6 +454,61 @@ func (t *LogAnalysisTool) Execute(params map[string]interface{}) (interface{}, e
 		"warning_count":   warningCount,
 		"patterns":        patterns,
 		"recommendations": recommendations,
+	}, nil
+}
+
+type logAnalysisResult struct {
+	Summary         string   `json:"summary"`
+	Anomalies       []string `json:"anomalies"`
+	Recommendations []string `json:"recommendations"`
+	ErrorCount      int      `json:"error_count"`
+	WarningCount    int      `json:"warning_count"`
+}
+
+func (t *LogAnalysisTool) analyzeWithLLM(logContent, service, severity string) (interface{}, error) {
+	systemPrompt := `你是一个资深运维工程师，精通日志分析。请分析提供的日志内容，识别问题并给出建议。
+
+严格按以下 JSON 格式输出，不要输出其他内容：
+{
+  "summary": "日志分析摘要（2-3句话概括主要发现）",
+  "anomalies": ["异常1", "异常2"],
+  "recommendations": ["建议1", "建议2"],
+  "error_count": 错误数量,
+  "warning_count": 警告数量
+}
+
+要求：
+1. 准确识别日志中的错误和警告
+2. 分析异常模式和根因
+3. 给出具体可操作的建议
+4. 统计要准确`
+
+	userPrompt := fmt.Sprintf("请分析日志：\n服务：%s\n严重程度：%s\n日志内容：\n%s", service, severity, logContent)
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := t.aiService.GetCompletion(messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM completion failed: %w", err)
+	}
+
+	var result logAnalysisResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+	}
+
+	return map[string]interface{}{
+		"service":         service,
+		"severity":        severity,
+		"summary":         result.Summary,
+		"anomalies":       result.Anomalies,
+		"recommendations": result.Recommendations,
+		"error_count":     result.ErrorCount,
+		"warning_count":   result.WarningCount,
+		"source":          "llm",
 	}, nil
 }
 
@@ -427,7 +563,13 @@ func (t *LogAnalysisTool) generateRecommendations(patterns []string) []string {
 }
 
 // IntelligentAlertTool 智能告警处理工具
-type IntelligentAlertTool struct{}
+type IntelligentAlertTool struct {
+	aiService *AIService
+}
+
+func NewIntelligentAlertTool(aiService *AIService) *IntelligentAlertTool {
+	return &IntelligentAlertTool{aiService: aiService}
+}
 
 func (t *IntelligentAlertTool) Name() string {
 	return "intelligent_alert"
@@ -473,7 +615,15 @@ func (t *IntelligentAlertTool) Execute(params map[string]interface{}) (interface
 		service = s
 	}
 
-	// 分析告警
+	if t.aiService != nil {
+		result, err := t.analyzeWithLLM(alertContent, severity, service)
+		if err != nil {
+			log.Printf("[IntelligentAlertTool] LLM analysis failed, falling back to rule-based: %v", err)
+		} else {
+			return result, nil
+		}
+	}
+
 	category := t.categorizeAlert(alertContent)
 	priority := t.calculatePriority(severity, category)
 	actions := t.generateActions(category, priority)
@@ -486,6 +636,62 @@ func (t *IntelligentAlertTool) Execute(params map[string]interface{}) (interface
 		"priority":      priority,
 		"actions":       actions,
 		"auto_resolve":  t.canAutoResolve(category),
+	}, nil
+}
+
+type alertAnalysisResult struct {
+	Severity    string   `json:"severity"`
+	Category    string   `json:"category"`
+	Action      string   `json:"action"`
+	RelatedLogs []string `json:"related_logs"`
+	Priority    string   `json:"priority"`
+}
+
+func (t *IntelligentAlertTool) analyzeWithLLM(alertContent, severity, service string) (interface{}, error) {
+	systemPrompt := `你是一个资深运维工程师，精通告警分析和处理。请分析告警内容，给出处理建议。
+
+严格按以下 JSON 格式输出，不要输出其他内容：
+{
+  "severity": "critical|high|medium|low",
+  "category": "告警分类（如：CPU使用过高、内存使用过高、磁盘空间不足、服务宕机、网络错误等）",
+  "action": "建议的处理动作",
+  "related_logs": ["相关日志文件路径1", "相关日志文件路径2"],
+  "priority": "高|中|低"
+}
+
+要求：
+1. 准确判断告警严重程度
+2. 正确分类告警类型
+3. 给出具体可执行的处理建议
+4. 列出需要检查的相关日志`
+
+	userPrompt := fmt.Sprintf("请分析告警：\n告警内容：%s\n原始级别：%s\n相关服务：%s", alertContent, severity, service)
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := t.aiService.GetCompletion(messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM completion failed: %w", err)
+	}
+
+	var result alertAnalysisResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+	}
+
+	return map[string]interface{}{
+		"alert_content": alertContent,
+		"severity":      result.Severity,
+		"service":       service,
+		"category":      result.Category,
+		"priority":      result.Priority,
+		"action":        result.Action,
+		"related_logs":  result.RelatedLogs,
+		"auto_resolve":  result.Severity == "low" || result.Severity == "medium",
+		"source":        "llm",
 	}, nil
 }
 
@@ -561,7 +767,13 @@ func (t *IntelligentAlertTool) canAutoResolve(category string) bool {
 }
 
 // OpsKnowledgeTool 运维知识问答工具
-type OpsKnowledgeTool struct{}
+type OpsKnowledgeTool struct {
+	aiService *AIService
+}
+
+func NewOpsKnowledgeTool(aiService *AIService) *OpsKnowledgeTool {
+	return &OpsKnowledgeTool{aiService: aiService}
+}
 
 func (t *OpsKnowledgeTool) Name() string {
 	return "ops_knowledge"
@@ -597,7 +809,15 @@ func (t *OpsKnowledgeTool) Execute(params map[string]interface{}) (interface{}, 
 		category = c
 	}
 
-	// 回答问题
+	if t.aiService != nil {
+		result, err := t.answerWithLLM(question, category)
+		if err != nil {
+			log.Printf("[OpsKnowledgeTool] LLM answer failed, falling back to rule-based: %v", err)
+		} else {
+			return result, nil
+		}
+	}
+
 	answer := t.answerQuestion(question, category)
 	references := t.getReferences(question, category)
 
@@ -607,6 +827,58 @@ func (t *OpsKnowledgeTool) Execute(params map[string]interface{}) (interface{}, 
 		"answer":      answer,
 		"references":  references,
 		"recommended": t.getRecommendedActions(question),
+	}, nil
+}
+
+type opsKnowledgeResult struct {
+	Answer        string   `json:"answer"`
+	References    []string `json:"references"`
+	RelatedTopics []string `json:"related_topics"`
+	Commands      []string `json:"commands"`
+}
+
+func (t *OpsKnowledgeTool) answerWithLLM(question, category string) (interface{}, error) {
+	systemPrompt := `你是一个资深运维工程师，有丰富的运维经验和知识。请回答用户的运维相关问题。
+
+严格按以下 JSON 格式输出，不要输出其他内容：
+{
+  "answer": "详细回答（包含原理说明和操作步骤）",
+  "references": ["参考资料1", "参考资料2"],
+  "related_topics": ["相关主题1", "相关主题2"],
+  "commands": ["相关命令1", "相关命令2"]
+}
+
+要求：
+1. 回答要专业、准确、详细
+2. 提供实际可操作的命令或步骤
+3. 列出相关的参考资料
+4. 提供相关主题供用户深入学习`
+
+	userPrompt := fmt.Sprintf("请回答运维问题：\n问题：%s\n类别：%s", question, category)
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := t.aiService.GetCompletion(messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM completion failed: %w", err)
+	}
+
+	var result opsKnowledgeResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+	}
+
+	return map[string]interface{}{
+		"question":       question,
+		"category":       category,
+		"answer":         result.Answer,
+		"references":     result.References,
+		"related_topics": result.RelatedTopics,
+		"commands":       result.Commands,
+		"source":         "llm",
 	}, nil
 }
 
