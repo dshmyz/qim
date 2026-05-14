@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,8 +51,8 @@ func (p *AnthropicProvider) Chat(messages []Message) (string, error) {
 			"",
 			reqBody,
 			map[string]string{
-				"x-api-key":           p.config.APIKey,
-				"anthropic-version":   "2023-06-01",
+				"x-api-key":         p.config.APIKey,
+				"anthropic-version": "2023-06-01",
 			},
 		)
 		return req, err
@@ -83,4 +85,83 @@ func (p *AnthropicProvider) ChatStream(messages []Message, onChunk func(chunk St
 // Embedding 将文本转换为向量（Anthropic 目前不直接支持 Embedding，使用 OpenAI 兼容方式）
 func (p *AnthropicProvider) Embedding(text string) ([]float32, error) {
 	return nil, fmt.Errorf("Anthropic provider does not support Embedding API")
+}
+
+// ChatWithTools 带 function calling 的聊天
+func (p *AnthropicProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	if !p.IsConfigured() {
+		return nil, fmt.Errorf("Anthropic provider not configured")
+	}
+
+	log.Printf("[Anthropic] Making ChatWithTools request with model: %s, tools: %d", p.config.Model, len(tools))
+
+	anthropicMessages := make([]map[string]interface{}, len(messages))
+	for i, m := range messages {
+		anthropicMessages[i] = map[string]interface{}{
+			"role":    m.Role,
+			"content": m.Content,
+		}
+	}
+
+	req := map[string]interface{}{
+		"model":      p.config.Model,
+		"messages":   anthropicMessages,
+		"max_tokens": 4096,
+	}
+
+	if len(tools) > 0 {
+		anthropicTools := make([]map[string]interface{}, len(tools))
+		for i, t := range tools {
+			anthropicTools[i] = map[string]interface{}{
+				"name":         t.Name,
+				"description":  t.Description,
+				"input_schema": t.Parameters,
+			}
+		}
+		req["tools"] = anthropicTools
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequest("POST", p.config.BaseURL+"/messages", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", p.config.APIKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Content []struct {
+			Type  string                 `json:"type"`
+			Text  string                 `json:"text"`
+			Name  string                 `json:"name"`
+			Input map[string]interface{} `json:"input"`
+			ID    string                 `json:"id"`
+		} `json:"content"`
+		StopReason string `json:"stop_reason"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	chatResp := &ChatResponse{}
+	for _, c := range result.Content {
+		if c.Type == "text" {
+			chatResp.Content += c.Text
+		} else if c.Type == "tool_use" {
+			if chatResp.ToolCalls == nil {
+				chatResp.ToolCalls = []ToolCall{}
+			}
+			chatResp.ToolCalls = append(chatResp.ToolCalls, ToolCall{
+				ID:        c.ID,
+				Name:      c.Name,
+				Arguments: c.Input,
+			})
+		}
+	}
+
+	return chatResp, nil
 }
