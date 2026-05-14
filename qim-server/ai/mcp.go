@@ -28,19 +28,21 @@ type CallerContext struct {
 
 // MCPServer MCP服务器
 type MCPServer struct {
-	tools    map[string]MCPTool
-	tokens   map[string]string
-	mu       sync.RWMutex
-	server   *http.Server
-	authoriz bool
+	tools      map[string]MCPTool
+	enabledTools map[string]bool // 工具启用状态
+	tokens     map[string]string
+	mu         sync.RWMutex
+	server     *http.Server
+	authoriz   bool
 }
 
 // NewMCPServer 创建MCP服务器
 func NewMCPServer(authoriz bool) *MCPServer {
 	server := &MCPServer{
-		tools:    make(map[string]MCPTool),
-		tokens:   make(map[string]string),
-		authoriz: authoriz,
+		tools:      make(map[string]MCPTool),
+		enabledTools: make(map[string]bool),
+		tokens:     make(map[string]string),
+		authoriz:   authoriz,
 	}
 
 	server.RegisterTool(&ServerMonitorTool{})
@@ -56,6 +58,7 @@ func (s *MCPServer) RegisterTool(tool MCPTool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tools[tool.Name()] = tool
+	s.enabledTools[tool.Name()] = true // 默认启用
 	log.Printf("Registered tool: %s", tool.Name())
 }
 
@@ -74,14 +77,51 @@ func (s *MCPServer) ListTools() []map[string]interface{} {
 
 	tools := make([]map[string]interface{}, 0, len(s.tools))
 	for name, tool := range s.tools {
+		enabled := true
+		if e, ok := s.enabledTools[name]; ok {
+			enabled = e
+		}
 		tools = append(tools, map[string]interface{}{
 			"name":        name,
 			"description": tool.Description(),
 			"parameters":  tool.Parameters(),
+			"enabled":     enabled,
 		})
 	}
 
 	return tools
+}
+
+// EnableTool 启用工具
+func (s *MCPServer) EnableTool(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tools[name]; !ok {
+		return fmt.Errorf("tool not found: %s", name)
+	}
+	s.enabledTools[name] = true
+	return nil
+}
+
+// DisableTool 禁用工具
+func (s *MCPServer) DisableTool(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tools[name]; !ok {
+		return fmt.Errorf("tool not found: %s", name)
+	}
+	s.enabledTools[name] = false
+	return nil
+}
+
+// IsToolEnabled 检查工具是否启用
+func (s *MCPServer) IsToolEnabled(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if e, ok := s.enabledTools[name]; ok {
+		return e
+	}
+	return true // 默认启用
 }
 
 // ExecuteTool 执行工具
@@ -189,7 +229,17 @@ func (t *ServerMonitorTool) Execute(params map[string]interface{}) (interface{},
 	if p, ok := params["port"].(float64); ok {
 		port = int(p)
 	}
-	return map[string]interface{}{"ip": ip, "port": port, "status": "online", "message": "服务器状态正常"}, nil
+
+	// TODO: 这是示例工具，实际部署时需要接入真实的服务器监控 API
+	// 例如：SSH 连接、Prometheus API、云厂商 API 等
+	log.Printf("[MCP] ServerMonitorTool called with ip=%s, port=%d (demo mode)", ip, port)
+
+	return map[string]interface{}{
+		"ip":      ip,
+		"port":    port,
+		"status":  "demo",
+		"message": "这是示例工具，未接入真实监控系统",
+	}, nil
 }
 
 // LogAnalyzerTool 日志分析工具
@@ -213,7 +263,17 @@ func (t *LogAnalyzerTool) Execute(params map[string]interface{}) (interface{}, e
 	if l, ok := params["lines"].(float64); ok {
 		lines = int(l)
 	}
-	return map[string]interface{}{"path": path, "pattern": pattern, "lines": lines, "content": "[2024-01-01 12:00:00] INFO: Server started"}, nil
+
+	// TODO: 这是示例工具，实际部署时需要接入真实的日志分析系统
+	// 例如：ELK Stack、Loki、本地文件系统读取等
+	log.Printf("[MCP] LogAnalyzerTool called with path=%s, pattern=%s (demo mode)", path, pattern)
+
+	return map[string]interface{}{
+		"path":    path,
+		"pattern": pattern,
+		"lines":   lines,
+		"content": "[demo] 这是示例日志内容，未接入真实日志系统",
+	}, nil
 }
 
 // ProcessManagerTool 进程管理工具
@@ -237,7 +297,18 @@ func (t *ProcessManagerTool) Execute(params map[string]interface{}) (interface{}
 	if host == "" {
 		host = "localhost"
 	}
-	return map[string]interface{}{"action": action, "service": service, "host": host, "status": "success", "message": fmt.Sprintf("%s service %s", action, service)}, nil
+
+	// TODO: 这是示例工具，实际部署时需要接入真实的进程管理系统
+	// 例如：systemd、supervisord、Docker API、Kubernetes API 等
+	log.Printf("[MCP] ProcessManagerTool called with action=%s, service=%s, host=%s (demo mode)", action, service, host)
+
+	return map[string]interface{}{
+		"action":  action,
+		"service": service,
+		"host":    host,
+		"status":  "demo",
+		"message": "这是示例工具，未接入真实进程管理系统",
+	}, nil
 }
 
 // NetworkTools 网络工具
@@ -257,5 +328,15 @@ func (t *NetworkTools) Parameters() map[string]interface{} {
 func (t *NetworkTools) Execute(params map[string]interface{}) (interface{}, error) {
 	tool, _ := params["tool"].(string)
 	target, _ := params["target"].(string)
-	return map[string]interface{}{"tool": tool, "target": target, "result": "Success", "output": fmt.Sprintf("%s %s completed successfully", tool, target)}, nil
+
+	// TODO: 这是示例工具，实际部署时需要接入真实的网络诊断工具
+	// 例如：执行 ping、traceroute、dig 命令或调用相应 API
+	log.Printf("[MCP] NetworkTools called with tool=%s, target=%s (demo mode)", tool, target)
+
+	return map[string]interface{}{
+		"tool":    tool,
+		"target":  target,
+		"result":  "demo",
+		"output":  "这是示例工具，未接入真实网络诊断系统",
+	}, nil
 }
