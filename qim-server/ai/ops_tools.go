@@ -1,7 +1,9 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -14,7 +16,13 @@ type OpsTool interface {
 }
 
 // IntelligentTroubleshootingTool 智能故障排查工具
-type IntelligentTroubleshootingTool struct{}
+type IntelligentTroubleshootingTool struct {
+	aiService *AIService
+}
+
+func NewIntelligentTroubleshootingTool(aiService *AIService) *IntelligentTroubleshootingTool {
+	return &IntelligentTroubleshootingTool{aiService: aiService}
+}
 
 func (t *IntelligentTroubleshootingTool) Name() string {
 	return "intelligent_troubleshooting"
@@ -60,7 +68,15 @@ func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}) 
 		logs = l
 	}
 
-	// 智能故障分析逻辑
+	if t.aiService != nil {
+		result, err := t.analyzeWithLLM(symptom, server, logs)
+		if err != nil {
+			log.Printf("[IntelligentTroubleshootingTool] LLM analysis failed, falling back to rule-based: %v", err)
+		} else {
+			return result, nil
+		}
+	}
+
 	analysis := t.analyzeSymptom(symptom, logs)
 	solutions := t.generateSolutions(analysis)
 
@@ -70,6 +86,62 @@ func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}) 
 		"analysis":   analysis,
 		"solutions":  solutions,
 		"recommended": solutions[0],
+	}, nil
+}
+
+type troubleshootingResult struct {
+	Analysis       string   `json:"analysis"`
+	PossibleCauses []string `json:"possible_causes"`
+	Solutions      []string `json:"solutions"`
+	Commands       []string `json:"commands"`
+	Urgency        string   `json:"urgency"`
+}
+
+func (t *IntelligentTroubleshootingTool) analyzeWithLLM(symptom, server, logs string) (interface{}, error) {
+	systemPrompt := `你是一个资深运维工程师，有丰富的故障排查经验。请分析用户描述的故障症状和相关日志，给出专业的诊断和解决方案。
+
+严格按以下 JSON 格式输出，不要输出其他内容：
+{
+  "analysis": "故障根因分析（2-3句话，基于真实运维经验）",
+  "possible_causes": ["可能原因1", "可能原因2"],
+  "solutions": ["具体解决方案1（包含可执行命令）", "具体解决方案2"],
+  "commands": ["可直接执行的命令1", "可直接执行的命令2"],
+  "urgency": "critical|high|medium|low"
+}`
+
+	userPrompt := fmt.Sprintf("故障症状：%s\n", symptom)
+	if server != "" {
+		userPrompt += fmt.Sprintf("服务器信息：%s\n", server)
+	}
+	if logs != "" {
+		userPrompt += fmt.Sprintf("相关日志：\n%s\n", logs)
+	}
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := t.aiService.GetCompletion(messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM completion failed: %w", err)
+	}
+
+	var result troubleshootingResult
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+	}
+
+	return map[string]interface{}{
+		"symptom":        symptom,
+		"server":         server,
+		"analysis":       result.Analysis,
+		"possible_causes": result.PossibleCauses,
+		"solutions":      result.Solutions,
+		"commands":       result.Commands,
+		"urgency":        result.Urgency,
+		"recommended":    result.Solutions[0],
+		"source":         "llm",
 	}, nil
 }
 
