@@ -133,6 +133,24 @@ func GetAllApps(c *gin.Context) {
 	})
 }
 
+// GetBuiltInApps 获取内置应用列表
+func GetBuiltInApps(c *gin.Context) {
+	appSvc := di.GlobalContainer.AppService
+
+	userID, _ := c.Get("user_id")
+
+	result, err := appSvc.GetBuiltInAppsForUser(userID.(uint))
+	if err != nil {
+		response.InternalServerError(c, "获取内置应用列表失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": result,
+	})
+}
+
 func CreateApp(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
@@ -144,6 +162,10 @@ func CreateApp(c *gin.Context) {
 		Status   string `json:"status"`
 		OpenType string `json:"open_type"`
 		IsGlobal bool   `json:"is_global"`
+		// 权限范围控制字段（需要管理员权限）
+		ScopeType       string `json:"scope_type"`
+		ScopeValue      string `json:"scope_value"`
+		AvailableOrgIDs string `json:"available_org_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -200,6 +222,10 @@ func UpdateApp(c *gin.Context) {
 		Status   string `json:"status"`
 		OpenType string `json:"open_type"`
 		IsGlobal bool   `json:"is_global"`
+		// 权限范围控制字段（需要管理员权限）
+		ScopeType       string `json:"scope_type"`
+		ScopeValue      string `json:"scope_value"`
+		AvailableOrgIDs string `json:"available_org_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -258,6 +284,23 @@ func UpdateApp(c *gin.Context) {
 		app.OpenType = req.OpenType
 	}
 	app.IsGlobal = req.IsGlobal
+
+	// 如果请求修改权限范围字段，需要检查管理员权限
+	if req.ScopeType != "" || req.ScopeValue != "" || req.AvailableOrgIDs != "" {
+		roles, exists := c.Get("roles")
+		if !exists {
+			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
+			return
+		}
+		roleList, ok := roles.([]string)
+		if !ok || !containsRole(roleList, "system_admin") {
+			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
+			return
+		}
+		app.ScopeType = req.ScopeType
+		app.ScopeValue = req.ScopeValue
+		app.AvailableOrgIDs = req.AvailableOrgIDs
+	}
 
 	appSvc.UpdateApp(app)
 

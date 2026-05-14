@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,18 +44,64 @@ func UploadFile(c *gin.Context) {
 
 	ext := filepath.Ext(file.Filename)
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
-	var storagePath string
 
 	if cfg.Storage.Type == "s3" {
-		storagePath = "/s3/" + filename
+		s3Svc := di.GlobalContainer.S3Service
+		if s3Svc == nil {
+			response.InternalServerError(c, "S3服务未初始化")
+			return
+		}
+
+		fileData, err := file.Open()
+		if err != nil {
+			response.InternalServerError(c, "读取文件失败")
+			return
+		}
+		defer fileData.Close()
+
+		fileBytes := make([]byte, file.Size)
+		_, err = fileData.Read(fileBytes)
+		if err != nil {
+			response.InternalServerError(c, "读取文件内容失败")
+			return
+		}
+
+		s3Key := "uploads/" + filename
+		mimeType := file.Header.Get("Content-Type")
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		if err := s3Svc.UploadFile(ctx, s3Key, fileBytes, mimeType); err != nil {
+			response.InternalServerError(c, "上传文件到S3失败")
+			return
+		}
+
+		svc := di.GlobalContainer.FileService
+		fileRecord := model.File{
+			Name:         file.Filename,
+			OriginalName: file.Filename,
+			StoragePath:  "/s3/" + s3Key,
+			Size:         file.Size,
+			MimeType:     mimeType,
+			UserID:       userID.(uint),
+			Source:       source,
+			CreatedAt:    time.Now(),
+		}
+		if err := svc.CreateFile(&fileRecord); err != nil {
+			response.InternalServerError(c, "创建文件记录失败")
+			return
+		}
+
+		invalidateFileStatsCache(userID.(uint))
+
 		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "S3存储功能暂未实现",
+			"code": 0,
 			"data": gin.H{
-				"id":   0,
-				"url":  storagePath,
-				"name": file.Filename,
-				"size": file.Size,
+				"id":   fileRecord.ID,
+				"url":  fileRecord.StoragePath,
+				"name": fileRecord.Name,
+				"size": fileRecord.Size,
 			},
 		})
 		return
@@ -643,11 +690,26 @@ func DownloadFile(c *gin.Context) {
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "S3存储文件下载功能暂未实现",
-			"data":    gin.H{"file_id": file.ID},
-		})
+		s3Svc := di.GlobalContainer.S3Service
+		if s3Svc == nil {
+			response.InternalServerError(c, "S3服务未初始化")
+			return
+		}
+
+		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		fileData, err := s3Svc.DownloadFile(ctx, s3Key)
+		if err != nil {
+			response.InternalServerError(c, "从S3下载文件失败")
+			return
+		}
+
+		c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+		c.Header("Content-Type", file.MimeType)
+		c.Data(http.StatusOK, file.MimeType, fileData)
 		return
 	} else {
 		filePath := "." + file.StoragePath
@@ -658,6 +720,65 @@ func DownloadFile(c *gin.Context) {
 		}
 
 		c.FileAttachment(filePath, file.Name)
+	}
+}
+
+func PreviewFile(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	fileIDStr := c.Param("id")
+
+	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的文件ID")
+		return
+	}
+
+	svc := di.GlobalContainer.FileService
+	file, err := svc.GetFile(userID.(uint), uint(fileID))
+	if err != nil {
+		response.NotFound(c, "文件不存在")
+		return
+	}
+
+	thumbnail := c.Query("thumbnail") == "true"
+
+	if strings.HasPrefix(file.StoragePath, "/s3/") {
+		s3Svc := di.GlobalContainer.S3Service
+		if s3Svc == nil {
+			response.InternalServerError(c, "S3服务未初始化")
+			return
+		}
+
+		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		fileData, err := s3Svc.DownloadFile(ctx, s3Key)
+		if err != nil {
+			response.InternalServerError(c, "从S3下载文件失败")
+			return
+		}
+
+		c.Header("Content-Type", file.MimeType)
+		if !thumbnail {
+			c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
+		}
+		c.Data(http.StatusOK, file.MimeType, fileData)
+		return
+	} else {
+		filePath := "." + file.StoragePath
+
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			response.NotFound(c, "文件不存在")
+			return
+		}
+
+		if !thumbnail {
+			c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
+		}
+		c.Header("Content-Type", file.MimeType)
+		c.File(filePath)
 	}
 }
 
@@ -679,14 +800,30 @@ func DeleteFile(c *gin.Context) {
 	}
 
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
+		s3Svc := di.GlobalContainer.S3Service
+		if s3Svc == nil {
+			response.InternalServerError(c, "S3服务未初始化")
+			return
+		}
+
+		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		if err := s3Svc.DeleteFile(ctx, s3Key); err != nil {
+			response.InternalServerError(c, "删除S3文件失败")
+			return
+		}
+		
 		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-			response.InternalServerError(c, "删除文件失败")
+			response.InternalServerError(c, "删除文件记录失败")
 			return
 		}
 		invalidateFileStatsCache(userID.(uint))
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
-			"message": "S3存储文件删除功能暂未完全实现，仅删除了文件记录",
+			"message": "删除文件成功",
 		})
 		return
 	} else {

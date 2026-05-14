@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -47,6 +48,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.RegisterAdminTools(mcpServer)
 
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
+	var uk *service.UnifiedKnowledgeService
 	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
 		service.NewUnifiedMCPBridge(mcpServer, vectorSvc.GetDB())
 
@@ -55,16 +57,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				return nil
 			},
 		}
-		uk := service.NewUnifiedKnowledgeService(groupDocSvc, fallback)
+		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback)
 		uk.SetGraphEnhanced(true)
-		handler.SetUnifiedKnowledge(uk)
-
-		if avatarMemorySvc := di.GlobalContainer.AvatarMemoryService; avatarMemorySvc != nil {
-			handler.SetMemoryService(avatarMemorySvc)
-		}
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)
+
+	// 设置依赖（在 InitSmartReplyEngine 之后）
+	if uk != nil {
+		handler.SetUnifiedKnowledge(uk)
+	}
+	if avatarMemorySvc := di.GlobalContainer.AvatarMemoryService; avatarMemorySvc != nil {
+		handler.SetMemoryService(avatarMemorySvc)
+	}
+
+	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
+	if err := handler.InitSmartReplyGraph(); err != nil {
+		log.Printf("[警告] 初始化 SmartReplyGraph 失败，将使用旧方法: %v", err)
+	}
 
 	handler.InitAnomalyDetector()
 
@@ -74,6 +84,34 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}()
 
 	aiHandler := handler.NewAIHandler(aiSvc, mcpServer)
+
+	aiCache := service.NewAICache()
+
+	summaryGraph := service.NewSummaryGraph(aiSvc, aiCache)
+	if err := summaryGraph.Build(); err != nil {
+		log.Printf("[警告] 初始化 SummaryGraph 失败: %v", err)
+	} else {
+		aiHandler.SetSummaryGraph(summaryGraph)
+		log.Printf("[DI] SummaryGraph 初始化成功")
+	}
+
+	textProcessGraph := service.NewTextProcessGraph(aiSvc, aiCache)
+	if err := textProcessGraph.Build(); err != nil {
+		log.Printf("[警告] 初始化 TextProcessGraph 失败: %v", err)
+	} else {
+		aiHandler.SetTextProcessGraph(textProcessGraph)
+		log.Printf("[DI] TextProcessGraph 初始化成功")
+	}
+
+	noteVectorSvc := di.GlobalContainer.NoteVectorService
+	avatarMemorySvc := di.GlobalContainer.AvatarMemoryService
+	unifiedSearchGraph := service.NewUnifiedSearchGraph(aiSvc, noteVectorSvc, groupDocSvc, avatarMemorySvc)
+	if err := unifiedSearchGraph.Build(); err != nil {
+		log.Printf("[警告] 初始化 UnifiedSearchGraph 失败: %v", err)
+	} else {
+		aiHandler.SetUnifiedSearchGraph(unifiedSearchGraph)
+		log.Printf("[DI] UnifiedSearchGraph 初始化成功")
+	}
 
 	avatarService := service.NewAvatarService(GetDB(), aiSvc)
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
@@ -262,6 +300,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/files/:id", handler.UpdateFile)
 			authed.PUT("/files/:id/star", handler.ToggleStar)
 			authed.GET("/files/:id/download", handler.DownloadFile)
+			authed.GET("/files/:id/preview", handler.PreviewFile)
 			authed.DELETE("/files/:id", handler.DeleteFile)
 
 			// 分片上传
@@ -280,6 +319,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/notes/:id/export", handler.ExportNote)
 			authed.PATCH("/notes/:id/tags", handler.UpdateNoteTags)
 			authed.PATCH("/notes/:id/summary", handler.UpdateNoteSummary)
+			authed.POST("/notes/search", handler.NoteVectorSearch)
 
 			// 文件夹管理
 			authed.POST("/folders", handler.CreateFolder)
@@ -330,6 +370,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 应用管理
 			authed.GET("/apps", handler.GetApps)
 			authed.GET("/apps/all", handler.GetAllApps)
+			authed.GET("/apps/built-in", handler.GetBuiltInApps)
 			authed.POST("/apps", handler.CreateApp)
 			authed.PUT("/apps/:id", handler.UpdateApp)
 			authed.DELETE("/apps/:id", handler.DeleteApp)
@@ -479,6 +520,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)
+
+			// 向量数据库管理（管理员）
+			admin.GET("/vector/collections", handler.AdminListVectorCollections)
+			admin.GET("/vector/collections/:name", handler.AdminGetVectorCollectionData)
 		}
 	}
 

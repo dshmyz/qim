@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"qim-server/ai"
 	"qim-server/pkg/response"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -38,6 +39,38 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 
 	if !h.aiService.IsConfigured() {
 		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	if h.textProcessGraph != nil {
+		sourceLang := req.SourceLang
+		if sourceLang == "" || sourceLang == "auto" {
+			sourceLang = "自动检测"
+		}
+
+		input := &service.TextProcessInput{
+			Intent:     service.TextProcessTranslate,
+			Text:       req.Text,
+			TargetLang: req.TargetLang,
+			SourceLang: sourceLang,
+		}
+
+		ctx := c.Request.Context()
+		result, err := h.textProcessGraph.Execute(ctx, input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"translated_text": result.Result,
+				"source_lang":     sourceLang,
+				"target_lang":     req.TargetLang,
+			},
+		})
 		return
 	}
 
@@ -85,6 +118,40 @@ func (h *AIHandler) RewriteText(c *gin.Context) {
 		return
 	}
 
+	if h.textProcessGraph != nil {
+		style := req.Style
+		if style == "" {
+			style = "简洁"
+		}
+		tone := req.Tone
+		if tone == "" {
+			tone = "专业"
+		}
+
+		input := &service.TextProcessInput{
+			Intent: service.TextProcessRewrite,
+			Text:   req.Text,
+			Style:  style,
+			Tone:   tone,
+		}
+
+		ctx := c.Request.Context()
+		result, err := h.textProcessGraph.Execute(ctx, input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"rewritten_text": result.Result,
+			},
+		})
+		return
+	}
+
 	style := req.Style
 	if style == "" {
 		style = "简洁"
@@ -128,6 +195,35 @@ func (h *AIHandler) PolishText(c *gin.Context) {
 
 	if !h.aiService.IsConfigured() {
 		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	if h.textProcessGraph != nil {
+		lang := req.Language
+		if lang == "" {
+			lang = "中文"
+		}
+
+		input := &service.TextProcessInput{
+			Intent:   service.TextProcessPolish,
+			Text:     req.Text,
+			Language: lang,
+		}
+
+		ctx := c.Request.Context()
+		result, err := h.textProcessGraph.Execute(ctx, input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"polished_text": result.Result,
+			},
+		})
 		return
 	}
 

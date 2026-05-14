@@ -20,9 +20,9 @@ type MessageSender interface {
 }
 
 type WebSocketMessageSender struct {
-	db        *gorm.DB
-	hub       *ws.Hub
-	userSvc   *service.UserService
+	db      *gorm.DB
+	hub     *ws.Hub
+	userSvc *service.UserService
 }
 
 func NewWebSocketMessageSender(hub *ws.Hub, userSvc *service.UserService) *WebSocketMessageSender {
@@ -128,11 +128,12 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 				"id":                aiMessage.ID,
 				"conversation_id":   conversationID,
 				"sender_id":         senderID,
-				"type":              "text",
+				"type":              "markdown",
 				"content":           accumulatedContent,
 				"is_ai_message":     true,
 				"ai_assistant_name": assistantName,
 				"is_streaming":      true,
+				"is_avatar_reply":   aiMessage.IsAvatarReply,
 				"created_at":        aiMessage.CreatedAt,
 				"sender":            aiSender,
 			}
@@ -151,6 +152,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 
 	finish := func() error {
 		aiMessage.Content = accumulatedContent
+		aiMessage.Type = "markdown" // 流式完成后设置为 markdown 类型
 		if err := s.db.Save(&aiMessage).Error; err != nil {
 			log.Printf("[MessageSender] 完成流式消息失败: %v", err)
 			return err
@@ -262,6 +264,7 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 			"content":           content,
 			"is_ai_message":     true,
 			"ai_assistant_name": assistantName,
+			"is_avatar_reply":   aiMessage.IsAvatarReply,
 			"created_at":        aiMessage.CreatedAt,
 		}
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -20,9 +21,12 @@ type SmartReplyEngine struct {
 	aiService        *ai.AIService
 	intentDetector   *ai.IntentDetector
 	knowledgeSvc     *KnowledgeService
+	unifiedKnowledge *service.UnifiedKnowledgeService
+	memorySvc        *service.AvatarMemoryService
 	promptBuilder    *SmartPromptBuilder
 	messageSender    *WebSocketMessageSender
 	avatarWorkerPool *service.AvatarWorkerPool
+	smartReplyGraph  *service.SmartReplyGraph
 }
 
 // NewSmartReplyEngine 创建智能回复引擎
@@ -37,13 +41,44 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 	}
 }
 
+// SetUnifiedKnowledge 设置统一知识检索服务（向量库+MySQL兜底）
+func (e *SmartReplyEngine) SetUnifiedKnowledge(uk *service.UnifiedKnowledgeService) {
+	e.unifiedKnowledge = uk
+}
+
 // SetAvatarWorkerPool 设置分身工作池
 func (e *SmartReplyEngine) SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
 	e.avatarWorkerPool = pool
 }
 
+// SetMemoryService sets the avatar memory service for the smart reply engine
+func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
+	e.memorySvc = ms
+}
+
+func (e *SmartReplyEngine) InitSmartReplyGraph() error {
+	log.Printf("[SmartReplyGraph] 创建 SmartReplyGraph 实例...")
+	e.smartReplyGraph = service.NewSmartReplyGraph(
+		e.aiService,
+		database.GetDB(),
+		e.unifiedKnowledge,
+		e.knowledgeSvc,
+		e.memorySvc,
+		di.GlobalContainer.UserService,
+	)
+
+	log.Printf("[SmartReplyGraph] 开始编译 Graph...")
+	err := e.smartReplyGraph.BuildGraph()
+	if err != nil {
+		log.Printf("[SmartReplyGraph] BuildGraph 失败: %v", err)
+	} else {
+		log.Printf("[SmartReplyGraph] BuildGraph 成功")
+	}
+	return err
+}
+
 // HandleMessage 处理消息并决定是否需要智能回复
-func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string) {
+func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string, mentionUserIDs []uint) {
 	if e.aiService == nil || !e.aiService.IsConfigured() {
 		return
 	}
@@ -56,7 +91,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 	}
 
 	if e.avatarWorkerPool != nil {
-		e.checkAvatarTriggers(userID, &conv, content)
+		e.checkAvatarTriggers(userID, &conv, content, mentionUserIDs)
 	}
 
 	if conv.Type == "bot" {
@@ -112,7 +147,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 		if e.isAIMention(content, assistantName) {
 			question := extractAIQuestion(content, assistantName)
-			e.handleAIMention(userID, conversationID, question, &conv, assistantName)
+			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName)
 			return
 		}
 
@@ -144,6 +179,42 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 // generateAndSendReply 生成并发送智能回复
 func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
+	if e.smartReplyGraph != nil {
+		e.generateAndSendReplyWithGraph(userID, conversationID, userContent, intent)
+		return
+	}
+	e.generateAndSendReplyLegacy(userID, conversationID, userContent, intent)
+}
+
+func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
+	ctx := context.Background()
+	input := &service.SmartReplyContext{
+		Message:         userContent,
+		OriginalContent: userContent,
+		UserID:          userID,
+		ConversationID:  conversationID,
+		Intent:          intent,
+		IsAIMention:     false,
+	}
+
+	result, err := e.smartReplyGraph.Execute(ctx, input)
+	if err != nil {
+		log.Printf("[SmartReplyGraph] AI 回复生成失败: %v", err)
+		return
+	}
+
+	log.Printf("[SmartReplyGraph] 生成回复长度: %d 字符", len(result.Reply))
+
+	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手")
+	if err != nil {
+		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		return
+	}
+
+	log.Printf("[SmartReplyGraph] 已发送智能回复到会话 %d", conversationID)
+}
+
+func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
 	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)
 	if ctx == nil {
 		log.Printf("[SmartReply] 构建提示词上下文失败")
@@ -152,10 +223,27 @@ func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint
 
 	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
 
-	if e.knowledgeSvc != nil {
+	if e.unifiedKnowledge != nil && ctx.Group != nil {
+		knowledgeCtx := e.unifiedKnowledge.BuildContext(userContent, ctx.Group.ID)
+		if knowledgeCtx != "" {
+			systemPrompt += "\n\n" + knowledgeCtx
+		}
+	} else if e.knowledgeSvc != nil {
 		knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(userContent)
 		if knowledgeCtx != "" {
 			systemPrompt += "\n\n" + knowledgeCtx
+		}
+	}
+
+	if e.memorySvc != nil {
+		memoryResults, err := e.memorySvc.Recall(userID, userContent, 2)
+		if err == nil && len(memoryResults) > 0 {
+			var parts []string
+			for _, r := range memoryResults {
+				parts = append(parts, r.Content)
+			}
+			memoryCtx := "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+			systemPrompt += "\n\n" + memoryCtx
 		}
 	}
 
@@ -220,7 +308,7 @@ func extractAIQuestion(content string, assistantName string) string {
 }
 
 // handleAIMention 处理 @AI 触发回复
-func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, conv *model.Conversation, assistantName string) {
+func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
 	log.Printf("[SmartReply] @AI 触发回复: userID=%d, convID=%d, question=%s", userID, conversationID, question[:min(50, len(question))])
 
 	if e.aiService == nil || !e.aiService.IsConfigured() {
@@ -228,6 +316,57 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		return
 	}
 
+	if e.smartReplyGraph != nil {
+		e.handleAIMentionWithGraph(userID, conversationID, question, originalContent, assistantName)
+		return
+	}
+
+	e.handleAIMentionLegacy(userID, conversationID, question, originalContent, conv, assistantName)
+}
+
+func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string) {
+	ctx := context.Background()
+	input := &service.SmartReplyContext{
+		Message:         question,
+		OriginalContent: originalContent,
+		UserID:          userID,
+		ConversationID:  conversationID,
+		IsAIMention:     true,
+		AssistantName:   assistantName,
+	}
+
+	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
+	if err != nil {
+		log.Printf("[SmartReplyGraph] @AI 流式回复失败: %v", err)
+		return
+	}
+
+	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	if err != nil {
+		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
+		return
+	}
+
+	chunkCount := 0
+	totalLen := 0
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		chunkCount++
+		totalLen += len(msg.Content)
+		sendChunk(msg.Content)
+	}
+
+	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符", chunkCount, totalLen)
+
+	_ = finish()
+
+	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
+}
+
+func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
 	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)
 	if ctx == nil {
 		log.Printf("[SmartReply] 构建提示词上下文失败")
@@ -236,7 +375,15 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 
 	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
 
-	if e.knowledgeSvc != nil {
+	if e.unifiedKnowledge != nil && conv.Type == "group" {
+		var g model.Group
+		if err := database.GetDB().Where("conversation_id = ?", conversationID).First(&g).Error; err == nil {
+			knowledgeCtx := e.unifiedKnowledge.BuildContext(question, g.ID)
+			if knowledgeCtx != "" {
+				systemPrompt += "\n\n" + knowledgeCtx
+			}
+		}
+	} else if e.knowledgeSvc != nil {
 		knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(question)
 		if knowledgeCtx != "" {
 			systemPrompt += "\n\n" + knowledgeCtx
@@ -248,28 +395,41 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 	db.Where("conversation_id = ?", conversationID).
 		Preload("Sender").
 		Order("created_at DESC").
-		Limit(15).
+		Limit(20).
 		Find(&recentMessages)
 
 	for i, j := 0, len(recentMessages)-1; i < j; i, j = i+1, j-1 {
 		recentMessages[i], recentMessages[j] = recentMessages[j], recentMessages[i]
 	}
 
+	systemUserID := service.NewUserService(db).GetSystemUserID()
+
 	var messages []ai.Message
 	messages = append(messages, ai.Message{Role: "system", Content: systemPrompt})
 
 	for _, msg := range recentMessages {
-		senderName := msg.Sender.Nickname
-		if senderName == "" {
-			senderName = msg.Sender.Username
+		if originalContent != "" && msg.SenderID == userID && msg.Content == originalContent {
+			continue
 		}
-		messages = append(messages, ai.Message{
-			Role:    "user",
-			Content: fmt.Sprintf("[%s]: %s", senderName, msg.Content),
-		})
+
+		if msg.SenderID == systemUserID {
+			messages = append(messages, ai.Message{
+				Role:    "assistant",
+				Content: msg.Content,
+			})
+		} else {
+			senderName := msg.Sender.Nickname
+			if senderName == "" {
+				senderName = msg.Sender.Username
+			}
+			messages = append(messages, ai.Message{
+				Role:    "user",
+				Content: fmt.Sprintf("[%s]: %s", senderName, msg.Content),
+			})
+		}
 	}
 
-	messages = append(messages, ai.Message{Role: "user", Content: fmt.Sprintf("[用户提问]: %s", question)})
+	messages = append(messages, ai.Message{Role: "user", Content: fmt.Sprintf("💬 请回答：%s", question)})
 
 	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
@@ -437,7 +597,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 }
 
 // checkAvatarTriggers 检查是否有用户的分身需要触发
-func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string) {
+func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, mentionUserIDs []uint) {
 	db := database.GetDB()
 
 	// 查找当前会话中启用了分身的用户
@@ -451,7 +611,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 		}
 
 		isGroupChat := conv.Type == "group" || conv.Type == "discussion"
-		if e.shouldTriggerAvatar(&session, senderID, content, isGroupChat) {
+		if e.shouldTriggerAvatar(&session, senderID, content, isGroupChat, mentionUserIDs) {
 			// 获取发送者信息
 			var sender model.User
 			db.First(&sender, senderID)
@@ -485,7 +645,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 }
 
 // shouldTriggerAvatar 判断是否应该触发分身
-func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string, isGroupChat bool) bool {
+func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string, isGroupChat bool, mentionUserIDs []uint) bool {
 	db := database.GetDB()
 
 	// 检查是否在接管期内
@@ -521,8 +681,13 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 	// 根据触发模式判断
 	switch triggerRules.Mode {
 	case "mention":
-		// @触发：检查是否 @了该用户
-		return strings.Contains(content, fmt.Sprintf("@%d", session.UserID))
+		// @触发：检查 mention_user_ids 是否包含该用户
+		for _, uid := range mentionUserIDs {
+			if uid == session.UserID {
+				return true
+			}
+		}
+		return false
 	case "offline":
 		// 离线触发：检查用户是否离线
 		var user model.User

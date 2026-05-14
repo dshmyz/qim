@@ -1,18 +1,33 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"qim-server/ai"
+	"qim-server/di"
 	"qim-server/pkg/response"
+	"qim-server/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
+
+// AIResponse 标准AI响应结构体
+type AIResponse struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
+}
 
 // AIHandler AI处理器
 type AIHandler struct {
-	aiService *ai.AIService
-	mcpServer *ai.MCPServer
+	aiService          *ai.AIService
+	mcpServer          *ai.MCPServer
+	summaryGraph       *service.SummaryGraph
+	textProcessGraph   *service.TextProcessGraph
+	unifiedSearchGraph *service.UnifiedSearchGraph
 }
 
 // NewAIHandler 创建AI处理器
@@ -21,6 +36,18 @@ func NewAIHandler(aiService *ai.AIService, mcpServer *ai.MCPServer) *AIHandler {
 		aiService: aiService,
 		mcpServer: mcpServer,
 	}
+}
+
+func (h *AIHandler) SetSummaryGraph(graph *service.SummaryGraph) {
+	h.summaryGraph = graph
+}
+
+func (h *AIHandler) SetTextProcessGraph(graph *service.TextProcessGraph) {
+	h.textProcessGraph = graph
+}
+
+func (h *AIHandler) SetUnifiedSearchGraph(graph *service.UnifiedSearchGraph) {
+	h.unifiedSearchGraph = graph
 }
 
 // RegisterRoutes 注册路由
@@ -65,9 +92,9 @@ type GetCompletionRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body GetCompletionRequest true "AI完成请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": string}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/completion [post]
 func (h *AIHandler) GetCompletion(c *gin.Context) {
 	var req GetCompletionRequest
@@ -96,12 +123,195 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	})
 }
 
+// KnowledgeGraphQueryRequest 知识图谱查询请求
+type KnowledgeGraphQueryRequest struct {
+	Collection string `json:"collection" binding:"required"`
+	Query      string `json:"query"`
+	MaxNodes   int    `json:"max_nodes"`
+}
+
+// GetKnowledgeGraph 获取知识图谱数据
+// @Summary 获取知识图谱数据
+// @Description 获取指定集合的知识图谱节点和关系数据
+// @Tags 知识图谱
+// @Accept json
+// @Produce json
+// @Param collection query string true "集合名称"
+// @Param query query string false "搜索查询"
+// @Param max_nodes query int false "最大节点数"
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
+// @Router /api/admin/knowledge-graph [get]
+func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
+	collection := c.Query("collection")
+	if collection == "" {
+		response.BadRequest(c, "集合名称不能为空")
+		return
+	}
+
+	query := c.Query("query")
+	maxNodes := 50
+	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
+		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+
+	nodes := make([]map[string]interface{}, 0)
+	edges := make([]map[string]interface{}, 0)
+
+	vectorSvc := di.GlobalContainer.VectorService
+	if vectorSvc == nil {
+		response.Success(c, gin.H{
+			"nodes":       nodes,
+			"edges":       edges,
+			"total_nodes": 0,
+			"total_edges": 0,
+		})
+		return
+	}
+
+	db := vectorSvc.GetDB()
+	if db == nil {
+		response.Success(c, gin.H{
+			"nodes":       nodes,
+			"edges":       edges,
+			"total_nodes": 0,
+			"total_edges": 0,
+		})
+		return
+	}
+
+	ctx := context.Background()
+
+	searchResults, err := db.Vector().Search(ctx, nil, core.SearchOptions{
+		Collection: collection,
+		TopK:       maxNodes,
+	})
+
+	if err == nil && len(searchResults) > 0 {
+		for i, result := range searchResults {
+			nodeID := fmt.Sprintf("node_%d", i)
+			nodes = append(nodes, map[string]interface{}{
+				"id":    nodeID,
+				"label": result.DocID,
+				"type":  "knowledge",
+				"x":     float64(i%10) * 100,
+				"y":     float64(i/10) * 100,
+				"data": map[string]interface{}{
+					"content":    result.Content,
+					"score":      result.Score,
+					"metadata":   result.Metadata,
+					"collection": result.Collection,
+				},
+			})
+		}
+	}
+
+	if query != "" && len(nodes) > 0 {
+		queryNodeID := "query_node"
+		nodes = append(nodes, map[string]interface{}{
+			"id":    queryNodeID,
+			"label": fmt.Sprintf("搜索: %s", query),
+			"type":  "query",
+			"x":     500,
+			"y":     300,
+			"data": map[string]interface{}{
+				"query": query,
+			},
+		})
+
+		for _, node := range nodes[:len(nodes)-1] {
+			edges = append(edges, map[string]interface{}{
+				"source": queryNodeID,
+				"target": node["id"],
+				"label":  "related",
+				"type":   "search_relation",
+			})
+		}
+	}
+
+	response.Success(c, gin.H{
+		"nodes":       nodes,
+		"edges":       edges,
+		"total_nodes": len(nodes),
+		"total_edges": len(edges),
+	})
+}
+
+// MCPToolConfigRequest MCP工具配置请求
+type MCPToolConfigRequest struct {
+	Enabled *bool `json:"enabled" binding:"required"`
+}
+
+// ListMCPTools 列出所有MCP工具（包含启用状态）
+// @Summary 列出所有MCP工具（管理后台）
+// @Description 列出所有MCP工具及其启用状态，用于管理后台配置
+// @Tags MCP工具管理
+// @Produce json
+// @Success 200 {object} AIResponse "成功响应"
+// @Router /api/admin/mcp/tools [get]
+func (h *AIHandler) ListMCPTools(c *gin.Context) {
+	if h.mcpServer == nil {
+		response.InternalServerError(c, "MCP服务器未初始化")
+		return
+	}
+
+	tools := h.mcpServer.ListTools()
+	response.Success(c, gin.H{
+		"tools": tools,
+		"total": len(tools),
+	})
+}
+
+// UpdateMCPToolConfig 更新MCP工具配置
+// @Summary 更新MCP工具配置
+// @Description 启用或禁用指定的MCP工具
+// @Tags MCP工具管理
+// @Accept json
+// @Produce json
+// @Param tool_name path string true "工具名称"
+// @Param request body MCPToolConfigRequest true "工具配置请求"
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 404 {object} AIResponse "工具不存在"
+// @Router /api/admin/mcp/tools/{tool_name} [put]
+func (h *AIHandler) UpdateMCPToolConfig(c *gin.Context) {
+	if h.mcpServer == nil {
+		response.InternalServerError(c, "MCP服务器未初始化")
+		return
+	}
+
+	toolName := c.Param("tool_name")
+	var req MCPToolConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	var err error
+	if req.Enabled != nil && *req.Enabled {
+		err = h.mcpServer.EnableTool(toolName)
+	} else {
+		err = h.mcpServer.DisableTool(toolName)
+	}
+
+	if err != nil {
+		response.NotFound(c, "工具不存在或更新失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"tool_name": toolName,
+		"enabled":   req.Enabled != nil && *req.Enabled,
+	})
+}
+
 // OpsDashboard 运维面板数据
 // @Summary 运维面板数据
 // @Description 获取AI运维面板的统计数据
 // @Tags AI
 // @Produce json
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
+// @Success 200 {object} AIResponse "成功响应"
 // @Router /api/ai/ops/dashboard [get]
 func (h *AIHandler) OpsDashboard(c *gin.Context) {
 	aiConfigured := h.aiService.IsConfigured()
@@ -144,8 +354,8 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 // @Produce text/event-stream
 // @Param request body GetCompletionRequest true "AI完成请求"
 // @Success 200 {string} string "流式输出"
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/completion/stream [post]
 func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 	var req GetCompletionRequest
@@ -199,7 +409,7 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 // @Description 列出所有可用的MCP工具
 // @Tags AI
 // @Produce json
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": []map[string]interface{}}
+// @Success 200 {object} AIResponse "成功响应"
 // @Router /api/ai/tools [get]
 func (h *AIHandler) ListTools(c *gin.Context) {
 	if h.mcpServer == nil {
@@ -228,9 +438,9 @@ type ExecuteToolRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body ExecuteToolRequest true "执行工具请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/tools/execute [post]
 func (h *AIHandler) ExecuteTool(c *gin.Context) {
 	var req ExecuteToolRequest
@@ -272,9 +482,9 @@ type IntelligentTroubleshootingRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body IntelligentTroubleshootingRequest true "智能故障排查请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/ops/troubleshooting [post]
 func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
 	var req IntelligentTroubleshootingRequest
@@ -317,9 +527,9 @@ type CommandGenerationRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body CommandGenerationRequest true "命令生成请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/ops/command [post]
 func (h *AIHandler) CommandGeneration(c *gin.Context) {
 	var req CommandGenerationRequest
@@ -362,9 +572,9 @@ type LogAnalysisRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body LogAnalysisRequest true "日志分析请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/ops/logs [post]
 func (h *AIHandler) LogAnalysis(c *gin.Context) {
 	var req LogAnalysisRequest
@@ -407,9 +617,9 @@ type IntelligentAlertRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body IntelligentAlertRequest true "智能告警处理请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/ops/alert [post]
 func (h *AIHandler) IntelligentAlert(c *gin.Context) {
 	var req IntelligentAlertRequest
@@ -451,9 +661,9 @@ type OpsKnowledgeRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body OpsKnowledgeRequest true "运维知识问答请求"
-// @Success 200 {object} gin.H{"code": int, "message": string, "data": interface{}}
-// @Failure 400 {object} gin.H{"code": int, "message": string}
-// @Failure 500 {object} gin.H{"code": int, "message": string}
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
 // @Router /api/ai/ops/knowledge [post]
 func (h *AIHandler) OpsKnowledge(c *gin.Context) {
 	var req OpsKnowledgeRequest

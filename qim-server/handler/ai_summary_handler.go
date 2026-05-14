@@ -7,6 +7,7 @@ import (
 	"qim-server/database"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,16 +34,44 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 
+	userID, _ := c.Get("user_id")
+
+	if h.summaryGraph != nil {
+		input := &service.SummaryInput{
+			ConversationID: req.ConversationID,
+			TimeRange:      req.TimeRange,
+			StartTime:      req.StartTime,
+			EndTime:        req.EndTime,
+			UserID:         userID.(uint),
+		}
+
+		ctx := c.Request.Context()
+		result, err := h.summaryGraph.Execute(ctx, input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "摘要生成失败: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"summary":        result.Summary,
+				"messages_count": result.MessagesCount,
+				"time_range":     result.TimeRange,
+			},
+		})
+		return
+	}
+
 	db := database.GetDB()
 
-	// 获取会话信息
 	var conv model.Conversation
 	if err := db.First(&conv, req.ConversationID).Error; err != nil {
 		response.NotFound(c, "会话不存在")
 		return
 	}
 
-	// 计算时间范围
 	var startTime time.Time
 	endTime := time.Now()
 
@@ -64,7 +93,6 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		startTime = endTime.Add(-24 * time.Hour)
 	}
 
-	// 获取消息
 	var messages []model.Message
 	db.Where("conversation_id = ? AND created_at >= ? AND created_at <= ?",
 		req.ConversationID, startTime, endTime).
@@ -86,7 +114,6 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 
-	// 构建消息文本
 	messagesText := ""
 	for _, msg := range messages {
 		senderName := msg.Sender.Nickname
@@ -96,7 +123,6 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		messagesText += fmt.Sprintf("[%s] %s: %s\n", msg.CreatedAt.Format("15:04"), senderName, msg.Content)
 	}
 
-	// 构建系统提示
 	systemPrompt := `你是一个专业的会议摘要助手。请分析以下聊天记录,生成结构化的会话摘要。
 
 请严格按照以下格式输出:
@@ -134,7 +160,6 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 
-	// 过滤输出
 	summary = h.aiService.FilterOutput(summary, "ai_summary")
 
 	c.JSON(http.StatusOK, gin.H{

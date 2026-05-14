@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"qim-server/ai"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +34,14 @@ type AISearchResult struct {
 	Highlighted    string `json:"highlighted"`
 }
 
+// NoteSearchResult 笔记搜索结果
+type NoteSearchResult struct {
+	Content string  `json:"content"`
+	Score   float64 `json:"score"`
+	Title   string  `json:"title"`
+	NoteID  string  `json:"note_id"`
+}
+
 // AISearch 语义搜索消息
 func (h *AIHandler) AISearch(c *gin.Context) {
 	var req AISearchRequest
@@ -44,9 +54,59 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 		req.Limit = 20
 	}
 
+	userID, _ := c.Get("user_id")
+
+	if h.unifiedSearchGraph != nil {
+		input := &service.UnifiedSearchInput{
+			Query:          req.Query,
+			ConversationID: req.ConversationID,
+			UserID:         userID.(uint),
+			GroupID:        0,
+		}
+
+		ctx := c.Request.Context()
+		result, err := h.unifiedSearchGraph.Execute(ctx, input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "搜索失败: " + err.Error()})
+			return
+		}
+
+		var searchResults []AISearchResult
+		var noteResults []NoteSearchResult
+
+		for _, src := range result.Sources {
+			if src.Type == "message" {
+				searchResults = append(searchResults, AISearchResult{
+					Content:        src.Content,
+					SenderName:     src.Sender,
+					Timestamp:      src.Date,
+					RelevanceScore: int(src.Relevance * 100),
+					Highlighted:    src.Content,
+				})
+			} else if src.Type == "note" {
+				noteResults = append(noteResults, NoteSearchResult{
+					Content: src.Content,
+					Score:   src.Relevance,
+					Title:   src.Title,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"results":      searchResults,
+				"note_results": noteResults,
+				"total":        len(searchResults),
+				"answer":       result.Answer,
+			},
+		})
+		return
+	}
+
 	db := database.GetDB()
 
-	// 先进行数据库全文搜索(快速召回)
 	query := db.Model(&model.Message{}).
 		Where("conversation_id = ? AND type = 'text'", req.ConversationID)
 
@@ -65,22 +125,37 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 	var messages []model.Message
 	query.Preload("Sender").
 		Order("created_at DESC").
-		Limit(req.Limit * 3). // 多取一些供 AI 排序
+		Limit(req.Limit * 3).
 		Find(&messages)
 
-	if len(messages) == 0 {
+	var noteResults []NoteSearchResult
+	noteVectorSvc := di.GlobalContainer.NoteVectorService
+	if noteVectorSvc != nil {
+		if vecResults, err := noteVectorSvc.SearchNotes(userID.(uint), req.Query, 3); err == nil {
+			for _, r := range vecResults {
+				noteResults = append(noteResults, NoteSearchResult{
+					Content: r.Content,
+					Score:   r.Score,
+					Title:   r.Metadata["title"],
+					NoteID:  r.Metadata["note_id"],
+				})
+			}
+		}
+	}
+
+	if len(messages) == 0 && len(noteResults) == 0 {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    200,
 			"message": "success",
 			"data": gin.H{
-				"results": []AISearchResult{},
-				"total":   0,
+				"results":      []AISearchResult{},
+				"note_results": []NoteSearchResult{},
+				"total":        0,
 			},
 		})
 		return
 	}
 
-	// 使用 AI 对搜索结果进行相关性排序
 	searchContext := ""
 	for _, msg := range messages {
 		senderName := msg.Sender.Nickname
@@ -107,34 +182,33 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 
 	aiResponse, err := h.aiService.GetCompletion(messagesInput)
 	if err != nil {
-		// AI 排序失败,直接返回数据库搜索结果
 		results := buildSearchResults(messages, req.Query, req.Limit)
 		c.JSON(http.StatusOK, gin.H{
 			"code":    200,
 			"message": "success",
 			"data": gin.H{
-				"results": results,
-				"total":   len(results),
+				"results":      results,
+				"note_results": noteResults,
+				"total":        len(results),
 			},
 		})
 		return
 	}
 
-	// 解析 AI 返回的 ID 列表
 	orderedIDs := parseOrderedIDs(aiResponse)
 	if len(orderedIDs) > 0 {
 		messages = reorderMessagesByID(messages, orderedIDs)
 	}
 
-	// 构建搜索结果
 	results := buildSearchResults(messages, req.Query, req.Limit)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
 		"data": gin.H{
-			"results": results,
-			"total":   len(results),
+			"results":      results,
+			"note_results": noteResults,
+			"total":        len(results),
 		},
 	})
 }

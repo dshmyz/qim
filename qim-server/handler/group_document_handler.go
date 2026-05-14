@@ -16,7 +16,7 @@ func GetGroupDocuments(c *gin.Context) {
 	convIDStr := c.Param("id")
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的会话ID")
+		response.BadRequest(c, "无效的群ID")
 		return
 	}
 
@@ -39,7 +39,11 @@ func GetGroupDocuments(c *gin.Context) {
 func AddGroupDocument(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
-	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
 
 	var req struct {
 		FileID uint `json:"file_id" binding:"required"`
@@ -67,7 +71,6 @@ func AddGroupDocument(c *gin.Context) {
 		return
 	}
 
-	// 验证文件类型，只允许文档类型
 	var file model.File
 	if err := db.First(&file, req.FileID).Error; err != nil {
 		response.NotFound(c, "文件不存在")
@@ -111,7 +114,11 @@ func RemoveGroupDocument(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 	fileIDStr := c.Param("file_id")
-	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
 	fileID, _ := strconv.ParseUint(fileIDStr, 10, 32)
 
 	db := database.GetDB()
@@ -141,7 +148,7 @@ func GetGroupDocumentsWithStatus(c *gin.Context) {
 	convIDStr := c.Param("id")
 	convID, err := strconv.ParseUint(convIDStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的会话ID")
+		response.BadRequest(c, "无效的群ID")
 		return
 	}
 
@@ -174,7 +181,11 @@ func ProcessGroupDocument(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")
 	fileIDStr := c.Param("file_id")
-	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
 	fileID, _ := strconv.ParseUint(fileIDStr, 10, 32)
 
 	db := database.GetDB()
@@ -222,7 +233,11 @@ func ProcessGroupDocument(c *gin.Context) {
 func GetDocumentProcessStatus(c *gin.Context) {
 	convIDStr := c.Param("id")
 	fileIDStr := c.Param("file_id")
-	convID, _ := strconv.ParseUint(convIDStr, 10, 32)
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
 	fileID, _ := strconv.ParseUint(fileIDStr, 10, 32)
 
 	db := database.GetDB()
@@ -244,5 +259,113 @@ func GetDocumentProcessStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": status,
+	})
+}
+
+// BatchProcessDocuments 批量处理文档
+func BatchProcessDocuments(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, userID).First(&member).Error; err != nil {
+		response.Forbidden(c, "您不是成员")
+		return
+	}
+
+	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
+		response.Forbidden(c, "只有群主或管理员可以管理知识库")
+		return
+	}
+
+	var req struct {
+		DocumentIDs []uint `json:"document_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+
+	results, err := docSvc.BatchProcessDocuments(req.DocumentIDs)
+	if err != nil {
+		response.InternalServerError(c, "批量处理失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": results,
+	})
+}
+
+// BatchRetryDocuments 批量重试失败文档
+func BatchRetryDocuments(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, userID).First(&member).Error; err != nil {
+		response.Forbidden(c, "您不是成员")
+		return
+	}
+
+	if group.GroupType == "group" && member.Role != "owner" && member.Role != "admin" {
+		response.Forbidden(c, "只有群主或管理员可以管理知识库")
+		return
+	}
+
+	var req struct {
+		DocumentIDs []uint `json:"document_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+
+	results, err := docSvc.BatchRetryDocuments(req.DocumentIDs)
+	if err != nil {
+		response.InternalServerError(c, "批量重试失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": results,
 	})
 }

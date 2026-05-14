@@ -21,6 +21,7 @@ type AvatarTool struct {
 	ID          string
 	Name        string
 	Description string
+	Icon        string
 }
 
 type AvatarHandler struct {
@@ -377,12 +378,22 @@ func (h *AvatarHandler) TriggerLearnPersona(c *gin.Context) {
 		return
 	}
 
+	// 创建学习任务
+	task := model.AvatarLearnTask{
+		UserID: userID,
+		Status: "pending",
+	}
+	if err := h.db.Create(&task).Error; err != nil {
+		response.InternalServerError(c, "创建任务失败")
+		return
+	}
+
 	// 使用异步方式学习
 	go func() {
-		h.avatarService.LearnFromMultipleSources(userID)
+		h.avatarService.LearnPersona(userID, task.ID)
 	}()
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"taskId": "async_task"}})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"taskId": task.ID}})
 }
 
 // GetLearnStatus 获取学习状态
@@ -396,15 +407,34 @@ func (h *AvatarHandler) GetLearnStatus(c *gin.Context) {
 		return
 	}
 
-	status := gin.H{
-		"status":        "idle",
-		"progress":      0,
-		"messageCount":  0,
-		"error":         nil,
-		"lastLearnedAt": config.LastLearnedAt,
+	// 查询最新的学习任务
+	var task model.AvatarLearnTask
+	err := h.db.Where("user_id = ?", userID).Order("created_at DESC").First(&task).Error
+
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{
+			"status":        "idle",
+			"progress":      0,
+			"messageCount":  0,
+			"error":         nil,
+			"lastLearnedAt": config.LastLearnedAt,
+		}})
+		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": status})
+	// 映射状态值：后端状态 -> 前端期望状态
+	frontendStatus := task.Status
+	if task.Status == "pending" || task.Status == "processing" {
+		frontendStatus = "learning"
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{
+		"status":        frontendStatus,
+		"progress":      task.Progress,
+		"messageCount":  task.MessageCount,
+		"error":         task.Error,
+		"lastLearnedAt": config.LastLearnedAt,
+	}})
 }
 
 // GetLearnedPersona 获取学习结果
@@ -587,52 +617,163 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 // GetAvailableTools 获取可用工具列表
 func (h *AvatarHandler) GetAvailableTools(c *gin.Context) {
 	tools := []AvatarTool{
-		{ID: "chat", Name: "智能对话", Description: "基础对话能力"},
-		{ID: "search", Name: "知识检索", Description: "搜索历史消息和文档"},
-		{ID: "summary", Name: "摘要总结", Description: "生成消息摘要"},
-		{ID: "translate", Name: "翻译", Description: "多语言翻译"},
+		{ID: "chat", Name: "智能对话", Description: "基础对话能力", Icon: "fas fa-comments"},
+		{ID: "knowledge_search", Name: "知识检索", Description: "搜索群知识库和文档", Icon: "fas fa-search"},
+		{ID: "knowledge_save", Name: "知识存储", Description: "将内容存入知识库", Icon: "fas fa-save"},
+		{ID: "memory_search", Name: "记忆检索", Description: "搜索历史记忆", Icon: "fas fa-brain"},
+		{ID: "summary", Name: "摘要总结", Description: "生成消息摘要", Icon: "fas fa-list"},
+		{ID: "translate", Name: "翻译", Description: "多语言翻译", Icon: "fas fa-language"},
+		{ID: "server_monitor", Name: "服务器监控", Description: "查看系统资源状态", Icon: "fas fa-chart-line"},
+		{ID: "log_analyzer", Name: "日志分析", Description: "分析系统日志", Icon: "fas fa-file-alt"},
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": tools})
 }
 
 // GetAvatarTools 获取分身绑定的工具
 func (h *AvatarHandler) GetAvatarTools(c *gin.Context) {
-	avatarID := c.Param("id")
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		response.NotFound(c, "分身配置不存在")
+		return
+	}
 
 	var bindings []model.AvatarToolBinding
-	if err := h.db.Where("avatar_id = ?", avatarID).Find(&bindings).Error; err != nil {
+	if err := h.db.Where("avatar_id = ?", config.ID).Order("priority DESC").Find(&bindings).Error; err != nil {
 		response.InternalServerError(c, "获取工具失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": bindings})
+	toolMap := map[string]model.AvatarToolBinding{}
+	for _, b := range bindings {
+		toolMap[b.ToolID] = b
+	}
+
+	type ToolWithInfo struct {
+		model.AvatarToolBinding
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Icon        string `json:"icon"`
+	}
+
+	allTools := []AvatarTool{
+		{ID: "chat", Name: "智能对话", Description: "基础对话能力", Icon: "fas fa-comments"},
+		{ID: "knowledge_search", Name: "知识检索", Description: "搜索群知识库和文档", Icon: "fas fa-search"},
+		{ID: "knowledge_save", Name: "知识存储", Description: "将内容存入知识库", Icon: "fas fa-save"},
+		{ID: "memory_search", Name: "记忆检索", Description: "搜索历史记忆", Icon: "fas fa-brain"},
+		{ID: "summary", Name: "摘要总结", Description: "生成消息摘要", Icon: "fas fa-list"},
+		{ID: "translate", Name: "翻译", Description: "多语言翻译", Icon: "fas fa-language"},
+		{ID: "server_monitor", Name: "服务器监控", Description: "查看系统资源状态", Icon: "fas fa-chart-line"},
+		{ID: "log_analyzer", Name: "日志分析", Description: "分析系统日志", Icon: "fas fa-file-alt"},
+	}
+
+	result := make([]ToolWithInfo, 0, len(allTools))
+	for _, t := range allTools {
+		info := ToolWithInfo{
+			Name:        t.Name,
+			Description: t.Description,
+			Icon:        t.Icon,
+		}
+		if b, ok := toolMap[t.ID]; ok {
+			info.AvatarToolBinding = b
+		} else {
+			info.AvatarToolBinding = model.AvatarToolBinding{
+				AvatarID: config.ID,
+				ToolID:   t.ID,
+				Enabled:  false,
+				Priority: 1,
+			}
+		}
+		result = append(result, info)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": result})
 }
 
 // BindTool 绑定工具到分身
 func (h *AvatarHandler) BindTool(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
 	toolID := c.Param("toolId")
 
-	binding := model.AvatarToolBinding{
-		AvatarID: 0,
-		ToolID:   toolID,
-		Enabled:  true,
-		Priority: 1,
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		response.NotFound(c, "分身配置不存在")
+		return
 	}
 
-	if err := h.db.Create(&binding).Error; err != nil {
-		response.InternalServerError(c, "绑定失败")
-		return
+	var binding model.AvatarToolBinding
+	if err := h.db.Where("avatar_id = ? AND tool_id = ?", config.ID, toolID).First(&binding).Error; err == nil {
+		binding.Enabled = true
+		h.db.Save(&binding)
+	} else {
+		binding = model.AvatarToolBinding{
+			AvatarID: config.ID,
+			ToolID:   toolID,
+			Enabled:  true,
+			Priority: 1,
+		}
+		h.db.Create(&binding)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": binding})
 }
 
+// UpdateAvatarTools 批量更新分身工具配置
+func (h *AvatarHandler) UpdateAvatarTools(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		response.NotFound(c, "分身配置不存在")
+		return
+	}
+
+	var tools []struct {
+		ToolID   string `json:"tool_id"`
+		Enabled  bool   `json:"enabled"`
+		Priority int    `json:"priority"`
+	}
+	if err := c.ShouldBindJSON(&tools); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	for _, t := range tools {
+		var binding model.AvatarToolBinding
+		if err := h.db.Where("avatar_id = ? AND tool_id = ?", config.ID, t.ToolID).First(&binding).Error; err == nil {
+			binding.Enabled = t.Enabled
+			binding.Priority = t.Priority
+			h.db.Save(&binding)
+		} else if t.Enabled {
+			h.db.Create(&model.AvatarToolBinding{
+				AvatarID: config.ID,
+				ToolID:   t.ToolID,
+				Enabled:  true,
+				Priority: t.Priority,
+			})
+		}
+	}
+
+	response.SuccessWithMessage(c, "工具配置已更新", nil)
+}
+
 // UnbindTool 解绑工具
 func (h *AvatarHandler) UnbindTool(c *gin.Context) {
-	avatarID := c.Param("id")
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
 	toolID := c.Param("toolId")
 
-	if err := h.db.Where("avatar_id = ? AND tool_id = ?", avatarID, toolID).Delete(&model.AvatarToolBinding{}).Error; err != nil {
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		response.NotFound(c, "分身配置不存在")
+		return
+	}
+
+	if err := h.db.Where("avatar_id = ? AND tool_id = ?", config.ID, toolID).Delete(&model.AvatarToolBinding{}).Error; err != nil {
 		response.InternalServerError(c, "解绑失败")
 		return
 	}

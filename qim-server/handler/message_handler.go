@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -42,6 +43,42 @@ func SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
 	}
 }
 
+// SetUnifiedKnowledge sets the unified knowledge service for the smart reply engine
+func SetUnifiedKnowledge(uk *service.UnifiedKnowledgeService) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetUnifiedKnowledge(uk)
+	}
+}
+
+// SetMemoryService sets the avatar memory service for the smart reply engine
+func SetMemoryService(ms *service.AvatarMemoryService) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetMemoryService(ms)
+	}
+}
+
+// InitSmartReplyGraph initializes the Eino Graph for smart reply
+func InitSmartReplyGraph() error {
+	if smartReplyEngine == nil {
+		return fmt.Errorf("SmartReplyEngine not initialized")
+	}
+
+	log.Printf("[SmartReplyGraph] 开始初始化...")
+	log.Printf("[SmartReplyGraph] aiService: %v", smartReplyEngine.aiService != nil)
+	log.Printf("[SmartReplyGraph] unifiedKnowledge: %v", smartReplyEngine.unifiedKnowledge != nil)
+	log.Printf("[SmartReplyGraph] knowledgeSvc: %v", smartReplyEngine.knowledgeSvc != nil)
+	log.Printf("[SmartReplyGraph] memorySvc: %v", smartReplyEngine.memorySvc != nil)
+
+	err := smartReplyEngine.InitSmartReplyGraph()
+	if err != nil {
+		log.Printf("[SmartReplyGraph] 初始化失败: %v", err)
+		return err
+	}
+
+	log.Printf("[SmartReplyGraph] 初始化成功")
+	return nil
+}
+
 // InitAnomalyDetector initializes the anomaly detector
 func InitAnomalyDetector() {
 	anomalyDetector = NewAnomalyDetector()
@@ -65,6 +102,9 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
+		"is_avatar_reply":   msg.IsAvatarReply,
+		"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"ai_assistant_name": "AI助手",
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
@@ -238,6 +278,7 @@ func SendMessage(c *gin.Context) {
 		Content         string                 `json:"content" binding:"required"`
 		QuotedMessageID *uint                  `json:"quoted_message_id"`
 		ShareData       map[string]interface{} `json:"share_data"`
+		MentionUserIDs  []uint                 `json:"mention_user_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -276,7 +317,7 @@ func SendMessage(c *gin.Context) {
 	conv, _ := convSvc.GetConversation(uint(convIDUint))
 	if conv != nil && conv.Type != "bot" {
 		if smartReplyEngine != nil {
-			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content)
+			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
 		}
 
 		if anomalyDetector != nil {
@@ -311,6 +352,12 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	}
 
+	mentions := mention.ExtractMentions(msg.Content)
+	mentionUserIDs := make([]uint, 0, len(mentions))
+	for _, m := range mentions {
+		mentionUserIDs = append(mentionUserIDs, m.UserID)
+	}
+
 	responseData := gin.H{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -320,10 +367,14 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
+		"is_avatar_reply":   msg.IsAvatarReply,
+		"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"ai_assistant_name": "AI助手",
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
+		"mention_user_ids":  mentionUserIDs,
 	}
 
 	if ws.GlobalHub != nil {
@@ -435,6 +486,9 @@ func StreamMessage(c *gin.Context) {
 		var messages []model.Message
 		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
+		log.Printf("[StreamMessage] 加载历史消息: conversation_id=%s, 消息数=%d, bot_id=%d, virtual_user_id=%v",
+			convID, len(messages), botConv.BotID, bot.VirtualUserID)
+
 		var aiMessages []ai.Message
 		aiMessages = append(aiMessages, ai.Message{
 			Role:    "system",
@@ -443,13 +497,31 @@ func StreamMessage(c *gin.Context) {
 
 		for _, msg := range messages {
 			role := "user"
-			if bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID {
+			if msg.SenderID == 0 || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
 				role = "assistant"
 			}
 			aiMessages = append(aiMessages, ai.Message{
 				Role:    role,
 				Content: msg.Content,
 			})
+		}
+
+		// 确保最新的用户问题包含在消息中（防止数据库查询延迟导致新消息未被加载）
+		// 检查最后一条消息是否是用户的新问题
+		if len(aiMessages) == 1 || aiMessages[len(aiMessages)-1].Role != "user" || aiMessages[len(aiMessages)-1].Content != content {
+			aiMessages = append(aiMessages, ai.Message{
+				Role:    "user",
+				Content: content,
+			})
+		}
+
+		log.Printf("[StreamMessage] 准备调用 AI,消息总数=%d", len(aiMessages))
+		for i, aiMsg := range aiMessages {
+			if i == 0 {
+				log.Printf("[StreamMessage] AI消息[%d]: role=%s (system)", i, aiMsg.Role)
+			} else {
+				log.Printf("[StreamMessage] AI消息[%d]: role=%s, content=%s", i, aiMsg.Role, aiMsg.Content[:min(50, len(aiMsg.Content))])
+			}
 		}
 
 		var fullResponse string
