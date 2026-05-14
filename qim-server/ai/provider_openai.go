@@ -210,3 +210,114 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 
 	return response.Data[0].Embedding, nil
 }
+
+func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
+	if !p.IsConfigured() {
+		return nil, fmt.Errorf("OpenAI API key is not configured")
+	}
+
+	log.Printf("[OpenAI] Making request with tools, model: %s, tools count: %d", p.config.Model, len(tools))
+
+	reqBody := struct {
+		Model       string    `json:"model"`
+		Messages    []Message `json:"messages"`
+		MaxTokens   int       `json:"max_tokens,omitempty"`
+		Temperature float64   `json:"temperature,omitempty"`
+		Tools       []struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name        string                 `json:"name"`
+				Description string                 `json:"description"`
+				Parameters  map[string]interface{} `json:"parameters"`
+			} `json:"function"`
+		} `json:"tools,omitempty"`
+	}{
+		Model:       p.config.Model,
+		Messages:    messages,
+		MaxTokens:   p.config.ExtraParams["max_tokens"].(int),
+		Temperature: p.config.ExtraParams["temperature"].(float64),
+	}
+
+	if len(tools) > 0 {
+		reqBody.Tools = make([]struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name        string                 `json:"name"`
+				Description string                 `json:"description"`
+				Parameters  map[string]interface{} `json:"parameters"`
+			} `json:"function"`
+		}, len(tools))
+		for i, t := range tools {
+			reqBody.Tools[i].Type = "function"
+			reqBody.Tools[i].Function.Name = t.Name
+			reqBody.Tools[i].Function.Description = t.Description
+			reqBody.Tools[i].Function.Parameters = t.Parameters
+		}
+	}
+
+	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
+		req, _, err := CreateJSONRequest(
+			"POST",
+			p.config.BaseURL+"/chat/completions",
+			p.config.APIKey,
+			reqBody,
+			nil,
+		)
+		return req, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string          `json:"name"`
+						Arguments json.RawMessage `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls,omitempty"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode OpenAI response: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return nil, fmt.Errorf("no choices in OpenAI response")
+	}
+
+	chatResp := &ChatResponse{
+		Content: response.Choices[0].Message.Content,
+	}
+
+	for _, tc := range response.Choices[0].Message.ToolCalls {
+		var args map[string]interface{}
+		if err := json.Unmarshal(tc.Function.Arguments, &args); err != nil {
+			log.Printf("[OpenAI] Failed to unmarshal tool call arguments: %v", err)
+			args = make(map[string]interface{})
+		}
+		chatResp.ToolCalls = append(chatResp.ToolCalls, ToolCall{
+			ID:        tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: args,
+		})
+	}
+
+	log.Printf("[OpenAI] Request completed, usage: prompt_tokens=%d, completion_tokens=%d, total_tokens=%d, tool_calls=%d",
+		response.Usage.PromptTokens, response.Usage.CompletionTokens, response.Usage.TotalTokens, len(chatResp.ToolCalls))
+
+	return chatResp, nil
+}
