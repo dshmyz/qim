@@ -47,6 +47,88 @@ func (s *AIService) GetMCPServer() *MCPServer {
 func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (string, error) {
 	s.mu.RLock()
 	mcpServer := s.mcpServer
+	provider := s.provider
+	s.mu.RUnlock()
+
+	if mcpServer == nil {
+		return s.GetCompletion(messages)
+	}
+
+	// 构建工具定义列表
+	tools := mcpServer.ListTools()
+	toolDefs := make([]ToolDef, 0, len(tools))
+	for _, tool := range tools {
+		name := tool["name"].(string)
+		desc := tool["description"].(string)
+		params := tool["parameters"].(map[string]interface{})
+		toolDefs = append(toolDefs, ToolDef{
+			Name:        name,
+			Description: desc,
+			Parameters:  params,
+		})
+	}
+
+	// 尝试使用 native function calling
+	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d", len(toolDefs))
+	resp, err := provider.ChatWithTools(messages, toolDefs)
+	if err != nil {
+		// Provider 不支持 native function calling，降级到 prompt engineering
+		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
+		return s.getCompletionWithToolsPromptEngineering(messages, callerCtx)
+	}
+
+	// 如果没有工具调用，直接返回
+	if len(resp.ToolCalls) == 0 {
+		log.Printf("[AI Service] Native function calling - 无工具调用，直接返回回复")
+		return resp.Content, nil
+	}
+
+	log.Printf("[AI Service] Native function calling - 检测到 %d 个工具调用", len(resp.ToolCalls))
+
+	// 复制消息历史用于后续调用
+	newMessages := make([]Message, len(messages))
+	copy(newMessages, messages)
+
+	// 追加 assistant 消息（包含工具调用）
+	newMessages = append(newMessages, Message{
+		Role:      "assistant",
+		Content:   resp.Content,
+		ToolCalls: resp.ToolCalls,
+	})
+
+	// 执行所有工具调用
+	for _, tc := range resp.ToolCalls {
+		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
+		result, execErr := mcpServer.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
+		if execErr != nil {
+			log.Printf("[AI Service] 工具执行失败: %v", execErr)
+			return "", execErr
+		}
+		log.Printf("[AI Service] 工具执行成功: %v", result)
+
+		// 追加工具结果消息
+		resultJSON, _ := json.Marshal(result)
+		newMessages = append(newMessages, Message{
+			Role:       "tool",
+			Content:    string(resultJSON),
+			ToolCallID: tc.ID,
+		})
+	}
+
+	// 再次调用 LLM 生成最终回复
+	log.Printf("[AI Service] Native function calling - 请求最终回复")
+	finalResp, err := provider.ChatWithTools(newMessages, toolDefs)
+	if err != nil {
+		return "", err
+	}
+
+	return finalResp.Content, nil
+}
+
+// getCompletionWithToolsPromptEngineering 使用 prompt engineering 方式实现工具调用（降级方案）
+func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, callerCtx *CallerContext) (string, error) {
+	s.mu.RLock()
+	mcpServer := s.mcpServer
 	s.mu.RUnlock()
 
 	if mcpServer == nil {

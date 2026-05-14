@@ -1,8 +1,10 @@
 package ai
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 type ChatCompletionRequest struct {
@@ -54,9 +56,10 @@ type AIConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"base_url"`
+	APIKey         string `yaml:"api_key"`
+	Model          string `yaml:"model"`
+	BaseURL        string `yaml:"base_url"`
+	EmbeddingModel string `yaml:"embedding_model"`
 }
 
 type BaiduConfig struct {
