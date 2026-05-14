@@ -21,7 +21,12 @@
           </div>
           <input ref="avatarInput" type="file" accept="image/*" style="display: none" @change="handleAvatarChange" />
           <div class="group-basic-info">
-            <h2 class="group-full-name">{{ group.name }}</h2>
+            <div class="group-name-wrapper">
+              <h2 class="group-full-name">{{ group.name }}</h2>
+              <button v-if="isGroupOwner(group) || isGroupAdmin(group)" class="edit-name-btn" @click="$emit('editGroupName')">
+                <i class="fas fa-edit"></i>
+              </button>
+            </div>
             <p class="group-member-count">{{ group.members ? group.members.length + '人' : '0人' }}</p>
           </div>
         </div>
@@ -93,6 +98,10 @@
             <i class="fas fa-user-plus"></i>
             <span>邀请成员</span>
           </button>
+          <button class="action-btn tertiary" @click="$emit('openAISettings')" v-if="group.type === 'group'">
+            <i class="fas fa-robot"></i>
+            <span>AI 设置</span>
+          </button>
         </div>
         
         <!-- 群成员列表 -->
@@ -144,6 +153,8 @@ defineEmits<{
   enter: [conversation: Conversation]
   invite: [conversation: Conversation]
   editAnnouncement: []
+  editGroupName: []
+  openAISettings: []
   showMemberContextMenu: [event: MouseEvent, member: any]
   startPrivateChat: [user: any]
 }>()
@@ -188,6 +199,16 @@ const isGroupOwner = (group: Conversation | null) => {
     isOwner 
   })
   return isOwner
+}
+
+// 检查当前用户是否是群管理员
+const isGroupAdmin = (group: Conversation | null) => {
+  if (!group || !group.members) return false
+  const currentUser = getCurrentUser()
+  if (!currentUser || !currentUser.id) return false
+  const admin = group.members.find((member: User) => member.role === 'admin')
+  if (!admin) return false
+  return String(admin.id) === String(currentUser.id)
 }
 
 // 邀请权限
@@ -362,10 +383,9 @@ const handleAvatarChange = async (event: Event) => {
 .group-profile-card {
   position: relative;
   background: var(--card-bg);
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  /* border: 1px solid var(--border-color); */
   z-index: 2;
   margin-top: 40px;
   animation: cardSlideIn 0.4s ease-out;
@@ -386,8 +406,7 @@ const handleAvatarChange = async (event: Event) => {
   display: flex;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0;
 }
 
 .group-avatar-container {
@@ -404,8 +423,8 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .group-avatar {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 10px;
   object-fit: cover;
   border: 3px solid white;
@@ -445,17 +464,60 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .group-full-name {
-  margin: 0 0 6px 0;
-  font-size: 20px;
+  margin: 0 0 4px 0;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-color);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .group-member-count {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
+}
+
+.group-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-name-wrapper h2 {
+  margin: 0;
+}
+
+.edit-name-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  font-size: 13px;
+}
+
+.edit-name-btn:hover {
+  background: var(--primary-light);
+}
+
+.ai-settings-btn {
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.ai-settings-btn:hover {
+  opacity: 0.85;
 }
 
 .group-info-sections {
@@ -463,7 +525,7 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .info-section {
-  margin-bottom: 16px;
+  /* margin-bottom: 16px; */
   /* background: var(--list-bg); */
   border-radius: 8px;
   padding: 16px;
@@ -480,19 +542,18 @@ const handleAvatarChange = async (event: Event) => {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0;
 }
 
 .section-title i {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--primary-color);
   margin-right: 8px;
 }
 
 .section-title h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-color);
 }
@@ -514,50 +575,34 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .info-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .info-value {
   font-size: 13px;
   color: var(--text-color);
   font-weight: 500;
-  padding: 5px 8px;
-  background: var(--input-bg);
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.info-value:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
 .group-announcement {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 5px 8px;
-  background: var(--input-bg);
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.group-announcement:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  width: 100%;
 }
 
 .announcement-content {
   flex: 1;
   font-size: 13px;
   color: var(--text-color);
-  line-height: 1.4;
+  line-height: 1.5;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
 }
 
 .edit-announcement-btn {
@@ -565,10 +610,11 @@ const handleAvatarChange = async (event: Event) => {
   border: none;
   color: var(--primary-color);
   cursor: pointer;
-  padding: 4px;
+  padding: 2px 4px;
   border-radius: 4px;
   transition: background 0.2s;
-  align-self: center;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .edit-announcement-btn:hover {
@@ -577,25 +623,24 @@ const handleAvatarChange = async (event: Event) => {
 
 .group-action-buttons {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-  margin-bottom: 20px;
+  padding-top: 12px;
+  margin-bottom: 16px;
 }
 
 .action-btn {
-  padding: 10px 20px;
+  padding: 8px 16px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 100px;
+  gap: 5px;
+  min-width: 90px;
   justify-content: center;
 }
 
@@ -625,6 +670,20 @@ const handleAvatarChange = async (event: Event) => {
   color: var(--primary-color);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.action-btn.tertiary {
+  background: transparent;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.action-btn.tertiary:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .group-members-section {

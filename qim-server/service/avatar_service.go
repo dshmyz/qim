@@ -1,7 +1,7 @@
 package service
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"qim-server/ai"
 	"qim-server/model"
@@ -20,6 +20,14 @@ type AvatarService struct {
 	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
 	memorySvc     *AvatarMemoryService  // 长期记忆
 	triggerSvc    *AvatarTriggerService // 智能触发
+	groupDocSvc   *GroupDocumentService // 群文档知识检索
+	replyGraph    *AvatarReplyGraph     // Eino Graph 编排
+	wsNotify      func(userID uint, eventType string, data map[string]interface{})
+}
+
+// SetWebSocketNotify 设置 WebSocket 通知回调
+func (s *AvatarService) SetWebSocketNotify(fn func(userID uint, eventType string, data map[string]interface{})) {
+	s.wsNotify = fn
 }
 
 // LearningData 多来源学习数据结构
@@ -39,6 +47,8 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 		aiService: aiService,
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
+	service.replyGraph = NewAvatarReplyGraph(aiService, db, nil, nil, nil)
+	_ = service.replyGraph.BuildGraph()
 	return service
 }
 
@@ -47,6 +57,16 @@ func (s *AvatarService) SetRAGServices(noteVectorSvc *NoteVectorService, memoryS
 	s.noteVectorSvc = noteVectorSvc
 	s.memorySvc = memorySvc
 	s.triggerSvc = triggerSvc
+
+	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, noteVectorSvc, memorySvc, s.groupDocSvc)
+	_ = s.replyGraph.BuildGraph()
+}
+
+func (s *AvatarService) SetGroupDocumentService(groupDocSvc *GroupDocumentService) {
+	s.groupDocSvc = groupDocSvc
+
+	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, groupDocSvc)
+	_ = s.replyGraph.BuildGraph()
 }
 
 func (s *AvatarService) SetAIService(aiService *ai.AIService) {
@@ -65,11 +85,14 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 		return
 	}
 
+	// 1. 开始处理
 	s.db.Model(&task).Updates(map[string]interface{}{
 		"status":     "processing",
 		"started_at": time.Now(),
+		"progress":   10,
 	})
 
+	// 2. 查询历史消息
 	var messages []model.Message
 	s.db.Table("messages m").
 		Joins("JOIN conversation_members cm ON m.conversation_id = cm.conversation_id").
@@ -81,7 +104,10 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 		Select("m.content").
 		Find(&messages)
 
-	s.db.Model(&task).Update("message_count", len(messages))
+	s.db.Model(&task).Updates(map[string]interface{}{
+		"message_count": len(messages),
+		"progress":      30,
+	})
 
 	if len(messages) < 10 {
 		s.db.Model(&task).Updates(map[string]interface{}{
@@ -92,14 +118,18 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 		return
 	}
 
+	// 3. 处理消息内容
 	var contents []string
 	for _, msg := range messages {
 		if len(msg.Content) > 20 && len(msg.Content) < 500 {
 			contents = append(contents, msg.Content)
 		}
 	}
+	s.db.Model(&task).Update("progress", 50)
 
+	// 4. 准备 AI 调用
 	sampleText := strings.Join(contents[:min(50, len(contents))], "\n\n")
+	s.db.Model(&task).Update("progress", 70)
 
 	prompt := fmt.Sprintf(`分析以下用户发送的消息样本，总结这个用户的说话风格特点。
 
@@ -116,7 +146,7 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 
 请用简洁的中文描述，不超过200字。`, sampleText)
 
-	// 使用现有的 AI 服务调用模式
+	// 5. AI 分析
 	aiMessages := []ai.Message{
 		{Role: "user", Content: prompt},
 	}
@@ -130,6 +160,9 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 		return
 	}
 
+	s.db.Model(&task).Update("progress", 90)
+
+	// 6. 保存结果
 	now := time.Now()
 	s.db.Model(&model.AvatarConfig{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
 		"auto_learned_persona": persona,
@@ -144,114 +177,14 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 	})
 }
 
-// GenerateReply 生成分身回复（集成 RAG 知识库和长期记忆）
+// GenerateReply 生成分身回复（使用 Eino Graph 编排）
 func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerMessage string) (string, error) {
-	var config model.AvatarConfig
-	if err := s.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		return "", fmt.Errorf("分身配置不存在")
+	if s.replyGraph == nil {
+		return "", fmt.Errorf("回复 Graph 未初始化")
 	}
 
-	var knowledgeScope model.AvatarKnowledgeScope
-	if config.KnowledgeScopeJSON != "" {
-		json.Unmarshal([]byte(config.KnowledgeScopeJSON), &knowledgeScope)
-	}
-
-	var replyStrategy model.AvatarReplyStrategy
-	if config.ReplyStrategyJSON != "" {
-		json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
-	}
-
-	var user model.User
-	s.db.First(&user, userID)
-
-	// RAG 增强：检索相关笔记
-	ragContext := ""
-	if s.noteVectorSvc != nil {
-		noteResults, err := s.noteVectorSvc.SearchNotes(userID, triggerMessage, 3)
-		if err == nil && len(noteResults) > 0 {
-			var parts []string
-			for _, r := range noteResults {
-				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
-			}
-			ragContext = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
-		}
-	}
-
-	// 长期记忆检索
-	memoryContext := ""
-	if s.memorySvc != nil {
-		memoryResults, err := s.memorySvc.Recall(userID, triggerMessage, 2)
-		if err == nil && len(memoryResults) > 0 {
-			var parts []string
-			for _, r := range memoryResults {
-				parts = append(parts, r.Content)
-			}
-			memoryContext = "【相关记忆】\n" + strings.Join(parts, "\n\n")
-		}
-	}
-
-	systemPrompt := s.buildSystemPrompt(config, user, replyStrategy)
-
-	contextParts := []string{}
-	if ragContext != "" {
-		contextParts = append(contextParts, ragContext)
-	}
-	if memoryContext != "" {
-		contextParts = append(contextParts, memoryContext)
-	}
-	if knowledgeScope.ConversationHistory && conversationID > 0 {
-		history := s.getConversationHistory(conversationID, 10)
-		if history != "" {
-			contextParts = append(contextParts, "【对话历史】\n"+history)
-		}
-	}
-
-	contextStr := strings.Join(contextParts, "\n\n")
-
-	prompt := ""
-	if contextStr != "" {
-		prompt = contextStr + "\n\n"
-	}
-	prompt += fmt.Sprintf("对方说：%s\n\n请以我的身份回复：", triggerMessage)
-
-	var reply string
-	var err error
-
-	if config.UseSystemConfig {
-		// 使用系统默认 AI 配置
-		aiMessages := []ai.Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: prompt},
-		}
-		reply, err = s.aiService.GetCompletion(aiMessages)
-	} else if config.ModelConfigID != nil {
-		// 使用用户自定义模型配置
-		reply, err = s.generateWithUserProvider(*config.ModelConfigID, systemPrompt, prompt)
-	} else {
-		return "", fmt.Errorf("未配置 AI 模型")
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// 根据回复策略截断
-	if replyStrategy.MaxReplyLength == "short" && len(reply) > 200 {
-		reply = reply[:200] + "..."
-	} else if replyStrategy.MaxReplyLength == "medium" && len(reply) > 500 {
-		reply = reply[:500] + "..."
-	}
-
-	// 异步记忆存储：如果消息内容包含值得记忆的信息
-	if s.memorySvc != nil {
-		go func() {
-			if should, err := s.memorySvc.ShouldRemember(triggerMessage); should && err == nil {
-				s.memorySvc.Remember(userID, conversationID, triggerMessage)
-			}
-		}()
-	}
-
-	return reply, nil
+	ctx := context.Background()
+	return s.replyGraph.Execute(ctx, userID, conversationID, triggerMessage)
 }
 
 // buildSystemPrompt 构建系统提示词
@@ -423,11 +356,19 @@ func (s *AvatarService) UpdatePersona(userID uint, data LearningData) error {
 	}
 
 	now := time.Now()
-	return s.db.Model(&model.AvatarConfig{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
+	err = s.db.Model(&model.AvatarConfig{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
 		"auto_learned_persona": persona,
 		"persona_version":      gorm.Expr("persona_version + 1"),
 		"last_learned_at":      now,
 	}).Error
+
+	if err == nil && s.wsNotify != nil {
+		s.wsNotify(userID, "avatar_learning_completed", map[string]interface{}{
+			"persona_version": persona,
+		})
+	}
+
+	return err
 }
 
 // buildLearningPrompt 构建学习提示词

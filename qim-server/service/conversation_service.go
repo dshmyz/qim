@@ -300,11 +300,6 @@ func (s *ConversationService) DeleteConversation(convID, userID uint) error {
 		}
 	}
 
-	if err := tx.Where("conversation_id = ?", convID).Delete(&model.ConversationMember{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-
 	conv.IsDeleted = true
 	if err := tx.Save(conv).Error; err != nil {
 		tx.Rollback()

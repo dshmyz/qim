@@ -7,23 +7,22 @@ import (
 
 	"qim-server/model"
 
+	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"gorm.io/gorm"
 )
 
 type GroupDocumentService struct {
-	db          *gorm.DB
-	vectorSvc   *VectorService
-	aiService   interface{ Embed(text string) ([]float32, error) }
-	parser      *DocumentParser
+	db       *gorm.DB
+	cortexDB *cortexdb.DB
+	parser   *DocumentParser
 }
 
 func NewGroupDocumentService(db *gorm.DB) *GroupDocumentService {
 	return &GroupDocumentService{db: db}
 }
 
-func (s *GroupDocumentService) SetVectorServices(vectorSvc *VectorService, aiService interface{ Embed(text string) ([]float32, error) }) {
-	s.vectorSvc = vectorSvc
-	s.aiService = aiService
+func (s *GroupDocumentService) SetVectorServices(vectorSvc *VectorService) {
+	s.cortexDB = vectorSvc.GetDB()
 	s.parser = &DocumentParser{}
 }
 
@@ -85,6 +84,10 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 }
 
 func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
+	if s.cortexDB == nil {
+		return fmt.Errorf("向量服务未初始化")
+	}
+
 	var doc model.GroupDocument
 	if err := s.db.Preload("File").First(&doc, groupDocID).Error; err != nil {
 		return fmt.Errorf("文档不存在")
@@ -106,7 +109,6 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 	})
 
 	filePath := doc.File.StoragePath
-
 	text, err := s.parser.Parse(filePath)
 	if err != nil {
 		s.db.Model(&status).Updates(map[string]interface{}{
@@ -124,85 +126,121 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 		return fmt.Errorf("文档内容为空")
 	}
 
-	var chunks []Chunk
-	if doc.File.MimeType == "text/plain" || doc.File.MimeType == "text/markdown" {
-		chunks = SplitMarkdownByHeading(text)
-	} else {
-		parts := SplitBySize(text, 800)
-		for _, part := range parts {
-			chunks = append(chunks, Chunk{Content: part, Title: doc.File.Name})
-		}
-	}
-
-	if len(chunks) == 0 {
-		chunks = []Chunk{{Content: text, Title: doc.File.Name}}
-	}
-
 	collectionName := fmt.Sprintf("group_%d", doc.GroupID)
+	knowledgeID := fmt.Sprintf("group_%d_doc_%d", doc.GroupID, doc.ID)
 
-	chunkCount := 0
-	for i, chunk := range chunks {
-		if len(chunk.Content) < 20 {
-			continue
-		}
-
-		embedding, err := s.aiService.Embed(chunk.Content)
-		if err != nil {
-			log.Printf("[GroupDocument] 生成向量失败 for chunk %d: %v", i, err)
-			continue
-		}
-
-		docID := fmt.Sprintf("group_%d_doc_%d_chunk_%d", doc.GroupID, doc.ID, i)
-		if err := s.vectorSvc.AddVector(context.Background(), collectionName, docID, embedding, chunk.Content, map[string]string{
+	ctx := context.Background()
+	resp, err := s.cortexDB.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
+		KnowledgeID: knowledgeID,
+		Title:       doc.File.Name,
+		Content:     text,
+		Collection:  collectionName,
+		ChunkSize:   800,
+		Metadata: map[string]string{
 			"group_id": fmt.Sprintf("%d", doc.GroupID),
 			"doc_id":   fmt.Sprintf("%d", doc.ID),
 			"file_id":  fmt.Sprintf("%d", doc.FileID),
-			"chunk_id": fmt.Sprintf("%d", i),
 			"title":    doc.File.Name,
-		}); err != nil {
-			log.Printf("[GroupDocument] 存储向量失败 for chunk %d: %v", i, err)
-			continue
-		}
+		},
+	})
 
-		chunkCount++
+	if err != nil {
+		s.db.Model(&status).Updates(map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("知识存储失败: %v", err),
+		})
+		return err
 	}
 
+	chunkCount := len(resp.Knowledge.ChunkIDs)
 	s.db.Model(&status).Updates(map[string]interface{}{
 		"status":      "completed",
 		"chunk_count": chunkCount,
 	})
 
-	log.Printf("[GroupDocument] 文档处理完成: doc_id=%d, chunks=%d", doc.ID, chunkCount)
+	log.Printf("[GroupDocument] 文档处理完成: doc_id=%d, knowledge_id=%s, chunks=%d, entities=%d",
+		doc.ID, knowledgeID, chunkCount, len(resp.EntityNodeIDs))
 	return nil
 }
 
 func (s *GroupDocumentService) SearchKnowledge(groupID uint, query string, topK int) ([]SearchResult, error) {
-	if s.vectorSvc == nil || s.aiService == nil {
+	return s.searchKnowledgeByMode(groupID, query, topK, cortexdb.RetrievalModeAuto)
+}
+
+func (s *GroupDocumentService) SearchKnowledgeWithMode(groupID uint, query string, topK int, mode string, graphLight bool) (*cortexdb.KnowledgeSearchResponse, error) {
+	if s.cortexDB == nil {
 		return nil, fmt.Errorf("向量服务未初始化")
 	}
 
-	queryVector, err := s.aiService.Embed(query)
+	collectionName := fmt.Sprintf("group_%d", groupID)
+	resp, err := s.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
+		Query:         query,
+		Collection:    collectionName,
+		TopK:          topK,
+		RetrievalMode: mode,
+		GraphLight:    graphLight,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("生成查询向量失败: %v", err)
+		return nil, fmt.Errorf("搜索知识库失败: %v", err)
+	}
+	return resp, nil
+}
+
+func (s *GroupDocumentService) searchKnowledgeByMode(groupID uint, query string, topK int, mode string) ([]SearchResult, error) {
+	if s.cortexDB == nil {
+		return nil, fmt.Errorf("向量服务未初始化")
 	}
 
 	collectionName := fmt.Sprintf("group_%d", groupID)
-	results, err := s.vectorSvc.Search(context.Background(), collectionName, queryVector, topK)
+	resp, err := s.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
+		Query:         query,
+		Collection:    collectionName,
+		TopK:          topK,
+		RetrievalMode: mode,
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("搜索知识库失败: %v", err)
 	}
 
 	var searchResults []SearchResult
-	for _, r := range results {
-		searchResults = append(searchResults, ScoredEmbeddingToSearchResult(r))
+	for _, hit := range resp.Results {
+		metadata := hit.Metadata
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
+		metadata["knowledge_id"] = hit.KnowledgeID
+
+		searchResults = append(searchResults, SearchResult{
+			Content:    hit.Snippet,
+			Score:      hit.Score,
+			Metadata:   metadata,
+			Collection: collectionName,
+			DocID:      hit.KnowledgeID,
+		})
 	}
 
 	return searchResults, nil
 }
 
 func (s *GroupDocumentService) DeleteGroupVectors(groupID uint) error {
-	collectionName := fmt.Sprintf("group_%d", groupID)
-	return s.vectorSvc.DeleteByCollection(context.Background(), collectionName)
+	if s.cortexDB == nil {
+		return nil
+	}
+
+	var docs []model.GroupDocument
+	s.db.Where("group_id = ?", groupID).Find(&docs)
+
+	for _, doc := range docs {
+		knowledgeID := fmt.Sprintf("group_%d_doc_%d", groupID, doc.ID)
+		s.cortexDB.DeleteKnowledge(context.Background(), cortexdb.KnowledgeDeleteRequest{
+			KnowledgeID: knowledgeID,
+		})
+	}
+
+	s.db.Where("group_id = ?", groupID).Delete(&model.DocumentProcessStatus{})
+	log.Printf("[GroupDocument] 群 %d 知识向量清理完成", groupID)
+	return nil
 }
 
 func (s *GroupDocumentService) RetryDocument(groupDocID uint) error {
@@ -219,4 +257,66 @@ func (s *GroupDocumentService) RetryDocument(groupDocID uint) error {
 	})
 
 	return s.ProcessDocument(groupDocID)
+}
+
+func (s *GroupDocumentService) BatchProcessDocuments(groupDocIDs []uint) (map[string]interface{}, error) {
+	results := make(map[string]interface{})
+	success := 0
+	failed := 0
+	var errors []string
+
+	for _, id := range groupDocIDs {
+		err := s.ProcessDocument(id)
+		if err != nil {
+			failed++
+			errors = append(errors, fmt.Sprintf("文档 %d: %v", id, err))
+		} else {
+			success++
+		}
+	}
+
+	results["success"] = success
+	results["failed"] = failed
+	if len(errors) > 0 {
+		results["errors"] = errors
+	}
+
+	return results, nil
+}
+
+func (s *GroupDocumentService) BatchRetryDocuments(groupDocIDs []uint) (map[string]interface{}, error) {
+	results := make(map[string]interface{})
+	success := 0
+	failed := 0
+	var errors []string
+
+	for _, id := range groupDocIDs {
+		var status model.DocumentProcessStatus
+		s.db.Where("group_doc_id = ?", id).Order("created_at DESC").First(&status)
+
+		if status.Status == "completed" {
+			continue
+		}
+
+		s.db.Model(&status).Updates(map[string]interface{}{
+			"status": "pending",
+			"error":  "",
+		})
+
+		err := s.ProcessDocument(id)
+		if err != nil {
+			failed++
+			errors = append(errors, fmt.Sprintf("文档 %d: %v", id, err))
+		} else {
+			success++
+		}
+	}
+
+	results["success"] = success
+	results["failed"] = failed
+	if len(errors) > 0 {
+		results["errors"] = errors
+	}
+
+	return results, nil
 }

@@ -216,6 +216,7 @@ type Message struct {
 	QuotedMessageID *uint          `json:"quoted_message_id"`
 	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
 	IsRead          bool           `json:"is_read" gorm:"default:false"`
+	IsAvatarReply   bool           `json:"is_avatar_reply" gorm:"default:false"`
 	RecalledAt      *time.Time     `json:"recalled_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -424,6 +425,10 @@ type App struct {
 	Status    string         `json:"status" gorm:"size:20;default:'active'"`
 	OpenType  string         `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
 	IsGlobal  bool           `json:"is_global" gorm:"default:false"`
+	// 权限范围控制
+	ScopeType      string         `json:"scope_type" gorm:"size:20;default:'all'"`       // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
+	ScopeValue     string         `json:"scope_value" gorm:"size:1000"`                   // 具体的范围值（逗号分隔的ID列表）
+	AvailableOrgIDs string        `json:"available_org_ids" gorm:"size:1000"`             // 可用的组织ID列表（逗号分隔）
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`

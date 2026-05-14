@@ -50,7 +50,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { request } from '../../composables/useRequest'
+
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+    timeoutId = setTimeout(() => {
+      func(...args)
+    }, wait)
+  }
+}
 
 interface MemoryRecord {
   doc_id: string
@@ -63,7 +80,6 @@ interface MemoryRecord {
 }
 
 const props = defineProps<{
-  serverUrl: string
   userId: number
 }>()
 
@@ -83,11 +99,8 @@ const filteredMemories = computed(() => {
 async function loadMemories() {
   loading.value = true
   try {
-    const response = await fetch(`${props.serverUrl}/api/v1/avatar/memories`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    })
-    const data = await response.json()
-    if (data.code === 0) {
+    const data = await request<{ code: number; data: MemoryRecord[] }>('/api/v1/avatar/memories', { method: 'GET' })
+    if (data && data.code === 0) {
       memories.value = data.data || []
     }
   } catch (e) {
@@ -97,7 +110,7 @@ async function loadMemories() {
   }
 }
 
-async function handleSearch() {
+async function performSearch() {
   if (!searchQuery.value || searchQuery.value.length < 2) {
     isSearching.value = false
     searchResults.value = []
@@ -105,19 +118,14 @@ async function handleSearch() {
   }
 
   try {
-    const response = await fetch(`${props.serverUrl}/api/v1/avatar/memory/search`, {
+    const data = await request<{ code: number; data: MemoryRecord[] }>('/api/v1/avatar/memory/search', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
       body: JSON.stringify({
         query: searchQuery.value,
         top_k: 10
       })
     })
-    const data = await response.json()
-    if (data.code === 0) {
+    if (data && data.code === 0) {
       searchResults.value = data.data || []
       isSearching.value = true
     }
@@ -126,16 +134,14 @@ async function handleSearch() {
   }
 }
 
+const handleSearch = debounce(performSearch, 300)
+
 async function handleForgetMemory(memory: MemoryRecord) {
   if (!confirm('确定要删除这条记忆吗？')) return
 
   try {
-    const response = await fetch(`${props.serverUrl}/api/v1/avatar/memory/${memory.doc_id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    })
-    const data = await response.json()
-    if (data.code === 0) {
+    const data = await request<{ code: number }>(`/api/v1/avatar/memory/${memory.doc_id}`, { method: 'DELETE' })
+    if (data && data.code === 0) {
       memories.value = memories.value.filter(m => m.doc_id !== memory.doc_id)
     }
   } catch (e) {

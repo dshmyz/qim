@@ -143,9 +143,8 @@ export function useGroup() {
     }
 
     try {
-      // 使用 /dissolve 端点，与 Main.vue 一致
-      const response: any = await request(`/api/v1/conversations/${group.id}/dissolve`, {
-        method: 'POST'
+      const response: any = await request(`/api/v1/groups/${group.id}`, {
+        method: 'DELETE'
       })
 
       if (response.code === 0 || response.code === 200) {
@@ -186,7 +185,7 @@ export function useGroup() {
 
     try {
       // 使用 /exit 端点，与 Main.vue 一致
-      const response: any = await request(`/api/v1/conversations/${group.id}/exit`, {
+      const response: any = await request(`/api/v1/groups/${group.id}/exit`, {
         method: 'POST'
       })
 
@@ -206,7 +205,7 @@ export function useGroup() {
   }
 
   /**
-   * 退出群聊（使用 /leave 端点）
+   * 退出群聊（使用 /exit 端点）
    * 这是通用的 leaveGroup 实现，保留作为备用
    */
   const leaveGroup = async (group: GroupInfo) => {
@@ -227,7 +226,7 @@ export function useGroup() {
     }
 
     try {
-      const response: any = await request(`/api/v1/conversations/${group.id}/leave`, {
+      const response: any = await request(`/api/v1/groups/${group.id}/exit`, {
         method: 'POST'
       })
 
@@ -251,7 +250,7 @@ export function useGroup() {
    */
   const updateGroup = async (groupId: string, data: Partial<GroupInfo>) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}`, {
+      const response: any = await request(`/api/v1/groups/${groupId}`, {
         method: 'PUT',
         body: JSON.stringify(data)
       })
@@ -275,7 +274,7 @@ export function useGroup() {
    */
   const addGroupMembers = async (groupId: string, memberIds: string[]) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}/members`, {
+      const response: any = await request(`/api/v1/groups/${groupId}/members`, {
         method: 'POST',
         body: JSON.stringify({ member_ids: memberIds })
       })
@@ -299,7 +298,7 @@ export function useGroup() {
    */
   const removeGroupMember = async (groupId: string, memberId: string) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}/members/${memberId}`, {
+      const response: any = await request(`/api/v1/groups/${groupId}/members/${memberId}`, {
         method: 'DELETE'
       })
 
@@ -324,7 +323,7 @@ export function useGroup() {
    */
   const setAsAdmin = async (groupId: string, memberId: string) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}/members/${memberId}/role`, {
+      const response: any = await request(`/api/v1/groups/${groupId}/members/${memberId}/role`, {
         method: 'PUT',
         body: JSON.stringify({ role: 'admin' })
       })
@@ -353,7 +352,7 @@ export function useGroup() {
    */
   const updateAnnouncement = async (groupId: string, announcement: string) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}/announcement`, {
+      const response: any = await request(`/api/v1/groups/${groupId}/announcement`, {
         method: 'PUT',
         body: JSON.stringify({ announcement })
       })
@@ -445,7 +444,7 @@ export function useGroup() {
    */
   const loadGroupMembers = async (groupId: string) => {
     try {
-      const response: any = await request(`/api/v1/conversations/${groupId}/members`)
+      const response: any = await request(`/api/v1/groups/${groupId}/members`)
       if (response.code === 0) {
         groupMembers.value = response.data || []
       }

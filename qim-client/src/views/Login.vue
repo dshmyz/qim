@@ -16,7 +16,7 @@
       
       <div class="login-header">
         <div class="app-logo">
-          <AppLogo size="large" />
+          <AppLogo size="extraLarge" />
         </div>
         <h2>QIM 青雀</h2>
         <p>简洁 · 高效 · 智能</p>
@@ -779,7 +779,7 @@ const closeWindow = () => {
   font-size: 14px;
   font-weight: 500;
   border-radius: 8px;
-  background: #1a1a1a;
+  background: #5b8def;
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -787,7 +787,7 @@ const closeWindow = () => {
 }
 
 .twofa-button:hover:not(:disabled) {
-  background: #333333;
+  background: #4a7de0;
 }
 
 .twofa-button:disabled {
@@ -826,7 +826,7 @@ const closeWindow = () => {
   border-radius: 8px;
   font-size: 15px;
   font-weight: 500;
-  background: #1a1a1a;
+  background: #5b8def;
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -834,7 +834,7 @@ const closeWindow = () => {
 }
 
 .login-button:hover:not(:disabled) {
-  background: #333333;
+  background: #4a7de0;
 }
 
 .login-button:active:not(:disabled) {
@@ -872,7 +872,6 @@ const closeWindow = () => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid #e4e7ed;
 }
 
 .dialog-header h3 {
@@ -935,7 +934,6 @@ const closeWindow = () => {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid #e4e7ed;
 }
 
 .dialog-footer button {
@@ -954,13 +952,13 @@ const closeWindow = () => {
 }
 
 .dialog-footer .btn-primary {
-  background: #1a1a1a;
+  background: #5b8def;
   border: none;
   color: white;
 }
 
 .dialog-footer .btn-primary:hover {
-  background: #333333;
+  background: #4a7de0;
 }
 
 .version-info {

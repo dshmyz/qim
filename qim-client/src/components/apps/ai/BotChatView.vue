@@ -34,7 +34,7 @@
       >
         <div class="content">
           <MarkdownRenderer
-            v-if="msg.type === 'markdown' || (msg.senderType === 'bot' && !msg.isStreaming)"
+            v-if="msg.type === 'markdown' || msg.senderType === 'bot'"
             :content="msg.content"
           />
           <span v-else>{{ msg.content }}</span>

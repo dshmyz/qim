@@ -173,7 +173,7 @@ const toggleSubDepartment = (parentId: string, subId: string) => {
 
 .department-name {
   font-size: 14px;
-  color: var(--primary-color);
+  color: var(--text-color);
   font-weight: 600;
 }
 

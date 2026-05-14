@@ -6,7 +6,7 @@
     </div>
     <div class="quoted-message-content">
       <template v-if="quotedMessage.type === 'text'">
-        {{ quotedMessage.content || '无内容' }}
+        {{ truncatedContent }}
       </template>
       <template v-else-if="quotedMessage.type === 'image'">
         [图片] {{ getFileName(quotedMessage.content) }}
@@ -21,7 +21,7 @@
         [分享]
       </template>
       <template v-else>
-        {{ quotedMessage.content || '无内容' }}
+        {{ truncatedContent }}
       </template>
     </div>
   </div>
@@ -37,6 +37,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   remove: []
 }>()
+
+const truncatedContent = computed(() => {
+  const content = props.quotedMessage.content || '无内容'
+  if (content.length > 80) {
+    return content.slice(0, 80) + '...'
+  }
+  return content
+})
 
 // 获取文件名
 const getFileName = (content: string): string => {
@@ -103,5 +111,11 @@ const getFileName = (content: string): string => {
   font-size: 14px;
   color: var(--text-color);
   line-height: 1.4;
+  max-height: 40px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 </style>

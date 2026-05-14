@@ -109,9 +109,9 @@ const handleLogin = async () => {
       authStore.setToken(data.data.token)
       authStore.setUser(data.data.user)
 
-      // 跳转到 redirect 页面或首页
+      // 跳转到 redirect 页面或后台首页
       const redirect = route.query.redirect as string
-      router.push(redirect || '/')
+      router.push(redirect || '/admin')
     }
   } catch (error: any) {
     const message = error?.response?.data?.message || '登录失败，请检查用户名和密码'

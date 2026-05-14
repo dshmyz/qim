@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -34,6 +35,8 @@ type SummaryGraph struct {
 	cache     *AICache
 }
 
+var registerSummaryMergeOnce sync.Once
+
 func NewSummaryGraph(aiService *ai.AIService, cache *AICache) *SummaryGraph {
 	return &SummaryGraph{
 		aiService: aiService,
@@ -42,8 +45,10 @@ func NewSummaryGraph(aiService *ai.AIService, cache *AICache) *SummaryGraph {
 }
 
 func (g *SummaryGraph) Build() error {
-	compose.RegisterValuesMergeFunc(func(vs []*SummaryInput) (*SummaryInput, error) {
-		return vs[0], nil
+	registerSummaryMergeOnce.Do(func() {
+		compose.RegisterValuesMergeFunc(func(vs []*SummaryInput) (*SummaryInput, error) {
+			return vs[0], nil
+		})
 	})
 
 	graph := compose.NewGraph[*SummaryInput, *SummaryOutput]()
@@ -132,11 +137,14 @@ func (g *SummaryGraph) createPrepareNode() *compose.Lambda {
 
 		db := database.GetDB()
 		var messages []model.Message
-		db.Where("conversation_id = ? AND created_at >= ? AND created_at <= ?",
+		result := db.Where("conversation_id = ? AND created_at >= ? AND created_at <= ?",
 			input.ConversationID, sc.timeRangeStart, sc.timeRangeEnd).
 			Preload("Sender").
 			Order("created_at ASC").
 			Find(&messages)
+		if result.Error != nil {
+			return nil, result.Error
+		}
 
 		sc.messages = messages
 		sc.messagesCount = len(messages)

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"qim-server/model"
+	"qim-server/pkg/mention"
 	"strconv"
 	"sync"
 	"time"
@@ -562,10 +563,31 @@ func handleSendMessage(c *Client, data interface{}) {
 		Where("conversation_id = ? AND user_id != ?", convID, c.userID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
-	// 构建推送消息
+	mentions := mention.ExtractMentions(msg.Content)
+	mentionUserIDs := make([]uint, 0, len(mentions))
+	for _, m := range mentions {
+		mentionUserIDs = append(mentionUserIDs, m.UserID)
+	}
+
 	wsMsg := WSMessage{
 		Type: "new_message",
-		Data: msg,
+		Data: map[string]interface{}{
+			"id":                msg.ID,
+			"conversation_id":   msg.ConversationID,
+			"sender_id":         msg.SenderID,
+			"type":              msg.Type,
+			"content":           msg.Content,
+			"quoted_message_id": msg.QuotedMessageID,
+			"is_recalled":       msg.IsRecalled,
+			"is_read":           msg.IsRead,
+			"is_avatar_reply":   msg.IsAvatarReply,
+			"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+			"recalled_at":       msg.RecalledAt,
+			"created_at":        msg.CreatedAt,
+			"sender":            msg.Sender,
+			"quoted_message":    msg.QuotedMessage,
+			"mention_user_ids":  mentionUserIDs,
+		},
 	}
 	jsonMsg, _ := json.Marshal(wsMsg)
 

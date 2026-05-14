@@ -52,15 +52,19 @@ const openNewsLink = () => {
 
 .news-info {
   display: flex;
-  padding: 12px;
-  background: var(--list-bg);
+  padding: 16px;
+  background: var(--message-bg);
   cursor: pointer;
-  transition: background 0.2s;
-  border-radius: 8px;
+  transition: all 0.2s;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .news-info:hover {
   background: var(--hover-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 
 .news-content {
@@ -92,9 +96,16 @@ const openNewsLink = () => {
 .news-image {
   width: 80px;
   height: 60px;
-  border-radius: 6px;
+  border-radius: 8px;
   object-fit: cover;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.news-info:hover .news-image {
+  transform: scale(1.02);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
 }
 
 /* 自己的资讯消息样式 */

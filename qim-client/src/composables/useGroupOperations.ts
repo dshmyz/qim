@@ -13,6 +13,8 @@ interface Conversation {
 }
 
 export function useGroupOperations(request: any, conversations: any) {
+  const editGroupName = ref('')
+  const showEditGroupNameModal = ref(false)
   const editAnnouncementContent = ref('')
   const showEditAnnouncementModal = ref(false)
   const showGroupMembersModal = ref(false)
@@ -24,6 +26,11 @@ export function useGroupOperations(request: any, conversations: any) {
   const selectedAddMembers = ref<any[]>([])
   const addMembersSearchQuery = ref('')
 
+  const closeEditGroupNameModal = () => {
+    showEditGroupNameModal.value = false
+    editGroupName.value = ''
+  }
+
   const closeEditAnnouncementModal = () => {
     showEditAnnouncementModal.value = false
     editAnnouncementContent.value = ''
@@ -31,6 +38,55 @@ export function useGroupOperations(request: any, conversations: any) {
 
   const closeMemberContextMenu = () => {
     selectedMember.value = null
+  }
+
+  const openEditGroupName = (group: Conversation) => {
+    if (!group) return
+    selectedGroup.value = group
+    editGroupName.value = group.name || ''
+    showEditGroupNameModal.value = true
+  }
+
+  const saveGroupName = async () => {
+    if (!selectedGroup.value) {
+      closeEditGroupNameModal()
+      return
+    }
+
+    const name = editGroupName.value.trim()
+    if (!name) {
+      QMessage.warning('群名称不能为空')
+      return
+    }
+
+    try {
+      const response = await request(`/api/v1/groups/${selectedGroup.value.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name })
+      })
+
+      if (response.code === 0) {
+        QMessage.success('群名称已成功更新')
+        selectedGroup.value.name = name
+        const index = conversations.value.findIndex((c: Conversation) => c.id === selectedGroup.value?.id)
+        if (index > -1) {
+          conversations.value[index].name = name
+        }
+      } else {
+        QMessage.error(response.message || '更新群名称失败')
+      }
+    } catch (error: any) {
+      console.error('更新群名称失败:', error)
+      if (error?.response?.status === 403) {
+        QMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
+      } else {
+        QMessage.error('网络错误，更新群名称失败')
+      }
+    }
+    closeEditGroupNameModal()
   }
 
   const editAnnouncement = (group: Conversation) => {
@@ -47,7 +103,7 @@ export function useGroupOperations(request: any, conversations: any) {
     }
     
     try {
-      const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/announcement`, {
+      const response = await request(`/api/v1/groups/${selectedGroup.value.id}/announcement`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -75,7 +131,7 @@ export function useGroupOperations(request: any, conversations: any) {
   const removeMemberFromGroup = async () => {
     if (selectedMember.value && selectedGroup.value) {
       try {
-        const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members/${selectedMember.value.id}`, {
+        const response = await request(`/api/v1/groups/${selectedGroup.value.id}/members/${selectedMember.value.id}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -110,7 +166,7 @@ export function useGroupOperations(request: any, conversations: any) {
   const setAsAdmin = async () => {
     if (selectedMember.value && selectedGroup.value) {
       try {
-        const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members/${selectedMember.value.id}/role`, {
+        const response = await request(`/api/v1/groups/${selectedGroup.value.id}/members/${selectedMember.value.id}/role`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
@@ -181,6 +237,8 @@ export function useGroupOperations(request: any, conversations: any) {
   }
 
   return {
+    editGroupName,
+    showEditGroupNameModal,
     editAnnouncementContent,
     showEditAnnouncementModal,
     showGroupMembersModal,
@@ -191,6 +249,8 @@ export function useGroupOperations(request: any, conversations: any) {
     groupMembers,
     selectedAddMembers,
     addMembersSearchQuery,
+    openEditGroupName,
+    saveGroupName,
     editAnnouncement,
     saveAnnouncement,
     removeMemberFromGroup,
@@ -200,6 +260,7 @@ export function useGroupOperations(request: any, conversations: any) {
     viewGroupInfo,
     addMembersToGroup,
     handleInviteMembers,
+    closeEditGroupNameModal,
     closeEditAnnouncementModal,
     closeMemberContextMenu
   }

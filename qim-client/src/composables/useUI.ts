@@ -22,6 +22,7 @@ export function useUI() {
   // 群聊右键菜单
   const showGroupContextMenuFlag = ref(false)
   const groupContextMenuPosition = ref({ x: 0, y: 0 })
+  const selectedGroupForContextMenu = ref<any>(null)
 
   // 成员右键菜单
   const showMemberContextMenuFlag = ref(false)
@@ -81,6 +82,10 @@ export function useUI() {
   // 编辑群公告模态框
   const showEditAnnouncementModal = ref(false)
   const editAnnouncementContent = ref('')
+
+  // 编辑群名称模态框
+  const showEditGroupNameModal = ref(false)
+  const editGroupName = ref('')
 
   // 群资料模态框
   const showGroupInfoModal = ref(false)
@@ -161,12 +166,13 @@ export function useUI() {
     event.preventDefault()
     showGroupContextMenuFlag.value = true
     groupContextMenuPosition.value = { x: event.clientX, y: event.clientY }
-    // 保持 selectedGroup 不变，由外部设置
+    selectedGroupForContextMenu.value = group
   }
 
   // 隐藏群聊右键菜单
   const closeGroupContextMenu = () => {
     showGroupContextMenuFlag.value = false
+    selectedGroupForContextMenu.value = null
   }
 
   // ========== 成员右键菜单操作 ==========
@@ -431,6 +437,20 @@ export function useUI() {
     editAnnouncementContent.value = ''
   }
 
+  // ========== 编辑群名称模态框操作 ==========
+
+  // 打开编辑群名称模态框
+  const openEditGroupNameModal = (groupName: string = '') => {
+    editGroupName.value = groupName
+    showEditGroupNameModal.value = true
+  }
+
+  // 关闭编辑群名称模态框
+  const closeEditGroupNameModal = () => {
+    showEditGroupNameModal.value = false
+    editGroupName.value = ''
+  }
+
   // ========== 群资料模态框操作 ==========
 
   // 打开群资料模态框
@@ -546,6 +566,7 @@ export function useUI() {
     selectedEmployee,
     showGroupContextMenuFlag,
     groupContextMenuPosition,
+    selectedGroupForContextMenu,
     showMemberContextMenuFlag,
     memberContextMenuPosition,
     selectedMember,
@@ -575,6 +596,8 @@ export function useUI() {
     selectedAddMembers,
     showEditAnnouncementModal,
     editAnnouncementContent,
+    showEditGroupNameModal,
+    editGroupName,
     showGroupInfoModal,
     showAboutDialog,
     showLogoutDialog,
@@ -623,6 +646,8 @@ export function useUI() {
     closeAddMembersModal,
     openEditAnnouncementModal,
     closeEditAnnouncementModal,
+    openEditGroupNameModal,
+    closeEditGroupNameModal,
     openGroupInfoModal,
     closeGroupInfoModal,
     openAboutDialog,

@@ -8,7 +8,7 @@
           <i v-else-if="shareData?.type === 'sticky'" class="fas fa-sticky-note"></i>
           <i v-else class="fas fa-share-alt"></i>
         </div>
-        <div class="share-type">{{ getShareTypeText(shareData?.type) }}</div>
+        <div class="share-type-label">{{ getShareTypeText(shareData?.type) }}</div>
       </div>
       <div class="share-details">
         <div class="share-name">{{ shareData?.name || content }}</div>
@@ -84,19 +84,46 @@ const getShareTypeText = (type?: string): string => {
 
 <style scoped>
 .share-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  border-radius: 14px;
   padding: 14px;
   width: fit-content;
-  min-width: 250px;
+  min-width: 260px;
   max-width: 100%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.share-message::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f093fb, #f5576c, #4facfe);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .share-message:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+}
+
+.share-message:hover::before {
+  opacity: 1;
 }
 
 .share-info {
@@ -109,252 +136,191 @@ const getShareTypeText = (type?: string): string => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   flex-shrink: 0;
+  gap: 6px;
 }
 
 .share-icon {
-  font-size: 24px;
-  margin-top: 2px;
-  width: 40px;
-  height: 40px;
+  font-size: 22px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--list-bg);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px rgba(240, 147, 251, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+  color: #ffffff;
 }
 
-.share-type {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.2;
-  white-space: nowrap;
+.share-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+  border-radius: 12px;
+}
+
+.share-icon:hover {
+  transform: scale(1.08) rotate(-2deg);
+  box-shadow: 
+    0 6px 20px rgba(240, 147, 251, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.share-type-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: block;
   text-align: center;
-  margin-bottom: 4px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .share-details {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .share-name {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: #1a1a2e;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
   word-break: break-all;
+  text-align: left;
+  letter-spacing: -0.01em;
 }
 
 .share-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-top: 4px;
 }
 
 .share-action-btn {
-  padding: 6px 16px;
+  padding: 6px 14px;
   font-size: 12px;
   border-radius: 8px;
   border: none;
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #495057;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.share-action-btn i {
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .share-action-btn:hover {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(240, 147, 251, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.share-action-btn:hover i {
+  opacity: 1;
 }
 
 .share-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
+  box-shadow: 0 2px 6px rgba(240, 147, 251, 0.3);
 }
 
 .share-expanded-content {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-  animation: expandContent 0.3s ease-out;
-}
-
-@keyframes expandContent {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
-}
-
-.note-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-color);
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 12px;
-  background: var(--secondary-color);
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.02);
   border-radius: 8px;
-}
-
-.note-content :deep(h1),
-.note-content :deep(h2),
-.note-content :deep(h3) {
-  margin-top: 16px;
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.note-content :deep(h1):first-child,
-.note-content :deep(h2):first-child,
-.note-content :deep(h3):first-child {
-  margin-top: 0;
-}
-
-.note-content :deep(p) {
-  margin: 8px 0;
-}
-
-.note-content :deep(code) {
-  background: var(--hover-color);
-  padding: 2px 6px;
-  border-radius: 4px;
   font-size: 13px;
-}
-
-.note-content :deep(pre) {
-  background: var(--hover-color);
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.note-content :deep(pre code) {
-  background: none;
-  padding: 0;
-}
-
-.note-content :deep(ul),
-.note-content :deep(ol) {
-  padding-left: 20px;
-  margin: 8px 0;
-}
-
-.note-content :deep(li) {
-  margin: 4px 0;
-}
-
-.note-content :deep(blockquote) {
-  border-left: 3px solid var(--primary-color);
-  padding-left: 12px;
-  margin: 8px 0;
   color: var(--text-secondary);
-}
-
-.note-content :deep(a) {
-  color: var(--primary-color);
-  text-decoration: none;
-}
-
-.note-content :deep(a:hover) {
-  text-decoration: underline;
-}
-
-.sticky-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-color);
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 12px;
-  background: #fff9c4;
-  border-radius: 8px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  line-height: 1.5;
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 /* 自己的分享消息样式 */
 .share-message.self {
-  background: var(--primary-color);
+  background: linear-gradient(135deg, #d53f8c 0%, #ed64a6 50%, #f687b3 100%);
+  border: none;
+  box-shadow: 
+    0 4px 12px rgba(213, 63, 140, 0.25),
+    0 12px 32px rgba(237, 100, 166, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.share-message.self::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
 }
 
 .share-message.self .share-name {
-  color: #fff;
-}
-
-.share-message.self .share-type {
-  color: rgba(255, 255, 255, 0.8);
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .share-message.self .share-icon {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.95);
+  color: #f5576c;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.share-message.self .share-type-label {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .share-message.self .share-action-btn {
-  background-color: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.95);
+  color: #f5576c;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .share-message.self .share-action-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+  background: #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
 }
 
 .share-message.self .share-expanded-content {
-  border-top-color: rgba(255, 255, 255, 0.2);
-}
-
-.share-message.self .note-content {
-  /* background: rgba(255, 255, 255, 0.1); */
-  /* color: #fff; */
-}
-
-.share-message.self .note-content :deep(code) {
   background: rgba(255, 255, 255, 0.15);
-}
-
-.share-message.self .note-content :deep(pre) {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.share-message.self .note-content :deep(blockquote) {
-  border-left-color: rgba(255, 255, 255, 0.6);
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.share-message.self .note-content :deep(a) {
-  color: #fff;
-  text-decoration: underline;
-}
-
-.share-message.self .sticky-content {
-  background: rgba(255, 255, 255, 0.9);
-  color: #333;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
 }
 </style>

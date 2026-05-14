@@ -19,12 +19,10 @@
               :alt="user.name"
               class="user-avatar"
             />
-            <div class="online-status-indicator"></div>
           </div>
           <div class="user-basic-info">
             <h2 class="user-full-name">{{ user.name }}</h2>
             <p class="user-department">{{ user.department || '暂无部门' }}</p>
-            <p class="user-position">{{ user.position || '暂无职位' }}</p>
           </div>
         </div>
         
@@ -65,6 +63,10 @@
                 <span class="info-value">{{ user.department || '暂无' }}</span>
               </div>
               <div class="info-item">
+                <span class="info-label">职位</span>
+                <span class="info-value">{{ user.position || '暂无' }}</span>
+              </div>
+              <div class="info-item">
                 <span class="info-label">IP</span>
                 <span class="info-value">{{ user.ip || '暂无' }}</span>
               </div>
@@ -81,7 +83,7 @@
             <i class="fas fa-id-card"></i>
             <span>详细资料</span>
           </button>
-          <button class="action-btn secondary" @click="$emit('open-avatar-settings')">
+          <button v-if="isCurrentUser" class="action-btn secondary" @click="$emit('open-avatar-settings')">
             <i class="fas fa-user-astronaut"></i>
             <span>分身设置</span>
           </button>
@@ -92,6 +94,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { getCurrentUser } from '../../utils/user'
+
 interface User {
   id: string | number
   name: string
@@ -110,7 +115,13 @@ interface Props {
   getAvatarUrl: (avatar: string | undefined) => string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+
+const isCurrentUser = computed(() => {
+  const currentUser = getCurrentUser()
+  if (!currentUser || !currentUser.id) return false
+  return String(currentUser.id) === String(props.user.id)
+})
 
 defineEmits<{
   'toggleSidebar': []
@@ -177,187 +188,147 @@ defineEmits<{
   background: linear-gradient(135deg, var(--primary-light), var(--active-color));
   border-radius: 8px 8px 0 0;
   z-index: 1;
-  /* height: 120px; */
-  /* background: linear-gradient(135deg, var(--primary-color, #409eff), #67c23a); */
 }
 
 .user-profile-card {
-  /* background: var(--card-bg, #fff);
-  border-radius: 12px;
-  margin: -60px 20px 20px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1); */
-    margin: -60px 20px 20px;
-
   position: relative;
   background: var(--card-bg);
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  /* border: 1px solid var(--border-color); */
   z-index: 2;
   margin-top: 40px;
   animation: cardSlideIn 0.4s ease-out;
 }
 
+@keyframes cardSlideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .user-profile-avatar-section {
-  /* text-align: center; */
-  /* margin-bottom: 24px; */
-   display: flex;
+  display: flex;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
-   flex-direction: column;
-    text-align: center;
-    gap: 15px;
+  padding-bottom: 0;
 }
 
 .user-avatar-container {
   position: relative;
-  display: inline-block;
-  margin-bottom: 16px;
+  margin-right: 16px;
 }
 
 .user-avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  border: 4px solid var(--card-bg, #fff);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 3px solid white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transition: transform 0.3s ease;
 }
 
-.online-status-indicator {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
-  background: #67c23a;
-  border-radius: 50%;
-  border: 3px solid var(--card-bg, #fff);
+.user-avatar:hover {
+  transform: scale(1.05);
+}
+
+.user-basic-info {
+  flex: 1;
 }
 
 .user-full-name {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-  color: var(--text-color, #333);
-}
-
-.user-department,
-.user-position {
   margin: 0 0 4px 0;
-  color: var(--text-secondary, #999);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+  letter-spacing: 0.3px;
 }
 
-.user-info-sections {
-  /* display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-bottom: 24px; */
+.user-department {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
+
 .user-info-sections {
   margin-bottom: 20px;
 }
 
 .info-section {
-  margin-bottom: 16px;
-  /* background: var(--list-bg); */
   border-radius: 8px;
   padding: 16px;
-  /* border: 1px solid var(--border-color); */
-  transition: all 0.3s ease;
-}
-
-.info-section:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
 }
 
 .section-title {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0;
 }
 
 .section-title i {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--primary-color);
   margin-right: 8px;
 }
 
 .section-title h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-color);
 }
-
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 
 .info-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .info-value {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-color);
   font-weight: 500;
-  padding: 5px 8px;
-  background: var(--input-bg);
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.info-value:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
 .user-action-buttons {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+  margin-bottom: 16px;
 }
 
 .action-btn {
-  padding: 10px 20px;
+  padding: 8px 16px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 100px;
+  gap: 5px;
+  min-width: 90px;
   justify-content: center;
 }
 
@@ -376,7 +347,7 @@ defineEmits<{
 }
 
 .action-btn.secondary {
-  background: var(--primary-light);
+  background: var(--input-bg);
   border-color: var(--border-color);
   color: var(--text-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -389,7 +360,6 @@ defineEmits<{
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .user-profile-container {
     padding: 10px;
@@ -398,10 +368,6 @@ defineEmits<{
   .user-profile-card {
     padding: 20px;
     margin-top: 40px;
-  }
-  
-  .user-avatar-container {
-    margin-right: 0;
   }
   
   .info-grid {
@@ -416,5 +382,4 @@ defineEmits<{
     width: 100%;
   }
 }
-
 </style>

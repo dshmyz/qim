@@ -48,10 +48,13 @@ func (r *MessageRetriever) Retrieve(ctx context.Context, query string, opts ...r
 		queryBuilder = queryBuilder.Where("content LIKE ?", "%"+query+"%")
 	}
 
-	queryBuilder.Preload("Sender").
+	result := queryBuilder.Preload("Sender").
 		Order("created_at DESC").
 		Limit(topK).
 		Find(&messages)
+	if result.Error != nil {
+		return nil, result.Error
+	}
 
 	docs := make([]*schema.Document, len(messages))
 	for i, msg := range messages {

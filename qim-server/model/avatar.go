@@ -135,5 +135,5 @@ type AvatarReplyStrategy struct {
 	MaxReplyLength      string  `json:"maxReplyLength"` // short, medium, long
 	ReplyDelay          int     `json:"replyDelay"`     // 秒
 	ConfidenceThreshold float64 `json:"confidenceThreshold"`
-	DisclaimerStyle     string  `json:"disclaimerStyle"` // none, subtle, explicit
+	DisclaimerStyle     string  `json:"disclaimerStyle"` // badge, footer, both
 }

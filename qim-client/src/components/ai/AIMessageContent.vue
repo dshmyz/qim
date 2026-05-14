@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-message-content">
+  <div class="message-bubble ai-message-content">
     <div v-if="!isExpanded && isLongContent" class="preview-content" @click="handleLinkClick">
       <div v-html="renderMarkdown(previewText)" class="markdown-content"></div>
     </div>
@@ -42,6 +42,10 @@ const props = withDefaults(defineProps<{
   maxLength: 500
 })
 
+const emit = defineEmits<{
+  (e: 'copy', content: string): void
+}>()
+
 const isExpanded = ref(false)
 const previewLines = 5
 
@@ -82,9 +86,8 @@ const renderMarkdown = (text: string): string => {
 const copyContent = async () => {
   try {
     await navigator.clipboard.writeText(props.content)
-    // &#x53EF;&#x4F7F;&#x7528;&#x5168;&#x5C40; message &#x7EC4;&#x4EF6;&#x63D0;&#x793A;&#x6210;&#x529F;
+    emit('copy', props.content)
   } catch {
-    // &#x964D;&#x7EA7;&#x5904;&#x7406;
   }
 }
 
@@ -102,6 +105,14 @@ const exportMarkdown = () => {
 <style scoped>
 .ai-message-content {
   width: 100%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--sidebar-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .preview-content {
@@ -138,26 +149,26 @@ const exportMarkdown = () => {
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
-  margin: 10px 0 5px 0;
+  margin: 6px 0 2px 0;
   font-weight: 600;
   color: var(--text-color);
 }
 
-.markdown-content h1 { font-size: 18px; }
-.markdown-content h2 { font-size: 16px; }
+.markdown-content h1 { font-size: 16px; }
+.markdown-content h2 { font-size: 15px; }
 .markdown-content h3 { font-size: 14px; }
 
 .markdown-content pre {
   background: var(--hover-color);
-  padding: 8px;
+  padding: 6px;
   border-radius: 4px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 4px 0;
 }
 
 .markdown-content code {
   background: var(--hover-color);
-  padding: 2px 4px;
+  padding: 1px 4px;
   border-radius: 3px;
   font-family: 'Courier New', monospace;
   font-size: 0.9em;
@@ -181,16 +192,25 @@ const exportMarkdown = () => {
 
 .markdown-content ul,
 .markdown-content ol {
-  margin: 8px 0;
-  padding-left: 20px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .markdown-content li {
-  margin: 4px 0;
+  margin: 0;
+  padding: 1px 0;
 }
 
 .markdown-content p {
-  margin: 6px 0;
+  margin: 2px 0;
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
 }
 
 .ai-content-footer {

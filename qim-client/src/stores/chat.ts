@@ -220,7 +220,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function receiveMessage(conversationId: string, message: Message, isCurrentConversation: boolean) {
-    appendMessage(conversationId, message)
+    const msgs = messages.value.get(conversationId) || []
+    const existingIndex = msgs.findIndex(m => m.id === message.id)
+
+    if (existingIndex !== -1) {
+      // 消息已存在，更新（流式消息的 chunk 更新）
+      msgs[existingIndex] = { ...msgs[existingIndex], ...message }
+      messages.value.set(conversationId, [...msgs])
+    } else {
+      // 新消息，追加
+      msgs.push(message)
+      messages.value.set(conversationId, [...msgs])
+    }
 
     const convIndex = conversations.value.findIndex(c => c.id === conversationId)
     if (convIndex !== -1) {

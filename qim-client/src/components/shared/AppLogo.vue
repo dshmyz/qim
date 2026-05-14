@@ -11,7 +11,7 @@
 import { computed } from 'vue'
 
 interface Props {
-  size?: number | 'small' | 'medium' | 'large'
+  size?: number | 'small' | 'medium' | 'large' | 'extraLarge'
   src?: string
   alt?: string
 }
@@ -25,7 +25,8 @@ const props = withDefaults(defineProps<Props>(), {
 const sizeMap = {
   small: 32,
   medium: 48,
-  large: 80
+  large: 80,
+  extraLarge: 120
 }
 
 const actualSize = computed(() => {

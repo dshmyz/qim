@@ -1,0 +1,369 @@
+basePath: /api/v1
+definitions:
+  ai.Message:
+    properties:
+      content:
+        type: string
+      role:
+        type: string
+    type: object
+  handler.AIResponse:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+  handler.CommandGenerationRequest:
+    properties:
+      description:
+        type: string
+      format:
+        type: string
+      platform:
+        type: string
+    required:
+    - description
+    type: object
+  handler.ExecuteToolRequest:
+    properties:
+      parameters:
+        additionalProperties: true
+        type: object
+      tool_name:
+        type: string
+    required:
+    - tool_name
+    type: object
+  handler.GetCompletionRequest:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/ai.Message'
+        type: array
+    required:
+    - messages
+    type: object
+  handler.IntelligentAlertRequest:
+    properties:
+      alert_content:
+        type: string
+      service:
+        type: string
+      severity:
+        type: string
+    required:
+    - alert_content
+    type: object
+  handler.IntelligentTroubleshootingRequest:
+    properties:
+      logs:
+        type: string
+      server:
+        type: string
+      symptom:
+        type: string
+    required:
+    - symptom
+    type: object
+  handler.LogAnalysisRequest:
+    properties:
+      log_content:
+        type: string
+      service:
+        type: string
+      severity:
+        type: string
+    required:
+    - log_content
+    type: object
+  handler.OpsKnowledgeRequest:
+    properties:
+      category:
+        type: string
+      question:
+        type: string
+    required:
+    - question
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: QIM Team
+  description: QIM 智能办公平台后端 API 文档
+  title: QIM Server API
+  version: "2.0"
+paths:
+  /api/ai/completion:
+    post:
+      consumes:
+      - application/json
+      description: 根据消息获取AI完成
+      parameters:
+      - description: AI完成请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.GetCompletionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 获取AI完成
+      tags:
+      - AI
+  /api/ai/completion/stream:
+    post:
+      consumes:
+      - application/json
+      description: 流式获取AI完成，使用服务器发送事件(SSE)返回统一JSON格式
+      parameters:
+      - description: AI完成请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.GetCompletionRequest'
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: 流式输出
+          schema:
+            type: string
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 流式获取AI完成
+      tags:
+      - AI
+  /api/ai/ops/alert:
+    post:
+      consumes:
+      - application/json
+      description: 分析和处理告警
+      parameters:
+      - description: 智能告警处理请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.IntelligentAlertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 智能告警处理
+      tags:
+      - AI
+  /api/ai/ops/command:
+    post:
+      consumes:
+      - application/json
+      description: 根据描述生成运维命令
+      parameters:
+      - description: 命令生成请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CommandGenerationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 命令生成
+      tags:
+      - AI
+  /api/ai/ops/dashboard:
+    get:
+      description: 获取AI运维面板的统计数据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 运维面板数据
+      tags:
+      - AI
+  /api/ai/ops/knowledge:
+    post:
+      consumes:
+      - application/json
+      description: 回答运维相关问题
+      parameters:
+      - description: 运维知识问答请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.OpsKnowledgeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 运维知识问答
+      tags:
+      - AI
+  /api/ai/ops/logs:
+    post:
+      consumes:
+      - application/json
+      description: 分析服务器日志并提供建议
+      parameters:
+      - description: 日志分析请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LogAnalysisRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 日志分析
+      tags:
+      - AI
+  /api/ai/ops/troubleshooting:
+    post:
+      consumes:
+      - application/json
+      description: 分析服务器故障并提供解决方案
+      parameters:
+      - description: 智能故障排查请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.IntelligentTroubleshootingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 智能故障排查
+      tags:
+      - AI
+  /api/ai/tools:
+    get:
+      description: 列出所有可用的MCP工具
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 列出所有MCP工具
+      tags:
+      - AI
+  /api/ai/tools/execute:
+    post:
+      consumes:
+      - application/json
+      description: 执行指定的MCP工具
+      parameters:
+      - description: 执行工具请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ExecuteToolRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/handler.AIResponse'
+      summary: 执行MCP工具
+      tags:
+      - AI
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -61,9 +62,13 @@ func NewUnifiedSearchGraph(
 	}
 }
 
+var registerSearchMergeOnce sync.Once
+
 func (g *UnifiedSearchGraph) Build() error {
-	compose.RegisterValuesMergeFunc(func(vs []*retrieveResult) (*retrieveResult, error) {
-		return vs[0], nil
+	registerSearchMergeOnce.Do(func() {
+		compose.RegisterValuesMergeFunc(func(vs []*retrieveResult) (*retrieveResult, error) {
+			return vs[0], nil
+		})
 	})
 
 	graph := compose.NewGraph[*UnifiedSearchInput, *UnifiedSearchOutput]()
@@ -105,6 +110,11 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[UnifiedSearch] Panic in message retrieval: %v", r)
+				}
+			}()
 			msgRetriever := NewMessageRetriever(input.ConversationID, input.UserID, 5)
 			docs, err := msgRetriever.Retrieve(ctx, input.Query)
 			if err == nil {
@@ -132,6 +142,11 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[UnifiedSearch] Panic in note retrieval: %v", r)
+				}
+			}()
 			if g.noteSvc == nil {
 				return
 			}
@@ -163,6 +178,11 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[UnifiedSearch] Panic in group document retrieval: %v", r)
+				}
+			}()
 			if g.groupDocSvc == nil || input.GroupID == 0 {
 				return
 			}
@@ -194,6 +214,11 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[UnifiedSearch] Panic in memory retrieval: %v", r)
+				}
+			}()
 			if g.memorySvc == nil {
 				return
 			}

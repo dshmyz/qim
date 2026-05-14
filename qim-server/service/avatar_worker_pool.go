@@ -95,6 +95,19 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
+	// 读取 disclaimerStyle 配置，决定是否追加免责声明
+	var config model.AvatarConfig
+	if err := p.db.Where("user_id = ?", task.UserID).First(&config).Error; err == nil {
+		var replyStrategy model.AvatarReplyStrategy
+		if config.ReplyStrategyJSON != "" {
+			if err := json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy); err == nil {
+				if replyStrategy.DisclaimerStyle == "footer" || replyStrategy.DisclaimerStyle == "both" {
+					reply = reply + "\n\n（此回复由AI分身生成）"
+				}
+			}
+		}
+	}
+
 	if task.IsGroupChat {
 		p.sendPrivateReply(task, reply)
 	} else {
@@ -144,6 +157,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 		Type:           "text",
 		Content:        content,
 		IsRead:         false,
+		IsAvatarReply:  true,
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -175,8 +189,8 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
+		"is_avatar_reply": msg.IsAvatarReply,
 		"sender":          msg.Sender,
-		"is_avatar_reply": true,
 	}
 
 	if ws.GlobalHub != nil {
@@ -185,7 +199,9 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		ws.GlobalHub.SendToConversation(conv.ID, task.UserID, jsonMsg)
+		log.Printf("[sendPrivateReply] Broadcasting to conv %d, excludeUserID=0, is_avatar_reply=%v, sender_id=%d, sender_name=%s",
+			conv.ID, msg.IsAvatarReply, msg.SenderID, msg.Sender.Nickname)
+		ws.GlobalHub.SendToConversation(conv.ID, 0, jsonMsg)
 	}
 
 	log.Printf("[AvatarWorkerPool] 分身私聊回复已发送: conv=%d, msgID=%d", conv.ID, msg.ID)
@@ -215,6 +231,7 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
 		Type:           "text",
 		Content:        content,
 		IsRead:         false,
+		IsAvatarReply:  true,
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -246,8 +263,8 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
+		"is_avatar_reply": msg.IsAvatarReply,
 		"sender":          msg.Sender,
-		"is_avatar_reply": true,
 	}
 
 	if ws.GlobalHub != nil {
@@ -256,7 +273,9 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		ws.GlobalHub.SendToConversation(task.ConversationID, task.UserID, jsonMsg)
+		log.Printf("[sendDirectReply] Broadcasting to conv %d, excludeUserID=0, is_avatar_reply=%v, sender_id=%d, sender_name=%s",
+			task.ConversationID, msg.IsAvatarReply, msg.SenderID, msg.Sender.Nickname)
+		ws.GlobalHub.SendToConversation(task.ConversationID, 0, jsonMsg)
 	}
 
 	log.Printf("[AvatarWorkerPool] 分身直接回复已发送: conv=%d, msgID=%d", task.ConversationID, msg.ID)

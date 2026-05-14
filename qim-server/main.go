@@ -1,5 +1,15 @@
 package main
 
+// @title QIM Server API
+// @version 2.0
+// @description QIM 智能办公平台后端 API 文档
+// @contact.name QIM Team
+// @host localhost:8080
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
 import (
 	"log"
 	"qim-server/app"

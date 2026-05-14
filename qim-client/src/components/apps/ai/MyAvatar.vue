@@ -35,16 +35,6 @@
         <p>{{ persona }}</p>
       </div>
 
-      <div class="tools-section">
-        <h4>可用能力:</h4>
-        <div class="tools-grid">
-          <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox">
-            <input type="checkbox" :checked="tool.enabled" @change="toggleTool(tool.id)" />
-            <span>{{ tool.name }}</span>
-          </label>
-        </div>
-      </div>
-
       <div class="actions">
         <button class="btn-primary" @click="toggleAvatar">
           {{ avatarEnabled ? '关闭分身' : '开启分身' }}
@@ -78,21 +68,6 @@ const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
 const learningStatus = computed(() => personaState.learnStatus.value.status)
 const learningProgress = computed(() => personaState.learnStatus.value.progress)
 const persona = computed(() => personaState.learnedPersona.value)
-
-// 模拟可用工具（后续需要从配置或API获取）
-const availableTools = ref([
-  { id: 'chat', name: '智能对话', enabled: true },
-  { id: 'reply', name: '自动回复', enabled: false },
-  { id: 'summary', name: '摘要总结', enabled: false },
-  { id: 'search', name: '知识检索', enabled: false }
-])
-
-function toggleTool(toolId: string) {
-  const tool = availableTools.value.find(t => t.id === toolId)
-  if (tool) {
-    tool.enabled = !tool.enabled
-  }
-}
 
 async function toggleAvatar() {
   if (!avatarConfig.value) return

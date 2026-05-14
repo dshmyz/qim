@@ -154,6 +154,20 @@ export function useNotes() {
     }
   }
 
+  const searchNotesSemantic = async (query: string, topK: number = 5): Promise<NoteVectorSearchResult[]> => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await post<any>('/api/v1/notes/search', { query, top_k: topK })
+      return response?.data?.results || []
+    } catch (e: any) {
+      error.value = e.message
+      return []
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -164,7 +178,8 @@ export function useNotes() {
     analyzeNote,
     updateNoteTags,
     updateNoteSummary,
-    exportNote
+    exportNote,
+    searchNotesSemantic
   }
 }
 

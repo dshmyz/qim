@@ -1,39 +1,41 @@
 <template>
-  <div v-if="showMiniAppList" class="mini-app-panel-container" @click="closeMiniAppList">
-    <div class="mini-app-panel" @click.stop>
-      <div class="mini-app-panel-header">
-        <h4>小程序</h4>
-        <button class="close-btn" @click="closeMiniAppList">×</button>
-      </div>
+  <div class="mini-app-manager">
+    <div v-if="showMiniAppList" class="mini-app-panel-container" @click="closeMiniAppList">
+      <div class="mini-app-panel" @click.stop>
+        <div class="mini-app-panel-header">
+          <h4>小程序</h4>
+          <button class="close-btn" @click="closeMiniAppList">×</button>
+        </div>
 
-      <div v-if="loading" class="mini-app-loading">
-        <div class="loading-spinner"></div>
-        <span>加载中...</span>
-      </div>
+        <div v-if="loading" class="mini-app-loading">
+          <div class="loading-spinner"></div>
+          <span>加载中...</span>
+        </div>
 
-      <div v-else-if="miniApps.length === 0" class="mini-app-empty">
-        <span>暂无小程序</span>
-      </div>
+        <div v-else-if="miniApps.length === 0" class="mini-app-empty">
+          <span>暂无小程序</span>
+        </div>
 
-      <div v-else class="mini-app-grid">
-        <div v-for="miniApp in miniApps" :key="miniApp.id" class="mini-app-item">
-          <div class="mini-app-item-icon" @click="launchMiniApp(miniApp)">
-            <img :src="miniApp.icon || defaultIcon" :alt="miniApp.name" />
-          </div>
-          <div class="mini-app-item-name">{{ miniApp.name }}</div>
-          <div class="mini-app-item-actions">
-            <button class="mini-app-action-btn" @click="sendMiniAppMessage(miniApp)">发送</button>
+        <div v-else class="mini-app-grid">
+          <div v-for="miniApp in miniApps" :key="miniApp.id" class="mini-app-item">
+            <div class="mini-app-item-icon" @click="launchMiniApp(miniApp)">
+              <img :src="miniApp.icon || defaultIcon" :alt="miniApp.name" />
+            </div>
+            <div class="mini-app-item-name">{{ miniApp.name }}</div>
+            <div class="mini-app-item-actions">
+              <button class="mini-app-action-btn" @click="handleSendMiniApp(miniApp)">发送</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <MiniAppLoader
-    :mini-app="activeMiniApp"
-    @close="activeMiniApp = null"
-    @show-toast="handleMiniAppToast"
-  />
+    <MiniAppLoader
+      :mini-app="activeMiniApp"
+      @close="activeMiniApp = null"
+      @show-toast="handleMiniAppToast"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -41,10 +43,16 @@ import { ref, watch } from 'vue'
 import { generateAvatar } from '../../utils/avatar'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
-import { API_BASE_URL } from '../../config'
 import { useChatState } from '../../composables/useChatState'
+import { useRequest } from '../../composables/useRequest'
+import { useChatStore } from '../../stores/chat'
+import { useCurrentUser } from '../../composables/useCurrentUser'
+import { nextTick } from 'vue'
 
 const { $message } = useChatState()
+const { request } = useRequest()
+const chatStore = useChatStore()
+const { currentUser } = useCurrentUser()
 
 const props = defineProps<{
   showMiniAppList: boolean
@@ -52,10 +60,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:showMiniAppList': [value: boolean]
-  'send-mini-app-message': [miniApp: MiniAppData]
 }>()
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
 const miniApps = ref<MiniAppData[]>([])
 const loading = ref(false)
 const activeMiniApp = ref<MiniAppData | null>(null)
@@ -69,9 +75,55 @@ const launchMiniApp = (miniApp: MiniAppData) => {
   activeMiniApp.value = miniApp
 }
 
-const sendMiniAppMessage = (miniApp: MiniAppData) => {
-  emit('send-mini-app-message', miniApp)
-  closeMiniAppList()
+const handleSendMiniApp = async (miniApp: MiniAppData) => {
+  console.log('发送小程序消息:', miniApp)
+  const conversationId = chatStore.currentConversationId
+  console.log('从 store 获取会话ID:', conversationId)
+  
+  if (!conversationId) {
+    $message.warning('请先选择一个聊天会话')
+    return
+  }
+
+  try {
+    const response = await request(`/api/v1/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'miniApp',
+        content: JSON.stringify(miniApp)
+      })
+    })
+
+    if (response.code === 0) {
+      // 构建消息对象
+      const newMessage = {
+        id: response.data.id?.toString() || Date.now().toString(),
+        content: response.data.content || JSON.stringify(miniApp),
+        sender: {
+          id: response.data.sender?.id?.toString() || currentUser.value?.id?.toString() || '',
+          name: response.data.sender?.nickname || response.data.sender?.username || currentUser.value?.nickname || currentUser.value?.username || '',
+          avatar: response.data.sender?.avatar || currentUser.value?.avatar || ''
+        },
+        timestamp: new Date().getTime(),
+        type: 'miniApp',
+        isSelf: true,
+        isRead: false,
+        conversationId: conversationId,
+        miniAppData: miniApp
+      }
+
+      // 更新本地消息列表
+      chatStore.receiveMessage(conversationId, newMessage as any, true)
+
+      $message.success(`小程序 "${miniApp.name}" 已发送`)
+      closeMiniAppList()
+    } else {
+      throw new Error(response.message || '发送失败')
+    }
+  } catch (error) {
+    console.error('发送小程序消息失败:', error)
+    $message.error('发送失败，请重试')
+  }
 }
 
 const handleMiniAppToast = (message: string) => {
@@ -85,29 +137,16 @@ const loadMiniApps = async () => {
   }
 
   try {
-    const token = getToken()
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
-    const response = await fetch(`${serverUrl.value}/api/v1/mini-apps?status=active`, {
+    const response = await request('/api/v1/mini-apps', {
       method: 'GET',
-      headers
+      params: { status: 'active' }
     })
 
-    if (!response.ok) {
+    if (response.code !== 0) {
       throw new Error('获取小程序列表失败')
     }
 
-    const result = await response.json()
-    if (result.code !== 0) {
-      throw new Error('获取小程序列表失败')
-    }
-
-    const list = result.data?.list ?? result.data ?? []
+    const list = response.data?.list ?? response.data ?? []
     miniApps.value = list.map((item: any) => ({
       id: item.id,
       name: item.name,
@@ -139,6 +178,11 @@ watch(() => props.showMiniAppList, (visible) => {
 </script>
 
 <style scoped>
+.mini-app-manager {
+  position: relative;
+  z-index: auto;
+}
+
 .mini-app-panel-container {
   position: fixed;
   top: 0;

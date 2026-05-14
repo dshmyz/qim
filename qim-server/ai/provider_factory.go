@@ -30,14 +30,18 @@ func (f *ProviderFactory) CreateProvider(cfg *AIConfig) (Provider, error) {
 }
 
 func (f *ProviderFactory) createOpenAIProvider(cfg *AIConfig) Provider {
+	extraParams := map[string]interface{}{
+		"max_tokens":  cfg.MaxTokens,
+		"temperature": cfg.Temperature,
+	}
+	if cfg.OpenAI.EmbeddingModel != "" {
+		extraParams["embedding_model"] = cfg.OpenAI.EmbeddingModel
+	}
 	return NewOpenAIProvider(ProviderConfig{
 		APIKey:  cfg.OpenAI.APIKey,
 		Model:   cfg.OpenAI.Model,
 		BaseURL: cfg.OpenAI.BaseURL,
-		ExtraParams: map[string]interface{}{
-			"max_tokens":  cfg.MaxTokens,
-			"temperature": cfg.Temperature,
-		},
+		ExtraParams: extraParams,
 	})
 }
 

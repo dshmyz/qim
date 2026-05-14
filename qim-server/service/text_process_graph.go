@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -40,6 +41,8 @@ type TextProcessGraph struct {
 	cache     *AICache
 }
 
+var registerTextMergeOnce sync.Once
+
 func NewTextProcessGraph(aiService *ai.AIService, cache *AICache) *TextProcessGraph {
 	return &TextProcessGraph{
 		aiService: aiService,
@@ -48,8 +51,10 @@ func NewTextProcessGraph(aiService *ai.AIService, cache *AICache) *TextProcessGr
 }
 
 func (g *TextProcessGraph) Build() error {
-	compose.RegisterValuesMergeFunc(func(vs []*TextProcessInput) (*TextProcessInput, error) {
-		return vs[0], nil
+	registerTextMergeOnce.Do(func() {
+		compose.RegisterValuesMergeFunc(func(vs []*TextProcessInput) (*TextProcessInput, error) {
+			return vs[0], nil
+		})
 	})
 
 	graph := compose.NewGraph[*TextProcessInput, *TextProcessOutput]()

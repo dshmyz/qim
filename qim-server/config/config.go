@@ -17,6 +17,11 @@ type Config struct {
 	Storage  StorageConfig
 	AI       ai.AIConfig
 	CORS     CORSConfig
+	Vector   VectorConfig
+}
+
+type VectorConfig struct {
+	Path string `yaml:"path"`
 }
 
 type CORSConfig struct {
@@ -79,6 +84,7 @@ type yamlConfig struct {
 	Storage StorageConfig  `yaml:"storage"`
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
+	Vector  VectorConfig   `yaml:"vector"`
 }
 
 func Load() *Config {
@@ -217,6 +223,7 @@ func Load() *Config {
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
+		Vector:   cfg.Vector,
 	}
 }
 
@@ -292,6 +299,9 @@ func getDefaultConfig() yamlConfig {
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: []string{"*"},
+		},
+		Vector: VectorConfig{
+			Path: "./data/vector.db",
 		},
 	}
 }

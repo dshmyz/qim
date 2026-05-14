@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"qim-server/model"
 
@@ -120,6 +122,78 @@ func (s *AppService) GetGlobalApp(appID uint) (*model.App, error) {
 		return nil, err
 	}
 	return &app, nil
+}
+
+// GetBuiltInApps 获取内置应用列表（is_global = true 且 status = 'active'）
+func (s *AppService) GetBuiltInApps() ([]model.App, error) {
+	ctx := context.Background()
+	var apps []model.App
+	err := s.db.WithContext(ctx).
+		Where("is_global = ? AND status = ? AND deleted_at IS NULL", true, "active").
+		Order("created_at ASC").
+		Find(&apps).Error
+	if err != nil {
+		return nil, err
+	}
+	return apps, nil
+}
+
+// GetBuiltInAppsForUser 获取用户可见的内置应用列表
+func (s *AppService) GetBuiltInAppsForUser(userID uint) ([]model.App, error) {
+	ctx := context.Background()
+
+	var apps []model.App
+	err := s.db.WithContext(ctx).
+		Where("is_global = ? AND status = ? AND deleted_at IS NULL", true, "active").
+		Order("created_at ASC").
+		Find(&apps).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// 根据权限范围过滤应用
+	result := make([]model.App, 0)
+	for _, app := range apps {
+		if s.isAppVisibleToUser(app, userID) {
+			result = append(result, app)
+		}
+	}
+
+	return result, nil
+}
+
+// isAppVisibleToUser 检查应用是否对用户可见
+func (s *AppService) isAppVisibleToUser(app model.App, userID uint) bool {
+	switch app.ScopeType {
+	case "all":
+		return true
+	case "users":
+		if app.ScopeValue == "" {
+			return true
+		}
+		// 检查用户ID是否在允许列表中
+		userIDs := strings.Split(app.ScopeValue, ",")
+		for _, id := range userIDs {
+			if strings.TrimSpace(id) == fmt.Sprintf("%d", userID) {
+				return true
+			}
+		}
+		return false
+	case "organizations":
+		if app.ScopeValue == "" {
+			return true
+		}
+		// 组织范围暂时不实现，留待后续扩展
+		return false
+	case "roles":
+		if app.ScopeValue == "" {
+			return true
+		}
+		// 角色范围暂时不实现，留待后续扩展
+		return true
+	default:
+		return true
+	}
 }
 
 func (s *AppService) CreateApp(app *model.App) error {

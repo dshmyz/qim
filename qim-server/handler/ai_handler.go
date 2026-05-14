@@ -532,7 +532,7 @@ func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
 		return
 	}
 
-	tool := &ai.IntelligentTroubleshootingTool{}
+	tool := ai.NewIntelligentTroubleshootingTool(h.aiService)
 	params := map[string]interface{}{
 		"symptom": req.Symptom,
 		"server":  req.Server,
@@ -577,7 +577,7 @@ func (h *AIHandler) CommandGeneration(c *gin.Context) {
 		return
 	}
 
-	tool := &ai.CommandGenerationTool{}
+	tool := ai.NewCommandGenerationTool(h.aiService)
 	params := map[string]interface{}{
 		"description": req.Description,
 		"platform":    req.Platform,
@@ -622,7 +622,7 @@ func (h *AIHandler) LogAnalysis(c *gin.Context) {
 		return
 	}
 
-	tool := &ai.LogAnalysisTool{}
+	tool := ai.NewLogAnalysisTool(h.aiService)
 	params := map[string]interface{}{
 		"log_content": req.LogContent,
 		"service":     req.Service,
@@ -667,7 +667,7 @@ func (h *AIHandler) IntelligentAlert(c *gin.Context) {
 		return
 	}
 
-	tool := &ai.IntelligentAlertTool{}
+	tool := ai.NewIntelligentAlertTool(h.aiService)
 	params := map[string]interface{}{
 		"alert_content": req.AlertContent,
 		"severity":      req.Severity,
@@ -711,7 +711,7 @@ func (h *AIHandler) OpsKnowledge(c *gin.Context) {
 		return
 	}
 
-	tool := &ai.OpsKnowledgeTool{}
+	tool := ai.NewOpsKnowledgeTool(h.aiService)
 	params := map[string]interface{}{
 		"question": req.Question,
 		"category": req.Category,

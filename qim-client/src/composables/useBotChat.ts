@@ -115,8 +115,10 @@ export function useBotChat(botId: Ref<number | null>) {
       )
 
       if (response.code === 0) {
-        const serverMessages = Array.isArray(response.data)
-          ? response.data.map((msg: any) => processMessage(msg))
+        // 兼容两种返回格式：{ messages: [] } 或直接是 []
+        const messagesArray = response.data?.messages || (Array.isArray(response.data) ? response.data : [])
+        const serverMessages = Array.isArray(messagesArray)
+          ? messagesArray.map((msg: any) => processMessage(msg))
           : []
 
         if (reset) {

@@ -37,10 +37,6 @@
       :current-user="currentUser"
       :server-url="serverUrl"
       v-model:showHeaderMenu="showHeaderMenu"
-      v-model:showEditGroupInfoModal="showEditGroupInfoModal"
-      v-model:showEditAnnouncementModal="showEditAnnouncementModal"
-      v-model:editGroupName="editGroupName"
-      v-model:editAnnouncement="editAnnouncement"
       :ai-enabled="aiEnabled"
       :ai-assistant-name="aiAssistantName"
       :ai-reply-mode="aiReplyMode"
@@ -56,8 +52,6 @@
       :avatar-approval-status="avatarApprovalStatus"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
-      @save-group-info="(name: string) => emit('save-group-info', name)"
-      @save-group-announcement="(announcement: string) => emit('save-group-announcement', announcement)"
       @switch-conversation="(id: string) => emit('switch-conversation', id)"
       @show-user-profile="(user: any) => emit('show-user-profile', user)"
       @remove-member="(id: string, name: string) => emit('remove-member', id, name)"
@@ -88,8 +82,6 @@ interface Props {
 interface Emits {
   (e: 'invite-members'): void
   (e: 'delete-group'): void
-  (e: 'save-group-info', name: string): void
-  (e: 'save-group-announcement', announcement: string): void
   (e: 'switch-conversation', id: string): void
   (e: 'show-user-profile', user: any): void
   (e: 'remove-member', id: string, name: string): void
@@ -97,10 +89,6 @@ interface Emits {
   (e: 'transfer-owner', id: string, name: string): void
   (e: 'start-private-chat', id: string): void
   (e: 'update:showHeaderMenu', value: boolean): void
-  (e: 'update:showEditGroupInfoModal', value: boolean): void
-  (e: 'update:showEditAnnouncementModal', value: boolean): void
-  (e: 'update:editGroupName', value: string): void
-  (e: 'update:editAnnouncement', value: string): void
   (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
   (e: 'update-avatar-enabled', value: boolean): void
 }
@@ -109,10 +97,6 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const showHeaderMenu = ref(false)
-const showEditGroupInfoModal = ref(false)
-const showEditAnnouncementModal = ref(false)
-const editGroupName = ref('')
-const editAnnouncement = ref('')
 
 const aiEnabled = computed(() => props.conversation?.ai_config?.ai_enabled ?? false)
 const aiAssistantName = computed(() => props.conversation?.ai_config?.ai_assistant_name ?? 'AI助手')
@@ -161,10 +145,6 @@ const displayName = computed(() => props.conversation?.name || '未知会话')
 
 defineExpose({
   showHeaderMenu,
-  showEditGroupInfoModal,
-  showEditAnnouncementModal,
-  editGroupName,
-  editAnnouncement,
   aiEnabled,
   aiAssistantName,
   aiReplyMode,

@@ -1,22 +1,16 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import type { Conversation, Message } from '../types'
 import { request } from './useRequest'
 import { useChatStore } from '../stores/chat'
 
 /**
  * 会话管理 composable
- * 作为 Pinia Store 的包装层，提供便捷的访问接口
- * 返回可写的 ref，内部自动同步到 Store
+ * 使用单向数据流：直接从 Store 读取状态，所有修改都通过 Store methods
  */
 export function useConversation() {
   const chatStore = useChatStore()
 
-  // 可写 ref，内部同步到 Store
-  const conversations: Ref<Conversation[]> = ref([])
-  const currentConversationId: Ref<string | null> = ref(null)
-  const messages: Ref<Message[]> = ref([])
-
-  // composable 特有状态
+  // 特有状态(非 Store 管理的 UI 状态)
   const hasMoreMessages = ref(false)
   const selectedConversation = ref<Conversation | null>(null)
   const selectedGroup = ref<any>(null)
@@ -27,43 +21,10 @@ export function useConversation() {
   const isSearching = ref(false)
   const isLoading = ref(false)
 
-  // Store → ref 同步
-  watch(() => chatStore.conversations, (newConvs) => {
-    if (JSON.stringify(newConvs) !== JSON.stringify(conversations.value)) {
-      conversations.value = [...newConvs]
-    }
-  }, { deep: true })
-
-  watch(() => chatStore.currentConversationId, (newId) => {
-    if (newId !== currentConversationId.value) {
-      currentConversationId.value = newId
-    }
-  })
-
-  watch(() => chatStore.currentMessages, (newMsgs) => {
-    if (JSON.stringify(newMsgs) !== JSON.stringify(messages.value)) {
-      messages.value = [...newMsgs]
-    }
-  }, { deep: true })
-
-  // ref → Store 同步（当外部直接修改 ref 时）
-  watch(conversations, (newConvs) => {
-    if (JSON.stringify(newConvs) !== JSON.stringify(chatStore.conversations)) {
-      chatStore.setConversations([...newConvs])
-    }
-  }, { deep: true })
-
-  watch(currentConversationId, (newId) => {
-    if (newId !== chatStore.currentConversationId) {
-      chatStore.setCurrentConversation(newId)
-    }
-  })
-
-  watch(messages, (newMsgs) => {
-    if (chatStore.currentConversationId && JSON.stringify(newMsgs) !== JSON.stringify(chatStore.currentMessages)) {
-      chatStore.setMessages(chatStore.currentConversationId, [...newMsgs])
-    }
-  }, { deep: true })
+  // 单向数据流：直接从 Store 读取状态（只读 computed）
+  const conversations = computed(() => chatStore.conversations)
+  const currentConversationId = computed(() => chatStore.currentConversationId)
+  const messages = computed(() => chatStore.currentMessages)
 
   const currentConversation = computed(() => {
     return conversations.value.find(c => c.id === currentConversationId.value) || null
@@ -77,14 +38,15 @@ export function useConversation() {
     return conversations.value.filter(c => !c.is_pinned)
   })
 
+  // 会话操作（通过 Store methods 修改状态）
   const handleConversationSelect = (conversation: Conversation) => {
-    currentConversationId.value = String(conversation.id)
+    chatStore.setCurrentConversation(String(conversation.id))
     selectedConversation.value = conversation
   }
 
   const handleGroupChatSelect = (group: any) => {
     selectedGroup.value = group
-    currentConversationId.value = group.id ? String(group.id) : null
+    chatStore.setCurrentConversation(group.id ? String(group.id) : null)
   }
 
   const handleChannelSelect = (channel: any) => {
@@ -137,6 +99,7 @@ export function useConversation() {
     }
   }
 
+  // 消息操作（通过 Store methods）
   const updateConversation = (updated: Conversation) => {
     chatStore.patchConversation(updated.id, updated)
   }
@@ -147,13 +110,13 @@ export function useConversation() {
 
   const addMessage = (message: Message) => {
     if (currentConversationId.value) {
-      chatStore.addMessage(currentConversationId.value, message)
+      chatStore.appendMessage(currentConversationId.value, message)
     }
   }
 
   const clearMessages = () => {
     if (currentConversationId.value) {
-      chatStore.clearMessages(currentConversationId.value)
+      chatStore.clearAllMessages(currentConversationId.value)
     }
     hasMoreMessages.value = false
   }
@@ -164,7 +127,7 @@ export function useConversation() {
 
   const handleExitGroup = async (groupId: string) => {
     try {
-      await request(`/api/v1/conversations/${groupId}/leave`, {
+      await request(`/api/v1/groups/${groupId}/exit`, {
         method: 'POST'
       })
       chatStore.removeConversation(groupId)
@@ -173,6 +136,7 @@ export function useConversation() {
     }
   }
 
+  // 数据加载
   const loadGroups = async () => {
     try {
       const response: any = await request('/api/v1/groups')
@@ -225,11 +189,11 @@ export function useConversation() {
   }
 
   const setCurrentConversationId = (id: string | number | null) => {
-    currentConversationId.value = id !== null ? String(id) : null
+    chatStore.setCurrentConversation(id !== null ? String(id) : null)
   }
 
   const resetState = () => {
-    currentConversationId.value = null
+    chatStore.setCurrentConversation(null)
     selectedConversation.value = null
     selectedGroup.value = null
     selectedChannel.value = null
@@ -238,22 +202,22 @@ export function useConversation() {
   }
 
   return {
-    // 状态
+    // 状态（只读 computed）
     conversations,
-    currentConversationId: currentConversationId,
+    currentConversationId,
     messages,
     hasMoreMessages,
-    selectedConversation: selectedConversation,
+    selectedConversation,
     selectedGroup,
     selectedChannel,
-    groups: groups,
+    groups,
     currentConversation,
     pinnedConversations,
     unpinnedConversations,
-    searchQuery: searchQuery,
-    searchResults: searchResults,
-    isSearching: isSearching,
-    isLoading: isLoading,
+    searchQuery,
+    searchResults,
+    isSearching,
+    isLoading,
 
     // 操作方法
     handleConversationSelect,
@@ -273,6 +237,9 @@ export function useConversation() {
     loadConversations,
     searchConversations,
     setCurrentConversationId,
-    resetState
+    resetState,
+
+    // 直接暴露 Store 实例(用于需要直接操作 Store 的场景)
+    store: chatStore
   }
 }

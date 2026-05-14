@@ -68,63 +68,6 @@
       </div>
     </Teleport>
 
-    <!-- 编辑群信息模态框 -->
-    <Teleport to="body">
-      <div v-if="showEditGroupInfoModal" class="modal-overlay" @click="handleCloseEditGroupInfoModal">
-        <div class="modal-content" @click.stop>
-          <div class="modal-header">
-            <h3>修改群名称</h3>
-            <button class="close-btn" @click="handleCloseEditGroupInfoModal">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label>群名称</label>
-              <input
-                type="text"
-                :value="editGroupName"
-                @input="handleEditGroupNameInput"
-                class="form-input"
-                placeholder="请输入新的群名称"
-              />
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="handleCloseEditGroupInfoModal">取消</button>
-            <button class="btn btn-primary" @click="handleSaveGroupInfo">保存</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- 编辑群公告模态框 -->
-    <Teleport to="body">
-      <div v-if="showEditAnnouncementModal" class="modal-overlay" @click="handleCloseEditAnnouncementModal">
-        <div class="modal-content" @click.stop>
-          <div class="modal-header">
-            <h3>编辑群公告</h3>
-            <button class="close-btn" @click="handleCloseEditAnnouncementModal">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label>群公告内容</label>
-              <textarea
-                :value="editAnnouncement"
-                @input="handleEditAnnouncementInput"
-                class="form-textarea"
-                placeholder="输入群公告内容..."
-                rows="5"
-              ></textarea>
-              <p class="form-tip">群公告将对所有群成员可见</p>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="handleCloseEditAnnouncementModal">取消</button>
-            <button class="btn btn-primary" @click="handleSaveAnnouncement">保存</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- AI 助手设置模态框 -->
     <ModalContainer
       :visible="showAISettingsModal"
@@ -155,10 +98,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, inject } from 'vue'
 import QMessage from '../../utils/qmessage'
 import type { Conversation } from '../../types'
 import { getCurrentUser } from '../../utils/user'
+import { useRequest } from '../../composables/useRequest'
+import { API_BASE_URL } from '../../config'
 import MemberSidebar from './MemberSidebar.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
 import GroupAIPanel from '../ai/GroupAIPanel.vue'
@@ -185,10 +130,6 @@ interface Props {
   currentUser: any
   serverUrl: string
   showHeaderMenu: boolean
-  showEditGroupInfoModal: boolean
-  showEditAnnouncementModal: boolean
-  editGroupName: string
-  editAnnouncement: string
   aiEnabled?: boolean
   aiAssistantName?: string
   aiReplyMode?: string
@@ -223,14 +164,8 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits 定义
 const emit = defineEmits<{
   'update:showHeaderMenu': [value: boolean]
-  'update:showEditGroupInfoModal': [value: boolean]
-  'update:showEditAnnouncementModal': [value: boolean]
-  'update:editGroupName': [value: string]
-  'update:editAnnouncement': [value: string]
   'invite-members': []
   'delete-group': []
-  'save-group-info': [groupName: string]
-  'save-group-announcement': [announcement: string]
   'switch-conversation': [conversationId: string]
   'show-user-profile': [user: any]
   'remove-member': [memberId: string, memberName: string]
@@ -253,9 +188,18 @@ const emit = defineEmits<{
   'update-avatar-enabled': [value: boolean]
 }>()
 
+// 注入群管理操作（来自 Main.vue）
+const groupActions = inject('groupActions', null) as {
+  openEditGroupName: (group: any) => void
+  openEditAnnouncement: (group: any) => void
+} | null
+
 // Refs
 const moreButtonRef = ref<HTMLElement | null>(null)
 const headerMenuPosition = ref<Record<string, string>>({})
+
+// 使用 request composable
+const { request } = useRequest()
 
 // 本地确认对话框状态
 const localShowConfirmDialog = ref(false)
@@ -378,50 +322,20 @@ function handleInviteMembers() {
 
 // 编辑群信息
 function handleEditGroupInfo() {
-  if (props.conversation) {
-    emit('update:editGroupName', props.conversation.name || '')
-    emit('update:showEditGroupInfoModal', true)
+  if (props.conversation && groupActions) {
+    groupActions.openEditGroupName(props.conversation)
   }
   emit('update:showHeaderMenu', false)
   document.removeEventListener('click', closeHeaderMenu)
-}
-
-function handleCloseEditGroupInfoModal() {
-  emit('update:showEditGroupInfoModal', false)
-}
-
-function handleSaveGroupInfo() {
-  emit('save-group-info', props.editGroupName)
-  emit('update:showEditGroupInfoModal', false)
-}
-
-function handleEditGroupNameInput(event: Event) {
-  const target = event.target as HTMLInputElement
-  emit('update:editGroupName', target.value)
 }
 
 // 编辑群公告
 function handleEditGroupAnnouncement() {
-  if (props.conversation) {
-    emit('update:editAnnouncement', (props.conversation as GroupConversation).announcement || '')
-    emit('update:showEditAnnouncementModal', true)
+  if (props.conversation && groupActions) {
+    groupActions.openEditAnnouncement(props.conversation)
   }
   emit('update:showHeaderMenu', false)
   document.removeEventListener('click', closeHeaderMenu)
-}
-
-function handleCloseEditAnnouncementModal() {
-  emit('update:showEditAnnouncementModal', false)
-}
-
-function handleSaveAnnouncement() {
-  emit('save-group-announcement', props.editAnnouncement)
-  emit('update:showEditAnnouncementModal', false)
-}
-
-function handleEditAnnouncementInput(event: Event) {
-  const target = event.target as HTMLTextAreaElement
-  emit('update:editAnnouncement', target.value)
 }
 
 // 确认解散群聊

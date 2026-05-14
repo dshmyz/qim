@@ -1,0 +1,566 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "QIM 智能办公平台后端 API 文档",
+        "title": "QIM Server API",
+        "contact": {
+            "name": "QIM Team"
+        },
+        "version": "2.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/api/ai/completion": {
+            "post": {
+                "description": "根据消息获取AI完成",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取AI完成",
+                "parameters": [
+                    {
+                        "description": "AI完成请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.GetCompletionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/completion/stream": {
+            "post": {
+                "description": "流式获取AI完成，使用服务器发送事件(SSE)返回统一JSON格式",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "流式获取AI完成",
+                "parameters": [
+                    {
+                        "description": "AI完成请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.GetCompletionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "流式输出",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/alert": {
+            "post": {
+                "description": "分析和处理告警",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "智能告警处理",
+                "parameters": [
+                    {
+                        "description": "智能告警处理请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.IntelligentAlertRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/command": {
+            "post": {
+                "description": "根据描述生成运维命令",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "命令生成",
+                "parameters": [
+                    {
+                        "description": "命令生成请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CommandGenerationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/dashboard": {
+            "get": {
+                "description": "获取AI运维面板的统计数据",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "运维面板数据",
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/knowledge": {
+            "post": {
+                "description": "回答运维相关问题",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "运维知识问答",
+                "parameters": [
+                    {
+                        "description": "运维知识问答请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.OpsKnowledgeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/logs": {
+            "post": {
+                "description": "分析服务器日志并提供建议",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "日志分析",
+                "parameters": [
+                    {
+                        "description": "日志分析请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.LogAnalysisRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/ops/troubleshooting": {
+            "post": {
+                "description": "分析服务器故障并提供解决方案",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "智能故障排查",
+                "parameters": [
+                    {
+                        "description": "智能故障排查请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.IntelligentTroubleshootingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/tools": {
+            "get": {
+                "description": "列出所有可用的MCP工具",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "列出所有MCP工具",
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ai/tools/execute": {
+            "post": {
+                "description": "执行指定的MCP工具",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "执行MCP工具",
+                "parameters": [
+                    {
+                        "description": "执行工具请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ExecuteToolRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "ai.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.AIResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CommandGenerationRequest": {
+            "type": "object",
+            "required": [
+                "description"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ExecuteToolRequest": {
+            "type": "object",
+            "required": [
+                "tool_name"
+            ],
+            "properties": {
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "tool_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.GetCompletionRequest": {
+            "type": "object",
+            "required": [
+                "messages"
+            ],
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.Message"
+                    }
+                }
+            }
+        },
+        "handler.IntelligentAlertRequest": {
+            "type": "object",
+            "required": [
+                "alert_content"
+            ],
+            "properties": {
+                "alert_content": {
+                    "type": "string"
+                },
+                "service": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.IntelligentTroubleshootingRequest": {
+            "type": "object",
+            "required": [
+                "symptom"
+            ],
+            "properties": {
+                "logs": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "symptom": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.LogAnalysisRequest": {
+            "type": "object",
+            "required": [
+                "log_content"
+            ],
+            "properties": {
+                "log_content": {
+                    "type": "string"
+                },
+                "service": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.OpsKnowledgeRequest": {
+            "type": "object",
+            "required": [
+                "question"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "question": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

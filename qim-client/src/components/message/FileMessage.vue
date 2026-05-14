@@ -2,18 +2,23 @@
   <div class="message-bubble file-message" :class="{ self: isSelf }">
     <div class="file-info">
       <div class="file-icon-container">
-        <div class="file-icon">
-          <i :class="getFileIcon(fileUrl)"></i>
+        <div class="file-icon" :style="{ color: iconColor }">
+          <i :class="fileIcon"></i>
         </div>
-        <div class="file-size" v-if="fileSize">
-          {{ formatFileSize(fileSize) }}
-        </div>
+        <div class="file-type-label" v-if="fileTypeLabel">{{ fileTypeLabel }}</div>
       </div>
       <div class="file-details">
         <div class="file-name">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
+        <div class="file-size" v-if="fileSize">{{ formatFileSize(fileSize) }}</div>
         <div class="file-actions">
-          <button class="file-action-btn" @click="downloadFile">下载</button>
-          <button class="file-action-btn" @click="saveFileAs">另存为</button>
+          <button class="file-action-btn" @click="downloadFile">
+            <i class="fas fa-download"></i>
+            下载
+          </button>
+          <button class="file-action-btn" @click="saveFileAs">
+            <i class="fas fa-save"></i>
+            另存为
+          </button>
         </div>
       </div>
     </div>
@@ -22,6 +27,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { getFileIcon, getFileIconColor, getFileTypeLabel } from '../../utils/fileType'
+import { getFileExtension } from '../../utils/fileType'
 
 const props = defineProps<{
   content: string
@@ -39,7 +46,7 @@ const fileData = computed(() => {
   try {
     return JSON.parse(props.content)
   } catch {
-    return { url: props.content, name: '', size: 0 }
+    return { url: props.content, name: '', size: 0, mimeType: '' }
   }
 })
 
@@ -59,8 +66,39 @@ const fileName = computed(() => fileData.value.name || '')
 // 获取文件大小
 const fileSize = computed(() => Number(fileData.value.size) || 0)
 
-const getFileIcon = (filePath: string): string => {
-  const ext = filePath.split('.').pop()?.toLowerCase()
+// 获取文件MIME类型
+const mimeType = computed(() => fileData.value.mimeType || '')
+
+// 根据MIME类型或扩展名获取文件图标
+const fileIcon = computed(() => {
+  if (mimeType.value) {
+    return getFileIcon(mimeType.value)
+  }
+  // 回退到基于扩展名的匹配
+  const ext = getFileExtension(fileName.value)
+  return getIconByExtension(ext)
+})
+
+// 根据MIME类型或扩展名获取文件图标颜色
+const iconColor = computed(() => {
+  if (mimeType.value) {
+    return getFileIconColor(mimeType.value)
+  }
+  const ext = getFileExtension(fileName.value)
+  return getIconColorByExtension(ext)
+})
+
+// 文件类型标签
+const fileTypeLabel = computed(() => {
+  if (mimeType.value) {
+    return getFileTypeLabel(mimeType.value)
+  }
+  const ext = getFileExtension(fileName.value)
+  return getLabelByExtension(ext)
+})
+
+// 根据扩展名获取图标（回退方案）
+const getIconByExtension = (ext: string): string => {
   switch (ext) {
     case 'doc':
     case 'docx':
@@ -78,33 +116,215 @@ const getFileIcon = (filePath: string): string => {
     case 'png':
     case 'gif':
     case 'webp':
+    case 'svg':
+    case 'bmp':
       return 'fas fa-file-image'
     case 'mp3':
     case 'wav':
     case 'ogg':
+    case 'flac':
+    case 'aac':
       return 'fas fa-file-audio'
     case 'mp4':
     case 'avi':
     case 'mov':
     case 'wmv':
+    case 'mkv':
+    case 'flv':
       return 'fas fa-file-video'
     case 'zip':
     case 'rar':
     case '7z':
+    case 'tar':
+    case 'gz':
       return 'fas fa-file-archive'
     case 'txt':
+    case 'md':
+    case 'rtf':
       return 'fas fa-file-alt'
     case 'js':
     case 'ts':
+    case 'jsx':
+    case 'tsx':
     case 'html':
+    case 'htm':
     case 'css':
+    case 'scss':
+    case 'less':
     case 'php':
     case 'py':
     case 'java':
     case 'cpp':
+    case 'c':
+    case 'h':
+    case 'go':
+    case 'rs':
+    case 'swift':
+    case 'kt':
+    case 'rb':
+    case 'vue':
+    case 'json':
+    case 'xml':
+    case 'yaml':
+    case 'yml':
+    case 'toml':
       return 'fas fa-file-code'
     default:
       return 'fas fa-file'
+  }
+}
+
+// 根据扩展名获取图标颜色（回退方案）
+const getIconColorByExtension = (ext: string): string => {
+  switch (ext) {
+    case 'doc':
+    case 'docx':
+      return '#2b579a'
+    case 'xls':
+    case 'xlsx':
+      return '#217346'
+    case 'ppt':
+    case 'pptx':
+      return '#d24726'
+    case 'pdf':
+      return '#e74c3c'
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+    case 'webp':
+    case 'svg':
+    case 'bmp':
+      return 'var(--color-success-500)'
+    case 'mp3':
+    case 'wav':
+    case 'ogg':
+    case 'flac':
+    case 'aac':
+      return 'var(--color-warning-500)'
+    case 'mp4':
+    case 'avi':
+    case 'mov':
+    case 'wmv':
+    case 'mkv':
+    case 'flv':
+      return 'var(--color-error-500)'
+    case 'zip':
+    case 'rar':
+    case '7z':
+    case 'tar':
+    case 'gz':
+      return '#f39c12'
+    case 'txt':
+    case 'md':
+    case 'rtf':
+      return 'var(--primary-color)'
+    case 'js':
+    case 'ts':
+    case 'jsx':
+    case 'tsx':
+    case 'html':
+    case 'htm':
+    case 'css':
+    case 'scss':
+    case 'less':
+    case 'php':
+    case 'py':
+    case 'java':
+    case 'cpp':
+    case 'c':
+    case 'h':
+    case 'go':
+    case 'rs':
+    case 'swift':
+    case 'kt':
+    case 'rb':
+    case 'vue':
+    case 'json':
+    case 'xml':
+    case 'yaml':
+    case 'yml':
+    case 'toml':
+      return '#6e7681'
+    default:
+      return 'var(--text-secondary)'
+  }
+}
+
+// 根据扩展名获取类型标签（回退方案）
+const getLabelByExtension = (ext: string): string => {
+  switch (ext) {
+    case 'doc':
+    case 'docx':
+      return 'Word'
+    case 'xls':
+    case 'xlsx':
+      return 'Excel'
+    case 'ppt':
+    case 'pptx':
+      return 'PPT'
+    case 'pdf':
+      return 'PDF'
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+    case 'webp':
+    case 'svg':
+    case 'bmp':
+      return '图片'
+    case 'mp3':
+    case 'wav':
+    case 'ogg':
+    case 'flac':
+    case 'aac':
+      return '音频'
+    case 'mp4':
+    case 'avi':
+    case 'mov':
+    case 'wmv':
+    case 'mkv':
+    case 'flv':
+      return '视频'
+    case 'zip':
+    case 'rar':
+    case '7z':
+    case 'tar':
+    case 'gz':
+      return '压缩包'
+    case 'txt':
+    case 'md':
+    case 'rtf':
+      return '文本'
+    case 'js':
+    case 'ts':
+    case 'jsx':
+    case 'tsx':
+    case 'html':
+    case 'htm':
+    case 'css':
+    case 'scss':
+    case 'less':
+    case 'php':
+    case 'py':
+    case 'java':
+    case 'cpp':
+    case 'c':
+    case 'h':
+    case 'go':
+    case 'rs':
+    case 'swift':
+    case 'kt':
+    case 'rb':
+    case 'vue':
+    case 'json':
+    case 'xml':
+    case 'yaml':
+    case 'yml':
+    case 'toml':
+      return '代码'
+    default:
+      return ''
   }
 }
 
@@ -131,18 +351,46 @@ const saveFileAs = () => {
 
 <style scoped>
 .file-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  border-radius: 14px;
   padding: 14px;
   width: fit-content;
+  min-width: 260px;
   max-width: 100%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.file-message::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-color), #667eea, #764ba2);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .file-message:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+}
+
+.file-message:hover::before {
+  opacity: 1;
 }
 
 .file-info {
@@ -155,114 +403,185 @@ const saveFileAs = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   flex-shrink: 0;
 }
 
 .file-icon {
-  font-size: 24px;
-  margin-top: 2px;
-  width: 40px;
-  height: 40px;
+  font-size: 22px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--list-bg);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px rgba(102, 126, 234, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+  color: #ffffff;
 }
 
-.file-size {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.2;
-  white-space: nowrap;
+.file-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+  border-radius: 12px;
+}
+
+.file-icon:hover {
+  transform: scale(1.08) rotate(-2deg);
+  box-shadow: 
+    0 6px 20px rgba(102, 126, 234, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.file-type-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: block;
   text-align: center;
-  margin-bottom: 4px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .file-details {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .file-name {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: #1a1a2e;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
   word-break: break-all;
+  text-align: left;
+  letter-spacing: -0.01em;
+}
+
+.file-size {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 500;
 }
 
 .file-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-top: 4px;
 }
 
 .file-action-btn {
-  padding: 6px 16px;
+  padding: 6px 14px;
   font-size: 12px;
   border-radius: 8px;
   border: none;
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #495057;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.file-action-btn i {
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .file-action-btn:hover {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--primary-color) 0%, #667eea 100%);
+  color: #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(102, 126, 234, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.file-action-btn:hover i {
+  opacity: 1;
 }
 
 .file-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
 }
 
 /* 自己的文件消息样式 */
 .file-message.self {
-  background: var(--primary-color);
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 50%, #805ad5 100%);
+  border: none;
+  box-shadow: 
+    0 4px 12px rgba(90, 103, 216, 0.25),
+    0 12px 32px rgba(107, 70, 193, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.file-message.self::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
 }
 
 .file-message.self .file-name {
-  color: #fff;
-}
-
-.file-message.self .file-icon {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .file-message.self .file-size {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.file-message.self .file-icon {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-color);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.file-message.self .file-type-label {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .file-message.self .file-action-btn {
-  background-color: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-color);
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .file-message.self .file-action-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+  background: #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
 }
 </style>

@@ -1,20 +1,19 @@
 <template>
   <div class="chat-input-area">
-    <div class="input-toolbar">
-      <button class="toolbar-btn" @click="$emit('start-voice-call')"><i class="fas fa-phone-alt"></i></button>
-      <button class="toolbar-btn" @click="$emit('start-video-call')"><i class="fas fa-video"></i></button>
-      <button class="toolbar-btn" @click="$emit('start-screen-share')"><i class="fas fa-desktop"></i></button>
-      <button class="toolbar-btn" @click="$emit('toggle-emoji-panel')"><i class="fas fa-smile"></i></button>
-      <button class="toolbar-btn" @click="handleSelectFile"><i class="fas fa-paperclip"></i></button>
-      <button class="toolbar-btn" @click="$emit('select-image')"><i class="fas fa-image"></i></button>
-      <button v-if="isElectron" class="toolbar-btn" @click="$emit('take-screenshot')"><i class="fas fa-scissors"></i></button>
-      <button class="toolbar-btn" @click="$emit('open-message-manager')"><i class="fas fa-history"></i></button>
-      <button class="toolbar-btn" @click="$emit('open-mini-app-list')"><i class="fas fa-th-large"></i></button>
-      <div class="toolbar-divider"></div>
-      <button class="toolbar-btn ai-toolbar-btn" @click="toggleAI" :class="{ 'ai-active': localShowAIActions }" :title="localShowAIActions ? '收起AI功能' : 'AI功能'">
-        <i class="fas fa-robot"></i>
-      </button>
-    </div>
+    <ChatToolbar
+      :is-electron="isElectron"
+      :show-ai-actions="localShowAIActions"
+      @start-voice-call="$emit('start-voice-call')"
+      @start-video-call="$emit('start-video-call')"
+      @start-screen-share="$emit('start-screen-share')"
+      @toggle-emoji-panel="$emit('toggle-emoji-panel')"
+      @select-file="handleSelectFile"
+      @select-image="$emit('select-image')"
+      @take-screenshot="$emit('take-screenshot')"
+      @open-message-manager="$emit('open-message-manager')"
+      @open-mini-app-list="$emit('open-mini-app-list')"
+      @toggle-ai-actions="toggleAI"
+    />
 
     <transition name="ai-actions-slide">
       <div v-if="localShowAIActions" class="ai-actions-bar">
@@ -107,6 +106,7 @@ import EmojiPanel from './EmojiPanel.vue'
 import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
+import ChatToolbar from './ChatToolbar.vue'
 import { generateAvatar } from '../../utils/avatar'
 
 interface PendingFile { file: File; name: string }
@@ -268,7 +268,7 @@ defineExpose({ messageInputRef })
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* gap: 10px; */
   min-height: 150px;
   position: relative;
 }
@@ -325,8 +325,8 @@ defineExpose({ messageInputRef })
   padding: 8px 12px;
   background: var(--card-bg);
   border-radius: 6px;
-  margin-bottom: 8px;
-  border: 1px solid var(--border-color);
+  /* margin-bottom: 8px; */
+  /* border: 1px solid var(--border-color); */
 }
 
 .ai-actions-slide-enter-active,

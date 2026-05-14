@@ -28,7 +28,7 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 	collectionName := fmt.Sprintf("user_notes_%d", userID)
 
 	// 先删除旧向量
-	s.deleteNoteVectors(ctx, noteID)
+	s.deleteNoteVectors(ctx, collectionName, noteID)
 
 	// 按标题切片
 	chunks := SplitMarkdownByHeading(content)
@@ -95,13 +95,14 @@ func (s *NoteVectorService) SearchNotes(userID uint, query string, topK int) ([]
 // DeleteNoteVectors 删除指定笔记的所有向量
 func (s *NoteVectorService) DeleteNoteVectors(userID, noteID uint) error {
 	ctx := context.Background()
-	return s.deleteNoteVectors(ctx, noteID)
+	collectionName := fmt.Sprintf("user_notes_%d", userID)
+	return s.deleteNoteVectors(ctx, collectionName, noteID)
 }
 
-func (s *NoteVectorService) deleteNoteVectors(ctx context.Context, noteID uint) error {
+func (s *NoteVectorService) deleteNoteVectors(ctx context.Context, collectionName string, noteID uint) error {
 	noteIDStr := fmt.Sprintf("%d", noteID)
 	filter := map[string]string{"note_id": noteIDStr}
-	deleted, err := s.vectorSvc.DeleteByFilter(ctx, "", filter)
+	deleted, err := s.vectorSvc.DeleteByFilter(ctx, collectionName, filter)
 	if err != nil {
 		return fmt.Errorf("删除笔记 %d 的向量失败: %w", noteID, err)
 	}

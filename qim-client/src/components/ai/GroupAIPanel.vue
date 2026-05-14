@@ -136,7 +136,7 @@ const loading = ref(false)
 async function loadAISettings() {
   loading.value = true
   try {
-    const response = await request(`/api/v1/conversations/${props.groupId}/ai-settings`)
+    const response = await request(`/api/v1/groups/${props.groupId}/ai-settings`)
     if (response.code === 0 && response.data) {
       const data = response.data
       settings.value = {
@@ -200,7 +200,7 @@ const documents = ref<GroupDocument[]>([])
 
 async function loadDocuments() {
   try {
-    const response = await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents`, {
+    const response = await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const data = await response.json()
@@ -215,7 +215,7 @@ async function loadDocuments() {
 async function handleAddDocuments(fileIds: number[]) {
   for (const fileId of fileIds) {
     try {
-      await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents`, {
+      await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +230,7 @@ async function handleAddDocuments(fileIds: number[]) {
   // 提交向量化处理任务
   for (const fileId of fileIds) {
     try {
-      await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${fileId}/process`, {
+      await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents/${fileId}/process`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       })
@@ -243,7 +243,7 @@ async function handleAddDocuments(fileIds: number[]) {
 
 async function handleRemoveDocument(fileId: number) {
   try {
-    await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${fileId}`, {
+    await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents/${fileId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
@@ -255,7 +255,7 @@ async function handleRemoveDocument(fileId: number) {
 
 async function handleRetryDocument(doc: any) {
   try {
-    await fetch(`${props.serverUrl}/api/v1/conversations/${props.groupId}/ai-documents/${doc.file_id}/process`, {
+    await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents/${doc.file_id}/process`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
@@ -280,12 +280,12 @@ onMounted(() => {
 .approval-notice.pending { background-color: #fff3cd; border: 1px solid #ffc107; color: #856404; }
 .approval-notice.rejected { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
 .approval-notice i { font-size: 16px; }
-.tab-bar { display: flex; border-bottom: 1px solid var(--border-color); }
+.tab-bar { display: flex; }
 .tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 8px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s; }
 .tab-btn:hover { color: var(--text-color); background: var(--hover-color); }
 .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); background: var(--primary-color-alpha, rgba(99, 102, 241, 0.05)); }
 .tab-content { min-height: 200px; }
-.tab-footer { padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; }
+.tab-footer { padding: 12px 20px; display: flex; justify-content: flex-end; }
 .btn { padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; font-weight: 500; }
 .btn-primary { background: var(--primary-color); color: white; }
 .btn-primary:hover { opacity: 0.9; }

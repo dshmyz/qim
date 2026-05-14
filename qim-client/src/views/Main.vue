@@ -34,7 +34,6 @@
     <!-- 小程序面板 -->
     <MiniAppManager
       v-model:showMiniAppList="showMiniAppList"
-      @send-mini-app-message="handleSendMiniAppMessage"
     />
     
     <!-- 顶部区域：窗口控制栏 -->
@@ -240,6 +239,11 @@
         <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
       </div>
 
+      <!-- AI 分身 -->
+      <div v-else-if="activeOption === 'apps' && selectedAppId === 'avatar'" class="right-content">
+        <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
+      </div>
+
 
 
       <!-- 短链接管理应用 -->
@@ -262,6 +266,8 @@
           @enter="handleConversationSelect($event)"
           @invite="handleInviteMembers($event)"
           @editAnnouncement="editAnnouncement"
+          @editGroupName="editGroupNameAction"
+          @openAISettings="openAISettings"
           @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
           @startPrivateChat="startPrivateChat"
         />
@@ -298,7 +304,7 @@
       :memberContextMenuPosition="memberContextMenuPosition"
       :showGroupContextMenuFlag="showGroupContextMenuFlag"
       :groupContextMenuPosition="groupContextMenuPosition"
-      :isGroupOwner="isGroupOwner(selectedGroup)"
+      :isGroupOwner="isGroupOwner(selectedGroupForContextMenu)"
       :showSettingsMenuFlag="showSettingsMenuFlag"
       :settingsMenuPosition="settingsMenuPosition"
       :showThemeMenuFlag="showThemeMenuFlag"
@@ -320,7 +326,6 @@
       @viewMemberInfo="viewMemberInfo"
       @setAdmin="setAsAdmin"
       @viewGroupMembers="viewGroupMembers"
-      @viewGroupInfo="viewGroupInfo"
       @addMembers="addMembersToGroup"
       @editAnnouncement="editAnnouncement"
       @dissolveGroup="dissolveGroup"
@@ -407,11 +412,13 @@
       :showGroupInfoModal="showGroupInfoModal"
       :showAddMembersModal="showAddMembersModal"
       :showEditAnnouncementModal="showEditAnnouncementModal"
+      :showEditGroupNameModal="showEditGroupNameModal"
       :selectedGroup="selectedGroup"
       :groupMembers="groupMembers"
       :allEmployees="allEmployees"
       :addMembersSearchQuery="addMembersSearchQuery"
       :selectedAddMembers="selectedAddMembers"
+      :editGroupName="editGroupName"
       :editAnnouncementContent="editAnnouncementContent"
       :currentUserId="currentUser?.id"
       :formatTime="formatTime"
@@ -419,10 +426,39 @@
       @closeGroupInfo="closeGroupInfoModal"
       @closeAddMembers="closeAddMembersModal"
       @closeEditAnnouncement="closeEditAnnouncementModal"
+      @closeEditGroupName="closeEditGroupNameModal"
       @removeMember="removeMember"
       @confirmAddMembers="confirmAddMembers"
       @saveAnnouncement="saveAnnouncement"
+      @saveGroupName="saveGroupName"
     />
+
+    <!-- AI 助手设置模态框 -->
+    <ModalContainer
+      :visible="showAISettingsModal"
+      title="AI 助手设置"
+      @close="closeAISettings"
+      @cancel="closeAISettings"
+      :show-footer="false"
+      :content-style="{ width: '480px', minWidth: '480px' }"
+    >
+      <GroupAIPanel
+        :group-id="Number(selectedGroup?.id)"
+        :server-url="API_BASE_URL"
+        :ai-enabled="selectedGroup?.ai_config?.ai_enabled ?? false"
+        :ai-assistant-name="selectedGroup?.ai_config?.ai_assistant_name ?? 'AI助手'"
+        :ai-reply-mode="selectedGroup?.ai_config?.ai_reply_mode ?? 'mention_only'"
+        :ai-personality="selectedGroup?.ai_config?.ai_personality ?? 'professional'"
+        :ai-custom-prompt="selectedGroup?.ai_config?.ai_custom_prompt ?? ''"
+        :ai-language="selectedGroup?.ai_config?.ai_language ?? 'auto'"
+        :ai-max-length="selectedGroup?.ai_config?.ai_max_length ?? 'medium'"
+        :ai-mention-reply-mode="selectedGroup?.ai_config?.ai_mention_reply_mode ?? 'mention'"
+        :ai-anti-spam-interval="selectedGroup?.ai_config?.ai_anti_spam_interval ?? 5"
+        :ai-trigger-keywords="parseTriggerKeywords(selectedGroup?.ai_config?.ai_trigger_keywords)"
+        :ai-learn-enabled="selectedGroup?.ai_config?.ai_learn_enabled ?? false"
+        @update="updateAISettings"
+      />
+    </ModalContainer>
     
     <!-- 设置、主题、更多菜单 -->
     
@@ -484,7 +520,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, defineComponent, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
 import type { Conversation, Message, User } from '../types'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
@@ -529,6 +565,7 @@ import UserDetailPanel from '../components/user/UserDetailPanel.vue'
 import AppsPanel from '../components/apps/AppsPanel.vue'
 import SelfProfileModal from '../components/modals/SelfProfileModal.vue'
 import GroupModals from '../components/modals/GroupModals.vue'
+import GroupAIPanel from '../components/ai/GroupAIPanel.vue'
 import MainContextMenus from '../components/menus/MainContextMenus.vue'
 import MainDialogs from '../components/modals/MainDialogs.vue'
 import SettingsPanel from '../components/settings/SettingsPanel.vue'
@@ -668,12 +705,18 @@ const handleUserStatusChange = (data: any) => {
 // 群组相关（使用别名避免与 useUI 中的同名变量冲突）
 const groupState = useGroup()
 const {
-  isGroupOwnerCheck
+  isGroupOwnerCheck,
+  isGroupAdmin: isGroupAdminCheck
 } = groupState
 
 // 检查当前用户是否是群聊所有者
 const isGroupOwner = (group: any) => {
   return isGroupOwnerCheck(group, currentUser.value?.id?.toString())
+}
+
+// 检查当前用户是否是群聊管理员
+const isGroupAdmin = (group: any) => {
+  return isGroupAdminCheck(group, currentUser.value?.id?.toString())
 }
 
 const ui = useUI()
@@ -700,6 +743,7 @@ const {
   // 群聊右键菜单
   showGroupContextMenuFlag,
   groupContextMenuPosition,
+  selectedGroupForContextMenu,
   showGroupContextMenu,
   closeGroupContextMenu,
   // 成员右键菜单
@@ -767,6 +811,11 @@ const {
   editAnnouncementContent,
   openEditAnnouncementModal,
   closeEditAnnouncementModal,
+  // 编辑群名称
+  showEditGroupNameModal,
+  editGroupName,
+  openEditGroupNameModal,
+  closeEditGroupNameModal,
   // 群资料
   showGroupInfoModal,
   openGroupInfoModal,
@@ -1066,7 +1115,8 @@ onMounted(async () => {
       console.log('开始加载数据.......'),
       loadConversations(),
       loadOrganizationTree(),
-      loadUserApps()
+      loadUserApps(),
+      loadBuiltInApps()
     ])
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -1459,13 +1509,12 @@ const handleReadReceipt = (data: any) => {
   const convIdStr = conversation_id.toString()
   
   if (currentConversationId.value === convIdStr) {
-    messages.value = messages.value.map(msg => {
-      if (msg.isSelf) {
-        return { ...msg, isRead: true }
+    // 使用 Store 方法逐条更新消息，避免整个数组重新渲染
+    messages.value.forEach(msg => {
+      if (msg.isSelf && !msg.isRead) {
+        chatStore.updateMessage(convIdStr, msg.id, { isRead: true })
       }
-      return msg
     })
-    messages.value = [...messages.value]
   }
   
   // 使用 Store Action 更新会话未读数
@@ -1519,11 +1568,29 @@ const formatNotificationContent = (message: any): string => {
 }
 
 // 处理新消息
-const handleNewMessage = (data: any) => {
+const handleNewMessage = (msg: any) => {
+  const data = msg.data || msg
   const conversationId = data.conversation_id.toString()
   
   const newMessage = processMessage(data, conversationId)
   const isCurrentConv = currentConversationId.value === conversationId
+  
+  if (data.is_avatar_reply) {
+    console.log('[AVATAR DEBUG] raw data:', JSON.stringify({
+      sender_id: data.sender_id,
+      sender_id_type: typeof data.sender_id,
+      sender: data.sender ? { id: data.sender.id, name: data.sender.name, nickname: data.sender.nickname } : null,
+      is_avatar_reply: data.is_avatar_reply,
+      conversation_id: data.conversation_id,
+    }))
+    console.log('[AVATAR DEBUG] processed:', {
+      isSelf: newMessage.isSelf,
+      senderId: newMessage.sender.id,
+      currentUserId: currentUser.value?.id,
+      senderIdType: typeof newMessage.sender.id,
+      currentUserIdType: typeof currentUser.value?.id,
+    })
+  }
   
   // 使用 Store Action 更新状态
   chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
@@ -1592,6 +1659,10 @@ const handleNewMessage = (data: any) => {
       // 消息已存在，更新内容（包括流式消息和普通消息的更新）
       messages.value[messageIndex].content = newMessage.content
       messages.value[messageIndex].isStreaming = newMessage.isStreaming
+      // 如果新消息类型是 markdown（流式完成），更新 type
+      if (newMessage.type) {
+        messages.value[messageIndex].type = newMessage.type
+      }
     }
   }
 }
@@ -1725,7 +1796,7 @@ const handleApplyJoinGroup = async (item) => {
   }
 
   try {
-    const response = await request(`/api/v1/conversations/${item.id}/apply`, {
+    const response = await request(`/api/v1/groups/${item.id}/apply`, {
       method: 'POST'
     })
 
@@ -1776,12 +1847,17 @@ const processMessage = (msg: any, conversationId?: string) => {
     },
     timestamp: msg.created_at ? new Date(msg.created_at).getTime() : Date.now(),
     type: msg.type || 'text',
-    isSelf: msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false,
+    isSelf: (msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false) || (msg.is_avatar_reply && msg.sender_id?.toString() === currentUser.value?.id?.toString()),
     isRead: msg.is_read || false,
     isRecalled: msg.is_recalled || false,
     isFailed: msg.is_failed || false,
     isStreaming: msg.is_streaming || false,
-    isAtMention: msg.is_at_mention ?? false,
+    isAtMention: msg.is_at_mention ?? (Array.isArray(msg.mention_user_ids) && msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString()) && msg.sender_id?.toString() !== currentUser.value?.id?.toString()) ?? false,
+    isAvatarReply: msg.is_avatar_reply ?? false,
+    is_avatar_reply: msg.is_avatar_reply ?? false,
+    isAIMessage: msg.is_ai_message ?? false,
+    is_ai_message: msg.is_ai_message ?? false,
+    ai_assistant_name: msg.ai_assistant_name || '',
     conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',
@@ -1876,9 +1952,9 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       }
       
       if (reset) {
-        messages.value = serverMessages
+        chatStore.setMessages(conversationId, serverMessages)
       } else {
-        messages.value = [...serverMessages, ...messages.value]
+        chatStore.prependMessages(conversationId, serverMessages)
       }
       
       // 调整滚动位置，保持用户查看的内容不变
@@ -1919,14 +1995,14 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       }
     } else {
       if (reset) {
-        messages.value = []
+        chatStore.clearMessages(conversationId)
       }
       hasMoreMessages.value = false
     }
   } catch (error) {
     console.error('加载消息失败:', error)
     if (reset) {
-      messages.value = []
+      chatStore.clearMessages(conversationId)
     }
     hasMoreMessages.value = false
   } finally {
@@ -2021,6 +2097,12 @@ const handleSendMessage = async (messageData: any) => {
     if (messageType === 'file' || messageType === 'image') {
       requestData.file_size = messageData.fileSize
       requestData.file_name = messageData.fileName
+    }
+    
+    // 添加@提及用户ID
+    if (messageData.mentionUserIds && Array.isArray(messageData.mentionUserIds)) {
+      requestData.mention_user_ids = messageData.mentionUserIds
+      console.log('添加@提及用户ID:', requestData.mention_user_ids)
     }
     
     console.log('发送消息的请求数据:', requestData)
@@ -2541,7 +2623,9 @@ const startPrivateChat = async (user: any) => {
     // 选择新创建的会话
     setCurrentConversationId(mockConversation.id)
     // 初始化消息列表
-    messages.value = []
+    if (mockConversation.id) {
+      chatStore.clearMessages(String(mockConversation.id))
+    }
   }
   hideUserContextMenu()
 }
@@ -2552,16 +2636,7 @@ const startVoiceCall = async (userId: string) => {
     voiceCallStatus.value = 'calling'
     showVoiceCallModal.value = true
     
-    // 模拟语音通话连接
-    setTimeout(() => {
-      voiceCallStatus.value = 'ringing'
-    }, 1000)
-    
-    // 模拟对方接听
-    setTimeout(() => {
-      voiceCallStatus.value = 'active'
-      startVoiceCallTimer()
-    }, 3000)
+    // TODO: 实现真实的 WebRTC 语音通话连接逻辑
   } catch (error) {
     console.error('发起语音通话失败:', error)
     voiceCallStatus.value = 'ended'
@@ -2808,7 +2883,7 @@ const quickTools = computed(() => {
   ]
 })
 
-// 主要应用列表
+// 主要应用列表（从内置应用加载）
 const mainApps = computed(() => {
   return [
     { id: '7', name: '笔记', icon: 'fas fa-book' },
@@ -2816,7 +2891,10 @@ const mainApps = computed(() => {
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
     { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
-    { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' }
+    { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
+    // 动态添加内置应用
+    ...builtInApps.value.filter(app => app.category === 'main'),
+    { id: 'avatar', name: 'AI分身', icon: 'fas fa-user-astronaut' }
   ]
 })
 
@@ -2831,6 +2909,80 @@ const systemApps = computed(() => {
 // 自定义应用列表
 const customApps = ref<any[]>([])
 
+// 内置应用列表（从后端加载）
+const builtInApps = ref<any[]>([])
+
+// 加载内置应用（从后端API获取）
+const loadBuiltInApps = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+    const response = await axios.get(`${serverUrl}/api/v1/apps/built-in`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    if (response.data.code === 0) {
+      builtInApps.value = response.data.data || []
+    }
+  } catch (error) {
+    console.error('加载内置应用失败:', error)
+    // 如果加载失败，使用默认的内置应用
+    builtInApps.value = []
+  }
+}
+
+// 应用分类列表（从内置应用动态加载）
+const appCategories = computed(() => {
+  return [
+    {
+      id: '1',
+      name: '内置应用',
+      expanded: true,
+      apps: [
+        { id: '2', name: '日历', icon: 'fas fa-calendar' },
+        { id: '3', name: '文件管理', icon: 'fas fa-folder' },
+        { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
+        { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
+        { id: '7', name: '笔记', icon: 'fas fa-book' },
+        { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
+        { id: 'avatar', name: 'AI分身', icon: 'fas fa-user-astronaut' },
+        { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' },
+        // 动态添加内置应用
+        ...builtInApps.value.map(app => ({
+          id: app.id,
+          name: app.name,
+          icon: app.icon || 'fas fa-cube',
+          url: app.url,
+          openType: app.open_type || app.openType || 'in-app'
+        }))
+      ]
+    },
+    {
+      id: '2',
+      name: '自定义应用',
+      expanded: false,
+      apps: customApps.value.map(app => ({
+        id: app.id,
+        name: app.name,
+        icon: app.icon,
+        url: app.url,
+        openType: app.openType
+      }))
+    },
+    {
+      id: '3',
+      name: '应用管理',
+      expanded: false,
+      apps: [
+        { id: 'app-management', name: '管理应用', icon: 'fas fa-cog' }
+      ]
+    }
+  ]
+})
+
+// 保持向后兼容的 ref 版本
+const appCategoriesRef = ref<any[]>([])
 
 // 加载用户创建的应用
 const loadUserApps = async () => {
@@ -2869,40 +3021,6 @@ const loadUserApps = async () => {
     console.error('加载用户应用失败:', error)
   }
 }
-
-const appCategories = ref([
-  {
-    id: '1',
-    name: '内置应用',
-    expanded: true,
-    apps: [
-      { id: '2', name: '日历', icon: 'fas fa-calendar' },
-      { id: '3', name: '文件管理', icon: 'fas fa-folder' },
-      { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
-      { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
-      { id: '7', name: '笔记', icon: 'fas fa-book' },
-      { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
-      { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' }
-    ]
-  },
-  {
-    id: '2',
-    name: '自定义应用',
-    expanded: false,
-    apps: [
-      // 这里可以添加用户自定义的应用
-    ]
-  },
-  {
-    id: '3',
-    name: '应用管理',
-    expanded: false,
-    apps: [
-      { id: 'app-management', name: '管理应用', icon: 'fas fa-cog' }
-    ]
-  }
-])
-
 
 // 应用管理相关状态
 const apps = ref<any[]>([])
@@ -3301,7 +3419,7 @@ const handleConversationCreated = (newConversation: any) => {
   if (newConversation && newConversation.id) {
     const conversationId = String(newConversation.id)
     setCurrentConversationId(conversationId)
-    messages.value = []
+    chatStore.clearMessages(conversationId)
     messagePage.value = 1
     hasMoreMessages.value = true
     
@@ -3502,6 +3620,33 @@ const editAnnouncement = () => {
   closeGroupContextMenu()
 }
 
+const editGroupNameAction = () => {
+  if (selectedGroup.value) {
+    editGroupName.value = selectedGroup.value.name || ''
+    openEditGroupNameModal()
+  }
+  closeGroupContextMenu()
+}
+
+// 从聊天窗口头部触发的编辑群名称（供 ChatHeaderActions 通过 inject 调用）
+const openEditGroupNameFromHeader = (group: any) => {
+  selectedGroup.value = group
+  editGroupName.value = group.name || ''
+  openEditGroupNameModal()
+}
+
+// 从聊天窗口头部触发的编辑群公告（供 ChatHeaderActions 通过 inject 调用）
+const openEditAnnouncementFromHeader = (group: any) => {
+  selectedGroup.value = group
+  editAnnouncementContent.value = group.announcement || ''
+  openEditAnnouncementModal()
+}
+
+provide('groupActions', {
+  openEditGroupName: openEditGroupNameFromHeader,
+  openEditAnnouncement: openEditAnnouncementFromHeader
+})
+
 const dissolveGroup = async () => {
   if (selectedGroup.value) {
     // 调用 useGroup 中的实现
@@ -3531,16 +3676,90 @@ const saveAnnouncement = async () => {
   }
 }
 
+const saveGroupName = async (newName: string) => {
+  if (selectedGroup.value && newName.trim()) {
+    const success = await groupState.updateGroup(selectedGroup.value.id, { name: newName.trim() })
+    if (success) {
+      // 更新本地群聊信息（副作用处理）
+      selectedGroup.value.name = newName.trim()
+      // 使用 Store Action 更新会话
+      chatStore.patchConversation(selectedGroup.value.id, { name: newName.trim() })
+      closeEditGroupNameModal()
+    }
+  }
+}
+
 const closeMemberContextMenu = () => {
   showMemberContextMenuFlag.value = false
   selectedMember.value = null
   document.removeEventListener('click', closeMemberContextMenu)
 }
 
+// AI 设置
+const showAISettingsModal = ref(false)
+
+const openAISettings = () => {
+  showAISettingsModal.value = true
+}
+
+const closeAISettings = () => {
+  showAISettingsModal.value = false
+}
+
+const parseTriggerKeywords = (raw: string | undefined): string[] => {
+  if (!raw) return []
+  return raw.split(',').filter(Boolean)
+}
+
+const updateAISettings = async (settings: any) => {
+  if (!selectedGroup.value) return
+  try {
+    const response = await request(`/api/v1/groups/${selectedGroup.value.id}/ai-settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ai_enabled: settings.aiEnabled,
+        ai_assistant_name: settings.aiAssistantName,
+        ai_reply_mode: settings.aiReplyMode,
+        ai_personality: settings.aiPersonality,
+        ai_custom_prompt: settings.aiCustomPrompt,
+        ai_language: settings.aiLanguage,
+        ai_max_length: settings.aiMaxLength,
+        ai_mention_reply_mode: settings.aiMentionReplyMode,
+        ai_anti_spam_interval: settings.aiAntiSpamInterval,
+        ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+        ai_learn_enabled: settings.aiLearnEnabled
+      })
+    })
+    if (response.code === 0) {
+      QMessage.success('AI 助手设置已更新')
+      selectedGroup.value.ai_config = {
+        ai_enabled: settings.aiEnabled,
+        ai_assistant_name: settings.aiAssistantName,
+        ai_reply_mode: settings.aiReplyMode,
+        ai_personality: settings.aiPersonality,
+        ai_custom_prompt: settings.aiCustomPrompt,
+        ai_language: settings.aiLanguage,
+        ai_max_length: settings.aiMaxLength,
+        ai_mention_reply_mode: settings.aiMentionReplyMode,
+        ai_anti_spam_interval: settings.aiAntiSpamInterval,
+        ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
+        ai_learn_enabled: settings.aiLearnEnabled
+      }
+      closeAISettings()
+    } else {
+      QMessage.error(response.message || '更新 AI 设置失败')
+    }
+  } catch (error: any) {
+    console.error('更新 AI 设置失败:', error)
+    QMessage.error('网络错误，更新 AI 设置失败')
+  }
+}
+
 const removeMemberFromGroup = async () => {
   if (selectedMember.value && selectedGroup.value) {
     try {
-      const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members/${selectedMember.value.id}`, {
+      const response = await request(`/api/v1/groups/${selectedGroup.value.id}/members/${selectedMember.value.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -3796,9 +4015,9 @@ const handleShareConfirm = async (selection) => {
         shareName = shareData.value.title
         break
       case 'message':
-        if (shareData.value.type === 'text') {
+        if (shareData.value.type === 'text' || shareData.value.type === 'markdown') {
           shareContent = `转发了消息: ${shareData.value.content.substring(0, 20)}${shareData.value.content.length > 20 ? '...' : ''}`
-          shareName = '文本消息'
+          shareName = shareData.value.type === 'markdown' ? 'AI 消息' : '文本消息'
         } else if (shareData.value.type === 'image') {
           shareContent = '转发了图片'
           shareName = '图片消息'
@@ -3846,6 +4065,11 @@ const handleShareConfirm = async (selection) => {
           if (originalMessage.type === 'text') {
             messageData = {
               type: 'text',
+              content: `[转发] ${originalMessage.content}`
+            }
+          } else if (originalMessage.type === 'markdown') {
+            messageData = {
+              type: 'markdown',
               content: `[转发] ${originalMessage.content}`
             }
           } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp' || originalMessage.type === 'share') {
@@ -3960,19 +4184,11 @@ const handleShareConfirm = async (selection) => {
   }
 }
 
-// 处理发送小程序消息
-const handleSendMiniAppMessage = (miniApp: any) => {
-  console.log('发送小程序消息:', miniApp)
-  // 这里可以添加发送小程序消息到当前聊天会话的逻辑
-  // 暂时只显示提示信息
-  showMessage({ message: `已选择小程序: ${miniApp.name}`, type: 'info' })
-}
-
 const exitGroup = async () => {
   if (selectedGroup.value) {
     if (confirm(`确定要退出${selectedGroup.value.name}吗？`)) {
       try {
-        const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/exit`, {
+        const response = await request(`/api/v1/groups/${selectedGroup.value.id}/exit`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -4039,7 +4255,7 @@ const confirmAddMembers = async (members: any[]) => {
   
   try {
     const memberIDs = members.map(m => parseInt(m.id))
-    const response = await request(`/api/v1/conversations/${selectedGroup.value.id}/members`, {
+    const response = await request(`/api/v1/groups/${selectedGroup.value.id}/members`, {
       method: 'POST',
       body: JSON.stringify({ member_ids: memberIDs })
     })

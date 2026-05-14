@@ -81,7 +81,7 @@ function handleBack() {
 function backToDashboard() {
   showChatView.value = false
   selectedBot.value = null
-  reset()
+  // 不调用 reset()，保留 conversationId 以便下次重新进入时能加载历史记录
 }
 
 async function handleUseBot(bot: Bot | null) {

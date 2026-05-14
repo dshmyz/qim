@@ -160,8 +160,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     console.log('Main window ready to show, closing splash')
-    splashWindow.close()
     mainWindow.show()
+    splashWindow.close()
   })
 
   mainWindow.on('close', function () {

@@ -16,3 +16,10 @@ export interface AIAnalyzeResult {
   tags: string[]
   action_items: string[]
 }
+
+export interface NoteVectorSearchResult {
+  content: string
+  score: number
+  title: string
+  note_id: string
+}

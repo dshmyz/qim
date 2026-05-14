@@ -144,6 +144,35 @@
     </div>
   </div>
 
+  <!-- 编辑群名称模态框 -->
+  <div v-if="showEditGroupNameModal" class="add-members-modal" @click="$emit('closeEditGroupName')">
+    <div class="add-members-content" @click.stop>
+      <div class="add-members-header">
+        <h3>修改群名称</h3>
+        <button class="close-btn" @click="$emit('closeEditGroupName')">×</button>
+      </div>
+      <div class="add-members-body">
+        <div class="group-info">
+          <div class="group-avatar">
+            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
+          </div>
+          <div class="group-details">
+            <div class="group-name">{{ selectedGroup?.name }}</div>
+          </div>
+        </div>
+        
+        <div class="group-name-edit-section">
+          <input type="text" v-model="localGroupName" placeholder="请输入群名称" class="group-name-input" />
+          <p class="group-name-tip">群名称将对所有群成员可见</p>
+        </div>
+      </div>
+      <div class="add-members-footer">
+        <button class="cancel-btn" @click="$emit('closeEditGroupName')">取消</button>
+        <button class="confirm-btn" @click="$emit('saveGroupName', localGroupName)">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 编辑群公告模态框 -->
   <div v-if="showEditAnnouncementModal" class="add-members-modal" @click="$emit('closeEditAnnouncement')">
     <div class="add-members-content" @click.stop>
@@ -204,12 +233,14 @@ interface Props {
   showGroupMembersModal: boolean
   showGroupInfoModal: boolean
   showAddMembersModal: boolean
+  showEditGroupNameModal: boolean
   showEditAnnouncementModal: boolean
   selectedGroup: Group | null
   groupMembers: Member[]
   allEmployees: Employee[]
   addMembersSearchQuery: string
   selectedAddMembers: Employee[]
+  editGroupName: string
   editAnnouncementContent: string
   currentUserId?: string | number
   formatTime: (date: string) => string
@@ -221,18 +252,22 @@ const emit = defineEmits<{
   'closeGroupMembers': []
   'closeGroupInfo': []
   'closeAddMembers': []
+  'closeEditGroupName': []
   'closeEditAnnouncement': []
   'removeMember': [member: Member]
   'confirmAddMembers': [members: Employee[]]
+  'saveGroupName': [name: string]
   'saveAnnouncement': [content: string]
 }>()
 
 const localSearchQuery = ref(props.addMembersSearchQuery)
 const localSelectedMembers = ref([...props.selectedAddMembers])
+const localGroupName = ref(props.editGroupName)
 const localAnnouncement = ref(props.editAnnouncementContent)
 
 watch(() => props.addMembersSearchQuery, (val) => { localSearchQuery.value = val })
 watch(() => props.selectedAddMembers, (val) => { localSelectedMembers.value = [...val] })
+watch(() => props.editGroupName, (val) => { localGroupName.value = val })
 watch(() => props.editAnnouncementContent, (val) => { localAnnouncement.value = val })
 
 const filteredEmployees = computed(() => {
@@ -279,7 +314,6 @@ const toggleMember = (employee: Employee) => {
 
 .add-members-header {
   padding: 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -310,8 +344,7 @@ const toggleMember = (employee: Employee) => {
   gap: 16px;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  padding-bottom: 0;
 }
 
 .group-avatar img {
@@ -350,8 +383,7 @@ const toggleMember = (employee: Employee) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  padding-bottom: 0;
 }
 
 .selected-count {
@@ -420,6 +452,24 @@ const toggleMember = (employee: Employee) => {
   color: var(--text-secondary, #999);
 }
 
+.group-name-edit-section {
+  margin-top: 16px;
+}
+
+.group-name-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.group-name-tip {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  margin-top: 8px;
+}
+
 .announcement-edit-section {
   margin-top: 16px;
 }
@@ -451,7 +501,6 @@ const toggleMember = (employee: Employee) => {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid var(--border-color, #eee);
 }
 
 .detail-label {
@@ -466,7 +515,6 @@ const toggleMember = (employee: Employee) => {
 
 .add-members-footer {
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #eee);
   display: flex;
   justify-content: flex-end;
   gap: 12px;

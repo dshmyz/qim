@@ -70,10 +70,6 @@
       <span class="context-menu-icon"><i class="fas fa-user-friends"></i></span>
       <span>查看群成员</span>
     </div>
-    <div class="context-menu-item" @click="$emit('viewGroupInfo')">
-      <span class="context-menu-icon"><i class="fas fa-info-circle"></i></span>
-      <span>查看群资料</span>
-    </div>
     <div class="context-menu-item" @click="$emit('addMembers')">
       <span class="context-menu-icon"><i class="fas fa-plus"></i></span>
       <span>添加成员</span>
@@ -206,7 +202,6 @@ const emit = defineEmits<{
   'viewMemberInfo': []
   'setAdmin': []
   'viewGroupMembers': []
-  'viewGroupInfo': []
   'addMembers': []
   'editAnnouncement': []
   'dissolveGroup': []

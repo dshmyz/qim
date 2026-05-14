@@ -8,7 +8,7 @@
       </div>
       <div class="about-dialog-content">
         <div class="about-dialog-logo">
-          <AppLogo size="large" />
+          <AppLogo size="extraLarge" />
         </div>
         <h2>QIM（青雀）</h2>
         <p class="version">版本: 1.0.0</p>

@@ -37,10 +37,20 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 	log.Printf("[OpenAI] Making request with model: %s", p.config.Model)
 
 	reqBody := ChatCompletionRequest{
-		Model:       p.config.Model,
-		Messages:    messages,
-		MaxTokens:   p.config.ExtraParams["max_tokens"].(int),
-		Temperature: p.config.ExtraParams["temperature"].(float64),
+		Model:    p.config.Model,
+		Messages: messages,
+		MaxTokens: func() int {
+			if v, ok := p.config.ExtraParams["max_tokens"].(int); ok {
+				return v
+			}
+			return 4096
+		}(),
+		Temperature: func() float64 {
+			if v, ok := p.config.ExtraParams["temperature"].(float64); ok {
+				return v
+			}
+			return 0.7
+		}(),
 	}
 
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
@@ -87,11 +97,21 @@ func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk Strea
 		Temperature float64   `json:"temperature,omitempty"`
 		Stream      bool      `json:"stream"`
 	}{
-		Model:       p.config.Model,
-		Messages:    messages,
-		MaxTokens:   p.config.ExtraParams["max_tokens"].(int),
-		Temperature: p.config.ExtraParams["temperature"].(float64),
-		Stream:      true,
+		Model:    p.config.Model,
+		Messages: messages,
+		MaxTokens: func() int {
+			if v, ok := p.config.ExtraParams["max_tokens"].(int); ok {
+				return v
+			}
+			return 4096
+		}(),
+		Temperature: func() float64 {
+			if v, ok := p.config.ExtraParams["temperature"].(float64); ok {
+				return v
+			}
+			return 0.7
+		}(),
+		Stream: true,
 	}
 
 	req, _, err := CreateJSONRequest(
@@ -232,10 +252,20 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 			} `json:"function"`
 		} `json:"tools,omitempty"`
 	}{
-		Model:       p.config.Model,
-		Messages:    messages,
-		MaxTokens:   p.config.ExtraParams["max_tokens"].(int),
-		Temperature: p.config.ExtraParams["temperature"].(float64),
+		Model:    p.config.Model,
+		Messages: messages,
+		MaxTokens: func() int {
+			if v, ok := p.config.ExtraParams["max_tokens"].(int); ok {
+				return v
+			}
+			return 4096
+		}(),
+		Temperature: func() float64 {
+			if v, ok := p.config.ExtraParams["temperature"].(float64); ok {
+				return v
+			}
+			return 0.7
+		}(),
 	}
 
 	if len(tools) > 0 {

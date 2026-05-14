@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -46,6 +48,8 @@ type SmartDigestGraph struct {
 	cache     *AICache
 }
 
+var registerDigestMergeOnce sync.Once
+
 func NewSmartDigestGraph(aiService *ai.AIService, cache *AICache) *SmartDigestGraph {
 	return &SmartDigestGraph{
 		aiService: aiService,
@@ -54,8 +58,10 @@ func NewSmartDigestGraph(aiService *ai.AIService, cache *AICache) *SmartDigestGr
 }
 
 func (g *SmartDigestGraph) Build() error {
-	compose.RegisterValuesMergeFunc(func(vs []*DigestInput) (*DigestInput, error) {
-		return vs[0], nil
+	registerDigestMergeOnce.Do(func() {
+		compose.RegisterValuesMergeFunc(func(vs []*DigestInput) (*DigestInput, error) {
+			return vs[0], nil
+		})
 	})
 
 	graph := compose.NewGraph[*DigestInput, *DigestOutput]()
@@ -83,13 +89,16 @@ func (g *SmartDigestGraph) Build() error {
 }
 
 func (g *SmartDigestGraph) Execute(ctx context.Context, input *DigestInput) (*DigestOutput, error) {
-	cacheKey := g.cache.GenerateKey("digest", fmt.Sprintf("%d", input.UserID), fmt.Sprintf("%d", input.ConversationID))
+	unreadStr := ""
+	if input.UnreadSince != nil {
+		unreadStr = input.UnreadSince.Format("20060102150405")
+	}
+	cacheKey := g.cache.GenerateKey("digest", fmt.Sprintf("%d", input.UserID), fmt.Sprintf("%d", input.ConversationID), unreadStr)
 	if cached, ok := g.cache.Get(cacheKey); ok {
-		return &DigestOutput{
-			GeneratedAt: cached,
-			UnreadCount: 0,
-			Categories:  []DigestCategory{},
-		}, nil
+		var output DigestOutput
+		if err := json.Unmarshal([]byte(cached), &output); err == nil {
+			return &output, nil
+		}
 	}
 
 	if g.runnable == nil {
@@ -101,7 +110,8 @@ func (g *SmartDigestGraph) Execute(ctx context.Context, input *DigestInput) (*Di
 		return nil, err
 	}
 
-	g.cache.Set(cacheKey, result.GeneratedAt, time.Minute*30)
+	data, _ := json.Marshal(result)
+	g.cache.Set(cacheKey, string(data), time.Minute*30)
 	return result, nil
 }
 
@@ -125,7 +135,10 @@ func (g *SmartDigestGraph) createPrepareNode() *compose.Lambda {
 			query = query.Where("created_at > ?", input.UnreadSince)
 		}
 
-		query.Preload("Sender").Order("created_at DESC").Limit(100).Find(&messages)
+		result := query.Preload("Sender").Order("created_at DESC").Limit(100).Find(&messages)
+		if result.Error != nil {
+			return nil, result.Error
+		}
 
 		dc.messages = messages
 		dc.unreadCount = len(messages)

@@ -7,6 +7,7 @@ import (
 
 	"qim-server/ai"
 	"qim-server/model"
+	"qim-server/pkg/mention"
 	"qim-server/ws"
 
 	"gorm.io/gorm"
@@ -139,7 +140,8 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var aiMessages []ai.Message
 	for _, msg := range messages {
 		role := "user"
-		if msg.SenderID == systemUserID {
+		// 判断是否为机器人消息:sender_id 为 0 或者等于 systemUserID
+		if msg.SenderID == 0 || msg.SenderID == systemUserID {
 			role = "assistant"
 		}
 		aiMessages = append(aiMessages, ai.Message{
@@ -246,6 +248,9 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 	}
 
 	dbQuery := db.Where("conversation_id = ?", query.ConvID)
+
+	// 过滤掉系统消息
+	dbQuery = dbQuery.Where("sender_type != ? OR sender_type IS NULL", "system")
 
 	if query.MessageType != "" {
 		dbQuery = dbQuery.Where("type = ?", query.MessageType)
@@ -584,6 +589,12 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 }
 
 func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {
+	mentions := mention.ExtractMentions(msg.Content)
+	mentionUserIDs := make([]uint, 0, len(mentions))
+	for _, m := range mentions {
+		mentionUserIDs = append(mentionUserIDs, m.UserID)
+	}
+
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -597,6 +608,7 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
+		"mention_user_ids":  mentionUserIDs,
 	}
 }
 

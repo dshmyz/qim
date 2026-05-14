@@ -35,6 +35,12 @@ export interface Message {
   isRead?: boolean
   isRecalled?: boolean
   isFailed?: boolean
+  isAtMention?: boolean
+  isAvatarReply?: boolean
+  is_avatar_reply?: boolean
+  isAIMessage?: boolean
+  is_ai_message?: boolean
+  ai_assistant_name?: string
   conversationId: string
   quotedMessage?: Message
   miniAppData?: {

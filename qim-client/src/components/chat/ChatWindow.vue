@@ -10,15 +10,12 @@
       :avatar-approval-status="avatarApprovalStatus"
       @invite-members="handleInviteMembers"
       @delete-group="confirmDeleteConversation"
-      @save-group-info="saveGroupInfo"
-      @save-group-announcement="saveAnnouncement"
       @switch-conversation="handleSwitchConversation"
       @show-user-profile="showUserProfile"
       @remove-member="handleRemoveMember"
       @set-admin="handleSetAdmin"
       @transfer-owner="handleTransferOwner"
       @start-private-chat="handleStartPrivateChat"
-      @edit-group-info="editGroupInfo"
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
     />
@@ -29,6 +26,13 @@
       :takeover-until="avatarTakeoverUntil"
       @resume="handleAvatarResume"
       @extend="handleAvatarExtend"
+    />
+
+    <!-- @消息提醒横幅 -->
+    <AtMentionBanner
+      v-if="unreadAtMentionCount > 0"
+      :count="unreadAtMentionCount"
+      @navigate="navigateToFirstAtMention"
     />
 
     <!-- 消息列表和成员侧边栏 -->
@@ -98,7 +102,6 @@
       @handle-keydown="handleKeydown"
       @remove-pending-file="removePendingFile"
       @remove-quoted-message="quotedMessage = null"
-      @send-mini-app-message="handleSendMiniAppMessage"
       @ai-action="handleAIAction"
       @perform-search="performSearch"
       @close-search="showSearch = false"
@@ -148,7 +151,7 @@
       @copy-message="selectedMessage && copyMessage(selectedMessage)"
       @forward-message="forwardMessage"
       @quote-message="quoteMessage"
-      @add-to-note="addToNote"
+      @add-to-notes-app="addToNotesApp"
       @create-task="createTaskFromMessage"
       @recall-message="handleRecallMessage"
       @send-message-reminder="sendMessageReminder"
@@ -170,39 +173,7 @@
       @mini-app-toast="handleMiniAppToast"
     />
 
-    <!-- 群名称编辑弹窗（保留在 ChatWindow，属于群组管理职责） -->
-    <div v-if="showEditGroupInfoModal" class="user-profile-modal" @click="closeEditGroupInfoModal">
-      <div class="profile-content" @click.stop>
-        <div class="profile-header">
-          <h3>修改群名称</h3>
-          <button class="close-btn" @click="closeEditGroupInfoModal">×</button>
-        </div>
-        <div class="profile-body">
-          <input type="text" v-model="editGroupName" class="profile-input" placeholder="请输入群名称" />
-        </div>
-        <div class="profile-footer">
-          <button class="btn btn-cancel" @click="closeEditGroupInfoModal">取消</button>
-          <button class="btn btn-save" @click="() => saveGroupInfo()">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 群公告编辑弹窗 -->
-    <div v-if="showEditAnnouncementModal" class="user-profile-modal" @click="closeEditAnnouncementModal">
-      <div class="profile-content" @click.stop>
-        <div class="profile-header">
-          <h3>编辑群公告</h3>
-          <button class="close-btn" @click="closeEditAnnouncementModal">×</button>
-        </div>
-        <div class="profile-body">
-          <textarea v-model="editAnnouncementContent" class="profile-textarea" placeholder="请输入群公告内容" rows="6"></textarea>
-        </div>
-        <div class="profile-footer">
-          <button class="btn btn-cancel" @click="closeEditAnnouncementModal">取消</button>
-          <button class="btn btn-save" @click="() => saveAnnouncement()">保存</button>
-        </div>
-      </div>
-    </div>
+    <!-- 群名称编辑弹窗和群公告编辑弹窗已移至 Main.vue 中的 GroupModals 组件 -->
 
     <!-- AI 摘要面板 -->
     <AISummaryPanel
@@ -234,8 +205,10 @@ import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
+import GroupModals from '../modals/GroupModals.vue'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
 import AvatarTakeoverBanner from '../avatar/AvatarTakeoverBanner.vue'
+import AtMentionBanner from '../message/AtMentionBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useTaskStore } from '../../stores/task'
@@ -357,13 +330,6 @@ const handleAIAction = async (actionId: string) => {
         $message.error('润色失败')
       }
       break
-    case 'code_review':
-      if (!text) {
-        $message.warning('请先输入需要审查的代码')
-        return
-      }
-      $message.info('代码审查功能开发中')
-      break
     default:
       break
   }
@@ -417,6 +383,19 @@ const emit = defineEmits<{
   'start-voice-call': []
   'start-video-call': []
 }>()
+
+const unreadAtMentionCount = computed(() => {
+  const currentUserId = props.currentUser?.id?.toString()
+  if (!currentUserId) return 0
+  return props.messages.filter(m => m.isAtMention && !m.isSelf && !m.isRead).length
+})
+
+const navigateToFirstAtMention = () => {
+  const firstAtMention = props.messages.find(m => m.isAtMention && !m.isSelf && !m.isRead)
+  if (firstAtMention) {
+    scrollToMessage(String(firstAtMention.id))
+  }
+}
 
 // 消息操作相关逻辑
 const messageActions = useMessageActions(serverUrl, ref(props.currentUser))
@@ -517,14 +496,6 @@ const selectedMessage = ref<any>(null)
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
 
-// 编辑群信息状态
-const showEditGroupInfoModal = ref(false)
-const editGroupName = ref('')
-
-// 编辑群公告状态
-const showEditAnnouncementModal = ref(false)
-const editAnnouncementContent = ref('')
-
 // 消息管理器
 const showMessageManager = ref(false)
 
@@ -552,33 +523,12 @@ const openNewsLink = (url: string) => {
   window.open(url, '_blank')
 }
 
-// 打开小程序列表
-const openMiniAppList = () => {
-  showMiniAppList.value = true
-}
-
-// 关闭小程序列表
-const closeMiniAppList = () => {
-  showMiniAppList.value = false
-}
-
-
-
-// 处理发送小程序消息
-const handleSendMiniAppMessage = (miniApp: any) => {
-  // 这里可以实现发送小程序消息的逻辑
-  emit('send', JSON.stringify({ type: 'miniApp', data: miniApp }))
-}
-
-// 打开小程序 - 使用MiniAppHandler组件中的函数
-// 函数已移至MiniAppHandler.vue组件中
-
 // 确认解散群聊（由 GroupManagementPanel 组件的确认对话框触发）
 const confirmDeleteConversation = async () => {
   if (!props.conversation) return
   
   try {
-    const response = await request(`/api/v1/conversations/${props.conversation.id}`, {
+    const response = await request(`/api/v1/groups/${props.conversation.id}`, {
       method: 'DELETE'
     })
     if (response.code === 0) {
@@ -593,8 +543,6 @@ const confirmDeleteConversation = async () => {
     $message.error('解散群聊失败，请重试')
   }
 }
-
-// 显示消息提示
 
 // 切换表情面板
 const toggleEmojiPanel = () => {
@@ -800,34 +748,25 @@ const isMembersSidebarExpanded = ref(true)
 const toggleMembersSidebar = () => {
   isMembersSidebarExpanded.value = !isMembersSidebarExpanded.value
 }
-const toggleSearch = () => {
-  showSearch.value = !showSearch.value
-  if (!showSearch.value) {
-    searchQuery.value = ''
-    searchResults.value = []
-    isSearching.value = false
-  }
+
+// 打开小程序列表
+const openMiniAppList = () => {
+  showMiniAppList.value = true
 }
 
+// 搜索相关函数
 const performSearch = () => {
   const query = searchQuery.value.trim()
   if (!query) return
   
   isSearching.value = true
   
-  // 模拟搜索延迟
   setTimeout(() => {
     searchResults.value = props.messages.filter(message => 
       message.content.toLowerCase().includes(query.toLowerCase())
     )
     isSearching.value = false
   }, 300)
-}
-
-const clearSearch = () => {
-  searchQuery.value = ''
-  searchResults.value = []
-  isSearching.value = false
 }
 
 const handleSend = async () => {
@@ -856,6 +795,7 @@ const handleSend = async () => {
     
     // 检测消息中是否包含@用户
     const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
+    const mentionUserIds: number[] = []
     if (atUsers && props.conversation?.members?.length) {
       // 提取@的用户名
       const atUsernames = atUsers.map(atUser => atUser.substring(1))
@@ -864,18 +804,27 @@ const handleSend = async () => {
         atUsernames.includes(member.name)
       )
       
+      // 收集被@用户的ID
+      mentionedUsers.forEach(user => {
+        if (user.id) {
+          mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
+        }
+      })
+      
       // 检查是否@了所有人
       if (atUsernames.includes('所有人')) {
-        // @所有人时，通知所有成员
+        // @所有人时，添加所有成员的ID
         props.conversation.members.forEach(user => {
-          // 这里可以实现通知逻辑，例如调用API发送通知
-        })
-      } else {
-        // 为@提到的用户发送通知
-        mentionedUsers.forEach(user => {
-          // 这里可以实现通知逻辑，例如调用API发送通知
+          if (user.id && !mentionUserIds.includes(typeof user.id === 'string' ? parseInt(user.id) : user.id)) {
+            mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
+          }
         })
       }
+    }
+    
+    // 如果有@用户，添加到消息数据中
+    if (mentionUserIds.length > 0) {
+      (messageData as any).mentionUserIds = mentionUserIds
     }
     
     emit('send', messageData)
@@ -910,7 +859,6 @@ const scrollToBottom = (instant: boolean = false) => {
 }
 
 // 节流函数 - 已由 MessageListView 组件处理
-// 注意：滚动逻辑已移至 MessageListView 组件，此处保留函数定义以兼容现有调用
 const handleScroll = () => {}
 
 // 加载更多消息的状态
@@ -952,8 +900,6 @@ let electronWsHandler: ((message: any) => void) | null = null
 let memberContextMenuTimeoutId: number | null = null
 let messageContextMenuTimeoutId: number | null = null
 
-
-
 watch(() => props.messages, async (newMessages, oldMessages) => {
   if (!isMounted.value) return
   if (isInsertingSystemMessage.value) return
@@ -973,29 +919,16 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
     }
     
     shouldScroll = true
+    
+    const newMessagesOnly = newMessages.slice(oldLength)
+    if (newMessagesOnly.length > 0) {
+      debouncedLoadReadUsers(newMessagesOnly, props.conversation?.type || 'single')
+    }
   } else if (newLength === oldLength && newLength > 0) {
     const lastMessage = newMessages[newLength - 1]
     if (lastMessage?.isStreaming) {
       shouldScroll = true
     }
-  }
-  
-  if (shouldScroll) {
-    scrollToBottom(true)
-  }
-  
-  if (newLength > oldLength) {
-    const newMessagesOnly = newMessages.slice(oldLength)
-    if (newMessagesOnly.length > 0) {
-      debouncedLoadReadUsers(newMessagesOnly, props.conversation?.type || 'single')
-    }
-  }
-}, { deep: true })
-
-watch(
-  () => props.messages,
-  async (newMessages, oldMessages) => {
-    if (!isMounted.value) return
     
     const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
       const oldMsg = oldMessages[index]
@@ -1004,22 +937,18 @@ watch(
     if (hasReadStatusChanged) {
       debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single', true)
     }
-  },
-  { deep: true }
-)
+  }
+  
+  if (shouldScroll) {
+    scrollToBottom(true)
+  }
+}, { deep: true })
 
 // 组件挂载时初始化
 const handleForwardNote = (event: CustomEvent) => {
   const { content } = event.detail
   inputMessage.value = content
   autoResizeTextarea()
-}
-
-// 监听分享文件事件
-const handleShareFile = (event: CustomEvent) => {
-  const { file } = event.detail
-  // 直接发送文件消息
-  emit('send', file)
 }
 
 // 处理全局键盘事件
@@ -1042,14 +971,11 @@ onMounted(async () => {
   await fetchConfig()
   await fetchSessions()
   await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
-  loadMiniApps()
   initWebSocketMessageHandler()
   
   scrollToBottom()
   
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  // 添加分享文件事件监听器
-  window.addEventListener('shareFileToChat', handleShareFile as EventListener)
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleGlobalKeydown)
   
@@ -1200,12 +1126,6 @@ const initWebSocketMessageHandler = () => {
     electronWsHandler = null
   }
 
-  const screenShareMessageTypes = [
-    'webrtc_offer',
-    'webrtc_ice_candidate',
-    'webrtc_answer'
-  ];
-  
   const realtimeMessageTypes = [
     'realtime:session:created',
     'realtime:join:requested',
@@ -1218,19 +1138,13 @@ const initWebSocketMessageHandler = () => {
     'realtime:webrtc:ice'
   ];
   
-  const allMessageTypes = [...screenShareMessageTypes, ...realtimeMessageTypes];
-  const uniqueMessageTypes = [...new Set(allMessageTypes)];
+  const uniqueMessageTypes = [...new Set(realtimeMessageTypes)];
   
   // 使用新的 addWsHandlers 批量注册，返回统一清理函数
   const handlerMap: Record<string, (data: any) => void> = {};
   
   uniqueMessageTypes.forEach(type => {
     handlerMap[type] = (data: any) => {
-      // 屏幕共享消息由 RealtimeCommunication 组件统一处理
-      // if (screenShareMessageTypes.includes(type)) {
-      //   handleScreenShareMessage(type, data);
-      // }
-      // 视频通话消息由 RealtimeCommunication 组件统一处理
       if (realtimeMessageTypes.includes(type)) {
         handleRealtimeMessage(type, data);
       }
@@ -1241,11 +1155,6 @@ const initWebSocketMessageHandler = () => {
   
   if (window.electron && window.electron.websocket) {
     electronWsHandler = (message) => {
-      // 屏幕共享消息由 RealtimeCommunication 组件统一处理
-      // if (screenShareMessageTypes.includes(message.type)) {
-      //   handleScreenShareMessage(message.type, message.data);
-      // }
-      // 视频通话消息由 RealtimeCommunication 组件统一处理
       if (realtimeMessageTypes.includes(message.type)) {
         handleRealtimeMessage(message.type, message.data);
       }
@@ -1253,14 +1162,6 @@ const initWebSocketMessageHandler = () => {
     window.electron.websocket.onMessage(electronWsHandler);
   }
 };
-
-
-
-
-
-
-
-
 
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
@@ -1275,7 +1176,6 @@ onUnmounted(() => {
   
   // 移除全局事件监听器
   window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  window.removeEventListener('shareFileToChat', handleShareFile as EventListener)
   window.removeEventListener('keydown', handleGlobalKeydown)
   
   // 清理 WebSocket handler（使用新的清理机制）
@@ -1297,43 +1197,6 @@ onUnmounted(() => {
   }
   document.removeEventListener('click', closeMemberContextMenu)
 })
-
-// 加载小程序列表
-const loadMiniApps = () => {
-  // 这里可以从服务器获取小程序列表，现在使用硬编码的列表
-  // 实际项目中应该调用API获取
-  const miniAppsList = [
-    {
-      id: 'calculator',
-      name: '计算器',
-      icon: generateAvatar('计算器'),
-      description: '基本的加减乘除运算',
-      path: '/calculator'
-    },
-    {
-      id: 'notepad',
-      name: '记事本',
-      icon: generateAvatar('记事本'),
-      description: '文本编辑和保存',
-      path: '/notepad'
-    },
-    {
-      id: 'todo',
-      name: '待办事项',
-      icon: generateAvatar('待办'),
-      description: '任务管理',
-      path: '/todo'
-    },
-    {
-      id: 'password-generator',
-      name: '密码生成器',
-      icon: generateAvatar('密码'),
-      description: '生成强密码',
-      path: '/password-generator'
-    }
-  ]
-  // 这里可以将小程序列表存储到某个状态中，以便在需要时使用
-}
 
 // 滚动到引用的消息位置
 const scrollToQuotedMessage = (quotedMessageId: string) => {
@@ -1393,8 +1256,6 @@ const autoResizeTextarea = () => {
   }
 }
 
-
-
 const handleShowMemberContextMenu = (event: MouseEvent, member: any) => {
   event.stopPropagation()
   
@@ -1435,13 +1296,6 @@ const closeMemberContextMenu = () => {
   document.removeEventListener('click', closeMemberContextMenu)
 }
 
-// 开始与成员的私聊
-const startPrivateChat = (member: any) => {
-  if (member && member.id) {
-    handleSendPrivateMessage(member.id)
-  }
-}
-
 // 计算当前用户在群中的角色
 const currentUserRole = computed(() => {
   var currentUser = props.currentUser
@@ -1454,66 +1308,6 @@ const currentUserRole = computed(() => {
   })
   return member?.role || 'member'
 })
-
-// 检查是否可以移除成员
-const canRemoveMember = computed(() => {
-  if (!selectedMember.value || currentUserRole.value === 'member') return false
-  if (selectedMember.value.role === 'owner') return false
-  if (currentUserRole.value === 'admin' && selectedMember.value.role === 'admin') return false
-  return true
-})
-
-// 检查是否可以设置管理员
-const canSetAdmin = computed(() => {
-  if (!selectedMember.value || (currentUserRole.value !== 'owner' && currentUserRole.value !== 'admin')) return false
-  if (selectedMember.value.role === 'owner') return false
-  if (currentUserRole.value === 'admin' && selectedMember.value.role === 'admin') return false
-  return true
-})
-
-// 检查是否可以转让群主
-const canTransferOwner = computed(() => {
-  if (!selectedMember.value || currentUserRole.value !== 'owner') return false
-  if (selectedMember.value.role === 'owner') return false
-  return true
-})
-
-// 检查选中的成员是否是管理员
-const isSelectedMemberAdmin = computed(() => {
-  return selectedMember.value?.role === 'admin'
-})
-
-const removeMemberFromGroup = async () => {
-  if (!selectedMember.value || !props.conversation) {
-    closeMemberContextMenu()
-    return
-  }
-
-  const memberId = selectedMember.value.id
-  const memberName = selectedMember.value.name
-  const conversationId = props.conversation.id
-
-  openConfirmDialog('确认移除', `确定要移除成员 ${memberName} 吗？`, async () => {
-    try {
-      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (response.code === 0) {
-        QMessage.success('移除成员成功')
-        emit('switchConversation', conversationId)
-      } else {
-        QMessage.error('移除成员失败: ' + response.message)
-      }
-    } catch (error: any) {
-      console.error('移除成员失败:', error)
-      QMessage.error('移除成员失败: ' + error.message)
-    }
-  })
-}
 
 const viewMemberInfo = async () => {
   if (selectedMember.value) {
@@ -1545,59 +1339,6 @@ const viewMemberInfo = async () => {
       console.error('获取用户信息失败:', error)
       $message.error('获取用户信息失败')
     }
-  }
-  closeMemberContextMenu()
-}
-
-const setAsAdmin = async () => {
-  if (!selectedMember.value || !props.conversation) {
-    closeMemberContextMenu()
-    return
-  }
-
-  const memberId = selectedMember.value.id
-  const memberName = selectedMember.value.name
-  const currentIsAdmin = isSelectedMemberAdmin.value
-  handleSetAdmin(memberId, memberName, !currentIsAdmin)
-  closeMemberContextMenu()
-}
-
-const transferOwner = async () => {
-  if (!selectedMember.value || !props.conversation) {
-    closeMemberContextMenu()
-    return
-  }
-
-  const memberId = selectedMember.value.id
-  const memberName = selectedMember.value.name
-  const conversationId = props.conversation.id
-
-  openConfirmDialog('确认转让群主', `确定要将群主转让给 ${memberName} 吗？转让后您将成为管理员。`, async () => {
-    try {
-      const response = await request(`/api/v1/conversations/${conversationId}/members/${memberId}/transfer-owner`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (response.code === 0) {
-        QMessage.success('群主转让成功')
-        emit('switchConversation', conversationId)
-      } else {
-        QMessage.error('群主转让失败: ' + response.message)
-      }
-    } catch (error: any) {
-      console.error('群主转让失败:', error)
-      QMessage.error('群主转让失败: ' + error.message)
-    }
-  })
-  closeMemberContextMenu()
-}
-
-const sendPrivateMessage = () => {
-  if (selectedMember.value) {
-    sendPrivateMessageToUser()
   }
   closeMemberContextMenu()
 }
@@ -1661,13 +1402,6 @@ const handleSendPrivateMessage = async (user: User | string | number) => {
   closeUserProfile()
 }
 
-const sendPrivateMessageToUser = () => {
-  if (selectedUser.value) {
-    handleSendPrivateMessage(selectedUser.value.id)
-  }
-  closeUserProfile()
-}
-
 // ChatHeaderActions 事件处理方法
 const handleSwitchConversation = (conversationId: string) => {
   emit('switchConversation', conversationId)
@@ -1678,7 +1412,7 @@ const handleRemoveMember = (memberId: string, memberName: string) => {
 
   openConfirmDialog('确认移除', `确定要移除成员 ${memberName} 吗？`, async () => {
     try {
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${memberId}`, {
+      const response = await request(`/api/v1/groups/${props.conversation.id}/members/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -1705,7 +1439,7 @@ const handleSetAdmin = (memberId: string, memberName: string, isAdmin: boolean) 
   openConfirmDialog('确认操作', `确定要${action}成员 ${memberName} 吗？`, async () => {
     try {
       const newRole = isAdmin ? 'admin' : 'member'
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${memberId}/role`, {
+      const response = await request(`/api/v1/groups/${props.conversation.id}/members/${memberId}/role`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -1731,7 +1465,7 @@ const handleTransferOwner = (memberId: string, memberName: string) => {
 
   openConfirmDialog('确认转让群主', `确定要将群主转让给 ${memberName} 吗？转让后您将成为管理员。`, async () => {
     try {
-      const response = await request(`/api/v1/conversations/${props.conversation.id}/members/${memberId}/transfer-owner`, {
+      const response = await request(`/api/v1/groups/${props.conversation.id}/members/${memberId}/transfer-owner`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1873,17 +1607,22 @@ const addToNote = () => {
     const message = selectedMessage.value
     
     // 检查消息类型，仅支持文本类型
-    if (message.type !== 'text') {
+    if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
       $message.warning('仅支持文本类型的消息添加到便签')
       closeMessageContextMenu()
       return
     }
     
-    // 构建便签内容
+    const rawContent = message.content || ''
+    const maxNoteLength = 2000
+    const truncatedContent = rawContent.length > maxNoteLength
+      ? rawContent.slice(0, maxNoteLength) + `\n...(原文共 ${rawContent.length} 字，已截断)`
+      : rawContent
+
     const noteContent = `【聊天记录】
 发送者：${message.sender.name}
 时间：${formatTime(message.timestamp)}
-内容：${message.content}`
+内容：${truncatedContent}`
     
     // 触发全局事件，通知便签应用接收内容
     window.dispatchEvent(new CustomEvent('addToNote', {
@@ -1894,6 +1633,48 @@ const addToNote = () => {
     }))
     
     $message.success('消息已添加到便签')
+  }
+  closeMessageContextMenu()
+}
+
+const addToNotesApp = async () => {
+  if (selectedMessage.value) {
+    const message = selectedMessage.value
+
+    if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
+      $message.warning('仅支持文本类型的消息添加到笔记')
+      closeMessageContextMenu()
+      return
+    }
+
+    const rawContent = message.content || ''
+    const maxNoteLength = 2000
+    const truncatedContent = rawContent.length > maxNoteLength
+      ? rawContent.slice(0, maxNoteLength) + `\n...(原文共 ${rawContent.length} 字，已截断)`
+      : rawContent
+
+    const noteContent = `【聊天记录】
+发送者：${message.sender.name}
+时间：${formatTime(message.timestamp)}
+内容：${truncatedContent}`
+
+    try {
+      const { useNotes } = await import('../../composables/useNotes')
+      const { createNote } = useNotes()
+      const result = await createNote({
+        title: `聊天记录 ${formatTime(message.timestamp)}`,
+        content: noteContent,
+        type: 'note',
+        tags: ['聊天记录']
+      })
+      if (result) {
+        $message.success('消息已添加到笔记')
+      } else {
+        $message.error('添加到笔记失败')
+      }
+    } catch {
+      $message.error('添加到笔记失败')
+    }
   }
   closeMessageContextMenu()
 }
@@ -2015,9 +1796,7 @@ const takeScreenshot = () => {
       $message.error('截图功能不可用')
     }
   } else {
-    // 非Electron环境或ipcRenderer不完整的模拟实现
-    // 模拟截图功能
-    simulateScreenshot()
+    $message.warning('截图功能仅在客户端环境中可用')
   }
 }
 
@@ -2026,31 +1805,6 @@ const base64ToFile = async (base64: string, filename: string): Promise<File> => 
   const response = await fetch(base64)
   const blob = await response.blob()
   return new File([blob], filename, { type: blob.type })
-}
-
-// 模拟截图功能（用于非Electron环境）
-const simulateScreenshot = () => {
-  // 生成一个模拟的截图数据
-  const canvas = document.createElement('canvas')
-  canvas.width = 800
-  canvas.height = 600
-  const ctx = canvas.getContext('2d')
-  if (ctx) {
-    // 绘制一个简单的模拟截图
-    ctx.fillStyle = '#f0f0f0'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.fillStyle = '#333'
-    ctx.font = '24px Arial'
-    ctx.fillText('模拟截图', 300, 300)
-    ctx.fillStyle = '#666'
-    ctx.font = '16px Arial'
-    ctx.fillText('这是一个模拟的截图效果', 280, 330)
-    
-    // 将canvas转换为base64
-    const imageData = canvas.toDataURL('image/png')
-    screenshotImageData.value = imageData
-    showScreenshotPreview.value = true
-  }
 }
 
 // 上传截图到服务器
@@ -2148,36 +1902,10 @@ const startVideoCall = () => {
   emit('start-video-call')
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 增强接收端错误处理
-// 注意：此函数已移至 ScreenShare 组件中，此处保留空实现以避免引用错误
-const enhanceErrorHandling = () => {
-  console.warn('enhanceErrorHandling 已废弃，错误处理逻辑已移至 ScreenShare 组件')
-}
-
-
-
-
-
 const selectFile = () => {
   // 触发文件选择对话框
   fileInput.value?.click()
 }
-
 const selectImage = () => {
   // 创建一个临时的文件输入元素
   const imageInput = document.createElement('input')
@@ -2468,7 +2196,7 @@ const handleUpdateAISettings = async (settings: any) => {
     : ''
 
   try {
-    const data = await request(`/api/v1/conversations/${props.conversation.id}/ai-settings`, {
+    const data = await request(`/api/v1/groups/${props.conversation.id}/ai-settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2568,169 +2296,6 @@ const canEditGroupName = computed(() => {
   return false
 })
 
-// 编辑群信息
-const editGroupInfo = () => {
-  if (props.conversation && canEditGroupName.value) {
-    editGroupName.value = props.conversation.name || ''
-    showEditGroupInfoModal.value = true
-  } else if (props.conversation && !canEditGroupName.value) {
-    QMessage.warning('只有管理员和群主可以修改群名称')
-  }
-  closeHeaderMenu()
-}
-
-// 保存群信息
-const saveGroupInfo = async (groupName?: string) => {
-  if (!props.conversation) {
-    showEditGroupInfoModal.value = false
-    return
-  }
-  
-  const name = groupName ?? editGroupName.value
-  if (!name) {
-    QMessage.warning('群名称不能为空')
-    return
-  }
-  
-  try {
-    const response = await request(`/api/v1/conversations/${props.conversation.id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ name })
-    })
-    
-    if (response.code === 0) {
-      QMessage.success('群名称已成功更新')
-      // 更新本地群聊数据
-      if (props.updateConversation) {
-        props.updateConversation({ ...props.conversation, name })
-      }
-      
-      // 发送群名称修改系统消息到后台服务器
-      const currentUser = getCurrentUser()
-      const currentUserName = currentUser?.name || currentUser?.nickname || '未知用户'
-      const systemMessageContent = `${currentUserName} 修改群名称为 ${name}`
-      
-      try {
-        await request(`/api/v1/conversations/${props.conversation.id}/messages`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'system',
-            content: systemMessageContent
-          })
-        })
-      } catch (error) {
-        console.error('发送系统消息失败:', error)
-      }
-      
-      // 本地也显示系统消息，按时间排序插入，避免消息错乱
-      const systemMessage = {
-        id: `system_${Date.now()}`,
-        type: 'system',
-        content: systemMessageContent,
-        timestamp: Date.now(),
-        sender: {
-          id: 'system',
-          name: '系统',
-          avatar: ''
-        },
-        isSelf: false,
-        isRead: true
-      }
-      
-      // 设置标记，防止插入系统消息时触发滚动
-      isInsertingSystemMessage.value = true
-      // 按时间排序插入消息，保持消息顺序正确
-      if (Array.isArray(props.messages)) {
-        props.messages.push(systemMessage)
-      }
-      // 延迟重置标记，确保 watch 不会在此时触发滚动
-      setTimeout(() => {
-        isInsertingSystemMessage.value = false
-      }, 100)
-    } else {
-      QMessage.error(response.message || '更新群名称失败')
-    }
-  } catch (error: any) {
-    console.error('更新群名称失败:', error)
-    if (error?.response?.status === 403) {
-      QMessage.error('没有权限修改群名称，只有管理员和群主可以操作')
-    } else if (error?.response?.status === 404) {
-      QMessage.error('群聊不存在或已被解散')
-    } else if (error?.response?.status === 401) {
-      QMessage.error('登录已过期，请重新登录')
-    } else {
-      QMessage.error(error.message || '网络错误，更新群名称失败')
-    }
-  }
-  showEditGroupInfoModal.value = false
-}
-
-// 关闭编辑群名称弹窗
-const closeEditGroupInfoModal = () => {
-  showEditGroupInfoModal.value = false
-}
-
-// 关闭编辑群公告弹窗
-const closeEditAnnouncementModal = () => {
-  showEditAnnouncementModal.value = false
-}
-
-// 编辑群公告
-const editGroupAnnouncement = () => {
-  if (props.conversation) {
-    editAnnouncementContent.value = props.conversation.announcement || ''
-    showEditAnnouncementModal.value = true
-  }
-  closeHeaderMenu()
-}
-
-// 保存群公告
-const saveAnnouncement = async (announcement?: string) => {
-  if (!props.conversation) {
-    showEditAnnouncementModal.value = false
-    return
-  }
-  
-  const content = announcement ?? editAnnouncementContent.value
-  
-  try {
-    const response = await request(`/api/v1/conversations/${props.conversation.id}/announcement`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ announcement: content })
-    })
-    
-    if (response.code === 0) {
-      QMessage.success('群公告已成功更新')
-      // 更新本地群聊数据
-      if (props.updateConversation) {
-        props.updateConversation({ ...props.conversation, announcement: content })
-      }
-    } else {
-      QMessage.error(response.message || '更新群公告失败')
-    }
-  } catch (error: any) {
-    console.error('更新群公告失败:', error)
-    if (error?.response?.status === 403) {
-      QMessage.error('没有权限更新群公告，只有管理员和群主可以操作')
-    } else if (error?.response?.status === 404) {
-      QMessage.error('群公告不存在或已被删除')
-    } else if (error?.response?.status === 401) {
-      QMessage.error('登录已过期，请重新登录')
-    } else {
-      QMessage.error('网络错误，更新群公告失败')
-    }
-  }
-  showEditAnnouncementModal.value = false
-}
 defineExpose({
   startScreenShare,
   scrollToBottom

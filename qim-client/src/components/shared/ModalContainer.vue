@@ -92,7 +92,7 @@ const handleOverlayClick = () => {
   z-index: 10000;
   padding: 20px;
   box-sizing: border-box;
-  animation: fadeIn 0.3s ease;
+  animation: none;
 }
 
 .modal-container-content {
@@ -103,7 +103,7 @@ const handleOverlayClick = () => {
   flex-direction: column;
   max-height: 85vh;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  animation: slideIn 0.3s ease;
+  animation: none;
   min-width: 400px;
 }
 
