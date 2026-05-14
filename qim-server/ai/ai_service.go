@@ -132,14 +132,14 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	return finalReply, nil
 }
 
-// ToolCall 工具调用
-type ToolCall struct {
+// toolCall 工具调用（内部使用）
+type toolCall struct {
 	Name      string                 `json:"name"`
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
 // parseToolCall 从 AI 回复中解析工具调用
-func parseToolCall(reply string) (*ToolCall, error) {
+func parseToolCall(reply string) (*toolCall, error) {
 	// 尝试提取 JSON
 	idx := strings.Index(reply, "{")
 	if idx == -1 {
@@ -152,7 +152,7 @@ func parseToolCall(reply string) (*ToolCall, error) {
 	}
 
 	var result struct {
-		ToolCall *ToolCall `json:"tool_call"`
+		ToolCall *toolCall `json:"tool_call"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		return nil, nil // 不是有效的 JSON，当作普通回复

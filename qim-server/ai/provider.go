@@ -26,6 +26,9 @@ type Provider interface {
 	// Embedding 将文本转换为向量
 	Embedding(text string) ([]float32, error)
 
+	// ChatWithTools 带 function calling 的聊天
+	ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error)
+
 	// IsConfigured 检查提供商是否已正确配置
 	IsConfigured() bool
 }
@@ -50,6 +53,7 @@ func NewBaseProvider() *BaseProvider {
 func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, error)) (*http.Response, error) {
 	var resp *http.Response
 	var err error
+	var lastStatusCode int
 
 	for attempt := 1; attempt <= bp.MaxRetries; attempt++ {
 		req, reqErr := createRequest()
@@ -67,6 +71,7 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 		if resp != nil {
 			statusCode = resp.StatusCode
 		}
+		lastStatusCode = statusCode
 		log.Printf("[AI Service] Request failed (attempt %d/%d): err=%v, status=%d",
 			attempt, bp.MaxRetries, err, statusCode)
 
@@ -77,7 +82,10 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 		}
 	}
 
-	return nil, fmt.Errorf("request failed after %d retries: %w", bp.MaxRetries, err)
+	if err != nil {
+		return nil, fmt.Errorf("request failed after %d retries: %w", bp.MaxRetries, err)
+	}
+	return nil, fmt.Errorf("request failed after %d retries, last status: %d", bp.MaxRetries, lastStatusCode)
 }
 
 // ReadSSEStream 读取 SSE 格式的流并解析数据
@@ -156,4 +164,24 @@ func CreateJSONRequest(method, url, apiKey string, body interface{}, headers map
 	}
 
 	return req, reqJSON, nil
+}
+
+// ToolDef 工具定义（用于 function calling）
+type ToolDef struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters"`
+}
+
+// ToolCall 工具调用
+type ToolCall struct {
+	ID        string                 `json:"id"`
+	Name      string                 `json:"name"`
+	Arguments map[string]interface{} `json:"arguments"`
+}
+
+// ChatResponse 聊天响应（包含工具调用）
+type ChatResponse struct {
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
