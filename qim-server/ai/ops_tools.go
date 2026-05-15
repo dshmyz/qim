@@ -7,14 +7,6 @@ import (
 	"strings"
 )
 
-// OpsTool 运维工具接口
-type OpsTool interface {
-	Name() string
-	Description() string
-	Parameters() map[string]interface{}
-	Execute(params map[string]interface{}) (interface{}, error)
-}
-
 // IntelligentTroubleshootingTool 智能故障排查工具
 type IntelligentTroubleshootingTool struct {
 	aiService *AIService
@@ -52,7 +44,7 @@ func (t *IntelligentTroubleshootingTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error) {
 	symptom, ok := params["symptom"].(string)
 	if !ok {
 		return nil, fmt.Errorf("symptom parameter is required")
@@ -234,7 +226,7 @@ func (t *CommandGenerationTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *CommandGenerationTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *CommandGenerationTool) Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error) {
 	description, ok := params["description"].(string)
 	if !ok {
 		return nil, fmt.Errorf("description parameter is required")
@@ -417,7 +409,7 @@ func (t *LogAnalysisTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *LogAnalysisTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *LogAnalysisTool) Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error) {
 	logContent, ok := params["log_content"].(string)
 	if !ok {
 		return nil, fmt.Errorf("log_content parameter is required")
@@ -599,7 +591,7 @@ func (t *IntelligentAlertTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *IntelligentAlertTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *IntelligentAlertTool) Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error) {
 	alertContent, ok := params["alert_content"].(string)
 	if !ok {
 		return nil, fmt.Errorf("alert_content parameter is required")
@@ -798,7 +790,7 @@ func (t *OpsKnowledgeTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *OpsKnowledgeTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *OpsKnowledgeTool) Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error) {
 	question, ok := params["question"].(string)
 	if !ok {
 		return nil, fmt.Errorf("question parameter is required")

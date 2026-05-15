@@ -1,18 +1,20 @@
 <template>
   <span :class="['avatar-reply-badge', `avatar-reply-badge--${variant}`]">
     <i class="fas fa-robot"></i>
-    <span v-if="variant === 'badge'" class="badge-text">AI 代回复</span>
-    <span v-else-if="variant === 'footer'" class="badge-text">该消息由{{ senderName }}分身回复</span>
+    <span v-if="variant === 'badge'" class="badge-text">{{ userName }}的分身{{ avatarName }}</span>
+    <span v-else-if="variant === 'footer'" class="badge-text">该消息由 {{ userName }} 的分身{{ avatarName }}回复</span>
   </span>
 </template>
 
 <script setup lang="ts">
 withDefaults(defineProps<{
   variant?: 'badge' | 'footer' | 'both'
-  senderName?: string
+  userName?: string
+  avatarName?: string
 }>(), {
   variant: 'badge',
-  senderName: ''
+  userName: '',
+  avatarName: ''
 })
 </script>
 

@@ -68,6 +68,12 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	if user.Type == "bot" || user.Type == "system" || user.Type == "api" {
+		log.Printf("Login blocked: user=%s, type=%s, ip=%s — 非用户账户禁止登录", req.Username, user.Type, ip)
+		response.Forbidden(c, "该账户类型不支持登录")
+		return
+	}
+
 	if user.TwoFactorEnabled {
 		response.Unauthorized(c, "需要双因素认证")
 		return

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"qim-server/cache"
 	"qim-server/model"
@@ -241,4 +242,102 @@ func (s *UserService) GetSystemUserID() uint {
 		return systemUser.ID
 	}
 	return 0
+}
+
+// GetDefaultAIAssistant 获取或创建默认 AI 助手用户（用于单聊/通用场景）
+func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
+	var existingBot model.Bot
+	err := s.db.Where("type = ? AND group_id IS NULL", "ai").First(&existingBot).Error
+	if err == nil && existingBot.VirtualUserID != nil {
+		var user model.User
+		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
+			return &user, nil
+		}
+	}
+
+	aiUser := model.User{
+		Username: "bot_ai_assistant",
+		Nickname: "AI助手",
+		Type:     "bot",
+		BotType:  "assistant",
+		Status:   "online",
+	}
+	if err := s.db.Create(&aiUser).Error; err != nil {
+		return nil, fmt.Errorf("创建默认 AI 助手用户失败: %w", err)
+	}
+
+	bot := model.Bot{
+		Name:          "AI助手",
+		Description:   "通用 AI 助手",
+		Type:          "ai",
+		IsActive:      true,
+		VirtualUserID: &aiUser.ID,
+	}
+	if err := s.db.Create(&bot).Error; err != nil {
+		log.Printf("[GetDefaultAIAssistant] 创建 Bot 记录失败: %v", err)
+	}
+
+	return &aiUser, nil
+}
+
+// EnsureGroupAIAssistant 为指定群创建或获取 AI 助手用户记录
+func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string) (*model.User, error) {
+	// 查找已存在的群聊 AI 助手
+	var existingBot model.Bot
+	err := s.db.Where("group_id = ? AND type = ?", groupID, "ai").First(&existingBot).Error
+	if err == nil && existingBot.VirtualUserID != nil {
+		var user model.User
+		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
+			return &user, nil
+		}
+	}
+
+	// 创建新的 AI 助手用户
+	username := fmt.Sprintf("bot_assistant_%d", groupID)
+	if assistantName == "" {
+		assistantName = "AI助手"
+	}
+	aiUser := model.User{
+		Username: username,
+		Nickname: assistantName,
+		Type:     "bot",
+		BotType:  "assistant",
+		Status:   "online",
+	}
+	if err := s.db.Create(&aiUser).Error; err != nil {
+		return nil, fmt.Errorf("创建 AI 助手用户失败: %w", err)
+	}
+
+	// 创建关联 Bot 记录
+	bot := model.Bot{
+		Name:          assistantName,
+		Description:   fmt.Sprintf("群 %d 的 AI 助手", groupID),
+		Type:          "ai",
+		IsActive:      true,
+		GroupID:       &groupID,
+		VirtualUserID: &aiUser.ID,
+	}
+	if err := s.db.Create(&bot).Error; err != nil {
+		log.Printf("[EnsureGroupAIAssistant] 创建 Bot 记录失败: %v", err)
+	}
+
+	// 确保 AI 助手加入群的 conversation_members
+	var conv model.Conversation
+	s.db.Where("type = ? AND id IN (SELECT conversation_id FROM `groups` WHERE id = ?)", "group", groupID).First(&conv)
+	if conv.ID > 0 {
+		var member model.ConversationMember
+		if err := s.db.Where("conversation_id = ? AND user_id = ?", conv.ID, aiUser.ID).First(&member).Error; err != nil {
+			member = model.ConversationMember{
+				ConversationID: conv.ID,
+				UserID:         aiUser.ID,
+				Role:           "member",
+				JoinedAt:       time.Now(),
+			}
+			s.db.Create(&member)
+			log.Printf("[EnsureGroupAIAssistant] AI 助手 %d 已加入群 %d", aiUser.ID, groupID)
+		}
+	}
+
+	log.Printf("[EnsureGroupAIAssistant] 为群 %d 创建 AI 助手用户: id=%d, name=%s", groupID, aiUser.ID, assistantName)
+	return &aiUser, nil
 }

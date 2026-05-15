@@ -64,22 +64,30 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 
 	template := prompt.FromMessages(
 		schema.FString,
-		&schema.Message{Role: schema.System, Content: `你是{{UserName}}的AI分身，需要以TA的身份回复消息。
+		&schema.Message{Role: schema.System, Content: `你是{UserName}的AI分身，需要以TA的身份回复别人发给TA的消息。
 
-{{PersonaSection}}
-{{SupplementSection}}
+{PersonaSection}
+{SupplementSection}
 【回复要求】
-- 以第一人称回复，就像你就是这个人
+- 以下是一段别人发给{UserName}的消息内容，你需要仔细阅读后直接回应其内容
+- 以第一人称回复，就像你就是{UserName}本人
 - 保持自然的对话风格
 - 不要暴露你是AI
-- 回复要简洁，不要过长`},
-		&schema.Message{Role: schema.User, Content: `{{ContextSection}}
-对方说：{{Message}}
+- 回复要简洁，就像在日常聊天中说话一样
+- 不要复述对方的问题，直接给出自然的回应
+- 如果对方在问问题，请直接回答，不要说"好的我来回答"之类的套话
+- 不要输出"XXX的分身代为回复"等前缀或说明，直接输出回复内容本身
+- 不要使用"XXX说：""XXX："等署名格式`},
+		&schema.Message{Role: schema.User, Content: `{ContextSection}
+别人发给我的消息：
+"""
+{Message}
+"""
 
-请以我的身份回复：`},
+请以我的身份直接回复上面的消息：`},
 	)
 	graph.AddChatTemplateNode("prompt", template)
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService))
 	graph.AddLambdaNode("format", compose.InvokableLambda(g.formatReply))
 
 	graph.AddEdge(compose.START, "prepare")
@@ -104,12 +112,28 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		UserID:         userID,
 	}
 
+	// 构建 CallerContext 注入到 context，供 EinoChatModel 中获取
+	callerCtx := &ai.CallerContext{
+		UserID:       userID,
+		AllowedTools: []string{}, // 禁止所有工具调用，避免与 prepare 预取上下文重复
+	}
+	if conversationID > 0 {
+		var conv model.Conversation
+		if g.db.First(&conv, conversationID).Error == nil && (conv.Type == "group" || conv.Type == "discussion") {
+			var group model.Group
+			if g.db.Where("conversation_id = ?", conversationID).First(&group).Error == nil {
+				callerCtx.GroupID = group.ID
+			}
+		}
+	}
+	ctx = WithCallerContext(ctx, callerCtx)
+
 	startTime := time.Now()
 	reply, err := simpleExecuteWithCache(ctx, nil, "", 0, g.runnable, input)
 	if err != nil {
 		return "", err
 	}
-	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
+	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v, 回复长度: %d, 回复内容: %q", time.Since(startTime), len(reply), reply)
 	return reply, nil
 }
 
@@ -230,6 +254,7 @@ func (g *AvatarReplyGraph) conversationHistory(conversationID uint, limit int) s
 	var messages []model.Message
 	g.db.Where("conversation_id = ?", conversationID).
 		Where("type = ?", "text").
+		Where("ai_type = ?", "").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&messages)

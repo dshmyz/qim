@@ -105,8 +105,8 @@ func simpleExecuteWithCache[Input any](
 }
 
 // AddModelNode adds a chat model node to the graph.
-func AddModelNode[Input, Output any](graph *compose.Graph[Input, Output], aiService *ai.AIService, userID uint) {
-	graph.AddChatModelNode("model", NewEinoChatModel(aiService, userID))
+func AddModelNode[Input, Output any](graph *compose.Graph[Input, Output], aiService *ai.AIService) {
+	graph.AddChatModelNode("model", NewEinoChatModel(aiService))
 }
 
 // PipelineState holds shared data between pipeline nodes.

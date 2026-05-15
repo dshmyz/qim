@@ -243,12 +243,30 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 		return true
 	}
 
-	// 问题咨询自动回复（降低阈值到 0.5）
-	if intent.Type == "query" && intent.Confidence >= 0.5 {
-		log.Printf("[IntentDetector] 问题咨询，触发回复")
-		return true
+	// 各类意图的触发阈值
+	switch intent.Type {
+	case "query":
+		if intent.Confidence >= 0.5 {
+			log.Printf("[IntentDetector] 问题咨询，置信度 %.2f >= 0.5，触发回复", intent.Confidence)
+			return true
+		}
+	case "alert":
+		if intent.Confidence >= 0.7 {
+			log.Printf("[IntentDetector] 告警/异常，置信度 %.2f >= 0.7，触发回复", intent.Confidence)
+			return true
+		}
+	case "command":
+		if intent.Confidence >= 0.8 {
+			log.Printf("[IntentDetector] 管理指令，置信度 %.2f >= 0.8，触发回复", intent.Confidence)
+			return true
+		}
+	case "todo":
+		if intent.Confidence >= 0.6 {
+			log.Printf("[IntentDetector] 待办事项，置信度 %.2f >= 0.6，触发回复", intent.Confidence)
+			return true
+		}
 	}
 
-	log.Printf("[IntentDetector] 不触发回复")
+	log.Printf("[IntentDetector] 不触发回复 (type=%s, confidence=%.2f 未达阈值)", intent.Type, intent.Confidence)
 	return false
 }

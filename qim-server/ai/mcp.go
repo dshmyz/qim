@@ -14,16 +14,17 @@ type MCPTool interface {
 	Name() string
 	Description() string
 	Parameters() map[string]interface{}
-	Execute(params map[string]interface{}) (interface{}, error)
+	Execute(params map[string]interface{}, ctx *CallerContext) (interface{}, error)
 }
 
 // CallerContext 调用者上下文（用于权限控制）
 type CallerContext struct {
-	UserID    uint
-	Username  string
-	Role      string
-	GroupID   uint
-	GroupRole string
+	UserID       uint
+	Username     string
+	Role         string
+	GroupID      uint
+	GroupRole    string
+	AllowedTools []string // 允许使用的工具名列表，为空则允许全部
 }
 
 // MCPServer MCP服务器
@@ -37,18 +38,21 @@ type MCPServer struct {
 }
 
 // NewMCPServer 创建MCP服务器
-func NewMCPServer(authoriz bool) *MCPServer {
+func NewMCPServer(authoriz bool, aiService *AIService) *MCPServer {
 	server := &MCPServer{
-		tools:      make(map[string]MCPTool),
+		tools:        make(map[string]MCPTool),
 		enabledTools: make(map[string]bool),
-		tokens:     make(map[string]string),
-		authoriz:   authoriz,
+		tokens:       make(map[string]string),
+		authoriz:     authoriz,
 	}
 
-	server.RegisterTool(&ServerMonitorTool{})
-	server.RegisterTool(&LogAnalyzerTool{})
-	server.RegisterTool(&ProcessManagerTool{})
-	server.RegisterTool(&NetworkTools{})
+	if aiService != nil {
+		server.RegisterTool(NewIntelligentTroubleshootingTool(aiService))
+		server.RegisterTool(NewCommandGenerationTool(aiService))
+		server.RegisterTool(NewLogAnalysisTool(aiService))
+		server.RegisterTool(NewIntelligentAlertTool(aiService))
+		server.RegisterTool(NewOpsKnowledgeTool(aiService))
+	}
 
 	return server
 }
@@ -131,17 +135,7 @@ func (s *MCPServer) ExecuteTool(name string, params map[string]interface{}, ctx 
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
 
-	// 如果工具实现了权限检查接口，则传递上下文
-	if authorizedTool, ok := tool.(AuthorizedTool); ok {
-		return authorizedTool.ExecuteWithAuth(params, ctx)
-	}
-
-	return tool.Execute(params)
-}
-
-// AuthorizedTool 需要权限控制的工具接口
-type AuthorizedTool interface {
-	ExecuteWithAuth(params map[string]interface{}, ctx *CallerContext) (interface{}, error)
+	return tool.Execute(params, ctx)
 }
 
 // Start 启动MCP服务器
@@ -208,135 +202,4 @@ func (s *MCPServer) handleExecuteTool(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"result": result,
 	})
-}
-
-// ServerMonitorTool 服务器监控工具
-type ServerMonitorTool struct{}
-
-func (t *ServerMonitorTool) Name() string { return "server_monitor" }
-func (t *ServerMonitorTool) Description() string {
-	return "服务器监控工具，用于检查服务器状态"
-}
-func (t *ServerMonitorTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"ip":   map[string]interface{}{"type": "string", "description": "服务器IP地址", "required": true},
-		"port": map[string]interface{}{"type": "integer", "description": "端口号", "required": false, "default": 22},
-	}
-}
-func (t *ServerMonitorTool) Execute(params map[string]interface{}) (interface{}, error) {
-	ip, _ := params["ip"].(string)
-	port := 22
-	if p, ok := params["port"].(float64); ok {
-		port = int(p)
-	}
-
-	// TODO: 这是示例工具，实际部署时需要接入真实的服务器监控 API
-	// 例如：SSH 连接、Prometheus API、云厂商 API 等
-	log.Printf("[MCP] ServerMonitorTool called with ip=%s, port=%d (demo mode)", ip, port)
-
-	return map[string]interface{}{
-		"ip":      ip,
-		"port":    port,
-		"status":  "demo",
-		"message": "这是示例工具，未接入真实监控系统",
-	}, nil
-}
-
-// LogAnalyzerTool 日志分析工具
-type LogAnalyzerTool struct{}
-
-func (t *LogAnalyzerTool) Name() string { return "log_analyzer" }
-func (t *LogAnalyzerTool) Description() string {
-	return "日志分析工具，用于分析服务器日志"
-}
-func (t *LogAnalyzerTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"path":    map[string]interface{}{"type": "string", "description": "日志文件路径", "required": true},
-		"pattern": map[string]interface{}{"type": "string", "description": "搜索模式", "required": false},
-		"lines":   map[string]interface{}{"type": "integer", "description": "返回行数", "required": false, "default": 100},
-	}
-}
-func (t *LogAnalyzerTool) Execute(params map[string]interface{}) (interface{}, error) {
-	path, _ := params["path"].(string)
-	pattern, _ := params["pattern"].(string)
-	lines := 100
-	if l, ok := params["lines"].(float64); ok {
-		lines = int(l)
-	}
-
-	// TODO: 这是示例工具，实际部署时需要接入真实的日志分析系统
-	// 例如：ELK Stack、Loki、本地文件系统读取等
-	log.Printf("[MCP] LogAnalyzerTool called with path=%s, pattern=%s (demo mode)", path, pattern)
-
-	return map[string]interface{}{
-		"path":    path,
-		"pattern": pattern,
-		"lines":   lines,
-		"content": "[demo] 这是示例日志内容，未接入真实日志系统",
-	}, nil
-}
-
-// ProcessManagerTool 进程管理工具
-type ProcessManagerTool struct{}
-
-func (t *ProcessManagerTool) Name() string { return "process_manager" }
-func (t *ProcessManagerTool) Description() string {
-	return "进程管理工具，用于管理服务器进程"
-}
-func (t *ProcessManagerTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"action":  map[string]interface{}{"type": "string", "description": "操作类型: start, stop, restart, status", "required": true},
-		"service": map[string]interface{}{"type": "string", "description": "服务名称", "required": true},
-		"host":    map[string]interface{}{"type": "string", "description": "目标主机", "required": false, "default": "localhost"},
-	}
-}
-func (t *ProcessManagerTool) Execute(params map[string]interface{}) (interface{}, error) {
-	action, _ := params["action"].(string)
-	service, _ := params["service"].(string)
-	host, _ := params["host"].(string)
-	if host == "" {
-		host = "localhost"
-	}
-
-	// TODO: 这是示例工具，实际部署时需要接入真实的进程管理系统
-	// 例如：systemd、supervisord、Docker API、Kubernetes API 等
-	log.Printf("[MCP] ProcessManagerTool called with action=%s, service=%s, host=%s (demo mode)", action, service, host)
-
-	return map[string]interface{}{
-		"action":  action,
-		"service": service,
-		"host":    host,
-		"status":  "demo",
-		"message": "这是示例工具，未接入真实进程管理系统",
-	}, nil
-}
-
-// NetworkTools 网络工具
-type NetworkTools struct{}
-
-func (t *NetworkTools) Name() string { return "network_tools" }
-func (t *NetworkTools) Description() string {
-	return "网络工具，用于网络诊断"
-}
-func (t *NetworkTools) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"tool":    map[string]interface{}{"type": "string", "description": "工具类型: ping, traceroute, dig", "required": true},
-		"target":  map[string]interface{}{"type": "string", "description": "目标地址", "required": true},
-		"options": map[string]interface{}{"type": "object", "description": "额外选项", "required": false},
-	}
-}
-func (t *NetworkTools) Execute(params map[string]interface{}) (interface{}, error) {
-	tool, _ := params["tool"].(string)
-	target, _ := params["target"].(string)
-
-	// TODO: 这是示例工具，实际部署时需要接入真实的网络诊断工具
-	// 例如：执行 ping、traceroute、dig 命令或调用相应 API
-	log.Printf("[MCP] NetworkTools called with tool=%s, target=%s (demo mode)", tool, target)
-
-	return map[string]interface{}{
-		"tool":    tool,
-		"target":  target,
-		"result":  "demo",
-		"output":  "这是示例工具，未接入真实网络诊断系统",
-	}, nil
 }

@@ -41,7 +41,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	aiSvc := di.GlobalContainer.AIService
 
-	mcpServer := ai.NewMCPServer(false)
+	mcpServer := ai.NewMCPServer(false, aiSvc)
 
 	aiSvc.SetMCPServer(mcpServer)
 
@@ -123,6 +123,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	avatarService := service.NewAvatarService(GetDB(), aiSvc)
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
+
+	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
+	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, mentionUserIDs []uint) {
+		sre := handler.GetSmartReplyEngine()
+		if sre != nil {
+			sre.HandleMessage(senderID, conversationID, content, mentionUserIDs)
+		}
+	}
 
 	avatarService.SetGroupDocumentService(groupDocSvc)
 

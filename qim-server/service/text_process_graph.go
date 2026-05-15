@@ -55,7 +55,7 @@ func (g *TextProcessGraph) Build() error {
 	graph := compose.NewGraph[*TextProcessInput, *TextProcessOutput]()
 
 	graph.AddLambdaNode("build_prompt", compose.InvokableLambda(g.buildPrompt))
-	AddModelNode(graph, g.aiService, 0)
+	AddModelNode(graph, g.aiService)
 	graph.AddLambdaNode("format", compose.InvokableLambda(g.format))
 
 	graph.AddEdge(compose.START, "build_prompt")

@@ -102,7 +102,7 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 	graph.AddLambdaNode("history", compose.InvokableLambda(g.retrieveHistory))
 	graph.AddLambdaNode("merge", compose.InvokableLambda(g.merge))
 	graph.AddLambdaNode("build_messages", compose.InvokableLambda(g.buildMessages))
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService))
 	graph.AddLambdaNode("format", compose.InvokableLambda(g.formatReply))
 
 	graph.AddEdge(compose.START, "prepare")
@@ -126,40 +126,44 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 }
 
 func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyContext) (*schema.StreamReader[*schema.Message], error) {
-	var conv model.Conversation
-	if err := g.db.First(&conv, input.ConversationID).Error; err != nil {
-		return nil, fmt.Errorf("会话不存在")
-	}
-	if conv.Type == "group" || conv.Type == "discussion" {
-		var group model.Group
-		if err := g.db.Where("conversation_id = ?", input.ConversationID).First(&group).Error; err == nil {
-			input.Group = &group
-			aiConfig := group.GetAIConfig()
-			input.GroupConfig = &GroupAIConfig{
-				Personality:  aiConfig.Personality,
-				Language:     aiConfig.Language,
-				MaxLength:    aiConfig.MaxLength,
-				CustomPrompt: aiConfig.CustomPrompt,
-			}
-		}
+	// Use the same preparation pipeline as the Graph
+	prepared, err := g.prepare(ctx, input)
+	if err != nil {
+		return nil, err
 	}
 
-	input.KnowledgeCtx = g.knowledgeContent(input)
-	input.MemoryCtx = g.memoryContent(input)
+	// Use the same knowledge/memory retrieval
+	prepared.KnowledgeCtx = g.knowledgeContent(prepared)
+	prepared.MemoryCtx = g.memoryContent(prepared)
 
+	// Build messages using the proper DB-based approach
 	systemUserID := uint(0)
 	if g.userSvc != nil {
 		systemUserID = g.userSvc.GetSystemUserID()
 	}
+	messages := g.buildHistoryMessages(prepared, systemUserID)
 
-	chatModel := NewEinoChatModel(g.aiService, input.UserID)
-	return chatModel.Stream(ctx, g.buildHistoryMessages(input, systemUserID))
+	// Set CallerContext with proper GroupID
+	callerCtx := &ai.CallerContext{UserID: prepared.UserID}
+	if prepared.Group != nil {
+		callerCtx.GroupID = prepared.Group.ID
+	}
+	ctx = WithCallerContext(ctx, callerCtx)
+
+	// Stream through model
+	chatModel := NewEinoChatModel(g.aiService)
+	return chatModel.Stream(ctx, messages)
 }
 
 func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext) (*SmartReplyResult, error) {
 	if g.replyGraph == nil {
 		return nil, fmt.Errorf("回复 Graph 未编译")
 	}
+	callerCtx := &ai.CallerContext{UserID: input.UserID}
+	if input.Group != nil {
+		callerCtx.GroupID = input.Group.ID
+	}
+	ctx = WithCallerContext(ctx, callerCtx)
 	startTime := time.Now()
 	result, err := g.replyGraph.Invoke(ctx, input)
 	if err != nil {
@@ -178,6 +182,13 @@ func (g *SmartReplyGraph) prepare(ctx context.Context, input *SmartReplyContext)
 		var group model.Group
 		if err := g.db.Where("conversation_id = ?", input.ConversationID).First(&group).Error; err == nil {
 			input.Group = &group
+			aiConfig := group.GetAIConfig()
+			input.GroupConfig = &GroupAIConfig{
+				Personality:  aiConfig.Personality,
+				Language:     aiConfig.Language,
+				MaxLength:    aiConfig.MaxLength,
+				CustomPrompt: aiConfig.CustomPrompt,
+			}
 		}
 	}
 	return input, nil

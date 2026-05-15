@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
   `status` VARCHAR(20) DEFAULT 'offline',
+  `bot_type` VARCHAR(30) DEFAULT '',
   `ip` VARCHAR(50),
   `two_factor_enabled` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `quoted_message_id` INT UNSIGNED,
   `is_recalled` BOOLEAN DEFAULT FALSE,
   `is_read` BOOLEAN DEFAULT FALSE,
+  `ai_type` VARCHAR(30) DEFAULT '',
   `recalled_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -261,6 +263,7 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `creator_id` INT UNSIGNED DEFAULT 0,
   `creator_name` VARCHAR(100) DEFAULT '',
   `virtual_user_id` INT UNSIGNED NULL,
+  `group_id` INT UNSIGNED NULL,
   `reject_reason` TEXT,
   `is_template` BOOLEAN DEFAULT FALSE,
   `user_config_id` INT UNSIGNED,
@@ -268,6 +271,7 @@ CREATE TABLE IF NOT EXISTS `bots` (
   INDEX `idx_bots_deleted_at` (`deleted_at`),
   INDEX `idx_bots_user_config_id` (`user_config_id`),
   INDEX `idx_bots_virtual_user_id` (`virtual_user_id`),
+  INDEX `idx_bots_group_id` (`group_id`),
   FOREIGN KEY (`virtual_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

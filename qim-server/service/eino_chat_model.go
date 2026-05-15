@@ -10,26 +10,35 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-type EinoChatModel struct {
-	aiService *ai.AIService
-	userID    uint
+type callerCtxKeyType struct{}
+
+var callerCtxKey = callerCtxKeyType{}
+
+// WithCallerContext 将 CallerContext 注入到 context 中
+func WithCallerContext(ctx context.Context, c *ai.CallerContext) context.Context {
+	return context.WithValue(ctx, callerCtxKey, c)
 }
 
-func NewEinoChatModel(aiService *ai.AIService, userID uint) *EinoChatModel {
+type EinoChatModel struct {
+	aiService *ai.AIService
+}
+
+func NewEinoChatModel(aiService *ai.AIService) *EinoChatModel {
 	return &EinoChatModel{
 		aiService: aiService,
-		userID:    userID,
 	}
 }
 
 func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	aiMessages := einoMessagesToAIMessages(input)
 
-	var reply string
-	var err error
+	// 优先从 context 获取 CallerContext，否则使用默认空上下文
+	callerCtx := &ai.CallerContext{}
+	if cc, ok := ctx.Value(callerCtxKey).(*ai.CallerContext); ok && cc != nil {
+		callerCtx = cc
+	}
 
-	callerCtx := &ai.CallerContext{UserID: m.userID}
-	reply, err = m.aiService.GetCompletionWithTools(aiMessages, callerCtx)
+	reply, err := m.aiService.GetCompletionWithTools(aiMessages, callerCtx)
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
   `status` VARCHAR(20) DEFAULT 'offline',
+  `bot_type` VARCHAR(30) DEFAULT '',
   `ip` VARCHAR(50),
   `two_factor_enabled` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -124,6 +125,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `quoted_message_id` INTEGER,
   `is_recalled` BOOLEAN DEFAULT FALSE,
   `is_read` BOOLEAN DEFAULT FALSE,
+  `ai_type` VARCHAR(30) DEFAULT '',
   `recalled_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -244,6 +246,7 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `creator_id` INTEGER DEFAULT 0,
   `creator_name` VARCHAR(100) DEFAULT '',
   `virtual_user_id` INTEGER NULL,
+  `group_id` INTEGER NULL,
   `reject_reason` TEXT,
   `is_template` BOOLEAN DEFAULT FALSE,
   `user_config_id` INTEGER,
@@ -253,6 +256,7 @@ CREATE TABLE IF NOT EXISTS `bots` (
 CREATE INDEX IF NOT EXISTS `idx_bots_deleted_at` ON `bots`(`deleted_at`);
 CREATE INDEX IF NOT EXISTS `idx_bots_user_config_id` ON `bots`(`user_config_id`);
 CREATE INDEX IF NOT EXISTS `idx_bots_virtual_user_id` ON `bots`(`virtual_user_id`);
+CREATE INDEX IF NOT EXISTS `idx_bots_group_id` ON `bots`(`group_id`);
 
 -- Bot conversations table
 CREATE TABLE IF NOT EXISTS `bot_conversations` (

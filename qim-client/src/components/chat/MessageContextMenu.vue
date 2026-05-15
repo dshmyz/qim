@@ -95,8 +95,9 @@ const { translateText } = useAIActions()
 
 const isAIMessage = computed(() => {
   if (!props.message) return false
+  const aiType = props.message.ai_type
   const senderType = props.message.sender?.type
-  return senderType === 'bot' || senderType === 'system' || props.message.isAIMessage || props.message.is_ai_message
+  return aiType === 'assistant' || aiType === 'avatar' || senderType === 'bot' || senderType === 'system' || props.message.isAIMessage || props.message.is_ai_message
 })
 
 const isTextLikeMessage = computed(() => {

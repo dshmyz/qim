@@ -85,6 +85,14 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 	if err != nil {
 		return nil, fmt.Errorf("request failed after %d retries: %w", bp.MaxRetries, err)
 	}
+
+	// 读取最后一次非 200 响应的响应体
+	if lastStatusCode != 0 && resp != nil {
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[AI Service] Last non-200 response body (status %d): %s", lastStatusCode, string(bodyBytes))
+	}
+
 	return nil, fmt.Errorf("request failed after %d retries, last status: %d", bp.MaxRetries, lastStatusCode)
 }
 
@@ -177,7 +185,24 @@ type ToolDef struct {
 type ToolCall struct {
 	ID        string                 `json:"id"`
 	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments"`
+	Arguments map[string]interface{} `json:"-"`
+}
+
+// MarshalJSON 自定义序列化，OpenAI 格式要求：
+// {"id": "...", "type": "function", "function": {"name": "...", "arguments": "..."}}
+func (tc ToolCall) MarshalJSON() ([]byte, error) {
+	argsJSON, err := json.Marshal(tc.Arguments)
+	if err != nil {
+		argsJSON = []byte("{}")
+	}
+	return json.Marshal(map[string]interface{}{
+		"id":   tc.ID,
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":      tc.Name,
+			"arguments": string(argsJSON),
+		},
+	})
 }
 
 // ChatResponse 聊天响应（包含工具调用）

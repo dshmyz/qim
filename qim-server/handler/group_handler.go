@@ -8,6 +8,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/service"
 	"qim-server/ws"
 	"strconv"
 	"strings"
@@ -751,6 +752,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 		return
 	}
 	groupSvc.UpdateGroup(&group)
+	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
 
 	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
 		"ai_enabled":            aiConfig.Enabled,

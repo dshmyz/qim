@@ -258,7 +258,7 @@ const {
 } = useAIActions()
 
 // 分身 composable
-const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, updateConfig, fetchConfig, fetchSessions } = useAvatar()
+const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, updateConfig, fetchConfig, fetchSessions, toggleSession } = useAvatar()
 const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
 
 // AI 摘要面板状态
@@ -268,6 +268,10 @@ const showSummaryPanel = ref(false)
 const handleUpdateAvatarEnabled = async (enabled: boolean) => {
   try {
     await updateConfig({ enabled })
+    // 同时更新会话级分身状态
+    if (props.conversation?.id) {
+      await toggleSession(props.conversation.id, enabled)
+    }
     if (enabled) {
       $message.success('分身已开启')
     } else {

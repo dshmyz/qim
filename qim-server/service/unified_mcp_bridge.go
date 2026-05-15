@@ -42,24 +42,40 @@ func (b *UnifiedMCPBridge) registerKnowledgeTools() {
 type KnowledgeSearchTool struct{ bridge *UnifiedMCPBridge }
 
 func (t *KnowledgeSearchTool) Name() string        { return "knowledge_search" }
-func (t *KnowledgeSearchTool) Description() string  { return "在群知识库中语义搜索文档内容，支持向量+图谱增强检索" }
+func (t *KnowledgeSearchTool) Description() string  { return "在群知识库中语义搜索文档内容，仅在群聊中使用。如果不在群聊中，请使用自身知识直接回答用户" }
 func (t *KnowledgeSearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"query":      map[string]interface{}{"type": "string", "description": "搜索查询", "required": true},
-		"collection": map[string]interface{}{"type": "string", "description": "集合名称（如 group_1）", "required": true},
-		"top_k":      map[string]interface{}{"type": "integer", "description": "返回结果数", "required": false, "default": 5},
+		"type": "object",
+		"properties": map[string]interface{}{
+			"query":      map[string]interface{}{"type": "string", "description": "搜索查询词，用于语义检索群知识库"},
+			"collection": map[string]interface{}{"type": "string", "description": "集合名称（如 group_1），不传则自动使用当前群聊 ID"},
+			"top_k":      map[string]interface{}{"type": "integer", "description": "返回结果数量，默认5"},
+		},
+		"required": []string{"query"},
 	}
 }
 
-func (t *KnowledgeSearchTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *KnowledgeSearchTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	query, _ := params["query"].(string)
 	collection, _ := params["collection"].(string)
 	topK := 5
 	if k, ok := params["top_k"].(float64); ok {
 		topK = int(k)
 	}
-	if query == "" || collection == "" {
-		return nil, fmt.Errorf("query 和 collection 不能为空")
+	if query == "" {
+		return nil, fmt.Errorf("query 不能为空")
+	}
+
+	// 如果没传 collection，从 CallerContext 的 GroupID 自动推导
+	if collection == "" && ctx != nil && ctx.GroupID > 0 {
+		collection = fmt.Sprintf("group_%d", ctx.GroupID)
+	}
+	if collection == "" {
+		return map[string]interface{}{
+			"results": []interface{}{},
+			"total":   0,
+			"note":    "当前不在群聊中，群知识库不可用，请使用自身知识回答用户",
+		}, nil
 	}
 
 	resp, err := t.bridge.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
@@ -88,10 +104,15 @@ func (t *KnowledgeSearchTool) Execute(params map[string]interface{}) (interface{
 			Metadata:    r.Metadata,
 		})
 	}
+	if len(hits) == 0 {
+		return map[string]interface{}{
+			"results": hits,
+			"total":   0,
+			"note":    "群知识库中未找到相关内容，请使用自身知识回答用户",
+		}, nil
+	}
 	return map[string]interface{}{"results": hits, "total": len(hits)}, nil
 }
-
-// ── knowledge_save ──
 
 type KnowledgeSaveTool struct{ bridge *UnifiedMCPBridge }
 
@@ -107,7 +128,7 @@ func (t *KnowledgeSaveTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *KnowledgeSaveTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *KnowledgeSaveTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	knowledgeID, _ := params["knowledge_id"].(string)
 	title, _ := params["title"].(string)
 	content, _ := params["content"].(string)
@@ -147,26 +168,38 @@ func (t *MemorySearchTool) Name() string        { return "memory_search" }
 func (t *MemorySearchTool) Description() string  { return "在用户长期记忆中语义搜索，用于分身回忆之前的对话和偏好" }
 func (t *MemorySearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"query":  map[string]interface{}{"type": "string", "description": "搜索查询", "required": true},
-		"user_id": map[string]interface{}{"type": "string", "description": "用户ID", "required": true},
-		"top_k":  map[string]interface{}{"type": "integer", "description": "返回结果数", "required": false, "default": 3},
+		"type": "object",
+		"properties": map[string]interface{}{
+			"query":   map[string]interface{}{"type": "string", "description": "搜索查询词，用于语义检索用户记忆"},
+			"user_id": map[string]interface{}{"type": "string", "description": "用户ID，不传则自动使用当前调用者ID"},
+			"top_k":   map[string]interface{}{"type": "integer", "description": "返回结果数量，默认3"},
+		},
+		"required": []string{"query"},
 	}
 }
 
-func (t *MemorySearchTool) Execute(params map[string]interface{}) (interface{}, error) {
+func (t *MemorySearchTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	query, _ := params["query"].(string)
-	userID, _ := params["user_id"].(string)
+	userIDStr, _ := params["user_id"].(string)
 	topK := 3
 	if k, ok := params["top_k"].(float64); ok {
 		topK = int(k)
 	}
-	if query == "" || userID == "" {
-		return nil, fmt.Errorf("query 和 user_id 不能为空")
+	if query == "" {
+		return nil, fmt.Errorf("query 不能为空")
+	}
+
+	// 如果没传 user_id，从 CallerContext 自动填充
+	if userIDStr == "" && ctx != nil && ctx.UserID > 0 {
+		userIDStr = fmt.Sprintf("%d", ctx.UserID)
+	}
+	if userIDStr == "" {
+		return nil, fmt.Errorf("user_id 不能为空，请确保 CallerContext 中有用户ID")
 	}
 
 	resp, err := t.bridge.cortexDB.SearchMemory(context.Background(), cortexdb.MemorySearchRequest{
 		Query:     query,
-		UserID:    userID,
+		UserID:    userIDStr,
 		Scope:     cortexdb.MemoryScopeUser,
 		Namespace: "avatar",
 		TopK:      topK,

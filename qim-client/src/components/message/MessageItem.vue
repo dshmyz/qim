@@ -1,7 +1,7 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.is_avatar_reply, 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.ai_type === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
     :data-message-id="message.id"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -15,18 +15,22 @@
         :name="message.sender.name || '用户'"
         :server-url="serverUrl"
         :alt="message.sender.name || '未知用户'"
+        :user-type="isAIMessage ? 'bot' : 'user'"
         size="md"
         class="message-avatar"
         @click="$emit('showUserProfile', message.sender)"
       />
       <div class="message-content">
-        <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf" class="message-sender">
+        <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && !isAIMessage" class="message-sender">
           <span>{{ message.sender.name || '未知用户' }}</span>
-          <AIMessageBadge v-if="isAIMessage" compact :assistant-name="message.ai_assistant_name" />
-          <AvatarReplyBadge v-if="message.is_avatar_reply" variant="badge" />
           <AtMentionBadge v-if="message.isAtMention" :is-at-mention="true" />
         </div>
-        <div v-if="isAIMessage && !isSelf && conversationType !== 'group' && conversationType !== 'discussion'" class="message-sender">
+
+        <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && isAIMessage" class="message-sender">
+          <span v-if="message.ai_type === 'avatar'">{{ message.avatar_name || message.sender.name || '未知用户' }}</span>
+          <span v-else><i class="fas fa-robot"></i> {{ message.ai_assistant_name || 'AI 助手' }}</span>
+        </div>
+        <div v-if="isAIMessage && message.ai_type === 'assistant' && !isSelf && conversationType !== 'group' && conversationType !== 'discussion'" class="message-sender">
           <span><i class="fas fa-robot"></i> {{ message.ai_assistant_name || 'AI 助手' }}</span>
         </div>
 
@@ -143,7 +147,7 @@
 
         <div class="message-meta">
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
-          <AvatarReplyBadge v-if="message.is_avatar_reply" variant="footer" :sender-name="message.sender.name || ''" />
+          <AvatarReplyBadge v-if="message.ai_type === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" />
           <div v-if="isSelf && message.isFailed" class="message-read-status failed" title="发送失败">
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
@@ -189,10 +193,10 @@ const props = defineProps<{
 }>()
 
 const isAIMessage = computed(() => {
-  const senderType = props.message.sender?.type
-  const fromSenderType = senderType === 'bot' || senderType === 'system'
+  const fromAIType = props.message.ai_type === 'assistant' || props.message.ai_type === 'avatar'
+  const fromSenderIsBot = props.message.sender?.type === 'bot' || props.message.sender?.type === 'system'
   const fromField = props.message.is_ai_message || props.message.isAIMessage
-  return fromSenderType || fromField
+  return fromAIType || fromSenderIsBot || fromField
 })
 
 const emit = defineEmits<{

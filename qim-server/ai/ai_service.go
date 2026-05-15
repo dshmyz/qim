@@ -44,7 +44,15 @@ func (s *AIService) GetMCPServer() *MCPServer {
 }
 
 // GetCompletionWithTools 带工具调用的 AI 完成
-func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (string, error) {
+func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (reply string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[AI Service] PANIC in GetCompletionWithTools: %v", r)
+			reply = ""
+			err = fmt.Errorf("panic in GetCompletionWithTools: %v", r)
+		}
+	}()
+
 	s.mu.RLock()
 	mcpServer := s.mcpServer
 	provider := s.provider
@@ -57,8 +65,19 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	// 构建工具定义列表
 	tools := mcpServer.ListTools()
 	toolDefs := make([]ToolDef, 0, len(tools))
+
+	// 如果有 AllowedTools 限制，只使用指定的工具
+	allowedMap := make(map[string]bool)
+	for _, name := range callerCtx.AllowedTools {
+		allowedMap[name] = true
+	}
+	filterTools := len(callerCtx.AllowedTools) > 0
+
 	for _, tool := range tools {
 		name := tool["name"].(string)
+		if filterTools && !allowedMap[name] {
+			continue
+		}
 		desc := tool["description"].(string)
 		params := tool["parameters"].(map[string]interface{})
 		toolDefs = append(toolDefs, ToolDef{
@@ -69,13 +88,14 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	}
 
 	// 尝试使用 native function calling
-	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d", len(toolDefs))
+	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d (过滤前: %d)", len(toolDefs), len(tools))
 	resp, err := provider.ChatWithTools(messages, toolDefs)
 	if err != nil {
-		// Provider 不支持 native function calling，降级到 prompt engineering
-		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
+		log.Printf("[AI Service] ChatWithTools 失败: %v", err)
+		// 降级到 prompt engineering
 		return s.getCompletionWithToolsPromptEngineering(messages, callerCtx)
 	}
+	log.Printf("[AI Service] ChatWithTools 返回: content=%q, toolCalls=%d", resp.Content, len(resp.ToolCalls))
 
 	// 如果没有工具调用，直接返回
 	if len(resp.ToolCalls) == 0 {
@@ -99,6 +119,11 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	// 执行所有工具调用
 	for _, tc := range resp.ToolCalls {
 		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
+		// 参数为空时跳过，避免因空参数导致执行失败
+		if len(tc.Arguments) == 0 {
+			log.Printf("[AI Service] 工具参数为空，跳过: name=%s", tc.Name)
+			continue
+		}
 		result, execErr := mcpServer.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
 		if execErr != nil {
 			log.Printf("[AI Service] 工具执行失败: %v", execErr)
@@ -112,15 +137,18 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 			Role:       "tool",
 			Content:    string(resultJSON),
 			ToolCallID: tc.ID,
+			Name:       tc.Name,
 		})
 	}
 
-	// 再次调用 LLM 生成最终回复
-	log.Printf("[AI Service] Native function calling - 请求最终回复")
-	finalResp, err := provider.ChatWithTools(newMessages, toolDefs)
+	// 再次调用 LLM 生成最终回复，不再提供工具，强制 LLM 生成文本内容
+	log.Printf("[AI Service] Native function calling - 请求最终回复, 消息数: %d", len(newMessages))
+	finalResp, err := provider.ChatWithTools(newMessages, nil)
 	if err != nil {
+		log.Printf("[AI Service] Native function calling - 最终回复失败: %v", err)
 		return "", err
 	}
+	log.Printf("[AI Service] Native function calling - 最终回复成功: %s", finalResp.Content[:min(200, len(finalResp.Content))])
 
 	return finalResp.Content, nil
 }

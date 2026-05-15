@@ -31,26 +31,23 @@ func (t *UserManagementTool) Description() string {
 
 func (t *UserManagementTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"action": map[string]interface{}{
-			"type":        "string",
-			"description": "操作类型: enable(启用), disable(禁用)",
-			"enum":        []string{"enable", "disable"},
-			"required":    true,
+		"type": "object",
+		"properties": map[string]interface{}{
+			"action": map[string]interface{}{
+				"type":        "string",
+				"description": "操作类型: enable(启用), disable(禁用)",
+				"enum":        []string{"enable", "disable"},
+			},
+			"user_identifier": map[string]interface{}{
+				"type":        "string",
+				"description": "用户标识：用户名、昵称或用户ID",
+			},
 		},
-		"user_identifier": map[string]interface{}{
-			"type":        "string",
-			"description": "用户标识：用户名、昵称或用户ID",
-			"required":    true,
-		},
+		"required": []string{"action", "user_identifier"},
 	}
 }
 
-func (t *UserManagementTool) Execute(params map[string]interface{}) (interface{}, error) {
-	return t.ExecuteWithAuth(params, nil)
-}
-
-// ExecuteWithAuth 带权限检查的执行
-func (t *UserManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+func (t *UserManagementTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	// 权限检查：需要是系统管理员
 	if ctx != nil && ctx.UserID > 0 {
 		if !isSystemAdmin(ctx.UserID) {
@@ -115,31 +112,27 @@ func (t *GroupManagementTool) Description() string {
 
 func (t *GroupManagementTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"action": map[string]interface{}{
-			"type":        "string",
-			"description": "操作类型: add_member(添加成员), remove_member(移除成员), mute(禁言), unmute(解除禁言)",
-			"enum":        []string{"add_member", "remove_member", "mute", "unmute"},
-			"required":    true,
+		"type": "object",
+		"properties": map[string]interface{}{
+			"action": map[string]interface{}{
+				"type":        "string",
+				"description": "操作类型: add_member(添加成员), remove_member(移除成员), mute(禁言), unmute(解除禁言)",
+				"enum":        []string{"add_member", "remove_member", "mute", "unmute"},
+			},
+			"group_identifier": map[string]interface{}{
+				"type":        "string",
+				"description": "群组标识：群名或群组ID",
+			},
+			"user_identifier": map[string]interface{}{
+				"type":        "string",
+				"description": "用户标识：用户名、昵称或用户ID",
+			},
 		},
-		"group_identifier": map[string]interface{}{
-			"type":        "string",
-			"description": "群组标识：群名或群组ID",
-			"required":    true,
-		},
-		"user_identifier": map[string]interface{}{
-			"type":        "string",
-			"description": "用户标识：用户名、昵称或用户ID",
-			"required":    true,
-		},
+		"required": []string{"action", "group_identifier", "user_identifier"},
 	}
 }
 
-func (t *GroupManagementTool) Execute(params map[string]interface{}) (interface{}, error) {
-	return t.ExecuteWithAuth(params, nil)
-}
-
-// ExecuteWithAuth 带权限检查的执行
-func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	db := database.GetDB()
 
 	// 解析参数
@@ -162,7 +155,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 	var conversation model.Conversation
 	err := db.Where("id = ?", groupIDStr).First(&conversation).Error
 	if err != nil {
-		// 尝试通过名称查找群组
 		var groupByName model.Group
 		if err := db.Where("name = ?", groupIDStr).First(&groupByName).Error; err == nil {
 			conversation.ID = groupByName.ConversationID
@@ -187,9 +179,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 		if member.Role != "owner" && member.Role != "admin" {
 			return nil, fmt.Errorf("权限不足：只有群主或管理员才能执行此操作")
 		}
-	} else if ctx == nil || ctx.UserID == 0 {
-		// 没有上下文时，允许执行（兼容旧接口）
-		log.Printf("[GroupManagementTool] 警告：无调用者上下文，跳过权限检查")
 	}
 
 	// 查找要操作的用户
@@ -209,7 +198,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 		}
 		db.FirstOrCreate(&member, model.ConversationMember{ConversationID: conversation.ID, UserID: user.ID})
 
-		// 发送 WebSocket 通知（与 API 保持一致）
 		if ws.GlobalHub != nil {
 			msg := ws.WSMessage{
 				Type: "group_member_joined",
@@ -231,7 +219,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 	case "remove_member":
 		db.Where("conversation_id = ? AND user_id = ?", conversation.ID, user.ID).Delete(&model.ConversationMember{})
 
-		// 发送 WebSocket 通知（与 API 保持一致）
 		if ws.GlobalHub != nil {
 			msg := ws.WSMessage{
 				Type: "group_member_left",
@@ -255,7 +242,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 			Where("conversation_id = ? AND user_id = ?", conversation.ID, user.ID).
 			Update("muted_until", time.Now().Add(24*time.Hour))
 
-		// 发送 WebSocket 通知
 		if ws.GlobalHub != nil {
 			msg := ws.WSMessage{
 				Type: "group_member_muted",
@@ -279,7 +265,6 @@ func (t *GroupManagementTool) ExecuteWithAuth(params map[string]interface{}, ctx
 			Where("conversation_id = ? AND user_id = ?", conversation.ID, user.ID).
 			Update("muted_until", nil)
 
-		// 发送 WebSocket 通知
 		if ws.GlobalHub != nil {
 			msg := ws.WSMessage{
 				Type: "group_member_unmuted",
@@ -320,36 +305,31 @@ func (t *SystemNotificationTool) Description() string {
 
 func (t *SystemNotificationTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"title": map[string]interface{}{
-			"type":        "string",
-			"description": "通知标题",
-			"required":    true,
+		"type": "object",
+		"properties": map[string]interface{}{
+			"title": map[string]interface{}{
+				"type":        "string",
+				"description": "通知标题",
+			},
+			"content": map[string]interface{}{
+				"type":        "string",
+				"description": "通知内容",
+			},
+			"target_type": map[string]interface{}{
+				"type":        "string",
+				"description": "目标类型: user(用户), group(群组), all(全体)",
+				"enum":        []string{"user", "group", "all"},
+			},
+			"target_id": map[string]interface{}{
+				"type":        "string",
+				"description": "目标ID（全体时可选）",
+			},
 		},
-		"content": map[string]interface{}{
-			"type":        "string",
-			"description": "通知内容",
-			"required":    true,
-		},
-		"target_type": map[string]interface{}{
-			"type":        "string",
-			"description": "目标类型: user(用户), group(群组), all(全体)",
-			"enum":        []string{"user", "group", "all"},
-			"required":    true,
-		},
-		"target_id": map[string]interface{}{
-			"type":        "string",
-			"description": "目标ID（全体时可选）",
-			"required":    false,
-		},
+		"required": []string{"title", "content", "target_type"},
 	}
 }
 
-func (t *SystemNotificationTool) Execute(params map[string]interface{}) (interface{}, error) {
-	return t.ExecuteWithAuth(params, nil)
-}
-
-// ExecuteWithAuth 带权限检查的执行
-func (t *SystemNotificationTool) ExecuteWithAuth(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+func (t *SystemNotificationTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	// 权限检查：需要是系统管理员
 	if ctx != nil && ctx.UserID > 0 {
 		if !isSystemAdmin(ctx.UserID) {

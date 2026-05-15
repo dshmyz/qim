@@ -539,7 +539,7 @@ func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
 		"logs":    req.Logs,
 	}
 
-	result, err := tool.Execute(params)
+	result, err := tool.Execute(params, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "故障排查失败: " + err.Error()})
 		return
@@ -584,7 +584,7 @@ func (h *AIHandler) CommandGeneration(c *gin.Context) {
 		"format":      req.Format,
 	}
 
-	result, err := tool.Execute(params)
+	result, err := tool.Execute(params, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "命令生成失败: " + err.Error()})
 		return
@@ -629,7 +629,7 @@ func (h *AIHandler) LogAnalysis(c *gin.Context) {
 		"severity":    req.Severity,
 	}
 
-	result, err := tool.Execute(params)
+	result, err := tool.Execute(params, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "日志分析失败: " + err.Error()})
 		return
@@ -674,7 +674,7 @@ func (h *AIHandler) IntelligentAlert(c *gin.Context) {
 		"service":       req.Service,
 	}
 
-	result, err := tool.Execute(params)
+	result, err := tool.Execute(params, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "告警处理失败: " + err.Error()})
 		return
@@ -717,7 +717,7 @@ func (h *AIHandler) OpsKnowledge(c *gin.Context) {
 		"category": req.Category,
 	}
 
-	result, err := tool.Execute(params)
+	result, err := tool.Execute(params, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "知识问答失败: " + err.Error()})
 		return

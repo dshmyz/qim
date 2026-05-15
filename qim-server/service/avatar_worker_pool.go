@@ -95,23 +95,22 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	// 读取 disclaimerStyle 配置，决定是否追加免责声明
-	var config model.AvatarConfig
-	if err := p.db.Where("user_id = ?", task.UserID).First(&config).Error; err == nil {
-		var replyStrategy model.AvatarReplyStrategy
-		if config.ReplyStrategyJSON != "" {
-			if err := json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy); err == nil {
-				if replyStrategy.DisclaimerStyle == "footer" || replyStrategy.DisclaimerStyle == "both" {
-					reply = reply + "\n\n（此回复由AI分身生成）"
-				}
-			}
-		}
+	// 一次性查询分身用户信息和自定义名称，后续发送函数复用
+	var avatarUser model.User
+	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
+		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
+		return
+	}
+	avatarCfgName := ""
+	var avatarConfig model.AvatarConfig
+	if p.db.Where("user_id = ?", task.UserID).First(&avatarConfig).Error == nil && avatarConfig.Name != "" {
+		avatarCfgName = avatarConfig.Name
 	}
 
 	if task.IsGroupChat {
-		p.sendPrivateReply(task, reply)
+		p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName)
 	} else {
-		p.sendDirectReply(task, reply)
+		p.sendDirectReply(task, reply, &avatarUser, avatarCfgName)
 	}
 
 	now := time.Now()
@@ -125,39 +124,24 @@ func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
 }
 
 // sendPrivateReply 发送私聊回复（群聊场景）
-func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
+func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string) {
 	// 1. 找到或创建分身用户与触发者的私聊会话
 	convService := NewConversationService(database.GetDB())
 	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
 	if err != nil {
-		log.Printf("[AvatarWorkerPool] 创建私聊会话失败: user=%d, trigger=%d, error=%v", 
+		log.Printf("[AvatarWorkerPool] 创建私聊会话失败: user=%d, trigger=%d, error=%v",
 			task.UserID, task.TriggerUserID, err)
 		return
 	}
 
-	// 2. 获取分身用户的昵称
-	var avatarUser model.User
-	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
-		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
-		return
-	}
-
-	avatarName := avatarUser.Nickname
-	if avatarName == "" {
-		avatarName = avatarUser.Username
-	}
-
-	// 3. 构建消息内容
-	content := fmt.Sprintf("[群聊 %s 中 @你] %s 的分身代为回复：%s", task.GroupName, avatarName, reply)
-
-	// 4. 创建消息
+	// 2. 创建消息
 	msg := model.Message{
 		ConversationID: conv.ID,
 		SenderID:       task.UserID,
 		Type:           "text",
-		Content:        content,
+		Content:        reply,
 		IsRead:         false,
-		IsAvatarReply:  true,
+		AIType:         "avatar",
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -189,9 +173,11 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.IsAvatarReply,
+		"is_avatar_reply": msg.AIType == "avatar",
+		"ai_type":         msg.AIType,
 		"sender":          msg.Sender,
-	}
+		"avatar_name":     avatarCfgName,
+		}
 
 	if ws.GlobalHub != nil {
 		wsMsg := ws.WSMessage{
@@ -199,8 +185,8 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		log.Printf("[sendPrivateReply] Broadcasting to conv %d, excludeUserID=0, is_avatar_reply=%v, sender_id=%d, sender_name=%s",
-			conv.ID, msg.IsAvatarReply, msg.SenderID, msg.Sender.Nickname)
+		log.Printf("[sendPrivateReply] Broadcasting to conv %d, excludeUserID=0, ai_type=%s, sender_id=%d, sender_name=%s",
+			conv.ID, msg.AIType, msg.SenderID, msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(conv.ID, 0, jsonMsg)
 	}
 
@@ -208,30 +194,15 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string) {
 }
 
 // sendDirectReply 发送直接回复（私聊场景）
-func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
-	// 1. 获取分身用户的昵称
-	var avatarUser model.User
-	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
-		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
-		return
-	}
-
-	avatarName := avatarUser.Nickname
-	if avatarName == "" {
-		avatarName = avatarUser.Username
-	}
-
-	// 2. 构建消息内容
-	content := fmt.Sprintf("%s 的分身代为回复：%s", avatarName, reply)
-
-	// 3. 创建消息
+func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string) {
+	// 1. 创建消息
 	msg := model.Message{
 		ConversationID: task.ConversationID,
 		SenderID:       task.UserID,
 		Type:           "text",
-		Content:        content,
+		Content:        reply,
 		IsRead:         false,
-		IsAvatarReply:  true,
+		AIType:         "avatar",
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -263,8 +234,10 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.IsAvatarReply,
+		"is_avatar_reply": msg.AIType == "avatar",
+		"ai_type":         msg.AIType,
 		"sender":          msg.Sender,
+		"avatar_name":     avatarCfgName,
 	}
 
 	if ws.GlobalHub != nil {
@@ -273,8 +246,8 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string) {
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		log.Printf("[sendDirectReply] Broadcasting to conv %d, excludeUserID=0, is_avatar_reply=%v, sender_id=%d, sender_name=%s",
-			task.ConversationID, msg.IsAvatarReply, msg.SenderID, msg.Sender.Nickname)
+		log.Printf("[sendDirectReply] Broadcasting to conv %d, excludeUserID=0, ai_type=%s, sender_id=%d, sender_name=%s",
+			task.ConversationID, msg.AIType, msg.SenderID, msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(task.ConversationID, 0, jsonMsg)
 	}
 

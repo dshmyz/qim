@@ -1575,12 +1575,12 @@ const handleNewMessage = (msg: any) => {
   const newMessage = processMessage(data, conversationId)
   const isCurrentConv = currentConversationId.value === conversationId
   
-  if (data.is_avatar_reply) {
+  if (data.ai_type === 'avatar') {
     console.log('[AVATAR DEBUG] raw data:', JSON.stringify({
       sender_id: data.sender_id,
       sender_id_type: typeof data.sender_id,
       sender: data.sender ? { id: data.sender.id, name: data.sender.name, nickname: data.sender.nickname } : null,
-      is_avatar_reply: data.is_avatar_reply,
+      ai_type: data.ai_type,
       conversation_id: data.conversation_id,
     }))
     console.log('[AVATAR DEBUG] processed:', {
@@ -1847,17 +1847,19 @@ const processMessage = (msg: any, conversationId?: string) => {
     },
     timestamp: msg.created_at ? new Date(msg.created_at).getTime() : Date.now(),
     type: msg.type || 'text',
-    isSelf: (msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false) || (msg.is_avatar_reply && msg.sender_id?.toString() === currentUser.value?.id?.toString()),
+    isSelf: (msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false) || (msg.ai_type === 'avatar' && msg.sender_id?.toString() === currentUser.value?.id?.toString()),
     isRead: msg.is_read || false,
     isRecalled: msg.is_recalled || false,
     isFailed: msg.is_failed || false,
     isStreaming: msg.is_streaming || false,
     isAtMention: msg.is_at_mention ?? (Array.isArray(msg.mention_user_ids) && msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString()) && msg.sender_id?.toString() !== currentUser.value?.id?.toString()) ?? false,
-    isAvatarReply: msg.is_avatar_reply ?? false,
-    is_avatar_reply: msg.is_avatar_reply ?? false,
-    isAIMessage: msg.is_ai_message ?? false,
-    is_ai_message: msg.is_ai_message ?? false,
+    isAvatarReply: msg.ai_type === 'avatar',
+    is_avatar_reply: msg.ai_type === 'avatar',
+    ai_type: msg.ai_type || '',
+    isAIMessage: msg.ai_type === 'assistant' || msg.ai_type === 'avatar' || msg.sender?.type === 'bot' || msg.sender?.type === 'system' || msg.is_ai_message === true || msg.isAIMessage === true,
+    is_ai_message: msg.is_ai_message || false,
     ai_assistant_name: msg.ai_assistant_name || '',
+    avatar_name: msg.avatar_name || '',
     conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
     quotedMessage: msg.quoted_message ? {
       id: msg.quoted_message.id?.toString() || '',

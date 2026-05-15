@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 )
@@ -285,6 +286,14 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 		}
 	}
 
+	// 调试日志：打印请求体
+	reqBodyJSON, _ := json.Marshal(reqBody)
+	if len(reqBodyJSON) > 5000 {
+		log.Printf("[OpenAI] Request body (truncated): %s", string(reqBodyJSON[:5000]))
+	} else {
+		log.Printf("[OpenAI] Request body: %s", string(reqBodyJSON))
+	}
+
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
 		req, _, err := CreateJSONRequest(
 			"POST",
@@ -300,6 +309,12 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 	}
 	defer resp.Body.Close()
 
+	// 调试：打印非 200 响应
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[OpenAI] Non-200 response: status=%s, body=%s", resp.Status, string(bodyBytes))
+		return nil, fmt.Errorf("OpenAI API returned status %d", resp.StatusCode)
+	}
 	var response struct {
 		Choices []struct {
 			Message struct {
@@ -336,8 +351,17 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 	for _, tc := range response.Choices[0].Message.ToolCalls {
 		var args map[string]interface{}
 		if err := json.Unmarshal(tc.Function.Arguments, &args); err != nil {
-			log.Printf("[OpenAI] Failed to unmarshal tool call arguments: %v", err)
-			args = make(map[string]interface{})
+			// 某些模型返回的是 JSON 字符串而非 JSON 对象，需要二次解析
+			var argStr string
+			if strErr := json.Unmarshal(tc.Function.Arguments, &argStr); strErr == nil && argStr != "" {
+				if err2 := json.Unmarshal([]byte(argStr), &args); err2 != nil {
+					log.Printf("[OpenAI] Failed to unmarshal tool call arguments (both raw and string): %v", err)
+					args = make(map[string]interface{})
+				}
+			} else {
+				log.Printf("[OpenAI] Failed to unmarshal tool call arguments: %v", err)
+				args = make(map[string]interface{})
+			}
 		}
 		chatResp.ToolCalls = append(chatResp.ToolCalls, ToolCall{
 			ID:        tc.ID,

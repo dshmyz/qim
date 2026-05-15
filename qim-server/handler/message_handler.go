@@ -66,7 +66,6 @@ func InitSmartReplyGraph() error {
 	log.Printf("[SmartReplyGraph] 开始初始化...")
 	log.Printf("[SmartReplyGraph] aiService: %v", smartReplyEngine.aiService != nil)
 	log.Printf("[SmartReplyGraph] unifiedKnowledge: %v", smartReplyEngine.unifiedKnowledge != nil)
-	log.Printf("[SmartReplyGraph] knowledgeSvc: %v", smartReplyEngine.knowledgeSvc != nil)
 	log.Printf("[SmartReplyGraph] memorySvc: %v", smartReplyEngine.memorySvc != nil)
 
 	err := smartReplyEngine.InitSmartReplyGraph()
@@ -90,10 +89,38 @@ func GetSmartReplyEngine() *SmartReplyEngine {
 	return smartReplyEngine
 }
 
+func resolveAIName(msg model.Message) string {
+	nameCache := service.GetAINameCache()
+	db := database.GetDB()
+
+	if msg.AIType == "assistant" {
+		var group model.Group
+		if err := db.Select("ai_config").
+			Where("conversation_id = ?", msg.ConversationID).
+			First(&group).Error; err == nil && group.AIConfigJSON != "" {
+			aiConfig := group.GetAIConfig()
+			if aiConfig.AssistantName != "" {
+				return aiConfig.AssistantName
+			}
+		}
+	}
+	if msg.AIType == "avatar" {
+		if name := nameCache.GetAvatarName(msg.SenderID); name != "" {
+			return name
+		}
+	}
+	if msg.Sender.Type == "bot" || msg.Sender.Type == "system" {
+		return msg.Sender.Nickname
+	}
+	return "AI助手"
+}
+
 func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 	isAtMention := msg.SenderID != currentUserID && mention.IsMentioned(msg.Content, currentUserID)
 
-	return gin.H{
+	aiName := resolveAIName(msg)
+
+	resp := gin.H{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
 		"sender_id":         msg.SenderID,
@@ -102,15 +129,23 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.IsAvatarReply,
-		"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
-		"ai_assistant_name": "AI助手",
+		"is_avatar_reply":   msg.AIType == "avatar",
+		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"ai_assistant_name": aiName,
+		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
 		"is_at_mention":     isAtMention,
 	}
+
+	// 分身消息：透出分身名称
+	if msg.AIType == "avatar" {
+		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
+	}
+
+	return resp
 }
 
 func GetMessages(c *gin.Context) {
@@ -316,8 +351,11 @@ func SendMessage(c *gin.Context) {
 
 	conv, _ := convSvc.GetConversation(uint(convIDUint))
 	if conv != nil && conv.Type != "bot" {
-		if smartReplyEngine != nil {
-			go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
+		// AI 生成的消息不触发其他 AI 回复
+		if msg.Sender.Type != "bot" && msg.Sender.Type != "system" {
+			if smartReplyEngine != nil {
+				go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
+			}
 		}
 
 		if anomalyDetector != nil {
@@ -358,6 +396,8 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		mentionUserIDs = append(mentionUserIDs, m.UserID)
 	}
 
+	aiName := resolveAIName(*msg)
+
 	responseData := gin.H{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -367,14 +407,20 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.IsAvatarReply,
-		"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
-		"ai_assistant_name": "AI助手",
+		"is_avatar_reply":   msg.AIType == "avatar",
+		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"ai_assistant_name": aiName,
+		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
+	}
+
+	// 分身消息：透出分身名称
+	if msg.AIType == "avatar" {
+		responseData["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
 	if ws.GlobalHub != nil {

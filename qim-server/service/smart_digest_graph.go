@@ -69,7 +69,7 @@ func (g *SmartDigestGraph) Build() error {
 
 	graph.AddLambdaNode("prepare", compose.InvokableLambda(g.prepare))
 	graph.AddLambdaNode("build_messages", compose.InvokableLambda(g.buildMessages))
-	AddModelNode(graph, g.aiService, 0)
+	AddModelNode(graph, g.aiService)
 	graph.AddLambdaNode("validate", compose.InvokableLambda(g.validate))
 	graph.AddLambdaNode("format", compose.InvokableLambda(g.format))
 

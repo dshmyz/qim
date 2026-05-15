@@ -33,35 +33,56 @@ func NewWebSocketMessageSender(hub *ws.Hub, userSvc *service.UserService) *WebSo
 	}
 }
 
+func resolveAISender(db *gorm.DB, userSvc *service.UserService, conversationID uint, assistantName string) (*model.User, uint, error) {
+	var conv model.Conversation
+	if err := db.First(&conv, conversationID).Error; err != nil {
+		return nil, 0, fmt.Errorf("会话不存在")
+	}
+
+	if conv.Type != "group" && conv.Type != "discussion" {
+		aiUser, err := userSvc.GetDefaultAIAssistant()
+		if err != nil {
+			return nil, 0, fmt.Errorf("获取默认 AI 助手失败: %w", err)
+		}
+		return aiUser, 0, nil
+	}
+
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err != nil {
+		return nil, 0, fmt.Errorf("获取群信息失败")
+	}
+
+	aiUser, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("获取 AI 助手用户失败: %w", err)
+	}
+	return aiUser, group.ID, nil
+}
+
+func (s *WebSocketMessageSender) resolveAISender(conversationID uint, assistantName string) (*model.User, uint, error) {
+	return resolveAISender(s.db, s.userSvc, conversationID, assistantName)
+}
+
 func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string) error {
-	senderID := s.userSvc.GetSystemUserID()
+	aiUser, groupID, err := s.resolveAISender(conversationID, assistantName)
+	if err != nil {
+		return err
+	}
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
-		SenderID:       senderID,
-		Type:           "text",
+		SenderID:       aiUser.ID,
+		Type:           "markdown",
 		Content:        content,
 		IsRead:         false,
+		AIType:         "assistant",
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
-	systemUser := s.userSvc.GetSystemUser()
-	aiSender := model.User{
-		ID:       0,
-		Username: "ai_assistant",
-		Nickname: "🤖 AI 助手",
-		Avatar:   "",
-	}
-	if systemUser != nil {
-		aiSender = *systemUser
-		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
-			aiSender.Nickname = "🤖 AI 助手"
-		}
-	}
-	aiMessage.Sender = aiSender
+	aiMessage.Sender = *aiUser
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
@@ -71,37 +92,27 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 
 	broadcastNewMessage(&aiMessage, 0, &conv)
 
-	log.Printf("[MessageSender] AI 消息已发送到会话 %d, msgID=%d", conversationID, aiMessage.ID)
+	log.Printf("[MessageSender] AI 消息已发送到会话 %d (group=%d), msgID=%d, sender=%s", conversationID, groupID, aiMessage.ID, aiUser.Nickname)
 	return nil
 }
 
 func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() error, error) {
-	senderID := s.userSvc.GetSystemUserID()
+	aiUser, _, err := s.resolveAISender(conversationID, assistantName)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
-		SenderID:       senderID,
+		SenderID:       aiUser.ID,
 		Type:           "text",
 		Content:        "",
 		IsRead:         false,
+		AIType:         "assistant",
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
 		return nil, nil, fmt.Errorf("保存 AI 消息失败: %w", err)
-	}
-
-	systemUser := s.userSvc.GetSystemUser()
-	aiSender := model.User{
-		ID:       0,
-		Username: "ai_assistant",
-		Nickname: "🤖 AI 助手",
-		Avatar:   "",
-	}
-	if systemUser != nil {
-		aiSender = *systemUser
-		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
-			aiSender.Nickname = "🤖 AI 助手"
-		}
 	}
 
 	var conv model.Conversation
@@ -121,21 +132,22 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 			return err
 		}
 
-		aiMessage.Sender = aiSender
+		aiMessage.Sender = *aiUser
 
 		if s.hub != nil {
 			msgData := gin.H{
 				"id":                aiMessage.ID,
 				"conversation_id":   conversationID,
-				"sender_id":         senderID,
+				"sender_id":         aiUser.ID,
 				"type":              "markdown",
 				"content":           accumulatedContent,
 				"is_ai_message":     true,
 				"ai_assistant_name": assistantName,
 				"is_streaming":      true,
-				"is_avatar_reply":   aiMessage.IsAvatarReply,
+				"is_avatar_reply":   aiMessage.AIType == "avatar",
+				"ai_type":           aiMessage.AIType,
 				"created_at":        aiMessage.CreatedAt,
-				"sender":            aiSender,
+				"sender":            aiUser,
 			}
 
 			wsMsg := ws.WSMessage{
@@ -152,16 +164,16 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 
 	finish := func() error {
 		aiMessage.Content = accumulatedContent
-		aiMessage.Type = "markdown" // 流式完成后设置为 markdown 类型
+		aiMessage.Type = "markdown"
 		if err := s.db.Save(&aiMessage).Error; err != nil {
 			log.Printf("[MessageSender] 完成流式消息失败: %v", err)
 			return err
 		}
 
-		aiMessage.Sender = aiSender
+		aiMessage.Sender = *aiUser
 		broadcastNewMessage(&aiMessage, 0, &conv)
 
-		log.Printf("[MessageSender] 流式 AI 消息已完成，会话 %d, msgID=%d", conversationID, aiMessage.ID)
+		log.Printf("[MessageSender] 流式 AI 消息已完成，会话 %d, msgID=%d, sender=%s", conversationID, aiMessage.ID, aiUser.Nickname)
 		return nil
 	}
 
@@ -169,15 +181,19 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 }
 
 func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error {
-	senderID := s.userSvc.GetSystemUserID()
+	aiUser, _, err := s.resolveAISender(conversationID, assistantName)
+	if err != nil {
+		return err
+	}
 
 	if msg == nil {
 		aiMessage := model.Message{
 			ConversationID: conversationID,
-			SenderID:       senderID,
-			Type:           "text",
+			SenderID:       aiUser.ID,
+			Type:           "markdown",
 			Content:        content,
 			IsRead:         false,
+			AIType:         "assistant",
 		}
 
 		if err := s.db.Create(&aiMessage).Error; err != nil {
@@ -187,20 +203,7 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 		msg = &aiMessage
 	}
 
-	systemUser := s.userSvc.GetSystemUser()
-	aiSender := model.User{
-		ID:       0,
-		Username: "ai_assistant",
-		Nickname: "🤖 AI 助手",
-		Avatar:   "",
-	}
-	if systemUser != nil {
-		aiSender = *systemUser
-		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
-			aiSender.Nickname = "🤖 AI 助手"
-		}
-	}
-	msg.Sender = aiSender
+	msg.Sender = *aiUser
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
@@ -218,34 +221,25 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 	db := database.GetDB()
 	userSvc := service.NewUserService(db)
 
-	senderID := userSvc.GetSystemUserID()
+	aiUser, groupID, err := resolveAISender(db, userSvc, conversationID, assistantName)
+	if err != nil {
+		return err
+	}
 
 	aiMessage := model.Message{
 		ConversationID: conversationID,
-		SenderID:       senderID,
-		Type:           "text",
+		SenderID:       aiUser.ID,
+		Type:           "markdown",
 		Content:        content,
 		IsRead:         false,
+		AIType:         "assistant",
 	}
 
 	if err := db.Create(&aiMessage).Error; err != nil {
 		return fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
-	systemUser := userSvc.GetSystemUser()
-	aiSender := model.User{
-		ID:       0,
-		Username: "ai_assistant",
-		Nickname: "🤖 AI 助手",
-		Avatar:   "",
-	}
-	if systemUser != nil {
-		aiSender = *systemUser
-		if aiSender.Nickname == "" || aiSender.Nickname == "系统" {
-			aiSender.Nickname = "🤖 AI 助手"
-		}
-	}
-	aiMessage.Sender = aiSender
+	aiMessage.Sender = *aiUser
 
 	var conv model.Conversation
 	if err := db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
@@ -259,13 +253,15 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		msgData := gin.H{
 			"id":                aiMessage.ID,
 			"conversation_id":   conversationID,
-			"sender_id":         senderID,
+			"sender_id":         aiUser.ID,
 			"type":              "text",
 			"content":           content,
 			"is_ai_message":     true,
 			"ai_assistant_name": assistantName,
-			"is_avatar_reply":   aiMessage.IsAvatarReply,
+			"ai_type":           aiMessage.AIType,
+			"is_avatar_reply":   aiMessage.AIType == "avatar",
 			"created_at":        aiMessage.CreatedAt,
+			"sender":            aiUser,
 		}
 
 		wsMsg := ws.WSMessage{
@@ -277,6 +273,6 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		ws.GlobalHub.SendToConversation(conversationID, 0, jsonMsg)
 	}
 
-	log.Printf("[BroadcastAIMessage] AI 消息已推送到会话 %d, msgID=%d", conversationID, aiMessage.ID)
+	log.Printf("[BroadcastAIMessage] AI 消息已推送到会话 %d (group=%d), msgID=%d", conversationID, groupID, aiMessage.ID)
 	return nil
 }

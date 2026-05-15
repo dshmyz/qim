@@ -56,6 +56,9 @@ type Hub struct {
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
+
+	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发
+	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
 }
 
 type Client struct {
@@ -580,7 +583,7 @@ func handleSendMessage(c *Client, data interface{}) {
 			"quoted_message_id": msg.QuotedMessageID,
 			"is_recalled":       msg.IsRecalled,
 			"is_read":           msg.IsRead,
-			"is_avatar_reply":   msg.IsAvatarReply,
+			"is_avatar_reply":   msg.AIType == "avatar",
 			"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
 			"recalled_at":       msg.RecalledAt,
 			"created_at":        msg.CreatedAt,
@@ -593,6 +596,11 @@ func handleSendMessage(c *Client, data interface{}) {
 
 	// 推送给会话其他成员
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+
+	// 触发智能回复/分身回调
+	if c.hub.OnMessageSent != nil {
+		go c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs)
+	}
 }
 
 func handleReadMessage(c *Client, data interface{}) {

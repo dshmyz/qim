@@ -1,10 +1,28 @@
 package ai
 
+import "encoding/json"
+
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	Name       string     `json:"name,omitempty"`
+}
+
+func (m Message) MarshalJSON() ([]byte, error) {
+	type Alias Message
+	aux := struct {
+		Alias
+		Content interface{} `json:"content"`
+	}{
+		Alias:   Alias(m),
+		Content: m.Content,
+	}
+	if m.Content == "" && len(m.ToolCalls) > 0 {
+		aux.Content = nil
+	}
+	return json.Marshal(aux)
 }
 
 type ChatCompletionRequest struct {

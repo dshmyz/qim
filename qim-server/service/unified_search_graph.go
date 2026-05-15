@@ -75,7 +75,7 @@ func (g *UnifiedSearchGraph) Build() error {
 
 	graph.AddLambdaNode("retrieve", compose.InvokableLambda(g.retrieve))
 	graph.AddLambdaNode("build_prompt", compose.InvokableLambda(g.buildPrompt))
-	AddModelNode(graph, g.aiService, 0)
+	AddModelNode(graph, g.aiService)
 	graph.AddLambdaNode("format", compose.InvokableLambda(g.format))
 
 	graph.AddEdge(compose.START, "retrieve")

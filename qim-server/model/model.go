@@ -20,6 +20,7 @@ type User struct {
 	Phone            string         `json:"phone" gorm:"size:20"`
 	Email            string         `json:"email" gorm:"size:100"`
 	Status           string         `json:"status" gorm:"size:20;default:'offline'"`
+	BotType          string         `json:"bot_type" gorm:"size:30;default:''"` // 仅 Type='bot' 时有值: 'assistant'
 	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
@@ -216,7 +217,7 @@ type Message struct {
 	QuotedMessageID *uint          `json:"quoted_message_id"`
 	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
 	IsRead          bool           `json:"is_read" gorm:"default:false"`
-	IsAvatarReply   bool           `json:"is_avatar_reply" gorm:"default:false"`
+	AIType          string         `json:"ai_type" gorm:"size:30;default:''"` // '' | 'assistant' | 'avatar'
 	RecalledAt      *time.Time     `json:"recalled_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -314,6 +315,7 @@ type Bot struct {
 	CreatorID       uint           `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
 	CreatorName     string         `json:"creator_name" gorm:"size:100;default:''"`
 	VirtualUserID   *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
+	GroupID         *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
 	RejectReason    string         `json:"reject_reason" gorm:"type:text"`
 	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
 	UserConfigID    *uint          `json:"user_config_id" gorm:"index"`

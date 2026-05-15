@@ -1,8 +1,8 @@
 <template>
   <div class="ai-message-badge" :class="{ compact }">
     <span class="ai-badge-icon">&#x1F916;</span>
-    <span class="ai-badge-text">{{ assistantName || 'AI &#x52A9;&#x624B;' }}</span>
-    <span v-if="!compact" class="ai-generated-tag">&#x7531; AI &#x751F;&#x6210;</span>
+    <span class="ai-badge-text">{{ assistantName || 'AI 助手' }}</span>
+    <span class="ai-generated-tag">&#x7531; AI &#x751F;&#x6210;</span>
   </div>
 </template>
 
@@ -28,14 +28,15 @@ defineProps<{
 
 .ai-message-badge.compact {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 10px;
+  gap: 4px;
 }
 
 .ai-badge-icon {
   display: flex;
   align-items: center;
   opacity: 0.9;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .ai-badge-text {
@@ -43,7 +44,7 @@ defineProps<{
 }
 
 .ai-generated-tag {
-  font-size: 11px;
+  font-size: 10px;
   opacity: 0.8;
   font-weight: 400;
 }

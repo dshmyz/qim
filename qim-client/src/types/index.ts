@@ -38,6 +38,7 @@ export interface Message {
   isAtMention?: boolean
   isAvatarReply?: boolean
   is_avatar_reply?: boolean
+  ai_type?: string
   isAIMessage?: boolean
   is_ai_message?: boolean
   ai_assistant_name?: string
