@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { API_BASE_URL } from '../config'
+import { request } from '../composables/useRequest'
 import type { RealtimeSession, JoinRequest } from '../types/realtime'
-
-function getToken() {
-  return localStorage.getItem('token')
-}
 
 export const useRealtimeStore = defineStore('realtime', () => {
   const activeSessions = ref<RealtimeSession[]>([])
@@ -28,111 +24,79 @@ export const useRealtimeStore = defineStore('realtime', () => {
     type: 'screen_share' | 'voice_call' | 'video_call'
     conversation_id: number
   }): Promise<RealtimeSession> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions`, {
+    const result = await request<{ code: number; data: RealtimeSession }>('/api/v1/realtime/sessions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getToken()}`
-      },
       body: JSON.stringify(data)
     })
-    if (!response.ok) {
-      throw new Error('Failed to create session')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to create session')
     }
-    const result = await response.json()
     mySession.value = result.data
     return result.data
   }
 
   async function fetchActiveSessions(): Promise<RealtimeSession[]> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/active`, {
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
-    })
-    if (!response.ok) {
-      throw new Error('Failed to fetch active sessions')
+    const result = await request<{ code: number; data: RealtimeSession[] }>('/api/v1/realtime/sessions/active')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to fetch active sessions')
     }
-    const result = await response.json()
     activeSessions.value = result.data
     return result.data
   }
 
   async function fetchSession(sessionId: string): Promise<RealtimeSession> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}`, {
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
-    })
-    if (!response.ok) {
-      throw new Error('Failed to fetch session')
+    const result = await request<{ code: number; data: RealtimeSession }>(`/api/v1/realtime/sessions/${sessionId}`)
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to fetch session')
     }
-    const result = await response.json()
     return result.data
   }
 
   async function requestJoin(sessionId: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}/participants`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
+    const result = await request<{ code: number }>(`/api/v1/realtime/sessions/${sessionId}/participants`, {
+      method: 'POST'
     })
-    if (!response.ok) {
-      throw new Error('Failed to request join')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to request join')
     }
   }
 
   async function approveJoin(sessionId: string, userId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}/participants/${userId}`, {
+    const result = await request<{ code: number }>(`/api/v1/realtime/sessions/${sessionId}/participants/${userId}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getToken()}`
-      },
       body: JSON.stringify({ user_id: userId })
     })
-    if (!response.ok) {
-      throw new Error('Failed to approve join')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to approve join')
     }
   }
 
   async function rejectJoin(sessionId: string, userId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}/participants/${userId}`, {
+    const result = await request<{ code: number }>(`/api/v1/realtime/sessions/${sessionId}/participants/${userId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getToken()}`
-      },
       body: JSON.stringify({ user_id: userId })
     })
-    if (!response.ok) {
-      throw new Error('Failed to reject join')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to reject join')
     }
   }
 
   async function leaveSession(sessionId: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}/participants`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
+    const result = await request<{ code: number }>(`/api/v1/realtime/sessions/${sessionId}/participants`, {
+      method: 'DELETE'
     })
-    if (!response.ok) {
-      throw new Error('Failed to leave session')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to leave session')
     }
     currentViewingSession.value = null
   }
 
   async function endSession(sessionId: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/realtime/sessions/${sessionId}/end`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
+    const result = await request<{ code: number }>(`/api/v1/realtime/sessions/${sessionId}/end`, {
+      method: 'POST'
     })
-    if (!response.ok) {
-      throw new Error('Failed to end session')
+    if (result.code !== 0) {
+      throw new Error(result.message || 'Failed to end session')
     }
     mySession.value = null
   }

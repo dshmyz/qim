@@ -29,6 +29,8 @@ function createSession(type: SessionType) {
   
   const sessionState = ref<SessionState>('idle')
   const participants = ref<Participant[]>([])
+  let endTimeoutId: ReturnType<typeof setTimeout> | null = null
+  let removeTimeoutId: ReturnType<typeof setTimeout> | null = null
   
   const start = async (targetUserId: number, options?: InitiateOptions) => {
     console.log(`[Session] Starting ${type} session with user ${targetUserId}`)
@@ -97,8 +99,12 @@ function createSession(type: SessionType) {
     sessionState.value = 'ended'
     participants.value = []
     
-    setTimeout(() => {
+    if (endTimeoutId !== null) {
+      clearTimeout(endTimeoutId)
+    }
+    endTimeoutId = setTimeout(() => {
       sessionState.value = 'idle'
+      endTimeoutId = null
     }, 100)
   }
   
@@ -116,8 +122,12 @@ function createSession(type: SessionType) {
     const participant = participants.value.find(p => p.userId === userId)
     if (participant) {
       participant.state = 'leaving'
-      setTimeout(() => {
+      if (removeTimeoutId !== null) {
+        clearTimeout(removeTimeoutId)
+      }
+      removeTimeoutId = setTimeout(() => {
         participants.value = participants.value.filter(p => p.userId !== userId)
+        removeTimeoutId = null
       }, 100)
     }
   }

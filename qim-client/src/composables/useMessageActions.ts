@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { Message } from '../types'
 import { request } from './useRequest'
+import { useUIStore } from '../stores/ui'
 
 function debounce<T extends (...args: any[]) => any>(
   func: T,
@@ -25,8 +26,10 @@ export function useMessageActions(
   serverUrl: { value: string },
   currentUser: { value: any }
 ) {
+  const uiStore = useUIStore()
+
   const readUsersMap = ref<Record<string, { read_users: any[], total_members: number, read_count?: number }>>({})
-  const showReadUsersModal = ref(false)
+  const showReadUsersModal = uiStore.showReadUsersModal
   const currentReadUsers = ref<{ read_users: any[], total_members: number }>({ read_users: [], total_members: 0 })
   const isMounted = ref(true)
 

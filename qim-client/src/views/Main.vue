@@ -1722,6 +1722,16 @@ onUnmounted(() => {
   unregisterUpdateEventListeners()
   // 清理自定义事件监听器
   unregisterCustomEventListeners()
+  // 清理会话排序定时器
+  if (conversationSortTimer !== null) {
+    clearTimeout(conversationSortTimer)
+    conversationSortTimer = null
+  }
+  // 清理语音通话定时器
+  if (voiceCallTimerId !== null) {
+    clearInterval(voiceCallTimerId)
+    voiceCallTimerId = null
+  }
 })
 
 // 过滤后的会话列表
@@ -1925,10 +1935,9 @@ const processMessage = (msg: any, conversationId?: string) => {
 // 消息分页相关变量已从 useConversation composable 导入
 const messagePage = ref(1)
 const messagePageSize = ref(20)
-const isLoadingMessages = ref(false)
 
 const loadMessages = async (conversationId: string, reset: boolean = true) => {
-  if (isLoadingMessages.value) return
+  if (chatStore.isLoadingMessages) return
   
   if (reset) {
     messagePage.value = 1
@@ -1937,7 +1946,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
     return
   }
   
-  isLoadingMessages.value = true
+  chatStore.setLoading(true)
   try {
     // 从服务器获取消息，添加分页参数
     const response = await request(`/api/v1/conversations/${conversationId}/messages?page=${messagePage.value}&page_size=${messagePageSize.value}`)
@@ -2010,7 +2019,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
     }
     hasMoreMessages.value = false
   } finally {
-    isLoadingMessages.value = false
+    chatStore.setLoading(false)
   }
 }
 

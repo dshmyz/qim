@@ -1,15 +1,18 @@
 import { ref, type Ref } from 'vue'
 import type { Message } from '../types'
+import { useChatStore } from '../stores/chat'
 
 /**
  * 聊天操作 composable
  * 负责消息的加载、发送、撤回、重试和流式处理等核心聊天操作
  */
 export function useChat() {
+  const chatStore = useChatStore()
+
   // 分页状态
   const messagePage = ref(1)
   const messagePageSize = ref(20)
-  const isLoadingMessages = ref(false)
+  const isLoadingMessages = chatStore.isLoadingMessages
 
   /**
    * 处理消息数据
