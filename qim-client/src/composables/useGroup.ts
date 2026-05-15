@@ -163,8 +163,7 @@ export function useGroup() {
   }
 
   /**
-   * 退出群聊（使用 /exit 端点，与 Main.vue 一致）
-   * 注意：此函数与 leaveGroup 不同，使用不同的 API 端点和响应码
+   * 退出群聊
    */
   const exitGroup = async (group: GroupInfo) => {
     if (!group) return false
@@ -184,53 +183,11 @@ export function useGroup() {
     }
 
     try {
-      // 使用 /exit 端点，与 Main.vue 一致
       const response: any = await request(`/api/v1/groups/${group.id}/exit`, {
         method: 'POST'
       })
 
       if (response.code === 0 || response.code === 200) {
-        QMessage.success('已退出群聊')
-        closeGroupContextMenu()
-        return true
-      } else {
-        QMessage.error(response.message || '退出群聊失败')
-        return false
-      }
-    } catch (error) {
-      console.error('退出群聊失败:', error)
-      QMessage.error('网络错误，退出群聊失败')
-      return false
-    }
-  }
-
-  /**
-   * 退出群聊（使用 /exit 端点）
-   * 这是通用的 leaveGroup 实现，保留作为备用
-   */
-  const leaveGroup = async (group: GroupInfo) => {
-    if (!group) return false
-
-    try {
-      await QMessageBox.confirm(
-        `确定要退出群聊 "${group.name}" 吗？`,
-        '确认退出群聊',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return false
-    }
-
-    try {
-      const response: any = await request(`/api/v1/groups/${group.id}/exit`, {
-        method: 'POST'
-      })
-
-      if (response.code === 0) {
         QMessage.success('已退出群聊')
         closeGroupContextMenu()
         return true
@@ -491,7 +448,6 @@ export function useGroup() {
     createGroup,
     dissolveGroup,
     exitGroup,
-    leaveGroup,
     updateGroup,
     addGroupMembers,
     removeGroupMember,

@@ -1,15 +1,10 @@
-import { ref } from 'vue'
+import { getToken } from './useRequest'
 
 /**
  * 聊天请求相关 composable
  * 包含获取 token、格式化日期、发起 HTTP 请求等功能
  */
 export function useChatRequest(baseUrl: string) {
-  // 获取 token
-  const getToken = (): string | null => {
-    return localStorage.getItem('token')
-  }
-
   // 格式化日期为 YYYY-MM-DD 格式（本地时间）
   const formatDate = (date: Date): string => {
     const year = date.getFullYear()

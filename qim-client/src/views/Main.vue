@@ -1094,6 +1094,7 @@ const registerCustomEventListeners = () => {
   window.addEventListener('forwardMessage', handleForwardMessage)
   window.addEventListener('openShareModal', handleOpenShareModal)
   window.addEventListener('refresh-user-apps', handleRefreshUserApps)
+  window.addEventListener('open-user-app', handleOpenUserApp)
 }
 
 // 移除自定义事件监听器
@@ -1102,6 +1103,7 @@ const unregisterCustomEventListeners = () => {
   window.removeEventListener('forwardMessage', handleForwardMessage)
   window.removeEventListener('openShareModal', handleOpenShareModal)
   window.removeEventListener('refresh-user-apps', handleRefreshUserApps)
+  window.removeEventListener('open-user-app', handleOpenUserApp)
 }
 
 // 初始化数据
@@ -3306,10 +3308,10 @@ const openUserApp = (app: any) => {
 }
 
 // 监听打开用户应用的事件
-window.addEventListener('open-user-app', (event: any) => {
+const handleOpenUserApp = (event: any) => {
   const app = event.detail
   openUserApp(app)
-})
+}
 
 // 打开外部应用
 const openExternalApp = (url: string) => {

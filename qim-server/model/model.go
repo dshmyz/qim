@@ -418,23 +418,23 @@ type MiniApp struct {
 
 // 应用
 type App struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"not null;index"`
-	Name      string         `json:"name" gorm:"size:200;not null"`
-	Icon      string         `json:"icon" gorm:"size:500"`
-	Category  string         `json:"category" gorm:"size:100"`
-	URL       string         `json:"url" gorm:"size:500"`
-	Status    string         `json:"status" gorm:"size:20;default:'active'"`
-	OpenType  string         `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
-	IsGlobal  bool           `json:"is_global" gorm:"default:false"`
+	ID       uint   `json:"id" gorm:"primarykey"`
+	UserID   uint   `json:"user_id" gorm:"not null;index"`
+	Name     string `json:"name" gorm:"size:200;not null"`
+	Icon     string `json:"icon" gorm:"size:500"`
+	Category string `json:"category" gorm:"size:100"`
+	URL      string `json:"url" gorm:"size:500"`
+	Status   string `json:"status" gorm:"size:20;default:'active'"`
+	OpenType string `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
+	IsGlobal bool   `json:"is_global" gorm:"default:false"`
 	// 权限范围控制
-	ScopeType      string         `json:"scope_type" gorm:"size:20;default:'all'"`       // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
-	ScopeValue     string         `json:"scope_value" gorm:"size:1000"`                   // 具体的范围值（逗号分隔的ID列表）
-	AvailableOrgIDs string        `json:"available_org_ids" gorm:"size:1000"`             // 可用的组织ID列表（逗号分隔）
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-	User      User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ScopeType       string         `json:"scope_type" gorm:"size:20;default:'all'"` // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
+	ScopeValue      string         `json:"scope_value" gorm:"size:1000"`            // 具体的范围值（逗号分隔的ID列表）
+	AvailableOrgIDs string         `json:"available_org_ids" gorm:"size:1000"`      // 可用的组织ID列表（逗号分隔）
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	User            User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 通知
@@ -545,8 +545,16 @@ func (s *StringArray) Scan(value interface{}) error {
 		*s = StringArray{}
 		return nil
 	}
-	*s = StringArray{}
-	return nil
+	var str string
+	switch v := value.(type) {
+	case []byte:
+		str = string(v)
+	case string:
+		str = v
+	default:
+		return fmt.Errorf("StringArray.Scan: unsupported type %T", value)
+	}
+	return json.Unmarshal([]byte(str), s)
 }
 
 func joinStrings(strs []string) string {
