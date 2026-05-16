@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.db
+qim-client/electron-dist/
 qim-server/qim-server
 .DS_Store
 .trae.worktrees/
