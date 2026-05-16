@@ -14,6 +14,7 @@ import (
 
 	"qim-server/model"
 	"qim-server/repository"
+	"qim-server/utils"
 
 	"gorm.io/gorm"
 )
@@ -280,7 +281,7 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	}
 
 	// 8. 清理临时分片文件
-	go s.cleanupChunks(uploadID)
+	utils.SafeGo(func() { s.cleanupChunks(uploadID) })
 
 	return file, nil
 }

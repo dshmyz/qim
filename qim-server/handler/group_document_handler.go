@@ -7,6 +7,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/utils"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -218,11 +219,11 @@ func ProcessGroupDocument(c *gin.Context) {
 		return
 	}
 
-	go func() {
+	utils.SafeGoWithLabel("doc-process", func() {
 		if err := docSvc.ProcessDocument(doc.ID); err != nil {
 			log.Printf("[Handler] 文档处理失败 doc_id=%d: %v", doc.ID, err)
 		}
-	}()
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,

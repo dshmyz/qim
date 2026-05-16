@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"qim-server/ai"
+	"qim-server/utils"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -59,7 +60,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 
 	sr, sw := schema.Pipe[*schema.Message](0)
 
-	go func() {
+	utils.SafeGoWithLabel("eino-stream", func() {
 		defer sw.Close()
 
 		err := m.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
@@ -75,7 +76,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 			log.Printf("[EinoChatModel] Stream error: %v", err)
 			sw.Send(nil, err)
 		}
-	}()
+	})
 
 	return sr, nil
 }

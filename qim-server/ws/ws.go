@@ -1,12 +1,14 @@
 package ws
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"log"
 	"net/http"
 	"qim-server/model"
 	"qim-server/pkg/mention"
+	"qim-server/utils"
 	"strconv"
 	"sync"
 	"time"
@@ -126,7 +128,7 @@ func randomString(n int) string {
 
 func (h *Hub) Run() {
 	// 启动节点间通信服务
-	go h.startNodeCommunication()
+	utils.SafeGoWithLabel("node-comm", func() { h.startNodeCommunication() })
 
 	for {
 		select {
@@ -174,7 +176,7 @@ func (h *Hub) Run() {
 
 		case message := <-h.broadcast:
 			// 异步广播，不阻塞事件循环
-			go h.asyncBroadcast(message)
+			utils.SafeGoWithLabel("broadcast", func() { h.asyncBroadcast(message) })
 		}
 	}
 }
@@ -200,7 +202,8 @@ func (h *Hub) asyncBroadcast(message []byte) {
 
 	for _, client := range clients {
 		wg.Add(1)
-		go func(c *Client) {
+		c := client
+		utils.SafeGo(func() {
 			defer wg.Done()
 			select {
 			case c.send <- message:
@@ -209,7 +212,7 @@ func (h *Hub) asyncBroadcast(message []byte) {
 				// 发送通道已满，标记为待删除
 				failedChan <- c
 			}
-		}(client)
+		})
 	}
 
 	// 等待所有发送完成
@@ -243,14 +246,15 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 		nodeURL := "http://" + node + "/api/v1/node/broadcast"
 
 		// 发送 HTTP 请求
-		go func(url string) {
+		url := nodeURL
+		utils.SafeGoWithLabel("node-broadcast", func() {
 			resp, err := http.Post(url, "application/json", nil)
 			if err != nil {
 				log.Printf("向节点 %s 广播失败: %v", url, err)
 				return
 			}
 			defer resp.Body.Close()
-		}(nodeURL)
+		})
 	}
 }
 
@@ -322,14 +326,16 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 		jsonBody, _ := json.Marshal(reqBody)
 
 		// 发送 HTTP 请求
-		go func(url string, body []byte) {
-			resp, err := http.Post(url, "application/json", nil)
+		url := nodeURL
+		body := jsonBody
+		utils.SafeGoWithLabel("node-send-user", func() {
+			resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 			if err != nil {
 				log.Printf("向节点 %s 发送用户消息失败: %v", url, err)
 				return
 			}
 			defer resp.Body.Close()
-		}(nodeURL, jsonBody)
+		})
 	}
 }
 
@@ -404,10 +410,11 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 	for _, userID := range memberIDs {
 		if userID != excludeUserID {
 			wg.Add(1)
-			go func(uid uint) {
+			uid := userID
+			utils.SafeGo(func() {
 				defer wg.Done()
 				h.SendToUser(uid, message)
-			}(userID)
+			})
 		}
 	}
 	wg.Wait()
@@ -599,7 +606,7 @@ func handleSendMessage(c *Client, data interface{}) {
 
 	// 触发智能回复/分身回调
 	if c.hub.OnMessageSent != nil {
-		go c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs)
+		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
 	}
 }
 
@@ -766,8 +773,8 @@ func ServeWs(hub *Hub, c *gin.Context) {
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
 	client.hub.register <- client
 
-	go client.writePump()
-	go client.readPump()
+	utils.SafeGoWithLabel("ws-write", func() { client.writePump() })
+	utils.SafeGoWithLabel("ws-read", func() { client.readPump() })
 }
 
 // ServeScreenShare 处理屏幕共享的 WebSocket 连接
@@ -783,8 +790,8 @@ func ServeScreenShare(hub *Hub, c *gin.Context) {
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
 	client.hub.register <- client
 
-	go client.writePump()
-	go client.readPump()
+	utils.SafeGoWithLabel("ws-write", func() { client.writePump() })
+	utils.SafeGoWithLabel("ws-read", func() { client.readPump() })
 }
 
 // 处理屏幕共享开始

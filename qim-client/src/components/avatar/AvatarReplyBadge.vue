@@ -2,7 +2,7 @@
   <span :class="['avatar-reply-badge', `avatar-reply-badge--${variant}`]">
     <i class="fas fa-robot"></i>
     <span v-if="variant === 'badge'" class="badge-text">{{ userName }}的分身{{ avatarName }}</span>
-    <span v-else-if="variant === 'footer'" class="badge-text">该消息由 {{ userName }} 的分身{{ avatarName }}回复</span>
+    <span v-else-if="variant === 'footer'" class="badge-text">由 {{ isOwn ? '您的' : (userName + ' 的') }} 分身{{ avatarName }} 回复</span>
   </span>
 </template>
 
@@ -11,10 +11,12 @@ withDefaults(defineProps<{
   variant?: 'badge' | 'footer' | 'both'
   userName?: string
   avatarName?: string
+  isOwn?: boolean
 }>(), {
   variant: 'badge',
   userName: '',
-  avatarName: ''
+  avatarName: '',
+  isOwn: false
 })
 </script>
 

@@ -146,8 +146,11 @@
         </template>
 
         <div class="message-meta">
+          <span class="message-meta-badge">
+            <AIMessageBadge v-if="isAIMessage && message.ai_type === 'assistant'" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
+            <AvatarReplyBadge v-if="message.ai_type === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
+          </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
-          <AvatarReplyBadge v-if="message.ai_type === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" />
           <div v-if="isSelf && message.isFailed" class="message-read-status failed" title="发送失败">
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
@@ -431,11 +434,24 @@ const isFileContent = (content: string): boolean => {
   gap: 8px;
   margin-top: 4px;
   font-size: 11px;
+  padding-left: 10px;
   color: var(--text-secondary);
 }
 
 .message-item.self .message-meta {
   justify-content: flex-end;
+}
+
+.message-item.self .message-meta-badge {
+  order: 1;
+}
+
+.message-item.self .message-time {
+  order: 0;
+}
+
+.message-item.self .message-read-status {
+  order: 2;
 }
 
 .message-time {

@@ -6,6 +6,7 @@ import (
 	"math"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/utils"
 	"qim-server/ws"
 	"strings"
 	"sync"
@@ -263,7 +264,7 @@ func previewText(text string, maxLen int) string {
 
 // StartAnomalyDetection 启动异常检测定时任务
 func StartAnomalyDetection(detector *AnomalyDetector) {
-	go func() {
+	utils.SafeGoWithLabel("anomaly-detector", func() {
 		// 每分钟更新基线并检测异常
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
@@ -272,7 +273,7 @@ func StartAnomalyDetection(detector *AnomalyDetector) {
 			detector.UpdateBaseline()
 			log.Printf("[AnomalyDetector] 基线已更新，监控 %d 个群组", len(detector.avgCounts))
 		}
-	}()
+	})
 }
 
 // CalculateMessageVariance 计算消息方差（用于判断异常波动）

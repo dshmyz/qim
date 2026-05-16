@@ -9,7 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetUintParam 从 gin.Context 的 URL path 参数中解析 uint 类型的值
+func GetUserID(c *gin.Context) (uint, bool) {
+	val, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未认证")
+		return 0, false
+	}
+	userID, ok := val.(uint)
+	if !ok {
+		response.Unauthorized(c, "用户信息异常")
+		return 0, false
+	}
+	return userID, true
+}
+
 func GetUintParam(c *gin.Context, key string) (uint, error) {
 	idStr := c.Param(key)
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -19,8 +32,6 @@ func GetUintParam(c *gin.Context, key string) (uint, error) {
 	return uint(id), nil
 }
 
-// MustGetUintParam 从 gin.Context 的 URL path 参数中解析 uint 类型的值，
-// 如果解析失败则自动返回 BadRequest 响应
 func MustGetUintParam(c *gin.Context, key string) (uint, bool) {
 	id, err := GetUintParam(c, key)
 	if err != nil {
@@ -28,4 +39,27 @@ func MustGetUintParam(c *gin.Context, key string) (uint, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+func ParseUintParam(c *gin.Context, key string) (uint, bool) {
+	str := c.Param(key)
+	id, err := strconv.ParseUint(str, 10, 32)
+	if err != nil {
+		response.BadRequest(c, fmt.Sprintf("无效的%s", key))
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func ParseUintQuery(c *gin.Context, key string) (uint, bool) {
+	str := c.Query(key)
+	if str == "" {
+		return 0, true
+	}
+	id, err := strconv.ParseUint(str, 10, 32)
+	if err != nil {
+		response.BadRequest(c, fmt.Sprintf("无效的%s", key))
+		return 0, false
+	}
+	return uint(id), true
 }

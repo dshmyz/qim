@@ -15,6 +15,7 @@ import (
 	"qim-server/pkg/mention"
 	"qim-server/pkg/response"
 	"qim-server/service"
+	"qim-server/utils"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -354,12 +355,14 @@ func SendMessage(c *gin.Context) {
 		// AI 生成的消息不触发其他 AI 回复
 		if msg.Sender.Type != "bot" && msg.Sender.Type != "system" {
 			if smartReplyEngine != nil {
-				go smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
+				utils.SafeGo(func() {
+					smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
+				})
 			}
 		}
 
 		if anomalyDetector != nil {
-			go func() {
+			utils.SafeGo(func() {
 				anomalyDetector.RecordMessage(uint(convIDUint))
 
 				if alert := anomalyDetector.CheckSensitiveContent(req.Content); alert != nil {
@@ -369,7 +372,7 @@ func SendMessage(c *gin.Context) {
 				if alert := anomalyDetector.CheckMessageFrequency(userID.(uint), uint(convIDUint)); alert != nil {
 					anomalyDetector.SendAlert(userID.(uint), alert)
 				}
-			}()
+			})
 		}
 	}
 
@@ -429,7 +432,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(newMsg)
-		go ws.GlobalHub.SendToConversationAsync(msg.ConversationID, excludeUserID, jsonMsg)
+		utils.SafeGo(func() { ws.GlobalHub.SendToConversationAsync(msg.ConversationID, excludeUserID, jsonMsg) })
 	}
 }
 
@@ -501,7 +504,7 @@ func StreamMessage(c *gin.Context) {
 	responseChan := make(chan ai.StreamChunk)
 	doneChan := make(chan bool)
 
-	go func() {
+	utils.SafeGoWithLabel("stream-message", func() {
 		db := database.GetDB()
 		var botConv model.BotConversation
 		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
@@ -605,7 +608,7 @@ func StreamMessage(c *gin.Context) {
 			logLength = len(fullResponse)
 		}
 		log.Printf("[StreamMessage] 机器人回复保存成功: %s", fullResponse[:logLength])
-	}()
+	})
 
 	c.Writer.Write([]byte("data: \n\n"))
 	c.Writer.Flush()

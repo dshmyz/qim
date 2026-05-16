@@ -32,9 +32,10 @@
       <label>分身名称</label>
       <input 
         :value="modelValue.name" 
-        @input="update('name', ($event.target as HTMLInputElement).value)" 
+        @input="handleNameInput" 
         class="form-input" 
         placeholder="我的分身" 
+        maxlength="20"
       />
       <span class="setting-hint">其他人在私聊中看到的分身名称</span>
     </div>
@@ -77,6 +78,7 @@ import type { AvatarConfigWithApproval, AvatarApprovalStatus } from '../../types
 import ApprovalStatusSection from './ApprovalStatusSection.vue'
 import Switch from '../common/Switch.vue'
 import { avatarAPI } from '../../api/avatar'
+import { validateAliasName } from '../../utils/validation'
 
 const props = defineProps<{
   modelValue: AvatarConfigWithApproval
@@ -148,6 +150,16 @@ async function handleCancel() {
   } finally {
     applying.value = false
   }
+}
+
+function handleNameInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  const result = validateAliasName(value)
+  if (!result.valid) {
+    window.$QMessage.warning(result.message)
+    return
+  }
+  update('name', value)
 }
 </script>
 

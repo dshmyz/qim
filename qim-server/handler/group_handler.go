@@ -8,6 +8,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/pkg/validation"
 	"qim-server/service"
 	"qim-server/ws"
 	"strconv"
@@ -609,6 +610,13 @@ func UpdateGroupAISettings(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
+	}
+
+	if req.AIAssistantName != nil {
+		if err := validation.ValidateAliasName(*req.AIAssistantName); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	db := database.GetDB()

@@ -12,6 +12,7 @@ import (
 	"qim-server/handler"
 	"qim-server/middleware"
 	"qim-server/service"
+	"qim-server/utils"
 	"qim-server/ws"
 
 	"github.com/gin-contrib/cors"
@@ -78,10 +79,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	handler.InitAnomalyDetector()
 
-	go func() {
+	utils.SafeGoWithLabel("mcp-server", func() {
 		if err := mcpServer.Start(":8081"); err != nil {
 		}
-	}()
+	})
 
 	aiHandler := handler.NewAIHandler(aiSvc, mcpServer)
 

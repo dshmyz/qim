@@ -121,10 +121,14 @@ func CreateBot(c *gin.Context) {
 	// 构建 Config JSON
 	configJSON := []byte("{}")
 	if req.Config != nil {
-		configJSON, _ = json.Marshal(req.Config)
+		var err error
+		configJSON, err = json.Marshal(req.Config)
+		if err != nil {
+			response.BadRequest(c, "配置格式错误")
+			return
+		}
 	}
 
-	// 查找创建者用户名
 	var creator model.User
 	db.Select("nickname").First(&creator, "id = ?", userID)
 	creatorName := creator.Nickname
@@ -240,7 +244,12 @@ func UpdateMyBot(c *gin.Context) {
 
 	configJSON := []byte("{}")
 	if req.Config != nil {
-		configJSON, _ = json.Marshal(req.Config)
+		var err error
+		configJSON, err = json.Marshal(req.Config)
+		if err != nil {
+			response.BadRequest(c, "配置格式错误")
+			return
+		}
 	}
 
 	if err := db.Model(&bot).Updates(map[string]interface{}{

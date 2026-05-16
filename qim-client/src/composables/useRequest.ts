@@ -29,21 +29,31 @@ export const getToken = (): string | null => {
  * @param options 请求配置
  * @returns API 响应数据
  */
+let isHandling401 = false
+
+export function onUnauthorized() {
+  if (isHandling401) return
+  isHandling401 = true
+  QMessage.error('登录已过期，请重新登录', 5000)
+  localStorage.removeItem('token')
+  setTimeout(() => {
+    window.location.reload()
+    isHandling401 = false
+  }, 1500)
+}
+
 export async function request<T = any>(
   url: string,
   options?: RequestOptions
 ): Promise<T> {
   const token = getToken()
 
-  // 构建 headers
   const headers: Record<string, string> = {}
 
-  // 只有当不是 FormData 时才设置 Content-Type
   if (!options?.body || !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
 
-  // 添加 Authorization 头
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
@@ -53,7 +63,6 @@ export async function request<T = any>(
     ? `${baseUrl}${url}`
     : `${serverUrl.value}${url}`
 
-  // 添加 URL 参数
   if (options?.params) {
     const searchParams = new URLSearchParams()
     Object.entries(options.params).forEach(([key, value]) => {
@@ -63,7 +72,6 @@ export async function request<T = any>(
     fullUrl += queryString ? `?${queryString}` : ''
   }
 
-  // 构建请求配置
   const requestOptions: RequestInit = {
     ...options,
     headers: {
@@ -72,7 +80,6 @@ export async function request<T = any>(
     }
   }
 
-  // 添加超时控制
   const timeout = options?.timeout || 30000
   const controller = new AbortController()
   requestOptions.signal = controller.signal
@@ -87,6 +94,7 @@ export async function request<T = any>(
       const errorData = await response.json().catch(() => ({}))
 
       if (response.status === 401) {
+        onUnauthorized()
         throw new Error('UNAUTHORIZED')
       }
       if (response.status === 403) {

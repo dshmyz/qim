@@ -8,6 +8,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/pkg/validation"
 	"qim-server/service"
 	"strconv"
 	"time"
@@ -197,6 +198,11 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		return
 	}
 
+	if err := validation.ValidateAliasName(req.Name); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	knowledgeScopeJSON, err := json.Marshal(req.KnowledgeScope)
 	if err != nil {
 		log.Printf("Create avatar config marshal knowledgeScope error: %v", err)
@@ -282,6 +288,11 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	var req UpdateAvatarConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if err := validation.ValidateAliasName(req.Name); err != nil {
+		response.BadRequest(c, err.Error())
 		return
 	}
 
@@ -389,9 +400,9 @@ func (h *AvatarHandler) TriggerLearnPersona(c *gin.Context) {
 	}
 
 	// 使用异步方式学习
-	go func() {
+	utils.SafeGoWithLabel("avatar-learn", func() {
 		h.avatarService.LearnPersona(userID, task.ID)
-	}()
+	})
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"taskId": task.ID}})
 }

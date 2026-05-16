@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/utils"
@@ -48,7 +49,9 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
 	service.replyGraph = NewAvatarReplyGraph(aiService, db, nil, nil, nil)
-	_ = service.replyGraph.BuildGraph()
+	if err := service.replyGraph.BuildGraph(); err != nil {
+		log.Printf("[AvatarService] BuildGraph 失败: %v", err)
+	}
 	return service
 }
 
@@ -59,14 +62,18 @@ func (s *AvatarService) SetRAGServices(noteVectorSvc *NoteVectorService, memoryS
 	s.triggerSvc = triggerSvc
 
 	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, noteVectorSvc, memorySvc, s.groupDocSvc)
-	_ = s.replyGraph.BuildGraph()
+	if err := s.replyGraph.BuildGraph(); err != nil {
+		log.Printf("[AvatarService] BuildGraph 失败 (SetRAGServices): %v", err)
+	}
 }
 
 func (s *AvatarService) SetGroupDocumentService(groupDocSvc *GroupDocumentService) {
 	s.groupDocSvc = groupDocSvc
 
 	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, groupDocSvc)
-	_ = s.replyGraph.BuildGraph()
+	if err := s.replyGraph.BuildGraph(); err != nil {
+		log.Printf("[AvatarService] BuildGraph 失败 (SetGroupDocumentService): %v", err)
+	}
 }
 
 func (s *AvatarService) SetAIService(aiService *ai.AIService) {

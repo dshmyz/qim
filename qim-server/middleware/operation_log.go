@@ -28,7 +28,11 @@ func OperationLogMiddleware() gin.HandlerFunc {
 
 		var body []byte
 		if c.Request.Body != nil {
-			body, _ = io.ReadAll(c.Request.Body)
+			var err error
+			body, err = io.ReadAll(c.Request.Body)
+			if err != nil {
+				body = []byte{}
+			}
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 		}
 

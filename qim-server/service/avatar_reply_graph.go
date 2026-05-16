@@ -151,10 +151,14 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	input.User = user
 
 	if config.KnowledgeScopeJSON != "" {
-		_ = json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope)
+		if err := json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope); err != nil {
+			log.Printf("[AvatarReplyGraph] 解析 KnowledgeScopeJSON 失败: %v", err)
+		}
 	}
 	if config.ReplyStrategyJSON != "" {
-		_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy)
+		if err := json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy); err != nil {
+			log.Printf("[AvatarReplyGraph] 解析 ReplyStrategyJSON 失败: %v", err)
+		}
 	}
 
 	if g.noteSvc != nil {

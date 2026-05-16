@@ -1,8 +1,8 @@
 <template>
   <div class="ai-message-badge" :class="{ compact }">
-    <span class="ai-badge-icon">&#x1F916;</span>
-    <span class="ai-badge-text">{{ assistantName || 'AI 助手' }}</span>
-    <span class="ai-generated-tag">&#x7531; AI &#x751F;&#x6210;</span>
+    <i class="fas fa-robot ai-badge-icon"></i>
+    <!-- <span class="ai-badge-text">{{ assistantName || 'AI 助手' }}</span> -->
+    <span class="ai-generated-tag">&#x7531; AI群聊助手 {{ assistantName || 'AI 助手' }} &#x751F;&#x6210;</span>
   </div>
 </template>
 
@@ -18,34 +18,32 @@ defineProps<{
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(102, 126, 234, 0.08);
+  color: rgba(102, 126, 234, 0.7);
   font-size: 12px;
   font-weight: 500;
 }
 
 .ai-message-badge.compact {
-  padding: 2px 8px;
+  padding: 1px 6px;
   font-size: 10px;
   gap: 4px;
 }
 
 .ai-badge-icon {
-  display: flex;
-  align-items: center;
-  opacity: 0.9;
-  font-size: 13px;
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .ai-badge-text {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .ai-generated-tag {
   font-size: 10px;
-  opacity: 0.8;
+  opacity: 0.7;
   font-weight: 400;
 }
 
@@ -55,6 +53,7 @@ defineProps<{
 [data-theme="warm-amber"] .ai-message-badge,
 [data-theme="crimson-red"] .ai-message-badge,
 [data-theme="emerald-green"] .ai-message-badge {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  background: rgba(90, 103, 216, 0.12);
+  color: rgba(160, 174, 255, 0.7);
 }
 </style>

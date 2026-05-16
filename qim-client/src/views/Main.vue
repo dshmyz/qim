@@ -989,6 +989,7 @@ const loadConversations = async () => {
     }
   } catch (error) {
     console.error('加载会话失败:', error)
+    QMessage.error('加载会话失败')
     // 清空会话列表
     updateConversations([])
   }
@@ -1451,6 +1452,7 @@ const handleConversationUpdated = (data: any) => {
     chatStore.patchConversation(normalizedData.id, normalizedData)
   } catch (error) {
     console.error('处理会话更新失败:', error)
+    QMessage.error('处理会话更新失败')
   }
 }
 
@@ -2005,6 +2007,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
         await markMessagesAsRead(conversationId)
       } catch (error) {
         console.error('标记消息已读失败:', error)
+        QMessage.error('标记消息已读失败')
       }
     } else {
       if (reset) {
@@ -2014,6 +2017,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
     }
   } catch (error) {
     console.error('加载消息失败:', error)
+    QMessage.error('加载消息失败')
     if (reset) {
       chatStore.clearMessages(conversationId)
     }
@@ -2033,6 +2037,7 @@ const getMessageReadUsers = async (messageId: string) => {
     return { read_users: [], total_members: 0 }
   } catch (error) {
     console.error('获取已读用户列表失败:', error)
+    QMessage.error('获取已读用户列表失败')
     return { read_users: [], total_members: 0 }
   }
 }
@@ -2354,6 +2359,7 @@ const handleRecallMessage = async (messageId: number) => {
     }
   } catch (error) {
     console.error('撤回消息失败:', error)
+    QMessage.error('撤回消息失败')
   }
 }
 
@@ -2615,6 +2621,7 @@ const startPrivateChat = async (user: any) => {
     }
   } catch (error) {
     console.error('创建私聊失败:', error)
+    QMessage.error('创建私聊失败')
     // 模拟创建会话（当API调用失败时）
     activeOption.value = 'recent'
     // 创建一个模拟的会话
@@ -2862,6 +2869,7 @@ const loadRecentApps = () => {
     }
   } catch (error) {
     console.error('加载最近使用的应用失败:', error)
+    QMessage.error('加载最近使用的应用失败')
   }
   // 默认最近使用的应用为空
   return []
@@ -2940,6 +2948,7 @@ const loadBuiltInApps = async () => {
     }
   } catch (error) {
     console.error('加载内置应用失败:', error)
+    QMessage.error('加载内置应用失败')
     // 如果加载失败，使用默认的内置应用
     builtInApps.value = []
   }
@@ -3032,6 +3041,7 @@ const loadUserApps = async () => {
     }
   } catch (error) {
     console.error('加载用户应用失败:', error)
+    QMessage.error('加载用户应用失败')
   }
 }
 
@@ -3252,6 +3262,7 @@ const openApp = async (appId: string) => {
           }
         } catch (error) {
           console.error('打开外部应用失败:', error)
+          QMessage.error('打开外部应用失败')
           // 作为后备，使用window.open在新窗口打开
           window.open(appUrl, '_blank', 'noopener,noreferrer')
         }
@@ -3305,6 +3316,7 @@ const openUserApp = (app: any) => {
         }
       } catch (error) {
         console.error('打开外部应用失败:', error)
+        QMessage.error('打开外部应用失败')
         window.open(app.url, '_blank', 'noopener,noreferrer')
       }
     }
@@ -3359,6 +3371,7 @@ const openExternalApp = (url: string) => {
       }
     } catch (error) {
       console.error('打开外部链接失败:', error)
+      QMessage.error('打开外部链接失败')
       // 出错时回退到使用新窗口打开
       window.open(url, '_blank', 'noopener,noreferrer')
     }
@@ -3994,6 +4007,7 @@ const loadShareUsersAndGroups = async () => {
     }
   } catch (error) {
     console.error('加载分享数据失败:', error)
+    QMessage.error('加载分享数据失败')
   }
 }
 

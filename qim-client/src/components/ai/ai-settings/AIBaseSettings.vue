@@ -16,9 +16,10 @@
         <input
           type="text"
           :value="modelValue.aiAssistantName"
-          @input="update('aiAssistantName', ($event.target as HTMLInputElement).value)"
+          @input="handleNameInput"
           class="form-input"
           placeholder="请输入 AI 助手名称"
+          maxlength="20"
         />
       </div>
     </div>
@@ -27,6 +28,7 @@
 
 <script setup lang="ts">
 import type { GroupAISettings } from '../../../types/ai'
+import { validateAliasName } from '../../../utils/validation'
 
 interface Props {
   modelValue: GroupAISettings
@@ -41,6 +43,16 @@ const emit = defineEmits<Emits>()
 
 function update<K extends keyof GroupAISettings>(key: K, value: GroupAISettings[K]) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
+}
+
+function handleNameInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  const result = validateAliasName(value)
+  if (!result.valid) {
+    window.$QMessage.warning(result.message)
+    return
+  }
+  update('aiAssistantName', value)
 }
 </script>
 

@@ -8,6 +8,7 @@ import (
 	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/pkg/mention"
+	"qim-server/utils"
 	"qim-server/ws"
 
 	"gorm.io/gorm"
@@ -100,7 +101,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	}
 
 	if conv.Type == "bot" {
-		go s.handleBotMessage(senderID, convID, content)
+		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
 	} else {
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
@@ -152,7 +153,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 
 	var fullResponse string
 
-	go func() {
+	utils.SafeGoWithLabel("bot-stream", func() {
 		err := s.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
 			fullResponse += chunk.Content
 			return nil
@@ -171,7 +172,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 			Content:        fullResponse,
 		}
 		db.Create(&botReply)
-	}()
+	})
 }
 
 func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error) {

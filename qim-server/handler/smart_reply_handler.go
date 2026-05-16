@@ -9,6 +9,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/service"
+	"qim-server/utils"
 	"qim-server/ws"
 	"strings"
 	"sync"
@@ -218,7 +219,7 @@ func (e *SmartReplyEngine) smartReply(userID uint, conversationID uint, content 
 		return
 	}
 	if e.intentDetector.ShouldTriggerAIReply(intent, conv.Type) {
-		go e.generateAndSendReply(userID, conversationID, content, intent)
+		utils.SafeGo(func() { e.generateAndSendReply(userID, conversationID, content, intent) })
 	}
 }
 
@@ -374,7 +375,8 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 	for _, group := range groups {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(g model.Conversation) {
+		g := group
+		utils.SafeGo(func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
@@ -389,7 +391,7 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 			}
 
 			time.Sleep(2 * time.Second) // 避免 API 限流
-		}(group)
+		})
 	}
 
 	wg.Wait()

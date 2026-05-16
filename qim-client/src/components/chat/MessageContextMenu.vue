@@ -201,11 +201,11 @@ const handleAIAction = async (actionId: string) => {
 .context-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 16px;
   cursor: pointer;
   transition: background 0.15s;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-color);
 }
 

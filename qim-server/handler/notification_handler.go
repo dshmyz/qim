@@ -9,6 +9,7 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
+	"qim-server/utils"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -268,7 +269,7 @@ func CreateEvent(c *gin.Context) {
 	}
 
 	if req.Reminder > 0 {
-		go func() {
+		utils.SafeGoWithLabel("notification", func() {
 			svc.CreateReminderNotification(userID.(uint), event)
 
 			notification := model.Notification{
@@ -290,7 +291,7 @@ func CreateEvent(c *gin.Context) {
 				jsonMsg, _ := json.Marshal(notificationMsg)
 				ws.GlobalHub.SendToUser(userID.(uint), jsonMsg)
 			}
-		}()
+		})
 	}
 
 	response.Success(c, event)
