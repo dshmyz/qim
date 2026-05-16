@@ -3,6 +3,8 @@ dist/
 *.db
 qim-client/electron-dist/
 qim-server/qim-server
+qim-server/main
+qim-server/server
 .DS_Store
 .trae.worktrees/
 .worktrees/
