@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/styles/index.css'
+import './wails-shim'
 import QMessage from './components/shared/QMessage.vue'
 import QMessageBox from './components/shared/QMessageBox.vue'
 import '@fortawesome/fontawesome-free/css/all.css'

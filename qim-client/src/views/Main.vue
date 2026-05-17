@@ -538,16 +538,6 @@ import UserAppContainer from '../components/apps/UserAppContainer.vue'
 import AvatarSettingsPanel from '../components/avatar/AvatarSettingsPanel.vue'
 import * as storage from '../utils/storage'
 
-// 声明 window.electron 变量
-declare global {
-  interface Window {
-    electron: {
-      ipcRenderer: {
-        send: (channel: string, data?: any) => void
-      }
-    } | undefined
-  }
-}
 import Sidebar from '../components/layout/Sidebar.vue'
 import SideOptions from '../components/layout/SideOptions.vue'
 import WindowControls from '../components/layout/WindowControls.vue'

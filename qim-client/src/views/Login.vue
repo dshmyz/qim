@@ -161,16 +161,6 @@ import { API_BASE_URL } from '../config'
 import QMessage from '../utils/qmessage'
 import AppLogo from '../components/shared/AppLogo.vue'
 
-declare global {
-  interface Window {
-    electron?: {
-      ipcRenderer: {
-        send: (channel: string, ...args: any[]) => void
-      }
-    }
-  }
-}
-
 interface FormErrors {
   username?: string
   password?: string
