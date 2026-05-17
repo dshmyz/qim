@@ -3,12 +3,12 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"qim-server/ai"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 
 	"gorm.io/gorm"
 )
@@ -48,7 +48,7 @@ func (s *AvatarTriggerService) ShouldReply(userID uint, conversationID uint, mes
 	var triggerRules model.AvatarTriggerRules
 	if config.TriggerRulesJSON != "" {
 		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
-			log.Printf("[AvatarTriggerService] 解析触发规则失败: %v", err)
+			logger.WithModule("AvatarTriggerService").Error("解析触发规则失败", "error", err)
 		}
 	}
 
@@ -151,7 +151,7 @@ func (s *AvatarTriggerService) llmShouldReply(config model.AvatarConfig, message
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
 	result, err := s.aiService.GetCompletion(aiMessages)
 	if err != nil {
-		log.Printf("[AvatarTriggerService] LLM 判断失败: %v", err)
+		logger.WithModule("AvatarTriggerService").Error("LLM判断失败", "error", err)
 		return false, "", err
 	}
 
@@ -162,7 +162,7 @@ func (s *AvatarTriggerService) llmShouldReply(config model.AvatarConfig, message
 	}
 
 	if err := json.Unmarshal([]byte(result), &response); err != nil {
-		log.Printf("[AvatarTriggerService] 解析 LLM 返回失败: %v, raw=%s", err, result)
+		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败", "error", err, "raw", result)
 		return false, "解析失败", nil
 	}
 

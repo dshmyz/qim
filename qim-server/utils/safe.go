@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"log"
+	"qim-server/pkg/logger"
 	"runtime/debug"
 )
 
@@ -10,7 +10,10 @@ func SafeGo(fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[SafeGo] panic recovered: %v\n%s", r, debug.Stack())
+				logger.Error("SafeGo panic recovered",
+					"panic", r,
+					"stack", string(debug.Stack()),
+				)
 			}
 		}()
 		fn()
@@ -21,7 +24,11 @@ func SafeGoWithLabel(label string, fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[SafeGo:%s] panic recovered: %v\n%s", label, r, debug.Stack())
+				logger.Error("SafeGo panic recovered",
+					"label", label,
+					"panic", r,
+					"stack", string(debug.Stack()),
+				)
 			}
 		}()
 		fn()
@@ -30,13 +37,19 @@ func SafeGoWithLabel(label string, fn func()) {
 
 func Must(fn func() error) {
 	if err := fn(); err != nil {
-		log.Printf("[Must] error: %v\n%s", err, debug.Stack())
+		logger.Error("Must error",
+			"error", err,
+			"stack", string(debug.Stack()),
+		)
 	}
 }
 
 func MustWithLabel(label string, fn func() error) {
 	if err := fn(); err != nil {
-		log.Printf("[Must:%s] error: %v", label, err)
+		logger.Error("Must error",
+			"label", label,
+			"error", err,
+		)
 	}
 }
 

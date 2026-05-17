@@ -3,10 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
 	"qim-server/pkg/validation"
 	"qim-server/service"
@@ -142,7 +142,7 @@ func AddMemberToGroup(c *gin.Context) {
 
 		currentUser, err := userSvc.GetUser(userID.(uint))
 		if err != nil {
-			log.Printf("获取用户信息失败: %v", err)
+			logger.WithModule("GroupHandler").Error("获取用户信息失败", "error", err)
 		}
 
 		systemMessageContent := fmt.Sprintf("%s 添加了新成员 %s", currentUser.Nickname, strings.Join(memberNames, "、"))
@@ -158,7 +158,7 @@ func AddMemberToGroup(c *gin.Context) {
 			IsRead:         true,
 		}
 		if err := msgSvc.CreateMessage(systemMsg); err != nil {
-			log.Printf("创建系统消息失败: %v", err)
+			logger.WithModule("GroupHandler").Error("创建系统消息失败", "error", err)
 		}
 
 		systemUser := model.User{
@@ -1022,7 +1022,7 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	currentUser, err := userSvc.GetUser(userID.(uint))
 	if err != nil {
-		log.Printf("获取用户信息失败: %v", err)
+		logger.WithModule("GroupHandler").Error("获取用户信息失败", "error", err)
 	}
 
 	systemMessageContent := fmt.Sprintf("%s 修改群公告", currentUser.Nickname)
@@ -1038,7 +1038,7 @@ func UpdateAnnouncement(c *gin.Context) {
 		IsRead:         true,
 	}
 	if err := msgSvc.CreateMessage(systemMsg); err != nil {
-		log.Printf("创建系统消息失败: %v", err)
+		logger.WithModule("GroupHandler").Error("创建系统消息失败", "error", err)
 	}
 
 	systemUser := model.User{

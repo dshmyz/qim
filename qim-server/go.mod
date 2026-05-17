@@ -14,6 +14,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/liliang-cn/cortexdb/v2 v2.19.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/files v1.0.1

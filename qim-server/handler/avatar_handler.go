@@ -2,14 +2,15 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"qim-server/ai"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
 	"qim-server/pkg/validation"
 	"qim-server/service"
+	"qim-server/utils"
 	"strconv"
 	"time"
 
@@ -179,7 +180,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 				"applied_at":      nil,
 				"approved_at":     nil,
 			}).Error; err != nil {
-				log.Printf("恢复软删除记录失败: %v", err)
+				logger.WithModule("AvatarHandler").Error("恢复软删除记录失败", "error", err)
 				response.InternalServerError(c, "恢复分身配置失败")
 				return
 			}
@@ -193,7 +194,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 
 	var req CreateAvatarConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("Create avatar config bind error: %v", err)
+		logger.WithModule("AvatarHandler").Error("Create avatar config bind error", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
 		return
 	}
@@ -205,21 +206,21 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 
 	knowledgeScopeJSON, err := json.Marshal(req.KnowledgeScope)
 	if err != nil {
-		log.Printf("Create avatar config marshal knowledgeScope error: %v", err)
+		logger.WithModule("AvatarHandler").Error("Create avatar config marshal knowledgeScope error", "error", err)
 		response.BadRequest(c, "知识范围序列化失败")
 		return
 	}
 
 	triggerRulesJSON, err := json.Marshal(req.TriggerRules)
 	if err != nil {
-		log.Printf("Create avatar config marshal triggerRules error: %v", err)
+		logger.WithModule("AvatarHandler").Error("Create avatar config marshal triggerRules error", "error", err)
 		response.BadRequest(c, "触发规则序列化失败")
 		return
 	}
 
 	replyStrategyJSON, err := json.Marshal(req.ReplyStrategy)
 	if err != nil {
-		log.Printf("Create avatar config marshal replyStrategy error: %v", err)
+		logger.WithModule("AvatarHandler").Error("Create avatar config marshal replyStrategy error", "error", err)
 		response.BadRequest(c, "回复策略序列化失败")
 		return
 	}
@@ -238,7 +239,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&config).Error; err != nil {
-		log.Printf("Create avatar config failed: %v, userID: %d, config: %+v", err, userID, config)
+		logger.WithModule("AvatarHandler").Error("Create avatar config failed", "error", err, "userID", userID, "config", config)
 		response.InternalServerError(c, "创建失败")
 		return
 	}

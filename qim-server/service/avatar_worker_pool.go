@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/ws"
 
 	"golang.org/x/time/rate"
@@ -95,10 +95,16 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
+	// 空回复表示分身选择不回复（如知识范围外且配置为不回复）
+	if reply == "" {
+		logger.WithModule("AvatarWorkerPool").Info("分身选择不回复", "user", task.UserID, "conv", task.ConversationID)
+		return
+	}
+
 	// 一次性查询分身用户信息和自定义名称，后续发送函数复用
 	var avatarUser model.User
 	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
-		log.Printf("[AvatarWorkerPool] 获取分身用户信息失败: user=%d, error=%v", task.UserID, err)
+		logger.WithModule("AvatarWorkerPool").Error("获取分身用户信息失败", "user", task.UserID, "error", err)
 		return
 	}
 	avatarCfgName := ""
@@ -129,8 +135,8 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 	convService := NewConversationService(database.GetDB())
 	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
 	if err != nil {
-		log.Printf("[AvatarWorkerPool] 创建私聊会话失败: user=%d, trigger=%d, error=%v",
-			task.UserID, task.TriggerUserID, err)
+		logger.WithModule("AvatarWorkerPool").Error("创建私聊会话失败",
+			"user", task.UserID, "trigger", task.TriggerUserID, "error", err)
 		return
 	}
 
@@ -145,7 +151,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
-		log.Printf("[AvatarWorkerPool] 保存分身消息失败: conv=%d, error=%v", conv.ID, err)
+		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", conv.ID, "error", err)
 		return
 	}
 
@@ -177,7 +183,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 		"ai_type":         msg.AIType,
 		"sender":          msg.Sender,
 		"avatar_name":     avatarCfgName,
-		}
+	}
 
 	if ws.GlobalHub != nil {
 		wsMsg := ws.WSMessage{
@@ -185,12 +191,12 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		log.Printf("[sendPrivateReply] Broadcasting to conv %d, excludeUserID=0, ai_type=%s, sender_id=%d, sender_name=%s",
-			conv.ID, msg.AIType, msg.SenderID, msg.Sender.Nickname)
+		logger.WithModule("sendPrivateReply").Debug("Broadcasting",
+			"conv", conv.ID, "ai_type", msg.AIType, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(conv.ID, 0, jsonMsg)
 	}
 
-	log.Printf("[AvatarWorkerPool] 分身私聊回复已发送: conv=%d, msgID=%d", conv.ID, msg.ID)
+	logger.WithModule("AvatarWorkerPool").Info("分身私聊回复已发送", "conv", conv.ID, "msgID", msg.ID)
 }
 
 // sendDirectReply 发送直接回复（私聊场景）
@@ -206,7 +212,7 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
-		log.Printf("[AvatarWorkerPool] 保存分身消息失败: conv=%d, error=%v", task.ConversationID, err)
+		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", task.ConversationID, "error", err)
 		return
 	}
 
@@ -246,10 +252,10 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		log.Printf("[sendDirectReply] Broadcasting to conv %d, excludeUserID=0, ai_type=%s, sender_id=%d, sender_name=%s",
-			task.ConversationID, msg.AIType, msg.SenderID, msg.Sender.Nickname)
+		logger.WithModule("sendDirectReply").Debug("Broadcasting",
+			"conv", task.ConversationID, "ai_type", msg.AIType, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(task.ConversationID, 0, jsonMsg)
 	}
 
-	log.Printf("[AvatarWorkerPool] 分身直接回复已发送: conv=%d, msgID=%d", task.ConversationID, msg.ID)
+	logger.WithModule("AvatarWorkerPool").Info("分身直接回复已发送", "conv", task.ConversationID, "msgID", msg.ID)
 }

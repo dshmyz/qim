@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"qim-server/pkg/logger"
 	"strings"
 	"time"
 )
@@ -63,7 +63,7 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 
 		resp, err = bp.Client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			log.Printf("[AI Service] Request successful on attempt %d", attempt)
+			logger.WithModule("AI").Info("Request successful on attempt", "attempt", attempt)
 			return resp, nil
 		}
 
@@ -72,12 +72,16 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 			statusCode = resp.StatusCode
 		}
 		lastStatusCode = statusCode
-		log.Printf("[AI Service] Request failed (attempt %d/%d): err=%v, status=%d",
-			attempt, bp.MaxRetries, err, statusCode)
+		logger.WithModule("AI").Error("Request failed",
+			"attempt", attempt,
+			"maxRetries", bp.MaxRetries,
+			"error", err,
+			"status", statusCode,
+		)
 
 		if attempt < bp.MaxRetries {
 			sleepDuration := time.Duration(attempt) * time.Second
-			log.Printf("[AI Service] Retrying in %v", sleepDuration)
+			logger.WithModule("AI").Info("Retrying", "sleepDuration", sleepDuration)
 			time.Sleep(sleepDuration)
 		}
 	}
@@ -90,7 +94,7 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 	if lastStatusCode != 0 && resp != nil {
 		defer resp.Body.Close()
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[AI Service] Last non-200 response body (status %d): %s", lastStatusCode, string(bodyBytes))
+		logger.WithModule("AI").Error("Last non-200 response body", "status", lastStatusCode, "body", string(bodyBytes))
 	}
 
 	return nil, fmt.Errorf("request failed after %d retries, last status: %d", bp.MaxRetries, lastStatusCode)
@@ -103,13 +107,13 @@ func (bp *BaseProvider) ReadSSEStream(body io.ReadCloser, processData func(data 
 
 	for reader.Scan() {
 		line := reader.Text()
-		log.Printf("[AI Service] Received SSE line: %q", line)
+		logger.WithModule("AI").Debug("Received SSE line", "line", line)
 
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 
 			if strings.TrimSpace(data) == "[DONE]" {
-				log.Printf("[AI Service] Received stream end marker")
+				logger.WithModule("AI").Debug("Received stream end marker")
 				break
 			}
 

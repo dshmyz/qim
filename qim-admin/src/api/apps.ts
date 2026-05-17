@@ -17,6 +17,9 @@ export interface UpdateAppParams {
   url?: string
   openType?: 'in-app' | 'external'
   status?: 'active' | 'inactive'
+  scopeType?: string
+  scopeValue?: string
+  availableOrgIDs?: string
 }
 
 export const getApps = (params: PaginationParams & { name?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<App>>>> => {

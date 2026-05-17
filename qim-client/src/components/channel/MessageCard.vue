@@ -57,11 +57,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { getDisplayName } from '../../utils/avatar'
 import { API_BASE_URL } from '../../config'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { request } from '../../composables/useRequest'
 import type { ChannelMessage } from '../../types'
 
 const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
@@ -88,19 +89,54 @@ const { formatTime } = useChatUtils()
 
 const isLiked = ref(false)
 const likeCount = ref(0)
+const loadingLike = ref(false)
 
 const senderName = computed(() => getDisplayName(props.message.sender))
 
-const handleLike = () => {
-  if (isLiked.value) {
-    isLiked.value = false
-    likeCount.value--
-    emit('unlike', props.message)
-  } else {
-    isLiked.value = true
-    likeCount.value++
-    emit('like', props.message)
+onMounted(async () => {
+  try {
+    const res = await request(`/api/v1/channels/messages/${props.message.id}/likes`)
+    if (res.code === 0 && res.data) {
+      isLiked.value = res.data.is_liked
+      likeCount.value = res.data.like_count
+    }
+  } catch {
+    // 默认值即可
   }
+})
+
+const handleLike = async () => {
+  if (loadingLike.value) return
+  loadingLike.value = true
+
+  if (isLiked.value) {
+    try {
+      const res = await request(`/api/v1/channels/messages/${props.message.id}/unlike`, { method: 'POST' })
+      if (res.code === 0) {
+        isLiked.value = res.data?.is_liked ?? false
+        likeCount.value = res.data?.like_count ?? likeCount.value - 1
+        emit('unlike', props.message)
+      }
+    } catch {
+      // 回滚
+      isLiked.value = true
+      likeCount.value++
+    }
+  } else {
+    try {
+      const res = await request(`/api/v1/channels/messages/${props.message.id}/like`, { method: 'POST' })
+      if (res.code === 0) {
+        isLiked.value = res.data?.is_liked ?? true
+        likeCount.value = res.data?.like_count ?? likeCount.value + 1
+        emit('like', props.message)
+      }
+    } catch {
+      // 回滚
+      isLiked.value = false
+      likeCount.value--
+    }
+  }
+  loadingLike.value = false
 }
 
 const handleComment = () => {

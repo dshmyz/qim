@@ -944,7 +944,9 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
   }
   
   if (shouldScroll) {
-    scrollToBottom(true)
+    nextTick(() => {
+      scrollToBottom(true)
+    })
   }
 }, { deep: true })
 
@@ -1398,10 +1400,7 @@ const handleSendPrivateMessage = async (user: User | string | number) => {
     }
   } catch (error) {
     console.error('创建私聊失败:', error)
-    // 模拟创建会话（当API调用失败时）
-    const mockConversationId = `conv_${Date.now()}`
-    // 通知父组件切换到新会话
-    emit('switchConversation', mockConversationId)
+    $message.error('创建私聊失败，请重试')
   }
   closeUserProfile()
 }

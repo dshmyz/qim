@@ -2,10 +2,10 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"math"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/utils"
 	"qim-server/ws"
 	"strings"
@@ -251,8 +251,7 @@ func (d *AnomalyDetector) SendAlert(adminID uint, alert *AnomalyAlert) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 	ws.GlobalHub.SendToUser(adminID, jsonMsg)
 
-	log.Printf("[AnomalyDetector] 告警已发送: type=%s, level=%s, message=%s",
-		alert.Type, alert.Level, alert.Message)
+	logger.WithModule("AnomalyDetector").Info("告警已发送", "type", alert.Type, "level", alert.Level, "message", alert.Message)
 }
 
 func previewText(text string, maxLen int) string {
@@ -271,7 +270,7 @@ func StartAnomalyDetection(detector *AnomalyDetector) {
 
 		for range ticker.C {
 			detector.UpdateBaseline()
-			log.Printf("[AnomalyDetector] 基线已更新，监控 %d 个群组", len(detector.avgCounts))
+			logger.WithModule("AnomalyDetector").Info("基线已更新", "groupCount", len(detector.avgCounts))
 		}
 	})
 }

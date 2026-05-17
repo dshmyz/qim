@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
+
+	"qim-server/pkg/logger"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -27,7 +28,8 @@ func main() {
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("打开数据库失败: %v", err)
+		logger.WithModule("MigrateMiniapps").Error("打开数据库失败", "error", err)
+		os.Exit(1)
 	}
 
 	var miniApps []MiniApp
@@ -36,11 +38,11 @@ func main() {
 	fmt.Printf("找到 %d 个小程序记录，开始检查 path 字段...\n", len(miniApps))
 
 	pathMapping := map[string]string{
-		"calculator":       "/miniprograms/calculator/index.html",
-		"notepad":          "/miniprograms/notepad/index.html",
-		"todo":             "/miniprograms/todo/index.html",
+		"calculator":         "/miniprograms/calculator/index.html",
+		"notepad":            "/miniprograms/notepad/index.html",
+		"todo":               "/miniprograms/todo/index.html",
 		"password-generator": "/miniprograms/password-generator/index.html",
-		"short-link":       "/miniprograms/short-link/index.html",
+		"short-link":         "/miniprograms/short-link/index.html",
 	}
 
 	updated := 0

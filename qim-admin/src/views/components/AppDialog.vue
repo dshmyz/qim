@@ -35,6 +35,20 @@
           全局应用对所有用户可见，仅管理员可创建
         </span>
       </el-form-item>
+      <el-form-item v-if="form.isGlobal" label="可见范围" prop="scopeType">
+        <el-select v-model="form.scopeType" placeholder="请选择可见范围" style="width: 100%">
+          <el-option label="所有人可见" value="all" />
+          <el-option label="指定用户" value="users" />
+          <el-option label="指定组织" value="organizations" />
+          <el-option label="指定角色" value="roles" />
+        </el-select>
+        <div v-if="form.scopeType === 'users'" style="margin-top: 8px;">
+          <el-input v-model="form.scopeValue" placeholder="请输入用户ID，多个用逗号分隔" />
+          <div style="color: var(--color-text-secondary); font-size: 12px; margin-top: 4px;">
+            仅这些用户可以看到并使用此内置应用
+          </div>
+        </div>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
@@ -77,6 +91,9 @@ const form = reactive({
   url: '',
   openType: 'in-app' as 'in-app' | 'external',
   isGlobal: false,
+  scopeType: 'all',
+  scopeValue: '',
+  availableOrgIDs: '',
 })
 
 const rules: FormRules = {
@@ -97,6 +114,9 @@ watch(
       form.url = app.url
       form.openType = app.openType
       form.isGlobal = app.isGlobal || false
+      form.scopeType = app.scopeType || 'all'
+      form.scopeValue = app.scopeValue || ''
+      form.availableOrgIDs = app.availableOrgIDs || ''
     }
   },
   { immediate: true }
@@ -109,6 +129,10 @@ const resetForm = () => {
   form.category = ''
   form.url = ''
   form.openType = 'in-app'
+  form.isGlobal = false
+  form.scopeType = 'all'
+  form.scopeValue = ''
+  form.availableOrgIDs = ''
   formRef.value?.resetFields()
 }
 
@@ -130,6 +154,9 @@ const handleSubmit = async () => {
           category: form.category,
           url: form.url,
           openType: form.openType,
+          scopeType: form.scopeType,
+          scopeValue: form.scopeValue || undefined,
+          availableOrgIDs: form.availableOrgIDs || undefined,
         })
       } else {
         await createApp({

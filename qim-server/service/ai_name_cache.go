@@ -1,13 +1,13 @@
 package service
 
 import (
-	"log"
 	"strconv"
 	"sync"
 	"time"
 
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 )
 
 var aiNameCacheInstance *AINameCache
@@ -64,7 +64,7 @@ func (c *AINameCache) GetAvatarName(userID uint) string {
 
 func (c *AINameCache) InvalidateGroupAssistantName(conversationID uint) {
 	c.cache.Delete(groupKey(conversationID))
-	log.Printf("[AINameCache] 清除群 AI 名称缓存: conversationID=%d", conversationID)
+	logger.WithModule("AINameCache").Info("清除群 AI 名称缓存", "conversationID", conversationID)
 }
 
 func (c *AINameCache) InvalidateAvatarName(userID uint) {

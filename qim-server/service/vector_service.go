@@ -3,10 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
@@ -35,7 +36,7 @@ func NewVectorService(path string, embedder cortexdb.Embedder) (*VectorService, 
 		return nil, fmt.Errorf("打开向量数据库失败: %w", err)
 	}
 
-	log.Printf("[VectorService] 向量数据库初始化完成, path=%s", path)
+	logger.WithModule("VectorService").Info("向量数据库初始化完成", "path", path)
 	return &VectorService{db: db}, nil
 }
 
@@ -96,12 +97,12 @@ func (s *VectorService) GetByCollection(ctx context.Context, collection string, 
 	col, err := s.db.Vector().GetCollection(ctx, collection)
 	if err != nil {
 		// 集合不存在，返回空列表
-		log.Printf("[VectorService] 集合 %s 不存在或获取失败: %v", collection, err)
+		logger.WithModule("VectorService").Info("集合不存在或获取失败", "collection", collection, "error", err)
 		return []core.ScoredEmbedding{}, nil
 	}
 
 	if col.Dimensions <= 0 {
-		log.Printf("[VectorService] 集合 %s 维度异常: %d", collection, col.Dimensions)
+		logger.WithModule("VectorService").Info("集合维度异常", "collection", collection, "dimensions", col.Dimensions)
 		return []core.ScoredEmbedding{}, nil
 	}
 
@@ -113,7 +114,7 @@ func (s *VectorService) GetByCollection(ctx context.Context, collection string, 
 
 	results, err := s.db.Vector().Search(ctx, zeroVector, opts)
 	if err != nil {
-		log.Printf("[VectorService] 搜索集合 %s 失败: %v", collection, err)
+		logger.WithModule("VectorService").Error("搜索集合失败", "collection", collection, "error", err)
 		return []core.ScoredEmbedding{}, nil
 	}
 
@@ -146,7 +147,7 @@ func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, f
 	deletedCount := 0
 	for _, result := range results {
 		if err := s.db.Vector().DeleteByDocID(ctx, result.DocID); err != nil {
-			log.Printf("[VectorService] 删除向量失败 docID=%s: %v", result.DocID, err)
+			logger.WithModule("VectorService").Error("删除向量失败", "docID", result.DocID, "error", err)
 			continue
 		}
 		deletedCount++

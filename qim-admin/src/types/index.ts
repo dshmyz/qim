@@ -160,6 +160,9 @@ export interface App {
   openType: 'in-app' | 'external'
   status: 'active' | 'inactive'
   isGlobal: boolean
+  scopeType?: string       // 'all' | 'users' | 'organizations' | 'roles'
+  scopeValue?: string      // 具体范围值（逗号分隔ID列表）
+  availableOrgIDs?: string // 可用组织ID列表
   createdAt: string
   updatedAt: string
 }

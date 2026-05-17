@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+
+	"qim-server/pkg/logger"
 )
 
 // OpenAIProvider OpenAI 兼容的 API 提供商
@@ -35,7 +36,7 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("OpenAI API key is not configured")
 	}
 
-	log.Printf("[OpenAI] Making request with model: %s", p.config.Model)
+	logger.WithModule("OpenAI").Debug("Making request", "model", p.config.Model)
 
 	reqBody := ChatCompletionRequest{
 		Model:    p.config.Model,
@@ -78,8 +79,10 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("no choices in OpenAI response")
 	}
 
-	log.Printf("[OpenAI] Request completed, usage: prompt_tokens=%d, completion_tokens=%d, total_tokens=%d",
-		response.Usage.PromptTokens, response.Usage.CompletionTokens, response.Usage.TotalTokens)
+	logger.WithModule("OpenAI").Info("Request completed",
+		"prompt_tokens", response.Usage.PromptTokens,
+		"completion_tokens", response.Usage.CompletionTokens,
+		"total_tokens", response.Usage.TotalTokens)
 
 	return response.Choices[0].Message.Content, nil
 }
@@ -89,7 +92,7 @@ func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk Strea
 		return fmt.Errorf("OpenAI API key is not configured")
 	}
 
-	log.Printf("[OpenAI] Making streaming request with model: %s", p.config.Model)
+	logger.WithModule("OpenAI").Debug("Making streaming request", "model", p.config.Model)
 
 	reqBody := struct {
 		Model       string    `json:"model"`
@@ -147,7 +150,7 @@ func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk Strea
 		}
 
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("[OpenAI] Failed to unmarshal stream data: %v", err)
+			logger.WithModule("OpenAI").Error("Failed to unmarshal stream data", "error", err)
 			return nil
 		}
 
@@ -157,7 +160,7 @@ func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk Strea
 				Finish:  chunk.Choices[0].FinishReason,
 			}
 			if sc.Content != "" || sc.Finish != nil {
-				log.Printf("[OpenAI] Sending chunk: %q, finish: %v", sc.Content, sc.Finish)
+				logger.WithModule("OpenAI").Debug("Sending chunk", "content", sc.Content, "finish", sc.Finish)
 				return onChunk(sc)
 			}
 		}
@@ -227,7 +230,7 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("no embedding data in OpenAI response")
 	}
 
-	log.Printf("[OpenAI] Embedding completed, model=%s, prompt_tokens=%d", response.Model, response.Usage.PromptTokens)
+	logger.WithModule("OpenAI").Info("Embedding completed", "model", response.Model, "prompt_tokens", response.Usage.PromptTokens)
 
 	return response.Data[0].Embedding, nil
 }
@@ -237,7 +240,7 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 		return nil, fmt.Errorf("OpenAI API key is not configured")
 	}
 
-	log.Printf("[OpenAI] Making request with tools, model: %s, tools count: %d", p.config.Model, len(tools))
+	logger.WithModule("OpenAI").Debug("Making request with tools", "model", p.config.Model, "tools_count", len(tools))
 
 	reqBody := struct {
 		Model       string    `json:"model"`
@@ -289,9 +292,9 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 	// 调试日志：打印请求体
 	reqBodyJSON, _ := json.Marshal(reqBody)
 	if len(reqBodyJSON) > 5000 {
-		log.Printf("[OpenAI] Request body (truncated): %s", string(reqBodyJSON[:5000]))
+		logger.WithModule("OpenAI").Debug("Request body (truncated)", "body", string(reqBodyJSON[:5000]))
 	} else {
-		log.Printf("[OpenAI] Request body: %s", string(reqBodyJSON))
+		logger.WithModule("OpenAI").Debug("Request body", "body", string(reqBodyJSON))
 	}
 
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
@@ -312,7 +315,7 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 	// 调试：打印非 200 响应
 	if resp.StatusCode != 200 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[OpenAI] Non-200 response: status=%s, body=%s", resp.Status, string(bodyBytes))
+		logger.WithModule("OpenAI").Error("Non-200 response", "status", resp.Status, "body", string(bodyBytes))
 		return nil, fmt.Errorf("OpenAI API returned status %d", resp.StatusCode)
 	}
 	var response struct {
@@ -355,11 +358,11 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 			var argStr string
 			if strErr := json.Unmarshal(tc.Function.Arguments, &argStr); strErr == nil && argStr != "" {
 				if err2 := json.Unmarshal([]byte(argStr), &args); err2 != nil {
-					log.Printf("[OpenAI] Failed to unmarshal tool call arguments (both raw and string): %v", err)
+					logger.WithModule("OpenAI").Error("Failed to unmarshal tool call arguments (both raw and string)", "error", err)
 					args = make(map[string]interface{})
 				}
 			} else {
-				log.Printf("[OpenAI] Failed to unmarshal tool call arguments: %v", err)
+				logger.WithModule("OpenAI").Error("Failed to unmarshal tool call arguments", "error", err)
 				args = make(map[string]interface{})
 			}
 		}
@@ -370,8 +373,11 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 		})
 	}
 
-	log.Printf("[OpenAI] Request completed, usage: prompt_tokens=%d, completion_tokens=%d, total_tokens=%d, tool_calls=%d",
-		response.Usage.PromptTokens, response.Usage.CompletionTokens, response.Usage.TotalTokens, len(chatResp.ToolCalls))
+	logger.WithModule("OpenAI").Info("Request completed",
+		"prompt_tokens", response.Usage.PromptTokens,
+		"completion_tokens", response.Usage.CompletionTokens,
+		"total_tokens", response.Usage.TotalTokens,
+		"tool_calls", len(chatResp.ToolCalls))
 
 	return chatResp, nil
 }

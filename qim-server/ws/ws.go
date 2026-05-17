@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"log"
 	"net/http"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/mention"
 	"qim-server/utils"
 	"strconv"
@@ -86,7 +86,7 @@ func NewHub(db *gorm.DB, dbType string) *Hub {
 	// 初始化广播通道
 	broadcastChan := make(chan []byte)
 
-	log.Printf("节点 %s 初始化完成，将使用基于 HTTP 的多节点模式", nodeID)
+	logger.WithModule("WS").Info("节点初始化完成", "nodeID", nodeID)
 
 	return &Hub{
 		clients:             sync.Map{},
@@ -141,7 +141,7 @@ func (h *Hub) Run() {
 			} else {
 				h.userClients.Store(client.userID, []*Client{client})
 			}
-			log.Printf("用户 %d 连接", client.userID)
+			logger.WithModule("WS").Info("用户连接", "userID", client.userID)
 
 			// 更新用户在线状态并广播
 			h.UpdateUserStatus(client.userID, StatusOnline)
@@ -172,7 +172,7 @@ func (h *Hub) Run() {
 
 			// 清理用户的订阅
 			h.CleanupUserSubscriptions(client.userID)
-			log.Printf("用户 %d 断开连接", client.userID)
+			logger.WithModule("WS").Info("用户断开连接", "userID", client.userID)
 
 		case message := <-h.broadcast:
 			// 异步广播，不阻塞事件循环
@@ -232,7 +232,7 @@ func (h *Hub) asyncBroadcast(message []byte) {
 // startNodeCommunication 启动节点间通信服务
 func (h *Hub) startNodeCommunication() {
 	// 这里可以实现节点发现和心跳检测
-	log.Println("节点间通信服务启动")
+	logger.WithModule("WS").Info("节点间通信服务启动")
 }
 
 // broadcastToOtherNodes 通过 HTTP 向其他节点广播消息
@@ -250,7 +250,7 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 		utils.SafeGoWithLabel("node-broadcast", func() {
 			resp, err := http.Post(url, "application/json", nil)
 			if err != nil {
-				log.Printf("向节点 %s 广播失败: %v", url, err)
+				logger.WithModule("WS").Error("向节点广播失败", "url", url, "error", err)
 				return
 			}
 			defer resp.Body.Close()
@@ -288,7 +288,7 @@ func (h *Hub) UpdateConversationMembers(convID uint) {
 	var members []model.ConversationMember
 	result := db.Where("conversation_id = ?", convID).Find(&members)
 	if result.Error != nil {
-		log.Printf("更新会话成员缓存失败: %v", result.Error)
+		logger.WithModule("WS").Error("更新会话成员缓存失败", "error", result.Error)
 		return
 	}
 
@@ -305,7 +305,7 @@ func (h *Hub) UpdateConversationMembers(convID uint) {
 		expiredAt: time.Now().Add(5 * time.Minute),
 	}
 	h.mu.Unlock()
-	log.Printf("更新会话 %d 成员缓存，成员数量: %d", convID, len(memberIDs))
+	logger.WithModule("WS").Info("更新会话成员缓存", "convID", convID, "memberCount", len(memberIDs))
 }
 
 // sendToUserToOtherNodes 通过 HTTP 向其他节点发送用户特定消息
@@ -331,7 +331,7 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 		utils.SafeGoWithLabel("node-send-user", func() {
 			resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 			if err != nil {
-				log.Printf("向节点 %s 发送用户消息失败: %v", url, err)
+				logger.WithModule("WS").Error("向节点发送用户消息失败", "url", url, "error", err)
 				return
 			}
 			defer resp.Body.Close()
@@ -352,7 +352,7 @@ func (h *Hub) SendToConversation(convID uint, excludeUserID uint, message []byte
 		var members []model.ConversationMember
 		result := db.Where("conversation_id = ?", convID).Find(&members)
 		if result.Error != nil {
-			log.Printf("查询会话成员失败: %v", result.Error)
+			logger.WithModule("WS").Error("查询会话成员失败", "error", result.Error)
 			return
 		}
 
@@ -389,7 +389,7 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 		var members []model.ConversationMember
 		result := db.Where("conversation_id = ?", convID).Find(&members)
 		if result.Error != nil {
-			log.Printf("查询会话成员失败: %v", result.Error)
+			logger.WithModule("WS").Error("查询会话成员失败", "error", result.Error)
 			return
 		}
 
@@ -432,12 +432,12 @@ func (c *Client) readPump() {
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("读取错误: %v", err)
+				logger.WithModule("WS").Error("读取错误", "error", err)
 			}
 			break
 		}
 
-		log.Printf("收到客户端消息: 类型=%s", msg.Type)
+		logger.WithModule("WS").Debug("收到客户端消息", "type", msg.Type)
 
 		switch msg.Type {
 		case "heartbeat":
@@ -494,7 +494,7 @@ func (c *Client) readPump() {
 		case "realtime:webrtc:ice":
 			HandleRealtimeWebRTCIce(c, msg.Data)
 		default:
-			log.Printf("未知消息类型: %s", msg.Type)
+			logger.WithModule("WS").Warn("未知消息类型", "type", msg.Type)
 		}
 	}
 }
@@ -688,7 +688,7 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 	if !ok {
 		return
 	}
-	log.Printf("收到 %s 消息: %v", signalType, msgData)
+	logger.WithModule("WS").Debug("收到信令消息", "signalType", signalType, "data", msgData)
 	var targetUserID uint
 
 	// 尝试将 target_user_id 转换为 float64 (数字类型)
@@ -758,7 +758,7 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 
 	// 发送给目标用户
 	c.hub.SendToUser(targetUserID, jsonMsg)
-	log.Printf("转发WebRTC信令 %s 从用户 %d 到用户 %d", signalType, c.userID, targetUserID)
+	logger.WithModule("WS").Debug("转发WebRTC信令", "signalType", signalType, "fromUserID", c.userID, "targetUserID", targetUserID)
 }
 
 func ServeWs(hub *Hub, c *gin.Context) {
@@ -766,7 +766,7 @@ func ServeWs(hub *Hub, c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println(err)
+		logger.WithModule("WS").Error("WebSocket升级失败", "error", err)
 		return
 	}
 
@@ -783,7 +783,7 @@ func ServeScreenShare(hub *Hub, c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println(err)
+		logger.WithModule("WS").Error("屏幕共享WebSocket升级失败", "error", err)
 		return
 	}
 
@@ -845,7 +845,7 @@ func handleScreenShareStart(c *Client, data interface{}) {
 
 	// 推送给会话其他成员
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
-	log.Printf("用户 %d 开始屏幕共享，会话 %d", c.userID, convID)
+	logger.WithModule("WS").Info("用户开始屏幕共享", "userID", c.userID, "convID", convID)
 }
 
 // 处理屏幕共享停止
@@ -887,7 +887,7 @@ func handleScreenShareStop(c *Client, data interface{}) {
 
 	// 推送给会话其他成员
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
-	log.Printf("用户 %d 停止屏幕共享，会话 %d", c.userID, convID)
+	logger.WithModule("WS").Info("用户停止屏幕共享", "userID", c.userID, "convID", convID)
 }
 
 // 处理屏幕共享数据
@@ -896,7 +896,7 @@ func handleScreenShareData(c *Client, data interface{}) {
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("屏幕共享数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("屏幕共享数据格式错误", "data", data)
 		return
 	}
 
@@ -946,7 +946,7 @@ func handleScreenShareData(c *Client, data interface{}) {
 	}
 
 	if !found {
-		log.Printf("屏幕共享数据缺少会话ID: %v", msgData)
+		logger.WithModule("WS").Warn("屏幕共享数据缺少会话ID", "data", msgData)
 		return
 	}
 
@@ -968,9 +968,9 @@ func handleScreenShareData(c *Client, data interface{}) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 
 	// 推送给会话其他成员
-	log.Printf("准备向会话 %d 的其他成员推送屏幕共享请求，发送者: %d", convID, c.userID)
+	logger.WithModule("WS").Debug("准备推送屏幕共享请求", "convID", convID, "senderID", c.userID)
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
-	log.Printf("用户 %d 请求屏幕共享，会话 %d", c.userID, convID)
+	logger.WithModule("WS").Info("用户屏幕共享数据转发", "userID", c.userID, "convID", convID)
 }
 
 // 处理屏幕共享请求（支持离线用户）
@@ -979,7 +979,7 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("屏幕共享请求数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("屏幕共享请求数据格式错误", "data", data)
 		return
 	}
 
@@ -1029,21 +1029,21 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 	}
 
 	if !found {
-		log.Printf("屏幕共享请求缺少会话ID: %v", msgData)
+		logger.WithModule("WS").Warn("屏幕共享请求缺少会话ID", "data", msgData)
 		return
 	}
 
 	// 验证是否为会话成员
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
-		log.Printf("用户 %d 不是会话 %d 的成员", c.userID, convID)
+		logger.WithModule("WS").Warn("用户不是会话成员", "userID", c.userID, "convID", convID)
 		return
 	}
 
 	// 查询发送者昵称
 	var senderNickname string
 	if err := db.Model(&model.User{}).Where("id = ?", c.userID).Select("nickname").First(&senderNickname).Error; err != nil {
-		log.Printf("查询用户昵称失败: %v，使用默认值", err)
+		logger.WithModule("WS").Warn("查询用户昵称失败，使用默认值", "error", err)
 		senderNickname = "未知用户"
 	}
 
@@ -1061,9 +1061,9 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 
 	// 推送给会话其他成员（复用原有的 SendToConversation 逻辑）
-	log.Printf("准备向会话 %d 的其他成员推送屏幕共享请求，发送者: %d", convID, c.userID)
+	logger.WithModule("WS").Debug("准备推送屏幕共享请求", "convID", convID, "senderID", c.userID)
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
-	log.Printf("用户 %d 请求屏幕共享，会话 %d", c.userID, convID)
+	logger.WithModule("WS").Info("用户请求屏幕共享", "userID", c.userID, "convID", convID)
 }
 
 // 处理屏幕共享响应
@@ -1108,7 +1108,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
 		return
 	}
-	log.Printf("用户 %d 响应屏幕共享请求, 会话 %d, 请求者 %d, 状态 %s", c.userID, convID, requesterID, status)
+	logger.WithModule("WS").Info("用户响应屏幕共享请求", "userID", c.userID, "convID", convID, "requesterID", requesterID, "status", status)
 	if status == "accepted" {
 		// 向请求者发送接受消息
 		acceptMsg := WSMessage{
@@ -1146,7 +1146,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 		rejectJson, _ := json.Marshal(rejectMsg)
 		c.hub.SendToUser(requesterID, rejectJson)
 
-		log.Printf("用户 %d 拒绝了屏幕共享请求，会话 %d", c.userID, convID)
+		logger.WithModule("WS").Info("用户拒绝屏幕共享请求", "userID", c.userID, "convID", convID)
 	}
 }
 
@@ -1154,7 +1154,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 func handleCallInvite(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("通话邀请数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("通话邀请数据格式错误", "data", data)
 		return
 	}
 
@@ -1165,18 +1165,18 @@ func handleCallInvite(c *Client, data interface{}) {
 		if id, err := strconv.ParseUint(targetUserIDStr, 10, 32); err == nil {
 			targetUserID = uint(id)
 		} else {
-			log.Printf("解析 target_user_id 失败: %v", targetUserIDStr)
+			logger.WithModule("WS").Warn("解析target_user_id失败", "value", targetUserIDStr)
 			return
 		}
 	} else {
-		log.Printf("通话邀请缺少 target_user_id")
+		logger.WithModule("WS").Warn("通话邀请缺少target_user_id")
 		return
 	}
 
 	callType, _ := msgData["call_type"].(string)
 	signal := msgData["signal"]
 
-	log.Printf("用户 %d 向用户 %d 发起 %s 通话邀请", c.userID, targetUserID, callType)
+	logger.WithModule("WS").Info("用户发起通话邀请", "fromUserID", c.userID, "targetUserID", targetUserID, "callType", callType)
 
 	// 转发通话邀请给目标用户
 	callMsg := WSMessage{
@@ -1196,7 +1196,7 @@ func handleCallInvite(c *Client, data interface{}) {
 func handleCallAccept(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("通话接听数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("通话接听数据格式错误", "data", data)
 		return
 	}
 
@@ -1215,7 +1215,7 @@ func handleCallAccept(c *Client, data interface{}) {
 
 	signal := msgData["signal"]
 
-	log.Printf("用户 %d 接听用户 %d 的通话", c.userID, targetUserID)
+	logger.WithModule("WS").Info("用户接听通话", "userID", c.userID, "targetUserID", targetUserID)
 
 	// 转发接听消息给发起方
 	callMsg := WSMessage{
@@ -1234,7 +1234,7 @@ func handleCallAccept(c *Client, data interface{}) {
 func handleCallReject(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("通话拒绝数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("通话拒绝数据格式错误", "data", data)
 		return
 	}
 
@@ -1251,7 +1251,7 @@ func handleCallReject(c *Client, data interface{}) {
 		return
 	}
 
-	log.Printf("用户 %d 拒绝用户 %d 的通话", c.userID, targetUserID)
+	logger.WithModule("WS").Info("用户拒绝通话", "userID", c.userID, "targetUserID", targetUserID)
 
 	// 转发拒绝消息给发起方
 	callMsg := WSMessage{
@@ -1269,7 +1269,7 @@ func handleCallReject(c *Client, data interface{}) {
 func handleCallEnd(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("通话结束数据格式错误: %v", data)
+		logger.WithModule("WS").Warn("通话结束数据格式错误", "data", data)
 		return
 	}
 
@@ -1286,7 +1286,7 @@ func handleCallEnd(c *Client, data interface{}) {
 		return
 	}
 
-	log.Printf("用户 %d 结束与用户 %d 的通话", c.userID, targetUserID)
+	logger.WithModule("WS").Info("用户结束通话", "userID", c.userID, "targetUserID", targetUserID)
 
 	// 转发通话结束消息给对方
 	callMsg := WSMessage{
@@ -1340,12 +1340,12 @@ func (h *Hub) UpdateUserStatus(userID uint, status string) {
 		"last_online": now,
 	})
 	if result.Error != nil {
-		log.Printf("更新用户状态失败: userID=%d, error=%v", userID, result.Error)
+		logger.WithModule("WS").Error("更新用户状态失败", "userID", userID, "error", result.Error)
 		return
 	}
 
 	if result.RowsAffected > 0 {
-		log.Printf("用户 %d 状态变更为 %s", userID, status)
+		logger.WithModule("WS").Info("用户状态变更", "userID", userID, "status", status)
 		h.statusDebouncer.Debounce(userID, func() {
 			h.BroadcastUserStatus(userID, status)
 		})
@@ -1358,7 +1358,7 @@ func (h *Hub) BroadcastUserStatus(userID uint, status string) {
 	var user model.User
 	if err := db.Select("id", "username", "nickname", "avatar", "status", "last_online").
 		First(&user, userID).Error; err != nil {
-		log.Printf("获取用户信息失败: userID=%d, error=%v", userID, err)
+		logger.WithModule("WS").Error("获取用户信息失败", "userID", userID, "error", err)
 		return
 	}
 
@@ -1389,7 +1389,7 @@ func (h *Hub) BroadcastUserStatus(userID uint, status string) {
 
 	h.BroadcastToConversationMembers(userID, jsonMsg)
 
-	log.Printf("已向订阅者广播用户 %d 的状态变更: %s", userID, status)
+	logger.WithModule("WS").Debug("已向订阅者广播用户状态变更", "userID", userID, "status", status)
 }
 
 // BroadcastToConversationMembers 向用户所在会话的成员广播状态变更
@@ -1401,7 +1401,7 @@ func (h *Hub) BroadcastToConversationMembers(userID uint, message []byte) {
 		Where("user_id = ?", userID).
 		Group("conversation_id").
 		Find(&members).Error; err != nil {
-		log.Printf("获取用户会话失败: userID=%d, error=%v", userID, err)
+		logger.WithModule("WS").Error("获取用户会话失败", "userID", userID, "error", err)
 		return
 	}
 
@@ -1474,18 +1474,18 @@ func (h *Hub) CleanupUserSubscriptions(userID uint) {
 func handleSubscribeUserStatus(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("订阅用户状态数据格式错误")
+		logger.WithModule("WS").Warn("订阅用户状态数据格式错误")
 		return
 	}
 
 	targetUserIDFloat, ok := msgData["user_id"].(float64)
 	if !ok {
-		log.Printf("订阅用户状态缺少 user_id")
+		logger.WithModule("WS").Warn("订阅用户状态缺少user_id")
 		return
 	}
 
 	targetUserID := uint(targetUserIDFloat)
-	log.Printf("用户 %d 订阅用户 %d 的状态变更", c.userID, targetUserID)
+	logger.WithModule("WS").Info("用户订阅状态变更", "subscriberID", c.userID, "targetUserID", targetUserID)
 
 	c.hub.SubscribeUserStatus(c.userID, targetUserID)
 
@@ -1520,18 +1520,18 @@ func handleSubscribeUserStatus(c *Client, data interface{}) {
 func handleUnsubscribeUserStatus(c *Client, data interface{}) {
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
-		log.Printf("取消订阅用户状态数据格式错误")
+		logger.WithModule("WS").Warn("取消订阅用户状态数据格式错误")
 		return
 	}
 
 	targetUserIDFloat, ok := msgData["user_id"].(float64)
 	if !ok {
-		log.Printf("取消订阅用户状态缺少 user_id")
+		logger.WithModule("WS").Warn("取消订阅用户状态缺少user_id")
 		return
 	}
 
 	targetUserID := uint(targetUserIDFloat)
-	log.Printf("用户 %d 取消订阅用户 %d 的状态变更", c.userID, targetUserID)
+	logger.WithModule("WS").Info("用户取消订阅状态变更", "subscriberID", c.userID, "targetUserID", targetUserID)
 
 	c.hub.UnsubscribeUserStatus(c.userID, targetUserID)
 }

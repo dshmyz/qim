@@ -3,8 +3,9 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
+
+	"qim-server/pkg/logger"
 )
 
 // IntelligentTroubleshootingTool 智能故障排查工具
@@ -63,7 +64,7 @@ func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}, 
 	if t.aiService != nil {
 		result, err := t.analyzeWithLLM(symptom, server, logs)
 		if err != nil {
-			log.Printf("[IntelligentTroubleshootingTool] LLM analysis failed, falling back to rule-based: %v", err)
+			logger.WithModule("IntelligentTroubleshootingTool").Error("LLM analysis failed, falling back to rule-based", "error", err)
 		} else {
 			return result, nil
 		}
@@ -245,7 +246,7 @@ func (t *CommandGenerationTool) Execute(params map[string]interface{}, ctx *Call
 	if t.aiService != nil {
 		result, err := t.generateWithLLM(description, platform, format)
 		if err != nil {
-			log.Printf("[CommandGenerationTool] LLM generation failed, falling back to rule-based: %v", err)
+			logger.WithModule("CommandGenerationTool").Error("LLM generation failed, falling back to rule-based", "error", err)
 		} else {
 			return result, nil
 		}
@@ -428,7 +429,7 @@ func (t *LogAnalysisTool) Execute(params map[string]interface{}, ctx *CallerCont
 	if t.aiService != nil {
 		result, err := t.analyzeWithLLM(logContent, service, severity)
 		if err != nil {
-			log.Printf("[LogAnalysisTool] LLM analysis failed, falling back to rule-based: %v", err)
+			logger.WithModule("LogAnalysisTool").Error("LLM analysis failed, falling back to rule-based", "error", err)
 		} else {
 			return result, nil
 		}
@@ -610,7 +611,7 @@ func (t *IntelligentAlertTool) Execute(params map[string]interface{}, ctx *Calle
 	if t.aiService != nil {
 		result, err := t.analyzeWithLLM(alertContent, severity, service)
 		if err != nil {
-			log.Printf("[IntelligentAlertTool] LLM analysis failed, falling back to rule-based: %v", err)
+			logger.WithModule("IntelligentAlertTool").Error("LLM analysis failed, falling back to rule-based", "error", err)
 		} else {
 			return result, nil
 		}
@@ -804,7 +805,7 @@ func (t *OpsKnowledgeTool) Execute(params map[string]interface{}, ctx *CallerCon
 	if t.aiService != nil {
 		result, err := t.answerWithLLM(question, category)
 		if err != nil {
-			log.Printf("[OpsKnowledgeTool] LLM answer failed, falling back to rule-based: %v", err)
+			logger.WithModule("OpsKnowledgeTool").Error("LLM answer failed, falling back to rule-based", "error", err)
 		} else {
 			return result, nil
 		}

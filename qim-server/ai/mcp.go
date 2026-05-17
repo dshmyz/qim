@@ -3,10 +3,11 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"qim-server/pkg/logger"
 )
 
 // MCPTool 定义工具接口
@@ -29,12 +30,12 @@ type CallerContext struct {
 
 // MCPServer MCP服务器
 type MCPServer struct {
-	tools      map[string]MCPTool
+	tools        map[string]MCPTool
 	enabledTools map[string]bool // 工具启用状态
-	tokens     map[string]string
-	mu         sync.RWMutex
-	server     *http.Server
-	authoriz   bool
+	tokens       map[string]string
+	mu           sync.RWMutex
+	server       *http.Server
+	authoriz     bool
 }
 
 // NewMCPServer 创建MCP服务器
@@ -63,7 +64,7 @@ func (s *MCPServer) RegisterTool(tool MCPTool) {
 	defer s.mu.Unlock()
 	s.tools[tool.Name()] = tool
 	s.enabledTools[tool.Name()] = true // 默认启用
-	log.Printf("Registered tool: %s", tool.Name())
+	logger.WithModule("MCPServer").Info("Registered tool", "tool", tool.Name())
 }
 
 // GetTool 获取工具
@@ -151,7 +152,7 @@ func (s *MCPServer) Start(addr string) error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Printf("MCP server starting on %s", addr)
+	logger.WithModule("MCPServer").Info("MCP server starting", "addr", addr)
 	return s.server.ListenAndServe()
 }
 

@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"qim-server/ai"
+	"qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -107,7 +107,7 @@ func (s *AvatarMemoryService) GetMemoryCount(userID uint) (int64, error) {
 
 func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryRecord, error) {
 	if s.db == nil {
-		log.Printf("[AvatarMemoryService] 向量数据库未初始化，返回空记忆列表")
+		logger.WithModule("AvatarMemoryService").Info("向量数据库未初始化，返回空记忆列表")
 		return []MemoryRecord{}, nil
 	}
 
@@ -122,7 +122,7 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 		TopK:      limit,
 	})
 	if err != nil {
-		log.Printf("[AvatarMemoryService] 获取用户记忆失败: userID=%d, error=%v", userID, err)
+		logger.WithModule("AvatarMemoryService").Error("获取用户记忆失败", "userID", userID, "error", err)
 		return nil, err
 	}
 
@@ -140,7 +140,7 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 			Metadata: metadataStr,
 		})
 	}
-	log.Printf("[AvatarMemoryService] 获取用户记忆成功: userID=%d, count=%d", userID, len(records))
+	logger.WithModule("AvatarMemoryService").Info("获取用户记忆成功", "userID", userID, "count", len(records))
 	return records, nil
 }
 

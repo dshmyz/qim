@@ -3,20 +3,19 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"strconv"
-	"strings"
-	"time"
-
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/mention"
 	"qim-server/pkg/response"
 	"qim-server/service"
 	"qim-server/utils"
 	"qim-server/ws"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,18 +63,18 @@ func InitSmartReplyGraph() error {
 		return fmt.Errorf("SmartReplyEngine not initialized")
 	}
 
-	log.Printf("[SmartReplyGraph] 开始初始化...")
-	log.Printf("[SmartReplyGraph] aiService: %v", smartReplyEngine.aiService != nil)
-	log.Printf("[SmartReplyGraph] unifiedKnowledge: %v", smartReplyEngine.unifiedKnowledge != nil)
-	log.Printf("[SmartReplyGraph] memorySvc: %v", smartReplyEngine.memorySvc != nil)
+	logger.WithModule("SmartReplyGraph").Info("开始初始化...")
+	logger.WithModule("SmartReplyGraph").Info("aiService", "initialized", smartReplyEngine.aiService != nil)
+	logger.WithModule("SmartReplyGraph").Info("unifiedKnowledge", "initialized", smartReplyEngine.unifiedKnowledge != nil)
+	logger.WithModule("SmartReplyGraph").Info("memorySvc", "initialized", smartReplyEngine.memorySvc != nil)
 
 	err := smartReplyEngine.InitSmartReplyGraph()
 	if err != nil {
-		log.Printf("[SmartReplyGraph] 初始化失败: %v", err)
+		logger.WithModule("SmartReplyGraph").Error("初始化失败", "error", err)
 		return err
 	}
 
-	log.Printf("[SmartReplyGraph] 初始化成功")
+	logger.WithModule("SmartReplyGraph").Info("初始化成功")
 	return nil
 }
 
@@ -508,7 +507,7 @@ func StreamMessage(c *gin.Context) {
 		db := database.GetDB()
 		var botConv model.BotConversation
 		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
-			log.Printf("[StreamMessage] 查找机器人会话关联失败: %v", err)
+			logger.WithModule("StreamMessage").Error("查找机器人会话关联失败", "error", err)
 			close(responseChan)
 			doneChan <- true
 			return
@@ -516,7 +515,7 @@ func StreamMessage(c *gin.Context) {
 
 		var bot model.Bot
 		if err := db.First(&bot, botConv.BotID).Error; err != nil {
-			log.Printf("[StreamMessage] 查找机器人信息失败: %v", err)
+			logger.WithModule("StreamMessage").Error("查找机器人信息失败", "error", err)
 			close(responseChan)
 			doneChan <- true
 			return
@@ -535,8 +534,12 @@ func StreamMessage(c *gin.Context) {
 		var messages []model.Message
 		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
-		log.Printf("[StreamMessage] 加载历史消息: conversation_id=%s, 消息数=%d, bot_id=%d, virtual_user_id=%v",
-			convID, len(messages), botConv.BotID, bot.VirtualUserID)
+		logger.WithModule("StreamMessage").Info("加载历史消息",
+			"conversationID", convID,
+			"messageCount", len(messages),
+			"botID", botConv.BotID,
+			"virtualUserID", bot.VirtualUserID,
+		)
 
 		var aiMessages []ai.Message
 		aiMessages = append(aiMessages, ai.Message{
@@ -564,12 +567,12 @@ func StreamMessage(c *gin.Context) {
 			})
 		}
 
-		log.Printf("[StreamMessage] 准备调用 AI,消息总数=%d", len(aiMessages))
+		logger.WithModule("StreamMessage").Info("准备调用 AI", "messageCount", len(aiMessages))
 		for i, aiMsg := range aiMessages {
 			if i == 0 {
-				log.Printf("[StreamMessage] AI消息[%d]: role=%s (system)", i, aiMsg.Role)
+				logger.WithModule("StreamMessage").Info("AI消息 - system", "index", i, "role", aiMsg.Role)
 			} else {
-				log.Printf("[StreamMessage] AI消息[%d]: role=%s, content=%s", i, aiMsg.Role, aiMsg.Content[:min(50, len(aiMsg.Content))])
+				logger.WithModule("StreamMessage").Info("AI消息", "index", i, "role", aiMsg.Role, "content", aiMsg.Content[:min(50, len(aiMsg.Content))])
 			}
 		}
 
@@ -581,7 +584,7 @@ func StreamMessage(c *gin.Context) {
 		})
 
 		if err != nil {
-			log.Printf("[StreamMessage] AI API 调用失败: %v", err)
+			logger.WithModule("StreamMessage").Error("AI API 调用失败", "error", err)
 			errorMsg := "抱歉，AI 服务暂时不可用，请稍后再试。"
 			responseChan <- ai.StreamChunk{Content: errorMsg}
 			fullResponse = errorMsg
@@ -607,7 +610,7 @@ func StreamMessage(c *gin.Context) {
 		if len(fullResponse) < logLength {
 			logLength = len(fullResponse)
 		}
-		log.Printf("[StreamMessage] 机器人回复保存成功: %s", fullResponse[:logLength])
+		logger.WithModule("StreamMessage").Info("机器人回复保存成功", "content", fullResponse[:logLength])
 	})
 
 	c.Writer.Write([]byte("data: \n\n"))

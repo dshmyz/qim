@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -169,7 +169,7 @@ func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[SmartReplyGraph] 生成回复耗时: %v", time.Since(startTime))
+	logger.WithModule("SmartReplyGraph").Info("生成回复耗时", "duration", time.Since(startTime))
 	return result, nil
 }
 

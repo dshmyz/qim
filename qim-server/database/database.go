@@ -2,14 +2,15 @@ package database
 
 import (
 	"fmt"
-	"log"
-	"time"
+	"os"
 	"qim-server/config"
+	"qim-server/pkg/logger"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormLogger "gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -26,21 +27,23 @@ func Init(cfg *config.Config) *gorm.DB {
 			cfg.Database.Database,
 		)
 		DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Warn),
+			Logger: gormLogger.Default.LogMode(gormLogger.Warn),
 		})
 	} else {
 		DB, err = gorm.Open(sqlite.Open(cfg.Database.Path), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Warn),
+			Logger: gormLogger.Default.LogMode(gormLogger.Warn),
 		})
 	}
 
 	if err != nil {
-		log.Fatal("数据库连接失败:", err)
+		logger.WithModule("Database").Error("数据库连接失败", "error", err)
+		os.Exit(1)
 	}
 
 	sqlDB, err := DB.DB()
 	if err != nil {
-		log.Fatal("获取数据库实例失败:", err)
+		logger.WithModule("Database").Error("获取数据库实例失败", "error", err)
+		os.Exit(1)
 	}
 
 	maxOpenConns := cfg.Database.MaxOpenConns
@@ -60,18 +63,18 @@ func Init(cfg *config.Config) *gorm.DB {
 	sqlDB.SetMaxIdleConns(maxIdleConns)
 	sqlDB.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
 
-	log.Printf("数据库连接成功，连接池配置: MaxOpen=%d, MaxIdle=%d, MaxLifetime=%ds", maxOpenConns, maxIdleConns, maxLifetime)
+	logger.WithModule("Database").Info("数据库连接成功", "maxOpen", maxOpenConns, "maxIdle", maxIdleConns, "maxLifetime", maxLifetime)
 	return DB
 }
 
 func Close(db *gorm.DB) {
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Println("获取数据库实例失败:", err)
+		logger.WithModule("Database").Error("获取数据库实例失败", "error", err)
 		return
 	}
 	if err := sqlDB.Close(); err != nil {
-		log.Println("数据库关闭失败:", err)
+		logger.WithModule("Database").Error("数据库关闭失败", "error", err)
 	}
 }
 

@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"qim-server/ai"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/prompt"
@@ -112,6 +112,21 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		UserID:         userID,
 	}
 
+	// 先手动执行 prepare，检查知识范围
+	preparedInput, err := g.prepare(ctx, input)
+	if err != nil {
+		return "", err
+	}
+
+	// 检查知识范围外是否应跳过回复
+	if !preparedInput.ReplyStrategy.ReplyOutOfScope {
+		hasKnowledge := preparedInput.NoteContext != "" || preparedInput.GroupKnowledge != "" || preparedInput.MemoryContext != ""
+		if !hasKnowledge {
+			logger.WithModule("AvatarReplyGraph").Info("知识范围外且 ReplyOutOfScope=false，跳过回复")
+			return "", nil
+		}
+	}
+
 	// 构建 CallerContext 注入到 context，供 EinoChatModel 中获取
 	callerCtx := &ai.CallerContext{
 		UserID:       userID,
@@ -129,11 +144,11 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 	ctx = WithCallerContext(ctx, callerCtx)
 
 	startTime := time.Now()
-	reply, err := simpleExecuteWithCache(ctx, nil, "", 0, g.runnable, input)
+	reply, err := simpleExecuteWithCache(ctx, nil, "", 0, g.runnable, preparedInput)
 	if err != nil {
 		return "", err
 	}
-	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v, 回复长度: %d, 回复内容: %q", time.Since(startTime), len(reply), reply)
+	logger.WithModule("AvatarReplyGraph").Info("生成回复", "duration", time.Since(startTime), "length", len(reply), "reply", reply)
 	return reply, nil
 }
 
@@ -152,16 +167,16 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 
 	if config.KnowledgeScopeJSON != "" {
 		if err := json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope); err != nil {
-			log.Printf("[AvatarReplyGraph] 解析 KnowledgeScopeJSON 失败: %v", err)
+			logger.WithModule("AvatarReplyGraph").Error("解析 KnowledgeScopeJSON 失败", "error", err)
 		}
 	}
 	if config.ReplyStrategyJSON != "" {
 		if err := json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy); err != nil {
-			log.Printf("[AvatarReplyGraph] 解析 ReplyStrategyJSON 失败: %v", err)
+			logger.WithModule("AvatarReplyGraph").Error("解析 ReplyStrategyJSON 失败", "error", err)
 		}
 	}
 
-	if g.noteSvc != nil {
+	if g.noteSvc != nil && input.KnowledgeScope.Notes {
 		noteResults, err := g.noteSvc.SearchNotes(input.UserID, input.Message, 3)
 		if err == nil && len(noteResults) > 0 {
 			var parts []string
@@ -199,7 +214,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		}
 	}
 
-	if g.memorySvc != nil {
+	if g.memorySvc != nil && input.KnowledgeScope.Tasks {
 		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
 		if err == nil && len(memoryResults) > 0 {
 			var parts []string
@@ -210,7 +225,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		}
 	}
 
-	if input.ConversationID > 0 {
+	if input.ConversationID > 0 && input.KnowledgeScope.ConversationHistory {
 		input.History = g.conversationHistory(input.ConversationID, 10)
 	}
 

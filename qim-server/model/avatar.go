@@ -136,4 +136,5 @@ type AvatarReplyStrategy struct {
 	ReplyDelay          int     `json:"replyDelay"`     // 秒
 	ConfidenceThreshold float64 `json:"confidenceThreshold"`
 	DisclaimerStyle     string  `json:"disclaimerStyle"` // badge, footer, both
+	ReplyOutOfScope     bool    `json:"replyOutOfScope"` // 是否回复知识范围外的消息，false 时静默跳过不回复
 }

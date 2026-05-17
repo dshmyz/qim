@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"qim-server/ai"
+	"qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -22,8 +22,8 @@ func NewUnifiedMCPBridge(qimMCPSrv *ai.MCPServer, cortexDB *cortexdb.DB) *Unifie
 	}
 
 	bridge.registerKnowledgeTools()
-	log.Printf("[UnifiedMCPBridge] 桥接完成：QIM 工具 %d 个 → 已添加 cortexdb 知识工具",
-		len(qimMCPSrv.ListTools()))
+	logger.WithModule("UnifiedMCPBridge").Info("桥接完成",
+		"toolCount", len(qimMCPSrv.ListTools()))
 	return bridge
 }
 
@@ -153,9 +153,9 @@ func (t *KnowledgeSaveTool) Execute(params map[string]interface{}, ctx *ai.Calle
 	}
 
 	return map[string]interface{}{
-		"knowledge_id":  resp.Knowledge.ID,
-		"chunk_count":   len(resp.Knowledge.ChunkIDs),
-		"entity_count":  len(resp.EntityNodeIDs),
+		"knowledge_id":   resp.Knowledge.ID,
+		"chunk_count":    len(resp.Knowledge.ChunkIDs),
+		"entity_count":   len(resp.EntityNodeIDs),
 		"relation_count": len(resp.RelationEdgeIDs),
 	}, nil
 }

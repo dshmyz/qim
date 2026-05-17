@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"qim-server/ai"
+	"qim-server/pkg/logger"
 )
 
 // NoteVectorService 笔记向量化和检索服务
@@ -44,7 +44,7 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 		// 生成向量
 		embedding, err := s.aiService.Embed(chunk.Content)
 		if err != nil {
-			log.Printf("[NoteVectorService] 笔记 %d 第 %d 块向量化失败: %v", noteID, i, err)
+			logger.WithModule("NoteVectorService").Error("笔记向量化失败", "noteID", noteID, "chunk", i, "error", err)
 			continue
 		}
 
@@ -58,11 +58,11 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 		}
 
 		if err := s.vectorSvc.AddVector(ctx, collectionName, docID, embedding, chunk.Content, metadata); err != nil {
-			log.Printf("[NoteVectorService] 笔记 %d 第 %d 块存储失败: %v", noteID, i, err)
+			logger.WithModule("NoteVectorService").Error("笔记向量存储失败", "noteID", noteID, "chunk", i, "error", err)
 		}
 	}
 
-	log.Printf("[NoteVectorService] 笔记 %d 向量化完成，共 %d 块", noteID, len(chunks))
+	logger.WithModule("NoteVectorService").Info("笔记向量化完成", "noteID", noteID, "chunkCount", len(chunks))
 	return nil
 }
 
@@ -106,6 +106,6 @@ func (s *NoteVectorService) deleteNoteVectors(ctx context.Context, collectionNam
 	if err != nil {
 		return fmt.Errorf("删除笔记 %d 的向量失败: %w", noteID, err)
 	}
-	log.Printf("[NoteVectorService] 删除笔记 %d 的向量，共 %d 条", noteID, deleted)
+	logger.WithModule("NoteVectorService").Info("删除笔记向量", "noteID", noteID, "deletedCount", deleted)
 	return nil
 }

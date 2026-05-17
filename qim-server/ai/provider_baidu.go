@@ -2,9 +2,10 @@ package ai
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
+
+	"qim-server/pkg/logger"
 )
 
 // BaiduProvider 百度文心一言提供商
@@ -70,7 +71,7 @@ func (p *BaiduProvider) Chat(messages []Message) (string, error) {
 		return "", err
 	}
 
-	log.Printf("[Baidu] Making request with model: %s", p.config.Model)
+	logger.WithModule("Baidu").Debug("Making request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"messages":    messages,
@@ -122,7 +123,7 @@ func (p *BaiduProvider) ChatStream(messages []Message, onChunk func(chunk Stream
 		return err
 	}
 
-	log.Printf("[Baidu] Making streaming request with model: %s", p.config.Model)
+	logger.WithModule("Baidu").Debug("Making streaming request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"messages":    messages,
@@ -227,7 +228,7 @@ func (p *BaiduProvider) Embedding(text string) ([]float32, error) {
 						result[i] = float32(f)
 					}
 				}
-				log.Printf("[Baidu] Embedding completed, model=%s, dimension=%d", embeddingModel, len(result))
+				logger.WithModule("Baidu").Info("Embedding completed", "model", embeddingModel, "dimension", len(result))
 				return result, nil
 			}
 		}

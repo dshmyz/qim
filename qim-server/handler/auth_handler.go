@@ -2,7 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"qim-server/di"
 	"qim-server/middleware"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -57,19 +57,19 @@ func Login(c *gin.Context) {
 	db := database.GetDB()
 	var user model.User
 	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
-		log.Printf("Login failed: user=%s, ip=%s, os=%s, version=%s, error=user not found", req.Username, ip, op, clientVersion)
+		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found")
 		response.Unauthorized(c, "用户名或密码错误")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		log.Printf("Login failed: user=%s, ip=%s, os=%s, version=%s, error=invalid password", req.Username, ip, op, clientVersion)
+		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "invalid password")
 		response.Unauthorized(c, "用户名或密码错误")
 		return
 	}
 
 	if user.Type == "bot" || user.Type == "system" || user.Type == "api" {
-		log.Printf("Login blocked: user=%s, type=%s, ip=%s — 非用户账户禁止登录", req.Username, user.Type, ip)
+		logger.WithModule("Auth").Info("Login blocked", "user", req.Username, "type", user.Type, "ip", ip, "reason", "非用户账户禁止登录")
 		response.Forbidden(c, "该账户类型不支持登录")
 		return
 	}
@@ -84,7 +84,7 @@ func Login(c *gin.Context) {
 	user.IP = ip
 	db.Save(&user)
 
-	log.Printf("Login success: user=%s, ip=%s, os=%s, version=%s", req.Username, ip, op, clientVersion)
+	logger.WithModule("Auth").Info("Login success", "user", req.Username, "ip", ip, "os", op, "version", clientVersion)
 
 	var userRoles []model.UserRole
 	db.Where("user_id = ?", user.ID).Find(&userRoles)

@@ -47,6 +47,7 @@ export interface AvatarReplyStrategy {
   replyDelay: number
   confidenceThreshold: number
   disclaimerStyle: 'badge' | 'footer' | 'both'
+  replyOutOfScope: boolean // 是否回复知识范围外的消息，false 时静默跳过
 }
 
 export interface AvatarSession {
@@ -94,7 +95,8 @@ export const DEFAULT_AVATAR_CONFIG: CreateAvatarConfigRequest = {
     maxReplyLength: 'medium',
     replyDelay: 3,
     confidenceThreshold: 0.6,
-    disclaimerStyle: 'badge'
+    disclaimerStyle: 'badge',
+    replyOutOfScope: false
   },
   takeoverCooldown: 10,
   customPersonaAddon: ''

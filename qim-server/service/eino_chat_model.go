@@ -2,9 +2,8 @@ package service
 
 import (
 	"context"
-	"log"
-
 	"qim-server/ai"
+	"qim-server/pkg/logger"
 	"qim-server/utils"
 
 	"github.com/cloudwego/eino/components/model"
@@ -55,7 +54,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 
 	// 打印发送给模型的 Prompt，方便排查拦截原因
 	for _, msg := range aiMessages {
-		log.Printf("[EinoChatModel] [%s]: %s", msg.Role, msg.Content)
+		logger.WithModule("EinoChatModel").Info("Prompt", "role", msg.Role, "content", msg.Content)
 	}
 
 	sr, sw := schema.Pipe[*schema.Message](0)
@@ -73,7 +72,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 		})
 
 		if err != nil {
-			log.Printf("[EinoChatModel] Stream error: %v", err)
+			logger.WithModule("EinoChatModel").Error("Stream error", "error", err)
 			sw.Send(nil, err)
 		}
 	})

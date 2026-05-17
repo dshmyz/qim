@@ -3,12 +3,12 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -371,7 +371,7 @@ func (t *SystemNotificationTool) Execute(params map[string]interface{}, ctx *ai.
 
 	db.Create(&sysMsg)
 
-	log.Printf("[SystemNotification] 已发送通知: %s -> %s", title, targetType)
+	logger.WithModule("SystemNotification").Info("已发送通知", "title", title, "targetType", targetType)
 
 	return map[string]interface{}{
 		"result": "success",
@@ -392,5 +392,5 @@ func RegisterAdminTools(mcpServer *ai.MCPServer) {
 	mcpServer.RegisterTool(&UserManagementTool{})
 	mcpServer.RegisterTool(&GroupManagementTool{})
 	mcpServer.RegisterTool(&SystemNotificationTool{})
-	log.Printf("已注册管理工具: user_management, group_management, system_notification")
+	logger.WithModule("AdminTools").Info("已注册管理工具", "tools", "user_management, group_management, system_notification")
 }

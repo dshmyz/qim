@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
 	"qim-server/utils"
 	"strconv"
@@ -221,7 +221,7 @@ func ProcessGroupDocument(c *gin.Context) {
 
 	utils.SafeGoWithLabel("doc-process", func() {
 		if err := docSvc.ProcessDocument(doc.ID); err != nil {
-			log.Printf("[Handler] 文档处理失败 doc_id=%d: %v", doc.ID, err)
+			logger.WithModule("Handler").Error("文档处理失败", "doc_id", doc.ID, "error", err)
 		}
 	})
 

@@ -3,8 +3,9 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	"qim-server/pkg/logger"
 )
 
 // TencentProvider 腾讯混元大模型提供商
@@ -38,7 +39,7 @@ func (p *TencentProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("Tencent Secret ID or Secret Key is not configured")
 	}
 
-	log.Printf("[Tencent] Making request with model: %s", p.config.Model)
+	logger.WithModule("Tencent").Debug("Making request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"Model":       p.config.Model,
@@ -151,7 +152,7 @@ func (p *TencentProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("no embedding data in Tencent response")
 	}
 
-	log.Printf("[Tencent] Embedding completed, model=%s, dimension=%d", response.Response.Model, len(response.Response.Data[0].Embedding))
+	logger.WithModule("Tencent").Info("Embedding completed", "model", response.Response.Model, "dimension", len(response.Response.Data[0].Embedding))
 
 	return response.Response.Data[0].Embedding, nil
 }

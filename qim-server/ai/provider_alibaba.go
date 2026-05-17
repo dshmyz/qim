@@ -3,8 +3,9 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	"qim-server/pkg/logger"
 )
 
 // AlibabaProvider 阿里通义千问提供商
@@ -38,7 +39,7 @@ func (p *AlibabaProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("Alibaba API key is not configured")
 	}
 
-	log.Printf("[Alibaba] Making request with model: %s", p.config.Model)
+	logger.WithModule("Alibaba").Debug("Making request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"model": p.config.Model,
@@ -85,7 +86,7 @@ func (p *AlibabaProvider) ChatStream(messages []Message, onChunk func(chunk Stre
 		return fmt.Errorf("Alibaba API key is not configured")
 	}
 
-	log.Printf("[Alibaba] Making streaming request with model: %s", p.config.Model)
+	logger.WithModule("Alibaba").Debug("Making streaming request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"model": p.config.Model,
@@ -188,7 +189,7 @@ func (p *AlibabaProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("no embedding data in Alibaba response")
 	}
 
-	log.Printf("[Alibaba] Embedding completed, model=%s, dimension=%d", response.Model, len(response.Data[0].Embedding))
+	logger.WithModule("Alibaba").Info("Embedding completed", "model", response.Model, "dimension", len(response.Data[0].Embedding))
 
 	return response.Data[0].Embedding, nil
 }

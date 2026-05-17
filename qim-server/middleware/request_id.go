@@ -2,10 +2,11 @@ package middleware
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"qim-server/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,7 +31,7 @@ func RecoveryMiddleware() gin.HandlerFunc {
 				requestID, _ := c.Get("request_id")
 
 				stack := string(debug.Stack())
-				log.Printf("[Recovery] panic recovered: %v\nstack trace:\n%s", err, stack)
+				logger.WithModule("Recovery").Error("panic recovered", "error", err, "stack", stack)
 
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"code":       -1,

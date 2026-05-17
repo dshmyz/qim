@@ -139,7 +139,48 @@ func (s *ApprovalService) listBotApprovals(status string) ([]model.ApprovalListI
 }
 
 func (s *ApprovalService) listChannelApprovals(status string) ([]model.ApprovalListItem, int64, error) {
-	return []model.ApprovalListItem{}, 0, nil
+	var channels []model.Channel
+	query := s.db.Model(&model.Channel{})
+
+	if status != "all" && status != "" {
+		query = query.Where("approval_status = ?", status)
+	} else {
+		query = query.Where("approval_status != 'none'")
+	}
+
+	if err := query.Order("applied_at DESC").Find(&channels).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]model.ApprovalListItem, 0, len(channels))
+	for _, channel := range channels {
+		item := model.ApprovalListItem{
+			ID:             channel.ID,
+			Type:           model.ApprovalTypeChannel,
+			CreatorID:      channel.CreatorID,
+			Name:           channel.Name,
+			Description:    channel.Description,
+			ApprovalStatus: channel.ApprovalStatus,
+			AppliedAt:      channel.AppliedAt,
+			ApprovedAt:     channel.ApprovedAt,
+			RejectReason:   channel.RejectReason,
+			CreatedAt:      channel.CreatedAt,
+		}
+
+		var creator model.User
+		if err := s.db.Where("id = ?", channel.CreatorID).First(&creator).Error; err == nil {
+			item.CreatorName = creator.Nickname
+			item.CreatorAvatar = creator.Avatar
+		}
+
+		item.Extra = map[string]any{
+			"channel_id":          channel.ID,
+			"publish_permission":  channel.PublishPermission,
+		}
+		items = append(items, item)
+	}
+
+	return items, int64(len(items)), nil
 }
 
 func (s *ApprovalService) listGroupAIApprovals(status string) ([]model.ApprovalListItem, int64, error) {
@@ -263,6 +304,29 @@ func (s *ApprovalService) approveBot(id uint, adminID uint, now *time.Time) erro
 }
 
 func (s *ApprovalService) approveChannel(id uint, adminID uint, now *time.Time) error {
+	var channel model.Channel
+	if err := s.db.Where("id = ? AND approval_status = ?", id, model.ApprovalStatusPending).First(&channel).Error; err != nil {
+		return err
+	}
+
+	if err := s.db.Model(&channel).Updates(map[string]interface{}{
+		"approval_status": model.ApprovalStatusApproved,
+		"approved_at":     now,
+		"approved_by":     adminID,
+	}).Error; err != nil {
+		return err
+	}
+
+	s.SendNotification(ApprovalNotification{
+		EntityName: channel.Name,
+		EntityType: model.ApprovalTypeChannel,
+		UserID:     channel.CreatorID,
+		Action:     ApprovalActionApproved,
+		ExtraContext: map[string]any{
+			"channel_id": channel.ID,
+		},
+	})
+
 	return nil
 }
 
@@ -374,6 +438,31 @@ func (s *ApprovalService) rejectBot(id uint, adminID uint, now *time.Time, reaso
 }
 
 func (s *ApprovalService) rejectChannel(id uint, adminID uint, now *time.Time, reason string) error {
+	var channel model.Channel
+	if err := s.db.Where("id = ? AND approval_status = ?", id, model.ApprovalStatusPending).First(&channel).Error; err != nil {
+		return err
+	}
+
+	if err := s.db.Model(&channel).Updates(map[string]interface{}{
+		"approval_status": model.ApprovalStatusRejected,
+		"reject_reason":   reason,
+		"approved_at":     now,
+		"approved_by":     adminID,
+	}).Error; err != nil {
+		return err
+	}
+
+	s.SendNotification(ApprovalNotification{
+		EntityName: channel.Name,
+		EntityType: model.ApprovalTypeChannel,
+		UserID:     channel.CreatorID,
+		Action:     ApprovalActionRejected,
+		ExtraContext: map[string]any{
+			"channel_id":   channel.ID,
+			"reject_reason": reason,
+		},
+	})
+
 	return nil
 }
 

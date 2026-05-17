@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"qim-server/model"
+	"qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 	"gorm.io/gorm"
@@ -158,8 +158,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 		"chunk_count": chunkCount,
 	})
 
-	log.Printf("[GroupDocument] 文档处理完成: doc_id=%d, knowledge_id=%s, chunks=%d, entities=%d",
-		doc.ID, knowledgeID, chunkCount, len(resp.EntityNodeIDs))
+	logger.WithModule("GroupDocument").Info("文档处理完成", "doc_id", doc.ID, "knowledge_id", knowledgeID, "chunks", chunkCount, "entities", len(resp.EntityNodeIDs))
 	return nil
 }
 
@@ -239,7 +238,7 @@ func (s *GroupDocumentService) DeleteGroupVectors(groupID uint) error {
 	}
 
 	s.db.Where("group_id = ?", groupID).Delete(&model.DocumentProcessStatus{})
-	log.Printf("[GroupDocument] 群 %d 知识向量清理完成", groupID)
+	logger.WithModule("GroupDocument").Info("群知识向量清理完成", "groupID", groupID)
 	return nil
 }
 

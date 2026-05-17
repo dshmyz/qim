@@ -3,8 +3,9 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	"qim-server/pkg/logger"
 )
 
 // BytedanceProvider 字节跳动豆包提供商
@@ -38,7 +39,7 @@ func (p *BytedanceProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("Bytedance API key is not configured")
 	}
 
-	log.Printf("[Bytedance] Making request with model: %s", p.config.Model)
+	logger.WithModule("Bytedance").Debug("Making request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"model":       p.config.Model,
@@ -85,7 +86,7 @@ func (p *BytedanceProvider) ChatStream(messages []Message, onChunk func(chunk St
 		return fmt.Errorf("Bytedance API key is not configured")
 	}
 
-	log.Printf("[Bytedance] Making streaming request with model: %s", p.config.Model)
+	logger.WithModule("Bytedance").Debug("Making streaming request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"model":       p.config.Model,
@@ -194,7 +195,7 @@ func (p *BytedanceProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("no embedding data in Bytedance response")
 	}
 
-	log.Printf("[Bytedance] Embedding completed, model=%s, dimension=%d", response.Model, len(response.Data[0].Embedding))
+	logger.WithModule("Bytedance").Info("Embedding completed", "model", response.Model, "dimension", len(response.Data[0].Embedding))
 
 	return response.Data[0].Embedding, nil
 }

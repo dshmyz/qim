@@ -54,6 +54,14 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="可见范围" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.isGlobal" :type="scopeType(row.scopeType)" size="small">
+              {{ scopeLabel(row.scopeType) }}
+            </el-tag>
+            <span v-else style="color: var(--color-text-secondary); font-size: 12px;">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
@@ -132,6 +140,16 @@ const statusLabel = (status: string): string => {
 const statusType = (status: string): 'success' | 'info' => {
   const map: Record<string, 'success' | 'info'> = { active: 'success', inactive: 'info' }
   return map[status] || 'info'
+}
+
+const scopeLabel = (type: string): string => {
+  const map: Record<string, string> = { all: '所有人', users: '指定用户', organizations: '指定组织', roles: '指定角色' }
+  return map[type] || '所有人'
+}
+
+const scopeType = (type: string): '' | 'warning' | 'info' | 'success' => {
+  const map: Record<string, '' | 'warning' | 'info' | 'success'> = { all: '', users: 'warning', organizations: 'info', roles: 'success' }
+  return map[type] || ''
 }
 
 const fetchApps = async () => {

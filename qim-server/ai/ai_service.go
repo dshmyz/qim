@@ -3,7 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"qim-server/pkg/logger"
 	"strings"
 	"sync"
 )
@@ -23,7 +23,7 @@ func NewAIService(cfg *AIConfig) *AIService {
 	}
 
 	if err := svc.updateProvider(cfg); err != nil {
-		log.Printf("[AI Service] Warning: Failed to initialize provider: %v", err)
+		logger.WithModule("AI").Warn("Warning: Failed to initialize provider", "error", err)
 	}
 
 	return svc
@@ -47,7 +47,7 @@ func (s *AIService) GetMCPServer() *MCPServer {
 func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (reply string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[AI Service] PANIC in GetCompletionWithTools: %v", r)
+			logger.WithModule("AI").Error("PANIC in GetCompletionWithTools", "panic", r)
 			reply = ""
 			err = fmt.Errorf("panic in GetCompletionWithTools: %v", r)
 		}
@@ -88,22 +88,22 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	}
 
 	// 尝试使用 native function calling
-	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d (过滤前: %d)", len(toolDefs), len(tools))
+	logger.WithModule("AI").Info("尝试使用 native function calling", "toolCount", len(toolDefs), "totalTools", len(tools))
 	resp, err := provider.ChatWithTools(messages, toolDefs)
 	if err != nil {
-		log.Printf("[AI Service] ChatWithTools 失败: %v", err)
+		logger.WithModule("AI").Error("ChatWithTools 失败", "error", err)
 		// 降级到 prompt engineering
 		return s.getCompletionWithToolsPromptEngineering(messages, callerCtx)
 	}
-	log.Printf("[AI Service] ChatWithTools 返回: content=%q, toolCalls=%d", resp.Content, len(resp.ToolCalls))
+	logger.WithModule("AI").Info("ChatWithTools 返回", "content", resp.Content, "toolCalls", len(resp.ToolCalls))
 
 	// 如果没有工具调用，直接返回
 	if len(resp.ToolCalls) == 0 {
-		log.Printf("[AI Service] Native function calling - 无工具调用，直接返回回复")
+		logger.WithModule("AI").Info("Native function calling - 无工具调用，直接返回回复")
 		return resp.Content, nil
 	}
 
-	log.Printf("[AI Service] Native function calling - 检测到 %d 个工具调用", len(resp.ToolCalls))
+	logger.WithModule("AI").Info("Native function calling - 检测到工具调用", "count", len(resp.ToolCalls))
 
 	// 复制消息历史用于后续调用
 	newMessages := make([]Message, len(messages))
@@ -118,18 +118,18 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 
 	// 执行所有工具调用
 	for _, tc := range resp.ToolCalls {
-		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
+		logger.WithModule("AI").Info("执行工具", "name", tc.Name, "args", tc.Arguments)
 		// 参数为空时跳过，避免因空参数导致执行失败
 		if len(tc.Arguments) == 0 {
-			log.Printf("[AI Service] 工具参数为空，跳过: name=%s", tc.Name)
+			logger.WithModule("AI").Info("工具参数为空，跳过", "name", tc.Name)
 			continue
 		}
 		result, execErr := mcpServer.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
 		if execErr != nil {
-			log.Printf("[AI Service] 工具执行失败: %v", execErr)
+			logger.WithModule("AI").Error("工具执行失败", "error", execErr)
 			return "", execErr
 		}
-		log.Printf("[AI Service] 工具执行成功: %v", result)
+		logger.WithModule("AI").Info("工具执行成功", "result", result)
 
 		// 追加工具结果消息
 		resultJSON, _ := json.Marshal(result)
@@ -142,13 +142,13 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	}
 
 	// 再次调用 LLM 生成最终回复，不再提供工具，强制 LLM 生成文本内容
-	log.Printf("[AI Service] Native function calling - 请求最终回复, 消息数: %d", len(newMessages))
+	logger.WithModule("AI").Info("Native function calling - 请求最终回复", "messageCount", len(newMessages))
 	finalResp, err := provider.ChatWithTools(newMessages, nil)
 	if err != nil {
-		log.Printf("[AI Service] Native function calling - 最终回复失败: %v", err)
+		logger.WithModule("AI").Error("Native function calling - 最终回复失败", "error", err)
 		return "", err
 	}
-	log.Printf("[AI Service] Native function calling - 最终回复成功: %s", finalResp.Content[:min(200, len(finalResp.Content))])
+	logger.WithModule("AI").Info("Native function calling - 最终回复成功", "content", finalResp.Content[:min(200, len(finalResp.Content))])
 
 	return finalResp.Content, nil
 }
@@ -202,31 +202,31 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, 
 	}
 
 	// 第一次调用 AI
-	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(tools))
+	logger.WithModule("AI").Info("工具调用 - 发送请求到 AI", "toolCount", len(tools))
 	reply, err := s.GetCompletion(newMessages)
 	if err != nil {
-		log.Printf("[AI Service] 工具调用 - AI 请求失败: %v", err)
+		logger.WithModule("AI").Error("工具调用 - AI 请求失败", "error", err)
 		return "", err
 	}
-	log.Printf("[AI Service] 工具调用 - AI 回复: %s", reply[:min(200, len(reply))])
+	logger.WithModule("AI").Info("工具调用 - AI 回复", "reply", reply[:min(200, len(reply))])
 
 	// 检查是否包含工具调用
 	toolCall, err := parseToolCall(reply)
 	if err != nil || toolCall == nil {
-		log.Printf("[AI Service] 工具调用 - 未检测到工具调用")
+		logger.WithModule("AI").Info("工具调用 - 未检测到工具调用")
 		// 没有工具调用，直接返回回复
 		return reply, nil
 	}
 
-	log.Printf("[AI Service] 工具调用 - 检测到工具调用: name=%s, args=%v", toolCall.Name, toolCall.Arguments)
+	logger.WithModule("AI").Info("工具调用 - 检测到工具调用", "name", toolCall.Name, "args", toolCall.Arguments)
 
 	// 执行工具
 	result, err := mcpServer.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
 	if err != nil {
-		log.Printf("[AI Service] 工具执行失败: %v", err)
+		logger.WithModule("AI").Error("工具执行失败", "error", err)
 		return "", err
 	}
-	log.Printf("[AI Service] 工具执行成功: %v", result)
+	logger.WithModule("AI").Info("工具执行成功", "result", result)
 
 	// 将工具结果追加到消息列表
 	newMessages = append(newMessages, Message{Role: "assistant", Content: reply})
@@ -281,7 +281,7 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	s.config = cfg
 
 	if err := s.updateProvider(cfg); err != nil {
-		log.Printf("[AI Service] Failed to update provider: %v", err)
+		logger.WithModule("AI").Error("Failed to update provider", "error", err)
 	}
 }
 

@@ -2,7 +2,6 @@ package app
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"qim-server/di"
 	"qim-server/handler"
 	"qim-server/middleware"
+	"qim-server/pkg/logger"
 	"qim-server/service"
 	"qim-server/utils"
 	"qim-server/ws"
@@ -74,7 +74,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
 	if err := handler.InitSmartReplyGraph(); err != nil {
-		log.Printf("[警告] 初始化 SmartReplyGraph 失败，将使用旧方法: %v", err)
+		logger.WithModule("Routes").Warn("初始化 SmartReplyGraph 失败，将使用旧方法", "error", err)
 	}
 
 	handler.InitAnomalyDetector()
@@ -90,36 +90,36 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	summaryGraph := service.NewSummaryGraph(aiSvc, aiCache)
 	if err := summaryGraph.Build(); err != nil {
-		log.Printf("[警告] 初始化 SummaryGraph 失败: %v", err)
+		logger.WithModule("Routes").Warn("初始化 SummaryGraph 失败", "error", err)
 	} else {
 		aiHandler.SetSummaryGraph(summaryGraph)
-		log.Printf("[DI] SummaryGraph 初始化成功")
+		logger.WithModule("Routes").Info("SummaryGraph 初始化成功")
 	}
 
 	textProcessGraph := service.NewTextProcessGraph(aiSvc, aiCache)
 	if err := textProcessGraph.Build(); err != nil {
-		log.Printf("[警告] 初始化 TextProcessGraph 失败: %v", err)
+		logger.WithModule("Routes").Warn("初始化 TextProcessGraph 失败", "error", err)
 	} else {
 		aiHandler.SetTextProcessGraph(textProcessGraph)
-		log.Printf("[DI] TextProcessGraph 初始化成功")
+		logger.WithModule("Routes").Info("TextProcessGraph 初始化成功")
 	}
 
 	noteVectorSvc := di.GlobalContainer.NoteVectorService
 	avatarMemorySvc := di.GlobalContainer.AvatarMemoryService
 	unifiedSearchGraph := service.NewUnifiedSearchGraph(aiSvc, noteVectorSvc, groupDocSvc, avatarMemorySvc)
 	if err := unifiedSearchGraph.Build(); err != nil {
-		log.Printf("[警告] 初始化 UnifiedSearchGraph 失败: %v", err)
+		logger.WithModule("Routes").Warn("初始化 UnifiedSearchGraph 失败", "error", err)
 	} else {
 		aiHandler.SetUnifiedSearchGraph(unifiedSearchGraph)
-		log.Printf("[DI] UnifiedSearchGraph 初始化成功")
+		logger.WithModule("Routes").Info("UnifiedSearchGraph 初始化成功")
 	}
 
 	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
 	if err := smartDigestGraph.Build(); err != nil {
-		log.Printf("[警告] Failed to build SmartDigestGraph: %v", err)
+		logger.WithModule("Routes").Warn("Failed to build SmartDigestGraph", "error", err)
 	} else {
 		aiHandler.SetSmartDigestGraph(smartDigestGraph)
-		log.Printf("[DI] SmartDigestGraph 初始化成功")
+		logger.WithModule("Routes").Info("SmartDigestGraph 初始化成功")
 	}
 
 	avatarService := service.NewAvatarService(GetDB(), aiSvc)
@@ -373,6 +373,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/channels/:id/unsubscribe", handler.UnsubscribeChannel)
 			authed.POST("/channels/:id/messages", handler.CreateChannelMessage)
 			authed.GET("/channels/:id/messages", handler.GetChannelMessages)
+			authed.POST("/channels/messages/:messageId/like", handler.LikeChannelMessage)
+			authed.POST("/channels/messages/:messageId/unlike", handler.UnlikeChannelMessage)
+			authed.GET("/channels/messages/:messageId/likes", handler.GetChannelMessageLikes)
+			authed.POST("/channels/messages/:messageId/comments", handler.CommentChannelMessage)
+			authed.GET("/channels/messages/:messageId/comments", handler.GetChannelMessageComments)
 
 			// 消息管理
 			authed.GET("/messages", handler.GetMessagesByFilter)

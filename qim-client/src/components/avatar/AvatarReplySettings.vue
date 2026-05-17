@@ -52,6 +52,26 @@
         <span class="setting-hint">分身回复消息中"AI 代回复"标记的展示方式</span>
       </div>
     </div>
+
+    <div class="setting-section">
+      <div class="section-header">
+        <i class="fas fa-filter"></i>
+        <h4>知识范围控制</h4>
+      </div>
+
+      <div class="setting-item">
+        <label class="toggle-label">
+          <div class="label-content">
+            <span class="label-title">回复知识范围外的消息</span>
+            <span class="label-hint">关闭时，分身只在有相关知识内容时才回复，超出知识范围的消息会静默跳过不回复</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" :checked="replyStrategy?.replyOutOfScope ?? false" @change="updateStrategy('replyOutOfScope', ($event.target as HTMLInputElement).checked)" />
+            <span class="slider round"></span>
+          </label>
+        </label>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -74,7 +94,8 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
     maxReplyLength: 'medium',
     replyDelay: 3,
     confidenceThreshold: 0.6,
-    disclaimerStyle: 'badge'
+    disclaimerStyle: 'badge',
+    replyOutOfScope: false
   }
   emit('update:modelValue', {
     ...props.modelValue,
@@ -217,11 +238,85 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
-.threshold-value { 
-  font-size: 14px; 
-  font-weight: 600; 
-  color: var(--primary-color); 
+.threshold-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-color);
   min-width: 50px;
   text-align: right;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.toggle-label .label-content {
+  flex: 1;
+  margin-right: 12px;
+}
+
+.toggle-label .label-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.toggle-label .label-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 24px;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider.round {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border-color);
+  transition: background-color 0.3s;
+  border-radius: 12px;
+}
+
+.slider.round:before {
+  position: absolute;
+  content: '';
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: transform 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+input:checked + .slider.round {
+  background-color: var(--primary-color);
+}
+
+input:checked + .slider.round:before {
+  transform: translateX(24px);
 }
 </style>

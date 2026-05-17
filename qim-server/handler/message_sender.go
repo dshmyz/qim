@@ -3,9 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/service"
 	"qim-server/ws"
 
@@ -86,13 +86,13 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		log.Printf("[MessageSender] 获取会话信息失败: %v", err)
+		logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
 		return fmt.Errorf("获取会话信息失败: %w", err)
 	}
 
 	broadcastNewMessage(&aiMessage, 0, &conv)
 
-	log.Printf("[MessageSender] AI 消息已发送到会话 %d (group=%d), msgID=%d, sender=%s", conversationID, groupID, aiMessage.ID, aiUser.Nickname)
+	logger.WithModule("MessageSender").Info("AI 消息已发送到会话", "conversationID", conversationID, "groupID", groupID, "msgID", aiMessage.ID, "sender", aiUser.Nickname)
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		log.Printf("[MessageSender] 获取会话信息失败: %v", err)
+		logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
 		return nil, nil, fmt.Errorf("获取会话信息失败: %w", err)
 	}
 
@@ -128,7 +128,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		aiMessage.Content = accumulatedContent
 
 		if err := s.db.Save(&aiMessage).Error; err != nil {
-			log.Printf("[MessageSender] 保存流式消息失败: %v", err)
+			logger.WithModule("MessageSender").Error("保存流式消息失败", "error", err)
 			return err
 		}
 
@@ -166,14 +166,14 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		aiMessage.Content = accumulatedContent
 		aiMessage.Type = "markdown"
 		if err := s.db.Save(&aiMessage).Error; err != nil {
-			log.Printf("[MessageSender] 完成流式消息失败: %v", err)
+			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)
 			return err
 		}
 
 		aiMessage.Sender = *aiUser
 		broadcastNewMessage(&aiMessage, 0, &conv)
 
-		log.Printf("[MessageSender] 流式 AI 消息已完成，会话 %d, msgID=%d, sender=%s", conversationID, aiMessage.ID, aiUser.Nickname)
+		logger.WithModule("MessageSender").Info("流式 AI 消息已完成", "conversationID", conversationID, "msgID", aiMessage.ID, "sender", aiUser.Nickname)
 		return nil
 	}
 
@@ -207,13 +207,13 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		log.Printf("[MessageSender] 获取会话信息失败: %v", err)
+		logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
 		return fmt.Errorf("获取会话信息失败: %w", err)
 	}
 
 	broadcastNewMessage(msg, 0, &conv)
 
-	log.Printf("[MessageSender] AI 消息已发送到会话 %d, msgID=%d", conversationID, msg.ID)
+	logger.WithModule("MessageSender").Info("AI 消息已发送到会话", "conversationID", conversationID, "msgID", msg.ID)
 	return nil
 }
 
@@ -243,7 +243,7 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 
 	var conv model.Conversation
 	if err := db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		log.Printf("[BroadcastAIMessage] 获取会话信息失败: %v", err)
+		logger.WithModule("BroadcastAIMessage").Error("获取会话信息失败", "error", err)
 		return nil
 	}
 
@@ -273,6 +273,6 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		ws.GlobalHub.SendToConversation(conversationID, 0, jsonMsg)
 	}
 
-	log.Printf("[BroadcastAIMessage] AI 消息已推送到会话 %d (group=%d), msgID=%d", conversationID, groupID, aiMessage.ID)
+	logger.WithModule("BroadcastAIMessage").Info("AI 消息已推送到会话", "conversationID", conversationID, "groupID", groupID, "msgID", aiMessage.ID)
 	return nil
 }

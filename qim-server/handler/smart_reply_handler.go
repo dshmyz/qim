@@ -3,11 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/service"
 	"qim-server/utils"
 	"qim-server/ws"
@@ -55,7 +55,7 @@ func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
 
 // InitSmartReplyGraph initializes the Eino Graph for smart reply
 func (e *SmartReplyEngine) InitSmartReplyGraph() error {
-	log.Printf("[SmartReplyGraph] 创建 SmartReplyGraph 实例...")
+	logger.WithModule("SmartReplyGraph").Info("创建 SmartReplyGraph 实例")
 	e.smartReplyGraph = service.NewSmartReplyGraph(
 		e.aiService,
 		database.GetDB(),
@@ -65,19 +65,19 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		di.GlobalContainer.UserService,
 	)
 
-	log.Printf("[SmartReplyGraph] 开始编译 Graph...")
+	logger.WithModule("SmartReplyGraph").Info("开始编译 Graph")
 	err := e.smartReplyGraph.BuildGraph()
 	if err != nil {
-		log.Printf("[SmartReplyGraph] BuildGraph 失败: %v", err)
+		logger.WithModule("SmartReplyGraph").Error("BuildGraph 失败", "error", err)
 	} else {
-		log.Printf("[SmartReplyGraph] BuildGraph 成功")
+		logger.WithModule("SmartReplyGraph").Info("BuildGraph 成功")
 	}
 	return err
 }
 
 // HandleMessage 处理消息并决定是否需要智能回复
 func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string, mentionUserIDs []uint) {
-	log.Printf("[HandleMessage] sender=%d conv=%d, aiConfigured=%v, avatarPool=%v", userID, conversationID, e.aiService != nil && e.aiService.IsConfigured(), e.avatarWorkerPool != nil)
+	logger.WithModule("HandleMessage").Info("HandleMessage", "sender", userID, "conv", conversationID, "aiConfigured", e.aiService != nil && e.aiService.IsConfigured(), "avatarPool", e.avatarWorkerPool != nil)
 	if e.aiService == nil || !e.aiService.IsConfigured() {
 		return
 	}
@@ -237,19 +237,19 @@ func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint
 
 	result, err := e.smartReplyGraph.Execute(ctx, input)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] AI 回复生成失败: %v", err)
+		logger.WithModule("SmartReplyGraph").Error("AI 回复生成失败", "error", err)
 		return
 	}
 
-	log.Printf("[SmartReplyGraph] 生成回复长度: %d 字符", len(result.Reply))
+	logger.WithModule("SmartReplyGraph").Info("生成回复长度", "length", len(result.Reply))
 
 	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手")
 	if err != nil {
-		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		logger.WithModule("SmartReply").Error("发送 AI 消息失败", "error", err)
 		return
 	}
 
-	log.Printf("[SmartReplyGraph] 已发送智能回复到会话 %d", conversationID)
+	logger.WithModule("SmartReplyGraph").Info("已发送智能回复到会话", "conversationID", conversationID)
 }
 
 func min(a, b int) int {
@@ -291,10 +291,10 @@ func extractAIQuestion(content string, assistantName string) string {
 
 // handleAIMention 处理 @AI 触发回复
 func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
-	log.Printf("[SmartReply] @AI 触发回复: userID=%d, convID=%d, question=%s", userID, conversationID, question[:min(50, len(question))])
+	logger.WithModule("SmartReply").Info("@AI 触发回复", "userID", userID, "convID", conversationID, "question", question[:min(50, len(question))])
 
 	if e.aiService == nil || !e.aiService.IsConfigured() {
-		log.Printf("[SmartReply] AI 服务未配置")
+		logger.WithModule("SmartReply").Info("AI 服务未配置")
 		return
 	}
 
@@ -310,13 +310,13 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 
 	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] @AI 流式回复失败: %v", err)
+		logger.WithModule("SmartReplyGraph").Error("@AI 流式回复失败", "error", err)
 		return
 	}
 
 	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
-		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
+		logger.WithModule("SmartReply").Error("创建流式消息失败", "error", err)
 		return
 	}
 
@@ -332,11 +332,11 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 		sendChunk(msg.Content)
 	}
 
-	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符", chunkCount, totalLen)
+	logger.WithModule("SmartReplyGraph").Info("@AI 流式回复完成", "chunkCount", chunkCount, "totalLen", totalLen)
 
 	_ = finish()
 
-	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
+	logger.WithModule("SmartReplyGraph").Info("@AI 流式回复已完成")
 }
 
 // GroupSummaryJob 群聊总结定时任务
@@ -354,7 +354,7 @@ func NewGroupSummaryJob(aiService *ai.AIService) *GroupSummaryJob {
 // GenerateDailySummaries 生成所有群的每日总结
 func (j *GroupSummaryJob) GenerateDailySummaries() {
 	if j.aiService == nil || !j.aiService.IsConfigured() {
-		log.Printf("[GroupSummary] AI 服务未配置，跳过总结")
+		logger.WithModule("GroupSummary").Info("AI 服务未配置，跳过总结")
 		return
 	}
 
@@ -363,7 +363,7 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 	var groups []model.Conversation
 	db.Where("type = ?", "group").Find(&groups)
 
-	log.Printf("[GroupSummary] 开始为 %d 个群生成每日总结", len(groups))
+	logger.WithModule("GroupSummary").Info("开始为群生成每日总结", "groupCount", len(groups))
 
 	const workerCount = 5
 	sem := make(chan struct{}, workerCount)
@@ -395,7 +395,7 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 	}
 
 	wg.Wait()
-	log.Printf("[GroupSummary] 每日总结生成完成，成功: %d, 失败: %d", successCount, failCount)
+	logger.WithModule("GroupSummary").Info("每日总结生成完成", "success", successCount, "fail", failCount)
 }
 
 // generateGroupSummary 生成单个群的总结
@@ -404,7 +404,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 
 	var groupInfo model.Group
 	if err := db.Where("conversation_id = ?", group.ID).First(&groupInfo).Error; err != nil {
-		log.Printf("[GroupSummary] 获取群聊信息失败: %v", err)
+		logger.WithModule("GroupSummary").Error("获取群聊信息失败", "error", err)
 		return false
 	}
 
@@ -462,7 +462,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 
 	summary, err := j.aiService.GetCompletion(messages_input)
 	if err != nil {
-		log.Printf("[GroupSummary] 群 %d 总结生成失败: %v", group.ID, err)
+		logger.WithModule("GroupSummary").Error("群总结生成失败", "groupID", group.ID, "error", err)
 		return false
 	}
 
@@ -477,7 +477,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 	}
 	db.Create(&summaryMsg)
 
-	log.Printf("[GroupSummary] 群 %d (%s) 总结已生成", group.ID, groupInfo.Name)
+	logger.WithModule("GroupSummary").Info("群总结已生成", "groupID", group.ID, "groupName", groupInfo.Name)
 	return true
 }
 
@@ -548,10 +548,10 @@ func (e *SmartReplyEngine) triggerSingleAvatar(db *gorm.DB, userID uint, senderI
 	}
 
 	if err := e.avatarWorkerPool.Submit(task); err != nil {
-		log.Printf("[SmartReply] 提交分身任务失败: %v", err)
+		logger.WithModule("SmartReply").Error("提交分身任务失败", "error", err)
 		return false
 	}
-	log.Printf("[SmartReply] 已触发用户 %d 的分身", userID)
+	logger.WithModule("SmartReply").Info("已触发用户的分身", "userID", userID)
 	return true
 }
 
@@ -561,20 +561,20 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 
 	// 检查是否在接管期内
 	if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
-		log.Printf("[shouldTriggerAvatar] user=%d 处于接管期内", session.UserID)
+		logger.WithModule("shouldTriggerAvatar").Info("用户处于接管期内", "user", session.UserID)
 		return false
 	}
 
 	// 获取分身配置
 	var config model.AvatarConfig
 	if err := db.Where("user_id = ?", session.UserID).First(&config).Error; err != nil {
-		log.Printf("[shouldTriggerAvatar] user=%d 未找到 AvatarConfig: %v", session.UserID, err)
+		logger.WithModule("shouldTriggerAvatar").Error("未找到 AvatarConfig", "user", session.UserID, "error", err)
 		return false
 	}
 
 	// 检查分身是否启用
 	if !config.Enabled {
-		log.Printf("[shouldTriggerAvatar] user=%d 分身未启用", session.UserID)
+		logger.WithModule("shouldTriggerAvatar").Info("分身未启用", "user", session.UserID)
 		return false
 	}
 
@@ -582,11 +582,11 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 	var triggerRules model.AvatarTriggerRules
 	if config.TriggerRulesJSON != "" {
 		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
-			log.Printf("[shouldTriggerAvatar] user=%d 解析触发规则失败: %v", session.UserID, err)
+			logger.WithModule("shouldTriggerAvatar").Error("解析触发规则失败", "user", session.UserID, "error", err)
 			return false
 		}
 	}
-	log.Printf("[shouldTriggerAvatar] user=%d triggerRules.Mode=%q, isGroupChat=%v", session.UserID, triggerRules.Mode, isGroupChat)
+	logger.WithModule("shouldTriggerAvatar").Info("triggerRules", "user", session.UserID, "mode", triggerRules.Mode, "isGroupChat", isGroupChat)
 
 	// 群聊场景：先检查是否 @了自己，没 @直接不触发
 	if isGroupChat {
@@ -598,24 +598,24 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 			}
 		}
 		if !mentioned {
-			log.Printf("[shouldTriggerAvatar] user=%d 群聊未@，不触发", session.UserID)
+			logger.WithModule("shouldTriggerAvatar").Info("群聊未@，不触发", "user", session.UserID)
 			return false
 		}
 		// @命中后，根据回复策略决定是否回复
 		switch triggerRules.Mode {
 		case "off":
-			log.Printf("[shouldTriggerAvatar] user=%d 群聊@命中但回复模式为off", session.UserID)
+			logger.WithModule("shouldTriggerAvatar").Info("群聊@命中但回复模式为off", "user", session.UserID)
 			return false
 		default:
 			// mention/smart/always/auto/off 以外的模式，@命中后都回复
-			log.Printf("[shouldTriggerAvatar] user=%d 群聊@命中，回复模式=%q，触发", session.UserID, triggerRules.Mode)
+			logger.WithModule("shouldTriggerAvatar").Info("群聊@命中，触发", "user", session.UserID, "mode", triggerRules.Mode)
 			return true
 		}
 	}
 
 	// 私聊场景：非 mention 模式下直接触发（私聊中不会有 @ 操作）
 	if triggerRules.Mode != "mention" {
-		log.Printf("[shouldTriggerAvatar] user=%d 私聊非mention模式，触发", session.UserID)
+		logger.WithModule("shouldTriggerAvatar").Info("私聊非mention模式，触发", "user", session.UserID)
 		return true
 	}
 

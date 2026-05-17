@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	"qim-server/pkg/logger"
 )
 
 // AnthropicProvider Anthropic Claude 提供商
@@ -35,7 +36,7 @@ func (p *AnthropicProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("Anthropic API key is not configured")
 	}
 
-	log.Printf("[Anthropic] Making request with model: %s", p.config.Model)
+	logger.WithModule("Anthropic").Debug("Making request", "model", p.config.Model)
 
 	reqBody := map[string]interface{}{
 		"model":       p.config.Model,
@@ -93,7 +94,7 @@ func (p *AnthropicProvider) ChatWithTools(messages []Message, tools []ToolDef) (
 		return nil, fmt.Errorf("Anthropic provider not configured")
 	}
 
-	log.Printf("[Anthropic] Making ChatWithTools request with model: %s, tools: %d", p.config.Model, len(tools))
+	logger.WithModule("Anthropic").Debug("Making ChatWithTools request", "model", p.config.Model, "tools", len(tools))
 
 	anthropicMessages := make([]map[string]interface{}, len(messages))
 	for i, m := range messages {

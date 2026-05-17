@@ -467,6 +467,11 @@ type Channel struct {
 	CreatorID         uint           `json:"creator_id" gorm:"not null"`
 	Status            string         `json:"status" gorm:"size:20;default:'active'"`
 	PublishPermission string         `json:"publish_permission" gorm:"size:20;default:'creator_only'"`
+	ApprovalStatus    string         `json:"approval_status" gorm:"size:20;default:'none'"`
+	RejectReason      string         `json:"reject_reason" gorm:"type:text"`
+	AppliedAt         *time.Time     `json:"applied_at"`
+	ApprovedAt        *time.Time     `json:"approved_at"`
+	ApprovedBy        *uint          `json:"approved_by"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
@@ -494,6 +499,26 @@ type ChannelMessage struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 	Channel   Channel        `json:"channel,omitempty" gorm:"foreignkey:ChannelID"`
 	Sender    User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
+}
+
+type ChannelMessageLike struct {
+	ID           uint      `json:"id" gorm:"primarykey"`
+	MessageID    uint      `json:"message_id" gorm:"not null;uniqueIndex:idx_msg_user"`
+	UserID       uint      `json:"user_id" gorm:"not null;uniqueIndex:idx_msg_user"`
+	CreatedAt    time.Time `json:"created_at"`
+	Message      ChannelMessage `json:"-" gorm:"foreignkey:MessageID"`
+	User         User      `json:"-" gorm:"foreignkey:UserID"`
+}
+
+type ChannelMessageComment struct {
+	ID        uint           `json:"id" gorm:"primarykey"`
+	MessageID uint           `json:"message_id" gorm:"not null;index"`
+	UserID    uint           `json:"user_id" gorm:"not null"`
+	Content   string         `json:"content" gorm:"type:text;not null"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	Message   ChannelMessage `json:"-" gorm:"foreignkey:MessageID"`
+	User      User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 短链接

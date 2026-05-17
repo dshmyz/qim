@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 
 	"qim-server/ai"
+	"qim-server/pkg/logger"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -110,7 +110,7 @@ func (g *UnifiedSearchGraph) retrieve(ctx context.Context, input *UnifiedSearchI
 		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[UnifiedSearch] Panic in message retrieval: %v", r)
+				logger.WithModule("UnifiedSearch").Error("Panic in message retrieval", "panic", r)
 			}
 		}()
 		msgRetriever := NewMessageRetriever(input.ConversationID, input.UserID, 5)
@@ -142,7 +142,7 @@ func (g *UnifiedSearchGraph) retrieve(ctx context.Context, input *UnifiedSearchI
 		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[UnifiedSearch] Panic in note retrieval: %v", r)
+				logger.WithModule("UnifiedSearch").Error("Panic in note retrieval", "panic", r)
 			}
 		}()
 		if g.noteSvc == nil {
@@ -178,7 +178,7 @@ func (g *UnifiedSearchGraph) retrieve(ctx context.Context, input *UnifiedSearchI
 		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[UnifiedSearch] Panic in group document retrieval: %v", r)
+				logger.WithModule("UnifiedSearch").Error("Panic in group document retrieval", "panic", r)
 			}
 		}()
 		if g.groupDocSvc == nil || input.GroupID == 0 {
@@ -214,7 +214,7 @@ func (g *UnifiedSearchGraph) retrieve(ctx context.Context, input *UnifiedSearchI
 		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[UnifiedSearch] Panic in memory retrieval: %v", r)
+				logger.WithModule("UnifiedSearch").Error("Panic in memory retrieval", "panic", r)
 			}
 		}()
 		if g.memorySvc == nil {

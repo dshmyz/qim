@@ -275,3 +275,171 @@ func GetChannelMessages(c *gin.Context) {
 		"data": messages,
 	})
 }
+
+func LikeChannelMessage(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	var msg model.ChannelMessage
+	if err := db.First(&msg, uint(messageID)).Error; err != nil {
+		response.NotFound(c, "消息不存在")
+		return
+	}
+
+	var existing model.ChannelMessageLike
+	if err := db.Where("message_id = ? AND user_id = ?", uint(messageID), uid).First(&existing).Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已点赞"})
+		return
+	}
+
+	like := model.ChannelMessageLike{
+		MessageID: uint(messageID),
+		UserID:    uid,
+	}
+	if err := db.Create(&like).Error; err != nil {
+		response.InternalServerError(c, "点赞失败")
+		return
+	}
+
+	var count int64
+	db.Model(&model.ChannelMessageLike{}).Where("message_id = ?", uint(messageID)).Count(&count)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"like_count": count,
+			"is_liked":   true,
+		},
+	})
+}
+
+func UnlikeChannelMessage(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	if err := db.Where("message_id = ? AND user_id = ?", uint(messageID), uid).Delete(&model.ChannelMessageLike{}).Error; err != nil {
+		response.InternalServerError(c, "取消点赞失败")
+		return
+	}
+
+	var count int64
+	db.Model(&model.ChannelMessageLike{}).Where("message_id = ?", uint(messageID)).Count(&count)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"like_count": count,
+			"is_liked":   false,
+		},
+	})
+}
+
+func CommentChannelMessage(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "评论内容不能为空")
+		return
+	}
+
+	db := database.GetDB()
+
+	var msg model.ChannelMessage
+	if err := db.First(&msg, uint(messageID)).Error; err != nil {
+		response.NotFound(c, "消息不存在")
+		return
+	}
+
+	comment := model.ChannelMessageComment{
+		MessageID: uint(messageID),
+		UserID:    uid,
+		Content:   req.Content,
+	}
+	if err := db.Create(&comment).Error; err != nil {
+		response.InternalServerError(c, "评论失败")
+		return
+	}
+
+	db.Preload("User").First(&comment, comment.ID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": comment,
+	})
+}
+
+func GetChannelMessageComments(c *gin.Context) {
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	var comments []model.ChannelMessageComment
+	db.Where("message_id = ?", uint(messageID)).Preload("User").Order("created_at ASC").Find(&comments)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": comments,
+	})
+}
+
+func GetChannelMessageLikes(c *gin.Context) {
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	db := database.GetDB()
+
+	var count int64
+	db.Model(&model.ChannelMessageLike{}).Where("message_id = ?", uint(messageID)).Count(&count)
+
+	var existing model.ChannelMessageLike
+	isLiked := db.Where("message_id = ? AND user_id = ?", uint(messageID), uid).First(&existing).Error == nil
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"like_count": count,
+			"is_liked":   isLiked,
+		},
+	})
+}

@@ -3,10 +3,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"os"
 	"qim-server/config"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/test"
 	"qim-server/ws"
 	"strings"
@@ -50,12 +51,12 @@ func initSystemUser() {
 		if err := tx.Create(&systemUser).Error; err != nil {
 			return err
 		}
-		log.Printf("[Init] 创建系统用户成功: ID=%d", systemUser.ID)
+		logger.WithModule("Init").Info("创建系统用户成功", "id", systemUser.ID)
 		return nil
 	})
 
 	if err != nil {
-		log.Printf("[Init] 创建系统用户失败: %v", err)
+		logger.WithModule("Init").Error("创建系统用户失败", "error", err)
 	}
 }
 
@@ -122,6 +123,8 @@ func MigrateDB(db *gorm.DB) {
 		&model.Channel{},
 		&model.ChannelSubscriber{},
 		&model.ChannelMessage{},
+			&model.ChannelMessageLike{},
+			&model.ChannelMessageComment{},
 		&model.ShortLink{},
 		&model.Task{},
 		&model.RealtimeSession{},     // 实时会话
@@ -141,7 +144,8 @@ func MigrateDB(db *gorm.DB) {
 		&model.FileChunk{},           // 文件分片
 		&model.UploadTask{},          // 上传任务
 	); err != nil {
-		log.Fatal("数据库迁移失败:", err)
+		logger.WithModule("Migrate").Error("数据库迁移失败", "error", err)
+		os.Exit(1)
 	}
 
 	// 添加性能优化索引
@@ -171,7 +175,7 @@ func markMigrationCompleted(db *gorm.DB, migrationName string) {
 		Desc:  "迁移版本: " + migrationName,
 	}
 	db.Where("key = ?", "migration:"+migrationName).FirstOrCreate(&config)
-	log.Printf("[Migration] 标记迁移 %s 为已完成", migrationName)
+	logger.WithModule("Migration").Info("标记迁移为已完成", "name", migrationName)
 }
 
 // cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
@@ -188,7 +192,7 @@ func cleanupDuplicateReadReceipts(db *gorm.DB) {
 			GROUP BY message_id, user_id
 		)
 	`)
-	log.Printf("已清理消息已读回执的重复记录")
+	logger.WithModule("Migrate").Info("已清理消息已读回执的重复记录")
 }
 
 // migrateGroupData 迁移群聊数据到Group表
@@ -225,7 +229,7 @@ func migrateGroupData(db *gorm.DB) {
 		}
 		db.Create(&group)
 	}
-	log.Printf("群聊数据迁移完成，共迁移 %d 个群聊", len(conversations))
+	logger.WithModule("Migrate").Info("群聊数据迁移完成", "count", len(conversations))
 
 	markMigrationCompleted(db, "migrate_group_data")
 }
@@ -239,7 +243,8 @@ func migrateMiniApps(db *gorm.DB) {
 
 	if !db.Migrator().HasTable("mini_apps") {
 		if err := db.Migrator().CreateTable(&model.MiniApp{}); err != nil {
-			log.Fatal("创建 mini_apps 表失败:", err)
+			logger.WithModule("Migrate").Error("创建 mini_apps 表失败", "error", err)
+			os.Exit(1)
 		}
 		markMigrationCompleted(db, "migrate_mini_apps")
 		return
@@ -247,7 +252,8 @@ func migrateMiniApps(db *gorm.DB) {
 
 	if !db.Migrator().HasColumn(&model.MiniApp{}, "permissions") {
 		if err := db.Migrator().AddColumn(&model.MiniApp{}, "permissions"); err != nil {
-			log.Fatal("为 mini_apps 表添加 permissions 字段失败:", err)
+			logger.WithModule("Migrate").Error("为 mini_apps 表添加 permissions 字段失败", "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -268,7 +274,7 @@ func migrateFileSource(db *gorm.DB) {
 
 	var messages []model.Message
 	if err := db.Where("type IN ?", []string{"file", "image"}).Find(&messages).Error; err != nil {
-		log.Printf("查询聊天文件消息失败: %v", err)
+		logger.WithModule("Migrate").Error("查询聊天文件消息失败", "error", err)
 		markMigrationCompleted(db, "migrate_file_source")
 		return
 	}
@@ -291,7 +297,7 @@ func migrateFileSource(db *gorm.DB) {
 	}
 
 	if updated > 0 {
-		log.Printf("文件来源迁移完成，共更新 %d 个聊天文件", updated)
+		logger.WithModule("Migrate").Info("文件来源迁移完成", "updated", updated)
 	}
 
 	markMigrationCompleted(db, "migrate_file_source")
@@ -332,16 +338,16 @@ func migrateNoteStyle(db *gorm.DB) {
 			}
 		}
 		db.Migrator().DropColumn(&model.Note{}, "color")
-		log.Printf("已将 notes 表的 color 字段迁移到 style JSON 中")
+		logger.WithModule("Migrate").Info("已将 notes 表的 color 字段迁移到 style JSON 中")
 	}
 
 	if !db.Migrator().HasColumn(&model.Note{}, "style") {
 		if err := db.Migrator().AddColumn(&model.Note{}, "style"); err != nil {
-			log.Printf("为 notes 表添加 style 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 notes 表添加 style 字段失败", "error", err)
 			markMigrationCompleted(db, "migrate_note_style")
 			return
 		}
-		log.Printf("notes 表已添加 style 字段")
+		logger.WithModule("Migrate").Info("notes 表已添加 style 字段")
 	}
 
 	markMigrationCompleted(db, "migrate_note_style")
@@ -360,7 +366,7 @@ func migrateAIConfigs(db *gorm.DB) {
 
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_json") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_json"); err != nil {
-			log.Printf("为 ai_configs 表添加 config_json 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 config_json 字段失败", "error", err)
 			return
 		}
 	}
@@ -459,7 +465,7 @@ func migrateAIConfigs(db *gorm.DB) {
 		}
 
 		if migrated > 0 {
-			log.Printf("AI 配置数据迁移完成，共迁移 %d 条记录", migrated)
+			logger.WithModule("Migrate").Info("AI 配置数据迁移完成", "migrated", migrated)
 		}
 
 		db.Migrator().DropColumn(&model.AIConfig{}, "openai_api_key")
@@ -482,7 +488,7 @@ func migrateAIConfigs(db *gorm.DB) {
 		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_api_key")
 		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_model")
 		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_base_url")
-		log.Printf("已删除 ai_configs 表的旧供应商字段")
+		logger.WithModule("Migrate").Info("已删除 ai_configs 表的旧供应商字段")
 	}
 
 	markMigrationCompleted(db, "migrate_ai_configs")
@@ -501,43 +507,43 @@ func migrateUserAIConfigs(db *gorm.DB) {
 
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_name") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_name"); err != nil {
-			log.Printf("为 ai_configs 表添加 config_name 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 config_name 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_default") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_default"); err != nil {
-			log.Printf("为 ai_configs 表添加 is_default 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 is_default 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "api_key_encrypted") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "api_key_encrypted"); err != nil {
-			log.Printf("为 ai_configs 表添加 api_key_encrypted 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 api_key_encrypted 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "model_name") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "model_name"); err != nil {
-			log.Printf("为 ai_configs 表添加 model_name 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 model_name 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "base_url") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "base_url"); err != nil {
-			log.Printf("为 ai_configs 表添加 base_url 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 base_url 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_verified") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_verified"); err != nil {
-			log.Printf("为 ai_configs 表添加 is_verified 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 is_verified 字段失败", "error", err)
 			return
 		}
 	}
 	if !db.Migrator().HasColumn(&model.AIConfig{}, "last_tested_at") {
 		if err := db.Migrator().AddColumn(&model.AIConfig{}, "last_tested_at"); err != nil {
-			log.Printf("为 ai_configs 表添加 last_tested_at 字段失败: %v", err)
+			logger.WithModule("Migrate").Error("为 ai_configs 表添加 last_tested_at 字段失败", "error", err)
 			return
 		}
 	}
@@ -592,11 +598,11 @@ func migrateUserAIConfigs(db *gorm.DB) {
 	}
 
 	if migrated > 0 {
-		log.Printf("User AI 配置数据迁移完成，共迁移 %d 条记录", migrated)
+		logger.WithModule("Migrate").Info("User AI 配置数据迁移完成", "migrated", migrated)
 	}
 
 	db.Migrator().DropTable("user_ai_configs")
-	log.Printf("已删除 user_ai_configs 表")
+	logger.WithModule("Migrate").Info("已删除 user_ai_configs 表")
 
 	markMigrationCompleted(db, "migrate_user_ai_configs")
 }
@@ -613,7 +619,7 @@ func addIndexes(db *gorm.DB) {
 		} else {
 			db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_at ON messages(conversation_id, created_at)")
 		}
-		log.Printf("[Index] 添加 messages(conversation_id, created_at) 复合索引")
+		logger.WithModule("Index").Info("添加 messages(conversation_id, created_at) 复合索引")
 	}
 
 	// 2. groups(name) 索引
@@ -623,7 +629,7 @@ func addIndexes(db *gorm.DB) {
 		} else {
 			db.Exec("CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)")
 		}
-		log.Printf("[Index] 添加 groups(name) 索引")
+		logger.WithModule("Index").Info("添加 groups(name) 索引")
 	}
 
 	// 3. notifications(user_id, read, created_at) 复合索引
@@ -633,7 +639,7 @@ func addIndexes(db *gorm.DB) {
 		} else {
 			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
 		}
-		log.Printf("[Index] 添加 notifications(user_id, read, created_at) 复合索引")
+		logger.WithModule("Index").Info("添加 notifications(user_id, read, created_at) 复合索引")
 	}
 
 	// 4. 消息全文搜索索引
@@ -641,7 +647,7 @@ func addIndexes(db *gorm.DB) {
 		// MySQL: 使用 FULLTEXT INDEX
 		if !hasFulltextIndex(db, "messages", "ft_messages_content") {
 			db.Exec("ALTER TABLE messages ADD FULLTEXT INDEX ft_messages_content (content)")
-			log.Printf("[Index] 添加 messages FULLTEXT 全文索引")
+			logger.WithModule("Index").Info("添加 messages FULLTEXT 全文索引")
 		}
 	} else {
 		// SQLite: 使用 FTS5 虚拟表
@@ -649,7 +655,7 @@ func addIndexes(db *gorm.DB) {
 			db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')")
 			// 同步现有数据到 FTS5
 			db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
-			log.Printf("[Index] 创建 messages FTS5 全文搜索虚拟表")
+			logger.WithModule("Index").Info("创建 messages FTS5 全文搜索虚拟表")
 		}
 	}
 }

@@ -3,9 +3,10 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
+
+	"qim-server/pkg/logger"
 )
 
 // MessageIntent 表示消息的意图分类
@@ -83,7 +84,7 @@ func (d *IntentDetector) Detect(content string, userID uint, conversationID uint
 
 // detectByRules 基于规则检测意图（按优先级）
 func (d *IntentDetector) detectByRules(content string) *MessageIntent {
-	log.Printf("[IntentDetector] 规则检测开始: content=%s", content[:min(30, len(content))])
+	logger.WithModule("IntentDetector").Debug("规则检测开始", "content", content[:min(30, len(content))])
 
 	// command 优先级最高（管理操作）
 	commandPatterns := []*regexp.Regexp{
@@ -92,7 +93,7 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 	}
 	for _, pattern := range commandPatterns {
 		if pattern.MatchString(content) {
-			log.Printf("[IntentDetector] 匹配到 command 模式: %s", pattern.String())
+			logger.WithModule("IntentDetector").Debug("匹配到 command 模式", "pattern", pattern.String())
 			entities := d.extractEntities(content, "command")
 			return &MessageIntent{
 				Type:       "command",
@@ -150,7 +151,7 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 		}
 	}
 
-	log.Printf("[IntentDetector] 规则检测未匹配")
+	logger.WithModule("IntentDetector").Debug("规则检测未匹配")
 	return nil
 }
 
@@ -174,7 +175,7 @@ func (d *IntentDetector) detectByAI(content string, userID uint, conversationID 
 
 	result, err := d.aiService.GetCompletion(messages)
 	if err != nil {
-		log.Printf("[IntentDetector] AI 意图检测失败: %v", err)
+		logger.WithModule("IntentDetector").Error("AI 意图检测失败", "error", err)
 		return nil, err
 	}
 
@@ -235,11 +236,11 @@ func (d *IntentDetector) extractEntities(content string, intentType string) map[
 
 // ShouldTriggerAIReply 判断是否应该触发 AI 自动回复
 func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversationType string) bool {
-	log.Printf("[IntentDetector] ShouldTriggerAIReply: type=%s, confidence=%.2f, convType=%s", intent.Type, intent.Confidence, conversationType)
+	logger.WithModule("IntentDetector").Debug("ShouldTriggerAIReply", "type", intent.Type, "confidence", intent.Confidence, "convType", conversationType)
 
 	// 机器人会话始终回复
 	if conversationType == "bot" {
-		log.Printf("[IntentDetector] 机器人会话，始终回复")
+		logger.WithModule("IntentDetector").Debug("机器人会话，始终回复")
 		return true
 	}
 
@@ -247,26 +248,26 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 	switch intent.Type {
 	case "query":
 		if intent.Confidence >= 0.5 {
-			log.Printf("[IntentDetector] 问题咨询，置信度 %.2f >= 0.5，触发回复", intent.Confidence)
+			logger.WithModule("IntentDetector").Info("问题咨询，触发回复", "confidence", intent.Confidence)
 			return true
 		}
 	case "alert":
 		if intent.Confidence >= 0.7 {
-			log.Printf("[IntentDetector] 告警/异常，置信度 %.2f >= 0.7，触发回复", intent.Confidence)
+			logger.WithModule("IntentDetector").Info("告警/异常，触发回复", "confidence", intent.Confidence)
 			return true
 		}
 	case "command":
 		if intent.Confidence >= 0.8 {
-			log.Printf("[IntentDetector] 管理指令，置信度 %.2f >= 0.8，触发回复", intent.Confidence)
+			logger.WithModule("IntentDetector").Info("管理指令，触发回复", "confidence", intent.Confidence)
 			return true
 		}
 	case "todo":
 		if intent.Confidence >= 0.6 {
-			log.Printf("[IntentDetector] 待办事项，置信度 %.2f >= 0.6，触发回复", intent.Confidence)
+			logger.WithModule("IntentDetector").Info("待办事项，触发回复", "confidence", intent.Confidence)
 			return true
 		}
 	}
 
-	log.Printf("[IntentDetector] 不触发回复 (type=%s, confidence=%.2f 未达阈值)", intent.Type, intent.Confidence)
+	logger.WithModule("IntentDetector").Debug("不触发回复", "type", intent.Type, "confidence", intent.Confidence)
 	return false
 }

@@ -1,11 +1,11 @@
 package di
 
 import (
-	"log"
 	"qim-server/ai"
 	"qim-server/config"
 	"qim-server/database"
 	"qim-server/middleware"
+	"qim-server/pkg/logger"
 	"qim-server/service"
 	"qim-server/ws"
 
@@ -75,9 +75,9 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		var err error
 		s3Svc, err = service.NewS3Service(cfg.Storage.S3)
 		if err != nil {
-			log.Printf("[DI] Warning: S3Service 初始化失败: %v (S3 存储功能将不可用)", err)
+			logger.WithModule("DI").Warn("S3Service 初始化失败，S3 存储功能将不可用", "error", err)
 		} else {
-			log.Printf("[DI] S3Service 初始化成功, bucket=%s", cfg.Storage.S3.Bucket)
+			logger.WithModule("DI").Info("S3Service 初始化成功", "bucket", cfg.Storage.S3.Bucket)
 		}
 	}
 
@@ -121,12 +121,12 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	embedder := service.NewCortexDBEmbedder(aiService)
 
 	var err error
-	log.Printf("[DI] 开始初始化 VectorService, path=%s", vectorPath)
+	logger.WithModule("DI").Info("开始初始化 VectorService", "path", vectorPath)
 	vectorSvc, err = service.NewVectorService(vectorPath, embedder)
 	if err != nil {
-		log.Printf("[DI] Warning: VectorService 初始化失败: %v (RAG 功能将不可用)", err)
+		logger.WithModule("DI").Warn("VectorService 初始化失败，RAG 功能将不可用", "error", err)
 	} else {
-		log.Printf("[DI] VectorService 初始化成功")
+		logger.WithModule("DI").Info("VectorService 初始化成功")
 		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
 		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService)
 		avatarTriggerSvc = service.NewAvatarTriggerService(aiService, db)

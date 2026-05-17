@@ -3,10 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/ws"
 	"strings"
 	"time"
@@ -36,7 +36,7 @@ type ExtractedTodo struct {
 // ExtractAndCreateTodos 从消息中提取待办并创建
 func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, conversationID uint) {
 	if e.aiService == nil || !e.aiService.IsConfigured() {
-		log.Printf("[TodoExtractor] AI 服务未配置，跳过待办提取")
+		logger.WithModule("TodoExtractor").Info("AI 服务未配置，跳过待办提取")
 		return
 	}
 
@@ -50,7 +50,7 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 		senderName = sender.Username
 	}
 
-	log.Printf("[TodoExtractor] 开始提取待办: sender=%s, convID=%d, content=%s", senderName, conversationID, content[:min(50, len(content))])
+	logger.WithModule("TodoExtractor").Info("开始提取待办", "sender", senderName, "convID", conversationID, "content", content[:min(50, len(content))])
 
 	// 获取会话信息，获取所有成员
 	var conv model.Conversation
@@ -112,28 +112,28 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 
 	result, err := e.aiService.GetCompletion(messages)
 	if err != nil {
-		log.Printf("[TodoExtractor] AI 提取失败: %v", err)
+		logger.WithModule("TodoExtractor").Error("AI 提取失败", "error", err)
 		return
 	}
 
-	log.Printf("[TodoExtractor] AI 返回结果: %s", result[:min(200, len(result))])
+	logger.WithModule("TodoExtractor").Debug("AI 返回结果", "result", result[:min(200, len(result))])
 
 	todos, err := e.parseAIResult(result)
 	if err != nil {
-		log.Printf("[TodoExtractor] 解析 AI 结果失败: %v, raw=%s", err, result[:min(100, len(result))])
+		logger.WithModule("TodoExtractor").Error("解析 AI 结果失败", "error", err, "raw", result[:min(100, len(result))])
 		return
 	}
 
 	if len(todos) == 0 {
-		log.Printf("[TodoExtractor] 未提取到待办")
+		logger.WithModule("TodoExtractor").Info("未提取到待办")
 		return
 	}
 
-	log.Printf("[TodoExtractor] 提取到 %d 条待办", len(todos))
+	logger.WithModule("TodoExtractor").Info("提取到待办", "count", len(todos))
 
 	// 创建待办
 	for _, todo := range todos {
-		log.Printf("[TodoExtractor] 处理待办: title=%s, assignee=%s, dueDate=%s, priority=%s", todo.Title, todo.Assignee, todo.DueDate, todo.Priority)
+		logger.WithModule("TodoExtractor").Debug("处理待办", "title", todo.Title, "assignee", todo.Assignee, "dueDate", todo.DueDate, "priority", todo.Priority)
 		e.createTodo(todo, senderID, conversationID)
 	}
 }
@@ -231,7 +231,7 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 		}
 		db.Create(&task)
 
-		log.Printf("[TodoExtractor] 创建待办: %s -> %d", todo.Title, assigneeID)
+		logger.WithModule("TodoExtractor").Info("创建待办", "title", todo.Title, "assigneeID", assigneeID)
 
 		// 通知负责人
 		if assigneeID != senderID {
@@ -240,7 +240,7 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	}
 
 	if len(assigneeIDs) > 1 {
-		log.Printf("[TodoExtractor] 已为 %d 人创建待办: %s", len(assigneeIDs), todo.Title)
+		logger.WithModule("TodoExtractor").Info("已为多人创建待办", "count", len(assigneeIDs), "title", todo.Title)
 	}
 }
 
@@ -268,5 +268,5 @@ func (e *TodoExtractor) notifyTodoAssigned(task model.Task, assigneeID uint, cre
 	jsonMsg, _ := json.Marshal(wsMsg)
 	ws.GlobalHub.SendToUser(assigneeID, jsonMsg)
 
-	log.Printf("[TodoExtractor] 已通知用户 %d 有新的待办: %s", assigneeID, task.Title)
+	logger.WithModule("TodoExtractor").Info("已通知用户", "userID", assigneeID, "title", task.Title)
 }

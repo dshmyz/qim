@@ -2,8 +2,9 @@ package service
 
 import (
 	"fmt"
-	"log"
 	"strings"
+
+	"qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
@@ -54,12 +55,12 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 					Metadata: r.Metadata,
 				})
 			}
-			log.Printf("[UnifiedKnowledge] %s检索命中 %d 条", sourceTag, len(snippets))
+			logger.WithModule("UnifiedKnowledge").Info("检索命中", "source", sourceTag, "count", len(snippets))
 			return snippets
 		}
 
 		if err != nil {
-			log.Printf("[UnifiedKnowledge] 语义检索失败，降级到词法: %v", err)
+			logger.WithModule("UnifiedKnowledge").Error("语义检索失败，降级到词法", "error", err)
 			return s.lexicalFallback(query, groupID, limit)
 		}
 	}
@@ -67,7 +68,7 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 	if s.legacyFallback != nil {
 		results := s.legacyFallback.SearchFunc(query, groupID, limit)
 		if len(results) > 0 {
-			log.Printf("[UnifiedKnowledge] MySQL 兜底命中 %d 条", len(results))
+			logger.WithModule("UnifiedKnowledge").Info("MySQL兜底命中", "count", len(results))
 			return results
 		}
 	}
@@ -85,7 +86,7 @@ func (s *UnifiedKnowledgeService) lexicalFallback(query string, groupID uint, li
 		return nil
 	}
 
-	log.Printf("[UnifiedKnowledge] 词法检索兜底命中 %d 条", len(resp.Results))
+	logger.WithModule("UnifiedKnowledge").Info("词法检索兜底命中", "count", len(resp.Results))
 	snippets := make([]KnowledgeSnippet, 0, len(resp.Results))
 	for _, r := range resp.Results {
 		snippets = append(snippets, KnowledgeSnippet{

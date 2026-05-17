@@ -2,11 +2,11 @@ package handler
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"regexp"
 	"strings"
 )
@@ -203,7 +203,7 @@ func (k *KnowledgeService) AnswerWithKnowledge(query string, userID uint) (strin
 
 	answer, err := k.aiService.GetCompletion(messages)
 	if err != nil {
-		log.Printf("[KnowledgeService] AI 回答失败: %v", err)
+		logger.WithModule("KnowledgeService").Error("AI 回答失败", "error", err)
 		return "", err
 	}
 

@@ -2,18 +2,17 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"math/rand"
-	"strconv"
-	"strings"
-	"time"
-
 	"qim-server/ai"
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
 	"qim-server/ws"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -223,13 +222,13 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 
 	var bot model.Bot
 	if err := db.First(&bot, botConv.BotID).Error; err != nil {
-		log.Printf("[HandleBotMessage] 查找 Bot 失败: %v", err)
+		logger.WithModule("HandleBotMessage").Error("查找 Bot 失败", "error", err)
 		return
 	}
 
 	// 检查是否有虚拟用户
 	if bot.VirtualUserID == nil {
-		log.Printf("[HandleBotMessage] Bot 没有虚拟用户: %d", botConv.BotID)
+		logger.WithModule("HandleBotMessage").Warn("Bot 没有虚拟用户", "botID", botConv.BotID)
 		return
 	}
 
@@ -283,7 +282,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 			var err error
 			reply, err = aiSvc.GetCompletion(messages)
 			if err != nil {
-				log.Printf("AI API error: %v", err)
+				logger.WithModule("HandleBotMessage").Error("AI API error", "error", err)
 				reply = "抱歉，AI服务暂时不可用，请稍后再试。"
 			}
 		} else {

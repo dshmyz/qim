@@ -1425,12 +1425,21 @@ const handleNotification = (data: any) => {
     type: 'info',
     duration: 5000
   })
-  
+
   if (notificationCenterRef.value) {
     const mapped = mapNotification(data)
     const currentNotifications = notificationCenterRef.value.notifications || []
     notificationCenterRef.value.notifications = [mapped, ...currentNotifications]
     unreadNotificationCount.value++
+  }
+
+  // 审批状态变更时刷新相关配置
+  if (data.type && data.type.includes('_approval')) {
+    const entityType = data.type.replace('_approval', '')
+    if (entityType === 'avatar' && chatWindowRefs[currentConversationId.value]) {
+      // 分身审批通过/拒绝，刷新分身配置
+      chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
+    }
   }
 }
 
@@ -2209,7 +2218,7 @@ const handleSendMessage = async (messageData: any) => {
         })
         
         // 播放消息发送成功的提示音
-        // playMessageSound() // 暂时注释掉，因为该函数未定义
+        // 发送方不需要播放提示音
       } else {
         console.error('发送消息失败:', response.message)
         
@@ -2650,13 +2659,11 @@ const startPrivateChat = async (user: any) => {
   hideUserContextMenu()
 }
 
-// 发起语音通话
+// 旧版语音通话逻辑（已废弃，实际通话通过 RealtimeCommunication 组件处理）
 const startVoiceCall = async (userId: string) => {
   try {
     voiceCallStatus.value = 'calling'
     showVoiceCallModal.value = true
-    
-    // TODO: 实现真实的 WebRTC 语音通话连接逻辑
   } catch (error) {
     console.error('发起语音通话失败:', error)
     voiceCallStatus.value = 'ended'
@@ -3568,17 +3575,12 @@ const handleDisplayModeChange = (mode: 'card' | 'timeline') => {
 
 const handleMessageLike = async (message: any) => {
   try {
-    // TODO: 调用后端 API 点赞消息
-    // const response = await request(`/api/v1/channels/${message.channel_id}/messages/${message.id}/like`, {
-    //   method: 'POST'
-    // })
-    // if (response.code === 0) {
-    //   QMessage.success('点赞成功')
-    // }
-    
-    // 临时方案：仅显示提示
-    QMessage.success('点赞成功')
-    console.log('点赞消息:', message)
+    const response = await request(`/api/v1/channels/messages/${message.id}/like`, {
+      method: 'POST'
+    })
+    if (response.code === 0) {
+      QMessage.success('点赞成功')
+    }
   } catch (error) {
     console.error('点赞失败:', error)
     QMessage.error('点赞失败')
@@ -3587,28 +3589,20 @@ const handleMessageLike = async (message: any) => {
 
 const handleMessageUnlike = async (message: any) => {
   try {
-    // TODO: 调用后端 API 取消点赞
-    // const response = await request(`/api/v1/channels/${message.channel_id}/messages/${message.id}/unlike`, {
-    //   method: 'POST'
-    // })
-    // if (response.code === 0) {
-    //   QMessage.success('取消点赞成功')
-    // }
-    
-    // 临时方案：仅显示提示
-    QMessage.success('取消点赞')
-    console.log('取消点赞消息:', message)
+    const response = await request(`/api/v1/channels/messages/${message.id}/unlike`, {
+      method: 'POST'
+    })
+    if (response.code === 0) {
+      QMessage.success('取消点赞')
+    }
   } catch (error) {
     console.error('取消点赞失败:', error)
     QMessage.error('取消点赞失败')
   }
 }
 
-const handleMessageComment = (message: any) => {
-  // TODO: 实现评论功能
-  // 可以打开一个评论弹窗或跳转到消息详情页
-  QMessage.info('评论功能开发中')
-  console.log('评论消息:', message)
+const handleMessageComment = async (message: any) => {
+  // 评论功能由子组件直接处理弹窗和提交
 }
 
 const handleMessageCopyLink = async (message: any) => {

@@ -2,9 +2,8 @@ package service
 
 import (
 	"context"
-	"log"
-
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/utils"
 
 	"gorm.io/gorm"
@@ -46,7 +45,7 @@ func (s *NoteService) CreateNote(note *model.Note) error {
 	if err == nil && s.noteVectorSvc != nil && note.Content != "" {
 		utils.SafeGoWithLabel("note-vectorize", func() {
 			if vecErr := s.noteVectorSvc.VectorizeNote(note.UserID, note.ID, note.Title, note.Content); vecErr != nil {
-				log.Printf("[NoteService] 笔记向量化失败 note_id=%d: %v", note.ID, vecErr)
+				logger.WithModule("NoteService").Error("笔记向量化失败", "note_id", note.ID, "error", vecErr)
 			}
 		})
 	}
@@ -59,7 +58,7 @@ func (s *NoteService) UpdateNote(note *model.Note) error {
 	if err == nil && s.noteVectorSvc != nil && note.Content != "" {
 		utils.SafeGoWithLabel("note-vectorize", func() {
 			if vecErr := s.noteVectorSvc.VectorizeNote(note.UserID, note.ID, note.Title, note.Content); vecErr != nil {
-				log.Printf("[NoteService] 笔记向量化失败 note_id=%d: %v", note.ID, vecErr)
+				logger.WithModule("NoteService").Error("笔记向量化失败", "note_id", note.ID, "error", vecErr)
 			}
 		})
 	}

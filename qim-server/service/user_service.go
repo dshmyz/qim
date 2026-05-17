@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"qim-server/cache"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/repository"
 
 	"gorm.io/gorm"
@@ -84,7 +84,7 @@ func (s *UserService) UpdateUserStatus(userID uint, status string) error {
 			cache.UserCache.Put(cacheKey, jsonData)
 		}
 	} else {
-		log.Printf("failed to fetch updated user for cache: %v", err)
+		logger.WithModule("UserService").Error("failed to fetch updated user for cache", "error", err)
 	}
 
 	return nil
@@ -274,7 +274,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 		VirtualUserID: &aiUser.ID,
 	}
 	if err := s.db.Create(&bot).Error; err != nil {
-		log.Printf("[GetDefaultAIAssistant] 创建 Bot 记录失败: %v", err)
+		logger.WithModule("GetDefaultAIAssistant").Error("创建 Bot 记录失败", "error", err)
 	}
 
 	return &aiUser, nil
@@ -318,7 +318,7 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 		VirtualUserID: &aiUser.ID,
 	}
 	if err := s.db.Create(&bot).Error; err != nil {
-		log.Printf("[EnsureGroupAIAssistant] 创建 Bot 记录失败: %v", err)
+		logger.WithModule("EnsureGroupAIAssistant").Error("创建 Bot 记录失败", "error", err)
 	}
 
 	// 确保 AI 助手加入群的 conversation_members
@@ -334,10 +334,10 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 				JoinedAt:       time.Now(),
 			}
 			s.db.Create(&member)
-			log.Printf("[EnsureGroupAIAssistant] AI 助手 %d 已加入群 %d", aiUser.ID, groupID)
+			logger.WithModule("EnsureGroupAIAssistant").Info("AI 助手已加入群", "aiUserID", aiUser.ID, "groupID", groupID)
 		}
 	}
 
-	log.Printf("[EnsureGroupAIAssistant] 为群 %d 创建 AI 助手用户: id=%d, name=%s", groupID, aiUser.ID, assistantName)
+	logger.WithModule("EnsureGroupAIAssistant").Info("为群创建 AI 助手用户", "groupID", groupID, "aiUserID", aiUser.ID, "name", assistantName)
 	return &aiUser, nil
 }
