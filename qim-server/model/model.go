@@ -325,8 +325,15 @@ type AIUsageLog struct {
 	ID             uint      `json:"id" gorm:"primarykey"`
 	UserID         uint      `json:"user_id" gorm:"not null;index"`
 	BotID          uint      `json:"bot_id" gorm:"not null;index"`
+	Provider       string    `json:"provider" gorm:"size:64"`
+	Model          string    `json:"model" gorm:"size:128"`
+	TaskType       string    `json:"task_type" gorm:"size:64"`
 	MessagePreview string    `json:"message_preview" gorm:"size:100"`
 	CallType       string    `json:"call_type" gorm:"size:20"` // chat, ops
+	TokensIn       int       `json:"tokens_in"`
+	TokensOut      int       `json:"tokens_out"`
+	Duration       int64     `json:"duration"`
+	Status         string    `json:"status" gorm:"size:32"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -416,23 +423,23 @@ type MiniApp struct {
 
 // 应用
 type App struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"not null;index"`
-	Name      string         `json:"name" gorm:"size:200;not null"`
-	Icon      string         `json:"icon" gorm:"size:500"`
-	Category  string         `json:"category" gorm:"size:100"`
-	URL       string         `json:"url" gorm:"size:500"`
-	Status    string         `json:"status" gorm:"size:20;default:'active'"`
-	OpenType  string         `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
-	IsGlobal  bool           `json:"is_global" gorm:"default:false"`
+	ID       uint   `json:"id" gorm:"primarykey"`
+	UserID   uint   `json:"user_id" gorm:"not null;index"`
+	Name     string `json:"name" gorm:"size:200;not null"`
+	Icon     string `json:"icon" gorm:"size:500"`
+	Category string `json:"category" gorm:"size:100"`
+	URL      string `json:"url" gorm:"size:500"`
+	Status   string `json:"status" gorm:"size:20;default:'active'"`
+	OpenType string `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
+	IsGlobal bool   `json:"is_global" gorm:"default:false"`
 	// 权限范围控制
-	ScopeType      string         `json:"scope_type" gorm:"size:20;default:'all'"`       // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
-	ScopeValue     string         `json:"scope_value" gorm:"size:1000"`                   // 具体的范围值（逗号分隔的ID列表）
-	AvailableOrgIDs string        `json:"available_org_ids" gorm:"size:1000"`             // 可用的组织ID列表（逗号分隔）
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-	User      User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ScopeType       string         `json:"scope_type" gorm:"size:20;default:'all'"` // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
+	ScopeValue      string         `json:"scope_value" gorm:"size:1000"`            // 具体的范围值（逗号分隔的ID列表）
+	AvailableOrgIDs string         `json:"available_org_ids" gorm:"size:1000"`      // 可用的组织ID列表（逗号分隔）
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	User            User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 通知
@@ -575,6 +582,7 @@ type AIConfig struct {
 	Temperature     float64    `json:"temperature" gorm:"default:0.7"`
 	IsVerified      bool       `json:"is_verified" gorm:"default:false"`
 	LastTestedAt    *time.Time `json:"last_tested_at"`
+	Overrides       string     `json:"overrides" gorm:"type:json"` // JSON 序列化的 []ai.Override
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	User            User       `json:"user,omitempty" gorm:"foreignkey:UserID"`

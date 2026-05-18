@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 type AIService struct {
@@ -57,21 +58,39 @@ func (s *AIService) GetMCPServer() *MCPServer {
 }
 
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
-	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
 	if err != nil {
 		return "", err
 	}
 	filteredMessages := s.filterMessages(messages)
-	return provider.Chat(filteredMessages)
+	start := time.Now()
+	result, err := provider.Chat(filteredMessages)
+	duration := time.Since(start).Milliseconds()
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	log.Printf("[AI Usage] task=%s provider=%s model=%s duration=%dms status=%s",
+		taskType, provider.Name(), modelName, duration, status)
+	return result, err
 }
 
 func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
-	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
 	if err != nil {
 		return err
 	}
 	filteredMessages := s.filterMessages(messages)
-	return provider.ChatStream(filteredMessages, onChunk)
+	start := time.Now()
+	err = provider.ChatStream(filteredMessages, onChunk)
+	duration := time.Since(start).Milliseconds()
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	log.Printf("[AI Usage] task=%s provider=%s model=%s duration=%dms status=%s",
+		taskType, provider.Name(), modelName, duration, status)
+	return err
 }
 
 func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message, callerCtx *CallerContext, overrides ...Override) (string, error) {
