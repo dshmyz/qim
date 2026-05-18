@@ -255,7 +255,7 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 	callerCtx := &ai.CallerContext{
 		UserID: userID,
 	}
-	reply, err := e.aiService.GetCompletionWithTools(messages, callerCtx)
+	reply, err := e.aiService.GetCompletionWithTools(ai.TaskTypeChat, messages, callerCtx)
 	if err != nil {
 		log.Printf("[SmartReply] AI 回复生成失败: %v", err)
 		return
@@ -437,7 +437,7 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 		return
 	}
 
-	err = e.aiService.GetCompletionStream(messages, func(chunk ai.StreamChunk) error {
+	err = e.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
 		return sendChunk(chunk.Content)
 	})
 
@@ -575,7 +575,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 		{Role: "user", Content: messagesText},
 	}
 
-	summary, err := j.aiService.GetCompletion(messages_input)
+	summary, err := j.aiService.GetCompletion(ai.TaskTypeDigest, messages_input)
 	if err != nil {
 		log.Printf("[GroupSummary] 群 %d 总结生成失败: %v", group.ID, err)
 		return false

@@ -126,7 +126,7 @@ func Load() *Config {
 	// 加载AI配置
 	aiProvider := os.Getenv("AI_PROVIDER")
 	if aiProvider != "" {
-		cfg.AI.Provider = aiProvider
+		cfg.AI.Router.Routes[ai.TaskTypeChat] = ai.Route{Provider: aiProvider}
 	}
 
 	// OpenAI配置
@@ -260,7 +260,6 @@ func getDefaultConfig() yamlConfig {
 			},
 		},
 		AI: ai.AIConfig{
-			Provider:    "openai",
 			MaxTokens:   1000,
 			Temperature: 0.7,
 			OpenAI: ai.OpenAIConfig{

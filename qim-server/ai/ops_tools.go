@@ -81,10 +81,10 @@ func (t *IntelligentTroubleshootingTool) Execute(params map[string]interface{}) 
 	solutions := t.generateSolutions(analysis)
 
 	return map[string]interface{}{
-		"symptom":    symptom,
-		"server":     server,
-		"analysis":   analysis,
-		"solutions":  solutions,
+		"symptom":     symptom,
+		"server":      server,
+		"analysis":    analysis,
+		"solutions":   solutions,
 		"recommended": solutions[0],
 	}, nil
 }
@@ -122,7 +122,7 @@ func (t *IntelligentTroubleshootingTool) analyzeWithLLM(symptom, server, logs st
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, err := t.aiService.GetCompletion(messages)
+	response, err := t.aiService.GetCompletion(TaskTypeAnalysis, messages)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -133,15 +133,15 @@ func (t *IntelligentTroubleshootingTool) analyzeWithLLM(symptom, server, logs st
 	}
 
 	return map[string]interface{}{
-		"symptom":        symptom,
-		"server":         server,
-		"analysis":       result.Analysis,
+		"symptom":         symptom,
+		"server":          server,
+		"analysis":        result.Analysis,
 		"possible_causes": result.PossibleCauses,
-		"solutions":      result.Solutions,
-		"commands":       result.Commands,
-		"urgency":        result.Urgency,
-		"recommended":    result.Solutions[0],
-		"source":         "llm",
+		"solutions":       result.Solutions,
+		"commands":        result.Commands,
+		"urgency":         result.Urgency,
+		"recommended":     result.Solutions[0],
+		"source":          "llm",
 	}, nil
 }
 
@@ -301,7 +301,7 @@ func (t *CommandGenerationTool) generateWithLLM(description, platform, format st
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, err := t.aiService.GetCompletion(messages)
+	response, err := t.aiService.GetCompletion(TaskTypeAnalysis, messages)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -312,14 +312,14 @@ func (t *CommandGenerationTool) generateWithLLM(description, platform, format st
 	}
 
 	return map[string]interface{}{
-		"description":   description,
-		"platform":      platform,
-		"format":        format,
-		"command":       result.Command,
-		"explanation":   result.Explanation,
-		"alternatives":  result.Alternatives,
-		"warnings":      result.Warnings,
-		"source":        "llm",
+		"description":  description,
+		"platform":     platform,
+		"format":       format,
+		"command":      result.Command,
+		"explanation":  result.Explanation,
+		"alternatives": result.Alternatives,
+		"warnings":     result.Warnings,
+		"source":       "llm",
 	}, nil
 }
 
@@ -490,7 +490,7 @@ func (t *LogAnalysisTool) analyzeWithLLM(logContent, service, severity string) (
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, err := t.aiService.GetCompletion(messages)
+	response, err := t.aiService.GetCompletion(TaskTypeAnalysis, messages)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -672,7 +672,7 @@ func (t *IntelligentAlertTool) analyzeWithLLM(alertContent, severity, service st
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, err := t.aiService.GetCompletion(messages)
+	response, err := t.aiService.GetCompletion(TaskTypeAnalysis, messages)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -861,7 +861,7 @@ func (t *OpsKnowledgeTool) answerWithLLM(question, category string) (interface{}
 		{Role: "user", Content: userPrompt},
 	}
 
-	response, err := t.aiService.GetCompletion(messages)
+	response, err := t.aiService.GetCompletion(TaskTypeChat, messages)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}

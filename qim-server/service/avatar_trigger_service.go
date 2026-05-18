@@ -149,7 +149,7 @@ func (s *AvatarTriggerService) llmShouldReply(config model.AvatarConfig, message
 发送者：%s`, config.Name, config.Name, message, senderName)
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := s.aiService.GetCompletion(aiMessages)
+	result, err := s.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
 	if err != nil {
 		log.Printf("[AvatarTriggerService] LLM 判断失败: %v", err)
 		return false, "", err

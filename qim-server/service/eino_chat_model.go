@@ -29,7 +29,7 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 	var err error
 
 	callerCtx := &ai.CallerContext{UserID: m.userID}
-	reply, err = m.aiService.GetCompletionWithTools(aiMessages, callerCtx)
+	reply, err = m.aiService.GetCompletionWithTools(ai.TaskTypeChat, aiMessages, callerCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 	go func() {
 		defer sw.Close()
 
-		err := m.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+		err := m.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
 				Role:    schema.Assistant,
 				Content: chunk.Content,

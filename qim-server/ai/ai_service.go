@@ -11,7 +11,8 @@ import (
 type AIService struct {
 	config    *AIConfig
 	factory   *ProviderFactory
-	provider  Provider
+	pool      map[string]Provider
+	router    *ModelRouter
 	mu        sync.RWMutex
 	mcpServer *MCPServer
 }
@@ -20,41 +21,73 @@ func NewAIService(cfg *AIConfig) *AIService {
 	svc := &AIService{
 		config:  cfg,
 		factory: NewProviderFactory(),
+		pool:    make(map[string]Provider),
+		router:  NewModelRouter(cfg.Router),
 	}
 
-	if err := svc.updateProvider(cfg); err != nil {
-		log.Printf("[AI Service] Warning: Failed to initialize provider: %v", err)
+	for name, providerCfg := range cfg.AllProviders() {
+		provider, err := svc.factory.CreateProviderByName(name, providerCfg)
+		if err != nil {
+			log.Printf("[AI Service] Warning: Failed to init provider %s: %v", name, err)
+			continue
+		}
+		svc.pool[name] = provider
+		log.Printf("[AI Service] Provider %s initialized", name)
+	}
+
+	if len(svc.pool) == 0 {
+		log.Printf("[AI Service] Warning: No AI providers initialized")
+	} else {
+		log.Printf("[AI Service] %d AI providers initialized", len(svc.pool))
 	}
 
 	return svc
 }
 
-// SetMCPServer 设置 MCP 服务器用于工具调用
 func (s *AIService) SetMCPServer(mcpServer *MCPServer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mcpServer = mcpServer
 }
 
-// GetMCPServer 获取 MCP 服务器
 func (s *AIService) GetMCPServer() *MCPServer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.mcpServer
 }
 
-// GetCompletionWithTools 带工具调用的 AI 完成
-func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *CallerContext) (string, error) {
+func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
+	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	if err != nil {
+		return "", err
+	}
+	filteredMessages := s.filterMessages(messages)
+	return provider.Chat(filteredMessages)
+}
+
+func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
+	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	if err != nil {
+		return err
+	}
+	filteredMessages := s.filterMessages(messages)
+	return provider.ChatStream(filteredMessages, onChunk)
+}
+
+func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message, callerCtx *CallerContext, overrides ...Override) (string, error) {
 	s.mu.RLock()
 	mcpServer := s.mcpServer
-	provider := s.provider
 	s.mu.RUnlock()
 
 	if mcpServer == nil {
-		return s.GetCompletion(messages)
+		return s.GetCompletion(taskType, messages, overrides...)
 	}
 
-	// 构建工具定义列表
+	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	if err != nil {
+		return "", err
+	}
+
 	tools := mcpServer.ListTools()
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
@@ -68,16 +101,13 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 		})
 	}
 
-	// 尝试使用 native function calling
 	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d", len(toolDefs))
 	resp, err := provider.ChatWithTools(messages, toolDefs)
 	if err != nil {
-		// Provider 不支持 native function calling，降级到 prompt engineering
 		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
-		return s.getCompletionWithToolsPromptEngineering(messages, callerCtx)
+		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx)
 	}
 
-	// 如果没有工具调用，直接返回
 	if len(resp.ToolCalls) == 0 {
 		log.Printf("[AI Service] Native function calling - 无工具调用，直接返回回复")
 		return resp.Content, nil
@@ -85,18 +115,15 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 
 	log.Printf("[AI Service] Native function calling - 检测到 %d 个工具调用", len(resp.ToolCalls))
 
-	// 复制消息历史用于后续调用
 	newMessages := make([]Message, len(messages))
 	copy(newMessages, messages)
 
-	// 追加 assistant 消息（包含工具调用）
 	newMessages = append(newMessages, Message{
 		Role:      "assistant",
 		Content:   resp.Content,
 		ToolCalls: resp.ToolCalls,
 	})
 
-	// 执行所有工具调用
 	for _, tc := range resp.ToolCalls {
 		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
 		result, execErr := mcpServer.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
@@ -106,7 +133,6 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 		}
 		log.Printf("[AI Service] 工具执行成功: %v", result)
 
-		// 追加工具结果消息
 		resultJSON, _ := json.Marshal(result)
 		newMessages = append(newMessages, Message{
 			Role:       "tool",
@@ -115,7 +141,6 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 		})
 	}
 
-	// 再次调用 LLM 生成最终回复
 	log.Printf("[AI Service] Native function calling - 请求最终回复")
 	finalResp, err := provider.ChatWithTools(newMessages, toolDefs)
 	if err != nil {
@@ -125,17 +150,15 @@ func (s *AIService) GetCompletionWithTools(messages []Message, callerCtx *Caller
 	return finalResp.Content, nil
 }
 
-// getCompletionWithToolsPromptEngineering 使用 prompt engineering 方式实现工具调用（降级方案）
-func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, callerCtx *CallerContext) (string, error) {
+func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext) (string, error) {
 	s.mu.RLock()
 	mcpServer := s.mcpServer
 	s.mu.RUnlock()
 
 	if mcpServer == nil {
-		return s.GetCompletion(messages)
+		return s.GetCompletion(taskType, messages)
 	}
 
-	// 构建工具列表描述
 	tools := mcpServer.ListTools()
 	toolsDesc := "你可以使用以下工具（如果用户请求涉及管理操作，请使用工具）：\n\n"
 	for _, tool := range tools {
@@ -156,14 +179,12 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, 
 		toolsDesc += "\n"
 	}
 
-	// 添加使用说明到系统消息
 	toolInstruction := toolsDesc + `如需调用工具，请严格按照以下 JSON 格式返回：
 {"tool_call": {"name": "工具名称", "arguments": {"参数名": "参数值"}}}
 
 如果不需要调用工具，直接输出回复内容。
 注意：只在用户明确要求执行管理操作时才调用工具，普通聊天不要调用工具。`
 
-	// 将工具说明注入到 system 消息中
 	var newMessages []Message
 	for _, msg := range messages {
 		if msg.Role == "system" {
@@ -173,40 +194,32 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, 
 		}
 	}
 
-	// 第一次调用 AI
 	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(tools))
-	reply, err := s.GetCompletion(newMessages)
+	reply, err := s.GetCompletion(taskType, newMessages)
 	if err != nil {
 		log.Printf("[AI Service] 工具调用 - AI 请求失败: %v", err)
 		return "", err
 	}
 	log.Printf("[AI Service] 工具调用 - AI 回复: %s", reply[:min(200, len(reply))])
 
-	// 检查是否包含工具调用
 	toolCall, err := parseToolCall(reply)
 	if err != nil || toolCall == nil {
 		log.Printf("[AI Service] 工具调用 - 未检测到工具调用")
-		// 没有工具调用，直接返回回复
 		return reply, nil
 	}
 
 	log.Printf("[AI Service] 工具调用 - 检测到工具调用: name=%s, args=%v", toolCall.Name, toolCall.Arguments)
-
-	// 执行工具
 	result, err := mcpServer.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
 	if err != nil {
 		log.Printf("[AI Service] 工具执行失败: %v", err)
 		return "", err
 	}
-	log.Printf("[AI Service] 工具执行成功: %v", result)
 
-	// 将工具结果追加到消息列表
 	newMessages = append(newMessages, Message{Role: "assistant", Content: reply})
 	resultJSON, _ := json.Marshal(result)
 	newMessages = append(newMessages, Message{Role: "user", Content: fmt.Sprintf("工具 %s 执行结果: %s\n请根据这个结果生成给用户的回复。", toolCall.Name, string(resultJSON))})
 
-	// 第二次调用 AI，基于工具结果生成最终回复
-	finalReply, err := s.GetCompletion(newMessages)
+	finalReply, err := s.GetCompletion(taskType, newMessages)
 	if err != nil {
 		return "", err
 	}
@@ -214,15 +227,12 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(messages []Message, 
 	return finalReply, nil
 }
 
-// toolCall 工具调用（内部使用）
 type toolCall struct {
 	Name      string                 `json:"name"`
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
-// parseToolCall 从 AI 回复中解析工具调用
 func parseToolCall(reply string) (*toolCall, error) {
-	// 尝试提取 JSON
 	idx := strings.Index(reply, "{")
 	if idx == -1 {
 		return nil, nil
@@ -237,7 +247,7 @@ func parseToolCall(reply string) (*toolCall, error) {
 		ToolCall *toolCall `json:"tool_call"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return nil, nil // 不是有效的 JSON，当作普通回复
+		return nil, nil
 	}
 
 	if result.ToolCall == nil || result.ToolCall.Name == "" {
@@ -251,19 +261,15 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.config = cfg
-
-	if err := s.updateProvider(cfg); err != nil {
-		log.Printf("[AI Service] Failed to update provider: %v", err)
+	for name, providerCfg := range cfg.AllProviders() {
+		provider, err := s.factory.CreateProviderByName(name, providerCfg)
+		if err != nil {
+			log.Printf("[AI Service] Failed to update provider %s: %v", name, err)
+			continue
+		}
+		s.pool[name] = provider
 	}
-}
-
-func (s *AIService) updateProvider(cfg *AIConfig) error {
-	provider, err := s.factory.CreateProvider(cfg)
-	if err != nil {
-		return err
-	}
-	s.provider = provider
-	return nil
+	s.router = NewModelRouter(cfg.Router)
 }
 
 func (s *AIService) GetConfig() *AIConfig {
@@ -272,34 +278,6 @@ func (s *AIService) GetConfig() *AIConfig {
 	return s.config
 }
 
-func (s *AIService) GetCompletion(messages []Message) (string, error) {
-	s.mu.RLock()
-	provider := s.provider
-	s.mu.RUnlock()
-
-	if provider == nil {
-		return "", fmt.Errorf("AI provider not initialized")
-	}
-
-	filteredMessages := s.filterMessages(messages)
-	return provider.Chat(filteredMessages)
-}
-
-// GetCompletionStream 流式获取AI完成
-func (s *AIService) GetCompletionStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
-	s.mu.RLock()
-	provider := s.provider
-	s.mu.RUnlock()
-
-	if provider == nil {
-		return fmt.Errorf("AI provider not initialized")
-	}
-
-	filteredMessages := s.filterMessages(messages)
-	return provider.ChatStream(filteredMessages, onChunk)
-}
-
-// 过滤消息内容，防止恶意输入
 func (s *AIService) filterMessages(messages []Message) []Message {
 	filtered := make([]Message, len(messages))
 	for i, msg := range messages {
@@ -311,7 +289,6 @@ func (s *AIService) filterMessages(messages []Message) []Message {
 	return filtered
 }
 
-// 过滤内容，移除潜在的恶意内容
 func (s *AIService) filterContent(content string) string {
 	if len(content) > 10000 {
 		content = content[:10000] + "..."
@@ -322,23 +299,13 @@ func (s *AIService) filterContent(content string) string {
 func (s *AIService) IsConfigured() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	if s.provider == nil {
-		return false
-	}
-
-	return s.provider.IsConfigured()
+	return len(s.pool) > 0
 }
 
-// Embed 将文本转换为向量（使用当前 Provider 的 Embedding 能力）
 func (s *AIService) Embed(text string) ([]float32, error) {
-	s.mu.RLock()
-	provider := s.provider
-	s.mu.RUnlock()
-
-	if provider == nil {
-		return nil, fmt.Errorf("AI provider not initialized")
+	provider, _, err := s.router.SelectProvider(s.pool, TaskTypeEmbedding)
+	if err != nil {
+		return nil, err
 	}
-
 	return provider.Embedding(text)
 }

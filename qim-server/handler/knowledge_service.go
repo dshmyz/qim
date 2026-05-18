@@ -201,7 +201,7 @@ func (k *KnowledgeService) AnswerWithKnowledge(query string, userID uint) (strin
 		{Role: "user", Content: query},
 	}
 
-	answer, err := k.aiService.GetCompletion(messages)
+	answer, err := k.aiService.GetCompletion(ai.TaskTypeChat, messages)
 	if err != nil {
 		log.Printf("[KnowledgeService] AI 回答失败: %v", err)
 		return "", err

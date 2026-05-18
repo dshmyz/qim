@@ -150,7 +150,7 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 	aiMessages := []ai.Message{
 		{Role: "user", Content: prompt},
 	}
-	persona, err := s.aiService.GetCompletion(aiMessages)
+	persona, err := s.aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
 	if err != nil {
 		s.db.Model(&task).Updates(map[string]interface{}{
 			"status":       "failed",
@@ -350,7 +350,7 @@ func (s *AvatarService) UpdatePersona(userID uint, data LearningData) error {
 	aiMessages := []ai.Message{
 		{Role: "user", Content: prompt},
 	}
-	persona, err := s.aiService.GetCompletion(aiMessages)
+	persona, err := s.aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
 	if err != nil {
 		return err
 	}

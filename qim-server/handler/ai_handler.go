@@ -119,7 +119,7 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	}
 
 	// 获取AI完成
-	result, err := h.aiService.GetCompletion(req.Messages)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, req.Messages)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI请求失败: " + err.Error()})
 		return
@@ -370,7 +370,7 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 
 	if aiConfigured {
 		cfg := h.aiService.GetConfig()
-		dashboard["provider"] = cfg.Provider
+		dashboard["providers_configured"] = len(cfg.AllProviders())
 	}
 
 	if h.mcpServer != nil {
@@ -427,7 +427,7 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 	}
 
 	// 执行流式请求
-	err := h.aiService.GetCompletionStream(req.Messages, onChunk)
+	err := h.aiService.GetCompletionStream(ai.TaskTypeChat, req.Messages, onChunk)
 	if err != nil {
 		// 发送错误事件
 		errData, _ := json.Marshal(ai.StreamChunk{Content: err.Error()})

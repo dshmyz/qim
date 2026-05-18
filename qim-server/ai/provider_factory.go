@@ -11,22 +11,11 @@ func NewProviderFactory() *ProviderFactory {
 }
 
 func (f *ProviderFactory) CreateProvider(cfg *AIConfig) (Provider, error) {
-	switch cfg.Provider {
-	case "openai":
-		return f.createOpenAIProvider(cfg), nil
-	case "baidu":
-		return f.createBaiduProvider(cfg), nil
-	case "alibaba":
-		return f.createAlibabaProvider(cfg), nil
-	case "tencent":
-		return f.createTencentProvider(cfg), nil
-	case "bytedance":
-		return f.createBytedanceProvider(cfg), nil
-	case "anthropic":
-		return f.createAnthropicProvider(cfg), nil
-	default:
-		return nil, fmt.Errorf("unsupported AI provider: %s", cfg.Provider)
+	providers := cfg.AllProviders()
+	for name, providerCfg := range providers {
+		return f.CreateProviderByName(name, providerCfg)
 	}
+	return nil, fmt.Errorf("no AI provider configured")
 }
 
 func (f *ProviderFactory) createOpenAIProvider(cfg *AIConfig) Provider {

@@ -110,7 +110,7 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 		{Role: "user", Content: senderName + ": " + content},
 	}
 
-	result, err := e.aiService.GetCompletion(messages)
+	result, err := e.aiService.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
 		log.Printf("[TodoExtractor] AI 提取失败: %v", err)
 		return

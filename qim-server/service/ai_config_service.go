@@ -278,7 +278,6 @@ func (s *AIConfigService) testOpenAIConnection(apiKey string, modelName string, 
 	}
 
 	cfg := &ai.AIConfig{
-		Provider: "openai",
 		OpenAI: ai.OpenAIConfig{
 			APIKey:  apiKey,
 			Model:   modelName,

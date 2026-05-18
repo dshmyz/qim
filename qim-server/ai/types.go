@@ -22,7 +22,7 @@ type ChatCompletionResponse struct {
 	Choices []struct {
 		Index   int     `json:"index"`
 		Message Message `json:"message"`
-		Finish  string `json:"finish_reason"`
+		Finish  string  `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -44,7 +44,7 @@ type StreamUsage struct {
 }
 
 type AIConfig struct {
-	Provider    string          `yaml:"provider"`
+	Router      RouterConfig    `yaml:"router"`
 	MaxTokens   int             `yaml:"max_tokens"`
 	Temperature float64         `yaml:"temperature"`
 	OpenAI      OpenAIConfig    `yaml:"openai"`
@@ -53,6 +53,7 @@ type AIConfig struct {
 	Tencent     TencentConfig   `yaml:"tencent"`
 	Bytedance   BytedanceConfig `yaml:"bytedance"`
 	Anthropic   AnthropicConfig `yaml:"anthropic"`
+	DeepSeek    OpenAIConfig    `yaml:"deepseek"`
 }
 
 type OpenAIConfig struct {
@@ -126,4 +127,30 @@ type Override struct {
 	TaskType TaskType `json:"task_type"`
 	Provider string   `json:"provider"`
 	Model    string   `json:"model"`
+}
+
+func (c *AIConfig) AllProviders() map[string]ProviderConfig {
+	providers := make(map[string]ProviderConfig)
+	if c.OpenAI.APIKey != "" {
+		providers["openai"] = c.OpenAI.ToProviderConfig()
+	}
+	if c.Anthropic.APIKey != "" {
+		providers["anthropic"] = c.Anthropic.ToProviderConfig()
+	}
+	if c.DeepSeek.APIKey != "" {
+		providers["deepseek"] = c.DeepSeek.ToProviderConfig()
+	}
+	if c.Baidu.APIKey != "" {
+		providers["baidu"] = c.Baidu.ToProviderConfig()
+	}
+	if c.Alibaba.APIKey != "" {
+		providers["alibaba"] = c.Alibaba.ToProviderConfig()
+	}
+	if c.Tencent.SecretID != "" {
+		providers["tencent"] = c.Tencent.ToProviderConfig()
+	}
+	if c.Bytedance.APIKey != "" {
+		providers["bytedance"] = c.Bytedance.ToProviderConfig()
+	}
+	return providers
 }

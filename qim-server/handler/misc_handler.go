@@ -281,7 +281,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 			})
 
 			var err error
-			reply, err = aiSvc.GetCompletion(messages)
+			reply, err = aiSvc.GetCompletion(ai.TaskTypeChat, messages)
 			if err != nil {
 				log.Printf("AI API error: %v", err)
 				reply = "抱歉，AI服务暂时不可用，请稍后再试。"

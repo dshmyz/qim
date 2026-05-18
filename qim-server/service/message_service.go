@@ -153,7 +153,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var fullResponse string
 
 	go func() {
-		err := s.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+		err := s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
 			fullResponse += chunk.Content
 			return nil
 		})
