@@ -80,7 +80,7 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 	)
 	graph.AddChatTemplateNode("prompt", template)
 
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeChat, 0))
 
 	graph.AddLambdaNode("format", g.createFormatReplyNode())
 

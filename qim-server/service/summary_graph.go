@@ -55,7 +55,7 @@ func (g *SummaryGraph) Build() error {
 
 	graph.AddLambdaNode("prepare", g.createPrepareNode())
 	graph.AddLambdaNode("build_messages", g.createBuildMessagesNode())
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeAnalysis, 0))
 	graph.AddLambdaNode("validate", g.createValidateNode())
 	graph.AddLambdaNode("format", g.createFormatNode())
 

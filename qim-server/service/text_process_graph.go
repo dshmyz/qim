@@ -60,7 +60,7 @@ func (g *TextProcessGraph) Build() error {
 	graph := compose.NewGraph[*TextProcessInput, *TextProcessOutput]()
 
 	graph.AddLambdaNode("build_prompt", g.createBuildPromptNode())
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeAnalysis, 0))
 	graph.AddLambdaNode("format", g.createFormatNode())
 
 	graph.AddEdge(compose.START, "build_prompt")

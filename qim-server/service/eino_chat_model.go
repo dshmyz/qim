@@ -12,12 +12,15 @@ import (
 
 type EinoChatModel struct {
 	aiService *ai.AIService
+	taskType  ai.TaskType
 	userID    uint
+	overrides []ai.Override
 }
 
-func NewEinoChatModel(aiService *ai.AIService, userID uint) *EinoChatModel {
+func NewEinoChatModel(aiService *ai.AIService, taskType ai.TaskType, userID uint) *EinoChatModel {
 	return &EinoChatModel{
 		aiService: aiService,
+		taskType:  taskType,
 		userID:    userID,
 	}
 }
@@ -29,7 +32,7 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 	var err error
 
 	callerCtx := &ai.CallerContext{UserID: m.userID}
-	reply, err = m.aiService.GetCompletionWithTools(ai.TaskTypeChat, aiMessages, callerCtx)
+	reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +56,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 	go func() {
 		defer sw.Close()
 
-		err := m.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
+		err := m.aiService.GetCompletionStream(m.taskType, aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
 				Role:    schema.Assistant,
 				Content: chunk.Content,

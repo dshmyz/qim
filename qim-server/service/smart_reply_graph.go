@@ -112,7 +112,7 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 	// 直接构建 Messages 节点（避免 ChatTemplate 变量替换问题）
 	graph.AddLambdaNode("build_messages", g.createBuildMessagesNode())
 
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeChat, 0))
 
 	graph.AddLambdaNode("format", g.createFormatReplyNode())
 
@@ -185,7 +185,7 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 
 	historyMessages := g.buildHistoryMessages(input, systemUserID)
 
-	chatModel := NewEinoChatModel(g.aiService, input.UserID)
+	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
 	return chatModel.Stream(ctx, historyMessages)
 }
 

@@ -75,7 +75,7 @@ func (g *UnifiedSearchGraph) Build() error {
 
 	graph.AddLambdaNode("retrieve", g.createRetrieveNode())
 	graph.AddLambdaNode("build_prompt", g.createBuildPromptNode())
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, 0))
+	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeSearch, 0))
 	graph.AddLambdaNode("format", g.createFormatNode())
 
 	graph.AddEdge(compose.START, "retrieve")
