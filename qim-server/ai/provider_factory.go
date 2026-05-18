@@ -106,3 +106,45 @@ func (f *ProviderFactory) createAnthropicProvider(cfg *AIConfig) Provider {
 		},
 	})
 }
+
+func (f *ProviderFactory) CreateProviderByName(name string, cfg ProviderConfig) (Provider, error) {
+	switch name {
+	case "openai", "deepseek":
+		return f.createGenericOpenAIProvider(name, cfg), nil
+	case "anthropic":
+		return f.createAnthropicProviderFromConfig(cfg), nil
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", name)
+	}
+}
+
+func (f *ProviderFactory) createGenericOpenAIProvider(name string, cfg ProviderConfig) Provider {
+	extraParams := cfg.ExtraParams
+	if extraParams == nil {
+		extraParams = make(map[string]interface{})
+	}
+	if _, ok := extraParams["max_tokens"]; !ok {
+		extraParams["max_tokens"] = 1000
+	}
+	if _, ok := extraParams["temperature"]; !ok {
+		extraParams["temperature"] = 0.7
+	}
+	return NewOpenAIProvider(ProviderConfig{
+		APIKey:  cfg.APIKey,
+		Model:   cfg.Model,
+		BaseURL: cfg.BaseURL,
+		ExtraParams: extraParams,
+	})
+}
+
+func (f *ProviderFactory) createAnthropicProviderFromConfig(cfg ProviderConfig) Provider {
+	return NewAnthropicProvider(ProviderConfig{
+		APIKey:  cfg.APIKey,
+		Model:   cfg.Model,
+		BaseURL: cfg.BaseURL,
+		ExtraParams: map[string]interface{}{
+			"max_tokens":  1000,
+			"temperature": 0.7,
+		},
+	})
+}
