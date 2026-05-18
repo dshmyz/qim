@@ -1,3 +1,39 @@
+function setupGlobalHotkeys(runtime: any, goApp: any) {
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+  const cmdKey = isMac ? 'metaKey' : 'ctrlKey'
+
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e[cmdKey]) {
+      switch (e.key.toLowerCase()) {
+        case 'm':
+          e.preventDefault()
+          runtime.WindowMinimise()
+          break
+        case 'k':
+          e.preventDefault()
+          console.log('[hotkey] Cmd+K: toggle devtools')
+          break
+        case 'w':
+          e.preventDefault()
+          runtime.WindowHide()
+          break
+        case 'q':
+          e.preventDefault()
+          runtime.Quit()
+          break
+        case 'a':
+          if (e.shiftKey) {
+            e.preventDefault()
+            if (goApp) {
+              goApp.StartScreenshot()
+            }
+          }
+          break
+      }
+    }
+  })
+}
+
 function initWailsShim() {
   const isWails = typeof window.runtime !== 'undefined'
 
@@ -7,6 +43,8 @@ function initWailsShim() {
 
   const runtime = window.runtime!
   const goApp = window.go?.main?.App
+
+  setupGlobalHotkeys(runtime, goApp)
 
   const electronShim = {
     ipcRenderer: {
@@ -32,7 +70,9 @@ function initWailsShim() {
             runtime.EventsEmit('tray-flash', false)
             break
           case 'take-screenshot':
-            runtime.EventsEmit('screenshot-requested', true)
+            if (goApp) {
+              goApp.StartScreenshot()
+            }
             break
           case 'start-screen-share':
             runtime.EventsEmit('screen-share-requested', true)
@@ -124,7 +164,9 @@ function initWailsShim() {
     },
     screenshot: {
       take: () => {
-        runtime.EventsEmit('screenshot-requested', true)
+        if (goApp) {
+          goApp.StartScreenshot()
+        }
       },
       onTaken: (callback: (data: any) => void) => {
         runtime.EventsOn('screenshot-taken', (data: any) => callback(data))

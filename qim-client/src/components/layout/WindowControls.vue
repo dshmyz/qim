@@ -51,7 +51,7 @@ const closeWindow = () => {
   background: var(--window-controls-bg);
   padding: 0 20px;
   user-select: none;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -63,7 +63,7 @@ const closeWindow = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .window-control-btn {
@@ -78,6 +78,7 @@ const closeWindow = () => {
   justify-content: center;
   transition: all 0.2s ease;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
   line-height: 1;
   box-shadow: var(--shadow-sm);
 }

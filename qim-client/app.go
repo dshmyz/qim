@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,10 @@ import (
 )
 
 type App struct {
-	ctx context.Context
+	ctx        context.Context
+	screenshot *ScreenshotManager
+	updater    *UpdateManager
+	hasUnread  bool
 }
 
 func NewApp() *App {
@@ -24,6 +28,25 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	a.screenshot = NewScreenshotManager()
+	a.updater = NewUpdateManager()
+
+	go func() {
+		runtime.EventsOn(ctx, "tray-show-window", func(optional ...interface{}) {
+			runtime.WindowShow(ctx)
+			runtime.WindowSetAlwaysOnTop(ctx, true)
+			runtime.WindowSetAlwaysOnTop(ctx, false)
+		})
+
+		runtime.EventsOn(ctx, "tray-quit-app", func(optional ...interface{}) {
+			runtime.Quit(ctx)
+		})
+
+		runtime.EventsOn(ctx, "hotkey-screenshot", func(optional ...interface{}) {
+			a.StartScreenshot()
+		})
+	}()
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -223,6 +246,7 @@ func (a *App) CleanupAvatarCache(maxAgeDays int) error {
 }
 
 func (a *App) FlashTray(enabled bool) {
+	a.hasUnread = enabled
 	runtime.EventsEmit(a.ctx, "tray-flash", enabled)
 }
 
@@ -233,11 +257,49 @@ type UpdateInfo struct {
 }
 
 func (a *App) CheckForUpdates() *UpdateInfo {
+	if a.updater != nil {
+		info, err := a.updater.CheckForUpdates()
+		if err != nil {
+			fmt.Printf("[update] Check failed: %v\n", err)
+			return &UpdateInfo{Available: false}
+		}
+		return info
+	}
 	return &UpdateInfo{Available: false}
 }
 
 func (a *App) DownloadUpdate() *UpdateInfo {
+	if a.updater != nil {
+		info, err := a.updater.CheckForUpdates()
+		if err != nil || !info.Available {
+			return &UpdateInfo{Available: false}
+		}
+
+		updateFile, err := a.updater.DownloadUpdate(info.Url, func(progress int) {
+			runtime.EventsEmit(a.ctx, "update-progress", progress)
+		})
+
+		if err != nil {
+			fmt.Printf("[update] Download failed: %v\n", err)
+			return &UpdateInfo{Available: false}
+		}
+
+		runtime.EventsEmit(a.ctx, "update-downloaded", updateFile)
+
+		return &UpdateInfo{
+			Available: true,
+			Version:   info.Version,
+			Url:       updateFile,
+		}
+	}
 	return &UpdateInfo{Available: false}
+}
+
+func (a *App) InstallUpdate(updateFile string) error {
+	if a.updater != nil {
+		return a.updater.InstallUpdate(updateFile)
+	}
+	return fmt.Errorf("updater not initialized")
 }
 
 type ScreenSource struct {
@@ -247,14 +309,50 @@ type ScreenSource struct {
 }
 
 func (a *App) GetScreenSources() ([]ScreenSource, error) {
-	runtime.EventsEmit(a.ctx, "screen-share-requested", true)
-	return nil, nil
+	return []ScreenSource{
+		{Id: "screen:0", Name: "整个屏幕"},
+	}, nil
 }
 
 func (a *App) StartScreenshot() {
-	runtime.WindowMinimise(a.ctx)
-	time.Sleep(300 * time.Millisecond)
-	runtime.EventsEmit(a.ctx, "screenshot-requested", true)
+	go func() {
+		runtime.WindowMinimise(a.ctx)
+		time.Sleep(500 * time.Millisecond)
+
+		if a.screenshot != nil {
+			dataUrl, display, err := a.screenshot.CaptureFullScreen()
+			if err != nil {
+				fmt.Printf("[screenshot] Capture failed: %v\n", err)
+				runtime.WindowShow(a.ctx)
+				return
+			}
+
+			displayJson, _ := json.Marshal(display)
+			runtime.WindowShow(a.ctx)
+			time.Sleep(100 * time.Millisecond)
+			runtime.EventsEmit(a.ctx, "screenshot-data", dataUrl, string(displayJson))
+		}
+	}()
+}
+
+func (a *App) CancelScreenshot() {
+	runtime.EventsEmit(a.ctx, "screenshot-cancel")
+	runtime.WindowShow(a.ctx)
+}
+
+func (a *App) CompleteScreenshot(dataUrl string, boundsJson string) {
+	runtime.EventsEmit(a.ctx, "screenshot-taken", dataUrl, boundsJson)
+	runtime.WindowShow(a.ctx)
+}
+
+func (a *App) SaveScreenshot(data []byte, boundsJson string) *FileDialogResult {
+	home, _ := os.UserHomeDir()
+	fileName := fmt.Sprintf("screenshot_%s.png", time.Now().Format("20060102_150405"))
+	targetDir := filepath.Join(home, "Downloads")
+	os.MkdirAll(targetDir, 0755)
+	filePath := filepath.Join(targetDir, fileName)
+	os.WriteFile(filePath, data, 0644)
+	return &FileDialogResult{Canceled: false, FilePath: filePath}
 }
 
 func (a *App) GetPlatform() string {

@@ -4814,7 +4814,7 @@ button:active {
 .top-bar {
   display: flex;
   height: 40px;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .top-bar-left {

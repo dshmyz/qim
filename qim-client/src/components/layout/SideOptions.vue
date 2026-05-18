@@ -93,7 +93,7 @@ defineEmits<{
   color: var(--side-options-title-color, var(--text-color));
   letter-spacing: 0.5px;
   user-select: none;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .option-item {

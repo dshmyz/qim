@@ -1,0 +1,29 @@
+[package]
+name = "qim-tauri"
+version = "1.0.0"
+description = "QIM Desktop"
+authors = ["QIM Team"]
+edition = "2021"
+
+[lib]
+name = "qim_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+xcap = "0.9"
+image = "0.25"
+png = "0.17"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+md5 = "0.7"
+dirs = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

@@ -11,7 +11,7 @@
     </div>
 
     <!-- 顶部区域：窗口控制栏 -->
-    <div class="top-bar">
+    <div class="top-bar" data-tauri-drag-region @dblclick="toggleMaximize">
       <div class="top-bar-left"></div>
       <WindowControls />
     </div>
@@ -36,6 +36,14 @@
 
 <script setup lang="ts">
 import WindowControls from './WindowControls.vue'
+
+const toggleMaximize = () => {
+  if (window.electron?.ipcRenderer) {
+    window.electron.ipcRenderer.send('maximize-window')
+  } else {
+    console.log('Electron not available')
+  }
+}
 </script>
 
 <style scoped>
@@ -81,6 +89,7 @@ import WindowControls from './WindowControls.vue'
   display: flex;
   height: 40px;
   -webkit-app-region: drag;
+  --wails-draggable: drag;
   flex-shrink: 0;
 }
 

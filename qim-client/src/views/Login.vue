@@ -448,7 +448,7 @@ const closeWindow = () => {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .background-decoration {
@@ -509,7 +509,7 @@ const closeWindow = () => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
   z-index: 1;
   animation: slideIn 0.5s ease-out;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .window-controls {
@@ -519,7 +519,7 @@ const closeWindow = () => {
   display: flex;
   gap: 8px;
   z-index: 1000;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
   box-shadow: none !important;
   padding: 0;
   height: auto;
@@ -957,7 +957,7 @@ const closeWindow = () => {
   right: 16px;
   text-align: right;
   z-index: 10;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .info-row {
