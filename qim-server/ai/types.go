@@ -94,3 +94,36 @@ type AnthropicConfig struct {
 	Model   string `yaml:"model"`
 	BaseURL string `yaml:"base_url"`
 }
+
+// TaskType 任务类型
+type TaskType string
+
+const (
+	TaskTypeChat        TaskType = "chat"
+	TaskTypeIntent      TaskType = "intent_recognition"
+	TaskTypeAnalysis    TaskType = "analysis"
+	TaskTypeEmbedding   TaskType = "embedding"
+	TaskTypeToolCalling TaskType = "tool_calling"
+	TaskTypeSearch      TaskType = "search"
+	TaskTypeDigest      TaskType = "digest"
+)
+
+// Route 路由规则
+type Route struct {
+	Provider string   `yaml:"provider"`
+	Model    string   `yaml:"model"`
+	Fallback []string `yaml:"fallback"`
+}
+
+// RouterConfig 路由配置
+type RouterConfig struct {
+	DefaultTask TaskType           `yaml:"default_task"`
+	Routes      map[TaskType]Route `yaml:"routes"`
+}
+
+// Override 覆盖规则（用户/群组级）
+type Override struct {
+	TaskType TaskType `json:"task_type"`
+	Provider string   `json:"provider"`
+	Model    string   `json:"model"`
+}
