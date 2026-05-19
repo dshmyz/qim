@@ -173,7 +173,7 @@ func (d *IntentDetector) detectByAI(content string, userID uint, conversationID 
 		{Role: "user", Content: content},
 	}
 
-	result, err := d.aiService.GetCompletion(messages)
+	result, err := d.aiService.GetCompletion(TaskTypeIntent, messages)
 	if err != nil {
 		logger.WithModule("IntentDetector").Error("AI 意图检测失败", "error", err)
 		return nil, err

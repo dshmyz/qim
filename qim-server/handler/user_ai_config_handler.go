@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
+	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/di"
 	"qim-server/pkg/response"
@@ -30,19 +32,24 @@ func (h *UserAIConfigHandler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 type ConfigResponse struct {
-	ID           uint       `json:"id"`
-	ConfigName   string     `json:"config_name"`
-	Provider     string     `json:"provider"`
-	ModelName    string     `json:"model_name"`
-	BaseURL      string     `json:"base_url"`
-	Temperature  float64    `json:"temperature"`
-	MaxTokens    int        `json:"max_tokens"`
-	IsVerified   bool       `json:"is_verified"`
-	LastTestedAt *time.Time `json:"last_tested_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID           uint          `json:"id"`
+	ConfigName   string        `json:"config_name"`
+	Provider     string        `json:"provider"`
+	ModelName    string        `json:"model_name"`
+	BaseURL      string        `json:"base_url"`
+	Temperature  float64       `json:"temperature"`
+	MaxTokens    int           `json:"max_tokens"`
+	IsVerified   bool          `json:"is_verified"`
+	Overrides    []ai.Override `json:"overrides,omitempty"`
+	LastTestedAt *time.Time    `json:"last_tested_at"`
+	CreatedAt    time.Time     `json:"created_at"`
 }
 
 func toConfigResponse(cfg model.AIConfig) ConfigResponse {
+	var overrides []ai.Override
+	if cfg.Overrides != "" {
+		json.Unmarshal([]byte(cfg.Overrides), &overrides)
+	}
 	return ConfigResponse{
 		ID:           cfg.ID,
 		ConfigName:   cfg.ConfigName,
@@ -52,6 +59,7 @@ func toConfigResponse(cfg model.AIConfig) ConfigResponse {
 		Temperature:  cfg.Temperature,
 		MaxTokens:    cfg.MaxTokens,
 		IsVerified:   cfg.IsVerified,
+		Overrides:    overrides,
 		LastTestedAt: cfg.LastTestedAt,
 		CreatedAt:    cfg.CreatedAt,
 	}
@@ -91,11 +99,12 @@ func (h *UserAIConfigHandler) ListMyConfigs(c *gin.Context) {
 }
 
 type CreateConfigRequest struct {
-	ConfigName string `json:"config_name" binding:"required"`
-	Provider   string `json:"provider" binding:"required"`
-	APIKey     string `json:"api_key" binding:"required"`
-	ModelName  string `json:"model_name" binding:"required"`
-	BaseURL    string `json:"base_url"`
+	ConfigName string        `json:"config_name" binding:"required"`
+	Provider   string        `json:"provider" binding:"required"`
+	APIKey     string        `json:"api_key" binding:"required"`
+	ModelName  string        `json:"model_name" binding:"required"`
+	BaseURL    string        `json:"base_url"`
+	Overrides  []ai.Override `json:"overrides,omitempty"`
 }
 
 func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
@@ -109,7 +118,8 @@ func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 	}
 
 	svc := di.GlobalContainer.AIConfigService
-	config, err := svc.CreateConfig(userID, req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
+	overridesJSON, _ := json.Marshal(req.Overrides)
+	config, err := svc.CreateConfig(userID, req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL, string(overridesJSON))
 	if err != nil {
 		if errors.Is(err, service.ErrConfigLimitExceeded) {
 			response.BadRequest(c, "配置数量已达上限（5个）")

@@ -2,43 +2,37 @@ package service
 
 import (
 	"context"
+	"log"
+
 	"qim-server/ai"
-	"qim-server/pkg/logger"
-	"qim-server/utils"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
-type callerCtxKeyType struct{}
-
-var callerCtxKey = callerCtxKeyType{}
-
-// WithCallerContext 将 CallerContext 注入到 context 中
-func WithCallerContext(ctx context.Context, c *ai.CallerContext) context.Context {
-	return context.WithValue(ctx, callerCtxKey, c)
-}
-
 type EinoChatModel struct {
 	aiService *ai.AIService
+	taskType  ai.TaskType
+	userID    uint
+	overrides []ai.Override
 }
 
-func NewEinoChatModel(aiService *ai.AIService) *EinoChatModel {
+func NewEinoChatModel(aiService *ai.AIService, taskType ai.TaskType, userID uint) *EinoChatModel {
 	return &EinoChatModel{
 		aiService: aiService,
+		taskType:  taskType,
+		userID:    userID,
 	}
 }
 
 func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	aiMessages := einoMessagesToAIMessages(input)
 
-	// 优先从 context 获取 CallerContext，否则使用默认空上下文
-	callerCtx := &ai.CallerContext{}
-	if cc, ok := ctx.Value(callerCtxKey).(*ai.CallerContext); ok && cc != nil {
-		callerCtx = cc
-	}
+	var reply string
+	var err error
 
-	reply, err := m.aiService.GetCompletionWithTools(aiMessages, callerCtx)
+	callerCtx := &ai.CallerContext{UserID: m.userID}
+	reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -54,15 +48,15 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 
 	// 打印发送给模型的 Prompt，方便排查拦截原因
 	for _, msg := range aiMessages {
-		logger.WithModule("EinoChatModel").Info("Prompt", "role", msg.Role, "content", msg.Content)
+		log.Printf("[EinoChatModel] [%s]: %s", msg.Role, msg.Content)
 	}
 
 	sr, sw := schema.Pipe[*schema.Message](0)
 
-	utils.SafeGoWithLabel("eino-stream", func() {
+	go func() {
 		defer sw.Close()
 
-		err := m.aiService.GetCompletionStream(aiMessages, func(chunk ai.StreamChunk) error {
+		err := m.aiService.GetCompletionStream(m.taskType, aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
 				Role:    schema.Assistant,
 				Content: chunk.Content,
@@ -72,10 +66,10 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 		})
 
 		if err != nil {
-			logger.WithModule("EinoChatModel").Error("Stream error", "error", err)
+			log.Printf("[EinoChatModel] Stream error: %v", err)
 			sw.Send(nil, err)
 		}
-	})
+	}()
 
 	return sr, nil
 }

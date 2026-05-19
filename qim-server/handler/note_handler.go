@@ -64,7 +64,7 @@ func AnalyzeNote(c *gin.Context) {
 		{Role: "user", Content: note.Content},
 	}
 
-	result, err := aiSvc.GetCompletion(messages)
+	result, err := aiSvc.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
 		response.InternalServerError(c, "AI 分析失败")
 		return

@@ -83,7 +83,7 @@ func (s *AvatarMemoryService) ShouldRemember(message string) (bool, error) {
 内容：` + message
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := s.aiService.GetCompletion(aiMessages)
+	result, err := s.aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
 	if err != nil {
 		return false, err
 	}

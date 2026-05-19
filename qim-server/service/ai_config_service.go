@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
+	"log"
 	"time"
 	"qim-server/ai"
 	"qim-server/model"
@@ -149,7 +151,7 @@ func (s *AIConfigService) ListUserConfigs(userID uint, page int, pageSize int) (
 	return configs, total, nil
 }
 
-func (s *AIConfigService) CreateConfig(userID uint, configName string, provider string, apiKey string, modelName string, baseURL string) (*model.AIConfig, error) {
+func (s *AIConfigService) CreateConfig(userID uint, configName string, provider string, apiKey string, modelName string, baseURL string, overridesJSON string) (*model.AIConfig, error) {
 	var count int64
 	s.db.Model(&model.AIConfig{}).Where("user_id = ?", userID).Count(&count)
 	if count >= 5 {
@@ -171,6 +173,7 @@ func (s *AIConfigService) CreateConfig(userID uint, configName string, provider 
 		ModelName:       modelName,
 		BaseURL:         baseURL,
 		IsVerified:      verified,
+		Overrides:       overridesJSON,
 	}
 
 	now := time.Now()
@@ -278,7 +281,6 @@ func (s *AIConfigService) testOpenAIConnection(apiKey string, modelName string, 
 	}
 
 	cfg := &ai.AIConfig{
-		Provider: "openai",
 		OpenAI: ai.OpenAIConfig{
 			APIKey:  apiKey,
 			Model:   modelName,
@@ -300,4 +302,17 @@ func (s *AIConfigService) testOpenAIConnection(apiKey string, modelName string, 
 	})
 
 	return err == nil
+}
+
+func (s *AIConfigService) GetUserOverrides(userID uint) []ai.Override {
+	config, err := s.GetDefaultConfig(userID)
+	if err != nil || config == nil || config.Overrides == "" {
+		return nil
+	}
+	var overrides []ai.Override
+	if err := json.Unmarshal([]byte(config.Overrides), &overrides); err != nil {
+		log.Printf("[AIConfigService] Failed to unmarshal overrides for user %d: %v", userID, err)
+		return nil
+	}
+	return overrides
 }

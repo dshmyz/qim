@@ -40,7 +40,7 @@ type ChatCompletionResponse struct {
 	Choices []struct {
 		Index   int     `json:"index"`
 		Message Message `json:"message"`
-		Finish  string `json:"finish_reason"`
+		Finish  string  `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -62,7 +62,7 @@ type StreamUsage struct {
 }
 
 type AIConfig struct {
-	Provider    string          `yaml:"provider"`
+	Router      RouterConfig    `yaml:"router"`
 	MaxTokens   int             `yaml:"max_tokens"`
 	Temperature float64         `yaml:"temperature"`
 	OpenAI      OpenAIConfig    `yaml:"openai"`
@@ -71,6 +71,7 @@ type AIConfig struct {
 	Tencent     TencentConfig   `yaml:"tencent"`
 	Bytedance   BytedanceConfig `yaml:"bytedance"`
 	Anthropic   AnthropicConfig `yaml:"anthropic"`
+	DeepSeek    OpenAIConfig    `yaml:"deepseek"`
 }
 
 type OpenAIConfig struct {
@@ -111,4 +112,63 @@ type AnthropicConfig struct {
 	APIKey  string `yaml:"api_key"`
 	Model   string `yaml:"model"`
 	BaseURL string `yaml:"base_url"`
+}
+
+// TaskType 任务类型
+type TaskType string
+
+const (
+	TaskTypeChat        TaskType = "chat"
+	TaskTypeIntent      TaskType = "intent_recognition"
+	TaskTypeAnalysis    TaskType = "analysis"
+	TaskTypeEmbedding   TaskType = "embedding"
+	TaskTypeToolCalling TaskType = "tool_calling"
+	TaskTypeSearch      TaskType = "search"
+	TaskTypeDigest      TaskType = "digest"
+)
+
+// Route 路由规则
+type Route struct {
+	Provider string   `yaml:"provider"`
+	Model    string   `yaml:"model"`
+	Fallback []string `yaml:"fallback"`
+}
+
+// RouterConfig 路由配置
+type RouterConfig struct {
+	DefaultTask TaskType           `yaml:"default_task"`
+	Routes      map[TaskType]Route `yaml:"routes"`
+}
+
+// Override 覆盖规则（用户/群组级）
+type Override struct {
+	TaskType TaskType `json:"task_type"`
+	Provider string   `json:"provider"`
+	Model    string   `json:"model"`
+}
+
+func (c *AIConfig) AllProviders() map[string]ProviderConfig {
+	providers := make(map[string]ProviderConfig)
+	if c.OpenAI.APIKey != "" {
+		providers["openai"] = c.OpenAI.ToProviderConfig()
+	}
+	if c.Anthropic.APIKey != "" {
+		providers["anthropic"] = c.Anthropic.ToProviderConfig()
+	}
+	if c.DeepSeek.APIKey != "" {
+		providers["deepseek"] = c.DeepSeek.ToProviderConfig()
+	}
+	if c.Baidu.APIKey != "" {
+		providers["baidu"] = c.Baidu.ToProviderConfig()
+	}
+	if c.Alibaba.APIKey != "" {
+		providers["alibaba"] = c.Alibaba.ToProviderConfig()
+	}
+	if c.Tencent.SecretID != "" {
+		providers["tencent"] = c.Tencent.ToProviderConfig()
+	}
+	if c.Bytedance.APIKey != "" {
+		providers["bytedance"] = c.Bytedance.ToProviderConfig()
+	}
+	return providers
 }

@@ -180,7 +180,7 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 		{Role: "user", Content: "请排序"},
 	}
 
-	aiResponse, err := h.aiService.GetCompletion(messagesInput)
+	aiResponse, err := h.aiService.GetCompletion(ai.TaskTypeSearch, messagesInput)
 	if err != nil {
 		results := buildSearchResults(messages, req.Query, req.Limit)
 		c.JSON(http.StatusOK, gin.H{

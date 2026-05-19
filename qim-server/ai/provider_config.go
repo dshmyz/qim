@@ -27,3 +27,56 @@ func (c *ProviderConfig) IsSet() bool {
 func (c *ProviderConfig) IsDualKeySet() bool {
 	return c.APIKey != "" && c.APISecret != ""
 }
+
+func (c OpenAIConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:  c.APIKey,
+		Model:   c.Model,
+		BaseURL: c.BaseURL,
+		ExtraParams: map[string]interface{}{
+			"embedding_model": c.EmbeddingModel,
+		},
+	}
+}
+
+func (c BaiduConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:    c.APIKey,
+		APISecret: c.SecretKey,
+		Model:     c.Model,
+		BaseURL:   c.BaseURL,
+	}
+}
+
+func (c AlibabaConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:  c.APIKey,
+		Model:   c.Model,
+		BaseURL: c.BaseURL,
+	}
+}
+
+func (c TencentConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:    c.SecretID,
+		APISecret: c.SecretKey,
+		Model:     c.Model,
+		BaseURL:   c.BaseURL,
+	}
+}
+
+func (c BytedanceConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:  c.APIKey,
+		Model:   c.Model,
+		BaseURL: c.BaseURL,
+	}
+}
+
+func (c AnthropicConfig) ToProviderConfig() ProviderConfig {
+	return ProviderConfig{
+		APIKey:  c.APIKey,
+		Model:   c.Model,
+		BaseURL: c.BaseURL,
+	}
+}

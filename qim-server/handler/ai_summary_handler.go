@@ -154,7 +154,7 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		{Role: "user", Content: messagesText},
 	}
 
-	summary, err := h.aiService.GetCompletion(messagesInput)
+	summary, err := h.aiService.GetCompletion(ai.TaskTypeDigest, messagesInput)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "摘要生成失败: " + err.Error()})
 		return
