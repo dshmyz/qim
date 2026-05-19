@@ -1,0 +1,3 @@
+# QIM 自动更新免密 sudo 规则
+# 允许 sudo 组的用户无需密码运行更新安装脚本
+%sudo ALL=(ALL) NOPASSWD: /opt/青雀\ QIM/resources/install-update-linux.sh *
