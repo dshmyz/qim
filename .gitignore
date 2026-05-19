@@ -19,6 +19,11 @@ agency-agents-zh/
 qim-server/config.yaml
 qim-server/config/config.yaml
 
+# qim-client 构建产物
+qim-client/build/
+qim-client/qim-desktop
+qim-client/src-tauri/target/
+
 # 备份文件
 *.backup
 *.bak

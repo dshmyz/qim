@@ -41,5 +41,5 @@ nsis:
   artifactName: QIM-${version}.${ext}
 publish:
   provider: generic
-  url: http://localhost:8080/api/v1/updates/win7/
+  url: ${env.QIM_UPDATE_URL}/api/v1/updates/win7/
   channel: latest

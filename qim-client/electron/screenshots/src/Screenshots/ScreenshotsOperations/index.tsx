@@ -26,7 +26,7 @@ export default memo(function ScreenshotsOperations(): ReactElement | null {
     e.stopPropagation();
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // 仅在 bounds 或视口尺寸变化时重新计算位置，避免每次 render 都做 getBoundingClientRect
   useEffect(() => {
     if (!bounds || !elRef.current) {
       return;
@@ -49,34 +49,31 @@ export default memo(function ScreenshotsOperations(): ReactElement | null {
       y = height - elRect.height - 10;
     }
 
-    // 小数存在精度问题
-    if (
-      !position ||
-      Math.abs(position.x - x) > 1 ||
-      Math.abs(position.y - y) > 1
-    ) {
-      setPosition({
-        x,
-        y,
-      });
-    }
+    setPosition((prev) => {
+      if (prev && Math.abs(prev.x - x) <= 1 && Math.abs(prev.y - y) <= 1) {
+        return prev;
+      }
+      return { x, y };
+    });
 
-    // 小数存在精度问题
-    if (
-      !operationsRect ||
-      Math.abs(operationsRect.x - elRect.x) > 1 ||
-      Math.abs(operationsRect.y - elRect.y) > 1 ||
-      Math.abs(operationsRect.width - elRect.width) > 1 ||
-      Math.abs(operationsRect.height - elRect.height) > 1
-    ) {
-      setOperationsRect({
+    setOperationsRect((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.x - elRect.x) <= 1 &&
+        Math.abs(prev.y - elRect.y) <= 1 &&
+        Math.abs(prev.width - elRect.width) <= 1 &&
+        Math.abs(prev.height - elRect.height) <= 1
+      ) {
+        return prev;
+      }
+      return {
         x: elRect.x,
         y: elRect.y,
         width: elRect.width,
         height: elRect.height,
-      });
-    }
-  });
+      };
+    });
+  }, [bounds, width, height]);
 
   if (!bounds) {
     return null;

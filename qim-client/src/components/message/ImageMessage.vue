@@ -1,5 +1,5 @@
 <template>
-  <div class="message-content-image">
+  <div ref="observerTarget" class="message-content-image">
     <ImagePlaceholder
       class="image-placeholder-overlay"
       :class="{ 'placeholder-hidden': imageLoaded && !loadError }"
@@ -7,7 +7,8 @@
       :text="loadError ? '图片加载失败' : '加载中...'"
     />
     <img
-      :src="cachedUrl || ''"
+      v-if="isVisible && fullImageUrl"
+      :src="fullImageUrl"
       class="message-image"
       :class="{ 'image-hidden': !imageLoaded || loadError }"
       @click="previewImage"
@@ -19,8 +20,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useImageCache } from '../../composables/useImageCache'
+import { computed, ref } from 'vue'
+import { useIntersectionObserver } from '../../composables/useIntersectionObserver'
 import ImagePlaceholder from './ImagePlaceholder.vue'
 
 const props = defineProps<{
@@ -34,11 +35,13 @@ const emit = defineEmits<{
   imageLoaded: []
 }>()
 
-const { getCachedImage, cacheImage, preloadImage } = useImageCache()
-const cachedUrl = ref<string | undefined>(undefined)
-const isLoading = ref(false)
+const observerTarget = ref<HTMLElement | null>(null)
+const { isVisible } = useIntersectionObserver(observerTarget)
+
 const imageLoaded = ref(false)
 const loadError = ref(false)
+
+const isLoading = computed(() => isVisible.value && !imageLoaded.value && !loadError.value)
 
 const imageData = computed(() => {
   try {
@@ -59,42 +62,6 @@ const fullImageUrl = computed(() => {
   }
 })
 
-const loadImage = async () => {
-  if (isLoading.value || imageLoaded.value) return
-
-  const url = fullImageUrl.value
-  if (!url) {
-    loadError.value = true
-    return
-  }
-
-  const cached = getCachedImage(url)
-  if (cached) {
-    cachedUrl.value = cached
-    imageLoaded.value = true
-    emit('imageLoaded')
-    return
-  }
-
-  isLoading.value = true
-  loadError.value = false
-  try {
-    const result = await cacheImage(url)
-    if (result) {
-      cachedUrl.value = result
-      imageLoaded.value = true
-      emit('imageLoaded')
-    } else {
-      loadError.value = true
-    }
-  } catch (error) {
-    console.error('Failed to load image:', error)
-    loadError.value = true
-  } finally {
-    isLoading.value = false
-  }
-}
-
 const onImageLoad = () => {
   imageLoaded.value = true
   loadError.value = false
@@ -103,44 +70,10 @@ const onImageLoad = () => {
 
 const onImageError = () => {
   loadError.value = true
-  isLoading.value = false
 }
-
-// 同步从缓存初始化：在 watch immediate 之前设置初始状态，避免闪烁
-const tryInitFromCache = () => {
-  const url = fullImageUrl.value
-  if (!url) return false
-  const cached = getCachedImage(url)
-  if (cached) {
-    cachedUrl.value = cached
-    imageLoaded.value = true
-    return true
-  }
-  return false
-}
-
-// 监听 src 变化，先检查缓存再决定是否加载
-watch(
-  () => props.src,
-  (newSrc, oldSrc) => {
-    if (newSrc !== oldSrc) {
-      // 先同步检查缓存，有缓存则直接设置状态，跳过异步加载
-      if (tryInitFromCache()) {
-        return
-      }
-      // 没有缓存才重置状态并异步加载
-      cachedUrl.value = undefined
-      imageLoaded.value = false
-      loadError.value = false
-      isLoading.value = false
-      loadImage()
-    }
-  },
-  { immediate: true }
-)
 
 const previewImage = () => {
-  emit('preview', cachedUrl.value || fullImageUrl.value)
+  emit('preview', fullImageUrl.value)
 }
 </script>
 

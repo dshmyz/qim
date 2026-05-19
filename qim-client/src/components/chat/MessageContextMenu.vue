@@ -86,6 +86,7 @@ interface Emits {
   (e: 'create-task'): void
   (e: 'recall-message'): void
   (e: 'send-message-reminder'): void
+  (e: 'ai-summary'): void
 }
 
 const props = defineProps<Props>()
@@ -175,7 +176,7 @@ const handleAIAction = async (actionId: string) => {
   try {
     switch (actionId) {
       case 'ai_summary':
-        emit('copy-message')
+        emit('ai-summary')
         break
       case 'translate':
         await translateText(props.message.content, 'zh')

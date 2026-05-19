@@ -167,8 +167,8 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
     }
   }, [image, bounds]);
 
-  // 没有加载完不显示图片
-  if (!url || !image) {
+  // url 未就绪前不渲染背景（不需要等待 useGetLoadedImage 的二次解码）
+  if (!url) {
     return null;
   }
 

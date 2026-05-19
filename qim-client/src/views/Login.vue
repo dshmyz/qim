@@ -285,6 +285,10 @@ const saveServerSettings = () => {
   localStorage.setItem('serverUrl', serverSettings.url)
   showServerSettings.value = false
   QMessage.success('服务器地址保存成功')
+
+  if (window.electron) {
+    window.electron.ipcRenderer.send('set-server-url', serverSettings.url)
+  }
 }
 
 const login = async () => {

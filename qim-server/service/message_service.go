@@ -249,9 +249,6 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 
 	dbQuery := db.Where("conversation_id = ?", query.ConvID)
 
-	// 过滤掉系统消息
-	dbQuery = dbQuery.Where("sender_type != ? OR sender_type IS NULL", "system")
-
 	if query.MessageType != "" {
 		dbQuery = dbQuery.Where("type = ?", query.MessageType)
 	}

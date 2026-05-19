@@ -168,8 +168,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	rateLimiter := middleware.NewIPRateLimiter(500, time.Minute)
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
 
-	// 静态文件服务
-	r.Static("/uploads", "./uploads")
+	// 静态文件服务（带缓存头）
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		filepath := c.Param("filepath")
+		c.Header("Cache-Control", "public, max-age=86400")
+		c.File("./uploads" + filepath)
+	})
 	r.Static("/miniprograms", "./static/miniprograms")
 
 	// 客户端更新检查（无需认证）

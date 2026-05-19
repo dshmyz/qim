@@ -27,10 +27,11 @@
     @copy-message="emit('copy-message')"
     @forward-message="emit('forward-message')"
     @quote-message="emit('quote-message')"
-    @add-to-note="emit('add-to-note')"
+    @add-to-notes-app="emit('add-to-notes-app')"
     @create-task="emit('create-task')"
     @recall-message="emit('recall-message')"
     @send-message-reminder="emit('send-message-reminder')"
+    @ai-summary="emit('ai-summary')"
   />
 
   <!-- 成员右键菜单 -->
@@ -150,7 +151,7 @@ const emit = defineEmits<{
   'copy-message': []
   'forward-message': []
   'quote-message': []
-  'add-to-note': []
+  'add-to-notes-app': []
   'create-task': []
   'recall-message': []
   'send-message-reminder': []

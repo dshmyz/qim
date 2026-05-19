@@ -52,6 +52,11 @@ export default function App(): ReactElement {
     const onCapture = (display: Display, dataURL: string) => {
       setDisplay(display);
       setUrl(dataURL);
+      // createWindow 中 $view.setBounds 触发的 resize event 可能比 capture IPC 晚到，
+      // 而首次 mount 时 BrowserView 尚未附着窗口，window.innerWidth 是默认值（如 800x600），
+      // 直接使用 display 的实际尺寸覆盖确保渲染正确
+      setWidth(display.width);
+      setHeight(display.height);
     };
 
     const onReset = () => {

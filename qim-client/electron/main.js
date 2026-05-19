@@ -46,14 +46,53 @@ function getIconDataURL(size = 512) {
   }
 }
 
+const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
+
+function getConfigPath() {
+  return path.join(app.getPath('userData'), 'config.json')
+}
+
+function loadServerConfig() {
+  try {
+    const configPath = getConfigPath()
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      if (config.serverUrl) {
+        return config.serverUrl
+      }
+    }
+  } catch (error) {
+    console.error('读取配置失败:', error)
+  }
+  return null
+}
+
+function saveServerConfig(serverUrl) {
+  try {
+    const configPath = getConfigPath()
+    const config = { serverUrl }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+  } catch (error) {
+    console.error('保存配置失败:', error)
+  }
+}
+
+const savedUrl = loadServerConfig()
+let currentUpdateBaseUrl = savedUrl || UPDATE_SERVER_URL
+
+function getUpdateBaseUrl() {
+  return currentUpdateBaseUrl
+}
+
 const autoUpdaterConfig = {
   win7: {
-    version: '22.3.27',
-    feedUrl: 'http://localhost:8080/api/v1/updates/win7/'
+    version: '22.3.27'
   },
   win10: {
-    version: '33.0.0',
-    feedUrl: 'http://localhost:8080/api/v1/updates/win10/'
+    version: '33.0.0'
+  },
+  linux: {
+    version: '1.0.0'
   }
 }
 
@@ -70,13 +109,17 @@ function getWindowsVersion() {
 }
 
 function getAutoUpdaterConfig() {
+  const baseUrl = getUpdateBaseUrl()
   const platform = process.platform
   if (platform === 'win32') {
     const winVersion = getWindowsVersion()
     if (winVersion && winVersion < 10) {
-      return autoUpdaterConfig.win7
+      return { ...autoUpdaterConfig.win7, feedUrl: `${baseUrl}/api/v1/updates/win7/` }
     }
-    return autoUpdaterConfig.win10
+    return { ...autoUpdaterConfig.win10, feedUrl: `${baseUrl}/api/v1/updates/win10/` }
+  }
+  if (platform === 'linux') {
+    return { ...autoUpdaterConfig.linux, feedUrl: `${baseUrl}/api/v1/updates/linux/` }
   }
   return null
 }
@@ -209,7 +252,14 @@ function createWindow() {
   try {
     console.log('Initializing screenshots...')
     screenshotInstance = new screenshots({ singleWindow: true })
-
+   // 预热截屏 API：提前调用 desktopCapturer 让系统准备就绪
+    // 首次截屏慢是因为系统需要授权和初始化捕获设备
+    // 预热后首次截屏速度会明显提升，且不会创建窗口，不会闪烁
+    setTimeout(() => {
+      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
+        .then(() => console.log('[screenshot] Capture API warmed up'))
+        .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
+    }, 3000)
     screenshotInstance.on('ok', (e, buffer, data) => {
       console.log('[screenshot] Captured, buffer length:', buffer.length)
       if (mainWindow) {
@@ -242,15 +292,6 @@ function createWindow() {
     })
 
     console.log('[screenshot] Instance created successfully')
-    
-    // 预热截屏 API：提前调用 desktopCapturer 让系统准备就绪
-    // 首次截屏慢是因为系统需要授权和初始化捕获设备
-    // 预热后首次截屏速度会明显提升，且不会创建窗口，不会闪烁
-    setTimeout(() => {
-      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
-        .then(() => console.log('[screenshot] Capture API warmed up'))
-        .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
-    }, 2000)
     
     // 注册截图快捷键
     globalShortcut.register('CommandOrControl+Shift+A', () => {
@@ -482,11 +523,7 @@ app.whenReady().then(() => {
 
 
 function setupAutoUpdater() {
-  const config = getAutoUpdaterConfig()
-  if (config) {
-    console.log(`配置自动更新: Windows 版本对应的更新服务器: ${config.feedUrl}`)
-    autoUpdater.setFeedURL({ provider: 'generic', url: config.feedUrl })
-  }
+  setupAutoUpdateUrl()
 
   autoUpdater.on('checking-for-update', () => {
     console.log('正在检查更新...')
@@ -529,8 +566,87 @@ function setupAutoUpdater() {
       mainWindow.webContents.send('update-downloaded', info)
     }
 
-    autoUpdater.quitAndInstall()
+    if (process.platform === 'linux') {
+      installLinuxUpdate(info)
+    } else {
+      autoUpdater.quitAndInstall()
+    }
   })
+
+  async function installLinuxUpdate(info) {
+    const downloadPath = info.path || info.downloadedFile
+    if (!downloadPath || !fs.existsSync(downloadPath)) {
+      console.error('Linux update: 下载文件未找到:', downloadPath)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', '更新文件未找到')
+      }
+      return
+    }
+
+    const isDeb = downloadPath.endsWith('.deb')
+    const isRpm = downloadPath.endsWith('.rpm')
+
+    if (!isDeb && !isRpm) {
+      console.error('Linux update: 不支持的包格式:', downloadPath)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', '不支持的 Linux 包格式')
+      }
+      return
+    }
+
+    const helperScript = path.join(process.resourcesPath, 'install-update-linux.sh')
+    if (!fs.existsSync(helperScript)) {
+      console.error('Linux update: 安装脚本未找到:', helperScript)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', '更新安装脚本未找到')
+      }
+      return
+    }
+
+    try {
+      execSync('which sudo', { stdio: 'ignore' })
+    } catch {
+      console.error('Linux update: sudo 未安装')
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', '未找到 sudo 命令')
+      }
+      return
+    }
+
+    const escapedPath = downloadPath.replace(/'/g, "'\\''")
+    const installCmd = `sudo -n "${helperScript}" "${escapedPath}"`
+
+    try {
+      console.log('Linux update: 执行安装命令:', installCmd)
+      const result = execSync(installCmd, { timeout: 180000 })
+      console.log('Linux update: 安装成功:', result.toString())
+
+      if (mainWindow) {
+        mainWindow.webContents.send('update-installed')
+      }
+
+      setTimeout(() => {
+        app.relaunch()
+        app.quit()
+      }, 2000)
+    } catch (error) {
+      console.error('Linux update: 安装失败:', error)
+      let errorMsg = '安装更新失败'
+      if (error.status === 1) {
+        errorMsg = '更新安装失败，请检查系统包管理器状态'
+      } else if (error.stderr) {
+        const stderr = error.stderr.toString().trim()
+        if (stderr.includes('a password is required')) {
+          errorMsg = 'sudo 免密配置未生效，请运行: sudo visudo -f /etc/sudoers.d/qim-update'
+        } else {
+          errorMsg = stderr.split('\n').pop()
+        }
+      }
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', errorMsg)
+      }
+    }
+  }
 
   if (app.isPackaged) {
     autoUpdater.checkForUpdates().catch(error => {
@@ -539,8 +655,31 @@ function setupAutoUpdater() {
   }
 }
 
+function setupAutoUpdateUrl() {
+  const config = getAutoUpdaterConfig()
+  if (config) {
+    console.log(`设置更新服务器地址: ${config.feedUrl}`)
+    autoUpdater.setFeedURL({ provider: 'generic', url: config.feedUrl })
+  }
+}
+
+ipcMain.on('set-server-url', (event, serverUrl) => {
+  console.log('收到服务器地址更新:', serverUrl)
+  if (serverUrl && typeof serverUrl === 'string') {
+    currentUpdateBaseUrl = serverUrl.replace(/\/+$/, '')
+    saveServerConfig(currentUpdateBaseUrl)
+    setupAutoUpdateUrl()
+    console.log('更新服务器地址已保存:', currentUpdateBaseUrl)
+  }
+})
+
+ipcMain.on('get-server-url', (event) => {
+  event.sender.send('server-url', getUpdateBaseUrl())
+})
+
 ipcMain.on('check-for-updates', () => {
   console.log('收到检查更新请求')
+  setupAutoUpdateUrl()
   autoUpdater.checkForUpdates().catch(error => {
     console.error('检查更新失败:', error)
     if (mainWindow) {
@@ -550,14 +689,15 @@ ipcMain.on('check-for-updates', () => {
 })
 
 ipcMain.on('download-update', () => {
-    console.log('收到下载更新请求')
-    autoUpdater.checkForUpdates().catch(error => {
-      console.error('检查更新失败:', error)
-      if (mainWindow) {
-        mainWindow.webContents.send('update-error', error.message)
-      }
-    })
+  console.log('收到下载更新请求')
+  setupAutoUpdateUrl()
+  autoUpdater.checkForUpdates().catch(error => {
+    console.error('检查更新失败:', error)
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', error.message)
+    }
   })
+})
 
   // 屏幕共享相关
   ipcMain.on('start-screen-share', async () => {

@@ -207,8 +207,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
+import { messageApi } from '../../api/message'
 import { API_BASE_URL } from '../../config'
-import { logger } from '../../utils/logger';
 
 const props = defineProps<{
   visible: boolean
@@ -261,31 +261,24 @@ watch(() => props.conversationId, (newVal) => {
 
 // 加载消息
 const loadMessages = async (page: number = 1) => {
-  logger.log('loadMessages 被调用, conversationId:', props.conversationId)
-  if (!props.conversationId) {
-    logger.log('loadMessages 提前返回: conversationId 为空')
-    return
-  }
+  if (!props.conversationId) return
 
   isLoadingMessages.value = true
   currentPage.value = page
 
   try {
-    const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
-    const params = new URLSearchParams()
-    params.append('conversation_id', props.conversationId)
-    params.append('page', page.toString())
-    params.append('page_size', pageSize.toString())
+    const params: Record<string, string> = {
+      conversation_id: props.conversationId,
+      page: page.toString(),
+      page_size: pageSize.toString(),
+    }
     if (selectedMessageType.value !== 'all') {
-      params.append('type', selectedMessageType.value)
+      params.type = selectedMessageType.value
     }
     if (searchQuery.value) {
-      params.append('search', searchQuery.value)
+      params.search = searchQuery.value
     }
-    
-    // 处理日期范围
-    logger.log('日期过滤检查: selectedDateRange =', selectedDateRange.value)
+
     if (selectedDateRange.value !== 'all') {
       const now = new Date()
       const year = now.getFullYear()
@@ -294,75 +287,44 @@ const loadMessages = async (page: number = 1) => {
       const todayStr = `${year}-${month}-${day}`
       let startDate = ''
       let endDate = ''
-      
+
       if (selectedDateRange.value === 'today') {
         startDate = todayStr
         endDate = todayStr
       } else if (selectedDateRange.value === 'week') {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-        const weekYear = weekAgo.getFullYear()
-        const weekMonth = String(weekAgo.getMonth() + 1).padStart(2, '0')
-        const weekDay = String(weekAgo.getDate()).padStart(2, '0')
-        startDate = `${weekYear}-${weekMonth}-${weekDay}`
+        startDate = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth() + 1).padStart(2, '0')}-${String(weekAgo.getDate()).padStart(2, '0')}`
         endDate = todayStr
       } else if (selectedDateRange.value === 'month') {
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-        const monthYear = monthAgo.getFullYear()
-        const monthMonth = String(monthAgo.getMonth() + 1).padStart(2, '0')
-        const monthDay = String(monthAgo.getDate()).padStart(2, '0')
-        startDate = `${monthYear}-${monthMonth}-${monthDay}`
+        startDate = `${monthAgo.getFullYear()}-${String(monthAgo.getMonth() + 1).padStart(2, '0')}-${String(monthAgo.getDate()).padStart(2, '0')}`
         endDate = todayStr
       } else if (selectedDateRange.value === 'custom' && customDateStart.value && customDateEnd.value) {
         startDate = customDateStart.value
         endDate = customDateEnd.value
       }
 
-      logger.log('日期过滤 - startDate:', startDate, 'endDate:', endDate, 'selectedDateRange:', selectedDateRange.value)
-
-      if (startDate) {
-        params.append('start_date', startDate)
-      }
-      if (endDate) {
-        params.append('end_date', endDate)
-      }
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
     }
 
-    const response = await fetch(`${serverUrl}/api/v1/messages?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      if (data.code === 0) {
-        // 处理消息数据，添加 timestamp 字段
-        messages.value = data.data.messages.map((message: any) => ({
-          ...message,
-          timestamp: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
-          isRecalled: message.is_recalled || false,
-          sender: message.sender ? {
-            ...message.sender,
-            name: message.sender.name || message.sender.nickname || message.sender.username || message.sender.user?.nickname || message.sender.user?.username || message.username || message.name || '未知用户'
-          } : null
-        }))
-        // 按时间倒序排列
-        messages.value.sort((a, b) => b.timestamp - a.timestamp)
-        total.value = data.data.total
-      }
-    } else if (response.status === 401) {
-      QMessage.error('登录已过期，请重新登录')
-      localStorage.removeItem('token')
-      setTimeout(() => {
-        window.location.href = '/login'
-      }, 1500)
-    } else {
-      QMessage.error('加载消息失败，请稍后重试')
-    }
+    const result = await messageApi.getMessagesByFilter(params)
+    const rawMessages = result.messages || []
+    messages.value = rawMessages.map((message: any) => ({
+      ...message,
+      timestamp: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
+      isRecalled: message.is_recalled || false,
+      sender: message.sender ? {
+        ...message.sender,
+        name: message.sender.name || message.sender.nickname || message.sender.username || '未知用户'
+      } : null
+    }))
+    messages.value.sort((a, b) => b.timestamp - a.timestamp)
+    total.value = result.total
   } catch (error) {
-    console.error('加载消息失败:', error)
+    if (error instanceof Error) {
+      QMessage.error(error.message || '加载消息失败，请稍后重试')
+    }
   } finally {
     isLoadingMessages.value = false
   }
@@ -370,7 +332,6 @@ const loadMessages = async (page: number = 1) => {
 
 // 应用过滤器
 const applyFilters = () => {
-  logger.log('applyFilters 被调用', 'selectedDateRange:', selectedDateRange.value)
   loadMessages(1)
 }
 

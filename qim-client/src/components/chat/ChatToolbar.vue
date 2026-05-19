@@ -51,7 +51,7 @@
       icon="fas fa-robot"
       title="AI 功能"
       variant="ai"
-      :class="{ 'ai-active': showAIActions }"
+      :class="{ 'ai-active': showAiActions }"
       @click="$emit('toggle-ai-actions')"
     />
   </div>
@@ -62,7 +62,7 @@ import ChatToolbarButton from './ChatToolbarButton.vue'
 
 interface Props {
   isElectron: boolean
-  showAIActions: boolean
+  showAiActions: boolean
 }
 
 defineProps<Props>()

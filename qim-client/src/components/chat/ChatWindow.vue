@@ -155,6 +155,7 @@
       @create-task="createTaskFromMessage"
       @recall-message="handleRecallMessage"
       @send-message-reminder="sendMessageReminder"
+      @ai-summary="handleAISummary"
       @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
@@ -1540,6 +1541,28 @@ const forwardMessage = () => {
       }
     }))
   }
+  closeMessageContextMenu()
+}
+
+// AI 总结消息
+const handleAISummary = async () => {
+  if (!selectedMessage.value || !props.conversation?.id) {
+    closeMessageContextMenu()
+    return
+  }
+
+  try {
+    const result = await generateSummary(Number(props.conversation.id), 'today')
+    if (result) {
+      $message.success('AI 总结已生成，请在聊天记录中查看')
+    } else {
+      $message.error('AI 总结失败')
+    }
+  } catch (error) {
+    console.error('AI 总结失败:', error)
+    $message.error('AI 总结失败: ' + (error as Error).message)
+  }
+
   closeMessageContextMenu()
 }
 

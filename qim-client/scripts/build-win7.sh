@@ -64,7 +64,13 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     echo "✅ NSIS 已安装"
 fi
 
-# 5. 设置国内镜像加速（可选）
+# 5. 设置更新服务器地址（可通过环境变量覆盖）
+echo ""
+echo "🔧 设置更新服务器地址..."
+export QIM_UPDATE_URL="${QIM_UPDATE_URL:-http://localhost:8080}"
+echo "   更新服务器: $QIM_UPDATE_URL"
+
+# 6. 设置国内镜像加速（可选）
 echo ""
 echo "🌐 设置 Electron 下载镜像..."
 export ELECTRON_MIRROR="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/}"

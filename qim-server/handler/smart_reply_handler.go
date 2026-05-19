@@ -575,7 +575,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 		{Role: "user", Content: messagesText},
 	}
 
-	summary, err := j.aiService.GetCompletion(ai.TaskTypeDigest, messages_input)
+	summary, err := j.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
 	if err != nil {
 		log.Printf("[GroupSummary] 群 %d 总结生成失败: %v", group.ID, err)
 		return false

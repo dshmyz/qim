@@ -122,7 +122,7 @@ class Screenshots extends node_events_1.default {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
             // 重置截图区域
-            yield this.reset();
+            // yield this.reset();
             // 复用未销毁的窗口
             if (!this.$win || ((_b = (_a = this.$win) === null || _a === void 0 ? void 0 : _a.isDestroyed) === null || _b === void 0 ? void 0 : _b.call(_a))) {
                 const windowTypes = {

@@ -86,7 +86,7 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 		{Role: "user", Content: req.Text},
 	}
 
-	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages_input)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
 		return
@@ -168,7 +168,7 @@ func (h *AIHandler) RewriteText(c *gin.Context) {
 		{Role: "user", Content: req.Text},
 	}
 
-	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages_input)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
 		return
@@ -239,7 +239,7 @@ func (h *AIHandler) PolishText(c *gin.Context) {
 		{Role: "user", Content: req.Text},
 	}
 
-	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages_input)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
 		return

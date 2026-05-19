@@ -65,11 +65,12 @@ export default memo(
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-    const isCanResize = bounds && !history.stack.length && !operation;
+    // 允许在有标注时仍可 resize/move 选区（即标注后仍可调整选区大小）
+    const isCanResize = bounds && !operation;
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: draw only cares about bounds, ctxRef and history
+    // biome-ignore lint/correctness/useExhaustiveDependencies: draw 只依赖 history，canvas 尺寸变更时浏览器自动清空，无需 bounds 参与重绘
     const draw = useCallback(() => {
-      if (!bounds || !ctxRef.current) {
+      if (!ctxRef.current) {
         return;
       }
 
@@ -77,14 +78,15 @@ export default memo(
       ctx.imageSmoothingEnabled = true;
       // 设置太高，图片会模糊
       ctx.imageSmoothingQuality = "low";
-      ctx.clearRect(0, 0, bounds.width, bounds.height);
+      // canvas.width/height 已由 React props 更新，浏览器已自动 clear，这里只做标注层的重绘
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
       history.stack.slice(0, history.index + 1).forEach((item) => {
         if (item.type === HistoryItemType.Source) {
           item.draw(ctx, item);
         }
       });
-    }, [bounds, ctxRef, history]);
+    }, [history]);
 
     const onPointerDown = useCallback(
       (e: ReactPointerEvent<HTMLDivElement>, resizeOrMove: string) => {

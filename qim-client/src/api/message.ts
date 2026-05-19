@@ -44,6 +44,21 @@ export interface MessageListResponse {
   }
 }
 
+export interface MessageFilterParams {
+  conversation_id: string
+  type?: string
+  page?: number
+  page_size?: number
+  search?: string
+  start_date?: string
+  end_date?: string
+}
+
+export interface MessageFilterResponse {
+  messages: Message[]
+  total: number
+}
+
 export interface SendMessageRequest {
   type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'markdown' | 'miniApp' | 'news'
   content: string
@@ -56,6 +71,14 @@ class MessageAPI {
   async getMessages(conversationId: string, params?: MessageListParams): Promise<MessageListResponse> {
     const response = await http.get<ApiResponse<MessageListResponse>>(
       `/api/v1/conversations/${conversationId}/messages`,
+      { params }
+    )
+    return response.data
+  }
+
+  async getMessagesByFilter(params: MessageFilterParams): Promise<MessageFilterResponse> {
+    const response = await http.get<ApiResponse<MessageFilterResponse>>(
+      '/api/v1/messages',
       { params }
     )
     return response.data

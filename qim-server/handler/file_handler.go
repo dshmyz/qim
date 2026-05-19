@@ -742,6 +742,8 @@ func PreviewFile(c *gin.Context) {
 
 	thumbnail := c.Query("thumbnail") == "true"
 
+	c.Header("Cache-Control", "public, max-age=86400")
+
 	if strings.HasPrefix(file.StoragePath, "/s3/") {
 		s3Svc := di.GlobalContainer.S3Service
 		if s3Svc == nil {

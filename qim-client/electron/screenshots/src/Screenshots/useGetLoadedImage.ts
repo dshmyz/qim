@@ -20,8 +20,8 @@ export default function useGetLoadedImage(
 
     // 不先置空 image，复用上一张图直到新图加载完成，避免白屏闪烁
     const $image = document.createElement('img');
-    // 禁用自动解码，使用 syncDecode 手动控制时机
-    $image.decoding = 'sync';
+    // 异步解码避免主线程阻塞，大图(4K+)数据量可达 30MB+，同步解码会冻结 UI
+    $image.decoding = 'async';
 
     const onLoad = () => setImage($image);
     const onError = () => setImage(null);
