@@ -90,11 +90,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist'
 import LoadingSpinner from '../../shared/LoadingSpinner.vue'
 
-// 设置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+// 动态导入 pdfjs-dist，避免首屏加载 400KB+
+let pdfjsLib: typeof import('pdfjs-dist') | null = null
+
+async function ensurePdfLib() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+  }
+}
 
 interface Props {
   url: string
@@ -119,7 +125,7 @@ const scaleStep = 0.25
 const isFullscreen = ref(false)
 
 // PDF 文档和页面
-let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
+let pdfDoc: Awaited<ReturnType<typeof import('pdfjs-dist').getDocument>> | null = null
 let pageRendering = false
 let pageNumPending: number | null = null
 
@@ -133,6 +139,10 @@ async function loadPDF() {
   error.value = ''
 
   try {
+    // 确保 pdfjs-dist 已加载
+    await ensurePdfLib()
+    if (!pdfjsLib) return
+
     // 加载 PDF 文档
     const loadingTask = pdfjsLib.getDocument(props.url)
     pdfDoc = await loadingTask.promise
