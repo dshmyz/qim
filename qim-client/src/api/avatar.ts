@@ -73,6 +73,10 @@ export const avatarAPI = {
     return response!.data
   },
 
+  async clearLearnedPersona(): Promise<void> {
+    await request('/api/v1/avatar/learned-persona', { method: 'DELETE' })
+  },
+
   async getSessions(): Promise<AvatarSession[]> {
     const response = await request<{ code: number; data: AvatarSession[] }>(
       '/api/v1/avatar/sessions',

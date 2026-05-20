@@ -244,6 +244,8 @@ export interface SystemConfig {
   enableRegistration: boolean
   enable2FA: boolean
   enableFileUpload: boolean
+  enableAI: boolean
+  enableReadReceipt: boolean
 }
 
 // 版本管理相关

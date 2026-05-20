@@ -9,6 +9,15 @@ import type {
   AvatarWithTools
 } from '../types/avatar'
 
+function mapSessionFields(raw: any): AvatarSession {
+  return {
+    conversationId: raw.conversation_id ?? raw.conversationId,
+    avatarEnabled: raw.avatar_enabled ?? raw.avatarEnabled,
+    takeoverUntil: raw.takeover_until ?? raw.takeoverUntil,
+    lastReplyAt: raw.last_reply_at ?? raw.lastReplyAt
+  }
+}
+
 export function useAvatar() {
   const { currentUser } = useCurrentUser()
   const config = ref<AvatarConfigWithApproval | null>(null)
@@ -16,10 +25,10 @@ export function useAvatar() {
   const avatarWithTools = ref<AvatarWithTools | null>(null)
   const loading = ref(false)
   const error = ref('')
-  const configLoaded = ref(false)  // 标记配置是否已加载
+  const configLoaded = ref(false)
+  const sessionsLoaded = ref(false)
 
   async function fetchConfig(force = false) {
-    // 如果已经加载过且不是强制刷新，直接返回
     if (configLoaded.value && !force) {
       return
     }
@@ -105,11 +114,16 @@ export function useAvatar() {
     await updateConfig({ enabled })
   }
 
-  async function fetchSessions() {
+  async function fetchSessions(force = false) {
+    if (sessionsLoaded.value && !force) {
+      return
+    }
     loading.value = true
     error.value = ''
     try {
-      sessions.value = await avatarAPI.getSessions()
+      const data = await avatarAPI.getSessions()
+      sessions.value = data.map(mapSessionFields)
+      sessionsLoaded.value = true
     } catch (e: any) {
       error.value = e.response?.data?.message || '加载会话分身状态失败'
     } finally {
@@ -121,7 +135,7 @@ export function useAvatar() {
     loading.value = true
     error.value = ''
     try {
-      const session = await avatarAPI.updateSession(Number(convId), enabled)
+      const session = mapSessionFields(await avatarAPI.updateSession(Number(convId), enabled))
       const idx = sessions.value.findIndex(s => s.conversationId === Number(convId))
       if (idx >= 0) {
         sessions.value[idx] = session
@@ -141,7 +155,7 @@ export function useAvatar() {
     loading.value = true
     error.value = ''
     try {
-      const session = await avatarAPI.takeoverSession(Number(convId))
+      const session = mapSessionFields(await avatarAPI.takeoverSession(Number(convId)))
       const idx = sessions.value.findIndex(s => s.conversationId === Number(convId))
       if (idx >= 0) {
         sessions.value[idx] = session

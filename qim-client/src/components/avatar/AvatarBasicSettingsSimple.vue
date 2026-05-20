@@ -44,21 +44,22 @@
       <label>触发模式</label>
       <select 
         :value="modelValue.triggerRules?.mode ?? 'mention'" 
-        @change="updateTriggerMode(($event.target as HTMLSelectElement).value)" 
+        @change="handleTriggerModeChange" 
         class="form-select"
       >
         <option value="mention">被 @ 时回复</option>
         <option value="offline">离线时自动回复</option>
-        <option value="smart">智能模式（推荐）</option>
+        <option value="smart">智能模式</option>
         <option value="keyword">关键词触发</option>
+        <option value="all">所有消息</option>
       </select>
-      <span class="setting-hint">{{ triggerModeHint }}</span>
+      <span class="setting-hint">设置分身何时自动回复消息</span>
     </div>
 
     <div class="setting-item">
       <label>接管冷却期</label>
       <select 
-        :value="modelValue.takeoverCooldown" 
+        :value="modelValue.takeoverCooldown ?? 10" 
         @change="update('takeoverCooldown', Number(($event.target as HTMLSelectElement).value))" 
         class="form-select"
       >
@@ -68,6 +69,12 @@
         <option :value="60">1 小时</option>
       </select>
       <span class="setting-hint">你发消息后，分身暂停回复的时间</span>
+    </div>
+
+    <div class="setting-item">
+      <button class="link-btn" @click="$emit('goToAdvanced')">
+        <i class="fas fa-arrow-right"></i> 查看触发规则详细设置
+      </button>
     </div>
   </div>
 </template>
@@ -86,6 +93,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: AvatarConfigWithApproval]
+  'goToAdvanced': []
 }>()
 
 const applying = ref(false)
@@ -107,25 +115,25 @@ const canEnable = computed(() => {
   return approvalStatus.value === 'approved'
 })
 
-const triggerModeHint = computed(() => {
-  const hints: Record<string, string> = {
-    mention: '当有人在私聊中发消息，或在群聊中 @你时，分身会回复',
-    offline: '当你离线时，分身自动回复私聊消息',
-    smart: '分身会智能判断是否需要回复（推荐）',
-    keyword: '仅当消息包含指定关键词时，分身才回复'
+const modeLabel = computed(() => {
+  const labels: Record<string, string> = {
+    mention: '被 @ 时回复',
+    offline: '离线时自动回复',
+    smart: '智能模式',
+    keyword: '关键词触发',
+    all: '所有消息'
   }
-  return hints[props.modelValue.triggerRules?.mode ?? ''] || ''
+  return labels[props.modelValue.triggerRules?.mode ?? 'mention'] || '未设置'
+})
+
+const cooldownLabel = computed(() => {
+  const minutes = props.modelValue.takeoverCooldown ?? 10
+  if (minutes >= 60) return `${minutes / 60} 小时`
+  return `${minutes} 分钟`
 })
 
 function update<K extends keyof AvatarConfigWithApproval>(key: K, value: AvatarConfigWithApproval[K]) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
-}
-
-function updateTriggerMode(mode: string) {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    triggerRules: { ...props.modelValue.triggerRules ?? {}, mode: mode as any }
-  })
 }
 
 async function handleApply() {
@@ -160,6 +168,17 @@ function handleNameInput(event: Event) {
     return
   }
   update('name', value)
+}
+
+function handleTriggerModeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as 'mention' | 'offline' | 'keyword' | 'all' | 'smart'
+  emit('update:modelValue', {
+    ...props.modelValue,
+    triggerRules: {
+      ...props.modelValue.triggerRules,
+      mode: value
+    }
+  })
 }
 </script>
 
@@ -203,8 +222,7 @@ function handleNameInput(event: Event) {
   color: var(--text-secondary);
 }
 
-.form-input,
-.form-select {
+.form-input {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border-color);
@@ -215,9 +233,51 @@ function handleNameInput(event: Event) {
   box-sizing: border-box;
 }
 
-.form-input:focus,
-.form-select:focus {
+.form-input:focus {
   outline: none;
   border-color: var(--primary-color);
+}
+
+.trigger-info {
+  background: var(--hover-color, rgba(0, 0, 0, 0.03));
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.trigger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.trigger-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.trigger-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.link-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  width: 100%;
+}
+
+.link-btn:hover {
+  opacity: 0.8;
 }
 </style>

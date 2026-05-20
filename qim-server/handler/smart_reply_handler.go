@@ -77,36 +77,65 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	return err
 }
 
-// HandleMessage 处理消息并决定是否需要智能回复
 func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string, mentionUserIDs []uint) {
 	if e.aiService == nil || !e.aiService.IsConfigured() {
+		log.Printf("[SmartReply] AI 服务未配置，跳过处理")
 		return
 	}
+
+	configSvc := service.NewSystemConfigService(database.GetDB())
+	publicConfigs, err := configSvc.GetPublicConfigs()
+	if err == nil {
+		if enableAI, ok := publicConfigs["enableAI"]; ok {
+			if !enableAI.(bool) {
+				log.Printf("[SmartReply] AI 功能已关闭 (enableAI=false)，跳过处理")
+				return
+			}
+		}
+	}
+
+	log.Printf("[SmartReply] 开始处理消息: userID=%d convID=%d content=%s", userID, conversationID, content[:min(50, len(content))])
 
 	db := database.GetDB()
 
 	var conv model.Conversation
 	if err := db.First(&conv, conversationID).Error; err != nil {
+		log.Printf("[SmartReply] 查找会话失败: convID=%d err=%v", conversationID, err)
 		return
 	}
+
+	log.Printf("[SmartReply] 会话类型: %s", conv.Type)
 
 	if e.avatarWorkerPool != nil {
 		e.checkAvatarTriggers(userID, &conv, content, mentionUserIDs)
 	}
 
 	if conv.Type == "bot" {
+		log.Printf("[SmartReply] bot 会话，跳过 AI 助手回复")
 		return
+	}
+
+	if conv.Type == "single" {
+		var avatarSessions []model.AvatarSession
+		db.Where("conversation_id = ? AND avatar_enabled = ? AND user_id != ?", conv.ID, true, userID).Find(&avatarSessions)
+		if len(avatarSessions) > 0 {
+			log.Printf("[SmartReply] 私聊中对方分身已激活，跳过 AI 助手回复 (对方userID=%d)", avatarSessions[0].UserID)
+			return
+		}
 	}
 
 	var group *model.Group
 	if conv.Type == "group" || conv.Type == "discussion" {
 		var g model.Group
 		if err := db.Where("conversation_id = ?", conversationID).First(&g).Error; err != nil {
+			log.Printf("[SmartReply] 查找群聊失败: convID=%d err=%v", conversationID, err)
 			return
 		}
 		group = &g
 		aiConfig := group.GetAIConfig()
+		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s", aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
 		if !aiConfig.Enabled {
+			log.Printf("[SmartReply] 群聊 AI 未启用，跳过处理")
 			return
 		}
 
@@ -121,6 +150,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 				}
 			}
 			if !hasKeyword {
+				log.Printf("[SmartReply] 消息不包含触发关键词，跳过处理")
 				return
 			}
 		}
@@ -133,6 +163,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 				conversationID, systemUserID, time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
 				Order("created_at DESC").First(&lastAIMsg).Error
 			if err == nil {
+				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
 				return
 			}
 		}
@@ -162,10 +193,17 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 	intent, err := e.intentDetector.Detect(content, userID, conversationID)
 	if err != nil {
+		log.Printf("[SmartReply] 意图检测失败: %v", err)
 		return
 	}
 
+	log.Printf("[SmartReply] 意图检测结果: type=%s confidence=%.2f", intent.Type, intent.Confidence)
+
 	shouldReply := e.intentDetector.ShouldTriggerAIReply(intent, conv.Type)
+
+	if !shouldReply {
+		log.Printf("[SmartReply] 意图类型 %s (confidence=%.2f) 不触发 AI 回复", intent.Type, intent.Confidence)
+	}
 
 	if shouldReply {
 		go e.generateAndSendReply(userID, conversationID, content, intent)
@@ -600,23 +638,57 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, mentionUserIDs []uint) {
 	db := database.GetDB()
 
-	// 查找当前会话中启用了分身的用户
 	var sessions []model.AvatarSession
 	db.Where("conversation_id = ? AND avatar_enabled = ?", conv.ID, true).Find(&sessions)
 
+	log.Printf("[AvatarTrigger] 查找分身会话: convID=%d senderID=%d 找到%d个激活的分身会话", conv.ID, senderID, len(sessions))
+
+	var convMembers []model.ConversationMember
+	db.Where("conversation_id = ? AND user_id != ?", conv.ID, senderID).Find(&convMembers)
+
+	for _, member := range convMembers {
+		hasSession := false
+		for _, session := range sessions {
+			if session.UserID == member.UserID {
+				hasSession = true
+				break
+			}
+		}
+
+		if !hasSession {
+			var avatarConfig model.AvatarConfig
+			if err := db.Where("user_id = ? AND enabled = ?", member.UserID, true).First(&avatarConfig).Error; err == nil {
+				log.Printf("[AvatarTrigger] 用户 %d 全局分身已启用但无会话级记录，自动创建 (convID=%d)", member.UserID, conv.ID)
+				newSession := model.AvatarSession{
+					ConversationID: conv.ID,
+					UserID:         member.UserID,
+					AvatarEnabled:  true,
+				}
+				if err := db.Create(&newSession).Error; err != nil {
+					log.Printf("[AvatarTrigger] 自动创建分身会话失败: userID=%d err=%v", member.UserID, err)
+				} else {
+					sessions = append(sessions, newSession)
+				}
+			}
+		}
+	}
+
 	for _, session := range sessions {
-		// 不触发自己的分身
+		log.Printf("[AvatarTrigger] 检查分身会话: userID=%d avatarEnabled=%v", session.UserID, session.AvatarEnabled)
+
 		if session.UserID == senderID {
+			log.Printf("[AvatarTrigger] 跳过自己的分身: userID=%d == senderID=%d", session.UserID, senderID)
 			continue
 		}
 
 		isGroupChat := conv.Type == "group" || conv.Type == "discussion"
-		if e.shouldTriggerAvatar(&session, senderID, content, isGroupChat, mentionUserIDs) {
-			// 获取发送者信息
+		triggered := e.shouldTriggerAvatar(&session, senderID, content, isGroupChat, mentionUserIDs)
+		log.Printf("[AvatarTrigger] 触发判断结果: userID=%d triggered=%v (isGroupChat=%v mentionUserIDs=%v)", session.UserID, triggered, isGroupChat, mentionUserIDs)
+
+		if triggered {
 			var sender model.User
 			db.First(&sender, senderID)
 
-			// 获取群聊名称（如果是群聊）
 			groupName := ""
 			if isGroupChat {
 				var group model.Group
@@ -636,9 +708,9 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 			}
 
 			if err := e.avatarWorkerPool.Submit(task); err != nil {
-				log.Printf("[SmartReply] 提交分身任务失败: %v", err)
+				log.Printf("[AvatarTrigger] 提交分身任务失败: %v", err)
 			} else {
-				log.Printf("[SmartReply] 已触发用户 %d 的分身", session.UserID)
+				log.Printf("[AvatarTrigger] 已触发用户 %d 的分身 (convID=%d triggerUserID=%d)", session.UserID, conv.ID, senderID)
 			}
 		}
 	}
@@ -648,65 +720,83 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string, isGroupChat bool, mentionUserIDs []uint) bool {
 	db := database.GetDB()
 
-	// 检查是否在接管期内
 	if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
+		log.Printf("[AvatarTrigger] 分身接管期内，不触发: userID=%d takeoverUntil=%v", session.UserID, session.TakeoverUntil)
 		return false
 	}
 
-	// 获取分身配置
 	var config model.AvatarConfig
 	if err := db.Where("user_id = ?", session.UserID).First(&config).Error; err != nil {
+		log.Printf("[AvatarTrigger] 分身配置未找到: userID=%d err=%v", session.UserID, err)
 		return false
 	}
 
-	// 检查分身是否启用
 	if !config.Enabled {
+		log.Printf("[AvatarTrigger] 分身配置未启用: userID=%d enabled=%v", session.UserID, config.Enabled)
 		return false
 	}
 
-	// 解析触发规则
+	log.Printf("[AvatarTrigger] 分身配置: userID=%d enabled=%v triggerMode=%s triggerRulesJSON=%s", session.UserID, config.Enabled, config.TriggerRulesJSON, config.TriggerRulesJSON)
+
 	var triggerRules model.AvatarTriggerRules
 	if config.TriggerRulesJSON != "" {
 		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
-			log.Printf("[SmartReply] 解析触发规则失败: %v", err)
+			log.Printf("[AvatarTrigger] 解析触发规则失败: userID=%d err=%v", session.UserID, err)
 			return false
 		}
 	}
 
-	// 私聊场景：如果是 mention 模式，默认改为 all（因为私聊中不会有 @ 操作）
-	if !isGroupChat && triggerRules.Mode == "mention" {
+	effectiveMode := triggerRules.Mode
+	if effectiveMode == "" {
+		effectiveMode = "mention"
+	}
+
+	log.Printf("[AvatarTrigger] 触发规则: userID=%d mode=%s effectiveMode=%s keywords=%v", session.UserID, triggerRules.Mode, effectiveMode, triggerRules.Keywords)
+
+	if !isGroupChat && effectiveMode == "mention" {
+		log.Printf("[AvatarTrigger] 私聊中 mention 模式自动触发: userID=%d", session.UserID)
 		return true
 	}
 
-	// 根据触发模式判断
-	switch triggerRules.Mode {
+	switch effectiveMode {
 	case "mention":
-		// @触发：检查 mention_user_ids 是否包含该用户
 		for _, uid := range mentionUserIDs {
 			if uid == session.UserID {
+				log.Printf("[AvatarTrigger] mention 触发成功: userID=%d 在 mentionUserIDs 中", session.UserID)
 				return true
 			}
 		}
+		log.Printf("[AvatarTrigger] mention 触发失败: userID=%d 不在 mentionUserIDs(%v) 中", session.UserID, mentionUserIDs)
 		return false
 	case "offline":
-		// 离线触发：检查用户是否离线
 		var user model.User
 		if err := db.First(&user, session.UserID).Error; err != nil {
+			log.Printf("[AvatarTrigger] offline 触发失败: 查找用户失败 userID=%d err=%v", session.UserID, err)
 			return false
 		}
+		log.Printf("[AvatarTrigger] offline 触发判断: userID=%d status=%s", session.UserID, user.Status)
 		return user.Status == "offline"
 	case "keyword":
-		// 关键词触发：检查是否包含关键词
 		for _, kw := range triggerRules.Keywords {
 			if strings.Contains(content, kw) {
+				log.Printf("[AvatarTrigger] keyword 触发成功: userID=%d keyword=%s", session.UserID, kw)
 				return true
 			}
 		}
+		if len(triggerRules.Keywords) == 0 {
+			log.Printf("[AvatarTrigger] keyword 模式无关键词，默认触发: userID=%d", session.UserID)
+			return true
+		}
+		log.Printf("[AvatarTrigger] keyword 触发失败: userID=%d 消息不包含任何关键词 %v", session.UserID, triggerRules.Keywords)
 		return false
 	case "all":
-		// 全部触发
+		log.Printf("[AvatarTrigger] all 模式触发: userID=%d", session.UserID)
+		return true
+	case "smart":
+		log.Printf("[AvatarTrigger] smart 模式触发: userID=%d", session.UserID)
 		return true
 	default:
-		return false
+		log.Printf("[AvatarTrigger] 未知触发模式: userID=%d mode=%s，按 mention 处理", session.UserID, effectiveMode)
+		return isGroupChat && len(mentionUserIDs) > 0
 	}
 }

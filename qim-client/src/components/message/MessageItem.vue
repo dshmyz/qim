@@ -155,10 +155,10 @@
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
           </div>
-          <div v-else-if="isSelf && (conversationType === 'group' || conversationType === 'discussion') && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
+          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && (conversationType === 'group' || conversationType === 'discussion') && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
             {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
-          <div v-else-if="isSelf && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
+          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
             {{ message.isRead ? '已读' : '未读' }}
           </div>
         </div>
@@ -184,7 +184,10 @@ import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import AtMentionBadge from './AtMentionBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
+import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed } from 'vue'
+
+const systemConfigStore = useSystemConfigStore()
 
 const props = defineProps<{
   message: any

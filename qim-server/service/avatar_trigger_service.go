@@ -63,7 +63,7 @@ func (s *AvatarTriggerService) ShouldReply(userID uint, conversationID uint, mes
 	}
 
 	// 6. LLM 智能判断
-	if triggerRules.Mode == "smart" || triggerRules.Mode == "auto" {
+	if triggerRules.Mode == "smart" {
 		return s.llmShouldReply(config, message, senderName)
 	}
 

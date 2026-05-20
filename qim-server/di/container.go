@@ -51,6 +51,7 @@ type Container struct {
 	NoteVectorService    *service.NoteVectorService
 	AvatarMemoryService  *service.AvatarMemoryService
 	AvatarTriggerService *service.AvatarTriggerService
+	PromptManager        *service.PromptManager
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
 }
@@ -139,6 +140,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc, avatarTriggerSvc)
 	}
 
+	promptManager := service.NewPromptManager()
+
 	container := &Container{
 		DB:                   db,
 		Config:               cfg,
@@ -176,6 +179,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		NoteVectorService:    noteVectorSvc,
 		AvatarMemoryService:  avatarMemorySvc,
 		AvatarTriggerService: avatarTriggerSvc,
+		PromptManager:        promptManager,
 		WebSocketHub:         hub,
 		AuthMiddleware:       authMiddleware,
 	}

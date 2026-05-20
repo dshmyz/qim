@@ -123,8 +123,8 @@ func MigrateDB(db *gorm.DB) {
 		&model.Channel{},
 		&model.ChannelSubscriber{},
 		&model.ChannelMessage{},
-			&model.ChannelMessageLike{},
-			&model.ChannelMessageComment{},
+		&model.ChannelMessageLike{},
+		&model.ChannelMessageComment{},
 		&model.ShortLink{},
 		&model.Task{},
 		&model.RealtimeSession{},     // 实时会话
@@ -157,6 +157,8 @@ func MigrateDB(db *gorm.DB) {
 	migrateNoteStyle(db)
 	migrateAIConfigs(db)
 	migrateUserAIConfigs(db)
+	migrateAppCode(db)
+	seedBuiltInApps(db)
 }
 
 // isMigrationCompleted 检查指定的迁移版本是否已完成
@@ -605,6 +607,73 @@ func migrateUserAIConfigs(db *gorm.DB) {
 	logger.WithModule("Migrate").Info("已删除 user_ai_configs 表")
 
 	markMigrationCompleted(db, "migrate_user_ai_configs")
+}
+
+// migrateAppCode 为 App 表添加 code 字段并填充现有数据
+func migrateAppCode(db *gorm.DB) {
+	if isMigrationCompleted(db, "migrate_app_code") {
+		return
+	}
+
+	if !db.Migrator().HasColumn(&model.App{}, "code") {
+		if err := db.Migrator().AddColumn(&model.App{}, "code"); err != nil {
+			logger.WithModule("Migrate").Error("添加 app.code 字段失败", "error", err)
+			return
+		}
+		logger.WithModule("Migrate").Info("添加 app.code 字段成功")
+	}
+
+	// 为现有内置应用填充 code 字段（按名称匹配）
+	nameToCode := map[string]string{
+		"日历":     "calendar",
+		"文件管理":   "file_manager",
+		"任务管理":   "task_manager",
+		"便签":     "sticky_notes",
+		"笔记":     "notes",
+		"短链接管理": "short_link",
+	}
+	for name, code := range nameToCode {
+		db.Model(&model.App{}).Where("name = ? AND is_global = ? AND (code IS NULL OR code = '')", name, true).Update("code", code)
+	}
+
+	markMigrationCompleted(db, "migrate_app_code")
+}
+
+// seedBuiltInApps 初始化默认内置应用
+func seedBuiltInApps(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_built_in_apps") {
+		return
+	}
+
+	if !db.Migrator().HasTable("apps") {
+		return
+	}
+
+	var count int64
+	db.Model(&model.App{}).Where("is_global = ?", true).Count(&count)
+	if count > 0 {
+		markMigrationCompleted(db, "seed_built_in_apps")
+		return
+	}
+
+	now := time.Now()
+	defaultApps := []model.App{
+		{UserID: 1, Name: "日历", Code: "calendar", Icon: "fas fa-calendar", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "文件管理", Code: "file_manager", Icon: "fas fa-folder", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "任务管理", Code: "task_manager", Icon: "fas fa-check-square", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "便签", Code: "sticky_notes", Icon: "fas fa-sticky-note", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "笔记", Code: "notes", Icon: "fas fa-book", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "短链接管理", Code: "short_link", Icon: "fas fa-link", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+	}
+
+	for _, app := range defaultApps {
+		if err := db.Create(&app).Error; err != nil {
+			logger.WithModule("Migrate").Error("创建内置应用失败", "name", app.Name, "error", err)
+		}
+	}
+
+	logger.WithModule("Migrate").Info("内置应用种子数据初始化完成", "count", len(defaultApps))
+	markMigrationCompleted(db, "seed_built_in_apps")
 }
 
 // addIndexes 添加性能优化索引，确保索引已存在则跳过创建

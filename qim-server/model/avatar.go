@@ -117,7 +117,7 @@ type AvatarKnowledgeScope struct {
 
 // AvatarTriggerRules 分身触发规则
 type AvatarTriggerRules struct {
-	Mode                  string            `json:"mode"` // auto, manual, keyword, schedule
+	Mode                  string            `json:"mode"` // mention, offline, keyword, all, smart
 	Keywords              []string          `json:"keywords"`
 	TimeRanges            []AvatarTimeRange `json:"timeRanges"`
 	ExcludedConversations []uint            `json:"excludedConversations"`

@@ -272,6 +272,14 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 	h.sendToUserToOtherNodes(userID, message)
 }
 
+func (h *Hub) BroadcastToAllOnlineUsers(message []byte) {
+	h.userClients.Range(func(key, value interface{}) bool {
+		userID := key.(uint)
+		h.SendToUser(userID, message)
+		return true
+	})
+}
+
 // IsUserOnline 检查用户是否在线
 func (h *Hub) IsUserOnline(userID uint) bool {
 	if existingClients, ok := h.userClients.Load(userID); ok {

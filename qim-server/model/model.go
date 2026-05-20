@@ -428,6 +428,7 @@ type App struct {
 	ID        uint           `json:"id" gorm:"primarykey"`
 	UserID    uint           `json:"user_id" gorm:"not null;index"`
 	Name      string         `json:"name" gorm:"size:200;not null"`
+	Code      string         `json:"code" gorm:"size:100;index"` // 内置应用唯一标识，如 file_manager, calendar
 	Icon      string         `json:"icon" gorm:"size:500"`
 	Category  string         `json:"category" gorm:"size:100"`
 	URL       string         `json:"url" gorm:"size:500"`

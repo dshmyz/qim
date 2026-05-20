@@ -31,6 +31,15 @@ func (p *OpenAIProvider) IsConfigured() bool {
 	return p.config.IsSet()
 }
 
+func (p *OpenAIProvider) WithModel(model string) Provider {
+	newConfig := p.config
+	newConfig.Model = model
+	return &OpenAIProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("OpenAI API key is not configured")

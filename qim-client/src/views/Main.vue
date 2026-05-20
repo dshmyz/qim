@@ -87,6 +87,7 @@
         @openApp="openApp"
         @openExternalApp="openExternalApp"
         @resetApp="backToAppList"
+        @toggleCategory="toggleCategory"
         @searchResultSelect="handleSearchItemClick"
         @searchResultPrivateChat="startPrivateChat"
         @searchResultApplyJoin="handleApplyJoinGroup"
@@ -107,171 +108,275 @@
     />
 
     <!-- 聊天窗口 -->
-    <ChatWindow
-      ref="chatWindowRef"
-      v-if="currentConversation && activeOption === 'recent'"
-      :conversation="currentConversation"
-      :messages="messages"
-      :getReadUsers="getMessageReadUsers"
-      :currentUser="currentUser.value"
-      :hasMoreMessages="hasMoreMessages"
-      :updateConversation="updateConversation"
-      :fileSettings="fileSettings"
-      @send="handleSendMessage"
-      @recall="handleRecallMessage"
-      @inviteMembers="handleInviteMembers"
-      @switchConversation="handleSwitchConversation"
-      @switch-app="handleSwitchApp"
-      @loadMore="handleLoadMore"
-      @retry-send="handleRetrySendMessage"
-      @start-voice-call="handleStartVoiceCall"
-      @start-video-call="handleStartVideoCall"
-      @start-screen-share="handleStartScreenShare"
-    />
-      <div v-else-if="activeOption === 'recent'" class="right-content">
-        <div class="right-content-header">
-          <div class="header-left-group">
-            <button class="toggle-sidebar-btn" @click="toggleSidebar">
-              <i class="fas fa-compress"></i>
-            </button>
-            <h2>{{ getPageTitle() }}</h2>
+    <template v-if="activeOption === 'recent'">
+      <Suspense timeout="0">
+        <template #default>
+          <ChatWindow
+            v-if="currentConversation"
+            ref="chatWindowRef"
+            :conversation="currentConversation"
+            :messages="messages"
+            :getReadUsers="getMessageReadUsers"
+            :currentUser="currentUser.value"
+            :hasMoreMessages="hasMoreMessages"
+            :updateConversation="updateConversation"
+            :fileSettings="fileSettings"
+            @send="handleSendMessage"
+            @recall="handleRecallMessage"
+            @inviteMembers="handleInviteMembers"
+            @switchConversation="handleSwitchConversation"
+            @switch-app="handleSwitchApp"
+            @loadMore="handleLoadMore"
+            @retry-send="handleRetrySendMessage"
+            @start-voice-call="handleStartVoiceCall"
+            @start-video-call="handleStartVideoCall"
+            @start-screen-share="handleStartScreenShare"
+          />
+          <div v-else class="right-content">
+            <div class="right-content-header">
+              <div class="header-left-group">
+                <button class="toggle-sidebar-btn" @click="toggleSidebar">
+                  <i class="fas fa-compress"></i>
+                </button>
+                <h2>{{ getPageTitle() }}</h2>
+              </div>
+            </div>
+            <div class="empty-state">
+              <div class="empty-content">
+                <div class="empty-icon"><i class="fas fa-comments"></i></div>
+                <p>选择一个会话开始聊天</p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="empty-state">
-          <div class="empty-content">
-            <div class="empty-icon"><i class="fas fa-comments"></i></div>
-            <p>选择一个会话开始聊天</p>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #fallback>
+          <ContentSkeleton type="recent" :count="6" />
+        </template>
+      </Suspense>
+    </template>
       
       <!-- 频道页面布局 -->
       <template v-else-if="activeOption === 'channels'">
-        <div class="channel-content-area">
-          <ChannelDetailNew
-            v-if="channelStore.selectedChannel"
-            :channel="channelStore.selectedChannel"
-            :isCreator="isChannelCreator(channelStore.selectedChannel)"
-            :displayMode="channelStore.messageMode"
-            :sortOrder="'desc'"
-            :loading="channelStore.messagesLoading"
-            @subscribe="handleChannelSubscribe"
-            @unsubscribe="handleChannelUnsubscribe"
-            @sendMessage="handleChannelSendMessage"
-            @update:displayMode="handleDisplayModeChange"
-            @like="handleMessageLike"
-            @unlike="handleMessageUnlike"
-            @comment="handleMessageComment"
-            @copyLink="handleMessageCopyLink"
-          />
-          <div v-else class="channel-empty-state">
-            <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
-            <p>选择一个频道查看详情</p>
-          </div>
-        </div>
+        <Suspense timeout="0">
+          <template #default>
+            <div class="channel-content-area">
+              <ChannelDetailNew
+                v-if="channelStore.selectedChannel"
+                :channel="channelStore.selectedChannel"
+                :isCreator="isChannelCreator(channelStore.selectedChannel)"
+                :displayMode="channelStore.messageMode"
+                :sortOrder="'desc'"
+                :loading="channelStore.messagesLoading"
+                @subscribe="handleChannelSubscribe"
+                @unsubscribe="handleChannelUnsubscribe"
+                @sendMessage="handleChannelSendMessage"
+                @update:displayMode="handleDisplayModeChange"
+                @like="handleMessageLike"
+                @unlike="handleMessageUnlike"
+                @comment="handleMessageComment"
+                @copyLink="handleMessageCopyLink"
+              />
+              <div v-else class="channel-empty-state">
+                <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
+                <p>选择一个频道查看详情</p>
+              </div>
+            </div>
+          </template>
+          <template #fallback>
+            <ContentSkeleton type="channels" :count="8" />
+          </template>
+        </Suspense>
       </template>
       
       <!-- 组织架构用户信息 -->
-      <UserDetailPanel
-        v-else-if="activeOption === 'org' && selectedUser"
-        :user="selectedUser"
-        :serverUrl="serverUrl"
-        :getAvatarUrl="getAvatarUrl"
-        @toggleSidebar="toggleSidebar"
-        @privateChat="startPrivateChat"
-        @showProfile="showUserProfile = true"
-        @open-avatar-settings="openAvatarSettings"
-      />
+      <template v-else-if="activeOption === 'org' && selectedUser">
+        <Suspense timeout="0">
+          <template #default>
+            <UserDetailPanel
+              :user="selectedUser"
+              :serverUrl="serverUrl"
+              :getAvatarUrl="getAvatarUrl"
+              @toggleSidebar="toggleSidebar"
+              @privateChat="startPrivateChat"
+              @showProfile="showUserProfile = true"
+              @open-avatar-settings="openAvatarSettings"
+            />
+          </template>
+          <template #fallback>
+            <ContentSkeleton type="groups" :count="4" />
+          </template>
+        </Suspense>
+      </template>
       
       <!-- 应用面板 -->
-      <AppsPanel
-        v-else-if="activeOption === 'apps' && !selectedAppId"
-        :mainApps="mainApps"
-        :quickTools="quickTools"
-        :customApps="customApps"
-        :systemApps="systemApps"
-        :pageTitle="getPageTitle()"
-        @toggleSidebar="toggleSidebar"
-        @openApp="openApp"
-      />
-      
-      <!-- 文件管理应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '3'" class="right-content">
-        <FileManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      
-      <!-- 笔记应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '7'" class="right-content">
-        <NotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      
-      <!-- 任务管理应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '5'" class="right-content">
-        <TaskManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      <!-- 日历应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '2'" class="right-content">
-        <CalendarApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      
-
-      <!-- 便签应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === '6'" class="right-content">
-        <StickyNotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      
-      <!-- 用户创建的应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'user-app' && currentUserApp" class="right-content">
-        <UserAppContainer 
-          :app="currentUserApp" 
-          @back="backToAppList" 
-          @toggleSidebar="toggleSidebar" 
+      <template v-else-if="activeOption === 'apps'">
+        <!-- 应用分类列表（不需要 Suspense，因为 AppsPanel 是同步加载的） -->
+        <AppsPanel
+          v-if="!selectedAppId"
+          :mainApps="mainApps"
+          :quickTools="quickTools"
+          :customApps="customApps"
+          :systemApps="systemApps"
+          :pageTitle="getPageTitle()"
+          @toggleSidebar="toggleSidebar"
+          @openApp="openApp"
         />
-      </div>
-      
-      <!-- 应用管理 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'app-management'" class="right-content">
-        <AppManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
-      
-      <!-- AI 助手 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'ai-assistant'" class="right-content">
-        <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
 
-      <!-- AI 分身 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'avatar'" class="right-content">
-        <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
+        <!-- 具体应用（懒加载组件，各自独立使用 Suspense） -->
+        <div v-else-if="selectedAppId === '3'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <FileManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
 
+        <!-- 笔记应用 -->
+        <div v-else-if="selectedAppId === '7'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <NotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
 
+        <!-- 任务管理应用 -->
+        <div v-else-if="selectedAppId === '5'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <TaskManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
 
-      <!-- 短链接管理应用 -->
-      <div v-else-if="activeOption === 'apps' && selectedAppId === 'short-link'" class="right-content">
-        <ShortLinkManager @back="backToAppList" @toggleSidebar="toggleSidebar" />
-      </div>
+        <!-- 日历应用 -->
+        <div v-else-if="selectedAppId === '2'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <CalendarApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- 便签应用 -->
+        <div v-else-if="selectedAppId === '6'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <StickyNotesApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- 用户创建的应用 -->
+        <div v-else-if="selectedAppId === 'user-app' && currentUserApp" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <UserAppContainer
+                :app="currentUserApp"
+                @back="backToAppList"
+                @toggleSidebar="toggleSidebar"
+              />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- 应用管理 -->
+        <div v-else-if="selectedAppId === 'app-management'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <AppManagementApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- AI 助手 -->
+        <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai-assistant'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <AIAssistantApp @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- AI 分身 -->
+        <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'avatar'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <AvatarSettingsPanel @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
+        <!-- 短链接管理应用 -->
+        <div v-else-if="selectedAppId === 'short-link'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <ShortLinkManager @back="backToAppList" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+      </template>
       
       <!-- 群聊详情 -->
-      <div v-else-if="activeOption === 'groups' && selectedGroup" class="right-content">
-        <div class="right-content-header">
-          <div class="header-left-group">
-            <button class="toggle-sidebar-btn" @click="toggleSidebar">
-              <i class="fas fa-compress"></i>
-            </button>
-            <h2>{{ selectedGroup.name }}</h2>
-          </div>
-        </div>
-        <GroupDetail
-          :group="selectedGroup"
-          @enter="handleConversationSelect($event)"
-          @invite="handleInviteMembers($event)"
-          @editAnnouncement="editAnnouncement"
-          @editGroupName="editGroupNameAction"
-          @openAISettings="openAISettings"
-          @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
-          @startPrivateChat="startPrivateChat"
-        />
-      </div>
+      <template v-else-if="activeOption === 'groups' && selectedGroup">
+        <Suspense timeout="0">
+          <template #default>
+            <div class="right-content">
+              <div class="right-content-header">
+                <div class="header-left-group">
+                  <button class="toggle-sidebar-btn" @click="toggleSidebar">
+                    <i class="fas fa-compress"></i>
+                  </button>
+                  <h2>{{ selectedGroup.name }}</h2>
+                </div>
+              </div>
+              <GroupDetail
+                :group="selectedGroup"
+                @enter="handleConversationSelect($event)"
+                @invite="handleInviteMembers($event)"
+                @editAnnouncement="editAnnouncement"
+                @editGroupName="editGroupNameAction"
+                @openAISettings="openAISettings"
+                @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
+                @startPrivateChat="startPrivateChat"
+              />
+            </div>
+          </template>
+          <template #fallback>
+            <ContentSkeleton type="groups" :count="5" />
+          </template>
+        </Suspense>
+      </template>
       
       <div v-else class="right-content">
         <div class="right-content-header">
@@ -281,15 +386,16 @@
           <p>选择左侧的{{ getPageTitle() }}查看详情</p>
         </div>
       </div>
-      <!-- 隐藏的便签应用实例，用于处理添加到笔记事件 -->
-      <div style="display: none">
-        <StickyNotesApp />
-      </div>
 
 
     </div>
     </div>
-    
+
+    <!-- 隐藏的便签应用实例，用于处理添加到笔记事件（移到 main-content 外部） -->
+    <div style="display: none">
+      <StickyNotesApp />
+    </div>
+
     <!-- 右键菜单 -->
     <MainContextMenus
       :showMenu="showMenu"
@@ -304,6 +410,7 @@
       :memberContextMenuPosition="memberContextMenuPosition"
       :showGroupContextMenuFlag="showGroupContextMenuFlag"
       :groupContextMenuPosition="groupContextMenuPosition"
+      :selectedGroupForContextMenu="selectedGroupForContextMenu"
       :isGroupOwner="isGroupOwner(selectedGroupForContextMenu)"
       :showSettingsMenuFlag="showSettingsMenuFlag"
       :settingsMenuPosition="settingsMenuPosition"
@@ -520,22 +627,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
+import { ref, computed, defineComponent, defineAsyncComponent, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
 import type { Conversation, Message, User } from '../types'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import axios from 'axios'
-import CalendarApp from '../components/apps/CalendarApp.vue'
-import StickyNotesApp from '../components/apps/StickyNotesApp.vue'
-import NotesApp from '../components/apps/NotesApp.vue'
-import TaskManagementApp from '../components/apps/task/TaskManagementApp.vue'
-import FileManagementApp from '../components/apps/FileManagementApp.vue'
-import AppManagementApp from '../components/apps/AppManagementApp.vue'
-import AIAssistantApp from '../components/apps/AIAssistantApp.vue'
-import ShortLinkManager from '../components/apps/ShortLinkManager.vue'
+const CalendarApp = defineAsyncComponent(() => import('../components/apps/CalendarApp.vue'))
+const StickyNotesApp = defineAsyncComponent(() => import('../components/apps/StickyNotesApp.vue'))
+const NotesApp = defineAsyncComponent(() => import('../components/apps/NotesApp.vue'))
+const TaskManagementApp = defineAsyncComponent(() => import('../components/apps/task/TaskManagementApp.vue'))
+const FileManagementApp = defineAsyncComponent(() => import('../components/apps/FileManagementApp.vue'))
+const AppManagementApp = defineAsyncComponent(() => import('../components/apps/AppManagementApp.vue'))
+const AIAssistantApp = defineAsyncComponent(() => import('../components/apps/AIAssistantApp.vue'))
+const ShortLinkManager = defineAsyncComponent(() => import('../components/apps/ShortLinkManager.vue'))
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
-import UserAppContainer from '../components/apps/UserAppContainer.vue'
-import AvatarSettingsPanel from '../components/avatar/AvatarSettingsPanel.vue'
+const UserAppContainer = defineAsyncComponent(() => import('../components/apps/UserAppContainer.vue'))
+const AvatarSettingsPanel = defineAsyncComponent(() => import('../components/avatar/AvatarSettingsPanel.vue'))
 import * as storage from '../utils/storage'
 
 // 声明 window.electron 变量
@@ -553,27 +660,29 @@ import SideOptions from '../components/layout/SideOptions.vue'
 import WindowControls from '../components/layout/WindowControls.vue'
 import ChatWindow from '../components/chat/ChatWindow.vue'
 import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
-import GroupDetail from '../components/shared/GroupDetail.vue'
+const GroupDetail = defineAsyncComponent(() => import('../components/shared/GroupDetail.vue'))
 import ModalContainer from '../components/shared/ModalContainer.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
-import UserProfile from '../components/modals/UserProfile.vue'
-import NotificationCenter from '../components/notification/NotificationCenter.vue'
+const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
+const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
 import { mapNotification } from '../utils/notificationMapper'
-import CreateGroupModal from '../components/modals/CreateGroupModal.vue'
-import ChannelDetailNew from '../components/channel/ChannelDetailNew.vue'
-import UserDetailPanel from '../components/user/UserDetailPanel.vue'
+const CreateGroupModal = defineAsyncComponent(() => import('../components/modals/CreateGroupModal.vue'))
+const ChannelDetailNew = defineAsyncComponent(() => import('../components/channel/ChannelDetailNew.vue'))
+const UserDetailPanel = defineAsyncComponent(() => import('../components/user/UserDetailPanel.vue'))
 import AppsPanel from '../components/apps/AppsPanel.vue'
 import SelfProfileModal from '../components/modals/SelfProfileModal.vue'
-import GroupModals from '../components/modals/GroupModals.vue'
-import GroupAIPanel from '../components/ai/GroupAIPanel.vue'
+const GroupModals = defineAsyncComponent(() => import('../components/modals/GroupModals.vue'))
+const GroupAIPanel = defineAsyncComponent(() => import('../components/ai/GroupAIPanel.vue'))
 import MainContextMenus from '../components/menus/MainContextMenus.vue'
 import MainDialogs from '../components/modals/MainDialogs.vue'
-import SettingsPanel from '../components/settings/SettingsPanel.vue'
+const SettingsPanel = defineAsyncComponent(() => import('../components/settings/SettingsPanel.vue'))
+import ContentSkeleton from '../components/skeleton/ContentSkeleton.vue'
 import { API_BASE_URL } from '../config'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
 import { useChatStore } from '../stores/chat'
+import { useSystemConfigStore } from '../stores/systemConfig'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
 import { useSettings } from '../composables/useSettings'
@@ -611,6 +720,9 @@ const { isChannelCreator, sendChannelMessage } = channelStore
 
 // 使用聊天 store（镜像同步）
 const chatStore = useChatStore()
+
+// 使用系统配置 store
+const systemConfigStore = useSystemConfigStore()
 
 // 会话数据处理
 const { processConversation } = useProcessConversation(serverUrl, currentUser)
@@ -671,8 +783,9 @@ const {
 
 // 手动重连：重新连接 WebSocket
 const handleManualReconnect = () => {
-  connectWebSocket()
-}
+    systemConfigStore.fetchPublicConfig()
+    connectWebSocket()
+  }
 
 // WebSocket 管理
 const {
@@ -1111,40 +1224,67 @@ const unregisterCustomEventListeners = () => {
 let isFirstConnect = true
 onMounted(async () => {
   isLoading.value = true
+  
   try {
-    // 并行加载数据
+    // ========== 阶段1：核心数据（必须等待，阻塞渲染）==========
+    console.log('[Main] 阶段1: 加载核心数据...')
     await refreshUser()
-    await Promise.all([
-      console.log('开始加载数据.......'),
-      loadConversations(),
+    await loadConversations()
+    
+    // 核心数据加载完成，立即展示主界面
+    isLoading.value = false
+    console.log('[Main] 核心数据加载完成，主界面已展示')
+    
+    // ========== 阶段2：重要数据（后台并行加载，不阻塞首屏）=========
+    console.log('[Main] 阶段2: 后台加载次要数据...')
+    Promise.allSettled([
       loadOrganizationTree(),
       loadUserApps(),
       loadBuiltInApps()
-    ])
+    ]).then(results => {
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const names = ['组织架构', '用户应用', '内置应用']
+          console.warn(`[Main] ${names[index]}加载失败:`, result.reason)
+        }
+      })
+      console.log('[Main] 次要数据加载完成')
+    })
+    
+    // ========== 阶段3：连接与注册（异步执行）==========
+    setupPostLoadTasks()
+    
   } catch (error) {
-    console.error('加载数据失败:', error)
-  } finally {
+    console.error('[Main] 核心数据加载失败:', error)
     isLoading.value = false
+    showNetworkError.value = true
+    networkErrorMsg.value = '核心数据加载失败，请检查网络连接'
   }
-  
-  // 设置 WebSocket 连接成功回调，重连时刷新会话列表获取最新未读计数
+})
+
+// 提取为独立函数：加载后任务
+const setupPostLoadTasks = () => {
+  // 设置 WebSocket 连接成功回调
   setOnConnectedCallback(() => {
-    // 首次连接时已在 onMounted 中加载过，避免重复请求
     if (!isFirstConnect) {
       loadConversations()
+      systemConfigStore.fetchPublicConfig()
     }
     isFirstConnect = false
   })
   
-  // 连接WebSocket（不再使用轮询，完全依赖WebSocket）
+  // 连接WebSocket
   connectWebSocket()
   
-  // 注册更新事件监听器
-  registerUpdateEventListeners()
+  // 获取公开系统配置（低优先级，延迟1秒）
+  setTimeout(() => {
+    systemConfigStore.fetchPublicConfig()
+  }, 1000)
   
-  // 注册自定义事件监听器
+  // 注册事件监听器
+  registerUpdateEventListeners()
   registerCustomEventListeners()
-})
+}
 
 // WebSocket 实例代理变量（已从 useWebSocketManager composable 导入）
 
@@ -1228,6 +1368,7 @@ const connectWebSocket = () => {
     'group_announcement_updated': handleGroupAnnouncementUpdated,
     'notification': handleNotification,
     'new_notification': handleNewNotification,
+    'system_config_updated': (data: any) => systemConfigStore.updateFromServer(data),
     'system_message': handleSystemMessage,
     // 用户状态变化
     'user_status_changed': (data: any) => handleUserStatusChange(data),
@@ -2007,17 +2148,10 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
         conversations.value[conversationIndex].unread_count = 0
       }
       
-      console.log('[Main.vue] loadMessages 准备调用 markMessagesAsRead', {
-        conversationId,
-        reset
-      })
-      
-      try {
-        await markMessagesAsRead(conversationId)
-      } catch (error) {
+      // 标记已读为非阻塞操作，不等待完成即显示消息
+      markMessagesAsRead(conversationId).catch((error: any) => {
         console.error('标记消息已读失败:', error)
-        QMessage.error('标记消息已读失败')
-      }
+      })
     } else {
       if (reset) {
         chatStore.clearMessages(conversationId)
@@ -2919,10 +3053,9 @@ const mainApps = computed(() => {
     { id: '3', name: '文件管理', icon: 'fas fa-folder' },
     { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
     { id: '2', name: '日历', icon: 'fas fa-calendar' },
-    { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
+    ...(systemConfigStore.enableAI ? [{ id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' }] : []),
     // 动态添加内置应用
     ...builtInApps.value.filter(app => app.category === 'main'),
-    { id: 'avatar', name: 'AI分身', icon: 'fas fa-user-astronaut' }
   ]
 })
 
@@ -2943,20 +3076,13 @@ const builtInApps = ref<any[]>([])
 // 加载内置应用（从后端API获取）
 const loadBuiltInApps = async () => {
   try {
-    const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
-    const response = await axios.get(`${serverUrl}/api/v1/apps/built-in`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (response.data.code === 0) {
-      builtInApps.value = response.data.data || []
+    const response = await request('/api/v1/apps/built-in')
+    if (response.code === 0) {
+      builtInApps.value = response.data || []
     }
   } catch (error) {
     console.error('加载内置应用失败:', error)
-    QMessage.error('加载内置应用失败')
-    // 如果加载失败，使用默认的内置应用
+    // 如果加载失败，使用默认的内置应用（硬编码的列表不受影响）
     builtInApps.value = []
   }
 }
@@ -2967,33 +3093,24 @@ const appCategories = computed(() => {
     {
       id: '1',
       name: '内置应用',
-      expanded: true,
-      apps: [
-        { id: '2', name: '日历', icon: 'fas fa-calendar' },
-        { id: '3', name: '文件管理', icon: 'fas fa-folder' },
-        { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
-        { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
-        { id: '7', name: '笔记', icon: 'fas fa-book' },
-        { id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' },
-        { id: 'avatar', name: 'AI分身', icon: 'fas fa-user-astronaut' },
-        { id: 'short-link', name: '短链接管理', icon: 'fas fa-link' },
-        // 动态添加内置应用
-        ...builtInApps.value.map(app => ({
-          id: app.id,
+      expanded: categoryExpanded.value['1'],
+      apps: builtInApps.value.map(app => ({
+          id: String(app.id),
           name: app.name,
+          code: app.code || '',
           icon: app.icon || 'fas fa-cube',
           url: app.url,
           openType: app.open_type || app.openType || 'in-app'
         }))
-      ]
     },
     {
       id: '2',
       name: '自定义应用',
-      expanded: false,
+      expanded: categoryExpanded.value['2'],
       apps: customApps.value.map(app => ({
-        id: app.id,
+        id: String(app.id),
         name: app.name,
+        code: app.code || '',
         icon: app.icon,
         url: app.url,
         openType: app.openType
@@ -3002,12 +3119,19 @@ const appCategories = computed(() => {
     {
       id: '3',
       name: '应用管理',
-      expanded: false,
+      expanded: categoryExpanded.value['3'],
       apps: [
         { id: 'app-management', name: '管理应用', icon: 'fas fa-cog' }
       ]
     }
   ]
+})
+
+// 应用分类展开/折叠状态（独立管理，避免 computed 重建）
+const categoryExpanded = ref<Record<string, boolean>>({
+  '1': true,
+  '2': false,
+  '3': false
 })
 
 // 保持向后兼容的 ref 版本
@@ -3016,15 +3140,9 @@ const appCategoriesRef = ref<any[]>([])
 // 加载用户创建的应用
 const loadUserApps = async () => {
   try {
-    const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
-    const response = await axios.get(`${serverUrl}/api/v1/apps`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (response.data.code === 0) {
-      const userApps = response.data.data.list || response.data.data
+    const response = await request('/api/v1/apps')
+    if (response.code === 0) {
+      const userApps = response.data.list || response.data
       // 更新自定义应用列表
       customApps.value = userApps.map((app: any) => ({
         id: 'user-' + app.id.toString(),
@@ -3033,22 +3151,9 @@ const loadUserApps = async () => {
         url: app.url,
         openType: app.open_type || app.openType || 'in-app'
       }))
-      
-      // 同时更新 appCategories(保持兼容性)
-      const customCategory = appCategories.value.find(cat => cat.id === '2')
-      if (customCategory) {
-        customCategory.apps = customApps.value.map(app => ({
-          id: app.id,
-          name: app.name,
-          icon: app.icon,
-          url: app.url,
-          openType: app.openType
-        }))
-      }
     }
   } catch (error) {
     console.error('加载用户应用失败:', error)
-    QMessage.error('加载用户应用失败')
   }
 }
 
@@ -3170,10 +3275,7 @@ const closeAppModal = () => {
 
 // 切换应用分类展开/折叠
 const toggleCategory = (categoryId: string) => {
-  const category = appCategories.value.find(c => c.id === categoryId)
-  if (category) {
-    category.expanded = !category.expanded
-  }
+  categoryExpanded.value[categoryId] = !categoryExpanded.value[categoryId]
 }
 
 // 当前打开的用户应用
@@ -3206,15 +3308,35 @@ const addToRecentApps = (appId: string, appName: string, appIcon: string) => {
   localStorage.setItem('recentApps', JSON.stringify(recentApps.value))
 }
 
+// 内置应用 code → 前端组件 ID 映射
+// 使用后端 code 字段标识而非自增 ID，避免 ID 不匹配问题
+const BUILT_IN_APP_CODE_TO_ID: Record<string, string> = {
+  'file_manager': '3',
+  'calendar': '2',
+  'task_manager': '5',
+  'sticky_notes': '6',
+  'notes': '7',
+  'short_link': 'short-link',
+}
+
+const resolveAppId = (app: { code?: string; name?: string; id?: string | number }): string | null => {
+  // 优先用 code 匹配
+  if (app?.code && BUILT_IN_APP_CODE_TO_ID[app.code]) {
+    return BUILT_IN_APP_CODE_TO_ID[app.code]
+  }
+  return null
+}
+
 const openApp = async (appId: string) => {
   console.log('打开应用:', appId)
-  
+
   // 查找应用信息
   let appName = ''
   let appIcon = ''
   let appUrl = ''
-  let openType = 'in-app' // 默认为在应用内打开
-  
+  let appCode = ''
+  let openType = 'in-app'
+
   // 从应用分类中查找应用
   let foundApp: any = null
   for (const category of appCategories.value) {
@@ -3224,34 +3346,43 @@ const openApp = async (appId: string) => {
       appName = app.name
       appIcon = app.icon
       appUrl = app.url || ''
+      appCode = app.code || ''
       openType = app.openType || 'in-app'
       break
     }
   }
-  
+
   // 记录最近使用的应用
   if (appName && appIcon) {
     addToRecentApps(appId, appName, appIcon)
   }
-  
-  // 特殊处理短链接应用
+
+  // 通过 code 解析为前端组件 ID
+  const resolvedId = appCode ? resolveAppId({ code: appCode, name: appName }) : null
+  if (resolvedId) {
+    console.log('内置应用 code 映射:', appCode, '→', resolvedId)
+    selectedAppId.value = resolvedId
+    return
+  }
+
+  // 特殊处理短链接应用（兼容直接 ID 传入）
   if (appId === 'short-link') {
     console.log('打开短链接管理应用')
     selectedAppId.value = 'short-link'
     return
   }
-  
+
   // 特殊处理小程序
   if (appId === 'mini-app') {
     console.log('打开小程序面板')
     showMiniAppList.value = true
     return
   }
-  
+
   // 检查应用是否有URL
   if (appUrl) {
     console.log('打开带URL的应用:', appName, appUrl, 'openType:', openType)
-    
+
     // 根据openType决定如何打开应用
     if (openType === 'external') {
       // 使用默认浏览器打开
@@ -3290,7 +3421,7 @@ const openApp = async (appId: string) => {
   } else {
     // 没有URL的应用，按原来的方式处理
     selectedAppId.value = appId
-    
+
     // 数据加载由各独立应用组件内部处理
   }
 }
@@ -3298,15 +3429,23 @@ const openApp = async (appId: string) => {
 // 打开用户创建的应用
 const openUserApp = (app: any) => {
   console.log('打开用户创建的应用:', app)
-  
+
   // 记录最近使用的应用
   if (app.name && app.icon) {
     addToRecentApps(app.id, app.name, app.icon)
   }
-  
+
+  // 通过 code 解析为内置应用
+  const resolvedId = app.code ? resolveAppId(app) : null
+  if (resolvedId) {
+    console.log('用户应用 code 映射为内置应用:', app.code, '→', resolvedId)
+    selectedAppId.value = resolvedId
+    return
+  }
+
   // 根据 openType 决定如何打开应用
   const openType = app.openType || app.open_type || 'in-app'
-  
+
   if (openType === 'external') {
     // 外链应用：使用默认浏览器打开
     console.log('使用默认浏览器打开外链应用:', app.url)
@@ -3632,9 +3771,10 @@ const viewUserProfile = () => {
   hideUserContextMenu()
 }
 
-const editAnnouncement = () => {
-  if (selectedGroup.value) {
-    editAnnouncementContent.value = selectedGroup.value.announcement || ''
+const editAnnouncement = (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (targetGroup) {
+    editAnnouncementContent.value = targetGroup.announcement || ''
     openEditAnnouncementModal()
   }
   closeGroupContextMenu()
@@ -3667,14 +3807,15 @@ provide('groupActions', {
   openEditAnnouncement: openEditAnnouncementFromHeader
 })
 
-const dissolveGroup = async () => {
-  if (selectedGroup.value) {
+const dissolveGroup = async (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (targetGroup) {
     // 调用 useGroup 中的实现
-    const success = await groupState.dissolveGroup(selectedGroup.value)
+    const success = await groupState.dissolveGroup(targetGroup)
     if (success) {
       // 使用 Store Action 更新会话
-      chatStore.patchConversation(selectedGroup.value.id, {
-        name: '[已解散] ' + (conversations.value.find(c => c.id === selectedGroup.value?.id)?.name || ''),
+      chatStore.patchConversation(targetGroup.id, {
+        name: '[已解散] ' + (conversations.value.find(c => c.id === targetGroup?.id)?.name || ''),
         is_deleted: true
       })
       selectedGroup.value = null
@@ -3851,10 +3992,11 @@ const setAsAdmin = async () => {
   closeMemberContextMenu()
 }
 
-const viewGroupMembers = () => {
-  if (selectedGroup.value) {
+const viewGroupMembers = (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (targetGroup) {
     // 使用 useGroup 中的方法准备成员显示数据
-    groupMembers.value = groupState.prepareGroupMembersForDisplay(selectedGroup.value, serverUrl.value)
+    groupMembers.value = groupState.prepareGroupMembersForDisplay(targetGroup, serverUrl.value)
     showGroupMembersModal.value = true
   }
   closeGroupContextMenu()
@@ -3870,8 +4012,9 @@ const viewGroupInfo = () => {
   selectedGroup.value = null
 }
 
-const addMembersToGroup = () => {
-  if (selectedGroup.value) {
+const addMembersToGroup = (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (targetGroup) {
     // 重置选择
     selectedAddMembers.value = []
     addMembersSearchQuery.value = ''
@@ -3907,6 +4050,17 @@ const handleInviteMembers = (groupOrId) => {
 const handleSwitchApp = (app) => {
   // 切换到指定的应用
   activeOption.value = 'apps'
+
+  // 如果传入的是应用对象，通过 code 解析
+  if (app && typeof app === 'object' && app.code) {
+    const resolvedId = resolveAppId(app)
+    if (resolvedId) {
+      selectedAppId.value = resolvedId
+      console.log('切换到内置应用:', app.code, '→', resolvedId)
+      return
+    }
+  }
+
   selectedAppId.value = app
   console.log('切换到应用:', app)
 }
@@ -4476,37 +4630,18 @@ const handleConfirmLogout = async () => {
   // 关闭登出确认对话框
   cancelLogout()
   
-  // 使用 Promise.race 实现超时控制
-  const withTimeout = (promise: Promise<any>, timeoutMs: number, label: string) => {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error(`${label}超时`)), timeoutMs)
-      )
-    ])
-  }
+  // 调用后端登出接口（不等待结果，避免阻塞跳转）
+  const token = getToken()
+  fetch(`${serverUrl.value}/api/v1/auth/logout`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  }).catch(() => {})
   
-  // 并行执行所有清理操作，不互相阻塞
-  const cleanupTasks = [
-    // 1. 调用后端登出接口（最多等待 2 秒）
-    withTimeout(request('/api/v1/auth/logout', { method: 'POST' }), 2000, '登出请求')
-      .catch(error => console.error('登出请求失败或超时:', error)),
-    
-    // 2. 清理 IndexedDB 存储（最多等待 1 秒）
-    import('../utils/storage').then(({ clearAll }) => 
-      withTimeout(clearAll(), 1000, '清理本地存储')
-    ).catch(error => console.error('清理本地存储失败或超时:', error))
-  ]
-  
-  // 3. 立即清理 localStorage（同步操作，无延迟）
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  
-  // 等待所有清理任务完成（最多等待 2 秒）
-  await Promise.allSettled(cleanupTasks)
-  
-  // 4. 跳转到登录页
-  window.location.href = '/login'
+  // 跳转到登录页（gotoLogin 内部会清理 localStorage 并跳转到 /）
+  gotoLogin()
 }
 
 // 主题菜单相关函数

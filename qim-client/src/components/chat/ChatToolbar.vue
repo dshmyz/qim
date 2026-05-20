@@ -46,8 +46,9 @@
       title="小程序"
       @click="$emit('open-mini-app-list')"
     />
-    <div class="toolbar-divider"></div>
+    <div v-if="systemConfigStore.enableAI" class="toolbar-divider"></div>
     <ChatToolbarButton
+      v-if="systemConfigStore.enableAI"
       icon="fas fa-robot"
       title="AI 功能"
       variant="ai"
@@ -59,6 +60,9 @@
 
 <script setup lang="ts">
 import ChatToolbarButton from './ChatToolbarButton.vue'
+import { useSystemConfigStore } from '../../stores/systemConfig'
+
+const systemConfigStore = useSystemConfigStore()
 
 interface Props {
   isElectron: boolean

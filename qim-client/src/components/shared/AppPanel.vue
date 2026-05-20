@@ -61,15 +61,13 @@ const emit = defineEmits<{
   (e: 'openApp', appId: string): void
   (e: 'openExternalApp', url: string): void
   (e: 'resetApp'): void
+  (e: 'toggleCategory', categoryId: string): void
 }>()
 
 const activeAppTab = ref('categories')
 
 const toggleCategory = (id: string) => {
-  const category = props.appCategories.find(c => c.id === id)
-  if (category) {
-    category.expanded = !category.expanded
-  }
+  emit('toggleCategory', id)
 }
 
 const handleAppClick = (app: any) => {

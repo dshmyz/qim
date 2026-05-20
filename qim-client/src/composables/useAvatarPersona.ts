@@ -64,6 +64,26 @@ export function useAvatarPersona() {
     }
   }
 
+  async function clearLearnedPersona(): Promise<void> {
+    loading.value = true
+    error.value = ''
+    try {
+      await avatarAPI.clearLearnedPersona()
+      learnedPersona.value = ''
+      learnStatus.value = {
+        status: 'idle',
+        progress: 0,
+        messageCount: 0,
+        error: null
+      }
+    } catch (e: any) {
+      error.value = e.response?.data?.message || '清除学习结果失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function startPolling() {
     stopPolling()
     fetchLearnStatus()
@@ -90,6 +110,7 @@ export function useAvatarPersona() {
     fetchLearnStatus,
     fetchLearnedPersona,
     previewReply,
+    clearLearnedPersona,
     startPolling,
     stopPolling
   }

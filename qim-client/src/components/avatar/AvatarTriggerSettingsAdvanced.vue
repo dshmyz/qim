@@ -1,22 +1,12 @@
 <template>
   <div class="avatar-trigger-settings-advanced">
-    <div class="setting-item">
-      <label>触发模式</label>
-      <select 
-        :value="modelValue.triggerRules?.mode ?? 'mention'" 
-        @change="updateTrigger('mode', ($event.target as HTMLSelectElement).value)" 
-        class="form-select"
-      >
-        <option value="mention">被 @ 时回复</option>
-        <option value="offline">离线时自动回复</option>
-        <option value="keyword">关键词触发</option>
-        <option value="all">所有消息（谨慎使用）</option>
-        <option value="custom">自定义规则</option>
-      </select>
-      <span class="setting-hint">{{ triggerModeHint }}</span>
+    <div class="current-mode-display">
+      <span class="mode-label">当前触发模式：</span>
+      <span class="mode-value">{{ modeLabel }}</span>
+      <span class="mode-hint">（在普通设置中修改触发模式）</span>
     </div>
 
-    <div v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'custom'" class="setting-item">
+    <div v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'smart'" class="setting-item">
       <label>触发关键词</label>
       <div class="keyword-input-wrapper">
         <input
@@ -33,6 +23,7 @@
           </span>
         </div>
       </div>
+      <span class="setting-hint">添加关键词后，分身只在消息包含这些词时才回复</span>
     </div>
 
     <div class="setting-item">
@@ -66,26 +57,19 @@ const emit = defineEmits<{
 
 const keywordInput = ref('')
 
-const triggerModeHint = computed(() => {
-  const hints: Record<string, string> = {
-    mention: '当有人在私聊中发消息，或在群聊中 @你时，分身会回复',
-    offline: '当你离线时，分身自动回复私聊消息',
-    keyword: '仅当消息包含指定关键词时，分身才回复',
-    all: '分身会回复所有消息（请谨慎使用）',
-    custom: '自定义触发规则，结合关键词和时间段'
+const modeLabel = computed(() => {
+  const labels: Record<string, string> = {
+    mention: '被 @ 时回复',
+    offline: '离线时自动回复',
+    smart: '智能模式',
+    keyword: '关键词触发',
+    all: '所有消息'
   }
-  return hints[props.modelValue.triggerRules?.mode ?? ''] || ''
+  return labels[props.modelValue.triggerRules?.mode ?? ''] || '未知'
 })
 
 function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
-}
-
-function updateTrigger(key: string, value: any) {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    triggerRules: { ...props.modelValue.triggerRules ?? {}, [key]: value }
-  })
 }
 
 function addKeyword() {
@@ -116,6 +100,33 @@ function removeKeyword(index: number) {
 <style scoped>
 .avatar-trigger-settings-advanced {
   padding: 16px;
+}
+
+.current-mode-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.mode-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.mode-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--primary-color);
+}
+
+.mode-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .setting-item {

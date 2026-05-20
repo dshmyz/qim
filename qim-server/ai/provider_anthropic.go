@@ -31,6 +31,15 @@ func (p *AnthropicProvider) IsConfigured() bool {
 	return p.config.IsSet()
 }
 
+func (p *AnthropicProvider) WithModel(model string) Provider {
+	newConfig := p.config
+	newConfig.Model = model
+	return &AnthropicProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 func (p *AnthropicProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("Anthropic API key is not configured")

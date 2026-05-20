@@ -64,7 +64,12 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 	}
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
-	result, err := provider.Chat(filteredMessages)
+	var result string
+	if modelName != "" {
+		result, err = provider.WithModel(modelName).Chat(filteredMessages)
+	} else {
+		result, err = provider.Chat(filteredMessages)
+	}
 	duration := time.Since(start).Milliseconds()
 	status := "success"
 	if err != nil {
@@ -82,7 +87,11 @@ func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, o
 	}
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
-	err = provider.ChatStream(filteredMessages, onChunk)
+	if modelName != "" {
+		err = provider.WithModel(modelName).ChatStream(filteredMessages, onChunk)
+	} else {
+		err = provider.ChatStream(filteredMessages, onChunk)
+	}
 	duration := time.Since(start).Milliseconds()
 	status := "success"
 	if err != nil {
@@ -102,7 +111,7 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 		return s.GetCompletion(taskType, messages, overrides...)
 	}
 
-	provider, _, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
 	if err != nil {
 		return "", err
 	}
@@ -121,7 +130,12 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 	}
 
 	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d", len(toolDefs))
-	resp, err := provider.ChatWithTools(messages, toolDefs)
+	var resp *ChatResponse
+	if modelName != "" {
+		resp, err = provider.WithModel(modelName).ChatWithTools(messages, toolDefs)
+	} else {
+		resp, err = provider.ChatWithTools(messages, toolDefs)
+	}
 	if err != nil {
 		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
 		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx)
@@ -161,7 +175,12 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 	}
 
 	log.Printf("[AI Service] Native function calling - 请求最终回复")
-	finalResp, err := provider.ChatWithTools(newMessages, toolDefs)
+	var finalResp *ChatResponse
+	if modelName != "" {
+		finalResp, err = provider.WithModel(modelName).ChatWithTools(newMessages, toolDefs)
+	} else {
+		finalResp, err = provider.ChatWithTools(newMessages, toolDefs)
+	}
 	if err != nil {
 		return "", err
 	}

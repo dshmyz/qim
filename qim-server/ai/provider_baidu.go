@@ -30,6 +30,15 @@ func (p *BaiduProvider) IsConfigured() bool {
 	return p.config.IsDualKeySet()
 }
 
+func (p *BaiduProvider) WithModel(model string) Provider {
+	newConfig := p.config
+	newConfig.Model = model
+	return &BaiduProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 // getAccessToken 获取百度 access token
 func (p *BaiduProvider) getAccessToken() (string, error) {
 	params := url.Values{}

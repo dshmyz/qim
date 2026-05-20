@@ -53,7 +53,7 @@
       <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
       <span>创建为任务</span>
     </div>
-    <div v-if="message && message.isSelf" class="context-menu-item" @click="handleRecallMessage">
+    <div v-if="message && message.isSelf && canRecall" class="context-menu-item" @click="handleRecallMessage">
       <span class="context-menu-icon"><i class="fas fa-undo"></i></span>
       <span>撤回</span>
     </div>
@@ -67,7 +67,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Message } from '../../types'
-import { useAIActions } from '../../composables/useAIActions'
+import { useSystemConfigStore } from '../../stores/systemConfig'
+
+const systemConfigStore = useSystemConfigStore()
 
 interface Props {
   visible: boolean
@@ -87,12 +89,16 @@ interface Emits {
   (e: 'recall-message'): void
   (e: 'send-message-reminder'): void
   (e: 'ai-summary'): void
+  (e: 'translate'): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const { translateText } = useAIActions()
+const canRecall = computed(() => {
+  if (!props.message) return false
+  return systemConfigStore.canRecall(props.message.timestamp)
+})
 
 const isAIMessage = computed(() => {
   if (!props.message) return false
@@ -170,19 +176,16 @@ const handleSendMessageReminder = () => {
   emit('send-message-reminder')
 }
 
-const handleAIAction = async (actionId: string) => {
+const handleAIAction = (actionId: string) => {
   if (!props.message || !props.message.content) return
 
-  try {
-    switch (actionId) {
-      case 'ai_summary':
-        emit('ai-summary')
-        break
-      case 'translate':
-        await translateText(props.message.content, 'zh')
-        break
-    }
-  } catch {
+  switch (actionId) {
+    case 'ai_summary':
+      emit('ai-summary')
+      break
+    case 'translate':
+      emit('translate')
+      break
   }
 }
 </script>

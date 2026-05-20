@@ -34,6 +34,7 @@
             <h3 class="section-title">基础配置</h3>
             <AvatarBasicSettingsSimple
               v-model="config"
+              @goToAdvanced="activeMainTab = 'advanced'"
             />
           </div>
 

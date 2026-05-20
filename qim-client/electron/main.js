@@ -201,7 +201,34 @@ function createWindow() {
     }
   })
 
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`Failed to load main window: ${errorDescription} (${errorCode})`)
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <html><body style="font-family:system-ui;background:#f0f2f5;display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;padding:32px;border-radius:12px;text-align:center;max-width:400px;">
+          <h2 style="color:#f5222d;margin:0 0 12px;">加载失败</h2>
+          <p style="color:#666;margin:0 0 8px;">${errorDescription}</p>
+          ${isDev ? '<p style="color:#999;font-size:12px;margin:0;">请先运行 <code>npm run dev</code> 启动 Vite 开发服务器</p>' : ''}
+        </div>
+      </body></html>
+    `)}`)
+    mainWindow.show()
+  })
+
+  // 启动超时保护：10 秒后如果还没 ready，关闭 splash
+  const startupTimeout = setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.warn('Startup timeout: main window not ready after 10s')
+      splashWindow.close()
+      mainWindow.show()
+    }
+  }, 10000)
+
   mainWindow.once('ready-to-show', () => {
+    clearTimeout(startupTimeout)
     console.log('Main window ready to show, closing splash')
     mainWindow.show()
     splashWindow.close()
@@ -255,11 +282,11 @@ function createWindow() {
    // 预热截屏 API：提前调用 desktopCapturer 让系统准备就绪
     // 首次截屏慢是因为系统需要授权和初始化捕获设备
     // 预热后首次截屏速度会明显提升，且不会创建窗口，不会闪烁
-    setTimeout(() => {
-      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
-        .then(() => console.log('[screenshot] Capture API warmed up'))
-        .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
-    }, 3000)
+    // setTimeout(() => {
+    //   desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
+    //     .then(() => console.log('[screenshot] Capture API warmed up'))
+    //     .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
+    // }, 3000)
     screenshotInstance.on('ok', (e, buffer, data) => {
       console.log('[screenshot] Captured, buffer length:', buffer.length)
       if (mainWindow) {

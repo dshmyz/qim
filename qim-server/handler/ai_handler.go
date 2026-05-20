@@ -22,6 +22,23 @@ type AIResponse struct {
 	Data    interface{} `json:"data"`
 }
 
+func checkAIEnabledMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		configSvc := di.GlobalContainer.SystemConfigService
+		publicConfigs, err := configSvc.GetPublicConfigs()
+		if err == nil {
+			if enableAI, ok := publicConfigs["enableAI"]; ok {
+				if !enableAI.(bool) {
+					response.Forbidden(c, "AI 功能已关闭")
+					c.Abort()
+					return
+				}
+			}
+		}
+		c.Next()
+	}
+}
+
 // AIHandler AI处理器
 type AIHandler struct {
 	aiService          *ai.AIService
@@ -59,6 +76,7 @@ func (h *AIHandler) SetSmartDigestGraph(graph *service.SmartDigestGraph) {
 // RegisterRoutes 注册路由
 func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	aiGroup := router.Group("/ai")
+	aiGroup.Use(checkAIEnabledMiddleware())
 	{
 		aiGroup.POST("/completion", h.GetCompletion)
 		aiGroup.POST("/completion/stream", h.GetCompletionStream)

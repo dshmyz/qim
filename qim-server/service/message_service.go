@@ -16,6 +16,7 @@ import (
 var ErrMessageNotFound = errors.New("message not found")
 var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
+var ErrMessageRecallTimeout = errors.New("message recall timeout")
 
 type MessageService struct {
 	db     *gorm.DB
@@ -338,8 +339,27 @@ func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, erro
 		return nil, ErrMessageAlreadyRecalled
 	}
 
+	configSvc := NewSystemConfigService(db)
+	publicConfigs, err := configSvc.GetPublicConfigs()
+	if err == nil {
+		recallTimeLimit := 120
+		if v, ok := publicConfigs["messageRecallTime"]; ok {
+			if iv, ok := v.(int); ok {
+				recallTimeLimit = iv
+			}
+		}
+		if recallTimeLimit == 0 {
+			return nil, ErrMessageRecallTimeout
+		}
+		if time.Since(msg.CreatedAt) > time.Duration(recallTimeLimit)*time.Second {
+			return nil, ErrMessageRecallTimeout
+		}
+	}
+
 	msg.IsRecalled = true
 	msg.Content = "[消息已撤回]"
+	now := time.Now()
+	msg.RecalledAt = &now
 	if err := db.Save(&msg).Error; err != nil {
 		return nil, err
 	}

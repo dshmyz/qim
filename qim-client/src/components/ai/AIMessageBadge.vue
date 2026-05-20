@@ -1,8 +1,7 @@
 <template>
   <div class="ai-message-badge" :class="{ compact }">
     <i class="fas fa-robot ai-badge-icon"></i>
-    <!-- <span class="ai-badge-text">{{ assistantName || 'AI 助手' }}</span> -->
-    <span class="ai-generated-tag">&#x7531; AI群聊助手 {{ assistantName || 'AI 助手' }} &#x751F;&#x6210;</span>
+    <span class="ai-generated-tag">由 AI助手 {{ assistantName || 'AI 助手' }} 生成</span>
   </div>
 </template>
 

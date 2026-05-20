@@ -79,7 +79,11 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 		sourceLang = "自动检测"
 	}
 
-	systemPrompt := "你是一个专业的翻译助手。请将以下文本从" + sourceLang + "翻译为" + req.TargetLang + "。只输出翻译结果,不要额外解释。"
+	promptCtx := &service.PromptContext{
+		SourceLang:   sourceLang,
+		TargetLang:   req.TargetLang,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneTranslate, promptCtx)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},
@@ -161,7 +165,11 @@ func (h *AIHandler) RewriteText(c *gin.Context) {
 		tone = "专业"
 	}
 
-	systemPrompt := "你是一个专业的文本改写助手。请将以下文本改写为" + style + "风格,语气" + tone + "。保持原意不变,只输出改写结果,不要额外解释。"
+	promptCtx := &service.PromptContext{
+		Style: style,
+		Tone:  tone,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneRewrite, promptCtx)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},
@@ -232,7 +240,10 @@ func (h *AIHandler) PolishText(c *gin.Context) {
 		lang = "中文"
 	}
 
-	systemPrompt := "你是一个专业的" + lang + "润色助手。请润色以下文本,使其表达更准确、流畅、专业。保持原意不变,只输出润色结果,不要额外解释。"
+	promptCtx := &service.PromptContext{
+		Language: lang,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.ScenePolish, promptCtx)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},

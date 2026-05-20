@@ -15,6 +15,7 @@ type EinoChatModel struct {
 	taskType  ai.TaskType
 	userID    uint
 	overrides []ai.Override
+	useTools  bool
 }
 
 func NewEinoChatModel(aiService *ai.AIService, taskType ai.TaskType, userID uint) *EinoChatModel {
@@ -22,6 +23,16 @@ func NewEinoChatModel(aiService *ai.AIService, taskType ai.TaskType, userID uint
 		aiService: aiService,
 		taskType:  taskType,
 		userID:    userID,
+		useTools:  true,
+	}
+}
+
+func NewEinoChatModelNoTools(aiService *ai.AIService, taskType ai.TaskType, userID uint) *EinoChatModel {
+	return &EinoChatModel{
+		aiService: aiService,
+		taskType:  taskType,
+		userID:    userID,
+		useTools:  false,
 	}
 }
 
@@ -32,7 +43,11 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 	var err error
 
 	callerCtx := &ai.CallerContext{UserID: m.userID}
-	reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
+	if m.useTools {
+		reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
+	} else {
+		reply, err = m.aiService.GetCompletion(m.taskType, aiMessages)
+	}
 	if err != nil {
 		return nil, err
 	}

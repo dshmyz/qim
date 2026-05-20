@@ -21,7 +21,12 @@
       </div>
 
       <div v-else-if="learnStatus.status === 'completed'" class="learn-result">
-        <div class="result-label">学习到的人设风格：</div>
+        <div class="result-header">
+          <div class="result-label">学习到的人设风格：</div>
+          <button class="clear-btn" @click="handleClear" :disabled="learnLoading">
+            清除
+          </button>
+        </div>
         <div class="result-content">{{ learnedPersona || '暂无' }}</div>
       </div>
 
@@ -89,6 +94,7 @@ const {
   fetchLearnStatus,
   fetchLearnedPersona,
   previewReply,
+  clearLearnedPersona,
   stopPolling
 } = useAvatarPersona()
 
@@ -98,10 +104,10 @@ const previewLoading = ref(false)
 
 const hasLearned = computed(() => learnStatus.value.status === 'completed')
 
-onMounted(() => {
-  fetchLearnStatus()
-  if (hasLearned.value) {
-    fetchLearnedPersona()
+onMounted(async () => {
+  await fetchLearnStatus()
+  if (learnStatus.value.status === 'completed' || learnStatus.value.lastLearnedAt) {
+    await fetchLearnedPersona()
   }
 })
 
@@ -122,8 +128,17 @@ async function handleLearn() {
   }
 }
 
+async function handleClear() {
+  try {
+    await window.$QMessageBox.confirm('确定要清除学习到的风格吗？', '清除风格')
+    await clearLearnedPersona()
+    window.$QMessage.success('已清除学习结果')
+  } catch {
+  }
+}
+
 async function handlePreview() {
-  if (!previewInput.value.trim()) return
+  if (!previewInput.value.trim() || previewLoading.value) return
   previewLoading.value = true
   try {
     previewResult.value = await previewReply(previewInput.value.trim())
@@ -146,6 +161,10 @@ async function handlePreview() {
 .progress-fill { height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.3s; }
 .progress-text { font-size: 12px; color: var(--text-secondary); }
 .result-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.clear-btn { padding: 4px 10px; background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; cursor: pointer; font-size: 12px; }
+.clear-btn:hover { border-color: #F44336; color: #F44336; }
+.clear-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .result-content { font-size: 13px; color: var(--text-primary); line-height: 1.6; padding: 10px; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); white-space: pre-wrap; }
 .learn-error { color: #F44336; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .retry-btn { padding: 4px 10px; background: transparent; border: 1px solid #F44336; color: #F44336; border-radius: 4px; cursor: pointer; font-size: 12px; }

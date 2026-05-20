@@ -32,6 +32,7 @@
     @recall-message="emit('recall-message')"
     @send-message-reminder="emit('send-message-reminder')"
     @ai-summary="emit('ai-summary')"
+    @translate="emit('translate')"
   />
 
   <!-- 成员右键菜单 -->
@@ -171,6 +172,8 @@ const emit = defineEmits<{
   'close-image-preview': []
   'close-mini-app': []
   'mini-app-toast': [message: string]
+  'ai-summary': []
+  'translate': []
 }>()
 
 const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => {

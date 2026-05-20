@@ -125,8 +125,11 @@ export function useConversation() {
     chatStore.addConversation(conversation)
   }
 
-  const handleExitGroup = async (groupId: string) => {
+  const handleExitGroup = async (groupOrId: any) => {
     try {
+      const groupId = typeof groupOrId === 'string' ? groupOrId : groupOrId?.id
+      if (!groupId) return
+      
       await request(`/api/v1/groups/${groupId}/exit`, {
         method: 'POST'
       })

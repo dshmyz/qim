@@ -26,6 +26,23 @@ type AvatarTool struct {
 	Icon        string
 }
 
+func checkAIEnabledForAvatar() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		configSvc := di.GlobalContainer.SystemConfigService
+		publicConfigs, err := configSvc.GetPublicConfigs()
+		if err == nil {
+			if enableAI, ok := publicConfigs["enableAI"]; ok {
+				if !enableAI.(bool) {
+					response.Forbidden(c, "AI 功能已关闭")
+					c.Abort()
+					return
+				}
+			}
+		}
+		c.Next()
+	}
+}
+
 type AvatarHandler struct {
 	db            *gorm.DB
 	avatarService *service.AvatarService
@@ -48,36 +65,29 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.PUT("/config", h.UpdateConfig)
 		avatar.DELETE("/config", h.DeleteConfig)
 
-		avatar.POST("/learn-persona", h.TriggerLearnPersona)
 		avatar.GET("/learn-status", h.GetLearnStatus)
 		avatar.GET("/learned-persona", h.GetLearnedPersona)
+		avatar.DELETE("/learned-persona", h.ClearLearnedPersona)
 
 		avatar.GET("/sessions", h.GetSessions)
-		avatar.PUT("/sessions/:convId", h.UpdateSession)
-		avatar.POST("/sessions/:convId/takeover", h.TakeoverSession)
 
-		avatar.POST("/preview", h.PreviewReply)
-
-		// 审批相关
-		avatar.POST("/apply", h.ApplyForApproval)
-		avatar.POST("/cancel-apply", h.CancelApplication)
-
-		// 工具绑定相关
 		avatar.GET("/tools", h.GetAvailableTools)
 		avatar.GET("/:id/tools", h.GetAvatarTools)
-		avatar.POST("/:id/tools/:toolId", h.BindTool)
-		avatar.DELETE("/:id/tools/:toolId", h.UnbindTool)
 
-		// 记忆管理
 		avatar.GET("/memories", h.GetMemories)
 		avatar.DELETE("/memory/:id", h.DeleteMemory)
-		avatar.POST("/memory/search", h.SearchMemories)
 
-		// 笔记搜索
-		avatar.POST("/note-search", h.SearchNotes)
-
-		// 触发检查
-		avatar.POST("/trigger-check", h.CheckTrigger)
+		avatar.POST("/learn-persona", checkAIEnabledForAvatar(), h.TriggerLearnPersona)
+		avatar.PUT("/sessions/:convId", checkAIEnabledForAvatar(), h.UpdateSession)
+		avatar.POST("/sessions/:convId/takeover", checkAIEnabledForAvatar(), h.TakeoverSession)
+		avatar.POST("/preview", checkAIEnabledForAvatar(), h.PreviewReply)
+		avatar.POST("/apply", checkAIEnabledForAvatar(), h.ApplyForApproval)
+		avatar.POST("/cancel-apply", h.CancelApplication)
+		avatar.POST("/:id/tools/:toolId", checkAIEnabledForAvatar(), h.BindTool)
+		avatar.DELETE("/:id/tools/:toolId", checkAIEnabledForAvatar(), h.UnbindTool)
+		avatar.POST("/memory/search", checkAIEnabledForAvatar(), h.SearchMemories)
+		avatar.POST("/note-search", checkAIEnabledForAvatar(), h.SearchNotes)
+		avatar.POST("/trigger-check", checkAIEnabledForAvatar(), h.CheckTrigger)
 	}
 }
 
@@ -249,15 +259,15 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 }
 
 type UpdateAvatarConfigRequest struct {
-	Name               string                     `json:"name"`
-	Enabled            bool                       `json:"enabled"`
-	UseSystemConfig    bool                       `json:"useSystemConfig"`
-	ModelConfigID      *uint                      `json:"modelConfigId"`
-	TriggerRules       model.AvatarTriggerRules   `json:"triggerRules"`
-	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledgeScope"`
-	ReplyStrategy      model.AvatarReplyStrategy  `json:"replyStrategy"`
-	TakeoverCooldown   int                        `json:"takeoverCooldown"`
-	CustomPersonaAddon string                     `json:"customPersonaAddon"`
+	Name               *string                     `json:"name"`
+	Enabled            *bool                       `json:"enabled"`
+	UseSystemConfig    *bool                       `json:"useSystemConfig"`
+	ModelConfigID      *uint                       `json:"modelConfigId"`
+	TriggerRules       *model.AvatarTriggerRules   `json:"triggerRules"`
+	KnowledgeScope     *model.AvatarKnowledgeScope `json:"knowledgeScope"`
+	ReplyStrategy      *model.AvatarReplyStrategy  `json:"replyStrategy"`
+	TakeoverCooldown   *int                        `json:"takeoverCooldown"`
+	CustomPersonaAddon *string                     `json:"customPersonaAddon"`
 }
 
 func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
@@ -292,25 +302,44 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
-	if err := validation.ValidateAliasName(req.Name); err != nil {
-		response.BadRequest(c, err.Error())
-		return
+	if req.Name != nil {
+		if err := validation.ValidateAliasName(*req.Name); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	triggerRulesJSON, _ := json.Marshal(req.TriggerRules)
 	knowledgeScopeJSON, _ := json.Marshal(req.KnowledgeScope)
 	replyStrategyJSON, _ := json.Marshal(req.ReplyStrategy)
 
-	updates := map[string]interface{}{
-		"name":                 req.Name,
-		"enabled":              req.Enabled,
-		"use_system_config":    req.UseSystemConfig,
-		"model_config_id":      req.ModelConfigID,
-		"takeover_cooldown":    req.TakeoverCooldown,
-		"custom_persona_addon": req.CustomPersonaAddon,
-		"trigger_rules_json":   string(triggerRulesJSON),
-		"knowledge_scope_json": string(knowledgeScopeJSON),
-		"reply_strategy_json":  string(replyStrategyJSON),
+	updates := map[string]interface{}{}
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.UseSystemConfig != nil {
+		updates["use_system_config"] = *req.UseSystemConfig
+	}
+	if req.ModelConfigID != nil {
+		updates["model_config_id"] = *req.ModelConfigID
+	}
+	if req.TakeoverCooldown != nil {
+		updates["takeover_cooldown"] = *req.TakeoverCooldown
+	}
+	if req.CustomPersonaAddon != nil {
+		updates["custom_persona_addon"] = *req.CustomPersonaAddon
+	}
+	if req.TriggerRules != nil {
+		updates["trigger_rules_json"] = string(triggerRulesJSON)
+	}
+	if req.KnowledgeScope != nil {
+		updates["knowledge_scope_json"] = string(knowledgeScopeJSON)
+	}
+	if req.ReplyStrategy != nil {
+		updates["reply_strategy_json"] = string(replyStrategyJSON)
 	}
 
 	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
@@ -461,6 +490,29 @@ func (h *AvatarHandler) GetLearnedPersona(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": config.AutoLearnedPersona})
+}
+
+// ClearLearnedPersona 清除学习结果
+func (h *AvatarHandler) ClearLearnedPersona(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	config.AutoLearnedPersona = ""
+	config.PersonaVersion = 0
+	config.LastLearnedAt = nil
+
+	if err := h.db.Save(&config).Error; err != nil {
+		response.InternalServerError(c, "清除失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": nil})
 }
 
 // GetSessions 获取会话分身状态

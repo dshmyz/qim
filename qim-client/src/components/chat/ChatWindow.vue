@@ -156,6 +156,7 @@
       @recall-message="handleRecallMessage"
       @send-message-reminder="sendMessageReminder"
       @ai-summary="handleAISummary"
+      @translate="handleAITranslate"
       @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
@@ -184,6 +185,13 @@
       time-range="today"
       @close="showSummaryPanel = false"
     />
+
+    <!-- AI 翻译面板 -->
+    <AITranslatePanel
+      :visible="showTranslatePanel"
+      :original-text="translateContent"
+      @close="showTranslatePanel = false"
+    />
   </div>
 </template>
 
@@ -208,6 +216,7 @@ import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import GroupModals from '../modals/GroupModals.vue'
 import AISummaryPanel from '../ai/AISummaryPanel.vue'
+import AITranslatePanel from '../ai/AITranslatePanel.vue'
 import AvatarTakeoverBanner from '../avatar/AvatarTakeoverBanner.vue'
 import AtMentionBanner from '../message/AtMentionBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
@@ -255,21 +264,22 @@ const {
   translateText,
   rewriteText,
   polishText,
-  generateSummary,
 } = useAIActions()
 
 // 分身 composable
-const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, updateConfig, fetchConfig, fetchSessions, toggleSession } = useAvatar()
-const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
+const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, fetchConfig, fetchSessions, toggleSession, isAvatarActive } = useAvatar()
+const avatarEnabled = computed(() => props.conversation?.id ? isAvatarActive(props.conversation.id) : (avatarConfig.value?.enabled ?? false))
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
 
-// 处理分身启用状态更新
+// AI 翻译面板状态
+const showTranslatePanel = ref(false)
+const translateContent = ref('')
+
+// 处理分身启用状态更新（只控制当前会话，不影响全局配置）
 const handleUpdateAvatarEnabled = async (enabled: boolean) => {
   try {
-    await updateConfig({ enabled })
-    // 同时更新会话级分身状态
     if (props.conversation?.id) {
       await toggleSession(props.conversation.id, enabled)
     }
@@ -968,24 +978,16 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 }
 
 // 组件挂载时添加事件监听器
-onMounted(async () => {
+onMounted(() => {
   isMounted.value = true
-  // 添加滚动事件监听器
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
   }
-  // 加载分身配置
-  await fetchConfig()
-  await fetchSessions()
-  await loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
   initWebSocketMessageHandler()
-  
   scrollToBottom()
-  
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  // 添加键盘事件监听器
   window.addEventListener('keydown', handleGlobalKeydown)
-  
+
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
       if (result.success) {
@@ -1003,6 +1005,13 @@ onMounted(async () => {
       }
     })
   }
+
+  // 非阻塞加载分身配置和已读状态，不影响界面交互
+  Promise.all([
+    fetchConfig(),
+    fetchSessions(),
+    loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
+  ])
 })
 
 // 初始化 WebSocket 消息处理
@@ -1545,24 +1554,23 @@ const forwardMessage = () => {
 }
 
 // AI 总结消息
-const handleAISummary = async () => {
+const handleAISummary = () => {
   if (!selectedMessage.value || !props.conversation?.id) {
     closeMessageContextMenu()
     return
   }
+  showSummaryPanel.value = true
+  closeMessageContextMenu()
+}
 
-  try {
-    const result = await generateSummary(Number(props.conversation.id), 'today')
-    if (result) {
-      $message.success('AI 总结已生成，请在聊天记录中查看')
-    } else {
-      $message.error('AI 总结失败')
-    }
-  } catch (error) {
-    console.error('AI 总结失败:', error)
-    $message.error('AI 总结失败: ' + (error as Error).message)
+// AI 翻译消息
+const handleAITranslate = () => {
+  if (!selectedMessage.value || !selectedMessage.value.content) {
+    closeMessageContextMenu()
+    return
   }
-
+  translateContent.value = selectedMessage.value.content
+  showTranslatePanel.value = true
   closeMessageContextMenu()
 }
 

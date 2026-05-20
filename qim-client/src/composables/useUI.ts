@@ -5,6 +5,34 @@ import { ref } from 'vue'
  * 管理所有 UI 相关的状态：上下文菜单、模态框、对话框、操作菜单等
  */
 export function useUI() {
+
+  /**
+   * 计算上下文菜单的位置，防止菜单超出视口边界
+   */
+  const computeMenuPosition = (clientX: number, clientY: number, menuWidth: number = 160, menuHeight: number = 160) => {
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+
+    let x = clientX
+    let y = clientY
+
+    if (x + menuWidth > windowWidth) {
+      x = windowWidth - menuWidth - 10
+    }
+    if (x < 0) {
+      x = 10
+    }
+
+    if (y + menuHeight > windowHeight) {
+      y = windowHeight - menuHeight - 10
+    }
+    if (y < 0) {
+      y = 10
+    }
+
+    return { x, y }
+  }
+
   // 会话右键菜单
   const showMenu = ref(false)
   const menuPosition = ref({ x: 0, y: 0 })
@@ -119,7 +147,7 @@ export function useUI() {
   const showContextMenu = (event: MouseEvent, conversation: any) => {
     event.preventDefault()
     showMenu.value = true
-    menuPosition.value = { x: event.clientX, y: event.clientY }
+    menuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 150)
     selectedConversation.value = conversation
   }
 
@@ -135,7 +163,7 @@ export function useUI() {
   const showActionMenu = (event: MouseEvent) => {
     event.stopPropagation()
     showActionMenuFlag.value = true
-    actionMenuPosition.value = { x: event.clientX, y: event.clientY }
+    actionMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 180, 180)
   }
 
   // 隐藏操作菜单
@@ -149,7 +177,7 @@ export function useUI() {
   const showUserContextMenu = (event: MouseEvent, user: any) => {
     event.preventDefault()
     showUserContextMenuFlag.value = true
-    userContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+    userContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 140, 80)
     selectedEmployee.value = user
   }
 
@@ -165,7 +193,7 @@ export function useUI() {
   const showGroupContextMenu = (event: MouseEvent, group: any) => {
     event.preventDefault()
     showGroupContextMenuFlag.value = true
-    groupContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+    groupContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 200)
     selectedGroupForContextMenu.value = group
   }
 
@@ -181,7 +209,7 @@ export function useUI() {
   const showMemberContextMenu = (event: MouseEvent, member: any) => {
     event.preventDefault()
     showMemberContextMenuFlag.value = true
-    memberContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+    memberContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 110)
     selectedMember.value = member
   }
 
@@ -309,7 +337,7 @@ export function useUI() {
   const showMoreMenu = (event: MouseEvent) => {
     event.stopPropagation()
     showMoreMenuFlag.value = true
-    moreMenuPosition.value = { x: event.clientX, y: event.clientY }
+    moreMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 50)
   }
 
   // 隐藏更多菜单

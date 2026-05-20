@@ -6,7 +6,7 @@
         <i class="fas fa-user-plus"></i>
       </span>
       <span 
-        v-if="isGroupOrDiscussion || showAvatarToggle" 
+        v-if="isGroupOrDiscussion || (systemConfigStore.enableAI && showAvatarToggle)" 
         class="header-icon" 
         title="更多选项" 
         @click.stop="handleToggleHeaderMenu" 
@@ -27,19 +27,28 @@
           <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupAnnouncement">
             <i class="fas fa-bullhorn"></i> 编辑群公告
           </div>
-          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleOpenAISettings">
+          <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion" class="menu-item" @click="handleOpenAISettings">
             <i class="fas fa-robot"></i> AI 助手设置
           </div>
           <!-- 私聊相关菜单项 -->
-          <div v-if="showAvatarToggle" class="menu-item menu-item--toggle">
-            <i class="fas fa-user-circle"></i>
-            <span>AI分身</span>
-            <Switch 
-              :model-value="avatarEnabled ?? false" 
-              :size="'small'"
-              :disabled="avatarApprovalStatus !== 'approved'"
-              @change="(value) => handleToggleAvatar(value)"
-            />
+          <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item">
+            <div class="avatar-toggle-header">
+              <i class="fas fa-user-circle"></i>
+              <span class="avatar-toggle-title">AI 分身</span>
+              <Switch
+                :model-value="avatarEnabled ?? false"
+                :size="'small'"
+                :disabled="avatarApprovalStatus !== 'approved'"
+                title="开启后，AI分身将在当前会话中代替你回复消息"
+                @change="(value) => handleToggleAvatar(value)"
+              />
+            </div>
+            <div v-if="avatarApprovalStatus && avatarApprovalStatus !== 'approved'" class="avatar-toggle-hint">
+              {{ avatarApprovalStatus === 'pending' ? '⏳ 审批中...' : avatarApprovalStatus === 'rejected' ? '❌ 审批未通过' : '' }}
+            </div>
+            <div v-else class="avatar-toggle-hint">
+              仅对当前会话生效
+            </div>
           </div>
           <!-- 群聊解散 -->
           <div v-if="isGroupOrDiscussion && isOwner" class="menu-item" @click="handleConfirmDeleteGroup">
@@ -104,11 +113,14 @@ import type { Conversation } from '../../types'
 import { getCurrentUser } from '../../utils/user'
 import { useRequest } from '../../composables/useRequest'
 import { API_BASE_URL } from '../../config'
+import { useSystemConfigStore } from '../../stores/systemConfig'
 import MemberSidebar from './MemberSidebar.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
 import GroupAIPanel from '../ai/GroupAIPanel.vue'
 import Switch from '../common/Switch.vue'
 import ModalContainer from '../shared/ModalContainer.vue'
+
+const systemConfigStore = useSystemConfigStore()
 
 // 类型定义
 interface GroupMember {
@@ -550,13 +562,37 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-.menu-item--toggle {
+/* AI 分身开关菜单项 */
+.avatar-toggle-menu-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
+}
+
+.avatar-toggle-header {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
 }
 
-.menu-item--toggle span {
+.avatar-toggle-header i {
+  color: #3b82f6;
+  font-size: 14px;
+  margin-right: 8px;
+}
+
+.avatar-toggle-title {
   flex: 1;
-  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.avatar-toggle-hint {
+  margin-top: 6px;
+  padding-left: 22px;
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* 模态框样式 */

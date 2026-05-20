@@ -75,23 +75,29 @@ func (p *AvatarWorkerPool) run() {
 func (p *AvatarWorkerPool) process(task AvatarTask) {
 	ctx := context.Background()
 
+	logger.WithModule("AvatarWorkerPool").Info("开始处理分身任务", "userID", task.UserID, "convID", task.ConversationID, "triggerUserID", task.TriggerUserID)
+
 	if err := p.limiter.Wait(ctx); err != nil {
+		logger.WithModule("AvatarWorkerPool").Error("全局限流等待失败", "userID", task.UserID, "error", err)
 		return
 	}
 
 	userLimiter := p.getUserLimiter(task.UserID)
 	if err := userLimiter.Wait(ctx); err != nil {
+		logger.WithModule("AvatarWorkerPool").Error("用户限流等待失败", "userID", task.UserID, "error", err)
 		return
 	}
 
 	var session model.AvatarSession
 	err := p.db.Where("user_id = ? AND conversation_id = ?", task.UserID, task.ConversationID).First(&session).Error
 	if err == nil && session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
+		logger.WithModule("AvatarWorkerPool").Info("分身接管期内，跳过回复", "userID", task.UserID, "takeoverUntil", session.TakeoverUntil)
 		return
 	}
 
 	reply, err := p.service.GenerateReply(task.UserID, task.ConversationID, task.TriggerMessage)
 	if err != nil {
+		logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
 		return
 	}
 

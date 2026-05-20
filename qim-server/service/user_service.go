@@ -255,6 +255,21 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 		}
 	}
 
+	var existingUser model.User
+	if err := s.db.Where("username = ?", "bot_ai_assistant").First(&existingUser).Error; err == nil {
+		bot := model.Bot{
+			Name:          "AI助手",
+			Description:   "通用 AI 助手",
+			Type:          "ai",
+			IsActive:      true,
+			VirtualUserID: &existingUser.ID,
+		}
+		if createErr := s.db.Where("type = ? AND group_id IS NULL AND virtual_user_id = ?", "ai", existingUser.ID).FirstOrCreate(&bot).Error; createErr != nil {
+			logger.WithModule("GetDefaultAIAssistant").Error("创建 Bot 记录失败", "error", createErr)
+		}
+		return &existingUser, nil
+	}
+
 	aiUser := model.User{
 		Username: "bot_ai_assistant",
 		Nickname: "AI助手",

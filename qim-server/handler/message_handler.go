@@ -531,6 +531,11 @@ func StreamMessage(c *gin.Context) {
 			}
 		}
 
+		promptCtx := &service.PromptContext{
+			CustomPrompt: systemPrompt,
+		}
+		systemPrompt = di.GlobalContainer.PromptManager.BuildSystemPrompt(service.SceneBotChat, promptCtx)
+
 		var messages []model.Message
 		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
@@ -663,6 +668,10 @@ func RecallMessage(c *gin.Context) {
 			response.BadRequest(c, "消息已经被撤回")
 			return
 		}
+		if err == service.ErrMessageRecallTimeout {
+			response.BadRequest(c, "消息已超过撤回时限")
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -730,6 +739,19 @@ func DeleteMessage(c *gin.Context) {
 }
 
 func GetMessageReadUsers(c *gin.Context) {
+	configSvc := di.GlobalContainer.SystemConfigService
+	publicConfigs, _ := configSvc.GetPublicConfigs()
+	if enableReadReceipt, ok := publicConfigs["enableReadReceipt"]; ok {
+		if !enableReadReceipt.(bool) {
+			response.Success(c, gin.H{
+				"read_users":    []interface{}{},
+				"read_count":    int64(0),
+				"total_members": int64(0),
+			})
+			return
+		}
+	}
+
 	userID, _ := c.Get("user_id")
 	msgIDStr := c.Param("id")
 
@@ -763,6 +785,15 @@ func GetMessageReadUsers(c *gin.Context) {
 }
 
 func BatchGetMessageReadUsers(c *gin.Context) {
+	configSvc := di.GlobalContainer.SystemConfigService
+	publicConfigs, _ := configSvc.GetPublicConfigs()
+	if enableReadReceipt, ok := publicConfigs["enableReadReceipt"]; ok {
+		if !enableReadReceipt.(bool) {
+			response.Success(c, map[string]interface{}{})
+			return
+		}
+	}
+
 	userID, _ := c.Get("user_id")
 
 	var req struct {

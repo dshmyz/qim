@@ -71,6 +71,7 @@ const emit = defineEmits<{
   (e: 'openApp', appId: string): void
   (e: 'openExternalApp', url: string): void
   (e: 'resetApp'): void
+  (e: 'toggleCategory', categoryId: string): void
   (e: 'searchResultSelect', item: SearchResultItem): void
   (e: 'searchResultPrivateChat', item: SearchResultItem): void
   (e: 'searchResultApplyJoin', item: SearchResultItem): void
@@ -189,6 +190,7 @@ defineExpose({})
           @openApp="$emit('openApp', $event)"
           @openExternalApp="$emit('openExternalApp', $event)"
           @resetApp="$emit('resetApp')"
+          @toggleCategory="$emit('toggleCategory', $event)"
         />
       </div>
     </div>

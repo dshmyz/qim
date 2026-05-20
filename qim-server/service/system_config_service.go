@@ -54,6 +54,45 @@ func (s *SystemConfigService) CreateConfig(config *model.SystemConfig) error {
 	return s.db.Create(config).Error
 }
 
+var publicConfigKeys = []string{
+	"enableAI",
+	"enableReadReceipt",
+	"messageRecallTime",
+}
+
+func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error) {
+	var configs []model.SystemConfig
+	if err := s.db.Where("key IN ?", publicConfigKeys).Find(&configs).Error; err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]interface{})
+	for _, cfg := range configs {
+		switch cfg.Type {
+		case "number":
+			var val int
+			fmt.Sscanf(cfg.Value, "%d", &val)
+			result[cfg.Key] = val
+		case "boolean":
+			result[cfg.Key] = cfg.Value == "true"
+		default:
+			result[cfg.Key] = cfg.Value
+		}
+	}
+
+	if _, ok := result["enableAI"]; !ok {
+		result["enableAI"] = true
+	}
+	if _, ok := result["enableReadReceipt"]; !ok {
+		result["enableReadReceipt"] = true
+	}
+	if _, ok := result["messageRecallTime"]; !ok {
+		result["messageRecallTime"] = 120
+	}
+
+	return result, nil
+}
+
 func (s *SystemConfigService) BatchUpdate(configs map[string]interface{}) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for key, value := range configs {

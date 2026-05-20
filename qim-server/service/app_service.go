@@ -37,7 +37,7 @@ type AppResult struct {
 
 func (s *AppService) GetUserApps(query AppQuery) (*AppResult, error) {
 	ctx := context.Background()
-	dbQuery := s.db.WithContext(ctx).Model(&model.App{}).Where("(user_id = ? OR is_global = ?) AND deleted_at IS NULL", query.UserID, true)
+	dbQuery := s.db.WithContext(ctx).Model(&model.App{}).Where("user_id = ? AND is_global = ? AND deleted_at IS NULL", query.UserID, false)
 
 	if query.Name != "" {
 		dbQuery = dbQuery.Where("name LIKE ?", "%"+query.Name+"%")

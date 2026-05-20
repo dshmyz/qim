@@ -66,24 +66,24 @@
 
   <!-- 群聊上下文菜单 -->
   <div v-if="showGroupContextMenuFlag" class="context-menu" :style="{ left: groupContextMenuPosition.x + 'px', top: groupContextMenuPosition.y + 'px' }">
-    <div class="context-menu-item" @click="$emit('viewGroupMembers')">
+    <div class="context-menu-item" @click="$emit('viewGroupMembers', selectedGroupForContextMenu)">
       <span class="context-menu-icon"><i class="fas fa-user-friends"></i></span>
       <span>查看群成员</span>
     </div>
-    <div class="context-menu-item" @click="$emit('addMembers')">
+    <div class="context-menu-item" @click="$emit('addMembers', selectedGroupForContextMenu)">
       <span class="context-menu-icon"><i class="fas fa-plus"></i></span>
       <span>添加成员</span>
     </div>
-    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('editAnnouncement')">
+    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('editAnnouncement', selectedGroupForContextMenu)">
       <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
       <span>编辑群公告</span>
     </div>
-    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('dissolveGroup')">
+    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('dissolveGroup', selectedGroupForContextMenu)">
       <span class="context-menu-icon"><i class="fas fa-trash-alt"></i></span>
       <span>解散群聊</span>
     </div>
     <div class="context-menu-divider"></div>
-    <div class="context-menu-item" @click="$emit('exitGroup')">
+    <div class="context-menu-item" @click="$emit('exitGroup', selectedGroupForContextMenu)">
       <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
       <span>退出群聊</span>
     </div>
@@ -175,6 +175,7 @@ interface Props {
   memberContextMenuPosition: Position
   showGroupContextMenuFlag: boolean
   groupContextMenuPosition: Position
+  selectedGroupForContextMenu: Conversation | null
   isGroupOwner: boolean
   showSettingsMenuFlag: boolean
   settingsMenuPosition: Position
@@ -201,10 +202,10 @@ const emit = defineEmits<{
   'removeMember': []
   'viewMemberInfo': []
   'setAdmin': []
-  'viewGroupMembers': []
-  'addMembers': []
-  'editAnnouncement': []
-  'dissolveGroup': []
+  'viewGroupMembers': [group: Conversation]
+  'addMembers': [group: Conversation]
+  'editAnnouncement': [group: Conversation]
+  'dissolveGroup': [group: Conversation]
   'about': []
   'checkUpdate': []
   'settings': []

@@ -11,9 +11,9 @@ import (
 	"qim-server/ai"
 	"qim-server/model"
 
+	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
-	"github.com/cloudwego/eino/components/prompt"
 	"gorm.io/gorm"
 )
 
@@ -64,23 +64,24 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 
 	template := prompt.FromMessages(
 		schema.FString,
-		&schema.Message{Role: schema.System, Content: `你是{{UserName}}的AI分身，需要以TA的身份回复消息。
+		&schema.Message{Role: schema.System, Content: `你是{UserName}的AI分身，需要以TA的身份回复消息。
 
-{{PersonaSection}}
-{{SupplementSection}}
+{TimeInfo}
+{PersonaSection}
+{SupplementSection}
 【回复要求】
 - 以第一人称回复，就像你就是这个人
 - 保持自然的对话风格
 - 不要暴露你是AI
 - 回复要简洁，不要过长`},
-		&schema.Message{Role: schema.User, Content: `{{ContextSection}}
-对方说：{{Message}}
+		&schema.Message{Role: schema.User, Content: `{ContextSection}
+对方说：{Message}
 
-请以我的身份回复：`},
+请以{UserName}的身份回复：`},
 	)
 	graph.AddChatTemplateNode("prompt", template)
 
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeChat, 0))
+	graph.AddChatModelNode("model", NewEinoChatModelNoTools(g.aiService, ai.TaskTypeChat, 0))
 
 	graph.AddLambdaNode("format", g.createFormatReplyNode())
 
@@ -104,6 +105,10 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *AvatarReplyContext) (map[string]any, error) {
 		config := input.Config
+
+		now := time.Now()
+		weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
+		timeInfo := fmt.Sprintf("【当前时间】\n%s (%s)", now.Format("2006-01-02 15:04"), weekdays[now.Weekday()])
 
 		personaSection := ""
 		if config.AutoLearnedPersona != "" {
@@ -130,8 +135,17 @@ func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 		}
 		contextStr := strings.Join(contextParts, "\n\n")
 
+		log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d",
+			input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message))
+
+		userName := input.User.Nickname
+		if userName == "" {
+			userName = input.User.Username
+		}
+
 		return map[string]any{
-			"UserName":          input.User.Nickname,
+			"UserName":          userName,
+			"TimeInfo":          timeInfo,
 			"PersonaSection":    personaSection,
 			"SupplementSection": supplementSection,
 			"ContextSection":    contextStr,

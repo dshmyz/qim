@@ -207,6 +207,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		authed := api.Group("")
 		authed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
 		{
+			// 公开系统配置（客户端可读）
+			authed.GET("/system/public-config", handler.GetPublicSystemConfig)
+
 			// 用户
 			authed.GET("/users/me", handler.GetCurrentUser)
 			authed.PUT("/users/me", handler.UpdateUser)

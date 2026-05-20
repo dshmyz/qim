@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/ai"
-
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
@@ -102,11 +100,6 @@ func simpleExecuteWithCache[Input any](
 	}
 
 	return result, nil
-}
-
-// AddModelNode adds a chat model node to the graph.
-func AddModelNode[Input, Output any](graph *compose.Graph[Input, Output], aiService *ai.AIService) {
-	graph.AddChatModelNode("model", NewEinoChatModel(aiService))
 }
 
 // PipelineState holds shared data between pipeline nodes.

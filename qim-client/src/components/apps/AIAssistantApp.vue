@@ -43,7 +43,7 @@ import AIWorkbenchDashboard from './ai/AIWorkbenchDashboard.vue'
 import BotChatView from './ai/BotChatView.vue'
 import { useBotChat } from '../../composables/useBotChat'
 
-defineEmits(['back', 'toggleSidebar'])
+const emit = defineEmits(['back', 'toggleSidebar'])
 
 interface Bot {
   id: number
@@ -75,6 +75,7 @@ function handleBack() {
   if (showChatView.value) {
     backToDashboard()
   } else {
+    emit('back')
   }
 }
 

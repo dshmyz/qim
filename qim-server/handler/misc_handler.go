@@ -9,6 +9,7 @@ import (
 	"qim-server/model"
 	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
+	"qim-server/service"
 	"qim-server/ws"
 	"strconv"
 	"strings"
@@ -250,6 +251,11 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 					}
 				}
 			}
+
+			promptCtx := &service.PromptContext{
+				CustomPrompt: systemPrompt,
+			}
+			systemPrompt = di.GlobalContainer.PromptManager.BuildSystemPrompt(service.SceneBotChat, promptCtx)
 
 			messages = append(messages, ai.Message{
 				Role:    "system",

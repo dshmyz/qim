@@ -30,7 +30,7 @@ export interface AvatarKnowledgeScope {
 }
 
 export interface AvatarTriggerRules {
-  mode: 'offline' | 'keyword' | 'mention' | 'all' | 'custom'
+  mode: 'mention' | 'offline' | 'keyword' | 'all' | 'smart'
   keywords: string[]
   timeRanges: AvatarTimeRange[]
   excludedConversations: number[]

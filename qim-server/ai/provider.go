@@ -31,6 +31,9 @@ type Provider interface {
 
 	// IsConfigured 检查提供商是否已正确配置
 	IsConfigured() bool
+
+	// WithModel 返回使用指定 model 的 Provider副本（共享 HTTP 连接池）
+	WithModel(model string) Provider
 }
 
 // BaseProvider 提供所有提供商共用的基础功能

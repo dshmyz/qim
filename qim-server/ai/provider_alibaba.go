@@ -30,6 +30,15 @@ func (p *AlibabaProvider) IsConfigured() bool {
 	return p.config.IsSet()
 }
 
+func (p *AlibabaProvider) WithModel(model string) Provider {
+	newConfig := p.config
+	newConfig.Model = model
+	return &AlibabaProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 func (p *AlibabaProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
 	return nil, fmt.Errorf("Alibaba provider does not support native function calling, use prompt engineering instead")
 }

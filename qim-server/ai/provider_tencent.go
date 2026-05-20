@@ -30,6 +30,15 @@ func (p *TencentProvider) IsConfigured() bool {
 	return p.config.IsDualKeySet()
 }
 
+func (p *TencentProvider) WithModel(model string) Provider {
+	newConfig := p.config
+	newConfig.Model = model
+	return &TencentProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 func (p *TencentProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
 	return nil, fmt.Errorf("Tencent provider does not support native function calling, use prompt engineering instead")
 }

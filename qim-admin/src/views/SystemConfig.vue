@@ -26,6 +26,28 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="已读/未读显示">
+          <el-switch
+            v-model="configForm.enableReadReceipt"
+            active-text="开启"
+            inactive-text="关闭"
+          />
+          <span class="desc" style="margin-left: 8px">（关闭后用户不可见已读状态，后台仍记录）</span>
+        </el-form-item>
+
+        <el-divider content-position="left">AI 设置</el-divider>
+
+        <el-form-item label="AI 功能总开关">
+          <el-switch
+            v-model="configForm.enableAI"
+            active-text="开启"
+            inactive-text="关闭"
+            active-color="#67c23a"
+            inactive-color="#f56c6c"
+          />
+          <span class="desc" style="margin-left: 8px">（关闭后所有 AI 功能不可用：智能回复、AI助手、分身等）</span>
+        </el-form-item>
+
         <el-divider content-position="left">文件设置</el-divider>
 
         <el-form-item label="最大文件大小">
@@ -113,29 +135,27 @@ const configForm = reactive<SystemConfig>({
   enableRegistration: true,
   enable2FA: false,
   enableFileUpload: true,
+  enableAI: true,
+  enableReadReceipt: true,
 })
 
-// 获取配置
 const fetchConfig = async () => {
   loading.value = true
   try {
     const { data } = await getSystemConfig()
     Object.assign(configForm, data.data)
   } catch {
-    // 错误已在请求拦截器中处理
   } finally {
     loading.value = false
   }
 }
 
-// 保存配置
 const handleSubmit = async () => {
   submitting.value = true
   try {
     await updateSystemConfig({ ...configForm })
-    ElMessage.success('配置保存成功')
+    ElMessage.success('配置保存成功，客户端将即时感知变更')
   } catch {
-    // 错误已在请求拦截器中处理
   } finally {
     submitting.value = false
   }
