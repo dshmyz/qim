@@ -136,42 +136,6 @@
       </div>
     </div>
   </div>
-
-  <!-- 语音通话模态框 -->
-  <div v-if="showVoiceCallModal" class="voice-call-modal" @click="$emit('endCall')">
-    <div class="voice-call-content" @click.stop>
-      <div class="voice-call-header">
-        <h3>语音通话</h3>
-      </div>
-      <div class="voice-call-body">
-        <div class="call-status">
-          <div v-if="callStatus === 'calling'" class="call-status-text">
-            <i class="fas fa-phone-alt"></i>
-            <span>正在呼叫...</span>
-          </div>
-          <div v-else-if="callStatus === 'ringing'" class="call-status-text">
-            <i class="fas fa-phone-ring"></i>
-            <span>对方正在接听...</span>
-          </div>
-          <div v-else-if="callStatus === 'active'" class="call-status-text">
-            <i class="fas fa-phone"></i>
-            <span>通话中</span>
-            <div class="call-duration">{{ formattedDuration }}</div>
-          </div>
-          <div v-else-if="callStatus === 'ended'" class="call-status-text">
-            <i class="fas fa-phone-slash"></i>
-            <span>通话已结束</span>
-          </div>
-        </div>
-      </div>
-      <div class="voice-call-footer">
-        <button class="end-call-btn" @click="$emit('endCall')">
-          <i class="fas fa-phone-slash"></i>
-          结束通话
-        </button>
-      </div>
-    </div>
-  </div>
 </template>
 
 <script setup lang="ts">
@@ -197,14 +161,11 @@ interface Props {
   showLogoutDialog: boolean
   showUpdateDialog: boolean
   showSystemMessageModal: boolean
-  showVoiceCallModal: boolean
   isCheckingUpdate: boolean
   isDownloading: boolean
   downloadProgress: number
   hasNewVersion: boolean
   updateResult: string
-  callStatus: string
-  formattedDuration: string
   groupConversations: Conversation[]
   allEmployees: any[]
   systemMessage: SystemMessage
@@ -220,7 +181,6 @@ const emit = defineEmits<{
   'downloadUpdate': []
   'closeSystemMessage': []
   'sendSystemMessage': [message: SystemMessage]
-  'endCall': []
 }>()
 
 const localMessage = ref<SystemMessage>({ ...props.systemMessage })
@@ -477,82 +437,6 @@ watch(() => props.systemMessage, (val) => {
 
 .result-icon:not(.new-version) {
   color: #67c23a;
-}
-
-.voice-call-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.voice-call-content {
-  background: var(--modal-bg, #fff);
-  border-radius: 12px;
-  width: 350px;
-  overflow: hidden;
-}
-
-.voice-call-header {
-  padding: 16px 20px;
-}
-
-.voice-call-header h3 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text-color, #333);
-  text-align: center;
-}
-
-.voice-call-body {
-  padding: 40px 20px;
-  display: flex;
-  justify-content: center;
-}
-
-.call-status-text {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-color, #333);
-  font-size: 16px;
-}
-
-.call-status-text i {
-  font-size: 48px;
-  color: var(--primary-color, #409eff);
-}
-
-.call-duration {
-  font-size: 24px;
-  font-weight: 500;
-  color: var(--text-color, #333);
-}
-
-.voice-call-footer {
-  padding: 20px;
-  display: flex;
-  justify-content: center;
-}
-
-.end-call-btn {
-  padding: 12px 32px;
-  border: none;
-  border-radius: 24px;
-  background: #f56c6c;
-  color: white;
-  cursor: pointer;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .user-profile-modal {

@@ -584,14 +584,11 @@
       :showLogoutDialog="showLogoutDialog"
       :showUpdateDialog="showUpdateDialog"
       :showSystemMessageModal="showSystemMessageModal"
-      :showVoiceCallModal="showVoiceCallModal"
       :isCheckingUpdate="isCheckingUpdate"
       :isDownloading="isDownloading"
       :downloadProgress="downloadProgress"
       :hasNewVersion="hasNewVersion"
       :updateResult="updateResult"
-      :callStatus="voiceCallStatus"
-      :formattedDuration="formatCallDuration(voiceCallDuration)"
       :groupConversations="conversations.filter(c => c.type === 'group')"
       :allEmployees="allEmployees"
       :systemMessage="systemMessage"
@@ -602,7 +599,6 @@
       @downloadUpdate="downloadUpdate"
       @closeSystemMessage="closeSystemMessageModal"
       @sendSystemMessage="sendSystemMessage"
-      @endCall="endVoiceCall"
     />
   </div>
   
@@ -951,12 +947,6 @@ const {
   hasNewVersion,
   openUpdateDialog,
   closeUpdateDialog,
-  // 语音通话
-  showVoiceCallModal,
-  voiceCallStatus,
-  voiceCallDuration,
-  openVoiceCall,
-  closeVoiceCall,
   // 设置
   showSettingsModal,
   activeSettingsTab,
@@ -1879,11 +1869,6 @@ onUnmounted(() => {
     clearTimeout(conversationSortTimer)
     conversationSortTimer = null
   }
-  // 清理语音通话定时器
-  if (voiceCallTimerId !== null) {
-    clearInterval(voiceCallTimerId)
-    voiceCallTimerId = null
-  }
 })
 
 // 过滤后的会话列表
@@ -2792,56 +2777,6 @@ const startPrivateChat = async (user: any) => {
   }
   hideUserContextMenu()
 }
-
-// 旧版语音通话逻辑（已废弃，实际通话通过 RealtimeCommunication 组件处理）
-const startVoiceCall = async (userId: string) => {
-  try {
-    voiceCallStatus.value = 'calling'
-    showVoiceCallModal.value = true
-  } catch (error) {
-    console.error('发起语音通话失败:', error)
-    voiceCallStatus.value = 'ended'
-    showMessage({ message: '发起语音通话失败', type: 'error' })
-  }
-}
-
-// 开始语音通话计时器
-let voiceCallTimerId: number | null = null
-
-const startVoiceCallTimer = () => {
-  if (voiceCallTimerId) {
-    clearInterval(voiceCallTimerId)
-  }
-  voiceCallDuration.value = 0
-  voiceCallTimerId = window.setInterval(() => {
-    voiceCallDuration.value++
-  }, 1000)
-}
-
-const stopVoiceCallTimer = () => {
-  if (voiceCallTimerId) {
-    clearInterval(voiceCallTimerId)
-    voiceCallTimerId = null
-  }
-}
-
-const endVoiceCall = () => {
-  stopVoiceCallTimer()
-  voiceCallStatus.value = 'ended'
-  setTimeout(() => {
-    showVoiceCallModal.value = false
-    voiceCallStatus.value = 'idle'
-    voiceCallDuration.value = 0
-  }, 1000)
-}
-
-// 格式化通话时长
-const formatCallDuration = (seconds: number): string => {
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-}
-
 
 // 触发头像选择
 const triggerAvatarInput = () => {

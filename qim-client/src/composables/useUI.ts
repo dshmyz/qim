@@ -132,11 +132,6 @@ export function useUI() {
   const updateResult = ref('')
   const hasNewVersion = ref(false)
 
-  // 语音通话模态框
-  const showVoiceCallModal = ref(false)
-  const voiceCallStatus = ref('calling')
-  const voiceCallDuration = ref(0)
-
   // 设置模态框
   const showSettingsModal = ref(false)
   const activeSettingsTab = ref('basic')
@@ -539,18 +534,6 @@ export function useUI() {
 
   // ========== 语音通话操作 ==========
 
-  // 打开语音通话
-  const openVoiceCall = () => {
-    showVoiceCallModal.value = true
-    voiceCallStatus.value = 'calling'
-    voiceCallDuration.value = 0
-  }
-
-  // 关闭语音通话
-  const closeVoiceCall = () => {
-    showVoiceCallModal.value = false
-  }
-
   // ========== 设置模态框操作 ==========
 
   // 打开设置模态框
@@ -635,9 +618,6 @@ export function useUI() {
     downloadProgress,
     updateResult,
     hasNewVersion,
-    showVoiceCallModal,
-    voiceCallStatus,
-    voiceCallDuration,
     showSettingsModal,
     activeSettingsTab,
 
@@ -685,8 +665,6 @@ export function useUI() {
     confirmLogout,
     openUpdateDialog,
     closeUpdateDialog,
-    openVoiceCall,
-    closeVoiceCall,
     openSettings,
     closeSettingsModal,
     switchSettingsTab,
