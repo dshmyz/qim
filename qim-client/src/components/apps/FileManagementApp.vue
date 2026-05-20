@@ -215,15 +215,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import FolderTree from './file/FolderTree.vue'
 import FileList from './file/FileList.vue'
 import CreateFolderModal from './file/CreateFolderModal.vue'
-import FilePreviewModal from './file/FilePreviewModal.vue'
-import FileActionsModal from './file/FileActionsModal.vue'
 import FileDateFilter from './file/FileDateFilter.vue'
 import AppHeader from './AppHeader.vue'
 import UploadProgressBar from '../common/UploadProgressBar.vue'
+// 大组件懒加载，避免 pdfjs-dist 等阻塞首屏
+const FilePreviewModal = defineAsyncComponent(() => import('./file/FilePreviewModal.vue'))
+const FileActionsModal = defineAsyncComponent(() => import('./file/FileActionsModal.vue'))
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
 import { useFileUpload, uploadFile as uploadFileChunked } from '../../composables/useFileUpload'

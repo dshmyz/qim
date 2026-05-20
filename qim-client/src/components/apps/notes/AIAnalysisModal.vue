@@ -30,7 +30,7 @@
       <div class="result-section" v-if="result?.action_items?.length">
         <h4>提取的行动项</h4>
         <ul class="action-list">
-          <li v-for="(item, index) in result.action_items" :key="index">
+          <li v-for="item in result.action_items" :key="item">
             {{ item }}
           </li>
         </ul>

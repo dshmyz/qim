@@ -171,7 +171,7 @@
           <div class="ai-section" v-if="aiAnalysisResult?.action_items?.length">
             <h4>行动项</h4>
             <ul>
-              <li v-for="(item, index) in aiAnalysisResult.action_items" :key="index">{{ item }}</li>
+              <li v-for="item in aiAnalysisResult.action_items" :key="item">{{ item }}</li>
             </ul>
           </div>
         </div>

@@ -196,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
 import ChatBody from './ChatBody.vue'
@@ -214,9 +214,10 @@ import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
-import GroupModals from '../modals/GroupModals.vue'
-import AISummaryPanel from '../ai/AISummaryPanel.vue'
-import AITranslatePanel from '../ai/AITranslatePanel.vue'
+// 大组件懒加载，按需加载减少 chat chunk 体积
+const GroupModals = defineAsyncComponent(() => import('../modals/GroupModals.vue'))
+const AISummaryPanel = defineAsyncComponent(() => import('../ai/AISummaryPanel.vue'))
+const AITranslatePanel = defineAsyncComponent(() => import('../ai/AITranslatePanel.vue'))
 import AvatarTakeoverBanner from '../avatar/AvatarTakeoverBanner.vue'
 import AtMentionBanner from '../message/AtMentionBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
