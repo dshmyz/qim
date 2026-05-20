@@ -121,10 +121,10 @@ const handleScroll = throttle(() => {
   // 用户距离底部50px以内，认为是"在底部"
   const distanceToBottom = scrollHeight - scrollTop - clientHeight
   shouldAutoScroll.value = distanceToBottom < 50
-  
+
   // 当距离底部超过200px时显示跳转按钮
   showScrollToBottomBtn.value = distanceToBottom > 200
-  
+
   if (shouldAutoScroll.value) {
     markMessagesAsRead()
   }
@@ -151,10 +151,10 @@ const loadMoreMessages = async () => {
 
 const scrollToBottom = (instant: boolean = false) => {
   if (!isMounted.value || !messageListRef.value) return
-  
+
   messageListRef.value.scrollTo({
     top: messageListRef.value.scrollHeight,
-    behavior: instant ? 'instant' : 'smooth'
+    behavior: instant ? 'auto' : 'smooth'
   })
   showScrollToBottomBtn.value = false
 }
@@ -163,7 +163,7 @@ const scrollToBottomWithDelay = (delay: number = 100) => {
   if (scrollTimeoutId) {
     clearTimeout(scrollTimeoutId)
   }
-  
+
   scrollTimeoutId = window.setTimeout(() => {
     if (isMounted.value) {
       scrollToBottom(true)
@@ -174,12 +174,14 @@ const scrollToBottomWithDelay = (delay: number = 100) => {
 const handleImageLoaded = () => {
   nextTick(() => {
     if (!isMounted.value || !messageListRef.value) return
-    
+
     const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
     const distanceToBottom = scrollHeight - scrollTop - clientHeight
-    
-    if (shouldAutoScroll.value || distanceToBottom < 100) {
-      scrollToBottom()
+
+    // 只有用户已经在底部（<50px）才保持位置，不强制跳转
+    if (shouldAutoScroll.value && distanceToBottom < 50) {
+      // 图片加载后 scrollHeight 增大，保持底部对齐
+      messageListRef.value.scrollTop = scrollHeight - clientHeight
     }
   })
 }

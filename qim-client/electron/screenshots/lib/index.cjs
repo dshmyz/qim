@@ -24,6 +24,30 @@ class Screenshots extends node_events_1.default {
         super();
         // 截图窗口对象
         this.$win = null;
+        this.$view = null;
+        this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
+        this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
+        this.onWindowShow = () => {
+            var _a, _b;
+            (_a = this.$win) === null || _a === void 0 ? void 0 : _a.focus();
+            (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
+        };
+        this.onWindowClosed = () => {
+            this.emit('windowClosed', this.$win);
+            this.$win = null;
+        };
+        
+        // 延迟初始化：避免构造函数同步执行抢占 GPU 资源导致 splash 闪烁
+        this._initPromise = new Promise((resolve) => {
+            setTimeout(() => {
+                this._init(opts)
+                resolve()
+            }, 2000)
+        })
+    }
+    
+    // 延迟初始化：避免与 splash 动画冲突
+    _init(opts) {
         this.$view = new electron_1.BrowserView({
             webPreferences: {
                 preload: require.resolve('./preload.cjs'),
@@ -37,22 +61,22 @@ class Screenshots extends node_events_1.default {
                 resolve();
             });
         });
-        this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
-        this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
-        this.onWindowShow = () => {
-            var _a, _b;
-            (_a = this.$win) === null || _a === void 0 ? void 0 : _a.focus();
-            (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
-        };
-        this.onWindowClosed = () => {
-            this.emit('windowClosed', this.$win);
-            this.$win = null;
-        };
         this.listenIpc();
         this.$view.webContents.loadURL(`file://${require.resolve('../src/dist/electron.html')}`);
         if (opts === null || opts === void 0 ? void 0 : opts.lang) {
             this.setLang(opts.lang);
         }
+        
+        // 预热 desktopCapturer
+        setTimeout(() => {
+            electron_1.desktopCapturer.getSources({ 
+                types: ['screen'], 
+                thumbnailSize: { width: 1, height: 1 }, 
+                fetchWindowIcons: false 
+            }).catch(err => {
+                this.logger('SCREENSHOTS warmup failed (non-critical)', err.message)
+            })
+        }, 1000)
     }
     /**
      * 开始截图
@@ -60,6 +84,8 @@ class Screenshots extends node_events_1.default {
     startCapture() {
         return __awaiter(this, void 0, void 0, function* () {
             this.logger('startCapture');
+            // 确保初始化完成
+            yield this._initPromise;
             const display = (0, getDisplay_js_1.default)();
             const [imageUrl] = yield Promise.all([this.capture(display), this.isReady]);
             yield this.createWindow(display);

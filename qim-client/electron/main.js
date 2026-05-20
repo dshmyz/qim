@@ -279,14 +279,6 @@ function createWindow() {
   try {
     console.log('Initializing screenshots...')
     screenshotInstance = new screenshots({ singleWindow: true })
-   // 预热截屏 API：提前调用 desktopCapturer 让系统准备就绪
-    // 首次截屏慢是因为系统需要授权和初始化捕获设备
-    // 预热后首次截屏速度会明显提升，且不会创建窗口，不会闪烁
-    // setTimeout(() => {
-    //   desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false })
-    //     .then(() => console.log('[screenshot] Capture API warmed up'))
-    //     .catch(err => console.warn('[screenshot] Warmup failed (non-critical):', err.message))
-    // }, 3000)
     screenshotInstance.on('ok', (e, buffer, data) => {
       console.log('[screenshot] Captured, buffer length:', buffer.length)
       if (mainWindow) {
@@ -338,7 +330,7 @@ function createWindow() {
     screenshotInitError = error
   }
 
-  ipcMain.on('take-screenshot', async () => {
+  ipcMain.on('take-screenshot', () => {
     console.log('[screenshot] Received take-screenshot event')
     console.log('[screenshot] Instance exists:', !!screenshotInstance)
     console.log('[screenshot] Init error:', screenshotInitError)
