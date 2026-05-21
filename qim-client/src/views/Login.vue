@@ -565,8 +565,8 @@ const handleOAuthCallback = async (provider: AuthProvider, code: string, state: 
       sessionStorage.removeItem('auth_state')
       sessionStorage.removeItem('auth_provider')
       
-      // 触发登录成功事件
-      emit('login-success', { username: data.data.user.username })
+      // 触发登录成功事件 - 传递完整用户对象
+      emit('login-success', data.data.user)
     } else {
       QMessage.error(data.message || '登录失败')
     }

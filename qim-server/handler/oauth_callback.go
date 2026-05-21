@@ -106,12 +106,15 @@ func OAuthCallback(c *gin.Context) {
 	response.Success(c, gin.H{
 		"token": tokenStr,
 		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"nickname": user.Nickname,
-			"avatar":   user.Avatar,
-			"email":    user.Email,
-			"roles":    roleNames,
+			"id":                 user.ID,
+			"username":           user.Username,
+			"nickname":           user.Nickname,
+			"avatar":             user.Avatar,
+			"signature":          user.Signature,
+			"phone":              user.Phone,
+			"email":              user.Email,
+			"two_factor_enabled": user.TwoFactorEnabled,
+			"roles":              roleNames,
 		},
 	})
 }
