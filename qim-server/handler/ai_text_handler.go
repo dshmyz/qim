@@ -1,7 +1,16 @@
 package handler
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"qim-server/ai"
 	"qim-server/pkg/response"
 	"qim-server/service"
@@ -35,6 +44,103 @@ type TranslateImageRequest struct {
 	TargetLang string `json:"target_lang"` // 默认 zh
 }
 
+// imageToDataURL 将图片 URL/路径转为 base64 data URL 或可用 URL
+func imageToDataURL(imageURL string) string {
+	// 已经是 data URL，直接使用
+	if strings.HasPrefix(imageURL, "data:") {
+		return imageURL
+	}
+
+	// 处理 http(s) URL
+	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
+		// 尝试从本地 uploads 目录读取
+		if idx := strings.Index(imageURL, "/uploads/"); idx != -1 {
+			localPath := imageURL[idx+1:] // "uploads/xxx"
+			if dataURL := readFileAsDataURL(localPath); dataURL != "" {
+				return dataURL
+			}
+			// 本地文件不存在，尝试从 HTTP 下载
+			if dataURL := downloadAsDataURL(imageURL); dataURL != "" {
+				return dataURL
+			}
+		}
+		// 外部 URL，直接返回让 AI 访问
+		return imageURL
+	}
+
+	// 以 /uploads/ 开头，从本地读取
+	if strings.HasPrefix(imageURL, "/uploads/") {
+		if dataURL := readFileAsDataURL(imageURL[1:]); dataURL != "" {
+			return dataURL
+		}
+	}
+
+	// 尝试直接作为本地路径读取（兼容相对路径）
+	if dataURL := readFileAsDataURL(imageURL); dataURL != "" {
+		return dataURL
+	}
+
+	// 非本地 URL 原样返回
+	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
+		return imageURL
+	}
+	return ""
+}
+
+// readFileAsDataURL 从本地文件系统读取图片转为 data URL
+func readFileAsDataURL(relPath string) string {
+	// 清理路径
+	relPath = strings.TrimPrefix(relPath, "./")
+	fullPath := filepath.Clean(filepath.Join(".", relPath))
+
+	// 安全检查：确保路径在 uploads 目录内
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return ""
+	}
+	uploadsDir, _ := filepath.Abs("./uploads")
+	if !strings.HasPrefix(absPath, uploadsDir) {
+		return ""
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return ""
+	}
+
+	ext := filepath.Ext(absPath)
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+// downloadAsDataURL 从 HTTP URL 下载图片转为 data URL
+func downloadAsDataURL(url string) string {
+	client := &http.Client{Timeout: http.DefaultClient.Timeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024))
+	if err != nil {
+		return ""
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
 // TranslateImage 图片翻译（AI 视觉识别 + 翻译）
 func (h *AIHandler) TranslateImage(c *gin.Context) {
 	var req TranslateImageRequest
@@ -60,24 +166,79 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		langName = "中文"
 	}
 
-	systemPrompt := "你是一个图片翻译助手。请完成以下两步：\n1. 识别图片中的文字内容\n2. 将识别出的内容翻译成" + langName + "\n\n请以以下格式输出：\n【原文】\n识别出的文字\n\n【译文】\n翻译结果"
+	dataURL := imageToDataURL(req.ImageURL)
+	if dataURL == "" {
+		response.BadRequest(c, "不支持的图片地址格式")
+		return
+	}
+
+	systemPrompt := fmt.Sprintf("你是一个图片翻译助手。请完成以下两步：\n1. 识别图片中的文字内容\n2. 将识别出的内容翻译成%s\n\n请严格按以下 JSON 格式输出，不要包含任何其他内容：\n{\"original_text\": \"识别的文字\", \"translated_text\": \"翻译结果\"}", langName)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: "请识别这张图片中的文字并翻译成" + langName, ImageURL: req.ImageURL},
+		{Role: "user", Content: "请识别这张图片中的文字并翻译成" + langName, ImageURL: dataURL},
 	}
 
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
+	// 尝试使用支持视觉的提供商（按优先级：openai → anthropic）
+	visionProviders := []string{"openai", "anthropic"}
+	config := h.aiService.GetConfig()
+	var override *ai.Override
+	for _, name := range visionProviders {
+		providerCfg, ok := config.AllProviders()[name]
+		if ok && providerCfg.Model != "" {
+			override = &ai.Override{
+				TaskType: ai.TaskTypeVision,
+				Provider: name,
+				Model:    providerCfg.Model,
+			}
+			break
+		}
+	}
+	if override == nil {
+		// 无可用视觉模型，回退到默认
+		override = &ai.Override{
+			TaskType: ai.TaskTypeVision,
+			Provider: "openai",
+		}
+	}
+
+	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input, *override)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片翻译失败: " + err.Error()})
 		return
+	}
+
+	// 解析 JSON 格式响应，提取译文
+	var parsed struct {
+		OriginalText string `json:"original_text"`
+		TranslatedText string `json:"translated_text"`
+	}
+	// 尝试从 JSON 格式响应中提取
+	jsonResult := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(result)), &jsonResult); err == nil {
+		if t, ok := jsonResult["translated_text"].(string); ok {
+			parsed.TranslatedText = t
+		}
+		if o, ok := jsonResult["original_text"].(string); ok {
+			parsed.OriginalText = o
+		}
+	}
+
+	if parsed.TranslatedText == "" {
+		// 回退：尝试从 【译文】 标签提取
+		if idx := strings.Index(result, "【译文】"); idx != -1 {
+			parsed.TranslatedText = strings.TrimSpace(result[idx+len("【译文】"):])
+		} else {
+			parsed.TranslatedText = result
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
 		"data": gin.H{
-			"translated_text": result,
+			"translated_text": parsed.TranslatedText,
+			"original_text":   parsed.OriginalText,
 			"target_lang":     targetLang,
 		},
 	})
