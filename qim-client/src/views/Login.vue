@@ -630,9 +630,8 @@ const closeWindow = () => {
 .login-form {
   background: #ffffff;
   border-radius: 16px;
-  padding: 56px 48px;
+  padding: 48px 40px;
   width: 420px;
-  min-height: 500px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
   z-index: 1;
   animation: slideIn 0.5s ease-out;
@@ -964,50 +963,47 @@ const closeWindow = () => {
 }
 
 .other-auth-section {
-  margin-top: 24px;
-  padding-top: 24px;
+  margin-top: 20px;
+  padding-top: 20px;
   border-top: 1px solid #e8ecf1;
 }
 
 .auth-divider {
   text-align: center;
   margin-bottom: 16px;
-  position: relative;
 }
 
 .auth-divider span {
   font-size: 13px;
   color: #999;
-  background: white;
-  padding: 0 12px;
 }
 
 .auth-providers {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .auth-provider-btn {
   width: 100%;
-  height: 44px;
-  border: 1px solid #e8ecf1;
+  height: 42px;
+  border: 1px solid #dcdfe6;
   border-radius: 8px;
-  background: white;
+  background: #fafafa;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   font-size: 14px;
-  color: #666;
+  color: #606266;
   transition: all 0.2s ease;
 }
 
 .auth-provider-btn:hover {
   border-color: #64b5f6;
-  background: #f5f9ff;
-  color: #333;
+  background: #f0f7ff;
+  color: #64b5f6;
 }
 
 .auth-provider-btn i {
