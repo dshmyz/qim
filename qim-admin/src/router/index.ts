@@ -35,6 +35,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/knowledge-graph', redirect: '/admin/knowledge-graph' },
   { path: '/vector-data', redirect: '/admin/vector-data' },
   { path: '/approvals', redirect: '/admin/approvals' },
+  { path: '/auth-config', redirect: '/admin/auth-config' },
+  { path: '/org-sync', redirect: '/admin/org-sync' },
   {
     path: '/login',
     name: 'Login',
@@ -183,6 +185,18 @@ const routes: RouteRecordRaw[] = [
         name: 'Approvals',
         component: () => import('@/views/UnifiedApprovalPanel.vue'),
         meta: { title: '审批管理' },
+      },
+      {
+        path: 'auth-config',
+        name: 'AuthConfig',
+        component: () => import('@/views/AuthConfig/index.vue'),
+        meta: { title: '认证配置' },
+      },
+      {
+        path: 'org-sync',
+        name: 'OrgSync',
+        component: () => import('@/views/OrgSync/index.vue'),
+        meta: { title: '组织架构同步' },
       },
       {
         path: 'sensitive-words',
