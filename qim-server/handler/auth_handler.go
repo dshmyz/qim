@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
 	"time"
 
 	"qim-server/ai"
+	"qim-server/auth"
+	"qim-server/auth/provider"
 	"qim-server/config"
 	"qim-server/database"
 	"qim-server/di"
@@ -64,19 +67,36 @@ func Login(c *gin.Context) {
 	op := userAgent
 	clientVersion := req.Version
 
-	db := database.GetDB()
-	var user model.User
-	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
-		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found")
-		middleware.RecordLoginFailure(ip)
-		response.Unauthorized(c, "用户名或密码错误")
+	authChain := auth.GetAuthChain()
+	if authChain == nil {
+		response.InternalServerError(c, "认证服务未初始化")
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "invalid password")
+	creds := &provider.Credentials{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	result, providerName, err := authChain.AuthenticateDirect(context.Background(), creds)
+	if err != nil {
+		logger.WithModule("Auth").Error("Auth chain error", "error", err)
+		response.InternalServerError(c, "认证失败")
+		return
+	}
+
+	if !result.Success {
+		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", result.Message)
 		middleware.RecordLoginFailure(ip)
-		response.Unauthorized(c, "用户名或密码错误")
+		response.Unauthorized(c, result.Message)
+		return
+	}
+
+	db := database.GetDB()
+	var user model.User
+	if err := db.First(&user, result.UserID).Error; err != nil {
+		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found after auth")
+		response.Unauthorized(c, "用户不存在")
 		return
 	}
 
@@ -96,7 +116,7 @@ func Login(c *gin.Context) {
 	user.IP = ip
 	db.Save(&user)
 
-	logger.WithModule("Auth").Info("Login success", "user", req.Username, "ip", ip, "os", op, "version", clientVersion)
+	logger.WithModule("Auth").Info("Login success", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "provider", providerName)
 
 	var userRoles []model.UserRole
 	db.Where("user_id = ?", user.ID).Find(&userRoles)
