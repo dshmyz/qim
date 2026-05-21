@@ -515,8 +515,8 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
     
     // 打开浏览器授权
     if (window.electron) {
-      console.log('使用Electron打开')
-      window.electron.ipcRenderer.send('open-external', authURL)
+      console.log('使用Electron打开授权窗口')
+      window.electron.ipcRenderer.send('open-auth-window', authURL)
     } else {
       console.log('使用浏览器打开')
       window.open(authURL, '_blank')

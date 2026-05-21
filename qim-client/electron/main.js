@@ -71,6 +71,7 @@ const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
 
 // OAuth回调服务器
 let oauthServer = null
+let authWindow = null
 const OAUTH_CALLBACK_PORT = 3001
 
 function startOAuthServer() {
@@ -137,15 +138,17 @@ function startOAuthServer() {
             <h1>✓ 授权成功</h1>
             <p>正在返回QIM应用并登录...</p>
             <div class="spinner"></div>
-            <p style="font-size: 12px; color: #999;">此窗口将自动关闭</p>
           </div>
-          <script>
-            // 2秒后自动关闭窗口
-            setTimeout(() => window.close(), 2000)
-          </script>
         </body>
         </html>
       `)
+      
+      // 关闭授权窗口
+      if (authWindow && !authWindow.isDestroyed()) {
+        console.log('关闭授权窗口')
+        authWindow.close()
+        authWindow = null
+      }
       
       // 发送授权码给前端
       if (mainWindow && !mainWindow.isDestroyed() && code) {
@@ -513,6 +516,31 @@ function createWindow() {
     console.log('Received open-external event:', url)
     const { shell } = require('electron')
     shell.openExternal(url)
+  })
+
+  ipcMain.on('open-auth-window', (event, authURL) => {
+    console.log('Received open-auth-window event:', authURL)
+    
+    if (authWindow && !authWindow.isDestroyed()) {
+      authWindow.close()
+    }
+    
+    authWindow = new BrowserWindow({
+      width: 600,
+      height: 800,
+      title: '授权登录',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    })
+    
+    authWindow.loadURL(authURL)
+    
+    authWindow.on('closed', () => {
+      console.log('Auth window closed')
+      authWindow = null
+    })
   })
 
   ipcMain.on('start-oauth-server', () => {
