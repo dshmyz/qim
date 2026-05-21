@@ -61,6 +61,9 @@ type Hub struct {
 
 	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发
 	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
+
+	// 并发发送信号量，限制同时发送的 goroutine 数量
+	sendSem chan struct{}
 }
 
 type Client struct {
@@ -101,6 +104,7 @@ func NewHub(db *gorm.DB, dbType string) *Hub {
 		db:                  db,
 		dbType:              dbType,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
+		sendSem:             make(chan struct{}, 50),
 	}
 }
 
@@ -195,37 +199,32 @@ func (h *Hub) asyncBroadcast(message []byte) {
 		return
 	}
 
-	// 使用 goroutine 池并行发送
-	// 每个客户端一个 goroutine，由运行时调度器管理
 	var wg sync.WaitGroup
 	failedChan := make(chan *Client, len(clients))
 
 	for _, client := range clients {
+		h.sendSem <- struct{}{} // 获取信号量，超过容量时阻塞排队
 		wg.Add(1)
 		c := client
 		utils.SafeGo(func() {
 			defer wg.Done()
+			defer func() { <-h.sendSem }() // 释放信号量
 			select {
 			case c.send <- message:
-				// 发送成功
 			default:
-				// 发送通道已满，标记为待删除
 				failedChan <- c
 			}
 		})
 	}
 
-	// 等待所有发送完成
 	wg.Wait()
 	close(failedChan)
 
-	// 清理发送失败的客户端
 	for client := range failedChan {
 		h.clients.Delete(client)
 		close(client.send)
 	}
 
-	// 广播到其他节点
 	h.broadcastToOtherNodes(message)
 }
 
@@ -414,18 +413,13 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 		h.mu.Unlock()
 	}
 
-	var wg sync.WaitGroup
+	// 真正异步发送：不等待完成
 	for _, userID := range memberIDs {
 		if userID != excludeUserID {
-			wg.Add(1)
 			uid := userID
-			utils.SafeGo(func() {
-				defer wg.Done()
-				h.SendToUser(uid, message)
-			})
+			utils.SafeGo(func() { h.SendToUser(uid, message) })
 		}
 	}
-	wg.Wait()
 }
 
 func (c *Client) readPump() {

@@ -3,11 +3,13 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"qim-server/ai"
 	"qim-server/model"
 	"qim-server/pkg/mention"
+	"qim-server/utils"
 	"qim-server/ws"
 
 	"gorm.io/gorm"
@@ -87,21 +89,22 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		return nil, err
 	}
 
+	// 优化：单次预加载而非 3 次 Preload 调用
 	db.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").First(&msg, msg.ID)
 
 	now := time.Now()
-	var conv model.Conversation
-	if err := db.First(&conv, convID).Error; err != nil {
-		return nil, err
-	}
-	conv.LastMessageID = &msg.ID
-	conv.LastMessageAt = &now
-	if err := db.Save(&conv).Error; err != nil {
-		return nil, err
+	// 优化：合并查会话 + 更新会话为单次 UPDATE
+	result := db.Exec("UPDATE conversations SET last_message_id = ?, last_message_at = ? WHERE id = ?", msg.ID, now, convID)
+	if result.Error != nil {
+		return nil, result.Error
 	}
 
-	if conv.Type == "bot" {
-		go s.handleBotMessage(senderID, convID, content)
+	// 获取会话类型用于判断 bot/正常
+	var convType string
+	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
+
+	if convType == "bot" {
+		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
 	} else {
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
@@ -138,10 +141,9 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 
 	systemUserID := s.GetSystemUserID()
 
-	var aiMessages []ai.Message
+	aiMessages := make([]ai.Message, 0, len(messages))
 	for _, msg := range messages {
 		role := "user"
-		// 判断是否为机器人消息:sender_id 为 0 或者等于 systemUserID
 		if msg.SenderID == 0 || msg.SenderID == systemUserID {
 			role = "assistant"
 		}
@@ -151,28 +153,27 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		})
 	}
 
-	var fullResponse string
-
-	go func() {
+	utils.SafeGo(func() {
+		var builder strings.Builder
 		err := s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
-			fullResponse += chunk.Content
+			builder.WriteString(chunk.Content)
 			return nil
 		})
 
+		response := builder.String()
 		if err != nil {
-			fullResponse = "抱歉，AI 服务暂时不可用，请稍后再试。"
+			response = "抱歉，AI 服务暂时不可用，请稍后再试。"
 		}
 
 		senderID := s.GetSystemUserID()
-
 		botReply := model.Message{
 			ConversationID: convID,
 			SenderID:       senderID,
 			Type:           "markdown",
-			Content:        fullResponse,
+			Content:        response,
 		}
 		db.Create(&botReply)
-	}()
+	})
 }
 
 func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error) {
@@ -215,11 +216,8 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 		}
 	}
 
-	q.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
-
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
+	// 优化：直接 ORDER BY ASC，无需内存翻转
+	q.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at ASC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
 
 	return &MessageResult{
 		Messages:    messages,
@@ -254,8 +252,14 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 		dbQuery = dbQuery.Where("type = ?", query.MessageType)
 	}
 
+	// 优化：使用全文索引搜索
 	if query.Keyword != "" {
-		dbQuery = dbQuery.Where("content LIKE ?", "%"+query.Keyword+"%")
+		if s.dbType == "mysql" {
+			dbQuery = dbQuery.Where("MATCH(content) AGAINST(? IN BOOLEAN MODE)", query.Keyword)
+		} else {
+			// SQLite 降级：LIKE 搜索（FTS5 虚拟表需要 JOIN，此处保持兼容）
+			dbQuery = dbQuery.Where("content LIKE ?", "%"+query.Keyword+"%")
+		}
 	}
 
 	if query.StartDate != "" {
@@ -269,11 +273,8 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 	dbQuery.Model(&model.Message{}).Count(&total)
 
 	var messages []model.Message
-	dbQuery.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
-
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
+	// 优化：直接 ORDER BY ASC，无需内存翻转
+	dbQuery.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at ASC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
 
 	totalPages := int(total) / query.Limit
 	if int(total)%query.Limit > 0 {
@@ -305,7 +306,13 @@ func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uin
 	query := db.Model(&model.Message{}).Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").Where("conversation_members.user_id = ?", userID)
 
 	if keyword != "" {
-		query = query.Where("messages.content LIKE ?", "%"+keyword+"%")
+		// 优化：使用全文索引搜索
+		if s.dbType == "mysql" {
+			query = query.Where("MATCH(messages.content) AGAINST(? IN BOOLEAN MODE)", keyword)
+		} else {
+			// SQLite 降级：LIKE 搜索
+			query = query.Where("messages.content LIKE ?", "%"+keyword+"%")
+		}
 	}
 
 	if convID != nil {
@@ -420,10 +427,6 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	// 使用单条 INSERT ... SELECT 语句批量创建已读回执，避免将消息 ID 加载到内存
-	// 根据数据库类型使用不同的语法
-	// SQLite: ON CONFLICT ... DO NOTHING
-	// MySQL: INSERT IGNORE
 	if s.dbType == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
@@ -488,12 +491,7 @@ func (s *MessageService) notifyMessageRead(convID, userID uint) {
 		db.Where("conversation_id = ? AND user_id != ?", convID, userID).First(&otherMember)
 		s.hub.SendToUser(otherMember.UserID, jsonMsg)
 	} else if conv.Type == "group" {
-		var members []model.ConversationMember
-		db.Where("conversation_id = ? AND user_id != ?", convID, userID).Find(&members)
-
-		for _, member := range members {
-			s.hub.SendToUser(member.UserID, jsonMsg)
-		}
+		s.hub.SendToConversation(convID, userID, jsonMsg)
 	}
 }
 
@@ -561,7 +559,7 @@ func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, 
 		return nil, 0, err
 	}
 
-	var readUsers []model.User
+	readUsers := make([]model.User, 0, len(readReceipts))
 	for _, receipt := range readReceipts {
 		if receipt.User != nil && receipt.User.ID != userID {
 			readUsers = append(readUsers, *receipt.User)
@@ -579,16 +577,74 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	TotalMembers int64
 	ReadCount    int64
 }, error) {
+	if len(msgIDs) == 0 {
+		return make(map[uint]struct {
+			ReadUsers    []model.User
+			TotalMembers int64
+			ReadCount    int64
+		}), nil
+	}
+
+	db := s.db
+
+	// 优化：一次性查询所有消息的已读回执
+	var readReceipts []model.MessageReadReceipt
+	db.Where("message_id IN ?", msgIDs).Preload("User").Find(&readReceipts)
+
+	// 按消息 ID 分组
+	receiptsByMsg := make(map[uint][]model.MessageReadReceipt)
+	for _, r := range readReceipts {
+		receiptsByMsg[r.MessageID] = append(receiptsByMsg[r.MessageID], r)
+	}
+
+	// 优化：一次性查询所有会话的成员数
+	var convIDs []uint
+	var messages []model.Message
+	db.Where("id IN ?", msgIDs).Find(&messages)
+	for _, m := range messages {
+		convIDs = append(convIDs, m.ConversationID)
+	}
+
+	type convCount struct {
+		ConversationID uint
+		Count          int64
+	}
+	var convCounts []convCount
+	db.Model(&model.ConversationMember{}).
+		Select("conversation_id, COUNT(*) as count").
+		Where("conversation_id IN ?", convIDs).
+		Group("conversation_id").
+		Scan(&convCounts)
+
+	memberCountByConv := make(map[uint]int64)
+	for _, cc := range convCounts {
+		memberCountByConv[cc.ConversationID] = cc.Count
+	}
+
+	// 构建结果
+	convIDByMsg := make(map[uint]uint)
+	for _, m := range messages {
+		convIDByMsg[m.ID] = m.ConversationID
+	}
+
 	result := make(map[uint]struct {
 		ReadUsers    []model.User
 		TotalMembers int64
 		ReadCount    int64
-	})
+	}, len(msgIDs))
 
 	for _, msgID := range msgIDs {
-		readUsers, totalMembers, err := s.GetMessageReadUsers(msgID, userID)
-		if err != nil {
-			continue
+		receipts := receiptsByMsg[msgID]
+		readUsers := make([]model.User, 0, len(receipts))
+		for _, r := range receipts {
+			if r.User != nil && r.User.ID != userID {
+				readUsers = append(readUsers, *r.User)
+			}
+		}
+
+		totalMembers := int64(0)
+		if convID, ok := convIDByMsg[msgID]; ok {
+			totalMembers = memberCountByConv[convID]
 		}
 
 		result[msgID] = struct {
@@ -603,6 +659,83 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	}
 
 	return result, nil
+}
+
+func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, convID *uint, limit, offset int) ([]model.Message, error) {
+	if keyword == "" {
+		return s.SearchMessages(userID, "", convID, limit, offset)
+	}
+
+	db := s.db
+
+	if s.dbType == "mysql" {
+		var messages []model.Message
+		query := db.Model(&model.Message{}).
+			Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").
+			Where("conversation_members.user_id = ?", userID).
+			Where("MATCH(messages.content) AGAINST(? IN BOOLEAN MODE)", keyword)
+
+		if convID != nil {
+			query = query.Where("messages.conversation_id = ?", *convID)
+		}
+
+		if err := query.Preload("Sender").
+			Preload("Conversation").
+			Preload("Conversation.Members").
+			Preload("Conversation.Members.User").
+			Order("messages.created_at DESC").
+			Limit(limit).
+			Offset(offset).
+			Find(&messages).Error; err != nil {
+			return nil, err
+		}
+		return messages, nil
+	}
+
+	// SQLite：使用 FTS5 虚拟表
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var messages []model.Message
+	query := db.Raw(`
+		SELECT m.* FROM messages m
+		JOIN messages_fts5 fts ON m.id = fts.rowid
+		JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
+		WHERE cm.user_id = ? AND fts.content MATCH ?
+	`, userID, keyword)
+
+	if convID != nil {
+		query = db.Raw(`
+			SELECT m.* FROM messages m
+			JOIN messages_fts5 fts ON m.id = fts.rowid
+			JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
+			WHERE cm.user_id = ? AND fts.content MATCH ? AND m.conversation_id = ?
+		`, userID, keyword, *convID)
+	}
+
+	if err := query.Find(&messages).Error; err != nil {
+		return nil, err
+	}
+
+	// 预加载关联数据
+	if len(messages) > 0 {
+		msgIDs := make([]uint, len(messages))
+		for i, m := range messages {
+			msgIDs[i] = m.ID
+		}
+		db.Where("id IN ?", msgIDs).
+			Preload("Sender").
+			Preload("Conversation").
+			Preload("Conversation.Members").
+			Preload("Conversation.Members.User").
+			Find(&messages)
+	}
+
+	return messages, nil
 }
 
 func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {

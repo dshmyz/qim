@@ -17,11 +17,13 @@ export default defineConfig(({ mode }) => {
       host: true
     },
     build: {
+      chunkSizeWarningLimit: 500,
       minify: isProd ? 'terser' : false,
       terserOptions: isProd ? {
         compress: {
-          drop_console: true,  // 生产环境移除所有 console
+          drop_console: true,
           drop_debugger: true,
+          passes: 2,
           pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn']
         }
       } : undefined,

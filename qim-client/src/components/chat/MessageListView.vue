@@ -17,7 +17,7 @@
 
       <div v-for="(message, index) in messages" :key="message.id">
         <!-- 时间分隔线 -->
-        <div v-if="shouldShowTime(index, message, messages)" class="time-divider">
+        <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
           <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
         </div>
 
@@ -97,46 +97,31 @@ const showScrollToBottomBtn = ref(false)
 const isMounted = ref(false)
 
 let scrollTimeoutId: number | null = null
+let throttleTimeoutId: number | null = null
 
-const shouldShowTime = (index: number, message: Message, messages: Message[]) => {
-  return shouldShowTimeDivider(index, message, messages)
-}
-
-const throttle = (func: Function, delay: number) => {
-  let timeoutId: number | null = null
-  return function (this: any, ...args: any[]) {
-    if (timeoutId === null) {
-      timeoutId = window.setTimeout(() => {
-        func.apply(this, args)
-        timeoutId = null
-      }, delay)
-    }
-  }
-}
-
-const handleScroll = throttle(() => {
+const handleScroll = () => {
   if (!messageListRef.value) return
 
   const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
-  // 用户距离底部50px以内，认为是"在底部"
   const distanceToBottom = scrollHeight - scrollTop - clientHeight
   shouldAutoScroll.value = distanceToBottom < 50
-
-  // 当距离底部超过200px时显示跳转按钮
   showScrollToBottomBtn.value = distanceToBottom > 200
 
   if (shouldAutoScroll.value) {
-    markMessagesAsRead()
+    emit('mark-read')
   }
 
   if (scrollTop < 50 && !isLoadingMore.value) {
     loadMoreMessages()
   }
-}, 100)
+}
 
-const markMessagesAsRead = async () => {
-  console.log('[MessageListView] markMessagesAsRead 被调用，准备 emit mark-read 事件')
-  emit('mark-read')
+const throttledHandleScroll = () => {
+  if (throttleTimeoutId !== null) return
+  throttleTimeoutId = window.setTimeout(() => {
+    throttleTimeoutId = null
+    handleScroll()
+  }, 100)
 }
 
 const loadMoreMessages = async () => {
@@ -178,9 +163,7 @@ const handleImageLoaded = () => {
     const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
     const distanceToBottom = scrollHeight - scrollTop - clientHeight
 
-    // 只有用户已经在底部（<50px）才保持位置，不强制跳转
     if (shouldAutoScroll.value && distanceToBottom < 50) {
-      // 图片加载后 scrollHeight 增大，保持底部对齐
       messageListRef.value.scrollTop = scrollHeight - clientHeight
     }
   })
@@ -202,6 +185,10 @@ onUnmounted(() => {
   if (scrollTimeoutId) {
     clearTimeout(scrollTimeoutId)
     scrollTimeoutId = null
+  }
+  if (throttleTimeoutId) {
+    clearTimeout(throttleTimeoutId)
+    throttleTimeoutId = null
   }
 })
 </script>

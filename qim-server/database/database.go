@@ -46,6 +46,15 @@ func Init(cfg *config.Config) *gorm.DB {
 		os.Exit(1)
 	}
 
+	// SQLite 是进程内数据库，设置 MaxOpenConns=1 避免 WAL 锁竞争
+	if cfg.Database.Type == "sqlite" {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(2)
+		sqlDB.SetConnMaxLifetime(0)
+		logger.WithModule("Database").Info("SQLite 数据库连接成功（单连接模式）")
+		return DB
+	}
+
 	maxOpenConns := cfg.Database.MaxOpenConns
 	if maxOpenConns <= 0 {
 		maxOpenConns = 100
