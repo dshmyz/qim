@@ -5,6 +5,7 @@ import "encoding/json"
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
+	ImageURL   string     `json:"image_url,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	Name       string     `json:"name,omitempty"`
@@ -12,6 +13,25 @@ type Message struct {
 
 func (m Message) MarshalJSON() ([]byte, error) {
 	type Alias Message
+	if m.ImageURL != "" {
+		// 多模态消息：content 为数组格式
+		aux := struct {
+			Role    string        `json:"role"`
+			Content []interface{} `json:"content"`
+		}{
+			Role: m.Role,
+			Content: []interface{}{
+				map[string]string{"type": "text", "text": m.Content},
+				map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": m.ImageURL,
+					},
+				},
+			},
+		}
+		return json.Marshal(aux)
+	}
 	aux := struct {
 		Alias
 		Content interface{} `json:"content"`

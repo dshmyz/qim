@@ -231,8 +231,11 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 		}
 	}
 
-	// 优化：直接 ORDER BY ASC，无需内存翻转
-	q.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at ASC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
+	// DESC 查最新的 N 条，再翻转为正序（BeforeMsgID 游标分页需要 DESC）
+	q.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 
 	return &MessageResult{
 		Messages:    messages,
@@ -288,8 +291,11 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 	dbQuery.Model(&model.Message{}).Count(&total)
 
 	var messages []model.Message
-	// 优化：直接 ORDER BY ASC，无需内存翻转
-	dbQuery.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at ASC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
+	// DESC 查最新的 N 条，再翻转为正序（游标分页需要 DESC）
+	dbQuery.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Order("created_at DESC").Limit(query.Limit).Offset(query.Offset).Find(&messages)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 
 	totalPages := int(total) / query.Limit
 	if int(total)%query.Limit > 0 {

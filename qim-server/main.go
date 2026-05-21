@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"qim-server/app"
@@ -27,7 +28,6 @@ import (
 func main() {
 	// 初始化应用
 	cfg, db, hub := app.InitApp()
-	defer database.Close(db)
 
 	// 注册 WS 消息处理回调，统一使用 MessageService
 	handler.InitWSHandlers()
@@ -42,30 +42,46 @@ func main() {
 	})
 	logger.L().Info("定时任务已启动：群聊总结 (每天 22:00)")
 
-	// 优化：使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
+	// 使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(loggerRequestMiddleware())
 
 	// 设置路由
 	app.SetupRoutes(r, cfg, hub)
 
-	// 优雅退出：监听信号
+	// 优雅退出：使用 http.Server.Shutdown 等待连接自然结束
+	srv := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: r,
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-quit
 		logger.L().Info("收到退出信号，正在优雅关闭...")
-		cancel()
-		hub.Broadcast = nil
-		os.Exit(0)
+		cancel() // 停止定时任务
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.L().Error("HTTP 优雅关闭失败", "error", err)
+		}
 	}()
 
 	// 启动服务器
 	logger.L().Info("服务器启动在端口", "port", cfg.Server.Port)
-	if err := r.Run(":" + cfg.Server.Port); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.WithModule("main").Error("服务器启动失败", "error", err)
 		os.Exit(1)
 	}
+
+	// Shutdown 完成后关闭 DB
+	database.Close(db)
+	logger.L().Info("服务器已关闭")
+	os.Exit(0)
 }
 
 // runDailyJob runs a job daily at the specified time (format: "HH:MM")
@@ -96,5 +112,21 @@ func runDailyJob(ctx context.Context, timeStr string, job func()) {
 		case <-time.After(scheduledTime.Sub(now)):
 			job()
 		}
+	}
+}
+
+// loggerRequestMiddleware 轻量请求日志，替代 gin.Default() 的 Logger
+func loggerRequestMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		latency := time.Since(start)
+		logger.L().Debug("HTTP",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"latency", latency.Milliseconds(),
+			"ip", c.ClientIP(),
+		)
 	}
 }

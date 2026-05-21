@@ -75,6 +75,16 @@ func (h *AIHandler) SetSmartDigestGraph(graph *service.SmartDigestGraph) {
 
 // RegisterRoutes 注册路由
 func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
+	// 文本处理路由：不检查 AI 开关，始终可用
+	textGroup := router.Group("/ai")
+	{
+		textGroup.POST("/translate", h.TranslateText)
+		textGroup.POST("/rewrite", h.RewriteText)
+		textGroup.POST("/polish", h.PolishText)
+		textGroup.POST("/translate/image", h.TranslateImage)
+	}
+
+	// 其他 AI 路由：需要检查 AI 是否启用
 	aiGroup := router.Group("/ai")
 	aiGroup.Use(checkAIEnabledMiddleware())
 	{
@@ -88,11 +98,6 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 		// 新增: 语义搜索
 		aiGroup.POST("/search", h.AISearch)
-
-		// 新增: 文本处理
-		aiGroup.POST("/translate", h.TranslateText)
-		aiGroup.POST("/rewrite", h.RewriteText)
-		aiGroup.POST("/polish", h.PolishText)
 
 		// 新增: 智能消息速览
 		aiGroup.GET("/digest", h.GetDigest)

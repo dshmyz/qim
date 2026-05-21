@@ -15,7 +15,7 @@ type User struct {
 	PasswordHash     string         `json:"-" gorm:"size:255;not null"`
 	Nickname         string         `json:"nickname" gorm:"size:100"`
 	Avatar           string         `json:"avatar" gorm:"size:500"`
-	Type             string         `json:"type" gorm:"size:20;default:'user';index"` // 'user' | 'bot' | 'system' | 'api'
+	Type             string         `json:"type" gorm:"size:20;default:'user';index"` // 'user' | 'bot' | 'system' | 'api' | 'admin'
 	Signature        string         `json:"signature" gorm:"type:text"`
 	Phone            string         `json:"phone" gorm:"size:20"`
 	Email            string         `json:"email" gorm:"size:100"`

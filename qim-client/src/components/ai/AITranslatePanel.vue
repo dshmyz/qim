@@ -14,7 +14,10 @@
         </div>
 
         <div v-else-if="translatedText" class="translate-content">
-          <div class="original-section">
+          <div v-if="messageType === 'image'" class="image-preview">
+            <img :src="originalText" alt="待翻译图片" />
+          </div>
+          <div v-else class="original-section">
             <div class="section-label">原文</div>
             <div class="section-text">{{ originalText }}</div>
           </div>
@@ -45,6 +48,7 @@ import QMessage from '../../utils/qmessage'
 const props = defineProps<{
   visible: boolean
   originalText: string
+  messageType?: string
   targetLang?: string
 }>()
 
@@ -52,7 +56,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { translateText, isProcessing: isTranslating } = useAIActions()
+const { translateText, translateImage, isProcessing: isTranslating } = useAIActions()
 const translatedText = ref<string | null>(null)
 
 watch(() => props.visible, async (newVal) => {
@@ -64,10 +68,17 @@ watch(() => props.visible, async (newVal) => {
 const translate = async () => {
   translatedText.value = null
   try {
-    translatedText.value = await translateText(
-      props.originalText,
-      props.targetLang || 'zh'
-    )
+    if (props.messageType === 'image') {
+      translatedText.value = await translateImage(
+        props.originalText,
+        props.targetLang || 'zh'
+      )
+    } else {
+      translatedText.value = await translateText(
+        props.originalText,
+        props.targetLang || 'zh'
+      )
+    }
   } catch {
   }
 }
@@ -168,6 +179,18 @@ const copyTranslation = async () => {
 .translate-content {
   padding: 20px 24px;
   overflow-y: auto;
+}
+
+.image-preview {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .section-label {

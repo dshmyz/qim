@@ -65,7 +65,7 @@
         </div>
         
         <div class="form-item">
-          <button 
+          <button
             type="submit"
             class="login-button"
             :disabled="isLoading"

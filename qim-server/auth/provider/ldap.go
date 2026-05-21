@@ -2,8 +2,12 @@ package provider
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/go-ldap/ldap/v3"
 )
 
 type LDAPConfig struct {
@@ -27,6 +31,14 @@ func NewLDAPProvider(name string, enabled bool, priority int, configJSON string)
 	var config LDAPConfig
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
 		return nil, fmt.Errorf("解析LDAP配置失败: %w", err)
+	}
+
+	if config.Port == 0 {
+		config.Port = 389
+	}
+
+	if config.Filter == "" {
+		config.Filter = "(uid=%s)"
 	}
 
 	return &LDAPProvider{
@@ -61,12 +73,105 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 		}, nil
 	}
 
+	l, err := p.connect()
+	if err != nil {
+		return &AuthResult{
+			Success: false,
+			Message: fmt.Sprintf("连接LDAP服务器失败: %v", err),
+		}, nil
+	}
+	defer l.Close()
+
+	if p.config.BindDN != "" && p.config.BindPass != "" {
+		if err := l.Bind(p.config.BindDN, p.config.BindPass); err != nil {
+			return &AuthResult{
+				Success: false,
+				Message: fmt.Sprintf("LDAP管理员绑定失败: %v", err),
+			}, nil
+		}
+	}
+
+	filter := fmt.Sprintf(p.config.Filter, ldap.EscapeFilter(creds.Username))
+	searchRequest := ldap.NewSearchRequest(
+		p.config.BaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		filter,
+		[]string{"dn", "uid", "cn", "mail", "telephoneNumber"},
+		nil,
+	)
+
+	sr, err := l.Search(searchRequest)
+	if err != nil {
+		return &AuthResult{
+			Success: false,
+			Message: fmt.Sprintf("LDAP搜索失败: %v", err),
+		}, nil
+	}
+
+	if len(sr.Entries) == 0 {
+		return &AuthResult{
+			Success: false,
+			Message: "用户不存在",
+		}, nil
+	}
+
+	if len(sr.Entries) > 1 {
+		return &AuthResult{
+			Success: false,
+			Message: "找到多个用户记录",
+		}, nil
+	}
+
+	userDN := sr.Entries[0].DN
+
+	if err := l.Bind(userDN, creds.Password); err != nil {
+		return &AuthResult{
+			Success: false,
+			Message: "用户名或密码错误",
+		}, nil
+	}
+
+	userInfo := make(map[string]interface{})
+	userInfo["username"] = creds.Username
+	userInfo["dn"] = userDN
+
+	for _, attr := range sr.Entries[0].Attributes {
+		if len(attr.Values) > 0 {
+			userInfo[strings.ToLower(attr.Name)] = attr.Values[0]
+		}
+	}
+
 	return &AuthResult{
-		Success: false,
-		Message: "LDAP认证需要安装go-ldap库并实现连接逻辑",
+		Success:  true,
+		Message:  "认证成功",
+		UserInfo: userInfo,
 	}, nil
 }
 
 func (p *LDAPProvider) TestConnection() error {
-	return fmt.Errorf("LDAP连接测试需要安装go-ldap库")
+	l, err := p.connect()
+	if err != nil {
+		return fmt.Errorf("连接失败: %w", err)
+	}
+	defer l.Close()
+
+	if p.config.BindDN != "" && p.config.BindPass != "" {
+		if err := l.Bind(p.config.BindDN, p.config.BindPass); err != nil {
+			return fmt.Errorf("绑定失败: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (p *LDAPProvider) connect() (*ldap.Conn, error) {
+	addr := fmt.Sprintf("%s:%d", p.config.Server, p.config.Port)
+
+	if p.config.UseTLS {
+		return ldap.DialTLS("tcp", addr, &tls.Config{
+			InsecureSkipVerify: true,
+		})
+	}
+
+	return ldap.Dial("tcp", addr)
 }

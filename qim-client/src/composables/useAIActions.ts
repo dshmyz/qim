@@ -29,6 +29,32 @@ export function useAIActions() {
     }
   }
 
+  const translateImage = async (
+    imageUrl: string,
+    targetLang: string = 'zh'
+  ) => {
+    isProcessing.value = true
+    errorMessage.value = null
+
+    try {
+      const response = await post<any>(
+        '/api/v1/ai/translate/image',
+        { image_url: imageUrl, target_lang: targetLang },
+        { baseUrl: serverUrl.value, timeout: 60000 }
+      )
+      if (!response) {
+        errorMessage.value = '图片翻译失败'
+        throw new Error('图片翻译失败')
+      }
+      return response.data.translated_text
+    } catch (error: any) {
+      errorMessage.value = error.message || '图片翻译失败'
+      throw error
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
   const rewriteText = async (
     text: string,
     style: string = 'concise',
@@ -154,6 +180,7 @@ export function useAIActions() {
     isProcessing,
     errorMessage,
     translateText,
+    translateImage,
     rewriteText,
     polishText,
     generateSummary,

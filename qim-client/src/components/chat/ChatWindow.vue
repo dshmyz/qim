@@ -190,6 +190,7 @@
     <AITranslatePanel
       :visible="showTranslatePanel"
       :original-text="translateContent"
+      :message-type="translateMessageType"
       @close="showTranslatePanel = false"
     />
   </div>
@@ -278,6 +279,7 @@ const showSummaryPanel = ref(false)
 // AI 翻译面板状态
 const showTranslatePanel = ref(false)
 const translateContent = ref('')
+const translateMessageType = ref<'image' | 'text' | undefined>(undefined)
 
 // 处理分身启用状态更新（只控制当前会话，不影响全局配置）
 const handleUpdateAvatarEnabled = async (enabled: boolean) => {
@@ -1572,6 +1574,7 @@ const handleAITranslate = () => {
     return
   }
   translateContent.value = selectedMessage.value.content
+  translateMessageType.value = selectedMessage.value.type === 'image' ? 'image' : undefined
   showTranslatePanel.value = true
   closeMessageContextMenu()
 }
