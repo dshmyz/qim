@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"qim-server/config"
+	"qim-server/model"
 	"qim-server/pkg/logger"
 	"time"
 
@@ -52,28 +53,64 @@ func Init(cfg *config.Config) *gorm.DB {
 		sqlDB.SetMaxIdleConns(1)
 		sqlDB.SetConnMaxLifetime(0)
 		logger.WithModule("Database").Info("SQLite 数据库连接成功（单连接模式）")
-		return DB
+	} else {
+		maxOpenConns := cfg.Database.MaxOpenConns
+		if maxOpenConns <= 0 {
+			maxOpenConns = 100
+		}
+		maxIdleConns := cfg.Database.MaxIdleConns
+		if maxIdleConns <= 0 {
+			maxIdleConns = 10
+		}
+		maxLifetime := cfg.Database.MaxLifetime
+		if maxLifetime <= 0 {
+			maxLifetime = 3600
+		}
+
+		sqlDB.SetMaxOpenConns(maxOpenConns)
+		sqlDB.SetMaxIdleConns(maxIdleConns)
+		sqlDB.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
+
+		logger.WithModule("Database").Info("数据库连接成功", "maxOpen", maxOpenConns, "maxIdle", maxIdleConns, "maxLifetime", maxLifetime)
 	}
 
-	maxOpenConns := cfg.Database.MaxOpenConns
-	if maxOpenConns <= 0 {
-		maxOpenConns = 100
-	}
-	maxIdleConns := cfg.Database.MaxIdleConns
-	if maxIdleConns <= 0 {
-		maxIdleConns = 10
-	}
-	maxLifetime := cfg.Database.MaxLifetime
-	if maxLifetime <= 0 {
-		maxLifetime = 3600
-	}
+	// 自动迁移数据库表结构
+	autoMigrate()
 
-	sqlDB.SetMaxOpenConns(maxOpenConns)
-	sqlDB.SetMaxIdleConns(maxIdleConns)
-	sqlDB.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
-
-	logger.WithModule("Database").Info("数据库连接成功", "maxOpen", maxOpenConns, "maxIdle", maxIdleConns, "maxLifetime", maxLifetime)
 	return DB
+}
+
+func autoMigrate() {
+	err := DB.AutoMigrate(
+		&model.User{},
+		&model.Department{},
+		&model.DepartmentEmployee{},
+		&model.Conversation{},
+		&model.Group{},
+		&model.GroupDocument{},
+		&model.GroupMember{},
+		&model.Message{},
+		&model.MessageRead{},
+		&model.Friend{},
+		&model.FriendRequest{},
+		&model.Role{},
+		&model.Permission{},
+		&model.UserRole{},
+		&model.Blacklist{},
+		&model.SensitiveWord{},
+		&model.ConversationRead{},
+		&model.App{},
+		&model.MiniApp{},
+		&model.AuthProvider{},
+		&model.ExternalUserMapping{},
+		&model.OrgSyncConfig{},
+		&model.OrgSyncLog{},
+	)
+	if err != nil {
+		logger.WithModule("Database").Error("数据库自动迁移失败", "error", err)
+	} else {
+		logger.WithModule("Database").Info("数据库自动迁移成功")
+	}
 }
 
 func Close(db *gorm.DB) {
