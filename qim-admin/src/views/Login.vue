@@ -17,9 +17,7 @@
           <p class="login-subtitle">企业级即时通讯管理后台</p>
         </div>
 
-        <!-- 直接认证方式（用户名密码） -->
         <el-form
-          v-if="hasDirectAuth"
           :model="loginForm"
           :rules="rules"
           ref="formRef"
@@ -61,28 +59,6 @@
           </div>
         </el-form>
 
-        <!-- 重定向认证方式（OAuth、CAS等） -->
-        <div v-if="hasRedirectAuth" class="redirect-auth-section">
-          <div v-if="hasDirectAuth" class="divider">
-            <span>或使用其他方式登录</span>
-          </div>
-
-          <div class="auth-providers">
-            <el-button
-              v-for="provider in redirectProviders"
-              :key="provider.id"
-              @click="handleRedirectAuth(provider)"
-              size="large"
-              class="auth-provider-btn"
-            >
-              <el-icon :size="20">
-                <component :is="getProviderIcon(provider.name)" />
-              </el-icon>
-              <span>{{ provider.display_name }}</span>
-            </el-button>
-          </div>
-        </div>
-
         <div class="login-footer">
           <span>© {{ currentYear }} QIM</span>
         </div>
@@ -92,15 +68,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, ArrowRight, Key, Connection } from '@element-plus/icons-vue'
+import { User, Lock, ArrowRight } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { login } from '@/api/auth'
-import { getAuthProviders } from '@/api/authProvider'
 import { useAuthStore } from '@/stores/auth'
-import type { AuthProvider } from '@/types/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -109,7 +83,6 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const currentYear = new Date().getFullYear()
 
-const providers = ref<AuthProvider[]>([])
 const loginForm = reactive({
   username: '',
   password: '',
@@ -118,28 +91,6 @@ const loginForm = reactive({
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-}
-
-const directProviders = computed(() => {
-  return providers.value.filter(p => p.enabled && p.type === 'direct')
-})
-
-const redirectProviders = computed(() => {
-  return providers.value.filter(p => p.enabled && p.type === 'redirect')
-})
-
-const hasDirectAuth = computed(() => directProviders.value.length > 0)
-const hasRedirectAuth = computed(() => redirectProviders.value.length > 0)
-
-const loadProviders = async () => {
-  try {
-    const { data } = await getAuthProviders()
-    if (data.data) {
-      providers.value = data.data
-    }
-  } catch (error) {
-    console.error('加载认证提供者失败:', error)
-  }
 }
 
 const handleLogin = async () => {
@@ -158,6 +109,7 @@ const handleLogin = async () => {
       authStore.setToken(data.data.token)
       authStore.setUser(data.data.user)
 
+      // 跳转到 redirect 页面或后台首页
       const redirect = route.query.redirect as string
       router.push(redirect || '/admin')
     }
@@ -168,58 +120,6 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
-
-const handleRedirectAuth = (provider: AuthProvider) => {
-  const state = Math.random().toString(36).substring(7)
-  sessionStorage.setItem('auth_state', state)
-  sessionStorage.setItem('auth_provider', provider.name)
-
-  switch (provider.name.toLowerCase()) {
-    case 'oauth':
-      handleOAuthLogin(provider, state)
-      break
-    case 'cas':
-      handleCASLogin(provider)
-      break
-    default:
-      ElMessage.warning('暂不支持该认证方式')
-  }
-}
-
-const handleOAuthLogin = (provider: AuthProvider, state: string) => {
-  try {
-    const config = JSON.parse(provider.config)
-    const authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(config.redirect_url)}&response_type=code&scope=${config.scope}&state=${state}`
-    window.location.href = authURL
-  } catch (error) {
-    ElMessage.error('OAuth配置错误')
-  }
-}
-
-const handleCASLogin = (provider: AuthProvider) => {
-  try {
-    const config = JSON.parse(provider.config)
-    const loginURL = `${config.server_url}/login?service=${encodeURIComponent(config.service_url)}`
-    window.location.href = loginURL
-  } catch (error) {
-    ElMessage.error('CAS配置错误')
-  }
-}
-
-const getProviderIcon = (name: string) => {
-  switch (name.toLowerCase()) {
-    case 'oauth':
-      return Key
-    case 'cas':
-      return Connection
-    default:
-      return Key
-  }
-}
-
-onMounted(() => {
-  loadProviders()
-})
 </script>
 
 <style scoped>
@@ -411,60 +311,6 @@ onMounted(() => {
 
 .login-btn:active {
   transform: translateY(0) scale(0.98);
-}
-
-/* 重定向认证方式 */
-.redirect-auth-section {
-  margin-top: var(--space-6);
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  margin: var(--space-6) 0;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
-}
-
-.divider span {
-  padding: 0 var(--space-4);
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.auth-providers {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.auth-provider-btn {
-  width: 100%;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  font-size: 15px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: white;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  transition: all var(--duration-normal) var(--ease-out);
-}
-
-.auth-provider-btn:hover {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  transform: translateY(-1px);
 }
 
 /* 页脚 */

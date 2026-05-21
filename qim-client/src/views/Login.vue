@@ -74,6 +74,24 @@
           </button>
         </div>
       </form>
+
+      <!-- 其他认证方式 -->
+      <div v-if="!show2FAForm && hasRedirectAuth" class="other-auth-section">
+        <div class="auth-divider">
+          <span>或使用其他方式登录</span>
+        </div>
+        <div class="auth-providers">
+          <button
+            v-for="provider in redirectProviders"
+            :key="provider.id"
+            @click="handleRedirectAuth(provider)"
+            class="auth-provider-btn"
+          >
+            <i :class="getProviderIcon(provider.name)"></i>
+            <span>{{ provider.display_name || provider.name }}</span>
+          </button>
+        </div>
+      </div>
       
       <form v-else @submit.prevent="verifyTwoFA" class="twofa-form">
         <h3 class="twofa-title">双因素认证</h3>
@@ -155,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import packageJson from '../../package.json'
 import { API_BASE_URL } from '../config'
 import QMessage from '../utils/qmessage'
@@ -175,6 +193,17 @@ interface FormErrors {
   username?: string
   password?: string
   code?: string
+}
+
+interface AuthProvider {
+  id: number
+  name: string
+  type: string
+  enabled: boolean
+  priority: number
+  config: string
+  display_name: string
+  icon: string
 }
 
 const emit = defineEmits<{
@@ -199,10 +228,17 @@ const isLoading = ref(false)
 const focusedInput = ref<string | null>(null)
 const showServerSettings = ref(false)
 const isResending = ref(false)
+const authProviders = ref<AuthProvider[]>([])
 
 const serverSettings = reactive({
   url: API_BASE_URL
 })
+
+const redirectProviders = computed(() => {
+  return authProviders.value.filter(p => p.enabled && p.type === 'redirect')
+})
+
+const hasRedirectAuth = computed(() => redirectProviders.value.length > 0)
 
 const validateField = (field: keyof FormErrors, value: string): boolean => {
   switch (field) {
@@ -398,6 +434,83 @@ const loadSavedSettings = () => {
 }
 
 loadSavedSettings()
+
+const loadAuthProviders = async () => {
+  try {
+    const response = await fetch(`${serverSettings.url}/api/v1/admin/auth/providers`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    const data = await response.json()
+    if (data.code === 0 && data.data) {
+      authProviders.value = data.data
+    }
+  } catch (error) {
+    console.error('加载认证提供者失败:', error)
+  }
+}
+
+const getProviderIcon = (name: string): string => {
+  const icons: Record<string, string> = {
+    ldap: 'fas fa-users',
+    oauth: 'fab fa-google',
+    cas: 'fas fa-university',
+    default: 'fas fa-key'
+  }
+  return icons[name.toLowerCase()] || icons.default
+}
+
+const handleRedirectAuth = (provider: AuthProvider) => {
+  const state = Math.random().toString(36).substring(7)
+  sessionStorage.setItem('auth_state', state)
+  sessionStorage.setItem('auth_provider', provider.name)
+
+  switch (provider.name.toLowerCase()) {
+    case 'oauth':
+      handleOAuthLogin(provider, state)
+      break
+    case 'cas':
+      handleCASLogin(provider)
+      break
+    default:
+      QMessage.warning('暂不支持该认证方式')
+  }
+}
+
+const handleOAuthLogin = (provider: AuthProvider, state: string) => {
+  try {
+    const config = JSON.parse(provider.config)
+    const authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(config.redirect_url)}&response_type=code&scope=${config.scope}&state=${state}`
+    
+    if (window.electron) {
+      window.electron.ipcRenderer.send('open-external', authURL)
+    } else {
+      window.open(authURL, '_blank')
+    }
+  } catch (error) {
+    QMessage.error('OAuth配置错误')
+  }
+}
+
+const handleCASLogin = (provider: AuthProvider) => {
+  try {
+    const config = JSON.parse(provider.config)
+    const loginURL = `${config.cas_url}/login?service=${encodeURIComponent(config.service_url)}`
+    
+    if (window.electron) {
+      window.electron.ipcRenderer.send('open-external', loginURL)
+    } else {
+      window.open(loginURL, '_blank')
+    }
+  } catch (error) {
+    QMessage.error('CAS配置错误')
+  }
+}
+
+onMounted(() => {
+  loadAuthProviders()
+})
 
 const resendCode = async () => {
   if (isResending.value) return
@@ -848,6 +961,57 @@ const closeWindow = () => {
 .login-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.other-auth-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e8ecf1;
+}
+
+.auth-divider {
+  text-align: center;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.auth-divider span {
+  font-size: 13px;
+  color: #999;
+  background: white;
+  padding: 0 12px;
+}
+
+.auth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-provider-btn {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #e8ecf1;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.auth-provider-btn:hover {
+  border-color: #64b5f6;
+  background: #f5f9ff;
+  color: #333;
+}
+
+.auth-provider-btn i {
+  font-size: 16px;
 }
 
 .dialog-overlay {
