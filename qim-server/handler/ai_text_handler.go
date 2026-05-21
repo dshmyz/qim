@@ -216,7 +216,16 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		return
 	}
 
-	systemPrompt := fmt.Sprintf("你是一个图片翻译助手。请完成以下两步：\n1. 识别图片中的文字内容\n2. 将识别出的内容翻译成%s\n\n请严格按以下 JSON 格式输出，不要包含任何其他内容：\n{\"original_text\": \"识别的文字\", \"translated_text\": \"翻译结果\"}", langName)
+	systemPrompt := fmt.Sprintf(`你是一个图片翻译助手。请完成以下步骤：
+
+1. 仔细识别图片中的所有文字内容
+2. 如果图片中没有可识别的文字，直接返回 {"original_text": "未检测到文字", "translated_text": ""}
+3. 如果有文字，将识别到的内容翻译成%s
+
+请严格按以下 JSON 格式输出，不要包含任何其他内容：
+{"original_text": "识别的文字", "translated_text": "翻译结果"}
+
+注意：如果图片中确实没有文字，translated_text 必须为空字符串。不要编造文字。`, langName)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},
@@ -249,27 +258,48 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 
 	// 解析 JSON 格式响应，提取译文
 	var parsed struct {
-		OriginalText string `json:"original_text"`
+		OriginalText   string `json:"original_text"`
 		TranslatedText string `json:"translated_text"`
 	}
-	// 尝试从 JSON 格式响应中提取
+	jsonParsed := false
 	jsonResult := map[string]interface{}{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(result)), &jsonResult); err == nil {
 		if t, ok := jsonResult["translated_text"].(string); ok {
 			parsed.TranslatedText = t
+			jsonParsed = true
 		}
 		if o, ok := jsonResult["original_text"].(string); ok {
 			parsed.OriginalText = o
 		}
 	}
 
-	if parsed.TranslatedText == "" {
+	if !jsonParsed {
+		// AI 未按 JSON 格式返回（可能是在闲聊），尝试提取
 		// 回退：尝试从 【译文】 标签提取
 		if idx := strings.Index(result, "【译文】"); idx != -1 {
 			parsed.TranslatedText = strings.TrimSpace(result[idx+len("【译文】"):])
+		} else if idx := strings.Index(result, "翻译"); idx != -1 {
+			// 尝试从含"翻译"关键词的行提取
+			lines := strings.Split(result, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "翻译") || strings.Contains(line, "译文") {
+					parsed.TranslatedText = strings.TrimSpace(line)
+					break
+				}
+			}
+			if parsed.TranslatedText == "" {
+				parsed.TranslatedText = result
+			}
 		} else {
-			parsed.TranslatedText = result
+			// 纯闲聊，说明图片中可能没有可识别文字
+			parsed.OriginalText = "未检测到可翻译文字"
+			parsed.TranslatedText = ""
 		}
+	}
+
+	if parsed.TranslatedText == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片中未检测到可翻译的文字内容"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
