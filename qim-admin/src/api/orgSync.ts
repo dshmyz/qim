@@ -1,24 +1,46 @@
-import client from './client'
+import { request } from '@/utils/request'
 import type { OrgSyncConfig, OrgSyncLog } from '@/types/auth'
+import type { ApiResponse } from '@/types'
+import type { AxiosResponse } from 'axios'
 
-export const getOrgSyncConfigs = () => {
-  return client.get<{ data: OrgSyncConfig[] }>('/admin/org/sync/configs')
+export const getOrgSyncConfigs = (): Promise<AxiosResponse<ApiResponse<{ data: OrgSyncConfig[] }>>> => {
+  return request({
+    url: '/admin/org/sync/configs',
+    method: 'get',
+  })
 }
 
-export const createOrgSyncConfig = (data: Partial<OrgSyncConfig>) => {
-  return client.post('/admin/org/sync/configs', data)
+export const createOrgSyncConfig = (data: Partial<OrgSyncConfig>): Promise<AxiosResponse<ApiResponse<OrgSyncConfig>>> => {
+  return request({
+    url: '/admin/org/sync/configs',
+    method: 'post',
+    data,
+  })
 }
 
-export const updateOrgSyncConfig = (id: number, data: Partial<OrgSyncConfig>) => {
-  return client.put(`/admin/org/sync/configs/${id}`, data)
+export const updateOrgSyncConfig = (id: number, data: Partial<OrgSyncConfig>): Promise<AxiosResponse<ApiResponse<OrgSyncConfig>>> => {
+  return request({
+    url: `/admin/org/sync/configs/${id}`,
+    method: 'put',
+    data,
+  })
 }
 
-export const triggerOrgSync = (id: number) => {
-  return client.post(`/admin/org/sync/trigger/${id}`)
+export const triggerOrgSync = (id: number): Promise<AxiosResponse<ApiResponse<{ success: boolean; message: string }>>> => {
+  return request({
+    url: `/admin/org/sync/trigger/${id}`,
+    method: 'post',
+  })
 }
 
-export const getOrgSyncLogs = (configId: number, page = 1, pageSize = 20) => {
-  return client.get<{ data: { total: number; items: OrgSyncLog[] } }>(
-    `/admin/org/sync/logs?config_id=${configId}&page=${page}&page_size=${pageSize}`
-  )
+export const getOrgSyncLogs = (configId: number, page = 1, pageSize = 20): Promise<AxiosResponse<ApiResponse<{ total: number; items: OrgSyncLog[] }>>> => {
+  return request({
+    url: '/admin/org/sync/logs',
+    method: 'get',
+    params: {
+      config_id: configId,
+      page,
+      page_size: pageSize,
+    },
+  })
 }

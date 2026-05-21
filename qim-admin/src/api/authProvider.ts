@@ -1,18 +1,42 @@
-import client from './client'
+import { request } from '@/utils/request'
 import type { AuthProvider } from '@/types/auth'
+import type { ApiResponse } from '@/types'
+import type { AxiosResponse } from 'axios'
 
-export const getAuthProviders = () => {
-  return client.get<{ data: AuthProvider[] }>('/admin/auth/providers')
+export const getAuthProviders = (): Promise<AxiosResponse<ApiResponse<{ data: AuthProvider[] }>>> => {
+  return request({
+    url: '/admin/auth/providers',
+    method: 'get',
+  })
 }
 
-export const createAuthProvider = (data: Partial<AuthProvider>) => {
-  return client.post('/admin/auth/providers', data)
+export const createAuthProvider = (data: Partial<AuthProvider>): Promise<AxiosResponse<ApiResponse<AuthProvider>>> => {
+  return request({
+    url: '/admin/auth/providers',
+    method: 'post',
+    data,
+  })
 }
 
-export const updateAuthProvider = (id: number, data: Partial<AuthProvider>) => {
-  return client.put(`/admin/auth/providers/${id}`, data)
+export const updateAuthProvider = (id: number, data: Partial<AuthProvider>): Promise<AxiosResponse<ApiResponse<AuthProvider>>> => {
+  return request({
+    url: `/admin/auth/providers/${id}`,
+    method: 'put',
+    data,
+  })
 }
 
-export const testAuthProvider = (id: number, testData: { test_username: string; test_password: string }) => {
-  return client.post(`/admin/auth/providers/${id}/test`, testData)
+export const deleteAuthProvider = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
+  return request({
+    url: `/admin/auth/providers/${id}`,
+    method: 'delete',
+  })
+}
+
+export const testAuthProvider = (id: number, testData: { test_username: string; test_password: string }): Promise<AxiosResponse<ApiResponse<{ success: boolean; message: string }>>> => {
+  return request({
+    url: `/admin/auth/providers/${id}/test`,
+    method: 'post',
+    data: testData,
+  })
 }
