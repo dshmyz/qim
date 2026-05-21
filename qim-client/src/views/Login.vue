@@ -466,15 +466,17 @@ const handleRedirectAuth = (provider: AuthProvider) => {
   sessionStorage.setItem('auth_state', state)
   sessionStorage.setItem('auth_provider', provider.name)
 
-  switch (provider.name.toLowerCase()) {
-    case 'oauth':
+  if (provider.type === 'redirect') {
+    const config = JSON.parse(provider.config)
+    if (config.auth_url && config.token_url) {
       handleOAuthLogin(provider, state)
-      break
-    case 'cas':
+    } else if (config.cas_url) {
       handleCASLogin(provider)
-      break
-    default:
-      QMessage.warning('暂不支持该认证方式')
+    } else {
+      QMessage.warning('认证配置错误')
+    }
+  } else {
+    QMessage.warning('暂不支持该认证方式')
   }
 }
 
