@@ -5,6 +5,7 @@ import type { AxiosResponse } from 'axios'
 
 export const getAuthProviders = (): Promise<AxiosResponse<ApiResponse<{ data: AuthProvider[] }>>> => {
   return request({
+    baseURL: '/api/v1',
     url: '/admin/auth/providers',
     method: 'get',
   })
@@ -12,6 +13,7 @@ export const getAuthProviders = (): Promise<AxiosResponse<ApiResponse<{ data: Au
 
 export const createAuthProvider = (data: Partial<AuthProvider>): Promise<AxiosResponse<ApiResponse<AuthProvider>>> => {
   return request({
+    baseURL: '/api/v1',
     url: '/admin/auth/providers',
     method: 'post',
     data,
@@ -20,6 +22,7 @@ export const createAuthProvider = (data: Partial<AuthProvider>): Promise<AxiosRe
 
 export const updateAuthProvider = (id: number, data: Partial<AuthProvider>): Promise<AxiosResponse<ApiResponse<AuthProvider>>> => {
   return request({
+    baseURL: '/api/v1',
     url: `/admin/auth/providers/${id}`,
     method: 'put',
     data,
@@ -28,6 +31,7 @@ export const updateAuthProvider = (id: number, data: Partial<AuthProvider>): Pro
 
 export const deleteAuthProvider = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
+    baseURL: '/api/v1',
     url: `/admin/auth/providers/${id}`,
     method: 'delete',
   })
@@ -35,6 +39,7 @@ export const deleteAuthProvider = (id: number): Promise<AxiosResponse<ApiRespons
 
 export const testAuthProvider = (id: number, testData: { test_username: string; test_password: string }): Promise<AxiosResponse<ApiResponse<{ success: boolean; message: string }>>> => {
   return request({
+    baseURL: '/api/v1',
     url: `/admin/auth/providers/${id}/test`,
     method: 'post',
     data: testData,

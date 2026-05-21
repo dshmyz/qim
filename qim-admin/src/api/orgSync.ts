@@ -5,6 +5,7 @@ import type { AxiosResponse } from 'axios'
 
 export const getOrgSyncConfigs = (): Promise<AxiosResponse<ApiResponse<{ data: OrgSyncConfig[] }>>> => {
   return request({
+    baseURL: '/api/v1',
     url: '/admin/org/sync/configs',
     method: 'get',
   })
@@ -12,6 +13,7 @@ export const getOrgSyncConfigs = (): Promise<AxiosResponse<ApiResponse<{ data: O
 
 export const createOrgSyncConfig = (data: Partial<OrgSyncConfig>): Promise<AxiosResponse<ApiResponse<OrgSyncConfig>>> => {
   return request({
+    baseURL: '/api/v1',
     url: '/admin/org/sync/configs',
     method: 'post',
     data,
@@ -20,6 +22,7 @@ export const createOrgSyncConfig = (data: Partial<OrgSyncConfig>): Promise<Axios
 
 export const updateOrgSyncConfig = (id: number, data: Partial<OrgSyncConfig>): Promise<AxiosResponse<ApiResponse<OrgSyncConfig>>> => {
   return request({
+    baseURL: '/api/v1',
     url: `/admin/org/sync/configs/${id}`,
     method: 'put',
     data,
@@ -28,6 +31,7 @@ export const updateOrgSyncConfig = (id: number, data: Partial<OrgSyncConfig>): P
 
 export const triggerOrgSync = (id: number): Promise<AxiosResponse<ApiResponse<{ success: boolean; message: string }>>> => {
   return request({
+    baseURL: '/api/v1',
     url: `/admin/org/sync/trigger/${id}`,
     method: 'post',
   })
@@ -35,6 +39,7 @@ export const triggerOrgSync = (id: number): Promise<AxiosResponse<ApiResponse<{ 
 
 export const getOrgSyncLogs = (configId: number, page = 1, pageSize = 20): Promise<AxiosResponse<ApiResponse<{ total: number; items: OrgSyncLog[] }>>> => {
   return request({
+    baseURL: '/api/v1',
     url: '/admin/org/sync/logs',
     method: 'get',
     params: {
