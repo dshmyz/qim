@@ -145,6 +145,7 @@ const (
 	TaskTypeToolCalling TaskType = "tool_calling"
 	TaskTypeSearch      TaskType = "search"
 	TaskTypeDigest      TaskType = "digest"
+	TaskTypeVision      TaskType = "vision"
 )
 
 // Route 路由规则

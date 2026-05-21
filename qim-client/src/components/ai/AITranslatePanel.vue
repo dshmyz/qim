@@ -61,7 +61,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { translateText, translateImage, isProcessing: isTranslating, errorMessage } = useAIActions()
+const { translateText, translateImage, isProcessing: isTranslating } = useAIActions()
 const translatedText = ref<string | null>(null)
 const translateError = ref<string | null>(null)
 
@@ -87,7 +87,7 @@ const translate = async () => {
       )
     }
   } catch (e: any) {
-    translateError.value = errorMessage.value || e.message || '翻译失败'
+    translateError.value = e.message || '翻译失败'
   }
 }
 

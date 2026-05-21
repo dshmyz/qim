@@ -320,8 +320,9 @@ func (s *AIService) filterMessages(messages []Message) []Message {
 	filtered := make([]Message, len(messages))
 	for i, msg := range messages {
 		filtered[i] = Message{
-			Role:    msg.Role,
-			Content: s.filterContent(msg.Content),
+			Role:     msg.Role,
+			Content:  s.filterContent(msg.Content),
+			ImageURL: msg.ImageURL,
 		}
 	}
 	return filtered

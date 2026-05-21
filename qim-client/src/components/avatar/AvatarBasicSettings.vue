@@ -170,6 +170,6 @@ function handleNameInput(event: Event) {
 .setting-label { font-size: 14px; font-weight: 500; color: var(--text-color); }
 .setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
 .setting-hint.error { color: #F44336; }
-.form-select, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; }
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); }
+.form-select, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15)); }
 </style>

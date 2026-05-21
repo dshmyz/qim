@@ -173,27 +173,29 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
   color: var(--text-secondary); 
 }
 
-.form-select { 
-  width: 100%; 
-  padding: 10px 12px; 
-  border: 1px solid var(--border-color); 
-  border-radius: 6px; 
-  background: var(--bg-color); 
-  color: var(--text-color); 
-  font-size: 14px; 
+.form-select {
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color) url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") no-repeat right 10px center;
+  color: var(--text-color);
+  font-size: 14px;
   box-sizing: border-box;
-  transition: border-color 0.2s;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 10px center;
-  background-repeat: no-repeat;
-  background-size: 16px;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.form-select:focus { 
-  outline: none; 
-  border-color: var(--primary-color); 
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+.form-select:hover {
+  border-color: var(--text-secondary);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15));
 }
 
 .threshold-slider { 

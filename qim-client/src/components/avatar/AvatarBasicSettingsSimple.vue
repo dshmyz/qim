@@ -58,9 +58,9 @@
 
     <div class="setting-item">
       <label>接管冷却期</label>
-      <select 
-        :value="modelValue.takeoverCooldown ?? 10" 
-        @change="update('takeoverCooldown', Number(($event.target as HTMLSelectElement).value))" 
+      <select
+        :value="modelValue.takeoverCooldown ?? 10"
+        @change="update('takeoverCooldown', Number(($event.target as HTMLSelectElement).value))"
         class="form-select"
       >
         <option :value="5">5 分钟</option>
@@ -71,11 +71,30 @@
       <span class="setting-hint">你发消息后，分身暂停回复的时间</span>
     </div>
 
-    <div class="setting-item">
-      <button class="link-btn" @click="$emit('goToAdvanced')">
-        <i class="fas fa-arrow-right"></i> 查看触发规则详细设置
-      </button>
-    </div>
+    <template v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'smart'">
+      <div class="setting-divider"></div>
+      <div class="setting-item">
+        <label>触发关键词</label>
+        <div class="keyword-input-wrapper">
+          <input
+            :value="keywordInput"
+            @input="keywordInput = ($event.target as HTMLInputElement).value"
+            @keydown.enter.prevent="addKeyword"
+            class="form-input keyword-field"
+            placeholder="输入关键词后按回车"
+          />
+          <div class="keyword-tags">
+            <span v-for="(kw, i) in modelValue.triggerRules?.keywords ?? []" :key="i" class="keyword-tag">
+              {{ kw }}
+              <button class="remove-tag" @click="removeKeyword(i)">
+                <i class="fas fa-times"></i>
+              </button>
+            </span>
+          </div>
+        </div>
+        <span class="setting-hint">添加关键词后，分身只在消息包含这些词时才回复</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -93,10 +112,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: AvatarConfigWithApproval]
-  'goToAdvanced': []
 }>()
 
 const applying = ref(false)
+const keywordInput = ref('')
 
 const localEnabled = computed({
   get: () => props.modelValue?.enabled ?? false,
@@ -180,6 +199,30 @@ function handleTriggerModeChange(event: Event) {
     }
   })
 }
+
+function addKeyword() {
+  const kw = keywordInput.value.trim()
+  const keywords = props.modelValue.triggerRules?.keywords ?? []
+  if (kw && !keywords.includes(kw)) {
+    emit('update:modelValue', {
+      ...props.modelValue,
+      triggerRules: {
+        ...props.modelValue.triggerRules,
+        keywords: [...keywords, kw]
+      }
+    })
+  }
+  keywordInput.value = ''
+}
+
+function removeKeyword(index: number) {
+  const keywords = [...(props.modelValue.triggerRules?.keywords ?? [])]
+  keywords.splice(index, 1)
+  emit('update:modelValue', {
+    ...props.modelValue,
+    triggerRules: { ...props.modelValue.triggerRules, keywords }
+  })
+}
 </script>
 
 <style scoped>
@@ -231,11 +274,38 @@ function handleTriggerModeChange(event: Event) {
   color: var(--text-color);
   font-size: 14px;
   box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-input:focus {
   outline: none;
   border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15));
+}
+
+.form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 8px 36px 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8.825L1.175 4 2.238 2.938 6 6.7l3.763-3.762L10.825 4z'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text-color);
+  font-size: 14px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+
+.form-select:hover {
+  border-color: var(--text-secondary);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15));
 }
 
 .trigger-info {
@@ -263,21 +333,57 @@ function handleTriggerModeChange(event: Event) {
   color: var(--text-color);
 }
 
-.link-btn {
+.keyword-input-wrapper {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keyword-field {
+  margin-bottom: 0;
+}
+
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 0;
+  min-height: 24px;
+}
+
+.keyword-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1));
+  color: var(--primary-color);
+  border-radius: 12px;
+  font-size: 13px;
+  animation: tag-fade-in 0.15s ease;
+}
+
+@keyframes tag-fade-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.remove-tag {
   background: none;
   border: none;
   color: var(--primary-color);
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  width: 100%;
+  font-size: 12px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s;
 }
 
-.link-btn:hover {
-  opacity: 0.8;
+.remove-tag:hover {
+  background: rgba(99, 102, 241, 0.2);
 }
 </style>

@@ -34,7 +34,6 @@
             <h3 class="section-title">基础配置</h3>
             <AvatarBasicSettingsSimple
               v-model="config"
-              @goToAdvanced="activeMainTab = 'advanced'"
             />
           </div>
 
@@ -63,13 +62,6 @@
           </div>
 
           <div class="settings-section">
-            <h3 class="section-title">触发规则详细设置</h3>
-            <AvatarTriggerSettingsAdvanced
-              v-model="config"
-            />
-          </div>
-
-          <div class="settings-section">
             <h3 class="section-title">人设风格</h3>
             <AvatarPersonaSettings
               v-model="config"
@@ -86,9 +78,6 @@
       </div>
 
       <div class="tab-footer">
-        <button class="btn btn-danger" @click="handleDelete" v-if="config">
-          <i class="fas fa-trash"></i> 删除分身
-        </button>
         <button class="btn btn-primary" @click="handleSave" :disabled="saving">
           {{ saving ? '保存中...' : '保存设置' }}
         </button>
@@ -107,7 +96,6 @@ import AvatarBasicSettingsSimple from './AvatarBasicSettingsSimple.vue'
 import AvatarKnowledgeSettings from './AvatarKnowledgeSettings.vue'
 import AvatarMemoryPanel from './AvatarMemoryPanel.vue'
 import AvatarModelSettings from './AvatarModelSettings.vue'
-import AvatarTriggerSettingsAdvanced from './AvatarTriggerSettingsAdvanced.vue'
 import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
 import AvatarReplySettings from './AvatarReplySettings.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
@@ -117,8 +105,7 @@ const {
   loading,
   fetchConfig,
   createConfig,
-  updateConfig,
-  deleteConfig
+  updateConfig
 } = useAvatar()
 
 const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
@@ -175,15 +162,6 @@ async function handleSave() {
     window.$QMessage.error('保存失败')
   } finally {
     saving.value = false
-  }
-}
-
-async function handleDelete() {
-  try {
-    await window.$QMessageBox.confirm('确定删除分身吗？删除后所有会话的分身都将关闭。', '删除分身')
-    await deleteConfig()
-    window.$QMessage.success('分身已删除')
-  } catch {
   }
 }
 </script>
@@ -282,7 +260,7 @@ async function handleDelete() {
   padding: 12px 20px;
   border-top: 1px solid var(--border-color);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 .btn {

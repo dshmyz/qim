@@ -26,11 +26,11 @@
       <span class="context-menu-icon"><i class="fas fa-robot"></i></span>
       <span>AI 总结此消息</span>
     </div>
-    <div v-if="isTextLikeMessage" class="context-menu-item" @click="handleAIAction('translate')">
+    <div v-if="isTextLikeMessage && aiEnabled" class="context-menu-item" @click="handleAIAction('translate')">
       <span class="context-menu-icon"><i class="fas fa-language"></i></span>
       <span>翻译为中文</span>
     </div>
-    <div v-if="isAIMessage || isTextLikeMessage" class="context-menu-divider"></div>
+    <div v-if="isAIMessage || (isTextLikeMessage && aiEnabled)" class="context-menu-divider"></div>
 
     <!-- 通用选项 -->
     <div v-if="isTextLikeMessage" class="context-menu-item" @click="handleCopyMessage">
@@ -99,6 +99,8 @@ const canRecall = computed(() => {
   if (!props.message) return false
   return systemConfigStore.canRecall(props.message.timestamp)
 })
+
+const aiEnabled = computed(() => systemConfigStore.enableAI)
 
 const isAIMessage = computed(() => {
   if (!props.message) return false

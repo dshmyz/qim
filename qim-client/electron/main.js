@@ -7,6 +7,7 @@ import os from 'os'
 import crypto from 'crypto'
 import pkg from 'electron-updater'
 import { createRequire } from 'node:module'
+import http from 'http'
 const require = createRequire(import.meta.url)
 const screenshots = require('./screenshots/lib/index.cjs').default
 const { autoUpdater } = pkg
@@ -67,6 +68,104 @@ function getIconDataURL(size = 512) {
 }
 
 const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
+
+// OAuth回调服务器
+let oauthServer = null
+const OAUTH_CALLBACK_PORT = 3000
+
+function startOAuthServer() {
+  if (oauthServer) {
+    console.log('OAuth server already running')
+    return
+  }
+
+  oauthServer = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://localhost:${OAUTH_CALLBACK_PORT}`)
+    
+    if (url.pathname === '/oauth/callback') {
+      console.log('收到OAuth回调:', req.url)
+      
+      const code = url.searchParams.get('code')
+      const state = url.searchParams.get('state')
+      
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>授权成功 - QIM</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+              background: white;
+              padding: 40px;
+              border-radius: 12px;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+              text-align: center;
+            }
+            h1 { color: #333; margin: 0 0 10px; }
+            p { color: #666; }
+            .btn {
+              display: inline-block;
+              margin-top: 20px;
+              padding: 10px 24px;
+              background: #667eea;
+              color: white;
+              text-decoration: none;
+              border-radius: 6px;
+              cursor: pointer;
+            }
+            .btn:hover { background: #5a67d8; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>✓ 授权成功</h1>
+            <p>正在返回QIM应用...</p>
+            <button class="btn" onclick="window.close()">返回应用</button>
+          </div>
+          <script>
+            // 2秒后自动关闭窗口
+            setTimeout(() => window.close(), 2000)
+          </script>
+        </body>
+        </html>
+      `)
+      
+      // 发送授权码给前端
+      if (mainWindow && !mainWindow.isDestroyed() && code) {
+        mainWindow.webContents.send('oauth-callback', {
+          code: code,
+          state: state,
+          provider: 'github'
+        })
+      }
+    } else {
+      res.writeHead(404)
+      res.end('Not Found')
+    }
+  })
+
+  oauthServer.listen(OAUTH_CALLBACK_PORT, () => {
+    console.log(`OAuth回调服务器运行在 http://localhost:${OAUTH_CALLBACK_PORT}`)
+  })
+
+  oauthServer.on('error', (error) => {
+    console.error('OAuth服务器启动失败:', error.message)
+    if (error.code === 'EADDRINUSE') {
+      console.log('端口被占用，OAuth回调可能无法正常工作')
+    }
+  })
+}
 
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'config.json')
@@ -394,6 +493,11 @@ function createWindow() {
     console.log('Received open-external event:', url)
     const { shell } = require('electron')
     shell.openExternal(url)
+  })
+
+  ipcMain.on('start-oauth-server', () => {
+    console.log('Received start-oauth-server event')
+    startOAuthServer()
   })
 
   let trayFlashInterval = null

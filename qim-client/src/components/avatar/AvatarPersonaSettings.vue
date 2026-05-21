@@ -171,8 +171,8 @@ async function handlePreview() {
 .setting-item { margin-bottom: 16px; }
 .setting-item > label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
 .setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.form-textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; font-family: inherit; resize: vertical; }
-.form-textarea:focus, .form-input:focus { outline: none; border-color: var(--primary-color); }
+.form-textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; font-family: inherit; resize: vertical; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-textarea:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15)); }
 .preview-area { display: flex; gap: 8px; }
 .preview-area .form-input { flex: 1; }
 .preview-btn { padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }

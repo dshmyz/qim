@@ -498,6 +498,19 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
     
     console.log('OAuth授权URL:', authURL)
     
+    // 启动OAuth回调服务器（Electron环境）
+    if (window.electron) {
+      console.log('启动OAuth回调服务器')
+      window.electron.ipcRenderer.send('start-oauth-server')
+      
+      // 监听OAuth回调
+      window.electron.ipcRenderer.on('oauth-callback', async (event: any, data: any) => {
+        console.log('收到OAuth回调:', data)
+        await handleOAuthCallback(provider, data.code, state)
+      })
+    }
+    
+    // 打开浏览器授权
     if (window.electron) {
       console.log('使用Electron打开')
       window.electron.ipcRenderer.send('open-external', authURL)
@@ -508,6 +521,57 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
   } catch (error) {
     console.error('OAuth登录失败:', error)
     QMessage.error('OAuth配置错误')
+  }
+}
+
+const handleOAuthCallback = async (provider: AuthProvider, code: string, state: string) => {
+  try {
+    console.log('处理OAuth回调:', code, state)
+    
+    const savedState = sessionStorage.getItem('auth_state')
+    const savedProvider = sessionStorage.getItem('auth_provider')
+    
+    if (state !== savedState) {
+      console.error('State不匹配')
+      QMessage.error('OAuth验证失败')
+      return
+    }
+    
+    isLoading.value = true
+    QMessage.info('正在登录...')
+    
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/oauth/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: savedProvider || provider.name,
+        code: code,
+        state: state
+      })
+    })
+    
+    const data = await response.json()
+    if (data.code === 0) {
+      QMessage.success('登录成功')
+      
+      // 保存token
+      localStorage.setItem('token', data.data.token)
+      localStorage.setItem('userInfo', JSON.stringify(data.data.user))
+      
+      // 清除session
+      sessionStorage.removeItem('auth_state')
+      sessionStorage.removeItem('auth_provider')
+      
+      // 触发登录成功事件
+      emit('login-success', { username: data.data.user.username })
+    } else {
+      QMessage.error(data.message || '登录失败')
+    }
+  } catch (error) {
+    console.error('OAuth回调处理失败:', error)
+    QMessage.error('登录失败')
+  } finally {
+    isLoading.value = false
   }
 }
 

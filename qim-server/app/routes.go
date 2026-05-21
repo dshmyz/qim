@@ -212,6 +212,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 公开的认证提供者列表（无需认证）
 			authProviderHandler := handler.NewAuthProviderHandler()
 			auth.GET("/providers", authProviderHandler.GetProviders)
+
+			// OAuth回调（无需认证）
+			auth.POST("/oauth/callback", handler.OAuthCallback)
 		}
 
 		// 需要认证的认证相关路由
