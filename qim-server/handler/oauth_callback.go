@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"qim-server/auth/provider"
 	"qim-server/database"
@@ -63,7 +62,7 @@ func OAuthCallback(c *gin.Context) {
 	email, _ := userInfo["email"].(string)
 	name, _ := userInfo["name"].(string)
 	login, _ := userInfo["login"].(string)
-	
+
 	username := login
 	if username == "" {
 		username = name

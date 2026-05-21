@@ -137,8 +137,12 @@ function startOAuthServer() {
             <h1>✓ 授权成功</h1>
             <p>正在返回QIM应用并登录...</p>
             <div class="spinner"></div>
-            <p style="font-size: 12px; color: #999;">请回到QIM应用窗口查看登录状态</p>
+            <p style="font-size: 12px; color: #999;">此窗口将自动关闭</p>
           </div>
+          <script>
+            // 2秒后自动关闭窗口
+            setTimeout(() => window.close(), 2000)
+          </script>
         </body>
         </html>
       `)
@@ -146,12 +150,20 @@ function startOAuthServer() {
       // 发送授权码给前端
       if (mainWindow && !mainWindow.isDestroyed() && code) {
         console.log('发送oauth-callback事件给前端')
+        
+        // 显示应用窗口
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore()
+        }
+        mainWindow.show()
+        mainWindow.focus()
+        
         mainWindow.webContents.send('oauth-callback', {
           code: code,
           state: state,
           provider: savedProvider
         })
-        console.log('已发送授权码，前端应该处理登录')
+        console.log('已发送授权码，应用窗口已显示')
       } else {
         console.error('主窗口不可用或code为空')
         console.log('mainWindow:', mainWindow)
