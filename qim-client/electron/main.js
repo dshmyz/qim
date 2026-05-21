@@ -87,6 +87,9 @@ function startOAuthServer() {
       
       const code = url.searchParams.get('code')
       const state = url.searchParams.get('state')
+      const savedProvider = 'github' // TODO: 从state或其他地方获取
+      
+      console.log('OAuth回调 - code:', code, 'state:', state, 'provider:', savedProvider)
       
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       res.end(`
@@ -114,40 +117,45 @@ function startOAuthServer() {
             }
             h1 { color: #333; margin: 0 0 10px; }
             p { color: #666; }
-            .btn {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 10px 24px;
-              background: #667eea;
-              color: white;
-              text-decoration: none;
-              border-radius: 6px;
-              cursor: pointer;
+            .spinner {
+              margin: 20px auto;
+              width: 40px;
+              height: 40px;
+              border: 4px solid #f3f3f3;
+              border-top: 4px solid #667eea;
+              border-radius: 50%;
+              animation: spin 1s linear infinite;
             }
-            .btn:hover { background: #5a67d8; }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <h1>✓ 授权成功</h1>
-            <p>正在返回QIM应用...</p>
-            <button class="btn" onclick="window.close()">返回应用</button>
+            <p>正在返回QIM应用并登录...</p>
+            <div class="spinner"></div>
+            <p style="font-size: 12px; color: #999;">请回到QIM应用窗口查看登录状态</p>
           </div>
-          <script>
-            // 2秒后自动关闭窗口
-            setTimeout(() => window.close(), 2000)
-          </script>
         </body>
         </html>
       `)
       
       // 发送授权码给前端
       if (mainWindow && !mainWindow.isDestroyed() && code) {
+        console.log('发送oauth-callback事件给前端')
         mainWindow.webContents.send('oauth-callback', {
           code: code,
           state: state,
-          provider: 'github'
+          provider: savedProvider
         })
+        console.log('已发送授权码，前端应该处理登录')
+      } else {
+        console.error('主窗口不可用或code为空')
+        console.log('mainWindow:', mainWindow)
+        console.log('code:', code)
       }
     } else {
       res.writeHead(404)

@@ -503,8 +503,11 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
       console.log('启动OAuth回调服务器')
       window.electron.ipcRenderer.send('start-oauth-server')
       
+      // 移除旧监听器避免重复
+      window.electron.ipcRenderer.removeAllListeners('oauth-callback')
+      
       // 监听OAuth回调
-      window.electron.ipcRenderer.on('oauth-callback', async (event: any, data: any) => {
+      window.electron.ipcRenderer.once('oauth-callback', async (event: any, data: any) => {
         console.log('收到OAuth回调:', data)
         await handleOAuthCallback(provider, data.code, state)
       })
