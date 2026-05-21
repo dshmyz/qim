@@ -151,6 +151,14 @@
             <el-icon><Tools /></el-icon>
             <template #title>系统配置</template>
           </el-menu-item>
+          <el-menu-item index="/admin/auth-config" v-permission="'auth:read'">
+            <el-icon><Key /></el-icon>
+            <template #title>认证配置</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/org-sync" v-permission="'org:read'">
+            <el-icon><Connection /></el-icon>
+            <template #title>组织架构同步</template>
+          </el-menu-item>
           <el-menu-item index="/admin/version-management" v-permission="'version:read'">
             <el-icon><Upload /></el-icon>
             <template #title>版本管理</template>
