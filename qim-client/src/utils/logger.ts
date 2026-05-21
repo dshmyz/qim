@@ -15,9 +15,11 @@ class Logger {
   private config: LogConfig
 
   constructor(config: Partial<LogConfig> = {}) {
+    // 开发环境默认 DEBUG，生产环境默认 ERROR（只记录错误）
+    const isDev = import.meta.env.DEV
     this.config = {
-      level: config.level ?? LogLevel.DEBUG,
-      enableConsole: config.enableConsole ?? true,
+      level: config.level ?? (isDev ? LogLevel.DEBUG : LogLevel.ERROR),
+      enableConsole: config.enableConsole ?? isDev,
       prefix: config.prefix ?? '[QIM]'
     }
   }

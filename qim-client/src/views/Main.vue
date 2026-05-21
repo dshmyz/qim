@@ -628,6 +628,7 @@ import type { Conversation, Message, User } from '../types'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import axios from 'axios'
+import { logger } from '../utils/logger'
 const CalendarApp = defineAsyncComponent(() => import('../components/apps/CalendarApp.vue'))
 const StickyNotesApp = defineAsyncComponent(() => import('../components/apps/StickyNotesApp.vue'))
 const NotesApp = defineAsyncComponent(() => import('../components/apps/NotesApp.vue'))
@@ -796,7 +797,7 @@ const {
 
 // 监听用户状态变化并更新会话列表
 const handleUserStatusChange = (data: any) => {
-  console.log('[Main] 收到用户状态变化:', data)
+  logger.log('[Main] 收到用户状态变化:', data)
   const userId = data.user_id || data.userId
   const status = data.status
   if (!userId || !status) return
@@ -1013,14 +1014,14 @@ const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
 const handleConversationSelect = (conversation: Conversation) => {
   const conversationId = String(conversation.id)
   
-  console.log('[Main.vue] handleConversationSelect 被调用', {
+  logger.log('[Main.vue] handleConversationSelect 被调用', {
     conversationId,
     currentConversationId: currentConversationId.value,
     isSameConversation: currentConversationId.value === conversationId
   })
   
   if (currentConversationId.value === conversationId) {
-    console.log('[Main.vue] 相同会话，跳过处理')
+    logger.log('[Main.vue] 相同会话，跳过处理')
     return
   }
   
@@ -1049,7 +1050,7 @@ const handleNotificationClick = (notification: any) => {
 // 重写新通知处理，包含 Main.vue 的特定逻辑
 const handleNewNotification = (notification: any) => {
   _handleNewNotification(notification)
-  console.log('收到新通知:', notification)
+  logger.log('收到新通知:', notification)
 
   showMessage({
     message: notification.content || notification.title || '您有一条新通知',
@@ -1091,7 +1092,7 @@ const loadConversations = async () => {
       updateConversations([])
     }
   } catch (error) {
-    console.error('加载会话失败:', error)
+    logger.error('加载会话失败:', error)
     QMessage.error('加载会话失败')
     // 清空会话列表
     updateConversations([])
@@ -1104,7 +1105,7 @@ const loadOrganizationTree = async () => {
     const response = await request('/api/v1/organization/tree')
     if (response.code === 0) {
       // 处理组织架构数据
-      console.log('组织架构数据:', response.data)
+      logger.log('组织架构数据:', response.data)
       // 将后端返回的数据转换为前端期望的格式
       const convertDepartments = (departments) => {
         return departments.map(dept => ({
@@ -1126,7 +1127,7 @@ const loadOrganizationTree = async () => {
       orgStructure.value = convertDepartments(response.data)
     }
   } catch (error) {
-    console.error('加载组织架构失败:', error)
+    logger.error('加载组织架构失败:', error)
   }
 }
 
@@ -1217,16 +1218,16 @@ onMounted(async () => {
   
   try {
     // ========== 阶段1：核心数据（必须等待，阻塞渲染）==========
-    console.log('[Main] 阶段1: 加载核心数据...')
+    logger.log('[Main] 阶段1: 加载核心数据...')
     await refreshUser()
     await loadConversations()
     
     // 核心数据加载完成，立即展示主界面
     isLoading.value = false
-    console.log('[Main] 核心数据加载完成，主界面已展示')
+    logger.log('[Main] 核心数据加载完成，主界面已展示')
     
     // ========== 阶段2：重要数据（后台并行加载，不阻塞首屏）=========
-    console.log('[Main] 阶段2: 后台加载次要数据...')
+    logger.log('[Main] 阶段2: 后台加载次要数据...')
     Promise.allSettled([
       loadOrganizationTree(),
       loadUserApps(),
@@ -1235,17 +1236,17 @@ onMounted(async () => {
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
           const names = ['组织架构', '用户应用', '内置应用']
-          console.warn(`[Main] ${names[index]}加载失败:`, result.reason)
+          logger.warn(`[Main] ${names[index]}加载失败:`, result.reason)
         }
       })
-      console.log('[Main] 次要数据加载完成')
+      logger.log('[Main] 次要数据加载完成')
     })
     
     // ========== 阶段3：连接与注册（异步执行）==========
     setupPostLoadTasks()
     
   } catch (error) {
-    console.error('[Main] 核心数据加载失败:', error)
+    logger.error('[Main] 核心数据加载失败:', error)
     isLoading.value = false
     showNetworkError.value = true
     networkErrorMsg.value = '核心数据加载失败，请检查网络连接'
@@ -1406,7 +1407,7 @@ const connectWebSocket = () => {
 
 // 处理群聊邀请
 const handleGroupInvitation = (data: any) => {
-  console.log('收到群聊邀请:', data)
+  logger.log('收到群聊邀请:', data)
   // 显示群聊邀请通知
   showMessage({
     message: `您收到了加入群聊 "${data.group_name}" 的邀请`,
@@ -1420,7 +1421,7 @@ const handleGroupInvitation = (data: any) => {
 
 // 处理被添加到群聊
 const handleAddedToGroup = (data: any) => {
-  console.log('被添加到群聊:', data)
+  logger.log('被添加到群聊:', data)
   
   // 构建群聊会话对象
   const groupConversation = {
@@ -1454,7 +1455,7 @@ const handleAddedToGroup = (data: any) => {
 
 // 处理成员退出群聊
 const handleGroupMemberLeft = (data: any) => {
-  console.log('成员退出群聊:', data)
+  logger.log('成员退出群聊:', data)
   
   const conversationId = data.conversation_id.toString()
   const userId = data.user_id.toString()
@@ -1470,7 +1471,7 @@ const handleGroupMemberLeft = (data: any) => {
 
 // 处理成员加入群聊
 const handleGroupMemberJoined = (data: any) => {
-  console.log('成员加入群聊:', data)
+  logger.log('成员加入群聊:', data)
 
   const conversationId = data.conversation_id.toString()
   const newMember = data.member
@@ -1506,7 +1507,7 @@ const handleGroupMemberJoined = (data: any) => {
 
 // 处理系统消息
 const handleSystemMessage = (data: any) => {
-  console.log('收到系统消息:', data)
+  logger.log('收到系统消息:', data)
   
   // 显示系统消息通知
   showMessage({
@@ -1540,7 +1541,7 @@ const handleSystemMessage = (data: any) => {
 
 // 处理消息删除
 const handleMessageDeleted = (data: any) => {
-  console.log('消息被删除:', data)
+  logger.log('消息被删除:', data)
   // 从消息列表中移除被删除的消息
   const index = messages.value.findIndex(msg => msg.id === data.message_id)
   if (index !== -1) {
@@ -1550,7 +1551,7 @@ const handleMessageDeleted = (data: any) => {
 
 // 处理通知
 const handleNotification = (data: any) => {
-  console.log('收到通知:', data)
+  logger.log('收到通知:', data)
   showMessage({
     message: data.content,
     type: 'info',
@@ -1576,10 +1577,10 @@ const handleNotification = (data: any) => {
 
 // 处理会话更新
 const handleConversationUpdated = (data: any) => {
-  console.log('会话更新:', data)
+  logger.log('会话更新:', data)
   
   if (!data || !data.id) {
-    console.warn('会话更新数据无效:', data)
+    logger.warn('会话更新数据无效:', data)
     return
   }
   
@@ -1591,14 +1592,14 @@ const handleConversationUpdated = (data: any) => {
     }
     chatStore.patchConversation(normalizedData.id, normalizedData)
   } catch (error) {
-    console.error('处理会话更新失败:', error)
+    logger.error('处理会话更新失败:', error)
     QMessage.error('处理会话更新失败')
   }
 }
 
 // 处理群公告更新
 const handleGroupAnnouncementUpdated = (data: any) => {
-  console.log('群公告更新:', data)
+  logger.log('群公告更新:', data)
 
   const conversationId = data.conversation_id.toString()
   const newAnnouncement = data.announcement || ''
@@ -1628,7 +1629,7 @@ const handleGroupAnnouncementUpdated = (data: any) => {
 
 // 处理群成员角色更新
 const handleGroupMemberRoleUpdated = (data: any) => {
-  console.log('群成员角色更新:', data)
+  logger.log('群成员角色更新:', data)
   const conversationId = data.conversation_id.toString()
   const userId = data.user_id.toString()
   const role = data.role
@@ -1639,7 +1640,7 @@ const handleGroupMemberRoleUpdated = (data: any) => {
 
 // 处理群主转让
 const handleGroupOwnerTransferred = (data: any) => {
-  console.log('群主转让:', data)
+  logger.log('群主转让:', data)
   const conversationId = data.conversation_id.toString()
   
   // 使用 Store Action 更新角色
@@ -1664,7 +1665,7 @@ const handleReadReceipt = (data: any) => {
   // 使用 Store Action 更新会话未读数
   chatStore.markConversationRead(convIdStr)
   
-  console.log('处理已读回执，会话:', convIdStr, '用户:', user_id)
+  logger.log('处理已读回执，会话:', convIdStr, '用户:', user_id)
 }
 
 // 处理消息撤回
@@ -1672,7 +1673,7 @@ const handleMessageRecalled = (data: any) => {
   const messageId = data.id.toString()
   const conversationId = data.conversation_id.toString()
   
-  console.log('收到消息撤回通知:', data)
+  logger.log('收到消息撤回通知:', data)
   
   // Store Action 更新消息状态，watch 会自动同步
   chatStore.recallMessage(conversationId, messageId)
@@ -1720,14 +1721,14 @@ const handleNewMessage = (msg: any) => {
   const isCurrentConv = currentConversationId.value === conversationId
   
   if (data.ai_type === 'avatar') {
-    console.log('[AVATAR DEBUG] raw data:', JSON.stringify({
+    logger.log('[AVATAR DEBUG] raw data:', JSON.stringify({
       sender_id: data.sender_id,
       sender_id_type: typeof data.sender_id,
       sender: data.sender ? { id: data.sender.id, name: data.sender.name, nickname: data.sender.nickname } : null,
       ai_type: data.ai_type,
       conversation_id: data.conversation_id,
     }))
-    console.log('[AVATAR DEBUG] processed:', {
+    logger.log('[AVATAR DEBUG] processed:', {
       isSelf: newMessage.isSelf,
       senderId: newMessage.sender.id,
       currentUserId: currentUser.value?.id,
@@ -1846,7 +1847,7 @@ const playMessageSound = () => {
     oscillator.start(audioContext.currentTime)
     oscillator.stop(audioContext.currentTime + 0.1)
   } catch (error) {
-    console.error('播放消息提示音失败:', error)
+    logger.error('播放消息提示音失败:', error)
   }
 }
 
@@ -1916,7 +1917,7 @@ const handleSearch = async (query) => {
       searchResults.value = response.data || []
     }
   } catch (error) {
-    console.error('搜索失败:', error)
+    logger.error('搜索失败:', error)
   } finally {
     isSearching.value = false
   }
@@ -1958,7 +1959,7 @@ const handleApplyJoinGroup = async (item) => {
       QMessage.error(response.message || '申请加入失败')
     }
   } catch (error) {
-    console.error('申请加入群组失败:', error)
+    logger.error('申请加入群组失败:', error)
     QMessage.error('网络错误，申请加入失败')
   }
 }
@@ -2051,7 +2052,7 @@ const processMessage = (msg: any, conversationId?: string) => {
     try {
       messageObj.miniAppData = JSON.parse(msg.content)
     } catch (e) {
-      console.error('解析小程序数据失败:', e)
+      logger.error('解析小程序数据失败:', e)
     }
   }
   
@@ -2060,7 +2061,7 @@ const processMessage = (msg: any, conversationId?: string) => {
     try {
       messageObj.newsData = JSON.parse(msg.content)
     } catch (e) {
-      console.error('解析资讯数据失败:', e)
+      logger.error('解析资讯数据失败:', e)
     }
   }
   
@@ -2135,7 +2136,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       
       // 标记已读为非阻塞操作，不等待完成即显示消息
       markMessagesAsRead(conversationId).catch((error: any) => {
-        console.error('标记消息已读失败:', error)
+        logger.error('标记消息已读失败:', error)
       })
     } else {
       if (reset) {
@@ -2144,7 +2145,7 @@ const loadMessages = async (conversationId: string, reset: boolean = true) => {
       hasMoreMessages.value = false
     }
   } catch (error) {
-    console.error('加载消息失败:', error)
+    logger.error('加载消息失败:', error)
     QMessage.error('加载消息失败')
     if (reset) {
       chatStore.clearMessages(conversationId)
@@ -2164,7 +2165,7 @@ const getMessageReadUsers = async (messageId: string) => {
     }
     return { read_users: [], total_members: 0 }
   } catch (error) {
-    console.error('获取已读用户列表失败:', error)
+    logger.error('获取已读用户列表失败:', error)
     QMessage.error('获取已读用户列表失败')
     return { read_users: [], total_members: 0 }
   }
@@ -2186,7 +2187,7 @@ const handleSendMessage = async (messageData: any) => {
     return
   }
   
-  console.log('发送消息时的原始数据:', messageData)
+  logger.log('发送消息时的原始数据:', messageData)
   
   // 检查WebSocket连接状态
   const isWebSocketConnected = isConnected.value
@@ -2236,7 +2237,7 @@ const handleSendMessage = async (messageData: any) => {
     // 只有当有引用消息时才添加quoted_message_id
     if (messageData.quotedMessage && messageData.quotedMessage.id) {
       requestData.quoted_message_id = parseInt(messageData.quotedMessage.id)
-      console.log('添加引用消息ID:', requestData.quoted_message_id)
+      logger.log('添加引用消息ID:', requestData.quoted_message_id)
     }
     
     // 添加文件消息和图片消息的额外字段
@@ -2248,14 +2249,14 @@ const handleSendMessage = async (messageData: any) => {
     // 添加@提及用户ID
     if (messageData.mentionUserIds && Array.isArray(messageData.mentionUserIds)) {
       requestData.mention_user_ids = messageData.mentionUserIds
-      console.log('添加@提及用户ID:', requestData.mention_user_ids)
+      logger.log('添加@提及用户ID:', requestData.mention_user_ids)
     }
     
-    console.log('发送消息的请求数据:', requestData)
+    logger.log('发送消息的请求数据:', requestData)
     
     // 如果WebSocket连接断开，直接标记消息为发送失败
     if (!isWebSocketConnected) {
-      console.error('WebSocket连接已断开，消息发送失败')
+      logger.error('WebSocket连接已断开，消息发送失败')
       showMessage({ message: '网络连接已断开，消息发送失败', type: 'error' })
       
       // 创建发送失败的消息对象
@@ -2281,7 +2282,7 @@ const handleSendMessage = async (messageData: any) => {
         originalData: messageData
       }
       
-      console.log('添加发送失败的消息:', failedMessage)
+      logger.log('添加发送失败的消息:', failedMessage)
       
       // 使用 Store 方法添加消息和更新会话
       chatStore.receiveMessage(conversationId, failedMessage as any, true)
@@ -2303,7 +2304,7 @@ const handleSendMessage = async (messageData: any) => {
         body: JSON.stringify(requestData)
       })
       
-      console.log('发送消息的响应:', response)
+      logger.log('发送消息的响应:', response)
       
       if (response.code === 0) {
         // 直接使用客户端的引用消息数据，确保引用消息能正确显示
@@ -2327,7 +2328,7 @@ const handleSendMessage = async (messageData: any) => {
           newsData: newsData
         }
         
-        console.log('添加到消息列表的新消息:', newMessage)
+        logger.log('添加到消息列表的新消息:', newMessage)
         
         // 使用 Store 方法添加消息和更新会话
         chatStore.receiveMessage(conversationId, newMessage as any, true)
@@ -2339,7 +2340,7 @@ const handleSendMessage = async (messageData: any) => {
         // 播放消息发送成功的提示音
         // 发送方不需要播放提示音
       } else {
-        console.error('发送消息失败:', response.message)
+        logger.error('发送消息失败:', response.message)
         
         // 根据响应码给出更友好的提示
         let errorMessage = '消息发送失败'
@@ -2379,14 +2380,14 @@ const handleSendMessage = async (messageData: any) => {
         originalData: messageData
       }
         
-        console.log('添加发送失败的消息:', failedMessage)
+        logger.log('添加发送失败的消息:', failedMessage)
         
         // 使用 Store 方法添加消息和更新会话
         chatStore.receiveMessage(conversationId, failedMessage as any, true)
       }
     }
   } catch (error: any) {
-    console.error('发送消息失败:', error)
+    logger.error('发送消息失败:', error)
     
     // 根据错误类型给出更友好的提示
     let errorMessage = '消息发送失败'
@@ -2469,7 +2470,7 @@ const handleSendMessage = async (messageData: any) => {
       originalData: messageData
     }
     
-    console.log('添加发送失败的消息:', failedMessage)
+    logger.log('添加发送失败的消息:', failedMessage)
     
     // 使用 Store 方法添加消息和更新会话
     if (currentConversationId.value) {
@@ -2486,7 +2487,7 @@ const handleRecallMessage = async (messageId: number) => {
       chatStore.recallMessage(currentConversationId.value, messageId.toString())
     }
   } catch (error) {
-    console.error('撤回消息失败:', error)
+    logger.error('撤回消息失败:', error)
     QMessage.error('撤回消息失败')
   }
 }
@@ -2594,7 +2595,7 @@ const handleStreamMessage = async (conversationId: string, requestData: any, mes
     }
     
   } catch (error) {
-    console.error('流式消息处理失败:', error)
+    logger.error('流式消息处理失败:', error)
     showMessage({ message: '消息发送失败: ' + (error as Error).message, type: 'error' })
   }
 }
@@ -2607,7 +2608,7 @@ const handleLoadMore = (conversationId: string) => {
 
 // 处理重新发送失败的消息
 const handleRetrySendMessage = (failedMessage: any) => {
-  console.log('重新发送失败消息:', failedMessage)
+  logger.log('重新发送失败消息:', failedMessage)
   
   // 从消息列表中移除失败的消息
   const messageIndex = messages.value.findIndex(msg => msg.id === failedMessage.id)
@@ -2625,13 +2626,13 @@ const handleRetrySendMessage = (failedMessage: any) => {
 
 // 处理屏幕共享开始
 const handleScreenShareStart = (data: { conversationId: number; userId: number }) => {
-  console.log('===== 屏幕共享已开始 =====', data)
+  logger.log('===== 屏幕共享已开始 =====', data)
   // 不需要发送消息，请求已经由 ScreenShare 组件内部发送
 }
 
 // 处理屏幕共享停止
 const handleScreenShareStop = (data: { conversationId: number }) => {
-  console.log('发送屏幕共享停止:', data)
+  logger.log('发送屏幕共享停止:', data)
   sendMessage({
     type: 'screen-share-stop',
     data: data
@@ -2640,7 +2641,7 @@ const handleScreenShareStop = (data: { conversationId: number }) => {
 
 // 处理屏幕共享数据
 const handleScreenShareData = (data: { conversationId: number; data: string }) => {
-  // console.log('发送屏幕共享数据:', data)
+  // logger.log('发送屏幕共享数据:', data)
   sendMessage({
     type: 'screen-share.data',
     data: data
@@ -2748,7 +2749,7 @@ const startPrivateChat = async (user: any) => {
       loadMessages(response.data.id.toString())
     }
   } catch (error) {
-    console.error('创建私聊失败:', error)
+    logger.error('创建私聊失败:', error)
     QMessage.error('创建私聊失败')
     // 模拟创建会话（当API调用失败时）
     activeOption.value = 'recent'
@@ -2845,7 +2846,7 @@ const handleAvatarChange = async (event: Event) => {
         showMessage({ message: '文件上传失败: ' + response.message, type: 'error' })
       }
     } catch (error) {
-      console.error('头像上传失败:', error)
+      logger.error('头像上传失败:', error)
       showMessage({ message: '头像上传失败: ' + error.message, type: 'error' })
     }
   }
@@ -2897,7 +2898,7 @@ const saveUserProfile = async (profile: any) => {
       showMessage({ message: '保存失败: ' + response.message, type: 'error' })
     }
   } catch (error) {
-    console.error('保存用户资料失败:', error)
+    logger.error('保存用户资料失败:', error)
     showMessage({ message: '保存失败: ' + error.message, type: 'error' })
   }
 }
@@ -2944,7 +2945,7 @@ const loadRecentApps = () => {
       return JSON.parse(storedRecentApps)
     }
   } catch (error) {
-    console.error('加载最近使用的应用失败:', error)
+    logger.error('加载最近使用的应用失败:', error)
     QMessage.error('加载最近使用的应用失败')
   }
   // 默认最近使用的应用为空
@@ -3016,7 +3017,7 @@ const loadBuiltInApps = async () => {
       builtInApps.value = response.data || []
     }
   } catch (error) {
-    console.error('加载内置应用失败:', error)
+    logger.error('加载内置应用失败:', error)
     // 如果加载失败，使用默认的内置应用（硬编码的列表不受影响）
     builtInApps.value = []
   }
@@ -3088,7 +3089,7 @@ const loadUserApps = async () => {
       }))
     }
   } catch (error) {
-    console.error('加载用户应用失败:', error)
+    logger.error('加载用户应用失败:', error)
   }
 }
 
@@ -3116,7 +3117,7 @@ const loadApps = async () => {
       apps.value = response.data.data
     }
   } catch (error) {
-    console.error('加载应用失败:', error)
+    logger.error('加载应用失败:', error)
     QMessage.error('加载应用失败，请稍后重试')
   }
 }
@@ -3135,7 +3136,7 @@ const createApp = async () => {
       showMessage({ message: '应用创建成功', type: 'success' })
     }
   } catch (error) {
-    console.error('创建应用失败:', error)
+    logger.error('创建应用失败:', error)
     QMessage.error('创建应用失败，请稍后重试')
   }
 }
@@ -3157,7 +3158,7 @@ const updateApp = async () => {
       showMessage({ message: '应用更新成功', type: 'success' })
     }
   } catch (error) {
-    console.error('更新应用失败:', error)
+    logger.error('更新应用失败:', error)
     QMessage.error('更新应用失败，请稍后重试')
   }
 }
@@ -3176,7 +3177,7 @@ const deleteApp = async (appId: string) => {
         showMessage({ message: '应用删除成功', type: 'success' })
       }
     } catch (error) {
-      console.error('删除应用失败:', error)
+      logger.error('删除应用失败:', error)
       QMessage.error('删除应用失败，请稍后重试')
     }
   }
@@ -3263,7 +3264,7 @@ const resolveAppId = (app: { code?: string; name?: string; id?: string | number 
 }
 
 const openApp = async (appId: string) => {
-  console.log('打开应用:', appId)
+  logger.log('打开应用:', appId)
 
   // 查找应用信息
   let appName = ''
@@ -3295,46 +3296,46 @@ const openApp = async (appId: string) => {
   // 通过 code 解析为前端组件 ID
   const resolvedId = appCode ? resolveAppId({ code: appCode, name: appName }) : null
   if (resolvedId) {
-    console.log('内置应用 code 映射:', appCode, '→', resolvedId)
+    logger.log('内置应用 code 映射:', appCode, '→', resolvedId)
     selectedAppId.value = resolvedId
     return
   }
 
   // 特殊处理短链接应用（兼容直接 ID 传入）
   if (appId === 'short-link') {
-    console.log('打开短链接管理应用')
+    logger.log('打开短链接管理应用')
     selectedAppId.value = 'short-link'
     return
   }
 
   // 特殊处理小程序
   if (appId === 'mini-app') {
-    console.log('打开小程序面板')
+    logger.log('打开小程序面板')
     showMiniAppList.value = true
     return
   }
 
   // 检查应用是否有URL
   if (appUrl) {
-    console.log('打开带URL的应用:', appName, appUrl, 'openType:', openType)
+    logger.log('打开带URL的应用:', appName, appUrl, 'openType:', openType)
 
     // 根据openType决定如何打开应用
     if (openType === 'external') {
       // 使用默认浏览器打开
-      console.log('使用默认浏览器打开应用:', appUrl)
+      logger.log('使用默认浏览器打开应用:', appUrl)
       if (typeof window !== 'undefined') {
         try {
           // 检查是否在Electron环境中
           if (window.electron && window.electron.shell && typeof window.electron.shell.openExternal === 'function') {
-            console.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
+            logger.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
             window.electron.shell.openExternal(appUrl)
           } else {
             // 在普通浏览器环境中，使用window.open
-            console.log('使用window.open打开链接')
+            logger.log('使用window.open打开链接')
             window.open(appUrl, '_blank', 'noopener,noreferrer')
           }
         } catch (error) {
-          console.error('打开外部应用失败:', error)
+          logger.error('打开外部应用失败:', error)
           QMessage.error('打开外部应用失败')
           // 作为后备，使用window.open在新窗口打开
           window.open(appUrl, '_blank', 'noopener,noreferrer')
@@ -3342,7 +3343,7 @@ const openApp = async (appId: string) => {
       }
     } else {
       // 在应用内打开
-      console.log('在应用内打开:', appName, appUrl)
+      logger.log('在应用内打开:', appName, appUrl)
       selectedAppId.value = 'user-app'
       currentUserApp.value = {
         id: appId,
@@ -3350,8 +3351,8 @@ const openApp = async (appId: string) => {
         icon: appIcon,
         url: appUrl
       }
-      console.log('设置selectedAppId:', selectedAppId.value)
-      console.log('设置currentUserApp:', currentUserApp.value)
+      logger.log('设置selectedAppId:', selectedAppId.value)
+      logger.log('设置currentUserApp:', currentUserApp.value)
     }
   } else {
     // 没有URL的应用，按原来的方式处理
@@ -3363,7 +3364,7 @@ const openApp = async (appId: string) => {
 
 // 打开用户创建的应用
 const openUserApp = (app: any) => {
-  console.log('打开用户创建的应用:', app)
+  logger.log('打开用户创建的应用:', app)
 
   // 记录最近使用的应用
   if (app.name && app.icon) {
@@ -3373,7 +3374,7 @@ const openUserApp = (app: any) => {
   // 通过 code 解析为内置应用
   const resolvedId = app.code ? resolveAppId(app) : null
   if (resolvedId) {
-    console.log('用户应用 code 映射为内置应用:', app.code, '→', resolvedId)
+    logger.log('用户应用 code 映射为内置应用:', app.code, '→', resolvedId)
     selectedAppId.value = resolvedId
     return
   }
@@ -3383,27 +3384,27 @@ const openUserApp = (app: any) => {
 
   if (openType === 'external') {
     // 外链应用：使用默认浏览器打开
-    console.log('使用默认浏览器打开外链应用:', app.url)
+    logger.log('使用默认浏览器打开外链应用:', app.url)
     if (app.url) {
       try {
         // 检查是否在Electron环境中
         if (window.electron && window.electron.shell && typeof window.electron.shell.openExternal === 'function') {
-          console.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
+          logger.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
           window.electron.shell.openExternal(app.url)
         } else {
           // 在普通浏览器环境中，使用window.open
-          console.log('使用window.open打开链接')
+          logger.log('使用window.open打开链接')
           window.open(app.url, '_blank', 'noopener,noreferrer')
         }
       } catch (error) {
-        console.error('打开外部应用失败:', error)
+        logger.error('打开外部应用失败:', error)
         QMessage.error('打开外部应用失败')
         window.open(app.url, '_blank', 'noopener,noreferrer')
       }
     }
   } else {
     // 内嵌应用：在软件内部打开
-    console.log('在应用内打开内嵌应用:', app.name, app.url)
+    logger.log('在应用内打开内嵌应用:', app.name, app.url)
     selectedAppId.value = 'user-app'
     currentUserApp.value = app
   }
@@ -3417,7 +3418,7 @@ const handleOpenUserApp = (event: any) => {
 
 // 打开外部应用
 const openExternalApp = (url: string) => {
-  console.log('打开外部链接:', url)
+  logger.log('打开外部链接:', url)
   
   // 查找外部应用信息
   let appName = ''
@@ -3443,15 +3444,15 @@ const openExternalApp = (url: string) => {
     try {
       // 检查是否在Electron环境中
       if (window.electron && window.electron.shell && typeof window.electron.shell.openExternal === 'function') {
-        console.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
+        logger.log('使用Electron shell.openExternal打开链接（系统默认浏览器）')
         window.electron.shell.openExternal(url)
       } else {
         // 在非Electron环境中，使用新窗口打开
-        console.log('使用window.open打开链接（新窗口）')
+        logger.log('使用window.open打开链接（新窗口）')
         window.open(url, '_blank', 'noopener,noreferrer')
       }
     } catch (error) {
-      console.error('打开外部链接失败:', error)
+      logger.error('打开外部链接失败:', error)
       QMessage.error('打开外部链接失败')
       // 出错时回退到使用新窗口打开
       window.open(url, '_blank', 'noopener,noreferrer')
@@ -3575,7 +3576,7 @@ const sendSystemMessage = async (msg: { title: string; content: string; target: 
       showMessage({ message: '系统消息发布失败: ' + response.data.message, type: 'error' })
     }
   } catch (error: any) {
-    console.error('发布系统消息失败:', error)
+    logger.error('发布系统消息失败:', error)
     const errMsg = error.response?.data?.message || '网络异常'
     showMessage({ message: '系统消息发布失败: ' + errMsg, type: 'error' })
   }
@@ -3619,7 +3620,7 @@ const handleCreateChannelSubmit = async () => {
       QMessage.error(response.message || '创建频道失败')
     }
   } catch (error) {
-    console.error('创建频道失败:', error)
+    logger.error('创建频道失败:', error)
     const errorMessage = error instanceof Error ? error.message : '创建频道失败'
     QMessage.error(errorMessage)
   }
@@ -3656,7 +3657,7 @@ const handleMessageLike = async (message: any) => {
       QMessage.success('点赞成功')
     }
   } catch (error) {
-    console.error('点赞失败:', error)
+    logger.error('点赞失败:', error)
     QMessage.error('点赞失败')
   }
 }
@@ -3670,7 +3671,7 @@ const handleMessageUnlike = async (message: any) => {
       QMessage.success('取消点赞')
     }
   } catch (error) {
-    console.error('取消点赞失败:', error)
+    logger.error('取消点赞失败:', error)
     QMessage.error('取消点赞失败')
   }
 }
@@ -3685,9 +3686,9 @@ const handleMessageCopyLink = async (message: any) => {
     const url = `${window.location.origin}/channels/${message.channel_id}/messages/${message.id}`
     await navigator.clipboard.writeText(url)
     QMessage.success('链接已复制到剪贴板')
-    console.log('复制消息链接:', message)
+    logger.log('复制消息链接:', message)
   } catch (error) {
-    console.error('复制链接失败:', error)
+    logger.error('复制链接失败:', error)
     QMessage.error('复制链接失败')
   }
 }
@@ -3696,7 +3697,7 @@ const createDiscussionGroup = () => {
   hideActionMenu()
   // 打开创建群聊模态框，类型为讨论组
   openCreateGroupModal('discussion')
-  console.log('创建讨论组')
+  logger.log('创建讨论组')
 }
 
 const viewUserProfile = () => {
@@ -3847,7 +3848,7 @@ const updateAISettings = async (settings: any) => {
       QMessage.error(response.message || '更新 AI 设置失败')
     }
   } catch (error: any) {
-    console.error('更新 AI 设置失败:', error)
+    logger.error('更新 AI 设置失败:', error)
     QMessage.error('网络错误，更新 AI 设置失败')
   }
 }
@@ -3873,7 +3874,7 @@ const removeMemberFromGroup = async () => {
         QMessage.error(response.message || '移除成员失败')
       }
     } catch (error) {
-      console.error('移除成员失败:', error)
+      logger.error('移除成员失败:', error)
       QMessage.error('网络错误，移除成员失败')
     }
   }
@@ -3907,7 +3908,7 @@ const viewMemberInfo = async () => {
         QMessage.error('获取用户信息失败')
       }
     } catch (error) {
-      console.error('获取用户信息失败:', error)
+      logger.error('获取用户信息失败:', error)
       QMessage.error('获取用户信息失败')
     }
   }
@@ -3991,18 +3992,18 @@ const handleSwitchApp = (app) => {
     const resolvedId = resolveAppId(app)
     if (resolvedId) {
       selectedAppId.value = resolvedId
-      console.log('切换到内置应用:', app.code, '→', resolvedId)
+      logger.log('切换到内置应用:', app.code, '→', resolvedId)
       return
     }
   }
 
   selectedAppId.value = app
-  console.log('切换到应用:', app)
+  logger.log('切换到应用:', app)
 }
 
 // 处理语音通话
 const handleStartVoiceCall = async () => {
-  console.log('Main: 开始语音通话')
+  logger.log('Main: 开始语音通话')
   if (realtimeRef.value) {
     await realtimeRef.value.startCall('voice')
   } else {
@@ -4012,7 +4013,7 @@ const handleStartVoiceCall = async () => {
 
 // 处理视频通话
 const handleStartVideoCall = async () => {
-  console.log('Main: 开始视频通话')
+  logger.log('Main: 开始视频通话')
   if (realtimeRef.value) {
     await realtimeRef.value.startCall('video')
   } else {
@@ -4022,7 +4023,7 @@ const handleStartVideoCall = async () => {
 
 // 处理屏幕共享
 const handleStartScreenShare = async () => {
-  console.log('Main: 开始屏幕共享')
+  logger.log('Main: 开始屏幕共享')
   if (realtimeRef.value) {
     await realtimeRef.value.startScreenShare()
   } else {
@@ -4089,7 +4090,7 @@ const loadShareUsersAndGroups = async () => {
       }))
     }
   } catch (error) {
-    console.error('加载分享数据失败:', error)
+    logger.error('加载分享数据失败:', error)
     QMessage.error('加载分享数据失败')
   }
 }
@@ -4107,7 +4108,7 @@ const buildFileContent = (file: any): string => {
 const handleShareConfirm = async (selection) => {
   try {
     const { users, groups } = selection
-    console.log('分享数据:', shareData.value)
+    logger.log('分享数据:', shareData.value)
     // 构建分享消息内容
     let shareContent = ''
     let shareName = ''
@@ -4287,7 +4288,7 @@ const handleShareConfirm = async (selection) => {
       }
     }
   } catch (error) {
-    console.error('分享失败:', error)
+    logger.error('分享失败:', error)
     showMessage({ message: '分享失败', type: 'error' })
   } finally {
     closeShareModal()
@@ -4315,7 +4316,7 @@ const exitGroup = async () => {
           showMessage({ message: '退出群聊失败: ' + response.message, type: 'error' })
         }
       } catch (error) {
-        console.error('退出群聊失败:', error)
+        logger.error('退出群聊失败:', error)
         showMessage({ message: '退出群聊失败，请稍后重试', type: 'error' })
       }
     }
@@ -4396,7 +4397,7 @@ const confirmAddMembers = async (members: any[]) => {
       QMessage.error('添加成员失败: ' + response.message)
     }
   } catch (error: any) {
-    console.error('添加成员失败:', error)
+    logger.error('添加成员失败:', error)
     QMessage.error('添加成员失败，请稍后重试')
   }
 }
@@ -4484,7 +4485,7 @@ const unregisterUpdateEventListeners = () => {
 }
 
 const checkForUpdates = () => {
-  console.log('检查更新')
+  logger.log('检查更新')
   // 显示检查更新对话框
   showUpdateDialog.value = true
   isCheckingUpdate.value = true
@@ -4514,7 +4515,7 @@ const checkForUpdates = () => {
 }
 
 const downloadUpdate = () => {
-  console.log('下载升级')
+  logger.log('下载升级')
   isDownloading.value = true
   downloadProgress.value = 0
   
@@ -4541,7 +4542,7 @@ const downloadUpdate = () => {
 }
 
 const aboutApp = () => {
-  console.log('关于应用')
+  logger.log('关于应用')
   showAboutDialog.value = true
   closeSettingsMenu()
 }
@@ -4554,7 +4555,7 @@ const emit = defineEmits<{
 // 以下函数已从 useUI composable 导入：confirmLogout, cancelLogout, closeUpdateDialog, showThemeMenu, closeThemeMenu, showMoreMenu, closeMoreMenu, closeSettingsModal
 
 const logout = () => {
-  console.log('退出登录')
+  logger.log('退出登录')
   // 显示退出登录确认弹窗
   showLogoutDialog.value = true
   closeSettingsMenu()
@@ -4644,7 +4645,7 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
     await saveSettings()
     closeSettingsModal()
   } catch (error) {
-    console.error('保存设置失败:', error)
+    logger.error('保存设置失败:', error)
     showMessage({ message: '保存失败: ' + error.message, type: 'error' })
   }
 }

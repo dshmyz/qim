@@ -214,6 +214,7 @@ import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
+import { logger } from '../../utils/logger'
 // 大组件懒加载，按需加载减少 chat chunk 体积
 const GroupModals = defineAsyncComponent(() => import('../modals/GroupModals.vue'))
 const AISummaryPanel = defineAsyncComponent(() => import('../ai/AISummaryPanel.vue'))
@@ -249,13 +250,13 @@ const viewerConnection = new RealtimeViewerConnection()
 // 设置观看者连接的回调
 viewerConnection.setCallbacks({
   onRemoteStream: (_stream: MediaStream) => {
-    console.log('ChatWindow: 收到远程流（由 RealtimeCommunication 处理）')
+    logger.log('ChatWindow: 收到远程流（由 RealtimeCommunication 处理）')
   },
   onConnectionStateChange: (state: RTCPeerConnectionState) => {
-    console.log('ChatWindow: WebRTC 连接状态变化', state)
+    logger.log('ChatWindow: WebRTC 连接状态变化', state)
   },
   onError: (error: Error) => {
-    console.error('ChatWindow: WebRTC 连接错误', error)
+    logger.error('ChatWindow: WebRTC 连接错误', error)
   }
 })
 
@@ -555,7 +556,7 @@ const confirmDeleteConversation = async () => {
       $message.error('解散群聊失败: ' + response.message)
     }
   } catch (error) {
-    console.error('解散群聊失败:', error)
+    logger.error('解散群聊失败:', error)
     $message.error('解散群聊失败，请重试')
   }
 }
@@ -669,7 +670,7 @@ const uploadAndSendFile = async (file: File) => {
       }
     }
   } catch (error) {
-    console.error('上传文件失败:', error)
+    logger.error('上传文件失败:', error)
     $message.error('上传文件失败')
   }
 }
@@ -794,7 +795,7 @@ const handleSend = async () => {
     try {
       await uploadAndSendFile(pendingFile.file)
     } catch (error) {
-      console.error('发送文件失败:', error)
+      logger.error('发送文件失败:', error)
       $message.error(`文件 ${pendingFile.name} 发送失败`)
     }
   }
@@ -859,7 +860,7 @@ const handleKeydown = (event: KeyboardEvent) => {
     try {
       handleSend()
     } catch (error) {
-      console.error('发送消息失败:', error)
+      logger.error('发送消息失败:', error)
       $message.error('发送消息失败，请重试')
     }
   }
@@ -889,7 +890,7 @@ const loadMoreMessages = async () => {
     // 通知父组件加载更多消息，使用分页逻辑
     emit('loadMore', props.conversation.id)
   } catch (error) {
-    console.error('加载更多消息失败:', error)
+    logger.error('加载更多消息失败:', error)
   } finally {
     isLoadingMore.value = false
   }
@@ -897,7 +898,7 @@ const loadMoreMessages = async () => {
 
 // 处理标记已读
 const handleMarkRead = () => {
-  console.log('[ChatWindow] handleMarkRead 被调用', {
+  logger.log('[ChatWindow] handleMarkRead 被调用', {
     conversationId: props.conversation?.id
   })
   
@@ -1017,42 +1018,42 @@ onMounted(() => {
 
 // 初始化 WebSocket 消息处理
 const handleRealtimeMessage = (type: string, data: any) => {
-  console.log('ChatWindow: 收到实时消息', type, 'data:', data, 'typeof data:', typeof data)
+  logger.log('ChatWindow: 收到实时消息', type, 'data:', data, 'typeof data:', typeof data)
   
   switch (type) {
     case 'realtime:session:created':
       {
-        console.log('ChatWindow: data 内容:', JSON.stringify(data, null, 2))
+        logger.log('ChatWindow: data 内容:', JSON.stringify(data, null, 2))
         const session = data?.session || data
-        console.log('ChatWindow: 处理 realtime:session:created', session)
+        logger.log('ChatWindow: 处理 realtime:session:created', session)
         
         if (!session) {
-          console.warn('ChatWindow: session 数据为空')
+          logger.warn('ChatWindow: session 数据为空')
           return
         }
         
         realtimeStore.updateSession(session)
         
         const currentUserId = getCurrentUser()?.id
-        console.log('ChatWindow: 当前用户ID', currentUserId, '发起者ID', session.initiator_id)
+        logger.log('ChatWindow: 当前用户ID', currentUserId, '发起者ID', session.initiator_id)
         
         if (session.initiator_id !== currentUserId && session.type === 'screen_share') {
-          console.log('ChatWindow: 设置 remoteScreenUserId', session.initiator_id)
+          logger.log('ChatWindow: 设置 remoteScreenUserId', session.initiator_id)
           remoteScreenUserId.value = session.initiator_id
           const initiatorName = session.initiator?.nickname || `用户 ${session.initiator_id}`
           $message.info(`${initiatorName} 正在共享屏幕`, 5000)
           
           // 自动请求加入会话
-          console.log('ChatWindow: 自动请求加入会话', session.id)
+          logger.log('ChatWindow: 自动请求加入会话', session.id)
           realtimeStore.requestJoin(session.id).catch(err => {
-            console.error('ChatWindow: 请求加入会话失败', err)
+            logger.error('ChatWindow: 请求加入会话失败', err)
           })
         }
       }
       break
     case 'realtime:join:requested':
       {
-        console.log('ChatWindow: 收到加入请求', data)
+        logger.log('ChatWindow: 收到加入请求', data)
         const request = data?.participant || data
         if (request && request.session_id && request.user_id) {
           realtimeStore.addPendingRequest(request)
@@ -1060,13 +1061,13 @@ const handleRealtimeMessage = (type: string, data: any) => {
           // 自动批准屏幕共享的加入请求
           const session = realtimeStore.mySession
           if (session && session.type === 'screen_share') {
-            console.log('ChatWindow: 自动批准屏幕共享加入请求', request.user_id)
+            logger.log('ChatWindow: 自动批准屏幕共享加入请求', request.user_id)
             realtimeStore.approveJoin(request.session_id, request.user_id).then(() => {
               // 批准成功后，创建 WebRTC 连接
-              console.log('ChatWindow: 批准成功，创建 WebRTC 连接')
+              logger.log('ChatWindow: 批准成功，创建 WebRTC 连接')
               connectionManager.createConnectionForViewer(request.user_id)
             }).catch(err => {
-              console.error('ChatWindow: 批准加入失败', err)
+              logger.error('ChatWindow: 批准加入失败', err)
             })
           }
         }
@@ -1074,11 +1075,11 @@ const handleRealtimeMessage = (type: string, data: any) => {
       break
     case 'realtime:join:approved':
       {
-        console.log('ChatWindow: 加入请求被批准', data)
+        logger.log('ChatWindow: 加入请求被批准', data)
         // 加入请求被批准，开始建立连接
         const participant = data?.participant || data
         if (participant && participant.session_id) {
-          console.log('ChatWindow: 开始建立 WebRTC 连接')
+          logger.log('ChatWindow: 开始建立 WebRTC 连接')
           // 设置当前观看的会话
           const session = realtimeStore.activeSessions.find(s => s.id === participant.session_id)
           if (session) {
@@ -1239,7 +1240,7 @@ const scrollToMessage = (messageId: string) => {
   // 先检查消息是否在当前的 props.messages 中
   const targetMessage = props.messages.find(m => String(m.id) === String(messageId))
   if (!targetMessage) {
-    console.warn('目标消息不在当前加载的消息列表中:', messageId)
+    logger.warn('目标消息不在当前加载的消息列表中:', messageId)
     QMessage.info('该消息不在当前可视范围内，请加载更多历史消息后重试')
     closeMessageManager()
     return
@@ -1255,7 +1256,7 @@ const scrollToMessage = (messageId: string) => {
         messageElement.classList.remove('highlighted-message')
       }, 2000)
     } else {
-      console.warn('未找到目标消息 DOM 元素:', messageId)
+      logger.warn('未找到目标消息 DOM 元素:', messageId)
     }
   })
   // 关闭消息管理器
@@ -1353,7 +1354,7 @@ const viewMemberInfo = async () => {
         $message.error('获取用户信息失败')
       }
     } catch (error) {
-      console.error('获取用户信息失败:', error)
+      logger.error('获取用户信息失败:', error)
       $message.error('获取用户信息失败')
     }
   }
@@ -1410,7 +1411,7 @@ const handleSendPrivateMessage = async (user: User | string | number) => {
       emit('switchConversation', response.data.id.toString())
     }
   } catch (error) {
-    console.error('创建私聊失败:', error)
+    logger.error('创建私聊失败:', error)
     $message.error('创建私聊失败，请重试')
   }
   closeUserProfile()
@@ -1440,7 +1441,7 @@ const handleRemoveMember = (memberId: string, memberName: string) => {
         QMessage.error('移除成员失败: ' + response.message)
       }
     } catch (error: any) {
-      console.error('移除成员失败:', error)
+      logger.error('移除成员失败:', error)
       QMessage.error('移除成员失败: ' + error.message)
     }
   })
@@ -1468,7 +1469,7 @@ const handleSetAdmin = (memberId: string, memberName: string, isAdmin: boolean) 
         QMessage.error(`${action}失败: ` + response.message)
       }
     } catch (error: any) {
-      console.error(`${action}失败:`, error)
+      logger.error(`${action}失败:`, error)
       QMessage.error(`${action}失败: ` + error.message)
     }
   })
@@ -1493,7 +1494,7 @@ const handleTransferOwner = (memberId: string, memberName: string) => {
         QMessage.error('群主转让失败: ' + response.message)
       }
     } catch (error: any) {
-      console.error('群主转让失败:', error)
+      logger.error('群主转让失败:', error)
       QMessage.error('群主转让失败: ' + error.message)
     }
   })
@@ -1615,7 +1616,7 @@ const sendMessageReminder = async () => {
       $message.error('发送提醒失败: ' + response.message)
     }
   } catch (error) {
-    console.error('发送提醒失败:', error)
+    logger.error('发送提醒失败:', error)
     $message.error('发送提醒失败: ' + error.message)
   }
   
@@ -1734,7 +1735,7 @@ const createTaskFromMessage = async () => {
     })
     $message.success('已创建为任务')
   } catch (error: any) {
-    console.error('创建任务失败:', error)
+    logger.error('创建任务失败:', error)
     $message.error('创建任务失败: ' + (error.message || '未知错误'))
   }
 
@@ -1781,19 +1782,19 @@ const isElectron = computed(() => {
 const takeScreenshot = () => {
   // 检查是否在Electron环境中
   if (window.electron && window.electron.ipcRenderer) {
-    console.log('[Screenshot] takeScreenshot called')
+    logger.log('[Screenshot] takeScreenshot called')
     
     // 移除所有之前的监听器，确保不会有重复监听
-    console.log('[Screenshot] Removing all previous listeners')
+    logger.log('[Screenshot] Removing all previous listeners')
     window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
 
     try {
       // 定义处理函数
       const screenshotHandler = async (_event: any, imageData: string) => {
-        console.log('[Screenshot] screenshotHandler triggered, imageData exists:', !!imageData)
+        logger.log('[Screenshot] screenshotHandler triggered, imageData exists:', !!imageData)
         
         // 监听器触发后立即移除所有监听器，避免重复触发
-        console.log('[Screenshot] Removing all listeners after trigger')
+        logger.log('[Screenshot] Removing all listeners after trigger')
         window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
         
         // 确保组件仍然挂载
@@ -1802,32 +1803,32 @@ const takeScreenshot = () => {
         try {
           // 处理截图结果
           if (imageData) {
-            console.log('[Screenshot] Processing screenshot, adding to pendingFiles')
+            logger.log('[Screenshot] Processing screenshot, adding to pendingFiles')
             // 将base64转换为File对象并添加到待发送文件列表
             const file = await base64ToFile(imageData, 'screenshot.png')
             pendingFiles.value.push({
               file,
               name: 'screenshot.png'
             })
-            console.log('[Screenshot] Screenshot added to pendingFiles, count:', pendingFiles.value.length)
+            logger.log('[Screenshot] Screenshot added to pendingFiles, count:', pendingFiles.value.length)
           } else {
-            console.log('[Screenshot] User cancelled screenshot')
+            logger.log('[Screenshot] User cancelled screenshot')
           }
         } catch (error) {
-          console.error('[Screenshot] Error processing screenshot:', error)
+          logger.error('[Screenshot] Error processing screenshot:', error)
           $message.error('处理截图失败')
         }
       }
       
-      console.log('[Screenshot] Registering new listener')
+      logger.log('[Screenshot] Registering new listener')
       // 注册新的监听器
       window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
       
-      console.log('[Screenshot] Sending take-screenshot request')
+      logger.log('[Screenshot] Sending take-screenshot request')
       // 发送截图请求到主进程
       window.electron.ipcRenderer.send('take-screenshot')
     } catch (error) {
-      console.error('[Screenshot] Error triggering screenshot:', error)
+      logger.error('[Screenshot] Error triggering screenshot:', error)
       $message.error('截图功能不可用')
     }
   } else {
@@ -1892,7 +1893,7 @@ const uploadScreenshot = async () => {
       $message.error('截图上传失败: 服务器错误')
     }
   } catch (error) {
-    console.error('截图上传失败:', error)
+    logger.error('截图上传失败:', error)
     $message.error('截图上传失败: 网络错误')
   }
 }
@@ -2048,7 +2049,7 @@ const downloadFile = async (fileContent: string, fileName?: string) => {
       $message.success(`文件 ${finalFileName} 已下载到默认目录`)
     }
   } catch (error) {
-    console.error('文件下载失败:', error)
+    logger.error('文件下载失败:', error)
     $message.error('文件下载失败: 网络错误')
   }
 }
@@ -2108,7 +2109,7 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
       $message.success(`文件 ${finalFileName} 已保存`)
     }
   } catch (error) {
-    console.error('文件保存失败:', error)
+    logger.error('文件保存失败:', error)
     $message.error('文件保存失败: 网络错误')
   }
 }

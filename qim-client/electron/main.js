@@ -14,6 +14,26 @@ const { autoUpdater } = pkg
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// 单开实例控制：仅生产环境生效，开发模式允许多开
+if (app.isPackaged) {
+  const gotTheLock = app.requestSingleInstanceLock()
+  if (!gotTheLock) {
+    console.log('应用已在运行，退出当前实例')
+    app.quit()
+    process.exit(0)
+  }
+
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      mainWindow.focus()
+      mainWindow.show()
+    }
+  })
+}
+
 function getIconPath(size = 512) {
   const iconDir = path.join(__dirname, 'icons')
   const iconPath = path.join(iconDir, `icon_${size}x${size}.png`)

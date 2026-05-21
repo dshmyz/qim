@@ -2,20 +2,31 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-export default defineConfig({
-  plugins: [vue()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  },
-  server: {
-    port: 3000,
-    host: true
-  },
-  build: {
-    rollupOptions: {
-      output: {
+export default defineConfig(({ mode }) => {
+  const isProd = mode === 'production'
+
+  return {
+    plugins: [vue()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src')
+      }
+    },
+    server: {
+      port: 3000,
+      host: true
+    },
+    build: {
+      minify: isProd ? 'terser' : false,
+      terserOptions: isProd ? {
+        compress: {
+          drop_console: true,  // 生产环境移除所有 console
+          drop_debugger: true,
+          pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn']
+        }
+      } : undefined,
+      rollupOptions: {
+        output: {
         manualChunks: {
           // Vue 核心框架
           vue: ['vue'],
