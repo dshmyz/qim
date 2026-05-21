@@ -602,3 +602,69 @@ CREATE TABLE IF NOT EXISTS `avatars` (
   INDEX `idx_avatars_user_id` (`user_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Auth providers table
+CREATE TABLE IF NOT EXISTS `auth_providers` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(50) NOT NULL UNIQUE,
+  `type` VARCHAR(20) NOT NULL,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `priority` INT DEFAULT 100,
+  `config` TEXT,
+  `display_name` VARCHAR(100),
+  `icon` VARCHAR(200),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_auth_providers_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- External user mappings table
+CREATE TABLE IF NOT EXISTS `external_user_mappings` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL,
+  `provider_name` VARCHAR(50) NOT NULL,
+  `external_user_id` VARCHAR(200) NOT NULL,
+  `external_username` VARCHAR(200),
+  `external_data` TEXT,
+  `last_sync_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_external_user_mappings_user_id` (`user_id`),
+  INDEX `idx_external_user_mappings_deleted_at` (`deleted_at`),
+  UNIQUE KEY `uk_provider_external` (`provider_name`, `external_user_id`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Org sync configs table
+CREATE TABLE IF NOT EXISTS `org_sync_configs` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(50) NOT NULL UNIQUE,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `sync_type` VARCHAR(20) NOT NULL,
+  `schedule` VARCHAR(100),
+  `config` TEXT,
+  `last_sync_at` DATETIME,
+  `last_sync_status` VARCHAR(20),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_org_sync_configs_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Org sync logs table
+CREATE TABLE IF NOT EXISTS `org_sync_logs` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `config_id` INT UNSIGNED NOT NULL,
+  `status` VARCHAR(20) NOT NULL,
+  `started_at` DATETIME NOT NULL,
+  `finished_at` DATETIME,
+  `stats` TEXT,
+  `error_message` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_org_sync_logs_config_id` (`config_id`),
+  INDEX `idx_org_sync_logs_deleted_at` (`deleted_at`),
+  FOREIGN KEY (`config_id`) REFERENCES `org_sync_configs`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
