@@ -17,7 +17,7 @@
 
       <div v-for="(message, index) in messages" :key="message.id">
         <!-- 时间分隔线 -->
-        <div v-if="shouldShowTimeDivider(index, message, messages)" class="time-divider">
+        <div v-if="timeDividerIndices.has(index)" class="time-divider">
           <span class="time-divider-text">{{ formatTime(message.timestamp) }}</span>
         </div>
 
@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
@@ -98,6 +98,17 @@ const isMounted = ref(false)
 
 let scrollTimeoutId: number | null = null
 let throttleTimeoutId: number | null = null
+
+// 优化：computed 预处理时间分隔位置，避免模板中每次 render 全量计算
+const timeDividerIndices = computed<Set<number>>(() => {
+  const indices = new Set<number>()
+  for (let i = 0; i < props.messages.length; i++) {
+    if (shouldShowTimeDivider(i, props.messages[i], props.messages)) {
+      indices.add(i)
+    }
+  }
+  return indices
+})
 
 const handleScroll = () => {
   if (!messageListRef.value) return

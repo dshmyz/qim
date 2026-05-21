@@ -62,6 +62,12 @@ type Hub struct {
 	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发
 	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
 
+	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
+	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
+
+	// HandleReadMessage 回调：处理 WebSocket 已读消息请求
+	HandleReadMessage func(convID, userID uint) error
+
 	// 并发发送信号量，限制同时发送的 goroutine 数量
 	sendSem chan struct{}
 }
@@ -519,8 +525,6 @@ func (c *Client) writePump() {
 }
 
 func handleSendMessage(c *Client, data interface{}) {
-	db := c.hub.db
-
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
 		return
@@ -531,20 +535,66 @@ func handleSendMessage(c *Client, data interface{}) {
 	msgType, _ := msgData["type"].(string)
 	content, _ := msgData["content"].(string)
 
-	// 处理引用消息ID
 	var quotedMessageID *uint
 	if quotedID, ok := msgData["quoted_message_id"].(float64); ok {
 		quotedIDUint := uint(quotedID)
 		quotedMessageID = &quotedIDUint
 	}
 
-	// 验证是否为会话成员
+	// 统一调用外部注册的 MessageService 处理
+	if c.hub.HandleMessage != nil {
+		msg, err := c.hub.HandleMessage(convID, c.userID, msgType, content, quotedMessageID)
+		if err != nil {
+			return
+		}
+
+		mentions := mention.ExtractMentions(msg.Content)
+		mentionUserIDs := make([]uint, 0, len(mentions))
+		for _, m := range mentions {
+			mentionUserIDs = append(mentionUserIDs, m.UserID)
+		}
+
+		wsMsg := WSMessage{
+			Type: "new_message",
+			Data: map[string]interface{}{
+				"id":                msg.ID,
+				"conversation_id":   msg.ConversationID,
+				"sender_id":         msg.SenderID,
+				"type":              msg.Type,
+				"content":           msg.Content,
+				"quoted_message_id": msg.QuotedMessageID,
+				"is_recalled":       msg.IsRecalled,
+				"is_read":           msg.IsRead,
+				"is_avatar_reply":   msg.AIType == "avatar",
+				"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+				"recalled_at":       msg.RecalledAt,
+				"created_at":        msg.CreatedAt,
+				"sender":            msg.Sender,
+				"quoted_message":    msg.QuotedMessage,
+				"mention_user_ids":  mentionUserIDs,
+			},
+		}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		c.hub.SendToConversation(convID, c.userID, jsonMsg)
+
+		if c.hub.OnMessageSent != nil {
+			utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
+		}
+		return
+	}
+
+	// 降级：无 HandleMessage 时使用原有逻辑（兼容测试场景）
+	fallbackHandleMessage(c, convID, msgType, content, quotedMessageID)
+}
+
+func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quotedMessageID *uint) {
+	db := c.hub.db
+
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
 		return
 	}
 
-	// 创建消息
 	msg := model.Message{
 		ConversationID:  convID,
 		SenderID:        c.userID,
@@ -554,15 +604,12 @@ func handleSendMessage(c *Client, data interface{}) {
 	}
 	db.Create(&msg)
 
-	// 预加载发送者和引用消息
 	db.Preload("Sender").Preload("QuotedMessage").First(&msg, msg.ID)
 
-	// 预加载引用消息的发送者
 	if msg.QuotedMessage != nil {
 		db.Model(&msg.QuotedMessage).Association("Sender").Find(&msg.QuotedMessage.Sender)
 	}
 
-	// 更新会话最后消息
 	now := time.Now()
 	var conv model.Conversation
 	db.First(&conv, convID)
@@ -570,7 +617,6 @@ func handleSendMessage(c *Client, data interface{}) {
 	conv.LastMessageAt = &now
 	db.Save(&conv)
 
-	// 更新未读数
 	db.Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id != ?", convID, c.userID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
@@ -602,19 +648,14 @@ func handleSendMessage(c *Client, data interface{}) {
 		},
 	}
 	jsonMsg, _ := json.Marshal(wsMsg)
-
-	// 推送给会话其他成员
 	c.hub.SendToConversation(convID, c.userID, jsonMsg)
 
-	// 触发智能回复/分身回调
 	if c.hub.OnMessageSent != nil {
 		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
 	}
 }
 
 func handleReadMessage(c *Client, data interface{}) {
-	db := c.hub.db
-
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
 		return
@@ -623,8 +664,19 @@ func handleReadMessage(c *Client, data interface{}) {
 	convIDFloat, _ := msgData["conversation_id"].(float64)
 	convID := uint(convIDFloat)
 
-	// 使用单条 INSERT ... SELECT 语句批量创建已读回执，避免将消息 ID 加载到内存
-	// 根据数据库类型使用不同的语法
+	// 统一调用外部注册的 MarkAsRead 处理
+	if c.hub.HandleReadMessage != nil {
+		c.hub.HandleReadMessage(convID, c.userID)
+		return
+	}
+
+	// 降级：无回调时使用原有逻辑
+	fallbackHandleReadMessage(c, convID)
+}
+
+func fallbackHandleReadMessage(c *Client, convID uint) {
+	db := c.hub.db
+
 	if c.hub.dbType == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
@@ -642,7 +694,6 @@ func handleReadMessage(c *Client, data interface{}) {
 		`, convID, c.userID, time.Now(), convID, c.userID)
 	}
 
-	// 更新成员未读数和最后读取
 	db.Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id = ?", convID, c.userID).
 		Updates(map[string]interface{}{
@@ -650,12 +701,10 @@ func handleReadMessage(c *Client, data interface{}) {
 			"last_read_at": time.Now(),
 		})
 
-	// 标记消息为已读（只标记非自己发送的消息）
 	result := db.Model(&model.Message{}).
 		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, c.userID).
 		UpdateColumn("is_read", true)
 
-	// 只有当确实有消息被标记为已读时，才发送已读回执通知给对方
 	if result.RowsAffected > 0 {
 		var conv model.Conversation
 		db.First(&conv, convID)
@@ -1414,62 +1463,82 @@ func (h *Hub) BroadcastToConversationMembers(userID uint, message []byte) {
 
 // SubscribeUserStatus 订阅用户状态变更
 func (h *Hub) SubscribeUserStatus(subscriberID, targetUserID uint) {
-	h.userSubscribers.Range(func(key, value interface{}) bool {
-		if key.(uint) == targetUserID {
-			subscribers := value.([]uint)
-			for _, sid := range subscribers {
-				if sid == subscriberID {
-					return false
-				}
-			}
-			subscribers = append(subscribers, subscriberID)
-			h.userSubscribers.Store(targetUserID, subscribers)
-			return false
-		}
-		return true
-	})
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	h.userSubscribers.CompareAndSwap(targetUserID, nil, []uint{subscriberID})
+	if existing, ok := h.userSubscribers.Load(targetUserID); ok {
+		subscribers := existing.([]uint)
+		for _, sid := range subscribers {
+			if sid == subscriberID {
+				return // 已订阅，跳过
+			}
+		}
+		subscribers = append(subscribers, subscriberID)
+		h.userSubscribers.Store(targetUserID, subscribers)
+	} else {
+		h.userSubscribers.Store(targetUserID, []uint{subscriberID})
+	}
 }
 
 // UnsubscribeUserStatus 取消订阅用户状态变更
 func (h *Hub) UnsubscribeUserStatus(subscriberID, targetUserID uint) {
-	h.userSubscribers.Range(func(key, value interface{}) bool {
-		if key.(uint) == targetUserID {
-			subscribers := value.([]uint)
-			for i, sid := range subscribers {
-				if sid == subscriberID {
-					subscribers = append(subscribers[:i], subscribers[i+1:]...)
-					if len(subscribers) == 0 {
-						h.userSubscribers.Delete(key)
-					} else {
-						h.userSubscribers.Store(key, subscribers)
-					}
-					return false
-				}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	existing, ok := h.userSubscribers.Load(targetUserID)
+	if !ok {
+		return
+	}
+	subscribers := existing.([]uint)
+	for i, sid := range subscribers {
+		if sid == subscriberID {
+			subscribers = append(subscribers[:i], subscribers[i+1:]...)
+			if len(subscribers) == 0 {
+				h.userSubscribers.Delete(targetUserID)
+			} else {
+				h.userSubscribers.Store(targetUserID, subscribers)
 			}
+			break
 		}
-		return true
-	})
+	}
 }
 
 // CleanupUserSubscriptions 清理用户的所有订阅
 func (h *Hub) CleanupUserSubscriptions(userID uint) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var toDelete []uint
+	var toUpdate []struct {
+		key         uint
+		subscribers []uint
+	}
+
 	h.userSubscribers.Range(func(key, value interface{}) bool {
 		subscribers := value.([]uint)
 		for i, sid := range subscribers {
 			if sid == userID {
-				subscribers = append(subscribers[:i], subscribers[i+1:]...)
-				if len(subscribers) == 0 {
-					h.userSubscribers.Delete(key)
+				newSubs := append(subscribers[:i], subscribers[i+1:]...)
+				if len(newSubs) == 0 {
+					toDelete = append(toDelete, key.(uint))
 				} else {
-					h.userSubscribers.Store(key, subscribers)
+					toUpdate = append(toUpdate, struct {
+						key         uint
+						subscribers []uint
+					}{key.(uint), newSubs})
 				}
 				break
 			}
 		}
 		return true
 	})
+
+	for _, k := range toDelete {
+		h.userSubscribers.Delete(k)
+	}
+	for _, u := range toUpdate {
+		h.userSubscribers.Store(u.key, u.subscribers)
+	}
 }
 
 // handleSubscribeUserStatus 处理订阅用户状态请求

@@ -28,12 +28,22 @@ func SetConfig(c *config.Config) {
 	aiService = ai.NewAIService(&c.AI)
 	di.GlobalContainer.Config = c
 	di.GlobalContainer.AIService = aiService
-	
+
 	if di.GlobalContainer.MessageService != nil {
 		di.GlobalContainer.MessageService.SetAIService(aiService)
 	}
 	if di.GlobalContainer.AvatarService != nil {
 		di.GlobalContainer.AvatarService.SetAIService(aiService)
+	}
+}
+
+// InitWSHandlers 注册 WebSocket 消息处理回调，统一使用 MessageService
+func InitWSHandlers() {
+	if di.GlobalContainer.WebSocketHub != nil && di.GlobalContainer.MessageService != nil {
+		msgSvc := di.GlobalContainer.MessageService
+		di.GlobalContainer.WebSocketHub.HandleMessage = msgSvc.SendMessage
+		di.GlobalContainer.WebSocketHub.HandleReadMessage = msgSvc.MarkAsRead
+		logger.WithModule("Init").Info("WS HandleMessage / HandleReadMessage 已注册到 MessageService")
 	}
 }
 

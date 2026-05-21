@@ -29,6 +29,9 @@ func main() {
 	cfg, db, hub := app.InitApp()
 	defer database.Close(db)
 
+	// 注册 WS 消息处理回调，统一使用 MessageService
+	handler.InitWSHandlers()
+
 	// 启动群聊总结定时任务
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

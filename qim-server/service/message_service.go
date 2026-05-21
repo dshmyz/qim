@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -155,13 +156,27 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 
 	utils.SafeGo(func() {
 		var builder strings.Builder
-		err := s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
-			builder.WriteString(chunk.Content)
-			return nil
-		})
+		done := make(chan struct{})
+		var streamErr error
+
+		go func() {
+			streamErr = s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
+				builder.WriteString(chunk.Content)
+				return nil
+			})
+			close(done)
+		}()
+
+		// 超时保护：AI 调用最长 60 秒
+		select {
+		case <-done:
+			// 正常完成
+		case <-time.After(60 * time.Second):
+			streamErr = fmt.Errorf("AI 响应超时")
+		}
 
 		response := builder.String()
-		if err != nil {
+		if streamErr != nil {
 			response = "抱歉，AI 服务暂时不可用，请稍后再试。"
 		}
 
