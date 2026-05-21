@@ -68,12 +68,14 @@ func Login(c *gin.Context) {
 	var user model.User
 	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found")
+		middleware.RecordLoginFailure(ip)
 		response.Unauthorized(c, "用户名或密码错误")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "invalid password")
+		middleware.RecordLoginFailure(ip)
 		response.Unauthorized(c, "用户名或密码错误")
 		return
 	}

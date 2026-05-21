@@ -246,6 +246,7 @@ export interface SystemConfig {
   enableFileUpload: boolean
   enableAI: boolean
   enableReadReceipt: boolean
+  allowedFileTypes: string[]
 }
 
 // 版本管理相关

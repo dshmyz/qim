@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"qim-server/ai"
@@ -29,6 +31,7 @@ func GetAIService() *ai.AIService {
 // SetupRoutes 设置 API 路由
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.SetConfig(cfg)
+	ws.SetAllowedOrigins(cfg.WS.AllowedOrigins)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -168,11 +171,21 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	rateLimiter := middleware.NewIPRateLimiter(500, time.Minute)
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
 
-	// 静态文件服务（带缓存头）
+	// 静态文件服务（带缓存头 + 路径遍历防护）
 	r.GET("/uploads/*filepath", func(c *gin.Context) {
-		filepath := c.Param("filepath")
+		fp := c.Param("filepath")
+		if strings.Contains(fp, "..") {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		baseDir := "./uploads"
+		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
+		if !strings.HasPrefix(cleanPath, baseDir) {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
 		c.Header("Cache-Control", "public, max-age=86400")
-		c.File("./uploads" + filepath)
+		c.File(cleanPath)
 	})
 	r.Static("/miniprograms", "./static/miniprograms")
 
@@ -187,10 +200,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	{
 		// 认证路由
 		auth := api.Group("/auth")
+		loginLimiter := middleware.NewLoginLimiter(5, time.Minute, 15*time.Minute)
+		middleware.SetGlobalLoginLimiter(loginLimiter)
 		{
-			auth.POST("/login", handler.Login)
+			auth.POST("/login", middleware.LoginRateLimitMiddleware(loginLimiter), handler.Login)
 			auth.POST("/register", handler.Register)
-			auth.POST("/2fa/verify", handler.VerifyTwoFA)
+			auth.POST("/2fa/verify", middleware.LoginRateLimitMiddleware(loginLimiter), handler.VerifyTwoFA)
 			auth.POST("/check-2fa", handler.CheckTwoFAStatus)
 			auth.POST("/check-version", handler.CheckVersion)
 		}

@@ -102,6 +102,44 @@
           />
         </el-form-item>
 
+        <el-form-item label="允许的文件类型">
+          <el-select
+            v-model="configForm.allowedFileTypes"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入文件扩展名"
+            style="width: 100%"
+          >
+            <el-option label=".jpg" value=".jpg" />
+            <el-option label=".jpeg" value=".jpeg" />
+            <el-option label=".png" value=".png" />
+            <el-option label=".gif" value=".gif" />
+            <el-option label=".bmp" value=".bmp" />
+            <el-option label=".webp" value=".webp" />
+            <el-option label=".pdf" value=".pdf" />
+            <el-option label=".doc" value=".doc" />
+            <el-option label=".docx" value=".docx" />
+            <el-option label=".xls" value=".xls" />
+            <el-option label=".xlsx" value=".xlsx" />
+            <el-option label=".ppt" value=".ppt" />
+            <el-option label=".pptx" value=".pptx" />
+            <el-option label=".txt" value=".txt" />
+            <el-option label=".md" value=".md" />
+            <el-option label=".csv" value=".csv" />
+            <el-option label=".zip" value=".zip" />
+            <el-option label=".rar" value=".rar" />
+            <el-option label=".7z" value=".7z" />
+            <el-option label=".mp3" value=".mp3" />
+            <el-option label=".wav" value=".wav" />
+            <el-option label=".mp4" value=".mp4" />
+            <el-option label=".avi" value=".avi" />
+            <el-option label=".mov" value=".mov" />
+          </el-select>
+          <span class="desc" style="margin-left: 8px">（可多选或输入自定义扩展名）</span>
+        </el-form-item>
+
         <el-form-item>
           <el-button
             type="primary"
@@ -144,6 +182,13 @@ const fetchConfig = async () => {
   try {
     const { data } = await getSystemConfig()
     Object.assign(configForm, data.data)
+    if (typeof configForm.allowedFileTypes === 'string') {
+      try {
+        configForm.allowedFileTypes = JSON.parse(configForm.allowedFileTypes)
+      } catch {
+        configForm.allowedFileTypes = []
+      }
+    }
   } catch {
   } finally {
     loading.value = false
@@ -153,7 +198,10 @@ const fetchConfig = async () => {
 const handleSubmit = async () => {
   submitting.value = true
   try {
-    await updateSystemConfig({ ...configForm })
+    await updateSystemConfig({
+      ...configForm,
+      allowedFileTypes: JSON.stringify(configForm.allowedFileTypes),
+    })
     ElMessage.success('配置保存成功，客户端将即时感知变更')
   } catch {
   } finally {

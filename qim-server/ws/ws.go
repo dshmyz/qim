@@ -29,11 +29,31 @@ const (
 
 var GlobalHub *Hub
 
+var wsAllowedOrigins map[string]bool
+
+func SetAllowedOrigins(origins []string) {
+	if len(origins) == 0 {
+		wsAllowedOrigins = nil
+		return
+	}
+	wsAllowedOrigins = map[string]bool{}
+	for _, o := range origins {
+		wsAllowedOrigins[o] = true
+	}
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		if wsAllowedOrigins == nil {
+			return true
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return wsAllowedOrigins[origin]
 	},
 }
 
@@ -419,11 +439,15 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 		h.mu.Unlock()
 	}
 
-	// 真正异步发送：不等待完成
+	// 真正异步发送：不等待完成，但用信号量限制并发
 	for _, userID := range memberIDs {
 		if userID != excludeUserID {
 			uid := userID
-			utils.SafeGo(func() { h.SendToUser(uid, message) })
+			h.sendSem <- struct{}{}
+			utils.SafeGo(func() {
+				defer func() { <-h.sendSem }()
+				h.SendToUser(uid, message)
+			})
 		}
 	}
 }
@@ -545,6 +569,15 @@ func handleSendMessage(c *Client, data interface{}) {
 	if c.hub.HandleMessage != nil {
 		msg, err := c.hub.HandleMessage(convID, c.userID, msgType, content, quotedMessageID)
 		if err != nil {
+			errMsg := WSMessage{
+				Type: "error",
+				Data: map[string]interface{}{"code": "send_failed", "message": err.Error()},
+			}
+			jsonErr, _ := json.Marshal(errMsg)
+			select {
+			case c.send <- jsonErr:
+			default:
+			}
 			return
 		}
 
@@ -592,6 +625,15 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		errMsg := WSMessage{
+			Type: "error",
+			Data: map[string]interface{}{"code": "forbidden", "message": "你不是该会话的成员"},
+		}
+		jsonErr, _ := json.Marshal(errMsg)
+		select {
+		case c.send <- jsonErr:
+		default:
+		}
 		return
 	}
 

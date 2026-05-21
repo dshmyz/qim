@@ -1,8 +1,12 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -17,6 +21,7 @@ type Config struct {
 	Storage  StorageConfig
 	AI       ai.AIConfig
 	CORS     CORSConfig
+	WS       WSConfig
 	Vector   VectorConfig
 }
 
@@ -25,6 +30,10 @@ type VectorConfig struct {
 }
 
 type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
+}
+
+type WSConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
@@ -84,6 +93,7 @@ type yamlConfig struct {
 	Storage StorageConfig  `yaml:"storage"`
 	AI      ai.AIConfig    `yaml:"ai"`
 	CORS    CORSConfig     `yaml:"cors"`
+	WS      WSConfig       `yaml:"ws"`
 	Vector  VectorConfig   `yaml:"vector"`
 }
 
@@ -215,6 +225,17 @@ func Load() *Config {
 		cfg.AI.Anthropic.BaseURL = anthropicBaseURL
 	}
 
+	// JWT 密钥安全校验
+	if cfg.JWT.Secret == "" || strings.HasPrefix(cfg.JWT.Secret, "${QIM_JWT_SECRET:") || cfg.JWT.Secret == "change-me-to-random-string" {
+		envSecret := os.Getenv("JWT_SECRET")
+		if envSecret != "" {
+			cfg.JWT.Secret = envSecret
+		} else {
+			cfg.JWT.Secret = generateRandomSecret()
+			fmt.Println("[WARN] JWT_SECRET 未配置，已自动生成随机密钥。重启后将失效，请设置 JWT_SECRET 环境变量。")
+		}
+	}
+
 	return &Config{
 		Server:   cfg.Server,
 		Database: cfg.DB,
@@ -223,8 +244,17 @@ func Load() *Config {
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
 		CORS:     cfg.CORS,
+		WS:       cfg.WS,
 		Vector:   cfg.Vector,
 	}
+}
+
+func generateRandomSecret() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return hex.EncodeToString([]byte("fallback-insecure-secret-" + fmt.Sprintf("%d", time.Now().UnixNano())))
+	}
+	return hex.EncodeToString(b)
 }
 
 func getDefaultConfig() yamlConfig {
@@ -298,6 +328,9 @@ func getDefaultConfig() yamlConfig {
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: []string{"*"},
+		},
+		WS: WSConfig{
+			AllowedOrigins: nil,
 		},
 		Vector: VectorConfig{
 			Path: "./data/vector.db",

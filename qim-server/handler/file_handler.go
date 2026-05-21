@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,12 +12,108 @@ import (
 	"sync"
 	"time"
 
+	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
+
+const defaultMaxUploadSize = 50 * 1024 * 1024 // 50MB default
+
+var (
+	defaultAllowedExtensions = map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".bmp": true, ".webp": true,
+		".pdf": true,
+		".doc": true, ".docx": true,
+		".xls": true, ".xlsx": true,
+		".ppt": true, ".pptx": true,
+		".txt": true, ".md": true, ".csv": true,
+		".zip": true, ".rar": true, ".7z": true,
+		".mp3": true, ".wav": true, ".mp4": true, ".avi": true, ".mov": true,
+	}
+	uploadConfigCache   map[string]interface{}
+	uploadConfigMu      sync.RWMutex
+	uploadConfigExpires time.Time
+)
+
+type uploadConfig struct {
+	MaxSize            int64
+	AllowedExtensions  map[string]bool
+}
+
+func getUploadConfig() *uploadConfig {
+	uploadConfigMu.RLock()
+	if uploadConfigCache != nil && time.Now().Before(uploadConfigExpires) {
+		maxSize := int64(defaultMaxUploadSize)
+		if v, ok := uploadConfigCache["file_upload:max_size"]; ok {
+			if n, err := strconv.ParseInt(fmt.Sprintf("%v", v), 10, 64); err == nil {
+				maxSize = n
+			}
+		}
+		var allowed map[string]bool
+		if v, ok := uploadConfigCache["file_upload:allowed_extensions"]; ok {
+			allowed = map[string]bool{}
+			if s, ok := v.(string); ok {
+				var exts []string
+				if err := json.Unmarshal([]byte(s), &exts); err == nil {
+					for _, e := range exts {
+						allowed[strings.ToLower(e)] = true
+					}
+				}
+			}
+		}
+		if allowed == nil {
+			allowed = defaultAllowedExtensions
+		}
+		result := &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed}
+		uploadConfigMu.RUnlock()
+		return result
+	}
+	uploadConfigMu.RUnlock()
+
+	db := database.GetDB()
+	var configs []model.SystemConfig
+	db.Where("key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
+
+	cache := map[string]interface{}{}
+	for _, c := range configs {
+		cache[c.Key] = c.Value
+	}
+
+	uploadConfigMu.Lock()
+	uploadConfigCache = cache
+	uploadConfigExpires = time.Now().Add(5 * time.Minute)
+	uploadConfigMu.Unlock()
+
+	maxSize := int64(defaultMaxUploadSize)
+	if v, ok := cache["file_upload:max_size"]; ok {
+		if n, err := strconv.ParseInt(fmt.Sprintf("%v", v), 10, 64); err == nil {
+			maxSize = n
+		}
+	}
+	allowed := defaultAllowedExtensions
+	if v, ok := cache["file_upload:allowed_extensions"]; ok {
+		if s, ok := v.(string); ok {
+			var exts []string
+			if err := json.Unmarshal([]byte(s), &exts); err == nil {
+				allowed = map[string]bool{}
+				for _, e := range exts {
+					allowed[strings.ToLower(e)] = true
+				}
+			}
+		}
+	}
+
+	return &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed}
+}
+
+func invalidateUploadConfigCache() {
+	uploadConfigMu.Lock()
+	uploadConfigCache = nil
+	uploadConfigMu.Unlock()
+}
 
 type fileStatsCacheEntry struct {
 	data      gin.H
@@ -34,15 +132,34 @@ func invalidateFileStatsCache(userID uint) {
 func UploadFile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
+	ucfg := getUploadConfig()
+	maxMB := ucfg.MaxSize / (1024 * 1024)
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, ucfg.MaxSize)
+
 	file, err := c.FormFile("file")
 	if err != nil {
+		if strings.Contains(err.Error(), "http: request body too large") {
+			response.BadRequest(c, fmt.Sprintf("文件过大，最大支持%dMB", maxMB))
+			return
+		}
 		response.BadRequest(c, "文件上传失败")
+		return
+	}
+
+	if file.Size > ucfg.MaxSize {
+		response.BadRequest(c, fmt.Sprintf("文件过大，最大支持%dMB", maxMB))
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if !ucfg.AllowedExtensions[ext] {
+		response.BadRequest(c, "不支持的文件类型")
 		return
 	}
 
 	source := c.DefaultPostForm("source", "upload")
 
-	ext := filepath.Ext(file.Filename)
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
 
 	if cfg.Storage.Type == "s3" {

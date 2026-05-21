@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -60,6 +61,54 @@ func initSystemUser() {
 	}
 }
 
+// initAdminUser 初始化管理员用户
+func initAdminUser() {
+	db := database.GetDB()
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.User{}).Where("type = ?", "admin").Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+
+		adminUsername := os.Getenv("QIM_ADMIN_USERNAME")
+		if adminUsername == "" {
+			adminUsername = "admin"
+		}
+
+		adminPassword := os.Getenv("QIM_ADMIN_PASSWORD")
+		if adminPassword == "" {
+			adminPassword = "admin123"
+		}
+
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("加密密码失败: %w", err)
+		}
+
+		adminUser := model.User{
+			Username:     adminUsername,
+			PasswordHash: string(hashedPassword),
+			Nickname:     "管理员",
+			Avatar:       "/admin.png",
+			Type:         "admin",
+			Status:       "offline",
+		}
+		if err := tx.Create(&adminUser).Error; err != nil {
+			return err
+		}
+		logger.WithModule("Init").Info("创建管理员用户成功", "id", adminUser.ID, "username", adminUsername)
+		return nil
+	})
+
+	if err != nil {
+		logger.WithModule("Init").Error("创建管理员用户失败", "error", err)
+	}
+}
+
 // InitApp 初始化应用
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
@@ -85,6 +134,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化系统用户（无论什么环境都需要）
 	initSystemUser()
+
+	// 初始化管理员用户（无论什么环境都需要）
+	initAdminUser()
 
 	// 初始化WebSocket Hub
 	hub := ws.NewHub(database.GetDB(), cfg.Database.Type)
@@ -159,6 +211,7 @@ func MigrateDB(db *gorm.DB) {
 	migrateUserAIConfigs(db)
 	migrateAppCode(db)
 	seedBuiltInApps(db)
+	seedFileUploadConfig(db)
 }
 
 // isMigrationCompleted 检查指定的迁移版本是否已完成
@@ -625,11 +678,11 @@ func migrateAppCode(db *gorm.DB) {
 
 	// 为现有内置应用填充 code 字段（按名称匹配）
 	nameToCode := map[string]string{
-		"日历":     "calendar",
-		"文件管理":   "file_manager",
-		"任务管理":   "task_manager",
-		"便签":     "sticky_notes",
-		"笔记":     "notes",
+		"日历":    "calendar",
+		"文件管理":  "file_manager",
+		"任务管理":  "task_manager",
+		"便签":    "sticky_notes",
+		"笔记":    "notes",
 		"短链接管理": "short_link",
 	}
 	for name, code := range nameToCode {
@@ -674,6 +727,18 @@ func seedBuiltInApps(db *gorm.DB) {
 
 	logger.WithModule("Migrate").Info("内置应用种子数据初始化完成", "count", len(defaultApps))
 	markMigrationCompleted(db, "seed_built_in_apps")
+}
+
+// seedFileUploadConfig 初始化文件上传配置（大小限制、允许的文件类型）
+func seedFileUploadConfig(db *gorm.DB) {
+	defaultConfigs := []model.SystemConfig{
+		{Key: "file_upload:max_size", Value: "52428800", Type: "number", Desc: "文件上传最大大小（字节），默认 50MB"},
+		{Key: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
+	}
+	for _, cfg := range defaultConfigs {
+		db.Where("key = ?", cfg.Key).FirstOrCreate(&cfg)
+	}
+	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
 }
 
 // addIndexes 添加性能优化索引，确保索引已存在则跳过创建

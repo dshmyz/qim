@@ -1,3 +1,12 @@
+# QIM Server 配置文件
+# 
+# 环境变量说明:
+# - QIM_JWT_SECRET: JWT密钥，建议设置为随机字符串
+# - QIM_ADMIN_USERNAME: 管理员用户名（默认: admin）
+# - QIM_ADMIN_PASSWORD: 管理员密码（默认: admin123）
+#
+# 注意：首次启动时会自动创建管理员账户，建议在生产环境中修改默认密码
+
 # 服务器配置
 server:
   port: "8080"
@@ -23,15 +32,19 @@ database:
 # 多节点配置
 cluster:
   enabled: false
+  # 其他节点的地址列表
   nodes: []
   # - "http://node1:8080"
   # - "http://node2:8080"
 
 # 文件存储配置
 storage:
-  type: "local"  # local / s3
+  # 存储类型: local 或 s3
+  type: "local"
+  # 本地存储配置
   local:
     path: "./uploads"
+  # S3存储配置
   s3:
     endpoint: "s3.amazonaws.com"
     access_key: "your-access-key"
@@ -42,7 +55,33 @@ storage:
 
 # AI 配置
 ai:
-  provider: "openai"  # openai / baidu / alibaba / tencent / bytedance / anthropic
+  # 路由配置 - 为不同任务指定不同的模型
+  router:
+    default_task: "chat"
+    routes:
+      chat:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+      intent_recognition:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+      analysis:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+      embedding:
+        provider: "openai"
+        model: "text-embedding-ada-002"
+      tool_calling:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+      search:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+      digest:
+        provider: "openai"
+        model: "gpt-3.5-turbo"
+  
+  # 通用配置
   max_tokens: 1000
   temperature: 0.7
   
@@ -51,6 +90,7 @@ ai:
     api_key: "your-openai-api-key"
     model: "gpt-3.5-turbo"
     base_url: "https://api.openai.com/v1"
+    embedding_model: "text-embedding-ada-002"
   
   # 百度文心一言配置
   baidu:
@@ -90,3 +130,7 @@ cors:
   allowed_origins:
     - "http://localhost:5173"
     - "http://localhost:3000"
+
+# 向量数据库配置（用于 RAG 和知识图谱）
+vector:
+  path: "./vector.db"
