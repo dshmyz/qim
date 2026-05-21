@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"qim-server/auth"
 	"qim-server/config"
 	"qim-server/database"
 	"qim-server/model"
@@ -145,6 +146,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化依赖注入容器
 	InitContainer(cfg, hub)
+
+	// 初始化认证链
+	auth.InitAuthChain()
 
 	return cfg, db, hub
 }
