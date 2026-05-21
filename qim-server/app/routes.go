@@ -535,14 +535,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.PATCH("/ai/providers/:id/status", handler.ToggleProviderStatus)
 				admin.POST("/ai/providers/:id/test", handler.TestProviderConnection)
 
-				// 认证提供者管理
-				authProviderHdlr := handler.NewAuthProviderHandler()
-				admin.GET("/auth/providers", authProviderHdlr.GetProviders)
-				admin.POST("/auth/providers", authProviderHdlr.CreateProvider)
-				admin.PUT("/auth/providers/:id", authProviderHdlr.UpdateProvider)
-				admin.DELETE("/auth/providers/:id", authProviderHdlr.DeleteProvider)
-				admin.POST("/auth/providers/:id/test", authProviderHdlr.TestProvider)
-
 				// 组织架构同步管理
 				orgSyncHandler := handler.NewOrgSyncHandler()
 				admin.GET("/org/sync/configs", orgSyncHandler.GetConfigs)
