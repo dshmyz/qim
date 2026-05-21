@@ -437,7 +437,7 @@ loadSavedSettings()
 
 const loadAuthProviders = async () => {
   try {
-    const response = await fetch(`${serverSettings.url}/api/v1/admin/auth/providers`, {
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/providers`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     })
