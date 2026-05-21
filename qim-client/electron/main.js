@@ -71,7 +71,7 @@ const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
 
 // OAuth回调服务器
 let oauthServer = null
-const OAUTH_CALLBACK_PORT = 3000
+const OAUTH_CALLBACK_PORT = 3001
 
 function startOAuthServer() {
   if (oauthServer) {
