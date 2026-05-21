@@ -3,7 +3,7 @@ import type { AuthProvider } from '@/types/auth'
 import type { ApiResponse } from '@/types'
 import type { AxiosResponse } from 'axios'
 
-export const getAuthProviders = (): Promise<AxiosResponse<ApiResponse<{ data: AuthProvider[] }>>> => {
+export const getAuthProviders = (): Promise<AxiosResponse<ApiResponse<AuthProvider[]>>> => {
   return request({
     baseURL: '/api/v1',
     url: '/admin/auth/providers',

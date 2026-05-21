@@ -109,7 +109,7 @@ const loadProviders = async () => {
   loading.value = true
   try {
     const res = await getAuthProviders()
-    providers.value = res.data.data
+    providers.value = res.data.data || []
   } catch (error) {
     ElMessage.error('加载认证提供者失败')
   } finally {
