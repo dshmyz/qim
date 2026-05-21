@@ -462,21 +462,32 @@ const getProviderIcon = (name: string): string => {
 }
 
 const handleRedirectAuth = (provider: AuthProvider) => {
+  console.log('点击认证提供者:', provider)
+  
   const state = Math.random().toString(36).substring(7)
   sessionStorage.setItem('auth_state', state)
   sessionStorage.setItem('auth_provider', provider.name)
 
-  if (provider.type === 'redirect') {
+  try {
     const config = JSON.parse(provider.config)
+    console.log('配置信息:', config)
+    
+    // 根据协议字段判断类型
     if (config.auth_url && config.token_url) {
+      // OAuth协议
+      console.log('OAuth登录')
       handleOAuthLogin(provider, state)
     } else if (config.cas_url) {
+      // CAS协议
+      console.log('CAS登录')
       handleCASLogin(provider)
     } else {
+      console.error('未知的认证协议配置')
       QMessage.warning('认证配置错误')
     }
-  } else {
-    QMessage.warning('暂不支持该认证方式')
+  } catch (error) {
+    console.error('解析配置失败:', error)
+    QMessage.error('认证配置解析失败')
   }
 }
 
@@ -485,12 +496,17 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
     const config = JSON.parse(provider.config)
     const authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(config.redirect_url)}&response_type=code&scope=${config.scope}&state=${state}`
     
+    console.log('OAuth授权URL:', authURL)
+    
     if (window.electron) {
+      console.log('使用Electron打开')
       window.electron.ipcRenderer.send('open-external', authURL)
     } else {
+      console.log('使用浏览器打开')
       window.open(authURL, '_blank')
     }
   } catch (error) {
+    console.error('OAuth登录失败:', error)
     QMessage.error('OAuth配置错误')
   }
 }
