@@ -508,6 +508,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
 				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
 
+				// 认证提供者管理
+				authProviderHandler := handler.NewAuthProviderHandler()
+				admin.GET("/auth/providers", authProviderHandler.GetProviders)
+				admin.POST("/auth/providers", authProviderHandler.CreateProvider)
+				admin.PUT("/auth/providers/:id", authProviderHandler.UpdateProvider)
+				admin.DELETE("/auth/providers/:id", authProviderHandler.DeleteProvider)
+				admin.POST("/auth/providers/:id/test", authProviderHandler.TestProvider)
+
 				// 角色管理
 				admin.GET("/roles", handler.GetRoles)
 				admin.POST("/roles", handler.CreateRole)
@@ -524,12 +532,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.POST("/ai/providers/:id/test", handler.TestProviderConnection)
 
 				// 认证提供者管理
-				authProviderHandler := handler.NewAuthProviderHandler()
-				admin.GET("/auth/providers", authProviderHandler.GetProviders)
-				admin.POST("/auth/providers", authProviderHandler.CreateProvider)
-				admin.PUT("/auth/providers/:id", authProviderHandler.UpdateProvider)
-				admin.DELETE("/auth/providers/:id", authProviderHandler.DeleteProvider)
-				admin.POST("/auth/providers/:id/test", authProviderHandler.TestProvider)
+				authProviderHdlr := handler.NewAuthProviderHandler()
+				admin.GET("/auth/providers", authProviderHdlr.GetProviders)
+				admin.POST("/auth/providers", authProviderHdlr.CreateProvider)
+				admin.PUT("/auth/providers/:id", authProviderHdlr.UpdateProvider)
+				admin.DELETE("/auth/providers/:id", authProviderHdlr.DeleteProvider)
+				admin.POST("/auth/providers/:id/test", authProviderHdlr.TestProvider)
 
 				// 组织架构同步管理
 				orgSyncHandler := handler.NewOrgSyncHandler()
