@@ -18,6 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxImageTranslateSize = 5 * 1024 * 1024 // 5MB
+
 // TranslateTextRequest 翻译请求
 type TranslateTextRequest struct {
 	Text       string `json:"text" binding:"required"`
@@ -42,6 +44,25 @@ type PolishTextRequest struct {
 type TranslateImageRequest struct {
 	ImageURL   string `json:"image_url" binding:"required"`
 	TargetLang string `json:"target_lang"` // 默认 zh
+}
+
+// extractImageURL 从消息内容中提取图片 URL
+// 支持：纯 URL、JSON 格式 {"url": "...", ...}
+func extractImageURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	// 尝试解析为 JSON
+	if strings.HasPrefix(raw, "{") {
+		var imgData map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &imgData); err == nil {
+			if url, ok := imgData["url"].(string); ok {
+				return url
+			}
+		}
+	}
+	return raw
 }
 
 // imageToDataURL 将图片 URL/路径转为 base64 data URL 或可用 URL
@@ -116,7 +137,7 @@ func readFileAsDataURL(relPath string) string {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
 
-// downloadAsDataURL 从 HTTP URL 下载图片转为 data URL
+// downloadAsDataURL 从 HTTP URL 下载图片转为 data URL（最大 5MB）
 func downloadAsDataURL(url string) string {
 	client := &http.Client{Timeout: http.DefaultClient.Timeout}
 	resp, err := client.Get(url)
@@ -129,7 +150,7 @@ func downloadAsDataURL(url string) string {
 		return ""
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageTranslateSize))
 	if err != nil {
 		return ""
 	}
@@ -166,9 +187,32 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		langName = "中文"
 	}
 
-	dataURL := imageToDataURL(req.ImageURL)
+	// 解析 image_url：可能是 JSON 格式（如 {"url": "/uploads/...", ...}）
+	imageURL := extractImageURL(req.ImageURL)
+
+	dataURL := imageToDataURL(imageURL)
 	if dataURL == "" {
-		response.BadRequest(c, "不支持的图片地址格式")
+		response.BadRequest(c, fmt.Sprintf("不支持的图片地址格式: %s", imageURL))
+		return
+	}
+	if len(dataURL) > maxImageTranslateSize {
+		response.BadRequest(c, fmt.Sprintf("图片过大，最大支持%dMB", maxImageTranslateSize/(1024*1024)))
+		return
+	}
+
+	// 检查是否有可用的视觉模型
+	visionProviders := []string{"openai", "anthropic"}
+	config := h.aiService.GetConfig()
+	var visionModelName string
+	for _, name := range visionProviders {
+		providerCfg, ok := config.AllProviders()[name]
+		if ok && providerCfg.Model != "" {
+			visionModelName = fmt.Sprintf("%s (%s)", providerCfg.Model, name)
+			break
+		}
+	}
+	if visionModelName == "" {
+		response.BadRequest(c, "图片翻译需要配置支持视觉的 AI 模型（如 OpenAI GPT-4、Anthropic Claude），当前未配置可用模型")
 		return
 	}
 
@@ -179,9 +223,7 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		{Role: "user", Content: "请识别这张图片中的文字并翻译成" + langName, ImageURL: dataURL},
 	}
 
-	// 尝试使用支持视觉的提供商（按优先级：openai → anthropic）
-	visionProviders := []string{"openai", "anthropic"}
-	config := h.aiService.GetConfig()
+	// 使用已找到的视觉模型
 	var override *ai.Override
 	for _, name := range visionProviders {
 		providerCfg, ok := config.AllProviders()[name]
@@ -195,11 +237,8 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		}
 	}
 	if override == nil {
-		// 无可用视觉模型，回退到默认
-		override = &ai.Override{
-			TaskType: ai.TaskTypeVision,
-			Provider: "openai",
-		}
+		response.InternalServerError(c, "图片翻译失败：无可用视觉模型")
+		return
 	}
 
 	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input, *override)

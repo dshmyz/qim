@@ -31,6 +31,11 @@
           </div>
         </div>
 
+        <div v-else-if="translateError" class="error-state">
+          <p>{{ translateError }}</p>
+          <button @click="translate">重试</button>
+        </div>
+
         <div v-else class="error-state">
           <p>翻译失败</p>
           <button @click="translate">重试</button>
@@ -56,8 +61,9 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { translateText, translateImage, isProcessing: isTranslating } = useAIActions()
+const { translateText, translateImage, isProcessing: isTranslating, errorMessage } = useAIActions()
 const translatedText = ref<string | null>(null)
+const translateError = ref<string | null>(null)
 
 watch(() => props.visible, async (newVal) => {
   if (newVal && props.originalText) {
@@ -67,6 +73,7 @@ watch(() => props.visible, async (newVal) => {
 
 const translate = async () => {
   translatedText.value = null
+  translateError.value = null
   try {
     if (props.messageType === 'image') {
       translatedText.value = await translateImage(
@@ -79,7 +86,8 @@ const translate = async () => {
         props.targetLang || 'zh'
       )
     }
-  } catch {
+  } catch (e: any) {
+    translateError.value = errorMessage.value || e.message || '翻译失败'
   }
 }
 
@@ -204,6 +212,7 @@ const copyTranslation = async () => {
   line-height: 1.7;
   color: var(--text-color);
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .original-section {
