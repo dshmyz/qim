@@ -523,6 +523,22 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.PATCH("/ai/providers/:id/status", handler.ToggleProviderStatus)
 				admin.POST("/ai/providers/:id/test", handler.TestProviderConnection)
 
+				// 认证提供者管理
+				authProviderHandler := handler.NewAuthProviderHandler()
+				admin.GET("/auth/providers", authProviderHandler.GetProviders)
+				admin.POST("/auth/providers", authProviderHandler.CreateProvider)
+				admin.PUT("/auth/providers/:id", authProviderHandler.UpdateProvider)
+				admin.DELETE("/auth/providers/:id", authProviderHandler.DeleteProvider)
+				admin.POST("/auth/providers/:id/test", authProviderHandler.TestProvider)
+
+				// 组织架构同步管理
+				orgSyncHandler := handler.NewOrgSyncHandler()
+				admin.GET("/org/sync/configs", orgSyncHandler.GetConfigs)
+				admin.POST("/org/sync/configs", orgSyncHandler.CreateConfig)
+				admin.PUT("/org/sync/configs/:id", orgSyncHandler.UpdateConfig)
+				admin.POST("/org/sync/trigger/:id", orgSyncHandler.TriggerSync)
+				admin.GET("/org/sync/logs", orgSyncHandler.GetLogs)
+
 				// 文件存储管理
 				admin.GET("/files/statistics", handler.GetAdminFileStatistics)
 				admin.GET("/files/large", handler.GetAdminLargeFiles)
