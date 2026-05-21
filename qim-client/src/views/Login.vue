@@ -93,7 +93,7 @@
         </div>
       </div>
       
-      <form v-else @submit.prevent="verifyTwoFA" class="twofa-form">
+      <form v-if="show2FAForm" @submit.prevent="verifyTwoFA" class="twofa-form">
         <h3 class="twofa-title">双因素认证</h3>
         
         <p class="twofa-message">你已开启双因素，请输入动态口令</p>
