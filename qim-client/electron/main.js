@@ -390,6 +390,12 @@ function createWindow() {
     }
   })
 
+  ipcMain.on('open-external', (event, url) => {
+    console.log('Received open-external event:', url)
+    const { shell } = require('electron')
+    shell.openExternal(url)
+  })
+
   let trayFlashInterval = null
   let isTrayFlashing = false
   let normalTrayIcon = null
