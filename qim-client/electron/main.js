@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen, dialog, shell } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen, dialog } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -242,7 +242,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      webSecurity: false
     },
     frame: false
   }
@@ -450,10 +451,10 @@ function createWindow() {
 
     let authURL
     if (type === 'oauth') {
-      const callbackUrl = app.isPackaged ? 'qim://oauth/callback' : `${AUTH_CALLBACK_BASE}/oauth/callback`
+      const callbackUrl = `${AUTH_CALLBACK_BASE}/oauth/callback`
       authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(callbackUrl)}&response_type=code&scope=${config.scope}&state=${state}`
     } else if (type === 'cas') {
-      const callbackUrl = app.isPackaged ? 'qim://cas/callback' : `${AUTH_CALLBACK_BASE}/cas/callback`
+      const callbackUrl = `${AUTH_CALLBACK_BASE}/cas/callback`
       authURL = `${config.cas_url}/login?service=${encodeURIComponent(callbackUrl)}`
     } else {
       console.error('未知的认证类型:', type)
@@ -462,7 +463,7 @@ function createWindow() {
 
     console.log('授权URL:', authURL)
 
-    // 校验URL协议，仅允许 https:// 和 http://（开发模式）
+    // 校验URL协议
     try {
       const parsed = new URL(authURL)
       if (!['https:', 'http:'].includes(parsed.protocol)) {
@@ -474,42 +475,40 @@ function createWindow() {
       return
     }
 
-    if (app.isPackaged) {
-      // 打包后：系统浏览器 + qim://协议自动返回
-      shell.openExternal(authURL)
-    } else {
-      // 开发模式：BrowserWindow + 拦截localhost重定向
-      if (authWindow && !authWindow.isDestroyed()) {
-        authWindow.close()
-      }
-
-      authWindow = new BrowserWindow({
-        width: 600,
-        height: 800,
-        title: '授权登录',
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true
-        }
-      })
-
-      authWindow.webContents.on('will-redirect', (event, url) => {
-        if (url.startsWith(AUTH_CALLBACK_BASE)) {
-          event.preventDefault()
-          handleAuthCallback(url)
-        }
-      })
-
-      authWindow.webContents.on('will-navigate', (event, url) => {
-        if (url.startsWith(AUTH_CALLBACK_BASE)) {
-          event.preventDefault()
-          handleAuthCallback(url)
-        }
-      })
-
-      authWindow.loadURL(authURL)
-      authWindow.on('closed', () => { authWindow = null })
+    // 内嵌窗口：BrowserWindow + 拦截回调重定向
+    if (authWindow && !authWindow.isDestroyed()) {
+      authWindow.close()
     }
+
+    authWindow = new BrowserWindow({
+      width: 1000,
+      height: 800,
+      title: '授权登录',
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    })
+
+    authWindow.setMenu(null)
+
+    authWindow.webContents.on('will-redirect', (event, url) => {
+      if (url.startsWith(AUTH_CALLBACK_BASE)) {
+        event.preventDefault()
+        handleAuthCallback(url)
+      }
+    })
+
+    authWindow.webContents.on('will-navigate', (event, url) => {
+      if (url.startsWith(AUTH_CALLBACK_BASE)) {
+        event.preventDefault()
+        handleAuthCallback(url)
+      }
+    })
+
+    authWindow.loadURL(authURL)
+    authWindow.on('closed', () => { authWindow = null })
   })
 
   let trayFlashInterval = null

@@ -86,8 +86,8 @@ export function useNetwork() {
     // 清除本地存储的token和用户信息
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-    // 跳转到登录页
-    window.location.href = '/'
+    // 重新加载当前页面，App.vue 检测到无 token 会自动显示登录页
+    window.location.reload()
   }
 
   /**
