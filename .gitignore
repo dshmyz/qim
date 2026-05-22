@@ -1,5 +1,6 @@
 node_modules/
 dist/
+!qim-client/electron/screenshots/src/dist/
 *.db
 qim-client/electron-dist/
 qim-server/qim-server

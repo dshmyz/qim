@@ -2982,13 +2982,14 @@ const quickTools = computed(() => {
 })
 
 // 主要应用列表（从内置应用加载）
+// 使用 code 而非数值 ID，避免与后端数据库中的 app ID 冲突
 const mainApps = computed(() => {
   return [
-    { id: '7', name: '笔记', icon: 'fas fa-book' },
-    { id: '5', name: '任务管理', icon: 'fas fa-check-square' },
-    { id: '3', name: '文件管理', icon: 'fas fa-folder' },
-    { id: '6', name: '便签', icon: 'fas fa-sticky-note' },
-    { id: '2', name: '日历', icon: 'fas fa-calendar' },
+    { id: 'notes', name: '笔记', icon: 'fas fa-book' },
+    { id: 'task_manager', name: '任务管理', icon: 'fas fa-check-square' },
+    { id: 'file_manager', name: '文件管理', icon: 'fas fa-folder' },
+    { id: 'sticky_notes', name: '便签', icon: 'fas fa-sticky-note' },
+    { id: 'calendar', name: '日历', icon: 'fas fa-calendar' },
     ...(systemConfigStore.enableAI ? [{ id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' }] : []),
     // 动态添加内置应用
     ...builtInApps.value.filter(app => app.category === 'main'),
@@ -3265,6 +3266,15 @@ const resolveAppId = (app: { code?: string; name?: string; id?: string | number 
 
 const openApp = async (appId: string) => {
   logger.log('打开应用:', appId)
+
+  // 如果 appId 是已知的内置应用 code，直接映射到前端组件 ID
+  // 这避免了 mainApps 使用 code 时与后端 DB app ID 冲突导致跳转错误
+  const codeToComponentId = BUILT_IN_APP_CODE_TO_ID[appId]
+  if (codeToComponentId) {
+    logger.log('内置应用 code 映射:', appId, '→', codeToComponentId)
+    selectedAppId.value = codeToComponentId
+    return
+  }
 
   // 查找应用信息
   let appName = ''

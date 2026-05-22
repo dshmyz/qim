@@ -259,7 +259,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions)
 
-  const isDev = process.env.NODE_ENV !== 'production'
+  const isDev = !app.isPackaged
   const url = isDev
     ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../dist/index.html')}`
@@ -269,7 +269,7 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Render process loaded')
-    if (process.env.NODE_ENV !== 'production') {
+    if (isDev) {
       console.log('Opening DevTools in development mode')
       mainWindow.webContents.openDevTools()
     }

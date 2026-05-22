@@ -141,7 +141,7 @@ export const fileApi = {
 
   // 批量操作
   batchOperation(fileIds: number[], action: string, extra?: Record<string, any>) {
-    return api.put<{ code: number }>('/api/v1/files/batch', {
+    return api.post<{ code: number }>('/api/v1/files/batch', {
       file_ids: fileIds,
       action,
       ...extra
@@ -162,24 +162,24 @@ export const fileApi = {
 
   // 初始化分片上传
   initUpload(data: InitUploadRequest) {
-    return api.post<{ code: number; data: InitUploadResponse }>('/api/v1/upload/init', data)
+    return api.post<{ code: number; data: InitUploadResponse }>('/api/v1/files/upload/init', data)
   },
 
   // 上传分片
   uploadChunk(formData: FormData) {
-    return api.post<{ code: number; data: UploadChunkResponse }>('/api/v1/upload/chunk', formData, {
+    return api.post<{ code: number; data: UploadChunkResponse }>('/api/v1/files/upload/chunk', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
 
   // 完成上传
   completeUpload(data: CompleteUploadRequest) {
-    return api.post<{ code: number; data: FileItem }>('/api/v1/upload/complete', data)
+    return api.post<{ code: number; data: FileItem }>('/api/v1/files/upload/complete', data)
   },
 
   // 取消上传
   cancelUpload(data: CancelUploadRequest) {
-    return api.post<{ code: number }>('/api/v1/upload/cancel', data)
+    return api.post<{ code: number }>('/api/v1/files/upload/cancel', data)
   }
 }
 

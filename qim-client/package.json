@@ -3,6 +3,7 @@
   "author": "QIM Team <huangqun@buaa.edu.cn>",
   "version": "1.0.0",
   "description": "即时通讯 UI 组件库",
+  "homepage": "https://qim.work",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -30,7 +31,7 @@
   "build": {
     "appId": "com.qim.app",
     "productName": "青雀 QIM",
-    "electronVersion": "33.0.0",
+    "electronVersion": "33.2.1",
     "protocols": [
       {
         "name": "QIM Auth",
@@ -55,6 +56,7 @@
         "to": "qim-update.sudoers"
       }
     ],
+    "artifactName": "QIM-${version}.${ext}",
     "win": {
       "icon": "electron/icons/icon.ico",
       "target": [
@@ -70,17 +72,36 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "nsis": {
+        "oneClick": false,
+        "perMachine": true,
+        "allowElevation": true,
+        "allowToChangeInstallationDirectory": true,
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true
+      },
+      "publish": {
+        "provider": "generic",
+        "url": "${env.QIM_UPDATE_URL}/api/v1/updates/win10/",
+        "channel": "latest"
+      }
     },
     "linux": {
       "icon": "electron/icons/icon_512x512.png",
       "target": [
-        "deb",
-        "rpm",
+        {
+          "target": "deb",
+          "afterInstall": "electron/after-install-linux.sh",
+          "beforeRemove": "electron/before-remove-linux.sh"
+        },
         "AppImage"
       ],
-      "afterInstall": "electron/after-install-linux.sh",
-      "beforeRemove": "electron/before-remove-linux.sh"
+      "publish": {
+        "provider": "generic",
+        "url": "${env.QIM_UPDATE_URL}/api/v1/updates/linux/",
+        "channel": "latest"
+      }
     },
     "mac": {
       "icon": "electron/icons/QIM.icns",
@@ -91,21 +112,12 @@
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowElevation": true,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "artifactName": "QIM-${version}.${ext}"
-    },
-    "publish": {
-      "provider": "generic",
-      "url": "${env.QIM_UPDATE_URL}/api/v1/updates/win10/",
-      "channel": "latest"
+      "gatekeeperAssess": false,
+      "publish": {
+        "provider": "generic",
+        "url": "${env.QIM_UPDATE_URL}/api/v1/updates/mac/",
+        "channel": "latest"
+      }
     }
   },
   "dependencies": {
@@ -131,7 +143,7 @@
     "@vue/test-utils": "^2.4.8",
     "@vue/tsconfig": "^0.5.0",
     "concurrently": "^9.2.1",
-    "electron": "^33.0.0",
+    "electron": "^33.2.1",
     "electron-builder": "^26.8.1",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.0.2",

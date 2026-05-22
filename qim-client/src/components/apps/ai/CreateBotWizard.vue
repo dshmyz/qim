@@ -117,9 +117,11 @@ async function createFromTemplate(tpl: any) {
     const response = await createBot({
       name: tpl.name,
       description: tpl.description,
-      system_prompt: tpl.system_prompt || '',
-      is_template: true,
-      use_system_config: true
+      type: 'ai',
+      config: {
+        system_prompt: tpl.system_prompt || '',
+        use_system_config: true
+      }
     })
 
     if (response.code === 0) {
@@ -151,9 +153,12 @@ async function handleSubmit() {
     const response = await createBot({
       name: form.value.name,
       description: form.value.description,
-      system_prompt: form.value.system_prompt,
-      use_system_config: form.value.useSystemConfig,
-      user_config_id: form.value.configId
+      type: 'ai',
+      config: {
+        system_prompt: form.value.system_prompt,
+        use_system_config: form.value.useSystemConfig,
+        user_config_id: form.value.configId
+      }
     })
 
     if (response.code === 0) {

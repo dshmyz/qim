@@ -23,7 +23,7 @@ export function useAvatar() {
   const config = ref<AvatarConfigWithApproval | null>(null)
   const sessions = ref<AvatarSession[]>([])
   const avatarWithTools = ref<AvatarWithTools | null>(null)
-  const loading = ref(false)
+  const loading = ref(true)
   const error = ref('')
   const configLoaded = ref(false)
   const sessionsLoaded = ref(false)
@@ -38,7 +38,7 @@ export function useAvatar() {
       config.value = await avatarAPI.getConfig()
       configLoaded.value = true
     } catch (e: any) {
-      error.value = e.response?.data?.message || '加载分身配置失败'
+      error.value = e.message || '加载分身配置失败'
       config.value = null
     } finally {
       loading.value = false
@@ -51,10 +51,10 @@ export function useAvatar() {
     try {
       const result = await avatarAPI.createConfig(data)
       // 创建后重新获取配置以包含审批状态
-      await fetchConfig()
+      await fetchConfig(true)
       return config.value
     } catch (e: any) {
-      error.value = e.response?.data?.message || '创建分身配置失败'
+      error.value = e.message || '创建分身配置失败'
       throw e
     } finally {
       loading.value = false
@@ -88,7 +88,7 @@ export function useAvatar() {
       config.value = await avatarAPI.updateConfig(sanitizedUpdates)
       return config.value
     } catch (e: any) {
-      error.value = e.response?.data?.message || '更新分身配置失败'
+      error.value = e.message || '更新分身配置失败'
       throw e
     } finally {
       loading.value = false
@@ -102,7 +102,7 @@ export function useAvatar() {
       await avatarAPI.deleteConfig()
       config.value = null
     } catch (e: any) {
-      error.value = e.response?.data?.message || '删除分身配置失败'
+      error.value = e.message || '删除分身配置失败'
       throw e
     } finally {
       loading.value = false
@@ -125,7 +125,7 @@ export function useAvatar() {
       sessions.value = data.map(mapSessionFields)
       sessionsLoaded.value = true
     } catch (e: any) {
-      error.value = e.response?.data?.message || '加载会话分身状态失败'
+      error.value = e.message || '加载会话分身状态失败'
     } finally {
       loading.value = false
     }
@@ -144,7 +144,7 @@ export function useAvatar() {
       }
       return session
     } catch (e: any) {
-      error.value = e.response?.data?.message || '切换会话分身失败'
+      error.value = e.message || '切换会话分身失败'
       throw e
     } finally {
       loading.value = false
@@ -162,7 +162,7 @@ export function useAvatar() {
       }
       return session
     } catch (e: any) {
-      error.value = e.response?.data?.message || '接管分身失败'
+      error.value = e.message || '接管分身失败'
       throw e
     } finally {
       loading.value = false
@@ -188,7 +188,7 @@ export function useAvatar() {
       config.value = await avatarAPI.applyForApproval()
       return config.value
     } catch (e: any) {
-      error.value = e.response?.data?.message || '申请失败'
+      error.value = e.message || '申请失败'
       throw e
     } finally {
       loading.value = false
@@ -202,7 +202,7 @@ export function useAvatar() {
       config.value = await avatarAPI.cancelApplication()
       return config.value
     } catch (e: any) {
-      error.value = e.response?.data?.message || '取消申请失败'
+      error.value = e.message || '取消申请失败'
       throw e
     } finally {
       loading.value = false
@@ -217,7 +217,7 @@ export function useAvatar() {
       avatarWithTools.value = await avatarAPI.getAvatarWithTools()
       return avatarWithTools.value
     } catch (e: any) {
-      error.value = e.response?.data?.message || '加载工具列表失败'
+      error.value = e.message || '加载工具列表失败'
       throw e
     } finally {
       loading.value = false
@@ -238,7 +238,7 @@ export function useAvatar() {
       }
       await fetchAvatarWithTools()
     } catch (e: any) {
-      error.value = e.response?.data?.message || '切换工具失败'
+      error.value = e.message || '切换工具失败'
       throw e
     } finally {
       loading.value = false
