@@ -179,16 +179,6 @@ import { API_BASE_URL } from '../config'
 import QMessage from '../utils/qmessage'
 import AppLogo from '../components/shared/AppLogo.vue'
 
-declare global {
-  interface Window {
-    electron?: {
-      ipcRenderer: {
-        send: (channel: string, ...args: any[]) => void
-      }
-    }
-  }
-}
-
 interface FormErrors {
   username?: string
   password?: string
@@ -461,10 +451,21 @@ const getProviderIcon = (name: string): string => {
   return icons[name.toLowerCase()] || icons.default
 }
 
+// 生成密码学安全的随机state
+const generateSecureState = (): string => {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// 保存监听器引用，用于精确移除
+let oauthCallbackListener: ((event: any, data: any) => void) | null = null
+let casCallbackListener: ((event: any, data: any) => void) | null = null
+
 const handleRedirectAuth = (provider: AuthProvider) => {
   console.log('点击认证提供者:', provider)
   
-  const state = Math.random().toString(36).substring(7)
+  const state = generateSecureState()
   sessionStorage.setItem('auth_state', state)
   sessionStorage.setItem('auth_provider', provider.name)
 
@@ -491,34 +492,27 @@ const handleRedirectAuth = (provider: AuthProvider) => {
   }
 }
 
-const handleOAuthLogin = (provider: AuthProvider, state: string) => {
+const handleOAuthLogin = async (provider: AuthProvider, state: string) => {
   try {
     const config = JSON.parse(provider.config)
-    const authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(config.redirect_url)}&response_type=code&scope=${config.scope}&state=${state}`
     
-    console.log('OAuth授权URL:', authURL)
-    
-    // 启动OAuth回调服务器（Electron环境）
     if (window.electron) {
-      console.log('启动OAuth回调服务器')
-      window.electron.ipcRenderer.send('start-oauth-server')
+      // 精确移除旧监听器
+      if (oauthCallbackListener) {
+        window.electron.ipcRenderer.removeListener('oauth-callback', oauthCallbackListener)
+      }
       
-      // 移除旧监听器避免重复
-      window.electron.ipcRenderer.removeAllListeners('oauth-callback')
-      
-      // 监听OAuth回调
-      window.electron.ipcRenderer.once('oauth-callback', async (event: any, data: any) => {
+      oauthCallbackListener = async (event: any, data: any) => {
         console.log('收到OAuth回调:', data)
-        await handleOAuthCallback(provider, data.code, state)
-      })
-    }
-    
-    // 打开浏览器授权
-    if (window.electron) {
-      console.log('使用Electron打开授权窗口')
-      window.electron.ipcRenderer.send('open-auth-window', authURL)
+        await handleUnifiedCallback(provider, data.code, state, 'oauth')
+      }
+      window.electron.ipcRenderer.once('oauth-callback', oauthCallbackListener)
+      
+      // 主进程负责拼 URL 和打开窗口，渲染进程只需传递配置
+      window.electron.ipcRenderer.send('open-auth-login', { type: 'oauth', config, state })
     } else {
-      console.log('使用浏览器打开')
+      const callbackUrl = config.redirect_url
+      const authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(callbackUrl)}&response_type=code&scope=${config.scope}&state=${state}`
       window.open(authURL, '_blank')
     }
   } catch (error) {
@@ -527,69 +521,91 @@ const handleOAuthLogin = (provider: AuthProvider, state: string) => {
   }
 }
 
-const handleOAuthCallback = async (provider: AuthProvider, code: string, state: string) => {
+const handleCASLogin = async (provider: AuthProvider) => {
   try {
-    console.log('处理OAuth回调:', code, state)
+    const config = JSON.parse(provider.config)
+    const state = generateSecureState()
+    sessionStorage.setItem('auth_state', state)
+    sessionStorage.setItem('auth_provider', provider.name)
+    
+    if (window.electron) {
+      // 精确移除旧监听器
+      if (casCallbackListener) {
+        window.electron.ipcRenderer.removeListener('cas-callback', casCallbackListener)
+      }
+      
+      casCallbackListener = async (event: any, data: any) => {
+        console.log('收到CAS回调:', data)
+        await handleUnifiedCallback(provider, data.ticket, state, 'cas')
+      }
+      window.electron.ipcRenderer.once('cas-callback', casCallbackListener)
+      
+      // 主进程负责拼 URL 和打开窗口，渲染进程只需传递配置
+      window.electron.ipcRenderer.send('open-auth-login', { type: 'cas', config, state })
+    } else {
+      const callbackUrl = config.service_url
+      const loginURL = `${config.cas_url}/login?service=${encodeURIComponent(callbackUrl)}`
+      window.open(loginURL, '_blank')
+    }
+  } catch (error) {
+    console.error('CAS登录失败:', error)
+    QMessage.error('CAS配置错误')
+  }
+}
+
+const handleUnifiedCallback = async (provider: AuthProvider, credential: string, state: string, type: 'oauth' | 'cas') => {
+  try {
+    console.log(`处理${type === 'oauth' ? 'OAuth' : 'CAS'}回调:`, credential, state)
     
     const savedState = sessionStorage.getItem('auth_state')
     const savedProvider = sessionStorage.getItem('auth_provider')
     
     if (state !== savedState) {
       console.error('State不匹配')
-      QMessage.error('OAuth验证失败')
+      QMessage.error('验证失败')
       return
     }
     
     isLoading.value = true
     QMessage.info('正在登录...')
     
-    const response = await fetch(`${serverSettings.url}/api/v1/auth/oauth/callback`, {
+    const requestBody: any = {
+      provider: savedProvider || provider.name,
+      state: state,
+      type: type
+    }
+    
+    if (type === 'oauth') {
+      requestBody.code = credential
+    } else {
+      requestBody.ticket = credential
+    }
+    
+    const response = await fetch(`${serverSettings.url}/api/v1/auth/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: savedProvider || provider.name,
-        code: code,
-        state: state
-      })
+      body: JSON.stringify(requestBody)
     })
     
     const data = await response.json()
     if (data.code === 0) {
       QMessage.success('登录成功')
       
-      // 保存token
       localStorage.setItem('token', data.data.token)
       localStorage.setItem('userInfo', JSON.stringify(data.data.user))
       
-      // 清除session
       sessionStorage.removeItem('auth_state')
       sessionStorage.removeItem('auth_provider')
       
-      // 触发登录成功事件 - 传递完整用户对象
       emit('login-success', data.data.user)
     } else {
       QMessage.error(data.message || '登录失败')
     }
   } catch (error) {
-    console.error('OAuth回调处理失败:', error)
+    console.error('回调处理失败:', error)
     QMessage.error('登录失败')
   } finally {
     isLoading.value = false
-  }
-}
-
-const handleCASLogin = (provider: AuthProvider) => {
-  try {
-    const config = JSON.parse(provider.config)
-    const loginURL = `${config.cas_url}/login?service=${encodeURIComponent(config.service_url)}`
-    
-    if (window.electron) {
-      window.electron.ipcRenderer.send('open-external', loginURL)
-    } else {
-      window.open(loginURL, '_blank')
-    }
-  } catch (error) {
-    QMessage.error('CAS配置错误')
   }
 }
 

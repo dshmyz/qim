@@ -117,7 +117,7 @@
             :conversation="currentConversation"
             :messages="messages"
             :getReadUsers="getMessageReadUsers"
-            :currentUser="currentUser.value"
+            :currentUser="currentUser"
             :hasMoreMessages="hasMoreMessages"
             :updateConversation="updateConversation"
             :fileSettings="fileSettings"

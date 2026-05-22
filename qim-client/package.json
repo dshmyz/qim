@@ -31,6 +31,12 @@
     "appId": "com.qim.app",
     "productName": "青雀 QIM",
     "electronVersion": "33.0.0",
+    "protocols": [
+      {
+        "name": "QIM Auth",
+        "schemes": ["qim"]
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*"

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen, dialog } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, screen, dialog, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -7,7 +7,6 @@ import os from 'os'
 import crypto from 'crypto'
 import pkg from 'electron-updater'
 import { createRequire } from 'node:module'
-import http from 'http'
 const require = createRequire(import.meta.url)
 const screenshots = require('./screenshots/lib/index.cjs').default
 const { autoUpdater } = pkg
@@ -15,7 +14,7 @@ const { autoUpdater } = pkg
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// 单开实例控制：仅生产环境生效，开发模式允许多开
+// 单开实例控制 + 自定义协议回调（仅打包模式启用，开发模式允许多开）
 if (app.isPackaged) {
   const gotTheLock = app.requestSingleInstanceLock()
   if (!gotTheLock) {
@@ -25,6 +24,13 @@ if (app.isPackaged) {
   }
 
   app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 处理自定义协议回调（Windows/Linux 生产环境）
+    const protocolUrl = commandLine.find(arg => arg.startsWith('qim://'))
+    if (protocolUrl) {
+      const httpUrl = protocolUrl.replace('qim://', 'http://localhost:3001/')
+      handleAuthCallback(httpUrl)
+    }
+
     if (mainWindow) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore()
@@ -69,126 +75,52 @@ function getIconDataURL(size = 512) {
 
 const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
 
-// OAuth回调服务器
-let oauthServer = null
+// 认证回调
 let authWindow = null
-const OAUTH_CALLBACK_PORT = 3001
+let isHandlingCallback = false
+const AUTH_CALLBACK_BASE = 'http://localhost:3001'
 
-function startOAuthServer() {
-  if (oauthServer) {
-    console.log('OAuth server already running')
-    return
-  }
-
-  oauthServer = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://localhost:${OAUTH_CALLBACK_PORT}`)
+// 处理认证回调URL
+function handleAuthCallback(callbackUrl) {
+  if (isHandlingCallback) return
+  isHandlingCallback = true
+  
+  try {
+    const url = new URL(callbackUrl)
     
-    if (url.pathname === '/oauth/callback') {
-      console.log('收到OAuth回调:', req.url)
-      
-      const code = url.searchParams.get('code')
-      const state = url.searchParams.get('state')
-      const savedProvider = 'github' // TODO: 从state或其他地方获取
-      
-      console.log('OAuth回调 - code:', code, 'state:', state, 'provider:', savedProvider)
-      
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      res.end(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>授权成功 - QIM</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            }
-            .container {
-              background: white;
-              padding: 40px;
-              border-radius: 12px;
-              box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-              text-align: center;
-            }
-            h1 { color: #333; margin: 0 0 10px; }
-            p { color: #666; }
-            .spinner {
-              margin: 20px auto;
-              width: 40px;
-              height: 40px;
-              border: 4px solid #f3f3f3;
-              border-top: 4px solid #667eea;
-              border-radius: 50%;
-              animation: spin 1s linear infinite;
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>✓ 授权成功</h1>
-            <p>正在返回QIM应用并登录...</p>
-            <div class="spinner"></div>
-          </div>
-        </body>
-        </html>
-      `)
-      
-      // 关闭授权窗口
-      if (authWindow && !authWindow.isDestroyed()) {
-        console.log('关闭授权窗口')
-        authWindow.close()
-        authWindow = null
-      }
-      
-      // 发送授权码给前端
-      if (mainWindow && !mainWindow.isDestroyed() && code) {
-        console.log('发送oauth-callback事件给前端')
-        
-        // 显示应用窗口
-        if (mainWindow.isMinimized()) {
-          mainWindow.restore()
-        }
-        mainWindow.show()
-        mainWindow.focus()
-        
-        mainWindow.webContents.send('oauth-callback', {
-          code: code,
-          state: state,
-          provider: savedProvider
-        })
-        console.log('已发送授权码，应用窗口已显示')
-      } else {
-        console.error('主窗口不可用或code为空')
-        console.log('mainWindow:', mainWindow)
-        console.log('code:', code)
-      }
-    } else {
-      res.writeHead(404)
-      res.end('Not Found')
+    const isOAuth = url.pathname.startsWith('/oauth')
+    const code = url.searchParams.get('code') || ''
+    const ticket = url.searchParams.get('ticket') || ''
+    const state = url.searchParams.get('state') || ''
+    
+    console.log(`收到${isOAuth ? 'OAuth' : 'CAS'}回调:`, callbackUrl)
+    
+    // 关闭授权窗口（开发模式）
+    if (authWindow && !authWindow.isDestroyed()) {
+      authWindow.close()
+      authWindow = null
     }
-  })
-
-  oauthServer.listen(OAUTH_CALLBACK_PORT, () => {
-    console.log(`OAuth回调服务器运行在 http://localhost:${OAUTH_CALLBACK_PORT}`)
-  })
-
-  oauthServer.on('error', (error) => {
-    console.error('OAuth服务器启动失败:', error.message)
-    if (error.code === 'EADDRINUSE') {
-      console.log('端口被占用，OAuth回调可能无法正常工作')
+    
+    if (mainWindow && !mainWindow.isDestroyed() && (code || ticket)) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+      
+      const callbackData = isOAuth 
+        ? { code, state, type: 'oauth' }
+        : { ticket, state, type: 'cas' }
+      
+      mainWindow.webContents.send(`${isOAuth ? 'oauth' : 'cas'}-callback`, callbackData)
     }
-  })
+  } catch (err) {
+    console.error('解析回调URL失败:', err)
+  } finally {
+    isHandlingCallback = false
+  }
 }
+
+// 注册自定义协议（打包后系统浏览器通过此协议唤起应用）
+app.setAsDefaultProtocolClient('qim')
 
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'config.json')
@@ -512,40 +444,72 @@ function createWindow() {
     }
   })
 
-  ipcMain.on('open-external', (event, url) => {
-    console.log('Received open-external event:', url)
-    const { shell } = require('electron')
-    shell.openExternal(url)
-  })
+  ipcMain.on('open-auth-login', (event, data) => {
+    const { type, config, state } = data
+    console.log('打开授权登录:', type, config)
 
-  ipcMain.on('open-auth-window', (event, authURL) => {
-    console.log('Received open-auth-window event:', authURL)
-    
-    if (authWindow && !authWindow.isDestroyed()) {
-      authWindow.close()
+    let authURL
+    if (type === 'oauth') {
+      const callbackUrl = app.isPackaged ? 'qim://oauth/callback' : `${AUTH_CALLBACK_BASE}/oauth/callback`
+      authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(callbackUrl)}&response_type=code&scope=${config.scope}&state=${state}`
+    } else if (type === 'cas') {
+      const callbackUrl = app.isPackaged ? 'qim://cas/callback' : `${AUTH_CALLBACK_BASE}/cas/callback`
+      authURL = `${config.cas_url}/login?service=${encodeURIComponent(callbackUrl)}`
+    } else {
+      console.error('未知的认证类型:', type)
+      return
     }
-    
-    authWindow = new BrowserWindow({
-      width: 600,
-      height: 800,
-      title: '授权登录',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    })
-    
-    authWindow.loadURL(authURL)
-    
-    authWindow.on('closed', () => {
-      console.log('Auth window closed')
-      authWindow = null
-    })
-  })
 
-  ipcMain.on('start-oauth-server', () => {
-    console.log('Received start-oauth-server event')
-    startOAuthServer()
+    console.log('授权URL:', authURL)
+
+    // 校验URL协议，仅允许 https:// 和 http://（开发模式）
+    try {
+      const parsed = new URL(authURL)
+      if (!['https:', 'http:'].includes(parsed.protocol)) {
+        console.error('不允许的协议:', parsed.protocol)
+        return
+      }
+    } catch (e) {
+      console.error('无效的授权URL:', authURL)
+      return
+    }
+
+    if (app.isPackaged) {
+      // 打包后：系统浏览器 + qim://协议自动返回
+      shell.openExternal(authURL)
+    } else {
+      // 开发模式：BrowserWindow + 拦截localhost重定向
+      if (authWindow && !authWindow.isDestroyed()) {
+        authWindow.close()
+      }
+
+      authWindow = new BrowserWindow({
+        width: 600,
+        height: 800,
+        title: '授权登录',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      })
+
+      authWindow.webContents.on('will-redirect', (event, url) => {
+        if (url.startsWith(AUTH_CALLBACK_BASE)) {
+          event.preventDefault()
+          handleAuthCallback(url)
+        }
+      })
+
+      authWindow.webContents.on('will-navigate', (event, url) => {
+        if (url.startsWith(AUTH_CALLBACK_BASE)) {
+          event.preventDefault()
+          handleAuthCallback(url)
+        }
+      })
+
+      authWindow.loadURL(authURL)
+      authWindow.on('closed', () => { authWindow = null })
+    }
   })
 
   let trayFlashInterval = null
@@ -708,6 +672,17 @@ app.whenReady().then(() => {
     if (image) {
       app.dock.setIcon(image)
     }
+  }
+})
+
+// macOS: 通过 open-url 事件接收自定义协议回调（生产环境）
+app.on('open-url', (event, url) => {
+  console.log('收到 open-url:', url)
+  event.preventDefault()
+  if (url.startsWith('qim://')) {
+    // qim://oauth/callback -> http://localhost:3001/oauth/callback
+    const httpUrl = url.replace('qim://', 'http://localhost:3001/')
+    handleAuthCallback(httpUrl)
   }
 })
 
