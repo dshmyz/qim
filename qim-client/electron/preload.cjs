@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('electron', {
     send: (channel, data) => {
       ipcRenderer.send(channel, data)
     },
+    invoke: (channel, data) => {
+      return ipcRenderer.invoke(channel, data)
+    },
     on: (channel, callback) => {
       const listener = (event, ...args) => callback(event, ...args)
       // Store the mapping so it can be removed later

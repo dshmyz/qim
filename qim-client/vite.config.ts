@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
 
   return {
+    base: './',
     plugins: [vue()],
     resolve: {
       alias: {

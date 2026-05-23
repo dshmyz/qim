@@ -81,7 +81,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 import AppHeader from './AppHeader.vue'
@@ -95,7 +95,7 @@ defineEmits<{
   toggleSidebar: []
 }>()
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 const getToken = () => {
   return localStorage.getItem('token')

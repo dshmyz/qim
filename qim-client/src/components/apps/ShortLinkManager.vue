@@ -73,7 +73,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import QMessage from '../../utils/qmessage'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
 import QuickGenerateSection from './shortlink/QuickGenerateSection.vue'
 import StatsCards from './shortlink/StatsCards.vue'
@@ -88,7 +88,7 @@ import type { ShortLink } from './shortlink/ShortLinkItem.vue'
 const emit = defineEmits(['back', 'toggleSidebar'])
 
 // 服务器URL
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 快速生成相关状态
 const generatedUrl = ref('')

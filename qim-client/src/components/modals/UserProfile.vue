@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import Avatar from '../shared/Avatar.vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
@@ -92,7 +92,7 @@ const handleSendPrivateMessage = () => {
   emit('close')
 }
 
-const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+const serverUrl = getStoredServerUrl()
 
 // 头像 URL
 const avatarUrl = computed(() => {

@@ -40,11 +40,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { getAvatarUrl, getDisplayName } from '../../utils/avatar'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import type { ChannelMessage } from '../../types'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 interface Props {
   messages: ChannelMessage[]

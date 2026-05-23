@@ -14,6 +14,7 @@ import (
 	"qim-server/middleware"
 	"qim-server/pkg/logger"
 	"qim-server/service"
+	syncpkg "qim-server/sync"
 	"qim-server/utils"
 	"qim-server/ws"
 
@@ -198,6 +199,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// API路由
 	api := r.Group("/api/v1")
 	{
+		// 组织架构同步Webhook（公开端点，外部系统调用）
+		api.POST("/org/sync/webhook", syncpkg.WebhookHandler)
+
 		// 认证路由
 		auth := api.Group("/auth")
 		loginLimiter := middleware.NewLoginLimiter(5, time.Minute, 15*time.Minute)
@@ -549,6 +553,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/org/sync/configs", orgSyncHandler.GetConfigs)
 				admin.POST("/org/sync/configs", orgSyncHandler.CreateConfig)
 				admin.PUT("/org/sync/configs/:id", orgSyncHandler.UpdateConfig)
+				admin.DELETE("/org/sync/configs/:id", orgSyncHandler.DeleteConfig)
 				admin.POST("/org/sync/trigger/:id", orgSyncHandler.TriggerSync)
 				admin.GET("/org/sync/logs", orgSyncHandler.GetLogs)
 
@@ -593,6 +598,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)
+
+			// 管理员操作用户AI配置
+			admin.GET("/users/:id/ai-configs", handler.AdminGetUserAIConfigs)
+			admin.PUT("/users/:id/ai-configs/:configId", handler.AdminUpdateUserAIConfig)
 
 			// 向量数据库管理（管理员）
 			admin.GET("/vector/collections", handler.AdminListVectorCollections)

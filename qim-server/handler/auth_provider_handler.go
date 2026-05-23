@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"qim-server/auth/provider"
 	"qim-server/database"
 	"qim-server/model"
 
@@ -150,8 +151,8 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		return
 	}
 
-	var provider model.AuthProvider
-	if err := h.db.First(&provider, id).Error; err != nil {
+	var authProvider model.AuthProvider
+	if err := h.db.First(&authProvider, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    1,
 			"message": "provider not found",
@@ -164,20 +165,56 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		TestUsername string `json:"test_username"`
 		TestPassword string `json:"test_password"`
 	}
-	if err := c.ShouldBindJSON(&testData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": err.Error(),
-			"data":    nil,
-		})
-		return
-	}
+	c.ShouldBindJSON(&testData)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "认证测试功能待实现",
-		"data": gin.H{
-			"provider": provider.Name,
-		},
-	})
+	switch authProvider.Type {
+	case "direct":
+		switch authProvider.Name {
+		case "ldap":
+			ldapProvider, err := provider.NewLDAPProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    1,
+					"message": "创建LDAP提供者失败: " + err.Error(),
+					"data":    nil,
+				})
+				return
+			}
+
+			if err := ldapProvider.TestConnection(); err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"code":    1,
+					"message": "连接测试失败: " + err.Error(),
+					"data":    gin.H{"provider": authProvider.Name, "status": "failed"},
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "连接测试成功",
+				"data":    gin.H{"provider": authProvider.Name, "status": "connected"},
+			})
+		default:
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "该认证类型暂不支持连接测试",
+				"data":    gin.H{"provider": authProvider.Name},
+			})
+		}
+
+	case "redirect":
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "重定向认证类型无需连接测试，请检查OAuth配置",
+			"data":    gin.H{"provider": authProvider.Name},
+		})
+
+	default:
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "未知的认证类型",
+			"data":    gin.H{"provider": authProvider.Name},
+		})
+	}
 }

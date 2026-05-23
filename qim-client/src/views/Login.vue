@@ -175,7 +175,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import packageJson from '../../package.json'
-import { API_BASE_URL } from '../config'
+import { getStoredServerUrl, useServerUrl } from '../composables/useServerUrl'
 import QMessage from '../utils/qmessage'
 import AppLogo from '../components/shared/AppLogo.vue'
 
@@ -221,7 +221,7 @@ const isResending = ref(false)
 const authProviders = ref<AuthProvider[]>([])
 
 const serverSettings = reactive({
-  url: API_BASE_URL
+  url: getStoredServerUrl()
 })
 
 const redirectProviders = computed(() => {
@@ -308,13 +308,10 @@ const handleInputBlur = (input: string) => {
 }
 
 const saveServerSettings = () => {
-  localStorage.setItem('serverUrl', serverSettings.url)
+  const { setServerUrl } = useServerUrl()
+  setServerUrl(serverSettings.url)
   showServerSettings.value = false
   QMessage.success('服务器地址保存成功')
-
-  if (window.electron) {
-    window.electron.ipcRenderer.send('set-server-url', serverSettings.url)
-  }
 }
 
 const login = async () => {
@@ -413,14 +410,14 @@ const loadSavedSettings = () => {
   const savedUsername = localStorage.getItem('username')
   const savedPassword = localStorage.getItem('password')
   const savedRemember = localStorage.getItem('remember')
-  const savedServerUrl = localStorage.getItem('serverUrl')
-  
+  const savedServerUrl = getStoredServerUrl()
+
   if (savedRemember === 'true' && savedUsername && savedPassword) {
     loginForm.username = savedUsername
     loginForm.password = decodeURIComponent(atob(savedPassword))
     loginForm.remember = true
   }
-  if (savedServerUrl) serverSettings.url = savedServerUrl
+  serverSettings.url = savedServerUrl
 }
 
 loadSavedSettings()

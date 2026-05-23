@@ -118,7 +118,7 @@
 import { ref, computed, watch } from 'vue'
 import QDialog from '../../shared/QDialog.vue'
 import QMessage from '../../../utils/qmessage'
-import { API_BASE_URL } from '../../../config'
+import { useServerUrl } from '../../../composables/useServerUrl'
 
 interface AdvancedOptions {
   originalUrl: string
@@ -141,7 +141,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 const baseUrl = computed(() => {
   // 从 serverUrl 提取基础URL用于显示
   try {

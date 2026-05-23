@@ -3,13 +3,14 @@ package database
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"qim-server/config"
 	"qim-server/model"
 	"qim-server/pkg/logger"
+	qsqlite "qim-server/pkg/sqlite"
 	"time"
 
 	"gorm.io/driver/mysql"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 )
@@ -31,7 +32,18 @@ func Init(cfg *config.Config) *gorm.DB {
 			Logger: gormLogger.Default.LogMode(gormLogger.Warn),
 		})
 	} else {
-		DB, err = gorm.Open(sqlite.Open(cfg.Database.Path), &gorm.Config{
+		// 确保数据库目录存在且可写
+		dbDir := filepath.Dir(cfg.Database.Path)
+		if dbDir != "." && dbDir != "/" {
+			if err := os.MkdirAll(dbDir, 0755); err != nil {
+				logger.WithModule("Database").Error("创建数据库目录失败", "path", dbDir, "error", err)
+				os.Exit(1)
+			}
+		}
+
+		// 纯 Go SQLite，禁用 mmap + WAL 避免信创/容器权限问题
+		dsn := cfg.Database.Path + "?_pragma=mmap_size(0)&_pragma=journal_mode(DELETE)&_pragma=busy_timeout(5000)"
+		DB, err = gorm.Open(qsqlite.Open(dsn), &gorm.Config{
 			Logger: gormLogger.Default.LogMode(gormLogger.Warn),
 		})
 	}

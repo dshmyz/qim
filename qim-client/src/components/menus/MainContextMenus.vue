@@ -26,11 +26,11 @@
       <span class="action-menu-icon"><i class="fas fa-comments"></i></span>
       <span>创建讨论组</span>
     </div>
-    <div class="action-menu-item" @click="$emit('createChannel')">
+    <div v-if="canCreateChannel" class="action-menu-item" @click="$emit('createChannel')">
       <span class="action-menu-icon"><i class="fas fa-bullhorn"></i></span>
       <span>创建频道</span>
     </div>
-    <div v-if="currentUser?.isAdmin" class="action-menu-item" @click="$emit('systemMessage')">
+    <div v-if="canPublishSystemMessage" class="action-menu-item" @click="$emit('systemMessage')">
       <span class="action-menu-icon"><i class="fas fa-broadcast-tower"></i></span>
       <span>发布系统消息</span>
     </div>
@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted } from 'vue'
+import { computed, watch, onMounted, onUnmounted } from 'vue'
 
 interface Conversation {
   id: string | number
@@ -183,10 +183,20 @@ interface Props {
   themeMenuPosition: Position
   showMoreMenuFlag: boolean
   moreMenuPosition: Position
-  currentUser?: { isAdmin?: boolean }
+  currentUser?: { isAdmin?: boolean; roles?: string[] }
 }
 
 const props = defineProps<Props>()
+
+const canCreateChannel = computed(() => {
+  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
+})
+
+const canPublishSystemMessage = computed(() => {
+  return props.currentUser?.isAdmin ||
+    props.currentUser?.roles?.includes('system_admin') ||
+    props.currentUser?.roles?.includes('system_publisher')
+})
 
 const emit = defineEmits<{
   'pin': [conversation: Conversation]

@@ -174,7 +174,6 @@
                 @like="handleMessageLike"
                 @unlike="handleMessageUnlike"
                 @comment="handleMessageComment"
-                @copyLink="handleMessageCopyLink"
               />
               <div v-else class="channel-empty-state">
                 <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
@@ -551,7 +550,7 @@
     >
       <GroupAIPanel
         :group-id="Number(selectedGroup?.id)"
-        :server-url="API_BASE_URL"
+        :server-url="serverUrl"
         :ai-enabled="selectedGroup?.ai_config?.ai_enabled ?? false"
         :ai-assistant-name="selectedGroup?.ai_config?.ai_assistant_name ?? 'AI助手'"
         :ai-reply-mode="selectedGroup?.ai_config?.ai_reply_mode ?? 'mention_only'"
@@ -674,7 +673,7 @@ import MainContextMenus from '../components/menus/MainContextMenus.vue'
 import MainDialogs from '../components/modals/MainDialogs.vue'
 const SettingsPanel = defineAsyncComponent(() => import('../components/settings/SettingsPanel.vue'))
 import ContentSkeleton from '../components/skeleton/ContentSkeleton.vue'
-import { API_BASE_URL } from '../config'
+import { useServerUrl } from '../composables/useServerUrl'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
@@ -693,7 +692,7 @@ import { useUI } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
 
 // 服务器地址
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 显示消息提示（兼容现有 showMessage 调用方式）
 const showMessage = (options: { message: string, type?: 'success' | 'warning' | 'error' | 'info', duration?: number }) => {
@@ -3688,19 +3687,6 @@ const handleMessageUnlike = async (message: any) => {
 
 const handleMessageComment = async (message: any) => {
   // 评论功能由子组件直接处理弹窗和提交
-}
-
-const handleMessageCopyLink = async (message: any) => {
-  try {
-    // 生成消息链接
-    const url = `${window.location.origin}/channels/${message.channel_id}/messages/${message.id}`
-    await navigator.clipboard.writeText(url)
-    QMessage.success('链接已复制到剪贴板')
-    logger.log('复制消息链接:', message)
-  } catch (error) {
-    logger.error('复制链接失败:', error)
-    QMessage.error('复制链接失败')
-  }
 }
 
 const createDiscussionGroup = () => {

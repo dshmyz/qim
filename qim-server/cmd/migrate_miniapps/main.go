@@ -6,7 +6,7 @@ import (
 
 	"qim-server/pkg/logger"
 
-	"gorm.io/driver/sqlite"
+	"qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

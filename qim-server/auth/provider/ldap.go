@@ -143,6 +143,7 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 
 	return &AuthResult{
 		Success:  true,
+		UserID:   userDN,
 		Message:  "认证成功",
 		UserInfo: userInfo,
 	}, nil

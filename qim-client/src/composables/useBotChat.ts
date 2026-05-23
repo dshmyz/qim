@@ -1,6 +1,7 @@
 // src/composables/useBotChat.ts
 
 import { ref, computed, type Ref } from 'vue'
+import { getStoredServerUrl } from './useServerUrl'
 import { request, getToken } from './useRequest'
 import type { BotMessage } from '../types/bot'
 
@@ -206,7 +207,7 @@ export function useBotChat(botId: Ref<number | null>) {
       abortController.value = new AbortController()
 
       const token = getToken()
-      const serverUrl = localStorage.getItem('serverUrl') || import.meta.env.VITE_API_URL || 'http://localhost:8080'
+      const serverUrl = getStoredServerUrl()
 
       let streamUrl: string
       let requestBody: string

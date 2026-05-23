@@ -156,11 +156,11 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
 
 // 服务器URL
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 统计报表相关状态
 const selectedPeriod = ref('week')

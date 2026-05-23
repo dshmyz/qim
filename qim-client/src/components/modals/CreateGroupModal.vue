@@ -104,7 +104,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import QMessage from '../../utils/qmessage'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 // Props
@@ -132,7 +132,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'created'])
 
 // 服务器URL
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 内部状态
 const name = ref('')

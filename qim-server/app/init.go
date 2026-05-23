@@ -199,6 +199,10 @@ func MigrateDB(db *gorm.DB) {
 		&model.AvatarLearnTask{},     // 分身学习任务
 		&model.FileChunk{},           // 文件分片
 		&model.UploadTask{},          // 上传任务
+		&model.AuthProvider{},        // 认证提供者
+		&model.ExternalUserMapping{}, // 外部用户映射
+		&model.OrgSyncConfig{},       // 组织架构同步配置
+		&model.OrgSyncLog{},          // 组织架构同步日志
 	); err != nil {
 		logger.WithModule("Migrate").Error("数据库迁移失败", "error", err)
 		os.Exit(1)

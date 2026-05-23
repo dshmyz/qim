@@ -94,10 +94,65 @@ func Login(c *gin.Context) {
 
 	db := database.GetDB()
 	var user model.User
-	if err := db.First(&user, result.UserID).Error; err != nil {
-		logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found after auth")
-		response.Unauthorized(c, "用户不存在")
-		return
+
+	if providerName == "local" {
+		if err := db.First(&user, result.UserID).Error; err != nil {
+			logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "user not found after auth")
+			response.Unauthorized(c, "用户不存在")
+			return
+		}
+	} else {
+		var mapping model.ExternalUserMapping
+		err := db.Where("provider_name = ? AND external_user_id = ?", providerName, result.UserID).First(&mapping).Error
+		if err == nil {
+			if err := db.First(&user, mapping.UserID).Error; err != nil {
+				logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "mapped user not found")
+				response.Unauthorized(c, "用户不存在")
+				return
+			}
+		} else {
+			username := req.Username
+			nickname := getStringFromUserInfo(result.UserInfo, "username", "cn")
+			email := getStringFromUserInfo(result.UserInfo, "mail", "email")
+			phone := getStringFromUserInfo(result.UserInfo, "telephonenumber", "phone")
+
+			tx := db.Begin()
+
+			user = model.User{
+				Username:     username,
+				PasswordHash: "",
+				Nickname:     nickname,
+				Email:        email,
+				Phone:        phone,
+				Status:       "offline",
+			}
+			if err := tx.Where("username = ?", username).FirstOrCreate(&user).Error; err != nil {
+				tx.Rollback()
+				logger.WithModule("Auth").Error("Auto-create user failed", "username", username, "error", err)
+				response.InternalServerError(c, "创建用户失败")
+				return
+			}
+
+			mapping = model.ExternalUserMapping{
+				UserID:         user.ID,
+				ProviderName:   providerName,
+				ExternalUserID: result.UserID,
+			}
+			if err := tx.Create(&mapping).Error; err != nil {
+				tx.Rollback()
+				logger.WithModule("Auth").Error("Create external mapping failed", "error", err)
+				response.InternalServerError(c, "创建用户映射失败")
+				return
+			}
+
+			if err := tx.Commit().Error; err != nil {
+				tx.Rollback()
+				response.InternalServerError(c, "保存用户信息失败")
+				return
+			}
+
+			logger.WithModule("Auth").Info("External user auto-created", "username", username, "provider", providerName, "userID", user.ID)
+		}
 	}
 
 	if user.Type == "bot" || user.Type == "system" || user.Type == "api" {
@@ -161,6 +216,17 @@ func generateSessionID() string {
 	timestamp := time.Now().UnixNano()
 	random := rand.Intn(10000)
 	return fmt.Sprintf("%d%d", timestamp, random)
+}
+
+func getStringFromUserInfo(userInfo map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := userInfo[key]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 func VerifyTwoFA(c *gin.Context) {

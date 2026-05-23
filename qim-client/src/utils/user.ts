@@ -12,7 +12,7 @@ const defaultUser: User = {
   username: 'admin',
   nickname: '管理员',
   avatar: '',
-  isAdmin: true
+  isAdmin: false
 }
 
 export const getCurrentUser = (): User => {
@@ -21,7 +21,7 @@ export const getCurrentUser = (): User => {
     try {
       const user = JSON.parse(userStr) as User
       if (user && user.id) {
-        user.isAdmin = true
+        user.isAdmin = user.roles?.includes('system_admin') || false
         return user
       }
     } catch (error) {

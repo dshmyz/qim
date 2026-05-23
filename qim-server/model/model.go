@@ -33,6 +33,7 @@ type User struct {
 type Department struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
 	Name           string         `json:"name" gorm:"size:100;not null"`
+	ExternalID     string         `json:"external_id" gorm:"size:200;index"`
 	ParentID       *uint          `json:"parent_id" gorm:"index"`
 	Level          int            `json:"level" gorm:"not null"`
 	Path           string         `json:"path" gorm:"size:500"`

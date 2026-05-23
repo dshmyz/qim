@@ -373,3 +373,103 @@ func AdminGetRecentRegistrations(c *gin.Context) {
 		"total": total,
 	})
 }
+
+// AdminGetUserAIConfigs 管理员获取指定用户的AI配置列表
+func AdminGetUserAIConfigs(c *gin.Context) {
+	userIDStr := c.Param("id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	svc := di.GlobalContainer.AIConfigService
+	configs, total, err := svc.ListUserConfigs(uint(userID), page, pageSize)
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	responses := make([]ConfigResponse, len(configs))
+	for i, cfg := range configs {
+		responses[i] = toConfigResponse(cfg)
+	}
+
+	response.Success(c, gin.H{
+		"list":     responses,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
+// AdminUpdateUserAIConfig 管理员更新指定用户的AI配置
+func AdminUpdateUserAIConfig(c *gin.Context) {
+	userIDStr := c.Param("id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	configIDStr := c.Param("configId")
+	configID, err := strconv.ParseUint(configIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的配置ID")
+		return
+	}
+
+	var req struct {
+		ConfigName  string  `json:"config_name"`
+		Provider    string  `json:"provider"`
+		APIKey      string  `json:"api_key"`
+		ModelName   string  `json:"model_name"`
+		BaseURL     string  `json:"base_url"`
+		AIEnabled   *bool   `json:"ai_enabled"`
+		DailyLimit  *int    `json:"daily_limit"`
+		MaxTokens   *int    `json:"max_tokens"`
+		Temperature *float64 `json:"temperature"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	svc := di.GlobalContainer.AIConfigService
+	config, err := svc.UpdateConfig(uint(userID), uint(configID), req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
+	if err != nil {
+		response.InternalServerError(c, "更新配置失败")
+		return
+	}
+
+	// 更新额外的配置字段
+	db := di.GlobalContainer.DB
+	updates := make(map[string]interface{})
+	if req.AIEnabled != nil {
+		updates["ai_enabled"] = *req.AIEnabled
+	}
+	if req.DailyLimit != nil {
+		updates["daily_limit"] = *req.DailyLimit
+	}
+	if req.MaxTokens != nil {
+		updates["max_tokens"] = *req.MaxTokens
+	}
+	if req.Temperature != nil {
+		updates["temperature"] = *req.Temperature
+	}
+	if len(updates) > 0 {
+		db.Model(config).Updates(updates)
+	}
+
+	response.Success(c, toConfigResponse(*config))
+}

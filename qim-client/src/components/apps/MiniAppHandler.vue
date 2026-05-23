@@ -3,6 +3,7 @@
 </template>
 
 <script setup lang="ts">
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import QMessage from '../../utils/qmessage'
 import { logger } from '../../utils/logger';
 import { escapeHTML } from '../../utils/sanitize';
@@ -564,7 +565,7 @@ export const showMiniAppModal = (miniApp: any) => {
     const resultDiv = document.getElementById('short-link-result')
     const outputInput = document.getElementById('short-link-output-input') as HTMLInputElement
     const copyBtn = document.getElementById('copy-short-link')
-    const serverUrl = localStorage.getItem('serverUrl') || 'https://qim.buaa.edu.cn'
+    const serverUrl = getStoredServerUrl()
 
     // 生成短链接
     const generateShortLink = async () => {

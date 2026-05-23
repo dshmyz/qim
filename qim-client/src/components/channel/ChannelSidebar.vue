@@ -146,7 +146,8 @@ const selectedChannelId = computed(() => channelStore.selectedChannelId)
 const totalUnreadCount = computed(() => channelStore.totalUnreadCount)
 
 const isAdmin = computed(() => {
-  return (props.currentUser as any)?.isAdmin || (props.currentUser as any)?.role === 'admin'
+  const user = props.currentUser as any
+  return user?.isAdmin || user?.roles?.includes('system_admin')
 })
 
 const subscribedUnreadCount = computed(() => {

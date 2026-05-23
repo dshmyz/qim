@@ -19,6 +19,7 @@ import (
 	"qim-server/database"
 	"qim-server/handler"
 	"qim-server/pkg/logger"
+	syncpkg "qim-server/sync"
 	"syscall"
 	"time"
 
@@ -42,6 +43,13 @@ func main() {
 	})
 	logger.L().Info("定时任务已启动：群聊总结 (每天 22:00)")
 
+	// 启动组织架构同步定时调度器
+	syncEngine := syncpkg.NewEngine()
+	syncpkg.SharedEngine = syncEngine
+	syncScheduler := syncpkg.NewScheduler(syncEngine)
+	syncScheduler.Start()
+	logger.L().Info("组织架构同步调度器已启动")
+
 	// 使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -62,6 +70,7 @@ func main() {
 		<-quit
 		logger.L().Info("收到退出信号，正在优雅关闭...")
 		cancel() // 停止定时任务
+		syncScheduler.Stop() // 停止同步调度器
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()

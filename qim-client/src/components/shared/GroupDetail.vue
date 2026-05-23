@@ -134,13 +134,13 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';
 import QMessage from '../../utils/qmessage'
 import { getCurrentUser } from '../../utils/user'
 
-const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+const serverUrl = getStoredServerUrl()
 const avatarInput = ref<HTMLInputElement | null>(null)
 
 interface Props {

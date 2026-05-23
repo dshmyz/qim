@@ -5,6 +5,9 @@ import { getToken } from './useRequest'
  * 包含获取 token、格式化日期、发起 HTTP 请求等功能
  */
 export function useChatRequest(baseUrl: string) {
+  // 规范化 baseUrl，确保以 http 开头且不以斜杠结尾
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
+
   // 格式化日期为 YYYY-MM-DD 格式（本地时间）
   const formatDate = (date: Date): string => {
     const year = date.getFullYear()
@@ -21,14 +24,13 @@ export function useChatRequest(baseUrl: string) {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
 
-    const fullUrl = `${baseUrl}${url}`
+    const normalizedPath = url.startsWith('/') ? url : `/${url}`
+    const fullUrl = `${normalizedBaseUrl}${normalizedPath}`
+
     const requestHeaders = {
       ...headers,
       ...options?.headers
     }
-    console.log('发送请求:', fullUrl, options)
-    console.log('请求头:', requestHeaders)
-    console.log('Token:', token)
 
     try {
       const response = await fetch(fullUrl, {
@@ -36,11 +38,8 @@ export function useChatRequest(baseUrl: string) {
         headers: requestHeaders
       })
 
-      console.log('响应状态:', response.status, response.statusText)
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        console.error('请求失败:', errorData)
         const error = new Error(errorData.message || '请求失败') as any
         error.response = response
         error.data = errorData
@@ -48,10 +47,8 @@ export function useChatRequest(baseUrl: string) {
       }
 
       const data = await response.json()
-      console.log('响应数据:', data)
       return data
     } catch (error) {
-      console.error('网络错误:', error)
       throw error
     }
   }

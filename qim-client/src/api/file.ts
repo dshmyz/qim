@@ -1,19 +1,4 @@
-import axios from 'axios'
-import { API_BASE_URL } from '../config'
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000
-})
-
-// 请求拦截器添加 token
-api.interceptors.request.use(config => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+import { api } from './core'
 
 export interface FileItem {
   id: number

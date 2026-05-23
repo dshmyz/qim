@@ -166,7 +166,7 @@ const autoUpdaterConfig = {
     version: '33.0.0'
   },
   linux: {
-    version: '1.0.0'
+    version: '33.2.1'
   }
 }
 
@@ -232,12 +232,14 @@ function createWindow() {
   console.log(`Loading splash: ${splashPath}`)
 
   const isMac = process.platform === 'darwin'
+  const isLinux = process.platform === 'linux'
   const windowOptions = {
     width: 1200,
     height: 800,
     icon: icon,
     show: false,
-    backgroundColor: '#e8ecf1',
+    backgroundColor: isLinux ? '#00000000' : '#e8ecf1',
+    transparent: isLinux,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -846,6 +848,10 @@ ipcMain.on('set-server-url', (event, serverUrl) => {
 
 ipcMain.on('get-server-url', (event) => {
   event.sender.send('server-url', getUpdateBaseUrl())
+})
+
+ipcMain.handle('get-default-download-path', () => {
+  return app.getPath('downloads')
 })
 
 ipcMain.on('check-for-updates', () => {

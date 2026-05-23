@@ -88,6 +88,8 @@
       }
     },
     "linux": {
+      "productName": "qim",
+      "executableName": "qim",
       "icon": "electron/icons/icon_512x512.png",
       "target": [
         {

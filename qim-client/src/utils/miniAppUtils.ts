@@ -1,4 +1,5 @@
 // 小程序工具函数
+import { getStoredServerUrl } from '../composables/useServerUrl'
 import QMessage from './qmessage'
 import { logger } from './logger'
 import { escapeHTML } from './sanitize'
@@ -584,7 +585,7 @@ export const showMiniAppModal = (miniApp: any) => {
 
       try {
         const token = localStorage.getItem('token');
-        const serverUrl = localStorage.getItem('serverUrl') || 'http://localhost:8080';
+        const serverUrl = getStoredServerUrl();
         const response = await fetch(`${serverUrl}/api/v1/shortlinks`, {
           method: 'POST',
           headers: {

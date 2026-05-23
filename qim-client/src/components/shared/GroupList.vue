@@ -22,11 +22,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 interface Props {
   conversations: Conversation[]

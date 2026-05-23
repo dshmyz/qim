@@ -112,7 +112,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
@@ -139,7 +139,7 @@ const formData = ref({
 const loadApps = async () => {
   try {
     const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+    const serverUrl = getStoredServerUrl()
     logger.log('加载应用列表，服务器地址:', serverUrl)
     const response = await axios.get(`${serverUrl}/api/v1/apps`, {
       headers: {
@@ -223,7 +223,7 @@ const saveApp = async () => {
   
   try {
     const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+    const serverUrl = getStoredServerUrl()
     let response
     
     // 转换 openType 为后端期望的 open_type 字段
@@ -268,7 +268,7 @@ const deleteApp = async (appId: number) => {
   if (confirm('确定要删除这个应用吗？')) {
     try {
       const token = localStorage.getItem('token')
-      const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+      const serverUrl = getStoredServerUrl()
       logger.log('删除应用:', appId)
       const response = await axios.delete(`${serverUrl}/api/v1/apps/${appId}`, {
         headers: {

@@ -35,7 +35,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { getCurrentUser } from '../../utils/user'
 
 export interface MiniAppData {
@@ -90,7 +90,7 @@ const iframeSrc = computed(() => {
   if (!props.miniApp?.path) return ''
   const path = props.miniApp.path
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`
+  return `${getStoredServerUrl()}${path.startsWith('/') ? '' : '/'}${path}`
 })
 
 const hasPermission = (perm: string): boolean => {
@@ -234,7 +234,7 @@ const handleApiRequest = async (payload: { method: string; url: string; body?: a
   if (!payload || !payload.url) return
 
   const token = localStorage.getItem('token') || ''
-  const url = payload.url.startsWith('http') ? payload.url : `${API_BASE_URL}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`
+  const url = payload.url.startsWith('http') ? payload.url : `${getStoredServerUrl()}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`
 
   try {
     const response = await fetch(url, {

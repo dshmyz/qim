@@ -7,7 +7,7 @@ import (
 	"qim-server/model"
 
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
+	"qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

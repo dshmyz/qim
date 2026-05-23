@@ -188,7 +188,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
@@ -196,7 +196,7 @@ import StickyTagFilter from './sticky/StickyTagFilter.vue'
 import StickyNoteCard from './sticky/StickyNoteCard.vue'
 
 // 服务器URL
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 获取token
 const getToken = () => {

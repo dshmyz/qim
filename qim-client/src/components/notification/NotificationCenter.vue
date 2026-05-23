@@ -165,7 +165,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { type Notification, mapNotifications } from '../../utils/notificationMapper'
 
 interface Props {
@@ -180,7 +180,7 @@ const emit = defineEmits<{
   (e: 'notificationClick', notification: Notification): void
 }>()
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 const getToken = () => localStorage.getItem('token')
 
 const notifications = ref<Notification[]>([])

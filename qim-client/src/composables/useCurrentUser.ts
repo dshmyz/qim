@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
+import { getStoredServerUrl } from './useServerUrl'
 
 export interface UserProfile {
   nickname: string
@@ -49,7 +50,7 @@ export function useCurrentUser() {
 
   const refreshUser = async () => {
     const token = localStorage.getItem('token')
-    const serverUrl = localStorage.getItem('serverUrl')
+    const serverUrl = getStoredServerUrl()
     if (!token || !serverUrl) return
 
     try {

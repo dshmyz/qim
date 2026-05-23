@@ -21,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/driver/sqlite"
+	"qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

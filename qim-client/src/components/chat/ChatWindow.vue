@@ -204,7 +204,7 @@ import ChatBody from './ChatBody.vue'
 import ChatInputArea from './ChatInputArea.vue'
 import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
-import { API_BASE_URL } from '../../config'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { getCurrentUser } from '../../utils/user'
 import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
@@ -229,7 +229,7 @@ import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils
 import { useAvatar } from '../../composables/useAvatar'
 
 // 服务器地址
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 
 // 当前用户（需要在 useScreenShare 之前声明）
 const currentUser = ref(getCurrentUser())

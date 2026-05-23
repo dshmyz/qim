@@ -13,4 +13,8 @@ app.use(pinia)
 app.component('QMessage', QMessage)
 app.component('QMessageBox', QMessageBox)
 
+if (navigator.userAgent.includes('Linux')) {
+  document.body.classList.add('linux-platform')
+}
+
 app.mount('#app')

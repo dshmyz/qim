@@ -43,10 +43,6 @@
           <i class="far fa-comment"></i>
           <span>评论</span>
         </button>
-        <button class="action-btn" @click="handleCopyLink" aria-label="复制链接">
-          <i class="far fa-copy"></i>
-          <span>复制</span>
-        </button>
       </div>
       <div v-else class="card-actions-locked">
         <i class="fas fa-lock"></i>
@@ -60,12 +56,12 @@
 import { ref, computed, onMounted } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { getDisplayName } from '../../utils/avatar'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { request } from '../../composables/useRequest'
 import type { ChannelMessage } from '../../types'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const serverUrl = getStoredServerUrl()
 
 interface Props {
   message: ChannelMessage
@@ -82,7 +78,6 @@ const emit = defineEmits<{
   like: [message: ChannelMessage]
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
-  copyLink: [message: ChannelMessage]
 }>()
 
 const { formatTime } = useChatUtils()
@@ -141,16 +136,6 @@ const handleLike = async () => {
 
 const handleComment = () => {
   emit('comment', props.message)
-}
-
-const handleCopyLink = async () => {
-  emit('copyLink', props.message)
-  try {
-    const url = `${window.location.origin}/channels/${props.message.channel_id}/messages/${props.message.id}`
-    await navigator.clipboard.writeText(url)
-  } catch (error) {
-    console.error('复制链接失败:', error)
-  }
 }
 </script>
 

@@ -41,10 +41,11 @@
       </template>
     </el-table-column>
     <el-table-column prop="createdAt" label="创建时间" width="180" />
-    <el-table-column label="操作" width="260" fixed="right">
+    <el-table-column label="操作" width="340" fixed="right">
       <template #default="{ row }">
         <ActionButton v-permission="'user:update'" @click="handleEdit(row)">编辑</ActionButton>
         <ActionButton v-permission="'user:update'" @click="handleManageRoles(row)">管理角色</ActionButton>
+        <ActionButton v-permission="'user:update'" @click="handleManageAIConfig(row)">AI 配置</ActionButton>
         <el-popconfirm title="确定删除该用户吗？" @confirm="handleDelete(row.id)">
           <template #reference>
             <ActionButton v-permission="'user:delete'" type="danger">删除</ActionButton>
@@ -77,6 +78,12 @@
       <el-button type="primary" :loading="roleSubmitting" @click="handleSaveRoles">保存</el-button>
     </template>
   </el-dialog>
+
+  <AIConfigDialog
+    v-model:visible="aiConfigDialogVisible"
+    :user-id="aiConfigUserId"
+    :username="aiConfigUsername"
+  />
 </template>
 
 <script setup lang="ts">
@@ -89,6 +96,7 @@ import SearchField from '@/components/data/SearchField.vue'
 import StatusTag from '@/components/data/StatusTag.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import EntityDialog from '@/components/forms/EntityDialog.vue'
+import AIConfigDialog from './components/AIConfigDialog.vue'
 import { useEntity } from '@/composables/useEntity'
 import { getUsers, createUser, updateUser, deleteUser, assignRoles } from '@/api/users'
 import { userFields, userRules, roleOptions } from './config'
@@ -122,8 +130,14 @@ const entityFields = computed<RendererFormField[]>(() => [
   { name: 'password', label: '密码', type: 'password', required: dialogMode.value === 'create', props: { showPassword: true, placeholder: dialogMode.value === 'edit' ? '留空表示不修改密码' : '请输入密码' } },
   { name: 'nickname', label: '昵称', type: 'input' },
   { name: 'email', label: '邮箱', type: 'input', required: true },
-  { name: 'avatar', label: '头像', type: 'input', props: { placeholder: '请输入头像URL' } },
   { name: 'phone', label: '手机号', type: 'input' },
+  { name: 'avatar', label: '头像', type: 'input', props: { placeholder: '请输入头像URL' } },
+  { name: 'signature', label: '个性签名', type: 'textarea', props: { rows: 3, placeholder: '请输入个性签名' } },
+  { name: 'status', label: '状态', type: 'select', options: [
+    { label: '在线', value: 'online' },
+    { label: '离线', value: 'offline' },
+    { label: '禁用', value: 'banned' },
+  ] },
 ])
 
 const entityRules = computed<FormRules>(() => {
@@ -174,6 +188,16 @@ const handleSaveRoles = async () => {
 const handlePageChange = (page: number) => {
   pagination.page = page
   fetchData()
+}
+
+const aiConfigDialogVisible = ref(false)
+const aiConfigUserId = ref(0)
+const aiConfigUsername = ref('')
+
+const handleManageAIConfig = (row: User) => {
+  aiConfigUserId.value = row.id
+  aiConfigUsername.value = row.username
+  aiConfigDialogVisible.value = true
 }
 
 onMounted(fetchData)

@@ -18,7 +18,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   size: 'medium',
-  src: '/app-logo.png',
+  src: './app-logo.png',
   alt: 'QIM Logo'
 })
 

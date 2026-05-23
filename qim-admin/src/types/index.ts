@@ -24,6 +24,7 @@ export interface User {
   email: string
   phone: string
   avatar?: string
+  signature?: string
   status: 'active' | 'inactive' | 'banned'
   roles?: string[]
   role?: string
@@ -315,4 +316,21 @@ export interface RouteMeta {
   requiresAuth?: boolean
   permission?: string  // format: resource:action
   icon?: string
+}
+
+// 用户AI配置
+export interface UserAIConfig {
+  id: number
+  config_name: string
+  provider: string
+  model_name: string
+  base_url: string
+  temperature: number
+  max_tokens: number
+  ai_enabled?: boolean
+  daily_limit?: number
+  is_verified: boolean
+  overrides?: unknown[]
+  last_tested_at?: string
+  created_at: string
 }

@@ -208,7 +208,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { messageApi } from '../../api/message'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 
 const props = defineProps<{
   visible: boolean
@@ -357,7 +357,7 @@ const handleMessageClick = (messageId: string) => {
 
 // 下载文件
 const downloadFile = (message: any) => {
-  const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+  const serverUrl = getStoredServerUrl()
   let fileUrl = message.content
   try {
     // 尝试解析content为JSON
@@ -386,7 +386,7 @@ const downloadFile = (message: any) => {
 
 // 预览图片
 const previewImage = (message: any) => {
-  const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+  const serverUrl = getStoredServerUrl()
   try {
     // 尝试解析content为JSON
     const contentObj = JSON.parse(message.content)

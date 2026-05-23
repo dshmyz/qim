@@ -86,7 +86,7 @@ import {
   formatFileSize,
   getFileTypeLabel
 } from '../../../utils/fileType'
-import { API_BASE_URL } from '../../../config'
+import { useServerUrl } from '../../../composables/useServerUrl'
 
 defineOptions({
   name: 'FileGridItem'
@@ -135,7 +135,7 @@ const hideTooltip = () => {
   tooltipVisible.value = false
 }
 
-const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+const { serverUrl } = useServerUrl()
 
 const thumbnailUrl = computed(() => {
   if (!props.file?.id) return ''

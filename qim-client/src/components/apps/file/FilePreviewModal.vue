@@ -108,7 +108,7 @@
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue'
 import { type FileItem } from '../../../api/file'
-import { API_BASE_URL } from '../../../config'
+import { useServerUrl } from '../../../composables/useServerUrl'
 import PDFPreview from './PDFPreview.vue'
 import TextPreview from './TextPreview.vue'
 
@@ -130,7 +130,7 @@ const emit = defineEmits<{
 const previewError = ref(false)
 
 // 使用 computed 保证 URL 的响应性
-const serverUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+const { serverUrl } = useServerUrl()
 
 const previewUrl = computed(() => {
   if (!props.file?.id) return ''

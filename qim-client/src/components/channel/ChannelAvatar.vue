@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
-import { API_BASE_URL } from '../../config'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 
 interface Props {
   avatar?: string | null
@@ -37,7 +37,7 @@ const props = withDefaults(defineProps<Props>(), {
   publishPermission: '',
   size: 'md',
   shape: 'circle',
-  serverUrl: () => localStorage.getItem('serverUrl') || API_BASE_URL
+  serverUrl: () => getStoredServerUrl()
 })
 
 const showTypeIcon = computed(() => {

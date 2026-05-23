@@ -1,22 +1,6 @@
 import { ref, watch } from 'vue'
 import QMessage from '../utils/qmessage'
 
-function getDefaultSaveDirectory(): string {
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
-  const isWin = navigator.platform.toUpperCase().indexOf('WIN') >= 0
-  const isLinux = navigator.platform.toUpperCase().indexOf('LINUX') >= 0
-  
-  if (isMac) {
-    return '~/Downloads'
-  } else if (isWin) {
-    return 'C:\\Users\\Public\\Downloads'
-  } else if (isLinux) {
-    return '~/Downloads'
-  }
-  
-  return '~/Downloads'
-}
-
 export interface SettingsProfile {
   nickname: string
   signature: string
@@ -72,7 +56,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
   })
 
   const fileSettings = ref<FileSettings>({
-    defaultSaveDirectory: getDefaultSaveDirectory(),
+    defaultSaveDirectory: '~/Downloads',
     autoDownload: false,
     maxFileSize: 50,
     allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
@@ -81,6 +65,15 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
   })
 
   const loadSettings = () => {
+    // 通过 Electron IPC 获取系统默认下载路径
+    if (window.electron?.ipcRenderer?.invoke) {
+      window.electron.ipcRenderer.invoke('get-default-download-path').then(path => {
+        if (path) fileSettings.value.defaultSaveDirectory = path
+      }).catch(() => {
+        // IPC 失败则用默认路径
+      })
+    }
+
     const savedMessageSettings = localStorage.getItem('messageSettings')
     if (savedMessageSettings) {
       try {
@@ -215,7 +208,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
 
       window.electron.ipcRenderer.on('file-dialog-result', handleResult)
     } else {
-      fileSettings.value.defaultSaveDirectory = '/Users/yourname/Downloads'
+      fileSettings.value.defaultSaveDirectory = '~/Downloads'
       QMessage.info('使用默认下载目录')
     }
   }

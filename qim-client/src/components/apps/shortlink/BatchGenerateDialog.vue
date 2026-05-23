@@ -67,7 +67,7 @@
 import { ref, computed } from 'vue'
 import QDialog from '../../shared/QDialog.vue'
 import QMessage from '../../../utils/qmessage'
-import { API_BASE_URL } from '../../../config'
+import { useServerUrl } from '../../../composables/useServerUrl'
 
 interface BatchResult {
   originalUrl: string
@@ -88,7 +88,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl } = useServerUrl()
 const urlList = ref('')
 const isGenerating = ref(false)
 const results = ref<BatchResult[]>([])

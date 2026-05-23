@@ -1,8 +1,8 @@
 import { ref, computed } from 'vue'
-import { API_BASE_URL } from '../config'
+import { useServerUrl } from './useServerUrl'
 import QMessage from '../utils/qmessage'
 
-const serverUrl = ref(localStorage.getItem('serverUrl') || API_BASE_URL)
+const { serverUrl, setServerUrl } = useServerUrl()
 
 export interface RequestOptions extends RequestInit {
   baseUrl?: string
@@ -125,8 +125,7 @@ export async function request<T = any>(
  * 更新服务器地址
  */
 export const updateServerUrl = (url: string) => {
-  serverUrl.value = url
-  localStorage.setItem('serverUrl', url)
+  setServerUrl(url)
 }
 
 /**

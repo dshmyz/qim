@@ -75,6 +75,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import axios from 'axios'
+import { getStoredServerUrl } from '../../composables/useServerUrl'
 
 interface CollectionInfo {
   name: string
@@ -96,7 +97,7 @@ const entries = ref<VectorEntry[]>([])
 
 const getApi = () => {
   const token = localStorage.getItem('token')
-  const serverUrl = localStorage.getItem('serverUrl') || 'http://localhost:8080'
+  const serverUrl = getStoredServerUrl()
   return { token, serverUrl, headers: { Authorization: `Bearer ${token}` } }
 }
 

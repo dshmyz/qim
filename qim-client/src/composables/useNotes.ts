@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useRequest, request } from './useRequest'
-import { API_BASE_URL } from '../config'
+import { getStoredServerUrl } from './useServerUrl'
 import type { Note, AIAnalyzeResult } from '../types/note'
 
 export function useNotes() {
@@ -128,7 +128,7 @@ export function useNotes() {
 
   const exportNote = async (id: number, title: string) => {
     const token = localStorage.getItem('token')
-    const baseUrl = localStorage.getItem('serverUrl') || API_BASE_URL
+    const baseUrl = getStoredServerUrl()
     const url = `${baseUrl}/api/v1/notes/${id}/export`
 
     try {

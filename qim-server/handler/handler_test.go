@@ -13,10 +13,11 @@ import (
 	"qim-server/model"
 	"qim-server/pkg/response"
 
+	"qim-server/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/driver/sqlite"
+	"qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -58,6 +59,7 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	di.InitContainer(cfg, nil)
 
 	database.DB = db
+	auth.InitAuthChain()
 	SetConfig(cfg)
 
 	r := gin.New()

@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
-import { API_BASE_URL } from '../config'
+import { getStoredServerUrl } from '../composables/useServerUrl'
 
 // API 错误类型
 export class ApiError extends Error {
@@ -35,16 +35,17 @@ export interface ApiResponse<T = any> {
 
 // 创建 axios 实例
 const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getStoredServerUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// 请求拦截器 - 添加 token
+// 请求拦截器 - 动态设置 baseURL 和添加 token
 api.interceptors.request.use(
   (config) => {
+    config.baseURL = getStoredServerUrl()
     if (!config.headers || config.headers['skipAuth'] !== true) {
       const token = localStorage.getItem('token')
       if (token) {
@@ -81,7 +82,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      window.location.reload()
       throw new ApiError('登录已过期，请重新登录', 401, 401)
     }
 
@@ -294,3 +295,4 @@ async function calculateFileHash(file: File): Promise<string> {
 }
 
 export default api
+export { api }
