@@ -240,31 +240,34 @@ function handleClearCompleted() {
 <style scoped>
 .upload-progress-bar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  bottom: 24px;
+  right: 24px;
+  width: 380px;
   background: var(--card-bg, #ffffff);
-  border-bottom: 1px solid var(--border-color, #e8ecf0);
-  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
   z-index: var(--z-sticky, 1020);
-  max-height: 400px;
+  max-height: 480px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(12px);
 }
 
 /* 进度头部 */
 .progress-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3, 12px);
-  padding: var(--spacing-3, 12px) var(--spacing-4, 16px);
+  gap: 12px;
+  padding: 14px 16px;
   cursor: pointer;
-  transition: background-color var(--transition-fast, 150ms ease);
+  user-select: none;
+  background: linear-gradient(135deg, var(--card-bg, #fff) 0%, var(--color-primary-50, #f0f5ff) 100%);
 }
 
 .progress-header:hover {
-  background: var(--hover-color, #f0f2f5);
+  background: linear-gradient(135deg, var(--hover-color, #f5f6f8) 0%, var(--color-primary-50, #e8f0fe) 100%);
 }
 
 .progress-info {
@@ -275,47 +278,62 @@ function handleClearCompleted() {
 }
 
 .progress-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--primary-color, #3385ff);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary-color, #3385ff), #6366f1);
+  border-radius: 12px;
+  color: #fff;
+  flex-shrink: 0;
 }
 
 .progress-icon svg {
-  width: 100%;
-  height: 100%;
+  width: 18px;
+  height: 18px;
 }
 
 .progress-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .progress-title {
-  font-size: var(--font-size-sm, 14px);
-  font-weight: var(--font-weight-medium, 500);
-  color: var(--text-color, #404040);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color, #1a1a2e);
 }
 
 .progress-percentage {
-  font-size: var(--font-size-xs, 12px);
-  color: var(--text-secondary, #a0a0a0);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary-color, #3385ff);
+  line-height: 1;
 }
 
 /* 进度条 */
 .progress-bar-container {
   flex: 1;
-  height: 4px;
-  background: var(--color-gray-200, #f0f0f0);
-  border-radius: var(--radius-full, 50px);
+  height: 6px;
+  background: var(--color-gray-100, #e5e7eb);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary-color, #3385ff), var(--color-primary-400, #66a3ff));
-  border-radius: var(--radius-full, 50px);
-  transition: width var(--transition-base, 200ms ease);
+  background: linear-gradient(90deg, #3385ff, #6366f1, #3385ff);
+  background-size: 200% 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  animation: progress-shimmer 2s linear infinite;
+}
+
+@keyframes progress-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: 0 0; }
 }
 
 /* 操作按钮 */
@@ -327,22 +345,23 @@ function handleClearCompleted() {
 }
 
 .action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: none;
-  color: var(--text-secondary, #a0a0a0);
+  border: 1px solid transparent;
+  color: var(--text-secondary, #9ca3af);
   cursor: pointer;
-  border-radius: var(--radius-md, 8px);
-  transition: all var(--transition-fast, 150ms ease);
+  border-radius: 8px;
+  transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: var(--hover-color, #f0f2f5);
-  color: var(--text-color, #404040);
+  background: var(--hover-color, #f3f4f6);
+  border-color: var(--border-color, #e5e7eb);
+  color: var(--text-color, #1a1a2e);
 }
 
 .action-btn svg {
@@ -366,17 +385,18 @@ function handleClearCompleted() {
 .task-list {
   max-height: 320px;
   overflow-y: auto;
-  border-top: 1px solid var(--border-color, #e8ecf0);
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--card-bg, #fff);
 }
 
 .task-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-3, 12px);
-  padding: var(--spacing-3, 12px) var(--spacing-4, 16px);
-  border-bottom: 1px solid var(--border-color, #e8ecf0);
-  transition: background-color var(--transition-fast, 150ms ease);
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  transition: background 0.15s ease;
 }
 
 .task-item:last-child {
@@ -384,15 +404,15 @@ function handleClearCompleted() {
 }
 
 .task-item:hover {
-  background: var(--hover-color, #f0f2f5);
+  background: var(--hover-color, #f8f9fb);
 }
 
 .task-item--completed {
-  opacity: 0.7;
+  background: linear-gradient(135deg, #f6fff9, #f0fdf4);
 }
 
 .task-item--failed {
-  background: var(--color-error-50, #fff6f6);
+  background: linear-gradient(135deg, #fff6f6, #fef2f2);
 }
 
 .task-item--cancelled {
@@ -485,18 +505,18 @@ function handleClearCompleted() {
 
 /* 任务进度条 */
 .task-progress-bar {
-  height: 2px;
-  background: var(--color-gray-200, #f0f0f0);
-  border-radius: var(--radius-full, 50px);
+  height: 4px;
+  background: var(--color-gray-100, #e5e7eb);
+  border-radius: 2px;
   overflow: hidden;
   margin-top: 6px;
 }
 
 .task-progress {
   height: 100%;
-  background: var(--primary-color, #3385ff);
-  border-radius: var(--radius-full, 50px);
-  transition: width var(--transition-base, 200ms ease);
+  background: linear-gradient(90deg, var(--primary-color, #3385ff), #6366f1);
+  border-radius: 2px;
+  transition: width 0.3s ease;
 }
 
 /* 任务错误信息 */
@@ -515,27 +535,28 @@ function handleClearCompleted() {
 }
 
 .task-action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: none;
-  color: var(--text-secondary, #a0a0a0);
+  border: 1px solid transparent;
+  color: var(--text-secondary, #9ca3af);
   cursor: pointer;
-  border-radius: var(--radius-md, 8px);
-  transition: all var(--transition-fast, 150ms ease);
+  border-radius: 8px;
+  transition: all 0.15s ease;
 }
 
 .task-action-btn:hover {
-  background: var(--hover-color, #f0f2f5);
-  color: var(--text-color, #404040);
+  background: var(--hover-color, #f3f4f6);
+  border-color: var(--border-color, #e5e7eb);
+  color: var(--text-color, #1a1a2e);
 }
 
 .task-action-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .cancel-btn:hover {

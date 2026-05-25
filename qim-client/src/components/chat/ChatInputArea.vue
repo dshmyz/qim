@@ -21,6 +21,7 @@
     @select-file="emit('select-file')"
     @select-image="emit('select-image')"
     @take-screenshot="emit('take-screenshot')"
+    @take-screenshot-hidden="emit('take-screenshot-hidden')"
     @open-message-manager="emit('open-message-manager')"
     @open-mini-app-list="emit('open-mini-app-list')"
     @start-voice-call="emit('start-voice-call')"
@@ -80,6 +81,7 @@ const emit = defineEmits<{
   'select-file': []
   'select-image': []
   'take-screenshot': []
+  'take-screenshot-hidden': []
   'open-message-manager': []
   'open-mini-app-list': []
   'start-voice-call': []

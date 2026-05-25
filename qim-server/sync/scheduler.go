@@ -10,6 +10,8 @@ import (
 	"qim-server/pkg/logger"
 )
 
+const syncTimeout = 10 * time.Minute
+
 type Scheduler struct {
 	engine   *Engine
 	timers   map[uint]*time.Ticker
@@ -96,10 +98,21 @@ func (s *Scheduler) scheduleConfig(config *model.OrgSyncConfig) {
 	}
 
 	go func(cfg *model.OrgSyncConfig) {
-		time.Sleep(cronResult.NextRun)
+		select {
+		case <-time.After(cronResult.NextRun):
+		case <-s.stopCh:
+			return
+		}
 
 		ticker := time.NewTicker(cronResult.Interval)
 		s.mu.Lock()
+		select {
+		case <-s.stopCh:
+			s.mu.Unlock()
+			ticker.Stop()
+			return
+		default:
+		}
 		s.timers[cfg.ID] = ticker
 		s.mu.Unlock()
 
@@ -117,7 +130,9 @@ func (s *Scheduler) scheduleConfig(config *model.OrgSyncConfig) {
 					"config_id", cfg.ID,
 					"name", cfg.Name,
 				)
-				s.engine.Sync(context.Background(), cfg)
+				ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+				s.engine.Sync(ctx, cfg)
+				cancel()
 			case <-s.stopCh:
 				ticker.Stop()
 				return

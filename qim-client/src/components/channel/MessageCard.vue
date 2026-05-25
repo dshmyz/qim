@@ -1,5 +1,5 @@
 <template>
-  <div class="message-card" :class="{ 'is-creator': isCreator }" role="article" :aria-label="`来自 ${senderName} 的消息`">
+  <div class="message-card" :class="{ 'is-creator': isCreator, 'has-comments': comments.length > 0 || showCommentInput }" role="article" :aria-label="`来自 ${senderName} 的消息`">
     <div class="card-accent-bar"></div>
     <div class="card-body">
       <div class="card-top">
@@ -39,14 +39,70 @@
           <i :class="isLiked ? 'fas fa-heart' : 'far fa-heart'"></i>
           <span>{{ likeCount > 0 ? likeCount : '点赞' }}</span>
         </button>
-        <button class="action-btn" @click="handleComment" aria-label="评论">
+        <button 
+          v-if="canComment"
+          class="action-btn" 
+          @click="toggleCommentInput" 
+          :class="{ active: showCommentInput }"
+          aria-label="评论"
+        >
           <i class="far fa-comment"></i>
-          <span>评论</span>
+          <span>{{ comments.length > 0 ? comments.length : '评论' }}</span>
         </button>
+      </div>
+      <div v-else-if="interactive && !canComment" class="card-actions-locked">
+        <i class="fas fa-lock"></i>
+        <span>评论已关闭</span>
       </div>
       <div v-else class="card-actions-locked">
         <i class="fas fa-lock"></i>
         <span>订阅后可互动</span>
+      </div>
+
+      <div v-if="showCommentInput" class="comment-section">
+        <div v-if="comments.length > 0" class="comments-list">
+          <div 
+            v-for="comment in comments" 
+            :key="comment.id" 
+            class="comment-item"
+          >
+            <Avatar
+              :src="comment.user?.avatar"
+              :name="getDisplayName(comment.user)"
+              :server-url="serverUrl"
+              :alt="`${getDisplayName(comment.user)}的头像`"
+              size="xs"
+              class="comment-avatar"
+            />
+            <div class="comment-content">
+              <span class="comment-author">{{ getDisplayName(comment.user) }}</span>
+              <span class="comment-text">{{ comment.content }}</span>
+              <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="comment-input-wrapper">
+          <textarea
+            v-model="commentContent"
+            placeholder="写下你的评论..."
+            rows="2"
+            class="comment-textarea"
+            @keydown.enter.ctrl="submitComment"
+            :aria-label="'评论输入框'"
+          ></textarea>
+          <div class="comment-actions">
+            <span class="comment-hint">Ctrl + Enter 发送</span>
+            <button
+              class="comment-submit-btn"
+              @click="submitComment"
+              :disabled="!commentContent.trim()"
+              :aria-label="'发送评论'"
+            >
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -56,15 +112,31 @@
 import { ref, computed, onMounted } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { getDisplayName } from '../../utils/avatar'
-import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { request } from '../../composables/useRequest'
 import type { ChannelMessage } from '../../types'
 
-const serverUrl = getStoredServerUrl()
+const { serverUrl } = useServerUrl()
+
+interface Comment {
+  id: number
+  message_id: number
+  user_id: number
+  content: string
+  created_at: string
+  user?: {
+    id: number
+    avatar: string
+    nickname?: string
+    username?: string
+    name?: string
+  }
+}
 
 interface Props {
   message: ChannelMessage
+  channel?: Channel
   isCreator?: boolean
   interactive?: boolean
 }
@@ -85,10 +157,27 @@ const { formatTime } = useChatUtils()
 const isLiked = ref(false)
 const likeCount = ref(0)
 const loadingLike = ref(false)
+const showCommentInput = ref(false)
+const comments = ref<Comment[]>([])
+const commentContent = ref('')
+const loadingComments = ref(false)
+const submittingComment = ref(false)
 
 const senderName = computed(() => getDisplayName(props.message.sender))
 
+const canComment = computed(() => {
+  if (!props.channel) return true
+  return props.channel.comment_permission !== 'disabled'
+})
+
 onMounted(async () => {
+  await Promise.all([
+    loadLikeStatus(),
+    loadComments()
+  ])
+})
+
+const loadLikeStatus = async () => {
   try {
     const res = await request(`/api/v1/channels/messages/${props.message.id}/likes`)
     if (res.code === 0 && res.data) {
@@ -98,7 +187,20 @@ onMounted(async () => {
   } catch {
     // 默认值即可
   }
-})
+}
+
+const loadComments = async () => {
+  loadingComments.value = true
+  try {
+    const res = await request(`/api/v1/channels/messages/${props.message.id}/comments`)
+    if (res.code === 0 && res.data) {
+      comments.value = res.data
+    }
+  } catch {
+    // 默认值即可
+  }
+  loadingComments.value = false
+}
 
 const handleLike = async () => {
   if (loadingLike.value) return
@@ -134,8 +236,37 @@ const handleLike = async () => {
   loadingLike.value = false
 }
 
-const handleComment = () => {
-  emit('comment', props.message)
+const toggleCommentInput = async () => {
+  showCommentInput.value = !showCommentInput.value
+  if (showCommentInput.value && comments.value.length === 0 && !loadingComments.value) {
+    await loadComments()
+  }
+}
+
+const submitComment = async () => {
+  if (!commentContent.value.trim() || submittingComment.value) return
+  
+  submittingComment.value = true
+  
+  try {
+    const res = await request(`/api/v1/channels/messages/${props.message.id}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ content: commentContent.value.trim() })
+    })
+    
+    if (res.code === 0 && res.data) {
+      comments.value.push(res.data)
+      commentContent.value = ''
+      emit('comment', props.message)
+    }
+  } catch (error) {
+    console.error('提交评论失败:', error)
+  }
+  
+  submittingComment.value = false
 }
 </script>
 
@@ -307,5 +438,134 @@ const handleComment = () => {
 
 .card-actions-locked i {
   font-size: 11px;
+}
+
+.message-card.has-comments {
+  border-radius: 12px 12px 12px 12px;
+}
+
+.message-card.has-comments .card-accent-bar {
+  border-radius: 12px 0 0 0;
+}
+
+.comment-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.comments-list {
+  margin-bottom: 16px;
+}
+
+.comment-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.comment-item:last-child {
+  border-bottom: none;
+}
+
+.comment-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.comment-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-right: 8px;
+}
+
+.comment-text {
+  font-size: 13px;
+  color: var(--text-color);
+  line-height: 1.5;
+  display: block;
+}
+
+.comment-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  display: block;
+}
+
+.comment-input-wrapper {
+  background: var(--bg-color);
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.comment-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-size: 13px;
+  color: var(--text-color);
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.comment-textarea:focus {
+  outline: none;
+}
+
+.comment-textarea::placeholder {
+  color: var(--text-secondary);
+}
+
+.comment-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.comment-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.comment-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.comment-submit-btn:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+
+.comment-submit-btn:disabled {
+  background: var(--border-color);
+  cursor: not-allowed;
+}
+
+.comment-submit-btn i {
+  font-size: 14px;
 }
 </style>

@@ -22,6 +22,7 @@
 
     <MessageList
       :messages="channel.messages || []"
+      :channel="channel"
       :mode="displayMode"
       :is-creator="isCreator"
       :loading="loading"

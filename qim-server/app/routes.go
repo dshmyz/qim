@@ -188,7 +188,26 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.File(cleanPath)
 	})
-	r.Static("/miniprograms", "./static/miniprograms")
+	r.GET("/miniapps/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if strings.Contains(fp, "..") {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		baseDir := "./static/miniapps"
+		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
+		if !strings.HasPrefix(cleanPath, baseDir) {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+
+		// 如果路径以斜杠结尾，尝试访问 index.html
+		if strings.HasSuffix(fp, "/") {
+			cleanPath = filepath.Join(cleanPath, "index.html")
+		}
+
+		c.File(cleanPath)
+	})
 
 	// 客户端更新检查（无需认证）
 	r.GET("/api/v1/updates/:platform/latest.yml", handler.GetLatestYML)
@@ -226,6 +245,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 统一认证回调（支持OAuth和CAS，无需认证）
 			auth.POST("/callback", handler.UnifiedAuthCallback)
 		}
+
+		// 客户端版本查询（公开，无需认证）
+		api.GET("/client/versions", handler.GetVersions)
 
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")
@@ -500,11 +522,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				adminRoutes.GET("/logs/operation/export", handler.ExportOperationLogs)
 
 				// 版本管理
-				adminRoutes.GET("/client/versions", handler.GetVersions)
 				adminRoutes.POST("/client/versions", handler.CreateVersion)
 				adminRoutes.PUT("/client/versions/:id", handler.UpdateVersion)
 				adminRoutes.DELETE("/client/versions/:id", handler.DeleteVersion)
 				adminRoutes.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
+				adminRoutes.GET("/client/versions/distribution", handler.GetVersionDistribution)
 
 				// 黑名单管理
 				adminRoutes.GET("/users/blacklist", handler.GetBlacklist)
@@ -541,12 +563,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/roles/:role/users", handler.GetRoleUsers)
 
 				// AI提供商管理
-				admin.GET("/ai/providers", handler.GetProviders)
-				admin.POST("/ai/providers", handler.CreateProvider)
-				admin.PUT("/ai/providers/:id", handler.UpdateProvider)
-				admin.DELETE("/ai/providers/:id", handler.DeleteProvider)
-				admin.PATCH("/ai/providers/:id/status", handler.ToggleProviderStatus)
-				admin.POST("/ai/providers/:id/test", handler.TestProviderConnection)
+				admin.GET("/ai/providers", handler.GetAIProviders)
+				admin.POST("/ai/providers", handler.CreateAIProvider)
+				admin.PUT("/ai/providers/:id", handler.UpdateAIProvider)
+				admin.DELETE("/ai/providers/:id", handler.DeleteAIProvider)
+				admin.PATCH("/ai/providers/:id/status", handler.ToggleAIProviderStatus)
+				admin.POST("/ai/providers/:id/test", handler.TestAIProviderConnection)
 
 				// 组织架构同步管理
 				orgSyncHandler := handler.NewOrgSyncHandler()
@@ -564,6 +586,31 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				// 统一审批 API
 				approvalHandler := service.NewApprovalHandler(di.GlobalContainer.ApprovalService)
 				approvalHandler.RegisterRoutes(admin)
+
+				// 监控相关 API
+				monitorHandler := handler.NewMonitorHandler()
+				alertHandler := handler.NewAlertHandler(GetDB())
+				monitor := admin.Group("/monitor")
+				{
+					monitor.GET("/server", monitorHandler.GetServerMetrics)
+					monitor.GET("/server/history", monitorHandler.GetServerMetricsHistory)
+					monitor.GET("/services", monitorHandler.GetServiceStatus)
+					monitor.POST("/services/health-check", monitorHandler.HealthCheck)
+					monitor.GET("/alerts", alertHandler.GetAlertRules)
+					monitor.POST("/alerts", alertHandler.CreateAlertRule)
+					monitor.PUT("/alerts/:id", alertHandler.UpdateAlertRule)
+					monitor.DELETE("/alerts/:id", alertHandler.DeleteAlertRule)
+					monitor.GET("/alerts/history", alertHandler.GetAlertHistory)
+				}
+
+				// 崩溃日志和用户反馈
+				crashHandler := handler.NewCrashLogHandler(GetDB())
+				feedbackHandler := handler.NewFeedbackHandler(GetDB())
+				admin.GET("/crashes", crashHandler.GetCrashLogs)
+				admin.GET("/crashes/:id", crashHandler.GetCrashDetail)
+				admin.GET("/feedbacks", feedbackHandler.GetFeedbacks)
+				admin.PUT("/feedbacks/:id", feedbackHandler.UpdateFeedback)
+				authed.POST("/feedbacks", feedbackHandler.CreateFeedback)
 			}
 
 			// 节点间通信
@@ -583,8 +630,19 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
 
+			// AI 机器人管理
+			aiBotHandler := handler.NewAIBotHandler(GetDB())
+			aiBots := authed.Group("/ai-bots")
+			{
+				aiBots.GET("", aiBotHandler.GetAIBots)
+				aiBots.POST("", aiBotHandler.CreateAIBot)
+				aiBots.PUT("/:id", aiBotHandler.UpdateAIBot)
+				aiBots.DELETE("/:id", aiBotHandler.DeleteAIBot)
+				aiBots.PATCH("/:id/status", aiBotHandler.ToggleAIBotStatus)
+			}
+
 			// 分身服务路由
-			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, mcpServer)
+			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, mcpServer, di.GlobalContainer.ApprovalService)
 			avatarHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）

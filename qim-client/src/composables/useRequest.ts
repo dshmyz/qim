@@ -14,6 +14,11 @@ export interface ApiResponse<T = any> {
   code: number
   data: T
   message?: string
+  pagination?: {
+    current_page: number
+    total_pages: number
+    total: number
+  }
 }
 
 /**

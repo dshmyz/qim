@@ -11,8 +11,20 @@ import (
 	"qim-server/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+var webhookPlaceholderHash string
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte("sync_disabled_local_login"), bcrypt.DefaultCost)
+	if err != nil {
+		webhookPlaceholderHash = "$2a$10$disabled"
+	} else {
+		webhookPlaceholderHash = string(hash)
+	}
+}
 
 type WebhookEvent struct {
 	Event string          `json:"event"`
@@ -142,7 +154,7 @@ func processUserEvent(eventType string, ue *UserEvent, db *gorm.DB) error {
 			Phone:        ue.Phone,
 			Status:       "offline",
 			Type:         "user",
-			PasswordHash: "$2a$10$placeholder",
+			PasswordHash: webhookPlaceholderHash,
 		}
 		if user.Nickname == "" {
 			user.Nickname = user.Username

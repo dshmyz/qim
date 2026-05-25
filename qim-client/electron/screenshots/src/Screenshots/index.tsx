@@ -7,7 +7,7 @@ import ScreenshotsBackground from './ScreenshotsBackground';
 import ScreenshotsCanvas from './ScreenshotsCanvas';
 import ScreenshotsContext from './ScreenshotsContext';
 import ScreenshotsOperations from './ScreenshotsOperations';
-import type { Bounds, Emitter, History } from './types';
+import type { Bounds, Emitter, History, Position } from './types';
 import useGetLoadedImage from './useGetLoadedImage';
 import type { Lang } from './zh_CN';
 import zhCN from './zh_CN';
@@ -17,6 +17,7 @@ export interface ScreenshotsProps {
   width: number;
   height: number;
   lang?: Partial<Lang>;
+  initialPosition?: Position;
   className?: string;
   [key: string]: unknown;
 }
@@ -26,6 +27,7 @@ export default function Screenshots({
   width,
   height,
   lang,
+  initialPosition,
   className,
   ...props
 }: ScreenshotsProps): ReactElement {
@@ -58,7 +60,8 @@ export default function Screenshots({
     bounds,
     cursor,
     operation,
-  }), [url, width, height, image, lang, history, bounds, cursor, operation]);
+    initialPosition,
+  }), [url, width, height, image, lang, history, bounds, cursor, operation, initialPosition]);
 
   const call = useCallback(
     <T extends unknown[]>(funcName: string, ...args: T) => {
@@ -103,6 +106,7 @@ export default function Screenshots({
       if (bounds && canvasContextRef.current) {
         composeImage({
           image,
+          url,
           width,
           height,
           history,
@@ -120,6 +124,7 @@ export default function Screenshots({
         };
         composeImage({
           image,
+          url,
           width,
           height,
           history,
@@ -130,7 +135,7 @@ export default function Screenshots({
         });
       }
     },
-    [image, history, bounds, width, height, call, reset],
+    [image, url, history, bounds, width, height, call, reset],
   );
 
   const onContextMenu = useCallback(

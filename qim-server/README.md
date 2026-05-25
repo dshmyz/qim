@@ -1,23 +1,32 @@
-# QIM Server - 快速实现版本
+# QIM Server - 后端服务
 
-基于Go语言开发的QIM即时通讯后端服务，使用SQLite数据库。
+基于 Go 语言开发的 QIM 即时通讯后端服务，支持 SQLite 和 MySQL 双数据库。
 
 ## 技术栈
 
-- Web框架: Gin
+- Web 框架: Gin
 - WebSocket: Gorilla WebSocket
 - ORM: GORM
-- 数据库: SQLite
-- 认证: JWT
+- 数据库: SQLite（默认）/ MySQL
+- 认证: JWT (golang-jwt v5)
+- 文件存储: AWS S3 SDK v2
+- AI: Cloudwego Eino + CortexDB（多模型支持）
+- API 文档: Swaggo
 
 ## 功能特性
 
-- 用户注册/登录
-- 组织架构树
-- 单聊/群聊
-- 消息发送/接收
-- WebSocket实时通信
-- 用户在线状态
+- 用户注册/登录（OAuth/OIDC/CAS 多Provider）
+- 组织架构管理（部门树、员工关联）
+- 单聊/群聊/讨论组/频道
+- 消息发送/接收/撤回/已读
+- WebSocket 实时通信 + 在线状态
+- 文件上传（分片/断点续传）/文件夹管理
+- AI 助手（多模型、语音回复、智能搜索）
+- 通知系统（提醒/事件/任务）
+- 审批工作流
+- 小程序支持（iframe 沙箱 + postMessage Bridge）
+- 多因素认证（TOTP）
+- 操作日志审计
 
 ## 快速开始
 
@@ -207,22 +216,64 @@ INSERT INTO department_employees (user_id, department_id, position, is_primary, 
 
 ```
 qim-server/
-├── main.go           # 入口文件
-├── go.mod            # Go模块
-├── go.sum            # 依赖锁定
-├── config/           # 配置
+├── main.go              # 入口文件
+├── go.mod               # Go 模块
+├── go.sum               # 依赖锁定
+├── config.example.yaml  # 配置示例
+├── config/              # 配置管理
 │   └── config.go
-├── database/         # 数据库
+├── database/            # 数据库连接初始化
 │   └── database.go
-├── model/            # 数据模型
+├── model/               # GORM 数据模型
 │   └── model.go
-├── middleware/       # 中间件
-│   └── auth.go
-├── handler/          # API处理器
-│   └── handler.go
-├── ws/               # WebSocket
-│   └── ws.go
-└── README.md
+├── handler/             # HTTP/WebSocket 处理器（~40文件）
+│   ├── auth_handler.go
+│   ├── user_handler.go
+│   ├── message_handler.go
+│   ├── conversation_handler.go
+│   ├── group_handler.go
+│   ├── channel_handler.go
+│   ├── file_handler.go
+│   ├── ai_handler.go
+│   └── ...
+├── service/             # 业务逻辑层
+│   ├── user_service.go
+│   ├── conversation_service.go
+│   ├── message_service.go
+│   ├── auth_service.go
+│   ├── avatar_service.go
+│   └── ...
+├── repository/          # 数据访问层（通用泛型基类 + 具体repo）
+│   ├── base_repository.go
+│   ├── interfaces.go
+│   ├── user_repository.go
+│   └── ...
+├── middleware/           # 中间件（auth、rate limit、operation log）
+│   ├── auth.go
+│   ├── rate_limit.go
+│   └── operation_log.go
+├── ws/                  # WebSocket Hub + 实时通信
+│   ├── ws.go
+│   └── realtime.go
+├── ai/                  # AI 服务（MCP、output filter、provider factory）
+├── app/                 # 应用初始化（路由注册、DI 容器、数据库迁移）
+│   ├── routes.go
+│   └── init.go
+├── di/                  # 依赖注入容器
+│   └── container.go
+├── cache/               # 本地缓存
+├── pkg/                 # 公共包（errors、response、params、pagination、logger）
+│   ├── errors/
+│   ├── response/
+│   ├── params/
+│   ├── pagination/
+│   └── logger/
+├── utils/               # 工具函数（加密等）
+├── auth/                # OAuth/OIDC/CAS 认证提供者
+├── sync/                # 定时同步任务
+├── docs/swagger/        # Swaggo 生成的 API 文档
+├── migrations/          # 数据库迁移脚本
+└── test/                # 测试辅助数据
 ```
 
 ## 注意事项

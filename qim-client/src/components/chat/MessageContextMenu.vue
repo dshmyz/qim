@@ -30,6 +30,10 @@
       <span class="context-menu-icon"><i class="fas fa-language"></i></span>
       <span>翻译为中文</span>
     </div>
+    <div v-if="canSmartReply" class="context-menu-item" @click="handleAIAction('smart_reply')">
+      <span class="context-menu-icon"><i class="fas fa-reply"></i></span>
+      <span>智能回复</span>
+    </div>
     <div v-if="isAIMessage || (isTextLikeMessage && aiEnabled)" class="context-menu-divider"></div>
 
     <!-- 通用选项 -->
@@ -90,6 +94,7 @@ interface Emits {
   (e: 'send-message-reminder'): void
   (e: 'ai-summary'): void
   (e: 'translate'): void
+  (e: 'smart-reply'): void
 }
 
 const props = defineProps<Props>()
@@ -124,6 +129,12 @@ const canSendReminder = computed((): boolean => {
   const oneHour = 60 * 60 * 1000
 
   return now - messageTime > oneHour
+})
+
+const canSmartReply = computed(() => {
+  if (!props.message || !aiEnabled.value) return false
+  if (props.message.isSelf) return false
+  return props.message.type === 'text'
 })
 
 const handlePreviewImage = () => {
@@ -187,6 +198,9 @@ const handleAIAction = (actionId: string) => {
       break
     case 'translate':
       emit('translate')
+      break
+    case 'smart_reply':
+      emit('smart-reply')
       break
   }
 }

@@ -2,24 +2,34 @@
   <div v-if="visible" class="message-manager-modal" @click="$emit('close')">
     <div class="message-manager-content" @click.stop>
       <div class="message-manager-header">
-        <h3>
-          <i class="fas fa-history"></i> 消息管理器
-        </h3>
-        <button class="close-btn" @click="$emit('close')">×</button>
+        <div class="header-left">
+          <div class="header-icon">
+            <i class="fas fa-history"></i>
+          </div>
+          <h3>消息管理器</h3>
+        </div>
+        <button class="close-btn" @click="$emit('close')">
+          <i class="fas fa-times"></i>
+        </button>
       </div>
       <div class="message-manager-body">
         <!-- 搜索框 -->
         <div class="message-manager-search">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="搜索消息..."
-            class="search-input"
-            @keyup.enter="applyFilters"
-          />
+          <div class="search-input-wrapper">
+            <i class="fas fa-search search-input-icon"></i>
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索消息内容..."
+              class="search-input"
+              @keyup.enter="applyFilters"
+            />
+            <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''; applyFilters()">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
           <button class="search-btn" @click="applyFilters">
             <i class="fas fa-search"></i>
-            搜索
           </button>
         </div>
         
@@ -200,6 +210,26 @@
         </div>
       </div>
     </div>
+
+    <!-- 媒体操作菜单 -->
+    <Teleport to="body">
+      <div v-if="mediaMenuVisible" class="media-action-overlay" @click="closeMediaMenu">
+        <div
+          class="media-action-menu"
+          :style="{ left: mediaMenuPosition.x + 'px', top: mediaMenuPosition.y + 'px' }"
+          @click.stop
+        >
+          <div class="media-menu-item" @click="handleJumpFromMenu">
+            <i class="fas fa-chevron-right"></i>
+            <span>跳转</span>
+          </div>
+          <div class="media-menu-item" @click="handleDownloadFromMenu">
+            <i class="fas fa-download"></i>
+            <span>下载</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -423,127 +453,39 @@ const closeImagePreview = () => {
   previewImageUrl.value = ''
 }
 
-// 管理菜单实例
-let currentMenu: HTMLElement | null = null
-let currentCloseMenuListener: ((e: MouseEvent) => void) | null = null
+// 处理媒体文件点击
+const mediaMenuVisible = ref(false)
+const mediaMenuPosition = ref({ x: 0, y: 0 })
+const currentMediaMessage = ref<any>(null)
 
-// 关闭当前菜单
-const closeCurrentMenu = () => {
-  if (currentMenu && document.body.contains(currentMenu)) {
-    document.body.removeChild(currentMenu)
-  }
-  if (currentCloseMenuListener) {
-    document.removeEventListener('click', currentCloseMenuListener)
-  }
-  currentMenu = null
-  currentCloseMenuListener = null
+const handleMediaClick = (message: any, event: MouseEvent) => {
+  event.stopPropagation()
+  currentMediaMessage.value = message
+  mediaMenuPosition.value = { x: event.clientX, y: event.clientY }
+  mediaMenuVisible.value = true
 }
 
-// 处理媒体文件点击
-const handleMediaClick = (message: any, event?: MouseEvent) => {
-  // 先关闭当前打开的菜单
-  closeCurrentMenu()
-  
-  // 创建轻量级的弹出菜单，类似右键菜单
-  const menu = document.createElement('div')
-  menu.className = 'media-action-menu'
-  menu.style.position = 'fixed'
-  menu.style.zIndex = '9999'
-  menu.style.background = '#ffffff'
-  menu.style.border = '1px solid #e0e0e0'
-  menu.style.borderRadius = '4px'
-  menu.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.15)'
-  menu.style.padding = '2px'
-  menu.style.minWidth = '120px'
-  menu.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-  menu.style.fontSize = '14px'
-  menu.style.lineHeight = '1.4'
-  menu.style.color = '#333333'
-  
-  // 设置菜单位置（基于鼠标点击位置）
-  if (event) {
-    menu.style.left = `${event.clientX}px`
-    menu.style.top = `${event.clientY}px`
-    
-    // 检查菜单是否会超出屏幕
-    const menuWidth = 120
-    const menuHeight = 70 // 两个菜单项的高度
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-    
-    // 如果菜单右侧超出屏幕，调整左侧位置
-    if (event.clientX + menuWidth > windowWidth) {
-      menu.style.left = `${windowWidth - menuWidth - 10}px`
-    }
-    
-    // 如果菜单底部超出屏幕，调整顶部位置
-    if (event.clientY + menuHeight > windowHeight) {
-      menu.style.top = `${windowHeight - menuHeight - 10}px`
-    }
+const closeMediaMenu = () => {
+  mediaMenuVisible.value = false
+  currentMediaMessage.value = null
+}
+
+const handleJumpFromMenu = () => {
+  if (currentMediaMessage.value) {
+    handleMessageClick(currentMediaMessage.value.id)
   }
-  
-  // 添加菜单项
-  const createMenuItem = (icon: string, text: string, callback: () => void) => {
-    const item = document.createElement('div')
-    item.className = 'menu-item'
-    item.style.padding = '6px 12px'
-    item.style.cursor = 'pointer'
-    item.style.borderRadius = '2px'
-    item.style.display = 'flex'
-    item.style.alignItems = 'center'
-    item.style.gap = '8px'
-    item.innerHTML = `<i class="fas ${icon}" style="width: 16px; text-align: center;"></i> ${text}`
-    
-    // 添加悬停效果
-    item.addEventListener('mouseenter', () => {
-      item.style.background = '#f5f5f5'
-    })
-    item.addEventListener('mouseleave', () => {
-      item.style.background = 'transparent'
-    })
-    
-    // 添加点击事件
-    item.addEventListener('click', () => {
-      callback()
-      closeCurrentMenu()
-    })
-    
-    return item
-  }
-  
-  // 创建菜单项
-  const jumpItem = createMenuItem('fa-chevron-right', '跳转', () => {
-    handleMessageClick(message.id)
-  })
-  
-  const downloadItem = createMenuItem('fa-download', '下载', () => {
-    if (message.type === 'image') {
-      previewImage(message)
+  closeMediaMenu()
+}
+
+const handleDownloadFromMenu = () => {
+  if (currentMediaMessage.value) {
+    if (currentMediaMessage.value.type === 'image') {
+      previewImage(currentMediaMessage.value)
     } else {
-      downloadFile(message)
-    }
-  })
-  
-  // 组装菜单
-  menu.appendChild(jumpItem)
-  menu.appendChild(downloadItem)
-  
-  // 添加到文档
-  document.body.appendChild(menu)
-  
-  // 保存当前菜单实例
-  currentMenu = menu
-  
-  // 点击其他地方关闭菜单
-  const closeMenu = (e: MouseEvent) => {
-    if (!menu.contains(e.target as Node)) {
-      closeCurrentMenu()
+      downloadFile(currentMediaMessage.value)
     }
   }
-  
-  // 保存监听器
-  currentCloseMenuListener = closeMenu
-  document.addEventListener('click', closeMenu)
+  closeMediaMenu()
 }
 
 // 下载图片
@@ -615,139 +557,219 @@ onMounted(() => {
 })
 </script>
 
+<style>
+/* 媒体操作菜单 — 全局样式（Teleport 到 body） */
+.media-action-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+.media-action-menu {
+  position: fixed;
+  z-index: 10000;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  min-width: 140px;
+}
+.media-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1a1a2e;
+  transition: background 0.1s;
+}
+.media-menu-item:hover {
+  background: #f3f4f6;
+}
+.media-menu-item i {
+  width: 16px;
+  text-align: center;
+  color: #9ca3af;
+}
+</style>
 <style scoped>
 .message-manager-modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
 }
 
 .message-manager-content {
-  background: var(--card-bg);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  width: 800px;
-  max-width: 90%;
-  max-height: 80vh;
+  background: var(--card-bg, #fff);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  width: 820px;
+  max-width: 92vw;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border-color);
 }
 
+/* 头部 */
 .message-manager-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 16px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--secondary-color);
-  border-radius: 8px 8px 0 0;
+  background: var(--secondary-color, #f8f9fb);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
 }
 
-.message-manager-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-color);
+.header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  padding: 0;
-  width: 32px;
-  height: 32px;
+.header-icon {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
+  background: linear-gradient(135deg, #3385ff, #6366f1);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.header-left h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-color, #1a1a2e);
+}
+
+.close-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text-secondary, #9ca3af);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s;
 }
 
 .close-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
+  background: var(--hover-color, #f3f4f6);
+  border-color: var(--border-color, #e5e7eb);
+  color: var(--text-color, #1a1a2e);
 }
 
+/* Body */
 .message-manager-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+/* 搜索栏 */
 .message-manager-search {
-  margin-bottom: 8px;
   display: flex;
   gap: 10px;
   align-items: center;
 }
 
-.search-input {
+.search-input-wrapper {
   flex: 1;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--input-bg);
-  color: var(--text-color);
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-secondary, #9ca3af);
   font-size: 14px;
-  transition: border-color 0.3s;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 36px 10px 40px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--input-bg, #f9fafb);
+  color: var(--text-color, #1a1a2e);
+  font-size: 14px;
+  transition: all 0.2s;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+  border-color: #3385ff;
+  box-shadow: 0 0 0 3px rgba(51, 133, 255, 0.08);
+  background: #fff;
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary, #9ca3af);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.search-clear:hover {
+  background: var(--hover-color, #f3f4f6);
 }
 
 .search-btn {
-  padding: 8px 16px;
-  border: 1px solid var(--primary-color);
-  border-radius: 6px;
-  background: var(--primary-color);
-  color: white;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3385ff, #4f46e5);
+  color: #fff;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .search-btn:hover {
-  background: var(--active-color);
-  border-color: var(--active-color);
+  box-shadow: 0 4px 12px rgba(51, 133, 255, 0.35);
+  transform: translateY(-1px);
 }
 
-.search-btn i {
-  font-size: 12px;
-}
-
+/* 过滤器 */
 .message-manager-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
   align-items: flex-end;
 }
 
@@ -755,37 +777,37 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 120px;
+  min-width: 110px;
 }
 
 .filter-group label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .filter-select {
-  padding: 6px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--input-bg);
-  color: var(--text-color);
-  font-size: 14px;
+  padding: 7px 12px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--input-bg, #f9fafb);
+  color: var(--text-color, #1a1a2e);
+  font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.3s;
-  min-width: 120px;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
 }
 
 .filter-select:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
-}
-
-.date-range-group {
-  flex: 1;
-  min-width: 300px;
+  border-color: #3385ff;
+  box-shadow: 0 0 0 3px rgba(51, 133, 255, 0.08);
 }
 
 .date-range-inputs {
@@ -795,89 +817,66 @@ onMounted(() => {
 }
 
 .date-input {
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--input-bg);
-  color: var(--text-color);
-  font-size: 14px;
-  transition: border-color 0.3s;
+  padding: 7px 10px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--input-bg, #f9fafb);
+  color: var(--text-color, #1a1a2e);
+  font-size: 13px;
   flex: 1;
 }
 
 .date-input:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+  border-color: #3385ff;
 }
 
 .date-range-separator {
-  font-size: 14px;
-  color: var(--text-secondary);
-  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-secondary, #9ca3af);
 }
 
+/* 消息列表 */
 .message-manager-list {
-  max-height: 450px;
+  flex: 1;
+  min-height: 200px;
+  max-height: 420px;
   overflow-y: auto;
-  background: var(--card-bg);
-  border-radius: 8px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
-}
-
-.message-manager-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.message-manager-list::-webkit-scrollbar-track {
-  background: var(--secondary-color);
-  border-radius: 3px;
-}
-
-.message-manager-list::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.message-manager-list::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
 }
 
 .loading-message,
 .empty-message {
-  padding: 40px 20px;
+  padding: 48px 20px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #9ca3af);
   font-size: 14px;
 }
 
 .message-manager-item {
-  padding: 10px 16px;
-  transition: all 0.2s ease;
+  padding: 12px 16px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.message-manager-item.is-recalled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.message-manager-item.is-recalled:hover {
-  background: transparent;
-  transform: none;
-  box-shadow: none;
-}
-
-.message-manager-item:hover {
-  background: var(--hover-color);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  transition: background 0.15s;
 }
 
 .message-manager-item:last-child {
   border-bottom: none;
+}
+
+.message-manager-item:hover {
+  background: linear-gradient(135deg, #f8faff, #f0f5ff);
+}
+
+.message-manager-item.is-recalled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.message-manager-item.is-recalled:hover {
+  background: transparent;
 }
 
 .message-manager-item-header {
@@ -885,386 +884,298 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 6px;
-  flex-wrap: wrap;
 }
 
 .message-sender {
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--text-color, #1a1a2e);
   font-size: 13px;
   flex: 1;
-  min-width: 80px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message-time {
   font-size: 11px;
-  color: var(--text-color);
-  opacity: 0.6;
-  transition: opacity 0.3s ease;
-  flex: 0 0 auto;
-}
-
-/* 消息管理器中的消息时间始终显示 */
-.message-manager-item .message-time {
-  opacity: 0.7;
-}
-
-.message-manager-item:hover .message-time {
-  opacity: 1;
+  color: var(--text-secondary, #9ca3af);
+  flex-shrink: 0;
 }
 
 .message-type {
   font-size: 11px;
   font-weight: 500;
-  color: var(--primary-color);
-  background: var(--hover-color);
-  padding: 2px 8px;
-  border-radius: 10px;
-  flex: 0 0 auto;
-  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+  background: #f0f5ff;
+  color: #3385ff;
 }
 
-.message-type i {
-  font-size: 10px;
-}
+.message-type i { font-size: 10px; }
 
 .message-type-recalled {
-  color: var(--text-secondary);
-  background: var(--hover-color);
-}
-
-.recalled-text {
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.message-manager-item-content.is-recalled {
-  color: var(--text-secondary);
-  font-style: italic;
+  background: #f3f4f6;
+  color: #9ca3af;
 }
 
 .message-manager-item-content {
   font-size: 13px;
-  color: var(--text-color);
-  line-height: 1.4;
-  padding-left: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 60px;
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  padding-left: 0;
+}
+
+.message-manager-item-content.is-recalled {
+  font-style: italic;
+  color: #9ca3af;
 }
 
 .message-file-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text-color);
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #f3f4f6;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.message-file-link:hover {
+  background: #e5e7eb;
 }
 
 .message-file-link i {
+  color: #3385ff;
   font-size: 14px;
-  flex-shrink: 0;
-  color: var(--primary-color);
 }
 
-.message-file-link span {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mini-app-info,
-.share-info,
-.news-info {
+.mini-app-info, .share-info, .news-info {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  max-width: 100%;
+  align-items: center;
+  gap: 10px;
 }
 
-.mini-app-icon,
-.share-icon,
-.news-icon {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--hover-color);
+.mini-app-icon, .share-icon, .news-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #f0f5ff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  color: var(--primary-color);
+  color: #3385ff;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.mini-app-icon img,
-.share-icon img,
-.news-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.mini-app-icon i,
-.share-icon i,
-.news-icon i {
-  font-size: inherit;
-  color: inherit;
-}
-
-.mini-app-details,
-.share-details,
-.news-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.mini-app-name,
-.share-title,
-.news-title {
+.mini-app-name, .share-title, .news-title {
   font-weight: 500;
-  color: var(--text-color);
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-color, #1a1a2e);
   font-size: 13px;
-}
-
-.mini-app-description,
-.share-description,
-.news-description {
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.mini-app-description, .share-description, .news-description {
+  font-size: 12px;
+  color: var(--text-secondary, #9ca3af);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 分页 */
 .message-manager-pagination {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
-  padding: 16px 20px;
-  background: var(--secondary-color);
-  border-radius: 0 0 8px 8px;
-  border-top: 1px solid var(--border-color);
-}
-
-/* 悬浮分页效果 */
-.sticky-pagination {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  margin-top: 0;
-  border-radius: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
 }
 
 .pagination-info {
-  font-size: 14px;
-  color: var(--text-color);
-  opacity: 0.7;
+  font-size: 13px;
+  color: var(--text-secondary, #9ca3af);
 }
 
 .pagination-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .page-jump {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .page-input {
-  width: 50px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
+  width: 48px;
+  padding: 6px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
   border-radius: 6px;
-  background: var(--input-bg);
-  color: var(--text-color);
-  font-size: 14px;
+  background: var(--input-bg, #f9fafb);
+  color: var(--text-color, #1a1a2e);
+  font-size: 13px;
   text-align: center;
 }
 
 .page-input:focus {
   outline: none;
-  border-color: var(--primary-color);
-}
-
-.jump-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--primary-color);
-  border-radius: 6px;
-  background: var(--primary-color);
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.jump-btn:hover {
-  background: var(--active-color);
-  border-color: var(--active-color);
+  border-color: #3385ff;
 }
 
 .pagination-btn {
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--card-bg);
-  color: var(--text-color);
+  padding: 7px 14px;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text-color, #1a1a2e);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: #3385ff;
+  color: #3385ff;
+  background: #f8faff;
 }
 
 .pagination-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* 图片预览样式 */
+.jump-btn {
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #3385ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.jump-btn:hover {
+  background: #2563eb;
+}
+
+/* 图片预览 */
 .image-preview-modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.9);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  cursor: pointer;
 }
 
 .image-preview-content {
   position: relative;
-  max-width: 90%;
-  max-height: 90%;
-  cursor: default;
+  max-width: 90vw;
+  max-height: 90vh;
 }
 
 .image-preview-close {
   position: absolute;
-  top: -40px;
+  top: -44px;
   right: 0;
-  background: none;
+  background: rgba(255,255,255,0.1);
   border: none;
-  color: white;
-  font-size: 32px;
-  cursor: pointer;
-  width: 40px;
-  height: 40px;
+  color: #fff;
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
 .image-preview-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255,255,255,0.2);
 }
 
 .image-preview-img {
   max-width: 100%;
   max-height: 80vh;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .image-preview-actions {
   margin-top: 16px;
   display: flex;
   justify-content: center;
-  gap: 12px;
 }
 
 .image-preview-download {
-  padding: 8px 16px;
-  border: 1px solid var(--primary-color);
-  border-radius: 6px;
-  background: var(--primary-color);
-  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3385ff, #4f46e5);
+  color: #fff;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  transition: all 0.2s;
 }
 
 .image-preview-download:hover {
-  background: var(--active-color);
-  border-color: var(--active-color);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(51, 133, 255, 0.4);
   transform: translateY(-1px);
 }
 
-/* 响应式设计 */
+/* 响应式 */
 @media (max-width: 768px) {
   .message-manager-content {
-    width: 95%;
-    max-height: 90vh;
+    width: 95vw;
+    max-height: 92vh;
+    border-radius: 12px;
   }
-  
+
   .message-manager-filters {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
   }
-  
+
   .filter-group {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
   }
-  
-  .filter-select {
-    flex: 1;
-    min-width: 0;
-  }
-  
-  .date-range-group {
-    min-width: 0;
-  }
-  
-  .date-range-inputs {
-    flex: 1;
-  }
-  
+
   .message-manager-pagination {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+    align-items: stretch;
   }
-  
+
   .pagination-controls {
-    width: 100%;
     justify-content: center;
   }
 }

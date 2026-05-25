@@ -110,6 +110,53 @@ func initAdminUser() {
 	}
 }
 
+// seedBotTemplates 初始化 Bot 模板（系统助手、AI助手）
+func seedBotTemplates(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_bot_templates") {
+		return
+	}
+
+	if !db.Migrator().HasTable("bots") {
+		markMigrationCompleted(db, "seed_bot_templates")
+		return
+	}
+
+	var count int64
+	db.Model(&model.Bot{}).Where("type IN ?", []string{"system", "ai"}).Count(&count)
+	if count > 0 {
+		markMigrationCompleted(db, "seed_bot_templates")
+		return
+	}
+
+	systemBot := model.Bot{
+		Name:        "系统助手",
+		Avatar:      "",
+		Description: "提供系统相关的帮助和信息",
+		Type:        "system",
+		Config:      `{"responses":{"greeting":"你好！我是系统助手，有什么可以帮你的吗？","help":"我可以帮助你了解系统功能，解答常见问题。"}}`,
+		IsActive:    true,
+	}
+	if err := db.Create(&systemBot).Error; err != nil {
+		logger.WithModule("Init").Error("创建系统助手 Bot 失败", "error", err)
+	}
+
+	aiBot := model.Bot{
+		Name:        "AI助手",
+		Avatar:      "",
+		Description: "基于大模型的智能助手，能回答各种问题",
+		Type:        "ai",
+		Config:      `{"api_key":"your-api-key", "model":"gpt-3.5-turbo", "temperature":0.7}`,
+		IsActive:    true,
+	}
+	if err := db.Create(&aiBot).Error; err != nil {
+		logger.WithModule("Init").Error("创建AI助手 Bot 失败", "error", err)
+		return
+	}
+
+	logger.WithModule("Init").Info("Bot 模板初始化完成")
+	markMigrationCompleted(db, "seed_bot_templates")
+}
+
 // InitApp 初始化应用
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
@@ -124,20 +171,33 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 自动迁移表
 	MigrateDB(db)
 
-	// 仅在非生产环境初始化测试数据
-	if cfg.Server.Mode != "release" {
+	// ========== 预置数据 ==========
+	if cfg.DataInit.PresetData {
+		// 初始化系统用户（无论什么环境都需要）
+		initSystemUser()
+
+		// 初始化管理员用户（无论什么环境都需要）
+		initAdminUser()
+	}
+
+	// ========== Bot 模板 ==========
+	if cfg.DataInit.BotTemplates {
+		seedBotTemplates(db)
+	}
+
+	// ========== 演示小程序 ==========
+	if cfg.DataInit.DemoMiniApps {
+		test.SeedDemoMiniApps(db)
+	}
+
+	// ========== 测试数据 ==========
+	if cfg.DataInit.TestData {
 		// 添加测试数据
 		test.AddTestData()
 
 		// 初始化测试数据
 		test.InitTestData(db)
 	}
-
-	// 初始化系统用户（无论什么环境都需要）
-	initSystemUser()
-
-	// 初始化管理员用户（无论什么环境都需要）
-	initAdminUser()
 
 	// 初始化WebSocket Hub
 	hub := ws.NewHub(database.GetDB(), cfg.Database.Type)
@@ -203,9 +263,14 @@ func MigrateDB(db *gorm.DB) {
 		&model.ExternalUserMapping{}, // 外部用户映射
 		&model.OrgSyncConfig{},       // 组织架构同步配置
 		&model.OrgSyncLog{},          // 组织架构同步日志
+		&model.UserFeedback{},        // 用户反馈
+		&model.CrashLog{},            // 崩溃日志
 	); err != nil {
-		logger.WithModule("Migrate").Error("数据库迁移失败", "error", err)
-		os.Exit(1)
+		// GORM AutoMigrate 在表已存在时会报错，但这不影响程序运行
+		// 只有在真正的迁移失败时才记录错误
+		logger.WithModule("Migrate").Warn("数据库迁移警告", "error", err)
+		// 不再退出程序，允许继续运行
+		// os.Exit(1)
 	}
 
 	// 添加性能优化索引

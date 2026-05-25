@@ -30,44 +30,63 @@ export default defineConfig(({ mode }) => {
       } : undefined,
       rollupOptions: {
         output: {
-          manualChunks: {
+          manualChunks(id) {
             // Vue 核心框架
-            vue: ['vue'],
+            if (id.includes('node_modules/vue') || id.includes('node_modules/@vue')) {
+              return 'vue'
+            }
+            // Pinia 状态管理
+            if (id.includes('node_modules/pinia')) {
+              return 'pinia'
+            }
+            // axios
+            if (id.includes('node_modules/axios')) {
+              return 'axios'
+            }
+            // markdown 解析 (marked) — 较大，独立分包
+            if (id.includes('node_modules/marked')) {
+              return 'marked'
+            }
+            // PDF 相关 — 最大依赖，完全按需
+            if (id.includes('node_modules/pdfjs-dist')) {
+              return 'pdfjs'
+            }
+            // 其他 node_modules 统一 vendor
+            if (id.includes('node_modules')) {
+              return 'vendor'
+            }
             // 聊天主模块
-            chat: [
-              './src/components/chat/ChatWindow.vue',
-              './src/components/chat/ChatBody.vue',
-              './src/components/chat/ChatHeader.vue',
-              './src/components/chat/ChatInputArea.vue',
-            ],
-            // AI 相关功能
-            ai: [
-              './src/components/apps/AIAssistantApp.vue',
-              './src/components/apps/ai/ChatCenter.vue',
-            ],
-            // 便签应用
-            sticky: ['./src/components/apps/StickyNotesApp.vue'],
-            // 笔记应用
-            notes: ['./src/components/apps/NotesApp.vue'],
-            // 任务管理
-            task: ['./src/components/apps/task/TaskManagementApp.vue'],
+            if (id.includes('/components/chat/')) {
+              return 'chat'
+            }
+            // AI 相关
+            if (id.includes('/components/apps/ai/') || id.includes('/components/apps/AIAssistantApp')) {
+              return 'ai'
+            }
             // 日历应用
-            calendar: ['./src/components/apps/CalendarApp.vue'],
+            if (id.includes('/components/apps/CalendarApp')) {
+              return 'calendar'
+            }
             // 文件管理
-            file: ['./src/components/apps/FileManagementApp.vue'],
-            // 短链接
-            shortlink: ['./src/components/apps/ShortLinkManager.vue'],
+            if (id.includes('/components/apps/FileManagementApp')) {
+              return 'file'
+            }
+            // 便签 + 笔记
+            if (id.includes('/components/apps/StickyNotesApp') || id.includes('/components/apps/NotesApp')) {
+              return 'notes'
+            }
+            // 任务管理
+            if (id.includes('/components/apps/task/')) {
+              return 'task'
+            }
             // 设置相关
-            settings: [
-              './src/components/settings/SettingsPanel.vue',
-              './src/components/avatar/AvatarSettingsPanel.vue',
-            ],
+            if (id.includes('/components/settings/') || id.includes('/components/avatar/')) {
+              return 'settings'
+            }
             // 群聊相关
-            group: [
-              './src/components/shared/GroupDetail.vue',
-              './src/components/modals/CreateGroupModal.vue',
-              './src/components/modals/GroupModals.vue',
-            ],
+            if (id.includes('/components/shared/Group') || id.includes('/components/modals/CreateGroup') || id.includes('/components/modals/GroupModals')) {
+              return 'group'
+            }
           }
         }
       }

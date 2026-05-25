@@ -44,16 +44,18 @@ func checkAIEnabledForAvatar() gin.HandlerFunc {
 }
 
 type AvatarHandler struct {
-	db            *gorm.DB
-	avatarService *service.AvatarService
-	mcpServer     *ai.MCPServer
+	db              *gorm.DB
+	avatarService   *service.AvatarService
+	mcpServer       *ai.MCPServer
+	approvalService *service.ApprovalService
 }
 
-func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService, mcpServer *ai.MCPServer) *AvatarHandler {
+func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService, mcpServer *ai.MCPServer, approvalService *service.ApprovalService) *AvatarHandler {
 	return &AvatarHandler{
-		db:            db,
-		avatarService: avatarService,
-		mcpServer:     mcpServer,
+		db:              db,
+		avatarService:   avatarService,
+		mcpServer:       mcpServer,
+		approvalService: approvalService,
 	}
 }
 
@@ -106,7 +108,7 @@ type AvatarConfigResponse struct {
 	ModelConfigID      *uint                      `json:"modelConfigId"`
 	UseSystemConfig    bool                       `json:"useSystemConfig"`
 	TakeoverCooldown   int                        `json:"takeoverCooldown"`
-	// 审批相关
+	// 审批相关（从approvals表获取）
 	ApprovalStatus         string     `json:"approvalStatus"`
 	ApprovalRejectedReason string     `json:"approvalRejectedReason"`
 	ApprovalAppliedAt      *time.Time `json:"approvalAppliedAt"`
@@ -130,6 +132,19 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 		json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
 	}
 
+	// 从approvals表获取审批状态
+	approvalStatus := model.ApprovalStatusNone
+	var rejectReason string
+	var appliedAt, approvedAt *time.Time
+	if h.approvalService != nil {
+		if approval, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, config.ID); err == nil {
+			approvalStatus = approval.Status
+			rejectReason = approval.RejectReason
+			appliedAt = &approval.AppliedAt
+			approvedAt = approval.ApprovedAt
+		}
+	}
+
 	return AvatarConfigResponse{
 		ID:                     config.ID,
 		UserID:                 config.UserID,
@@ -145,10 +160,10 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 		ModelConfigID:          config.ModelConfigID,
 		UseSystemConfig:        config.UseSystemConfig,
 		TakeoverCooldown:       config.TakeoverCooldown,
-		ApprovalStatus:         config.ApprovalStatus,
-		ApprovalRejectedReason: config.RejectReason,
-		ApprovalAppliedAt:      config.AppliedAt,
-		ApprovalReviewedAt:     config.ApprovedAt,
+		ApprovalStatus:         approvalStatus,
+		ApprovalRejectedReason: rejectReason,
+		ApprovalAppliedAt:      appliedAt,
+		ApprovalReviewedAt:     approvedAt,
 		CreatedAt:              config.CreatedAt,
 		UpdatedAt:              config.UpdatedAt,
 	}
@@ -181,15 +196,9 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	var existingConfig model.AvatarConfig
 	// 检查是否存在（包括软删除的记录）
 	if err := h.db.Unscoped().Where("user_id = ?", userID).First(&existingConfig).Error; err == nil {
-		// 如果是软删除记录，恢复它并重置审批状态
+		// 如果是软删除记录，恢复它
 		if existingConfig.DeletedAt.Valid {
-			if err := h.db.Unscoped().Model(&existingConfig).Updates(map[string]interface{}{
-				"deleted_at":      nil,
-				"approval_status": model.ApprovalStatusNone,
-				"reject_reason":   "",
-				"applied_at":      nil,
-				"approved_at":     nil,
-			}).Error; err != nil {
+			if err := h.db.Unscoped().Model(&existingConfig).Update("deleted_at", nil).Error; err != nil {
 				logger.WithModule("AvatarHandler").Error("恢复软删除记录失败", "error", err)
 				response.InternalServerError(c, "恢复分身配置失败")
 				return
@@ -632,16 +641,16 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 		return
 	}
 
-	if !config.CanApply() {
-		response.BadRequest(c, "当前状态不允许申请")
-		return
+	// 检查是否已有待审批的申请
+	if h.approvalService != nil {
+		if existingApproval, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, config.ID); err == nil && existingApproval.Status == model.ApprovalStatusPending {
+			response.BadRequest(c, "已有待审批的申请")
+			return
+		}
 	}
 
-	now := time.Now()
-	config.ApprovalStatus = model.ApprovalStatusPending
-	config.AppliedAt = &now
-
-	if err := h.db.Save(&config).Error; err != nil {
+	// 通过ApprovalService创建审批申请
+	if err := h.approvalService.CreateApproval(model.ApprovalTypeAvatar, config.ID, userID); err != nil {
 		response.InternalServerError(c, "申请失败")
 		return
 	}
@@ -661,15 +670,20 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 		return
 	}
 
-	if !config.CanCancel() {
+	// 获取当前审批状态
+	if h.approvalService == nil {
+		response.BadRequest(c, "审批服务不可用")
+		return
+	}
+
+	approval, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, config.ID)
+	if err != nil || approval.Status != model.ApprovalStatusPending {
 		response.BadRequest(c, "当前状态不允许取消")
 		return
 	}
 
-	config.ApprovalStatus = model.ApprovalStatusNone
-	config.AppliedAt = nil
-
-	if err := h.db.Save(&config).Error; err != nil {
+	// 删除审批记录实现取消
+	if err := h.db.Delete(&approval).Error; err != nil {
 		response.InternalServerError(c, "取消失败")
 		return
 	}

@@ -15,14 +15,15 @@
         <div class="user-profile-avatar-section">
           <div class="user-avatar-container">
             <img
-              :src="getAvatarUrl(user.avatar)"
-              :alt="user.name"
+              :src="getAvatarUrl(detail.avatar)"
+              :alt="detail.name"
               class="user-avatar"
             />
           </div>
           <div class="user-basic-info">
-            <h2 class="user-full-name">{{ user.name }}</h2>
-            <p class="user-department">{{ user.department || '暂无部门' }}</p>
+            <h2 class="user-full-name">{{ detail.name }}</h2>
+            <p class="user-department">{{ detail.department || '暂无部门' }}</p>
+            <p v-if="detail.signature" class="user-signature">{{ detail.signature }}</p>
           </div>
         </div>
         
@@ -35,19 +36,19 @@
             <div class="info-grid">
               <div class="info-item">
                 <span class="info-label">姓名</span>
-                <span class="info-value">{{ user.name }}</span>
+                <span class="info-value">{{ detail.name }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">账号</span>
-                <span class="info-value">{{ user.username || '暂无' }}</span>
+                <span class="info-value">{{ detail.username || '暂无' }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">邮箱</span>
-                <span class="info-value">{{ user.email || '暂无' }}</span>
+                <span class="info-value">{{ detail.email || '暂无' }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">手机</span>
-                <span class="info-value">{{ user.mobile || '暂无' }}</span>
+                <span class="info-value">{{ detail.mobile || '暂无' }}</span>
               </div>
             </div>
           </div>
@@ -60,26 +61,26 @@
             <div class="info-grid">
               <div class="info-item">
                 <span class="info-label">部门</span>
-                <span class="info-value">{{ user.department || '暂无' }}</span>
+                <span class="info-value">{{ detail.department || '暂无' }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">职位</span>
-                <span class="info-value">{{ user.position || '暂无' }}</span>
+                <span class="info-value">{{ detail.position || '暂无' }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">IP</span>
-                <span class="info-value">{{ user.ip || '暂无' }}</span>
+                <span class="info-value">{{ detail.ip || '暂无' }}</span>
               </div>
             </div>
           </div>
         </div>
         
         <div class="user-action-buttons">
-          <button class="action-btn primary" @click="$emit('privateChat', user)">
+          <button class="action-btn primary" @click="$emit('privateChat', detail)">
             <i class="fas fa-comment"></i>
             <span>发起私聊</span>
           </button>
-          <button class="action-btn secondary" @click="$emit('showProfile', user)">
+          <button class="action-btn secondary" @click="$emit('showProfile', detail)">
             <i class="fas fa-id-card"></i>
             <span>详细资料</span>
           </button>
@@ -94,8 +95,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getCurrentUser } from '../../utils/user'
+import { request } from '../../composables/useRequest'
 
 interface User {
   id: string | number
@@ -107,6 +109,7 @@ interface User {
   position?: string
   ip?: string
   avatar?: string
+  signature?: string
 }
 
 interface Props {
@@ -116,6 +119,25 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const detail = ref<any>({ ...props.user })
+
+onMounted(async () => {
+  try {
+    const response = await request(`/api/v1/users/${props.user.id}`)
+    if (response.code === 0 && response.data) {
+      detail.value = {
+        ...props.user,
+        ...response.data,
+        mobile: response.data.mobile || response.data.phone || props.user.mobile || '',
+        signature: response.data.signature || '',
+        ip: response.data.ip || props.user.ip || '',
+      }
+    }
+  } catch {
+    // fallback to prop data
+  }
+})
 
 const isCurrentUser = computed(() => {
   const currentUser = getCurrentUser()
@@ -253,6 +275,12 @@ defineEmits<{
 .user-department {
   margin: 0;
   font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.user-signature {
+  margin: 4px 0 0;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 

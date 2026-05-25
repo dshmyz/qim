@@ -1,0 +1,539 @@
+@font-face {
+  font-family: screenshots-icon;
+  src: url(./static/font/iconfont.woff2) format("woff2"), url(./static/font/iconfont.woff) format("woff"), url(./static/font/iconfont.ttf) format("truetype");
+}
+
+[class^="icon-"], [class*=" icon-"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-style: normal;
+  line-height: 1;
+  font-family: screenshots-icon !important;
+}
+
+.icon-ok:before {
+  content: "";
+}
+
+.icon-cancel:before {
+  content: "";
+}
+
+.icon-save:before {
+  content: "";
+}
+
+.icon-redo:before {
+  content: "";
+}
+
+.icon-undo:before {
+  content: "";
+}
+
+.icon-mosaic:before {
+  content: "";
+}
+
+.icon-text:before {
+  content: "";
+}
+
+.icon-brush:before {
+  content: "";
+}
+
+.icon-arrow:before {
+  content: "";
+}
+
+.icon-ellipse:before {
+  content: "";
+}
+
+.icon-rectangle:before {
+  content: "";
+}
+
+.screenshots {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, apple color emoji, segoe ui emoji, Segoe UI Symbol, noto color emoji;
+  position: relative;
+  transform: translateZ(0);
+}
+
+.screenshots, .screenshots * {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.screenshots-magnifier {
+  z-index: 9;
+  width: 100px;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, apple color emoji, segoe ui emoji, Segoe UI Symbol, noto color emoji;
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-shadow: 0 0 8px #000;
+}
+
+.screenshots-magnifier, .screenshots-magnifier * {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.screenshots-magnifier-body {
+  background-color: #fff;
+  position: relative;
+}
+
+.screenshots-magnifier-body:before {
+  content: "";
+  z-index: 1;
+  background-color: #0a72a1;
+  width: 100%;
+  height: 2px;
+  position: absolute;
+  top: 50%;
+  left: 0;
+}
+
+.screenshots-magnifier-body:after {
+  content: "";
+  z-index: 1;
+  background-color: #0a72a1;
+  width: 2px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 50%;
+}
+
+.screenshots-magnifier-body-canvas {
+  width: 100px;
+  height: 80px;
+  display: block;
+}
+
+.screenshots-magnifier-footer {
+  color: #fff;
+  white-space: nowrap;
+  text-align: center;
+  background-color: #5f5e5e;
+  height: 40px;
+  padding: 4px;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.screenshots-magnifier-footer-item {
+  height: 18px;
+  line-height: 18px;
+}
+
+.screenshots-background {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.screenshots-background-image {
+  width: 100%;
+  height: 100%;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  -webkit-font-smooting: antialiased;
+  border: none;
+  outline: none;
+  display: block;
+}
+
+.screenshots-background-mask {
+  z-index: 1;
+  background-color: #0000004d;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.screenshots-canvas {
+  z-index: 2;
+  will-change: width, height, transform;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.screenshots-canvas-body, .screenshots-canvas-mask {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.screenshots-canvas-image {
+  will-change: transform;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  -webkit-font-smooting: antialiased;
+  border: none;
+  outline: none;
+  display: block;
+}
+
+.screenshots-canvas-panel {
+  will-change: width, height;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.screenshots-canvas-size {
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  background-color: #000c;
+  border-radius: 2px;
+  padding: 3px 4px;
+  font-size: 12px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.screenshots-canvas-border-top {
+  pointer-events: none;
+  background-color: #39f;
+  width: 100%;
+  height: 2px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.screenshots-canvas-border-right {
+  pointer-events: none;
+  background-color: #39f;
+  width: 2px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  transform: translateX(-50%);
+}
+
+.screenshots-canvas-border-bottom {
+  pointer-events: none;
+  background-color: #39f;
+  width: 100%;
+  height: 2px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.screenshots-canvas-border-left {
+  pointer-events: none;
+  background-color: #39f;
+  width: 2px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(-50%);
+}
+
+.screenshots-canvas-point-top {
+  cursor: ns-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-top-right {
+  cursor: nesw-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-right {
+  cursor: ew-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-right-bottom {
+  cursor: nwse-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 100%;
+  left: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-bottom {
+  cursor: ns-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-bottom-left {
+  cursor: nesw-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-left {
+  cursor: ew-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-canvas-point-left-top {
+  cursor: nwse-resize;
+  background-color: #39f;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-option {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, apple color emoji, segoe ui emoji, Segoe UI Symbol, noto color emoji;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.screenshots-option, .screenshots-option * {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.screenshots-option-container {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  height: 34px;
+  padding: 3px;
+}
+
+.screenshots-option-arrow {
+  border: 6px solid #0000;
+  position: absolute;
+}
+
+.screenshots-option[data-placement="top"] {
+  transform: translate(-50%, -11px);
+}
+
+.screenshots-option[data-placement="top"] .screenshots-option-arrow {
+  border-top-color: #fff;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -1px);
+}
+
+.screenshots-option[data-placement="bottom"] {
+  transform: translate(-50%, 11px);
+}
+
+.screenshots-option[data-placement="bottom"] .screenshots-option-arrow {
+  border-bottom-color: #fff;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, 1px);
+}
+
+.screenshots-button {
+  color: #333;
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  margin: 0 3px;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.screenshots-button-checked, .screenshots-button:hover {
+  background-color: #eee;
+  outline: 1px solid #777;
+}
+
+.screenshots-button-disabled {
+  color: #bbb;
+  cursor: not-allowed;
+}
+
+.screenshots-button-disabled:hover {
+  background-color: #fff;
+  outline: none;
+}
+
+.screenshots-color {
+  align-items: center;
+  height: 24px;
+  display: flex;
+}
+
+.screenshots-color-item {
+  cursor: pointer;
+  border: 1px solid #777;
+  width: 24px;
+  height: 24px;
+  margin: 0 3px;
+  position: relative;
+}
+
+.screenshots-color-item:before {
+  content: "";
+  background-color: #333;
+  width: 10px;
+  height: 10px;
+  display: none;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+}
+
+.screenshots-color-item:after {
+  content: "";
+  border-bottom: 2px solid #fff;
+  border-left: 2px solid #fff;
+  width: 8px;
+  height: 4px;
+  display: none;
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  transform: translate(5px, 2px)rotate(-45deg)scale(.8);
+}
+
+.screenshots-color-active:before, .screenshots-color-active:after {
+  display: block;
+}
+
+.screenshots-size {
+  align-items: center;
+  height: 24px;
+  display: flex;
+}
+
+.screenshots-size-item {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  margin: 0 3px;
+  position: relative;
+}
+
+.screenshots-size-pointer {
+  background-color: #555;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.screenshots-size-active > .screenshots-size-pointer {
+  background-color: #39f;
+}
+
+.screenshots-sizecolor {
+  align-items: center;
+  height: 24px;
+  display: flex;
+}
+
+.screenshots-textarea {
+  box-sizing: border-box;
+  resize: none;
+  white-space: nowrap;
+  word-break: break-all;
+  text-align: left;
+  background-color: #0000;
+  border: 2px solid #39f;
+  outline: none;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, apple color emoji, segoe ui emoji, Segoe UI Symbol, noto color emoji;
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+.screenshots-operations {
+  z-index: 3;
+  will-change: transform;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.screenshots-operations-buttons {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  align-items: center;
+  padding: 3px;
+  display: flex;
+  overflow: hidden;
+}
+
+.screenshots-operations-divider {
+  background-color: #ddd;
+  width: 1px;
+  height: 26px;
+  margin: 0 3px;
+}
+

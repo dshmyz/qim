@@ -4,9 +4,9 @@
     <section class="hero">
       <div class="hero-content">
         <div class="logo">
-          <img src="/app-logo-v1.png" alt="QIM" class="logo-img" />
+          <img src="/app-logo-v1.png" :alt="productName" class="logo-img" />
         </div>
-        <h1 class="title">QIM <span class="title-cn">青雀</span></h1>
+        <h1 class="title">{{ productName }} <span class="title-cn">青雀</span></h1>
         <p class="subtitle">企业级智能协作平台</p>
         <p class="subtitle-desc">集成 AI 能力的现代化企业通讯解决方案，让团队协作更高效、更智能</p>
         
@@ -76,6 +76,7 @@
               <svg class="dl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="platform.dlIcon"></svg>
               {{ dl.label }}
             </a>
+            <span v-if="platform.downloads.length === 0" class="no-version">暂无可用版本</span>
           </div>
         </div>
       </div>
@@ -83,10 +84,10 @@
 
     <!-- About Section -->
     <section class="about" id="about">
-      <h2 class="section-title">关于 QIM 青雀</h2>
+      <h2 class="section-title">关于 {{ productFullName }}</h2>
       <div class="about-content">
         <ul class="about-list">
-          <li>QIM 青雀是一款面向企业团队的智能协作平台，致力于将即时通讯、AI 能力与办公应用深度融合。</li>
+          <li>{{ productFullName }}是一款面向企业团队的智能协作平台，致力于将即时通讯、AI 能力与办公应用深度融合。</li>
           <li>通过内置的文件箱、笔记、任务管理、日历等应用，团队可以在一个平台内完成沟通、协作与项目管理，无需在多个工具之间切换。</li>
           <li>同时，青雀支持自定义 AI 助手和数字分身，让 AI 真正成为团队的生产力伙伴。</li>
         </ul>
@@ -96,7 +97,7 @@
     <!-- Footer -->
     <footer class="footer">
       <div class="footer-content">
-        <p>&copy; {{ new Date().getFullYear() }} QIM 青雀. All rights reserved.</p>
+        <p>{{ copyrightText }}</p>
         <p class="footer-meta">
           <span class="footer-version">v1.2.0 · 2026-05-09 更新</span>
           <span class="footer-meta-divider">|</span>
@@ -112,7 +113,40 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getProductName, getProductFullName, getCopyrightText } from '../config/appConfig'
+import { getVersions } from '../api/versions'
+
+const productName = getProductName()
+const productFullName = getProductFullName()
+const copyrightText = getCopyrightText()
+
+const platforms = ref([
+  {
+    name: 'Windows',
+    key: 'windows',
+    icon: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    dlIcon: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    color: 'linear-gradient(135deg, #0078d4 0%, #005a9e 100%)',
+    downloads: [] as { label: string; url: string }[],
+  },
+  {
+    name: 'macOS',
+    key: 'macos',
+    icon: '<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>',
+    dlIcon: '<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>',
+    color: 'linear-gradient(135deg, #333 0%, #555 100%)',
+    downloads: [] as { label: string; url: string }[],
+  },
+  {
+    name: 'Linux',
+    key: 'linux',
+    icon: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+    dlIcon: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+    color: 'linear-gradient(135deg, #e95420 0%, #772953 100%)',
+    downloads: [] as { label: string; url: string }[],
+  },
+])
 
 const currentPlatform = computed(() => {
   const ua = navigator.userAgent
@@ -214,61 +248,53 @@ const apps = [
   },
 ]
 
-const platforms = [
-  {
-    name: 'Windows',
-    icon: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
-    dlIcon: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
-    color: 'linear-gradient(135deg, #0078d4 0%, #005a9e 100%)',
-    downloads: [
-      { label: 'QIM x64.exe', url: '/downloads/qim-windows-x64.exe' },
-      { label: 'QIM x86.exe', url: '/downloads/qim-windows-x86.exe' },
-    ],
-  },
-  {
-    name: 'macOS',
-    icon: '<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>',
-    dlIcon: '<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>',
-    color: 'linear-gradient(135deg, #333 0%, #555 100%)',
-    downloads: [
-      { label: 'QIM Intel.dmg', url: '/downloads/qim-macos-intel.dmg' },
-      { label: 'QIM Apple Silicon.dmg', url: '/downloads/qim-macos-arm.dmg' },
-    ],
-  },
-  {
-    name: 'Linux',
-    icon: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
-    dlIcon: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
-    color: 'linear-gradient(135deg, #e95420 0%, #772953 100%)',
-    downloads: [
-      { label: 'QIM .deb', url: '/downloads/qim-linux.deb' },
-      { label: 'QIM .rpm', url: '/downloads/qim-linux.rpm' },
-    ],
-  },
-]
-
 const scrollToFeatures = () => {
   document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
 }
 
 const downloadClient = () => {
   const p = currentPlatform.value
-  let url = ''
+  const platform = platforms.value.find(plt => plt.key === p)
   
-  if (p === 'windows') {
-    url = '/downloads/qim-windows-x64.exe'
-  } else if (p === 'macos') {
-    if (/Apple Silicon|arm64|aarch64/.test(navigator.userAgent)) {
-      url = '/downloads/qim-macos-arm.dmg'
+  if (platform && platform.downloads.length > 0) {
+    let url = ''
+    
+    if (p === 'macos') {
+      const armVersion = platform.downloads.find(d => d.url.includes('arm'))
+      const intelVersion = platform.downloads.find(d => d.url.includes('intel'))
+      
+      if (/Apple Silicon|arm64|aarch64/.test(navigator.userAgent)) {
+        url = armVersion?.url || platform.downloads[0].url
+      } else {
+        url = intelVersion?.url || platform.downloads[0].url
+      }
     } else {
-      url = '/downloads/qim-macos-intel.dmg'
+      url = platform.downloads[0].url
     }
-  } else {
-    url = '/downloads/qim-linux.deb'
+    
+    window.open(url, '_blank')
   }
-  
-  window.open(url, '_blank')
 }
+
+onMounted(async () => {
+  try {
+    const response = await getVersions()
+    const versions = response.data.data.list
+    
+    platforms.value.forEach(platform => {
+      const platformVersions = versions.filter(
+        v => v.platform === platform.key && v.status === 'active'
+      )
+      
+      platform.downloads = platformVersions.map(v => ({
+        label: `${productName} ${v.version}`,
+        url: v.downloadUrl
+      }))
+    })
+  } catch (error) {
+    console.error('获取版本列表失败:', error)
+  }
+})
 </script>
 
 <style scoped>
@@ -560,6 +586,11 @@ const downloadClient = () => {
   color: #fff;
 }
 
+.no-version {
+  font-size: 13px;
+  color: #999;
+}
+
 .dl-icon {
   width: 14px;
   height: 14px;
@@ -687,10 +718,3 @@ const downloadClient = () => {
   }
 }
 </style>
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.7);
-  margin: 0 0 32px;
-  line-height: 1.6;
-}
-
-.subtitle-desc {

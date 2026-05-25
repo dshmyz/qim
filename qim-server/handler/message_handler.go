@@ -109,7 +109,7 @@ func resolveAIName(msg model.Message) string {
 			return name
 		}
 	}
-	if msg.Sender.Type == "bot" || msg.Sender.Type == "system" {
+	if (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system" {
 		return msg.Sender.Nickname
 	}
 	return "AI助手"
@@ -130,7 +130,7 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
 		"is_avatar_reply":   msg.AIType == "avatar",
-		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
 		"ai_assistant_name": aiName,
 		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
@@ -410,7 +410,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
 		"is_avatar_reply":   msg.AIType == "avatar",
-		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
 		"ai_assistant_name": aiName,
 		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
@@ -546,6 +546,8 @@ func StreamMessage(c *gin.Context) {
 			"virtualUserID", bot.VirtualUserID,
 		)
 
+		systemUserID := service.NewUserService(db).GetSystemUserID()
+
 		var aiMessages []ai.Message
 		aiMessages = append(aiMessages, ai.Message{
 			Role:    "system",
@@ -554,7 +556,7 @@ func StreamMessage(c *gin.Context) {
 
 		for _, msg := range messages {
 			role := "user"
-			if msg.SenderID == 0 || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
+			if msg.SenderID == systemUserID || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
 				role = "assistant"
 			}
 			aiMessages = append(aiMessages, ai.Message{
@@ -598,7 +600,7 @@ func StreamMessage(c *gin.Context) {
 		close(responseChan)
 		doneChan <- true
 
-		senderID := uint(0)
+		senderID := service.NewUserService(db).GetSystemUserID()
 		if bot.VirtualUserID != nil {
 			senderID = *bot.VirtualUserID
 		}

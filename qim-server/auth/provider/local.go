@@ -68,7 +68,7 @@ func (p *LocalProvider) Authenticate(ctx context.Context, creds *Credentials) (*
 		}, nil
 	}
 
-	if user.Type == "bot" || user.Type == "system" || user.Type == "api" {
+	if (user.Type == "bot_assistant" || user.Type == "bot_avatar") || user.Type == "system" || user.Type == "api" {
 		return &AuthResult{
 			Success: false,
 			Message: "该账户类型不支持登录",

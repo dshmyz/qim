@@ -109,6 +109,7 @@ export interface Channel {
   creator_id: string
   status: string
   publish_permission: 'creator_only' | 'all_subscribers'
+  comment_permission: 'all_subscribers' | 'disabled'
   created_at: number
   is_subscribed?: boolean
   creator?: User

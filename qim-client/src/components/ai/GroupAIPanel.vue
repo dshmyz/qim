@@ -82,6 +82,7 @@ interface Props {
   aiAntiSpamInterval?: number
   aiTriggerKeywords?: string[]
   aiLearnEnabled?: boolean
+  aiExtractTodos?: boolean
   approvalStatus?: 'pending' | 'approved' | 'rejected'
   rejectReason?: string
 }
@@ -98,6 +99,7 @@ const props = withDefaults(defineProps<Props>(), {
   aiAntiSpamInterval: 5,
   aiTriggerKeywords: () => [],
   aiLearnEnabled: false,
+  aiExtractTodos: false,
   approvalStatus: 'approved',
   rejectReason: ''
 })
@@ -126,7 +128,8 @@ const settings = ref<GroupAISettings>({
   aiMentionReplyMode: props.aiMentionReplyMode,
   aiAntiSpamInterval: props.aiAntiSpamInterval,
   aiTriggerKeywords: [...props.aiTriggerKeywords],
-  aiLearnEnabled: props.aiLearnEnabled
+  aiLearnEnabled: props.aiLearnEnabled,
+  aiExtractTodos: props.aiExtractTodos
 })
 
 const approvalStatus = ref<'pending' | 'approved' | 'rejected'>(props.approvalStatus)
@@ -150,7 +153,8 @@ async function loadAISettings() {
         aiMentionReplyMode: data.ai_mention_reply_mode || props.aiMentionReplyMode,
         aiAntiSpamInterval: data.ai_anti_spam_interval !== undefined ? data.ai_anti_spam_interval : props.aiAntiSpamInterval,
         aiTriggerKeywords: data.ai_trigger_keywords ? data.ai_trigger_keywords.split(',').filter((k: string) => k.trim()) : [...props.aiTriggerKeywords],
-        aiLearnEnabled: data.ai_learn_enabled !== undefined ? data.ai_learn_enabled : props.aiLearnEnabled
+        aiLearnEnabled: data.ai_learn_enabled !== undefined ? data.ai_learn_enabled : props.aiLearnEnabled,
+        aiExtractTodos: data.ai_extract_todos !== undefined ? data.ai_extract_todos : props.aiExtractTodos
       }
       if (data.approval_status) {
         approvalStatus.value = data.approval_status as 'pending' | 'approved' | 'rejected'
@@ -179,7 +183,8 @@ watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.ai
     aiMentionReplyMode: props.aiMentionReplyMode,
     aiAntiSpamInterval: props.aiAntiSpamInterval,
     aiTriggerKeywords: [...props.aiTriggerKeywords],
-    aiLearnEnabled: props.aiLearnEnabled
+    aiLearnEnabled: props.aiLearnEnabled,
+    aiExtractTodos: props.aiExtractTodos
   }
   approvalStatus.value = props.approvalStatus
   rejectReason.value = props.rejectReason

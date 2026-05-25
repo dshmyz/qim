@@ -23,6 +23,15 @@ type Config struct {
 	CORS     CORSConfig
 	WS       WSConfig
 	Vector   VectorConfig
+	DataInit DataInitConfig
+}
+
+type DataInitConfig struct {
+	PresetData   bool `yaml:"preset_data"`
+	BotTemplates bool `yaml:"bot_templates"`
+	DemoMiniApps bool `yaml:"demo_mini_apps"`
+	TestData     bool `yaml:"test_data"`
+	SeedForce    bool `yaml:"seed_force"`
 }
 
 type VectorConfig struct {
@@ -86,15 +95,16 @@ type DatabaseConfig struct {
 }
 
 type yamlConfig struct {
-	Server  ServerConfig   `yaml:"server"`
-	JWT     JWTConfig      `yaml:"jwt"`
-	DB      DatabaseConfig `yaml:"database"`
-	Cluster ClusterConfig  `yaml:"cluster"`
-	Storage StorageConfig  `yaml:"storage"`
-	AI      ai.AIConfig    `yaml:"ai"`
-	CORS    CORSConfig     `yaml:"cors"`
-	WS      WSConfig       `yaml:"ws"`
-	Vector  VectorConfig   `yaml:"vector"`
+	Server   ServerConfig   `yaml:"server"`
+	JWT      JWTConfig      `yaml:"jwt"`
+	DB       DatabaseConfig `yaml:"database"`
+	Cluster  ClusterConfig  `yaml:"cluster"`
+	Storage  StorageConfig  `yaml:"storage"`
+	AI       ai.AIConfig    `yaml:"ai"`
+	CORS     CORSConfig     `yaml:"cors"`
+	WS       WSConfig       `yaml:"ws"`
+	Vector   VectorConfig   `yaml:"vector"`
+	DataInit DataInitConfig `yaml:"data_init"`
 }
 
 func Load() *Config {
@@ -236,6 +246,11 @@ func Load() *Config {
 		}
 	}
 
+	// 数据初始化策略：如果配置未显式设置，回退到基于 mode 的默认值
+	if cfg.DataInit == (DataInitConfig{}) {
+		cfg.DataInit = getDefaultDataInitConfig(cfg.Server.Mode)
+	}
+
 	return &Config{
 		Server:   cfg.Server,
 		Database: cfg.DB,
@@ -246,6 +261,7 @@ func Load() *Config {
 		CORS:     cfg.CORS,
 		WS:       cfg.WS,
 		Vector:   cfg.Vector,
+		DataInit: cfg.DataInit,
 	}
 }
 
@@ -255,6 +271,25 @@ func generateRandomSecret() string {
 		return hex.EncodeToString([]byte("fallback-insecure-secret-" + fmt.Sprintf("%d", time.Now().UnixNano())))
 	}
 	return hex.EncodeToString(b)
+}
+
+func getDefaultDataInitConfig(mode string) DataInitConfig {
+	if mode == "release" {
+		return DataInitConfig{
+			PresetData:   true,
+			BotTemplates: true,
+			DemoMiniApps: false,
+			TestData:     false,
+			SeedForce:    false,
+		}
+	}
+	return DataInitConfig{
+		PresetData:   true,
+		BotTemplates: true,
+		DemoMiniApps: true,
+		TestData:     true,
+		SeedForce:    false,
+	}
 }
 
 func getDefaultConfig() yamlConfig {

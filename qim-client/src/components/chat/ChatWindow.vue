@@ -88,6 +88,7 @@
       @select-file="selectFile"
       @select-image="selectImage"
       @take-screenshot="takeScreenshot"
+      @take-screenshot-hidden="takeScreenshotHidden"
       @open-message-manager="openMessageManager"
       @open-mini-app-list="openMiniAppList"
       @start-voice-call="startVoiceCall"
@@ -157,6 +158,7 @@
       @send-message-reminder="sendMessageReminder"
       @ai-summary="handleAISummary"
       @translate="handleAITranslate"
+      @smart-reply="handleSmartReply"
       @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
@@ -267,6 +269,7 @@ const {
   translateText,
   rewriteText,
   polishText,
+  generateSmartReply,
 } = useAIActions()
 
 // 分身 composable
@@ -1579,6 +1582,27 @@ const handleAITranslate = () => {
   closeMessageContextMenu()
 }
 
+// 智能回复
+const handleSmartReply = async () => {
+  if (!selectedMessage.value || !selectedMessage.value.content) {
+    closeMessageContextMenu()
+    return
+  }
+  const messageContent = selectedMessage.value.content
+  closeMessageContextMenu()
+
+  try {
+    const reply = await generateSmartReply(messageContent)
+    if (reply) {
+      inputMessage.value = reply
+      autoResizeTextarea()
+      $message.success('智能回复已生成')
+    }
+  } catch {
+    $message.error('智能回复生成失败')
+  }
+}
+
 // 判断是否可以发送提醒
 const canSendReminder = (message: any): boolean => {
   if (!message.timestamp || message.isRead) return false
@@ -1834,6 +1858,28 @@ const takeScreenshot = () => {
       logger.error('[Screenshot] Error triggering screenshot:', error)
       $message.error('截图功能不可用')
     }
+  } else {
+    $message.warning('截图功能仅在客户端环境中可用')
+  }
+}
+
+// 隐藏窗口截图
+const takeScreenshotHidden = () => {
+  if (window.electron && window.electron.ipcRenderer) {
+    logger.log('[Screenshot] takeScreenshotHidden called')
+    window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+
+    const screenshotHandler = async (_event: any, imageData: string) => {
+      window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+      if (!isMounted.value) return
+      if (imageData) {
+        const file = await base64ToFile(imageData, 'screenshot.png')
+        pendingFiles.value.push({ file, name: 'screenshot.png' })
+      }
+    }
+
+    window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
+    window.electron.ipcRenderer.send('take-screenshot-hidden')
   } else {
     $message.warning('截图功能仅在客户端环境中可用')
   }

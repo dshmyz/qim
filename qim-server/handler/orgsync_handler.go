@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"time"
 
 	"qim-server/database"
 	"qim-server/model"
@@ -142,7 +143,9 @@ func (h *OrgSyncHandler) TriggerSync(c *gin.Context) {
 			delete(h.running, configID)
 			h.mu.Unlock()
 		}()
-		h.engine.Sync(context.Background(), &config)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		h.engine.Sync(ctx, &config)
 	}()
 
 	response.SuccessWithMessage(c, "同步任务已启动", gin.H{

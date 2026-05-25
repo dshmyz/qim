@@ -15,12 +15,11 @@ type User struct {
 	PasswordHash     string         `json:"-" gorm:"size:255;not null"`
 	Nickname         string         `json:"nickname" gorm:"size:100"`
 	Avatar           string         `json:"avatar" gorm:"size:500"`
-	Type             string         `json:"type" gorm:"size:20;default:'user';index"` // 'user' | 'bot' | 'system' | 'api' | 'admin'
+	Type             string         `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
 	Signature        string         `json:"signature" gorm:"type:text"`
-	Phone            string         `json:"phone" gorm:"size:20"`
-	Email            string         `json:"email" gorm:"size:100"`
+	Phone            string         `json:"phone" gorm:"size:20;index"`
+	Email            string         `json:"email" gorm:"size:100;index"`
 	Status           string         `json:"status" gorm:"size:20;default:'offline'"`
-	BotType          string         `json:"bot_type" gorm:"size:30;default:''"` // 仅 Type='bot' 时有值: 'assistant'
 	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
@@ -60,8 +59,8 @@ type DepartmentEmployee struct {
 // 会话
 type Conversation struct {
 	ID            uint                 `json:"id" gorm:"primarykey"`
-	Type          string               `json:"type" gorm:"size:20;not null"`
-	IsDeleted     bool                 `json:"is_deleted" gorm:"default:false"`
+	Type          string               `json:"type" gorm:"size:20;not null;index:idx_conv_type_deleted,priority:1"`
+	IsDeleted     bool                 `json:"is_deleted" gorm:"default:false;index:idx_conv_type_deleted,priority:2"`
 	LastMessageID *uint                `json:"last_message_id"`
 	LastMessageAt *time.Time           `json:"last_message_at"`
 	CreatedAt     time.Time            `json:"created_at"`
@@ -80,53 +79,11 @@ type Group struct {
 	CreatorID        uint            `json:"creator_id" gorm:"not null"`
 	Announcement     string          `json:"announcement" gorm:"type:text"`
 	InvitePermission string          `json:"invite_permission" gorm:"size:20;default:'owner_admin'"`
-	AIConfigJSON     string          `json:"-" gorm:"type:text;column:ai_config"`               // AI配置JSON存储
-	ApprovalStatus   string          `json:"approval_status" gorm:"size:20;default:'approved'"` // AI审批状态
-	AppliedAt        *time.Time      `json:"applied_at"`                                        // 申请时间
-	ApprovedAt       *time.Time      `json:"approved_at"`                                       // 审批时间
-	ApprovedBy       *uint           `json:"approved_by"`                                       // 审批人
-	RejectReason     string          `json:"reject_reason" gorm:"type:text"`                    // 拒绝理由
+	AIConfigJSON     string          `json:"-" gorm:"type:text;column:ai_config"` // AI配置JSON存储
 	Documents        []GroupDocument `json:"documents,omitempty" gorm:"foreignkey:GroupID"`
 	CreatedAt        time.Time       `json:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"`
 	Conversation     Conversation    `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
-}
-
-// 实现 ApprovalEntity 接口
-func (g *Group) GetID() uint {
-	return g.ID
-}
-
-func (g *Group) GetCreatorID() uint {
-	return g.CreatorID
-}
-
-func (g *Group) GetApprovalStatus() string {
-	return g.ApprovalStatus
-}
-
-func (g *Group) GetApprovalType() string {
-	return ApprovalTypeGroupAI
-}
-
-func (g *Group) SetApprovalStatus(status string) {
-	g.ApprovalStatus = status
-}
-
-func (g *Group) SetApprovedAt(t *time.Time) {
-	g.ApprovedAt = t
-}
-
-func (g *Group) SetApprovedBy(adminID uint) {
-	g.ApprovedBy = &adminID
-}
-
-func (g *Group) SetRejectReason(reason string) {
-	g.RejectReason = reason
-}
-
-func (g *Group) GetRejectReason() string {
-	return g.RejectReason
 }
 
 // GroupAIConfig 群聊AI配置
@@ -142,6 +99,7 @@ type GroupAIConfig struct {
 	AntiSpamInterval int    `json:"anti_spam_interval"`
 	TriggerKeywords  string `json:"trigger_keywords"`
 	LearnEnabled     bool   `json:"learn_enabled"`
+	ExtractTodos     bool   `json:"extract_todos"`
 }
 
 // GetAIConfig 获取AI配置
@@ -197,8 +155,8 @@ type GroupDocument struct {
 // 会话成员
 type ConversationMember struct {
 	ID             uint         `json:"id" gorm:"primarykey"`
-	ConversationID uint         `json:"conversation_id" gorm:"not null;index"`
-	UserID         uint         `json:"user_id" gorm:"not null;index"`
+	ConversationID uint         `json:"conversation_id" gorm:"not null;index:idx_conv_member_user,priority:2;uniqueIndex:idx_conv_member_conv_user,priority:1"`
+	UserID         uint         `json:"user_id" gorm:"not null;index:idx_conv_member_user,priority:1;uniqueIndex:idx_conv_member_conv_user,priority:2"`
 	Role           string       `json:"role" gorm:"size:20;default:'member'"`
 	UnreadCount    int          `json:"unread_count" gorm:"default:0"`
 	Muted          bool         `json:"muted" gorm:"default:false"`
@@ -211,16 +169,16 @@ type ConversationMember struct {
 // 消息
 type Message struct {
 	ID              uint           `json:"id" gorm:"primarykey"`
-	ConversationID  uint           `json:"conversation_id" gorm:"not null;index"`
-	SenderID        uint           `json:"sender_id" gorm:"not null;index"`
+	ConversationID  uint           `json:"conversation_id" gorm:"not null;index:idx_msg_conv_created,priority:1;index:idx_msg_conv_read_sender,priority:1"`
+	SenderID        uint           `json:"sender_id" gorm:"not null;index;index:idx_msg_conv_read_sender,priority:3"`
 	Type            string         `json:"type" gorm:"size:20;not null"`
 	Content         string         `json:"content" gorm:"type:mediumtext;not null"`
 	QuotedMessageID *uint          `json:"quoted_message_id"`
 	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
-	IsRead          bool           `json:"is_read" gorm:"default:false"`
+	IsRead          bool           `json:"is_read" gorm:"default:false;index:idx_msg_conv_read_sender,priority:2"`
 	AIType          string         `json:"ai_type" gorm:"size:30;default:''"` // '' | 'assistant' | 'avatar'
 	RecalledAt      *time.Time     `json:"recalled_at"`
-	CreatedAt       time.Time      `json:"created_at"`
+	CreatedAt       time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 	Sender          User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
@@ -312,12 +270,10 @@ type Bot struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
-	ApprovalStatus  string         `json:"approval_status" gorm:"size:20;default:'approved'"` // pending, approved, rejected
-	CreatorID       uint           `json:"creator_id" gorm:"default:0"`                       // 0=系统创建
+	CreatorID       uint           `json:"creator_id" gorm:"default:0"` // 0=系统创建
 	CreatorName     string         `json:"creator_name" gorm:"size:100;default:''"`
 	VirtualUserID   *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
 	GroupID         *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
-	RejectReason    string         `json:"reject_reason" gorm:"type:text"`
 	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
 	UserConfigID    *uint          `json:"user_config_id" gorm:"index"`
 	UseSystemConfig bool           `json:"use_system_config" gorm:"default:true"`
@@ -426,24 +382,24 @@ type MiniApp struct {
 
 // 应用
 type App struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"not null;index"`
-	Name      string         `json:"name" gorm:"size:200;not null"`
-	Code      string         `json:"code" gorm:"size:100;index"` // 内置应用唯一标识，如 file_manager, calendar
-	Icon      string         `json:"icon" gorm:"size:500"`
-	Category  string         `json:"category" gorm:"size:100"`
-	URL       string         `json:"url" gorm:"size:500"`
-	Status    string         `json:"status" gorm:"size:20;default:'active'"`
-	OpenType  string         `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
-	IsGlobal  bool           `json:"is_global" gorm:"default:false"`
+	ID       uint   `json:"id" gorm:"primarykey"`
+	UserID   uint   `json:"user_id" gorm:"not null;index"`
+	Name     string `json:"name" gorm:"size:200;not null"`
+	Code     string `json:"code" gorm:"size:100;index"` // 内置应用唯一标识，如 file_manager, calendar
+	Icon     string `json:"icon" gorm:"size:500"`
+	Category string `json:"category" gorm:"size:100"`
+	URL      string `json:"url" gorm:"size:500"`
+	Status   string `json:"status" gorm:"size:20;default:'active'"`
+	OpenType string `json:"open_type" gorm:"size:20;default:'in-app'"` // in-app: 在应用内打开, external: 使用默认浏览器打开
+	IsGlobal bool   `json:"is_global" gorm:"default:false"`
 	// 权限范围控制
-	ScopeType      string         `json:"scope_type" gorm:"size:20;default:'all'"`       // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
-	ScopeValue     string         `json:"scope_value" gorm:"size:1000"`                   // 具体的范围值（逗号分隔的ID列表）
-	AvailableOrgIDs string        `json:"available_org_ids" gorm:"size:1000"`             // 可用的组织ID列表（逗号分隔）
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-	User      User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ScopeType       string         `json:"scope_type" gorm:"size:20;default:'all'"` // all: 所有人可见, users: 指定用户, organizations: 指定组织, roles: 指定角色
+	ScopeValue      string         `json:"scope_value" gorm:"size:1000"`            // 具体的范围值（逗号分隔的ID列表）
+	AvailableOrgIDs string         `json:"available_org_ids" gorm:"size:1000"`      // 可用的组织ID列表（逗号分隔）
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	User            User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 通知
@@ -476,11 +432,7 @@ type Channel struct {
 	CreatorID         uint           `json:"creator_id" gorm:"not null"`
 	Status            string         `json:"status" gorm:"size:20;default:'active'"`
 	PublishPermission string         `json:"publish_permission" gorm:"size:20;default:'creator_only'"`
-	ApprovalStatus    string         `json:"approval_status" gorm:"size:20;default:'none'"`
-	RejectReason      string         `json:"reject_reason" gorm:"type:text"`
-	AppliedAt         *time.Time     `json:"applied_at"`
-	ApprovedAt        *time.Time     `json:"approved_at"`
-	ApprovedBy        *uint          `json:"approved_by"`
+	CommentPermission string         `json:"comment_permission" gorm:"size:20;default:'all_subscribers'"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
@@ -511,12 +463,12 @@ type ChannelMessage struct {
 }
 
 type ChannelMessageLike struct {
-	ID           uint      `json:"id" gorm:"primarykey"`
-	MessageID    uint      `json:"message_id" gorm:"not null;uniqueIndex:idx_msg_user"`
-	UserID       uint      `json:"user_id" gorm:"not null;uniqueIndex:idx_msg_user"`
-	CreatedAt    time.Time `json:"created_at"`
-	Message      ChannelMessage `json:"-" gorm:"foreignkey:MessageID"`
-	User         User      `json:"-" gorm:"foreignkey:UserID"`
+	ID        uint           `json:"id" gorm:"primarykey"`
+	MessageID uint           `json:"message_id" gorm:"not null;uniqueIndex:idx_msg_user"`
+	UserID    uint           `json:"user_id" gorm:"not null;uniqueIndex:idx_msg_user"`
+	CreatedAt time.Time      `json:"created_at"`
+	Message   ChannelMessage `json:"-" gorm:"foreignkey:MessageID"`
+	User      User           `json:"-" gorm:"foreignkey:UserID"`
 }
 
 type ChannelMessageComment struct {

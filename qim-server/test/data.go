@@ -399,112 +399,81 @@ func InitTestData(db *gorm.DB) {
 		log.Println("测试数据初始化完成")
 	}
 
-	// 初始化机器人数据（无论会话数据是否存在）
-	var botCount int64
-	db.Model(&model.Bot{}).Count(&botCount)
-	if botCount == 0 {
-		log.Println("初始化机器人数据...")
+	var systemUser model.User
+	db.Where("type = ?", "system").First(&systemUser)
 
-		// 创建系统机器人
-		systemBot := model.Bot{
-			Name:        "系统助手",
-			Avatar:      "",
-			Description: "提供系统相关的帮助和信息",
-			Type:        "system",
-			Config:      `{"responses":{"greeting":"你好！我是系统助手，有什么可以帮你的吗？","help":"我可以帮助你了解系统功能，解答常见问题。"}}`,
-			IsActive:    true,
+	// 初始化机器人会话数据（测试数据：为每个测试用户创建与已有 Bot 的会话）
+	var bots []model.Bot
+	db.Where("type IN ?", []string{"system", "ai"}).Find(&bots)
+	if len(bots) > 0 {
+		var systemBot *model.Bot
+		var aiBot *model.Bot
+		for i := range bots {
+			if bots[i].Type == "system" {
+				systemBot = &bots[i]
+			} else if bots[i].Type == "ai" {
+				aiBot = &bots[i]
+			}
 		}
-		db.Create(&systemBot)
 
-		// 创建AI机器人
-		aiBot := model.Bot{
-			Name:        "AI助手",
-			Avatar:      "",
-			Description: "基于大模型的智能助手，能回答各种问题",
-			Type:        "ai",
-			Config:      `{"api_key":"your-api-key", "model":"gpt-3.5-turbo", "temperature":0.7}`,
-			IsActive:    true,
-		}
-		db.Create(&aiBot)
-
-		// 为每个用户创建与机器人的会话
 		for _, user := range users {
-			// 检查用户是否已有机器人会话
 			var userBotConvCount int64
 			db.Model(&model.BotConversation{}).Where("user_id = ?", user.ID).Count(&userBotConvCount)
-			if userBotConvCount == 0 {
-				// 系统助手会话
-				systemConv := model.Conversation{
-					Type: "bot",
-				}
-				db.Create(&systemConv)
+			if userBotConvCount > 0 {
+				continue
+			}
 
-				// 为机器人会话创建Group记录
-				systemGroup := model.Group{
+			if systemBot != nil {
+				systemConv := model.Conversation{Type: "bot"}
+				db.Create(&systemConv)
+				db.Create(&model.Group{
 					ConversationID:   systemConv.ID,
 					GroupType:        "bot",
 					Name:             systemBot.Name,
 					Avatar:           systemBot.Avatar,
 					CreatorID:        user.ID,
 					InvitePermission: "owner_admin",
-				}
-				db.Create(&systemGroup)
-
-				// 添加成员
+				})
 				db.Create(&model.ConversationMember{
 					ConversationID: systemConv.ID,
 					UserID:         user.ID,
 					Role:           "member",
 				})
-
-				// 创建机器人会话关联
 				db.Create(&model.BotConversation{
 					BotID:          systemBot.ID,
 					UserID:         user.ID,
 					ConversationID: systemConv.ID,
 				})
+			}
 
-				// AI助手会话
-				aiConv := model.Conversation{
-					Type: "bot",
-				}
+			if aiBot != nil {
+				aiConv := model.Conversation{Type: "bot"}
 				db.Create(&aiConv)
-
-				// 为机器人会话创建Group记录
-				aiGroup := model.Group{
+				db.Create(&model.Group{
 					ConversationID:   aiConv.ID,
 					GroupType:        "bot",
 					Name:             aiBot.Name,
 					Avatar:           aiBot.Avatar,
 					CreatorID:        user.ID,
 					InvitePermission: "owner_admin",
-				}
-				db.Create(&aiGroup)
-
-				// 添加成员
+				})
 				db.Create(&model.ConversationMember{
 					ConversationID: aiConv.ID,
 					UserID:         user.ID,
 					Role:           "member",
 				})
-
-				// 创建机器人会话关联
 				db.Create(&model.BotConversation{
 					BotID:          aiBot.ID,
 					UserID:         user.ID,
 					ConversationID: aiConv.ID,
 				})
-
-				// 发送欢迎消息
 				welcomeMsg := model.Message{
 					ConversationID: aiConv.ID,
-					SenderID:       0, // 0表示系统/机器人
+					SenderID:       systemUser.ID,
 					Type:           "text",
 					Content:        "你好！我是AI助手，有什么可以帮你的吗？",
 				}
 				db.Create(&welcomeMsg)
-
-				// 更新会话最后消息
 				var conv model.Conversation
 				db.First(&conv, aiConv.ID)
 				conv.LastMessageID = &welcomeMsg.ID
@@ -513,67 +482,35 @@ func InitTestData(db *gorm.DB) {
 		}
 	}
 
-	// 初始化小程序数据
+	initTestMiniApps(db)
+}
+
+// SeedDemoMiniApps 初始化演示小程序数据（供外部调用）
+func SeedDemoMiniApps(db *gorm.DB) {
+	initTestMiniApps(db)
+}
+
+// initTestMiniApps 初始化演示小程序
+func initTestMiniApps(db *gorm.DB) {
 	var miniAppCount int64
 	db.Model(&model.MiniApp{}).Count(&miniAppCount)
-	if miniAppCount == 0 {
-		log.Println("初始化小程序数据...")
-
-		// 创建计算器小程序
-		calculatorApp := model.MiniApp{
-			AppID:       "calculator",
-			Name:        "计算器",
-			Description: "简单易用的计算器",
-			Icon:        "",
-			Path:        "/calculator",
-			Status:      "active",
-		}
-		db.Create(&calculatorApp)
-
-		// 创建记事本小程序
-		noteApp := model.MiniApp{
-			AppID:       "notepad",
-			Name:        "记事本",
-			Description: "简单的文本编辑器",
-			Icon:        "",
-			Path:        "/notepad",
-			Status:      "active",
-		}
-		db.Create(&noteApp)
-
-		// 创建待办事项小程序
-		todoApp := model.MiniApp{
-			AppID:       "todo",
-			Name:        "待办事项",
-			Description: "任务管理工具",
-			Icon:        "",
-			Path:        "/todo",
-			Status:      "active",
-		}
-		db.Create(&todoApp)
-
-		// 创建单位转换器小程序
-		converterApp := model.MiniApp{
-			AppID:       "unit-converter",
-			Name:        "单位转换",
-			Description: "多种单位之间的转换",
-			Icon:        "",
-			Path:        "/unit-converter",
-			Status:      "active",
-		}
-		db.Create(&converterApp)
-
-		// 创建密码生成器小程序
-		passwordApp := model.MiniApp{
-			AppID:       "password-generator",
-			Name:        "密码生成器",
-			Description: "生成强密码",
-			Icon:        "",
-			Path:        "/password-generator",
-			Status:      "active",
-		}
-		db.Create(&passwordApp)
-
-		log.Println("小程序数据初始化完成")
+	if miniAppCount > 0 {
+		return
 	}
+
+	log.Println("初始化小程序数据...")
+
+	miniApps := []model.MiniApp{
+		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Icon: "", Path: "/calculator", Status: "active"},
+		{AppID: "notepad", Name: "记事本", Description: "简单的文本编辑器", Icon: "", Path: "/notepad", Status: "active"},
+		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Icon: "", Path: "/todo", Status: "active"},
+		{AppID: "unit-converter", Name: "单位转换", Description: "多种单位之间的转换", Icon: "", Path: "/unit-converter", Status: "active"},
+		{AppID: "password-generator", Name: "密码生成器", Description: "生成强密码", Icon: "", Path: "/password-generator", Status: "active"},
+	}
+
+	for _, app := range miniApps {
+		db.Create(&app)
+	}
+
+	log.Println("小程序数据初始化完成")
 }

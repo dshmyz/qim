@@ -187,3 +187,23 @@ func ToggleVersionStatus(c *gin.Context) {
 
 	response.Success(c, version)
 }
+
+func GetVersionDistribution(c *gin.Context) {
+	db := database.GetDB()
+
+	type VersionDistribution struct {
+		Version string `json:"version"`
+		Count   int64  `json:"count"`
+	}
+
+	var distributions []VersionDistribution
+
+	db.Table("users").
+		Select("client_version as version, COUNT(*) as count").
+		Where("client_version IS NOT NULL AND client_version != ''").
+		Group("client_version").
+		Order("count DESC").
+		Find(&distributions)
+
+	response.Success(c, distributions)
+}

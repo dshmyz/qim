@@ -184,7 +184,7 @@ export async function initUpload(
     mime_type: file.type || 'application/octet-stream'
   })
 
-  if (response.data.code !== 200) {
+  if (response.data.code !== 0) {
     throw new Error('初始化上传失败')
   }
 
@@ -208,7 +208,7 @@ async function uploadSingleChunk(
 
   const response = await fileApi.uploadChunk(formData)
 
-  if (response.data.code !== 200) {
+  if (response.data.code !== 0) {
     throw new Error(`分片 ${chunkIndex} 上传失败`)
   }
 }
@@ -387,7 +387,7 @@ export async function completeUpload(
     total_chunks: totalChunks
   })
 
-  if (response.data.code !== 200) {
+  if (response.data.code !== 0) {
     throw new Error('完成上传失败')
   }
 

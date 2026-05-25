@@ -7,6 +7,7 @@ import (
 
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/params"
 	"qim-server/pkg/response"
 	"qim-server/service"
 
@@ -16,17 +17,21 @@ import (
 
 type UserHandler struct {
 	userService *service.UserService
+	convService *service.ConversationService
 }
 
-func NewUserHandler(userService *service.UserService) *UserHandler {
+func NewUserHandler(userService *service.UserService, convService *service.ConversationService) *UserHandler {
 	return &UserHandler{
 		userService: userService,
+		convService: convService,
 	}
 }
 
 func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	uid := userID.(uint)
+	uid, ok := params.GetUserID(c)
+	if !ok {
+		return
+	}
 
 	user, err := h.userService.GetUser(uid)
 	if err != nil {
@@ -34,13 +39,7 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	db := h.userService.GetDB()
-	var userRoles []model.UserRole
-	db.Where("user_id = ?", user.ID).Find(&userRoles)
-	roleNames := make([]string, 0, len(userRoles))
-	for _, ur := range userRoles {
-		roleNames = append(roleNames, ur.Role)
-	}
+	roleNames, _ := h.userService.GetUserRoles(user.ID)
 
 	response.Success(c, gin.H{
 		"id":                 user.ID,
@@ -57,8 +56,10 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 }
 
 func (h *UserHandler) UpdateUser(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	uid := userID.(uint)
+	uid, ok := params.GetUserID(c)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Nickname         string `json:"nickname"`
@@ -104,15 +105,16 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 }
 
 func (h *UserHandler) SearchUsers(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := params.GetUserID(c)
+	if !ok {
+		return
+	}
 	query := c.Query("q")
 
 	if query == "" {
 		response.BadRequest(c, "搜索关键词不能为空")
 		return
 	}
-
-	db := h.userService.GetDB()
 
 	users, err := h.userService.SearchUsers(query, 20)
 	if err != nil {
@@ -122,7 +124,7 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 	var responseUsers []gin.H
 	for _, user := range users {
-		if user.ID != userID.(uint) {
+		if user.ID != uid {
 			responseUsers = append(responseUsers, gin.H{
 				"id":       user.ID,
 				"type":     "user",
@@ -134,28 +136,17 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		}
 	}
 
-	var conversations []model.Conversation
-	db.Joins("JOIN groups ON groups.conversation_id = conversations.id").
-		Where("groups.name LIKE ? AND (conversations.type = ? OR conversations.type = ?) AND conversations.is_deleted = ?", "%"+query+"%", "group", "discussion", false).
-		Find(&conversations)
-
-	for _, conv := range conversations {
-		var member model.ConversationMember
-		isMember := false
-		if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err == nil {
-			isMember = true
+	groups, err := h.convService.SearchGroupsByName(query, uid)
+	if err == nil {
+		for _, g := range groups {
+			responseUsers = append(responseUsers, gin.H{
+				"id":       g.ConversationID,
+				"type":     g.ConvType,
+				"name":     g.Name,
+				"avatar":   g.Avatar,
+				"isMember": g.IsMember,
+			})
 		}
-
-		var group model.Group
-		db.Where("conversation_id = ?", conv.ID).First(&group)
-
-		responseUsers = append(responseUsers, gin.H{
-			"id":       conv.ID,
-			"type":     conv.Type,
-			"name":     group.Name,
-			"avatar":   group.Avatar,
-			"isMember": isMember,
-		})
 	}
 
 	response.Success(c, responseUsers)
@@ -163,20 +154,17 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 // 向后兼容的包装函数
 func GetCurrentUser(c *gin.Context) {
-	userService := di.GlobalContainer.UserService
-	handler := NewUserHandler(userService)
+	handler := NewUserHandler(di.GlobalContainer.UserService, di.GlobalContainer.ConversationService)
 	handler.GetCurrentUser(c)
 }
 
 func UpdateUser(c *gin.Context) {
-	userService := di.GlobalContainer.UserService
-	handler := NewUserHandler(userService)
+	handler := NewUserHandler(di.GlobalContainer.UserService, di.GlobalContainer.ConversationService)
 	handler.UpdateUser(c)
 }
 
 func SearchUsers(c *gin.Context) {
-	userService := di.GlobalContainer.UserService
-	handler := NewUserHandler(userService)
+	handler := NewUserHandler(di.GlobalContainer.UserService, di.GlobalContainer.ConversationService)
 	handler.SearchUsers(c)
 }
 
@@ -478,8 +466,10 @@ func DeleteUser(c *gin.Context) {
 }
 
 func GetAIConfig(c *gin.Context) {
-	userIDAny, _ := c.Get("user_id")
-	userID := userIDAny.(uint)
+	userID, ok := params.GetUserID(c)
+	if !ok {
+		return
+	}
 
 	svc := di.GlobalContainer.AIConfigService
 	config, err := svc.GetDefaultConfig(userID)
@@ -492,8 +482,10 @@ func GetAIConfig(c *gin.Context) {
 }
 
 func UpdateAIConfig(c *gin.Context) {
-	userIDAny, _ := c.Get("user_id")
-	userID := userIDAny.(uint)
+	userID, ok := params.GetUserID(c)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Provider    string  `json:"provider" binding:"required"`

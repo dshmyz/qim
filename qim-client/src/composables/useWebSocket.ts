@@ -1,5 +1,8 @@
 import { ref, readonly } from 'vue'
 import QMessage from '../utils/qmessage'
+import { calculateReconnectDelay, shouldReconnect, DEFAULT_RECONNECT_CONFIG } from '../utils/websocketReconnect'
+import { connectionMonitor } from '../utils/connectionMonitor'
+import { messageQueue } from '../utils/messageQueue'
 
 export interface WebSocketMessage {
   type: string
@@ -8,7 +11,6 @@ export interface WebSocketMessage {
 
 export type MessageHandler = (message: WebSocketMessage) => void
 
-// 模块级状态 - 跨组件共享
 let ws: WebSocket | null = null
 let reconnectTimer: number | null = null
 let heartbeatTimer: number | null = null
@@ -17,14 +19,10 @@ const generalHandlers: Set<MessageHandler> = new Set()
 const isConnected = ref(false)
 const showNetworkError = ref(false)
 const networkErrorMsg = ref('网络连接已断开')
+let networkOnlineHandler: (() => void) | null = null
 
-const RECONNECT_INTERVAL = 5000
 const HEARTBEAT_INTERVAL = 30000
-const MAX_RECONNECT_ATTEMPTS = 3
-const RECONNECT_JITTER_MIN = 2000
-const RECONNECT_JITTER_MAX = 8000
 
-// 重连回调函数
 let onSessionExpiredCallback: (() => void) | null = null
 let externalShowNetworkError: typeof showNetworkError | null = null
 let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
@@ -107,7 +105,8 @@ export const sendMessage = (data: any) => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data))
   } else {
-    QMessage.error('网络连接已断开')
+    messageQueue.enqueue(data)
+    QMessage.error('网络连接已断开，消息已缓存')
   }
 }
 
@@ -119,7 +118,11 @@ export function useWebSocket(wsUrl: string) {
     try {
       const message: WebSocketMessage = JSON.parse(event.data)
 
-      // 先处理特定类型的处理器
+      if (message.type === 'pong') {
+        connectionMonitor.recordPong()
+        return
+      }
+
       const typeHandlers = handlers.get(message.type)
       if (typeHandlers) {
         for (const handler of typeHandlers) {
@@ -127,7 +130,6 @@ export function useWebSocket(wsUrl: string) {
         }
       }
 
-      // 再处理通用处理器
       for (const handler of generalHandlers) {
         handler(message)
       }
@@ -141,11 +143,11 @@ export function useWebSocket(wsUrl: string) {
    */
   const startHeartbeat = () => {
     stopHeartbeat()
-    heartbeatTimer = window.setInterval(() => {
+    connectionMonitor.start(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'ping' }))
       }
-    }, HEARTBEAT_INTERVAL)
+    })
   }
 
   /**
@@ -156,6 +158,7 @@ export function useWebSocket(wsUrl: string) {
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
     }
+    connectionMonitor.stop()
   }
 
   /**
@@ -221,6 +224,26 @@ export function useWebSocket(wsUrl: string) {
         if (onConnectedCallback) {
           onConnectedCallback()
         }
+
+        if (!messageQueue.isEmpty()) {
+          console.log(`[WebSocket] 刷新离线消息队列，共 ${messageQueue.size()} 条`)
+          messageQueue.flush((data) => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(data))
+              return true
+            }
+            return false
+          })
+        }
+
+        if (!networkOnlineHandler) {
+          networkOnlineHandler = () => {
+            console.log('[WebSocket] 网络恢复，立即重连')
+            reconnectAttempts = 0
+            connect()
+          }
+          window.addEventListener('online', networkOnlineHandler)
+        }
       }
 
       ws.onmessage = handleMessage
@@ -262,24 +285,22 @@ export function useWebSocket(wsUrl: string) {
    */
   const scheduleReconnect = () => {
     if (reconnectTimer) return
-    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      setNetworkError(true, '重连次数过多，请检查网络或重新登录')
+    
+    if (!shouldReconnect(reconnectAttempts)) {
+      setNetworkError(true, '网络连接失败，请手动重连')
       return
     }
 
+    const delay = calculateReconnectDelay(reconnectAttempts)
     reconnectAttempts++
     
-    const baseDelay = RECONNECT_INTERVAL * Math.pow(2, reconnectAttempts - 1)
-    const jitter = RECONNECT_JITTER_MIN + Math.random() * (RECONNECT_JITTER_MAX - RECONNECT_JITTER_MIN)
-    const totalDelay = baseDelay + jitter
-    
-    console.log(`WebSocket 将在 ${Math.round(totalDelay / 1000)}s 后重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
-    setNetworkError(true, `网络连接已断开，${Math.round(totalDelay / 1000)}秒后尝试重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
+    console.log(`[WebSocket] 第 ${reconnectAttempts} 次重连，延迟 ${Math.round(delay)}ms`)
+    setNetworkError(true, `网络连接已断开，${Math.round(delay / 1000)}秒后尝试重连... (${reconnectAttempts}/${DEFAULT_RECONNECT_CONFIG.maxAttempts})`)
     
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null
       connect()
-    }, totalDelay)
+    }, delay)
   }
 
   /**
@@ -290,6 +311,10 @@ export function useWebSocket(wsUrl: string) {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
+    }
+    if (networkOnlineHandler) {
+      window.removeEventListener('online', networkOnlineHandler)
+      networkOnlineHandler = null
     }
     if (ws) {
       ws.close()

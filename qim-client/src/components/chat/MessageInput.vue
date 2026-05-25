@@ -10,6 +10,7 @@
       @select-file="handleSelectFile"
       @select-image="$emit('select-image')"
       @take-screenshot="$emit('take-screenshot')"
+      @take-screenshot-hidden="$emit('take-screenshot-hidden')"
       @open-message-manager="$emit('open-message-manager')"
       @open-mini-app-list="$emit('open-mini-app-list')"
       @toggle-ai-actions="toggleAI"
@@ -138,6 +139,7 @@ const emit = defineEmits<{
   (e: 'select-file'): void
   (e: 'select-image'): void
   (e: 'take-screenshot'): void
+  (e: 'take-screenshot-hidden'): void
   (e: 'open-message-manager'): void
   (e: 'open-mini-app-list'): void
   (e: 'toggle-ai-actions'): void

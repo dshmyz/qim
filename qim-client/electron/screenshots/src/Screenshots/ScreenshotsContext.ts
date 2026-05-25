@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import React from 'react';
-import type { Bounds, CanvasContextRef, EmitterRef, History } from './types';
+import type { Bounds, CanvasContextRef, EmitterRef, History, Position } from './types';
 import type { Lang } from './zh_CN';
 import zhCN from './zh_CN';
 
@@ -16,6 +16,7 @@ export interface ScreenshotsContextStore {
   bounds: Bounds | null;
   cursor?: string;
   operation?: string;
+  initialPosition?: Position;
 }
 
 export interface ScreenshotsContextDispatcher {
@@ -47,6 +48,7 @@ export default React.createContext<ScreenshotsContextValue>({
     bounds: null,
     cursor: 'move',
     operation: undefined,
+    initialPosition: undefined,
   },
   dispatcher: {
     call: undefined,

@@ -26,7 +26,7 @@
           :src="iframeSrc"
           :sandbox="shouldSandbox ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals' : undefined"
           :allow="getIframeAllow()"
-          @load="handleIframeLoad"
+          @load="handleIframeLoad" @error="handleIframeError"
         />
       </div>
     </div>
@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { request } from '../../composables/useRequest'
 import { getCurrentUser } from '../../utils/user'
 
 export interface MiniAppData {
@@ -86,9 +87,25 @@ const getIframeAllow = (): string => {
 
 const shouldSandbox = computed(() => true)
 
+// 从后端获取最新路径，避免历史消息中嵌入的旧路径过期
+const resolvedPath = ref('')
+
+const fetchLatestMiniApp = async () => {
+  if (!props.miniApp?.appID) return
+  try {
+    const response = await request(`/api/v1/mini-apps/${props.miniApp.appID}`)
+    if (response.code === 0 && response.data?.path) {
+      resolvedPath.value = response.data.path
+      return
+    }
+  } catch {}
+  // fallback 到 prop 里的路径
+  resolvedPath.value = props.miniApp?.path || ''
+}
+
 const iframeSrc = computed(() => {
-  if (!props.miniApp?.path) return ''
-  const path = props.miniApp.path
+  const path = resolvedPath.value || props.miniApp?.path
+  if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
   return `${getStoredServerUrl()}${path.startsWith('/') ? '' : '/'}${path}`
 })
@@ -108,6 +125,12 @@ const handleIframeLoad = () => {
   injectBridgeScript()
 }
 
+const handleIframeError = () => {
+  loading.value = false
+  error.value = true
+  errorMessage.value = '小程序加载失败，请检查网络或稍后重试'
+}
+
 const loadMiniApp = () => {
   if (!props.miniApp?.path) {
     error.value = true
@@ -116,6 +139,12 @@ const loadMiniApp = () => {
   }
   loading.value = true
   error.value = false
+  // iframe 10 秒超时兜底
+  setTimeout(() => {
+    if (loading.value) {
+      handleIframeError()
+    }
+  }, 10000)
 }
 
 const close = () => {
@@ -276,8 +305,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleMiniAppMessage)
 })
 
-watch(() => props.miniApp, (newVal) => {
+watch(() => props.miniApp, async (newVal) => {
   if (newVal) {
+    await fetchLatestMiniApp()
     loadMiniApp()
   }
 }, { immediate: true })

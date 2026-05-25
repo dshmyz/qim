@@ -25,6 +25,7 @@ class Screenshots extends node_events_1.default {
         // 截图窗口对象
         this.$win = null;
         this.$view = null;
+        this._capturing = false;
         this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
         this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
         this.onWindowShow = () => {
@@ -36,60 +37,103 @@ class Screenshots extends node_events_1.default {
             this.emit('windowClosed', this.$win);
             this.$win = null;
         };
-        
-        // 延迟初始化：避免构造函数同步执行抢占 GPU 资源导致 splash 闪烁
-        this._initPromise = new Promise((resolve) => {
-            setTimeout(() => {
-                this._init(opts)
-                resolve()
-            }, 2000)
-        })
+        this._nativeWarmupPromise = Promise.resolve();
+        this._initPromise = this._init(opts);
     }
-    
-    // 延迟初始化：避免与 splash 动画冲突
     _init(opts) {
-        this.$view = new electron_1.BrowserView({
-            webPreferences: {
-                preload: require.resolve('./preload.cjs'),
-                nodeIntegration: false,
-                contextIsolation: true,
-            },
-        });
-        this.isReady = new Promise((resolve) => {
-            electron_1.ipcMain.once('SCREENSHOTS:ready', () => {
-                this.logger('SCREENSHOTS:ready');
-                resolve();
+        return __awaiter(this, void 0, void 0, function* () {
+            this.$view = new electron_1.BrowserView({
+                webPreferences: {
+                    preload: require.resolve('./preload.cjs'),
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                },
             });
+            this.isReady = new Promise((resolve) => {
+                electron_1.ipcMain.once('SCREENSHOTS:ready', () => {
+                    this.logger('SCREENSHOTS:ready');
+                    resolve();
+                });
+            });
+            this.listenIpc();
+            this.$view.webContents.loadURL(`file://${require.resolve('../src/dist/electron.html')}`);
+            if (opts === null || opts === void 0 ? void 0 : opts.lang) {
+                this.setLang(opts.lang);
+            }
+            // 初始化完成后，延迟探测屏幕录制权限状态
+            // macOS：首次屏幕采集会弹出系统权限弹窗，提前触发可避免用户首次截图时卡死
+            // Linux X11/Wayland：预热 desktopCapturer 通道，减少首次截图延迟
+            this._nativeWarmupPromise = this._probeScreenCapture();
         });
-        this.listenIpc();
-        this.$view.webContents.loadURL(`file://${require.resolve('../src/dist/electron.html')}`);
-        if (opts === null || opts === void 0 ? void 0 : opts.lang) {
-            this.setLang(opts.lang);
-        }
-        
-        // 预热 desktopCapturer
-        setTimeout(() => {
-            electron_1.desktopCapturer.getSources({ 
-                types: ['screen'], 
-                thumbnailSize: { width: 1, height: 1 }, 
-                fetchWindowIcons: false 
-            }).catch(err => {
-                this.logger('SCREENSHOTS warmup failed (non-critical)', err.message)
-            })
-        }, 1000)
     }
+    /**
+     * 探测屏幕录制权限 & 预热采集通道
+     * macOS 上首次屏幕采集会触发系统权限弹窗，此方法在 init 阶段提前触发，
+     * 避免用户首次截图时 captureImage() 挂起等待权限授权。
+     * 非 macOS 平台仅做 desktopCapturer 管线预热和 node-screenshots 预加载。
+     */
+    _probeScreenCapture() {
+        return __awaiter(this, void 0, void 0, function* () {
+            // 1.5s 延迟：等主窗口先展示，确保系统权限弹窗不被 splash 遮挡
+            yield new Promise(function (resolve) { return setTimeout(resolve, 1500); });
+            try {
+                // 使用 desktopCapturer 探测屏幕采集可用性（内置 API，无额外依赖）
+                // 在 macOS 上此调用会触发系统屏幕录制权限弹窗
+                const sources = yield electron_1.desktopCapturer.getSources({
+                    types: ['screen'],
+                    thumbnailSize: { width: 1, height: 1 },
+                    fetchWindowIcons: false,
+                });
+                this.logger('SCREENSHOTS screen capture probe: %d source(s) available', sources.length);
+            }
+            catch (err) {
+                this.logger('SCREENSHOTS screen capture probe failed (non-critical): %s', err.message);
+            }
+            // 预加载 node-screenshots 模块（不执行全分辨率采集，仅 import 预热）
+            // 实际采集时 import() 会命中缓存，消除首次截图的模块加载延迟
+            try {
+                yield import('node-screenshots');
+                this.logger('SCREENSHOTS node-screenshots preloaded');
+            }
+            catch (err) {
+                this.logger('SCREENSHOTS node-screenshots not available, will use desktopCapturer fallback');
+            }
+        });
+    }
+
     /**
      * 开始截图
      */
     startCapture() {
         return __awaiter(this, void 0, void 0, function* () {
             this.logger('startCapture');
+            // 防止并发截图导致窗口冲突
+            if (this._capturing) {
+                this.logger('startCapture skipped: already capturing');
+                return;
+            }
+            this._capturing = true;
+            try {
             // 确保初始化完成
             yield this._initPromise;
             const display = (0, getDisplay_js_1.default)();
-            const [imageUrl] = yield Promise.all([this.capture(display), this.isReady]);
+            // 并行执行截图采集和等待渲染进程就绪
+            // _nativeWarmupPromise 作为后台优化在 _init 中启动，不阻塞实际截图
+            const [imageUrl] = yield Promise.all([
+                this.capture(display),
+                this.isReady,
+            ]);
             yield this.createWindow(display);
-            this.$view.webContents.send('SCREENSHOTS:capture', display, imageUrl);
+            const cursorPoint = electron_1.screen.getCursorScreenPoint();
+            const cursor = {
+                x: Math.max(0, Math.min(display.width - 1, cursorPoint.x - display.x)),
+                y: Math.max(0, Math.min(display.height - 1, cursorPoint.y - display.y)),
+            };
+            this.$view.webContents.send('SCREENSHOTS:capture', display, imageUrl, cursor);
+            }
+            finally {
+                this._capturing = false;
+            }
         });
     }
     /**
@@ -253,8 +297,14 @@ class Screenshots extends node_events_1.default {
                 if (!monitor) {
                     throw new Error(`Monitor.fromDisplay(${display.id}) get null`);
                 }
-                const image = yield monitor.captureImage();
-                const buffer = yield image.toPng(true);
+                const image = yield Promise.race([
+                    monitor.captureImage(),
+                    new Promise(function (_resolve, reject) { return setTimeout(function () { return reject(new Error('captureImage timeout (5s)')); }, 5000); }),
+                ]);
+                const buffer = yield Promise.race([
+                    image.toPng(true),
+                    new Promise(function (_resolve, reject) { return setTimeout(function () { return reject(new Error('toPng timeout (5s)')); }, 5000); }),
+                ]);
                 return `data:image/png;base64,${buffer.toString('base64')}`;
             }
             catch (err) {

@@ -104,13 +104,16 @@ func AddMemberToGroup(c *gin.Context) {
 		}
 
 		notifSvc.Create(&model.Notification{
-			UserID:        memberID,
-			Type:          "group_invitation",
-			Title:         "群聊邀请",
-			Content:       fmt.Sprintf("您被邀请加入群聊 %s", groupName),
-			Priority:      "important",
-			ActionType:    "accept_ignore",
-			ActionPayload: fmt.Sprintf(`{"conversation_id":%d}`, uint(convIDUint)),
+			UserID:     memberID,
+			Type:       "group_invitation",
+			Title:      "群聊邀请",
+			Content:    fmt.Sprintf("您被邀请加入群聊 %s", groupName),
+			Priority:   "important",
+			ActionType: "accept_ignore",
+			ActionPayload: func() string {
+				b, _ := json.Marshal(map[string]interface{}{"conversation_id": uint(convIDUint)})
+				return string(b)
+			}(),
 		})
 
 		addedMembers = append(addedMembers, *user)
@@ -143,6 +146,11 @@ func AddMemberToGroup(c *gin.Context) {
 		currentUser, err := userSvc.GetUser(userID.(uint))
 		if err != nil {
 			logger.WithModule("GroupHandler").Error("获取用户信息失败", "error", err)
+			currentUser = &model.User{
+				ID:       userSvc.GetSystemUserID(),
+				Username: "system",
+				Nickname: "系统",
+			}
 		}
 
 		systemMessageContent := fmt.Sprintf("%s 添加了新成员 %s", currentUser.Nickname, strings.Join(memberNames, "、"))
@@ -152,7 +160,7 @@ func AddMemberToGroup(c *gin.Context) {
 
 		systemMsg := &model.Message{
 			ConversationID: conv.ID,
-			SenderID:       0,
+			SenderID:       currentUser.ID,
 			Type:           "system",
 			Content:        systemMessageContent,
 			IsRead:         true,
@@ -161,13 +169,7 @@ func AddMemberToGroup(c *gin.Context) {
 			logger.WithModule("GroupHandler").Error("创建系统消息失败", "error", err)
 		}
 
-		systemUser := model.User{
-			ID:       0,
-			Username: "system",
-			Nickname: "系统",
-			Avatar:   "",
-		}
-		systemMsg.Sender = systemUser
+		systemMsg.Sender = *currentUser
 
 		now := time.Now()
 		convSvc.UpdateConversation(conv.ID, map[string]interface{}{
@@ -566,6 +568,15 @@ func GetGroupAISettings(c *gin.Context) {
 
 	aiConfig := group.GetAIConfig()
 
+	approvalSvc := di.GlobalContainer.ApprovalService
+	approval, _ := approvalSvc.GetApproval(model.ApprovalTypeGroupAI, group.ID)
+	approvalStatus := ""
+	rejectReason := ""
+	if approval != nil {
+		approvalStatus = approval.Status
+		rejectReason = approval.RejectReason
+	}
+
 	response.Success(c, gin.H{
 		"ai_enabled":            aiConfig.Enabled,
 		"ai_assistant_name":     aiConfig.AssistantName,
@@ -578,8 +589,8 @@ func GetGroupAISettings(c *gin.Context) {
 		"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
 		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
 		"ai_learn_enabled":      aiConfig.LearnEnabled,
-		"approval_status":       group.ApprovalStatus,
-		"reject_reason":         group.RejectReason,
+		"approval_status":       approvalStatus,
+		"reject_reason":         rejectReason,
 	})
 }
 
@@ -605,6 +616,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 		AIAntiSpamInterval *int    `json:"ai_anti_spam_interval"`
 		AITriggerKeywords  *string `json:"ai_trigger_keywords"`
 		AILearnEnabled     *bool   `json:"ai_learn_enabled"`
+		AIExtractTodos     *bool   `json:"ai_extract_todos"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -660,7 +672,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 		needsApproval := approvalService.IsApprovalEnabled(model.ApprovalTypeGroupAI)
 
 		if needsApproval {
-			if group.ApprovalStatus == model.ApprovalStatusPending {
+			if existingApproval, err := approvalService.GetApproval(model.ApprovalTypeGroupAI, group.ID); err == nil && existingApproval.Status == model.ApprovalStatusPending {
 				response.BadRequest(c, "已有待审批的AI助手申请")
 				return
 			}
@@ -699,15 +711,18 @@ func UpdateGroupAISettings(c *gin.Context) {
 			if req.AILearnEnabled != nil {
 				aiConfig.LearnEnabled = *req.AILearnEnabled
 			}
+			if req.AIExtractTodos != nil {
+				aiConfig.ExtractTodos = *req.AIExtractTodos
+			}
 
 			group.SetAIConfig(aiConfig)
+			groupSvc.UpdateGroup(&group)
 
 			now := time.Now()
-			group.ApprovalStatus = model.ApprovalStatusPending
-			group.AppliedAt = &now
-			group.RejectReason = ""
-
-			groupSvc.UpdateGroup(&group)
+			if err := approvalService.CreateApproval(model.ApprovalTypeGroupAI, group.ID, userID.(uint)); err != nil {
+				response.InternalServerError(c, "提交申请失败")
+				return
+			}
 
 			response.SuccessWithMessage(c, "AI助手申请已提交，等待系统管理员审批", gin.H{
 				"approval_status": model.ApprovalStatusPending,
@@ -755,6 +770,9 @@ func UpdateGroupAISettings(c *gin.Context) {
 		aiConfig.LearnEnabled = *req.AILearnEnabled
 	}
 
+	if req.AIExtractTodos != nil {
+		aiConfig.ExtractTodos = *req.AIExtractTodos
+	}
 	if err := group.SetAIConfig(aiConfig); err != nil {
 		response.InternalServerError(c, "保存AI配置失败")
 		return
@@ -1023,6 +1041,11 @@ func UpdateAnnouncement(c *gin.Context) {
 	currentUser, err := userSvc.GetUser(userID.(uint))
 	if err != nil {
 		logger.WithModule("GroupHandler").Error("获取用户信息失败", "error", err)
+		currentUser = &model.User{
+			ID:       userSvc.GetSystemUserID(),
+			Username: "system",
+			Nickname: "系统",
+		}
 	}
 
 	systemMessageContent := fmt.Sprintf("%s 修改群公告", currentUser.Nickname)
@@ -1032,7 +1055,7 @@ func UpdateAnnouncement(c *gin.Context) {
 
 	systemMsg := &model.Message{
 		ConversationID: convIDUint,
-		SenderID:       0,
+		SenderID:       currentUser.ID,
 		Type:           "system",
 		Content:        systemMessageContent,
 		IsRead:         true,
@@ -1041,13 +1064,7 @@ func UpdateAnnouncement(c *gin.Context) {
 		logger.WithModule("GroupHandler").Error("创建系统消息失败", "error", err)
 	}
 
-	systemUser := model.User{
-		ID:       0,
-		Username: "system",
-		Nickname: "系统",
-		Avatar:   "",
-	}
-	systemMsg.Sender = systemUser
+	systemMsg.Sender = *currentUser
 
 	now := time.Now()
 	convSvc.UpdateConversation(convIDUint, map[string]interface{}{
@@ -1149,13 +1166,16 @@ func ApplyJoinGroup(c *gin.Context) {
 
 	for _, admin := range ownersAndAdmins {
 		notifSvc.Create(&model.Notification{
-			UserID:        admin.UserID,
-			Type:          "group_join_request",
-			Title:         "入群申请",
-			Content:       fmt.Sprintf("%s 申请加入群聊 %s", currentUser.Nickname, group.Name),
-			Priority:      "important",
-			ActionType:    "approve_reject",
-			ActionPayload: fmt.Sprintf(`{"conversation_id":%d,"user_id":%d}`, uint(convID), userID.(uint)),
+			UserID:     admin.UserID,
+			Type:       "group_join_request",
+			Title:      "入群申请",
+			Content:    fmt.Sprintf("%s 申请加入群聊 %s", currentUser.Nickname, group.Name),
+			Priority:   "important",
+			ActionType: "approve_reject",
+			ActionPayload: func() string {
+				b, _ := json.Marshal(map[string]interface{}{"conversation_id": uint(convID), "user_id": userID.(uint)})
+				return string(b)
+			}(),
 		})
 	}
 

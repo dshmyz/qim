@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import Screenshots from '../Screenshots';
-import type { Bounds } from '../Screenshots/types';
+import type { Bounds, Position } from '../Screenshots/types';
 import type { Lang } from '../Screenshots/zh_CN';
 import './app.less';
 
@@ -19,6 +19,7 @@ export default function App(): ReactElement {
   const [height, setHeight] = useState(window.innerHeight);
   const [display, setDisplay] = useState<Display | undefined>(undefined);
   const [lang, setLang] = useState<Lang | undefined>(undefined);
+  const [initialPosition, setInitialPosition] = useState<Position | undefined>(undefined);
 
   const onSave = useCallback(
     async (blob: Blob | null, bounds: Bounds) => {
@@ -49,9 +50,10 @@ export default function App(): ReactElement {
       setLang(lang);
     };
 
-    const onCapture = (display: Display, dataURL: string) => {
+    const onCapture = (display: Display, dataURL: string, cursor?: Position) => {
       setDisplay(display);
       setUrl(dataURL);
+      setInitialPosition(cursor);
       // createWindow 中 $view.setBounds 触发的 resize event 可能比 capture IPC 晚到，
       // 而首次 mount 时 BrowserView 尚未附着窗口，window.innerWidth 是默认值（如 800x600），
       // 直接使用 display 的实际尺寸覆盖确保渲染正确
@@ -62,6 +64,7 @@ export default function App(): ReactElement {
     const onReset = () => {
       setUrl(undefined);
       setDisplay(undefined);
+      setInitialPosition(undefined);
       // 确保截图区域被重置
       requestAnimationFrame(() => window.screenshots.reset());
     };
@@ -97,6 +100,7 @@ export default function App(): ReactElement {
         width={width}
         height={height}
         lang={lang}
+        initialPosition={initialPosition}
         onSave={onSave}
         onCancel={onCancel}
         onOk={onOk}

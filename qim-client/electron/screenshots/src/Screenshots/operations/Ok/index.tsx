@@ -2,15 +2,13 @@ import type { ReactElement } from 'react';
 import { useCallback } from 'react';
 import composeImage from '../../composeImage';
 import useCall from '../../hooks/useCall';
-import useCanvasContextRef from '../../hooks/useCanvasContextRef';
 import useHistory from '../../hooks/useHistory';
 import useReset from '../../hooks/useReset';
 import useStore from '../../hooks/useStore';
 import ScreenshotsButton from '../../ScreenshotsButton';
 
 export default function Ok(): ReactElement {
-  const { image, width, height, history, bounds, lang } = useStore();
-  const canvasContextRef = useCanvasContextRef();
+  const { url, image, width, height, history, bounds, lang } = useStore();
   const [, historyDispatcher] = useHistory();
   const call = useCall();
   const reset = useReset();
@@ -18,11 +16,12 @@ export default function Ok(): ReactElement {
   const onClick = useCallback(() => {
     historyDispatcher.clearSelect();
     setTimeout(() => {
-      if (!canvasContextRef.current || !image || !bounds) {
+      if (!bounds) {
         return;
       }
       composeImage({
         image,
+        url,
         width,
         height,
         history,
@@ -33,9 +32,9 @@ export default function Ok(): ReactElement {
       });
     });
   }, [
-    canvasContextRef,
     historyDispatcher,
     image,
+    url,
     width,
     height,
     history,

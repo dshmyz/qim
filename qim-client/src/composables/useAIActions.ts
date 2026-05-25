@@ -176,6 +176,35 @@ export function useAIActions() {
     }
   }
 
+  const generateSmartReply = async (messageContent: string) => {
+    isProcessing.value = true
+    errorMessage.value = null
+
+    try {
+      const response = await post<any>(
+        '/api/v1/ai/completion',
+        {
+          messages: [
+            { role: 'system', content: '你是一个友好的智能回复助手。请根据对方的最后一条消息生成一条简短、自然的中文回复。直接返回回复内容，不要加任何前缀或解释。' },
+            { role: 'user', content: messageContent }
+          ]
+        },
+        { baseUrl: serverUrl.value }
+      )
+      if (!response || !response.data) {
+        errorMessage.value = '生成回复失败'
+        throw new Error('生成回复失败')
+      }
+      // The completion endpoint returns data as the reply text directly
+      return typeof response.data === 'string' ? response.data : response.data.reply || response.data.content || response.data
+    } catch (error: any) {
+      errorMessage.value = error.message || '生成回复失败'
+      throw error
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
   return {
     isProcessing,
     errorMessage,
@@ -185,5 +214,6 @@ export function useAIActions() {
     polishText,
     generateSummary,
     searchMessages,
+    generateSmartReply,
   }
 }

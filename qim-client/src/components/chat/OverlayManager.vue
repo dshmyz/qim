@@ -33,6 +33,7 @@
     @send-message-reminder="emit('send-message-reminder')"
     @ai-summary="emit('ai-summary')"
     @translate="emit('translate')"
+    @smart-reply="emit('smart-reply')"
   />
 
   <!-- 成员右键菜单 -->
@@ -174,6 +175,7 @@ const emit = defineEmits<{
   'mini-app-toast': [message: string]
   'ai-summary': []
   'translate': []
+  'smart-reply': []
 }>()
 
 const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => {

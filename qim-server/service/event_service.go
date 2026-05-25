@@ -70,10 +70,6 @@ func (s *EventService) DeleteEvent(userID, eventID uint) error {
 	return s.repo.DeleteByUserIDAndID(ctx, userID, eventID)
 }
 
-func (s *EventService) GetDB() *gorm.DB {
-	return s.db
-}
-
 func (s *EventService) CreateReminderNotification(userID uint, event *model.Event) {
 	reminderTime := event.Start.Add(-time.Duration(event.Reminder) * time.Minute)
 	now := time.Now()

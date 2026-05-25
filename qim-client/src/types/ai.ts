@@ -84,6 +84,7 @@ export interface GroupAISettings {
   aiAntiSpamInterval: number
   aiTriggerKeywords: string[]
   aiLearnEnabled: boolean
+  aiExtractTodos: boolean
 }
 
 export interface GroupDocument {

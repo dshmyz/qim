@@ -24,6 +24,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/blacklist', redirect: '/admin/blacklist' },
   { path: '/sensitive-words', redirect: '/admin/sensitive-words' },
   { path: '/operation-logs', redirect: '/admin/operation-logs' },
+  { path: '/feedbacks', redirect: '/admin/feedbacks' },
   { path: '/system-config', redirect: '/admin/system-config' },
   { path: '/version-management', redirect: '/admin/version-management' },
   { path: '/file-storage', redirect: '/admin/file-storage' },
@@ -209,6 +210,12 @@ const routes: RouteRecordRaw[] = [
         name: 'OperationLogs',
         component: () => import('@/views/OperationLogs.vue'),
         meta: { title: '操作日志' },
+      },
+      {
+        path: 'feedbacks',
+        name: 'Feedbacks',
+        component: () => import('@/views/FeedbackManagement.vue'),
+        meta: { title: '意见反馈' },
       },
       {
         path: 'system-config',

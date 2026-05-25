@@ -211,7 +211,9 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 	// 待办提取（所有群聊消息都尝试提取）
 	if todoExtractor != nil && conv.Type == "group" {
-		go todoExtractor.ExtractAndCreateTodos(content, userID, conversationID)
+		if group != nil && group.GetAIConfig().ExtractTodos {
+			go todoExtractor.ExtractAndCreateTodos(content, userID, conversationID)
+		}
 	}
 }
 
@@ -313,6 +315,47 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// RateLimiter 简易令牌桶限流器
+type RateLimiter struct {
+	ticker *time.Ticker
+	ch     chan struct{}
+	once   sync.Once
+}
+
+// NewRateLimiter 创建限流器，interval 为两次放行间隔，burst 为突发上限
+func NewRateLimiter(interval time.Duration, burst int) *RateLimiter {
+	rl := &RateLimiter{
+		ticker: time.NewTicker(interval),
+		ch:     make(chan struct{}, burst),
+	}
+	// 预填令牌
+	for i := 0; i < burst; i++ {
+		rl.ch <- struct{}{}
+	}
+	go func() {
+		for range rl.ticker.C {
+			select {
+			case rl.ch <- struct{}{}:
+			default:
+			}
+		}
+	}()
+	return rl
+}
+
+// Wait 阻塞直到获取一个令牌
+func (rl *RateLimiter) Wait() {
+	<-rl.ch
+}
+
+// Stop 停止限流器
+func (rl *RateLimiter) Stop() {
+	rl.once.Do(func() {
+		rl.ticker.Stop()
+		close(rl.ch)
+	})
 }
 
 // isAIMention 检测是否 @AI 或 @AI助手
@@ -521,6 +564,8 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 
 	const workerCount = 5
 	sem := make(chan struct{}, workerCount)
+	// 共享令牌桶：每秒 2 次 AI 调用，突发上限 1
+	rl := NewRateLimiter(500 * time.Millisecond, 1)
 	var wg sync.WaitGroup
 	successCount := 0
 	failCount := 0
@@ -533,6 +578,7 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			rl.Wait() // 等待令牌，只在真正调用 AI 前阻塞
 			if j.generateGroupSummary(&g) {
 				mu.Lock()
 				successCount++
@@ -542,8 +588,6 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 				failCount++
 				mu.Unlock()
 			}
-
-			time.Sleep(2 * time.Second) // 避免 API 限流
 		}(group)
 	}
 

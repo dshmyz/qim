@@ -6,20 +6,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// 审批状态常量
-const (
-	ApprovalStatusNone     = "none"
-	ApprovalStatusPending  = "pending"
-	ApprovalStatusApproved = "approved"
-	ApprovalStatusRejected = "rejected"
-)
-
 // AvatarConfig 分身配置
 type AvatarConfig struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"uniqueIndex;not null"`
-	Name      string         `json:"name" gorm:"size:100;default:'我的分身'"`
-	Enabled   bool           `json:"enabled" gorm:"default:false"`
+	ID      uint   `json:"id" gorm:"primarykey"`
+	UserID  uint   `json:"user_id" gorm:"uniqueIndex;not null"`
+	Name    string `json:"name" gorm:"size:100;default:'我的分身'"`
+	Enabled bool   `json:"enabled" gorm:"default:false"`
 
 	// 人设相关
 	AutoLearnedPersona string     `json:"auto_learned_persona" gorm:"type:text"`
@@ -39,30 +31,12 @@ type AvatarConfig struct {
 	// 接管冷却时间（分钟）
 	TakeoverCooldown int `json:"takeover_cooldown" gorm:"default:10"`
 
-	// 审批相关
-	ApprovalStatus string     `json:"approval_status" gorm:"size:20;default:'none'"` // none, pending, approved, rejected
-	RejectReason   string     `json:"reject_reason" gorm:"type:text"`
-	AppliedAt      *time.Time `json:"applied_at"`
-	ApprovedAt     *time.Time `json:"approved_at"`
-	ApprovedBy     *uint      `json:"approved_by"`
-
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	User        User      `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	ModelConfig *AIConfig `json:"model_config,omitempty" gorm:"foreignkey:ModelConfigID"`
-	Approver    *User     `json:"approver,omitempty" gorm:"foreignkey:ApprovedBy"`
-}
-
-// CanApply 检查是否可以申请审批
-func (c *AvatarConfig) CanApply() bool {
-	return c.ApprovalStatus != ApprovalStatusPending && c.ApprovalStatus != ApprovalStatusApproved
-}
-
-// CanCancel 检查是否可以取消申请
-func (c *AvatarConfig) CanCancel() bool {
-	return c.ApprovalStatus == ApprovalStatusPending
 }
 
 // AvatarSession 会话级分身状态
@@ -82,11 +56,11 @@ type AvatarSession struct {
 
 // AvatarToolBinding 分身工具绑定
 type AvatarToolBinding struct {
-	ID        uint      `gorm:"primaryKey"`
-	AvatarID  uint      `gorm:"index"`
-	ToolID    string    `gorm:"size:64"`
-	Enabled   bool      `gorm:"default:true"`
-	Priority  int       `gorm:"default:1"`
+	ID        uint   `gorm:"primaryKey"`
+	AvatarID  uint   `gorm:"index"`
+	ToolID    string `gorm:"size:64"`
+	Enabled   bool   `gorm:"default:true"`
+	Priority  int    `gorm:"default:1"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

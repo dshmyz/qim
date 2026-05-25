@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import { getStoredServerUrl } from '../composables/useServerUrl'
+import type { ApiResponse } from '../composables/useRequest'
+import { requestInterceptor } from '../utils/requestInterceptor'
 
-// API 错误类型
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -14,23 +15,45 @@ export class ApiError extends Error {
   }
 }
 
-// 请求配置类型
 export interface RequestConfig extends AxiosRequestConfig {
   retries?: number
   retryDelay?: number
   skipAuth?: boolean
+  cache?: boolean
+  cacheTTL?: number
 }
 
-// API 响应类型
-export interface ApiResponse<T = any> {
-  code: number
-  data: T
-  message?: string
-  pagination?: {
-    current_page: number
-    total_pages: number
-    total: number
+interface RetryConfig {
+  maxRetries: number
+  baseDelay: number
+  maxDelay: number
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+}
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    __retryCount?: number
   }
+}
+
+function calculateRetryDelay(retryCount: number): number {
+  const exponentialDelay = DEFAULT_RETRY_CONFIG.baseDelay * Math.pow(2, retryCount)
+  const cappedDelay = Math.min(exponentialDelay, DEFAULT_RETRY_CONFIG.maxDelay)
+  const jitter = Math.random() * 1000
+  return cappedDelay + jitter
+}
+
+function shouldRetry(error: any): boolean {
+  if (!error.response) {
+    return true
+  }
+  const status = error.response.status
+  return status >= 500 || status === 429
 }
 
 // 创建 axios 实例
@@ -46,7 +69,7 @@ const api: AxiosInstance = axios.create({
 api.interceptors.request.use(
   (config) => {
     config.baseURL = getStoredServerUrl()
-    if (!config.headers || config.headers['skipAuth'] !== true) {
+    if (!config.headers || config.headers['skipAuth'] !== 'true') {
       const token = localStorage.getItem('token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
@@ -78,7 +101,6 @@ api.interceptors.response.use(
   async (error: AxiosError<ApiResponse>) => {
     const config = error.config as RequestConfig
 
-    // 处理 401 未授权
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -86,19 +108,27 @@ api.interceptors.response.use(
       throw new ApiError('登录已过期，请重新登录', 401, 401)
     }
 
-    // 处理 403 权限不足
     if (error.response?.status === 403) {
       const message = error.response.data?.message || '权限不足'
       throw new ApiError(message, 403, 403)
     }
 
-    // 处理 429 请求过于频繁
+    const retryCount = config?.__retryCount || 0
+    if (shouldRetry(error) && retryCount < DEFAULT_RETRY_CONFIG.maxRetries) {
+      config.__retryCount = retryCount + 1
+      const delay = calculateRetryDelay(retryCount)
+      
+      console.log(`[API] 第 ${config.__retryCount} 次重试，延迟 ${delay}ms`)
+      
+      await new Promise(resolve => setTimeout(resolve, delay))
+      return api.request(config)
+    }
+
     if (error.response?.status === 429) {
       const message = error.response.data?.message || '请求过于频繁，请稍后再试'
       throw new ApiError(message, 429, 429)
     }
 
-    // 处理网络错误
     if (error.code === 'ECONNABORTED') {
       throw new ApiError('请求超时，请稍后重试', -1, 0)
     }
@@ -157,9 +187,8 @@ async function retryRequest<T>(
 
 // 通用请求方法
 export async function request<T = any>(url: string, config?: RequestConfig): Promise<T> {
-  const { retries, retryDelay, skipAuth, ...axiosConfig } = config || {}
+  const { retries, retryDelay, skipAuth, cache, cacheTTL, ...axiosConfig } = config || {}
 
-  // 设置 skipAuth header
   if (skipAuth) {
     axiosConfig.headers = {
       ...axiosConfig.headers,
@@ -167,19 +196,32 @@ export async function request<T = any>(url: string, config?: RequestConfig): Pro
     }
   }
 
-  const requestFn = () => api.request<T>({
-    url,
-    ...axiosConfig
-  })
+  const requestFn = async () => {
+    const response = await api.request<T>({
+      url,
+      ...axiosConfig
+    })
+    return response.data
+  }
 
-  // 如果配置了重试，使用重试逻辑
+  const method = axiosConfig.method || 'GET'
+  const shouldUseCache = method === 'GET' && cache !== false
+
+  if (shouldUseCache) {
+    return requestInterceptor.request<T>(
+      requestFn,
+      url,
+      { ...axiosConfig, cache, cacheTTL }
+    )
+  }
+
   if (retries && retries > 0) {
-    const response = await retryRequest(requestFn, retries, retryDelay)
+    const retryRequestFn = () => api.request<T>({ url, ...axiosConfig })
+    const response = await retryRequest(retryRequestFn, retries, retryDelay)
     return (response as any).data
   }
 
-  const response = await requestFn()
-  return response.data
+  return requestFn()
 }
 
 // 便捷的 HTTP 方法

@@ -36,10 +36,6 @@ func (s *UserService) WithRepo(repo repository.UserRepository) *UserService {
 	}
 }
 
-func (s *UserService) GetDB() *gorm.DB {
-	return s.db
-}
-
 func (s *UserService) GetUser(userID uint) (*model.User, error) {
 	cacheKey := fmt.Sprintf("user:%d", userID)
 
@@ -273,8 +269,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	aiUser := model.User{
 		Username: "bot_ai_assistant",
 		Nickname: "AI助手",
-		Type:     "bot",
-		BotType:  "assistant",
+		Type:     "bot_assistant",
 		Status:   "online",
 	}
 	if err := s.db.Create(&aiUser).Error; err != nil {
@@ -315,8 +310,7 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 	aiUser := model.User{
 		Username: username,
 		Nickname: assistantName,
-		Type:     "bot",
-		BotType:  "assistant",
+		Type:     "bot_assistant",
 		Status:   "online",
 	}
 	if err := s.db.Create(&aiUser).Error; err != nil {

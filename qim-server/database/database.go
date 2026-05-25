@@ -87,7 +87,7 @@ func Init(cfg *config.Config) *gorm.DB {
 	}
 
 	// 自动迁移数据库表结构
-	autoMigrate()
+	// autoMigrate() // 已移至 app/init.go 的 MigrateDB 统一处理，避免重复迁移
 
 	return DB
 }
@@ -134,6 +134,10 @@ func autoMigrate() {
 		&model.ExternalUserMapping{},
 		&model.OrgSyncConfig{},
 		&model.OrgSyncLog{},
+		&model.AlertRule{},
+		&model.AlertHistory{},
+		&model.CrashLog{},
+		&model.UserFeedback{},
 	)
 	if err != nil {
 		logger.WithModule("Database").Error("数据库自动迁移失败", "error", err)

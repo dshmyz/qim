@@ -235,6 +235,7 @@ func AdminUpdateChannel(c *gin.Context) {
 		Avatar            *string `json:"avatar"`
 		Status            *string `json:"status"`
 		PublishPermission *string `json:"publish_permission"`
+		CommentPermission *string `json:"comment_permission"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -271,6 +272,13 @@ func AdminUpdateChannel(c *gin.Context) {
 			return
 		}
 		updates["publish_permission"] = *req.PublishPermission
+	}
+	if req.CommentPermission != nil {
+		if *req.CommentPermission != "all_subscribers" && *req.CommentPermission != "disabled" {
+			response.BadRequest(c, "无效的评论权限")
+			return
+		}
+		updates["comment_permission"] = *req.CommentPermission
 	}
 
 	if len(updates) > 0 {

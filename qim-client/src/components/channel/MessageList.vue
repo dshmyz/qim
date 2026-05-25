@@ -54,6 +54,7 @@
           v-for="message in sortedMessages"
           :key="message.id"
           :message="message"
+          :channel="channel"
           :is-creator="isCreator"
           :interactive="interactive"
           @like="handleLike"
@@ -79,13 +80,14 @@ import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import EmptyState from '../shared/EmptyState.vue'
 import MessageCard from './MessageCard.vue'
 import MessageTimeline from './MessageTimeline.vue'
-import type { ChannelMessage } from '../../types'
+import type { ChannelMessage, Channel } from '../../types'
 
 type DisplayMode = 'card' | 'timeline'
 type SortOrder = 'asc' | 'desc'
 
 interface Props {
   messages: ChannelMessage[]
+  channel?: Channel
   mode?: DisplayMode
   isCreator?: boolean
   loading?: boolean

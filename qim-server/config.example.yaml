@@ -12,6 +12,15 @@ server:
   port: "8080"
   mode: "release"  # debug / release / test
 
+# 数据初始化策略
+# 控制启动时哪些数据需要初始化，不同环境可有不同的策略
+data_init:
+  preset_data: true       # 预置数据（系统用户、管理员、内置应用、文件上传配置）
+  bot_templates: true     # Bot 模板（系统助手、AI助手）
+  demo_mini_apps: false   # 演示小程序（计算器、记事本等）
+  test_data: false        # 测试数据（测试用户、部门、会话、频道等）
+  seed_force: false       # 是否强制重新初始化（演示环境可设为 true）
+
 # JWT 配置
 jwt:
   secret: "${QIM_JWT_SECRET:change-me-to-random-string}"

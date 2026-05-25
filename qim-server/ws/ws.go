@@ -105,6 +105,12 @@ type WSMessage struct {
 	RequestID string      `json:"request_id,omitempty"`
 }
 
+// safeCloseSend 安全关闭 channel，防止重复 close 导致 panic
+func safeCloseSend(ch chan []byte) {
+	defer func() { recover() }()
+	close(ch)
+}
+
 func NewHub(db *gorm.DB, dbType string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
@@ -177,30 +183,26 @@ func (h *Hub) Run() {
 			h.UpdateUserStatus(client.userID, StatusOnline)
 
 		case client := <-h.unregister:
-			if _, ok := h.clients.Load(client); ok {
-				h.clients.Delete(client)
-				close(client.send)
+			h.clients.LoadAndDelete(client)
+			safeCloseSend(client.send)
 
-				if existingClients, ok := h.userClients.Load(client.userID); ok {
-					clients := existingClients.([]*Client)
-					for i, c := range clients {
-						if c == client {
-							clients = append(clients[:i], clients[i+1:]...)
-							break
-						}
+			if existingClients, ok := h.userClients.Load(client.userID); ok {
+				clients := existingClients.([]*Client)
+				for i, c := range clients {
+					if c == client {
+						clients = append(clients[:i], clients[i+1:]...)
+						break
 					}
+				}
 
-					if len(clients) == 0 {
-						h.userClients.Delete(client.userID)
-						// 更新用户离线状态并广播
-						h.UpdateUserStatus(client.userID, StatusOffline)
-					} else {
-						h.userClients.Store(client.userID, clients)
-					}
+				if len(clients) == 0 {
+					h.userClients.Delete(client.userID)
+					h.UpdateUserStatus(client.userID, StatusOffline)
+				} else {
+					h.userClients.Store(client.userID, clients)
 				}
 			}
 
-			// 清理用户的订阅
 			h.CleanupUserSubscriptions(client.userID)
 			logger.WithModule("WS").Info("用户断开连接", "userID", client.userID)
 
@@ -248,7 +250,24 @@ func (h *Hub) asyncBroadcast(message []byte) {
 
 	for client := range failedChan {
 		h.clients.Delete(client)
-		close(client.send)
+		safeCloseSend(client.send)
+
+		// 同步清理 userClients，防止悬空
+		if existingClients, ok := h.userClients.Load(client.userID); ok {
+			clients := existingClients.([]*Client)
+			for i, c := range clients {
+				if c == client {
+					clients = append(clients[:i], clients[i+1:]...)
+					break
+				}
+			}
+			if len(clients) == 0 {
+				h.userClients.Delete(client.userID)
+				h.UpdateUserStatus(client.userID, StatusOffline)
+			} else {
+				h.userClients.Store(client.userID, clients)
+			}
+		}
 	}
 
 	h.broadcastToOtherNodes(message)
@@ -599,7 +618,7 @@ func handleSendMessage(c *Client, data interface{}) {
 				"is_recalled":       msg.IsRecalled,
 				"is_read":           msg.IsRead,
 				"is_avatar_reply":   msg.AIType == "avatar",
-				"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+				"is_ai_message":     (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
 				"recalled_at":       msg.RecalledAt,
 				"created_at":        msg.CreatedAt,
 				"sender":            msg.Sender,
@@ -608,7 +627,7 @@ func handleSendMessage(c *Client, data interface{}) {
 			},
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		c.hub.SendToConversation(convID, c.userID, jsonMsg)
+		c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 
 		if c.hub.OnMessageSent != nil {
 			utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
@@ -654,7 +673,9 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 
 	now := time.Now()
 	var conv model.Conversation
-	db.First(&conv, convID)
+	if err := db.First(&conv, convID).Error; err != nil {
+		return
+	}
 	conv.LastMessageID = &msg.ID
 	conv.LastMessageAt = &now
 	db.Save(&conv)
@@ -681,7 +702,7 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 			"is_recalled":       msg.IsRecalled,
 			"is_read":           msg.IsRead,
 			"is_avatar_reply":   msg.AIType == "avatar",
-			"is_ai_message":     msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+			"is_ai_message":     (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
 			"recalled_at":       msg.RecalledAt,
 			"created_at":        msg.CreatedAt,
 			"sender":            msg.Sender,
@@ -690,7 +711,7 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 		},
 	}
 	jsonMsg, _ := json.Marshal(wsMsg)
-	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 
 	if c.hub.OnMessageSent != nil {
 		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
@@ -718,6 +739,15 @@ func handleReadMessage(c *Client, data interface{}) {
 
 func fallbackHandleReadMessage(c *Client, convID uint) {
 	db := c.hub.db
+
+	// 检查 unread_count，无未读则跳过
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
+		return
+	}
+	if member.UnreadCount == 0 {
+		return
+	}
 
 	if c.hub.dbType == "mysql" {
 		db.Exec(`
@@ -749,7 +779,9 @@ func fallbackHandleReadMessage(c *Client, convID uint) {
 
 	if result.RowsAffected > 0 {
 		var conv model.Conversation
-		db.First(&conv, convID)
+		if err := db.First(&conv, convID).Error; err != nil {
+			return
+		}
 
 		readMsg := WSMessage{
 			Type: "message_read",
@@ -937,7 +969,7 @@ func handleScreenShareStart(c *Client, data interface{}) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 
 	// 推送给会话其他成员
-	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 	logger.WithModule("WS").Info("用户开始屏幕共享", "userID", c.userID, "convID", convID)
 }
 
@@ -979,7 +1011,7 @@ func handleScreenShareStop(c *Client, data interface{}) {
 	jsonMsg, _ := json.Marshal(wsMsg)
 
 	// 推送给会话其他成员
-	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 	logger.WithModule("WS").Info("用户停止屏幕共享", "userID", c.userID, "convID", convID)
 }
 
@@ -1062,7 +1094,7 @@ func handleScreenShareData(c *Client, data interface{}) {
 
 	// 推送给会话其他成员
 	logger.WithModule("WS").Debug("准备推送屏幕共享请求", "convID", convID, "senderID", c.userID)
-	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 	logger.WithModule("WS").Info("用户屏幕共享数据转发", "userID", c.userID, "convID", convID)
 }
 
@@ -1155,7 +1187,7 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 
 	// 推送给会话其他成员（复用原有的 SendToConversation 逻辑）
 	logger.WithModule("WS").Debug("准备推送屏幕共享请求", "convID", convID, "senderID", c.userID)
-	c.hub.SendToConversation(convID, c.userID, jsonMsg)
+	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 	logger.WithModule("WS").Info("用户请求屏幕共享", "userID", c.userID, "convID", convID)
 }
 
@@ -1499,7 +1531,7 @@ func (h *Hub) BroadcastToConversationMembers(userID uint, message []byte) {
 	}
 
 	for _, member := range members {
-		h.SendToConversation(member.ConversationID, userID, message)
+		h.SendToConversationAsync(member.ConversationID, userID, message)
 	}
 }
 

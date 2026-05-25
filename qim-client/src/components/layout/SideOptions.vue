@@ -1,6 +1,6 @@
 <template>
   <div class="side-options">
-    <div class="side-options-title">QIM</div>
+    <div class="side-options-title">{{ productName }}</div>
     <div
       class="option-item"
       :class="{ active: activeOption === 'recent' }"
@@ -52,6 +52,10 @@
 </template>
 
 <script setup lang="ts">
+import { getProductName } from '../../config/appConfig'
+
+const productName = getProductName()
+
 defineProps<{
   activeOption: string
 }>()

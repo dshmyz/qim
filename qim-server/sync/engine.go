@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,8 +14,21 @@ import (
 	"qim-server/pkg/logger"
 	"qim-server/sync/syncer"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// placeholderHash 是同步创建用户时使用的密码哈希，这些用户无法通过密码登录
+var placeholderHash string
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte("sync_disabled_local_login"), bcrypt.DefaultCost)
+	if err != nil {
+		placeholderHash = "$2a$10$disabled"
+	} else {
+		placeholderHash = string(hash)
+	}
+}
 
 var SharedEngine *Engine
 
@@ -81,16 +95,16 @@ func (e *Engine) Sync(ctx context.Context, config *model.OrgSyncConfig) {
 }
 
 type syncStats struct {
-	UsersCreated   int    `json:"users_created"`
-	UsersUpdated   int    `json:"users_updated"`
-	UsersDeleted   int    `json:"users_deleted"`
-	DeptsCreated   int    `json:"depts_created"`
-	DeptsUpdated   int    `json:"depts_updated"`
-	DeptsDeleted   int    `json:"depts_deleted"`
-	GroupsCreated  int    `json:"groups_created"`
-	GroupsUpdated  int    `json:"groups_updated"`
-	GroupsDeleted  int    `json:"groups_deleted"`
-	ErrorMessage   string `json:"error_message,omitempty"`
+	UsersCreated  int    `json:"users_created"`
+	UsersUpdated  int    `json:"users_updated"`
+	UsersDeleted  int    `json:"users_deleted"`
+	DeptsCreated  int    `json:"depts_created"`
+	DeptsUpdated  int    `json:"depts_updated"`
+	DeptsDeleted  int    `json:"depts_deleted"`
+	GroupsCreated int    `json:"groups_created"`
+	GroupsUpdated int    `json:"groups_updated"`
+	GroupsDeleted int    `json:"groups_deleted"`
+	ErrorMessage  string `json:"error_message,omitempty"`
 }
 
 func (e *Engine) executeSync(ctx context.Context, config *model.OrgSyncConfig) *syncStats {
@@ -122,6 +136,14 @@ func (e *Engine) syncToLocal(data *orgsync.OrgData) *syncStats {
 // syncDepartments 同步部门，返回外部ID到本地ID的映射
 func (e *Engine) syncDepartments(data *orgsync.OrgData, stats *syncStats) map[string]uint {
 	extToLocal := make(map[string]uint)
+
+	sort.Slice(data.Departments, func(i, j int) bool {
+		// 按层级升序排列，保证父部门优先处理
+		if data.Departments[i].Level != data.Departments[j].Level {
+			return data.Departments[i].Level < data.Departments[j].Level
+		}
+		return data.Departments[i].ID < data.Departments[j].ID
+	})
 
 	// 按 ExternalID 查找已有部门
 	for _, extDept := range data.Departments {
@@ -202,7 +224,7 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 				Avatar:       extUser.Avatar,
 				Status:       "offline",
 				Type:         "user",
-				PasswordHash: "$2a$10$placeholder",
+				PasswordHash: placeholderHash,
 			}
 			if newUser.Nickname == "" {
 				newUser.Nickname = newUser.Username
@@ -238,57 +260,80 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 }
 
 func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept map[string]uint, stats *syncStats) {
+	// 按用户分组部门关联，收集每个用户的目标部门ID集合
+	userDeptMap := make(map[uint][]uint)
+
 	for _, rel := range data.UserDeptRelations {
-		// 查找本地用户
-		var user model.User
-		if err := e.db.Where("username = ?", rel.UserID).First(&user).Error; err != nil {
-			// 尝试通过外部数据中的 username 查找
-			var found bool
-			for _, extUser := range data.Users {
-				if extUser.ID == rel.UserID {
-					e.db.Where("username = ?", extUser.Username).First(&user)
-					if user.ID != 0 {
-						found = true
-					}
-					break
+		user := e.resolveUserByRelation(rel, data)
+		if user == nil {
+			continue
+		}
+
+		deptID := e.resolveDepartmentByRelation(rel, extToLocalDept)
+		if deptID == 0 {
+			continue
+		}
+
+		userDeptMap[user.ID] = append(userDeptMap[user.ID], deptID)
+	}
+
+	// 逐个用户处理：只创建新关联，删除不再存在于外部系统中的旧关联
+	for userID, targetDeptIDs := range userDeptMap {
+		for _, deptID := range targetDeptIDs {
+			var existingRel int64
+			e.db.Model(&model.DepartmentEmployee{}).
+				Where("user_id = ? AND department_id = ?", userID, deptID).
+				Count(&existingRel)
+
+			if existingRel == 0 {
+				empRel := model.DepartmentEmployee{
+					UserID:       userID,
+					DepartmentID: deptID,
+					IsPrimary:    true,
 				}
-			}
-			if !found {
-				continue
+				e.db.Create(&empRel)
 			}
 		}
 
-		// 查找本地部门
-		deptID, ok := extToLocalDept[rel.DepartmentID]
-		if !ok {
-			// 尝试按名称查找
-			var dept model.Department
-			if err := e.db.Where("name = ?", rel.DepartmentID).First(&dept).Error; err == nil {
-				deptID = dept.ID
-			} else {
-				continue
-			}
-		}
-
-		// 删除该用户的旧部门关联（处理员工调岗）
-		e.db.Where("user_id = ? AND department_id != ?", user.ID, deptID).Delete(&model.DepartmentEmployee{})
-
-		// 创建或跳过已存在的关联
-		var existingRel int64
-		e.db.Model(&model.DepartmentEmployee{}).
-			Where("user_id = ? AND department_id = ?", user.ID, deptID).
-			Count(&existingRel)
-
-		if existingRel == 0 {
-			empRel := model.DepartmentEmployee{
-				UserID:       user.ID,
-				DepartmentID: deptID,
-				Position:     rel.UserID,
-				IsPrimary:    true,
-			}
-			e.db.Create(&empRel)
+		// 仅删除该用户在外部系统中不存在的部门关联
+		// 即保留手动在 QIM 中配置的其他部门关系
+		if len(targetDeptIDs) > 0 {
+			e.db.Where("user_id = ? AND department_id NOT IN ?", userID, targetDeptIDs).
+				Delete(&model.DepartmentEmployee{})
 		}
 	}
+}
+
+func (e *Engine) resolveUserByRelation(rel orgsync.UserDeptRelation, data *orgsync.OrgData) *model.User {
+	var user model.User
+	if err := e.db.Where("username = ?", rel.UserID).First(&user).Error; err == nil {
+		return &user
+	}
+
+	for _, extUser := range data.Users {
+		if extUser.ID == rel.UserID && extUser.Username != "" {
+			e.db.Where("username = ?", extUser.Username).First(&user)
+			if user.ID != 0 {
+				return &user
+			}
+			break
+		}
+	}
+
+	return nil
+}
+
+func (e *Engine) resolveDepartmentByRelation(rel orgsync.UserDeptRelation, extToLocalDept map[string]uint) uint {
+	if deptID, ok := extToLocalDept[rel.DepartmentID]; ok {
+		return deptID
+	}
+
+	var dept model.Department
+	if err := e.db.Where("name = ?", rel.DepartmentID).First(&dept).Error; err == nil {
+		return dept.ID
+	}
+
+	return 0
 }
 
 func (e *Engine) syncGroups(data *orgsync.OrgData, stats *syncStats) {

@@ -18,7 +18,7 @@
         <div class="app-logo">
           <AppLogo size="extraLarge" />
         </div>
-        <h2>QIM 青雀</h2>
+        <h2>{{ productFullName }}</h2>
         <p>简洁 · 高效 · 智能</p>
       </div>
       
@@ -147,7 +147,7 @@
       <div class="info-row">
         <span class="info-item">版本: {{ packageJson.version }}</span>
         <span class="info-separator">|</span>
-        <span class="info-item">© 2026 QIM</span>
+        <span class="info-item">{{ copyrightShort }}</span>
       </div>
     </div>
     
@@ -178,6 +178,10 @@ import packageJson from '../../package.json'
 import { getStoredServerUrl, useServerUrl } from '../composables/useServerUrl'
 import QMessage from '../utils/qmessage'
 import AppLogo from '../components/shared/AppLogo.vue'
+import { APP_CONFIG, getCopyrightShort } from '../config/appConfig'
+
+const productFullName = APP_CONFIG.productFullName
+const copyrightShort = getCopyrightShort()
 
 interface FormErrors {
   username?: string

@@ -145,7 +145,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	aiMessages := make([]ai.Message, 0, len(messages))
 	for _, msg := range messages {
 		role := "user"
-		if msg.SenderID == 0 || msg.SenderID == systemUserID {
+		if msg.SenderID == systemUserID {
 			role = "assistant"
 		}
 		aiMessages = append(aiMessages, ai.Message{
@@ -448,19 +448,24 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
+	// 无未读消息则跳过，避免无效的 INSERT SELECT 和 UPDATE
+	if member.UnreadCount == 0 {
+		return nil
+	}
+
 	if s.dbType == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ?
+			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
 		`, convID, userID, time.Now(), convID, userID)
 	} else {
 		db.Exec(`
 			INSERT INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ?
+			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
 			ON CONFLICT (message_id, user_id) DO NOTHING
 		`, convID, userID, time.Now(), convID, userID)
 	}

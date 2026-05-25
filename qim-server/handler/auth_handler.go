@@ -155,7 +155,7 @@ func Login(c *gin.Context) {
 		}
 	}
 
-	if user.Type == "bot" || user.Type == "system" || user.Type == "api" {
+	if (user.Type == "bot_assistant" || user.Type == "bot_avatar") || user.Type == "system" || user.Type == "api" {
 		logger.WithModule("Auth").Info("Login blocked", "user", req.Username, "type", user.Type, "ip", ip, "reason", "非用户账户禁止登录")
 		response.Forbidden(c, "该账户类型不支持登录")
 		return

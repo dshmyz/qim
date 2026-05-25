@@ -60,7 +60,7 @@
         </el-form>
 
         <div class="login-footer">
-          <span>© {{ currentYear }} QIM</span>
+          <span>{{ copyrightShort }}</span>
         </div>
       </div>
     </div>

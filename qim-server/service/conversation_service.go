@@ -35,10 +35,6 @@ func NewConversationService(db *gorm.DB) *ConversationService {
 	}
 }
 
-func (s *ConversationService) GetDB() *gorm.DB {
-	return s.db
-}
-
 type ConversationWithPin struct {
 	model.Conversation
 	IsPinned        bool   `json:"is_pinned"`
@@ -57,14 +53,33 @@ func (s *ConversationService) GetConversations(userID uint) ([]ConversationWithP
 		return nil, err
 	}
 
+	// 批量预加载 ConversationSession，避免 N+1
+	convIDs := make([]uint, len(conversations))
+	for i, conv := range conversations {
+		convIDs[i] = conv.ID
+	}
+	var sessions []model.ConversationSession
+	sessionMap := make(map[uint]model.ConversationSession)
+	if len(convIDs) > 0 {
+		s.db.Where("user_id = ? AND conversation_id IN ?", userID, convIDs).Find(&sessions)
+		for _, s := range sessions {
+			sessionMap[s.ConversationID] = s
+		}
+	}
+
 	var result []ConversationWithPin
 	for _, conv := range conversations {
-		var session model.ConversationSession
-		s.db.Where("user_id = ? AND conversation_id = ?", userID, conv.ID).
-			FirstOrCreate(&session, model.ConversationSession{
-				IsPinned:      false,
-				LastVisitedAt: time.Now(),
-			})
+		session, exists := sessionMap[conv.ID]
+		if !exists {
+			// 不存在则创建
+			session = model.ConversationSession{
+				UserID:         userID,
+				ConversationID: conv.ID,
+				IsPinned:       false,
+				LastVisitedAt:  time.Now(),
+			}
+			s.db.Create(&session)
+		}
 
 		convWithPin := ConversationWithPin{
 			Conversation: *conv,
@@ -459,4 +474,61 @@ func (s *ConversationService) IncrementUnreadCount(convID, excludeUserID uint) e
 	return s.db.WithContext(ctx).Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id != ?", convID, excludeUserID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1")).Error
+}
+
+type GroupSearchResult struct {
+	ConversationID uint   `json:"id"`
+	ConvType       string `json:"type"`
+	Name           string `json:"name"`
+	Avatar         string `json:"avatar"`
+	IsMember       bool   `json:"is_member"`
+}
+
+func (s *ConversationService) SearchGroupsByName(query string, userID uint) ([]GroupSearchResult, error) {
+	var conversations []model.Conversation
+	if err := s.db.Joins("JOIN groups ON groups.conversation_id = conversations.id").
+		Where("groups.name LIKE ? AND conversations.type IN ? AND conversations.is_deleted = ?",
+			"%"+query+"%", []string{"group", "discussion"}, false).
+		Find(&conversations).Error; err != nil {
+		return nil, err
+	}
+
+	// 批量收集 convID
+	convIDs := make([]uint, len(conversations))
+	for i, conv := range conversations {
+		convIDs[i] = conv.ID
+	}
+
+	// 批量查询 groups
+	var groups []model.Group
+	groupMap := make(map[uint]model.Group)
+	if len(convIDs) > 0 {
+		s.db.Where("conversation_id IN ?", convIDs).Find(&groups)
+		for _, g := range groups {
+			groupMap[g.ConversationID] = g
+		}
+	}
+
+	// 批量查询用户在这些会话中的成员关系
+	memberMap := make(map[uint]bool)
+	if len(convIDs) > 0 {
+		var memberships []model.ConversationMember
+		s.db.Where("conversation_id IN ? AND user_id = ?", convIDs, userID).Find(&memberships)
+		for _, m := range memberships {
+			memberMap[m.ConversationID] = true
+		}
+	}
+
+	results := make([]GroupSearchResult, 0, len(conversations))
+	for _, conv := range conversations {
+		group := groupMap[conv.ID]
+		results = append(results, GroupSearchResult{
+			ConversationID: conv.ID,
+			ConvType:       conv.Type,
+			Name:           group.Name,
+			Avatar:         group.Avatar,
+			IsMember:       memberMap[conv.ID],
+		})
+	}
+	return results, nil
 }

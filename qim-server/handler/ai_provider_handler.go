@@ -12,8 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetProviders 获取所有AI提供商
-func GetProviders(c *gin.Context) {
+// GetAIProviders 获取所有AI提供商
+func GetAIProviders(c *gin.Context) {
 	db := database.GetDB()
 
 	var providers []model.AIProvider
@@ -50,8 +50,8 @@ func GetProviders(c *gin.Context) {
 	})
 }
 
-// CreateProvider 创建AI提供商
-func CreateProvider(c *gin.Context) {
+// CreateAIProvider 创建AI提供商
+func CreateAIProvider(c *gin.Context) {
 	var req struct {
 		Name        string   `json:"name" binding:"required"`
 		Type        string   `json:"type" binding:"required"` // API type (openai, anthropic, etc.)
@@ -93,8 +93,8 @@ func CreateProvider(c *gin.Context) {
 	})
 }
 
-// UpdateProvider 更新AI提供商
-func UpdateProvider(c *gin.Context) {
+// UpdateAIProvider 更新AI提供商
+func UpdateAIProvider(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -163,8 +163,8 @@ func UpdateProvider(c *gin.Context) {
 	})
 }
 
-// DeleteProvider 删除AI提供商
-func DeleteProvider(c *gin.Context) {
+// DeleteAIProvider 删除AI提供商
+func DeleteAIProvider(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -185,8 +185,8 @@ func DeleteProvider(c *gin.Context) {
 	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
-// ToggleProviderStatus 切换提供商状态
-func ToggleProviderStatus(c *gin.Context) {
+// ToggleAIProviderStatus 切换AI提供商状态
+func ToggleAIProviderStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -223,8 +223,8 @@ func ToggleProviderStatus(c *gin.Context) {
 	})
 }
 
-// TestProviderConnection 测试提供商连接
-func TestProviderConnection(c *gin.Context) {
+// TestAIProviderConnection 测试AI提供商连接
+func TestAIProviderConnection(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {

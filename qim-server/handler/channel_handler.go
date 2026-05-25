@@ -23,6 +23,7 @@ func CreateChannel(c *gin.Context) {
 		Description       string `json:"description"`
 		Avatar            string `json:"avatar"`
 		PublishPermission string `json:"publish_permission"`
+		CommentPermission string `json:"comment_permission"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -39,6 +40,15 @@ func CreateChannel(c *gin.Context) {
 		return
 	}
 
+	commentPermission := req.CommentPermission
+	if commentPermission == "" {
+		commentPermission = "all_subscribers"
+	}
+	if commentPermission != "all_subscribers" && commentPermission != "disabled" {
+		response.BadRequest(c, "无效的评论权限")
+		return
+	}
+
 	db := database.GetDB()
 
 	channel := model.Channel{
@@ -48,6 +58,7 @@ func CreateChannel(c *gin.Context) {
 		CreatorID:         userID.(uint),
 		Status:            "active",
 		PublishPermission: publishPermission,
+		CommentPermission: commentPermission,
 	}
 
 	if err := db.Create(&channel).Error; err != nil {

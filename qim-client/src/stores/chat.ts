@@ -8,8 +8,26 @@ export interface MessageReadInfo {
 }
 
 const STORAGE_KEY = 'qim_conversations'
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let lastSaveTime = 0
+const SAVE_THROTTLE = 500 // ms
 
 function saveToStorage(convs: Conversation[]) {
+  const now = Date.now()
+  // 如果距上次写入不足 throttle 时间，延迟写入
+  if (now - lastSaveTime < SAVE_THROTTLE) {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      lastSaveTime = Date.now()
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
+      } catch (error) {
+        console.warn('保存会话失败:', error)
+      }
+    }, SAVE_THROTTLE)
+    return
+  }
+  lastSaveTime = now
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
   } catch (error) {

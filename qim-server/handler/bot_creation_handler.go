@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"qim-server/database"
 	"qim-server/model"
@@ -66,7 +67,7 @@ func GetTemplates(c *gin.Context) {
 	db := database.GetDB()
 
 	var bots []model.Bot
-	if err := db.Where("is_template = ? AND is_active = ? AND approval_status = ?", true, true, "approved").Find(&bots).Error; err != nil {
+	if err := db.Where("is_template = ? AND is_active = ?", true, true).Find(&bots).Error; err != nil {
 		response.InternalServerError(c, "获取模板列表失败")
 		return
 	}
@@ -137,16 +138,15 @@ func CreateBot(c *gin.Context) {
 	}
 
 	bot := model.Bot{
-		Name:           req.Name,
-		Description:    req.Description,
-		Type:           req.Type,
-		Avatar:         req.Avatar,
-		Config:         string(configJSON),
-		IsActive:       true,
-		ApprovalStatus: "pending", // 用户自建 Bot 需要审批
-		CreatorID:      userID,
-		CreatorName:    creatorName,
-		IsTemplate:     false,
+		Name:        req.Name,
+		Description: req.Description,
+		Type:        req.Type,
+		Avatar:      req.Avatar,
+		Config:      string(configJSON),
+		IsActive:    false, // 用户自建 Bot 默认禁用，需要审批通过后启用
+		CreatorID:   userID,
+		CreatorName: creatorName,
+		IsTemplate:  false,
 	}
 
 	// 开启事务
@@ -180,6 +180,20 @@ func CreateBot(c *gin.Context) {
 		return
 	}
 
+	// 创建审批记录
+	approval := model.Approval{
+		TargetType: model.ApprovalTypeBot,
+		TargetID:   bot.ID,
+		Status:     model.ApprovalStatusPending,
+		AppliedAt:  time.Now(),
+		AppliedBy:  userID,
+	}
+	if err := tx.Create(&approval).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建审批记录失败")
+		return
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		response.InternalServerError(c, "提交事务失败")
 		return
@@ -191,7 +205,7 @@ func CreateBot(c *gin.Context) {
 			"id":              bot.ID,
 			"name":            bot.Name,
 			"virtual_user_id": virtualUser.ID,
-			"approval_status": bot.ApprovalStatus,
+			"approval_status": model.ApprovalStatusPending,
 		},
 	})
 }
@@ -224,8 +238,15 @@ func UpdateMyBot(c *gin.Context) {
 		return
 	}
 
+	// 从approvals表获取审批状态
+	var approval model.Approval
+	approvalStatus := model.ApprovalStatusNone
+	if err := db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeBot, bot.ID).First(&approval).Error; err == nil {
+		approvalStatus = approval.Status
+	}
+
 	// 仅允许待审批和已拒绝状态的 Bot 编辑
-	if bot.ApprovalStatus != "pending" && bot.ApprovalStatus != "rejected" {
+	if approvalStatus != model.ApprovalStatusPending && approvalStatus != model.ApprovalStatusRejected {
 		response.BadRequest(c, "仅可编辑待审批或已拒绝的 Bot")
 		return
 	}

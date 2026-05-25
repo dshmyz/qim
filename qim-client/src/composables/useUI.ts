@@ -532,6 +532,80 @@ export function useUI() {
     showUpdateDialog.value = false
   }
 
+  // 更新事件监听器注册（Electron IPC）
+  const updateEventListeners: Array<{ channel: string; handler: (...args: any[]) => void }> = []
+
+  const registerUpdateEventListeners = () => {
+    if (!window.electron) return
+
+    unregisterUpdateEventListeners()
+
+    const handlers = [
+      {
+        channel: 'update-checking',
+        handler: () => {
+          isCheckingUpdate.value = true
+          updateResult.value = '正在检查更新...'
+        }
+      },
+      {
+        channel: 'update-available',
+        handler: (_event: any, info: any) => {
+          isCheckingUpdate.value = false
+          hasNewVersion.value = true
+          updateResult.value = `发现新版本 v${info.version}`
+        }
+      },
+      {
+        channel: 'update-not-available',
+        handler: () => {
+          isCheckingUpdate.value = false
+          hasNewVersion.value = false
+          updateResult.value = '当前已是最新版本'
+        }
+      },
+      {
+        channel: 'update-error',
+        handler: (_event: any, error: any) => {
+          isCheckingUpdate.value = false
+          updateResult.value = `更新错误: ${error}`
+        }
+      },
+      {
+        channel: 'update-progress',
+        handler: (_event: any, progressObj: any) => {
+          isDownloading.value = true
+          downloadProgress.value = progressObj.percent
+        }
+      },
+      {
+        channel: 'update-downloaded',
+        handler: (_event: any, _info: any) => {
+          isDownloading.value = false
+          updateResult.value = '下载完成，正在安装...'
+          setTimeout(() => {
+            updateResult.value = '升级成功，需要重启应用'
+            hasNewVersion.value = false
+          }, 1500)
+        }
+      }
+    ]
+
+    handlers.forEach(({ channel, handler }) => {
+      window.electron.ipcRenderer.on(channel, handler)
+      updateEventListeners.push({ channel, handler })
+    })
+  }
+
+  const unregisterUpdateEventListeners = () => {
+    if (!window.electron) return
+
+    updateEventListeners.forEach(({ channel, handler }) => {
+      window.electron.ipcRenderer.removeListener(channel, handler)
+    })
+    updateEventListeners.length = 0
+  }
+
   // ========== 语音通话操作 ==========
 
   // ========== 设置模态框操作 ==========
@@ -665,6 +739,8 @@ export function useUI() {
     confirmLogout,
     openUpdateDialog,
     closeUpdateDialog,
+    registerUpdateEventListeners,
+    unregisterUpdateEventListeners,
     openSettings,
     closeSettingsModal,
     switchSettingsTab,

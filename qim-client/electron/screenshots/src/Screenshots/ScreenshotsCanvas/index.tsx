@@ -153,7 +153,7 @@ export default memo(
     );
 
     useLayoutEffect(() => {
-      if (!image || !bounds || !canvasRef.current) {
+      if (!bounds || !canvasRef.current) {
         ctxRef.current = null;
         return;
       }

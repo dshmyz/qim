@@ -1,38 +1,42 @@
 -- DDL for QIM Server Database
 -- MySQL DDL
--- Version: 1.0.0
--- Updated: 2026-05-05
+-- Version: 2.0.0
+-- Updated: 2026-05-25
 
 -- Create database
 CREATE DATABASE IF NOT EXISTS qim_server CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE qim_server;
 
 -- Users table
+-- type: 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `username` VARCHAR(50) NOT NULL UNIQUE,
   `password_hash` VARCHAR(255) NOT NULL,
   `nickname` VARCHAR(100),
   `avatar` VARCHAR(500),
-  `type` VARCHAR(20) DEFAULT 'user',
+  `type` VARCHAR(30) DEFAULT 'user',
   `signature` TEXT,
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
   `status` VARCHAR(20) DEFAULT 'offline',
-  `bot_type` VARCHAR(30) DEFAULT '',
+  `last_online` DATETIME,
   `ip` VARCHAR(50),
   `two_factor_enabled` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_users_deleted_at` (`deleted_at`),
-  INDEX `idx_users_type` (`type`)
+  INDEX `idx_users_type` (`type`),
+  INDEX `idx_users_phone` (`phone`),
+  INDEX `idx_users_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Departments table
 CREATE TABLE IF NOT EXISTS `departments` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
+  `external_id` VARCHAR(200),
   `parent_id` INT UNSIGNED,
   `level` INT NOT NULL,
   `path` VARCHAR(500),
@@ -41,6 +45,7 @@ CREATE TABLE IF NOT EXISTS `departments` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_departments_deleted_at` (`deleted_at`),
+  INDEX `idx_departments_external_id` (`external_id`),
   FOREIGN KEY (`parent_id`) REFERENCES `departments`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -62,14 +67,12 @@ CREATE TABLE IF NOT EXISTS `department_employees` (
 CREATE TABLE IF NOT EXISTS `conversations` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `type` VARCHAR(20) NOT NULL,
-  `name` VARCHAR(200),
-  `avatar` VARCHAR(500),
-  `creator_id` INT UNSIGNED,
+  `is_deleted` BOOLEAN DEFAULT FALSE,
   `last_message_id` INT UNSIGNED,
   `last_message_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (`creator_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
+  INDEX `idx_conv_type_deleted` (`type`, `is_deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Groups table
@@ -83,19 +86,12 @@ CREATE TABLE IF NOT EXISTS `groups` (
   `announcement` TEXT,
   `invite_permission` VARCHAR(20) DEFAULT 'owner_admin',
   `ai_config` TEXT,
-  `approval_status` VARCHAR(20) DEFAULT 'approved',
-  `applied_at` DATETIME,
-  `approved_at` DATETIME,
-  `approved_by` INT UNSIGNED,
-  `reject_reason` TEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_groups_name` (`name`),
   FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`creator_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Groups table index
-CREATE INDEX IF NOT EXISTS `idx_groups_name` ON `groups`(`name`);
 
 -- Group documents table
 CREATE TABLE IF NOT EXISTS `group_documents` (
@@ -118,9 +114,8 @@ CREATE TABLE IF NOT EXISTS `conversation_members` (
   `muted` BOOLEAN DEFAULT FALSE,
   `last_read_at` DATETIME,
   `joined_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX `idx_conversation_members_conversation_id` (`conversation_id`),
-  INDEX `idx_conversation_members_user_id` (`user_id`),
-  UNIQUE INDEX `idx_user_conversation` (`user_id`, `conversation_id`),
+  UNIQUE INDEX `idx_conv_member_conv_user` (`conversation_id`, `user_id`),
+  INDEX `idx_conv_member_user` (`user_id`, `conversation_id`),
   FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -131,7 +126,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `conversation_id` INT UNSIGNED NOT NULL,
   `sender_id` INT UNSIGNED NOT NULL,
   `type` VARCHAR(20) NOT NULL,
-  `content` TEXT NOT NULL,
+  `content` MEDIUMTEXT NOT NULL,
   `quoted_message_id` INT UNSIGNED,
   `is_recalled` BOOLEAN DEFAULT FALSE,
   `is_read` BOOLEAN DEFAULT FALSE,
@@ -140,11 +135,10 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
-  INDEX `idx_messages_conversation_id` (`conversation_id`),
   INDEX `idx_messages_sender_id` (`sender_id`),
   INDEX `idx_messages_deleted_at` (`deleted_at`),
-  INDEX `idx_messages_conversation_created_at` (`conversation_id`, `created_at`),
-  FULLTEXT INDEX `ft_messages_content` (`content`),
+  INDEX `idx_msg_conv_created` (`conversation_id`, `created_at`),
+  INDEX `idx_msg_conv_read_sender` (`conversation_id`, `is_read`, `sender_id`),
   FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`quoted_message_id`) REFERENCES `messages`(`id`) ON DELETE SET NULL
@@ -197,6 +191,27 @@ CREATE TABLE IF NOT EXISTS `folders` (
   FOREIGN KEY (`parent_id`) REFERENCES `folders`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Approvals table
+-- 统一的审批表，支持多种类型的审批流程
+CREATE TABLE IF NOT EXISTS `approvals` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `target_type` VARCHAR(30) NOT NULL,     -- 审批类型: 'group_ai', 'bot', 'avatar_config'
+  `target_id` INT UNSIGNED NOT NULL,      -- 目标记录ID
+  `status` VARCHAR(20) DEFAULT 'pending', -- 状态: pending/approved/rejected
+  `applied_at` DATETIME NOT NULL,         -- 申请时间
+  `applied_by` INT UNSIGNED NOT NULL,     -- 申请人ID
+  `approved_at` DATETIME,                 -- 审批时间
+  `approved_by` INT UNSIGNED,             -- 审批人ID
+  `reject_reason` TEXT,                   -- 拒绝原因
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_approvals_target` (`target_type`, `target_id`),
+  INDEX `idx_approvals_status` (`status`),
+  INDEX `idx_approvals_applied_by` (`applied_by`),
+  FOREIGN KEY (`applied_by`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`approved_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Notes table
 CREATE TABLE IF NOT EXISTS `notes` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -226,7 +241,7 @@ CREATE TABLE IF NOT EXISTS `conversation_sessions` (
   `hidden_at` DATETIME,
   `last_visited_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE INDEX `idx_user_conversation` (`user_id`, `conversation_id`),
+  UNIQUE INDEX `idx_user_conv` (`user_id`, `conversation_id`),
   INDEX `idx_conversation_sessions_user_id` (`user_id`),
   INDEX `idx_conversation_sessions_conversation_id` (`conversation_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
@@ -259,12 +274,10 @@ CREATE TABLE IF NOT EXISTS `bots` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
-  `approval_status` VARCHAR(20) DEFAULT 'approved',
   `creator_id` INT UNSIGNED DEFAULT 0,
   `creator_name` VARCHAR(100) DEFAULT '',
   `virtual_user_id` INT UNSIGNED NULL,
   `group_id` INT UNSIGNED NULL,
-  `reject_reason` TEXT,
   `is_template` BOOLEAN DEFAULT FALSE,
   `user_config_id` INT UNSIGNED,
   `use_system_config` BOOLEAN DEFAULT TRUE,
@@ -295,8 +308,15 @@ CREATE TABLE IF NOT EXISTS `ai_usage_logs` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT UNSIGNED NOT NULL,
   `bot_id` INT UNSIGNED NOT NULL,
+  `provider` VARCHAR(64),
+  `model` VARCHAR(128),
+  `task_type` VARCHAR(64),
   `message_preview` VARCHAR(100),
   `call_type` VARCHAR(20),
+  `tokens_in` INT DEFAULT 0,
+  `tokens_out` INT DEFAULT 0,
+  `duration` BIGINT DEFAULT 0,
+  `status` VARCHAR(32),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_ai_usage_logs_user_id` (`user_id`),
   INDEX `idx_ai_usage_logs_bot_id` (`bot_id`)
@@ -388,16 +408,21 @@ CREATE TABLE IF NOT EXISTS `apps` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT UNSIGNED NOT NULL,
   `name` VARCHAR(200) NOT NULL,
+  `code` VARCHAR(100),
   `icon` VARCHAR(500),
   `category` VARCHAR(100),
   `url` VARCHAR(500),
   `status` VARCHAR(20) DEFAULT 'active',
   `open_type` VARCHAR(20) DEFAULT 'in-app',
   `is_global` BOOLEAN DEFAULT FALSE,
+  `scope_type` VARCHAR(20) DEFAULT 'all',
+  `scope_value` VARCHAR(1000),
+  `available_org_ids` VARCHAR(1000),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_apps_user_id` (`user_id`),
+  INDEX `idx_apps_code` (`code`),
   INDEX `idx_apps_deleted_at` (`deleted_at`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -470,6 +495,31 @@ CREATE TABLE IF NOT EXISTS `channel_messages` (
   FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Channel message likes table
+CREATE TABLE IF NOT EXISTS `channel_message_likes` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `message_id` INT UNSIGNED NOT NULL,
+  `user_id` INT UNSIGNED NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE INDEX `idx_channel_msg_like_user` (`message_id`, `user_id`),
+  FOREIGN KEY (`message_id`) REFERENCES `channel_messages`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Channel message comments table
+CREATE TABLE IF NOT EXISTS `channel_message_comments` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `message_id` INT UNSIGNED NOT NULL,
+  `user_id` INT UNSIGNED NOT NULL,
+  `content` TEXT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_channel_msg_comments_message_id` (`message_id`),
+  INDEX `idx_channel_msg_comments_deleted_at` (`deleted_at`),
+  FOREIGN KEY (`message_id`) REFERENCES `channel_messages`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- AI configs table
 CREATE TABLE IF NOT EXISTS `ai_configs` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -487,10 +537,29 @@ CREATE TABLE IF NOT EXISTS `ai_configs` (
   `temperature` DECIMAL(3,2) DEFAULT 0.70,
   `is_verified` BOOLEAN DEFAULT FALSE,
   `last_tested_at` DATETIME,
+  `overrides` JSON,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_ai_configs_user_id` (`user_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- AI providers table
+CREATE TABLE IF NOT EXISTS `ai_providers` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `provider` VARCHAR(50) NOT NULL,
+  `api_type` VARCHAR(20) NOT NULL,
+  `endpoint` VARCHAR(500),
+  `api_key` VARCHAR(500),
+  `models` TEXT,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `status` VARCHAR(20) DEFAULT 'connected',
+  `priority` INT DEFAULT 0,
+  `config` TEXT,
+  `last_test_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Sensitive words table
@@ -549,7 +618,7 @@ CREATE TABLE IF NOT EXISTS `client_versions` (
   INDEX `idx_client_versions_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Blacklist table
+-- Blacklists table
 CREATE TABLE IF NOT EXISTS `blacklists` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT UNSIGNED NOT NULL UNIQUE,
@@ -574,6 +643,7 @@ CREATE TABLE IF NOT EXISTS `short_links` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_short_links_user_id` (`user_id`),
+  INDEX `idx_short_links_custom_code` (`custom_code`),
   INDEX `idx_short_links_deleted_at` (`deleted_at`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -586,21 +656,6 @@ CREATE TABLE IF NOT EXISTS `approval_configs` (
   `description` VARCHAR(200),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Avatars table
-CREATE TABLE IF NOT EXISTS `avatars` (
-  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT UNSIGNED NOT NULL,
-  `name` VARCHAR(100) NOT NULL,
-  `avatar_url` VARCHAR(500) NOT NULL,
-  `avatar_style` TEXT,
-  `is_active` BOOLEAN DEFAULT TRUE,
-  `is_default` BOOLEAN DEFAULT FALSE,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX `idx_avatars_user_id` (`user_id`),
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Auth providers table
@@ -633,7 +688,6 @@ CREATE TABLE IF NOT EXISTS `external_user_mappings` (
   `deleted_at` DATETIME,
   INDEX `idx_external_user_mappings_user_id` (`user_id`),
   INDEX `idx_external_user_mappings_deleted_at` (`deleted_at`),
-  UNIQUE KEY `uk_provider_external` (`provider_name`, `external_user_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -665,6 +719,223 @@ CREATE TABLE IF NOT EXISTS `org_sync_logs` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_org_sync_logs_config_id` (`config_id`),
-  INDEX `idx_org_sync_logs_deleted_at` (`deleted_at`),
-  FOREIGN KEY (`config_id`) REFERENCES `org_sync_configs`(`id`) ON DELETE CASCADE
+  INDEX `idx_org_sync_logs_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Alert rules table
+CREATE TABLE IF NOT EXISTS `alert_rules` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(255) NOT NULL,
+  `metric` VARCHAR(255) NOT NULL,
+  `condition` VARCHAR(255) NOT NULL,
+  `threshold` DOUBLE NOT NULL,
+  `duration` INT NOT NULL,
+  `notify_methods` TEXT,
+  `notify_targets` TEXT,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Alert history table
+CREATE TABLE IF NOT EXISTS `alert_history` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `rule_id` INT UNSIGNED NOT NULL,
+  `metric` VARCHAR(255) NOT NULL,
+  `value` DOUBLE NOT NULL,
+  `status` VARCHAR(255) NOT NULL,
+  `handled_at` DATETIME,
+  `handler_id` INT UNSIGNED,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_alert_history_rule_id` (`rule_id`),
+  FOREIGN KEY (`rule_id`) REFERENCES `alert_rules`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Crash logs table
+CREATE TABLE IF NOT EXISTS `crash_logs` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED,
+  `platform` VARCHAR(255) NOT NULL,
+  `app_version` VARCHAR(255) NOT NULL,
+  `device_model` VARCHAR(255),
+  `os_version` VARCHAR(255),
+  `error_stack` TEXT,
+  `error_message` TEXT,
+  `extra` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_crash_logs_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- User feedbacks table
+CREATE TABLE IF NOT EXISTS `user_feedbacks` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED,
+  `type` VARCHAR(255) NOT NULL,
+  `content` TEXT NOT NULL,
+  `status` VARCHAR(50) DEFAULT 'pending',
+  `priority` VARCHAR(50) DEFAULT 'normal',
+  `screenshot` VARCHAR(500),
+  `reply` TEXT,
+  `handler_id` INT UNSIGNED,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_user_feedbacks_user_id` (`user_id`),
+  INDEX `idx_user_feedbacks_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- File chunks table
+CREATE TABLE IF NOT EXISTS `file_chunks` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `upload_id` VARCHAR(64) NOT NULL,
+  `file_hash` VARCHAR(64) NOT NULL,
+  `chunk_index` INT NOT NULL,
+  `chunk_hash` VARCHAR(64) NOT NULL,
+  `chunk_size` BIGINT NOT NULL,
+  `storage_path` VARCHAR(500) NOT NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_upload_chunk` (`upload_id`, `chunk_index`),
+  INDEX `idx_file_chunks_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Upload tasks table
+CREATE TABLE IF NOT EXISTS `upload_tasks` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `upload_id` VARCHAR(64) NOT NULL UNIQUE,
+  `user_id` INT UNSIGNED NOT NULL,
+  `filename` VARCHAR(255) NOT NULL,
+  `file_size` BIGINT NOT NULL,
+  `file_hash` VARCHAR(64) NOT NULL,
+  `total_chunks` INT NOT NULL,
+  `uploaded_chunks` INT DEFAULT 0,
+  `folder_id` INT UNSIGNED,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_upload_tasks_user_id` (`user_id`),
+  INDEX `idx_upload_tasks_folder_id` (`folder_id`),
+  INDEX `idx_upload_tasks_deleted_at` (`deleted_at`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`folder_id`) REFERENCES `folders`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Avatar configs table
+CREATE TABLE IF NOT EXISTS `avatar_configs` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL UNIQUE,
+  `name` VARCHAR(100) DEFAULT '我的分身',
+  `enabled` BOOLEAN DEFAULT FALSE,
+  `auto_learned_persona` TEXT,
+  `custom_persona_addon` TEXT,
+  `persona_version` INT DEFAULT 0,
+  `last_learned_at` DATETIME,
+  `knowledge_scope_json` TEXT,
+  `trigger_rules_json` TEXT,
+  `reply_strategy_json` TEXT,
+  `model_config_id` INT UNSIGNED,
+  `use_system_config` BOOLEAN DEFAULT TRUE,
+  `takeover_cooldown` INT DEFAULT 10,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` DATETIME,
+  INDEX `idx_avatar_configs_deleted_at` (`deleted_at`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`model_config_id`) REFERENCES `ai_configs`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Avatar sessions table
+CREATE TABLE IF NOT EXISTS `avatar_sessions` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `conversation_id` INT UNSIGNED NOT NULL,
+  `user_id` INT UNSIGNED NOT NULL,
+  `avatar_enabled` BOOLEAN DEFAULT FALSE,
+  `takeover_until` DATETIME,
+  `last_reply_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE INDEX `idx_avatar_user_conv` (`user_id`, `conversation_id`),
+  FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Avatar tool bindings table
+CREATE TABLE IF NOT EXISTS `avatar_tool_bindings` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `avatar_id` INT UNSIGNED NOT NULL,
+  `tool_id` VARCHAR(64),
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `priority` INT DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_avatar_tool_bindings_avatar_id` (`avatar_id`),
+  FOREIGN KEY (`avatar_id`) REFERENCES `avatar_configs`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Avatar learn tasks table
+CREATE TABLE IF NOT EXISTS `avatar_learn_tasks` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL,
+  `status` VARCHAR(20) DEFAULT 'pending',
+  `progress` INT DEFAULT 0,
+  `message_count` INT DEFAULT 0,
+  `error` TEXT,
+  `started_at` DATETIME,
+  `completed_at` DATETIME,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_avatar_learn_tasks_user_id` (`user_id`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Document process statuses table
+CREATE TABLE IF NOT EXISTS `document_process_statuses` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `group_doc_id` INT UNSIGNED NOT NULL,
+  `status` VARCHAR(20) DEFAULT 'pending',
+  `error` TEXT,
+  `chunk_count` INT DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_doc_process_statuses_group_doc_id` (`group_doc_id`),
+  FOREIGN KEY (`group_doc_id`) REFERENCES `group_documents`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Realtime sessions table
+CREATE TABLE IF NOT EXISTS `realtime_sessions` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `type` VARCHAR(20) NOT NULL,
+  `initiator_id` INT UNSIGNED NOT NULL,
+  `conversation_id` INT UNSIGNED NOT NULL,
+  `status` VARCHAR(20) DEFAULT 'pending',
+  `started_at` DATETIME,
+  `ended_at` DATETIME,
+  `metadata` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_realtime_sessions_type` (`type`),
+  INDEX `idx_realtime_sessions_initiator_id` (`initiator_id`),
+  INDEX `idx_realtime_sessions_conversation_id` (`conversation_id`),
+  FOREIGN KEY (`initiator_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Realtime participants table
+CREATE TABLE IF NOT EXISTS `realtime_participants` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `session_id` VARCHAR(36) NOT NULL,
+  `user_id` INT UNSIGNED NOT NULL,
+  `role` VARCHAR(20) DEFAULT 'viewer',
+  `status` VARCHAR(20) DEFAULT 'pending',
+  `requested_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `approved_at` DATETIME,
+  `joined_at` DATETIME,
+  `left_at` DATETIME,
+  INDEX `idx_realtime_participants_session_id` (`session_id`),
+  INDEX `idx_realtime_participants_user_id` (`user_id`),
+  FOREIGN KEY (`session_id`) REFERENCES `realtime_sessions`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

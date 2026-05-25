@@ -159,11 +159,16 @@ class MigrationEngine:
         with self.target_conn.cursor() as target_cursor:
             for idx, old_user in enumerate(old_users, 1):
                 try:
+                    oim_type = old_user.get('type', '0')
+                    user_type_map = {'0': 'user', '1': 'admin', '2': 'system'}
+                    user_type = user_type_map.get(oim_type, 'user')
+
                     new_user_data = {
                         'username': old_user['account'] if old_user.get('account') else f"user_{old_user.get('number', '')}",
                         'password_hash': old_user.get('password', ''),
                         'nickname': old_user.get('nickname', ''),
                         'avatar': old_user.get('avatar', ''),
+                        'type': user_type,
                         'signature': old_user.get('signature', ''),
                         'phone': old_user.get('mobile', ''),
                         'email': old_user.get('email', ''),
@@ -177,11 +182,11 @@ class MigrationEngine:
 
                     target_cursor.execute("""
                         INSERT INTO users (
-                            username, password_hash, nickname, avatar, signature,
+                            username, password_hash, nickname, avatar, type, signature,
                             phone, email, status, ip, two_factor_enabled,
                             created_at, updated_at, deleted_at
                         ) VALUES (
-                            %(username)s, %(password_hash)s, %(nickname)s, %(avatar)s, %(signature)s,
+                            %(username)s, %(password_hash)s, %(nickname)s, %(avatar)s, %(type)s, %(signature)s,
                             %(phone)s, %(email)s, %(status)s, %(ip)s, %(two_factor_enabled)s,
                             %(created_at)s, %(updated_at)s, %(deleted_at)s
                         )
@@ -221,9 +226,6 @@ class MigrationEngine:
 
                     conversation_data = {
                         'type': 'group',
-                        'name': old_group['name'],
-                        'avatar': old_group.get('avatar', ''),
-                        'creator_id': creator_id,
                         'last_message_id': None,
                         'last_message_at': None,
                         'created_at': datetime.now(),
@@ -232,10 +234,10 @@ class MigrationEngine:
 
                     target_cursor.execute("""
                         INSERT INTO conversations (
-                            type, name, avatar, creator_id, last_message_id,
+                            type, last_message_id,
                             last_message_at, created_at, updated_at
                         ) VALUES (
-                            %(type)s, %(name)s, %(avatar)s, %(creator_id)s, %(last_message_id)s,
+                            %(type)s, %(last_message_id)s,
                             %(last_message_at)s, %(created_at)s, %(updated_at)s
                         )
                     """, conversation_data)
@@ -247,25 +249,19 @@ class MigrationEngine:
                         'name': old_group['name'],
                         'avatar': old_group.get('avatar', ''),
                         'creator_id': creator_id,
-                        'max_members': old_group.get('maxCount', 500),
-                        'current_members': 0,
                         'announcement': old_group.get('intro', ''),
-                        'join_permission': 'invite_only',
-                        'is_muted': False,
-                        'is_disbanded': False,
+                        'invite_permission': 'invite_only',
                         'created_at': datetime.now(),
                         'updated_at': datetime.now(),
                     }
 
                     target_cursor.execute("""
                         INSERT INTO groups (
-                            conversation_id, name, avatar, creator_id, max_members,
-                            current_members, announcement, join_permission, is_muted,
-                            is_disbanded, created_at, updated_at
+                            conversation_id, name, avatar, creator_id,
+                            announcement, invite_permission, created_at, updated_at
                         ) VALUES (
-                            %(conversation_id)s, %(name)s, %(avatar)s, %(creator_id)s, %(max_members)s,
-                            %(current_members)s, %(announcement)s, %(join_permission)s, %(is_muted)s,
-                            %(is_disbanded)s, %(created_at)s, %(updated_at)s
+                            %(conversation_id)s, %(name)s, %(avatar)s, %(creator_id)s,
+                            %(announcement)s, %(invite_permission)s, %(created_at)s, %(updated_at)s
                         )
                     """, groups_data)
 
@@ -325,9 +321,6 @@ class MigrationEngine:
 
                     conversation_data = {
                         'type': 'single',
-                        'name': None,
-                        'avatar': None,
-                        'creator_id': user1_new,
                         'last_message_id': None,
                         'last_message_at': None,
                         'created_at': datetime.now(),
@@ -336,10 +329,10 @@ class MigrationEngine:
 
                     target_cursor.execute("""
                         INSERT INTO conversations (
-                            type, name, avatar, creator_id, last_message_id,
+                            type, last_message_id,
                             last_message_at, created_at, updated_at
                         ) VALUES (
-                            %(type)s, %(name)s, %(avatar)s, %(creator_id)s, %(last_message_id)s,
+                            %(type)s, %(last_message_id)s,
                             %(last_message_at)s, %(created_at)s, %(updated_at)s
                         )
                     """, conversation_data)
@@ -462,6 +455,7 @@ class MigrationEngine:
                     'quoted_message_id': None,
                     'is_recalled': False,
                     'is_read': False,
+                    'ai_type': '',
                     'recalled_at': None,
                     'created_at': self._datetime_or_default(item.get('dateTime')),
                     'updated_at': datetime.now(),
@@ -519,6 +513,7 @@ class MigrationEngine:
                     'quoted_message_id': None,
                     'is_recalled': False,
                     'is_read': False,
+                    'ai_type': '',
                     'recalled_at': None,
                     'created_at': self._datetime_or_default(item.get('dateTime')),
                     'updated_at': datetime.now(),
@@ -545,11 +540,11 @@ class MigrationEngine:
                 cursor.execute("""
                     INSERT INTO messages (
                         conversation_id, sender_id, type, content,
-                        quoted_message_id, is_recalled, is_read, recalled_at,
+                        quoted_message_id, is_recalled, is_read, ai_type, recalled_at,
                         created_at, updated_at, deleted_at
                     ) VALUES (
                         %(conversation_id)s, %(sender_id)s, %(type)s, %(content)s,
-                        %(quoted_message_id)s, %(is_recalled)s, %(is_read)s, %(recalled_at)s,
+                        %(quoted_message_id)s, %(is_recalled)s, %(is_read)s, %(ai_type)s, %(recalled_at)s,
                         %(created_at)s, %(updated_at)s, %(deleted_at)s
                     )
                 """, msg_data)
@@ -719,9 +714,9 @@ class MigrationEngine:
                 try:
                     target_cursor.execute("""
                         INSERT INTO system_messages (
-                            type, title, content, target_type, target_id,
+                            title, content, sender_id, status, target_type, target_id,
                             created_at
-                        ) VALUES ('system', %s, %s, 'all', NULL, %s)
+                        ) VALUES (%s, %s, 1, 'active', 'all', NULL, %s)
                     """, (
                         notice.get('title', ''),
                         notice.get('content', ''),
@@ -755,10 +750,10 @@ class MigrationEngine:
 
                     target_cursor.execute("""
                         INSERT INTO notifications (
-                            user_id, type, title, content, is_read, link,
+                            user_id, type, title, content, `read`,
                             created_at
                         ) VALUES (%s, 'system', %s, %s, 
-                            CASE WHEN %s = '1' THEN TRUE ELSE FALSE END, NULL, %s)
+                            CASE WHEN %s = '1' THEN TRUE ELSE FALSE END, %s)
                     """, (
                         user_id,
                         notification.get('title', ''),

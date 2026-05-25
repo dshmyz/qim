@@ -1,4 +1,4 @@
-import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import {
   memo,
   useCallback,
@@ -172,6 +172,19 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
     return null;
   }
 
+  const maskStyle: CSSProperties | undefined = bounds
+    ? {
+        left: bounds.x,
+        top: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        right: "auto",
+        bottom: "auto",
+        backgroundColor: "transparent",
+        boxShadow: `0 0 0 ${Math.max(width, height)}px rgba(0, 0, 0, 0.3)`,
+      }
+    : undefined;
+
   return (
     <div
       ref={elRef}
@@ -179,7 +192,7 @@ export default memo(function ScreenshotsBackground(): ReactElement | null {
       onPointerDown={onPointerDown}
     >
       <img className="screenshots-background-image" src={url} />
-      <div className="screenshots-background-mask" />
+      <div className="screenshots-background-mask" style={maskStyle} />
       {position && !bounds && (
         <ScreenshotsMagnifier x={position?.x} y={position?.y} />
       )}

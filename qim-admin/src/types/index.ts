@@ -119,10 +119,15 @@ export interface StatisticsData {
   }
 }
 
-export interface ApiResponse<T = unknown> {
+export interface ApiResponse<T = any> {
   code: number
-  message: string
+  message?: string
   data: T
+  pagination?: {
+    current_page: number
+    total_pages: number
+    total: number
+  }
 }
 
 export interface PaginationParams {

@@ -9,6 +9,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { getProductName } from '../../config/appConfig'
 
 interface Props {
   size?: number | 'small' | 'medium' | 'large' | 'extraLarge'
@@ -19,7 +20,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   size: 'medium',
   src: './app-logo.png',
-  alt: 'QIM Logo'
+  alt: `${getProductName()} Logo`
 })
 
 const sizeMap = {

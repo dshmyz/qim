@@ -147,6 +147,10 @@
                   <span class="version-badge">v1.0.0</span>
                   <span class="about-text">当前为最新版本</span>
                 </div>
+                <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
+                  <i class="fas fa-bullhorn"></i>
+                  意见反馈
+                </button>
               </div>
             </div>
           </div>
@@ -279,6 +283,7 @@ const emit = defineEmits<{
   'saveTwoFactor': [enabled: boolean]
   'openSecurity': []
   'browseDirectory': []
+  'openFeedback': []
 }>()
 
 const localTab = ref('basic')

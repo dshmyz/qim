@@ -315,6 +315,7 @@ function createWindow() {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
     }
+    globalShortcut.unregisterAll()
     mainWindow = null
   })
 
@@ -352,26 +353,41 @@ function createWindow() {
   // 初始化截图功能
   let screenshotInstance = null
   let screenshotInitError = null
+  let screenshotContentProtectionEnabled = false
+
+  const restoreMainWindow = () => {
+    if (screenshotContentProtectionEnabled && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setContentProtection(false)
+      } catch (err) {
+        console.error('[screenshot] Failed to disable content protection:', err)
+      } finally {
+        screenshotContentProtectionEnabled = false
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  }
 
   try {
     console.log('Initializing screenshots...')
     screenshotInstance = new screenshots({ singleWindow: true })
+
     screenshotInstance.on('ok', (e, buffer, data) => {
       console.log('[screenshot] Captured, buffer length:', buffer.length)
-      if (mainWindow) {
-        mainWindow.show()
-        const img = nativeImage.createFromBuffer(buffer)
-        const dataUrl = img.toDataURL()
-        console.log('[screenshot] DataURL created, length:', dataUrl.length)
-        mainWindow.webContents.send('screenshot-taken', dataUrl)
-      }
+      restoreMainWindow()
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      const img = nativeImage.createFromBuffer(buffer)
+      const dataUrl = img.toDataURL()
+      mainWindow.webContents.send('screenshot-taken', dataUrl)
     })
 
     screenshotInstance.on('cancel', (e) => {
       console.log('[screenshot] Cancelled')
-      if (mainWindow) {
-        mainWindow.show()
-      }
+      restoreMainWindow()
     })
 
     screenshotInstance.on('save', (e, buffer, data) => {
@@ -388,19 +404,11 @@ function createWindow() {
     })
 
     console.log('[screenshot] Instance created successfully')
-    
+
     // 注册截图快捷键
     globalShortcut.register('CommandOrControl+Shift+A', () => {
       console.log('Global shortcut: CommandOrControl+Shift+A pressed, starting screenshot')
-      if (screenshotInstance) {
-        try {
-          screenshotInstance.startCapture()
-        } catch (error) {
-          console.error('[screenshot] Error starting capture:', error)
-        }
-      } else {
-        console.error('[screenshot] Cannot capture: instance not initialized')
-      }
+      screenshotInstance?.startCapture?.()
     })
   } catch (error) {
     console.error('[screenshot] Failed to initialize:', error)
@@ -409,19 +417,34 @@ function createWindow() {
 
   ipcMain.on('take-screenshot', () => {
     console.log('[screenshot] Received take-screenshot event')
-    console.log('[screenshot] Instance exists:', !!screenshotInstance)
-    console.log('[screenshot] Init error:', screenshotInitError)
-
-    if (screenshotInstance) {
-      try {
-        console.log('[screenshot] Starting capture...')
-        screenshotInstance.startCapture()
-      } catch (error) {
-        console.error('[screenshot] Error starting capture:', error)
-      }
-    } else {
-      console.error('[screenshot] Cannot capture: instance not initialized')
+    if (!screenshotInstance) {
+      console.error('[screenshot] Cannot capture: not initialized')
+      return
     }
+    screenshotInstance.startCapture().catch(err => {
+      console.error('[screenshot] startCapture error:', err)
+    })
+  })
+
+  // 隐藏窗口截图：开启 content protection，避免主窗口进入截图底图
+  ipcMain.on('take-screenshot-hidden', () => {
+    console.log('[screenshot] Received take-screenshot-hidden event')
+    if (!screenshotInstance) {
+      console.error('[screenshot] Cannot capture: not initialized')
+      return
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setContentProtection(true)
+        screenshotContentProtectionEnabled = true
+      } catch (err) {
+        console.error('[screenshot] Failed to enable content protection:', err)
+      }
+    }
+    screenshotInstance.startCapture().catch(err => {
+      console.error('[screenshot] hidden startCapture error:', err)
+      restoreMainWindow()
+    })
   })
 
   ipcMain.on('minimize-window', () => {
@@ -667,6 +690,7 @@ app.whenReady().then(() => {
   console.log('App ready')
   createWindow()
   createTray()
+  setupAutoUpdater()
 
   if (app.dock) {
     const image = loadIcon(512)
@@ -674,6 +698,13 @@ app.whenReady().then(() => {
       app.dock.setIcon(image)
     }
   }
+
+  // 启动时清理一次头像缓存
+  cleanupAvatarCache()
+  // 每天清理一次
+  setInterval(() => {
+    cleanupAvatarCache()
+  }, 24 * 60 * 60 * 1000)
 })
 
 // macOS: 通过 open-url 事件接收自定义协议回调（生产环境）
@@ -1080,15 +1111,3 @@ function cleanupAvatarCache(maxAge = 7 * 24 * 60 * 60 * 1000) {
     console.error('Error cleaning up avatar cache:', error)
   }
 }
-
-app.whenReady().then(() => {
-  setupAutoUpdater()
-  
-  // 启动时清理一次
-  cleanupAvatarCache()
-  
-  // 每天清理一次
-  setInterval(() => {
-    cleanupAvatarCache()
-  }, 24 * 60 * 60 * 1000)
-})

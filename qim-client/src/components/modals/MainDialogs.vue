@@ -10,8 +10,8 @@
         <div class="about-dialog-logo">
           <AppLogo size="extraLarge" />
         </div>
-        <h2>QIM（青雀）</h2>
-        <p class="version">版本: 1.0.0</p>
+        <h2>{{ productFullName }}</h2>
+        <p class="version">版本: {{ appVersion }}</p>
         <p class="date">发布日期: 2026-04-11</p>
         <div class="credits-section">
           <p class="credit-item">
@@ -27,10 +27,13 @@
           <i class="fas fa-envelope"></i>
           联系邮箱: <a href="mailto:huangqun@buaa.edu.cn">huangqun@buaa.edu.cn</a>
         </p>
-        <p class="copyright">© 2026 青雀 QIM. All rights reserved.</p>
+        <p class="copyright">{{ copyrightText }}</p>
         <p class="description">一款现代化的即时通讯应用，致力于提供简洁、高效、智能化的沟通体验，让团队协作更顺畅。</p>
       </div>
       <div class="about-dialog-footer">
+        <button class="about-dialog-button secondary" @click="$emit('openFeedback')">
+          <i class="fas fa-comments"></i> 意见反馈
+        </button>
         <button class="about-dialog-button" @click="$emit('closeAbout')">确定</button>
       </div>
     </div>
@@ -141,6 +144,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import AppLogo from '../shared/AppLogo.vue'
+import { APP_CONFIG, getCopyrightText } from '../../config/appConfig'
+
+const productFullName = APP_CONFIG.productFullName
+const appVersion = APP_CONFIG.version
+const copyrightText = getCopyrightText()
 
 interface Conversation {
   id: string | number
@@ -181,6 +189,7 @@ const emit = defineEmits<{
   'downloadUpdate': []
   'closeSystemMessage': []
   'sendSystemMessage': [message: SystemMessage]
+  'openFeedback': []
 }>()
 
 const localMessage = ref<SystemMessage>({ ...props.systemMessage })
@@ -333,6 +342,18 @@ watch(() => props.systemMessage, (val) => {
 .about-dialog-button {
   background: var(--primary-color, #409eff);
   color: white;
+}
+
+.about-dialog-button.secondary {
+  background: var(--btn-bg, #f5f5f5);
+  color: var(--text-color, #333);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.about-dialog-button.secondary i {
+  color: var(--primary-color, #409eff);
 }
 
 .logout-dialog-button.cancel-button,

@@ -22,6 +22,15 @@
           maxlength="20"
         />
       </div>
+      <div class="setting-item">
+        <label class="toggle-label">
+          <span>自动提取待办</span>
+          <label class="switch">
+            <input type="checkbox" :checked="modelValue.aiExtractTodos" @change="update('aiExtractTodos', ($event.target as HTMLInputElement).checked)" />
+            <span class="slider round"></span>
+          </label>
+        </label>
+      </div>
     </div>
   </div>
 </template>

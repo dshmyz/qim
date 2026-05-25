@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"qim-server/model"
 	"qim-server/orgsync"
@@ -42,7 +43,9 @@ func NewAPISyncer(model *model.OrgSyncConfig) (*APISyncer, error) {
 
 	return &APISyncer{
 		config: &cfg,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: time.Duration(cfg.Timeout) * time.Second,
+		},
 		dbID:   model.ID,
 	}, nil
 }
