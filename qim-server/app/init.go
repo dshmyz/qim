@@ -101,6 +101,15 @@ func initAdminUser() {
 		if err := tx.Create(&adminUser).Error; err != nil {
 			return err
 		}
+
+		adminRole := model.UserRole{
+			UserID: adminUser.ID,
+			Role:   "system_admin",
+		}
+		if err := tx.Create(&adminRole).Error; err != nil {
+			return err
+		}
+
 		logger.WithModule("Init").Info("创建管理员用户成功", "id", adminUser.ID, "username", adminUsername)
 		return nil
 	})

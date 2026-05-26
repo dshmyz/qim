@@ -23,15 +23,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 500,
-      minify: isProd ? 'terser' : false,
-      terserOptions: isProd ? {
-        compress: {
-          drop_console: true,
-          drop_debugger: true,
-          passes: 2,
-          pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn']
-        }
-      } : undefined,
+      minify: isProd ? 'esbuild' : false,
       rollupOptions: {
         output: {
           manualChunks(id) {

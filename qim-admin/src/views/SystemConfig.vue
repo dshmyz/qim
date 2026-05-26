@@ -175,6 +175,7 @@ const configForm = reactive<SystemConfig>({
   enableFileUpload: true,
   enableAI: true,
   enableReadReceipt: true,
+  allowedFileTypes: [],
 })
 
 const fetchConfig = async () => {

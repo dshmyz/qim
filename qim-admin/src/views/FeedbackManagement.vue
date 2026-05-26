@@ -10,7 +10,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon blue">
-            <el-icon><MessageSquare /></el-icon>
+            <el-icon><Message /></el-icon>
           </div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.total }}</div>
@@ -32,7 +32,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon green">
-            <el-icon><CheckCircle /></el-icon>
+            <el-icon><CircleCheck /></el-icon>
           </div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.resolved }}</div>
@@ -43,7 +43,7 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon purple">
-            <el-icon><AlertCircle /></el-icon>
+            <el-icon><Warning /></el-icon>
           </div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.bug }}</div>
@@ -123,7 +123,7 @@
         </el-table-column>
         <el-table-column prop="priority" label="优先级" width="100">
           <template #default="{ row }">
-            <el-tag :type="getPriorityTagType(row.priority)">{{ getPriorityLabel(row.priority) }}</el-tag>
+            <el-tag :type="getPriorityTagType(row.priority || '')">{{ getPriorityLabel(row.priority || '') }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -173,13 +173,13 @@
             <el-tag :type="getTypeTagType(currentFeedback.type)">{{ getTypeLabel(currentFeedback.type) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="getPriorityTagType(currentFeedback.priority)">{{ getPriorityLabel(currentFeedback.priority) }}</el-tag>
+            <el-tag :type="getPriorityTagType(currentFeedback.priority || '')">{{ getPriorityLabel(currentFeedback.priority || '') }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusTagType(currentFeedback.status)">{{ getStatusLabel(currentFeedback.status) }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatTime(currentFeedback.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="更新时间">{{ formatTime(currentFeedback.updated_at) }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatTime(currentFeedback.created_at || currentFeedback.createdAt || '') }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ formatTime(currentFeedback.updated_at || '') }}</el-descriptions-item>
           <el-descriptions-item label="处理人ID">{{ currentFeedback.handler_id || '未分配' }}</el-descriptions-item>
         </el-descriptions>
 
@@ -227,9 +227,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { MessageSquare, Clock, CheckCircle, AlertCircle } from '@element-plus/icons-vue'
-import { getFeedbacks, updateFeedback } from '../../api/client'
-import type { UserFeedback } from '../../types/client'
+import { Message, Clock, CircleCheck, Warning } from '@element-plus/icons-vue'
+import { getFeedbacks, updateFeedback } from '@/api/client'
+import type { UserFeedback } from '@/types/client'
 
 const loading = ref(false)
 const showDetailModal = ref(false)

@@ -17,17 +17,17 @@ export const getGroupById = (id: number): Promise<AxiosResponse<ApiResponse<Grou
   })
 }
 
-export const getGroupMembers = (conversationId: number, params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<ConversationMember>>>> => {
+export const getGroupMembers = (groupId: number, params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<ConversationMember>>>> => {
   return request({
-    url: `/v1/conversations/${conversationId}/members`,
+    url: `/v1/groups/${groupId}/members`,
     method: 'get',
     params,
   })
 }
 
-export const removeGroupMember = (conversationId: number, userId: number): Promise<AxiosResponse<ApiResponse<void>>> => {
+export const removeGroupMember = (groupId: number, userId: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/v1/conversations/${conversationId}/members/${userId}`,
+    url: `/v1/groups/${groupId}/members/${userId}`,
     method: 'delete',
   })
 }
@@ -35,6 +35,6 @@ export const removeGroupMember = (conversationId: number, userId: number): Promi
 export const deleteGroup = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
     url: `/v1/admin/groups/${id}`,
-    method: 'DELETE',
+    method: 'delete',
   })
 }

@@ -211,13 +211,16 @@ function createWindow() {
   }
 
   const icon = loadIcon(256)
+  const isMac = process.platform === 'darwin'
+  const isLinux = process.platform === 'linux'
 
   // 创建启动页面窗口
   const splashWindow = new BrowserWindow({
     width: 360,
     height: 320,
     frame: false,
-    transparent: true,
+    backgroundColor: isLinux ? '#e8ecf1' : '#00000000',
+    transparent: !isLinux,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
@@ -231,15 +234,13 @@ function createWindow() {
   splashWindow.loadURL(splashPath)
   console.log(`Loading splash: ${splashPath}`)
 
-  const isMac = process.platform === 'darwin'
-  const isLinux = process.platform === 'linux'
   const windowOptions = {
     width: 1200,
     height: 800,
     icon: icon,
     show: false,
-    backgroundColor: isLinux ? '#00000000' : '#e8ecf1',
-    transparent: isLinux,
+    backgroundColor: '#e8ecf1',
+    transparent: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

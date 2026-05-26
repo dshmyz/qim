@@ -5,7 +5,7 @@ import type { MessageSearchParams, MessageSearchResult, Message } from '@/types/
 
 export function searchMessages(params: MessageSearchParams): Promise<AxiosResponse<ApiResponse<MessageSearchResult>>> {
   return request({
-    url: '/messages/search',
+    url: '/v1/messages/search',
     method: 'get',
     params,
   })
@@ -13,14 +13,14 @@ export function searchMessages(params: MessageSearchParams): Promise<AxiosRespon
 
 export function getMessageDetail(id: number): Promise<AxiosResponse<ApiResponse<Message>>> {
   return request({
-    url: `/messages/${id}`,
+    url: `/v1/messages/${id}`,
     method: 'get',
   })
 }
 
 export function exportMessages(params: Omit<MessageSearchParams, 'page' | 'pageSize'>): Promise<AxiosResponse<ApiResponse<void>>> {
   return request({
-    url: '/messages/export',
+    url: '/v1/messages/export',
     method: 'post',
     data: params,
   })
@@ -28,7 +28,7 @@ export function exportMessages(params: Omit<MessageSearchParams, 'page' | 'pageS
 
 export function getExportTaskStatus(taskId: string): Promise<AxiosResponse<ApiResponse<{ status: string; downloadUrl: string }>>> {
   return request({
-    url: `/messages/export/${taskId}`,
+    url: `/v1/messages/export/${taskId}`,
     method: 'get',
   })
 }

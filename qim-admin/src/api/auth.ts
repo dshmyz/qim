@@ -4,8 +4,7 @@ import type { AxiosResponse } from 'axios'
 
 export const login = (data: { username: string; password: string }): Promise<AxiosResponse<ApiResponse<{ token: string; user: UserInfo }>>> => {
   return request({
-    baseURL: '/api/v1',
-    url: '/auth/login',
+    url: '/v1/auth/login',
     method: 'post',
     data,
   })
@@ -13,16 +12,14 @@ export const login = (data: { username: string; password: string }): Promise<Axi
 
 export const logout = (): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    baseURL: '/api/v1',
-    url: '/auth/logout',
+    url: '/v1/auth/logout',
     method: 'post',
   })
 }
 
 export const getCurrentUser = (): Promise<AxiosResponse<ApiResponse<UserInfo>>> => {
   return request({
-    baseURL: '/api/v1',
-    url: '/users/me',
+    url: '/v1/users/me',
     method: 'get',
   })
 }

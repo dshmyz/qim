@@ -209,12 +209,12 @@ func Load() *Config {
 	}
 
 	// 字节跳动豆包配置
-	bytedanceAPIKey := os.Getenv("AI_BYTEANCE_API_KEY")
+	bytedanceAPIKey := os.Getenv("AI_BYTEDANCE_API_KEY")
 	if bytedanceAPIKey != "" {
 		cfg.AI.Bytedance.APIKey = bytedanceAPIKey
 	}
 
-	bytedanceModel := os.Getenv("AI_BYTEANCE_MODEL")
+	bytedanceModel := os.Getenv("AI_BYTEDANCE_MODEL")
 	if bytedanceModel != "" {
 		cfg.AI.Bytedance.Model = bytedanceModel
 	}
@@ -240,9 +240,17 @@ func Load() *Config {
 		envSecret := os.Getenv("JWT_SECRET")
 		if envSecret != "" {
 			cfg.JWT.Secret = envSecret
+		} else if cfg.Server.Mode == "release" {
+			fmt.Fprintln(os.Stderr, "[FATAL] JWT_SECRET 未配置！生产环境必须设置 JWT_SECRET 环境变量或配置文件中的 jwt.secret")
+			os.Exit(1)
 		} else {
 			cfg.JWT.Secret = generateRandomSecret()
-			fmt.Println("[WARN] JWT_SECRET 未配置，已自动生成随机密钥。重启后将失效，请设置 JWT_SECRET 环境变量。")
+			fmt.Println("[WARN] ============================================================")
+			fmt.Println("[WARN] JWT_SECRET 未配置，已自动生成随机密钥。")
+			fmt.Println("[WARN] 重启后密钥将变化，所有已颁发的 Token 将失效！")
+			fmt.Println("[WARN] 请设置 JWT_SECRET 环境变量以使用固定密钥。")
+			fmt.Println("[WARN] 生产环境未设置 JWT_SECRET 将拒绝启动。")
+			fmt.Println("[WARN] ============================================================")
 		}
 	}
 

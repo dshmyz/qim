@@ -30,7 +30,7 @@ export const getUsers = (params: PaginationParams & { keyword?: string }): Promi
 
 export const getUserById = (id: number): Promise<AxiosResponse<ApiResponse<User>>> => {
   return request({
-    url: `/users/${id}`,
+    url: `/v1/users/${id}`,
     method: 'get',
   })
 }
@@ -45,7 +45,7 @@ export const createUser = (data: CreateUserParams): Promise<AxiosResponse<ApiRes
 
 export const updateUser = (id: number, data: UpdateUserParams): Promise<AxiosResponse<ApiResponse<User>>> => {
   return request({
-    url: `/v1/users/${id}`,
+    url: `/v1/admin/users/${id}`,
     method: 'put',
     data,
   })
@@ -53,7 +53,7 @@ export const updateUser = (id: number, data: UpdateUserParams): Promise<AxiosRes
 
 export const deleteUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/users/${id}`,
+    url: `/v1/admin/users/${id}`,
     method: 'delete',
   })
 }
@@ -75,14 +75,14 @@ export const removeRole = (userId: number, role: string): Promise<AxiosResponse<
 
 export const banUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/users/${id}/ban`,
+    url: `/v1/admin/users/${id}/ban`,
     method: 'post',
   })
 }
 
 export const unbanUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/users/${id}/unban`,
+    url: `/v1/admin/users/${id}/unban`,
     method: 'post',
   })
 }

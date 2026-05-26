@@ -156,24 +156,24 @@
         <el-descriptions-item label="操作人">{{ currentLog?.username }}</el-descriptions-item>
         <el-descriptions-item label="操作人ID">{{ currentLog?.user_id }}</el-descriptions-item>
         <el-descriptions-item label="操作">{{ currentLog ? actionLabel(currentLog.action) : '' }}</el-descriptions-item>
-        <el-descriptions-item label="模块">{{ moduleLabel(currentLog?.module) }}</el-descriptions-item>
+        <el-descriptions-item label="模块">{{ moduleLabel(currentLog?.module || '') }}</el-descriptions-item>
         <el-descriptions-item label="请求方法" :span="2">{{ currentLog?.request_method || '-' }}</el-descriptions-item>
         <el-descriptions-item label="请求 URL" :span="2">{{ currentLog?.request_url || '-' }}</el-descriptions-item>
         <el-descriptions-item label="IP 地址">{{ currentLog?.ip }}</el-descriptions-item>
         <el-descriptions-item label="耗时">{{ currentLog?.duration }}ms</el-descriptions-item>
         <el-descriptions-item label="状态" :span="2">
-          <el-tag :type="isSuccess(currentLog?.response) ? 'success' : 'danger'">
-            {{ isSuccess(currentLog?.response) ? '成功' : '失败' }}
+          <el-tag :type="isSuccess(currentLog?.response || '') ? 'success' : 'danger'">
+            {{ isSuccess(currentLog?.response || '') ? '成功' : '失败' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="User-Agent" :span="2">{{ currentLog?.user_agent || '-' }}</el-descriptions-item>
       </el-descriptions>
 
       <el-divider content-position="left">请求参数</el-divider>
-      <pre class="json-block">{{ formatJson(currentLog?.request_body) }}</pre>
+      <pre class="json-block">{{ formatJson(currentLog?.request_body || '') }}</pre>
 
       <el-divider content-position="left">响应结果</el-divider>
-      <pre class="json-block">{{ formatJson(currentLog?.response) }}</pre>
+      <pre class="json-block">{{ formatJson(currentLog?.response || '') }}</pre>
 
       <div class="detail-footer">
         <span class="detail-time">操作时间：{{ currentLog?.created_at }}</span>
@@ -187,7 +187,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import type { OperationLog } from '@/types'
-import { getOperationLogs, exportOperationLogs, getOperationLogStats } from '@/api/operationLogs'
+import { getOperationLogs, exportOperationLogs, getOperationLogStats, getOperationLogDetail } from '@/api/operationLogs'
 
 const actionOptions = ['create', 'update', 'delete', 'login', 'logout', 'assign', 'revoke', 'export']
 const moduleOptions = ['user', 'group', 'conversation', 'message', 'system', 'config', 'role', 'file', 'ai']

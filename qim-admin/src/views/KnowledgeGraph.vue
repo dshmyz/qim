@@ -136,6 +136,8 @@ interface GraphData {
   total_edges: number
 }
 
+type LayoutNode = GraphNode & { x: number; y: number }
+
 const graphRef = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const detailDialogVisible = ref(false)
@@ -185,33 +187,38 @@ const fetchGraphData = async () => {
 const renderGraph = (data: GraphData) => {
   if (!graphRef.value) return
 
-  canvas = document.createElement('canvas')
-  canvas.style.width = '100%'
-  canvas.style.height = '100%'
+  const graphCanvas = document.createElement('canvas')
+  canvas = graphCanvas
+  graphCanvas.style.width = '100%'
+  graphCanvas.style.height = '100%'
   graphRef.value.innerHTML = ''
-  graphRef.value.appendChild(canvas)
+  graphRef.value.appendChild(graphCanvas)
 
-  const ctx = canvas.getContext('2d')
+  const ctx = graphCanvas.getContext('2d')
   if (!ctx) return
 
   const resizeCanvas = () => {
     const rect = graphRef.value?.getBoundingClientRect()
     if (!rect) return
-    canvas.width = rect.width
-    canvas.height = rect.height
+    graphCanvas.width = rect.width
+    graphCanvas.height = rect.height
   }
   resizeCanvas()
   window.addEventListener('resize', resizeCanvas)
 
   // 布局节点
-  const nodes = [...data.nodes]
+  const nodes: LayoutNode[] = data.nodes.map(node => ({
+    ...node,
+    x: node.x ?? Math.random() * graphCanvas.width * 0.8 + graphCanvas.width * 0.1,
+    y: node.y ?? Math.random() * graphCanvas.height * 0.8 + graphCanvas.height * 0.1,
+  }))
   const edges = [...data.edges]
 
   if (nodes.length === 0) return
 
   // 使用简单力导向布局
-  const width = canvas.width
-  const height = canvas.height
+  const width = graphCanvas.width
+  const height = graphCanvas.height
   
   // 初始位置
   nodes.forEach((node, i) => {
@@ -232,17 +239,21 @@ const renderGraph = (data: GraphData) => {
 
     // 斥力
     for (let i = 0; i < nodes.length; i++) {
+      const nodeA = nodes[i]
+      if (!nodeA) continue
       for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[j].x - nodes[i].x
-        const dy = nodes[j].y - nodes[i].y
+        const nodeB = nodes[j]
+        if (!nodeB) continue
+        const dx = nodeB.x - nodeA.x
+        const dy = nodeB.y - nodeA.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
         const force = 5000 / (dist * dist)
         const fx = (dx / dist) * force
         const fy = (dy / dist) * force
-        nodes[i].x -= fx
-        nodes[i].y -= fy
-        nodes[j].x += fx
-        nodes[j].y += fy
+        nodeA.x -= fx
+        nodeA.y -= fy
+        nodeB.x += fx
+        nodeB.y += fy
       }
     }
 
@@ -324,8 +335,8 @@ const renderGraph = (data: GraphData) => {
   layout()
 
   // 点击事件
-  canvas.addEventListener('click', (e: MouseEvent) => {
-    const rect = canvas.getBoundingClientRect()
+  graphCanvas.addEventListener('click', (e: MouseEvent) => {
+    const rect = graphCanvas.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 

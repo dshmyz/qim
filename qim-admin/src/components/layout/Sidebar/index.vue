@@ -141,7 +141,7 @@
             <template #title>操作日志</template>
           </el-menu-item>
           <el-menu-item index="/admin/feedbacks" v-permission="'feedback:read'">
-            <el-icon><MessageSquare /></el-icon>
+            <el-icon><Message /></el-icon>
             <template #title>意见反馈</template>
           </el-menu-item>
         </el-sub-menu>
@@ -197,9 +197,9 @@ import {
   Connection, Grid, Monitor, Cellphone, BellFilled,
   Fold, Expand, DataAnalysis, Key, Cpu, Warning, Document,
   Lock, Setting, Tools, Upload, Search, Folder, Checked,
-  MessageSquare,
+  Message,
 } from '@element-plus/icons-vue'
-import { getProductName, getAdminTitle } from '../../config/appConfig'
+import { getProductName, getAdminTitle } from '@/config/appConfig'
 
 defineEmits<{
   'toggle': []

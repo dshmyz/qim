@@ -11,9 +11,10 @@ export interface LoginResponse {
 export interface UserInfo {
   id: number
   username: string
+  nickname: string
   email: string
   avatar: string
-  role: string
+  roles: string[]
   createdAt: string
 }
 
@@ -232,14 +233,24 @@ export interface SensitiveWord {
 // 操作日志相关
 export interface OperationLog {
   id: number
-  operatorId: number
-  operatorName: string
+  operatorId?: number
+  operatorName?: string
   action: string
-  targetType: string
-  targetId: number
-  detail: string
+  targetType?: string
+  targetId?: number
+  detail?: string
   ip: string
-  createdAt: string
+  createdAt?: string
+  username?: string
+  user_id?: number
+  module?: string
+  request_method?: string
+  request_url?: string
+  duration?: number
+  response?: string
+  user_agent?: string
+  request_body?: string
+  created_at?: string
 }
 
 // 系统配置相关
@@ -252,7 +263,7 @@ export interface SystemConfig {
   enableFileUpload: boolean
   enableAI: boolean
   enableReadReceipt: boolean
-  allowedFileTypes: string[]
+  allowedFileTypes: string[] | string
 }
 
 // 版本管理相关

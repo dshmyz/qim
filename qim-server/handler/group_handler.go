@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/logger"
@@ -37,15 +36,14 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
 	convSvc := di.GlobalContainer.ConversationService
 	userSvc := di.GlobalContainer.UserService
 	notifSvc := di.GlobalContainer.NotificationService
 	msgSvc := di.GlobalContainer.MessageService
 	groupSvc := di.GlobalContainer.GroupService
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -276,9 +274,9 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	_, err = groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -350,9 +348,9 @@ func ExitGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	_, err = groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -408,9 +406,9 @@ func UpdateGroupInfo(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -429,7 +427,6 @@ func UpdateGroupInfo(c *gin.Context) {
 
 	convIDUint := uint(convID)
 	convSvc := di.GlobalContainer.ConversationService
-	groupSvc := di.GlobalContainer.GroupService
 
 	conv, err := convSvc.GetConversation(convIDUint)
 	if err != nil {
@@ -469,7 +466,7 @@ func UpdateGroupInfo(c *gin.Context) {
 		aiConfig.Enabled = *req.AIEnabled
 		group.SetAIConfig(aiConfig)
 	}
-	groupSvc.UpdateGroup(&group)
+	groupSvc.UpdateGroup(group)
 
 	aiConfig := group.GetAIConfig()
 
@@ -539,9 +536,9 @@ func GetGroupAISettings(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -631,16 +628,15 @@ func UpdateGroupAISettings(c *gin.Context) {
 		}
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
 
 	convIDUint := uint(convID)
 	convSvc := di.GlobalContainer.ConversationService
-	groupSvc := di.GlobalContainer.GroupService
 
 	conv, err := convSvc.GetConversation(convIDUint)
 	if err != nil {
@@ -716,7 +712,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 			}
 
 			group.SetAIConfig(aiConfig)
-			groupSvc.UpdateGroup(&group)
+			groupSvc.UpdateGroup(group)
 
 			now := time.Now()
 			if err := approvalService.CreateApproval(model.ApprovalTypeGroupAI, group.ID, userID.(uint)); err != nil {
@@ -777,7 +773,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 		response.InternalServerError(c, "保存AI配置失败")
 		return
 	}
-	groupSvc.UpdateGroup(&group)
+	groupSvc.UpdateGroup(group)
 	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
 
 	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
@@ -821,9 +817,9 @@ func SetMemberRole(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	_, err = groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -900,11 +896,11 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
+	groupSvc := di.GlobalContainer.GroupService
 	convSvc := di.GlobalContainer.ConversationService
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -938,29 +934,17 @@ func TransferOwner(c *gin.Context) {
 		return
 	}
 
-	tx := db.Begin()
-
-	currentMember.Role = "admin"
-	if err := tx.Save(&currentMember).Error; err != nil {
-		tx.Rollback()
+	if err := groupSvc.TransferOwner(&service.TransferOwnerParams{
+		ConversationID: convIDUint,
+		CurrentOwnerID: userID.(uint),
+		NewOwnerID:     uint(targetMemberID),
+		CurrentMember:  currentMember,
+		TargetMember:   targetMember,
+		Group:          group,
+	}); err != nil {
 		response.InternalServerError(c, "转让失败")
 		return
 	}
-
-	targetMember.Role = "owner"
-	if err := tx.Save(&targetMember).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "转让失败")
-		return
-	}
-
-	if err := tx.Model(&group).Update("creator_id", targetMember.UserID).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "转让失败")
-		return
-	}
-
-	tx.Commit()
 
 	if ws.GlobalHub != nil {
 		transferMsg := ws.WSMessage{
@@ -997,14 +981,13 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
 	convSvc := di.GlobalContainer.ConversationService
 	groupSvc := di.GlobalContainer.GroupService
 	userSvc := di.GlobalContainer.UserService
 	msgSvc := di.GlobalContainer.MessageService
 
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	group, err := groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}
@@ -1033,7 +1016,7 @@ func UpdateAnnouncement(c *gin.Context) {
 	}
 
 	group.Announcement = req.Announcement
-	if err := groupSvc.UpdateGroup(&group); err != nil {
+	if err := groupSvc.UpdateGroup(group); err != nil {
 		response.InternalServerError(c, "更新群公告失败")
 		return
 	}
@@ -1258,9 +1241,9 @@ func DissolveGroup(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	var group model.Group
-	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+	groupSvc := di.GlobalContainer.GroupService
+	_, err = groupSvc.GetGroupByConversationID(uint(convID))
+	if err != nil {
 		response.NotFound(c, "群聊不存在")
 		return
 	}

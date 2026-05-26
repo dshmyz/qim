@@ -130,7 +130,17 @@ const isEdit = ref(false)
 const currentProvider = ref<AuthProvider | null>(null)
 const configTemplate = ref('')
 
-const form = ref({
+interface AuthProviderForm {
+  name: string
+  display_name: string
+  type: 'direct' | 'redirect'
+  priority: number
+  icon: string
+  config: string
+  enabled: boolean
+}
+
+const form = ref<AuthProviderForm>({
   name: '',
   display_name: '',
   type: 'direct',
@@ -145,7 +155,7 @@ const testForm = ref({
   test_password: ''
 })
 
-const configTemplates = {
+const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabled'>> = {
   ldap: {
     name: 'ldap',
     display_name: '企业LDAP登录',

@@ -75,13 +75,16 @@ import { User, Lock, ArrowRight } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { usePermissionStore } from '@/stores/permission'
+import { getCopyrightShort } from '@/config/appConfig'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const permissionStore = usePermissionStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-const currentYear = new Date().getFullYear()
+const copyrightShort = getCopyrightShort()
 
 const loginForm = reactive({
   username: '',
@@ -108,6 +111,12 @@ const handleLogin = async () => {
     if (data.data) {
       authStore.setToken(data.data.token)
       authStore.setUser(data.data.user)
+
+      // 初始化权限
+      if (data.data.user.roles?.length) {
+        permissionStore.setRoles(data.data.user.roles.map((r: string) => ({ id: 0, name: r, code: r, description: '', permissions: [], userCount: 0, createdAt: '' })))
+      }
+      permissionStore.markInitialized()
 
       // 跳转到 redirect 页面或后台首页
       const redirect = route.query.redirect as string

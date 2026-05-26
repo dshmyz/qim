@@ -340,11 +340,9 @@ const login = async () => {
       
       if (loginForm.remember) {
         localStorage.setItem('username', loginForm.username)
-        localStorage.setItem('password', btoa(encodeURIComponent(loginForm.password)))
         localStorage.setItem('remember', 'true')
       } else {
         localStorage.removeItem('username')
-        localStorage.removeItem('password')
         localStorage.removeItem('remember')
       }
       
@@ -386,11 +384,9 @@ const verifyTwoFA = async () => {
         
         if (loginForm.remember) {
           localStorage.setItem('username', loginForm.username)
-          localStorage.setItem('password', btoa(encodeURIComponent(loginForm.password)))
           localStorage.setItem('remember', 'true')
         } else {
           localStorage.removeItem('username')
-          localStorage.removeItem('password')
           localStorage.removeItem('remember')
         }
         
@@ -412,13 +408,11 @@ const verifyTwoFA = async () => {
 
 const loadSavedSettings = () => {
   const savedUsername = localStorage.getItem('username')
-  const savedPassword = localStorage.getItem('password')
   const savedRemember = localStorage.getItem('remember')
   const savedServerUrl = getStoredServerUrl()
 
-  if (savedRemember === 'true' && savedUsername && savedPassword) {
+  if (savedRemember === 'true' && savedUsername) {
     loginForm.username = savedUsername
-    loginForm.password = decodeURIComponent(atob(savedPassword))
     loginForm.remember = true
   }
   serverSettings.url = savedServerUrl
