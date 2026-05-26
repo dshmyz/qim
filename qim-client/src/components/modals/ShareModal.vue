@@ -41,7 +41,7 @@
             :class="{ selected: selectedUsers.includes(user.id) }"
             @click="toggleUserSelection(user.id)"
           >
-            <img :src="user.avatar" :alt="user.name" class="share-item-avatar" />
+            <Avatar :src="user.avatar" :name="user.name" :alt="user.name" size="md" class="share-item-avatar" />
             <div class="share-item-info">
               <div class="share-item-name">{{ user.name }}</div>
               <div class="share-item-desc">{{ user.department || '无部门' }}</div>
@@ -63,7 +63,7 @@
             :class="{ selected: selectedGroups.includes(group.id) }"
             @click="toggleGroupSelection(group.id)"
           >
-            <img :src="group.avatar" :alt="group.name" class="share-item-avatar" />
+            <Avatar :src="group.avatar" :name="group.name" :alt="group.name" size="md" class="share-item-avatar" />
             <div class="share-item-info">
               <div class="share-item-name">{{ group.name }}</div>
               <div class="share-item-desc">{{ group.members.length }} 成员</div>
@@ -93,6 +93,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 
 const props = defineProps<{
   visible: boolean

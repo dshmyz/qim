@@ -25,7 +25,9 @@ export function useChat() {
       isRecalled: msg.is_recalled || false,
       sender: msg.sender ? {
         ...msg.sender,
-        name: msg.sender.name || msg.sender.nickname || msg.sender.username || msg.sender.user?.nickname || msg.sender.user?.username || '未知用户'
+        id: msg.sender.id ? msg.sender.id.toString() : '',
+        name: msg.sender.name || msg.sender.nickname || msg.sender.username || msg.sender.user?.nickname || msg.sender.user?.username || '未知用户',
+        avatar: msg.sender.avatar || ''
       } : null
     }
   }

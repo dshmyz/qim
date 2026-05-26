@@ -27,6 +27,12 @@ jwt:
   expire: 7200  # 秒
   refresh_expire_days: 7
 
+# 日志配置
+# 设置 LOG_DIR 环境变量或配置下方 dir 后，日志会按天写入文件并自动归档
+# 不配置则仅输出到 stdout（标准输出）
+log:
+  dir: "./logs"
+
 # 数据库配置
 database:
   type: "sqlite"  # sqlite / mysql / postgresql

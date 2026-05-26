@@ -23,7 +23,7 @@
         <div v-for="bot in myBots" :key="bot.id" class="bot-card" :class="bot.approval_status">
           <div class="bot-header">
             <div class="bot-avatar">
-              <img :src="bot.avatar" :alt="bot.name" v-if="bot.avatar">
+              <Avatar v-if="bot.avatar" :src="bot.avatar" :name="bot.name" :alt="bot.name" size="md" />
               <i class="fas fa-robot" v-else></i>
             </div>
             <span class="status-badge" :class="bot.approval_status">
@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import { useBots } from '../../composables/useBots'
 
 const emit = defineEmits(['create', 'edit-bot', 'use-bot'])

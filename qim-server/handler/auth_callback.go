@@ -177,54 +177,16 @@ func authenticateCAS(c *gin.Context, authProvider *model.AuthProvider, ticket st
 	return &user, true
 }
 
-func OAuthCallback(c *gin.Context) {
-	var req struct {
-		Provider string `json:"provider" binding:"required"`
-		Code     string `json:"code" binding:"required"`
-		State    string `json:"state" binding:"required"`
+func findCASProvider(c *gin.Context) (*model.AuthProvider, bool) {
+	db := database.GetDB()
+
+	var authProvider model.AuthProvider
+	if err := db.Where("type = ? AND enabled = ?", "redirect", true).First(&authProvider).Error; err != nil {
+		response.NotFound(c, "未找到CAS认证提供者")
+		return nil, false
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	authProvider, ok := findAuthProvider(c, req.Provider)
-	if !ok {
-		return
-	}
-
-	user, ok := authenticateOAuth(c, authProvider, req.Code)
-	if !ok {
-		return
-	}
-
-	buildAuthResponse(c, user)
-}
-
-func CASCallback(c *gin.Context) {
-	var req struct {
-		Provider string `json:"provider" binding:"required"`
-		Ticket   string `json:"ticket" binding:"required"`
-		State    string `json:"state" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	authProvider, ok := findAuthProvider(c, req.Provider)
-	if !ok {
-		return
-	}
-
-	user, ok := authenticateCAS(c, authProvider, req.Ticket)
-	if !ok {
-		return
-	}
-
-	buildAuthResponse(c, user)
+	return &authProvider, true
 }
 
 func UnifiedAuthCallback(c *gin.Context) {

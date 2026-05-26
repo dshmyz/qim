@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"qim-server/auth/provider"
+	"qim-server/pkg/logger"
 )
 
 type AuthChain struct {
@@ -41,17 +42,20 @@ func (ac *AuthChain) AuthenticateDirect(ctx context.Context, creds *provider.Cre
 
 		result, err := p.Authenticate(ctx, creds)
 		if err != nil {
+			logger.Debug("Provider authentication failed", "provider", p.Name(), "error", err)
 			continue
 		}
 
 		if result.Success {
 			return result, p.Name(), nil
 		}
+
+		logger.Debug("Provider authentication rejected", "provider", p.Name(), "reason", result.Message)
 	}
 
 	return &provider.AuthResult{
 		Success: false,
-		Message: "所有认证方式均失败",
+		Message: "用户名或密码错误",
 	}, "", nil
 }
 

@@ -78,7 +78,7 @@ const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
 // 认证回调
 let authWindow = null
 let isHandlingCallback = false
-const AUTH_CALLBACK_BASE = 'http://localhost:3001'
+const AUTH_CALLBACK_BASE = 'http://localhost:23578'
 
 // 处理认证回调URL
 function handleAuthCallback(callbackUrl) {

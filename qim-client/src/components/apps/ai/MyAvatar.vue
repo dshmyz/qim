@@ -18,7 +18,7 @@
     <div v-if="viewMode === 'overview'" class="overview-section">
       <div class="avatar-header">
         <div class="avatar-avatar">
-          <img v-if="currentUser" :src="currentUser.avatar || generateAvatar(currentUser.username)" alt="avatar" />
+          <Avatar v-if="currentUser" :src="currentUser.avatar" :name="currentUser.nickname || currentUser.username" :alt="avatar" size="xl" />
           <span class="learning-badge" v-if="learningStatus === 'learning'">学习中</span>
         </div>
         <div class="avatar-info">

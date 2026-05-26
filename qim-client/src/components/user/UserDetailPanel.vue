@@ -14,9 +14,12 @@
       <div class="user-profile-card">
         <div class="user-profile-avatar-section">
           <div class="user-avatar-container">
-            <img
-              :src="getAvatarUrl(detail.avatar)"
+            <Avatar
+              :src="detail.avatar"
+              :name="detail.name"
+              :server-url="serverUrl"
               :alt="detail.name"
+              size="xl"
               class="user-avatar"
             />
           </div>
@@ -98,6 +101,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { getCurrentUser } from '../../utils/user'
 import { request } from '../../composables/useRequest'
+import Avatar from '../shared/Avatar.vue'
 
 interface User {
   id: string | number
@@ -115,7 +119,6 @@ interface User {
 interface Props {
   user: User
   serverUrl: string
-  getAvatarUrl: (avatar: string | undefined) => string
 }
 
 const props = defineProps<Props>()

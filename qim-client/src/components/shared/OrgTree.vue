@@ -26,7 +26,7 @@
                           <div v-for="employee in grandChild.employees" :key="employee.id" class="tree-node employee-node">
                             <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
                               <span class="employee-avatar-container">
-                                <img :src="employee.avatar" :alt="employee.name" class="employee-avatar" />
+                                <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
                               </span>
                               <span class="node-name employee-name">{{ employee.name }}</span>
                               <span class="employee-position">{{ employee.position }}</span>
@@ -41,7 +41,7 @@
                   <div v-for="employee in child.employees" :key="employee.id" class="tree-node employee-node">
                     <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
                       <span class="employee-avatar-container">
-                        <img :src="employee.avatar" :alt="employee.name" class="employee-avatar" />
+                        <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
                       </span>
                       <span class="node-name employee-name">{{ employee.name }}</span>
                       <span class="employee-position">{{ employee.position }}</span>
@@ -59,6 +59,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import Avatar from './Avatar.vue'
 
 interface OrgDepartment {
   id: string

@@ -24,7 +24,7 @@
         @click="$emit('select', bot.id)"
       >
         <div class="avatar">
-          <img :src="bot.avatar" :alt="bot.name" v-if="bot.avatar">
+          <Avatar v-if="bot.avatar" :src="bot.avatar" :name="bot.name" :alt="bot.name" size="sm" />
           <i class="fas fa-robot" v-else></i>
         </div>
         <div class="info">
@@ -37,6 +37,8 @@
 </template>
 
 <script setup lang="ts">
+import Avatar from '../../shared/Avatar.vue'
+
 interface Bot {
   id: number
   name: string

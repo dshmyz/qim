@@ -7,7 +7,7 @@ import SearchResult from '../conversation/SearchResult.vue'
 import ConversationList from '../conversation/ConversationList.vue'
 import ChannelSidebar from '../channel/ChannelSidebar.vue'
 import type { Conversation, User } from '../../types'
-import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
+import Avatar from '../shared/Avatar.vue'
 import { logger } from '../../utils/logger';
 
 interface OrgDepartment {
@@ -78,16 +78,6 @@ const emit = defineEmits<{
   (e: 'createChannel'): void
 }>()
 
-const userAvatar = computed(() => {
-  if (props.currentUser?.avatar && isAbsoluteUrl(props.currentUser.avatar)) {
-    return props.currentUser.avatar
-  }
-  if (props.currentUser?.avatar) {
-    return props.serverUrl + props.currentUser.avatar
-  }
-  return generateAvatar(props.currentUser?.username || '用户')
-})
-
 const userName = computed(() => {
   return props.currentUser?.nickname || props.currentUser?.username || '我的账号'
 })
@@ -108,9 +98,12 @@ defineExpose({})
     <!-- 侧边栏头部 -->
     <div class="sidebar-header" v-show="!collapsed">
       <div class="user-info" @click="$emit('showUserProfile')">
-        <img
-          :src="userAvatar"
+        <Avatar
+          :src="currentUser?.avatar"
+          :name="userName"
+          :server-url="serverUrl"
           :alt="userName"
+          size="lg"
           class="user-avatar"
         />
         <span class="user-name">{{ userName }}</span>

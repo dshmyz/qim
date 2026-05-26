@@ -9,7 +9,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
+            <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="md" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -24,7 +24,7 @@
           <div class="members-list">
             <div v-for="member in groupMembers" :key="member.id" class="member-item">
               <div class="member-avatar">
-                <img :src="member.avatar" :alt="member.name" />
+                <Avatar :src="member.avatar" :name="member.name" :alt="member.name" size="sm" />
               </div>
               <div class="member-info">
                 <div class="member-name">{{ member.name }}</div>
@@ -58,7 +58,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar" style="width: 80px; height: 80px;">
-            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" style="width: 100%; height: 100%;" />
+            <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="xl" />
           </div>
           <div class="group-details">
             <div class="group-name" style="font-size: 20px;">{{ selectedGroup?.name }}</div>
@@ -97,7 +97,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
+            <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="md" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -119,7 +119,7 @@
           <div class="members-list">
             <div v-for="employee in filteredEmployees" :key="employee.id" class="member-item" :class="{ selected: localSelectedMembers.some(m => m.id === employee.id) }" @click="toggleMember(employee)">
               <div class="member-avatar">
-                <img :src="employee.avatar" :alt="employee.name" />
+                <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" />
               </div>
               <div class="member-info">
                 <div class="member-name">{{ employee.name }}</div>
@@ -154,7 +154,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
+            <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="md" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -183,7 +183,7 @@
       <div class="add-members-body">
         <div class="group-info">
           <div class="group-avatar">
-            <img :src="getAvatarUrl(selectedGroup?.avatar, '群聊', serverUrl)" :alt="selectedGroup?.name" />
+            <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="md" />
           </div>
           <div class="group-details">
             <div class="group-name">{{ selectedGroup?.name }}</div>
@@ -205,6 +205,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 

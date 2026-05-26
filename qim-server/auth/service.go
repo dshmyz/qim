@@ -21,17 +21,14 @@ func InitAuthChain() {
 
 	hasLDAP := false
 	for _, ap := range authProviders {
-		switch ap.Name {
-		case "ldap":
-			ldapProvider, err := provider.NewLDAPProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
-			if err != nil {
-				logger.WithModule("Auth").Error("创建LDAP认证提供者失败", "error", err)
-				continue
-			}
-			globalAuthChain.RegisterProvider(ldapProvider)
-			hasLDAP = true
-			logger.WithModule("Auth").Info("已注册LDAP认证提供者", "priority", ap.Priority)
+		ldapProvider, err := provider.NewLDAPProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+		if err != nil {
+			logger.WithModule("Auth").Debug("创建LDAP认证提供者失败，可能不是LDAP配置", "name", ap.Name, "error", err)
+			continue
 		}
+		globalAuthChain.RegisterProvider(ldapProvider)
+		hasLDAP = true
+		logger.WithModule("Auth").Info("已注册LDAP认证提供者", "name", ap.Name, "priority", ap.Priority)
 	}
 
 	localPriority := 100

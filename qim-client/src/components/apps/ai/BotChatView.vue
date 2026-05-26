@@ -5,7 +5,7 @@
         <i class="fas fa-arrow-left"></i>
       </button>
       <div class="bot-info">
-        <img v-if="bot?.avatar" :src="bot.avatar" class="bot-avatar" />
+        <Avatar :src="bot?.avatar" :name="bot?.name || 'AI助手'" :alt="bot?.name || 'AI助手'" size="sm" class="bot-avatar" />
         <span class="bot-name">{{ bot?.name || 'AI助手' }}</span>
       </div>
       <div class="header-actions">
@@ -73,6 +73,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
+import Avatar from '../../shared/Avatar.vue'
 import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import type { BotMessage } from '../../../types/bot'

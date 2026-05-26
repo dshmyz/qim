@@ -15,7 +15,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Dialector 基于 modernc.org/sqlite 的纯 Go GORM 驱动
 type Dialector struct {
 	DSN string
 }
@@ -33,6 +32,12 @@ func (d Dialector) Initialize(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+
+	_, err = sqlDB.Exec("PRAGMA synchronous = FULL")
+	if err != nil {
+		return err
+	}
+
 	db.ConnPool = sqlDB
 	db.SkipDefaultTransaction = true
 	db.FullSaveAssociations = false

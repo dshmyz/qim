@@ -13,7 +13,7 @@
         </div>
         <div v-else class="read-users-list">
           <div v-for="user in readUsers.read_users" :key="user.id" class="read-user-item">
-            <img :src="getReadUserAvatar(user)" :alt="user.name || user.username" class="read-user-avatar" />
+            <Avatar :src="user.avatar" :name="user.name || user.username || '用户'" :server-url="serverUrl" :alt="user.name || user.username" size="sm" class="read-user-avatar" />
             <div class="read-user-info">
               <span class="read-user-name">{{ user.name || user.username }}</span>
             </div>
@@ -27,7 +27,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
+import Avatar from '../shared/Avatar.vue'
 
 interface ReadUser {
   id: string | number

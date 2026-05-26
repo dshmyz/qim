@@ -194,7 +194,6 @@
             <UserDetailPanel
               :user="selectedUser"
               :serverUrl="serverUrl"
-              :getAvatarUrl="getAvatarUrl"
               @toggleSidebar="toggleSidebar"
               @privateChat="startPrivateChat"
               @showProfile="showUserProfile = true"

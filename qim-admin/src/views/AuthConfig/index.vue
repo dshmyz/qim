@@ -91,6 +91,9 @@
         <el-form-item label="配置JSON" required>
           <el-input v-model="form.config" type="textarea" :rows="12" />
           <div class="form-tip">根据认证类型填写相应的配置信息，必须是有效的JSON格式</div>
+          <div class="form-tip" style="color: #e6a23c; margin-top: 4px;">
+            ⚠️ redirect_url（OAuth）/ service_url（CAS）必须填写 Electron 本地回调地址，与主进程 AUTH_CALLBACK_BASE 一致，默认为 <code>http://localhost:23578/{oauth,cas}/callback</code>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -187,7 +190,7 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
       auth_url: 'https://accounts.google.com/o/oauth2/v2/auth',
       token_url: 'https://oauth2.googleapis.com/token',
       user_info_url: 'https://www.googleapis.com/oauth2/v2/userinfo',
-      redirect_url: 'http://localhost:3000/oauth/callback',
+      redirect_url: 'http://localhost:23578/oauth/callback',
       scope: 'openid email profile'
     }, null, 2)
   },
@@ -198,7 +201,7 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
     icon: 'fas fa-university',
     config: JSON.stringify({
       cas_url: 'https://cas.example.com',
-      service_url: 'http://localhost:3000/cas/callback',
+      service_url: 'http://localhost:23578/cas/callback',
       validate_url: 'https://cas.example.com/serviceValidate'
     }, null, 2)
   }

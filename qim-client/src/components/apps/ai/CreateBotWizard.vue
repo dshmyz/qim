@@ -30,7 +30,7 @@
         <div v-else class="templates">
           <div v-for="tpl in templates" :key="tpl.id" class="template-item" @click="createFromTemplate(tpl)">
             <div class="template-avatar">
-              <img :src="tpl.avatar" :alt="tpl.name" v-if="tpl.avatar">
+              <Avatar v-if="tpl.avatar" :src="tpl.avatar" :name="tpl.name" :alt="tpl.name" size="sm" />
               <i class="fas fa-robot" v-else></i>
             </div>
             <div class="template-info">
@@ -83,6 +83,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import Avatar from '../../shared/Avatar.vue'
 import { useBots } from '../../../composables/useBots'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import type { UserAIConfig } from '../../../types/ai'

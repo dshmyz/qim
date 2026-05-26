@@ -72,7 +72,7 @@
                   />
                   <div class="member-info">
                     <div class="member-avatar">
-                    <img :src="(employee.avatar && isAbsoluteUrl(employee.avatar)) ? employee.avatar : (employee.avatar ? serverUrl + employee.avatar : generateAvatar(employee.name))" :alt="employee.name" />
+                    <Avatar :src="employee.avatar" :name="employee.name" :server-url="serverUrl" :alt="employee.name" size="sm" />
                   </div>
                     <div class="member-details">
                       <span class="member-name">{{ employee.name }}</span>
@@ -103,6 +103,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import QMessage from '../../utils/qmessage'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'

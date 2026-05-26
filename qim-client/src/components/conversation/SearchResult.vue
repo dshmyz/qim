@@ -13,7 +13,7 @@
           @click="$emit('select', item)"
         >
           <div class="search-popup-avatar">
-            <img :src="getAvatarUrl(item.avatar, item.name, serverUrl)" :alt="item.name" />
+            <Avatar :src="item.avatar" :name="item.name" :server-url="serverUrl" :alt="item.name" size="md" />
             <span v-if="item.type === 'group'" class="group-badge">群</span>
             <span v-if="item.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
           </div>
@@ -46,6 +46,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import Avatar from '../shared/Avatar.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 

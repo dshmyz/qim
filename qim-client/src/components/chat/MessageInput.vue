@@ -70,7 +70,7 @@
             aria-selected="false"
             @click="$emit('select-at-member', member)"
           >
-            <img :src="member.avatar" :alt="member.name || '未知用户'" class="at-member-avatar" />
+            <Avatar :src="member.avatar" :name="member.name || '未知用户'" :alt="member.name || '未知用户'" size="sm" class="at-member-avatar" />
             <span class="at-member-name">{{ member.name || '未知用户' }}</span>
           </div>
           <div v-if="filteredAtMembers.length === 0" class="empty-at-members"><p>没有找到匹配的成员</p></div>
@@ -109,6 +109,7 @@ import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
 import ChatToolbar from './ChatToolbar.vue'
 import { generateAvatar } from '../../utils/avatar'
+import Avatar from '../shared/Avatar.vue'
 
 interface PendingFile { file: File; name: string }
 interface Member { id: string; name: string; avatar: string }

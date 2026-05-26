@@ -29,7 +29,7 @@
           @click="$emit('use-bot', bot)"
         >
           <div class="bot-avatar">
-            <img v-if="bot.avatar" :src="bot.avatar" :alt="bot.name" />
+            <Avatar v-if="bot.avatar" :src="bot.avatar" :name="bot.name" :alt="bot.name" size="sm" />
             <i v-else class="fas fa-robot"></i>
           </div>
           <div class="bot-info">
@@ -131,6 +131,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import Avatar from '../../shared/Avatar.vue'
 
 interface Bot {
   id: number

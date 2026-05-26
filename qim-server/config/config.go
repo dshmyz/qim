@@ -17,6 +17,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	Log      LogConfig
 	Cluster  ClusterConfig
 	Storage  StorageConfig
 	AI       ai.AIConfig
@@ -24,6 +25,10 @@ type Config struct {
 	WS       WSConfig
 	Vector   VectorConfig
 	DataInit DataInitConfig
+}
+
+type LogConfig struct {
+	Dir string `yaml:"dir"`
 }
 
 type DataInitConfig struct {
@@ -98,6 +103,7 @@ type yamlConfig struct {
 	Server   ServerConfig   `yaml:"server"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	DB       DatabaseConfig `yaml:"database"`
+	Log      LogConfig      `yaml:"log"`
 	Cluster  ClusterConfig  `yaml:"cluster"`
 	Storage  StorageConfig  `yaml:"storage"`
 	AI       ai.AIConfig    `yaml:"ai"`
@@ -259,10 +265,17 @@ func Load() *Config {
 		cfg.DataInit = getDefaultDataInitConfig(cfg.Server.Mode)
 	}
 
+	// 日志目录
+	logDir := os.Getenv("LOG_DIR")
+	if logDir != "" {
+		cfg.Log.Dir = logDir
+	}
+
 	return &Config{
 		Server:   cfg.Server,
 		Database: cfg.DB,
 		JWT:      cfg.JWT,
+		Log:      cfg.Log,
 		Cluster:  cfg.Cluster,
 		Storage:  cfg.Storage,
 		AI:       cfg.AI,
@@ -313,6 +326,9 @@ func getDefaultConfig() yamlConfig {
 		},
 		DB: DatabaseConfig{
 			Path: "./qim.db",
+		},
+		Log: LogConfig{
+			Dir: "./logs",
 		},
 		Cluster: ClusterConfig{
 			Enabled: false,

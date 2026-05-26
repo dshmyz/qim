@@ -9,9 +9,12 @@
         <!-- 群头像和基本信息 -->
         <div class="group-profile-avatar-section">
           <div class="group-avatar-container" :class="{ 'is-owner': isGroupOwner(group) }" @click="isGroupOwner(group) && triggerAvatarUpload()">
-            <img
-              :src="getGroupAvatar(group)"
+            <Avatar
+              :src="group.avatar"
+              :name="group.name"
+              :server-url="serverUrl"
               :alt="group.name"
+              size="xl"
               class="group-avatar"
             />
             <div v-if="isGroupOwner(group)" class="avatar-overlay">
@@ -112,7 +115,7 @@
           </div>
           <div class="members-grid">
             <div v-for="member in group.members" :key="member.id" class="member-item" @click="$emit('startPrivateChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
-              <img :src="getMemberAvatar(member)" :alt="member.name" class="member-avatar" />
+              <Avatar :src="member.avatar" :name="member.name" :server-url="serverUrl" :alt="member.name" size="sm" class="member-avatar" />
               <span class="member-name">{{ member.name }}</span>
               <span v-if="member.role === 'owner'" class="member-role owner">群主</span>
               <span v-else-if="member.role === 'admin'" class="member-role admin">管理员</span>
@@ -133,6 +136,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
+import Avatar from './Avatar.vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import type { Conversation, User } from '../../types'

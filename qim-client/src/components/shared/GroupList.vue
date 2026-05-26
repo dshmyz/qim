@@ -2,7 +2,7 @@
   <div class="groups-list">
     <div v-for="conversation in filteredConversations" :key="conversation.id" class="group-item" :class="{ active: selectedGroup && selectedGroup.id === conversation.id }" @contextmenu.prevent="$emit('showContextMenu', $event, conversation)" @click="$emit('select', conversation)" @dblclick="$emit('enter', conversation)">
       <div class="group-avatar">
-        <img :src="getConversationAvatarUrl(conversation)" :alt="conversation.name" />
+        <Avatar :src="conversation.avatar" :name="conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组')" :server-url="serverUrl" :alt="conversation.name" size="md" />
         <span class="group-badge" :class="conversation.type === 'discussion' ? 'discussion-badge' : ''">{{ conversation.type === 'group' ? '群' : '讨' }}</span>
       </div>
       <div class="group-info">
@@ -21,6 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import Avatar from './Avatar.vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import type { Conversation, User } from '../../types'

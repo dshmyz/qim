@@ -236,13 +236,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authProviderHandler := handler.NewAuthProviderHandler()
 			auth.GET("/providers", authProviderHandler.GetProviders)
 
-			// OAuth回调（无需认证）
-			auth.POST("/oauth/callback", handler.OAuthCallback)
-
-			// CAS回调（无需认证）
-			auth.POST("/cas/callback", handler.CASCallback)
-
-			// 统一认证回调（支持OAuth和CAS，无需认证）
+			// 统一认证回调（前端统一调用，无需认证）
 			auth.POST("/callback", handler.UnifiedAuthCallback)
 		}
 
