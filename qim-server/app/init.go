@@ -68,10 +68,24 @@ func initAdminUser() {
 
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var count int64
-		if err := tx.Model(&model.User{}).Where("type = ?", "admin").Count(&count).Error; err != nil {
+		// 检查所有用户（包括已删除的），确保管理员用户存在
+		if err := tx.Unscoped().Model(&model.User{}).Where("type = ?", "admin").Count(&count).Error; err != nil {
 			return err
 		}
+
 		if count > 0 {
+			// 如果存在管理员用户，检查是否被软删除，如果是则恢复
+			var existingAdmin model.User
+			if err := tx.Unscoped().Where("type = ?", "admin").First(&existingAdmin).Error; err != nil {
+				return err
+			}
+			if existingAdmin.DeletedAt.Valid {
+				// 恢复被软删除的管理员用户
+				if err := tx.Unscoped().Model(&existingAdmin).Update("deleted_at", nil).Error; err != nil {
+					return err
+				}
+				logger.WithModule("Init").Info("恢复管理员用户", "id", existingAdmin.ID, "username", existingAdmin.Username)
+			}
 			return nil
 		}
 
@@ -94,7 +108,7 @@ func initAdminUser() {
 			Username:     adminUsername,
 			PasswordHash: string(hashedPassword),
 			Nickname:     "管理员",
-			Avatar:       "/admin.png",
+			Avatar:       "admin.png",
 			Type:         "admin",
 			Status:       "offline",
 		}
@@ -867,11 +881,14 @@ func addIndexes(db *gorm.DB) {
 		}
 	} else {
 		// SQLite: 使用 FTS5 虚拟表
-		if !hasFTS5Table(db, "messages_fts5") {
-			db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')")
-			// 同步现有数据到 FTS5
-			db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
-			logger.WithModule("Index").Info("创建 messages FTS5 全文搜索虚拟表")
+		if isFTS5Available(db) && !hasFTS5Table(db, "messages_fts5") {
+			err := db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')").Error
+			if err == nil {
+				db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
+				logger.WithModule("Index").Info("创建 messages FTS5 全文搜索虚拟表")
+			} else {
+				logger.WithModule("Index").Warn("创建 FTS5 虚拟表失败，将使用 LIKE 搜索", "error", err)
+			}
 		}
 	}
 }
@@ -891,6 +908,22 @@ func hasFTS5Table(db *gorm.DB, tableName string) bool {
 	var count int64
 	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", tableName).Scan(&count)
 	return count > 0
+}
+
+// isFTS5Available 检查 SQLite 是否支持 FTS5
+func isFTS5Available(db *gorm.DB) bool {
+	var result int
+	err := db.Raw("SELECT 1 FROM sqlite_master WHERE name = 'fts5' AND type = 'table'").Scan(&result).Error
+	if err == nil && result == 1 {
+		return true
+	}
+
+	err = db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS __fts5_test USING fts5(content)").Error
+	if err == nil {
+		db.Exec("DROP TABLE __fts5_test")
+		return true
+	}
+	return false
 }
 
 // createFulltextIndexMySQL 在 MySQL 上创建全文索引
