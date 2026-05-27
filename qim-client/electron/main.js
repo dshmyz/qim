@@ -249,7 +249,10 @@ function createWindow() {
       sandbox: false,
       webSecurity: false
     },
-    frame: false
+    frame: false,
+    // 信创/Linux：关闭窗口阴影，避免合成器在窗口外圈再抠一次角导致黑边；
+    // roundedCorners 仅 macOS 生效，保持默认（圆角），Linux/Windows 上传 false 会误关 macOS 系统圆角
+    hasShadow: !isLinux
   }
 
   if (isMac) {

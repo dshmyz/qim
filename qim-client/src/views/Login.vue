@@ -29,14 +29,14 @@
             <input 
               v-model="loginForm.username"
               type="text"
-              placeholder="请输入用户名"
+              :placeholder="errors.username ? errors.username : '请输入用户名'"
               class="login-input"
+              :class="{ 'input-error-text': errors.username }"
               @focus="handleInputFocus('username')"
               @blur="handleInputBlur('username')"
               @change="checkTwoFactorStatus"
             />
           </div>
-          <div v-if="errors.username" class="error-message">{{ errors.username }}</div>
         </div>
         
         <div class="form-item">
@@ -45,13 +45,13 @@
             <input 
               v-model="loginForm.password"
               type="password"
-              placeholder="请输入密码"
+              :placeholder="errors.password ? errors.password : '请输入密码'"
               class="login-input"
+              :class="{ 'input-error-text': errors.password }"
               @focus="handleInputFocus('password')"
               @blur="handleInputBlur('password')"
             />
           </div>
-          <div v-if="errors.password" class="error-message">{{ errors.password }}</div>
         </div>
         
         <div class="form-options">
@@ -341,9 +341,11 @@ const login = async () => {
       
       if (loginForm.remember) {
         localStorage.setItem('username', loginForm.username)
+        localStorage.setItem('password', loginForm.password)
         localStorage.setItem('remember', 'true')
       } else {
         localStorage.removeItem('username')
+        localStorage.removeItem('password')
         localStorage.removeItem('remember')
       }
       
@@ -385,9 +387,11 @@ const verifyTwoFA = async () => {
         
         if (loginForm.remember) {
           localStorage.setItem('username', loginForm.username)
+          localStorage.setItem('password', loginForm.password)
           localStorage.setItem('remember', 'true')
         } else {
           localStorage.removeItem('username')
+          localStorage.removeItem('password')
           localStorage.removeItem('remember')
         }
         
@@ -409,11 +413,13 @@ const verifyTwoFA = async () => {
 
 const loadSavedSettings = () => {
   const savedUsername = localStorage.getItem('username')
+  const savedPassword = localStorage.getItem('password')
   const savedRemember = localStorage.getItem('remember')
   const savedServerUrl = getStoredServerUrl()
 
   if (savedRemember === 'true' && savedUsername) {
     loginForm.username = savedUsername
+    loginForm.password = savedPassword || ''
     loginForm.remember = true
   }
   serverSettings.url = savedServerUrl
@@ -891,11 +897,24 @@ const closeWindow = () => {
   box-sizing: border-box;
 }
 
-.error-message {
-  margin-top: 8px;
-  font-size: 12px;
+.login-input.input-error-text {
   color: #f5222d;
-  padding-left: 4px;
+}
+
+.login-input.input-error-text::placeholder {
+  color: #f5222d;
+}
+
+.login-input.input-error-text::-webkit-input-placeholder {
+  color: #f5222d;
+}
+
+.login-input.input-error-text::-moz-placeholder {
+  color: #f5222d;
+}
+
+.login-input.input-error-text:-ms-input-placeholder {
+  color: #f5222d;
 }
 
 .form-options {

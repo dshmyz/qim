@@ -85,6 +85,26 @@ body.linux-platform #app {
   overflow: hidden;
 }
 
+/* 信创/Linux：窗口必须保持直角，避免合成器在圆角外抠出黑色像素带 */
+body.linux-platform,
+body.linux-platform #app,
+body.linux-platform .im-app,
+body.linux-platform .im-container {
+  border-radius: 0 !important;
+}
+
+/* 信创/Linux：使用顶层伪元素绘制 1px 内描边，与其它应用界面分隔；
+   用 inset box-shadow 而不是 border，避免与系统窗管边线叠加显得发虚，
+   并放在最顶层，避免被 position:fixed 的 SideOptions 等遮挡。 */
+body.linux-platform::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  box-shadow: inset 0 0 0 1px var(--border-color, rgba(0, 0, 0, 0.18));
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
 /* ========================================
    滚动条样式 - Scrollbar Styles
    ======================================== */
