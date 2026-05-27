@@ -39,8 +39,7 @@ describe('auth API', () => {
       const response = await login(loginData)
 
       expect(mockRequest).toHaveBeenCalledWith({
-        baseURL: '/api/v1',
-        url: '/auth/login',
+        url: '/v1/auth/login',
         method: 'post',
         data: loginData,
       })
@@ -60,8 +59,7 @@ describe('auth API', () => {
       const response = await logout()
 
       expect(mockRequest).toHaveBeenCalledWith({
-        baseURL: '/api/v1',
-        url: '/auth/logout',
+        url: '/v1/auth/logout',
         method: 'post',
       })
       expect(response.data.code).toBe(0)
@@ -78,8 +76,7 @@ describe('auth API', () => {
       const response = await getCurrentUser()
 
       expect(mockRequest).toHaveBeenCalledWith({
-        baseURL: '/api/v1',
-        url: '/users/me',
+        url: '/v1/users/me',
         method: 'get',
       })
       expect(response.data.data).toEqual(mockUser)

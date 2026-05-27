@@ -1,45 +1,9 @@
 import { request } from '@/utils/request'
-import type { ClientVersion, VersionDistribution, CreateVersionParams, UpdateVersionParams, CrashLog, UserFeedback } from '@/types/client'
+import type { CrashLog, UserFeedback } from '@/types/client'
 import type { ApiResponse } from '@/types'
 import type { AxiosResponse } from 'axios'
 
-export function getVersions(params?: { page?: number; pageSize?: number; platform?: string }): Promise<AxiosResponse<ApiResponse<{ list: ClientVersion[]; total: number; page: number; pageSize: number }>>> {
-  return request({
-    url: '/v1/admin/versions',
-    method: 'get',
-    params,
-  })
-}
-
-export function createVersion(data: CreateVersionParams): Promise<AxiosResponse<ApiResponse<ClientVersion>>> {
-  return request({
-    url: '/v1/admin/versions',
-    method: 'post',
-    data,
-  })
-}
-
-export function updateVersion(id: number, data: UpdateVersionParams): Promise<AxiosResponse<ApiResponse<ClientVersion>>> {
-  return request({
-    url: `/v1/admin/versions/${id}`,
-    method: 'put',
-    data,
-  })
-}
-
-export function deleteVersion(id: number): Promise<AxiosResponse<ApiResponse<void>>> {
-  return request({
-    url: `/v1/admin/versions/${id}`,
-    method: 'delete',
-  })
-}
-
-export function getVersionDistribution(): Promise<AxiosResponse<ApiResponse<VersionDistribution[]>>> {
-  return request({
-    url: '/v1/admin/versions/distribution',
-    method: 'get',
-  })
-}
+// 客户端版本管理 API 已迁移到 `@/api/versions`，此文件仅保留崩溃日志、用户反馈等真正属于客户端反馈类的接口
 
 export function getCrashLogs(params?: { page?: number; pageSize?: number; platform?: string; appVersion?: string }): Promise<AxiosResponse<ApiResponse<{ list: CrashLog[]; total: number; page: number; pageSize: number }>>> {
   return request({

@@ -30,7 +30,7 @@ describe('blacklist API', () => {
 
       const response = await getBlacklist({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/blacklist', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/users/blacklist', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -42,7 +42,7 @@ describe('blacklist API', () => {
 
       await getBlacklist()
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/blacklist', method: 'get', params: undefined })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/users/blacklist', method: 'get', params: undefined })
     })
   })
 
@@ -53,7 +53,7 @@ describe('blacklist API', () => {
 
       const response = await removeBlacklistEntry(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/blacklist/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/users/blacklist/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })

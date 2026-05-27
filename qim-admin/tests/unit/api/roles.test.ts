@@ -29,7 +29,7 @@ describe('roles API', () => {
 
       const response = await getRoles({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/roles', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/roles', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -41,7 +41,7 @@ describe('roles API', () => {
 
       await getRoles()
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/roles', method: 'get', params: undefined })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/roles', method: 'get', params: undefined })
     })
   })
 
@@ -53,7 +53,7 @@ describe('roles API', () => {
       const createData = { name: '新角色', code: 'new_role', description: '新角色描述', permissions: ['read', 'write'] }
       const response = await createRole(createData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/roles', method: 'post', data: createData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/roles', method: 'post', data: createData })
       expect(response.data.data).toEqual(mockRole)
     })
   })
@@ -67,7 +67,7 @@ describe('roles API', () => {
       const updateData = { name: '更新后的角色' }
       const response = await updateRole(1, updateData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/roles/1', method: 'put', data: updateData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/roles/1', method: 'put', data: updateData })
       expect(response.data.data).toEqual(updatedRole)
     })
   })
@@ -79,7 +79,7 @@ describe('roles API', () => {
 
       const response = await deleteRole(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/roles/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/roles/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })
@@ -98,7 +98,7 @@ describe('roles API', () => {
       const response = await getRoleUsers(1, { page: 1, pageSize: 10 })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/roles/1/users', method: 'get', params: { page: 1, pageSize: 10 },
+        url: '/v1/admin/roles/1/users', method: 'get', params: { page: 1, pageSize: 10 },
       })
       expect(response.data.data.list).toHaveLength(2)
     })

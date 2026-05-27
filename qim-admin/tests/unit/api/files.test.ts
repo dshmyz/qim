@@ -36,7 +36,7 @@ describe('Files API', () => {
       
       const result = await getFileStatistics()
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/statistics', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/files/statistics', method: 'get' })
       expect(result.data.data).toEqual(mockResponse)
     })
   })
@@ -59,7 +59,7 @@ describe('Files API', () => {
       
       const result = await getLargeFiles()
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/large', method: 'get', params: { limit: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/files/large', method: 'get', params: { limit: 10 } })
       expect(result.data.data).toEqual(mockResponse)
     })
 
@@ -70,7 +70,7 @@ describe('Files API', () => {
       
       await getLargeFiles(20)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/large', method: 'get', params: { limit: 20 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/files/large', method: 'get', params: { limit: 20 } })
     })
   })
 
@@ -102,7 +102,7 @@ describe('Files API', () => {
       }
       const result = await getFileAccessLogs(params)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/access-logs', method: 'get', params })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/access-logs', method: 'get', params })
       expect(result.data.data.list).toHaveLength(1)
     })
   })
@@ -124,7 +124,7 @@ describe('Files API', () => {
       
       const result = await getCleanupRules()
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/rules', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/rules', method: 'get' })
       expect(result.data.data).toEqual(mockResponse)
     })
   })
@@ -143,7 +143,7 @@ describe('Files API', () => {
       
       const result = await createCleanupRule(newRule)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/rules', method: 'post', data: newRule })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/rules', method: 'post', data: newRule })
       expect(result.data.data.name).toBe('Large files cleanup')
     })
   })
@@ -157,7 +157,7 @@ describe('Files API', () => {
       
       const result = await updateCleanupRule(1, updatedRule)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/rules/1', method: 'put', data: updatedRule })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/rules/1', method: 'put', data: updatedRule })
       expect(result.data.data.name).toBe('Updated rule name')
     })
   })
@@ -170,7 +170,7 @@ describe('Files API', () => {
       
       const result = await deleteCleanupRule(1)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/rules/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/rules/1', method: 'delete' })
       expect(result.data.code).toBe(0)
     })
   })
@@ -183,7 +183,7 @@ describe('Files API', () => {
       
       const result = await previewCleanup(1)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/preview/1', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/preview/1', method: 'get' })
       expect(result.data.data.count).toBe(150)
     })
   })
@@ -196,7 +196,7 @@ describe('Files API', () => {
       
       const result = await executeCleanup(1)
       
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/files/cleanup/execute/1', method: 'post' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/files/cleanup/execute/1', method: 'post' })
       expect(result.data.code).toBe(0)
     })
   })

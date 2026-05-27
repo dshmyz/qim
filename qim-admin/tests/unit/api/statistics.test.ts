@@ -66,7 +66,7 @@ describe('statistics API', () => {
       const response = await getUserStatistics('2024-01-01', '2024-01-31')
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/statistics/users', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        url: '/v1/admin/statistics/users', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
       })
       expect(response.data.data).toEqual({ chartData: [] })
     })
@@ -80,7 +80,7 @@ describe('statistics API', () => {
       const response = await getGroupStatistics('2024-01-01', '2024-01-31')
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/statistics/groups', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        url: '/v1/admin/statistics/groups', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
       })
       expect(response.data.data).toEqual({ chartData: [] })
     })
@@ -94,7 +94,7 @@ describe('statistics API', () => {
       const response = await getMessageStatistics('2024-01-01', '2024-01-31')
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/statistics/messages', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        url: '/v1/admin/statistics/messages', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
       })
       expect(response.data.data).toEqual({ chartData: [] })
     })

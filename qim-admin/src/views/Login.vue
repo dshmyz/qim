@@ -12,7 +12,7 @@
     <div class="login-card-wrapper">
       <div class="login-card">
         <div class="login-header">
-          <img src="/app-logo.png" alt="QIM Logo" class="logo-img" />
+          <img src="/app-logo-v1.png" alt="QIM Logo" class="logo-img" />
           <h1 class="login-title">QIM Admin</h1>
           <p class="login-subtitle">企业级即时通讯管理后台</p>
         </div>

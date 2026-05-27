@@ -31,7 +31,7 @@ describe('operationLogs API', () => {
 
       const response = await getOperationLogs({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/operation-logs', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/logs/operation', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -69,7 +69,7 @@ describe('operationLogs API', () => {
 
       const response = await getOperationLogDetail(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/operation-logs/1', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/logs/operation/1', method: 'get' })
       expect(response.data.data).toEqual(mockLog)
     })
   })
@@ -82,7 +82,7 @@ describe('operationLogs API', () => {
       const response = await exportOperationLogs({ startDate: '2024-01-01', endDate: '2024-01-31' })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/operation-logs/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        url: '/v1/logs/operation/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
       })
       expect(response.data.data.url).toBe('https://example.com/export.csv')
     })

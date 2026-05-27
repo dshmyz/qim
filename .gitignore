@@ -10,6 +10,13 @@ qim-server/server
 .trae.worktrees/
 .worktrees/
 
+# IDE 相关目录（不追踪）
+.trae/
+.superpowers/
+.bytro
+.agents/
+.claude/
+
 # 上传文件目录
 qim-server/uploads/
 

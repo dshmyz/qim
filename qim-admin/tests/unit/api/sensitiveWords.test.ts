@@ -97,7 +97,7 @@ describe('sensitiveWords API', () => {
       const response = await toggleSensitiveWordStatus(1, 'inactive')
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/sensitive-words/1/status', method: 'patch', data: { status: 'inactive' },
+        url: '/v1/sensitive-words/1/toggle', method: 'patch', data: { status: 'inactive' },
       })
       expect(response.data.data).toEqual(updatedWord)
     })

@@ -30,7 +30,7 @@ describe('channels API', () => {
 
       const response = await getChannels({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/channels', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/channels', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -42,7 +42,7 @@ describe('channels API', () => {
 
       await getChannels()
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/channels', method: 'get', params: undefined })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/channels', method: 'get', params: undefined })
     })
   })
 
@@ -68,7 +68,7 @@ describe('channels API', () => {
       const updateData = { name: '更新后的频道' }
       const response = await updateChannel(1, updateData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/channels/1', method: 'put', data: updateData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/channels/1', method: 'put', data: updateData })
       expect(response.data.data).toEqual(updatedChannel)
     })
   })
@@ -80,7 +80,7 @@ describe('channels API', () => {
 
       const response = await deleteChannel(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/channels/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/channels/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })

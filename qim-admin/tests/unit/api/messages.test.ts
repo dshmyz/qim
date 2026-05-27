@@ -41,7 +41,7 @@ describe('Messages API', () => {
     const result = await searchMessages(params as any)
 
     expect(mockRequest).toHaveBeenCalledWith({
-      url: '/messages/search',
+      url: '/v1/messages/search',
       method: 'get',
       params,
     })
@@ -71,7 +71,7 @@ describe('Messages API', () => {
     const result = await getMessageDetail(1)
 
     expect(mockRequest).toHaveBeenCalledWith({
-      url: '/messages/1',
+      url: '/v1/messages/1',
       method: 'get',
     })
     expect(result.data.data).toEqual(mockResponse.data.data)

@@ -61,7 +61,7 @@ describe('users API', () => {
 
       const response = await getUserById(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/users/1', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/users/1', method: 'get' })
       expect(response.data.data).toEqual(mockUser)
     })
 
@@ -71,7 +71,7 @@ describe('users API', () => {
 
       await getUserById(42)
 
-      expect(mockRequest).toHaveBeenCalledWith(expect.objectContaining({ url: '/users/42' }))
+      expect(mockRequest).toHaveBeenCalledWith(expect.objectContaining({ url: '/v1/users/42' }))
     })
   })
 
@@ -97,7 +97,7 @@ describe('users API', () => {
       const updateData = { nickname: '更新后的昵称' }
       const response = await updateUser(1, updateData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/users/1', method: 'put', data: updateData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/users/1', method: 'put', data: updateData })
       expect(response.data.data).toEqual(updatedUser)
     })
   })
@@ -109,7 +109,7 @@ describe('users API', () => {
 
       const response = await deleteUser(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/users/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/users/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })
@@ -145,7 +145,7 @@ describe('users API', () => {
 
       await banUser(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/users/1/ban', method: 'post' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/users/1/ban', method: 'post' })
     })
   })
 
@@ -156,7 +156,7 @@ describe('users API', () => {
 
       await unbanUser(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/users/1/unban', method: 'post' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/users/1/unban', method: 'post' })
     })
   })
 })

@@ -2,7 +2,7 @@
 <template>
   <el-aside :width="collapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': collapsed }">
     <div class="logo-container">
-      <img src="/app-logo.png" alt="QIM Logo" class="logo-image" />
+      <img src="/app-logo-v1.png" alt="QIM Logo" class="logo-image" />
       <h2 class="logo-text" v-show="!collapsed">QIM Admin</h2>
     </div>
 
