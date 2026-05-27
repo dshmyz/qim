@@ -204,10 +204,14 @@ export function useWebSocket(wsUrl: string) {
     }
 
     try {
-      const wsFullUrl = wsUrl.startsWith('ws')
-        ? `${wsUrl}?token=${token}`
-        : `ws://${wsUrl.replace('http://', '')}/api/v1/ws?token=${token}`
+      const storedUrl = localStorage.getItem('serverUrl')
+      const serverUrl = storedUrl || wsUrl
+      const cleanUrl = serverUrl.replace(/\/+$/, '')
+      const wsFullUrl = cleanUrl.startsWith('ws')
+        ? `${cleanUrl}?token=${token}`
+        : `ws${cleanUrl.startsWith('https') ? 's' : ''}://${cleanUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}`
 
+      console.log('[WS] connecting to', wsFullUrl, 'localStorage serverUrl:', storedUrl, 'wsUrl:', wsUrl)
       ws = new WebSocket(wsFullUrl)
 
       if (typeof window !== 'undefined') {

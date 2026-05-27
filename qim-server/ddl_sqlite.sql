@@ -327,8 +327,8 @@ CREATE TABLE IF NOT EXISTS `events` (
   `user_id` INTEGER NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `description` TEXT,
-  `start` DATETIME NOT NULL,
-  `end` DATETIME NOT NULL,
+  `start_time` DATETIME NOT NULL,
+  `end_time` DATETIME NOT NULL,
   `all_day` INTEGER DEFAULT 0,
   `reminder` INTEGER DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -433,7 +433,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `type` VARCHAR(30) NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `content` TEXT NOT NULL,
-  `read` INTEGER DEFAULT 0,
+  `is_read` INTEGER DEFAULT 0,
   `read_at` DATETIME,
   `priority` VARCHAR(10) DEFAULT 'normal',
   `action_type` VARCHAR(30) DEFAULT '',
@@ -448,7 +448,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 );
 CREATE INDEX IF NOT EXISTS `idx_notifications_user_id` ON `notifications`(`user_id`);
 CREATE INDEX IF NOT EXISTS `idx_notifications_deleted_at` ON `notifications`(`deleted_at`);
-CREATE INDEX IF NOT EXISTS `idx_notifications_user_read_created_at` ON `notifications`(`user_id`, `read`, `created_at`);
+CREATE INDEX IF NOT EXISTS `idx_notifications_user_is_read_created_at` ON `notifications`(`user_id`, `is_read`, `created_at`);
 
 -- Channels table
 CREATE TABLE IF NOT EXISTS `channels` (
@@ -576,10 +576,10 @@ CREATE INDEX IF NOT EXISTS `idx_sensitive_words_deleted_at` ON `sensitive_words`
 -- System configs table
 CREATE TABLE IF NOT EXISTS `system_configs` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `key` VARCHAR(100) NOT NULL UNIQUE,
+  `config_key` VARCHAR(100) NOT NULL UNIQUE,
   `value` TEXT NOT NULL,
   `type` VARCHAR(20) DEFAULT 'string',
-  `desc` VARCHAR(500),
+  `description` VARCHAR(500),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );

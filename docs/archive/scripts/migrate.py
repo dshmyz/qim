@@ -53,6 +53,7 @@ MESSAGE_TYPE_MAP = {
     'url': 'link',
     'position': 'location',
     'at': 'text',
+    'code': 'markdown',
 }
 
 
@@ -132,7 +133,7 @@ class MigrationEngine:
         logger.info(f"  完成: {self.stats['sessions']} 条会话记录")
 
         logger.info("\n[8/8] 迁移系统通知...")
-        self.migrate_notifications()
+        # self.migrate_notifications()
         logger.info(f"  完成: 迁移通知")
 
         logger.info("\n" + "=" * 50)
@@ -249,7 +250,7 @@ class MigrationEngine:
                         'name': old_group['name'],
                         'avatar': old_group.get('avatar', ''),
                         'creator_id': creator_id,
-                        'announcement': old_group.get('intro', ''),
+                        'announcement': old_group.get('introduce', ''),
                         'invite_permission': 'invite_only',
                         'created_at': datetime.now(),
                         'updated_at': datetime.now(),
@@ -444,8 +445,10 @@ class MigrationEngine:
                 if not conv_id or not sender_id:
                     continue
 
-                message_type = MESSAGE_TYPE_MAP.get(item['type'], 'text')
-                content = item.get('filterValue') or item.get('originalValue') or ''
+                oim_type = item['type']
+                message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
+                raw_content = item.get('filterValue') or item.get('originalValue') or ''
+                content = self._transform_content(oim_type, raw_content)
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -502,8 +505,10 @@ class MigrationEngine:
                 if not conv_id or not sender_id:
                     continue
 
-                message_type = MESSAGE_TYPE_MAP.get(item['type'], 'text')
-                content = item.get('filterValue') or item.get('originalValue') or ''
+                oim_type = item['type']
+                message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
+                raw_content = item.get('filterValue') or item.get('originalValue') or ''
+                content = self._transform_content(oim_type, raw_content)
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -562,7 +567,7 @@ class MigrationEngine:
 
     def _migrate_private_unread(self):
         with self.source_conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM im_user_chat_unread WHERE unread > 0")
+            cursor.execute("SELECT * FROM im_user_chat_unread WHERE unreadCount > 0")
             unread_records = cursor.fetchall()
 
         logger.info(f"  [单聊] 找到 {len(unread_records)} 条未读记录")
@@ -593,7 +598,7 @@ class MigrationEngine:
                             UPDATE conversation_members 
                             SET unread_count = %s 
                             WHERE conversation_id = %s AND user_id = %s
-                        """, (record['unread'], conv_id, user_id))
+                        """, (record['unreadCount'], conv_id, user_id))
                         updated += 1
                     else:
                         logger.warning(f"  [单聊] 未找到会话成员: conv_id={conv_id}, user_id={user_id}")
@@ -605,7 +610,7 @@ class MigrationEngine:
 
     def _migrate_group_unread(self):
         with self.source_conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM im_group_chat_unread WHERE unread > 0")
+            cursor.execute("SELECT * FROM im_group_chat_unread WHERE unreadCount > 0")
             unread_records = cursor.fetchall()
 
         logger.info(f"  [群聊] 找到 {len(unread_records)} 条未读记录")
@@ -634,7 +639,7 @@ class MigrationEngine:
                             UPDATE conversation_members 
                             SET unread_count = %s 
                             WHERE conversation_id = %s AND user_id = %s
-                        """, (record['unread'], conv_id, user_id))
+                        """, (record['unreadCount'], conv_id, user_id))
                         updated += 1
                 except Exception as e:
                     logger.error(f"  [群聊] 未读计数更新失败: error={e}")
@@ -768,6 +773,33 @@ class MigrationEngine:
                     logger.error(f"  [用户通知] 迁移失败: id={notification.get('id')}, error={e}")
 
             self.target_conn.commit()
+
+    def _transform_content(self, oim_type: str, raw_content: str) -> str:
+        if not raw_content:
+            return ''
+
+        if oim_type in ('image', 'file'):
+            try:
+                data = json.loads(raw_content)
+                return json.dumps({
+                    'url': data.get('url', ''),
+                    'id': data.get('id', ''),
+                    'name': data.get('name', ''),
+                    'size': data.get('size', 0),
+                })
+            except (json.JSONDecodeError, TypeError):
+                return raw_content
+
+        if oim_type == 'code':
+            try:
+                data = json.loads(raw_content)
+                language = data.get('language', '')
+                code = data.get('content', '')
+                return f"```{language}\n{code}\n```"
+            except (json.JSONDecodeError, TypeError):
+                return raw_content
+
+        return raw_content
 
     def _timestamp_to_datetime(self, timestamp) -> Optional[datetime]:
         if not timestamp or timestamp == 0:

@@ -314,8 +314,8 @@ type Event struct {
 	UserID      uint           `json:"user_id" gorm:"not null;index"`
 	Title       string         `json:"title" gorm:"size:500;not null"`
 	Description string         `json:"description" gorm:"type:text"`
-	Start       time.Time      `json:"start" gorm:"not null"`
-	End         time.Time      `json:"end" gorm:"not null"`
+	Start       time.Time      `json:"start" gorm:"column:start_time;not null"`
+	End         time.Time      `json:"end" gorm:"column:end_time;not null"`
 	AllDay      bool           `json:"all_day" gorm:"default:false"`
 	Reminder    int            `json:"reminder" gorm:"default:0"` // 提醒时间（分钟）
 	CreatedAt   time.Time      `json:"created_at"`
@@ -409,7 +409,7 @@ type Notification struct {
 	Type          string         `json:"type" gorm:"size:30;not null"`
 	Title         string         `json:"title" gorm:"size:500;not null"`
 	Content       string         `json:"content" gorm:"type:text;not null"`
-	Read          bool           `json:"read" gorm:"default:false"`
+	Read          bool           `json:"read" gorm:"column:is_read;default:false"`
 	ReadAt        *time.Time     `json:"read_at"`
 	Priority      string         `json:"priority" gorm:"size:10;default:normal"`
 	ActionType    string         `json:"action_type" gorm:"size:30;default:''"`
@@ -723,10 +723,10 @@ type SensitiveWord struct {
 // 系统配置
 type SystemConfig struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
-	Key       string    `json:"key" gorm:"size:100;uniqueIndex;not null"`
+	Key       string    `json:"key" gorm:"column:config_key;size:100;uniqueIndex;not null"`
 	Value     string    `json:"value" gorm:"type:text;not null"`
 	Type      string    `json:"type" gorm:"size:20;default:'string'"` // string, number, boolean, json
-	Desc      string    `json:"desc" gorm:"size:500"`
+	Desc      string    `json:"desc" gorm:"column:description;size:500"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

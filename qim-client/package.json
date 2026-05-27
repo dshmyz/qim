@@ -21,8 +21,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:unit && npm run test:e2e",
     "electron:build": "electron-builder",
-    "electron:build:win7": "electron-builder --win --x64 -c electron-builder-win7.yml",
-    "electron:build:win10": "electron-builder --win --x64 -c.win10",
+    "electron:build:win7": "electron-builder --win --x64 --c.electronVersion=22.3.27 --c.publish.url='${env.QIM_UPDATE_URL}/api/v1/updates/win7/'",
+    "electron:build:win10": "electron-builder --win --x64",
     "electron:build:linux": "electron-builder --linux",
     "electron:build:mac": "electron-builder --mac",
     "electron:build:all": "bash scripts/build-all.sh",
@@ -30,6 +30,10 @@
   },
   "build": {
     "appId": "com.qim.app",
+    "extraMetadata": {
+      "productNameCN": "青雀",
+      "copyrightYear": "2026"
+    },
     "productName": "青雀 QIM",
     "electronVersion": "33.2.1",
     "protocols": [
@@ -75,30 +79,25 @@
           ]
         }
       ],
-      "nsis": {
-        "oneClick": false,
-        "perMachine": true,
-        "allowElevation": true,
-        "allowToChangeInstallationDirectory": true,
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true
-      },
       "publish": {
         "provider": "generic",
         "url": "${env.QIM_UPDATE_URL}/api/v1/updates/win10/",
         "channel": "latest"
       }
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "linux": {
-      "productName": "qim",
       "executableName": "qim",
       "icon": "electron/icons/icon_512x512.png",
       "target": [
-        {
-          "target": "deb",
-          "afterInstall": "electron/after-install-linux.sh",
-          "beforeRemove": "electron/before-remove-linux.sh"
-        },
+        "deb",
         "AppImage"
       ],
       "publish": {
@@ -106,6 +105,10 @@
         "url": "${env.QIM_UPDATE_URL}/api/v1/updates/linux/",
         "channel": "latest"
       }
+    },
+    "deb": {
+      "afterInstall": "electron/after-install-linux.sh",
+      "afterRemove": "electron/before-remove-linux.sh"
     },
     "mac": {
       "icon": "electron/icons/QIM.icns",

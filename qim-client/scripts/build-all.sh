@@ -221,7 +221,7 @@ if [ "$BUILD_WIN7" = true ]; then
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
     echo ""
     echo -e "${BLUE}[$TOTAL_COUNT] 构建 Windows 7 版本 (Electron 22.3.27)...${NC}"
-    if npx electron-builder --win --x64 -c electron-builder-win7.yml; then
+    if npx electron-builder --win --x64 --c.electronVersion=22.3.27 --c.publish.url="${QIM_UPDATE_URL}/api/v1/updates/win7/"; then
         echo -e "${GREEN}✅ Windows 7 构建成功${NC}"
         SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     else

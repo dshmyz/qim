@@ -328,8 +328,8 @@ CREATE TABLE IF NOT EXISTS `events` (
   `user_id` INT UNSIGNED NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `description` TEXT,
-  `start` DATETIME NOT NULL,
-  `end` DATETIME NOT NULL,
+  `start_time` DATETIME NOT NULL,
+  `end_time` DATETIME NOT NULL,
   `all_day` BOOLEAN DEFAULT FALSE,
   `reminder` INT DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -434,7 +434,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `type` VARCHAR(30) NOT NULL,
   `title` VARCHAR(500) NOT NULL,
   `content` TEXT NOT NULL,
-  `read` BOOLEAN DEFAULT FALSE,
+  `is_read` BOOLEAN DEFAULT FALSE,
   `read_at` DATETIME,
   `priority` VARCHAR(10) DEFAULT 'normal',
   `action_type` VARCHAR(30) DEFAULT '',
@@ -447,7 +447,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `deleted_at` DATETIME,
   INDEX `idx_notifications_user_id` (`user_id`),
   INDEX `idx_notifications_deleted_at` (`deleted_at`),
-  INDEX `idx_notifications_user_read_created_at` (`user_id`, `read`, `created_at`),
+  INDEX `idx_notifications_user_is_read_created_at` (`user_id`, `is_read`, `created_at`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -577,10 +577,10 @@ CREATE TABLE IF NOT EXISTS `sensitive_words` (
 -- System configs table
 CREATE TABLE IF NOT EXISTS `system_configs` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  `key` VARCHAR(100) NOT NULL UNIQUE,
+  `config_key` VARCHAR(100) NOT NULL UNIQUE,
   `value` TEXT NOT NULL,
   `type` VARCHAR(20) DEFAULT 'string',
-  `desc` VARCHAR(500),
+  `description` VARCHAR(500),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

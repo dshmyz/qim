@@ -7,7 +7,13 @@
 
     <el-table :data="configs" v-loading="loading" style="width: 100%">
       <el-table-column prop="name" label="名称" width="180" />
-      <el-table-column prop="sync_type" label="同步类型" width="120" />
+      <el-table-column prop="sync_type" label="数据源类型" width="120">
+        <template #default="{ row }">
+          <el-tag :type="row.sync_type === 'ldap' ? 'success' : 'primary'">
+            {{ row.sync_type === 'ldap' ? 'LDAP' : row.sync_type === 'api' ? 'API' : row.sync_type }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="schedule" label="调度时间" width="120" />
       <el-table-column prop="enabled" label="状态" width="100">
         <template #default="{ row }">
@@ -31,23 +37,52 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑同步配置' : '新建同步配置'" width="600px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑同步配置' : '新建同步配置'" width="700px">
       <el-form :model="form" label-width="120px">
-        <el-form-item label="名称">
-          <el-input v-model="form.name" />
+        <el-form-item label="名称" required>
+          <el-input v-model="form.name" placeholder="配置名称，如 企业LDAP同步" />
         </el-form-item>
-        <el-form-item label="同步类型">
-          <el-select v-model="form.sync_type">
-            <el-option label="定时同步" value="schedule" />
-            <el-option label="手动同步" value="manual" />
-            <el-option label="实时同步" value="realtime" />
+        <el-form-item label="数据源类型" required>
+          <el-select v-model="form.sync_type" @change="onSyncTypeChange">
+            <el-option label="LDAP 目录服务" value="ldap" />
+            <el-option label="API 接口" value="api" />
+          </el-select>
+          <div class="form-tip">选择组织架构数据的来源类型</div>
+        </el-form-item>
+        <el-form-item label="调度时间">
+          <el-input v-model="form.schedule" placeholder="Cron 表达式，如 0 2 * * * 表示每天凌晨2点" />
+          <div class="form-tip">留空表示仅手动触发同步</div>
+        </el-form-item>
+        <el-form-item label="配置模板">
+          <el-select v-model="configTemplate" @change="applyTemplate" style="width: 100%">
+            <el-option label="选择配置模板..." value="" />
+            <el-option v-if="form.sync_type === 'ldap'" label="LDAP 配置" value="ldap" />
+            <el-option v-if="form.sync_type === 'api'" label="API 配置" value="api" />
           </el-select>
         </el-form-item>
-        <el-form-item label="调度时间" v-if="form.sync_type === 'schedule'">
-          <el-input v-model="form.schedule" placeholder="例如: 0 2 * * *" />
-        </el-form-item>
-        <el-form-item label="配置">
-          <el-input v-model="form.config" type="textarea" :rows="10" />
+        <el-form-item label="配置JSON" required>
+          <el-input v-model="form.config" type="textarea" :rows="12" />
+          <div class="form-tip">根据数据源类型填写相应的配置信息，必须是有效的JSON格式</div>
+          <div class="form-tip" v-if="form.sync_type === 'ldap'" style="color: #409eff; margin-top: 4px;">
+            <strong>LDAP 配置字段说明：</strong><br/>
+            <code>server</code> — LDAP 服务器地址，仅填 IP 或域名，不要加 <code>ldap://</code> 前缀<br/>
+            <code>port</code> — 端口号，普通连接默认 389，TLS 连接默认 636<br/>
+            <code>use_tls</code> — 是否启用 TLS 加密连接，启用时端口应改为 636<br/>
+            <code>bind_dn</code> — 管理员绑定 DN，如 <code>cn=admin,dc=example,dc=com</code><br/>
+            <code>bind_password</code> — 管理员绑定密码<br/>
+            <code>base_dn</code> — 搜索基准 DN，如 <code>dc=example,dc=com</code><br/>
+            <code>department_filter</code> — 部门搜索过滤器，默认 <code>(objectClass=organizationalUnit)</code><br/>
+            <code>user_filter</code> — 用户搜索过滤器，默认 <code>(objectClass=inetOrgPerson)</code><br/>
+            <code>attribute_mapping</code> — 属性映射，如 <code>{"username":"uid","nickname":"cn","email":"mail"}</code>
+          </div>
+          <div class="form-tip" v-if="form.sync_type === 'api'" style="color: #409eff; margin-top: 4px;">
+            <strong>API 配置字段说明：</strong><br/>
+            <code>url</code> — 数据接口地址，必填<br/>
+            <code>method</code> — 请求方法，默认 GET<br/>
+            <code>headers</code> — 自定义请求头，如 <code>{"Authorization":"Bearer xxx"}</code><br/>
+            <code>auth_token</code> — 认证令牌，会以 Bearer 方式添加到请求头<br/>
+            <code>timeout</code> — 超时时间（秒），默认 30
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -87,14 +122,53 @@ const dialogVisible = ref(false)
 const logsDialogVisible = ref(false)
 const isEdit = ref(false)
 const currentConfig = ref<OrgSyncConfig | null>(null)
+const configTemplate = ref('')
 
 const form = ref({
   name: '',
-  sync_type: 'manual',
+  sync_type: 'ldap',
   schedule: '',
   config: '{}',
   enabled: true
 })
+
+const syncConfigTemplates: Record<string, string> = {
+  ldap: JSON.stringify({
+    server: '192.168.1.100',
+    port: 389,
+    use_tls: false,
+    bind_dn: 'cn=admin,dc=example,dc=com',
+    bind_password: 'admin_password',
+    base_dn: 'dc=example,dc=com',
+    department_filter: '(objectClass=organizationalUnit)',
+    user_filter: '(objectClass=inetOrgPerson)',
+    attribute_mapping: {
+      username: 'uid',
+      nickname: 'cn',
+      email: 'mail'
+    }
+  }, null, 2),
+  api: JSON.stringify({
+    url: 'https://api.example.com/org',
+    method: 'GET',
+    headers: {},
+    auth_token: '',
+    timeout: 30
+  }, null, 2)
+}
+
+const onSyncTypeChange = () => {
+  configTemplate.value = ''
+}
+
+const applyTemplate = () => {
+  if (!configTemplate.value) return
+  const template = syncConfigTemplates[configTemplate.value]
+  if (template) {
+    form.value.config = template
+    ElMessage.success('已应用配置模板，请根据实际情况修改配置信息')
+  }
+}
 
 const loadConfigs = async () => {
   loading.value = true
@@ -110,9 +184,10 @@ const loadConfigs = async () => {
 
 const showCreateDialog = () => {
   isEdit.value = false
+  configTemplate.value = ''
   form.value = {
     name: '',
-    sync_type: 'manual',
+    sync_type: 'ldap',
     schedule: '',
     config: '{}',
     enabled: true
@@ -123,6 +198,7 @@ const showCreateDialog = () => {
 const editConfig = (config: OrgSyncConfig) => {
   isEdit.value = true
   currentConfig.value = config
+  configTemplate.value = ''
   form.value = {
     name: config.name,
     sync_type: config.sync_type,
@@ -134,6 +210,13 @@ const editConfig = (config: OrgSyncConfig) => {
 }
 
 const submitForm = async () => {
+  try {
+    JSON.parse(form.value.config)
+  } catch (error) {
+    ElMessage.error('配置JSON格式错误')
+    return
+  }
+
   try {
     if (isEdit.value && currentConfig.value) {
       await updateOrgSyncConfig(currentConfig.value.id, form.value)
@@ -201,5 +284,12 @@ onMounted(() => {
 
 .header h2 {
   margin: 0;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 </style>

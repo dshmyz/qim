@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"qim-server/auth"
@@ -238,8 +237,6 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 // MigrateDB 自动迁移数据库表
 func MigrateDB(db *gorm.DB) {
-	cleanupDuplicateReadReceipts(db)
-
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Department{},
@@ -296,16 +293,7 @@ func MigrateDB(db *gorm.DB) {
 		// os.Exit(1)
 	}
 
-	// 添加性能优化索引
 	addIndexes(db)
-
-	migrateMiniApps(db)
-	migrateGroupData(db)
-	migrateFileSource(db)
-	migrateNoteStyle(db)
-	migrateAIConfigs(db)
-	migrateUserAIConfigs(db)
-	migrateAppCode(db)
 	seedBuiltInApps(db)
 	seedFileUploadConfig(db)
 }
@@ -313,7 +301,7 @@ func MigrateDB(db *gorm.DB) {
 // isMigrationCompleted 检查指定的迁移版本是否已完成
 func isMigrationCompleted(db *gorm.DB, migrationName string) bool {
 	var config model.SystemConfig
-	err := db.Where("key = ?", "migration:"+migrationName).First(&config).Error
+	err := db.Where("config_key = ?", "migration:"+migrationName).First(&config).Error
 	return err == nil
 }
 
@@ -325,467 +313,8 @@ func markMigrationCompleted(db *gorm.DB, migrationName string) {
 		Type:  "string",
 		Desc:  "迁移版本: " + migrationName,
 	}
-	db.Where("key = ?", "migration:"+migrationName).FirstOrCreate(&config)
+	db.Where("config_key = ?", "migration:"+migrationName).FirstOrCreate(&config)
 	logger.WithModule("Migration").Info("标记迁移为已完成", "name", migrationName)
-}
-
-// cleanupDuplicateReadReceipts 清理消息已读回执中的重复记录
-func cleanupDuplicateReadReceipts(db *gorm.DB) {
-	if !db.Migrator().HasTable("message_read_receipts") {
-		return
-	}
-
-	db.Exec(`
-		DELETE FROM message_read_receipts
-		WHERE id NOT IN (
-			SELECT MIN(id)
-			FROM message_read_receipts
-			GROUP BY message_id, user_id
-		)
-	`)
-	logger.WithModule("Migrate").Info("已清理消息已读回执的重复记录")
-}
-
-// migrateGroupData 迁移群聊数据到Group表
-func migrateGroupData(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_group_data") {
-		return
-	}
-
-	// 检查Group表是否为空
-	var count int64
-	db.Model(&model.Group{}).Count(&count)
-	if count > 0 {
-		markMigrationCompleted(db, "migrate_group_data")
-		return // 已有数据，跳过迁移
-	}
-
-	// 查询所有群聊和讨论组会话
-	var conversations []model.Conversation
-	db.Where("type = ? OR type = ?", "group", "discussion").Find(&conversations)
-
-	// 迁移数据到Group表
-	for _, conv := range conversations {
-		group := model.Group{
-			ConversationID:   conv.ID,
-			GroupType:        conv.Type, // 使用原Type字段值作为GroupType
-			Name:             "",
-			Avatar:           "",
-			CreatorID:        0,
-			Announcement:     "",
-			InvitePermission: "owner_admin",
-			CreatedAt:        conv.CreatedAt,
-			UpdatedAt:        conv.UpdatedAt,
-		}
-		db.Create(&group)
-	}
-	logger.WithModule("Migrate").Info("群聊数据迁移完成", "count", len(conversations))
-
-	markMigrationCompleted(db, "migrate_group_data")
-}
-
-// migrateMiniApps 手动迁移 mini_apps 表，避免 AutoMigrate 在 SQLite 上产生 DDL 错误
-func migrateMiniApps(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_mini_apps") {
-		return
-	}
-
-	if !db.Migrator().HasTable("mini_apps") {
-		if err := db.Migrator().CreateTable(&model.MiniApp{}); err != nil {
-			logger.WithModule("Migrate").Error("创建 mini_apps 表失败", "error", err)
-			os.Exit(1)
-		}
-		markMigrationCompleted(db, "migrate_mini_apps")
-		return
-	}
-
-	if !db.Migrator().HasColumn(&model.MiniApp{}, "permissions") {
-		if err := db.Migrator().AddColumn(&model.MiniApp{}, "permissions"); err != nil {
-			logger.WithModule("Migrate").Error("为 mini_apps 表添加 permissions 字段失败", "error", err)
-			os.Exit(1)
-		}
-	}
-
-	markMigrationCompleted(db, "migrate_mini_apps")
-}
-
-// migrateFileSource 迁移文件来源字段，将聊天消息中引用的文件标记为chat来源
-func migrateFileSource(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_file_source") {
-		return
-	}
-
-	if !db.Migrator().HasTable("messages") || !db.Migrator().HasTable("files") {
-		markMigrationCompleted(db, "migrate_file_source")
-		return
-	}
-
-	var messages []model.Message
-	if err := db.Where("type IN ?", []string{"file", "image"}).Find(&messages).Error; err != nil {
-		logger.WithModule("Migrate").Error("查询聊天文件消息失败", "error", err)
-		markMigrationCompleted(db, "migrate_file_source")
-		return
-	}
-
-	updated := 0
-	for _, msg := range messages {
-		var fileData struct {
-			URL string `json:"url"`
-			ID  uint   `json:"id"`
-		}
-		if err := json.Unmarshal([]byte(msg.Content), &fileData); err != nil {
-			continue
-		}
-		if fileData.ID > 0 {
-			result := db.Model(&model.File{}).Where("id = ? AND source = ?", fileData.ID, "upload").Update("source", "chat")
-			if result.RowsAffected > 0 {
-				updated++
-			}
-		}
-	}
-
-	if updated > 0 {
-		logger.WithModule("Migrate").Info("文件来源迁移完成", "updated", updated)
-	}
-
-	markMigrationCompleted(db, "migrate_file_source")
-}
-
-// migrateNoteStyle 为 notes 表添加 style 字段（兼容已存在的数据库）
-func migrateNoteStyle(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_note_style") {
-		return
-	}
-
-	if !db.Migrator().HasTable("notes") {
-		markMigrationCompleted(db, "migrate_note_style")
-		return
-	}
-
-	// Migrate color from color column to style JSON if color column exists
-	if db.Migrator().HasColumn(&model.Note{}, "color") {
-		// Get all notes with color values
-		var notes []map[string]interface{}
-		db.Table("notes").Select("id, color").Find(&notes)
-		for _, note := range notes {
-			if color, ok := note["color"].(string); color != "" && ok {
-				// Get current style
-				var styleStr string
-				db.Table("notes").Where("id = ?", note["id"]).Pluck("style", &styleStr)
-				if len(styleStr) == 0 {
-					styleStr = "{}"
-				}
-				var styleMap map[string]interface{}
-				if err := json.Unmarshal([]byte(styleStr), &styleMap); err == nil {
-					styleMap["color"] = color
-					if styleBytes, err := json.Marshal(styleMap); err == nil {
-						db.Table("notes").Where("id = ?", note["id"]).Update("style", string(styleBytes))
-					}
-				}
-			}
-		}
-		db.Migrator().DropColumn(&model.Note{}, "color")
-		logger.WithModule("Migrate").Info("已将 notes 表的 color 字段迁移到 style JSON 中")
-	}
-
-	if !db.Migrator().HasColumn(&model.Note{}, "style") {
-		if err := db.Migrator().AddColumn(&model.Note{}, "style"); err != nil {
-			logger.WithModule("Migrate").Error("为 notes 表添加 style 字段失败", "error", err)
-			markMigrationCompleted(db, "migrate_note_style")
-			return
-		}
-		logger.WithModule("Migrate").Info("notes 表已添加 style 字段")
-	}
-
-	markMigrationCompleted(db, "migrate_note_style")
-}
-
-// migrateAIConfigs 迁移 AI 配置数据，将旧的冗余字段转换为新的 JSON 格式
-func migrateAIConfigs(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_ai_configs") {
-		return
-	}
-
-	if !db.Migrator().HasTable("ai_configs") {
-		return
-	}
-
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_json") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_json"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 config_json 字段失败", "error", err)
-			return
-		}
-	}
-
-	if db.Migrator().HasColumn(&model.AIConfig{}, "openai_api_key") {
-		var aiConfigs []map[string]interface{}
-		db.Table("ai_configs").Find(&aiConfigs)
-
-		migrated := 0
-		for _, cfg := range aiConfigs {
-			provider, _ := cfg["provider"].(string)
-			if provider == "" {
-				provider = "openai"
-			}
-
-			var configJSON map[string]interface{}
-			configJSON = map[string]interface{}{
-				"provider": provider,
-			}
-
-			switch provider {
-			case "openai":
-				if apiKey, ok := cfg["openai_api_key"].(string); ok && apiKey != "" {
-					configJSON["api_key"] = apiKey
-				}
-				if model, ok := cfg["openai_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["openai_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			case "baidu":
-				if apiKey, ok := cfg["baidu_api_key"].(string); ok && apiKey != "" {
-					configJSON["api_key"] = apiKey
-				}
-				if secretKey, ok := cfg["baidu_secret_key"].(string); ok && secretKey != "" {
-					configJSON["secret_key"] = secretKey
-				}
-				if model, ok := cfg["baidu_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["baidu_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			case "alibaba":
-				if apiKey, ok := cfg["alibaba_api_key"].(string); ok && apiKey != "" {
-					configJSON["api_key"] = apiKey
-				}
-				if model, ok := cfg["alibaba_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["alibaba_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			case "tencent":
-				if secretID, ok := cfg["tencent_secret_id"].(string); ok && secretID != "" {
-					configJSON["secret_id"] = secretID
-				}
-				if secretKey, ok := cfg["tencent_secret_key"].(string); ok && secretKey != "" {
-					configJSON["secret_key"] = secretKey
-				}
-				if model, ok := cfg["tencent_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["tencent_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			case "bytedance":
-				if apiKey, ok := cfg["bytedance_api_key"].(string); ok && apiKey != "" {
-					configJSON["api_key"] = apiKey
-				}
-				if model, ok := cfg["bytedance_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["bytedance_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			case "anthropic":
-				if apiKey, ok := cfg["anthropic_api_key"].(string); ok && apiKey != "" {
-					configJSON["api_key"] = apiKey
-				}
-				if model, ok := cfg["anthropic_model"].(string); ok && model != "" {
-					configJSON["model"] = model
-				}
-				if baseURL, ok := cfg["anthropic_base_url"].(string); ok && baseURL != "" {
-					configJSON["base_url"] = baseURL
-				}
-			}
-
-			if len(configJSON) > 1 {
-				if configBytes, err := json.Marshal(configJSON); err == nil {
-					db.Table("ai_configs").Where("id = ?", cfg["id"]).Update("config_json", string(configBytes))
-					migrated++
-				}
-			}
-		}
-
-		if migrated > 0 {
-			logger.WithModule("Migrate").Info("AI 配置数据迁移完成", "migrated", migrated)
-		}
-
-		db.Migrator().DropColumn(&model.AIConfig{}, "openai_api_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "openai_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "openai_base_url")
-		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_api_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_secret_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "baidu_base_url")
-		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_api_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "alibaba_base_url")
-		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_secret_id")
-		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_secret_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "tencent_base_url")
-		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_api_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "bytedance_base_url")
-		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_api_key")
-		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_model")
-		db.Migrator().DropColumn(&model.AIConfig{}, "anthropic_base_url")
-		logger.WithModule("Migrate").Info("已删除 ai_configs 表的旧供应商字段")
-	}
-
-	markMigrationCompleted(db, "migrate_ai_configs")
-}
-
-// migrateUserAIConfigs 将 user_ai_configs 表的数据迁移到 ai_configs 表，然后删除旧表
-func migrateUserAIConfigs(db *gorm.DB) {
-	// 检查迁移版本是否已完成
-	if isMigrationCompleted(db, "migrate_user_ai_configs") {
-		return
-	}
-
-	if !db.Migrator().HasTable("user_ai_configs") {
-		return
-	}
-
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "config_name") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "config_name"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 config_name 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_default") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_default"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 is_default 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "api_key_encrypted") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "api_key_encrypted"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 api_key_encrypted 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "model_name") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "model_name"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 model_name 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "base_url") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "base_url"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 base_url 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "is_verified") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "is_verified"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 is_verified 字段失败", "error", err)
-			return
-		}
-	}
-	if !db.Migrator().HasColumn(&model.AIConfig{}, "last_tested_at") {
-		if err := db.Migrator().AddColumn(&model.AIConfig{}, "last_tested_at"); err != nil {
-			logger.WithModule("Migrate").Error("为 ai_configs 表添加 last_tested_at 字段失败", "error", err)
-			return
-		}
-	}
-
-	var userConfigs []map[string]interface{}
-	db.Table("user_ai_configs").Find(&userConfigs)
-
-	migrated := 0
-	for _, cfg := range userConfigs {
-		userID, _ := cfg["user_id"].(uint64)
-		configName, _ := cfg["config_name"].(string)
-		provider, _ := cfg["provider"].(string)
-		apiKeyEncrypted, _ := cfg["api_key_encrypted"].(string)
-		modelName, _ := cfg["model_name"].(string)
-		baseURL, _ := cfg["base_url"].(string)
-		temperature, _ := cfg["temperature"].(float64)
-		maxTokens, _ := cfg["max_tokens"].(int64)
-		isVerified, _ := cfg["is_verified"].(bool)
-
-		var lastTestedAt interface{}
-		if v, ok := cfg["last_tested_at"]; ok && v != nil {
-			lastTestedAt = v
-		}
-
-		createdAt, _ := cfg["created_at"].(time.Time)
-		updatedAt, _ := cfg["updated_at"].(time.Time)
-
-		newConfig := model.AIConfig{
-			UserID:          uint(userID),
-			ConfigName:      configName,
-			IsDefault:       false,
-			Provider:        provider,
-			APIKeyEncrypted: apiKeyEncrypted,
-			ModelName:       modelName,
-			BaseURL:         baseURL,
-			Temperature:     temperature,
-			MaxTokens:       int(maxTokens),
-			IsVerified:      isVerified,
-			CreatedAt:       createdAt,
-			UpdatedAt:       updatedAt,
-		}
-
-		if lastTestedAt != nil {
-			if t, ok := lastTestedAt.(time.Time); ok {
-				newConfig.LastTestedAt = &t
-			}
-		}
-
-		if err := db.Create(&newConfig).Error; err == nil {
-			migrated++
-		}
-	}
-
-	if migrated > 0 {
-		logger.WithModule("Migrate").Info("User AI 配置数据迁移完成", "migrated", migrated)
-	}
-
-	db.Migrator().DropTable("user_ai_configs")
-	logger.WithModule("Migrate").Info("已删除 user_ai_configs 表")
-
-	markMigrationCompleted(db, "migrate_user_ai_configs")
-}
-
-// migrateAppCode 为 App 表添加 code 字段并填充现有数据
-func migrateAppCode(db *gorm.DB) {
-	if isMigrationCompleted(db, "migrate_app_code") {
-		return
-	}
-
-	if !db.Migrator().HasColumn(&model.App{}, "code") {
-		if err := db.Migrator().AddColumn(&model.App{}, "code"); err != nil {
-			logger.WithModule("Migrate").Error("添加 app.code 字段失败", "error", err)
-			return
-		}
-		logger.WithModule("Migrate").Info("添加 app.code 字段成功")
-	}
-
-	// 为现有内置应用填充 code 字段（按名称匹配）
-	nameToCode := map[string]string{
-		"日历":    "calendar",
-		"文件管理":  "file_manager",
-		"任务管理":  "task_manager",
-		"便签":    "sticky_notes",
-		"笔记":    "notes",
-		"短链接管理": "short_link",
-	}
-	for name, code := range nameToCode {
-		db.Model(&model.App{}).Where("name = ? AND is_global = ? AND (code IS NULL OR code = '')", name, true).Update("code", code)
-	}
-
-	markMigrationCompleted(db, "migrate_app_code")
 }
 
 // seedBuiltInApps 初始化默认内置应用
@@ -832,7 +361,7 @@ func seedFileUploadConfig(db *gorm.DB) {
 		{Key: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
 	}
 	for _, cfg := range defaultConfigs {
-		db.Where("key = ?", cfg.Key).FirstOrCreate(&cfg)
+		db.Where("config_key = ?", cfg.Key).FirstOrCreate(&cfg)
 	}
 	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
 }
@@ -862,14 +391,14 @@ func addIndexes(db *gorm.DB) {
 		logger.WithModule("Index").Info("添加 groups(name) 索引")
 	}
 
-	// 3. notifications(user_id, read, created_at) 复合索引
-	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_read_created_at") {
+	// 3. notifications(user_id, is_read, created_at) 复合索引
+	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_is_read_created_at") {
 		if isMySQL {
-			db.Exec("CREATE INDEX idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
+			db.Exec("CREATE INDEX idx_notifications_user_is_read_created_at ON notifications(user_id, is_read, created_at)")
 		} else {
-			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
+			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_is_read_created_at ON notifications(user_id, is_read, created_at)")
 		}
-		logger.WithModule("Index").Info("添加 notifications(user_id, read, created_at) 复合索引")
+		logger.WithModule("Index").Info("添加 notifications(user_id, is_read, created_at) 复合索引")
 	}
 
 	// 4. 消息全文搜索索引

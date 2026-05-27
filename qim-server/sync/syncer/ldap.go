@@ -13,9 +13,9 @@ import (
 )
 
 type LDAPConfig struct {
-	Host              string            `json:"host"`
+	Server            string            `json:"server"`
 	Port              int               `json:"port"`
-	UseSSL            bool              `json:"use_ssl"`
+	UseTLS            bool              `json:"use_tls"`
 	BaseDN            string            `json:"base_dn"`
 	BindDN            string            `json:"bind_dn"`
 	BindPassword      string            `json:"bind_password"`
@@ -34,8 +34,8 @@ func NewLDAPSyncer(model *model.OrgSyncConfig) (*LDAPSyncer, error) {
 	if err := json.Unmarshal([]byte(model.Config), &cfg); err != nil {
 		return nil, fmt.Errorf("解析LDAP配置失败: %w", err)
 	}
-	if cfg.Host == "" {
-		return nil, fmt.Errorf("LDAP配置缺少host")
+	if cfg.Server == "" {
+		return nil, fmt.Errorf("LDAP配置缺少server")
 	}
 	if cfg.Port == 0 {
 		cfg.Port = 389
@@ -68,11 +68,11 @@ func (s *LDAPSyncer) Fetch(ctx context.Context, configStr string) (*orgsync.OrgD
 	var conn *ldap.Conn
 	var err error
 
-	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	addr := fmt.Sprintf("%s:%d", s.config.Server, s.config.Port)
 
-	if s.config.UseSSL {
+	if s.config.UseTLS {
 		conn, err = ldap.DialTLS("tcp", addr, &tls.Config{
-			ServerName: s.config.Host,
+			ServerName:         s.config.Server,
 			InsecureSkipVerify: false,
 		})
 	} else {

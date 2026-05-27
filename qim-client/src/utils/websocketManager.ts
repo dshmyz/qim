@@ -30,7 +30,7 @@ export const connectWebSocket = (serverUrl: string, token: string): WebSocket =>
   }
   
   // 连接 WebSocket
-  const wsUrl = `ws://${serverUrl.replace('http://', '')}/api/v1/ws?token=${token}`;
+  const wsUrl = `ws${serverUrl.startsWith('https') ? 's' : ''}://${serverUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}`;
   ws = new WebSocket(wsUrl);
   
   // 暴露到全局，供其他模块使用

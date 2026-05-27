@@ -12,10 +12,20 @@ import (
 )
 
 type CASConfig struct {
-	ServerURL   string `json:"server_url"`
-	ServiceURL  string `json:"service_url"`
-	ValidateURL string `json:"validate_url"`
-	UseProxy    bool   `json:"use_proxy"`
+	ServerURL        string            `json:"server_url"`
+	ServiceURL       string            `json:"service_url"`
+	ValidateURL      string            `json:"validate_url"`
+	UseProxy         bool              `json:"use_proxy"`
+	AttributeMapping map[string]string `json:"attribute_mapping"`
+}
+
+// defaultCASAttributeMapping 默认的 CAS 属性映射
+var defaultCASAttributeMapping = map[string]string{
+	"username": "username",
+	"nickname": "displayName",
+	"email":    "mail",
+	"phone":    "phone",
+	"avatar":   "avatar",
 }
 
 type CASProvider struct {
@@ -33,6 +43,16 @@ func NewCASProvider(name string, enabled bool, priority int, configJSON string) 
 
 	if config.ValidateURL == "" {
 		config.ValidateURL = fmt.Sprintf("%s/serviceValidate", config.ServerURL)
+	}
+
+	if config.AttributeMapping == nil {
+		config.AttributeMapping = defaultCASAttributeMapping
+	} else {
+		for k, v := range defaultCASAttributeMapping {
+			if _, exists := config.AttributeMapping[k]; !exists {
+				config.AttributeMapping[k] = v
+			}
+		}
 	}
 
 	return &CASProvider{
@@ -120,12 +140,12 @@ func (p *CASProvider) ValidateTicket(ctx context.Context, ticket string) (*AuthR
 		}, nil
 	}
 
-	userInfo := make(map[string]interface{})
-	userInfo["username"] = casResponse.AuthenticationSuccess.User
-	userInfo["attributes"] = casResponse.AuthenticationSuccess.Attributes
+	casUser := casResponse.AuthenticationSuccess.User
+	userInfo := p.mapAttributes(casUser, casResponse.AuthenticationSuccess.Attributes)
 
 	return &AuthResult{
 		Success:  true,
+		UserID:   casUser,
 		Message:  "认证成功",
 		UserInfo: userInfo,
 	}, nil
@@ -185,16 +205,38 @@ func (p *CASProvider) ValidateProxyTicket(ctx context.Context, ticket string, ta
 		}, nil
 	}
 
-	userInfo := make(map[string]interface{})
-	userInfo["username"] = casResponse.AuthenticationSuccess.User
-	userInfo["attributes"] = casResponse.AuthenticationSuccess.Attributes
+	casUser := casResponse.AuthenticationSuccess.User
+	userInfo := p.mapAttributes(casUser, casResponse.AuthenticationSuccess.Attributes)
 	userInfo["proxy_granting_ticket"] = casResponse.AuthenticationSuccess.ProxyGrantingTicket
 
 	return &AuthResult{
 		Success:  true,
+		UserID:   casUser,
 		Message:  "代理认证成功",
 		UserInfo: userInfo,
 	}, nil
+}
+
+// mapAttributes 将 CAS 原始属性按映射配置转换为标准字段
+func (p *CASProvider) mapAttributes(casUser string, casAttrs map[string]string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	for standardKey, sourceKey := range p.config.AttributeMapping {
+		if standardKey == "username" && sourceKey == "username" {
+			result["username"] = casUser
+			continue
+		}
+		if val, ok := casAttrs[sourceKey]; ok && val != "" {
+			result[standardKey] = val
+		}
+	}
+
+	// 确保 username 始终有值
+	if _, ok := result["username"]; !ok {
+		result["username"] = casUser
+	}
+
+	return result
 }
 
 func (p *CASProvider) BuildServiceURL(callbackPath string) string {

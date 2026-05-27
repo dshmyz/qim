@@ -311,11 +311,12 @@ const handleInputBlur = (input: string) => {
   }
 }
 
-const saveServerSettings = () => {
+const saveServerSettings = async () => {
   const { setServerUrl } = useServerUrl()
   setServerUrl(serverSettings.url)
   showServerSettings.value = false
   QMessage.success('服务器地址保存成功')
+  await loadAuthProviders()
 }
 
 const login = async () => {

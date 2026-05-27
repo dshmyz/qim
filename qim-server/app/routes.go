@@ -230,8 +230,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			auth.POST("/register", handler.Register)
 			auth.POST("/2fa/verify", middleware.LoginRateLimitMiddleware(loginLimiter), handler.VerifyTwoFA)
 			auth.POST("/check-2fa", handler.CheckTwoFAStatus)
-			auth.POST("/check-version", handler.CheckVersion)
-
 			// 公开的认证提供者列表（无需认证）
 			authProviderHandler := handler.NewAuthProviderHandler()
 			auth.GET("/providers", authProviderHandler.GetProviders)

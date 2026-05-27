@@ -12,20 +12,30 @@ import (
 )
 
 type OAuthConfig struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	AuthURL      string `json:"auth_url"`
-	TokenURL     string `json:"token_url"`
-	UserInfoURL  string `json:"user_info_url"`
-	RedirectURL  string `json:"redirect_url"`
-	Scope        string `json:"scope"`
+	ClientID        string            `json:"client_id"`
+	ClientSecret    string            `json:"client_secret"`
+	AuthURL         string            `json:"auth_url"`
+	TokenURL        string            `json:"token_url"`
+	UserInfoURL     string            `json:"user_info_url"`
+	RedirectURL     string            `json:"redirect_url"`
+	Scope           string            `json:"scope"`
+	AttributeMapping map[string]string `json:"attribute_mapping"`
+}
+
+// defaultOAuthAttributeMapping 默认的 OAuth 属性映射（兼容 Google/GitHub 等常见服务商）
+var defaultOAuthAttributeMapping = map[string]string{
+	"username": "login",
+	"nickname": "name",
+	"email":    "email",
+	"phone":    "phone",
+	"avatar":   "picture",
 }
 
 type OAuthProvider struct {
-	name        string
-	enabled     bool
-	priority    int
-	config      *OAuthConfig
+	name         string
+	enabled      bool
+	priority     int
+	config       *OAuthConfig
 	oauth2Config *oauth2.Config
 }
 
@@ -33,6 +43,16 @@ func NewOAuthProvider(name string, enabled bool, priority int, configJSON string
 	var config OAuthConfig
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
 		return nil, fmt.Errorf("解析OAuth配置失败: %w", err)
+	}
+
+	if config.AttributeMapping == nil {
+		config.AttributeMapping = defaultOAuthAttributeMapping
+	} else {
+		for k, v := range defaultOAuthAttributeMapping {
+			if _, exists := config.AttributeMapping[k]; !exists {
+				config.AttributeMapping[k] = v
+			}
+		}
 	}
 
 	oauth2Config := &oauth2.Config{
@@ -91,7 +111,7 @@ func (p *OAuthProvider) HandleCallback(ctx context.Context, code string) (*AuthR
 		}, nil
 	}
 
-	userInfo, err := p.getUserInfo(ctx, token.AccessToken)
+	rawUserInfo, err := p.getUserInfo(ctx, token.AccessToken)
 	if err != nil {
 		return &AuthResult{
 			Success: false,
@@ -99,11 +119,32 @@ func (p *OAuthProvider) HandleCallback(ctx context.Context, code string) (*AuthR
 		}, nil
 	}
 
+	// 按映射配置转换为标准字段
+	userInfo := p.mapAttributes(rawUserInfo)
+
+	// 确定用户唯一标识：优先用映射后的 username，其次用 id/sub
+	userID := getStringFromMap(userInfo, "username")
+	if userID == "" {
+		userID = getStringFromMap(rawUserInfo, "id", "sub")
+	}
+
 	return &AuthResult{
 		Success:  true,
+		UserID:   userID,
 		Message:  "认证成功",
 		UserInfo: userInfo,
 	}, nil
+}
+
+// mapAttributes 将 OAuth 原始用户信息按映射配置转换为标准字段
+func (p *OAuthProvider) mapAttributes(rawUserInfo map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for standardKey, sourceKey := range p.config.AttributeMapping {
+		if val, ok := rawUserInfo[sourceKey]; ok && val != nil {
+			result[standardKey] = val
+		}
+	}
+	return result
 }
 
 func (p *OAuthProvider) getUserInfo(ctx context.Context, accessToken string) (map[string]interface{}, error) {
@@ -160,4 +201,16 @@ func (p *OAuthProvider) BuildRedirectURL(redirectURI string) string {
 	q.Set("scope", p.config.Scope)
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+// getStringFromMap 从 map 中按多个候选 key 获取字符串值
+func getStringFromMap(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := data[key]; ok {
+			if s, ok := val.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }

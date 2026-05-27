@@ -743,6 +743,11 @@ const chatStore = useChatStore()
 // 使用系统配置 store
 const systemConfigStore = useSystemConfigStore()
 
+// 服务器地址变更时重新获取系统配置
+watch(serverUrl, () => {
+  systemConfigStore.fetchPublicConfig()
+})
+
 // 会话数据处理
 const { processConversation } = useProcessConversation(serverUrl, currentUser)
 

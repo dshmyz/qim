@@ -1,11 +1,19 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import pkg from './package.json'
 
 export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
+  const extra = (pkg as any).build?.extraMetadata || {}
 
   return {
+    define: {
+      __APP_NAME__: JSON.stringify(pkg.name),
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN),
+      __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear),
+    },
     base: './',
     plugins: [vue()],
     resolve: {
@@ -22,10 +30,7 @@ export default defineConfig(({ mode }) => {
       minify: isProd ? 'terser' : false,
       terserOptions: isProd ? {
         compress: {
-          drop_console: true,
           drop_debugger: true,
-          passes: 2,
-          pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn']
         }
       } : undefined,
       rollupOptions: {

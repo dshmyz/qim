@@ -112,9 +112,10 @@ func Login(c *gin.Context) {
 			}
 		} else {
 			username := req.Username
-			nickname := getStringFromUserInfo(result.UserInfo, "username", "cn")
-			email := getStringFromUserInfo(result.UserInfo, "mail", "email")
-			phone := getStringFromUserInfo(result.UserInfo, "telephonenumber", "phone")
+			nickname := getStringFromUserInfo(result.UserInfo, "nickname", "username")
+			email := getStringFromUserInfo(result.UserInfo, "email")
+			phone := getStringFromUserInfo(result.UserInfo, "phone")
+			avatar := getStringFromUserInfo(result.UserInfo, "avatar")
 
 			tx := db.Begin()
 
@@ -124,6 +125,7 @@ func Login(c *gin.Context) {
 				Nickname:     nickname,
 				Email:        email,
 				Phone:        phone,
+				Avatar:       avatar,
 				Status:       "offline",
 			}
 			if err := tx.Where("username = ?", username).FirstOrCreate(&user).Error; err != nil {
@@ -381,34 +383,6 @@ func Logout(c *gin.Context) {
 	response.Success(c, gin.H{
 		"message": "登出成功",
 	})
-}
-
-func CheckVersion(c *gin.Context) {
-	var req struct {
-		Version string `json:"version" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	latestVersion := "1.0.0"
-	forceUpdate := true
-	needUpdate := compareVersions(req.Version, latestVersion)
-
-	response.Success(c, gin.H{
-		"latest_version":  latestVersion,
-		"current_version": req.Version,
-		"need_update":     needUpdate,
-		"force_update":    forceUpdate,
-		"update_url":      "https://example.com/download/qim-latest",
-		"release_notes":   "\n1. 修复了消息发送失败的问题\n2. 优化了系统性能\n3. 增加了版本更新提示功能\n",
-	})
-}
-
-func compareVersions(current, latest string) bool {
-	return current != latest
 }
 
 func generateToken(userID uint, username string) string {

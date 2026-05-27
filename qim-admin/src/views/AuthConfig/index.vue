@@ -91,6 +91,41 @@
         <el-form-item label="配置JSON" required>
           <el-input v-model="form.config" type="textarea" :rows="12" />
           <div class="form-tip">根据认证类型填写相应的配置信息，必须是有效的JSON格式</div>
+          <div class="form-tip" v-if="form.type === 'direct'" style="color: #409eff; margin-top: 4px;">
+            <strong>LDAP 配置字段说明：</strong><br/>
+            <code>server</code> — LDAP 服务器地址，仅填 IP 或域名，不要加 <code>ldap://</code> 前缀<br/>
+            <code>port</code> — 端口号，普通连接默认 389，TLS/SSL 连接默认 636<br/>
+            <code>use_tls</code> — 是否启用 TLS 加密连接，启用时端口应改为 636<br/>
+            <code>bind_dn</code> — 管理员绑定 DN，如 <code>cn=admin,dc=example,dc=com</code><br/>
+            <code>bind_password</code> — 管理员绑定密码<br/>
+            <code>base_dn</code> — 用户搜索基准 DN，如 <code>ou=users,dc=example,dc=com</code><br/>
+            <code>filter</code> — 用户搜索过滤器，<code>%s</code> 会被替换为用户名，默认 <code>(uid=%s)</code><br/>
+            <code>attribute_mapping</code> — 属性映射，将 LDAP 属性映射为系统标准字段，key 为标准字段名，value 为 LDAP 属性名
+          </div>
+          <div class="form-tip" v-if="form.type === 'redirect' && form.name === 'oauth'" style="color: #409eff; margin-top: 4px;">
+            <strong>OAuth2.0 配置字段说明：</strong><br/>
+            <code>client_id</code> — 客户端 ID<br/>
+            <code>client_secret</code> — 客户端密钥<br/>
+            <code>auth_url</code> — 授权地址<br/>
+            <code>token_url</code> — 令牌地址<br/>
+            <code>user_info_url</code> — 用户信息接口地址<br/>
+            <code>redirect_url</code> — 回调地址，必须与 Electron 主进程一致<br/>
+            <code>scope</code> — 授权范围<br/>
+            <code>attribute_mapping</code> — 属性映射，将 OAuth 返回的字段映射为系统标准字段，key 为标准字段名，value 为 OAuth 返回的 JSON 字段名
+          </div>
+          <div class="form-tip" v-if="form.type === 'redirect' && form.name === 'cas'" style="color: #409eff; margin-top: 4px;">
+            <strong>CAS 配置字段说明：</strong><br/>
+            <code>server_url</code> — CAS 服务器地址，如 <code>https://cas.example.com</code><br/>
+            <code>service_url</code> — 回调地址，必须与 Electron 主进程一致<br/>
+            <code>validate_url</code> — 票据验证地址，留空则默认为 <code>{server_url}/serviceValidate</code><br/>
+            <code>use_proxy</code> — 是否启用代理模式<br/>
+            <code>attribute_mapping</code> — 属性映射，将 CAS 返回的属性映射为系统标准字段，key 为标准字段名，value 为 CAS 属性名
+          </div>
+          <div class="form-tip" style="color: #67c23a; margin-top: 4px;">
+            <strong>标准字段名说明（attribute_mapping 的 key）：</strong><br/>
+            <code>username</code> — 用户名（必填）&nbsp;&nbsp;<code>nickname</code> — 昵称&nbsp;&nbsp;<code>email</code> — 邮箱&nbsp;&nbsp;<code>phone</code> — 电话&nbsp;&nbsp;<code>avatar</code> — 头像<br/>
+            未配置的字段会使用默认映射，无需全部填写
+          </div>
           <div class="form-tip" style="color: #e6a23c; margin-top: 4px;">
             ⚠️ redirect_url（OAuth）/ service_url（CAS）必须填写 Electron 本地回调地址，与主进程 AUTH_CALLBACK_BASE 一致，默认为 <code>http://localhost:23578/{oauth,cas}/callback</code>
           </div>
@@ -165,17 +200,19 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
     type: 'direct',
     icon: 'fas fa-users',
     config: JSON.stringify({
-      host: 'ldap.example.com',
+      server: '192.168.1.100',
       port: 389,
-      use_ssl: false,
+      use_tls: false,
       bind_dn: 'cn=admin,dc=example,dc=com',
       bind_password: 'admin_password',
-      user_search_base: 'ou=users,dc=example,dc=com',
-      user_search_filter: '(uid={username})',
-      attributes: {
+      base_dn: 'ou=users,dc=example,dc=com',
+      filter: '(uid=%s)',
+      attribute_mapping: {
         username: 'uid',
+        nickname: 'cn',
         email: 'mail',
-        name: 'cn'
+        phone: 'telephonenumber',
+        avatar: 'jpegphoto'
       }
     }, null, 2)
   },
@@ -191,7 +228,14 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
       token_url: 'https://oauth2.googleapis.com/token',
       user_info_url: 'https://www.googleapis.com/oauth2/v2/userinfo',
       redirect_url: 'http://localhost:23578/oauth/callback',
-      scope: 'openid email profile'
+      scope: 'openid email profile',
+      attribute_mapping: {
+        username: 'login',
+        nickname: 'name',
+        email: 'email',
+        phone: 'phone',
+        avatar: 'picture'
+      }
     }, null, 2)
   },
   cas: {
@@ -200,9 +244,17 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
     type: 'redirect',
     icon: 'fas fa-university',
     config: JSON.stringify({
-      cas_url: 'https://cas.example.com',
+      server_url: 'https://cas.example.com',
       service_url: 'http://localhost:23578/cas/callback',
-      validate_url: 'https://cas.example.com/serviceValidate'
+      validate_url: 'https://cas.example.com/serviceValidate',
+      use_proxy: false,
+      attribute_mapping: {
+        username: 'username',
+        nickname: 'displayName',
+        email: 'mail',
+        phone: 'phone',
+        avatar: 'avatar'
+      }
     }, null, 2)
   }
 }

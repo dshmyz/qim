@@ -32,12 +32,18 @@ func (m *UserMapper) MapOrCreateUser(externalUserID string, providerName string,
 		return &user, nil
 	}
 
+	username := m.getString(userInfo, "username", "uid", "cn")
+	nickname := m.getString(userInfo, "nickname", "username", "cn")
+	email := m.getString(userInfo, "email", "mail")
+	phone := m.getString(userInfo, "phone", "telephonenumber", "mobile")
+	avatar := m.getString(userInfo, "avatar", "jpegphoto", "photo")
+
 	user := &model.User{
-		Username: m.getString(userInfo, "username"),
-		Nickname: m.getString(userInfo, "nickname"),
-		Email:    m.getString(userInfo, "email"),
-		Phone:    m.getString(userInfo, "phone"),
-		Avatar:   m.getString(userInfo, "avatar"),
+		Username: username,
+		Nickname: nickname,
+		Email:    email,
+		Phone:    phone,
+		Avatar:   avatar,
 		Status:   "offline",
 		Type:     "user",
 	}
@@ -69,10 +75,12 @@ func (m *UserMapper) MapOrCreateUser(externalUserID string, providerName string,
 	return user, nil
 }
 
-func (m *UserMapper) getString(data map[string]interface{}, key string) string {
-	if val, ok := data[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
+func (m *UserMapper) getString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := data[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str
+			}
 		}
 	}
 	return ""

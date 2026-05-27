@@ -11,13 +11,23 @@ import (
 )
 
 type LDAPConfig struct {
-	Server   string `json:"server"`
-	Port     int    `json:"port"`
-	BindDN   string `json:"bind_dn"`
-	BindPass string `json:"bind_pass"`
-	BaseDN   string `json:"base_dn"`
-	Filter   string `json:"filter"`
-	UseTLS   bool   `json:"use_tls"`
+	Server           string            `json:"server"`
+	Port             int               `json:"port"`
+	BindDN           string            `json:"bind_dn"`
+	BindPassword     string            `json:"bind_password"`
+	BaseDN           string            `json:"base_dn"`
+	Filter           string            `json:"filter"`
+	UseTLS           bool              `json:"use_tls"`
+	AttributeMapping map[string]string `json:"attribute_mapping"`
+}
+
+// defaultLDAPAttributeMapping 默认的 LDAP 属性映射，将 LDAP 属性名映射为标准字段名
+var defaultLDAPAttributeMapping = map[string]string{
+	"username": "uid",
+	"nickname": "cn",
+	"email":    "mail",
+	"phone":    "telephonenumber",
+	"avatar":   "jpegphoto",
 }
 
 type LDAPProvider struct {
@@ -39,6 +49,16 @@ func NewLDAPProvider(name string, enabled bool, priority int, configJSON string)
 
 	if config.Filter == "" {
 		config.Filter = "(uid=%s)"
+	}
+
+	if config.AttributeMapping == nil {
+		config.AttributeMapping = defaultLDAPAttributeMapping
+	} else {
+		for k, v := range defaultLDAPAttributeMapping {
+			if _, exists := config.AttributeMapping[k]; !exists {
+				config.AttributeMapping[k] = v
+			}
+		}
 	}
 
 	return &LDAPProvider{
@@ -82,8 +102,8 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 	defer l.Close()
 
-	if p.config.BindDN != "" && p.config.BindPass != "" {
-		if err := l.Bind(p.config.BindDN, p.config.BindPass); err != nil {
+	if p.config.BindDN != "" && p.config.BindPassword != "" {
+		if err := l.Bind(p.config.BindDN, p.config.BindPassword); err != nil {
 			return &AuthResult{
 				Success: false,
 				Message: fmt.Sprintf("LDAP管理员绑定失败: %v", err),
@@ -91,12 +111,18 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 		}
 	}
 
+	// 根据映射配置收集需要请求的 LDAP 属性
+	ldapAttrs := []string{"dn"}
+	for _, attr := range p.config.AttributeMapping {
+		ldapAttrs = append(ldapAttrs, strings.ToLower(attr))
+	}
+
 	filter := fmt.Sprintf(p.config.Filter, ldap.EscapeFilter(creds.Username))
 	searchRequest := ldap.NewSearchRequest(
 		p.config.BaseDN,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		filter,
-		[]string{"dn", "uid", "cn", "mail", "telephoneNumber"},
+		ldapAttrs,
 		nil,
 	)
 
@@ -131,15 +157,18 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 		}, nil
 	}
 
-	userInfo := make(map[string]interface{})
-	userInfo["username"] = creds.Username
-	userInfo["dn"] = userDN
-
+	// 先收集原始 LDAP 属性
+	rawAttrs := make(map[string]string)
 	for _, attr := range sr.Entries[0].Attributes {
 		if len(attr.Values) > 0 {
-			userInfo[strings.ToLower(attr.Name)] = attr.Values[0]
+			rawAttrs[strings.ToLower(attr.Name)] = attr.Values[0]
 		}
 	}
+
+	// 按映射配置转换为标准字段
+	userInfo := p.mapAttributes(rawAttrs)
+	userInfo["username"] = creds.Username
+	userInfo["dn"] = userDN
 
 	return &AuthResult{
 		Success:  true,
@@ -149,6 +178,17 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}, nil
 }
 
+// mapAttributes 将 LDAP 原始属性按映射配置转换为标准字段
+func (p *LDAPProvider) mapAttributes(rawAttrs map[string]string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for standardKey, ldapAttr := range p.config.AttributeMapping {
+		if val, ok := rawAttrs[strings.ToLower(ldapAttr)]; ok && val != "" {
+			result[standardKey] = val
+		}
+	}
+	return result
+}
+
 func (p *LDAPProvider) TestConnection() error {
 	l, err := p.connect()
 	if err != nil {
@@ -156,8 +196,8 @@ func (p *LDAPProvider) TestConnection() error {
 	}
 	defer l.Close()
 
-	if p.config.BindDN != "" && p.config.BindPass != "" {
-		if err := l.Bind(p.config.BindDN, p.config.BindPass); err != nil {
+	if p.config.BindDN != "" && p.config.BindPassword != "" {
+		if err := l.Bind(p.config.BindDN, p.config.BindPassword); err != nil {
 			return fmt.Errorf("绑定失败: %w", err)
 		}
 	}

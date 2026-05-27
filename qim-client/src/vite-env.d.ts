@@ -1,6 +1,11 @@
 /// <reference types="vite/client" />
 /// <reference path="./types/electron.d.ts" />
 
+declare const __APP_NAME__: string
+declare const __APP_VERSION__: string
+declare const __APP_PRODUCT_NAME_CN__: string
+declare const __APP_COPYRIGHT_YEAR__: string
+
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
   const component: DefineComponent<{}, {}, any>
