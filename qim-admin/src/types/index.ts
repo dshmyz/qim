@@ -264,6 +264,11 @@ export interface SystemConfig {
   enableAI: boolean
   enableReadReceipt: boolean
   allowedFileTypes: string[] | string
+  rateLimitGlobalRate: number
+  rateLimitGlobalWindow: number
+  rateLimitLoginMaxAttempts: number
+  rateLimitLoginWindow: number
+  rateLimitLoginBan: number
 }
 
 // 版本管理相关

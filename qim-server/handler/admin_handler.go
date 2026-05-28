@@ -2,8 +2,11 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
+	"qim-server/database"
 	"qim-server/di"
+	"qim-server/model"
 	"qim-server/pkg/response"
 	"qim-server/service"
 
@@ -351,9 +354,9 @@ func AdminGetStatistics(c *gin.Context) {
 		"activeUsers":   stats.ActiveUsers,
 		"messagesToday": stats.MessagesToday,
 		"growthRate": gin.H{
-			"users":    12.5,
-			"groups":   8.3,
-			"messages": 15.7,
+			"users":    stats.GrowthRate.Users,
+			"groups":   stats.GrowthRate.Groups,
+			"messages": stats.GrowthRate.Messages,
 		},
 	})
 }
@@ -480,4 +483,101 @@ func AdminUpdateUserAIConfig(c *gin.Context) {
 	}
 
 	response.Success(c, toConfigResponse(*config))
+}
+
+// AdminGetDashboardTrend 获取仪表盘趋势数据（用户增长 + 消息活跃度）
+func AdminGetDashboardTrend(c *gin.Context) {
+	db := database.GetDB()
+	now := time.Now()
+
+	// 用户增长趋势：最近 7 天每天新注册用户数
+	userTrend := make([]gin.H, 0, 7)
+	for i := 6; i >= 0; i-- {
+		day := now.AddDate(0, 0, -i)
+		dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+		dayEnd := dayStart.AddDate(0, 0, 1)
+
+		var count int64
+		db.Model(&model.User{}).Where("created_at >= ? AND created_at < ?", dayStart, dayEnd).Count(&count)
+
+		weekdays := []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
+		userTrend = append(userTrend, gin.H{
+			"label": weekdays[day.Weekday()],
+			"value": count,
+		})
+	}
+
+	// 消息活跃度：今天按时段统计
+	type Period struct {
+		Label string
+		Start int
+		End   int
+	}
+	periods := []Period{
+		{"上午", 6, 12},
+		{"下午", 12, 18},
+		{"晚间", 18, 24},
+		{"凌晨", 0, 6},
+	}
+
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	activityData := make([]gin.H, 0, len(periods))
+	var maxActivity int64 = 1
+	for _, p := range periods {
+		start := todayStart.Add(time.Duration(p.Start) * time.Hour)
+		end := todayStart.Add(time.Duration(p.End) * time.Hour)
+
+		var count int64
+		db.Model(&model.Message{}).Where("created_at >= ? AND created_at < ?", start, end).Count(&count)
+		if count > maxActivity {
+			maxActivity = count
+		}
+		activityData = append(activityData, gin.H{
+			"label": p.Label,
+			"value": count,
+		})
+	}
+	// 计算百分比
+	for _, item := range activityData {
+		count := item["value"].(int64)
+		item["percent"] = int(count * 100 / maxActivity)
+	}
+
+	// 计算用户趋势百分比
+	var maxUser int64 = 1
+	for _, item := range userTrend {
+		if v := item["value"].(int64); v > maxUser {
+			maxUser = v
+		}
+	}
+	for _, item := range userTrend {
+		count := item["value"].(int64)
+		if maxUser > 0 {
+			item["percent"] = int(count * 100 / maxUser)
+		} else {
+			item["percent"] = 0
+		}
+	}
+
+	response.Success(c, gin.H{
+		"userTrend":    userTrend,
+		"activityData": activityData,
+	})
+}
+
+// AdminGetDashboardStats 获取仪表盘统计数据
+func AdminGetDashboardStats(c *gin.Context) {
+	adminSvc := di.GlobalContainer.AdminService
+	stats, err := adminSvc.GetStatistics()
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"totalUsers":    stats.TotalUsers,
+		"onlineUsers":   stats.OnlineUsers,
+		"totalGroups":   stats.TotalGroups,
+		"totalMessages": stats.TotalMessages,
+	})
 }

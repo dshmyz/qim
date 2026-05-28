@@ -26,7 +26,7 @@ func (r *notificationRepository) FindByUserID(ctx context.Context, userID uint, 
 	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
 
 	if unreadOnly {
-		query = query.Where("is_read = ?", false)
+		query = query.Where("`read` = ?", false)
 	}
 
 	err := query.Order("created_at DESC").Find(&notifications).Error
@@ -39,7 +39,7 @@ func (r *notificationRepository) MarkAsRead(ctx context.Context, id uint) error 
 		Model(&model.Notification{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"is_read": true,
+			"read": true,
 			"read_at": now,
 		}).Error
 }
@@ -48,9 +48,9 @@ func (r *notificationRepository) MarkAllAsRead(ctx context.Context, userID uint)
 	now := time.Now()
 	return r.db.WithContext(ctx).
 		Model(&model.Notification{}).
-		Where("user_id = ? AND is_read = ?", userID, false).
+		Where("user_id = ? AND `read` = ?", userID, false).
 		Updates(map[string]interface{}{
-			"is_read": true,
+			"read": true,
 			"read_at": now,
 		}).Error
 }
@@ -59,7 +59,7 @@ func (r *notificationRepository) CountUnread(ctx context.Context, userID uint) (
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&model.Notification{}).
-		Where("user_id = ? AND is_read = ?", userID, false).
+		Where("user_id = ? AND `read` = ?", userID, false).
 		Count(&count).Error
 	return count, err
 }

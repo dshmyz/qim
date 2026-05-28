@@ -168,8 +168,18 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	r.Use(middleware.RecoveryMiddleware())
 	r.Use(middleware.LoggerMiddleware())
 
-	// 请求限流（500 请求/分钟/IP）
+	// 请求限流（默认 500 请求/分钟/IP，可通过后台系统配置动态调整）
 	rateLimiter := middleware.NewIPRateLimiter(500, time.Minute)
+	middleware.SetGlobalIPRateLimiter(rateLimiter)
+	// 从数据库加载已保存的速率限制配置
+	middleware.ReloadRateLimitFromDB(func(key string) (string, error) {
+		cfgSvc := di.GlobalContainer.SystemConfigService
+		cfg, err := cfgSvc.GetConfig(key)
+		if err != nil {
+			return "", err
+		}
+		return cfg.Value, nil
+	})
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
 
 	// 静态文件服务（带缓存头 + 路径遍历防护）
@@ -225,6 +235,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		auth := api.Group("/auth")
 		loginLimiter := middleware.NewLoginLimiter(5, time.Minute, 15*time.Minute)
 		middleware.SetGlobalLoginLimiter(loginLimiter)
+		// 从数据库加载已保存的登录限流配置
+		middleware.ReloadRateLimitFromDB(func(key string) (string, error) {
+			cfgSvc := di.GlobalContainer.SystemConfigService
+			cfg, err := cfgSvc.GetConfig(key)
+			if err != nil {
+				return "", err
+			}
+			return cfg.Value, nil
+		})
 		{
 			auth.POST("/login", middleware.LoginRateLimitMiddleware(loginLimiter), handler.Login)
 			auth.POST("/register", handler.Register)
@@ -262,7 +281,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/users/:id", handler.GetUserByID)
 			// 用户状态查询
 			authed.GET("/users/status", handler.GetUserStatus)
-			authed.GET("/users/status/batch", handler.GetUserStatusBatch)
 			// AI配置
 			authed.GET("/ai/config", handler.GetAIConfig)
 			authed.PUT("/ai/config", handler.UpdateAIConfig)
@@ -284,10 +302,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 会话
 			authed.GET("/conversations", handler.GetConversations)
-			authed.POST("/conversations/single", handler.CreateSingleConversation)
-			authed.POST("/conversations/bot", handler.CreateBotConversation)
-			authed.POST("/conversations/group", handler.CreateGroupConversation)
-			authed.POST("/conversations/discussion", handler.CreateDiscussionConversation)
+			authed.POST("/conversations", handler.CreateConversation)
+
 			authed.GET("/conversations/:id", handler.GetConversation)
 			// 会话置顶/取消置顶
 			authed.PUT("/conversations/:id/pin", handler.PinConversation)
@@ -423,11 +439,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateChannel)
 			authed.GET("/channels", handler.GetChannels)
 			authed.POST("/channels/:id/subscribe", handler.SubscribeChannel)
-			authed.POST("/channels/:id/unsubscribe", handler.UnsubscribeChannel)
+			authed.DELETE("/channels/:id/subscribe", handler.UnsubscribeChannel)
 			authed.POST("/channels/:id/messages", handler.CreateChannelMessage)
 			authed.GET("/channels/:id/messages", handler.GetChannelMessages)
 			authed.POST("/channels/messages/:messageId/like", handler.LikeChannelMessage)
-			authed.POST("/channels/messages/:messageId/unlike", handler.UnlikeChannelMessage)
+			authed.DELETE("/channels/messages/:messageId/like", handler.UnlikeChannelMessage)
 			authed.GET("/channels/messages/:messageId/likes", handler.GetChannelMessageLikes)
 			authed.POST("/channels/messages/:messageId/comments", handler.CommentChannelMessage)
 			authed.GET("/channels/messages/:messageId/comments", handler.GetChannelMessageComments)
@@ -451,8 +467,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/apps/:id", handler.DeleteApp)
 			authed.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
 
-			// 管理员应用管理
-			authed.GET("/admin/apps", handler.GetAllApps)
 
 			// 统计报表
 			authed.GET("/statistics", handler.GetStatistics)
@@ -460,11 +474,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 通知管理
 			authed.GET("/notifications", handler.GetNotifications)
 			authed.PUT("/notifications/:id/read", handler.MarkNotificationAsRead)
+			authed.PATCH("/notifications/:id", handler.PatchNotification)
+
 			authed.PUT("/notifications/read-all", handler.MarkAllNotificationsAsRead)
 			authed.DELETE("/notifications", handler.ClearAllNotifications)
-			authed.PATCH("/notifications/:id/action", handler.HandleNotificationAction)
-			authed.PATCH("/notifications/:id/pin", handler.TogglePinNotification)
-			authed.PATCH("/notifications/:id/important", handler.ToggleImportantNotification)
 
 			// 任务管理
 			authed.GET("/tasks", handler.GetTasks)
@@ -531,11 +544,17 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			{
 				admin.GET("/users", handler.AdminGetUsers)
 				admin.GET("/groups", handler.AdminGetGroups)
+				admin.POST("/users/:id/external-binding", handler.BindExternalUser)
+				admin.DELETE("/users/:id/external-binding", handler.UnbindExternalUser)
+				admin.GET("/users/:id/external-bindings", handler.GetUserExternalBindings)
+
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
 				admin.GET("/channels", handler.AdminGetChannels)
 				admin.PUT("/channels/:id", handler.AdminUpdateChannel)
 				admin.DELETE("/channels/:id", handler.AdminDeleteChannel)
 				admin.GET("/statistics", handler.AdminGetStatistics)
+				admin.GET("/dashboard/stats", handler.AdminGetDashboardStats)
+				admin.GET("/dashboard/trend", handler.AdminGetDashboardTrend)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)
 				admin.GET("/ai-usage-logs", handler.GetAIUsageLogs)
 
@@ -610,9 +629,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/node/send-to-user", handler.SendToUserMessage)
 
 			// 用户角色管理
-			authed.POST("/users/:id/roles", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.AddUserRole)
 			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.RemoveUserRole)
-			authed.POST("/users/:id/roles/batch", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BatchAssignUserRoles)
+			authed.PUT("/users/:id/roles", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BatchAssignUserRoles)
+
 
 			// 用户删除（管理员）
 			authed.DELETE("/users/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteUser)

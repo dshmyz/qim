@@ -329,12 +329,17 @@ function createWindow() {
 }
 
 function registerGlobalShortcuts() {
-  globalShortcut.register('CommandOrControl+M', () => mainWindow.minimize())
+  globalShortcut.register('CommandOrControl+M', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize()
+  })
   globalShortcut.register('CommandOrControl+K', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isMaximized()) mainWindow.unmaximize()
     else mainWindow.maximize()
   })
-  globalShortcut.register('CommandOrControl+W', () => mainWindow.hide())
+  globalShortcut.register('CommandOrControl+W', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
+  })
   globalShortcut.register('CommandOrControl+Q', () => app.quit())
 }
 
@@ -656,10 +661,11 @@ function checkForUpdates() {
 
 function registerIPC() {
   ipcMain.on('minimize-window', () => {
-    mainWindow.minimize()
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize()
   })
 
   ipcMain.on('maximize-window', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize()
     } else {

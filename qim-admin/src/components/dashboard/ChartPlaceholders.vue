@@ -30,7 +30,7 @@
     <div class="chart-card">
       <div class="chart-header">
         <h3 class="chart-title">消息活跃度</h3>
-        <span class="chart-subtitle">今日 24 小时</span>
+        <span class="chart-subtitle">今日按时段</span>
       </div>
       <div class="activity-bars">
         <div
@@ -54,24 +54,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { getDashboardTrend } from '@/api/statistics'
 
-const userTrendData = ref([
-  { label: '周一', value: 45, percent: 45 },
-  { label: '周二', value: 62, percent: 62 },
-  { label: '周三', value: 78, percent: 78 },
-  { label: '周四', value: 55, percent: 55 },
-  { label: '周五', value: 89, percent: 89 },
-  { label: '周六', value: 72, percent: 72 },
-  { label: '周日', value: 95, percent: 95 },
-])
+const userTrendData = ref<{ label: string; value: number; percent: number }[]>([])
+const activityData = ref<{ label: string; value: number; percent: number }[]>([])
 
-const activityData = ref([
-  { label: '上午', value: 2340, percent: 78 },
-  { label: '下午', value: 3120, percent: 95 },
-  { label: '晚间', value: 2890, percent: 88 },
-  { label: '凌晨', value: 890, percent: 35 },
-])
+const fetchTrendData = async () => {
+  try {
+    const { data } = await getDashboardTrend()
+    if (data.data) {
+      userTrendData.value = data.data.userTrend || []
+      activityData.value = data.data.activityData || []
+    }
+  } catch {
+    // 静默失败，图表显示为空
+  }
+}
 
 const getBarGradient = (index: number): string => {
   const gradients = [
@@ -85,6 +84,8 @@ const getBarGradient = (index: number): string => {
   ]
   return gradients[index % gradients.length]
 }
+
+onMounted(fetchTrendData)
 </script>
 
 <style scoped>

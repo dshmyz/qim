@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"qim-server/pkg/logger"
+
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -86,15 +88,22 @@ func (p *LDAPProvider) Priority() int {
 }
 
 func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*AuthResult, error) {
+	log := logger.WithModule("LDAP")
+
 	if creds.Username == "" || creds.Password == "" {
+		log.Warn("认证失败: 用户名或密码为空")
 		return &AuthResult{
 			Success: false,
 			Message: "用户名和密码不能为空",
 		}, nil
 	}
 
+	addr := fmt.Sprintf("%s:%d", p.config.Server, p.config.Port)
+	log.Info("开始LDAP认证", "username", creds.Username, "server", addr, "tls", p.config.UseTLS)
+
 	l, err := p.connect()
 	if err != nil {
+		log.Error("连接LDAP服务器失败", "server", addr, "error", err)
 		return &AuthResult{
 			Success: false,
 			Message: fmt.Sprintf("连接LDAP服务器失败: %v", err),
@@ -102,13 +111,17 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 	defer l.Close()
 
+	log.Info("LDAP连接成功", "server", addr)
+
 	if p.config.BindDN != "" && p.config.BindPassword != "" {
 		if err := l.Bind(p.config.BindDN, p.config.BindPassword); err != nil {
+			log.Error("LDAP管理员绑定失败", "bindDN", p.config.BindDN, "error", err)
 			return &AuthResult{
 				Success: false,
 				Message: fmt.Sprintf("LDAP管理员绑定失败: %v", err),
 			}, nil
 		}
+		log.Info("LDAP管理员绑定成功", "bindDN", p.config.BindDN)
 	}
 
 	// 根据映射配置收集需要请求的 LDAP 属性
@@ -118,6 +131,8 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 
 	filter := fmt.Sprintf(p.config.Filter, ldap.EscapeFilter(creds.Username))
+	log.Info("LDAP搜索用户", "filter", filter, "baseDN", p.config.BaseDN)
+
 	searchRequest := ldap.NewSearchRequest(
 		p.config.BaseDN,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
@@ -128,6 +143,7 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 
 	sr, err := l.Search(searchRequest)
 	if err != nil {
+		log.Error("LDAP搜索失败", "filter", filter, "error", err)
 		return &AuthResult{
 			Success: false,
 			Message: fmt.Sprintf("LDAP搜索失败: %v", err),
@@ -135,6 +151,7 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 
 	if len(sr.Entries) == 0 {
+		log.Warn("LDAP搜索结果为空", "username", creds.Username, "filter", filter, "baseDN", p.config.BaseDN)
 		return &AuthResult{
 			Success: false,
 			Message: "用户不存在",
@@ -142,6 +159,7 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 
 	if len(sr.Entries) > 1 {
+		log.Warn("LDAP搜索到多个用户", "username", creds.Username, "count", len(sr.Entries))
 		return &AuthResult{
 			Success: false,
 			Message: "找到多个用户记录",
@@ -149,8 +167,10 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	}
 
 	userDN := sr.Entries[0].DN
+	log.Info("找到LDAP用户", "username", creds.Username, "dn", userDN)
 
 	if err := l.Bind(userDN, creds.Password); err != nil {
+		log.Warn("LDAP用户绑定失败(密码错误)", "username", creds.Username, "dn", userDN, "error", err)
 		return &AuthResult{
 			Success: false,
 			Message: "用户名或密码错误",
@@ -170,6 +190,7 @@ func (p *LDAPProvider) Authenticate(ctx context.Context, creds *Credentials) (*A
 	userInfo["username"] = creds.Username
 	userInfo["dn"] = userDN
 
+	log.Info("LDAP认证成功", "username", creds.Username, "dn", userDN)
 	return &AuthResult{
 		Success:  true,
 		UserID:   userDN,
@@ -207,12 +228,25 @@ func (p *LDAPProvider) TestConnection() error {
 
 func (p *LDAPProvider) connect() (*ldap.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", p.config.Server, p.config.Port)
+	log := logger.WithModule("LDAP")
 
 	if p.config.UseTLS {
-		return ldap.DialTLS("tcp", addr, &tls.Config{
+		log.Info("使用TLS连接LDAP", "addr", addr)
+		conn, err := ldap.DialTLS("tcp", addr, &tls.Config{
 			InsecureSkipVerify: true,
 		})
+		if err != nil {
+			log.Error("TLS连接LDAP失败", "addr", addr, "error", err)
+			return nil, fmt.Errorf("TLS连接 %s 失败: %w", addr, err)
+		}
+		return conn, nil
 	}
 
-	return ldap.Dial("tcp", addr)
+	log.Info("连接LDAP", "addr", addr)
+	conn, err := ldap.Dial("tcp", addr)
+	if err != nil {
+		log.Error("连接LDAP失败", "addr", addr, "error", err)
+		return nil, fmt.Errorf("连接 %s 失败: %w", addr, err)
+	}
+	return conn, nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"qim-server/pkg/logger"
 )
@@ -131,13 +132,20 @@ func (p *AnthropicProvider) ChatWithTools(messages []Message, tools []ToolDef) (
 		req["tools"] = anthropicTools
 	}
 
-	body, _ := json.Marshal(req)
-	httpReq, _ := http.NewRequest("POST", p.config.BaseURL+"/messages", bytes.NewReader(body))
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	httpReq, err := http.NewRequest("POST", p.config.BaseURL+"/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", p.config.APIKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}

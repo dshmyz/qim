@@ -118,24 +118,37 @@ func (e *Engine) executeSync(ctx context.Context, config *model.OrgSyncConfig) *
 		return &syncStats{ErrorMessage: fmt.Sprintf("获取外部数据失败: %v", err)}
 	}
 
-	return e.syncToLocal(orgData)
+	return e.syncToLocal(orgData, config)
 }
 
-func (e *Engine) syncToLocal(data *orgsync.OrgData) *syncStats {
+func (e *Engine) syncToLocal(data *orgsync.OrgData, config *model.OrgSyncConfig) *syncStats {
 	stats := &syncStats{}
 
 	// 先同步部门，建立 extID → localID 映射
-	extToLocalDept := e.syncDepartments(data, stats)
-	e.syncUsers(data, extToLocalDept, stats)
-	e.syncDepartmentEmployees(data, extToLocalDept, stats)
+	extToLocalDept := e.syncDepartments(data, config, stats)
+	e.syncUsers(data, extToLocalDept, config, stats)
+	e.syncDepartmentEmployees(data, extToLocalDept, config, stats)
 	e.syncGroups(data, stats)
 
 	return stats
 }
 
 // syncDepartments 同步部门，返回外部ID到本地ID的映射
-func (e *Engine) syncDepartments(data *orgsync.OrgData, stats *syncStats) map[string]uint {
+func (e *Engine) syncDepartments(data *orgsync.OrgData, config *model.OrgSyncConfig, stats *syncStats) map[string]uint {
 	extToLocal := make(map[string]uint)
+	syncConfig := e.parseSyncConfig(config)
+
+	// 如果配置了不同步部门，直接返回已存在部门的映射
+	if !syncConfig["sync_departments"].(bool) {
+		logger.WithModule("OrgSync").Info("已配置跳过部门同步")
+		for _, extDept := range data.Departments {
+			var local model.Department
+			if e.db.Where("external_id = ?", extDept.ID).First(&local).Error == nil {
+				extToLocal[extDept.ID] = local.ID
+			}
+		}
+		return extToLocal
+	}
 
 	sort.Slice(data.Departments, func(i, j int) bool {
 		// 按层级升序排列，保证父部门优先处理
@@ -166,18 +179,32 @@ func (e *Engine) syncDepartments(data *orgsync.OrgData, stats *syncStats) map[st
 				}
 			}
 			if len(updates) > 0 {
-				e.db.Model(&local).Updates(updates)
-				stats.DeptsUpdated++
+				if err := e.db.Model(&local).Updates(updates).Error; err != nil {
+					logger.WithModule("OrgSync").Warn("更新部门失败", "id", local.ID, "error", err)
+				} else {
+					stats.DeptsUpdated++
+				}
 			}
 		} else {
 			// 新建
+			var parentID *uint
+			if extDept.ParentID != "" {
+				if pid, ok := extToLocal[extDept.ParentID]; ok {
+					parentID = &pid
+				}
+			}
+
 			newDept := model.Department{
 				Name:       extDept.Name,
 				ExternalID: extDept.ID,
 				Level:      extDept.Level,
+				ParentID:   parentID,
+			}
+			if err := e.db.Create(&newDept).Error; err != nil {
+				logger.WithModule("OrgSync").Warn("创建部门失败", "name", extDept.Name, "error", err)
+				continue
 			}
 			stats.DeptsCreated++
-			e.db.Create(&newDept)
 			extToLocal[extDept.ID] = newDept.ID
 		}
 	}
@@ -206,7 +233,7 @@ func (e *Engine) syncDepartments(data *orgsync.OrgData, stats *syncStats) map[st
 	return extToLocal
 }
 
-func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint, stats *syncStats) {
+func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint, config *model.OrgSyncConfig, stats *syncStats) {
 	for _, extUser := range data.Users {
 		if extUser.Username == "" {
 			continue
@@ -233,6 +260,15 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 				logger.WithModule("OrgSync").Warn("创建用户失败", "username", extUser.Username, "error", err)
 				continue
 			}
+
+			// 创建外部用户映射，关联登录和组织同步
+			mapping := model.ExternalUserMapping{
+				UserID:          newUser.ID,
+				ProviderName:    config.SyncType, // 使用同步类型作为提供者名称
+				ExternalUserID:  extUser.ID,
+				ExternalUsername: extUser.Username,
+			}
+			e.db.Create(&mapping)
 			stats.UsersCreated++
 		} else {
 			updates := make(map[string]interface{})
@@ -252,19 +288,22 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 				updates["signature"] = extUser.Position
 			}
 			if len(updates) > 0 {
-				e.db.Model(&user).Updates(updates)
-				stats.UsersUpdated++
+				if err := e.db.Model(&user).Updates(updates).Error; err != nil {
+					logger.WithModule("OrgSync").Warn("更新用户失败", "username", user.Username, "error", err)
+				} else {
+					stats.UsersUpdated++
+				}
 			}
 		}
 	}
 }
 
-func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept map[string]uint, stats *syncStats) {
+func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept map[string]uint, config *model.OrgSyncConfig, stats *syncStats) {
 	// 按用户分组部门关联，收集每个用户的目标部门ID集合
 	userDeptMap := make(map[uint][]uint)
 
 	for _, rel := range data.UserDeptRelations {
-		user := e.resolveUserByRelation(rel, data)
+		user := e.resolveUserByRelation(rel, data, config.SyncType)
 		if user == nil {
 			continue
 		}
@@ -291,21 +330,35 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 					DepartmentID: deptID,
 					IsPrimary:    true,
 				}
-				e.db.Create(&empRel)
+				if err := e.db.Create(&empRel).Error; err != nil {
+					logger.WithModule("OrgSync").Warn("创建部门员工关系失败", "user_id", userID, "dept_id", deptID, "error", err)
+				}
 			}
 		}
 
 		// 仅删除该用户在外部系统中不存在的部门关联
 		// 即保留手动在 QIM 中配置的其他部门关系
 		if len(targetDeptIDs) > 0 {
-			e.db.Where("user_id = ? AND department_id NOT IN ?", userID, targetDeptIDs).
-				Delete(&model.DepartmentEmployee{})
+			if err := e.db.Where("user_id = ? AND department_id NOT IN ?", userID, targetDeptIDs).
+				Delete(&model.DepartmentEmployee{}).Error; err != nil {
+				logger.WithModule("OrgSync").Warn("删除部门员工关系失败", "user_id", userID, "error", err)
+			}
 		}
 	}
 }
 
-func (e *Engine) resolveUserByRelation(rel orgsync.UserDeptRelation, data *orgsync.OrgData) *model.User {
+func (e *Engine) resolveUserByRelation(rel orgsync.UserDeptRelation, data *orgsync.OrgData, syncSource string) *model.User {
 	var user model.User
+
+	// 1. 优先通过外部用户映射查找（支持 OAuth/CAS/LDAP 等多种登录来源）
+	var mapping model.ExternalUserMapping
+	if err := e.db.Where("provider_name = ? AND external_user_id = ?", syncSource, rel.UserID).First(&mapping).Error; err == nil {
+		if err := e.db.First(&user, mapping.UserID).Error; err == nil {
+			return &user
+		}
+	}
+
+	// 2. 降级：通过 username 查找（兼容旧数据）
 	if err := e.db.Where("username = ?", rel.UserID).First(&user).Error; err == nil {
 		return &user
 	}
@@ -372,6 +425,39 @@ func nowPtr() *time.Time {
 type ParseCronResult struct {
 	Interval time.Duration
 	NextRun  time.Duration
+}
+
+// parseSyncConfig 解析同步配置选项
+// 支持的配置项：
+// - sync_departments: 是否同步部门（默认 true）
+// - sync_users: 是否同步用户（默认 true）
+// - sync_relations: 是否同步用户-部门关联（默认 true）
+// - create_missing_users: 是否创建缺失的用户（默认 true）
+func (e *Engine) parseSyncConfig(config *model.OrgSyncConfig) map[string]interface{} {
+	defaultConfig := map[string]interface{}{
+		"sync_departments":     true,
+		"sync_users":           true,
+		"sync_relations":       true,
+		"create_missing_users": true,
+	}
+
+	if config.Config == "" {
+		return defaultConfig
+	}
+
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(config.Config), &cfg); err != nil {
+		return defaultConfig
+	}
+
+	// 合并配置
+	for k, _ := range defaultConfig {
+		if val, ok := cfg[k]; ok {
+			defaultConfig[k] = val
+		}
+	}
+
+	return defaultConfig
 }
 
 func ParseCron(schedule string) (*ParseCronResult, error) {

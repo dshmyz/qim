@@ -15,7 +15,13 @@ var encryptionKey []byte
 func InitEncryptionKey() {
 	key := os.Getenv("ENCRYPTION_KEY")
 	if key == "" {
-		key = "default-encryption-key-32-chars!!"
+		// 生成随机密钥，每次启动都会变化（已加密的数据将无法解密）
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			panic("无法生成随机加密密钥: " + err.Error())
+		}
+		key = base64.StdEncoding.EncodeToString(b)[:32]
+		fmt.Println("警告: 未设置 ENCRYPTION_KEY 环境变量，使用随机密钥。已加密的数据在重启后将无法解密。")
 	}
 	encryptionKey = []byte(key)[:32]
 }

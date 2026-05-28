@@ -2,6 +2,7 @@ node_modules/
 dist/
 !qim-client/electron/screenshots/src/dist/
 *.db
+*.db.*
 qim-client/electron-dist/
 qim-server/qim-server
 qim-server/main
@@ -16,6 +17,18 @@ qim-server/server
 .bytro
 .agents/
 .claude/
+.vscode/
+
+# 日志文件
+*.log
+
+# 环境变量文件
+.env
+.env.*
+!.env.example
+
+# 测试覆盖率
+coverage/
 
 # 上传文件目录
 qim-server/uploads/
@@ -36,5 +49,3 @@ qim-client/src-tauri/target/
 *.backup
 *.bak
 *.tmp
-main
-agency-agents-zh

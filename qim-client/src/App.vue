@@ -28,9 +28,11 @@ const handleLogout = () => {
 }
 
 onMounted(() => {
-  isLoggedIn.value = false
-  localStorage.removeItem('user')
-  localStorage.removeItem('token')
+  const token = localStorage.getItem('token')
+  const user = localStorage.getItem('user')
+  if (token && user) {
+    isLoggedIn.value = true
+  }
 })
 </script>
 

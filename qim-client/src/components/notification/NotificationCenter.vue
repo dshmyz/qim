@@ -383,7 +383,7 @@ const handleAction = async (notification: Notification, action: string) => {
       }
     } else {
       await axios.patch(
-        `${serverUrl.value}/api/v1/notifications/${notification.id}/action`,
+        `${serverUrl.value}/api/v1/notifications/${notification.id}`,
         { action },
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
@@ -401,11 +401,11 @@ const togglePin = async (notification: Notification) => {
   try {
     const token = getToken()
     const res = await axios.patch(
-      `${serverUrl.value}/api/v1/notifications/${notification.id}/pin`,
-      {},
+      `${serverUrl.value}/api/v1/notifications/${notification.id}`,
+      { pinned: true },
       { headers: { 'Authorization': `Bearer ${token}` } }
     )
-    notification.pinned = res.data.pinned
+    notification.pinned = res.data?.data?.pinned ?? res.data.pinned
   } catch (error) {
     notification.pinned = !notification.pinned
     console.error('切换置顶失败:', error)
@@ -416,11 +416,11 @@ const toggleImportant = async (notification: Notification) => {
   try {
     const token = getToken()
     const res = await axios.patch(
-      `${serverUrl.value}/api/v1/notifications/${notification.id}/important`,
-      {},
+      `${serverUrl.value}/api/v1/notifications/${notification.id}`,
+      { important: true },
       { headers: { 'Authorization': `Bearer ${token}` } }
     )
-    notification.important = res.data.important
+    notification.important = res.data?.data?.important ?? res.data.important
   } catch (error) {
     notification.important = !notification.important
     console.error('切换重要状态失败:', error)

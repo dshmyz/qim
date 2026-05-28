@@ -18,7 +18,7 @@ func NewSystemConfigService(db *gorm.DB) *SystemConfigService {
 
 func (s *SystemConfigService) GetConfig(key string) (*model.SystemConfig, error) {
 	var config model.SystemConfig
-	err := s.db.Where("config_key = ?", key).First(&config).Error
+	err := s.db.Where("key = ?", key).First(&config).Error
 	return &config, err
 }
 
@@ -62,7 +62,7 @@ var publicConfigKeys = []string{
 
 func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error) {
 	var configs []model.SystemConfig
-	if err := s.db.Where("config_key IN ?", publicConfigKeys).Find(&configs).Error; err != nil {
+	if err := s.db.Where("key IN ?", publicConfigKeys).Find(&configs).Error; err != nil {
 		return nil, err
 	}
 
@@ -97,7 +97,7 @@ func (s *SystemConfigService) BatchUpdate(configs map[string]interface{}) error 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for key, value := range configs {
 			var cfg model.SystemConfig
-			result := tx.Where("config_key = ?", key).First(&cfg)
+			result := tx.Where("key = ?", key).First(&cfg)
 
 			strValue := fmt.Sprintf("%v", value)
 			cfgType := "string"

@@ -119,9 +119,9 @@ export function useShareLogic(
       }
 
       for (const userId of users) {
-        const convResponse = await request('/api/v1/conversations/single', {
+        const convResponse = await request('/api/v1/conversations', {
           method: 'POST',
-          body: JSON.stringify({ user_id: parseInt(userId) })
+          body: JSON.stringify({ type: 'single', user_id: parseInt(userId) })
         })
 
         if (convResponse.code === 0) {

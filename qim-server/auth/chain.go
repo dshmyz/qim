@@ -42,17 +42,19 @@ func (ac *AuthChain) AuthenticateDirect(ctx context.Context, creds *provider.Cre
 
 		result, err := p.Authenticate(ctx, creds)
 		if err != nil {
-			logger.Debug("Provider authentication failed", "provider", p.Name(), "error", err)
+			logger.WithModule("Auth").Warn("认证提供者执行异常", "provider", p.Name(), "error", err)
 			continue
 		}
 
 		if result.Success {
+			logger.WithModule("Auth").Info("认证成功", "provider", p.Name(), "username", creds.Username)
 			return result, p.Name(), nil
 		}
 
-		logger.Debug("Provider authentication rejected", "provider", p.Name(), "reason", result.Message)
+		logger.WithModule("Auth").Info("认证被拒绝", "provider", p.Name(), "username", creds.Username, "reason", result.Message)
 	}
 
+	logger.WithModule("Auth").Warn("所有认证提供者均失败", "username", creds.Username)
 	return &provider.AuthResult{
 		Success: false,
 		Message: "用户名或密码错误",

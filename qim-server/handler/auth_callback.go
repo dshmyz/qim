@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"qim-server/auth/provider"
 	"qim-server/database"
@@ -112,12 +113,19 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 			response.InternalServerError(c, "创建用户失败")
 			return nil, false
 		}
-	} else {
-		user.Status = "online"
-		if name != "" {
-			user.Nickname = name
+
+		// 创建外部用户映射
+		mapping := model.ExternalUserMapping{
+			UserID:          user.ID,
+			ProviderName:    authProvider.Name,
+			ExternalUserID:  authResult.UserID,
+			ExternalUsername: username,
 		}
-		db.Save(&user)
+		db.Create(&mapping)
+	} else {
+		// 根据属性映射更新用户字段
+		updates := buildUserUpdates(userInfo, authProvider)
+		db.Model(&user).Updates(updates)
 	}
 
 	return &user, true
@@ -169,9 +177,19 @@ func authenticateCAS(c *gin.Context, authProvider *model.AuthProvider, ticket st
 			response.InternalServerError(c, "创建用户失败")
 			return nil, false
 		}
+
+		// 创建外部用户映射
+		mapping := model.ExternalUserMapping{
+			UserID:          user.ID,
+			ProviderName:    authProvider.Name,
+			ExternalUserID:  authResult.UserID,
+			ExternalUsername: username,
+		}
+		db.Create(&mapping)
 	} else {
-		user.Status = "online"
-		db.Save(&user)
+		// 根据属性映射更新用户字段
+		updates := buildUserUpdates(userInfo, authProvider)
+		db.Model(&user).Updates(updates)
 	}
 
 	return &user, true
@@ -187,6 +205,58 @@ func findCASProvider(c *gin.Context) (*model.AuthProvider, bool) {
 	}
 
 	return &authProvider, true
+}
+
+// getAttributeMapping 从提供者配置中解析属性映射
+func getAttributeMapping(authProvider *model.AuthProvider) map[string]string {
+	defaultMapping := map[string]string{
+		"nickname": "name",
+		"email":    "email",
+		"phone":    "phone",
+		"avatar":   "picture",
+	}
+
+	switch authProvider.Type {
+	case "redirect":
+		switch authProvider.Name {
+		case "oauth":
+			var cfg provider.OAuthConfig
+			if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
+				for k, v := range cfg.AttributeMapping {
+					defaultMapping[k] = v
+				}
+			}
+		case "cas":
+			var cfg provider.CASConfig
+			if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
+				for k, v := range cfg.AttributeMapping {
+					defaultMapping[k] = v
+				}
+			}
+		}
+	}
+
+	return defaultMapping
+}
+
+// buildUserUpdates 根据属性映射构建用户更新字段
+func buildUserUpdates(userInfo map[string]interface{}, authProvider *model.AuthProvider) map[string]interface{} {
+	mapping := getAttributeMapping(authProvider)
+	updates := make(map[string]interface{})
+
+	for localField, remoteField := range mapping {
+		if localField == "username" {
+			continue // username 不允许更新
+		}
+		if val, ok := userInfo[remoteField]; ok && val != nil {
+			if strVal, ok := val.(string); ok && strVal != "" {
+				updates[localField] = strVal
+			}
+		}
+	}
+
+	updates["status"] = "online"
+	return updates
 }
 
 func UnifiedAuthCallback(c *gin.Context) {

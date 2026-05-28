@@ -1257,26 +1257,47 @@ onMounted(async () => {
 
 // 提取为独立函数：加载后任务
 const setupPostLoadTasks = () => {
-  // 设置 WebSocket 连接成功回调
   setOnConnectedCallback(() => {
     if (!isFirstConnect) {
       loadConversations()
       systemConfigStore.fetchPublicConfig()
+      fetchMissedMessages()
     }
     isFirstConnect = false
   })
   
-  // 连接WebSocket
   connectWebSocket()
   
-  // 获取公开系统配置（低优先级，延迟1秒）
   setTimeout(() => {
     systemConfigStore.fetchPublicConfig()
   }, 1000)
   
-  // 注册事件监听器
   registerUpdateEventListeners()
   registerCustomEventListeners()
+}
+
+const fetchMissedMessages = async () => {
+  const chatStore = useChatStore()
+  const currentConvId = chatStore.currentConversationId
+  if (!currentConvId) return
+
+  const lastMsgId = chatStore.getLastMessageId(currentConvId)
+  if (!lastMsgId) return
+
+  try {
+    const response = await request(`/api/v1/conversations/${currentConvId}/messages?after_id=${lastMsgId}&page_size=50`)
+    if (response.code === 0 && response.data?.messages) {
+      const missedMessages = response.data.messages
+        .map((msg: any) => processMessage(msg, currentConvId))
+        .filter((m: any) => m !== null)
+      if (missedMessages.length > 0) {
+        chatStore.appendMessagesSilent(currentConvId, missedMessages)
+        logger.log(`[离线补偿] 会话 ${currentConvId} 拉取到 ${missedMessages.length} 条离线消息`)
+      }
+    }
+  } catch (error) {
+    logger.error('[离线补偿] 拉取离线消息失败:', error)
+  }
 }
 
 
@@ -1858,9 +1879,10 @@ const startPrivateChat = async (user: any) => {
       userId = parseInt(userId)
     }
     
-    const response = await request('/api/v1/conversations/single', {
+    const response = await request('/api/v1/conversations', {
       method: 'POST',
       body: JSON.stringify({
+        type: 'single',
         user_id: userId
       })
     })
@@ -2414,8 +2436,7 @@ const handleMessageLike = async (message: any) => {
 
 const handleMessageUnlike = async (message: any) => {
   try {
-    const response = await request(`/api/v1/channels/messages/${message.id}/unlike`, {
-      method: 'POST'
+    const response = await request(`/api/v1/channels/messages/${message.id}/like`, { method: 'DELETE'
     })
     if (response.code === 0) {
       QMessage.success('取消点赞')

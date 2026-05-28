@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"qim-server/model"
 
@@ -365,14 +366,21 @@ func (s *AdminService) GetGroups(page, pageSize int, keyword string) ([]AdminGro
 	return groups, total, nil
 }
 
+type GrowthRate struct {
+	Users    float64 `json:"users"`
+	Groups   float64 `json:"groups"`
+	Messages float64 `json:"messages"`
+}
+
 type AdminStatistics struct {
-	TotalUsers    int64 `json:"totalUsers"`
-	OnlineUsers   int64 `json:"onlineUsers"`
-	TotalGroups   int64 `json:"totalGroups"`
-	TotalChannels int64 `json:"totalChannels"`
-	TotalMessages int64 `json:"totalMessages"`
-	ActiveUsers   int64 `json:"activeUsers"`
-	MessagesToday int64 `json:"messagesToday"`
+	TotalUsers    int64      `json:"totalUsers"`
+	OnlineUsers   int64      `json:"onlineUsers"`
+	TotalGroups   int64      `json:"totalGroups"`
+	TotalChannels int64      `json:"totalChannels"`
+	TotalMessages int64      `json:"totalMessages"`
+	ActiveUsers   int64      `json:"activeUsers"`
+	MessagesToday int64      `json:"messagesToday"`
+	GrowthRate    GrowthRate `json:"growthRate"`
 }
 
 func (s *AdminService) GetStatistics() (*AdminStatistics, error) {
@@ -388,7 +396,37 @@ func (s *AdminService) GetStatistics() (*AdminStatistics, error) {
 	s.db.WithContext(ctx).Model(&model.Message{}).Where("created_at >= CURRENT_DATE").Count(&stats.MessagesToday)
 	s.db.WithContext(ctx).Model(&model.Message{}).Distinct("sender_id").Where("created_at >= CURRENT_DATE").Count(&stats.ActiveUsers)
 
+	// 计算增长率：对比最近 7 天与前 7 天
+	now := time.Now()
+	weekAgo := now.AddDate(0, 0, -7)
+	twoWeeksAgo := now.AddDate(0, 0, -14)
+
+	var currentWeekUsers, prevWeekUsers int64
+	s.db.WithContext(ctx).Model(&model.User{}).Where("created_at >= ?", weekAgo).Count(&currentWeekUsers)
+	s.db.WithContext(ctx).Model(&model.User{}).Where("created_at >= ? AND created_at < ?", twoWeeksAgo, weekAgo).Count(&prevWeekUsers)
+	stats.GrowthRate.Users = calcGrowthRate(currentWeekUsers, prevWeekUsers)
+
+	var currentWeekGroups, prevWeekGroups int64
+	s.db.WithContext(ctx).Model(&model.Conversation{}).Where("type = ? AND created_at >= ?", "group", weekAgo).Count(&currentWeekGroups)
+	s.db.WithContext(ctx).Model(&model.Conversation{}).Where("type = ? AND created_at >= ? AND created_at < ?", "group", twoWeeksAgo, weekAgo).Count(&prevWeekGroups)
+	stats.GrowthRate.Groups = calcGrowthRate(currentWeekGroups, prevWeekGroups)
+
+	var currentWeekMsgs, prevWeekMsgs int64
+	s.db.WithContext(ctx).Model(&model.Message{}).Where("created_at >= ?", weekAgo).Count(&currentWeekMsgs)
+	s.db.WithContext(ctx).Model(&model.Message{}).Where("created_at >= ? AND created_at < ?", twoWeeksAgo, weekAgo).Count(&prevWeekMsgs)
+	stats.GrowthRate.Messages = calcGrowthRate(currentWeekMsgs, prevWeekMsgs)
+
 	return &stats, nil
+}
+
+func calcGrowthRate(current, previous int64) float64 {
+	if previous == 0 {
+		if current == 0 {
+			return 0
+		}
+		return 100
+	}
+	return float64(current-previous) / float64(previous) * 100
 }
 
 type RegistrationInfo struct {

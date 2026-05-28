@@ -45,6 +45,12 @@ type CancelUploadRequest struct {
 
 // InitUpload 初始化上传
 func InitUpload(c *gin.Context) {
+	// 检查文件上传开关
+	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload"); err == nil && cfg.Value == "false" {
+		response.Forbidden(c, "文件上传功能已关闭")
+		return
+	}
+
 	userID, exists := c.Get("user_id")
 	if !exists {
 		response.Unauthorized(c, "未授权")

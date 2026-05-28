@@ -60,8 +60,8 @@ export const deleteUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>
 
 export const assignRoles = (userId: number, roles: string[]): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/v1/users/${userId}/roles/batch`,
-    method: 'post',
+    url: `/v1/users/${userId}/roles`,
+    method: 'put',
     data: { roles },
   })
 }

@@ -340,6 +340,21 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.delete(conversationId)
   }
 
+  function getLastMessageId(conversationId: string): string | null {
+    const msgs = messages.value.get(conversationId)
+    if (!msgs || msgs.length === 0) return null
+    return msgs[msgs.length - 1].id
+  }
+
+  function appendMessagesSilent(conversationId: string, newMessages: Message[]) {
+    if (newMessages.length === 0) return
+    const msgs = messages.value.get(conversationId) || []
+    const existingIds = new Set(msgs.map(m => m.id))
+    const filtered = newMessages.filter(m => !existingIds.has(m.id))
+    if (filtered.length === 0) return
+    messages.value.set(conversationId, [...msgs, ...filtered])
+  }
+
   return {
     // 状态
     messages,
@@ -386,5 +401,7 @@ export const useChatStore = defineStore('chat', () => {
     updateMemberRole,
     loadConversationsFromStorage,
     clearAllMessages,
+    getLastMessageId,
+    appendMessagesSilent,
   }
 })

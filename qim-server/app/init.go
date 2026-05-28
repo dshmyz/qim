@@ -34,6 +34,11 @@ func GetDB() *gorm.DB {
 func initSystemUser() {
 	db := database.GetDB()
 
+	if !db.Migrator().HasTable(&model.User{}) {
+		logger.WithModule("Init").Error("users 表不存在，跳过系统用户初始化。")
+		return
+	}
+
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var count int64
 		if err := tx.Model(&model.User{}).Where("type = ?", "system").Count(&count).Error; err != nil {
@@ -65,11 +70,17 @@ func initSystemUser() {
 func initAdminUser() {
 	db := database.GetDB()
 
+	// 检查 users 表是否存在
+	if !db.Migrator().HasTable(&model.User{}) {
+		logger.WithModule("Init").Error("users 表不存在，跳过管理员初始化。请检查数据库连接和迁移是否成功。")
+		return
+	}
+
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var count int64
 		// 检查所有用户（包括已删除的），确保管理员用户存在
 		if err := tx.Unscoped().Model(&model.User{}).Where("type = ?", "admin").Count(&count).Error; err != nil {
-			return err
+			return fmt.Errorf("查询管理员用户失败: %w", err)
 		}
 
 		if count > 0 {
@@ -288,9 +299,8 @@ func MigrateDB(db *gorm.DB) {
 	); err != nil {
 		// GORM AutoMigrate 在表已存在时会报错，但这不影响程序运行
 		// 只有在真正的迁移失败时才记录错误
-		logger.WithModule("Migrate").Warn("数据库迁移警告", "error", err)
-		// 不再退出程序，允许继续运行
-		// os.Exit(1)
+		logger.WithModule("Migrate").Error("数据库迁移失败", "error", err)
+		logger.WithModule("Migrate").Error("如果使用 MySQL，请检查：1) 数据库是否已创建 2) 连接账号是否有建表权限 3) 数据库名是否正确")
 	}
 
 	addIndexes(db)
@@ -301,7 +311,7 @@ func MigrateDB(db *gorm.DB) {
 // isMigrationCompleted 检查指定的迁移版本是否已完成
 func isMigrationCompleted(db *gorm.DB, migrationName string) bool {
 	var config model.SystemConfig
-	err := db.Where("config_key = ?", "migration:"+migrationName).First(&config).Error
+	err := db.Where("key = ?", "migration:"+migrationName).First(&config).Error
 	return err == nil
 }
 
@@ -313,7 +323,7 @@ func markMigrationCompleted(db *gorm.DB, migrationName string) {
 		Type:  "string",
 		Desc:  "迁移版本: " + migrationName,
 	}
-	db.Where("config_key = ?", "migration:"+migrationName).FirstOrCreate(&config)
+	db.Where("key = ?", "migration:"+migrationName).FirstOrCreate(&config)
 	logger.WithModule("Migration").Info("标记迁移为已完成", "name", migrationName)
 }
 
@@ -361,7 +371,7 @@ func seedFileUploadConfig(db *gorm.DB) {
 		{Key: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
 	}
 	for _, cfg := range defaultConfigs {
-		db.Where("config_key = ?", cfg.Key).FirstOrCreate(&cfg)
+		db.Where("key = ?", cfg.Key).FirstOrCreate(&cfg)
 	}
 	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
 }
@@ -391,14 +401,14 @@ func addIndexes(db *gorm.DB) {
 		logger.WithModule("Index").Info("添加 groups(name) 索引")
 	}
 
-	// 3. notifications(user_id, is_read, created_at) 复合索引
-	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_is_read_created_at") {
+	// 3. notifications(user_id, read, created_at) 复合索引
+	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_read_created_at") {
 		if isMySQL {
-			db.Exec("CREATE INDEX idx_notifications_user_is_read_created_at ON notifications(user_id, is_read, created_at)")
+			db.Exec("CREATE INDEX idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
 		} else {
-			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_is_read_created_at ON notifications(user_id, is_read, created_at)")
+			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
 		}
-		logger.WithModule("Index").Info("添加 notifications(user_id, is_read, created_at) 复合索引")
+		logger.WithModule("Index").Info("添加 notifications(user_id, read, created_at) 复合索引")
 	}
 
 	// 4. 消息全文搜索索引

@@ -572,3 +572,101 @@ func UpdateTaskStatus(c *gin.Context) {
 
 	response.Success(c, task)
 }
+
+// PatchNotification 统一通知更新接口
+// 请求体可包含以下字段（任一或多个）：
+//
+//	{
+//	  "read": true,              // 标记已读（true 才生效）
+//	  "pinned": true|false,      // 切换置顶（传 true 切换；传 false 切换为非置顶）
+//	  "important": true|false,   // 切换重要
+//	  "action": "accept|ignore|confirm|reschedule"  // 处理动作
+//	}
+//
+// 注意：pinned / important 实际语义为「切换（toggle）」，与原接口保持一致。
+func PatchNotification(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	notificationIDStr := c.Param("id")
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的通知ID")
+		return
+	}
+
+	var req struct {
+		Read      *bool   `json:"read"`
+		Pinned    *bool   `json:"pinned"`
+		Important *bool   `json:"important"`
+		Action    *string `json:"action"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if req.Read == nil && req.Pinned == nil && req.Important == nil && req.Action == nil {
+		response.BadRequest(c, "至少需要一个更新字段：read/pinned/important/action")
+		return
+	}
+
+	svc := di.GlobalContainer.NotificationService
+	result := gin.H{}
+
+	if req.Read != nil && *req.Read {
+		notification, err := svc.MarkAsRead(uid, uint(notificationID))
+		if err != nil {
+			response.NotFound(c, "通知不存在")
+			return
+		}
+		result["notification"] = notification
+	}
+
+	if req.Pinned != nil {
+		pinned, err := svc.TogglePin(uid, uint(notificationID))
+		if err != nil {
+			response.NotFound(c, "通知不存在")
+			return
+		}
+		result["pinned"] = pinned
+	}
+
+	if req.Important != nil {
+		important, err := svc.ToggleImportant(uid, uint(notificationID))
+		if err != nil {
+			response.NotFound(c, "通知不存在")
+			return
+		}
+		result["important"] = important
+	}
+
+	if req.Action != nil && *req.Action != "" {
+		notification, err := svc.GetByID(uid, uint(notificationID))
+		if err != nil {
+			response.NotFound(c, "通知不存在")
+			return
+		}
+		db := di.GlobalContainer.DB
+		switch *req.Action {
+		case "accept":
+			handleAcceptAction(db, notification)
+		case "ignore":
+			handleIgnoreAction(db, notification)
+		case "confirm":
+			handleConfirmAction(db, notification)
+		case "reschedule":
+			handleRescheduleAction(db, notification)
+		default:
+			response.BadRequest(c, "不支持的操作")
+			return
+		}
+		notification.Handled = true
+		now := time.Now()
+		notification.ReadAt = &now
+		svc.Save(notification)
+		result["notification"] = notification
+	}
+
+	response.SuccessWithMessage(c, "操作成功", result)
+}

@@ -4,7 +4,14 @@ import type { AxiosResponse } from 'axios'
 
 export const getDashboardStats = (): Promise<AxiosResponse<ApiResponse<DashboardData>>> => {
   return request({
-    url: '/v1/admin/statistics',
+    url: '/v1/admin/dashboard/stats',
+    method: 'get',
+  })
+}
+
+export const getDashboardTrend = (): Promise<AxiosResponse<ApiResponse<any>>> => {
+  return request({
+    url: '/v1/admin/dashboard/trend',
     method: 'get',
   })
 }

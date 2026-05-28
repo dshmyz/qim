@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import { getStoredServerUrl } from '../composables/useServerUrl'
 import type { ApiResponse } from '../composables/useRequest'
+import { onUnauthorized } from '../composables/useRequest'
 import { requestInterceptor } from '../utils/requestInterceptor'
 
 export class ApiError extends Error {
@@ -102,9 +103,7 @@ api.interceptors.response.use(
     const config = error.config as RequestConfig
 
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.reload()
+      onUnauthorized()
       throw new ApiError('登录已过期，请重新登录', 401, 401)
     }
 

@@ -42,10 +42,19 @@ func GetStatistics(c *gin.Context) {
 	var totalNotes int64
 	db.Model(&model.Note{}).Where("user_id = ? AND created_at >= ?", userID, startDate).Count(&totalNotes)
 
-	totalTasks := int64(0)
-	completedTasks := int64(0)
-	pendingTasks := int64(0)
+	var totalTasks int64
+	db.Model(&model.Task{}).Where("user_id = ? AND created_at >= ?", userID, startDate).Count(&totalTasks)
+
+	var completedTasks int64
+	db.Model(&model.Task{}).Where("user_id = ? AND status = ? AND created_at >= ?", userID, "done", startDate).Count(&completedTasks)
+
+	var pendingTasks int64
+	db.Model(&model.Task{}).Where("user_id = ? AND status IN ? AND created_at >= ?", userID, []string{"todo", "in_progress"}, startDate).Count(&pendingTasks)
+
 	taskCompletionRate := 0.0
+	if totalTasks > 0 {
+		taskCompletionRate = float64(completedTasks) / float64(totalTasks) * 100
+	}
 
 	messageTrend := []map[string]interface{}{}
 
@@ -122,12 +131,48 @@ func GetStatistics(c *gin.Context) {
 		}
 	}
 
-	fileTypes := []map[string]interface{}{
-		{"type": "文档", "count": int64(120), "percentage": 35},
-		{"type": "图片", "count": int64(80), "percentage": 23},
-		{"type": "视频", "count": int64(60), "percentage": 17},
-		{"type": "音频", "count": int64(40), "percentage": 12},
-		{"type": "其他", "count": int64(45), "percentage": 13},
+	fileTypes := []map[string]interface{}{}
+	var fileTypeRows []struct {
+		Type  string
+		Count int64
+		Size  int64
+	}
+	db.Model(&model.File{}).Where("user_id = ? AND created_at >= ?", userID, startDate).
+		Select(`
+			CASE
+				WHEN mime_type LIKE 'image/%' THEN '图片'
+				WHEN mime_type LIKE 'video/%' THEN '视频'
+				WHEN mime_type LIKE 'audio/%' THEN '音频'
+				WHEN mime_type LIKE 'application/%' OR mime_type LIKE 'text/%' THEN '文档'
+				ELSE '其他'
+			END as type,
+			COUNT(*) as count,
+			COALESCE(SUM(size), 0) as size
+		`).
+		Group(`
+			CASE
+				WHEN mime_type LIKE 'image/%' THEN '图片'
+				WHEN mime_type LIKE 'video/%' THEN '视频'
+				WHEN mime_type LIKE 'audio/%' THEN '音频'
+				WHEN mime_type LIKE 'application/%' OR mime_type LIKE 'text/%' THEN '文档'
+				ELSE '其他'
+			END
+		`).Scan(&fileTypeRows)
+
+	var totalFileCount int64
+	for _, row := range fileTypeRows {
+		totalFileCount += row.Count
+	}
+	for _, row := range fileTypeRows {
+		pct := 0
+		if totalFileCount > 0 {
+			pct = int(row.Count * 100 / totalFileCount)
+		}
+		fileTypes = append(fileTypes, map[string]interface{}{
+			"type":       row.Type,
+			"count":      row.Count,
+			"percentage": pct,
+		})
 	}
 
 	maxMessages := int64(0)

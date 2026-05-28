@@ -75,8 +75,8 @@ export const useChannelStore = defineStore('channel', () => {
 
   async function unsubscribeChannel(channelId: string) {
     try {
-      const response = await request<ApiResponse<void>>(`/api/v1/channels/${channelId}/unsubscribe`, {
-        method: 'POST'
+      const response = await request<ApiResponse<void>>(`/api/v1/channels/${channelId}/subscribe`, {
+        method: 'DELETE'
       })
       if (response.code === 0) {
         const channel = channels.value.find(c => c.id === channelId)

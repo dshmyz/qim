@@ -166,6 +166,15 @@ func (h *Hub) Run() {
 	// 启动节点间通信服务
 	utils.SafeGoWithLabel("node-comm", func() { h.startNodeCommunication() })
 
+	// 定期清理过期的会话成员缓存
+	utils.SafeGoWithLabel("cache-cleanup", func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.cleanExpiredConversationCache()
+		}
+	})
+
 	for {
 		select {
 		case client := <-h.register:
@@ -360,6 +369,17 @@ func (h *Hub) UpdateConversationMembers(convID uint) {
 	logger.WithModule("WS").Info("更新会话成员缓存", "convID", convID, "memberCount", len(memberIDs))
 }
 
+func (h *Hub) cleanExpiredConversationCache() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := time.Now()
+	for convID, cached := range h.conversationMembers {
+		if now.After(cached.expiredAt) {
+			delete(h.conversationMembers, convID)
+		}
+	}
+}
+
 // sendToUserToOtherNodes 通过 HTTP 向其他节点发送用户特定消息
 func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 	for _, node := range h.nodes {
@@ -478,6 +498,14 @@ func (c *Client) readPump() {
 		c.conn.Close()
 	}()
 
+	// 设置读取消息大小限制（1MB）和读取超时
+	c.conn.SetReadLimit(1 * 1024 * 1024)
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
 	for {
 		var msg WSMessage
 		err := c.conn.ReadJSON(&msg)
@@ -551,18 +579,28 @@ func (c *Client) readPump() {
 }
 
 func (c *Client) writePump() {
+	pingTicker := time.NewTicker(30 * time.Second)
 	defer func() {
+		pingTicker.Stop()
 		c.conn.Close()
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			c.conn.WriteMessage(websocket.TextMessage, message)
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				return
+			}
+		case <-pingTicker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -1445,6 +1483,7 @@ func (d *StatusDebouncer) Debounce(userID uint, fn func()) {
 
 	if timer, exists := d.timers[userID]; exists {
 		timer.Stop()
+		delete(d.timers, userID)
 	}
 
 	d.timers[userID] = time.AfterFunc(d.delay, func() {

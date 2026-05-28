@@ -87,17 +87,17 @@ func (s *LDAPSyncer) Fetch(ctx context.Context, configStr string) (*orgsync.OrgD
 		return nil, fmt.Errorf("LDAP绑定失败: %w", err)
 	}
 
-	departments, err := s.fetchDepartments(conn)
+	departments, dnToUUID, err := s.fetchDepartments(conn)
 	if err != nil {
 		return nil, fmt.Errorf("获取部门数据失败: %w", err)
 	}
 
-	users, err := s.fetchUsers(conn)
+	users, err := s.fetchUsers(conn, dnToUUID)
 	if err != nil {
 		return nil, fmt.Errorf("获取用户数据失败: %w", err)
 	}
 
-	userDeptRels, err := s.fetchUserDepartmentRelations(conn, users)
+	userDeptRels, err := s.fetchUserDepartmentRelations(users, dnToUUID)
 	if err != nil {
 		return nil, fmt.Errorf("获取用户部门关系失败: %w", err)
 	}
@@ -118,18 +118,28 @@ func (s *LDAPSyncer) Sync(ctx context.Context, data *orgsync.OrgData) (*orgsync.
 	}, nil
 }
 
-func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo, error) {
+func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo, map[string]string, error) {
 	searchRequest := ldap.NewSearchRequest(
 		s.config.BaseDN,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		s.config.DepartmentFilter,
-		[]string{"dn", "ou", "departmentNumber"},
+		[]string{"dn", "ou", "departmentNumber", "entryUUID"},
 		nil,
 	)
 
 	sr, err := conn.Search(searchRequest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	// 构建 DN → entryUUID 映射，用于解析父部门关系
+	dnToUUID := make(map[string]string, len(sr.Entries))
+	for _, entry := range sr.Entries {
+		uuid := entry.GetAttributeValue("entryUUID")
+		if uuid == "" {
+			uuid = entry.DN // 回退到 DN
+		}
+		dnToUUID[entry.DN] = uuid
 	}
 
 	departments := make([]orgsync.DepartmentInfo, 0, len(sr.Entries))
@@ -142,31 +152,56 @@ func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo
 		level := 0
 		parentID := ""
 		dnParts := parseDN(entry.DN)
-		for i, part := range dnParts {
-			if part == name {
-				level = i
-				break
+
+		// 计算层级：跳过 DC 部分，从 OU/CN 开始计数
+		ouIndex := 0
+		for _, part := range dnParts {
+			if len(part) >= 3 && (part[:3] == "ou=" || part[:3] == "OU=" ||
+				(len(part) >= 3 && part[:3] == "cn=") || (len(part) >= 3 && part[:3] == "CN=")) {
+				ouIndex++
 			}
+		}
+		level = ouIndex - 1
+		if level < 0 {
+			level = 0
+		}
+
+		// 从 DN 解析父部门的 entryUUID
+		if len(dnParts) > 1 {
+			parentDN := joinDN(dnParts[1:])
+			parentID = dnToUUID[parentDN]
 		}
 
 		departments = append(departments, orgsync.DepartmentInfo{
-			ID:       entry.DN,
+			ID:       dnToUUID[entry.DN],
 			Name:     name,
 			ParentID: parentID,
 			Level:    level,
 		})
 	}
 
-	return departments, nil
+	return departments, dnToUUID, nil
 }
 
-func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn) ([]orgsync.UserInfo, error) {
+// joinDN 将 DN 各部分重新拼接为 DN 字符串
+func joinDN(parts []string) string {
+	result := ""
+	for i, part := range parts {
+		if i > 0 {
+			result += ","
+		}
+		result += part
+	}
+	return result
+}
+
+func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn, dnToUUID map[string]string) ([]orgsync.UserInfo, error) {
 	attrMap := s.config.AttributeMapping
-	attrs := make([]string, 0, len(attrMap)+2)
+	attrs := make([]string, 0, len(attrMap)+3)
 	for _, v := range attrMap {
 		attrs = append(attrs, v)
 	}
-	attrs = append(attrs, "dn", "departmentNumber")
+	attrs = append(attrs, "dn", "departmentNumber", "entryUUID")
 
 	searchRequest := ldap.NewSearchRequest(
 		s.config.BaseDN,
@@ -179,6 +214,15 @@ func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn) ([]orgsync.UserInfo, error) {
 	sr, err := conn.Search(searchRequest)
 	if err != nil {
 		return nil, err
+	}
+
+	// 将用户 DN 也加入映射
+	for _, entry := range sr.Entries {
+		uuid := entry.GetAttributeValue("entryUUID")
+		if uuid == "" {
+			uuid = entry.DN
+		}
+		dnToUUID[entry.DN] = uuid
 	}
 
 	users := make([]orgsync.UserInfo, 0, len(sr.Entries))
@@ -194,11 +238,11 @@ func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn) ([]orgsync.UserInfo, error) {
 		}
 
 		user := orgsync.UserInfo{
-			ID:       entry.DN,
-			Username: username,
-			Nickname: entry.GetAttributeValue(attrMap["nickname"]),
-			Email:    entry.GetAttributeValue(attrMap["email"]),
-			Phone:    entry.GetAttributeValue(attrMap["phone"]),
+			ID:           dnToUUID[entry.DN],
+			Username:     username,
+			Nickname:     entry.GetAttributeValue(attrMap["nickname"]),
+			Email:        entry.GetAttributeValue(attrMap["email"]),
+			Phone:        entry.GetAttributeValue(attrMap["phone"]),
 			DepartmentID: userDeptID,
 		}
 
@@ -208,7 +252,7 @@ func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn) ([]orgsync.UserInfo, error) {
 	return users, nil
 }
 
-func (s *LDAPSyncer) fetchUserDepartmentRelations(conn *ldap.Conn, users []orgsync.UserInfo) ([]orgsync.UserDeptRelation, error) {
+func (s *LDAPSyncer) fetchUserDepartmentRelations(users []orgsync.UserInfo, dnToUUID map[string]string) ([]orgsync.UserDeptRelation, error) {
 	relations := make([]orgsync.UserDeptRelation, 0)
 
 	for _, user := range users {
@@ -220,22 +264,27 @@ func (s *LDAPSyncer) fetchUserDepartmentRelations(conn *ldap.Conn, users []orgsy
 			})
 		}
 
-		if userDeptEntries := getUserDepartmentFromDN(user.ID); userDeptEntries != "" {
-			relations = append(relations, orgsync.UserDeptRelation{
-				UserID:       user.ID,
-				DepartmentID: userDeptEntries,
-				IsLeader:     false,
-			})
+		// 从用户 DN 解析父部门，再通过 dnToUUID 映射到部门 entryUUID
+		if parentDN := getParentDN(user.ID); parentDN != "" {
+			if deptUUID, ok := dnToUUID[parentDN]; ok {
+				relations = append(relations, orgsync.UserDeptRelation{
+					UserID:       user.ID,
+					DepartmentID: deptUUID,
+					IsLeader:     false,
+				})
+			}
 		}
 	}
 
 	return relations, nil
 }
 
-func getUserDepartmentFromDN(dn string) string {
+// getParentDN 从 DN 中去掉第一段 RDN，返回父节点 DN
+// 例如: cn=张三,ou=技术部,dc=example,dc=com → ou=技术部,dc=example,dc=com
+func getParentDN(dn string) string {
 	parts := parseDN(dn)
 	if len(parts) >= 2 {
-		return parts[len(parts)-2]
+		return joinDN(parts[1:])
 	}
 	return ""
 }

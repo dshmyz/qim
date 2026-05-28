@@ -340,7 +340,7 @@ const createConversation = async () => {
     }
     
     const token = localStorage.getItem('token')
-    const endpoint = props.type === 'group' ? '/api/v1/conversations/group' : '/api/v1/conversations/discussion'
+    const endpoint = '/api/v1/conversations'
     
     const response = await fetch(`${serverUrl.value}${endpoint}`, {
       method: 'POST',
@@ -348,7 +348,7 @@ const createConversation = async () => {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
-      body: JSON.stringify(requestData)
+      body: JSON.stringify({ type: props.type, ...requestData })
     })
     
     if (response.ok) {

@@ -350,8 +350,8 @@ const login = async () => {
       }
       
       emit('login-success', data.data.user)
-    } else if (data.code === 401 && data.message === '需要双因素认证') {
-      loginSession.value = data.data.session
+    } else if (data.code === 1002 && data.detail?.two_factor_required) {
+      loginSession.value = data.detail.session
       show2FAForm.value = true
     } else {
       QMessage.error(data.message || '登录失败')

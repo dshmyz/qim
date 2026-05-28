@@ -1404,9 +1404,10 @@ const handleSendPrivateMessage = async (user: User | string | number) => {
       processedUserId = parseInt(processedUserId)
     }
     
-    const response = await request('/api/v1/conversations/single', {
+    const response = await request('/api/v1/conversations', {
       method: 'POST',
       body: JSON.stringify({
+        type: 'single',
         user_id: processedUserId
       })
     })

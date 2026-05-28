@@ -159,10 +159,12 @@ func GetMessages(c *gin.Context) {
 	pageStr := c.Query("page")
 	pageSizeStr := c.Query("page_size")
 	afterIDStr := c.Query("after_id")
+	beforeIDStr := c.Query("before_id")
 
 	page := 1
 	pageSize := 20
 	afterID := uint(0)
+	beforeID := uint(0)
 
 	if pageStr != "" {
 		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
@@ -179,6 +181,12 @@ func GetMessages(c *gin.Context) {
 	if afterIDStr != "" {
 		if id, err := strconv.ParseUint(afterIDStr, 10, 64); err == nil {
 			afterID = uint(id)
+		}
+	}
+
+	if beforeIDStr != "" {
+		if id, err := strconv.ParseUint(beforeIDStr, 10, 64); err == nil {
+			beforeID = uint(id)
 		}
 	}
 
@@ -210,7 +218,10 @@ func GetMessages(c *gin.Context) {
 		Offset: offset,
 	}
 	if afterID > 0 {
-		query.BeforeMsgID = afterID
+		query.AfterMsgID = afterID
+	}
+	if beforeID > 0 {
+		query.BeforeMsgID = beforeID
 	}
 	result, err := msgSvc.GetMessages(query)
 	if err != nil {

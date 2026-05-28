@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -928,4 +931,46 @@ func DeleteConversation(c *gin.Context) {
 	response.Success(c, gin.H{
 		"message": "已移除会话",
 	})
+}
+
+// CreateConversation 统一会话创建入口
+// 请求体：
+//
+//	{
+//	  "type": "single|bot|group|discussion",
+//	  ...具体类型对应的字段
+//	}
+//
+// 该 handler 仅作为分发，复用原有具体类型的 handler 逻辑。
+func CreateConversation(c *gin.Context) {
+	// 预读取 type
+	body, err := c.GetRawData()
+	if err != nil {
+		response.BadRequest(c, "读取请求体失败")
+		return
+	}
+
+	// 回写 body 供后续 ShouldBindJSON 使用
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	var head struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(body, &head); err != nil || head.Type == "" {
+		response.BadRequest(c, "缺少 type 字段")
+		return
+	}
+
+	switch head.Type {
+	case "single":
+		CreateSingleConversation(c)
+	case "bot":
+		CreateBotConversation(c)
+	case "group":
+		CreateGroupConversation(c)
+	case "discussion":
+		CreateDiscussionConversation(c)
+	default:
+		response.BadRequest(c, "不支持的会话类型: "+head.Type)
+	}
 }

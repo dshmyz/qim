@@ -67,9 +67,9 @@ export function useBotChat(botId: Ref<number | null>) {
     error.value = null
 
     try {
-      const response: any = await request('/api/v1/conversations/bot', {
+      const response: any = await request('/api/v1/conversations', {
         method: 'POST',
-        body: JSON.stringify({ bot_id: botId.value })
+        body: JSON.stringify({ type: 'bot', bot_id: botId.value })
       })
 
       if (response.code === 0 && response.data) {

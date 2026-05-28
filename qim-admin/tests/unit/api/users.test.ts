@@ -122,7 +122,7 @@ describe('users API', () => {
       await assignRoles(1, ['admin', 'user'])
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/users/1/roles/batch', method: 'post', data: { roles: ['admin', 'user'] },
+        url: `/v1/users/1/roles`, method: 'put', data: { roles: ['admin', 'user'] },
       })
     })
   })

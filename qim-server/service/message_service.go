@@ -54,6 +54,7 @@ type MessageQuery struct {
 	ConvID      uint
 	UserID      uint
 	BeforeMsgID uint
+	AfterMsgID  uint
 	Limit       int
 	Offset      int
 	MessageType string
@@ -223,6 +224,28 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 
 	var messages []model.Message
 	q := db.Where("conversation_id = ?", query.ConvID)
+
+	if query.AfterMsgID > 0 {
+		var afterMsg model.Message
+		if err := db.First(&afterMsg, query.AfterMsgID).Error; err != nil {
+			return &MessageResult{
+				Messages:    []model.Message{},
+				Total:       0,
+				TotalPages:  0,
+				CurrentPage: 1,
+				PageSize:    query.Limit,
+			}, nil
+		}
+		q = q.Where("created_at > ?", afterMsg.CreatedAt).Order("created_at ASC").Limit(query.Limit)
+		q.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").Find(&messages)
+		return &MessageResult{
+			Messages:    messages,
+			Total:       int64(len(messages)),
+			TotalPages:  1,
+			CurrentPage: 1,
+			PageSize:    query.Limit,
+		}, nil
+	}
 
 	if query.BeforeMsgID > 0 {
 		var beforeMsg model.Message

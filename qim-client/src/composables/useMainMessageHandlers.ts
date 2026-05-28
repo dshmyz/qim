@@ -142,8 +142,7 @@ export function useMainMessageHandlers() {
     try {
       const { request } = await import('./useRequest')
       
-      const response = await request(`/api/v1/channels/messages/${message.id}/unlike`, {
-        method: 'POST'
+      const response = await request(`/api/v1/channels/messages/${message.id}/like`, { method: 'DELETE'
       })
       if (response.code === 0) {
         QMessage.success('取消点赞')

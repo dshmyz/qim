@@ -287,69 +287,6 @@ func GetUserByID(c *gin.Context) {
 	})
 }
 
-func AddUserRole(c *gin.Context) {
-	userIDStr := c.Param("id")
-	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		response.BadRequest(c, "无效的用户ID")
-		return
-	}
-
-	var req struct {
-		Role string `json:"role" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	db := di.GlobalContainer.DB
-
-	var targetUser model.User
-	if err := db.First(&targetUser, uint(targetUserID)).Error; err != nil {
-		response.NotFound(c, "用户不存在")
-		return
-	}
-
-	tx := db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	var existingRole model.UserRole
-	result := tx.Where("user_id = ? AND role = ?", uint(targetUserID), req.Role).First(&existingRole)
-	if result.Error == nil {
-		tx.Rollback()
-		response.BadRequest(c, "角色已存在")
-		return
-	}
-
-	userRole := model.UserRole{
-		UserID: uint(targetUserID),
-		Role:   req.Role,
-	}
-
-	if err := tx.Create(&userRole).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "添加角色失败")
-		return
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "添加角色失败")
-		return
-	}
-
-	response.Success(c, gin.H{
-		"message": "角色添加成功",
-		"data":    userRole,
-	})
-}
-
 func RemoveUserRole(c *gin.Context) {
 	userIDStr := c.Param("id")
 	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
@@ -527,48 +464,31 @@ func UpdateAIConfig(c *gin.Context) {
 	})
 }
 
+// GetUserStatus 查询用户在线状态
+// 兼容：
+//   - 单个：?user_id=1  返回对象 { user_id, status, last_online }
+//   - 批量：?user_ids=1,2,3  返回数组 [{...}, {...}]
 func GetUserStatus(c *gin.Context) {
-	userIDStr := c.Query("user_id")
-	if userIDStr == "" {
-		response.BadRequest(c, "用户ID不能为空")
-		return
-	}
+	singleIDStr := c.Query("user_id")
+	batchIDsStr := c.Query("user_ids")
 
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		response.BadRequest(c, "无效的用户ID")
-		return
-	}
-
-	db := di.GlobalContainer.DB
-	var user model.User
-	if err := db.Select("id", "status", "last_online").First(&user, uint(userID)).Error; err != nil {
-		response.NotFound(c, "用户不存在")
-		return
-	}
-
-	response.Success(c, gin.H{
-		"user_id": user.ID,
-		"status":  user.Status,
-		"last_online": func() int64 {
-			if user.LastOnline != nil {
-				return user.LastOnline.Unix()
-			}
-			return 0
-		}(),
-	})
-}
-
-func GetUserStatusBatch(c *gin.Context) {
-	userIDsStr := c.Query("user_ids")
-	if userIDsStr == "" {
-		response.BadRequest(c, "用户ID列表不能为空")
+	if singleIDStr == "" && batchIDsStr == "" {
+		response.BadRequest(c, "user_id 或 user_ids 至少传一个")
 		return
 	}
 
 	var userIDs []uint
-	for _, idStr := range strings.Split(userIDsStr, ",") {
-		id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32)
+	if batchIDsStr != "" {
+		for _, idStr := range strings.Split(batchIDsStr, ",") {
+			id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32)
+			if err != nil {
+				response.BadRequest(c, "无效的用户ID")
+				return
+			}
+			userIDs = append(userIDs, uint(id))
+		}
+	} else {
+		id, err := strconv.ParseUint(singleIDStr, 10, 32)
 		if err != nil {
 			response.BadRequest(c, "无效的用户ID")
 			return
@@ -585,9 +505,8 @@ func GetUserStatusBatch(c *gin.Context) {
 		return
 	}
 
-	var result []gin.H
-	for _, user := range users {
-		result = append(result, gin.H{
+	buildItem := func(user model.User) gin.H {
+		return gin.H{
 			"user_id": user.ID,
 			"status":  user.Status,
 			"last_online": func() int64 {
@@ -596,8 +515,127 @@ func GetUserStatusBatch(c *gin.Context) {
 				}
 				return 0
 			}(),
-		})
+		}
 	}
 
+	// 单个查询保持向后兼容：返回对象（不存在时 404）
+	if singleIDStr != "" && batchIDsStr == "" {
+		if len(users) == 0 {
+			response.NotFound(c, "用户不存在")
+			return
+		}
+		response.Success(c, buildItem(users[0]))
+		return
+	}
+
+	result := make([]gin.H, 0, len(users))
+	for _, user := range users {
+		result = append(result, buildItem(user))
+	}
 	response.Success(c, result)
+}
+
+
+// BindExternalUser 绑定外部用户账号
+func BindExternalUser(c *gin.Context) {
+	userIDStr := c.Param("id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	var req struct {
+		ProviderName     string `json:"provider_name" binding:"required"`
+		ExternalUserID   string `json:"external_user_id" binding:"required"`
+		ExternalUsername string `json:"external_username"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	db := di.GlobalContainer.DB
+
+	// 检查用户是否存在
+	var user model.User
+	if err := db.First(&user, uint(userID)).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	// 检查是否已绑定
+	var existingMapping model.ExternalUserMapping
+	if err := db.Where("user_id = ? AND provider_name = ?", uint(userID), req.ProviderName).First(&existingMapping).Error; err == nil {
+		// 更新已有的绑定
+		existingMapping.ExternalUserID = req.ExternalUserID
+		existingMapping.ExternalUsername = req.ExternalUsername
+		if err := db.Save(&existingMapping).Error; err != nil {
+			response.InternalServerError(c, "更新绑定失败")
+			return
+		}
+		response.Success(c, existingMapping)
+		return
+	}
+
+	// 创建新的绑定
+	mapping := model.ExternalUserMapping{
+		UserID:           uint(userID),
+		ProviderName:     req.ProviderName,
+		ExternalUserID:   req.ExternalUserID,
+		ExternalUsername: req.ExternalUsername,
+	}
+
+	if err := db.Create(&mapping).Error; err != nil {
+		response.InternalServerError(c, "绑定失败")
+		return
+	}
+
+	response.Success(c, mapping)
+}
+
+// UnbindExternalUser 解绑外部用户账号
+func UnbindExternalUser(c *gin.Context) {
+	userIDStr := c.Param("id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	providerName := c.Query("provider_name")
+	if providerName == "" {
+		response.BadRequest(c, "provider_name 不能为空")
+		return
+	}
+
+	db := di.GlobalContainer.DB
+
+	if err := db.Where("user_id = ? AND provider_name = ?", uint(userID), providerName).Delete(&model.ExternalUserMapping{}).Error; err != nil {
+		response.InternalServerError(c, "解绑失败")
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// GetUserExternalBindings 获取用户的外部绑定列表
+func GetUserExternalBindings(c *gin.Context) {
+	userIDStr := c.Param("id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	db := di.GlobalContainer.DB
+
+	var mappings []model.ExternalUserMapping
+	if err := db.Where("user_id = ?", uint(userID)).Find(&mappings).Error; err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	response.Success(c, mappings)
 }

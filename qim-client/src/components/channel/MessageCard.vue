@@ -208,7 +208,7 @@ const handleLike = async () => {
 
   if (isLiked.value) {
     try {
-      const res = await request(`/api/v1/channels/messages/${props.message.id}/unlike`, { method: 'POST' })
+      const res = await request(`/api/v1/channels/messages/${props.message.id}/like`, { method: 'DELETE' })
       if (res.code === 0) {
         isLiked.value = res.data?.is_liked ?? false
         likeCount.value = res.data?.like_count ?? likeCount.value - 1

@@ -73,6 +73,10 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 		statusCode := 0
 		if resp != nil {
 			statusCode = resp.StatusCode
+			// 非 200 响应必须关闭 Body 防止资源泄漏
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+			}
 		}
 		lastStatusCode = statusCode
 		logger.WithModule("AI").Error("Request failed",

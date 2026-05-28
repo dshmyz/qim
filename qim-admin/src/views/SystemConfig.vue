@@ -76,6 +76,68 @@
           </div>
         </el-form-item>
 
+        <el-divider content-position="left">安全与限流</el-divider>
+
+        <el-form-item label="全局请求频率">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.rateLimitGlobalRate"
+              :min="10"
+              :max="10000"
+              :step="50"
+            />
+            <span class="desc">（次/窗口期）</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="全局窗口时长">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.rateLimitGlobalWindow"
+              :min="10"
+              :max="3600"
+              :step="10"
+            />
+            <span class="desc">（秒）</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="登录最大尝试次数">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.rateLimitLoginMaxAttempts"
+              :min="1"
+              :max="100"
+              :step="1"
+            />
+            <span class="desc">（次/窗口期，超出后封禁）</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="登录窗口时长">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.rateLimitLoginWindow"
+              :min="10"
+              :max="3600"
+              :step="10"
+            />
+            <span class="desc">（秒）</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="登录封禁时长">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.rateLimitLoginBan"
+              :min="60"
+              :max="86400"
+              :step="60"
+            />
+            <span class="desc">（秒）</span>
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">功能开关</el-divider>
 
         <el-form-item label="开放注册">
@@ -176,6 +238,11 @@ const configForm = reactive<SystemConfig>({
   enableAI: true,
   enableReadReceipt: true,
   allowedFileTypes: [],
+  rateLimitGlobalRate: 500,
+  rateLimitGlobalWindow: 60,
+  rateLimitLoginMaxAttempts: 5,
+  rateLimitLoginWindow: 60,
+  rateLimitLoginBan: 900,
 })
 
 const fetchConfig = async () => {

@@ -75,7 +75,7 @@ func getUploadConfig() *uploadConfig {
 
 	db := database.GetDB()
 	var configs []model.SystemConfig
-	db.Where("config_key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
+	db.Where("key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
 
 	cache := map[string]interface{}{}
 	for _, c := range configs {
@@ -130,6 +130,12 @@ func invalidateFileStatsCache(userID uint) {
 }
 
 func UploadFile(c *gin.Context) {
+	// 检查文件上传开关
+	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload"); err == nil && cfg.Value == "false" {
+		response.Forbidden(c, "文件上传功能已关闭")
+		return
+	}
+
 	userID, _ := c.Get("user_id")
 
 	ucfg := getUploadConfig()
@@ -829,14 +835,22 @@ func DownloadFile(c *gin.Context) {
 		c.Data(http.StatusOK, file.MimeType, fileData)
 		return
 	} else {
-		filePath := "." + file.StoragePath
+		filePath := filepath.Clean("." + file.StoragePath)
 
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// 防止路径遍历攻击
+		baseDir, _ := filepath.Abs(".")
+		absPath, _ := filepath.Abs(filePath)
+		if !strings.HasPrefix(absPath, baseDir) {
+			response.Forbidden(c, "非法文件路径")
+			return
+		}
+
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			response.NotFound(c, "文件不存在")
 			return
 		}
 
-		c.FileAttachment(filePath, file.Name)
+		c.FileAttachment(absPath, file.Name)
 	}
 }
 
@@ -886,9 +900,17 @@ func PreviewFile(c *gin.Context) {
 		c.Data(http.StatusOK, file.MimeType, fileData)
 		return
 	} else {
-		filePath := "." + file.StoragePath
+		filePath := filepath.Clean("." + file.StoragePath)
 
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// 防止路径遍历攻击
+		baseDir, _ := filepath.Abs(".")
+		absPath, _ := filepath.Abs(filePath)
+		if !strings.HasPrefix(absPath, baseDir) {
+			response.Forbidden(c, "非法文件路径")
+			return
+		}
+
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			response.NotFound(c, "文件不存在")
 			return
 		}
@@ -897,7 +919,7 @@ func PreviewFile(c *gin.Context) {
 			c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
 		}
 		c.Header("Content-Type", file.MimeType)
-		c.File(filePath)
+		c.File(absPath)
 	}
 }
 
@@ -946,8 +968,17 @@ func DeleteFile(c *gin.Context) {
 		})
 		return
 	} else {
-		filePath := "." + file.StoragePath
-		os.Remove(filePath)
+		filePath := filepath.Clean("." + file.StoragePath)
+
+		// 防止路径遍历攻击
+		baseDir, _ := filepath.Abs(".")
+		absPath, _ := filepath.Abs(filePath)
+		if !strings.HasPrefix(absPath, baseDir) {
+			response.Forbidden(c, "非法文件路径")
+			return
+		}
+
+		os.Remove(absPath)
 
 		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
 			response.InternalServerError(c, "删除文件失败")

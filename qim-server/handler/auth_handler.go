@@ -2,9 +2,14 @@ package handler
 
 import (
 	"context"
+	cr "crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"math/rand"
+	"math/big"
+	mrand "math/rand"
+	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -25,6 +30,55 @@ import (
 
 var cfg *config.Config
 var aiService *ai.AIService
+
+// twoFASession 存储 2FA 验证会话
+type twoFASession struct {
+	Code      string
+	Username  string
+	ExpiresAt time.Time
+}
+
+var (
+	twoFASessions   = make(map[string]twoFASession)
+	twoFASessionsMu sync.Mutex
+)
+
+func init() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			twoFASessionsMu.Lock()
+			now := time.Now()
+			for id, s := range twoFASessions {
+				if now.After(s.ExpiresAt) {
+					delete(twoFASessions, id)
+				}
+			}
+			twoFASessionsMu.Unlock()
+		}
+	}()
+}
+
+func generateTwoFASession(username string, code string) string {
+	b := make([]byte, 16)
+	cr.Read(b)
+	sessionID := hex.EncodeToString(b)
+
+	twoFASessionsMu.Lock()
+	twoFASessions[sessionID] = twoFASession{
+		Code:      code,
+		Username:  username,
+		ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	twoFASessionsMu.Unlock()
+	return sessionID
+}
+
+func generateTwoFACode() string {
+	n, _ := cr.Int(cr.Reader, big.NewInt(1000000))
+	return fmt.Sprintf("%06d", n.Int64())
+}
 
 func SetConfig(c *config.Config) {
 	cfg = c
@@ -164,7 +218,13 @@ func Login(c *gin.Context) {
 	}
 
 	if user.TwoFactorEnabled {
-		response.Unauthorized(c, "需要双因素认证")
+		code := generateTwoFACode()
+		sessionID := generateTwoFASession(req.Username, code)
+		logger.WithModule("Auth").Info("2FA required", "user", req.Username, "session", sessionID)
+		response.ErrorWithDetail(c, http.StatusUnauthorized, 1002, "需要双因素认证", gin.H{
+			"two_factor_required": true,
+			"session":             sessionID,
+		})
 		return
 	}
 
@@ -216,7 +276,7 @@ func parseOS(userAgent string) string {
 
 func generateSessionID() string {
 	timestamp := time.Now().UnixNano()
-	random := rand.Intn(10000)
+	random := mrand.Intn(10000)
 	return fmt.Sprintf("%d%d", timestamp, random)
 }
 
@@ -243,6 +303,35 @@ func VerifyTwoFA(c *gin.Context) {
 		return
 	}
 
+	// 验证 2FA 会话
+	twoFASessionsMu.Lock()
+	session, exists := twoFASessions[req.Session]
+	if exists {
+		delete(twoFASessions, req.Session)
+	}
+	twoFASessionsMu.Unlock()
+
+	if !exists {
+		response.Unauthorized(c, "验证会话不存在或已过期")
+		return
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		response.Unauthorized(c, "验证会话已过期，请重新登录")
+		return
+	}
+
+	if session.Code != req.Code {
+		logger.WithModule("Auth").Warn("2FA code mismatch", "user", req.Username)
+		response.Unauthorized(c, "验证码错误")
+		return
+	}
+
+	if session.Username != req.Username {
+		response.Unauthorized(c, "会话用户名不匹配")
+		return
+	}
+
 	db := database.GetDB()
 	var user model.User
 	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
@@ -253,6 +342,8 @@ func VerifyTwoFA(c *gin.Context) {
 	token := generateToken(user.ID, user.Username)
 	user.Status = "online"
 	db.Save(&user)
+
+	logger.WithModule("Auth").Info("2FA verification success", "user", req.Username)
 
 	response.Success(c, gin.H{
 		"token": token,
@@ -270,6 +361,14 @@ func VerifyTwoFA(c *gin.Context) {
 }
 
 func CheckTwoFAStatus(c *gin.Context) {
+	// 系统级 2FA 开关
+	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enable2FA"); err == nil && cfg.Value == "false" {
+		response.Success(c, gin.H{
+			"twoFactorEnabled": false,
+		})
+		return
+	}
+
 	var req struct {
 		Username string `json:"username" binding:"required"`
 	}
@@ -294,6 +393,12 @@ func CheckTwoFAStatus(c *gin.Context) {
 }
 
 func Register(c *gin.Context) {
+	// 检查是否允许注册
+	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableRegistration"); err == nil && cfg.Value == "false" {
+		response.Forbidden(c, "注册功能已关闭")
+		return
+	}
+
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
