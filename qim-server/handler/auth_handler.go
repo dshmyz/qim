@@ -156,22 +156,12 @@ func Login(c *gin.Context) {
 			return
 		}
 	} else {
-		var mapping model.ExternalUserMapping
-		err := db.Where("provider_name = ? AND external_user_id = ?", providerName, result.UserID).First(&mapping).Error
-		if err == nil {
-			if err := db.First(&user, mapping.UserID).Error; err != nil {
-				logger.WithModule("Auth").Info("Login failed", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "error", "mapped user not found")
-				response.Unauthorized(c, "用户不存在")
-				return
-			}
-		} else {
-			username := req.Username
+		username := req.Username
+		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
 			nickname := getStringFromUserInfo(result.UserInfo, "nickname", "username")
 			email := getStringFromUserInfo(result.UserInfo, "email")
 			phone := getStringFromUserInfo(result.UserInfo, "phone")
 			avatar := getStringFromUserInfo(result.UserInfo, "avatar")
-
-			tx := db.Begin()
 
 			user = model.User{
 				Username:     username,
@@ -182,31 +172,11 @@ func Login(c *gin.Context) {
 				Avatar:       avatar,
 				Status:       "offline",
 			}
-			if err := tx.Where("username = ?", username).FirstOrCreate(&user).Error; err != nil {
-				tx.Rollback()
+			if err := db.Create(&user).Error; err != nil {
 				logger.WithModule("Auth").Error("Auto-create user failed", "username", username, "error", err)
 				response.InternalServerError(c, "创建用户失败")
 				return
 			}
-
-			mapping = model.ExternalUserMapping{
-				UserID:         user.ID,
-				ProviderName:   providerName,
-				ExternalUserID: result.UserID,
-			}
-			if err := tx.Create(&mapping).Error; err != nil {
-				tx.Rollback()
-				logger.WithModule("Auth").Error("Create external mapping failed", "error", err)
-				response.InternalServerError(c, "创建用户映射失败")
-				return
-			}
-
-			if err := tx.Commit().Error; err != nil {
-				tx.Rollback()
-				response.InternalServerError(c, "保存用户信息失败")
-				return
-			}
-
 			logger.WithModule("Auth").Info("External user auto-created", "username", username, "provider", providerName, "userID", user.ID)
 		}
 	}

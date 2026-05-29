@@ -1142,12 +1142,12 @@ const getDepartmentStats = (department: any) => {
   if (department.employees) {
     totalCount += department.employees.length
     // 根据员工的 status 字段判断是否在线
-    onlineCount += department.employees.filter(emp => emp.status === 'online').length
+    onlineCount += department.employees.filter((emp: any) => emp.status === 'online').length
   }
 
   // 递归统计子部门
   if (department.subDepartments) {
-    department.subDepartments.forEach(subDept => {
+    department.subDepartments.forEach((subDept: any) => {
       const stats = getDepartmentStats(subDept)
       totalCount += stats.total
       onlineCount += stats.online
@@ -1492,8 +1492,8 @@ const handleNotification = (data: any) => {
 
   if (data.type && data.type.includes('_approval')) {
     const entityType = data.type.replace('_approval', '')
-    if (entityType === 'avatar' && chatWindowRefs[currentConversationId.value]) {
-      chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
+    if (entityType === 'avatar' && chatWindowRef?.value?.[currentConversationId.value]) {
+      chatWindowRef.value[currentConversationId.value]?.fetchConfig?.()
     }
   }
 }
@@ -1719,7 +1719,7 @@ const filteredConversations = computed(() => {
 const isSearching = ref(false)
 
 // 处理搜索
-const handleSearch = async (query) => {
+const handleSearch = async (query: string) => {
   if (!query.trim()) {
     searchResults.value = []
     return
@@ -1739,7 +1739,7 @@ const handleSearch = async (query) => {
 }
 
 // 处理搜索项点击
-const handleSearchItemClick = (item) => {
+const handleSearchItemClick = (item: any) => {
   if (item.type === 'user') {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
@@ -1754,7 +1754,7 @@ const handleSearchItemClick = (item) => {
 }
 
 // 处理申请加入群组
-const handleApplyJoinGroup = async (item) => {
+const handleApplyJoinGroup = async (item: any) => {
   if (!item || !item.id) {
     QMessage.error('群组信息无效')
     return
@@ -1780,10 +1780,11 @@ const handleApplyJoinGroup = async (item) => {
 }
 
 // 监听搜索输入变化
+const searchTimeout = ref<NodeJS.Timeout | null>(null)
 watch(searchQuery, (newQuery) => {
   // 简单的防抖实现
-  clearTimeout(window.searchTimeout)
-  window.searchTimeout = setTimeout(() => {
+  if (searchTimeout.value) clearTimeout(searchTimeout.value)
+  searchTimeout.value = setTimeout(() => {
     handleSearch(newQuery)
   }, 300)
 })
@@ -1921,7 +1922,7 @@ const startPrivateChat = async (user: any) => {
     setCurrentConversationId(mockConversation.id)
     // 初始化消息列表
     if (mockConversation.id) {
-      chatStore.clearMessages(String(mockConversation.id))
+      chatStore.clearAllMessages(String(mockConversation.id))
     }
   }
   hideUserContextMenu()
@@ -2302,7 +2303,7 @@ const handleConversationCreated = (newConversation: any) => {
   if (newConversation && newConversation.id) {
     const conversationId = String(newConversation.id)
     setCurrentConversationId(conversationId)
-    chatStore.clearMessages(conversationId)
+    chatStore.clearAllMessages(conversationId)
     messagePage.value = 1
     hasMoreMessages.value = true
     

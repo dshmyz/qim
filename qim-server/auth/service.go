@@ -21,50 +21,39 @@ func InitAuthChain() {
 
 	hasExternal := false
 	for _, ap := range authProviders {
-		switch ap.Type {
-		case "direct":
-			switch ap.Name {
-			case "ldap":
-				ldapProvider, err := provider.NewLDAPProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
-				if err != nil {
-					logger.WithModule("Auth").Error("创建LDAP认证提供者失败", "name", ap.Name, "error", err)
-					continue
-				}
-				globalAuthChain.RegisterProvider(ldapProvider)
-				hasExternal = true
-				logger.WithModule("Auth").Info("已注册LDAP认证提供者", "name", ap.Name, "priority", ap.Priority)
-			default:
-				logger.WithModule("Auth").Warn("未知的直接认证提供者", "name", ap.Name)
+		switch ap.Protocol {
+		case model.AuthProviderProtocolLDAP:
+			ldapProvider, err := provider.NewLDAPProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+			if err != nil {
+				logger.WithModule("Auth").Error("创建LDAP认证提供者失败", "name", ap.Name, "error", err)
+				continue
 			}
+			globalAuthChain.RegisterProvider(ldapProvider)
+			hasExternal = true
+			logger.WithModule("Auth").Info("已注册LDAP认证提供者", "name", ap.Name, "priority", ap.Priority)
 
-		case "redirect":
-			switch ap.Name {
-			case "oauth":
-				oauthProvider, err := provider.NewOAuthProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
-				if err != nil {
-					logger.WithModule("Auth").Debug("创建OAuth认证提供者失败", "name", ap.Name, "error", err)
-					continue
-				}
-				globalAuthChain.RegisterProvider(oauthProvider)
-				hasExternal = true
-				logger.WithModule("Auth").Info("已注册OAuth认证提供者", "name", ap.Name, "priority", ap.Priority)
-
-			case "cas":
-				casProvider, err := provider.NewCASProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
-				if err != nil {
-					logger.WithModule("Auth").Debug("创建CAS认证提供者失败", "name", ap.Name, "error", err)
-					continue
-				}
-				globalAuthChain.RegisterProvider(casProvider)
-				hasExternal = true
-				logger.WithModule("Auth").Info("已注册CAS认证提供者", "name", ap.Name, "priority", ap.Priority)
-
-			default:
-				logger.WithModule("Auth").Debug("未知的重定向认证提供者", "name", ap.Name)
+		case model.AuthProviderProtocolOAuth:
+			oauthProvider, err := provider.NewOAuthProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+			if err != nil {
+				logger.WithModule("Auth").Debug("创建OAuth认证提供者失败", "name", ap.Name, "error", err)
+				continue
 			}
+			globalAuthChain.RegisterProvider(oauthProvider)
+			hasExternal = true
+			logger.WithModule("Auth").Info("已注册OAuth认证提供者", "name", ap.Name, "priority", ap.Priority)
+
+		case model.AuthProviderProtocolCAS:
+			casProvider, err := provider.NewCASProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+			if err != nil {
+				logger.WithModule("Auth").Debug("创建CAS认证提供者失败", "name", ap.Name, "error", err)
+				continue
+			}
+			globalAuthChain.RegisterProvider(casProvider)
+			hasExternal = true
+			logger.WithModule("Auth").Info("已注册CAS认证提供者", "name", ap.Name, "priority", ap.Priority)
 
 		default:
-			logger.WithModule("Auth").Debug("未知的认证类型", "type", ap.Type, "name", ap.Name)
+			logger.WithModule("Auth").Warn("未知的认证协议", "protocol", ap.Protocol, "name", ap.Name)
 		}
 	}
 

@@ -661,6 +661,7 @@ CREATE TABLE IF NOT EXISTS `approval_configs` (
 CREATE TABLE IF NOT EXISTS `auth_providers` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `name` VARCHAR(50) NOT NULL UNIQUE,
+  `protocol` VARCHAR(20) NOT NULL DEFAULT 'ldap',
   `type` VARCHAR(20) NOT NULL,
   `enabled` INTEGER DEFAULT 1,
   `priority` INTEGER DEFAULT 100,
@@ -672,23 +673,6 @@ CREATE TABLE IF NOT EXISTS `auth_providers` (
   `deleted_at` DATETIME
 );
 CREATE INDEX IF NOT EXISTS `idx_auth_providers_deleted_at` ON `auth_providers`(`deleted_at`);
-
--- External user mappings table
-CREATE TABLE IF NOT EXISTS `external_user_mappings` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `user_id` INTEGER NOT NULL,
-  `provider_name` VARCHAR(50) NOT NULL,
-  `external_user_id` VARCHAR(200) NOT NULL,
-  `external_username` VARCHAR(200),
-  `external_data` TEXT,
-  `last_sync_at` DATETIME,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `deleted_at` DATETIME,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS `idx_external_user_mappings_user_id` ON `external_user_mappings`(`user_id`);
-CREATE INDEX IF NOT EXISTS `idx_external_user_mappings_deleted_at` ON `external_user_mappings`(`deleted_at`);
 
 -- Org sync configs table
 CREATE TABLE IF NOT EXISTS `org_sync_configs` (

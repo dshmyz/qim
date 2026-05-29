@@ -13,19 +13,6 @@ CREATE TABLE IF NOT EXISTS auth_providers (
   deleted_at DATETIME
 );
 
-CREATE TABLE IF NOT EXISTS external_user_mappings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  provider_name TEXT NOT NULL,
-  external_user_id TEXT NOT NULL,
-  external_username TEXT,
-  external_data TEXT,
-  last_sync_at DATETIME,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  deleted_at DATETIME
-);
-
 CREATE TABLE IF NOT EXISTS org_sync_configs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,

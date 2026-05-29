@@ -260,15 +260,6 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 				logger.WithModule("OrgSync").Warn("创建用户失败", "username", extUser.Username, "error", err)
 				continue
 			}
-
-			// 创建外部用户映射，关联登录和组织同步
-			mapping := model.ExternalUserMapping{
-				UserID:          newUser.ID,
-				ProviderName:    config.SyncType, // 使用同步类型作为提供者名称
-				ExternalUserID:  extUser.ID,
-				ExternalUsername: extUser.Username,
-			}
-			e.db.Create(&mapping)
 			stats.UsersCreated++
 		} else {
 			updates := make(map[string]interface{})
@@ -350,23 +341,15 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 func (e *Engine) resolveUserByRelation(rel orgsync.UserDeptRelation, data *orgsync.OrgData, syncSource string) *model.User {
 	var user model.User
 
-	// 1. 优先通过外部用户映射查找（支持 OAuth/CAS/LDAP 等多种登录来源）
-	var mapping model.ExternalUserMapping
-	if err := e.db.Where("provider_name = ? AND external_user_id = ?", syncSource, rel.UserID).First(&mapping).Error; err == nil {
-		if err := e.db.First(&user, mapping.UserID).Error; err == nil {
-			return &user
-		}
-	}
-
-	// 2. 降级：通过 username 查找（兼容旧数据）
+	// 1. 直接通过 username 查找
 	if err := e.db.Where("username = ?", rel.UserID).First(&user).Error; err == nil {
 		return &user
 	}
 
+	// 2. 从 data.Users 解析 username 后查找
 	for _, extUser := range data.Users {
 		if extUser.ID == rel.UserID && extUser.Username != "" {
-			e.db.Where("username = ?", extUser.Username).First(&user)
-			if user.ID != 0 {
+			if err := e.db.Where("username = ?", extUser.Username).First(&user).Error; err == nil {
 				return &user
 			}
 			break

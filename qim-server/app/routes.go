@@ -544,9 +544,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			{
 				admin.GET("/users", handler.AdminGetUsers)
 				admin.GET("/groups", handler.AdminGetGroups)
-				admin.POST("/users/:id/external-binding", handler.BindExternalUser)
-				admin.DELETE("/users/:id/external-binding", handler.UnbindExternalUser)
-				admin.GET("/users/:id/external-bindings", handler.GetUserExternalBindings)
 
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
 				admin.GET("/channels", handler.AdminGetChannels)

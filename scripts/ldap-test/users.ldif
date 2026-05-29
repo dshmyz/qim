@@ -1,0 +1,125 @@
+dn: ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: company
+
+dn: ou=technology,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: technology
+
+dn: ou=frontend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: frontend
+
+dn: ou=backend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: backend
+
+dn: ou=product,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: product
+
+dn: ou=design,ou=product,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: design
+
+dn: ou=operation,ou=product,ou=company,dc=qim,dc=local
+objectClass: organizationalUnit
+ou: operation
+
+dn: uid=zhangsan,ou=frontend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: zhangsan
+sn: Zhang
+cn: Zhang San
+displayName: 张三
+mail: zhangsan@qim.local
+userPassword: 123456
+uidNumber: 20001
+gidNumber: 20001
+homeDirectory: /home/zhangsan
+
+dn: uid=lisi,ou=frontend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: lisi
+sn: Li
+cn: Li Si
+displayName: 李四
+mail: lisi@qim.local
+userPassword: 123456
+uidNumber: 20002
+gidNumber: 20002
+homeDirectory: /home/lisi
+
+dn: uid=wangwu,ou=backend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: wangwu
+sn: Wang
+cn: Wang Wu
+displayName: 王五
+mail: wangwu@qim.local
+userPassword: 123456
+uidNumber: 20003
+gidNumber: 20003
+homeDirectory: /home/wangwu
+
+dn: uid=zhaoliu,ou=backend,ou=technology,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: zhaoliu
+sn: Zhao
+cn: Zhao Liu
+displayName: 赵六
+mail: zhaoliu@qim.local
+userPassword: 123456
+uidNumber: 20004
+gidNumber: 20004
+homeDirectory: /home/zhaoliu
+
+dn: uid=sunqi,ou=design,ou=product,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: sunqi
+sn: Sun
+cn: Sun Qi
+displayName: 孙七
+mail: sunqi@qim.local
+userPassword: 123456
+uidNumber: 20005
+gidNumber: 20005
+homeDirectory: /home/sunqi
+
+dn: uid=zhouba,ou=operation,ou=product,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: zhouba
+sn: Zhou
+cn: Zhou Ba
+displayName: 周八
+mail: zhouba@qim.local
+userPassword: 123456
+uidNumber: 20006
+gidNumber: 20006
+homeDirectory: /home/zhouba
+
+dn: uid=admin,ou=company,dc=qim,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: admin
+sn: Admin
+cn: System Admin
+displayName: 系统管理员
+mail: admin@qim.local
+userPassword: admin123
+uidNumber: 10000
+gidNumber: 10000
+homeDirectory: /home/admin

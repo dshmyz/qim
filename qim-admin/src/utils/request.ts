@@ -55,6 +55,7 @@ function clearAuthAndRedirectToLogin() {
     permStore.reset()
   } catch (_) {
     localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
   }
   const current = router.currentRoute.value
   if (current.path !== '/login') {

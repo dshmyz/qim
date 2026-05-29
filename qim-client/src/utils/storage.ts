@@ -1,6 +1,6 @@
-// 简化版本地存储模块 - 基于 localStorage
+import type { Conversation } from '../types'
 
-export async function saveConversations(conversations) {
+export async function saveConversations(conversations: Conversation[]) {
   try {
     localStorage.setItem('qim_conversations', JSON.stringify(conversations));
   } catch (error) {
@@ -8,7 +8,7 @@ export async function saveConversations(conversations) {
   }
 }
 
-export async function loadConversations() {
+export async function loadConversations(): Promise<Conversation[]> {
   try {
     const data = localStorage.getItem('qim_conversations');
     return data ? JSON.parse(data) : [];
@@ -18,7 +18,7 @@ export async function loadConversations() {
   }
 }
 
-export async function saveConversation(conversation) {
+export async function saveConversation(conversation: Conversation) {
   try {
     const conversations = await loadConversations();
     const index = conversations.findIndex(c => c.id === conversation.id);
@@ -33,7 +33,7 @@ export async function saveConversation(conversation) {
   }
 }
 
-export async function deleteConversation(id) {
+export async function deleteConversation(id: string) {
   try {
     const conversations = await loadConversations();
     const filtered = conversations.filter(c => c.id !== id);
@@ -43,7 +43,7 @@ export async function deleteConversation(id) {
   }
 }
 
-export async function saveSyncState(conversationId, syncState) {
+export async function saveSyncState(conversationId: string, syncState: any) {
   try {
     const syncStates = await loadSyncStates();
     syncStates[conversationId] = syncState;
@@ -53,7 +53,7 @@ export async function saveSyncState(conversationId, syncState) {
   }
 }
 
-export async function loadSyncStates() {
+export async function loadSyncStates(): Promise<Record<string, any>> {
   try {
     const data = localStorage.getItem('qim_sync_states');
     return data ? JSON.parse(data) : {};
@@ -63,7 +63,7 @@ export async function loadSyncStates() {
   }
 }
 
-export async function getSyncState(conversationId) {
+export async function getSyncState(conversationId: string) {
   try {
     const syncStates = await loadSyncStates();
     const state = syncStates[conversationId];
@@ -74,7 +74,7 @@ export async function getSyncState(conversationId) {
   }
 }
 
-export async function deleteSyncState(conversationId) {
+export async function deleteSyncState(conversationId: string) {
   try {
     const syncStates = await loadSyncStates();
     delete syncStates[conversationId];

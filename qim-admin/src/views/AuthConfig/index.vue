@@ -49,8 +49,17 @@
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑认证提供者' : '新建认证提供者'" width="800px">
       <el-form :model="form" label-width="120px">
         <el-form-item label="名称" required>
-          <el-input v-model="form.name" :disabled="isEdit" placeholder="唯一标识，如 ldap、oauth、cas" />
+          <el-input v-model="form.name" :disabled="isEdit" placeholder="唯一标识，如 company_ldap、google_oauth" />
           <div class="form-tip">认证提供者的唯一标识，用于系统内部识别</div>
+        </el-form-item>
+
+        <el-form-item label="协议类型" required>
+          <el-select v-model="form.protocol" :disabled="isEdit" @change="onProtocolChange">
+            <el-option label="LDAP" value="ldap" />
+            <el-option label="OAuth2.0" value="oauth" />
+            <el-option label="CAS" value="cas" />
+          </el-select>
+          <div class="form-tip">选择认证协议类型，决定系统如何处理认证流程</div>
         </el-form-item>
 
         <el-form-item label="显示名称" required>
@@ -58,15 +67,9 @@
           <div class="form-tip">在登录页面显示的友好名称</div>
         </el-form-item>
 
-        <el-form-item label="认证类型" required>
-          <el-select v-model="form.type" :disabled="isEdit" @change="onTypeChange">
-            <el-option label="直接认证（用户名密码）" value="direct" />
-            <el-option label="重定向认证（OAuth/CAS）" value="redirect" />
-          </el-select>
-          <div class="form-tip">
-            直接认证：用户输入用户名密码后直接验证（如LDAP）<br/>
-            重定向认证：跳转到第三方页面认证（如OAuth、CAS）
-          </div>
+        <el-form-item label="认证类型">
+          <el-input :value="form.type === 'direct' ? '直接认证（用户名密码）' : '重定向认证（OAuth/CAS）'" disabled />
+          <div class="form-tip">根据协议类型自动设置，LDAP 为直接认证，OAuth/CAS 为重定向认证</div>
         </el-form-item>
 
         <el-form-item label="优先级">
@@ -77,15 +80,6 @@
         <el-form-item label="图标">
           <el-input v-model="form.icon" placeholder="FontAwesome图标类名，如 fas fa-users" />
           <div class="form-tip">可选，登录页面显示的图标</div>
-        </el-form-item>
-
-        <el-form-item label="配置模板">
-          <el-select v-model="configTemplate" @change="applyTemplate" style="width: 100%">
-            <el-option label="选择配置模板..." value="" />
-            <el-option label="LDAP 配置" value="ldap" />
-            <el-option label="OAuth2.0 配置" value="oauth" />
-            <el-option label="CAS 配置" value="cas" />
-          </el-select>
         </el-form-item>
 
         <el-form-item label="配置JSON" required>
@@ -166,10 +160,10 @@ const dialogVisible = ref(false)
 const testDialogVisible = ref(false)
 const isEdit = ref(false)
 const currentProvider = ref<AuthProvider | null>(null)
-const configTemplate = ref('')
 
 interface AuthProviderForm {
   name: string
+  protocol: 'ldap' | 'oauth' | 'cas'
   display_name: string
   type: 'direct' | 'redirect'
   priority: number
@@ -180,6 +174,7 @@ interface AuthProviderForm {
 
 const form = ref<AuthProviderForm>({
   name: '',
+  protocol: 'ldap',
   display_name: '',
   type: 'direct',
   priority: 100,
@@ -196,6 +191,7 @@ const testForm = ref({
 const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabled'>> = {
   ldap: {
     name: 'ldap',
+    protocol: 'ldap',
     display_name: '企业LDAP登录',
     type: 'direct',
     icon: 'fas fa-users',
@@ -218,6 +214,7 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
   },
   oauth: {
     name: 'oauth',
+    protocol: 'oauth',
     display_name: 'OAuth2.0登录',
     type: 'redirect',
     icon: 'fab fa-google',
@@ -240,6 +237,7 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
   },
   cas: {
     name: 'cas',
+    protocol: 'cas',
     display_name: 'CAS单点登录',
     type: 'redirect',
     icon: 'fas fa-university',
@@ -259,21 +257,21 @@ const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabl
   }
 }
 
-const onTypeChange = () => {
-  configTemplate.value = ''
+const protocolTypeMap: Record<string, 'direct' | 'redirect'> = {
+  ldap: 'direct',
+  oauth: 'redirect',
+  cas: 'redirect'
 }
 
-const applyTemplate = () => {
-  if (!configTemplate.value) return
-  
-  const template = configTemplates[configTemplate.value as keyof typeof configTemplates]
+const onProtocolChange = (protocol: string) => {
+  form.value.type = protocolTypeMap[protocol] || 'direct'
+
+  const template = configTemplates[protocol as keyof typeof configTemplates]
   if (template) {
     form.value.name = template.name
     form.value.display_name = template.display_name
-    form.value.type = template.type
     form.value.icon = template.icon
     form.value.config = template.config
-    ElMessage.success('已应用配置模板，请根据实际情况修改配置信息')
   }
 }
 
@@ -291,9 +289,9 @@ const loadProviders = async () => {
 
 const showCreateDialog = () => {
   isEdit.value = false
-  configTemplate.value = ''
   form.value = {
     name: '',
+    protocol: 'ldap',
     display_name: '',
     type: 'direct',
     priority: 100,
@@ -307,9 +305,9 @@ const showCreateDialog = () => {
 const editProvider = (provider: AuthProvider) => {
   isEdit.value = true
   currentProvider.value = provider
-  configTemplate.value = ''
   form.value = {
     name: provider.name,
+    protocol: (provider.protocol || 'ldap') as 'ldap' | 'oauth' | 'cas',
     display_name: provider.display_name,
     type: provider.type,
     priority: provider.priority,

@@ -224,6 +224,9 @@ class MigrationEngine:
             for idx, old_group in enumerate(old_groups, 1):
                 try:
                     creator_id = self._get_group_creator_id(old_group['id'])
+                    if creator_id is None:
+                        logger.warning(f"  跳过群组: name={old_group.get('name')}, id={old_group['id']}, 未找到群主或群主用户未迁移")
+                        continue
 
                     conversation_data = {
                         'type': 'group',
@@ -247,6 +250,7 @@ class MigrationEngine:
 
                     groups_data = {
                         'conversation_id': conversation_id,
+                        'group_type': 'group',
                         'name': old_group['name'],
                         'avatar': old_group.get('avatar', ''),
                         'creator_id': creator_id,
@@ -257,11 +261,11 @@ class MigrationEngine:
                     }
 
                     target_cursor.execute("""
-                        INSERT INTO groups (
-                            conversation_id, name, avatar, creator_id,
+                        INSERT INTO `groups` (
+                            conversation_id, group_type, name, avatar, creator_id,
                             announcement, invite_permission, created_at, updated_at
                         ) VALUES (
-                            %(conversation_id)s, %(name)s, %(avatar)s, %(creator_id)s,
+                            %(conversation_id)s, %(group_type)s, %(name)s, %(avatar)s, %(creator_id)s,
                             %(announcement)s, %(invite_permission)s, %(created_at)s, %(updated_at)s
                         )
                     """, groups_data)
@@ -449,6 +453,7 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
+                msg_time = self._datetime_or_default(item.get('dateTime'))
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -460,8 +465,8 @@ class MigrationEngine:
                     'is_read': False,
                     'ai_type': '',
                     'recalled_at': None,
-                    'created_at': self._datetime_or_default(item.get('dateTime')),
-                    'updated_at': datetime.now(),
+                    'created_at': msg_time,
+                    'updated_at': msg_time,
                     'deleted_at': None,
                 }
 
@@ -509,6 +514,7 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
+                msg_time = self._datetime_or_default(item.get('dateTime'))
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -520,8 +526,8 @@ class MigrationEngine:
                     'is_read': False,
                     'ai_type': '',
                     'recalled_at': None,
-                    'created_at': self._datetime_or_default(item.get('dateTime')),
-                    'updated_at': datetime.now(),
+                    'created_at': msg_time,
+                    'updated_at': msg_time,
                     'deleted_at': None,
                 }
 

@@ -23,12 +23,14 @@ export const useAuthStore = defineStore('auth', () => {
   function setToken(newToken: string) {
     token.value = newToken
     localStorage.setItem(TOKEN_KEY, newToken)
+    sessionStorage.setItem(TOKEN_KEY, newToken)
   }
 
   function setUser(userInfo: UserInfo) {
     user.value = userInfo
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(userInfo))
+      sessionStorage.setItem(USER_KEY, JSON.stringify(userInfo))
     } catch {
       // ignore quota / serialization errors
     }
@@ -39,6 +41,8 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(USER_KEY)
   }
 
   return {

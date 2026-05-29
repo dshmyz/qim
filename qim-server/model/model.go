@@ -723,7 +723,7 @@ type SensitiveWord struct {
 // 系统配置
 type SystemConfig struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
-	Key       string    `json:"key" gorm:"column:key;size:100;uniqueIndex;not null"`
+	ConfigKey string    `json:"key" gorm:"column:config_key;size:100;uniqueIndex;not null"`
 	Value     string    `json:"value" gorm:"type:text;not null"`
 	Type      string    `json:"type" gorm:"size:20;default:'string'"` // string, number, boolean, json
 	Desc      string    `json:"desc" gorm:"column:description;size:500"`

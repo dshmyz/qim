@@ -1,0 +1,16 @@
+{
+  "server": "localhost",
+  "port": 389,
+  "bind_dn": "cn=admin,dc=qim,dc=local",
+  "bind_password": "admin123",
+  "base_dn": "ou=users,dc=qim,dc=local",
+  "filter": "(uid=%s)",
+  "use_tls": false,
+  "attribute_mapping": {
+    "username": "uid",
+    "nickname": "cn",
+    "email": "mail",
+    "phone": "telephonenumber",
+    "avatar": "jpegphoto"
+  }
+}

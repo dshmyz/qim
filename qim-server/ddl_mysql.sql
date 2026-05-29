@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS `notes` (
   `title` VARCHAR(500) NOT NULL,
   `content` TEXT NOT NULL,
   `type` VARCHAR(20) DEFAULT 'note',
-  `style` TEXT DEFAULT '{}',
+  `style` TEXT,
   `tags` TEXT,
   `summary` TEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -438,7 +438,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `read_at` DATETIME,
   `priority` VARCHAR(10) DEFAULT 'normal',
   `action_type` VARCHAR(30) DEFAULT '',
-  `action_payload` TEXT DEFAULT '',
+  `action_payload` TEXT,
   `pinned` BOOLEAN DEFAULT FALSE,
   `important` BOOLEAN DEFAULT FALSE,
   `handled` BOOLEAN DEFAULT FALSE,
@@ -662,6 +662,7 @@ CREATE TABLE IF NOT EXISTS `approval_configs` (
 CREATE TABLE IF NOT EXISTS `auth_providers` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(50) NOT NULL UNIQUE,
+  `protocol` VARCHAR(20) NOT NULL DEFAULT 'ldap',
   `type` VARCHAR(20) NOT NULL,
   `enabled` BOOLEAN DEFAULT TRUE,
   `priority` INT DEFAULT 100,
@@ -672,23 +673,6 @@ CREATE TABLE IF NOT EXISTS `auth_providers` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_auth_providers_deleted_at` (`deleted_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- External user mappings table
-CREATE TABLE IF NOT EXISTS `external_user_mappings` (
-  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT UNSIGNED NOT NULL,
-  `provider_name` VARCHAR(50) NOT NULL,
-  `external_user_id` VARCHAR(200) NOT NULL,
-  `external_username` VARCHAR(200),
-  `external_data` TEXT,
-  `last_sync_at` DATETIME,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` DATETIME,
-  INDEX `idx_external_user_mappings_user_id` (`user_id`),
-  INDEX `idx_external_user_mappings_deleted_at` (`deleted_at`),
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Org sync configs table

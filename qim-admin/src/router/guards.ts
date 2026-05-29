@@ -32,7 +32,7 @@ export function setupPermissionGuard() {
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
   ) => {
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     const requiresAuth = to.meta.requiresAuth !== false
 
     if (requiresAuth && !token) {

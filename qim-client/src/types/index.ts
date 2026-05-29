@@ -2,6 +2,7 @@ export interface User {
   id: string
   name: string
   avatar: string
+  username?: string
   status?: 'online' | 'offline' | 'busy'
   email?: string
   phone?: string
@@ -59,6 +60,7 @@ export interface Message {
   }
   shareData?: any
   isStreaming?: boolean
+  originalData?: any
 }
 
 export interface Conversation {
@@ -72,6 +74,8 @@ export interface Conversation {
   members?: User[]
   muted?: boolean
   is_pinned?: boolean
+  pinned?: boolean
+  pinnedAt?: number
   ip?: string
   status?: 'online' | 'offline' | 'busy'
   signature?: string

@@ -76,3 +76,73 @@ export type ConnectionStateChangeCallback = (state: ConnectionState) => void
 
 // 会话状态变化回调
 export type SessionStateChangeCallback = (state: SessionState) => void
+
+// 后端 API 返回的会话数据结构
+export interface RealtimeSession {
+  id: string
+  type: 'screen_share' | 'voice_call' | 'video_call'
+  conversation_id: number
+  initiator_id: number
+  initiator?: {
+    id: number
+    name: string
+    avatar: string
+  }
+  status: 'active' | 'ended' | 'pending' | 'paused'
+  participants: RealtimeParticipant[]
+  created_at: string
+}
+
+export interface RealtimeParticipant {
+  id: string
+  user_id: number
+  session_id: string
+  role: 'initiator' | 'receiver' | 'viewer'
+  state: 'joining' | 'active' | 'leaving'
+  status?: 'active' | 'inactive'
+  joined_at: string
+  user?: {
+    id: number
+    name: string
+    avatar: string
+  }
+}
+
+export interface JoinRequest {
+  id: string
+  session_id: string
+  user_id: number
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}
+
+// WebRTC 信令数据
+export interface WebRTCOfferData {
+  type: 'webrtc.offer'
+  data: {
+    sdp: RTCSessionDescriptionInit
+    target_user_id: number
+    from_user_id: number
+    media_type: MediaType
+  }
+}
+
+export interface WebRTCAnswerData {
+  type: 'webrtc.answer'
+  data: {
+    sdp: RTCSessionDescriptionInit
+    target_user_id: number
+    from_user_id: number
+    media_type: MediaType
+  }
+}
+
+export interface WebRTCIceData {
+  type: 'webrtc.ice-candidate'
+  data: {
+    candidate: RTCIceCandidateInit
+    target_user_id: number
+    from_user_id: number
+    media_type: MediaType
+  }
+}

@@ -476,11 +476,11 @@ const handleRedirectAuth = (provider: AuthProvider) => {
     console.log('配置信息:', config)
     
     // 根据协议字段判断类型
-    if (config.auth_url && config.token_url) {
+    if (provider.protocol === 'oauth') {
       // OAuth协议
       console.log('OAuth登录')
       handleOAuthLogin(provider, state)
-    } else if (config.cas_url) {
+    } else if (provider.protocol === 'cas') {
       // CAS协议
       console.log('CAS登录')
       handleCASLogin(provider)
@@ -546,7 +546,7 @@ const handleCASLogin = async (provider: AuthProvider) => {
       window.electron.ipcRenderer.send('open-auth-login', { type: 'cas', config, state })
     } else {
       const callbackUrl = config.service_url
-      const loginURL = `${config.cas_url}/login?service=${encodeURIComponent(callbackUrl)}`
+      const loginURL = `${config.server_url}/login?service=${encodeURIComponent(callbackUrl)}`
       window.open(loginURL, '_blank')
     }
   } catch (error) {

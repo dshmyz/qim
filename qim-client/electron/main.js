@@ -719,8 +719,8 @@ function registerIPC() {
       const callbackUrl = `${AUTH_CALLBACK_BASE}/oauth/callback`
       authURL = `${config.auth_url}?client_id=${config.client_id}&redirect_uri=${encodeURIComponent(callbackUrl)}&response_type=code&scope=${config.scope}&state=${state}`
     } else if (type === 'cas') {
-      const callbackUrl = `${AUTH_CALLBACK_BASE}/cas/callback`
-      authURL = `${config.cas_url}/login?service=${encodeURIComponent(callbackUrl)}`
+      const callbackUrl = `${AUTH_CALLBACK_BASE}/cas/callback?state=${encodeURIComponent(state)}`
+      authURL = `${config.server_url}/login?service=${encodeURIComponent(callbackUrl)}`
     } else {
       console.error('未知的认证类型:', type)
       return
@@ -732,10 +732,12 @@ function registerIPC() {
       const parsed = new URL(authURL)
       if (!['https:', 'http:'].includes(parsed.protocol)) {
         console.error('不允许的协议:', parsed.protocol)
+        event.sender.send('auth-error', '不允许的协议类型')
         return
       }
     } catch (e) {
       console.error('无效的授权URL:', authURL)
+      event.sender.send('auth-error', '无效的授权URL，请检查认证配置')
       return
     }
 
@@ -755,6 +757,15 @@ function registerIPC() {
     })
 
     authWindow.setMenu(null)
+
+    authWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      console.error('页面加载失败:', errorCode, errorDescription, validatedURL)
+      event.sender.send('auth-error', `页面加载失败: ${errorDescription}`)
+    })
+
+    authWindow.webContents.on('did-finish-load', () => {
+      console.log('页面加载完成')
+    })
 
     authWindow.webContents.on('will-redirect', (event, url) => {
       if (url.startsWith(AUTH_CALLBACK_BASE)) {

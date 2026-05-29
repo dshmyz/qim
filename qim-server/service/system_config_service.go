@@ -18,7 +18,7 @@ func NewSystemConfigService(db *gorm.DB) *SystemConfigService {
 
 func (s *SystemConfigService) GetConfig(key string) (*model.SystemConfig, error) {
 	var config model.SystemConfig
-	err := s.db.Where("key = ?", key).First(&config).Error
+	err := s.db.Where("config_key = ?", key).First(&config).Error
 	return &config, err
 }
 
@@ -34,13 +34,13 @@ func (s *SystemConfigService) GetAllConfigs() (map[string]interface{}, error) {
 		case "number":
 			var val int
 			fmt.Sscanf(cfg.Value, "%d", &val)
-			result[cfg.Key] = val
+			result[cfg.ConfigKey] = val
 		case "boolean":
-			result[cfg.Key] = cfg.Value == "true"
+			result[cfg.ConfigKey] = cfg.Value == "true"
 		case "json":
-			result[cfg.Key] = cfg.Value
+			result[cfg.ConfigKey] = cfg.Value
 		default:
-			result[cfg.Key] = cfg.Value
+			result[cfg.ConfigKey] = cfg.Value
 		}
 	}
 	return result, nil
@@ -62,7 +62,7 @@ var publicConfigKeys = []string{
 
 func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error) {
 	var configs []model.SystemConfig
-	if err := s.db.Where("key IN ?", publicConfigKeys).Find(&configs).Error; err != nil {
+	if err := s.db.Where("config_key IN ?", publicConfigKeys).Find(&configs).Error; err != nil {
 		return nil, err
 	}
 
@@ -72,11 +72,11 @@ func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error)
 		case "number":
 			var val int
 			fmt.Sscanf(cfg.Value, "%d", &val)
-			result[cfg.Key] = val
+			result[cfg.ConfigKey] = val
 		case "boolean":
-			result[cfg.Key] = cfg.Value == "true"
+			result[cfg.ConfigKey] = cfg.Value == "true"
 		default:
-			result[cfg.Key] = cfg.Value
+			result[cfg.ConfigKey] = cfg.Value
 		}
 	}
 
@@ -97,7 +97,7 @@ func (s *SystemConfigService) BatchUpdate(configs map[string]interface{}) error 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for key, value := range configs {
 			var cfg model.SystemConfig
-			result := tx.Where("key = ?", key).First(&cfg)
+			result := tx.Where("config_key = ?", key).First(&cfg)
 
 			strValue := fmt.Sprintf("%v", value)
 			cfgType := "string"
@@ -110,9 +110,9 @@ func (s *SystemConfigService) BatchUpdate(configs map[string]interface{}) error 
 
 			if result.Error != nil {
 				cfg = model.SystemConfig{
-					Key:   key,
-					Value: strValue,
-					Type:  cfgType,
+					ConfigKey: key,
+					Value:     strValue,
+					Type:      cfgType,
 				}
 				if err := tx.Create(&cfg).Error; err != nil {
 					return err

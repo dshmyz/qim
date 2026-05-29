@@ -291,11 +291,12 @@ func MigrateDB(db *gorm.DB) {
 		&model.FileChunk{},           // 文件分片
 		&model.UploadTask{},          // 上传任务
 		&model.AuthProvider{},        // 认证提供者
-		&model.ExternalUserMapping{}, // 外部用户映射
 		&model.OrgSyncConfig{},       // 组织架构同步配置
 		&model.OrgSyncLog{},          // 组织架构同步日志
 		&model.UserFeedback{},        // 用户反馈
 		&model.CrashLog{},            // 崩溃日志
+		&model.Approval{},            // 审批记录
+		&model.ApprovalConfig{},      // 审批配置
 	); err != nil {
 		// GORM AutoMigrate 在表已存在时会报错，但这不影响程序运行
 		// 只有在真正的迁移失败时才记录错误
@@ -311,19 +312,19 @@ func MigrateDB(db *gorm.DB) {
 // isMigrationCompleted 检查指定的迁移版本是否已完成
 func isMigrationCompleted(db *gorm.DB, migrationName string) bool {
 	var config model.SystemConfig
-	err := db.Where("key = ?", "migration:"+migrationName).First(&config).Error
+	err := db.Where("config_key = ?", "migration:"+migrationName).First(&config).Error
 	return err == nil
 }
 
 // markMigrationCompleted 标记指定的迁移版本为已完成
 func markMigrationCompleted(db *gorm.DB, migrationName string) {
 	config := model.SystemConfig{
-		Key:   "migration:" + migrationName,
-		Value: time.Now().Format(time.RFC3339),
-		Type:  "string",
-		Desc:  "迁移版本: " + migrationName,
+		ConfigKey: "migration:" + migrationName,
+		Value:     time.Now().Format(time.RFC3339),
+		Type:      "string",
+		Desc:      "迁移版本: " + migrationName,
 	}
-	db.Where("key = ?", "migration:"+migrationName).FirstOrCreate(&config)
+	db.Where("config_key = ?", "migration:"+migrationName).FirstOrCreate(&config)
 	logger.WithModule("Migration").Info("标记迁移为已完成", "name", migrationName)
 }
 
@@ -346,12 +347,13 @@ func seedBuiltInApps(db *gorm.DB) {
 
 	now := time.Now()
 	defaultApps := []model.App{
-		{UserID: 1, Name: "日历", Code: "calendar", Icon: "fas fa-calendar", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
-		{UserID: 1, Name: "文件管理", Code: "file_manager", Icon: "fas fa-folder", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
-		{UserID: 1, Name: "任务管理", Code: "task_manager", Icon: "fas fa-check-square", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
-		{UserID: 1, Name: "便签", Code: "sticky_notes", Icon: "fas fa-sticky-note", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
-		{UserID: 1, Name: "笔记", Code: "notes", Icon: "fas fa-book", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
-		{UserID: 1, Name: "短链接管理", Code: "short_link", Icon: "fas fa-link", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "日历", Code: "calendar", Icon: "fas fa-calendar", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "文件管理", Code: "file_manager", Icon: "fas fa-folder", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "任务管理", Code: "task_manager", Icon: "fas fa-check-square", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "便签", Code: "sticky_notes", Icon: "fas fa-sticky-note", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "笔记", Code: "notes", Icon: "fas fa-book", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "短链接管理", Code: "short_link", Icon: "fas fa-link", Category: "tool", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
+		{UserID: 1, Name: "智能助手", Code: "ai_assistant", Icon: "fas fa-robot", Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app", CreatedAt: now, UpdatedAt: now},
 	}
 
 	for _, app := range defaultApps {
@@ -367,11 +369,11 @@ func seedBuiltInApps(db *gorm.DB) {
 // seedFileUploadConfig 初始化文件上传配置（大小限制、允许的文件类型）
 func seedFileUploadConfig(db *gorm.DB) {
 	defaultConfigs := []model.SystemConfig{
-		{Key: "file_upload:max_size", Value: "52428800", Type: "number", Desc: "文件上传最大大小（字节），默认 50MB"},
-		{Key: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
+		{ConfigKey: "file_upload:max_size", Value: "52428800", Type: "number", Desc: "文件上传最大大小（字节），默认 50MB"},
+		{ConfigKey: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
 	}
 	for _, cfg := range defaultConfigs {
-		db.Where("key = ?", cfg.Key).FirstOrCreate(&cfg)
+		db.Where("config_key = ?", cfg.ConfigKey).FirstOrCreate(&cfg)
 	}
 	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
 }

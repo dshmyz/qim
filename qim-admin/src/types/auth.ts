@@ -1,6 +1,7 @@
 export interface AuthProvider {
   id: number
   name: string
+  protocol: 'ldap' | 'oauth' | 'cas'
   type: 'direct' | 'redirect'
   enabled: boolean
   priority: number

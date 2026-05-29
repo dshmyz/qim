@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"qim-server/pkg/logger"
 
@@ -239,6 +240,7 @@ func (p *LDAPProvider) connect() (*ldap.Conn, error) {
 			log.Error("TLS连接LDAP失败", "addr", addr, "error", err)
 			return nil, fmt.Errorf("TLS连接 %s 失败: %w", addr, err)
 		}
+		conn.SetTimeout(10 * time.Second)
 		return conn, nil
 	}
 
@@ -248,5 +250,6 @@ func (p *LDAPProvider) connect() (*ldap.Conn, error) {
 		log.Error("连接LDAP失败", "addr", addr, "error", err)
 		return nil, fmt.Errorf("连接 %s 失败: %w", addr, err)
 	}
+	conn.SetTimeout(10 * time.Second)
 	return conn, nil
 }

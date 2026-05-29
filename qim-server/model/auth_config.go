@@ -6,9 +6,22 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	AuthProviderProtocolLDAP  = "ldap"
+	AuthProviderProtocolOAuth = "oauth"
+	AuthProviderProtocolCAS   = "cas"
+)
+
+var ValidAuthProviderProtocols = map[string]bool{
+	AuthProviderProtocolLDAP:  true,
+	AuthProviderProtocolOAuth: true,
+	AuthProviderProtocolCAS:   true,
+}
+
 type AuthProvider struct {
 	ID          uint           `json:"id" gorm:"primarykey"`
 	Name        string         `json:"name" gorm:"uniqueIndex;size:50;not null"`
+	Protocol    string         `json:"protocol" gorm:"size:20;not null;default:'ldap'"`
 	Type        string         `json:"type" gorm:"size:20;not null"`
 	Enabled     bool           `json:"enabled" gorm:"default:true"`
 	Priority    int            `json:"priority" gorm:"default:100"`
@@ -18,19 +31,6 @@ type AuthProvider struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
-}
-
-type ExternalUserMapping struct {
-	ID               uint           `json:"id" gorm:"primarykey"`
-	UserID           uint           `json:"user_id" gorm:"not null;index"`
-	ProviderName     string         `json:"provider_name" gorm:"size:50;not null"`
-	ExternalUserID   string         `json:"external_user_id" gorm:"size:200;not null"`
-	ExternalUsername string         `json:"external_username" gorm:"size:200"`
-	ExternalData     string         `json:"external_data" gorm:"type:text"`
-	LastSyncAt       *time.Time     `json:"last_sync_at"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 type OrgSyncConfig struct {

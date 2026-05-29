@@ -86,42 +86,49 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 		return nil, false
 	}
 
-	email, _ := userInfo["email"].(string)
-	name, _ := userInfo["name"].(string)
-	login, _ := userInfo["login"].(string)
+	// 获取字段映射
+	mapping := getAttributeMapping(authProvider)
 
-	username := login
+	// 通过映射提取 username
+	username := getStringFromUserInfo(userInfo, "login", "name")
 	if username == "" {
-		username = name
-	}
-	if username == "" {
+		email := getStringFromUserInfo(userInfo, mapping["email"], "email")
 		username = fmt.Sprintf("oauth_user_%s", email)
 	}
 
+	// 通过映射提取其他字段
+	email := getStringFromUserInfo(userInfo, mapping["email"], "email")
+	nickname := getStringFromUserInfo(userInfo, mapping["nickname"], "nickname", "name")
+	phone := getStringFromUserInfo(userInfo, mapping["phone"], "phone")
+	avatar := getStringFromUserInfo(userInfo, mapping["avatar"], "avatar", "picture")
+
 	var user model.User
-	err = db.Where("email = ? OR username = ?", email, username).First(&user).Error
+	err = db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		// 用户不存在，尝试通过 email 查找
+		if email != "" {
+			err = db.Where("email = ?", email).First(&user).Error
+		}
+	}
+
 	if err != nil {
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("oauth_default_pass"), bcrypt.DefaultCost)
 		user = model.User{
 			Username:     username,
 			Email:        email,
-			Nickname:     name,
+			Nickname:     nickname,
+			Phone:        phone,
+			Avatar:       avatar,
 			PasswordHash: string(hashedPassword),
 			Status:       "online",
+		}
+		if user.Nickname == "" {
+			user.Nickname = user.Username
 		}
 		if err := db.Create(&user).Error; err != nil {
 			response.InternalServerError(c, "创建用户失败")
 			return nil, false
 		}
-
-		// 创建外部用户映射
-		mapping := model.ExternalUserMapping{
-			UserID:          user.ID,
-			ProviderName:    authProvider.Name,
-			ExternalUserID:  authResult.UserID,
-			ExternalUsername: username,
-		}
-		db.Create(&mapping)
 	} else {
 		// 根据属性映射更新用户字段
 		updates := buildUserUpdates(userInfo, authProvider)
@@ -163,29 +170,35 @@ func authenticateCAS(c *gin.Context, authProvider *model.AuthProvider, ticket st
 		return nil, false
 	}
 
+	// 获取字段映射
+	mapping := getAttributeMapping(authProvider)
+
+	// 通过映射提取其他字段
+	nickname := getStringFromUserInfo(userInfo, mapping["nickname"], "nickname", "displayName")
+	email := getStringFromUserInfo(userInfo, mapping["email"], "email", "mail")
+	phone := getStringFromUserInfo(userInfo, mapping["phone"], "phone")
+	avatar := getStringFromUserInfo(userInfo, mapping["avatar"], "avatar")
+
 	var user model.User
 	err = db.Where("username = ?", username).First(&user).Error
 	if err != nil {
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("cas_default_pass"), bcrypt.DefaultCost)
 		user = model.User{
 			Username:     username,
-			Nickname:     username,
+			Nickname:     nickname,
+			Email:        email,
+			Phone:        phone,
+			Avatar:       avatar,
 			PasswordHash: string(hashedPassword),
 			Status:       "online",
+		}
+		if user.Nickname == "" {
+			user.Nickname = user.Username
 		}
 		if err := db.Create(&user).Error; err != nil {
 			response.InternalServerError(c, "创建用户失败")
 			return nil, false
 		}
-
-		// 创建外部用户映射
-		mapping := model.ExternalUserMapping{
-			UserID:          user.ID,
-			ProviderName:    authProvider.Name,
-			ExternalUserID:  authResult.UserID,
-			ExternalUsername: username,
-		}
-		db.Create(&mapping)
 	} else {
 		// 根据属性映射更新用户字段
 		updates := buildUserUpdates(userInfo, authProvider)
@@ -199,7 +212,7 @@ func findCASProvider(c *gin.Context) (*model.AuthProvider, bool) {
 	db := database.GetDB()
 
 	var authProvider model.AuthProvider
-	if err := db.Where("type = ? AND enabled = ?", "redirect", true).First(&authProvider).Error; err != nil {
+	if err := db.Where("protocol = ? AND enabled = ?", model.AuthProviderProtocolCAS, true).First(&authProvider).Error; err != nil {
 		response.NotFound(c, "未找到CAS认证提供者")
 		return nil, false
 	}
@@ -216,22 +229,19 @@ func getAttributeMapping(authProvider *model.AuthProvider) map[string]string {
 		"avatar":   "picture",
 	}
 
-	switch authProvider.Type {
-	case "redirect":
-		switch authProvider.Name {
-		case "oauth":
-			var cfg provider.OAuthConfig
-			if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
-				for k, v := range cfg.AttributeMapping {
-					defaultMapping[k] = v
-				}
+	switch authProvider.Protocol {
+	case model.AuthProviderProtocolOAuth:
+		var cfg provider.OAuthConfig
+		if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
+			for k, v := range cfg.AttributeMapping {
+				defaultMapping[k] = v
 			}
-		case "cas":
-			var cfg provider.CASConfig
-			if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
-				for k, v := range cfg.AttributeMapping {
-					defaultMapping[k] = v
-				}
+		}
+	case model.AuthProviderProtocolCAS:
+		var cfg provider.CASConfig
+		if err := json.Unmarshal([]byte(authProvider.Config), &cfg); err == nil && cfg.AttributeMapping != nil {
+			for k, v := range cfg.AttributeMapping {
+				defaultMapping[k] = v
 			}
 		}
 	}

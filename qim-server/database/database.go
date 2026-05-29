@@ -131,7 +131,6 @@ func autoMigrate() {
 		&model.ClientVersion{},
 		&model.Blacklist{},
 		&model.AuthProvider{},
-		&model.ExternalUserMapping{},
 		&model.OrgSyncConfig{},
 		&model.OrgSyncLog{},
 		&model.AlertRule{},

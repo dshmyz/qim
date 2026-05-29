@@ -50,6 +50,24 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 		return
 	}
 
+	if !model.ValidAuthProviderProtocols[provider.Protocol] {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    1,
+			"message": "不支持的协议类型，支持: ldap, oauth, cas",
+			"data":    nil,
+		})
+		return
+	}
+
+	if provider.Type == "" {
+		switch provider.Protocol {
+		case model.AuthProviderProtocolLDAP:
+			provider.Type = "direct"
+		case model.AuthProviderProtocolOAuth, model.AuthProviderProtocolCAS:
+			provider.Type = "redirect"
+		}
+	}
+
 	if err := h.db.Create(&provider).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
@@ -97,6 +115,15 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 		return
 	}
 
+	if updateData.Protocol != "" && !model.ValidAuthProviderProtocols[updateData.Protocol] {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    1,
+			"message": "不支持的协议类型，支持: ldap, oauth, cas",
+			"data":    nil,
+		})
+		return
+	}
+
 	if err := h.db.Model(&provider).Updates(updateData).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
@@ -105,6 +132,8 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 		})
 		return
 	}
+
+	h.db.First(&provider, id)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -169,8 +198,8 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 
 	switch authProvider.Type {
 	case "direct":
-		switch authProvider.Name {
-		case "ldap":
+		switch authProvider.Protocol {
+		case model.AuthProviderProtocolLDAP:
 			ldapProvider, err := provider.NewLDAPProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{

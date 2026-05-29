@@ -75,11 +75,11 @@ func getUploadConfig() *uploadConfig {
 
 	db := database.GetDB()
 	var configs []model.SystemConfig
-	db.Where("key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
+	db.Where("config_key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
 
 	cache := map[string]interface{}{}
 	for _, c := range configs {
-		cache[c.Key] = c.Value
+		cache[c.ConfigKey] = c.Value
 	}
 
 	uploadConfigMu.Lock()
