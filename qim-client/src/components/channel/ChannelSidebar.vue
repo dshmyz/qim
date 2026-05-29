@@ -1,11 +1,44 @@
 <template>
   <div class="channel-sidebar">
-    <div class="channel-sidebar-header">
-      <div class="header-left">
-        <h2 class="sidebar-title">频道</h2>
-        <span v-if="totalUnreadCount > 0" class="unread-badge">{{ totalUnreadCount }}</span>
+    <div class="channel-search-box">
+      <div class="search-input-wrapper">
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="搜索频道..."
+          aria-label="搜索频道"
+        />
+        <button
+          v-if="searchQuery"
+          class="search-clear-btn"
+          @click="searchQuery = ''"
+          aria-label="清空搜索"
+        >
+          <i class="fas fa-times-circle"></i>
+        </button>
       </div>
-      <div class="header-right">
+      <div class="view-toggle" role="group" aria-label="视图模式">
+        <button
+          class="view-btn"
+          :class="{ active: viewMode === 'list' }"
+          @click="setViewMode('list')"
+          aria-label="列表视图"
+          title="列表视图"
+          :aria-pressed="viewMode === 'list'"
+        >
+          <i class="fas fa-list"></i>
+        </button>
+        <button
+          class="view-btn"
+          :class="{ active: viewMode === 'card' }"
+          @click="setViewMode('card')"
+          aria-label="卡片视图"
+          title="卡片视图"
+          :aria-pressed="viewMode === 'card'"
+        >
+          <i class="fas fa-th-large"></i>
+        </button>
         <button
           v-if="isAdmin"
           class="create-btn"
@@ -40,38 +73,6 @@
       >
         广场
       </button>
-    </div>
-
-    <div class="channel-search-box">
-      <input
-        v-model="searchQuery"
-        type="text"
-        class="search-input"
-        placeholder="搜索频道..."
-        aria-label="搜索频道"
-      />
-      <div class="view-toggle" role="group" aria-label="视图模式">
-        <button
-          class="view-btn"
-          :class="{ active: viewMode === 'list' }"
-          @click="setViewMode('list')"
-          aria-label="列表视图"
-          title="列表视图"
-          :aria-pressed="viewMode === 'list'"
-        >
-          <i class="fas fa-list"></i>
-        </button>
-        <button
-          class="view-btn"
-          :class="{ active: viewMode === 'card' }"
-          @click="setViewMode('card')"
-          aria-label="卡片视图"
-          title="卡片视图"
-          :aria-pressed="viewMode === 'card'"
-        >
-          <i class="fas fa-th-large"></i>
-        </button>
-      </div>
     </div>
 
     <div class="channel-sidebar-content">
@@ -143,7 +144,6 @@ const channels = computed(() => channelStore.channels)
 const loading = computed(() => channelStore.loading)
 const viewMode = computed(() => channelStore.viewMode)
 const selectedChannelId = computed(() => channelStore.selectedChannelId)
-const totalUnreadCount = computed(() => channelStore.totalUnreadCount)
 
 const isAdmin = computed(() => {
   const user = props.currentUser as any
@@ -239,70 +239,95 @@ onMounted(() => {
   background: transparent;
 }
 
-.channel-sidebar-header {
+.channel-search-box {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  height: 72px;
+  gap: 4px;
+  padding: 12px 20px 8px;
+}
+
+.search-input-wrapper {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 28px 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  outline: none;
+  transition: all 0.2s;
   box-sizing: border-box;
-  flex-shrink: 0;
 }
 
-.header-left {
+.search-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sidebar-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+.search-clear-btn:hover {
   color: var(--text-color);
 }
 
-.unread-badge {
-  display: inline-flex;
+.view-toggle {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: white;
-  background: var(--danger-color);
-  border-radius: 9px;
-  line-height: 1;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.create-btn {
+.view-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--primary-color);
-  color: white;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
-.create-btn:hover {
-  background: var(--primary-dark);
+.view-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
 }
 
-.create-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
+.view-btn.active {
+  background: var(--hover-color);
+  border-color: var(--border-color);
+  color: var(--primary-color);
+}
+
+.view-btn:focus {
+  /* outline: 2px solid var(--primary-color); */
+  /* outline-offset: 2px; */
 }
 
 .channel-tabs-toggle {
@@ -361,69 +386,25 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.channel-search-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.search-input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 13px;
-  background: var(--panel-bg);
-  color: var(--text-color);
-  outline: none;
-  transition: all 0.2s;
-}
-
-.search-input:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
-}
-
-.search-input::placeholder {
-  color: var(--text-secondary);
-}
-
-.view-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.view-btn {
+.create-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  background: transparent;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: var(--primary-color);
+  color: white;
   border-radius: 6px;
-  font-size: 14px;
-  color: var(--text-secondary);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.view-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
+.create-btn:hover {
+  background: var(--primary-dark);
 }
 
-.view-btn.active {
-  background: var(--hover-color);
-  border-color: var(--border-color);
-  color: var(--primary-color);
-}
-
-.view-btn:focus {
+.create-btn:focus {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
@@ -432,6 +413,7 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  scrollbar-gutter: stable;
 }
 
 .channel-list-view {

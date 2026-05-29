@@ -2,9 +2,11 @@
   <div class="notes-app" :class="{ fullscreen: isFullscreen }">
     <AppHeader title="笔记" @back="$emit('back')" v-show="!isFullscreen">
       <template #extra-buttons>
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
       </template>
       <template #actions>
         <button class="create-note-btn" @click="handleCreate">+ 新建笔记</button>
@@ -93,6 +95,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppHeader from './AppHeader.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import NoteCard from './notes/NoteCard.vue'
 import NoteToolbar from './notes/NoteToolbar.vue'
 import NoteEditor from './notes/NoteEditor.vue'

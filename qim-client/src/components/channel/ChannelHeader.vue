@@ -1,5 +1,5 @@
 <template>
-  <div class="channel-header">
+  <div class="panel-header">
     <div class="header-info">
       <ChannelAvatar
         :avatar="channel.avatar"
@@ -76,15 +76,15 @@ const messageCount = computed(() => {
 </script>
 
 <style scoped>
-.channel-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  height: 72px;
-  box-sizing: border-box;
+  padding: 0 20px;
+  height: 56px;
   background: var(--sidebar-bg);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
 }
 
@@ -186,14 +186,14 @@ const messageCount = computed(() => {
 .subscribe-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 3px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
 }
 

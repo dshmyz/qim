@@ -4,7 +4,7 @@ const productNameCN = __APP_PRODUCT_NAME_CN__
 export const APP_CONFIG = {
   productName,
   productNameCN,
-  productFullName: `${productName}（${productNameCN}）`,
+  productFullName: `${productName} ${productNameCN}`,
   copyrightYear: __APP_COPYRIGHT_YEAR__,
   version: __APP_VERSION__,
 }

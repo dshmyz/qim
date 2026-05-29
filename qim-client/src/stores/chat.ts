@@ -270,6 +270,15 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function deleteMessage(conversationId: string, messageId: string) {
+    const msgs = messages.value.get(conversationId) || []
+    const index = msgs.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      msgs.splice(index, 1)
+      messages.value.set(conversationId, [...msgs])
+    }
+  }
+
   function markConversationRead(id: string) {
     const index = conversations.value.findIndex(c => c.id === id)
     if (index !== -1) {
@@ -395,6 +404,7 @@ export const useChatStore = defineStore('chat', () => {
     removeConversation,
     recallMessage,
     receiveMessage,
+    deleteMessage,
     markConversationRead,
     addGroupMember,
     removeGroupMember,

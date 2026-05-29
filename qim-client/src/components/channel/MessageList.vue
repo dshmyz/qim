@@ -158,8 +158,10 @@ const handleCopyLink = (message: ChannelMessage) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 0 20px;
+  height: 56px;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background: var(--card-bg);
 }
 

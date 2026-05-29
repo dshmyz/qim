@@ -1,5 +1,12 @@
 <template>
-  <div class="conversation-list">
+  <div v-if="conversations.length === 0" class="empty-conversations">
+    <div class="placeholder-content">
+      <i class="fas fa-comments fa-4x"></i>
+      <h3>暂无会话</h3>
+      <p>从通讯录或群聊中发起对话吧</p>
+    </div>
+  </div>
+  <div v-else class="conversation-list">
     <div
       v-for="conversation in conversations"
       :key="conversation.id"
@@ -50,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 
 interface User {
@@ -86,9 +94,10 @@ interface Conversation {
   unread_count?: number
   muted?: boolean
   members?: User[]
+  status?: 'online' | 'offline' | 'away' | 'busy'
 }
 
-defineProps<{
+const props = defineProps<{
   conversations: Conversation[]
   currentConversationId: string | null
   serverUrl: string
@@ -99,27 +108,71 @@ defineEmits<{
   (e: 'contextMenu', event: MouseEvent, conversation: Conversation): void
 }>()
 
-const hasDraft = (conversation: Conversation): boolean => {
-  const draft = localStorage.getItem(`qim_draft_${conversation.id}`)
-  if (!draft) return false
+interface DraftCache {
+  hasDraft: boolean
+  preview: string
+}
+
+const draftsCache = ref<Map<string, DraftCache>>(new Map())
+
+function loadDraftForConversation(id: string): DraftCache {
   try {
+    const draft = localStorage.getItem(`qim_draft_${id}`)
+    if (!draft) return { hasDraft: false, preview: '' }
     const { text } = JSON.parse(draft)
-    return !!text
+    if (!text) return { hasDraft: false, preview: '' }
+    return {
+      hasDraft: true,
+      preview: text.length > 50 ? text.substring(0, 50) + '...' : text
+    }
   } catch {
-    return false
+    return { hasDraft: false, preview: '' }
   }
 }
 
-const getDraftPreview = (conversation: Conversation): string => {
-  const draft = localStorage.getItem(`qim_draft_${conversation.id}`)
-  if (!draft) return ''
-  try {
-    const { text } = JSON.parse(draft)
-    if (!text) return ''
-    return text.length > 50 ? text.substring(0, 50) + '...' : text
-  } catch {
-    return ''
+function updateDraftsCache() {
+  const newCache = new Map<string, DraftCache>()
+  for (const conversation of props.conversations) {
+    const cached = draftsCache.value.get(conversation.id)
+    if (cached) {
+      newCache.set(conversation.id, cached)
+    } else {
+      newCache.set(conversation.id, loadDraftForConversation(conversation.id))
+    }
   }
+  draftsCache.value = newCache
+}
+
+function handleStorageChange(event: StorageEvent) {
+  if (event.key?.startsWith('qim_draft_')) {
+    const id = event.key.replace('qim_draft_', '')
+    if (event.newValue) {
+      draftsCache.value.set(id, loadDraftForConversation(id))
+    } else {
+      draftsCache.value.set(id, { hasDraft: false, preview: '' })
+    }
+  }
+}
+
+onMounted(() => {
+  updateDraftsCache()
+  window.addEventListener('storage', handleStorageChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', handleStorageChange)
+})
+
+watch(() => props.conversations, () => {
+  updateDraftsCache()
+}, { deep: true })
+
+const hasDraft = (conversation: Conversation): boolean => {
+  return draftsCache.value.get(conversation.id)?.hasDraft ?? false
+}
+
+const getDraftPreview = (conversation: Conversation): string => {
+  return draftsCache.value.get(conversation.id)?.preview ?? ''
 }
 
 const formatTime = (timestamp?: string | number): string => {
@@ -246,6 +299,35 @@ const getUnreadCount = (conversation: Conversation): number => {
 
 .conversation-item.active {
   background: var(--hover-color);
+}
+
+.empty-conversations {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.empty-conversations .placeholder-content {
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+.empty-conversations .placeholder-content i {
+  color: var(--text-tertiary, #999);
+  margin-bottom: 16px;
+}
+
+.empty-conversations .placeholder-content h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #333);
+}
+
+.empty-conversations .placeholder-content p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
 }
 
 .conversation-avatar {

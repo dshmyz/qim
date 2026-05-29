@@ -128,71 +128,81 @@ defineExpose({})
         class="search-input"
         :placeholder="activeOption === 'recent' ? '搜索用户或群组...' : '搜索...'"
       />
+      <button
+        v-if="searchQuery"
+        class="search-clear-btn"
+        @click="$emit('update:searchQuery', '')"
+        aria-label="清空搜索"
+      >
+        <i class="fas fa-times-circle"></i>
+      </button>
     </div>
 
     <!-- 侧边栏内容 -->
     <div class="sidebar-content" v-show="!collapsed">
-      <div v-if="activeOption === 'recent'" class="content-section">
-        <SearchResult
-          v-if="searchQuery && searchResults.length > 0"
-          :searchQuery="searchQuery"
-          :searchResults="searchResults"
-          @select="(item) => $emit('searchResultSelect', item)"
-          @privateChat="(item) => $emit('searchResultPrivateChat', item)"
-          @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
-        />
-        <ConversationList
-          :conversations="filteredConversations"
-          :currentConversationId="currentConversationId"
-          :serverUrl="serverUrl"
-          @select="(conv) => $emit('selectConversation', conv)"
-          @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
-        />
-      </div>
-      
-      <div v-else-if="activeOption === 'org'" class="content-section">
-        <OrgTree
-          :orgStructure="orgStructure"
-          @selectUser="$emit('selectUser', $event)"
-          @startPrivateChat="$emit('startPrivateChat', $event)"
-          @userContextMenu="(...args) => $emit('userContextMenu', ...args)"
-        />
-      </div>
-      
-      <div v-else-if="activeOption === 'groups'" class="content-section">
-        <GroupList
-          :conversations="conversations"
-          :selectedGroup="selectedGroup"
-          @select="(group) => { logger.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
-          @enter="(conv) => $emit('enterGroup', conv)"
-          @invite="(conv) => $emit('inviteMembers', conv)"
-          @showContextMenu="(event, conv) => $emit('groupContextMenu', event, conv)"
-        />
-      </div>
-      
-      <div v-else-if="activeOption === 'channels'" class="content-section">
-        <ChannelSidebar
-          :currentUser="currentUser"
-          @createChannel="$emit('createChannel')"
-        />
-      </div>
-      
-      <div v-else-if="activeOption === 'apps'" class="content-section">
-        <AppPanel
-          :appCategories="appCategories"
-          @openApp="$emit('openApp', $event)"
-          @openExternalApp="$emit('openExternalApp', $event)"
-          @resetApp="$emit('resetApp')"
-          @toggleCategory="$emit('toggleCategory', $event)"
-        />
-      </div>
+      <KeepAlive>
+        <div v-if="activeOption === 'recent'" key="recent" class="content-section">
+          <SearchResult
+            v-if="searchQuery && searchResults.length > 0"
+            :searchQuery="searchQuery"
+            :searchResults="searchResults"
+            @select="(item) => $emit('searchResultSelect', item)"
+            @privateChat="(item) => $emit('searchResultPrivateChat', item)"
+            @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
+          />
+          <ConversationList
+            :conversations="filteredConversations"
+            :currentConversationId="currentConversationId"
+            :serverUrl="serverUrl"
+            @select="(conv) => $emit('selectConversation', conv)"
+            @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
+          />
+        </div>
+        
+        <div v-else-if="activeOption === 'org'" key="org" class="content-section">
+          <OrgTree
+            :orgStructure="orgStructure"
+            @selectUser="$emit('selectUser', $event)"
+            @startPrivateChat="$emit('startPrivateChat', $event)"
+            @userContextMenu="(...args) => $emit('userContextMenu', ...args)"
+          />
+        </div>
+        
+        <div v-else-if="activeOption === 'groups'" key="groups" class="content-section">
+          <GroupList
+            :conversations="conversations"
+            :selectedGroup="selectedGroup"
+            @select="(group) => { logger.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
+            @enter="(conv) => $emit('enterGroup', conv)"
+            @invite="(conv) => $emit('inviteMembers', conv)"
+            @showContextMenu="(event, conv) => $emit('groupContextMenu', event, conv)"
+          />
+        </div>
+        
+        <div v-else-if="activeOption === 'channels'" key="channels" class="content-section">
+          <ChannelSidebar
+            :currentUser="currentUser"
+            @createChannel="$emit('createChannel')"
+          />
+        </div>
+        
+        <div v-else-if="activeOption === 'apps'" key="apps" class="content-section">
+          <AppPanel
+            :appCategories="appCategories"
+            @openApp="$emit('openApp', $event)"
+            @openExternalApp="$emit('openExternalApp', $event)"
+            @resetApp="$emit('resetApp')"
+            @toggleCategory="$emit('toggleCategory', $event)"
+          />
+        </div>
+      </KeepAlive>
     </div>
   </div>
 </template>
 
 <style scoped>
 .sidebar {
-  min-width: 320px;
+  min-width: 300px;
   background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
@@ -212,11 +222,11 @@ defineExpose({})
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 0 20px;
+  height: 56px;
   background: var(--sidebar-bg);
-  height: 72px;
   box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
 }
 
@@ -289,6 +299,7 @@ defineExpose({})
   padding: 12px 8px;
   background: transparent;
   box-shadow: var(--shadow-xs);
+  position: relative;
 }
 
 .search-input {
@@ -308,6 +319,25 @@ defineExpose({})
   box-shadow: 0 0 0 2px var(--primary-light);
 }
 
+.search-clear-btn {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.search-clear-btn:hover {
+  color: var(--text-color);
+}
+
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
@@ -324,7 +354,7 @@ defineExpose({})
 /* 移动设备适配 */
 @media (max-width: 768px) {
   .sidebar-header {
-    padding: 12px 15px;
+    padding: 0 15px;
   }
   
   .icon-btn {
@@ -336,7 +366,7 @@ defineExpose({})
 
 @media (max-width: 1200px) {
   .sidebar-header {
-    padding: 14px 18px;
+    padding: 0 18px;
   }
 }
 </style>

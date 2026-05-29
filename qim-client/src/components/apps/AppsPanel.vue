@@ -1,10 +1,12 @@
 <template>
   <div class="right-content">
-    <div class="right-content-header">
+    <div class="panel-header">
       <div class="header-left-group">
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
         <h2>{{ pageTitle }}</h2>
       </div>
     </div>
@@ -61,7 +63,7 @@
           <div
             v-for="app in quickTools"
             :key="app.id"
-            :class="['quick-tool-item', { 'quick-tool-highlight': app.id === 'short-link' }]"
+            :class="['quick-tool-item', { 'quick-tool-highlight': app.id === 'short_link' }]"
             @click="$emit('openApp', app.id)"
           >
             <div class="quick-tool-icon"><i :class="app.icon"></i></div>
@@ -69,7 +71,7 @@
               <span class="quick-tool-name">{{ app.name }}</span>
               <span class="quick-tool-desc">{{ app.description || '快速访问' }}</span>
             </div>
-            <div v-if="app.id === 'short-link'" class="quick-tool-badge">快速工具</div>
+            <div v-if="app.id === 'short_link'" class="quick-tool-badge">快速工具</div>
           </div>
         </div>
       </div>
@@ -99,6 +101,8 @@
 </template>
 
 <script setup lang="ts">
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
+
 interface App {
   id: string
   name: string
@@ -132,20 +136,22 @@ defineEmits<{
   overflow: hidden;
 }
 
-.right-content-header {
-  padding: 16px 20px;
+.panel-header {
+  padding: 0 20px;
+  height: 56px;
   background: var(--right-content-header-bg, #fff);
-  height: 72px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
 }
 
-.right-content-header h2 {
+.panel-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-color, #333);
 }
 
@@ -153,14 +159,6 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.toggle-sidebar-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  color: var(--text-color, #333);
 }
 
 .apps-content {

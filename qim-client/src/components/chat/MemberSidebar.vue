@@ -3,9 +3,12 @@
     <div class="sidebar-header-container">
       <div v-if="isExpanded" class="members-header">
         <div class="header-content">
-          <button class="toggle-sidebar-btn" @click="handleToggleExpanded">
-            <i class="fas fa-chevron-left"></i>
-          </button>
+          <ToggleSidebarBtn
+            icon="fas fa-chevron-left"
+            size="sm"
+            title="收起成员列表"
+            @click="handleToggleExpanded"
+          />
           <h3>群成员 ({{ members.length }})</h3>
         </div>
         <div class="header-actions">
@@ -49,6 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 interface Member {
   id: string
@@ -162,25 +166,6 @@ const handleStartPrivateChat = (member: Member) => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.header-content .toggle-sidebar-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.header-content .toggle-sidebar-btn:hover {
-  background: var(--hover-color);
 }
 
 .header-actions {

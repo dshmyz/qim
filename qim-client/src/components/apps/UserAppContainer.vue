@@ -2,9 +2,11 @@
   <div class="user-app-container">
     <AppHeader :title="app.name" @back="$emit('back')">
       <template #extra-buttons>
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
       </template>
     </AppHeader>
     <div class="user-app-content">
@@ -27,6 +29,7 @@
 
 <script setup lang="ts">
 import AppHeader from './AppHeader.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 defineProps<{
   app: {

@@ -1,10 +1,12 @@
 <template>
   <div class="right-content">
-    <div class="right-content-header">
+    <div class="panel-header">
       <div class="header-left-group">
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
         <h2>用户资料</h2>
       </div>
     </div>
@@ -98,10 +100,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { getCurrentUser } from '../../utils/user'
 import { request } from '../../composables/useRequest'
 import Avatar from '../shared/Avatar.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 interface User {
   id: string | number
@@ -125,7 +128,8 @@ const props = defineProps<Props>()
 
 const detail = ref<any>({ ...props.user })
 
-onMounted(async () => {
+const fetchUserDetail = async () => {
+  detail.value = { ...props.user }
   try {
     const response = await request(`/api/v1/users/${props.user.id}`)
     if (response.code === 0 && response.data) {
@@ -140,7 +144,9 @@ onMounted(async () => {
   } catch {
     // fallback to prop data
   }
-})
+}
+
+watch(() => props.user, fetchUserDetail, { immediate: true })
 
 const isCurrentUser = computed(() => {
   const currentUser = getCurrentUser()
@@ -165,20 +171,22 @@ defineEmits<{
   overflow: hidden;
 }
 
-.right-content-header {
-  padding: 16px 20px;
+.panel-header {
+  padding: 0 20px;
+  height: 56px;
   background: var(--right-content-header-bg, #fff);
-  height: 72px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
 }
 
-.right-content-header h2 {
+.panel-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-color, #333);
 }
 
@@ -186,14 +194,6 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.toggle-sidebar-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  color: var(--text-color, #333);
 }
 
 .user-profile-container {

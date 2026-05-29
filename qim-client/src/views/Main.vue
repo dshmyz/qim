@@ -133,11 +133,13 @@
             @start-screen-share="handleStartScreenShare"
           />
           <div v-else class="right-content">
-            <div class="right-content-header">
+            <div class="panel-header">
               <div class="header-left-group">
-                <button class="toggle-sidebar-btn" @click="toggleSidebar">
-                  <i class="fas fa-compress"></i>
-                </button>
+                <ToggleSidebarBtn
+                  icon="fas fa-compress"
+                  title="收起侧边栏"
+                  @click="toggleSidebar"
+                />
                 <h2>{{ getPageTitle() }}</h2>
               </div>
             </div>
@@ -175,9 +177,21 @@
                 @unlike="handleMessageUnlike"
                 @comment="handleMessageComment"
               />
-              <div v-else class="channel-empty-state">
-                <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
-                <p>选择一个频道查看详情</p>
+              <div v-else class="channel-empty-state-wrapper">
+                <div class="panel-header">
+                  <div class="header-left-group">
+                    <ToggleSidebarBtn
+                      icon="fas fa-compress"
+                      title="收起侧边栏"
+                      @click="toggleSidebar"
+                    />
+                    <h2>频道</h2>
+                  </div>
+                </div>
+                <div class="channel-empty-state">
+                  <div class="empty-icon"><i class="fas fa-bullhorn"></i></div>
+                  <p>选择一个频道查看详情</p>
+                </div>
               </div>
             </div>
           </template>
@@ -221,7 +235,7 @@
         />
 
         <!-- 具体应用（懒加载组件，各自独立使用 Suspense） -->
-        <div v-else-if="selectedAppId === '3'" class="right-content">
+        <div v-else-if="selectedAppId === 'file_manager'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <FileManagementApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -233,7 +247,7 @@
         </div>
 
         <!-- 笔记应用 -->
-        <div v-else-if="selectedAppId === '7'" class="right-content">
+        <div v-else-if="selectedAppId === 'notes'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <NotesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -245,7 +259,7 @@
         </div>
 
         <!-- 任务管理应用 -->
-        <div v-else-if="selectedAppId === '5'" class="right-content">
+        <div v-else-if="selectedAppId === 'task_manager'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <TaskManagementApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -257,7 +271,7 @@
         </div>
 
         <!-- 日历应用 -->
-        <div v-else-if="selectedAppId === '2'" class="right-content">
+        <div v-else-if="selectedAppId === 'calendar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <CalendarApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -269,7 +283,7 @@
         </div>
 
         <!-- 便签应用 -->
-        <div v-else-if="selectedAppId === '6'" class="right-content">
+        <div v-else-if="selectedAppId === 'sticky_notes'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <StickyNotesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -309,7 +323,7 @@
         </div>
 
         <!-- AI 助手 -->
-        <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai-assistant'" class="right-content">
+        <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai_assistant'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <AIAssistantApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -333,7 +347,7 @@
         </div>
 
         <!-- 短链接管理应用 -->
-        <div v-else-if="selectedAppId === 'short-link'" class="right-content">
+        <div v-else-if="selectedAppId === 'short_link'" class="right-content">
           <Suspense timeout="0">
             <template #default>
               <ShortLinkManager @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
@@ -350,11 +364,13 @@
         <Suspense timeout="0">
           <template #default>
             <div class="right-content">
-              <div class="right-content-header">
+              <div class="panel-header">
                 <div class="header-left-group">
-                  <button class="toggle-sidebar-btn" @click="toggleSidebar">
-                    <i class="fas fa-compress"></i>
-                  </button>
+                  <ToggleSidebarBtn
+                    icon="fas fa-compress"
+                    title="收起侧边栏"
+                    @click="toggleSidebar"
+                  />
                   <h2>{{ selectedGroup.name }}</h2>
                 </div>
               </div>
@@ -377,8 +393,15 @@
       </template>
       
       <div v-else class="right-content">
-        <div class="right-content-header">
-          <h2>{{ getPageTitle() }}</h2>
+        <div class="panel-header">
+          <div class="header-left-group">
+            <ToggleSidebarBtn
+              icon="fas fa-compress"
+              title="收起侧边栏"
+              @click="toggleSidebar"
+            />
+            <h2>{{ getPageTitle() }}</h2>
+          </div>
         </div>
         <div class="right-content-body">
           <p>选择左侧的{{ getPageTitle() }}查看详情</p>
@@ -667,6 +690,7 @@ import ChatWindow from '../components/chat/ChatWindow.vue'
 import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
 const GroupDetail = defineAsyncComponent(() => import('../components/shared/GroupDetail.vue'))
 import ModalContainer from '../components/shared/ModalContainer.vue'
+import ToggleSidebarBtn from '../components/shared/ToggleSidebarBtn.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
 const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
@@ -1142,12 +1166,12 @@ const getDepartmentStats = (department: any) => {
   if (department.employees) {
     totalCount += department.employees.length
     // 根据员工的 status 字段判断是否在线
-    onlineCount += department.employees.filter((emp: any) => emp.status === 'online').length
+    onlineCount += department.employees.filter(emp => emp.status === 'online').length
   }
 
   // 递归统计子部门
   if (department.subDepartments) {
-    department.subDepartments.forEach((subDept: any) => {
+    department.subDepartments.forEach(subDept => {
       const stats = getDepartmentStats(subDept)
       totalCount += stats.total
       onlineCount += stats.online
@@ -1468,9 +1492,8 @@ const handleSystemMessage = (data: any) => {
 // 处理消息删除
 const handleMessageDeleted = (data: any) => {
   logger.log('消息被删除:', data)
-  const index = messages.value.findIndex(msg => msg.id === data.message_id)
-  if (index !== -1) {
-    messages.value.splice(index, 1)
+  if (currentConversationId.value) {
+    chatStore.deleteMessage(String(currentConversationId.value), String(data.message_id))
   }
 }
 
@@ -1492,8 +1515,8 @@ const handleNotification = (data: any) => {
 
   if (data.type && data.type.includes('_approval')) {
     const entityType = data.type.replace('_approval', '')
-    if (entityType === 'avatar' && chatWindowRef?.value?.[currentConversationId.value]) {
-      chatWindowRef.value[currentConversationId.value]?.fetchConfig?.()
+    if (entityType === 'avatar' && chatWindowRefs[currentConversationId.value]) {
+      chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
     }
   }
 }
@@ -1604,28 +1627,9 @@ const handleNewMessage = (msg: any) => {
     loadConversations()
   }
   
-  // 当前会话：处理消息列表和滚动
+  // 当前会话：通过 Store 统一更新消息列表
   if (isCurrentConv) {
-    const messageIndex = messages.value.findIndex(msg => msg.id === newMessage.id)
-    if (messageIndex === -1) {
-      // 消息不存在，添加新消息（watch 会从 Store 同步）
-      messages.value.push(newMessage)
-      
-      nextTick(() => {
-        const messageContainer = document.querySelector('.message-list')
-        if (messageContainer) {
-          messageContainer.scrollTop = messageContainer.scrollHeight
-        }
-      })
-    } else {
-      // 消息已存在，更新内容（包括流式消息和普通消息的更新）
-      messages.value[messageIndex].content = newMessage.content
-      messages.value[messageIndex].isStreaming = newMessage.isStreaming
-      // 如果新消息类型是 markdown（流式完成），更新 type
-      if (newMessage.type) {
-        messages.value[messageIndex].type = newMessage.type
-      }
-    }
+    chatStore.receiveMessage(conversationId, newMessage, true)
   }
 }
 
@@ -1687,39 +1691,35 @@ onUnmounted(() => {
   }
 })
 
-// 过滤后的会话列表
-const filteredConversations = computed(() => {
-  let filtered = conversations.value
-  
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(conv => 
-      // 搜索会话名称
-      conv.name.toLowerCase().includes(query) ||
-      // 搜索最后一条消息的内容
-      (conv.lastMessage?.content && conv.lastMessage.content.toLowerCase().includes(query)) ||
-      // 搜索会话中的用户（针对群聊）
-      (conv.members && conv.members.some(member => 
-        member.name.toLowerCase().includes(query)
-      )) ||
-      // 搜索会话类型
-      (conv.type === 'group' && '群聊'.includes(query)) ||
-      (conv.type === 'single' && '用户'.includes(query))
-    )
-  }
-  
-  // 排序：置顶的会话排在前面，然后按时间戳降序
-  return filtered.sort((a, b) => {
+const sortedConversations = computed(() => {
+  return [...conversations.value].sort((a, b) => {
     if (a.is_pinned && !b.is_pinned) return -1
     if (!a.is_pinned && b.is_pinned) return 1
     return b.timestamp - a.timestamp
   })
 })
 
+const filteredConversations = computed(() => {
+  if (!searchQuery.value) {
+    return sortedConversations.value
+  }
+  
+  const query = searchQuery.value.toLowerCase()
+  return sortedConversations.value.filter(conv => 
+    conv.name.toLowerCase().includes(query) ||
+    (conv.lastMessage?.content && conv.lastMessage.content.toLowerCase().includes(query)) ||
+    (conv.members && conv.members.some(member => 
+      member.name.toLowerCase().includes(query)
+    )) ||
+    (conv.type === 'group' && '群聊'.includes(query)) ||
+    (conv.type === 'single' && '用户'.includes(query))
+  )
+})
+
 const isSearching = ref(false)
 
 // 处理搜索
-const handleSearch = async (query: string) => {
+const handleSearch = async (query) => {
   if (!query.trim()) {
     searchResults.value = []
     return
@@ -1739,7 +1739,7 @@ const handleSearch = async (query: string) => {
 }
 
 // 处理搜索项点击
-const handleSearchItemClick = (item: any) => {
+const handleSearchItemClick = (item) => {
   if (item.type === 'user') {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
@@ -1754,7 +1754,7 @@ const handleSearchItemClick = (item: any) => {
 }
 
 // 处理申请加入群组
-const handleApplyJoinGroup = async (item: any) => {
+const handleApplyJoinGroup = async (item) => {
   if (!item || !item.id) {
     QMessage.error('群组信息无效')
     return
@@ -1780,11 +1780,10 @@ const handleApplyJoinGroup = async (item: any) => {
 }
 
 // 监听搜索输入变化
-const searchTimeout = ref<NodeJS.Timeout | null>(null)
 watch(searchQuery, (newQuery) => {
   // 简单的防抖实现
-  if (searchTimeout.value) clearTimeout(searchTimeout.value)
-  searchTimeout.value = setTimeout(() => {
+  clearTimeout(window.searchTimeout)
+  window.searchTimeout = setTimeout(() => {
     handleSearch(newQuery)
   }, 300)
 })
@@ -1799,7 +1798,9 @@ const streamMessage = useStreamMessage(messages, serverUrl)
 const { handleStreamMessage } = streamMessage
 
 // 使用 Main.vue 专用的消息发送 composable
-const mainMessageSending = useMainMessageSending(currentConversationId, messages, currentConversation, isConnected, sessionExpired, handleStreamMessage)
+const mainMessageSending = useMainMessageSending(currentConversationId, messages, currentConversation, isConnected, sessionExpired, handleStreamMessage, () => {
+  nextTick(() => chatWindowRef.value?.scrollToBottom())
+})
 const { handleSendMessage, handleRecallMessage, handleRetrySendMessage } = mainMessageSending
 
 
@@ -1922,7 +1923,7 @@ const startPrivateChat = async (user: any) => {
     setCurrentConversationId(mockConversation.id)
     // 初始化消息列表
     if (mockConversation.id) {
-      chatStore.clearAllMessages(String(mockConversation.id))
+      chatStore.clearMessages(String(mockConversation.id))
     }
   }
   hideUserContextMenu()
@@ -1996,32 +1997,27 @@ const allApps = computed(() => {
   return apps
 })
 
-// 快速工具列表
+// 快速工具列表（分类为 tool 的内置应用，如短链接管理）
 const quickTools = computed(() => {
-  // 定义快速工具应用
-  return [
-    {
-      id: 'short-link',
-      name: '短链接管理',
-      icon: 'fas fa-link',
-      description: '快速生成短链接'
-    }
-  ]
+  return builtInApps.value
+    .filter(app => app.category === 'tool')
+    .map(app => ({
+      id: app.code || String(app.id),
+      name: app.name,
+      icon: app.icon || 'fas fa-cube',
+      description: '',
+    }))
 })
 
-// 主要应用列表（从内置应用加载）
-// 使用 code 而非数值 ID，避免与后端数据库中的 app ID 冲突
+// 主要应用列表（全部从后端内置应用动态加载）
 const mainApps = computed(() => {
-  return [
-    { id: 'notes', name: '笔记', icon: 'fas fa-book' },
-    { id: 'task_manager', name: '任务管理', icon: 'fas fa-check-square' },
-    { id: 'file_manager', name: '文件管理', icon: 'fas fa-folder' },
-    { id: 'sticky_notes', name: '便签', icon: 'fas fa-sticky-note' },
-    { id: 'calendar', name: '日历', icon: 'fas fa-calendar' },
-    ...(systemConfigStore.enableAI ? [{ id: 'ai-assistant', name: '智能助手', icon: 'fas fa-robot' }] : []),
-    // 动态添加内置应用
-    ...builtInApps.value.filter(app => app.category === 'main'),
-  ]
+  return builtInApps.value
+    .filter(app => app.category !== 'tool')
+    .map(app => ({
+      id: app.code || String(app.id),
+      name: app.name,
+      icon: app.icon || 'fas fa-cube',
+    }))
 })
 
 // 系统应用列表
@@ -2060,7 +2056,7 @@ const appCategories = computed(() => {
       name: '内置应用',
       expanded: categoryExpanded.value['1'],
       apps: builtInApps.value.map(app => ({
-          id: String(app.id),
+          id: app.code || String(app.id),
           name: app.name,
           code: app.code || '',
           icon: app.icon || 'fas fa-cube',
@@ -2303,7 +2299,7 @@ const handleConversationCreated = (newConversation: any) => {
   if (newConversation && newConversation.id) {
     const conversationId = String(newConversation.id)
     setCurrentConversationId(conversationId)
-    chatStore.clearAllMessages(conversationId)
+    chatStore.clearMessages(conversationId)
     messagePage.value = 1
     hasMoreMessages.value = true
     
@@ -2742,17 +2738,12 @@ const handleInviteMembers = (groupOrId) => {
 
 // 处理切换应用
 const handleSwitchApp = (app) => {
-  // 切换到指定的应用
   activeOption.value = 'apps'
 
-  // 如果传入的是应用对象，通过 code 解析
   if (app && typeof app === 'object' && app.code) {
-    const resolvedId = resolveAppId(app)
-    if (resolvedId) {
-      selectedAppId.value = resolvedId
-      logger.log('切换到内置应用:', app.code, '→', resolvedId)
-      return
-    }
+    selectedAppId.value = app.code
+    logger.log('切换到内置应用:', app.code)
+    return
   }
 
   selectedAppId.value = app

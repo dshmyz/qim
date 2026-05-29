@@ -1,5 +1,12 @@
 <template>
-  <div class="tree-container">
+  <div v-if="orgStructure.length === 0" class="empty-org">
+    <div class="placeholder-content">
+      <i class="fas fa-building fa-4x"></i>
+      <h3>暂无组织架构</h3>
+      <p>暂无部门数据，请联系管理员配置组织架构</p>
+    </div>
+  </div>
+  <div v-else class="tree-container">
     <template v-for="department in orgStructure" :key="department.id">
       <div class="tree-node department-node">
         <div class="tree-node-content" @click="toggleDepartment(department.id)">
@@ -259,5 +266,38 @@ const toggleSubDepartment = (parentId: string, subId: string) => {
 
 .employee-node:last-child .tree-node-content {
   border-bottom: none;
+}
+
+.empty-org {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  background: var(--panel-bg);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin: 8px 8px;
+}
+
+.empty-org .placeholder-content {
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+.empty-org .placeholder-content i {
+  color: var(--text-tertiary, #999);
+  margin-bottom: 16px;
+}
+
+.empty-org .placeholder-content h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #333);
+}
+
+.empty-org .placeholder-content p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
 }
 </style>

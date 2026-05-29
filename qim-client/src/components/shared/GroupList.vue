@@ -1,5 +1,12 @@
 <template>
-  <div class="groups-list">
+  <div v-if="filteredConversations.length === 0" class="empty-groups">
+    <div class="placeholder-content">
+      <i class="fas fa-users fa-4x"></i>
+      <h3>暂无群聊</h3>
+      <p>你还没有加入任何群聊或讨论组</p>
+    </div>
+  </div>
+  <div v-else class="groups-list">
     <div v-for="conversation in filteredConversations" :key="conversation.id" class="group-item" :class="{ active: selectedGroup && selectedGroup.id === conversation.id }" @contextmenu.prevent="$emit('showContextMenu', $event, conversation)" @click="$emit('select', conversation)" @dblclick="$emit('enter', conversation)">
       <div class="group-avatar">
         <Avatar :src="conversation.avatar" :name="conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组')" :server-url="serverUrl" :alt="conversation.name" size="md" />
@@ -154,5 +161,34 @@ const getConversationAvatarUrl = (conversation: Conversation) => {
   text-align: center;
   border-radius: 9px;
   padding: 0 6px;
+}
+
+.empty-groups {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.empty-groups .placeholder-content {
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+.empty-groups .placeholder-content i {
+  color: var(--text-tertiary, #999);
+  margin-bottom: 16px;
+}
+
+.empty-groups .placeholder-content h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #333);
+}
+
+.empty-groups .placeholder-content p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
 }
 </style>

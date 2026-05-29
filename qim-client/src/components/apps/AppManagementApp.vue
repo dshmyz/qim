@@ -2,9 +2,11 @@
   <div class="app-management-app">
     <AppHeader title="应用管理" @back="$emit('back')">
       <template #extra-buttons>
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
       </template>
       <template #actions>
         <button class="create-app-btn" @click="showCreateAppModal">+ 创建应用</button>
@@ -115,6 +117,7 @@ import axios from 'axios'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 
 // 定义事件

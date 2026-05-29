@@ -83,7 +83,8 @@ export function useMainMessageSending(
   currentConversation: Ref<any>,
   isConnected: Ref<boolean>,
   sessionExpired: Ref<boolean>,
-  handleStreamMessage: (conversationId: string, requestData: any, messageData: any, miniAppData: any, newsData: any) => Promise<void>
+  handleStreamMessage: (conversationId: string, requestData: any, messageData: any, miniAppData: any, newsData: any) => Promise<void>,
+  onMessageSent?: () => void
 ) {
   const chatStore = useChatStore()
   const { currentUser } = useCurrentUser()
@@ -169,8 +170,7 @@ export function useMainMessageSending(
         }
 
         chatStore.receiveMessage(conversationId, newMessage as any, true)
-
-        // scroll handled by watch in Main.vue
+        onMessageSent?.()
       } else {
         let errorMessage = '消息发送失败'
         if (response.code === 401) {

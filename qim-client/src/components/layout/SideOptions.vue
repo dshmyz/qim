@@ -84,6 +84,7 @@ defineEmits<{
   z-index: 200;
   flex-shrink: 0;
   gap: 20px;
+  border-right: 1px solid rgba(0, 0, 0, 0.02);
 }
 
 .side-options-title {

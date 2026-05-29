@@ -168,15 +168,12 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 0 20px;
+  height: 56px;
   background: var(--sidebar-bg);
-  height: 72px;
   box-sizing: border-box;
-  box-shadow: none;
-  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); */
-  margin: 0;
-  margin-bottom: 1px;
-  border-radius: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
 }
 
 .header-info {

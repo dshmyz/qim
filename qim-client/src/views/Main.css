@@ -266,49 +266,10 @@ button:active {
   min-width: 0;
 }
 
-.right-content-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  background: var(--sidebar-bg);
-  height: 72px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
 .header-left-group {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.right-content-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.toggle-sidebar-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: var(--text-color);
-}
-
-.toggle-sidebar-btn:hover {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-1px);
 }
 
 .right-content-body {
@@ -341,6 +302,12 @@ button:active {
   color: var(--text-secondary);
   background: var(--right-content-bg);
   opacity: 0.7;
+}
+
+.channel-empty-state-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .channel-empty-state .empty-icon {

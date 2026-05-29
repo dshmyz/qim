@@ -2,9 +2,11 @@
   <div class="short-link-manager">
     <AppHeader title="短链接管理" @back="$emit('back')">
       <template #extra-buttons>
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
       </template>
       <template #subtitle>
         <p class="header-description">生成、管理和跟踪你的短链接</p>
@@ -75,6 +77,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import QuickGenerateSection from './shortlink/QuickGenerateSection.vue'
 import StatsCards from './shortlink/StatsCards.vue'
 import ShortLinkList from './shortlink/ShortLinkList.vue'

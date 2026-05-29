@@ -33,6 +33,9 @@
               <div class="panel-category-app-icon"><i :class="app.icon"></i></div>
               <span class="panel-category-app-name">{{ app.name }}</span>
             </div>
+            <div v-if="category.apps.length === 0" class="panel-category-empty">
+              暂无{{ category.name }}
+            </div>
           </div>
         </div>
       </div>
@@ -206,5 +209,12 @@ const handleTabClick = (tab: string) => {
   font-size: 13px;
   color: var(--text-color);
   flex: 1;
+}
+
+.panel-category-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
 }
 </style>

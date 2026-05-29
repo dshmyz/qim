@@ -2,9 +2,11 @@
   <div class="ai-assistant-app">
     <AppHeader :title="showChatView ? currentBotName : 'AI 工作台'" @back="handleBack">
       <template #extra-buttons>
-        <button class="toggle-sidebar-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
+        <ToggleSidebarBtn
+          icon="fas fa-compress"
+          title="收起侧边栏"
+          @click="$emit('toggleSidebar')"
+        />
       </template>
       <template #actions>
         <button v-if="showChatView" class="header-action-btn" @click="backToDashboard">
@@ -39,6 +41,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import AppHeader from './AppHeader.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import AIWorkbenchDashboard from './ai/AIWorkbenchDashboard.vue'
 import BotChatView from './ai/BotChatView.vue'
 import { useBotChat } from '../../composables/useBotChat'

@@ -7,17 +7,11 @@
     />
 
     <div v-if="!channel.is_subscribed && !isCreator" class="subscribe-banner">
-      <div class="banner-content">
-        <i class="fas fa-bell banner-icon"></i>
-        <div class="banner-text">
-          <span class="banner-title">订阅此频道以参与互动</span>
-          <span class="banner-desc">你可以浏览消息，但订阅后才能点赞、评论和发消息</span>
-        </div>
+      <i class="fas fa-bell banner-icon"></i>
+      <div class="banner-text">
+        <span class="banner-title">订阅此频道以参与互动</span>
+        <span class="banner-desc">你可以浏览消息，但订阅后才能点赞、评论和发消息</span>
       </div>
-      <button class="banner-subscribe-btn" @click="$emit('subscribe', channel)">
-        <i class="fas fa-plus"></i>
-        订阅
-      </button>
     </div>
 
     <MessageList
@@ -187,16 +181,10 @@ const handleCopyLink = (message: ChannelMessage) => {
 .subscribe-banner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--spacing-3);
   padding: var(--spacing-3) var(--spacing-4);
   background: linear-gradient(135deg, var(--primary-light, rgba(51, 133, 255, 0.08)), rgba(103, 194, 58, 0.06));
   border-bottom: 1px solid var(--border-color);
-}
-
-.banner-content {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
 }
 
 .banner-icon {
@@ -220,30 +208,6 @@ const handleCopyLink = (message: ChannelMessage) => {
 .banner-desc {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-}
-
-.banner-subscribe-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--primary-color);
-  color: white;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  flex-shrink: 0;
-}
-
-.banner-subscribe-btn:hover {
-  background: var(--primary-dark);
-}
-
-.banner-subscribe-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
 }
 
 .message-input-area {

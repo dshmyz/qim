@@ -11,9 +11,8 @@
         <button class="icon-btn" :class="{ active: showSearch }" @click="toggleSearch" title="搜索">
           <i class="fas fa-search"></i>
         </button>
-        <button class="text-btn" @click="markAllAsRead" title="全部已读">
-          <i class="fas fa-check"></i>
-          <span>全部已读</span>
+        <button class="text-btn" @click="markAllAsRead" title="一键已读">
+          <span>一键已读</span>
         </button>
         <button class="clear-all-btn" @click="clearAll">清空</button>
       </div>

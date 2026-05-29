@@ -51,7 +51,7 @@ const buttonClass = computed(() => ({
   border-radius: 4px;
   cursor: pointer;
   color: var(--text-secondary, #666);
-  font-size: 14px;
+  font-size: 16px;
   transition: all 0.2s ease;
 }
 

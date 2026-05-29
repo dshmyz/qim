@@ -262,8 +262,8 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 25px;
+  height: 25px;
   border: none;
   background: var(--primary-color);
   color: white;

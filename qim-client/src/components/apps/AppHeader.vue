@@ -85,25 +85,6 @@ defineEmits<{
   background: var(--primary-light);
 }
 
-.header-left :deep(.toggle-sidebar-btn) {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--hover-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: var(--primary-color);
-}
-
-.header-left :deep(.toggle-sidebar-btn:hover) {
-  background: var(--primary-light);
-}
-
 .header-info {
   display: flex;
   flex-direction: column;

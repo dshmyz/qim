@@ -12,15 +12,6 @@ export interface App {
   category?: string
 }
 
-const BUILT_IN_APP_CODE_TO_ID: Record<string, string> = {
-  'file_manager': '3',
-  'calendar': '2',
-  'task_manager': '5',
-  'sticky_notes': '6',
-  'notes': '7',
-  'short_link': 'short-link',
-}
-
 export function useAppLogic(externalRefs?: {
   selectedAppId?: Ref<string>
   recentApps?: Ref<App[]>
@@ -42,7 +33,7 @@ export function useAppLogic(externalRefs?: {
   const appCategories = computed(() => [
     {
       id: '1', name: '内置应用', expanded: categoryExpanded.value['1'],
-      apps: builtInApps.value.map((a: any) => ({ ...a, id: String(a.id) }))
+      apps: builtInApps.value.map((a: any) => ({ ...a, id: a.code || String(a.id) }))
     },
     {
       id: '2', name: '自定义应用', expanded: categoryExpanded.value['2'],
@@ -69,12 +60,6 @@ export function useAppLogic(externalRefs?: {
     recentApps.value.unshift({ id: appId, name: appName, icon: appIcon })
     if (recentApps.value.length > 5) recentApps.value = recentApps.value.slice(0, 5)
     localStorage.setItem('recentApps', JSON.stringify(recentApps.value))
-  }
-
-  const resolveAppId = (app: { code?: string; name?: string; id?: string | number } | string): string | null => {
-    if (typeof app === 'string') return BUILT_IN_APP_CODE_TO_ID[app] || null
-    if (app?.code && BUILT_IN_APP_CODE_TO_ID[app.code]) return BUILT_IN_APP_CODE_TO_ID[app.code]
-    return null
   }
 
   const loadUserApps = async () => {
@@ -105,9 +90,6 @@ export function useAppLogic(externalRefs?: {
   }
 
   const openApp = async (appId: string) => {
-    const codeToComponentId = BUILT_IN_APP_CODE_TO_ID[appId]
-    if (codeToComponentId) { selectedAppId.value = codeToComponentId; return }
-
     let appName = ''; let appIcon = ''; let appUrl = ''; let appCode = ''; let openType = 'in-app'
 
     for (const category of appCategories.value) {
@@ -122,10 +104,8 @@ export function useAppLogic(externalRefs?: {
 
     if (appName && appIcon) addToRecentApps(appId, appName, appIcon)
 
-    const resolvedId = appCode ? resolveAppId({ code: appCode, name: appName }) : null
-    if (resolvedId) { selectedAppId.value = resolvedId; return }
+    if (appCode) { selectedAppId.value = appCode; return }
 
-    if (appId === 'short-link') { selectedAppId.value = 'short-link'; return }
     if (appId === 'mini-app') { showMiniAppList.value = true; return }
 
     if (appUrl) {
@@ -143,8 +123,7 @@ export function useAppLogic(externalRefs?: {
   const openUserApp = (app: any) => {
     if (app.name && app.icon) addToRecentApps(app.id, app.name, app.icon)
 
-    const resolvedId = app.code ? resolveAppId(app) : null
-    if (resolvedId) { selectedAppId.value = resolvedId; return }
+    if (app.code) { selectedAppId.value = app.code; return }
 
     const openType = app.openType || app.open_type || 'in-app'
     if (openType === 'external') {
@@ -170,8 +149,8 @@ export function useAppLogic(externalRefs?: {
 
   const handleSwitchApp = (app: App | string) => {
     if (typeof app === 'object' && app.code) {
-      const resolvedId = resolveAppId(app)
-      if (resolvedId) { selectedAppId.value = resolvedId; return }
+      selectedAppId.value = app.code
+      return
     }
     selectedAppId.value = typeof app === 'string' ? app : app.id
   }
