@@ -62,11 +62,6 @@
       </div>
     </div>
     <ChatToolbarButton
-      icon="fas fa-history"
-      title="消息管理"
-      @click="$emit('open-message-manager')"
-    />
-    <ChatToolbarButton
       icon="fas fa-th-large"
       title="小程序"
       @click="$emit('open-mini-app-list')"
@@ -79,6 +74,12 @@
       variant="ai"
       :class="{ 'ai-active': showAiActions }"
       @click="$emit('toggle-ai-actions')"
+    />
+    <ChatToolbarButton
+      class="message-manager-btn"
+      icon="fas fa-history"
+      title="消息管理"
+      @click="$emit('open-message-manager')"
     />
   </div>
 </template>
@@ -309,5 +310,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocumentClick))
   width: 16px;
   font-size: 13px;
   color: var(--text-secondary, #666);
+}
+
+.message-manager-btn {
+  margin-left: auto;
 }
 </style>
