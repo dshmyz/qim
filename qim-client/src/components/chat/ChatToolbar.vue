@@ -19,12 +19,13 @@
           <i class="fas fa-video"></i>
           <span>视频通话</span>
         </div>
-        <div class="call-menu-item" @click="selectCallType('screen')">
-          <i class="fas fa-desktop"></i>
-          <span>屏幕共享</span>
-        </div>
       </div>
     </div>
+    <ChatToolbarButton
+      icon="fas fa-desktop"
+      title="屏幕共享"
+      @click="$emit('start-screen-share')"
+    />
     <ChatToolbarButton
       icon="fas fa-smile"
       title="表情"
@@ -111,14 +112,12 @@ const selectScreenshot = (type: 'region' | 'hidden') => {
   }
 }
 
-const selectCallType = (type: 'voice' | 'video' | 'screen') => {
+const selectCallType = (type: 'voice' | 'video') => {
   showCallMenu.value = false
   if (type === 'voice') {
     emit('start-voice-call')
-  } else if (type === 'video') {
-    emit('start-video-call')
   } else {
-    emit('start-screen-share')
+    emit('start-video-call')
   }
 }
 
