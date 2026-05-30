@@ -34,7 +34,7 @@ func GetDB() *gorm.DB {
 func initSystemUser() {
 	db := database.GetDB()
 
-	if !db.Migrator().HasTable(&model.User{}) {
+	if !tableExists(db, "users") {
 		logger.WithModule("Init").Error("users 表不存在，跳过系统用户初始化。")
 		return
 	}
@@ -71,7 +71,7 @@ func initAdminUser() {
 	db := database.GetDB()
 
 	// 检查 users 表是否存在
-	if !db.Migrator().HasTable(&model.User{}) {
+	if !tableExists(db, "users") {
 		logger.WithModule("Init").Error("users 表不存在，跳过管理员初始化。请检查数据库连接和迁移是否成功。")
 		return
 	}
@@ -149,7 +149,7 @@ func seedBotTemplates(db *gorm.DB) {
 		return
 	}
 
-	if !db.Migrator().HasTable("bots") {
+	if !tableExists(db, "bots") {
 		markMigrationCompleted(db, "seed_bot_templates")
 		return
 	}
@@ -246,9 +246,16 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	return cfg, db, hub
 }
 
+// tableExists 使用原生 SQL 检查表是否存在，绕过 GORM HasTable 的兼容性问题
+func tableExists(db *gorm.DB, tableName string) bool {
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&count)
+	return count > 0
+}
+
 // MigrateDB 自动迁移数据库表
 func MigrateDB(db *gorm.DB) {
-	if err := db.AutoMigrate(
+	models := []interface{}{
 		&model.User{},
 		&model.Department{},
 		&model.DepartmentEmployee{},
@@ -285,6 +292,7 @@ func MigrateDB(db *gorm.DB) {
 		&model.ClientVersion{},       // 客户端版本
 		&model.Blacklist{},           // 黑名单
 		&model.AIProvider{},          // AI提供商
+		&model.MiniApp{},             // 小程序
 		&model.AvatarConfig{},        // 分身配置
 		&model.AvatarSession{},       // 分身会话状态
 		&model.AvatarLearnTask{},     // 分身学习任务
@@ -297,11 +305,28 @@ func MigrateDB(db *gorm.DB) {
 		&model.CrashLog{},            // 崩溃日志
 		&model.Approval{},            // 审批记录
 		&model.ApprovalConfig{},      // 审批配置
-	); err != nil {
-		// GORM AutoMigrate 在表已存在时会报错，但这不影响程序运行
-		// 只有在真正的迁移失败时才记录错误
-		logger.WithModule("Migrate").Error("数据库迁移失败", "error", err)
-		logger.WithModule("Migrate").Error("如果使用 MySQL，请检查：1) 数据库是否已创建 2) 连接账号是否有建表权限 3) 数据库名是否正确")
+	}
+
+	// 逐表迁移：SQLite 的 AutoMigrate 遇到 "already exists" 会停止，
+	// 导致后续新增模型的表无法创建。逐表迁移可跳过已存在的表，继续处理新表。
+	migrated := 0
+	skipped := 0
+	for _, m := range models {
+		if err := db.AutoMigrate(m); err != nil {
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "already exists") {
+				skipped++
+			} else {
+				logger.WithModule("Migrate").Error("迁移表失败", "model", fmt.Sprintf("%T", m), "error", err)
+			}
+		} else {
+			migrated++
+		}
+	}
+	if migrated > 0 {
+		logger.WithModule("Migrate").Info("数据库迁移完成", "migrated", migrated, "skipped", skipped)
+	} else if skipped > 0 {
+		logger.WithModule("Migrate").Info("所有数据库表已存在，跳过迁移")
 	}
 
 	addIndexes(db)
@@ -334,7 +359,7 @@ func seedBuiltInApps(db *gorm.DB) {
 		return
 	}
 
-	if !db.Migrator().HasTable("apps") {
+	if !tableExists(db, "apps") {
 		return
 	}
 

@@ -141,7 +141,8 @@ func (p *CASProvider) ValidateTicket(ctx context.Context, ticket string) (*AuthR
 	}
 
 	casUser := casResponse.AuthenticationSuccess.User
-	userInfo := p.mapAttributes(casUser, casResponse.AuthenticationSuccess.Attributes)
+	attrs := casResponse.AuthenticationSuccess.ParseAttributes()
+	userInfo := p.mapAttributes(casUser, attrs)
 
 	return &AuthResult{
 		Success:  true,
@@ -206,7 +207,8 @@ func (p *CASProvider) ValidateProxyTicket(ctx context.Context, ticket string, ta
 	}
 
 	casUser := casResponse.AuthenticationSuccess.User
-	userInfo := p.mapAttributes(casUser, casResponse.AuthenticationSuccess.Attributes)
+	attrs := casResponse.AuthenticationSuccess.ParseAttributes()
+	userInfo := p.mapAttributes(casUser, attrs)
 	userInfo["proxy_granting_ticket"] = casResponse.AuthenticationSuccess.ProxyGrantingTicket
 
 	return &AuthResult{
@@ -253,9 +255,61 @@ type CASServiceResponse struct {
 }
 
 type CASAuthenticationSuccess struct {
-	User                string            `xml:"user"`
-	Attributes          map[string]string `xml:"attributes"`
-	ProxyGrantingTicket string            `xml:"proxyGrantingTicket"`
+	User                string `xml:"user"`
+	ProxyGrantingTicket string `xml:"proxyGrantingTicket"`
+	InnerXML            string `xml:",innerxml"`
+}
+
+func (s *CASAuthenticationSuccess) ParseAttributes() map[string]string {
+	attrs := make(map[string]string)
+	if s.InnerXML == "" {
+		return attrs
+	}
+
+	// 包裹时声明 cas 命名空间，避免 <cas:user> 等带前缀元素导致解析失败
+	wrapper := `<root xmlns:cas="http://www.yale.edu/tp/cas">` + s.InnerXML + `</root>`
+	decoder := xml.NewDecoder(strings.NewReader(wrapper))
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			// 跳过 wrapper 根元素和 user/proxyGrantingTicket，对其余子元素 DecodeElement 提取值
+			if t.Name.Local == "root" || t.Name.Local == "user" || t.Name.Local == "proxyGrantingTicket" {
+				continue
+			}
+			// CAS 3.0 attributes 块本身跳过，其子元素会被单独处理
+			if t.Name.Local == "attributes" {
+				continue
+			}
+			// CAS 3.0 <cas:attribute name="displayName">张三</cas:attribute> 格式
+			if t.Name.Local == "attribute" {
+				var attrName string
+				for _, a := range t.Attr {
+					if a.Name.Local == "name" {
+						attrName = a.Value
+						break
+					}
+				}
+				if attrName == "" {
+					continue
+				}
+				var value string
+				if err := decoder.DecodeElement(&value, &t); err == nil && value != "" {
+					attrs[attrName] = value
+				}
+				continue
+			}
+			// 扁平格式：<displayName>张三</displayName>
+			var value string
+			if err := decoder.DecodeElement(&value, &t); err == nil && value != "" {
+				attrs[t.Name.Local] = value
+			}
+		}
+	}
+	return attrs
 }
 
 type CASAuthenticationFailure struct {

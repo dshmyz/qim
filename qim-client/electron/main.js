@@ -281,8 +281,12 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error(`Failed to load main window: ${errorDescription} (${errorCode})`)
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close()
+    try {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close()
+      }
+    } catch (e) {
+      console.error('关闭splash窗口失败:', e)
     }
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
       <html><body style="font-family:system-ui;background:#f0f2f5;display:flex;align-items:center;justify-content:center;">
@@ -299,7 +303,11 @@ function createWindow() {
   const startupTimeout = setTimeout(() => {
     if (splashWindow && !splashWindow.isDestroyed() && !mainWindow.isVisible()) {
       console.warn('Startup timeout: main window not ready after 10s')
-      splashWindow.close()
+      try {
+        splashWindow.close()
+      } catch (e) {
+        console.error('关闭splash窗口失败:', e)
+      }
       mainWindow.show()
     }
   }, 10000)
@@ -308,12 +316,22 @@ function createWindow() {
     clearTimeout(startupTimeout)
     console.log('Main window ready to show, closing splash')
     mainWindow.show()
-    splashWindow.close()
+    try {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close()
+      }
+    } catch (e) {
+      console.error('关闭splash窗口失败:', e)
+    }
   })
 
   mainWindow.on('close', function () {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close()
+    try {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close()
+      }
+    } catch (e) {
+      console.error('关闭splash窗口失败:', e)
     }
     globalShortcut.unregisterAll()
     mainWindow = null
