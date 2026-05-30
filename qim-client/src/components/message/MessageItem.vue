@@ -383,7 +383,6 @@ const isFileContent = (content: string): boolean => {
 
 .quoted-message-preview:hover {
   background: var(--hover-color);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
@@ -518,7 +517,6 @@ const isFileContent = (content: string): boolean => {
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .message-item.self .message-bubble {
@@ -676,13 +674,10 @@ const isFileContent = (content: string): boolean => {
 .message-item.self .quoted-message-preview {
   background: rgba(59, 130, 246, 0.15);
   border-left-color: var(--primary-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .message-item.self .quoted-message-preview:hover {
   background: rgba(59, 130, 246, 0.2);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
 }
 
 .message-item.self .quoted-message-preview-header,

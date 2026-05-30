@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"qim-server/app"
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/handler"
 	"qim-server/pkg/logger"
 	syncpkg "qim-server/sync"
@@ -50,6 +51,10 @@ func main() {
 	syncScheduler.Start()
 	logger.L().Info("组织架构同步调度器已启动")
 
+	// 启动事件提醒定时调度器
+	go di.GlobalContainer.EventService.StartReminderScheduler()
+	logger.L().Info("事件提醒调度器已启动")
+
 	// 使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -69,8 +74,9 @@ func main() {
 	go func() {
 		<-quit
 		logger.L().Info("收到退出信号，正在优雅关闭...")
-		cancel() // 停止定时任务
-		syncScheduler.Stop() // 停止同步调度器
+		cancel()                                                // 停止定时任务
+		syncScheduler.Stop()                                    // 停止同步调度器
+		di.GlobalContainer.EventService.StopReminderScheduler() // 停止事件提醒调度器
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()

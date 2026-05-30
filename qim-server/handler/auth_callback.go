@@ -86,17 +86,14 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 		return nil, false
 	}
 
-	// 获取字段映射
 	mapping := getAttributeMapping(authProvider)
 
-	// 通过映射提取 username
 	username := getStringFromUserInfo(userInfo, "login", "name")
 	if username == "" {
 		email := getStringFromUserInfo(userInfo, mapping["email"], "email")
 		username = fmt.Sprintf("oauth_user_%s", email)
 	}
 
-	// 通过映射提取其他字段
 	email := getStringFromUserInfo(userInfo, mapping["email"], "email")
 	nickname := getStringFromUserInfo(userInfo, mapping["nickname"], "nickname", "name")
 	phone := getStringFromUserInfo(userInfo, mapping["phone"], "phone")
@@ -105,7 +102,6 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 	var user model.User
 	err = db.Where("username = ?", username).First(&user).Error
 	if err != nil {
-		// 用户不存在，尝试通过 email 查找
 		if email != "" {
 			err = db.Where("email = ?", email).First(&user).Error
 		}
@@ -130,7 +126,6 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 			return nil, false
 		}
 	} else {
-		// 根据属性映射更新用户字段
 		updates := buildUserUpdates(userInfo, authProvider)
 		db.Model(&user).Updates(updates)
 	}

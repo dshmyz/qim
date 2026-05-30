@@ -125,6 +125,5 @@ defineExpose({
   flex: 1;
   display: flex;
   overflow: hidden;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03);
 }
 </style>

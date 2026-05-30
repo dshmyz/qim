@@ -43,7 +43,6 @@ const renderedContent = computed(() => {
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .markdown-message h1,

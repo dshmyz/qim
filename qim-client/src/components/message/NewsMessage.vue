@@ -38,39 +38,51 @@ const openNewsLink = () => {
 .news-message {
   background: var(--sidebar-bg);
   border-radius: 12px;
-  padding: 14px;
   width: fit-content;
   max-width: 100%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
   box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.news-message::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f59e0b, #ef4444, #f59e0b);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.news-message:hover::before {
+  opacity: 1;
 }
 
 .news-message:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
 }
 
 .news-info {
   display: flex;
   padding: 16px;
-  background: var(--message-bg);
   cursor: pointer;
-  transition: all 0.2s;
+  gap: 12px;
+  transition: all 0.2s ease;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .news-info:hover {
   background: var(--hover-color);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
 }
 
 .news-content {
   flex: 1;
   min-width: 0;
-  margin-right: 12px;
 }
 
 .news-title {
@@ -98,14 +110,12 @@ const openNewsLink = () => {
   height: 60px;
   border-radius: 8px;
   object-fit: cover;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
 }
 
 .news-info:hover .news-image {
   transform: scale(1.02);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
 }
 
 /* 自己的资讯消息样式 */
@@ -113,8 +123,14 @@ const openNewsLink = () => {
   background: var(--primary-color);
 }
 
+.news-message.self::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  opacity: 1;
+}
+
 .news-message.self .news-info {
   background: rgba(255, 255, 255, 0.1);
+  border-color: transparent;
 }
 
 .news-message.self .news-info:hover {
@@ -130,6 +146,6 @@ const openNewsLink = () => {
 }
 
 .news-message.self .news-image {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 </style>

@@ -58,19 +58,33 @@ export const avatarAPI = {
   },
 
   async getLearnStatus(): Promise<AvatarLearnStatus> {
-    const response = await request<{ code: number; data: AvatarLearnStatus }>(
-      '/api/v1/avatar/learn-status',
-      { method: 'GET' }
-    )
-    return response!.data
+    try {
+      const response = await request<{ code: number; data: AvatarLearnStatus }>(
+        '/api/v1/avatar/learn-status',
+        { method: 'GET' }
+      )
+      return response!.data
+    } catch (e: any) {
+      if (e.message?.includes('配置不存在')) {
+        return { status: 'idle', progress: 0, messageCount: 0, error: null }
+      }
+      throw e
+    }
   },
 
   async getLearnedPersona(): Promise<string> {
-    const response = await request<{ code: number; data: string }>(
-      '/api/v1/avatar/learned-persona',
-      { method: 'GET' }
-    )
-    return response!.data
+    try {
+      const response = await request<{ code: number; data: string }>(
+        '/api/v1/avatar/learned-persona',
+        { method: 'GET' }
+      )
+      return response!.data
+    } catch (e: any) {
+      if (e.message?.includes('配置不存在')) {
+        return ''
+      }
+      throw e
+    }
   },
 
   async clearLearnedPersona(): Promise<void> {

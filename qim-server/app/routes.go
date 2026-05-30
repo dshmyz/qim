@@ -252,6 +252,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 公开的认证提供者列表（无需认证）
 			authProviderHandler := handler.NewAuthProviderHandler()
 			auth.GET("/providers", authProviderHandler.GetProviders)
+			auth.GET("/providers/:name/login-url", authProviderHandler.GetProviderLoginURL)
 
 			// 统一认证回调（前端统一调用，无需认证）
 			auth.POST("/callback", handler.UnifiedAuthCallback)
@@ -266,6 +267,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		{
 			authAuthed.POST("/logout", handler.Logout)
 			authAuthed.POST("/refresh", handler.RefreshToken)
+			authAuthed.POST("/refresh-token", handler.RefreshOAuthToken)
 		}
 
 		// 需要认证的路由
@@ -467,7 +469,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/apps/:id", handler.DeleteApp)
 			authed.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
 
-
 			// 统计报表
 			authed.GET("/statistics", handler.GetStatistics)
 
@@ -628,7 +629,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 用户角色管理
 			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.RemoveUserRole)
 			authed.PUT("/users/:id/roles", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BatchAssignUserRoles)
-
 
 			// 用户删除（管理员）
 			authed.DELETE("/users/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteUser)

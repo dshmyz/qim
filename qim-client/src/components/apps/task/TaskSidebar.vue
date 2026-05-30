@@ -56,10 +56,10 @@ const store = useTaskStore()
 const currentView = computed(() => store.currentView)
 
 const views: { id: TaskView; label: string; icon: string }[] = [
+    { id: 'workspace', label: '工作台', icon: 'fas fa-user-circle' },
   { id: 'kanban', label: '看板', icon: 'fas fa-th-large' },
   { id: 'list', label: '列表', icon: 'fas fa-list' },
-  { id: 'calendar', label: '日历', icon: 'fas fa-calendar-alt' },
-  { id: 'workspace', label: '工作台', icon: 'fas fa-user-circle' }
+  { id: 'calendar', label: '日历', icon: 'fas fa-calendar-alt' }
 ]
 
 function togglePriorityFilter(priority: 'high') {

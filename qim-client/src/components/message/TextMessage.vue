@@ -66,7 +66,6 @@ const convertedContent = computed(() => {
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .message-link {

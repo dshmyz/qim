@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"qim-server/ai"
@@ -20,13 +21,17 @@ var ErrMessageNotFound = errors.New("message not found")
 var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
+var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 
 type MessageService struct {
 	db     *gorm.DB
 	hub    *ws.Hub
 	dbType string
 
-	aiService *ai.AIService
+	aiService            *ai.AIService
+	sensitiveWordCache   []model.SensitiveWord
+	sensitiveWordCacheMu sync.RWMutex
+	sensitiveWordLoaded  bool
 }
 
 func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *MessageService {
@@ -48,6 +53,42 @@ func NewMessageServiceWithDBType(db *gorm.DB, hub *ws.Hub, aiService *ai.AIServi
 
 func (s *MessageService) SetAIService(aiService *ai.AIService) {
 	s.aiService = aiService
+}
+
+func (s *MessageService) loadSensitiveWords() {
+	var words []model.SensitiveWord
+	if err := s.db.Where("enabled = ?", true).Find(&words).Error; err == nil {
+		s.sensitiveWordCacheMu.Lock()
+		s.sensitiveWordCache = words
+		s.sensitiveWordLoaded = true
+		s.sensitiveWordCacheMu.Unlock()
+	}
+}
+
+func (s *MessageService) RefreshSensitiveWordCache() {
+	s.loadSensitiveWords()
+}
+
+func (s *MessageService) CheckSensitiveContent(content string) (bool, []string) {
+	s.sensitiveWordCacheMu.RLock()
+	loaded := s.sensitiveWordLoaded
+	cache := s.sensitiveWordCache
+	s.sensitiveWordCacheMu.RUnlock()
+
+	if !loaded {
+		s.loadSensitiveWords()
+		s.sensitiveWordCacheMu.RLock()
+		cache = s.sensitiveWordCache
+		s.sensitiveWordCacheMu.RUnlock()
+	}
+
+	found := []string{}
+	for _, word := range cache {
+		if strings.Contains(content, word.Word) {
+			found = append(found, word.Word)
+		}
+	}
+	return len(found) > 0, found
 }
 
 type MessageQuery struct {
@@ -73,6 +114,12 @@ type MessageResult struct {
 
 func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
 	db := s.db
+
+	if msgType == "text" && content != "" {
+		if contains, words := s.CheckSensitiveContent(content); contains {
+			return nil, fmt.Errorf("%w: %v", ErrSensitiveWordBlocked, words)
+		}
+	}
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {

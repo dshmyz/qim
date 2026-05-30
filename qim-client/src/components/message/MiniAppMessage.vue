@@ -37,20 +37,15 @@ const openMiniApp = () => {
 
 <style scoped>
 .mini-app-message {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
-  border-radius: 14px;
-  padding: 14px;
+  background: var(--sidebar-bg);
+  border-radius: 12px;
+  padding: 16px;
   width: fit-content;
   min-width: 260px;
   max-width: 100%;
-  box-shadow: 
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   box-sizing: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
   cursor: pointer;
@@ -65,15 +60,11 @@ const openMiniApp = () => {
   height: 3px;
   background: linear-gradient(90deg, #4facfe, #00f2fe, #43e97b);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .mini-app-message:hover {
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    0 12px 32px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .mini-app-message:hover::before {
@@ -101,41 +92,16 @@ const openMiniApp = () => {
   object-fit: cover;
   background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   border: none;
-  box-shadow: 
-    0 4px 12px rgba(79, 172, 254, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
   display: block;
 }
 
-.mini-app-icon::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
-  border-radius: 12px;
-  z-index: 1;
-}
-
-.mini-app-icon-container:hover .mini-app-icon {
-  transform: scale(1.08) rotate(-2deg);
-  box-shadow: 
-    0 6px 20px rgba(79, 172, 254, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
 .mini-app-type-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
-  color: #6b7280;
-  background: rgba(107, 114, 128, 0.08);
-  padding: 2px 6px;
-  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 2px 8px;
+  border-radius: 4px;
   display: block;
   text-align: center;
   white-space: nowrap;
@@ -154,7 +120,7 @@ const openMiniApp = () => {
 .mini-app-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -165,7 +131,7 @@ const openMiniApp = () => {
 
 .mini-app-description {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -174,31 +140,28 @@ const openMiniApp = () => {
 }
 
 .mini-app-arrow {
-  color: #9ca3af;
+  color: var(--text-secondary);
   font-size: 12px;
   flex-shrink: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   align-self: center;
   margin-left: 4px;
 }
 
 .mini-app-message:hover .mini-app-arrow {
-  color: #4facfe;
+  color: var(--primary-color);
   transform: translateX(4px);
 }
 
 /* 自己的小程序消息样式 */
 .mini-app-message.self {
-  background: linear-gradient(135deg, #3182ce 0%, #4299e1 50%, #63b3ed 100%);
+  background: var(--primary-color);
   border: none;
-  box-shadow: 
-    0 4px 12px rgba(49, 130, 206, 0.25),
-    0 12px 32px rgba(66, 153, 225, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .mini-app-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  opacity: 1;
 }
 
 .mini-app-message.self .mini-app-name {
@@ -212,9 +175,6 @@ const openMiniApp = () => {
 
 .mini-app-message.self .mini-app-icon {
   background: rgba(255, 255, 255, 0.95);
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .mini-app-message.self .mini-app-type-label {

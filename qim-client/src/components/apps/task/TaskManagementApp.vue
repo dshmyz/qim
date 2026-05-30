@@ -65,7 +65,7 @@
 
     <TaskCreateModal
       :visible="showCreateModal"
-      :task="selectedTask"
+      :task="editingTask"
       @close="onCloseModal"
       @submit="onSubmitTask"
     />
@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import type { Task, TaskStatus, TaskPriority, Tag, TaskUser } from '../../../types/task'
 import { useTaskStore } from '../../../stores/task'
 import { request } from '../../../composables/useRequest'
@@ -112,7 +112,7 @@ import QMessage from '../../../utils/qmessage'
 
 const store = useTaskStore()
 const showCreateModal = ref(false)
-const selectedTask = computed(() => store.selectedTask)
+const editingTask = ref<Task | null>(null)
 const availableTags = ref<Tag[]>([
   { id: '1', name: '设计', color: '#ec4899' },
   { id: '2', name: '后端', color: '#6366f1' },
@@ -189,7 +189,6 @@ function onTaskContextmenu(event: MouseEvent, task: Task) {
   contextMenu.x = event.clientX
   contextMenu.y = event.clientY
   contextMenu.taskId = task.id
-  store.selectTask(task.id)
 }
 
 function closeContextMenu() {
@@ -197,6 +196,8 @@ function closeContextMenu() {
 }
 
 function onContextEdit() {
+  const task = store.tasks.find(t => t.id === contextMenu.taskId)
+  if (task) editingTask.value = task
   showCreateModal.value = true
   closeContextMenu()
 }
@@ -228,19 +229,19 @@ function onKeydown(e: KeyboardEvent) {
       break
     case '1':
       e.preventDefault()
-      store.setView('kanban')
+      store.setView('workspace')
       break
     case '2':
       e.preventDefault()
-      store.setView('list')
+      store.setView('kanban')
       break
     case '3':
       e.preventDefault()
-      store.setView('calendar')
+      store.setView('list')
       break
     case '4':
       e.preventDefault()
-      store.setView('workspace')
+      store.setView('calendar')
       break
     case 'Delete':
     case 'Backspace':
@@ -255,7 +256,7 @@ function onKeydown(e: KeyboardEvent) {
 
 function onCloseModal() {
   showCreateModal.value = false
-  store.selectTask(null)
+  editingTask.value = null
 }
 
 async function onSubmitTask(data: {
@@ -266,15 +267,15 @@ async function onSubmitTask(data: {
   status: TaskStatus
 }) {
   try {
-    if (selectedTask.value) {
-      await store.updateTask(selectedTask.value.id, data)
+    if (editingTask.value) {
+      await store.updateTask(editingTask.value.id, data)
       QMessage.success('任务已更新')
     } else {
       await store.createTask(data)
       QMessage.success('任务已创建')
     }
     showCreateModal.value = false
-    store.selectTask(null)
+    editingTask.value = null
     store.refreshTasks()
   } catch {
     QMessage.error('操作失败，请重试')
@@ -289,7 +290,6 @@ async function onSubmitTask(data: {
   flex-direction: column;
   background: var(--content-bg);
   overflow: hidden;
-  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
   min-width: 0;
 }

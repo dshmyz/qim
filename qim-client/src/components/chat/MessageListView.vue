@@ -205,7 +205,6 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   opacity: 0.95;
   -webkit-overflow-scrolling: touch;
 }

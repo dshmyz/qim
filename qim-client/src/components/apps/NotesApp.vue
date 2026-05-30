@@ -54,6 +54,8 @@
             :saving="saving"
             :analyzing="analyzing"
             :fullscreen="isFullscreen"
+            @format="handleFormat"
+            @insert-link="handleInsertLink"
             @save="handleSave"
             @analyze="handleAnalyze"
             @import="triggerImport"
@@ -63,9 +65,11 @@
             @toggle-fullscreen="toggleFullscreen"
           />
           <NoteEditor
+            ref="noteEditorRef"
             v-model:title="selectedNote.title"
             v-model:content="selectedNote.content"
             :mode="editorMode"
+            @save="handleSave"
           />
         </template>
         <div v-else class="empty-note">
@@ -124,13 +128,14 @@ const selectedNoteId = ref<number | null>(null)
 const selectedNote = ref<Note | null>(null)
 const searchQuery = ref('')
 const selectedTag = ref<string | null>(null)
-const editorMode = ref<'edit' | 'preview'>('edit')
+const editorMode = ref<'edit' | 'split' | 'preview'>('edit')
 const saving = ref(false)
 const analyzing = ref(false)
 const showAnalysisModal = ref(false)
 const analysisResult = ref<AIAnalyzeResult | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isFullscreen = ref(false)
+const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 const allTags = computed(() => {
   const tags = new Set<string>()
@@ -164,6 +169,14 @@ function editNote(note: Note) {
 
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value
+}
+
+function handleFormat(prefix: string, suffix: string) {
+  noteEditorRef.value?.insertFormat(prefix, suffix)
+}
+
+function handleInsertLink() {
+  noteEditorRef.value?.insertLink()
 }
 
 async function handleCreate() {
@@ -274,6 +287,17 @@ onUnmounted(() => {
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && isFullscreen.value) {
     isFullscreen.value = false
+    return
+  }
+  if (e.key === 'F11') {
+    e.preventDefault()
+    toggleFullscreen()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    handleSave()
+    return
   }
 }
 </script>
@@ -285,7 +309,6 @@ function handleKeydown(e: KeyboardEvent) {
   flex-direction: column;
   background: var(--content-bg);
   overflow: hidden;
-  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
 }
 

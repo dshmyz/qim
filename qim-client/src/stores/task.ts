@@ -7,7 +7,7 @@ import type { CreateTaskData, UpdateTaskData } from '../types/task'
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([])
   const contacts = ref<TaskUser[]>([])
-  const currentView = ref<TaskView>('kanban')
+  const currentView = ref<TaskView>('workspace')
   const filters = ref<TaskFilters>({
     search: '',
     priority: null,

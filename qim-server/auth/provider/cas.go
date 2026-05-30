@@ -79,6 +79,10 @@ func (p *CASProvider) Priority() int {
 	return p.priority
 }
 
+func (p *CASProvider) GetConfig() *CASConfig {
+	return p.config
+}
+
 func (p *CASProvider) Authenticate(ctx context.Context, creds *Credentials) (*AuthResult, error) {
 	return &AuthResult{
 		Success: false,

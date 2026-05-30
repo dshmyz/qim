@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,8 +8,6 @@ import (
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
-	"qim-server/utils"
-	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -269,29 +266,7 @@ func CreateEvent(c *gin.Context) {
 	}
 
 	if req.Reminder > 0 {
-		utils.SafeGoWithLabel("notification", func() {
-			svc.CreateReminderNotification(userID.(uint), event)
-
-			notification := model.Notification{
-				UserID:        userID.(uint),
-				Type:          "event_reminder",
-				Title:         "事件提醒",
-				Content:       fmt.Sprintf("您设置的事件「%s」即将开始", event.Title),
-				Priority:      "important",
-				ActionType:    "confirm_reschedule",
-				ActionPayload: fmt.Sprintf(`{"event_id":%d}`, event.ID),
-			}
-			di.GlobalContainer.NotificationService.Create(&notification)
-
-			if ws.GlobalHub != nil {
-				notificationMsg := ws.WSMessage{
-					Type: "notification",
-					Data: notification,
-				}
-				jsonMsg, _ := json.Marshal(notificationMsg)
-				ws.GlobalHub.SendToUser(userID.(uint), jsonMsg)
-			}
-		})
+		// 提醒由 EventService 的定时调度器自动处理，无需手动触发
 	}
 
 	response.Success(c, event)

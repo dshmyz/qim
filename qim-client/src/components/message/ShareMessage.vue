@@ -84,20 +84,15 @@ const getShareTypeText = (type?: string): string => {
 
 <style scoped>
 .share-message {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
-  border-radius: 14px;
-  padding: 14px;
+  background: var(--sidebar-bg);
+  border-radius: 12px;
+  padding: 16px;
   width: fit-content;
   min-width: 260px;
   max-width: 100%;
-  box-shadow: 
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   box-sizing: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
 }
@@ -111,15 +106,11 @@ const getShareTypeText = (type?: string): string => {
   height: 3px;
   background: linear-gradient(90deg, #f093fb, #f5576c, #4facfe);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .share-message:hover {
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    0 12px 32px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .share-message:hover::before {
@@ -141,7 +132,7 @@ const getShareTypeText = (type?: string): string => {
 }
 
 .share-icon {
-  font-size: 22px;
+  font-size: 20px;
   width: 48px;
   height: 48px;
   display: flex;
@@ -149,40 +140,16 @@ const getShareTypeText = (type?: string): string => {
   justify-content: center;
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 
-    0 4px 12px rgba(240, 147, 251, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
   color: #ffffff;
 }
 
-.share-icon::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
-  border-radius: 12px;
-}
-
-.share-icon:hover {
-  transform: scale(1.08) rotate(-2deg);
-  box-shadow: 
-    0 6px 20px rgba(240, 147, 251, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
 .share-type-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
-  color: #6b7280;
-  background: rgba(107, 114, 128, 0.08);
-  padding: 2px 6px;
-  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 2px 8px;
+  border-radius: 4px;
   display: block;
   text-align: center;
   white-space: nowrap;
@@ -201,7 +168,7 @@ const getShareTypeText = (type?: string): string => {
 .share-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -218,22 +185,19 @@ const getShareTypeText = (type?: string): string => {
 }
 
 .share-action-btn {
-  padding: 6px 14px;
+  padding: 6px 12px;
   font-size: 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: none;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  color: #495057;
+  background: var(--hover-color);
+  color: var(--text-color);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s ease;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
-  box-shadow: 
-    0 2px 4px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .share-action-btn i {
@@ -242,12 +206,9 @@ const getShareTypeText = (type?: string): string => {
 }
 
 .share-action-btn:hover {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: var(--primary-color);
   color: #ffffff;
-  box-shadow: 
-    0 4px 12px rgba(240, 147, 251, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .share-action-btn:hover i {
@@ -256,32 +217,28 @@ const getShareTypeText = (type?: string): string => {
 
 .share-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(240, 147, 251, 0.3);
 }
 
 .share-expanded-content {
   margin-top: 10px;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
+  background: var(--hover-color);
+  border-radius: 6px;
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-color);
 }
 
 /* 自己的分享消息样式 */
 .share-message.self {
-  background: linear-gradient(135deg, #d53f8c 0%, #ed64a6 50%, #f687b3 100%);
+  background: var(--primary-color);
   border: none;
-  box-shadow: 
-    0 4px 12px rgba(213, 63, 140, 0.25),
-    0 12px 32px rgba(237, 100, 166, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .share-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  opacity: 1;
 }
 
 .share-message.self .share-name {
@@ -291,10 +248,7 @@ const getShareTypeText = (type?: string): string => {
 
 .share-message.self .share-icon {
   background: rgba(255, 255, 255, 0.95);
-  color: #f5576c;
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  color: var(--primary-color);
 }
 
 .share-message.self .share-type-label {
@@ -304,23 +258,17 @@ const getShareTypeText = (type?: string): string => {
 
 .share-message.self .share-action-btn {
   background: rgba(255, 255, 255, 0.95);
-  color: #f5576c;
-  box-shadow: 
-    0 2px 8px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  color: var(--primary-color);
 }
 
 .share-message.self .share-action-btn:hover {
   background: #ffffff;
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .share-message.self .share-expanded-content {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.9);
 }
 </style>

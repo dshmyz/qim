@@ -7,18 +7,20 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"golang.org/x/oauth2"
 )
 
 type OAuthConfig struct {
-	ClientID        string            `json:"client_id"`
-	ClientSecret    string            `json:"client_secret"`
-	AuthURL         string            `json:"auth_url"`
-	TokenURL        string            `json:"token_url"`
-	UserInfoURL     string            `json:"user_info_url"`
-	RedirectURL     string            `json:"redirect_url"`
-	Scope           string            `json:"scope"`
+	ClientID         string            `json:"client_id"`
+	ClientSecret     string            `json:"client_secret"`
+	AuthURL          string            `json:"auth_url"`
+	TokenURL         string            `json:"token_url"`
+	UserInfoURL      string            `json:"user_info_url"`
+	RevokeURL        string            `json:"revoke_url"`
+	RedirectURL      string            `json:"redirect_url"`
+	Scope            string            `json:"scope"`
 	AttributeMapping map[string]string `json:"attribute_mapping"`
 }
 
@@ -89,6 +91,10 @@ func (p *OAuthProvider) IsEnabled() bool {
 
 func (p *OAuthProvider) Priority() int {
 	return p.priority
+}
+
+func (p *OAuthProvider) GetConfig() *OAuthConfig {
+	return p.config
 }
 
 func (p *OAuthProvider) Authenticate(ctx context.Context, creds *Credentials) (*AuthResult, error) {
@@ -189,6 +195,36 @@ func (p *OAuthProvider) RefreshToken(ctx context.Context, refreshToken string) (
 }
 
 func (p *OAuthProvider) RevokeToken(ctx context.Context, token string) error {
+	if p.config.RevokeURL == "" {
+		return nil
+	}
+
+	form := url.Values{}
+	form.Set("token", token)
+	if p.config.ClientID != "" {
+		form.Set("client_id", p.config.ClientID)
+	}
+	if p.config.ClientSecret != "" {
+		form.Set("client_secret", p.config.ClientSecret)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.config.RevokeURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("创建撤销请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("撤销令牌请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("撤销令牌失败: HTTP %d", resp.StatusCode)
+	}
+
 	return nil
 }
 

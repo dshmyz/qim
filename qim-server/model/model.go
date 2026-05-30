@@ -310,17 +310,18 @@ type BotConversation struct {
 
 // 日历事件
 type Event struct {
-	ID          uint           `json:"id" gorm:"primarykey"`
-	UserID      uint           `json:"user_id" gorm:"not null;index"`
-	Title       string         `json:"title" gorm:"size:500;not null"`
-	Description string         `json:"description" gorm:"type:text"`
-	Start       time.Time      `json:"start" gorm:"column:start;not null"`
-	End         time.Time      `json:"end" gorm:"column:end;not null"`
-	AllDay      bool           `json:"all_day" gorm:"default:false"`
-	Reminder    int            `json:"reminder" gorm:"default:0"` // 提醒时间（分钟）
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	ID           uint           `json:"id" gorm:"primarykey"`
+	UserID       uint           `json:"user_id" gorm:"not null;index"`
+	Title        string         `json:"title" gorm:"size:500;not null"`
+	Description  string         `json:"description" gorm:"type:text"`
+	Start        time.Time      `json:"start" gorm:"column:start;not null"`
+	End          time.Time      `json:"end" gorm:"column:end;not null"`
+	AllDay       bool           `json:"all_day" gorm:"default:false"`
+	Reminder     int            `json:"reminder" gorm:"default:0"`
+	ReminderSent bool           `json:"reminder_sent" gorm:"default:false"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // 用户角色

@@ -452,12 +452,22 @@ func (h *AvatarHandler) GetLearnStatus(c *gin.Context) {
 	userID := userIDAny.(uint)
 
 	var config model.AvatarConfig
+	hasConfig := true
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
+		hasConfig = false
+	}
+
+	if !hasConfig {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{
+			"status":        "idle",
+			"progress":      0,
+			"messageCount":  0,
+			"error":         nil,
+			"lastLearnedAt": nil,
+		}})
 		return
 	}
 
-	// 查询最新的学习任务
 	var task model.AvatarLearnTask
 	err := h.db.Where("user_id = ?", userID).Order("created_at DESC").First(&task).Error
 
@@ -472,7 +482,6 @@ func (h *AvatarHandler) GetLearnStatus(c *gin.Context) {
 		return
 	}
 
-	// 映射状态值：后端状态 -> 前端期望状态
 	frontendStatus := task.Status
 	if task.Status == "pending" || task.Status == "processing" {
 		frontendStatus = "learning"
@@ -494,7 +503,7 @@ func (h *AvatarHandler) GetLearnedPersona(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": ""})
 		return
 	}
 
@@ -508,7 +517,7 @@ func (h *AvatarHandler) ClearLearnedPersona(c *gin.Context) {
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		response.NotFound(c, "配置不存在")
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": nil})
 		return
 	}
 

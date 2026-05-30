@@ -455,8 +455,71 @@ func Logout(c *gin.Context) {
 		db.Save(&user)
 	}
 
-	response.Success(c, gin.H{
+	result := gin.H{
 		"message": "登出成功",
+	}
+
+	var authProviders []model.AuthProvider
+	db.Where("enabled = ? AND type = ?", true, "redirect").Find(&authProviders)
+
+	logoutURLs := gin.H{}
+	for _, ap := range authProviders {
+		switch ap.Protocol {
+		case model.AuthProviderProtocolCAS:
+			casProvider, err := provider.NewCASProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+			if err == nil {
+				logoutURLs[ap.Name] = casProvider.GetLogoutURL()
+			}
+		case model.AuthProviderProtocolOAuth:
+			oauthProvider, err := provider.NewOAuthProvider(ap.Name, ap.Enabled, ap.Priority, ap.Config)
+			if err == nil && oauthProvider.GetConfig().RevokeURL != "" {
+				logoutURLs[ap.Name] = oauthProvider.GetConfig().RevokeURL
+			}
+		}
+	}
+
+	if len(logoutURLs) > 0 {
+		result["logout_urls"] = logoutURLs
+	}
+
+	response.Success(c, result)
+}
+
+func RefreshOAuthToken(c *gin.Context) {
+	var req struct {
+		ProviderName  string `json:"provider_name" binding:"required"`
+		RefreshToken  string `json:"refresh_token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	db := database.GetDB()
+	var authProvider model.AuthProvider
+	if err := db.Where("name = ? AND enabled = ? AND protocol = ?", req.ProviderName, true, model.AuthProviderProtocolOAuth).First(&authProvider).Error; err != nil {
+		response.NotFound(c, "OAuth认证提供者不存在或未启用")
+		return
+	}
+
+	oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+	if err != nil {
+		response.InternalServerError(c, "创建OAuth提供者失败")
+		return
+	}
+
+	token, err := oauthProvider.RefreshToken(context.Background(), req.RefreshToken)
+	if err != nil {
+		response.BadRequest(c, "刷新令牌失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"access_token":  token.AccessToken,
+		"token_type":    token.TokenType,
+		"expires_in":    token.Expiry.Unix() - time.Now().Unix(),
+		"refresh_token": token.RefreshToken,
 	})
 }
 

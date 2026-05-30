@@ -35,9 +35,9 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 0 16px;
   background-color: var(--card-bg);
-  height: 72px;
+  height: 56px;
   box-sizing: border-box;
 }
 

@@ -233,17 +233,174 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		}
 
 	case "redirect":
-		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "重定向认证类型无需连接测试，请检查OAuth配置",
-			"data":    gin.H{"provider": authProvider.Name},
-		})
+		switch authProvider.Protocol {
+		case model.AuthProviderProtocolOAuth:
+			oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    1,
+					"message": "创建OAuth提供者失败: " + err.Error(),
+					"data":    nil,
+				})
+				return
+			}
+
+			results := gin.H{"provider": authProvider.Name}
+
+			authURL := oauthProvider.GetAuthURL("test-state")
+			results["auth_url"] = authURL
+
+			if oauthProvider.GetConfig().TokenURL != "" {
+				resp, err := http.Head(oauthProvider.GetConfig().TokenURL)
+				if err != nil {
+					c.JSON(http.StatusOK, gin.H{
+						"code":    1,
+						"message": "Token端点不可达: " + err.Error(),
+						"data":    results,
+					})
+					return
+				}
+				resp.Body.Close()
+				results["token_url_reachable"] = true
+			}
+
+			if oauthProvider.GetConfig().UserInfoURL != "" {
+				resp, err := http.Head(oauthProvider.GetConfig().UserInfoURL)
+				if err != nil {
+					results["user_info_url_reachable"] = false
+					results["user_info_url_error"] = err.Error()
+				} else {
+					resp.Body.Close()
+					results["user_info_url_reachable"] = true
+				}
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "OAuth配置验证通过",
+				"data":    results,
+			})
+
+		case model.AuthProviderProtocolCAS:
+			casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    1,
+					"message": "创建CAS提供者失败: " + err.Error(),
+					"data":    nil,
+				})
+				return
+			}
+
+			results := gin.H{"provider": authProvider.Name}
+
+			loginURL := casProvider.GetLoginURL()
+			results["login_url"] = loginURL
+
+			resp, err := http.Head(casProvider.GetConfig().ServerURL)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"code":    1,
+					"message": "CAS服务器不可达: " + err.Error(),
+					"data":    results,
+				})
+				return
+			}
+			resp.Body.Close()
+			results["server_reachable"] = true
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "CAS配置验证通过",
+				"data":    results,
+			})
+
+		default:
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "该重定向认证类型暂不支持连接测试",
+				"data":    gin.H{"provider": authProvider.Name},
+			})
+		}
 
 	default:
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,
 			"message": "未知的认证类型",
 			"data":    gin.H{"provider": authProvider.Name},
+		})
+	}
+}
+
+func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
+	providerName := c.Param("name")
+
+	var authProvider model.AuthProvider
+	if err := h.db.Where("name = ? AND enabled = ?", providerName, true).First(&authProvider).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    1,
+			"message": "认证提供者不存在或未启用",
+			"data":    nil,
+		})
+		return
+	}
+
+	switch authProvider.Protocol {
+	case model.AuthProviderProtocolOAuth:
+		oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    1,
+				"message": "创建OAuth提供者失败: " + err.Error(),
+				"data":    nil,
+			})
+			return
+		}
+
+		state := c.Query("state")
+		if state == "" {
+			state = "auth"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "success",
+			"data": gin.H{
+				"provider":  authProvider.Name,
+				"protocol":  authProvider.Protocol,
+				"login_url": oauthProvider.GetAuthURL(state),
+				"type":      "redirect",
+			},
+		})
+
+	case model.AuthProviderProtocolCAS:
+		casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    1,
+				"message": "创建CAS提供者失败: " + err.Error(),
+				"data":    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "success",
+			"data": gin.H{
+				"provider":   authProvider.Name,
+				"protocol":   authProvider.Protocol,
+				"login_url":  casProvider.GetLoginURL(),
+				"logout_url": casProvider.GetLogoutURL(),
+				"type":       "redirect",
+			},
+		})
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    1,
+			"message": "该认证类型不支持获取登录URL",
+			"data":    nil,
 		})
 	}
 }

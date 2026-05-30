@@ -35,19 +35,19 @@ defineEmits<{
   width: 28px;
   height: 28px;
   padding: 0;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--border-color);
+  background: var(--hover-color);
   border-radius: 6px;
   cursor: pointer;
-  color: var(--text-secondary, #666);
+  color: var(--primary-color);
   font-size: 14px;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .toggle-sidebar-btn:hover {
-  background: var(--hover-bg, rgba(0, 0, 0, 0.05));
-  color: var(--text-primary, #333);
+  background: var(--primary-light);
+  color: var(--primary-color);
 }
 
 .toggle-sidebar-btn:active {
@@ -56,11 +56,13 @@ defineEmits<{
 
 .toggle-sidebar-btn.active {
   background: var(--primary-color);
+  border-color: var(--primary-color);
   color: white;
 }
 
 .toggle-sidebar-btn.active:hover {
-  background: var(--primary-color-hover, var(--primary-color));
+  background: var(--active-color);
+  border-color: var(--active-color);
   color: white;
 }
 </style>

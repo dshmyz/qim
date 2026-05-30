@@ -45,6 +45,12 @@ func GetSensitiveWords(c *gin.Context) {
 	})
 }
 
+func refreshSensitiveWordCache() {
+	if di.GlobalContainer.MessageService != nil {
+		di.GlobalContainer.MessageService.RefreshSensitiveWordCache()
+	}
+}
+
 func CreateSensitiveWord(c *gin.Context) {
 	var req struct {
 		Word  string `json:"word" binding:"required"`
@@ -78,6 +84,7 @@ func CreateSensitiveWord(c *gin.Context) {
 		return
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, word)
 }
 
@@ -118,6 +125,7 @@ func UpdateSensitiveWord(c *gin.Context) {
 		return
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, word)
 }
 
@@ -136,6 +144,7 @@ func DeleteSensitiveWord(c *gin.Context) {
 		return
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, gin.H{"message": "删除成功"})
 }
 
@@ -156,6 +165,7 @@ func ToggleSensitiveWordStatus(c *gin.Context) {
 		return
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, word)
 }
 
@@ -188,6 +198,7 @@ func BatchCreateSensitiveWords(c *gin.Context) {
 		}
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
 }
 
@@ -232,6 +243,7 @@ func ImportSensitiveWords(c *gin.Context) {
 		}
 	}
 
+	refreshSensitiveWordCache()
 	response.Success(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
 }
 

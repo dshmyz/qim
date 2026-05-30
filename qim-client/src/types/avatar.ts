@@ -62,6 +62,7 @@ export interface AvatarLearnStatus {
   progress: number
   messageCount: number
   error: string | null
+  lastLearnedAt?: string | null
 }
 
 export interface CreateAvatarConfigRequest {
