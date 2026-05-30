@@ -1,20 +1,30 @@
 <template>
   <div class="input-toolbar">
-    <ChatToolbarButton
-      icon="fas fa-phone-alt"
-      title="语音通话"
-      @click="$emit('start-voice-call')"
-    />
-    <ChatToolbarButton
-      icon="fas fa-video"
-      title="视频通话"
-      @click="$emit('start-video-call')"
-    />
-    <ChatToolbarButton
-      icon="fas fa-desktop"
-      title="屏幕共享"
-      @click="$emit('start-screen-share')"
-    />
+    <div class="call-dropdown">
+      <ChatToolbarButton
+        class="call-btn"
+        icon="fas fa-phone-alt"
+        title="通话"
+        @click="$emit('start-voice-call')"
+      />
+      <button class="call-dropdown-trigger" @click="toggleCallMenu" title="更多通话选项">
+        <i class="fas fa-caret-down"></i>
+      </button>
+      <div v-show="showCallMenu" class="call-menu" @click.stop>
+        <div class="call-menu-item" @click="selectCallType('voice')">
+          <i class="fas fa-phone-alt"></i>
+          <span>语音通话</span>
+        </div>
+        <div class="call-menu-item" @click="selectCallType('video')">
+          <i class="fas fa-video"></i>
+          <span>视频通话</span>
+        </div>
+        <div class="call-menu-item" @click="selectCallType('screen')">
+          <i class="fas fa-desktop"></i>
+          <span>屏幕共享</span>
+        </div>
+      </div>
+    </div>
     <ChatToolbarButton
       icon="fas fa-smile"
       title="表情"
@@ -81,9 +91,14 @@ import { ref } from 'vue'
 const systemConfigStore = useSystemConfigStore()
 
 const showScreenshotMenu = ref(false)
+const showCallMenu = ref(false)
 
 const toggleScreenshotMenu = () => {
   showScreenshotMenu.value = !showScreenshotMenu.value
+}
+
+const toggleCallMenu = () => {
+  showCallMenu.value = !showCallMenu.value
 }
 
 const selectScreenshot = (type: 'region' | 'hidden') => {
@@ -92,6 +107,17 @@ const selectScreenshot = (type: 'region' | 'hidden') => {
     emit('take-screenshot')
   } else {
     emit('take-screenshot-hidden')
+  }
+}
+
+const selectCallType = (type: 'voice' | 'video' | 'screen') => {
+  showCallMenu.value = false
+  if (type === 'voice') {
+    emit('start-voice-call')
+  } else if (type === 'video') {
+    emit('start-video-call')
+  } else {
+    emit('start-screen-share')
   }
 }
 
@@ -121,6 +147,9 @@ const onDocumentClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.screenshot-dropdown')) {
     showScreenshotMenu.value = false
+  }
+  if (!target.closest('.call-dropdown')) {
+    showCallMenu.value = false
   }
 }
 
@@ -209,6 +238,74 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocumentClick))
 }
 
 .screenshot-menu-item i {
+  width: 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.call-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.call-btn {
+  border-radius: 4px 0 0 4px !important;
+}
+
+.call-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  font-size: 10px;
+  padding: 0;
+  margin-left: -6px;
+  transition: all 0.2s ease;
+}
+
+.call-dropdown-trigger:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.05));
+  color: var(--text-primary, #333);
+}
+
+.call-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  min-width: 140px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #E5E5E5);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.call-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.call-menu-item:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.call-menu-item i {
   width: 16px;
   font-size: 13px;
   color: var(--text-secondary, #666);
