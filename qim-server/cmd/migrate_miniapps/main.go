@@ -7,6 +7,7 @@ import (
 	"qim-server/pkg/logger"
 
 	"qim-server/pkg/sqlite"
+
 	"gorm.io/gorm"
 )
 
@@ -38,11 +39,15 @@ func main() {
 	fmt.Printf("找到 %d 个小程序记录，开始检查 path 字段...\n", len(miniApps))
 
 	pathMapping := map[string]string{
-		"calculator":         "/miniprograms/calculator/index.html",
-		"notepad":            "/miniprograms/notepad/index.html",
-		"todo":               "/miniprograms/todo/index.html",
-		"password-generator": "/miniprograms/password-generator/index.html",
-		"short-link":         "/miniprograms/short-link/index.html",
+		"calculator":          "/miniapps/calculator/index.html",
+		"sticky-notes":        "/miniapps/sticky-notes/index.html",
+		"todo":                "/miniapps/todo/index.html",
+		"json-formatter":      "/miniapps/json-formatter/index.html",
+		"timestamp-converter": "/miniapps/timestamp-converter/index.html",
+		"base64-converter":    "/miniapps/base64-converter/index.html",
+		"password-generator":  "/miniapps/password-generator/index.html",
+		"short-link":          "/miniapps/short-link/index.html",
+		"unit-converter":      "/miniapps/unit-converter/index.html",
 	}
 
 	updated := 0

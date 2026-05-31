@@ -501,11 +501,14 @@ func initTestMiniApps(db *gorm.DB) {
 	log.Println("初始化小程序数据...")
 
 	miniApps := []model.MiniApp{
-		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Icon: "", Path: "/calculator", Status: "active"},
-		{AppID: "notepad", Name: "记事本", Description: "简单的文本编辑器", Icon: "", Path: "/notepad", Status: "active"},
-		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Icon: "", Path: "/todo", Status: "active"},
-		{AppID: "unit-converter", Name: "单位转换", Description: "多种单位之间的转换", Icon: "", Path: "/unit-converter", Status: "active"},
-		{AppID: "password-generator", Name: "密码生成器", Description: "生成强密码", Icon: "", Path: "/password-generator", Status: "active"},
+		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Icon: "", Path: "/miniapps/calculator/index.html", Status: "active"},
+		{AppID: "sticky-notes", Name: "便签", Description: "快速记录想法和灵感", Icon: "", Path: "/miniapps/sticky-notes/index.html", Status: "active"},
+		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Icon: "", Path: "/miniapps/todo/index.html", Status: "active"},
+		{AppID: "json-formatter", Name: "JSON 格式化", Description: "JSON 格式化和压缩工具", Icon: "", Path: "/miniapps/json-formatter/index.html", Status: "active"},
+		{AppID: "timestamp-converter", Name: "时间戳转换", Description: "时间戳与日期时间互转", Icon: "", Path: "/miniapps/timestamp-converter/index.html", Status: "active"},
+		{AppID: "base64-converter", Name: "Base64 编解码", Description: "Base64 编码和解码工具", Icon: "", Path: "/miniapps/base64-converter/index.html", Status: "active"},
+		{AppID: "unit-converter", Name: "单位转换", Description: "多种单位之间的转换", Icon: "", Path: "/miniapps/unit-converter/index.html", Status: "active"},
+		{AppID: "password-generator", Name: "密码生成器", Description: "生成强密码", Icon: "", Path: "/miniapps/password-generator/index.html", Status: "active"},
 	}
 
 	for _, app := range miniApps {

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>时间戳转换</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa;
+      color: #1f2937;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .current-time-section {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid #e5e7eb;
+    }
+    .current-time-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    .current-time-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: #4a90d9;
+      font-family: 'Courier New', monospace;
+    }
+    .current-time-date {
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    .section {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid #e5e7eb;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #1f2937;
+    }
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .timestamp-input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      background: #f9fafb;
+      color: #1f2937;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+    .timestamp-input:focus {
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    }
+    .convert-btn {
+      padding: 10px 16px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      white-space: nowrap;
+    }
+    .convert-btn:hover {
+      background: #3a7bc8;
+    }
+    .result-box {
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #1f2937;
+      border: 1px solid #e5e7eb;
+    }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .result-label {
+      color: #6b7280;
+    }
+    .result-value {
+      font-family: 'Courier New', monospace;
+      font-weight: 500;
+    }
+    .date-input-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .date-input {
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+      background: #f9fafb;
+      color: #1f2937;
+      outline: none;
+    }
+    .date-input:focus {
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    }
+    .separator {
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="current-time-section">
+      <div class="current-time-label">当前时间戳</div>
+      <div class="current-time-value" id="current-ts">0</div>
+      <div class="current-time-date" id="current-date"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">时间戳 → 日期时间</div>
+      <div class="input-group">
+        <input type="text" class="timestamp-input" id="ts-input" placeholder="输入时间戳（秒或毫秒）" />
+        <button class="convert-btn" id="ts-to-date-btn">转换</button>
+      </div>
+      <div class="result-box" id="ts-result">输入时间戳后点击转换</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">日期时间 → 时间戳</div>
+      <div class="date-input-group">
+        <input type="datetime-local" class="date-input" id="date-input" />
+        <button class="convert-btn" id="date-to-ts-btn">转换</button>
+      </div>
+      <div class="result-box" id="date-result">选择日期时间后点击转换</div>
+    </div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var currentTsEl = document.getElementById('current-ts');
+      var currentDateEl = document.getElementById('current-date');
+      var tsInput = document.getElementById('ts-input');
+      var tsToDateBtn = document.getElementById('ts-to-date-btn');
+      var tsResult = document.getElementById('ts-result');
+      var dateInput = document.getElementById('date-input');
+      var dateToTsBtn = document.getElementById('date-to-ts-btn');
+      var dateResult = document.getElementById('date-result');
+
+      function updateCurrentTime() {
+        var now = Date.now();
+        currentTsEl.textContent = Math.floor(now / 1000);
+        var d = new Date(now);
+        currentDateEl.textContent = d.toLocaleString('zh-CN', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+      }
+      updateCurrentTime();
+      setInterval(updateCurrentTime, 1000);
+
+      tsToDateBtn.addEventListener('click', function() {
+        var ts = tsInput.value.trim();
+        if (!ts) {
+          tsResult.innerHTML = '<span style="color:#e74c3c">请输入时间戳</span>';
+          return;
+        }
+        var num = parseInt(ts, 10);
+        if (isNaN(num)) {
+          tsResult.innerHTML = '<span style="color:#e74c3c">无效的时间戳</span>';
+          return;
+        }
+        if (num < 1e12) num *= 1000;
+        var d = new Date(num);
+        if (isNaN(d.getTime())) {
+          tsResult.innerHTML = '<span style="color:#e74c3c">无效的日期</span>';
+          return;
+        }
+        tsResult.innerHTML =
+          '<div class="result-row"><span class="result-label">本地时间</span><span class="result-value">' + d.toLocaleString('zh-CN') + '</span></div>' +
+          '<div class="result-row"><span class="result-label">UTC 时间</span><span class="result-value">' + d.toUTCString() + '</span></div>' +
+          '<div class="result-row"><span class="result-label">ISO 格式</span><span class="result-value">' + d.toISOString() + '</span></div>';
+      });
+
+      dateToTsBtn.addEventListener('click', function() {
+        var val = dateInput.value;
+        if (!val) {
+          dateResult.innerHTML = '<span style="color:#e74c3c">请选择日期时间</span>';
+          return;
+        }
+        var d = new Date(val);
+        if (isNaN(d.getTime())) {
+          dateResult.innerHTML = '<span style="color:#e74c3c">无效的日期</span>';
+          return;
+        }
+        var tsSec = Math.floor(d.getTime() / 1000);
+        dateResult.innerHTML =
+          '<div class="result-row"><span class="result-label">秒级时间戳</span><span class="result-value">' + tsSec + '</span></div>' +
+          '<div class="result-row"><span class="result-label">毫秒级时间戳</span><span class="result-value">' + d.getTime() + '</span></div>';
+      });
+
+      tsInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') tsToDateBtn.click();
+      });
+
+      window.parent.postMessage({ type: 'miniapp-loaded', appId: 'timestamp-converter' }, '*');
+    });
+  </script>
+</body>
+</html>

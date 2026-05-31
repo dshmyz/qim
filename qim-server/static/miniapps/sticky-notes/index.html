@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>便签</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa;
+      color: #1f2937;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .toolbar-btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .toolbar-btn:hover {
+      transform: translateY(-1px);
+    }
+    .btn-new {
+      background: #4a90d9;
+      color: white;
+    }
+    .btn-new:hover {
+      background: #3a7bc8;
+    }
+    .btn-save {
+      background: #2ecc71;
+      color: white;
+    }
+    .btn-save:hover {
+      background: #27ae60;
+    }
+    .btn-delete {
+      background: #ffffff;
+      color: #e74c3c;
+      border: 1px solid #e5e7eb;
+    }
+    .btn-delete:hover {
+      border-color: #e74c3c;
+    }
+    .note-count {
+      font-size: 12px;
+      color: #6b7280;
+      margin-left: auto;
+    }
+    .note-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .note-item {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .note-item:hover {
+      border-color: #4a90d9;
+      background: #f9fafb;
+    }
+    .note-item.active {
+      border-color: #4a90d9;
+      background: rgba(74, 144, 217, 0.05);
+    }
+    .note-item-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .note-item-preview {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .note-item-time {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+    .editor-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .note-title-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      background: #ffffff;
+      color: #1f2937;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+    .note-title-input:focus {
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    }
+    .note-content-input {
+      width: 100%;
+      min-height: 200px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      background: #ffffff;
+      color: #1f2937;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+    .note-content-input:focus {
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    }
+    .status-bar {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+    }
+    .status-bar.success {
+      display: block;
+      background: rgba(46, 204, 113, 0.15);
+      color: #2ecc71;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="toolbar">
+      <button class="toolbar-btn btn-new" id="new-btn">新建便签</button>
+      <button class="toolbar-btn btn-save" id="save-btn">保存</button>
+      <button class="toolbar-btn btn-delete" id="delete-btn">删除</button>
+      <span class="note-count" id="note-count"></span>
+    </div>
+    <div class="note-list" id="note-list"></div>
+    <div class="editor-section">
+      <input type="text" class="note-title-input" id="note-title" placeholder="便签标题" />
+      <textarea class="note-content-input" id="note-content" placeholder="在这里输入便签内容..."></textarea>
+    </div>
+    <div class="status-bar" id="status-bar"></div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var noteListEl = document.getElementById('note-list');
+      var noteTitleInput = document.getElementById('note-title');
+      var noteContentInput = document.getElementById('note-content');
+      var newBtn = document.getElementById('new-btn');
+      var saveBtn = document.getElementById('save-btn');
+      var deleteBtn = document.getElementById('delete-btn');
+      var noteCountEl = document.getElementById('note-count');
+      var statusBar = document.getElementById('status-bar');
+
+      var STORAGE_KEY = 'sticky_notes';
+      var activeNoteId = null;
+
+      function getNotes() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveNotes(notes) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+      }
+
+      function showStatus(message) {
+        statusBar.textContent = message;
+        statusBar.className = 'status-bar success';
+        setTimeout(function() {
+          statusBar.className = 'status-bar';
+        }, 2000);
+      }
+
+      function formatTime(ts) {
+        var d = new Date(ts);
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return month + '-' + day + ' ' + hour + ':' + min;
+      }
+
+      function renderList() {
+        var notes = getNotes();
+        noteCountEl.textContent = notes.length + ' 条便签';
+        if (notes.length === 0) {
+          noteListEl.innerHTML = '<div class="empty-state">暂无便签，点击"新建便签"开始</div>';
+          return;
+        }
+        noteListEl.innerHTML = '';
+        notes.sort(function(a, b) { return b.updatedAt - a.updatedAt; });
+        notes.forEach(function(note) {
+          var item = document.createElement('div');
+          item.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
+          var preview = note.content ? note.content.substring(0, 50) : '无内容';
+          item.innerHTML =
+            '<div class="note-item-title">' + escapeHtml(note.title || '无标题') + '</div>' +
+            '<div class="note-item-preview">' + escapeHtml(preview) + '</div>' +
+            '<div class="note-item-time">' + formatTime(note.updatedAt) + '</div>';
+          item.addEventListener('click', function() {
+            loadNote(note.id);
+          });
+          noteListEl.appendChild(item);
+        });
+      }
+
+      function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function loadNote(id) {
+        var notes = getNotes();
+        var note = notes.find(function(n) { return n.id === id; });
+        if (!note) return;
+        activeNoteId = id;
+        noteTitleInput.value = note.title;
+        noteContentInput.value = note.content;
+        renderList();
+      }
+
+      function createNote() {
+        var notes = getNotes();
+        var newNote = {
+          id: Date.now().toString(),
+          title: '',
+          content: '',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        notes.push(newNote);
+        saveNotes(notes);
+        activeNoteId = newNote.id;
+        noteTitleInput.value = '';
+        noteContentInput.value = '';
+        noteTitleInput.focus();
+        renderList();
+      }
+
+      function updateNote() {
+        if (!activeNoteId) {
+          showStatus('请先选择或新建便签');
+          return;
+        }
+        var notes = getNotes();
+        var idx = notes.findIndex(function(n) { return n.id === activeNoteId; });
+        if (idx === -1) return;
+        notes[idx].title = noteTitleInput.value;
+        notes[idx].content = noteContentInput.value;
+        notes[idx].updatedAt = Date.now();
+        saveNotes(notes);
+        renderList();
+        showStatus('保存成功');
+      }
+
+      function deleteNote() {
+        if (!activeNoteId) {
+          showStatus('请先选择便签');
+          return;
+        }
+        var notes = getNotes();
+        notes = notes.filter(function(n) { return n.id !== activeNoteId; });
+        saveNotes(notes);
+        activeNoteId = null;
+        noteTitleInput.value = '';
+        noteContentInput.value = '';
+        renderList();
+        showStatus('已删除');
+      }
+
+      newBtn.addEventListener('click', createNote);
+      saveBtn.addEventListener('click', updateNote);
+      deleteBtn.addEventListener('click', deleteNote);
+
+      renderList();
+      var notes = getNotes();
+      if (notes.length > 0) {
+        loadNote(notes[0].id);
+      }
+
+      window.parent.postMessage({ type: 'miniapp-loaded', appId: 'sticky-notes' }, '*');
+    });
+  </script>
+</body>
+</html>
