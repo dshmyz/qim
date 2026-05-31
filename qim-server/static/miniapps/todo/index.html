@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>待办事项</title>
+  <script src="/miniapps/sdk/qim-miniapp-bridge.js"></script>
   <style>
     * {
       margin: 0;
@@ -155,6 +156,28 @@
       font-size: 48px;
       margin-bottom: 8px;
     }
+    .status-bar {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .status-bar.success {
+      display: block;
+      background: rgba(46, 204, 113, 0.15);
+      color: #2ecc71;
+    }
+    .status-bar.error {
+      display: block;
+      background: rgba(231, 76, 60, 0.15);
+      color: #e74c3c;
+    }
+    .status-bar.loading {
+      display: block;
+      background: rgba(74, 144, 217, 0.15);
+      color: #4a90d9;
+    }
   </style>
 </head>
 <body>
@@ -167,6 +190,7 @@
       <input type="text" class="todo-input" id="todo-input" placeholder="输入新任务..." />
       <button class="add-todo-btn" id="add-todo">添加</button>
     </div>
+    <div class="status-bar" id="status-bar"></div>
     <div class="todo-list" id="todo-list"></div>
   </div>
   <script>
@@ -175,58 +199,55 @@
       var addBtn = document.getElementById('add-todo');
       var listEl = document.getElementById('todo-list');
       var statsEl = document.getElementById('todo-stats');
+      var statusBar = document.getElementById('status-bar');
 
-      function getTodos() {
-        try {
-          return JSON.parse(localStorage.getItem('todo_list') || '[]');
-        } catch(e) {
-          return [];
+      var tasks = [];
+      var isLoading = false;
+
+      function showStatus(message, type) {
+        statusBar.textContent = message;
+        statusBar.className = 'status-bar ' + type;
+        if (type !== 'loading') {
+          setTimeout(function() {
+            statusBar.className = 'status-bar';
+          }, 2000);
         }
       }
 
-      function saveTodos(todos) {
-        localStorage.setItem('todo_list', JSON.stringify(todos));
-      }
-
-      function updateStats(todos) {
-        var total = todos.length;
-        var completed = todos.filter(function(t) { return t.done; }).length;
+      function updateStats(items) {
+        var total = items.length;
+        var completed = items.filter(function(t) { return t.status === 'completed'; }).length;
         statsEl.textContent = total > 0 ? '共 ' + total + ' 项，已完成 ' + completed + ' 项' : '暂无待办事项';
       }
 
       function render() {
-        var todos = getTodos();
-        updateStats(todos);
+        updateStats(tasks);
         listEl.innerHTML = '';
 
-        if (todos.length === 0) {
+        if (tasks.length === 0) {
           listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><div>暂无待办事项，添加一个吧</div></div>';
           return;
         }
 
-        todos.forEach(function(todo, index) {
+        tasks.forEach(function(task) {
           var item = document.createElement('div');
           item.className = 'todo-item';
 
           var checkbox = document.createElement('div');
-          checkbox.className = 'todo-checkbox' + (todo.done ? ' checked' : '');
+          checkbox.className = 'todo-checkbox' + (task.status === 'completed' ? ' checked' : '');
           checkbox.addEventListener('click', function() {
-            todos[index].done = !todos[index].done;
-            saveTodos(todos);
-            render();
+            toggleTaskStatus(task);
           });
 
           var text = document.createElement('span');
-          text.className = 'todo-text' + (todo.done ? ' completed' : '');
-          text.textContent = todo.text;
+          text.className = 'todo-text' + (task.status === 'completed' ? ' completed' : '');
+          text.textContent = task.title;
 
           var deleteBtn = document.createElement('button');
           deleteBtn.className = 'todo-delete-btn';
           deleteBtn.textContent = '×';
           deleteBtn.addEventListener('click', function() {
-            todos.splice(index, 1);
-            saveTodos(todos);
-            render();
+            deleteTask(task.id);
           });
 
           item.appendChild(checkbox);
@@ -236,23 +257,83 @@
         });
       }
 
-      function addTodo() {
+      async function loadTasks() {
+        if (isLoading) return;
+        isLoading = true;
+        showStatus('加载中...', 'loading');
+        try {
+          var res = await QIMBridge.api('GET', '/api/v1/tasks');
+          if (res && res.data) {
+            tasks = res.data;
+            render();
+          }
+          statusBar.className = 'status-bar';
+        } catch (e) {
+          showStatus('加载失败: ' + e.message, 'error');
+        } finally {
+          isLoading = false;
+        }
+      }
+
+      async function addTask() {
         var text = inputEl.value.trim();
         if (!text) return;
 
-        var todos = getTodos();
-        todos.push({ id: Date.now(), text: text, done: false });
-        saveTodos(todos);
-        inputEl.value = '';
-        render();
+        try {
+          var res = await QIMBridge.api('POST', '/api/v1/tasks', {
+            title: text,
+            status: 'todo',
+            priority: 'medium'
+          });
+          if (res && res.data) {
+            tasks.push(res.data);
+            inputEl.value = '';
+            render();
+            showStatus('添加成功', 'success');
+          }
+        } catch (e) {
+          showStatus('添加失败: ' + e.message, 'error');
+        }
       }
 
-      addBtn.addEventListener('click', addTodo);
+      async function toggleTaskStatus(task) {
+        var newStatus = task.status === 'completed' ? 'todo' : 'completed';
+        try {
+          var res = await QIMBridge.api('PATCH', '/api/v1/tasks/' + task.id + '/status', {
+            status: newStatus
+          });
+          if (res && res.data) {
+            var idx = tasks.findIndex(function(t) { return t.id === task.id; });
+            if (idx !== -1) {
+              tasks[idx] = res.data;
+            }
+            render();
+          }
+        } catch (e) {
+          showStatus('操作失败: ' + e.message, 'error');
+        }
+      }
+
+      async function deleteTask(taskId) {
+        try {
+          await QIMBridge.api('DELETE', '/api/v1/tasks/' + taskId);
+          tasks = tasks.filter(function(t) { return t.id !== taskId; });
+          render();
+          showStatus('已删除', 'success');
+        } catch (e) {
+          showStatus('删除失败: ' + e.message, 'error');
+        }
+      }
+
+      addBtn.addEventListener('click', addTask);
       inputEl.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') addTodo();
+        if (e.key === 'Enter') addTask();
       });
 
-      render();
+      QIMBridge.init(function() {
+        loadTasks();
+      });
+
       window.parent.postMessage({ type: 'miniapp-loaded', appId: 'todo' }, '*');
     });
   </script>

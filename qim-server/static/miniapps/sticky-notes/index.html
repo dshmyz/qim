@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>便签</title>
+  <script src="/miniapps/sdk/qim-miniapp-bridge.js"></script>
   <style>
     * {
       margin: 0;
@@ -162,6 +163,16 @@
       background: rgba(46, 204, 113, 0.15);
       color: #2ecc71;
     }
+    .status-bar.error {
+      display: block;
+      background: rgba(231, 76, 60, 0.15);
+      color: #e74c3c;
+    }
+    .status-bar.loading {
+      display: block;
+      background: rgba(74, 144, 217, 0.15);
+      color: #4a90d9;
+    }
     .empty-state {
       text-align: center;
       padding: 32px 16px;
@@ -196,60 +207,27 @@
       var noteCountEl = document.getElementById('note-count');
       var statusBar = document.getElementById('status-bar');
 
-      var STORAGE_KEY = 'sticky_notes';
+      var notes = [];
       var activeNoteId = null;
+      var isLoading = false;
 
-      function getNotes() {
-        try {
-          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-        } catch (e) {
-          return [];
+      function showStatus(message, type) {
+        statusBar.textContent = message;
+        statusBar.className = 'status-bar ' + type;
+        if (type !== 'loading') {
+          setTimeout(function() {
+            statusBar.className = 'status-bar';
+          }, 2000);
         }
       }
 
-      function saveNotes(notes) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
-      }
-
-      function showStatus(message) {
-        statusBar.textContent = message;
-        statusBar.className = 'status-bar success';
-        setTimeout(function() {
-          statusBar.className = 'status-bar';
-        }, 2000);
-      }
-
-      function formatTime(ts) {
-        var d = new Date(ts);
+      function formatTime(timeStr) {
+        var d = new Date(timeStr);
         var month = String(d.getMonth() + 1).padStart(2, '0');
         var day = String(d.getDate()).padStart(2, '0');
         var hour = String(d.getHours()).padStart(2, '0');
         var min = String(d.getMinutes()).padStart(2, '0');
         return month + '-' + day + ' ' + hour + ':' + min;
-      }
-
-      function renderList() {
-        var notes = getNotes();
-        noteCountEl.textContent = notes.length + ' 条便签';
-        if (notes.length === 0) {
-          noteListEl.innerHTML = '<div class="empty-state">暂无便签，点击"新建便签"开始</div>';
-          return;
-        }
-        noteListEl.innerHTML = '';
-        notes.sort(function(a, b) { return b.updatedAt - a.updatedAt; });
-        notes.forEach(function(note) {
-          var item = document.createElement('div');
-          item.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
-          var preview = note.content ? note.content.substring(0, 50) : '无内容';
-          item.innerHTML =
-            '<div class="note-item-title">' + escapeHtml(note.title || '无标题') + '</div>' +
-            '<div class="note-item-preview">' + escapeHtml(preview) + '</div>' +
-            '<div class="note-item-time">' + formatTime(note.updatedAt) + '</div>';
-          item.addEventListener('click', function() {
-            loadNote(note.id);
-          });
-          noteListEl.appendChild(item);
-        });
       }
 
       function escapeHtml(text) {
@@ -258,74 +236,127 @@
         return div.innerHTML;
       }
 
+      function renderList() {
+        noteCountEl.textContent = notes.length + ' 条便签';
+        if (notes.length === 0) {
+          noteListEl.innerHTML = '<div class="empty-state">暂无便签，点击"新建便签"开始</div>';
+          return;
+        }
+        noteListEl.innerHTML = '';
+        var sorted = notes.slice().sort(function(a, b) {
+          return new Date(b.updated_at) - new Date(a.updated_at);
+        });
+        sorted.forEach(function(note) {
+          var item = document.createElement('div');
+          item.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
+          var preview = note.content ? note.content.substring(0, 50) : '无内容';
+          item.innerHTML =
+            '<div class="note-item-title">' + escapeHtml(note.title || '无标题') + '</div>' +
+            '<div class="note-item-preview">' + escapeHtml(preview) + '</div>' +
+            '<div class="note-item-time">' + formatTime(note.updated_at) + '</div>';
+          item.addEventListener('click', function() {
+            loadNote(note.id);
+          });
+          noteListEl.appendChild(item);
+        });
+      }
+
       function loadNote(id) {
-        var notes = getNotes();
         var note = notes.find(function(n) { return n.id === id; });
         if (!note) return;
         activeNoteId = id;
-        noteTitleInput.value = note.title;
-        noteContentInput.value = note.content;
+        noteTitleInput.value = note.title || '';
+        noteContentInput.value = note.content || '';
         renderList();
       }
 
-      function createNote() {
-        var notes = getNotes();
-        var newNote = {
-          id: Date.now().toString(),
-          title: '',
-          content: '',
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
-        notes.push(newNote);
-        saveNotes(notes);
-        activeNoteId = newNote.id;
-        noteTitleInput.value = '';
-        noteContentInput.value = '';
-        noteTitleInput.focus();
-        renderList();
+      async function loadNotes() {
+        if (isLoading) return;
+        isLoading = true;
+        showStatus('加载中...', 'loading');
+        try {
+          var res = await QIMBridge.api('GET', '/api/v1/notes');
+          if (res && res.data) {
+            notes = res.data.filter(function(n) { return n.type === 'sticky'; });
+            renderList();
+            if (notes.length > 0) {
+              loadNote(notes[0].id);
+            }
+          }
+          statusBar.className = 'status-bar';
+        } catch (e) {
+          showStatus('加载失败: ' + e.message, 'error');
+        } finally {
+          isLoading = false;
+        }
       }
 
-      function updateNote() {
+      async function createNote() {
+        try {
+          var res = await QIMBridge.api('POST', '/api/v1/notes', {
+            title: '',
+            content: '',
+            type: 'sticky'
+          });
+          if (res && res.data) {
+            notes.push(res.data);
+            loadNote(res.data.id);
+            showStatus('创建成功', 'success');
+          }
+        } catch (e) {
+          showStatus('创建失败: ' + e.message, 'error');
+        }
+      }
+
+      async function updateNote() {
         if (!activeNoteId) {
-          showStatus('请先选择或新建便签');
+          showStatus('请先选择或新建便签', 'error');
           return;
         }
-        var notes = getNotes();
-        var idx = notes.findIndex(function(n) { return n.id === activeNoteId; });
-        if (idx === -1) return;
-        notes[idx].title = noteTitleInput.value;
-        notes[idx].content = noteContentInput.value;
-        notes[idx].updatedAt = Date.now();
-        saveNotes(notes);
-        renderList();
-        showStatus('保存成功');
+        try {
+          var res = await QIMBridge.api('PUT', '/api/v1/notes/' + activeNoteId, {
+            title: noteTitleInput.value,
+            content: noteContentInput.value,
+            type: 'sticky'
+          });
+          if (res && res.data) {
+            var idx = notes.findIndex(function(n) { return n.id === activeNoteId; });
+            if (idx !== -1) {
+              notes[idx] = res.data;
+            }
+            renderList();
+            showStatus('保存成功', 'success');
+          }
+        } catch (e) {
+          showStatus('保存失败: ' + e.message, 'error');
+        }
       }
 
-      function deleteNote() {
+      async function deleteNote() {
         if (!activeNoteId) {
-          showStatus('请先选择便签');
+          showStatus('请先选择便签', 'error');
           return;
         }
-        var notes = getNotes();
-        notes = notes.filter(function(n) { return n.id !== activeNoteId; });
-        saveNotes(notes);
-        activeNoteId = null;
-        noteTitleInput.value = '';
-        noteContentInput.value = '';
-        renderList();
-        showStatus('已删除');
+        try {
+          await QIMBridge.api('DELETE', '/api/v1/notes/' + activeNoteId);
+          notes = notes.filter(function(n) { return n.id !== activeNoteId; });
+          activeNoteId = null;
+          noteTitleInput.value = '';
+          noteContentInput.value = '';
+          renderList();
+          showStatus('已删除', 'success');
+        } catch (e) {
+          showStatus('删除失败: ' + e.message, 'error');
+        }
       }
 
       newBtn.addEventListener('click', createNote);
       saveBtn.addEventListener('click', updateNote);
       deleteBtn.addEventListener('click', deleteNote);
 
-      renderList();
-      var notes = getNotes();
-      if (notes.length > 0) {
-        loadNote(notes[0].id);
-      }
+      QIMBridge.init(function() {
+        loadNotes();
+      });
 
       window.parent.postMessage({ type: 'miniapp-loaded', appId: 'sticky-notes' }, '*');
     });
