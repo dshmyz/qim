@@ -755,6 +755,7 @@ loadDepartments()
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .user-profile-header {
@@ -780,7 +781,7 @@ loadDepartments()
 
 .user-profile-body {
   padding: 20px;
-  overflow-y: auto;
+  overflow: visible;
   flex: 1;
 }
 
@@ -879,7 +880,7 @@ loadDepartments()
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 2000;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e4e7ed);
   border-radius: 6px;
