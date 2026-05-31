@@ -411,6 +411,7 @@ export const useChatStore = defineStore('chat', () => {
     updateMemberRole,
     loadConversationsFromStorage,
     clearAllMessages,
+    clearMessages: clearAllMessages,
     getLastMessageId,
     appendMessagesSilent,
   }

@@ -604,7 +604,7 @@ const handleUnifiedCallback = async (provider: AuthProvider, credential: string,
       QMessage.success('登录成功')
       
       localStorage.setItem('token', data.data.token)
-      localStorage.setItem('userInfo', JSON.stringify(data.data.user))
+      localStorage.setItem('user', JSON.stringify(data.data.user))
       
       sessionStorage.removeItem('auth_state')
       sessionStorage.removeItem('auth_provider')

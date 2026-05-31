@@ -13,8 +13,8 @@ import DOMPurify from 'dompurify'
 export function sanitizeHTML(html: string): string {
   if (!html) return ''
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'code', 'pre'],
-    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'code', 'pre', 'span'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
     ADD_ATTR: ['target'],
     ALLOW_DATA_ATTR: false,
   })

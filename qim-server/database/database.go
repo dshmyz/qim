@@ -87,7 +87,10 @@ func Init(cfg *config.Config) *gorm.DB {
 	}
 
 	// 自动迁移数据库表结构
-	// autoMigrate() // 已移至 app/init.go 的 MigrateDB 统一处理，避免重复迁移
+	// 最小迁移：补全 Event 表的 reminder_sent 列（原 autoMigrate 被注释后从未运行）
+	if err := DB.AutoMigrate(&model.Event{}); err != nil {
+		logger.WithModule("Database").Error("Event 表迁移失败", "error", err)
+	}
 
 	return DB
 }
