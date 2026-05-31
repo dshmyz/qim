@@ -159,6 +159,7 @@
       @ai-summary="handleAISummary"
       @translate="handleAITranslate"
       @smart-reply="handleSmartReply"
+      @close-message-menu="closeMessageContextMenu"
       @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
