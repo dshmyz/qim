@@ -73,6 +73,7 @@ func CreateSystemMessage(c *gin.Context) {
 		Content    string `json:"content" binding:"required"`
 		TargetType string `json:"target_type"`
 		TargetID   *uint  `json:"target_id"`
+		TargetIDs  []uint `json:"target_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -115,10 +116,33 @@ func CreateSystemMessage(c *gin.Context) {
 				usersToNotify = append(usersToNotify, de.UserID)
 			}
 		}
+		// 支持多选部门
+		if len(req.TargetIDs) > 0 {
+			for _, deptID := range req.TargetIDs {
+				var deptEmployees []model.DepartmentEmployee
+				db.Where("department_id = ?", deptID).Find(&deptEmployees)
+				for _, de := range deptEmployees {
+					usersToNotify = append(usersToNotify, de.UserID)
+				}
+			}
+		}
+	case "group":
+		if req.TargetID != nil {
+			var conversation model.Conversation
+			if err := db.Where("id = ?", *req.TargetID).First(&conversation).Error; err == nil {
+				var members []model.ConversationMember
+				db.Where("conversation_id = ?", conversation.ID).Find(&members)
+				for _, m := range members {
+					usersToNotify = append(usersToNotify, m.UserID)
+				}
+			}
+		}
 	case "user":
 		if req.TargetID != nil {
 			usersToNotify = append(usersToNotify, *req.TargetID)
 		}
+		// 支持多选用户
+		usersToNotify = append(usersToNotify, req.TargetIDs...)
 	default:
 		usersToNotify = append(usersToNotify, userID.(uint))
 	}

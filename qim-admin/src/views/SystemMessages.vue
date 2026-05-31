@@ -13,9 +13,19 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="标题" min-width="200" />
         <el-table-column prop="content" label="内容" min-width="250" show-overflow-tooltip />
-        <el-table-column label="目标类型" width="120">
+        <el-table-column label="目标范围" min-width="160">
           <template #default="{ row }">
-            <el-tag>{{ targetTypeLabel(row.target_type) }}</el-tag>
+            <div class="target-info">
+              <el-tag size="small" :type="row.target_type === 'all' ? '' : 'warning'" effect="plain">
+                {{ targetTypeLabel(row.target_type) }}
+              </el-tag>
+              <span v-if="row.target_type !== 'all' && row.target_id" class="target-detail">
+                ID: {{ row.target_id }}
+              </span>
+              <span v-if="row.target_type !== 'all' && !row.target_id" class="target-detail text-muted">
+                未指定
+              </span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -59,7 +69,9 @@
     <el-dialog
       v-model="messageDialogVisible"
       :title="isEdit ? '编辑消息' : '创建消息'"
-      width="600px"
+      width="640px"
+      :close-on-click-modal="false"
+      class="system-message-dialog"
     >
       <el-form
         ref="messageFormRef"
@@ -85,8 +97,58 @@
             <el-option label="指定用户" value="user" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="messageForm.target_type !== 'all'" label="目标ID" prop="target_id">
-          <el-input-number v-model="messageForm.target_id" :min="1" placeholder="请输入目标ID" />
+        <el-form-item v-if="messageForm.target_type === 'user'" label="目标用户" prop="target_ids">
+          <div class="multi-select-wrapper">
+            <el-select
+              v-model="messageForm.target_ids"
+              multiple
+              filterable
+              remote
+              collapse-tags
+              collapse-tags-tooltip
+              reserve-keyword
+              placeholder="输入关键词搜索选择用户"
+              :remote-method="searchUsers"
+              :loading="searchUserLoading"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="user in searchUserOptions"
+                :key="user.id"
+                :label="`${user.nickname || user.username}`"
+                :value="user.id"
+              >
+                <div class="user-option-item">
+                  <span class="user-option-name">{{ user.nickname || user.username }}</span>
+                  <span class="user-option-meta">ID: {{ user.id }} · {{ user.email || '' }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <div v-if="messageForm.target_ids.length > 0" class="selected-summary">
+              已选 <strong>{{ messageForm.target_ids.length }}</strong> 个用户
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="messageForm.target_type === 'department'" label="目标部门" prop="target_ids">
+          <div class="multi-select-wrapper">
+            <el-tree-select
+              v-model="messageForm.target_ids"
+              :data="departmentTree"
+              :props="{ label: 'name', value: 'id', children: 'subDepartments' }"
+              placeholder="请选择部门（可多选）"
+              multiple
+              filterable
+              clearable
+              collapse-tags
+              collapse-tags-tooltip
+              check-strictly
+              style="width: 100%"
+              render-after-expand
+            />
+            <div v-if="messageForm.target_ids.length > 0" class="selected-summary">
+              已选 <strong>{{ messageForm.target_ids.length }}</strong> 个部门
+            </div>
+          </div>
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
           <el-select v-model="messageForm.status" placeholder="请选择状态">
@@ -104,11 +166,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { SystemMessage } from '@/types'
+import { ElMessage } from 'element-plus'
+import type { SystemMessage, Organization } from '@/types'
+import type { User } from '@/types'
 import { getSystemMessages, createSystemMessage, updateSystemMessage, deleteSystemMessage } from '@/api/systemMessages'
+import { getOrganizationTree } from '@/api/organization'
+import { getUsers } from '@/api/users'
 
 // 搜索和分页
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
@@ -126,6 +191,7 @@ const messageForm = reactive({
   content: '',
   target_type: 'all' as string,
   target_id: undefined as number | undefined,
+  target_ids: [] as number[],
   status: 'draft' as 'published' | 'draft' | 'active',
 })
 
@@ -133,7 +199,26 @@ const messageRules: FormRules = {
   title: [{ required: true, message: '请输入消息标题', trigger: 'blur' }],
   content: [{ required: true, message: '请输入消息内容', trigger: 'blur' }],
   target_type: [{ required: true, message: '请选择发送范围', trigger: 'change' }],
+  target_ids: [
+    {
+      validator: (_rule: any, value: number[], callback: Function) => {
+        if (messageForm.target_type !== 'all' && (!value || value.length === 0)) {
+          callback(new Error(targetTypeRequiredMsg.value))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change',
+    },
+  ],
 }
+
+// 动态错误提示（用于验证）
+const targetTypeRequiredMsg = computed(() => {
+  if (messageForm.target_type === 'user') return '请至少选择一个用户'
+  if (messageForm.target_type === 'department') return '请至少选择一个部门'
+  return ''
+})
 
 // 工具函数
 const targetTypeLabel = (type: string): string => {
@@ -145,8 +230,54 @@ const targetTypeLabel = (type: string): string => {
   return map[type] || type
 }
 
+
 const handleTargetTypeChange = () => {
-  messageForm.target_id = undefined
+  messageForm.target_ids = []
+}
+
+// ---------- 部门树 ----------
+const departmentTree = ref<Organization[]>([])
+
+const fetchDepartmentTree = async () => {
+  try {
+    const { data } = await getOrganizationTree()
+    // 接口返回 { departments, unassignedUsers }
+    const resData = data.data as any
+    const departments = Array.isArray(resData?.departments) ? resData.departments : []
+    // 递归过滤掉无 ID 的虚拟节点（如"未分配用户"）
+    const filterValid = (nodes: any[]): any[] => {
+      return nodes.filter((n: any) => {
+        if (!n.id) return false
+        if (Array.isArray(n.subDepartments)) {
+          n.subDepartments = filterValid(n.subDepartments)
+        }
+        return true
+      })
+    }
+    departmentTree.value = filterValid(departments)
+  } catch {
+    // ignore
+  }
+}
+
+// ---------- 用户搜索 ----------
+const searchUserLoading = ref(false)
+const searchUserOptions = ref<User[]>([])
+
+const searchUsers = async (keyword: string) => {
+  if (!keyword) {
+    searchUserOptions.value = []
+    return
+  }
+  searchUserLoading.value = true
+  try {
+    const { data } = await getUsers({ page: 1, pageSize: 20, keyword })
+    searchUserOptions.value = data.data.list
+  } catch {
+    searchUserOptions.value = []
+  } finally {
+    searchUserLoading.value = false
+  }
 }
 
 // 获取消息列表
@@ -168,11 +299,9 @@ const fetchMessages = async () => {
 
 // 创建消息
 const handleCreate = () => {
-  console.log('handleCreate 被调用')
   isEdit.value = false
   resetMessageForm()
   messageDialogVisible.value = true
-  console.log('messageDialogVisible:', messageDialogVisible.value)
 }
 
 // 编辑消息
@@ -183,6 +312,7 @@ const handleEdit = (row: SystemMessage) => {
   messageForm.content = row.content
   messageForm.target_type = row.target_type || 'all'
   messageForm.target_id = row.target_id
+  messageForm.target_ids = row.target_id ? [row.target_id] : []
   messageForm.status = row.status === 'active' ? 'published' : 'draft'
   messageDialogVisible.value = true
 }
@@ -193,6 +323,7 @@ const resetMessageForm = () => {
   messageForm.content = ''
   messageForm.target_type = 'all'
   messageForm.target_id = undefined
+  messageForm.target_ids = []
   messageForm.status = 'draft'
 }
 
@@ -203,7 +334,6 @@ const handleSubmit = async () => {
       ElMessage.warning('请检查表单填写是否完整')
       return
     }
-    console.log('提交系统消息:', JSON.parse(JSON.stringify(messageForm)))
     submitting.value = true
     try {
       if (isEdit.value) {
@@ -218,7 +348,7 @@ const handleSubmit = async () => {
           title: messageForm.title,
           content: messageForm.content,
           target_type: messageForm.target_type,
-          target_id: messageForm.target_id,
+          target_ids: messageForm.target_type !== 'all' ? messageForm.target_ids : undefined,
         })
         ElMessage.success('创建成功')
       }
@@ -244,7 +374,10 @@ const handleDelete = async (id: number) => {
   }
 }
 
-onMounted(fetchMessages)
+onMounted(() => {
+  fetchMessages()
+  fetchDepartmentTree()
+})
 </script>
 
 <style scoped>
@@ -274,6 +407,69 @@ onMounted(fetchMessages)
 .page-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 列表中的目标范围展示 */
+.target-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.target-detail {
+  font-size: 12px;
+  color: var(--color-text-secondary, #909399);
+  white-space: nowrap;
+}
+
+.target-detail.text-muted {
+  color: #c0c4cc;
+  font-style: italic;
+}
+
+/* 多选选择器 */
+.multi-select-wrapper {
+  width: 100%;
+}
+
+.selected-summary {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #909399);
+}
+
+.selected-summary strong {
+  color: var(--el-color-primary, #409eff);
+  font-weight: 600;
+}
+
+/* 用户选项展示 */
+.user-option-item {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  padding: 2px 0;
+}
+
+.user-option-name {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--color-text-primary, #303133);
+}
+
+.user-option-meta {
+  font-size: 11px;
+  color: var(--color-text-secondary, #909399);
+  margin-top: 1px;
+}
+
+/* 对话框微调 */
+:deep(.system-message-dialog .el-dialog__body) {
+  padding-top: 10px;
+}
+
+:deep(.system-message-dialog .el-form-item:last-child) {
+  margin-bottom: 0;
 }
 
 .pagination-container {

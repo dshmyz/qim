@@ -27,8 +27,6 @@ export interface Department {
 export function useOrganizationLogic() {
   const { serverUrl } = useServerUrl()
   const orgStructure = ref<Department[]>([])
-  const unassignedUsers = ref<Employee[]>([])
-
   const convertEmployee = (emp: any, deptName: string): Employee => ({
     id: emp.id ? emp.id.toString() : '',
     name: emp.nickname || emp.username || '',
@@ -61,12 +59,6 @@ export function useOrganizationLogic() {
         const data = response.data
         if (data && typeof data === 'object' && Array.isArray(data.departments)) {
           orgStructure.value = convertDepartments(data.departments)
-          unassignedUsers.value = Array.isArray(data.unassignedUsers)
-            ? data.unassignedUsers.map((emp: any) => convertEmployee(emp, '未分配部门'))
-            : []
-        } else if (Array.isArray(data)) {
-          orgStructure.value = convertDepartments(data)
-          unassignedUsers.value = []
         }
       }
     } catch (error) {
@@ -123,7 +115,6 @@ export function useOrganizationLogic() {
 
   return {
     orgStructure,
-    unassignedUsers,
     loadOrganizationTree,
     handleUserClick,
     collectEmployees,

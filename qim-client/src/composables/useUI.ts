@@ -91,8 +91,7 @@ export function useUI() {
     title: '',
     content: '',
     target: 'all',
-    groupId: '',
-    userId: ''
+    targetIds: [] as (string | number)[]
   })
 
   // 群成员模态框
@@ -404,8 +403,7 @@ export function useUI() {
       title: '',
       content: '',
       target: 'all',
-      groupId: '',
-      userId: ''
+      targetIds: []
     }
   }
 

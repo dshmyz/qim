@@ -65,7 +65,6 @@
         :unreadNotificationCount="unreadNotificationCount"
         :serverUrl="serverUrl"
         :orgStructure="orgStructure"
-        :unassignedUsers="unassignedUsers"
         :selectedGroup="selectedGroup"
         :selectedChannel="selectedChannel"
         :appCategories="appCategories"
@@ -1954,7 +1953,7 @@ const toggleSubDepartment = (departmentId: string, subDepartmentId: string) => {
 }
 
 
-const { orgStructure, unassignedUsers, loadOrganizationTree, collectEmployees } = orgLogic
+const { orgStructure, loadOrganizationTree, collectEmployees } = orgLogic
 
 const handleUserClick = (employee: any) => {
   selectedUser.value = employee
@@ -2312,7 +2311,7 @@ const handleConversationCreated = (newConversation: any) => {
 // 打开系统消息发布模态框
 // 关闭系统消息发布模态框
 // 发送系统消息
-const sendSystemMessage = async (msg: { title: string; content: string; target: string; groupId: string; userId: string }) => {
+const sendSystemMessage = async (msg: { title: string; content: string; target: string; groupId?: string; userId?: string; targetIds?: (string | number)[] }) => {
   if (!msg.title || !msg.content) {
     showMessage({ message: '请填写标题和内容', type: 'warning' })
     return
@@ -2325,11 +2324,14 @@ const sendSystemMessage = async (msg: { title: string; content: string; target: 
   }
   
   if (msg.target === 'group' && msg.groupId) {
-    payload.target_type = 'department'
+    payload.target_type = 'group'
     payload.target_id = parseInt(String(msg.groupId))
-  } else if (msg.target === 'user' && msg.userId) {
+  } else if (msg.target === 'department') {
+    payload.target_type = 'department'
+    payload.target_ids = (msg.targetIds || []).map((id: any) => parseInt(String(id)))
+  } else if (msg.target === 'user') {
     payload.target_type = 'user'
-    payload.target_id = parseInt(String(msg.userId))
+    payload.target_ids = (msg.targetIds || []).map((id: any) => parseInt(String(id)))
   }
   
   try {
@@ -2343,7 +2345,7 @@ const sendSystemMessage = async (msg: { title: string; content: string; target: 
     
     if (response.data.code === 0) {
       showMessage({ message: '系统消息发布成功', type: 'success' })
-      systemMessage.value = { title: '', content: '', target: 'all', groupId: '', userId: '' }
+      systemMessage.value = { title: '', content: '', target: 'all', targetIds: [] }
       closeSystemMessageModal()
     } else {
       showMessage({ message: '系统消息发布失败: ' + response.data.message, type: 'error' })

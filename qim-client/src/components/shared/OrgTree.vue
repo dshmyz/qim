@@ -1,12 +1,12 @@
 <template>
-  <div v-if="orgStructure.length === 0 && unassignedUsers?.length === 0" class="empty-org">
+  <div v-if="orgStructure.length === 0" class="empty-org">
     <div class="placeholder-content">
       <i class="fas fa-building fa-4x"></i>
       <h3>暂无组织架构</h3>
       <p>暂无部门数据，请联系管理员配置组织架构</p>
     </div>
   </div>
-  <div v-else-if="searchQuery && filteredOrgStructure.length === 0 && filteredUnassignedUsers.length === 0" class="empty-org">
+  <div v-else-if="searchQuery && filteredOrgStructure.length === 0" class="empty-org">
     <div class="placeholder-content">
       <i class="fas fa-search fa-4x"></i>
       <h3>未找到匹配结果</h3>
@@ -21,6 +21,17 @@
           <span class="node-name department-name">{{ department.name }}</span>
         </div>
         <div v-if="expandedDepartments.includes(department.id)" class="tree-children">
+          <div v-if="department.employees && department.employees.length > 0">
+            <div v-for="employee in department.employees" :key="employee.id" class="tree-node employee-node">
+              <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
+                <span class="employee-avatar-container">
+                  <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
+                </span>
+                <span class="node-name employee-name">{{ employee.name }}</span>
+                <span class="employee-position">{{ employee.position }}</span>
+              </div>
+            </div>
+          </div>
           <div v-for="child in department.subDepartments" :key="child.id">
             <div class="tree-node sub-department-node">
               <div class="tree-node-content" @click="toggleSubDepartment(department.id, child.id)">
@@ -68,23 +79,8 @@
         </div>
       </div>
     </template>
-    <div v-if="filteredUnassignedUsers.length > 0" class="tree-node unassigned-group">
-      <div class="tree-node-content" @click="toggleUnassigned">
-        <span class="toggle-icon">{{ isUnassignedExpanded ? '▼' : '▶' }}</span>
-        <span class="node-name department-name unassigned-name">未分配部门</span>
-      </div>
-      <div v-if="isUnassignedExpanded" class="tree-children">
-        <div v-for="employee in filteredUnassignedUsers" :key="employee.id" class="tree-node employee-node">
-          <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
-            <span class="employee-avatar-container">
-              <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
-            </span>
-            <span class="node-name employee-name">{{ employee.name }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -100,7 +96,6 @@ interface OrgDepartment {
 
 interface Props {
   orgStructure: OrgDepartment[]
-  unassignedUsers?: any[]
   searchQuery?: string
 }
 
@@ -114,12 +109,6 @@ const emit = defineEmits<{
 
 const expandedDepartments = ref<string[]>([])
 const expandedSubDepartments = ref<Record<string, string[]>>({})
-const isUnassignedExpanded = ref(false)
-
-const toggleUnassigned = () => {
-  isUnassignedExpanded.value = !isUnassignedExpanded.value
-}
-
 const toggleDepartment = (id: string) => {
   const index = expandedDepartments.value.indexOf(id)
   if (index > -1) {
@@ -187,13 +176,6 @@ const filteredOrgStructure = computed(() => {
     .filter((d): d is OrgDepartment => d !== null)
 })
 
-const filteredUnassignedUsers = computed(() => {
-  if (!props.unassignedUsers || props.unassignedUsers.length === 0) return []
-  if (!props.searchQuery || !props.searchQuery.trim()) return props.unassignedUsers
-  const query = props.searchQuery.toLowerCase().trim()
-  return props.unassignedUsers.filter(emp => employeeMatches(emp, query))
-})
-
 function collectMatchedDepartmentIds(
   dept: OrgDepartment,
   query: string,
@@ -259,11 +241,6 @@ watch(() => props.searchQuery, (newQuery) => {
   expandedDepartments.value = matchedDeptIds
   expandedSubDepartments.value = matchedSubDeptIds
 
-  if (props.unassignedUsers && props.unassignedUsers.some(emp => employeeMatches(emp, query))) {
-    isUnassignedExpanded.value = true
-  } else {
-    isUnassignedExpanded.value = false
-  }
 })
 </script>
 
@@ -456,13 +433,4 @@ watch(() => props.searchQuery, (newQuery) => {
   color: var(--text-secondary, #666);
 }
 
-.unassigned-group {
-  margin-top: 8px;
-  border-top: 1px dashed var(--border-color);
-}
-
-.unassigned-name {
-  color: var(--text-secondary);
-  font-weight: 500;
-}
 </style>

@@ -25,15 +25,11 @@ func GetOrganizationTree(c *gin.Context) {
 		loadDepartmentChildren(&departments[i], db)
 	}
 
-	var unassignedUsers []model.User
-	db.Where("type = ? AND id NOT IN (SELECT user_id FROM department_employees)", "user").
-		Find(&unassignedUsers)
-
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
 			"departments":      departments,
-			"unassignedUsers": unassignedUsers,
+			
 		},
 	})
 }

@@ -3,6 +3,7 @@ import { request } from '@/utils/request'
 import type { AxiosResponse } from 'axios'
 
 export interface CreateSystemMessageParams {
+  target_ids?: number[]
   title: string
   content: string
   target_type?: string
