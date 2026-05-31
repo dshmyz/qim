@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <MiniAppLoader
+    <MiniAppDrawer
       :mini-app="activeMiniApp"
       @close="activeMiniApp = null"
       @show-toast="handleMiniAppToast"
@@ -41,8 +41,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { generateAvatar } from '../../utils/avatar'
-import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
-import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
+import MiniAppDrawer from '../miniapp/MiniAppDrawer.vue'
+import type { MiniAppData } from '../miniapp/MiniAppDrawer.vue'
 import { useChatState } from '../../composables/useChatState'
 import { useRequest } from '../../composables/useRequest'
 import { useChatStore } from '../../stores/chat'
