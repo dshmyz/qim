@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import QMessage from '../utils/qmessage'
 import type { Message } from '../types'
 import { request } from './useRequest'
 import { useUIStore } from '../stores/ui'
@@ -352,10 +353,11 @@ export function useMessageActions(
           })
         ])
 
-        console.log('图片复制成功')
+        QMessage.success('图片已复制')
       } else {
         // 其他消息：复制文本内容
         await navigator.clipboard.writeText(message.content)
+        QMessage.success('已复制')
       }
     } catch (err) {
       console.error('复制失败:', err)

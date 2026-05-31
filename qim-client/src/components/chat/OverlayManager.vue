@@ -156,6 +156,7 @@ const emit = defineEmits<{
   'add-to-notes-app': []
   'create-task': []
   'recall-message': []
+  'close-message-menu': []
   'send-message-reminder': []
   'close-member-context-menu': []
   'remove-member': [memberId: string]
@@ -177,6 +178,10 @@ const emit = defineEmits<{
   'translate': []
   'smart-reply': []
 }>()
+
+const closeMessageMenu = () => {
+  emit('close-message-menu')
+}
 
 const formatTimeWithCoerce = (timestamp: string | number | null | undefined) => {
   if (timestamp == null) return ''
