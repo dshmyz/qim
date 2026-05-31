@@ -50,7 +50,7 @@
               </div>
             </div>
             <div class="member-selector" ref="memberSelectorRef">
-              <div v-if="isLoading" class="loading-state">
+              <div v-if="isSearching" class="loading-state">
                 <div class="loading-spinner"></div>
                 <p>加载中...</p>
               </div>
@@ -147,19 +147,15 @@ const memberSelectorRef = ref<HTMLElement | null>(null)
 const pageSize = 20
 const currentPage = ref(1)
 const isLoading = ref(false)
+const isSearching = ref(false)
+const searchResults = ref<any[]>([])
 const searchTimeout = ref<number | null>(null)
 
-// 过滤成员
 const filteredMembers = computed(() => {
-  if (!searchQuery.value) {
+  if (!searchQuery.value.trim()) {
     return props.members
   }
-  const query = searchQuery.value.toLowerCase()
-  return props.members.filter(member => 
-    member.name.toLowerCase().includes(query) ||
-    (member.position && member.position.toLowerCase().includes(query)) ||
-    (member.department && member.department.toLowerCase().includes(query))
-  )
+  return searchResults.value
 })
 
 // 显示的成员（分页）
@@ -172,42 +168,71 @@ const hasMoreMembers = computed(() => {
   return displayedMembers.value.length < filteredMembers.value.length
 })
 
-// 监听搜索查询变化
-watch(searchQuery, () => {
-  // 重置分页
-  currentPage.value = 1
-})
-
-// 监听visible变化，重置表单
 watch(() => props.visible, (newValue) => {
   if (newValue) {
     resetForm()
   }
 })
 
-// 重置表单
 const resetForm = () => {
   name.value = ''
   avatar.value = ''
   selectedMembers.value = []
   searchQuery.value = ''
+  searchResults.value = []
   currentPage.value = 1
   isLoading.value = false
+  isSearching.value = false
 }
 
-// 防抖搜索
 const handleSearchInput = () => {
   if (searchTimeout.value) {
     clearTimeout(searchTimeout.value)
   }
-  searchTimeout.value = window.setTimeout(() => {
+  searchTimeout.value = window.setTimeout(async () => {
+    const query = searchQuery.value.trim()
+    if (!query) {
+      searchResults.value = []
+      currentPage.value = 1
+      return
+    }
+
+    isSearching.value = true
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(
+        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.code === 0) {
+          searchResults.value = data.data || []
+        } else {
+          searchResults.value = []
+        }
+      } else {
+        searchResults.value = []
+      }
+    } catch (error) {
+      console.error('搜索成员失败:', error)
+      searchResults.value = []
+    } finally {
+      isSearching.value = false
+    }
+
     currentPage.value = 1
   }, 300)
 }
 
-// 清空搜索
 const clearSearch = () => {
   searchQuery.value = ''
+  searchResults.value = []
   currentPage.value = 1
 }
 

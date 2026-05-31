@@ -27,6 +27,22 @@ export interface Department {
 export function useOrganizationLogic() {
   const { serverUrl } = useServerUrl()
   const orgStructure = ref<Department[]>([])
+  const unassignedUsers = ref<Employee[]>([])
+
+  const convertEmployee = (emp: any, deptName: string): Employee => ({
+    id: emp.id ? emp.id.toString() : '',
+    name: emp.nickname || emp.username || '',
+    nickname: emp.nickname || '',
+    username: emp.username || '',
+    avatar: (emp.avatar && isAbsoluteUrl(emp.avatar))
+      ? emp.avatar
+      : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
+    email: emp.email || '',
+    mobile: emp.mobile || emp.phone || '',
+    position: emp.position || '',
+    department: deptName,
+    status: emp.status || 'offline'
+  })
 
   const loadOrganizationTree = async () => {
     try {
@@ -38,23 +54,20 @@ export function useOrganizationLogic() {
             id: dept.id ? dept.id.toString() : '',
             name: dept.name || '',
             subDepartments: dept.subDepartments ? convertDepartments(dept.subDepartments) : [],
-            employees: dept.employees ? dept.employees.map(emp => ({
-              id: emp.id ? emp.id.toString() : '',
-              name: emp.nickname || emp.username || '',
-              nickname: emp.nickname || '',
-              username: emp.username || '',
-              avatar: (emp.avatar && isAbsoluteUrl(emp.avatar))
-                ? emp.avatar
-                : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
-              email: emp.email || '',
-              mobile: emp.mobile || emp.phone || '',
-              position: emp.position || '',
-              department: dept.name,
-              status: emp.status || 'offline'
-            })) : []
+            employees: dept.employees ? dept.employees.map((emp: any) => convertEmployee(emp, dept.name)) : []
           }))
         }
-        orgStructure.value = convertDepartments(response.data)
+
+        const data = response.data
+        if (data && typeof data === 'object' && Array.isArray(data.departments)) {
+          orgStructure.value = convertDepartments(data.departments)
+          unassignedUsers.value = Array.isArray(data.unassignedUsers)
+            ? data.unassignedUsers.map((emp: any) => convertEmployee(emp, '未分配部门'))
+            : []
+        } else if (Array.isArray(data)) {
+          orgStructure.value = convertDepartments(data)
+          unassignedUsers.value = []
+        }
       }
     } catch (error) {
       logger.error('加载组织架构失败:', error)
@@ -110,6 +123,7 @@ export function useOrganizationLogic() {
 
   return {
     orgStructure,
+    unassignedUsers,
     loadOrganizationTree,
     handleUserClick,
     collectEmployees,

@@ -107,7 +107,7 @@
         
         <div class="search-section">
           <div class="search-box">
-            <input type="text" v-model="localSearchQuery" placeholder="搜索成员..." class="search-input" />
+            <input type="text" v-model="localSearchQuery" placeholder="搜索成员..." class="search-input" @input="handleSearchInput" />
           </div>
         </div>
         
@@ -116,6 +116,7 @@
             <span>选择成员</span>
             <span class="selected-count">{{ localSelectedMembers.length }} 已选择</span>
           </div>
+          <div v-if="isSearching" class="search-loading">搜索中...</div>
           <div class="members-list">
             <div v-for="employee in filteredEmployees" :key="employee.id" class="member-item" :class="{ selected: localSelectedMembers.some(m => m.id === employee.id) }" @click="toggleMember(employee)">
               <div class="member-avatar">
@@ -129,8 +130,9 @@
                 <input type="checkbox" v-model="localSelectedMembers" :value="employee" class="checkbox" />
               </div>
             </div>
-            <div v-if="filteredEmployees.length === 0" class="empty-state">
-              <p>没有找到匹配的成员</p>
+            <div v-if="filteredEmployees.length === 0 && !isSearching" class="empty-state">
+              <p v-if="localSearchQuery">没有找到匹配的成员</p>
+              <p v-else>暂无成员</p>
             </div>
           </div>
         </div>
@@ -265,6 +267,9 @@ const localSearchQuery = ref(props.addMembersSearchQuery)
 const localSelectedMembers = ref([...props.selectedAddMembers])
 const localGroupName = ref(props.editGroupName)
 const localAnnouncement = ref(props.editAnnouncementContent)
+const isSearching = ref(false)
+const searchResults = ref<Employee[]>([])
+const searchTimeout = ref<number | null>(null)
 
 watch(() => props.addMembersSearchQuery, (val) => { localSearchQuery.value = val })
 watch(() => props.selectedAddMembers, (val) => { localSelectedMembers.value = [...val] })
@@ -272,13 +277,55 @@ watch(() => props.editGroupName, (val) => { localGroupName.value = val })
 watch(() => props.editAnnouncementContent, (val) => { localAnnouncement.value = val })
 
 const filteredEmployees = computed(() => {
-  if (!localSearchQuery.value) return props.allEmployees
-  const query = localSearchQuery.value.toLowerCase()
-  return props.allEmployees.filter(emp => 
-    emp.name.toLowerCase().includes(query) || 
-    (emp.username && emp.username.toLowerCase().includes(query))
-  )
+  if (!localSearchQuery.value.trim()) return props.allEmployees
+  return searchResults.value
 })
+
+const handleSearchInput = () => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = window.setTimeout(async () => {
+    const query = localSearchQuery.value.trim()
+    if (!query) {
+      searchResults.value = []
+      return
+    }
+
+    isSearching.value = true
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(
+        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.code === 0) {
+          searchResults.value = (data.data || []).map((u: any) => ({
+            id: u.id,
+            name: u.name || u.username || '',
+            avatar: u.avatar || ''
+          }))
+        } else {
+          searchResults.value = []
+        }
+      } else {
+        searchResults.value = []
+      }
+    } catch (error) {
+      console.error('搜索成员失败:', error)
+      searchResults.value = []
+    } finally {
+      isSearching.value = false
+    }
+  }, 300)
+}
 
 const toggleMember = (employee: Employee) => {
   const index = localSelectedMembers.value.findIndex(m => m.id === employee.id)

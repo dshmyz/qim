@@ -65,6 +65,7 @@
         :unreadNotificationCount="unreadNotificationCount"
         :serverUrl="serverUrl"
         :orgStructure="orgStructure"
+        :unassignedUsers="unassignedUsers"
         :selectedGroup="selectedGroup"
         :selectedChannel="selectedChannel"
         :appCategories="appCategories"
@@ -1953,7 +1954,7 @@ const toggleSubDepartment = (departmentId: string, subDepartmentId: string) => {
 }
 
 
-const { orgStructure, loadOrganizationTree, collectEmployees } = orgLogic
+const { orgStructure, unassignedUsers, loadOrganizationTree, collectEmployees } = orgLogic
 
 const handleUserClick = (employee: any) => {
   selectedUser.value = employee

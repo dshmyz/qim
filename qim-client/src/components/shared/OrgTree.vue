@@ -1,13 +1,20 @@
 <template>
-  <div v-if="orgStructure.length === 0" class="empty-org">
+  <div v-if="orgStructure.length === 0 && unassignedUsers?.length === 0" class="empty-org">
     <div class="placeholder-content">
       <i class="fas fa-building fa-4x"></i>
       <h3>暂无组织架构</h3>
       <p>暂无部门数据，请联系管理员配置组织架构</p>
     </div>
   </div>
+  <div v-else-if="searchQuery && filteredOrgStructure.length === 0 && filteredUnassignedUsers.length === 0" class="empty-org">
+    <div class="placeholder-content">
+      <i class="fas fa-search fa-4x"></i>
+      <h3>未找到匹配结果</h3>
+      <p>没有找到与 "{{ searchQuery }}" 相关的员工或部门</p>
+    </div>
+  </div>
   <div v-else class="tree-container">
-    <template v-for="department in orgStructure" :key="department.id">
+    <template v-for="department in filteredOrgStructure" :key="department.id">
       <div class="tree-node department-node">
         <div class="tree-node-content" @click="toggleDepartment(department.id)">
           <span class="toggle-icon">{{ expandedDepartments.includes(department.id) ? '▼' : '▶' }}</span>
@@ -61,11 +68,27 @@
         </div>
       </div>
     </template>
+    <div v-if="filteredUnassignedUsers.length > 0" class="tree-node unassigned-group">
+      <div class="tree-node-content" @click="toggleUnassigned">
+        <span class="toggle-icon">{{ isUnassignedExpanded ? '▼' : '▶' }}</span>
+        <span class="node-name department-name unassigned-name">未分配部门</span>
+      </div>
+      <div v-if="isUnassignedExpanded" class="tree-children">
+        <div v-for="employee in filteredUnassignedUsers" :key="employee.id" class="tree-node employee-node">
+          <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
+            <span class="employee-avatar-container">
+              <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
+            </span>
+            <span class="node-name employee-name">{{ employee.name }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Avatar from './Avatar.vue'
 
 interface OrgDepartment {
@@ -77,6 +100,8 @@ interface OrgDepartment {
 
 interface Props {
   orgStructure: OrgDepartment[]
+  unassignedUsers?: any[]
+  searchQuery?: string
 }
 
 const props = defineProps<Props>()
@@ -89,6 +114,11 @@ const emit = defineEmits<{
 
 const expandedDepartments = ref<string[]>([])
 const expandedSubDepartments = ref<Record<string, string[]>>({})
+const isUnassignedExpanded = ref(false)
+
+const toggleUnassigned = () => {
+  isUnassignedExpanded.value = !isUnassignedExpanded.value
+}
 
 const toggleDepartment = (id: string) => {
   const index = expandedDepartments.value.indexOf(id)
@@ -110,6 +140,131 @@ const toggleSubDepartment = (parentId: string, subId: string) => {
     expandedSubDepartments.value[parentId].push(subId)
   }
 }
+
+function employeeMatches(employee: any, query: string): boolean {
+  const fields = [
+    employee.name || '',
+    employee.nickname || '',
+    employee.username || '',
+    employee.position || '',
+    employee.email || '',
+    employee.mobile || '',
+    employee.department || ''
+  ]
+  return fields.some(f => f.toLowerCase().includes(query))
+}
+
+function filterDepartment(dept: OrgDepartment, query: string): OrgDepartment | null {
+  const deptNameMatch = dept.name.toLowerCase().includes(query)
+
+  const filteredEmployees = dept.employees
+    ? dept.employees.filter(emp => employeeMatches(emp, query))
+    : []
+
+  const filteredChildren = dept.subDepartments
+    ? dept.subDepartments
+        .map(child => filterDepartment(child, query))
+        .filter((d): d is OrgDepartment => d !== null)
+    : []
+
+  const hasMatch = deptNameMatch || filteredEmployees.length > 0 || filteredChildren.length > 0
+  if (!hasMatch) return null
+
+  return {
+    ...dept,
+    subDepartments: filteredChildren,
+    employees: deptNameMatch ? dept.employees : filteredEmployees
+  }
+}
+
+const filteredOrgStructure = computed(() => {
+  if (!props.searchQuery || !props.searchQuery.trim()) {
+    return props.orgStructure
+  }
+  const query = props.searchQuery.toLowerCase().trim()
+  return props.orgStructure
+    .map(dept => filterDepartment(dept, query))
+    .filter((d): d is OrgDepartment => d !== null)
+})
+
+const filteredUnassignedUsers = computed(() => {
+  if (!props.unassignedUsers || props.unassignedUsers.length === 0) return []
+  if (!props.searchQuery || !props.searchQuery.trim()) return props.unassignedUsers
+  const query = props.searchQuery.toLowerCase().trim()
+  return props.unassignedUsers.filter(emp => employeeMatches(emp, query))
+})
+
+function collectMatchedDepartmentIds(
+  dept: OrgDepartment,
+  query: string,
+  results: string[]
+): boolean {
+  let hasMatch = dept.name.toLowerCase().includes(query)
+
+  if (dept.employees) {
+    const empMatch = dept.employees.some(emp => employeeMatches(emp, query))
+    if (empMatch) hasMatch = true
+  }
+
+  const childMatches: string[] = []
+  dept.subDepartments?.forEach(child => {
+    const subIds: string[] = []
+    if (collectMatchedDepartmentIds(child, query, subIds)) {
+      hasMatch = true
+      childMatches.push(child.id)
+      childMatches.push(...subIds)
+    }
+  })
+
+  if (hasMatch) {
+    results.push(dept.id)
+    results.push(...childMatches)
+  }
+
+  return hasMatch
+}
+
+watch(() => props.searchQuery, (newQuery) => {
+  if (!newQuery || !newQuery.trim()) {
+    return
+  }
+  const query = newQuery.toLowerCase().trim()
+  const matchedDeptIds: string[] = []
+  const matchedSubDeptIds: Record<string, string[]> = {}
+
+  props.orgStructure.forEach(dept => {
+    const subIds: string[] = []
+    dept.subDepartments?.forEach(child => {
+      const grandIds: string[] = []
+      if (collectMatchedDepartmentIds(child, query, grandIds)) {
+        if (!matchedSubDeptIds[dept.id]) {
+          matchedSubDeptIds[dept.id] = []
+        }
+        matchedSubDeptIds[dept.id].push(child.id)
+        if (grandIds.length > 0) {
+          matchedSubDeptIds[child.id] = [...(matchedSubDeptIds[child.id] || []), ...grandIds]
+        }
+      }
+    })
+
+    const deptHasMatch = dept.name.toLowerCase().includes(query)
+      || (dept.employees && dept.employees.some(emp => employeeMatches(emp, query)))
+      || (matchedSubDeptIds[dept.id] && matchedSubDeptIds[dept.id].length > 0)
+
+    if (deptHasMatch) {
+      matchedDeptIds.push(dept.id)
+    }
+  })
+
+  expandedDepartments.value = matchedDeptIds
+  expandedSubDepartments.value = matchedSubDeptIds
+
+  if (props.unassignedUsers && props.unassignedUsers.some(emp => employeeMatches(emp, query))) {
+    isUnassignedExpanded.value = true
+  } else {
+    isUnassignedExpanded.value = false
+  }
+})
 </script>
 
 <style scoped>
@@ -299,5 +454,15 @@ const toggleSubDepartment = (parentId: string, subId: string) => {
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary, #666);
+}
+
+.unassigned-group {
+  margin-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.unassigned-name {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 </style>

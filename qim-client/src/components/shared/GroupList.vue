@@ -32,13 +32,13 @@ import Avatar from './Avatar.vue'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import type { Conversation, User } from '../../types'
-import { logger } from '../../utils/logger';
 
 const { serverUrl } = useServerUrl()
 
 interface Props {
   conversations: Conversation[]
   selectedGroup: Conversation | null
+  searchQuery?: string
 }
 
 const props = defineProps<Props>()
@@ -50,9 +50,22 @@ defineEmits<{
 }>()
 
 const filteredConversations = computed(() => {
-  const filtered = props.conversations.filter(c => c.type === 'group' || c.type === 'discussion')
-  logger.log('GroupList - Filtered conversations:', filtered)
-  logger.log('GroupList - Total conversations:', props.conversations.length)
+  let filtered = props.conversations.filter(c => c.type === 'group' || c.type === 'discussion')
+
+  if (props.searchQuery && props.searchQuery.trim()) {
+    const query = props.searchQuery.toLowerCase().trim()
+    filtered = filtered.filter(conv => {
+      if (conv.name && conv.name.toLowerCase().includes(query)) return true
+      if (conv.members && conv.members.length > 0) {
+        return conv.members.some((member: any) => {
+          const memberName = member.name || member.username || ''
+          return memberName.toLowerCase().includes(query)
+        })
+      }
+      return false
+    })
+  }
+
   return filtered
 })
 

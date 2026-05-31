@@ -52,7 +52,7 @@ export function useShareLogic(
             }
           })
         }
-        extractUsers(orgResponse.data)
+        extractUsers(orgResponse.data.departments)
         shareUsers.value = users
       }
 

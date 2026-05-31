@@ -6,7 +6,9 @@
         class="assignee-search"
         v-model="searchQuery"
         placeholder="搜索联系人..."
+        @input="handleSearchInput"
       />
+      <div v-if="isSearching" class="search-loading">搜索中...</div>
       <div class="assignee-options">
         <button class="assignee-option" @click="selectAssignee(null)">
           <span class="no-assignee">未指派</span>
@@ -43,6 +45,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { TaskUser } from '../../../../types/task'
+import { useServerUrl } from '../../../../composables/useServerUrl'
 
 const props = defineProps<{
   modelValue: string | null
@@ -53,23 +56,74 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
+const { serverUrl } = useServerUrl()
+
 const showDropdown = ref(false)
 const searchQuery = ref('')
+const isSearching = ref(false)
+const searchResults = ref<TaskUser[]>([])
+const searchTimeout = ref<number | null>(null)
 
 const currentAssignee = computed(() =>
   props.contacts.find(u => u.id === props.modelValue) || null
 )
 
 const filteredUsers = computed(() => {
-  if (!searchQuery.value) return props.contacts
-  const q = searchQuery.value.toLowerCase()
-  return props.contacts.filter(u => u.name.toLowerCase().includes(q))
+  if (!searchQuery.value.trim()) return props.contacts
+  return searchResults.value
 })
+
+function handleSearchInput() {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = window.setTimeout(async () => {
+    const query = searchQuery.value.trim()
+    if (!query) {
+      searchResults.value = []
+      return
+    }
+
+    isSearching.value = true
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(
+        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.code === 0) {
+          searchResults.value = (data.data || []).map((u: any) => ({
+            id: u.id,
+            name: u.name || u.username || '',
+            avatar: u.avatar || ''
+          }))
+        } else {
+          searchResults.value = []
+        }
+      } else {
+        searchResults.value = []
+      }
+    } catch (error) {
+      console.error('搜索用户失败:', error)
+      searchResults.value = []
+    } finally {
+      isSearching.value = false
+    }
+  }, 300)
+}
 
 function selectAssignee(id: string | null) {
   emit('update:modelValue', id)
   showDropdown.value = false
   searchQuery.value = ''
+  searchResults.value = []
 }
 
 function getAvatarColor(name: string) {
@@ -125,6 +179,12 @@ function getAvatarColor(name: string) {
   background: var(--input-bg);
 }
 .assignee-search:focus { outline: none; border-color: #8b5cf6; }
+.search-loading {
+  padding: var(--spacing-2) var(--spacing-3);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
 .assignee-options {
   display: flex;
   flex-direction: column;

@@ -57,8 +57,8 @@ func (r *userRepository) Search(ctx context.Context, query string, limit int) ([
 	var users []*model.User
 	searchPattern := "%" + query + "%"
 	err := r.db.WithContext(ctx).
-		Where("username LIKE ? OR nickname LIKE ? OR phone LIKE ? OR email LIKE ?",
-			searchPattern, searchPattern, searchPattern, searchPattern).
+		Where("type = ? AND (username LIKE ? OR nickname LIKE ? OR phone LIKE ? OR email LIKE ?)",
+			"user", searchPattern, searchPattern, searchPattern, searchPattern).
 		Limit(limit).
 		Find(&users).Error
 	return users, err

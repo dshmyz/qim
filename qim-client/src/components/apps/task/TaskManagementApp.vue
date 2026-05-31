@@ -167,7 +167,7 @@ async function loadContacts() {
           }
         }
       }
-      collectUsers(response.data)
+      collectUsers(response.data.departments)
       contacts.value = users
       store.setContacts(users)
     }

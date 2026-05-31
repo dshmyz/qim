@@ -272,10 +272,10 @@ onUnmounted(() => {
 }
 
 .note-title-input {
-  padding: var(--spacing-3) var(--spacing-4);
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-xl);
+  padding: var(--spacing-1) var(--spacing-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--text-color);
   background: var(--card-bg);

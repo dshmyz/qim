@@ -14,7 +14,7 @@
     <div v-if="activeAppTab === 'categories'" class="app-tab-content">
       <div class="app-categories">
         <div
-          v-for="category in appCategories"
+          v-for="category in filteredAppCategories"
           :key="category.id"
           class="app-category-item"
         >
@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 interface AppCategory {
   id: string
@@ -56,6 +56,7 @@ interface AppCategory {
 
 interface Props {
   appCategories: AppCategory[]
+  searchQuery?: string
 }
 
 const props = defineProps<Props>()
@@ -87,6 +88,40 @@ const handleTabClick = (tab: string) => {
   activeAppTab.value = tab
   emit('resetApp')
 }
+
+const filteredAppCategories = computed(() => {
+  if (!props.searchQuery || !props.searchQuery.trim()) {
+    return props.appCategories
+  }
+  const query = props.searchQuery.toLowerCase().trim()
+  return props.appCategories
+    .map(category => {
+      const catNameMatch = category.name.toLowerCase().includes(query)
+      const filteredApps = category.apps.filter(app =>
+        app.name.toLowerCase().includes(query)
+      )
+      if (catNameMatch || filteredApps.length > 0) {
+        return {
+          ...category,
+          apps: catNameMatch ? category.apps : filteredApps
+        }
+      }
+      return null
+    })
+    .filter((c): c is AppCategory => c !== null)
+})
+
+watch(() => props.searchQuery, (newQuery) => {
+  if (!newQuery || !newQuery.trim()) return
+  const query = newQuery.toLowerCase().trim()
+  props.appCategories.forEach(category => {
+    const hasMatch = category.name.toLowerCase().includes(query)
+      || category.apps.some(app => app.name.toLowerCase().includes(query))
+    if (hasMatch && !category.expanded) {
+      emit('toggleCategory', category.id)
+    }
+  })
+})
 </script>
 
 <style scoped>

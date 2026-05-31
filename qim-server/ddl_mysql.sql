@@ -332,11 +332,13 @@ CREATE TABLE IF NOT EXISTS `events` (
   `end_time` DATETIME NOT NULL,
   `all_day` BOOLEAN DEFAULT FALSE,
   `reminder` INT DEFAULT 0,
+  `reminder_sent` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
   INDEX `idx_events_user_id` (`user_id`),
   INDEX `idx_events_deleted_at` (`deleted_at`),
+  INDEX `idx_events_reminder` (`reminder`, `reminder_sent`, `start_time`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

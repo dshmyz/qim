@@ -100,7 +100,7 @@ func (s *EventService) processReminders() {
 
 	var events []model.Event
 	if err := s.db.Where(
-		"reminder > 0 AND reminder_sent = ? AND start > ?",
+		"reminder > 0 AND reminder_sent = ? AND start_time > ?",
 		false, now,
 	).Find(&events).Error; err != nil {
 		return

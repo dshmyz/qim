@@ -44,6 +44,7 @@ interface Props {
   unreadNotificationCount: number
   serverUrl: string
   orgStructure: OrgDepartment[]
+  unassignedUsers?: any[]
   selectedGroup: any
   selectedChannel: any
   appCategories: AppCategory[]
@@ -162,6 +163,8 @@ defineExpose({})
         <div v-else-if="activeOption === 'org'" key="org" class="content-section">
           <OrgTree
             :orgStructure="orgStructure"
+            :unassignedUsers="unassignedUsers"
+            :searchQuery="searchQuery"
             @selectUser="$emit('selectUser', $event)"
             @startPrivateChat="$emit('startPrivateChat', $event)"
             @userContextMenu="(...args) => $emit('userContextMenu', ...args)"
@@ -172,6 +175,7 @@ defineExpose({})
           <GroupList
             :conversations="conversations"
             :selectedGroup="selectedGroup"
+            :searchQuery="searchQuery"
             @select="(group) => { logger.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
             @enter="(conv) => $emit('enterGroup', conv)"
             @invite="(conv) => $emit('inviteMembers', conv)"
@@ -189,6 +193,7 @@ defineExpose({})
         <div v-else-if="activeOption === 'apps'" key="apps" class="content-section">
           <AppPanel
             :appCategories="appCategories"
+            :searchQuery="searchQuery"
             @openApp="$emit('openApp', $event)"
             @openExternalApp="$emit('openExternalApp', $event)"
             @resetApp="$emit('resetApp')"

@@ -314,8 +314,8 @@ type Event struct {
 	UserID       uint           `json:"user_id" gorm:"not null;index"`
 	Title        string         `json:"title" gorm:"size:500;not null"`
 	Description  string         `json:"description" gorm:"type:text"`
-	Start        time.Time      `json:"start" gorm:"column:start;not null"`
-	End          time.Time      `json:"end" gorm:"column:end;not null"`
+	Start        time.Time      `json:"start" gorm:"column:start_time;not null"`
+	End          time.Time      `json:"end" gorm:"column:end_time;not null"`
 	AllDay       bool           `json:"all_day" gorm:"default:false"`
 	Reminder     int            `json:"reminder" gorm:"default:0"`
 	ReminderSent bool           `json:"reminder_sent" gorm:"default:false"`

@@ -127,9 +127,31 @@
           </div>
           <div v-if="localMessage.target === 'user'" class="info-item">
             <label>选择用户</label>
-            <select v-model="localMessage.userId" class="profile-input">
-              <option v-for="employee in allEmployees" :key="employee.id" :value="employee.id">{{ employee.name }}</option>
-            </select>
+            <div class="user-search-box">
+              <input
+                type="text"
+                v-model="userSearchQuery"
+                placeholder="搜索用户..."
+                class="profile-input"
+                @input="handleUserSearchInput"
+              />
+              <div v-if="isSearchingUser" class="user-search-loading">搜索中...</div>
+              <div class="user-search-results" v-if="showUserResults">
+                <div v-if="filteredUserList.length === 0" class="user-search-empty">没有找到匹配的用户</div>
+                <div
+                  v-for="user in filteredUserList"
+                  :key="user.id"
+                  class="user-search-item"
+                  :class="{ selected: localMessage.userId === user.id }"
+                  @click="selectSystemMessageUser(user)"
+                >
+                  <span>{{ user.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="localMessage.userId" class="user-selected-info">
+              已选择: {{ selectedUserName }}
+            </div>
           </div>
         </div>
       </div>
@@ -142,9 +164,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import AppLogo from '../shared/AppLogo.vue'
 import { APP_CONFIG, getCopyrightText } from '../../config/appConfig'
+import { useServerUrl } from '../../composables/useServerUrl'
+
+const { serverUrl } = useServerUrl()
 
 const productFullName = APP_CONFIG.productFullName
 const appVersion = APP_CONFIG.version
@@ -197,6 +222,80 @@ const localMessage = ref<SystemMessage>({ ...props.systemMessage })
 watch(() => props.systemMessage, (val) => {
   localMessage.value = { ...val }
 }, { deep: true })
+
+const userSearchQuery = ref('')
+const isSearchingUser = ref(false)
+const userSearchResults = ref<any[]>([])
+const searchTimeout = ref<number | null>(null)
+
+const showUserResults = computed(() => {
+  return localMessage.value.target === 'user' && userSearchQuery.value.trim().length > 0
+})
+
+const filteredUserList = computed(() => {
+  if (!userSearchQuery.value.trim()) return []
+  return userSearchResults.value
+})
+
+const selectedUserName = computed(() => {
+  if (!localMessage.value.userId) return ''
+  const found = props.allEmployees.find((e: any) => e.id === localMessage.value.userId)
+  if (found) return found.name
+  const fromResults = userSearchResults.value.find((u: any) => u.id === localMessage.value.userId)
+  return fromResults ? (fromResults.name || fromResults.username) : ''
+})
+
+const handleUserSearchInput = () => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = window.setTimeout(async () => {
+    const query = userSearchQuery.value.trim()
+    if (!query) {
+      userSearchResults.value = []
+      return
+    }
+
+    isSearchingUser.value = true
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(
+        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.code === 0) {
+          userSearchResults.value = (data.data || []).map((u: any) => ({
+            id: u.id,
+            name: u.name || u.username || '',
+            username: u.username || ''
+          }))
+        } else {
+          userSearchResults.value = []
+        }
+      } else {
+        userSearchResults.value = []
+      }
+    } catch (error) {
+      console.error('搜索用户失败:', error)
+      userSearchResults.value = []
+    } finally {
+      isSearchingUser.value = false
+    }
+  }, 300)
+}
+
+const selectSystemMessageUser = (user: any) => {
+  localMessage.value.userId = user.id
+  userSearchQuery.value = ''
+  userSearchResults.value = []
+}
 </script>
 
 <style scoped>
@@ -566,5 +665,58 @@ watch(() => props.systemMessage, (val) => {
 .save-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.user-search-box {
+  position: relative;
+}
+
+.user-search-loading {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+}
+
+.user-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.user-search-empty {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+  text-align: center;
+}
+
+.user-search-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-color, #333);
+}
+
+.user-search-item:hover {
+  background: var(--hover-color, #f3f4f6);
+}
+
+.user-search-item.selected {
+  background: var(--primary-light, #f0f7ff);
+  color: var(--primary-color, #3b82f6);
+}
+
+.user-selected-info {
+  font-size: 12px;
+  color: var(--primary-color, #3b82f6);
+  margin-top: 4px;
 }
 </style>

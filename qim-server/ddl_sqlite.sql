@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   `end_time` DATETIME NOT NULL,
   `all_day` INTEGER DEFAULT 0,
   `reminder` INTEGER DEFAULT 0,
+  `reminder_sent` INTEGER DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
@@ -338,6 +339,7 @@ CREATE TABLE IF NOT EXISTS `events` (
 );
 CREATE INDEX IF NOT EXISTS `idx_events_user_id` ON `events`(`user_id`);
 CREATE INDEX IF NOT EXISTS `idx_events_deleted_at` ON `events`(`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_events_reminder` ON `events`(`reminder`, `reminder_sent`, `start_time`);
 
 -- Tasks table
 CREATE TABLE IF NOT EXISTS `tasks` (

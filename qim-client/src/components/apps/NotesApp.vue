@@ -338,7 +338,7 @@ function handleKeydown(e: KeyboardEvent) {
   width: 240px;
   min-width: 200px;
   background: var(--card-bg);
-  border-right: 1px solid var(--border-color);
+  /* border-right: 1px solid var(--border-color); */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -347,7 +347,7 @@ function handleKeydown(e: KeyboardEvent) {
 .notes-search-box {
   position: relative;
   padding: var(--spacing-3);
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
   background: var(--card-bg);
 }
 
@@ -404,7 +404,7 @@ function handleKeydown(e: KeyboardEvent) {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: var(--spacing-6);
+  padding: var(--spacing-3) var(--spacing-5);
   overflow: hidden;
   background: var(--content-bg);
 }
@@ -419,7 +419,7 @@ function handleKeydown(e: KeyboardEvent) {
   background: var(--card-bg);
   border-radius: var(--radius-xl);
   border: 2px dashed var(--border-color);
-  margin: var(--spacing-4);
+  /* margin: var(--spacing-4); */
 }
 
 .empty-icon {

@@ -189,7 +189,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := "./uploads"
+		baseDir := "uploads"
 		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
 		if !strings.HasPrefix(cleanPath, baseDir) {
 			c.AbortWithStatus(http.StatusForbidden)
@@ -204,7 +204,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := "./static/miniapps"
+		baseDir := "static/miniapps"
 		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
 		if !strings.HasPrefix(cleanPath, baseDir) {
 			c.AbortWithStatus(http.StatusForbidden)
@@ -676,5 +676,5 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}
 
 	// 短链接访问路由（不需要认证）
-	r.GET("/:code", handler.RedirectShortLink)
+	r.GET("/s/:code", handler.RedirectShortLink)
 }

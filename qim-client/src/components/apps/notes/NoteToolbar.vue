@@ -11,14 +11,14 @@
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
-        <button class="tb-btn" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
-          <i class="fas fa-magic"></i>
-        </button>
         <button class="tb-btn labeled import" @click="$emit('import')" title="导入 Markdown">
           <i class="fas fa-file-import"></i><span>导入</span>
         </button>
         <button class="tb-btn labeled export" @click="$emit('export')" title="导出">
           <i class="fas fa-download"></i><span>导出</span>
+        </button>
+        <button class="tb-btn" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
+          <i class="fas fa-magic"></i>
         </button>
         <button class="tb-btn" @click="$emit('share')" title="分享">
           <i class="fas fa-share-alt"></i>

@@ -78,7 +78,7 @@ func CreateShortLink(c *gin.Context) {
 		return
 	}
 
-	shortURL := "http://" + c.Request.Host + "/" + code
+	shortURL := "http://" + c.Request.Host + "/s/" + code
 
 	response := gin.H{
 		"id":           shortLink.ID,
@@ -113,7 +113,7 @@ func GetShortLinks(c *gin.Context) {
 
 	response := make([]gin.H, len(shortLinks))
 	for i, link := range shortLinks {
-		shortURL := "http://" + c.Request.Host + "/" + link.Code
+		shortURL := "http://" + c.Request.Host + "/s/" + link.Code
 		item := gin.H{
 			"id":           link.ID,
 			"original_url": link.OriginalURL,
