@@ -22,7 +22,7 @@ func NewEventRepository(db *gorm.DB) EventRepository {
 
 func (r *eventRepository) FindByUserID(ctx context.Context, userID uint) ([]*model.Event, error) {
 	var events []*model.Event
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("start DESC").Find(&events).Error
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("start_time DESC").Find(&events).Error
 	return events, err
 }
 

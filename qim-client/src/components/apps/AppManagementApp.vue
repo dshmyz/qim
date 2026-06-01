@@ -120,6 +120,8 @@ import AppHeader from './AppHeader.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 
+const QMessage = (window as any).$QMessage
+
 // 定义事件
 const emit = defineEmits(['back', 'toggleSidebar'])
 
@@ -220,7 +222,7 @@ const closeAppModal = () => {
 // 保存应用
 const saveApp = async () => {
   if (!formData.value.name || formData.value.name.trim() === '') {
-    alert('请输入应用名称')
+    QMessage.warning('请输入应用名称')
     return
   }
   

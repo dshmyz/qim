@@ -243,47 +243,37 @@ func (e *Engine) syncUsers(data *orgsync.OrgData, extToLocalDept map[string]uint
 		result := e.db.Where("username = ?", extUser.Username).First(&user)
 
 		if result.Error != nil {
-			newUser := model.User{
-				Username:     extUser.Username,
-				Nickname:     extUser.Nickname,
-				Email:        extUser.Email,
-				Phone:        extUser.Phone,
-				Avatar:       extUser.Avatar,
-				Status:       "offline",
-				Type:         "user",
-				PasswordHash: placeholderHash,
-			}
-			if newUser.Nickname == "" {
-				newUser.Nickname = newUser.Username
-			}
-			if err := e.db.Create(&newUser).Error; err != nil {
-				logger.WithModule("OrgSync").Warn("创建用户失败", "username", extUser.Username, "error", err)
-				continue
-			}
-			stats.UsersCreated++
-		} else {
-			updates := make(map[string]interface{})
-			if extUser.Nickname != "" && extUser.Nickname != user.Nickname {
-				updates["nickname"] = extUser.Nickname
-			}
-			if extUser.Email != "" && extUser.Email != user.Email {
-				updates["email"] = extUser.Email
-			}
-			if extUser.Phone != "" && extUser.Phone != user.Phone {
-				updates["phone"] = extUser.Phone
-			}
-			if extUser.Avatar != "" && extUser.Avatar != user.Avatar {
-				updates["avatar"] = extUser.Avatar
-			}
-			if extUser.Position != "" {
-				updates["signature"] = extUser.Position
-			}
-			if len(updates) > 0 {
-				if err := e.db.Model(&user).Updates(updates).Error; err != nil {
-					logger.WithModule("OrgSync").Warn("更新用户失败", "username", user.Username, "error", err)
-				} else {
-					stats.UsersUpdated++
-				}
+			// 用户在本地不存在，跳过，不创建
+			continue
+		}
+
+		// 检查用户是否软删除
+		if user.DeletedAt.Valid {
+			continue
+		}
+
+		// 用户已存在，更新信息
+		updates := make(map[string]interface{})
+		if extUser.Nickname != "" && extUser.Nickname != user.Nickname {
+			updates["nickname"] = extUser.Nickname
+		}
+		if extUser.Email != "" && extUser.Email != user.Email {
+			updates["email"] = extUser.Email
+		}
+		if extUser.Phone != "" && extUser.Phone != user.Phone {
+			updates["phone"] = extUser.Phone
+		}
+		if extUser.Avatar != "" && extUser.Avatar != user.Avatar {
+			updates["avatar"] = extUser.Avatar
+		}
+		if extUser.Position != "" {
+			updates["signature"] = extUser.Position
+		}
+		if len(updates) > 0 {
+			if err := e.db.Model(&user).Updates(updates).Error; err != nil {
+				logger.WithModule("OrgSync").Warn("更新用户失败", "username", user.Username, "error", err)
+			} else {
+				stats.UsersUpdated++
 			}
 		}
 	}
@@ -299,6 +289,11 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 			continue
 		}
 
+		// 检查用户是否软删除
+		if user.DeletedAt.Valid {
+			continue
+		}
+
 		deptID := e.resolveDepartmentByRelation(rel, extToLocalDept)
 		if deptID == 0 {
 			continue
@@ -307,7 +302,7 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 		userDeptMap[user.ID] = append(userDeptMap[user.ID], deptID)
 	}
 
-	// 逐个用户处理：只创建新关联，删除不再存在于外部系统中的旧关联
+	// 逐个用户处理：只创建新关联，不删除旧关联（方案 A）
 	for userID, targetDeptIDs := range userDeptMap {
 		for _, deptID := range targetDeptIDs {
 			var existingRel int64
@@ -324,15 +319,6 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 				if err := e.db.Create(&empRel).Error; err != nil {
 					logger.WithModule("OrgSync").Warn("创建部门员工关系失败", "user_id", userID, "dept_id", deptID, "error", err)
 				}
-			}
-		}
-
-		// 仅删除该用户在外部系统中不存在的部门关联
-		// 即保留手动在 QIM 中配置的其他部门关系
-		if len(targetDeptIDs) > 0 {
-			if err := e.db.Where("user_id = ? AND department_id NOT IN ?", userID, targetDeptIDs).
-				Delete(&model.DepartmentEmployee{}).Error; err != nil {
-				logger.WithModule("OrgSync").Warn("删除部门员工关系失败", "user_id", userID, "error", err)
 			}
 		}
 	}
@@ -415,13 +401,13 @@ type ParseCronResult struct {
 // - sync_departments: 是否同步部门（默认 true）
 // - sync_users: 是否同步用户（默认 true）
 // - sync_relations: 是否同步用户-部门关联（默认 true）
-// - create_missing_users: 是否创建缺失的用户（默认 true）
+// - create_missing_users: 是否创建缺失的用户（默认 false，只同步已登录过的用户）
 func (e *Engine) parseSyncConfig(config *model.OrgSyncConfig) map[string]interface{} {
 	defaultConfig := map[string]interface{}{
 		"sync_departments":     true,
 		"sync_users":           true,
 		"sync_relations":       true,
-		"create_missing_users": true,
+		"create_missing_users": false, // 默认不创建未登录用户
 	}
 
 	if config.Config == "" {

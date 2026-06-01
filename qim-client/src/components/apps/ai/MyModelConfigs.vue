@@ -51,6 +51,8 @@ import ModelConfigCard from './ModelConfigCard.vue'
 import ModelConfigFormModal from './ModelConfigFormModal.vue'
 import type { UserAIConfig, CreateConfigRequest } from '../../../types/ai'
 
+const QMessage = (window as any).$QMessage
+
 const {
   configs,
   loading,
@@ -89,7 +91,11 @@ async function handleSave(data: CreateConfigRequest) {
 
 async function testConfigItem(id: number) {
   const result = await testConfig(id)
-  alert(result.success ? '连接测试成功' : `连接失败: ${result.message}`)
+  if (result.success) {
+    QMessage.success('连接测试成功')
+  } else {
+    QMessage.error(`连接失败: ${result.message}`)
+  }
 }
 
 function confirmDelete(config: UserAIConfig) {

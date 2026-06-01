@@ -59,6 +59,8 @@ import { useAvatar } from '../../../composables/useAvatar'
 import { useAvatarPersona } from '../../../composables/useAvatarPersona'
 import type { UserAIConfig, CreateConfigRequest } from '../../../types/ai'
 
+const QMessage = (window as any).$QMessage
+
 interface Bot {
   id: number
   name: string
@@ -146,9 +148,13 @@ async function handleSaveConfig(data: CreateConfigRequest) {
 async function handleTestConfig(id: number) {
   try {
     const result = await testConfig(id)
-    alert(result.success ? '连接测试成功' : `连接失败: ${result.message}`)
+    if (result.success) {
+      QMessage.success('连接测试成功')
+    } else {
+      QMessage.error(`连接失败: ${result.message}`)
+    }
   } catch (e: any) {
-    alert(`测试失败: ${e?.response?.data?.message || '未知错误'}`)
+    QMessage.error(`测试失败: ${e?.response?.data?.message || '未知错误'}`)
   }
 }
 

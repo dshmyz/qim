@@ -143,7 +143,7 @@ func initAdminUser() {
 	}
 }
 
-// seedBotTemplates 初始化 Bot 模板（系统助手、AI助手）
+// seedBotTemplates 初始化 Bot 模板（系统助手、AI助手、业务模板）
 func seedBotTemplates(db *gorm.DB) {
 	if isMigrationCompleted(db, "seed_bot_templates") {
 		return
@@ -161,33 +161,140 @@ func seedBotTemplates(db *gorm.DB) {
 		return
 	}
 
-	systemBot := model.Bot{
-		Name:        "系统助手",
-		Avatar:      "",
-		Description: "提供系统相关的帮助和信息",
-		Type:        "system",
-		Config:      `{"responses":{"greeting":"你好！我是系统助手，有什么可以帮你的吗？","help":"我可以帮助你了解系统功能，解答常见问题。"}}`,
-		IsActive:    true,
-	}
-	if err := db.Create(&systemBot).Error; err != nil {
-		logger.WithModule("Init").Error("创建系统助手 Bot 失败", "error", err)
+	templates := []model.Bot{
+		{
+			Name:        "系统助手",
+			Avatar:      "",
+			Description: "提供系统相关的帮助和信息",
+			Type:        "system",
+			Config:      `{"responses":{"greeting":"你好！我是系统助手，有什么可以帮你的吗？","help":"我可以帮助你了解系统功能，解答常见问题。"}}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "AI助手",
+			Avatar:      "",
+			Description: "基于大模型的智能助手，能回答各种问题",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个有用的AI助手，能够帮助用户回答各种问题、完成任务。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "客服机器人",
+			Avatar:      "",
+			Description: "专业的客户服务助手，帮助用户解决问题、提供咨询",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的客服机器人，负责解答用户问题、处理投诉、提供产品咨询。请保持礼貌、专业的态度，用简洁清晰的语言回答。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "代码助手",
+			Avatar:      "",
+			Description: "编程专家，帮助编写、审查、优化代码",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个经验丰富的编程助手，擅长多种编程语言。你能帮助用户编写高质量代码、进行代码审查、解决编程问题、优化性能。请提供清晰的代码示例和详细解释。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "翻译助手",
+			Avatar:      "",
+			Description: "多语言翻译专家，提供准确的翻译服务",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的翻译助手，精通多种语言之间的翻译。请提供准确、流畅、符合语境的翻译结果。如果原文有歧义，请说明并提供多种翻译选项。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "写作助手",
+			Avatar:      "",
+			Description: "写作专家，帮助撰写文章、文案、报告等内容",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的写作助手，能够帮助用户撰写各类文章、文案、报告、邮件等。请根据用户需求提供结构清晰、语言流畅、风格合适的内容。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
 	}
 
-	aiBot := model.Bot{
-		Name:        "AI助手",
-		Avatar:      "",
-		Description: "基于大模型的智能助手，能回答各种问题",
-		Type:        "ai",
-		Config:      `{"api_key":"your-api-key", "model":"gpt-3.5-turbo", "temperature":0.7}`,
-		IsActive:    true,
+	for _, tpl := range templates {
+		if err := db.Create(&tpl).Error; err != nil {
+			logger.WithModule("Init").Error("创建 Bot 模板失败", "name", tpl.Name, "error", err)
+		}
 	}
-	if err := db.Create(&aiBot).Error; err != nil {
-		logger.WithModule("Init").Error("创建AI助手 Bot 失败", "error", err)
+
+	logger.WithModule("Init").Info("Bot 模板初始化完成", "count", len(templates))
+	markMigrationCompleted(db, "seed_bot_templates")
+}
+
+// seedBusinessBotTemplates 补充业务 Bot 模板（用于已运行过旧版本迁移的数据库）
+func seedBusinessBotTemplates(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_business_bot_templates") {
 		return
 	}
 
-	logger.WithModule("Init").Info("Bot 模板初始化完成")
-	markMigrationCompleted(db, "seed_bot_templates")
+	if !tableExists(db, "bots") {
+		markMigrationCompleted(db, "seed_business_bot_templates")
+		return
+	}
+
+	businessTemplates := []model.Bot{
+		{
+			Name:        "客服机器人",
+			Avatar:      "",
+			Description: "专业的客户服务助手，帮助用户解决问题、提供咨询",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的客服机器人，负责解答用户问题、处理投诉、提供产品咨询。请保持礼貌、专业的态度，用简洁清晰的语言回答。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "代码助手",
+			Avatar:      "",
+			Description: "编程专家，帮助编写、审查、优化代码",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个经验丰富的编程助手，擅长多种编程语言。你能帮助用户编写高质量代码、进行代码审查、解决编程问题、优化性能。请提供清晰的代码示例和详细解释。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "翻译助手",
+			Avatar:      "",
+			Description: "多语言翻译专家，提供准确的翻译服务",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的翻译助手，精通多种语言之间的翻译。请提供准确、流畅、符合语境的翻译结果。如果原文有歧义，请说明并提供多种翻译选项。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+		{
+			Name:        "写作助手",
+			Avatar:      "",
+			Description: "写作专家，帮助撰写文章、文案、报告等内容",
+			Type:        "ai",
+			Config:      `{"system_prompt":"你是一个专业的写作助手，能够帮助用户撰写各类文章、文案、报告、邮件等。请根据用户需求提供结构清晰、语言流畅、风格合适的内容。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  true,
+		},
+	}
+
+	seeded := 0
+	for _, tpl := range businessTemplates {
+		var existing model.Bot
+		err := db.Where("name = ? AND is_template = ?", tpl.Name, true).First(&existing).Error
+		if err != nil {
+			if err := db.Create(&tpl).Error; err != nil {
+				logger.WithModule("Init").Error("创建 Bot 模板失败", "name", tpl.Name, "error", err)
+			} else {
+				seeded++
+			}
+		}
+	}
+
+	if seeded > 0 {
+		logger.WithModule("Init").Info("补充业务 Bot 模板完成", "seeded", seeded)
+	}
+	markMigrationCompleted(db, "seed_business_bot_templates")
 }
 
 // InitApp 初始化应用
@@ -216,6 +323,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// ========== Bot 模板 ==========
 	if cfg.DataInit.BotTemplates {
 		seedBotTemplates(db)
+		seedBusinessBotTemplates(db)
 	}
 
 	// ========== 演示小程序 ==========

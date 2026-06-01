@@ -74,6 +74,8 @@
 import { ref, computed } from 'vue'
 import { request } from '../../composables/useRequest'
 
+const QMessage = (window as any).$QMessage
+
 interface Props {
   visible: boolean
 }
@@ -122,7 +124,7 @@ const handleScreenshotChange = (event: Event) => {
   if (target.files && target.files.length > 0) {
     const file = target.files[0]
     if (file.size > 5 * 1024 * 1024) {
-      alert('截图大小不能超过5MB')
+      QMessage.warning('截图大小不能超过5MB')
       return
     }
     screenshotFile.value = file

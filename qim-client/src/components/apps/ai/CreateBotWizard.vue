@@ -88,6 +88,8 @@ import { useBots } from '../../../composables/useBots'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import type { UserAIConfig } from '../../../types/ai'
 
+const QMessage = (window as any).$QMessage
+
 const emit = defineEmits<{
   close: []
 }>()
@@ -126,13 +128,13 @@ async function createFromTemplate(tpl: any) {
     })
 
     if (response.code === 0) {
-      alert('机器人创建成功')
+      QMessage.success('机器人创建成功')
       emit('close')
     } else {
-      alert(response.message || '创建失败')
+      QMessage.error(response.message || '创建失败')
     }
   } catch (e: any) {
-    alert('创建失败: ' + (e.response?.data?.message || e.message))
+    QMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
   } finally {
     creating.value = false
   }
@@ -140,12 +142,12 @@ async function createFromTemplate(tpl: any) {
 
 async function handleSubmit() {
   if (!form.value.name.trim()) {
-    alert('请输入机器人名称')
+    QMessage.warning('请输入机器人名称')
     return
   }
 
   if (!form.value.useSystemConfig && !form.value.configId) {
-    alert('请选择一个模型配置')
+    QMessage.warning('请选择一个模型配置')
     return
   }
 
@@ -164,13 +166,17 @@ async function handleSubmit() {
 
     if (response.code === 0) {
       const msg = form.value.useSystemConfig ? '已提交审批，等待管理员审核' : '机器人创建成功'
-      alert(msg)
+      if (form.value.useSystemConfig) {
+        QMessage.info(msg)
+      } else {
+        QMessage.success(msg)
+      }
       emit('close')
     } else {
-      alert(response.message || '创建失败')
+      QMessage.error(response.message || '创建失败')
     }
   } catch (e: any) {
-    alert('创建失败: ' + (e.response?.data?.message || e.message))
+    QMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
   } finally {
     creating.value = false
   }

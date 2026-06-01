@@ -34,7 +34,7 @@
           <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item">
             <div class="avatar-toggle-header">
               <i class="fas fa-user-circle"></i>
-              <span class="avatar-toggle-title">AI 分身</span>
+              <span class="avatar-toggle-title">对其启用AI分身</span>
               <Switch
                 :model-value="avatarEnabled ?? false"
                 :size="'small'"
