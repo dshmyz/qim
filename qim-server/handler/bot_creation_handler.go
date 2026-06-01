@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"qim-server/database"
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/response"
 
@@ -39,9 +40,32 @@ func GetMyBots(c *gin.Context) {
 		return
 	}
 
+	// 组装包含审批状态的响应
+	type BotWithApproval struct {
+		model.Bot
+		ApprovalStatus string `json:"approval_status"`
+	}
+
+	result := make([]BotWithApproval, 0, len(bots))
+	for _, bot := range bots {
+		approvalStatus := "approved"
+		if !bot.IsActive {
+			var approval model.Approval
+			if err := db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeBot, bot.ID).First(&approval).Error; err == nil {
+				approvalStatus = string(approval.Status)
+			} else {
+				approvalStatus = "pending"
+			}
+		}
+		result = append(result, BotWithApproval{
+			Bot:            bot,
+			ApprovalStatus: approvalStatus,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": bots,
+		"data": result,
 	})
 }
 
@@ -199,6 +223,8 @@ func CreateBot(c *gin.Context) {
 		return
 	}
 
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "bot", "create_bot")
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
@@ -287,6 +313,8 @@ func UpdateMyBot(c *gin.Context) {
 	// 重新加载获取最新数据
 	db.First(&bot, bot.ID)
 
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "bot", "update_bot")
+
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": bot})
 }
 
@@ -317,6 +345,8 @@ func DeleteMyBot(c *gin.Context) {
 		response.NotFound(c, "Bot 不存在或无权操作")
 		return
 	}
+
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "bot", "delete_bot")
 
 	response.SuccessWithMessage(c, "删除成功", nil)
 }

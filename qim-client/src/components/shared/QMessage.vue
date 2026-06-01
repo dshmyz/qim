@@ -120,7 +120,7 @@ if (!window.$QMessage) {
   background: var(--panel-bg);
   min-width: 300px;
   max-width: 600px;
-  z-index: 10000;
+  z-index: 100000;
 }
 
 .q-message--success {

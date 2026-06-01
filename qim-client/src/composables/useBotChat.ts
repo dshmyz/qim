@@ -3,6 +3,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { getStoredServerUrl } from './useServerUrl'
 import { request, getToken } from './useRequest'
+import { useCurrentUser } from './useCurrentUser'
 import type { BotMessage } from '../types/bot'
 
 /**
@@ -23,6 +24,9 @@ export function useBotChat(botId: Ref<number | null>) {
 
   // 无会话模式下的对话历史（用于多轮对话）
   const chatHistory = ref<{ role: 'system' | 'user' | 'assistant'; content: string }[]>([])
+
+  // 当前用户信息
+  const { currentUser } = useCurrentUser()
 
   // 分页状态
   const currentPage = ref(1)
@@ -179,8 +183,14 @@ export function useBotChat(botId: Ref<number | null>) {
     const userMessage: BotMessage = {
       id: Date.now(),
       conversationId: conversationId.value,
-      senderId: 0,
+      senderId: Number(currentUser.value?.id) || 0,
       senderType: 'user',
+      sender: currentUser.value ? {
+        id: Number(currentUser.value.id),
+        nickname: currentUser.value.nickname || currentUser.value.username || '用户',
+        avatar: currentUser.value.avatar,
+        type: 'user'
+      } : undefined,
       type: 'text',
       content: content.trim(),
       timestamp: new Date(),
@@ -238,7 +248,18 @@ export function useBotChat(botId: Ref<number | null>) {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        let errorMessage = `请求失败 (${response.status})`
+        try {
+          const errorData = await response.json()
+          if (errorData.message) {
+            errorMessage = errorData.message
+          } else if (errorData.error) {
+            errorMessage = errorData.error
+          }
+        } catch {
+          // 如果无法解析JSON，使用默认消息
+        }
+        throw new Error(errorMessage)
       }
 
       const reader = response.body?.getReader()

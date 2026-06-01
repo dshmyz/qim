@@ -525,6 +525,12 @@ func CreateBotConversation(c *gin.Context) {
 		return
 	}
 
+	// 检查机器人是否已启用（审批通过）
+	if !bot.IsActive {
+		response.Forbidden(c, "机器人未启用，请等待管理员审批")
+		return
+	}
+
 	// 查找是否已有会话
 	var botConv model.BotConversation
 	db.Where("bot_id = ? AND user_id = ?", req.BotID, userID.(uint)).

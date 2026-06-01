@@ -181,15 +181,6 @@ func seedBotTemplates(db *gorm.DB) {
 			IsTemplate:  true,
 		},
 		{
-			Name:        "客服机器人",
-			Avatar:      "",
-			Description: "专业的客户服务助手，帮助用户解决问题、提供咨询",
-			Type:        "ai",
-			Config:      `{"system_prompt":"你是一个专业的客服机器人，负责解答用户问题、处理投诉、提供产品咨询。请保持礼貌、专业的态度，用简洁清晰的语言回答。","use_system_config":true}`,
-			IsActive:    true,
-			IsTemplate:  true,
-		},
-		{
 			Name:        "代码助手",
 			Avatar:      "",
 			Description: "编程专家，帮助编写、审查、优化代码",
@@ -240,15 +231,6 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 	}
 
 	businessTemplates := []model.Bot{
-		{
-			Name:        "客服机器人",
-			Avatar:      "",
-			Description: "专业的客户服务助手，帮助用户解决问题、提供咨询",
-			Type:        "ai",
-			Config:      `{"system_prompt":"你是一个专业的客服机器人，负责解答用户问题、处理投诉、提供产品咨询。请保持礼貌、专业的态度，用简洁清晰的语言回答。","use_system_config":true}`,
-			IsActive:    true,
-			IsTemplate:  true,
-		},
 		{
 			Name:        "代码助手",
 			Avatar:      "",
@@ -440,6 +422,7 @@ func MigrateDB(db *gorm.DB) {
 	addIndexes(db)
 	seedBuiltInApps(db)
 	seedFileUploadConfig(db)
+	seedApprovalConfigs(db)
 }
 
 // isMigrationCompleted 检查指定的迁移版本是否已完成
@@ -509,6 +492,41 @@ func seedFileUploadConfig(db *gorm.DB) {
 		db.Where("config_key = ?", cfg.ConfigKey).FirstOrCreate(&cfg)
 	}
 	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
+}
+
+// seedApprovalConfigs 初始化审批配置
+func seedApprovalConfigs(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_approval_configs") {
+		return
+	}
+
+	if !tableExists(db, "approval_configs") {
+		return
+	}
+
+	var count int64
+	db.Model(&model.ApprovalConfig{}).Count(&count)
+	if count > 0 {
+		markMigrationCompleted(db, "seed_approval_configs")
+		return
+	}
+
+	now := time.Now()
+	defaultConfigs := []model.ApprovalConfig{
+		{Type: "avatar", Enabled: false, Description: "分身功能审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "bot", Enabled: false, Description: "机器人创建审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "channel", Enabled: false, Description: "频道创建审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "group_ai", Enabled: false, Description: "群聊AI助手审批", CreatedAt: now, UpdatedAt: now},
+	}
+
+	for _, config := range defaultConfigs {
+		if err := db.Create(&config).Error; err != nil {
+			logger.WithModule("Migrate").Error("创建审批配置失败", "type", config.Type, "error", err)
+		}
+	}
+
+	logger.WithModule("Migrate").Info("审批配置种子数据初始化完成", "count", len(defaultConfigs))
+	markMigrationCompleted(db, "seed_approval_configs")
 }
 
 // addIndexes 添加性能优化索引，确保索引已存在则跳过创建

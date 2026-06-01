@@ -532,6 +532,14 @@ func StreamMessage(c *gin.Context) {
 			return
 		}
 
+		// 检查机器人是否已启用（审批通过）
+		if !bot.IsActive {
+			logger.WithModule("StreamMessage").Error("机器人未启用", "botID", botConv.BotID)
+			close(responseChan)
+			doneChan <- true
+			return
+		}
+
 		systemPrompt := "你是一个智能助手，帮助用户解决问题。"
 		if bot.Config != "" {
 			var botConfig map[string]interface{}

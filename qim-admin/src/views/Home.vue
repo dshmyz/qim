@@ -114,6 +114,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { getProductName, getProductFullName, getCopyrightText } from '../config/appConfig'
 import { getVersions } from '../api/versions'
 
@@ -256,24 +257,27 @@ const downloadClient = () => {
   const p = currentPlatform.value
   const platform = platforms.value.find(plt => plt.key === p)
   
-  if (platform && platform.downloads.length > 0) {
-    let url = ''
-    
-    if (p === 'macos') {
-      const armVersion = platform.downloads.find(d => d.url.includes('arm'))
-      const intelVersion = platform.downloads.find(d => d.url.includes('intel'))
-      
-      if (/Apple Silicon|arm64|aarch64/.test(navigator.userAgent)) {
-        url = armVersion?.url || platform.downloads[0].url
-      } else {
-        url = intelVersion?.url || platform.downloads[0].url
-      }
-    } else {
-      url = platform.downloads[0].url
-    }
-    
-    window.open(url, '_blank')
+  if (!platform || platform.downloads.length === 0) {
+    ElMessage.warning('暂无可用版本，请联系管理员在版本管理中发布对应平台的安装包')
+    return
   }
+
+  let url = ''
+
+  if (p === 'macos') {
+    const armVersion = platform.downloads.find(d => d.url.includes('arm'))
+    const intelVersion = platform.downloads.find(d => d.url.includes('intel'))
+
+    if (/Apple Silicon|arm64|aarch64/.test(navigator.userAgent)) {
+      url = armVersion?.url || platform.downloads[0].url
+    } else {
+      url = intelVersion?.url || platform.downloads[0].url
+    }
+  } else {
+    url = platform.downloads[0].url
+  }
+
+  window.open(url, '_blank')
 }
 
 onMounted(async () => {
@@ -293,6 +297,7 @@ onMounted(async () => {
     })
   } catch (error) {
     console.error('获取版本列表失败:', error)
+    ElMessage.error('获取版本列表失败，请稍后重试')
   }
 })
 </script>

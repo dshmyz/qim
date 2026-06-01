@@ -36,6 +36,7 @@ interface Bot {
   name: string
   description?: string
   avatar?: string
+  approval_status?: string
 }
 
 defineEmits<{

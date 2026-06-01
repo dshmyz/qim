@@ -21,14 +21,20 @@
         v-for="bot in bots"
         :key="bot.id"
         class="bot-item"
-        @click="$emit('select', bot.id)"
+        :class="{ disabled: bot.approval_status !== 'approved' }"
+        @click="bot.approval_status === 'approved' && $emit('select', bot.id)"
       >
         <div class="avatar">
           <Avatar v-if="bot.avatar" :src="bot.avatar" :name="bot.name" :alt="bot.name" size="sm" />
           <i class="fas fa-robot" v-else></i>
         </div>
         <div class="info">
-          <h4>{{ bot.name }}</h4>
+          <div class="name-row">
+            <h4>{{ bot.name }}</h4>
+            <span v-if="bot.approval_status === 'pending'" class="status-badge pending">审批中</span>
+            <span v-else-if="bot.approval_status === 'rejected'" class="status-badge rejected">已拒绝</span>
+            <span v-else-if="bot.approval_status === 'approved'" class="status-badge approved">已启用</span>
+          </div>
           <p>{{ bot.description }}</p>
         </div>
       </div>
@@ -46,6 +52,7 @@ interface Bot {
   avatar?: string
   type?: string
   status?: string
+  approval_status?: string
 }
 
 defineProps<{
@@ -109,9 +116,48 @@ defineEmits<{
   color: var(--primary-color);
 }
 
+.info .name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .info h4 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 15px;
+}
+
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.approved {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.rejected {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.bot-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bot-item.disabled:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .info p {

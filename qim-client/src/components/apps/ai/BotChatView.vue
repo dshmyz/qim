@@ -30,17 +30,35 @@
       <div
         v-for="msg in messages"
         :key="msg.id"
-        :class="['message', msg.senderType === 'user' ? 'user' : 'bot']"
+        :class="['message-wrapper', msg.senderType === 'user' ? 'user' : 'bot']"
       >
-        <div class="content">
-          <MarkdownRenderer
-            v-if="msg.type === 'markdown' || msg.senderType === 'bot'"
-            :content="msg.content"
-          />
-          <span v-else>{{ msg.content }}</span>
-          <span v-if="msg.isStreaming" class="streaming-cursor"></span>
+        <Avatar
+          v-if="msg.senderType === 'bot'"
+          :src="msg.sender?.avatar || bot?.avatar"
+          :name="msg.sender?.nickname || bot?.name || 'AI助手'"
+          :alt="msg.sender?.nickname || bot?.name || 'AI助手'"
+          size="sm"
+          class="message-avatar"
+        />
+        <Avatar
+          v-else-if="msg.senderType === 'user' && msg.sender"
+          :src="msg.sender?.avatar"
+          :name="msg.sender?.nickname || '用户'"
+          :alt="msg.sender?.nickname || '用户'"
+          size="sm"
+          class="message-avatar"
+        />
+        <div class="message-bubble">
+          <div class="content">
+            <MarkdownRenderer
+              v-if="msg.type === 'markdown' || msg.senderType === 'bot'"
+              :content="msg.content"
+            />
+            <span v-else>{{ msg.content }}</span>
+            <span v-if="msg.isStreaming" class="streaming-cursor"></span>
+          </div>
+          <div class="time">{{ formatTime(msg.timestamp) }}</div>
         </div>
-        <div class="time">{{ formatTime(msg.timestamp) }}</div>
       </div>
 
       <!-- 思考指示器 -->
@@ -272,24 +290,44 @@ watch(() => props.isStreaming, () => {
   padding: 40px;
 }
 
-.message {
+.message-wrapper {
   max-width: 80%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
 }
 
-.message.user {
+.message-wrapper.user {
   align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-wrapper.user .message-bubble {
   background: var(--primary-color);
   color: white;
   border-bottom-right-radius: 4px;
 }
 
-.message.bot {
+.message-wrapper.bot {
   align-self: flex-start;
+}
+
+.message-wrapper.bot .message-bubble {
   background: var(--sidebar-bg);
   border-bottom-left-radius: 4px;
+}
+
+.message-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.message-bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  position: relative;
+  max-width: calc(100% - 42px);
 }
 
 .time {

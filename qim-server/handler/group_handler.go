@@ -720,6 +720,8 @@ func UpdateGroupAISettings(c *gin.Context) {
 				return
 			}
 
+			di.GlobalContainer.OperationLogService.LogUserOperation(c, "group_ai", "apply_approval")
+
 			response.SuccessWithMessage(c, "AI助手申请已提交，等待系统管理员审批", gin.H{
 				"approval_status": model.ApprovalStatusPending,
 				"applied_at":      now,
@@ -775,6 +777,8 @@ func UpdateGroupAISettings(c *gin.Context) {
 	}
 	groupSvc.UpdateGroup(group)
 	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
+
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "group_ai", "update_settings")
 
 	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
 		"ai_enabled":            aiConfig.Enabled,

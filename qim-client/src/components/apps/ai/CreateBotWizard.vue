@@ -28,7 +28,7 @@
           <button class="switch-btn" @click="step = 'custom'">切换到自定义</button>
         </div>
         <div v-else class="templates">
-          <div v-for="tpl in templates" :key="tpl.id" class="template-item" @click="createFromTemplate(tpl)">
+          <div v-for="tpl in templates" :key="tpl.id" class="template-item" @click="selectTemplate(tpl)">
             <div class="template-avatar">
               <Avatar v-if="tpl.avatar" :src="tpl.avatar" :name="tpl.name" :alt="tpl.name" size="sm" />
               <i class="fas fa-robot" v-else></i>
@@ -106,7 +106,7 @@ const form = ref({
   description: '',
   useSystemConfig: true,
   configId: null as number | null,
-  system_prompt: ''
+  system_prompt: '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。'
 })
 
 onMounted(async () => {
@@ -114,30 +114,23 @@ onMounted(async () => {
   await fetchConfigs()
 })
 
-async function createFromTemplate(tpl: any) {
-  creating.value = true
-  try {
-    const response = await createBot({
-      name: tpl.name,
-      description: tpl.description,
-      type: 'ai',
-      config: {
-        system_prompt: tpl.system_prompt || '',
-        use_system_config: true
-      }
-    })
-
-    if (response.code === 0) {
-      QMessage.success('机器人创建成功')
-      emit('close')
-    } else {
-      QMessage.error(response.message || '创建失败')
+function selectTemplate(tpl: any) {
+  form.value.name = tpl.name
+  form.value.description = tpl.description
+  form.value.useSystemConfig = true
+  form.value.configId = null
+  
+  let systemPrompt = ''
+  if (tpl.config) {
+    try {
+      const config = typeof tpl.config === 'string' ? JSON.parse(tpl.config) : tpl.config
+      systemPrompt = config.system_prompt || ''
+    } catch (e) {
+      console.error('解析模板配置失败', e)
     }
-  } catch (e: any) {
-    QMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
-  } finally {
-    creating.value = false
   }
+  form.value.system_prompt = systemPrompt || '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。'
+  step.value = 'custom'
 }
 
 async function handleSubmit() {
@@ -165,12 +158,7 @@ async function handleSubmit() {
     })
 
     if (response.code === 0) {
-      const msg = form.value.useSystemConfig ? '已提交审批，等待管理员审核' : '机器人创建成功'
-      if (form.value.useSystemConfig) {
-        QMessage.info(msg)
-      } else {
-        QMessage.success(msg)
-      }
+      QMessage.info('已提交审批，等待管理员审核')
       emit('close')
     } else {
       QMessage.error(response.message || '创建失败')

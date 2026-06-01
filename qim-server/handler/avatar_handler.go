@@ -263,6 +263,8 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		return
 	}
 
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "create_config")
+
 	response := h.toConfigResponse(config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
 }
@@ -413,6 +415,8 @@ func (h *AvatarHandler) DeleteConfig(c *gin.Context) {
 		response.InternalServerError(c, "删除失败")
 		return
 	}
+
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "delete_config")
 
 	response.SuccessWithMessage(c, "删除成功", nil)
 }
@@ -664,6 +668,8 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 		return
 	}
 
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "apply_approval")
+
 	response := h.toConfigResponse(config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
 }
@@ -696,6 +702,8 @@ func (h *AvatarHandler) CancelApplication(c *gin.Context) {
 		response.InternalServerError(c, "取消失败")
 		return
 	}
+
+	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "cancel_approval")
 
 	response := h.toConfigResponse(config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
