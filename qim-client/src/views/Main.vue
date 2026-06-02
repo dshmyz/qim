@@ -70,6 +70,8 @@
         :appCategories="appCategories"
         :searchResults="searchResults"
         :collapsed="sidebarCollapsed"
+        :hasMoreConversations="hasMoreConversations"
+        :isLoadingConversations="isLoadingConversations"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showUserProfile = true"
         @showNotification="handleNotificationCenter"
@@ -92,6 +94,7 @@
         @searchResultPrivateChat="startPrivateChat"
         @searchResultApplyJoin="handleApplyJoinGroup"
         @createChannel="showCreateChannelModal = true"
+        @loadMoreConversations="loadMoreConversations"
       />
       
       <!-- 实时通信全局组件（屏幕共享、视频通话） -->
@@ -1073,7 +1076,7 @@ const {
 const mainWsHandlers = useMainWebSocketHandlers(currentConversationId, messages)
 
 // Main.vue 专用的会话逻辑
-const mainConvLogic = useMainConversationLogic(updateConversations, processConversation)
+const mainConvLogic = useMainConversationLogic(updateConversations, processConversation, conversations)
 
 // Main.vue 专用的群组 handlers
 const mainGroupHandlers = useMainGroupHandlers(conversations, currentConversationId, messages)
@@ -1087,7 +1090,12 @@ const mainMessageLoading = useMainMessageLoading(conversations, processMessage)
 const { loadMessages, getMessageReadUsers, messagePage, messagePageSize, hasMoreMessages } = mainMessageLoading
 
 
-const loadConversations = mainConvLogic.loadConversations
+const { 
+  loadConversations, 
+  loadMoreConversations, 
+  hasMoreConversations, 
+  isLoadingConversations 
+} = mainConvLogic
 
 // 通知中心组件 ref
 const notificationCenterRef = ref<any>(null)

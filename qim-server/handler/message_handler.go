@@ -399,6 +399,14 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"last_message_at": now,
 	})
 
+	// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
+	// is_hidden 存储在 ConversationSession 表中（用户级别），不在 Conversation 表中
+	// 这里只更新被隐藏的会话，不影响已显示的会话
+	db := database.GetDB()
+	db.Model(&model.ConversationSession{}).
+		Where("conversation_id = ? AND is_hidden = ?", msg.ConversationID, true).
+		Update("is_hidden", false)
+
 	if excludeUserID > 0 {
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	}

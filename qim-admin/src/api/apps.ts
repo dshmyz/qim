@@ -22,9 +22,9 @@ export interface UpdateAppParams {
   availableOrgIDs?: string
 }
 
-export const getApps = (params: PaginationParams & { name?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<App>>>> => {
+export const getApps = (params: PaginationParams & { name?: string; status?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<App>>>> => {
   return request({
-    url: '/v1/apps',
+    url: '/v1/apps/all',
     method: 'get',
     params,
   })

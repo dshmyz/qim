@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,12 +15,14 @@ import (
 	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
+	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
+	"qim-server/service/storage"
 
 	"github.com/gin-gonic/gin"
 )
 
-const defaultMaxUploadSize = 50 * 1024 * 1024 // 50MB default
+const defaultMaxUploadSize = 500 * 1024 * 1024 // 500MB default
 
 var (
 	defaultAllowedExtensions = map[string]bool{
@@ -39,8 +41,8 @@ var (
 )
 
 type uploadConfig struct {
-	MaxSize            int64
-	AllowedExtensions  map[string]bool
+	MaxSize           int64
+	AllowedExtensions map[string]bool
 }
 
 func getUploadConfig() *uploadConfig {
@@ -167,113 +169,57 @@ func UploadFile(c *gin.Context) {
 	source := c.DefaultPostForm("source", "upload")
 
 	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
+	key := "uploads/" + filename
+	mimeType := file.Header.Get("Content-Type")
 
-	if cfg.Storage.Type == "s3" {
-		s3Svc := di.GlobalContainer.S3Service
-		if s3Svc == nil {
-			response.InternalServerError(c, "S3服务未初始化")
-			return
-		}
-
-		fileData, err := file.Open()
-		if err != nil {
-			response.InternalServerError(c, "读取文件失败")
-			return
-		}
-		defer fileData.Close()
-
-		fileBytes := make([]byte, file.Size)
-		_, err = fileData.Read(fileBytes)
-		if err != nil {
-			response.InternalServerError(c, "读取文件内容失败")
-			return
-		}
-
-		s3Key := "uploads/" + filename
-		mimeType := file.Header.Get("Content-Type")
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		
-		if err := s3Svc.UploadFile(ctx, s3Key, fileBytes, mimeType); err != nil {
-			response.InternalServerError(c, "上传文件到S3失败")
-			return
-		}
-
-		svc := di.GlobalContainer.FileService
-		fileRecord := model.File{
-			Name:         file.Filename,
-			OriginalName: file.Filename,
-			StoragePath:  "/s3/" + s3Key,
-			Size:         file.Size,
-			MimeType:     mimeType,
-			UserID:       userID.(uint),
-			Source:       source,
-			CreatedAt:    time.Now(),
-		}
-		if err := svc.CreateFile(&fileRecord); err != nil {
-			response.InternalServerError(c, "创建文件记录失败")
-			return
-		}
-
-		invalidateFileStatsCache(userID.(uint))
-
-		c.JSON(http.StatusOK, gin.H{
-			"code": 0,
-			"data": gin.H{
-				"id":   fileRecord.ID,
-				"url":  fileRecord.StoragePath,
-				"name": fileRecord.Name,
-				"size": fileRecord.Size,
-			},
-		})
+	st := di.GlobalContainer.DefaultStorage
+	if st == nil {
+		response.InternalServerError(c, "存储服务未初始化")
 		return
-	} else {
-		uploadDir := cfg.Storage.Local.Path
-		if uploadDir == "" {
-			uploadDir = "./uploads"
-		}
-		if err := os.MkdirAll(uploadDir, 0755); err != nil {
-			response.InternalServerError(c, "创建上传目录失败")
-			return
-		}
-
-		filePath := filepath.Join(uploadDir, filename)
-		if err := c.SaveUploadedFile(file, filePath); err != nil {
-			response.InternalServerError(c, "保存文件失败")
-			return
-		}
-
-		svc := di.GlobalContainer.FileService
-		mimeType := file.Header.Get("Content-Type")
-
-		fileRecord := model.File{
-			Name:         file.Filename,
-			OriginalName: file.Filename,
-			StoragePath:  "/uploads/" + filename,
-			Size:         file.Size,
-			MimeType:     mimeType,
-			UserID:       userID.(uint),
-			Source:       source,
-			CreatedAt:    time.Now(),
-		}
-		if err := svc.CreateFile(&fileRecord); err != nil {
-			response.InternalServerError(c, "创建文件记录失败")
-			return
-		}
-
-		invalidateFileStatsCache(userID.(uint))
-
-		c.JSON(http.StatusOK, gin.H{
-			"code": 0,
-			"data": gin.H{
-				"id":   fileRecord.ID,
-				"url":  fileRecord.StoragePath,
-				"name": fileRecord.Name,
-				"size": fileRecord.Size,
-			},
-		})
 	}
+
+	fileData, err := file.Open()
+	if err != nil {
+		response.InternalServerError(c, "打开文件失败")
+		return
+	}
+	defer fileData.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := st.Put(ctx, key, fileData, file.Size, mimeType); err != nil {
+		response.InternalServerError(c, "存储文件失败")
+		return
+	}
+
+	svc := di.GlobalContainer.FileService
+	fileRecord := model.File{
+		Name:         file.Filename,
+		OriginalName: file.Filename,
+		StoragePath:  storage.BuildPath(st.Kind(), key),
+		Size:         file.Size,
+		MimeType:     mimeType,
+		UserID:       userID.(uint),
+		Source:       source,
+		CreatedAt:    time.Now(),
+	}
+	if err := svc.CreateFile(&fileRecord); err != nil {
+		response.InternalServerError(c, "创建文件记录失败")
+		return
+	}
+
+	invalidateFileStatsCache(userID.(uint))
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"id":   fileRecord.ID,
+			"url":  fileRecord.StoragePath,
+			"name": fileRecord.Name,
+			"size": fileRecord.Size,
+		},
+	})
 }
 
 func GetFiles(c *gin.Context) {
@@ -812,45 +758,30 @@ func DownloadFile(c *gin.Context) {
 		return
 	}
 
-	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		s3Svc := di.GlobalContainer.S3Service
-		if s3Svc == nil {
-			response.InternalServerError(c, "S3服务未初始化")
-			return
-		}
-
-		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		
-		fileData, err := s3Svc.DownloadFile(ctx, s3Key)
-		if err != nil {
-			response.InternalServerError(c, "从S3下载文件失败")
-			return
-		}
-
-		c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
-		c.Header("Content-Type", file.MimeType)
-		c.Data(http.StatusOK, file.MimeType, fileData)
+	mgr := di.GlobalContainer.StorageManager
+	st, key, ok := mgr.ByPath(file.StoragePath)
+	if !ok || st == nil {
+		response.InternalServerError(c, "存储类型不支持")
 		return
-	} else {
-		filePath := filepath.Clean("." + file.StoragePath)
+	}
 
-		// 防止路径遍历攻击
-		baseDir, _ := filepath.Abs(".")
-		absPath, _ := filepath.Abs(filePath)
-		if !strings.HasPrefix(absPath, baseDir) {
-			response.Forbidden(c, "非法文件路径")
-			return
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			response.NotFound(c, "文件不存在")
-			return
-		}
+	reader, err := st.Get(ctx, key)
+	if err != nil {
+		response.InternalServerError(c, "读取文件失败")
+		return
+	}
+	defer reader.Close()
 
-		c.FileAttachment(absPath, file.Name)
+	c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	c.Header("Content-Type", file.MimeType)
+	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
+
+	if _, err := io.Copy(c.Writer, reader); err != nil {
+		logger.WithModule("FileHandler").Error("下载文件失败", "error", err)
+		return
 	}
 }
 
@@ -875,51 +806,31 @@ func PreviewFile(c *gin.Context) {
 
 	c.Header("Cache-Control", "public, max-age=86400")
 
-	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		s3Svc := di.GlobalContainer.S3Service
-		if s3Svc == nil {
-			response.InternalServerError(c, "S3服务未初始化")
-			return
-		}
-
-		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		
-		fileData, err := s3Svc.DownloadFile(ctx, s3Key)
-		if err != nil {
-			response.InternalServerError(c, "从S3下载文件失败")
-			return
-		}
-
-		c.Header("Content-Type", file.MimeType)
-		if !thumbnail {
-			c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
-		}
-		c.Data(http.StatusOK, file.MimeType, fileData)
+	mgr := di.GlobalContainer.StorageManager
+	st, key, ok := mgr.ByPath(file.StoragePath)
+	if !ok || st == nil {
+		response.InternalServerError(c, "存储类型不支持")
 		return
-	} else {
-		filePath := filepath.Clean("." + file.StoragePath)
+	}
 
-		// 防止路径遍历攻击
-		baseDir, _ := filepath.Abs(".")
-		absPath, _ := filepath.Abs(filePath)
-		if !strings.HasPrefix(absPath, baseDir) {
-			response.Forbidden(c, "非法文件路径")
-			return
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			response.NotFound(c, "文件不存在")
-			return
-		}
+	reader, err := st.Get(ctx, key)
+	if err != nil {
+		response.InternalServerError(c, "读取文件失败")
+		return
+	}
+	defer reader.Close()
 
-		if !thumbnail {
-			c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
-		}
-		c.Header("Content-Type", file.MimeType)
-		c.File(absPath)
+	c.Header("Content-Type", file.MimeType)
+	if !thumbnail {
+		c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
+	}
+
+	if _, err := io.Copy(c.Writer, reader); err != nil {
+		logger.WithModule("FileHandler").Error("预览文件失败", "error", err)
+		return
 	}
 }
 
@@ -940,57 +851,30 @@ func DeleteFile(c *gin.Context) {
 		return
 	}
 
-	if strings.HasPrefix(file.StoragePath, "/s3/") {
-		s3Svc := di.GlobalContainer.S3Service
-		if s3Svc == nil {
-			response.InternalServerError(c, "S3服务未初始化")
-			return
-		}
-
-		s3Key := strings.TrimPrefix(file.StoragePath, "/s3/")
-		
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		
-		if err := s3Svc.DeleteFile(ctx, s3Key); err != nil {
-			response.InternalServerError(c, "删除S3文件失败")
-			return
-		}
-		
-		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-			response.InternalServerError(c, "删除文件记录失败")
-			return
-		}
-		invalidateFileStatsCache(userID.(uint))
-		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "删除文件成功",
-		})
+	mgr := di.GlobalContainer.StorageManager
+	st, key, ok := mgr.ByPath(file.StoragePath)
+	if !ok || st == nil {
+		response.InternalServerError(c, "存储类型不支持")
 		return
-	} else {
-		filePath := filepath.Clean("." + file.StoragePath)
-
-		// 防止路径遍历攻击
-		baseDir, _ := filepath.Abs(".")
-		absPath, _ := filepath.Abs(filePath)
-		if !strings.HasPrefix(absPath, baseDir) {
-			response.Forbidden(c, "非法文件路径")
-			return
-		}
-
-		os.Remove(absPath)
-
-		if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-			response.InternalServerError(c, "删除文件失败")
-			return
-		}
-
-		invalidateFileStatsCache(userID.(uint))
-		c.JSON(http.StatusOK, gin.H{
-			"code":    0,
-			"message": "删除文件成功",
-		})
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := st.Delete(ctx, key); err != nil {
+		logger.WithModule("FileHandler").Warn("删除物理文件失败", "error", err)
+	}
+
+	if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
+		response.InternalServerError(c, "删除文件记录失败")
+		return
+	}
+
+	invalidateFileStatsCache(userID.(uint))
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除文件成功",
+	})
 }
 
 func CreateFolder(c *gin.Context) {

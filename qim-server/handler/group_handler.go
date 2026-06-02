@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"qim-server/database"
 	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/logger"
@@ -94,6 +95,11 @@ func AddMemberToGroup(c *gin.Context) {
 			JoinedAt:       time.Now(),
 		}
 		convSvc.CreateMember(newMember)
+
+		// 恢复会话显示：用户被添加到群聊时，如果会话被隐藏则恢复显示
+		database.GetDB().Model(&model.ConversationSession{}).
+			Where("user_id = ? AND conversation_id = ? AND is_hidden = ?", memberID, uint(convIDUint), true).
+			Update("is_hidden", false)
 
 		group, _ := groupSvc.GetGroupByConversationID(uint(convIDUint))
 		groupName := ""

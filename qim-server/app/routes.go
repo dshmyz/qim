@@ -16,6 +16,7 @@ import (
 	"qim-server/service"
 	syncpkg "qim-server/sync"
 	"qim-server/utils"
+	"qim-server/web"
 	"qim-server/ws"
 
 	"github.com/gin-contrib/cors"
@@ -677,4 +678,19 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 短链接访问路由（不需要认证）
 	r.GET("/s/:code", handler.RedirectShortLink)
+
+	// 管理后台 SPA（必须放在 API 路由之后，NoRoute 之前）
+	r.GET("/admin/*filepath", web.ServeAdmin())
+
+	// Landing 首页 SPA（只处理非 API 请求，避免覆盖 API 的 404 响应）
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"code":    404,
+				"message": "接口不存在",
+			})
+			return
+		}
+		web.ServeLanding()(c)
+	})
 }

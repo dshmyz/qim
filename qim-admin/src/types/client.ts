@@ -7,11 +7,11 @@ export interface ClientVersion {
   releaseDate: string
   updateNotes: string
   forceUpdate: boolean
-  rolloutPercentage: number
+  rolloutPercentage?: number
   downloadUrl: string
   status: 'active' | 'inactive'
   createdAt: string
-  updatedAt: string
+  updatedAt?: string
 }
 
 export interface VersionDistribution {

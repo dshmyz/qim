@@ -1,12 +1,12 @@
 <template>
-  <div v-if="conversations.length === 0" class="empty-conversations">
+  <div v-if="conversations.length === 0 && !isLoading" class="empty-conversations">
     <div class="placeholder-content">
       <i class="fas fa-comments fa-4x"></i>
       <h3>暂无会话</h3>
       <p>从通讯录或群聊中发起对话吧</p>
     </div>
   </div>
-  <div v-else class="conversation-list">
+  <div v-else class="conversation-list" ref="listRef" @scroll="handleScroll">
     <div
       v-for="conversation in conversations"
       :key="conversation.id"
@@ -52,6 +52,14 @@
           {{ getUnreadCount(conversation) > 99 ? '99+' : getUnreadCount(conversation) }}
         </div>
       </div>
+    </div>
+    <!-- 加载更多指示器 -->
+    <div v-if="isLoading" class="loading-more">
+      <i class="fas fa-spinner fa-spin"></i>
+      <span>加载中...</span>
+    </div>
+    <div v-else-if="!hasMore && conversations.length > 0" class="no-more">
+      <span>没有更多会话了</span>
     </div>
   </div>
 </template>
@@ -101,12 +109,28 @@ const props = defineProps<{
   conversations: Conversation[]
   currentConversationId: string | null
   serverUrl: string
+  hasMore?: boolean
+  isLoading?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'select', conversation: Conversation): void
   (e: 'contextMenu', event: MouseEvent, conversation: Conversation): void
+  (e: 'loadMore'): void
 }>()
+
+const listRef = ref<HTMLElement | null>(null)
+
+const handleScroll = () => {
+  if (!listRef.value || !props.hasMore || props.isLoading) return
+  
+  const { scrollTop, scrollHeight, clientHeight } = listRef.value
+  const distanceToBottom = scrollHeight - scrollTop - clientHeight
+  
+  if (distanceToBottom < 200) {
+    emit('loadMore')
+  }
+}
 
 interface DraftCache {
   hasDraft: boolean
@@ -477,5 +501,20 @@ const getUnreadCount = (conversation: Conversation): number => {
 .muted-icon {
   font-size: 12px;
   color: var(--text-secondary, #999);
+}
+
+.loading-more,
+.no-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--text-secondary, #999);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.loading-more i {
+  font-size: 14px;
 }
 </style>

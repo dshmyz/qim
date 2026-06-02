@@ -300,17 +300,15 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 		// 初始化管理员用户（无论什么环境都需要）
 		initAdminUser()
+
+		// 初始化内置小程序（无论什么环境都需要）
+		seedMiniApps(db)
 	}
 
 	// ========== Bot 模板 ==========
 	if cfg.DataInit.BotTemplates {
 		seedBotTemplates(db)
 		seedBusinessBotTemplates(db)
-	}
-
-	// ========== 演示小程序 ==========
-	if cfg.DataInit.DemoMiniApps {
-		test.SeedDemoMiniApps(db)
 	}
 
 	// ========== 测试数据 ==========
@@ -444,6 +442,40 @@ func markMigrationCompleted(db *gorm.DB, migrationName string) {
 	logger.WithModule("Migration").Info("标记迁移为已完成", "name", migrationName)
 }
 
+// seedMiniApps 初始化内置小程序
+func seedMiniApps(db *gorm.DB) {
+	if !tableExists(db, "mini_apps") {
+		return
+	}
+
+	var count int64
+	db.Model(&model.MiniApp{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	logger.WithModule("Init").Info("初始化内置小程序数据...")
+
+	miniApps := []model.MiniApp{
+		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Path: "/miniapps/calculator/index.html", Status: "active"},
+		{AppID: "sticky-notes", Name: "便签", Description: "快速记录想法和灵感", Path: "/miniapps/sticky-notes/index.html", Status: "active"},
+		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Path: "/miniapps/todo/index.html", Status: "active"},
+		{AppID: "json-formatter", Name: "JSON 格式化", Description: "JSON 格式化和压缩工具", Path: "/miniapps/json-formatter/index.html", Status: "active"},
+		{AppID: "timestamp-converter", Name: "时间戳转换", Description: "时间戳与日期时间互转", Path: "/miniapps/timestamp-converter/index.html", Status: "active"},
+		{AppID: "base64-converter", Name: "Base64 编解码", Description: "Base64 编码和解码工具", Path: "/miniapps/base64-converter/index.html", Status: "active"},
+		{AppID: "unit-converter", Name: "单位转换", Description: "多种单位之间的转换", Path: "/miniapps/unit-converter/index.html", Status: "active"},
+		{AppID: "password-generator", Name: "密码生成器", Description: "生成强密码", Path: "/miniapps/password-generator/index.html", Status: "active"},
+	}
+
+	for _, app := range miniApps {
+		if err := db.Create(&app).Error; err != nil {
+			logger.WithModule("Init").Error("创建内置小程序失败", "app_id", app.AppID, "error", err)
+		}
+	}
+
+	logger.WithModule("Init").Info("内置小程序数据初始化完成", "count", len(miniApps))
+}
+
 // seedBuiltInApps 初始化默认内置应用
 func seedBuiltInApps(db *gorm.DB) {
 	if isMigrationCompleted(db, "seed_built_in_apps") {
@@ -485,7 +517,7 @@ func seedBuiltInApps(db *gorm.DB) {
 // seedFileUploadConfig 初始化文件上传配置（大小限制、允许的文件类型）
 func seedFileUploadConfig(db *gorm.DB) {
 	defaultConfigs := []model.SystemConfig{
-		{ConfigKey: "file_upload:max_size", Value: "52428800", Type: "number", Desc: "文件上传最大大小（字节），默认 50MB"},
+		{ConfigKey: "file_upload:max_size", Value: "524288000", Type: "number", Desc: "文件上传最大大小（字节），默认 500MB"},
 		{ConfigKey: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
 	}
 	for _, cfg := range defaultConfigs {

@@ -50,6 +50,8 @@ interface Props {
   appCategories: AppCategory[]
   searchResults: SearchResultItem[]
   collapsed?: boolean
+  hasMoreConversations?: boolean
+  isLoadingConversations?: boolean
 }
 
 const props = defineProps<Props>()
@@ -77,6 +79,7 @@ const emit = defineEmits<{
   (e: 'searchResultPrivateChat', item: SearchResultItem): void
   (e: 'searchResultApplyJoin', item: SearchResultItem): void
   (e: 'createChannel'): void
+  (e: 'loadMoreConversations'): void
 }>()
 
 const userName = computed(() => {
@@ -155,8 +158,11 @@ defineExpose({})
             :conversations="filteredConversations"
             :currentConversationId="currentConversationId"
             :serverUrl="serverUrl"
+            :hasMore="hasMoreConversations"
+            :isLoading="isLoadingConversations"
             @select="(conv) => $emit('selectConversation', conv)"
             @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
+            @loadMore="$emit('loadMoreConversations')"
           />
         </div>
         

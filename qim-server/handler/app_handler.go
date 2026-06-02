@@ -103,6 +103,7 @@ func GetAllApps(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 	isGlobal := c.Query("is_global")
 	status := c.Query("status")
+	name := c.Query("name")
 
 	if page < 1 {
 		page = 1
@@ -116,6 +117,7 @@ func GetAllApps(c *gin.Context) {
 		PageSize: pageSize,
 		IsGlobal: isGlobal,
 		Status:   status,
+		Name:     name,
 	})
 	if err != nil {
 		response.InternalServerError(c, "获取应用列表失败")
@@ -155,14 +157,13 @@ func CreateApp(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		Name     string `json:"name" binding:"required"`
-		Icon     string `json:"icon"`
-		Category string `json:"category"`
-		URL      string `json:"url"`
-		Status   string `json:"status"`
-		OpenType string `json:"open_type"`
-		IsGlobal bool   `json:"is_global"`
-		// 权限范围控制字段（需要管理员权限）
+		Name            string `json:"name" binding:"required"`
+		Icon            string `json:"icon"`
+		Category        string `json:"category"`
+		URL             string `json:"url"`
+		Status          string `json:"status"`
+		OpenType        string `json:"open_type"`
+		IsGlobal        bool   `json:"is_global"`
 		ScopeType       string `json:"scope_type"`
 		ScopeValue      string `json:"scope_value"`
 		AvailableOrgIDs string `json:"available_org_ids"`
@@ -215,14 +216,13 @@ func UpdateApp(c *gin.Context) {
 	}
 
 	var req struct {
-		Name     string `json:"name" binding:"required"`
-		Icon     string `json:"icon"`
-		Category string `json:"category"`
-		URL      string `json:"url"`
-		Status   string `json:"status"`
-		OpenType string `json:"open_type"`
-		IsGlobal bool   `json:"is_global"`
-		// 权限范围控制字段（需要管理员权限）
+		Name            string `json:"name"`
+		Icon            string `json:"icon"`
+		Category        string `json:"category"`
+		URL             string `json:"url"`
+		Status          string `json:"status"`
+		OpenType        string `json:"open_type"`
+		IsGlobal        *bool  `json:"is_global"`
 		ScopeType       string `json:"scope_type"`
 		ScopeValue      string `json:"scope_value"`
 		AvailableOrgIDs string `json:"available_org_ids"`
@@ -260,8 +260,7 @@ func UpdateApp(c *gin.Context) {
 		}
 	}
 
-	// 如果请求修改 is_global 字段，需要检查管理员权限
-	if req.IsGlobal != app.IsGlobal {
+	if req.IsGlobal != nil && *req.IsGlobal != app.IsGlobal {
 		roles, exists := c.Get("roles")
 		if !exists {
 			response.Forbidden(c, "只有管理员才能修改应用的全局状态")
@@ -275,15 +274,27 @@ func UpdateApp(c *gin.Context) {
 		}
 	}
 
-	app.Name = req.Name
-	app.Icon = req.Icon
-	app.Category = req.Category
-	app.URL = req.URL
-	app.Status = req.Status
+	if req.Name != "" {
+		app.Name = req.Name
+	}
+	if req.Icon != "" {
+		app.Icon = req.Icon
+	}
+	if req.Category != "" {
+		app.Category = req.Category
+	}
+	if req.URL != "" {
+		app.URL = req.URL
+	}
+	if req.Status != "" {
+		app.Status = req.Status
+	}
 	if req.OpenType != "" {
 		app.OpenType = req.OpenType
 	}
-	app.IsGlobal = req.IsGlobal
+	if req.IsGlobal != nil {
+		app.IsGlobal = *req.IsGlobal
+	}
 
 	// 如果请求修改权限范围字段，需要检查管理员权限
 	if req.ScopeType != "" || req.ScopeValue != "" || req.AvailableOrgIDs != "" {

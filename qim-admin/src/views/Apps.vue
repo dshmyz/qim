@@ -80,6 +80,7 @@
               </template>
             </el-popconfirm>
             <el-popconfirm
+              v-if="!row.isGlobal"
               title="确定删除该应用吗？"
               @confirm="handleDelete(row.id)"
             >

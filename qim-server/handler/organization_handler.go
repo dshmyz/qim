@@ -31,7 +31,7 @@ func GetOrganizationTree(c *gin.Context) {
 
 	if len(unassignedUsers) > 0 {
 		departments = append(departments, model.Department{
-			Name:           "未分配用户",
+			Name:           "非标准用户",
 			Employees:      unassignedUsers,
 			SubDepartments: []model.Department{},
 		})

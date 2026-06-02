@@ -19,21 +19,76 @@ func GetConversations(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	uid := userID.(uint)
 
+	// 解析分页参数
+	page, _ := strconv.Atoi(c.Query("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.Query("page_size"))
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
 	db := database.GetDB()
 
-	// 1. 查询当前用户的会话成员记录（不 Preload，避免 N+1）
-	var convMembers []model.ConversationMember
-	db.Where("user_id = ?", uid).Find(&convMembers)
+	// 使用 JOIN 查询会话成员、会话信息和会话会话信息
+	// 过滤掉已隐藏的会话，按置顶和最后消息时间排序
+	type ConversationMemberWithMeta struct {
+		model.ConversationMember
+		LastMessageAt *time.Time
+		IsPinned      bool
+		IsHidden      bool
+	}
 
-	if len(convMembers) == 0 {
-		response.Success(c, []interface{}{})
+	var convMembersWithMeta []ConversationMemberWithMeta
+	query := `
+		SELECT 
+			cm.*,
+			c.last_message_at,
+			COALESCE(cs.is_pinned, false) as is_pinned,
+			COALESCE(cs.is_hidden, false) as is_hidden
+		FROM conversation_members cm
+		LEFT JOIN conversations c ON c.id = cm.conversation_id
+		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
+		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
+		ORDER BY is_pinned DESC, c.last_message_at DESC
+		LIMIT ? OFFSET ?
+	`
+	db.Raw(query, uid, uid, pageSize, offset).Scan(&convMembersWithMeta)
+
+	// 查询总数（排除已隐藏的会话）
+	var total int64
+	countQuery := `
+		SELECT COUNT(*)
+		FROM conversation_members cm
+		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
+		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
+	`
+	db.Raw(countQuery, uid, uid).Scan(&total)
+
+	if len(convMembersWithMeta) == 0 {
+		response.Success(c, gin.H{
+			"list":      []interface{}{},
+			"total":     total,
+			"page":      page,
+			"page_size": pageSize,
+			"has_more":  false,
+		})
 		return
 	}
 
-	// 提取所有会话 ID
-	conversationIDs := make([]uint, 0, len(convMembers))
-	for _, cm := range convMembers {
-		conversationIDs = append(conversationIDs, cm.ConversationID)
+	// 提取会话成员记录和会话 ID
+	var convMembers []model.ConversationMember
+	conversationIDs := make([]uint, 0, len(convMembersWithMeta))
+	isPinnedMap := make(map[uint]bool, len(convMembersWithMeta))
+	for _, cmwm := range convMembersWithMeta {
+		convMembers = append(convMembers, cmwm.ConversationMember)
+		conversationIDs = append(conversationIDs, cmwm.ConversationID)
+		isPinnedMap[cmwm.ConversationID] = cmwm.IsPinned
 	}
 
 	// 2. 批量查询会话信息
@@ -209,12 +264,12 @@ func GetConversations(c *gin.Context) {
 			}
 		}
 
-		session, exists := sessionMap[convID]
-		if !exists {
-			session = model.ConversationSession{
+		// 确保 session 存在
+		if _, exists := sessionMap[convID]; !exists {
+			session := model.ConversationSession{
 				UserID:         uid,
 				ConversationID: convID,
-				IsPinned:       false,
+				IsPinned:       isPinnedMap[convID],
 				LastVisitedAt:  now,
 			}
 			sessionsToCreate = append(sessionsToCreate, session)
@@ -222,7 +277,7 @@ func GetConversations(c *gin.Context) {
 
 		convWithPin := ConversationWithPin{
 			Conversation: conv,
-			IsPinned:     session.IsPinned,
+			IsPinned:     isPinnedMap[convID],
 			UnreadCount:  cm.UnreadCount,
 			Muted:        cm.Muted,
 		}
@@ -272,7 +327,15 @@ func GetConversations(c *gin.Context) {
 		db.CreateInBatches(sessionsToCreate, 50)
 	}
 
-	response.Success(c, conversations)
+	// 返回分页数据
+	hasMore := offset+len(convMembers) < int(total)
+	response.Success(c, gin.H{
+		"list":      conversations,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+		"has_more":  hasMore,
+	})
 }
 
 func GetConversation(c *gin.Context) {
@@ -430,6 +493,11 @@ func CreateSingleConversation(c *gin.Context) {
 	`, userID, req.UserID).Scan(&existingConv)
 
 	if existingConv.ID > 0 {
+		// 恢复会话显示：用户主动发起聊天时，如果会话被隐藏则恢复显示
+		db.Model(&model.ConversationSession{}).
+			Where("user_id = ? AND conversation_id = ? AND is_hidden = ?", userID.(uint), existingConv.ID, true).
+			Update("is_hidden", false)
+
 		response.Success(c, existingConv)
 		return
 	}

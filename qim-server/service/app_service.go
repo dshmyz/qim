@@ -68,6 +68,9 @@ func (s *AppService) GetAllApps(query AppQuery) (*AppResult, error) {
 	ctx := context.Background()
 	dbQuery := s.db.WithContext(ctx).Model(&model.App{})
 
+	if query.Name != "" {
+		dbQuery = dbQuery.Where("name LIKE ?", "%"+query.Name+"%")
+	}
 	if query.IsGlobal != "" {
 		if query.IsGlobal == "true" {
 			dbQuery = dbQuery.Where("is_global = ?", true)

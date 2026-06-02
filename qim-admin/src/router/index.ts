@@ -3,49 +3,13 @@ import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
   {
-    path: '/',
-    name: 'Home',
-    component: () => import('@/views/Home.vue'),
-    meta: { requiresAuth: false },
-  },
-  // 短路径重定向到 /admin 下的对应页面
-  { path: '/groups', redirect: '/admin/groups' },
-  { path: '/users', redirect: '/admin/users' },
-  { path: '/organization', redirect: '/admin/organization' },
-  { path: '/roles', redirect: '/admin/roles' },
-  { path: '/conversations', redirect: '/admin/conversations' },
-  { path: '/channels', redirect: '/admin/channels' },
-  { path: '/apps', redirect: '/admin/apps' },
-  { path: '/mini-apps', redirect: '/admin/mini-apps' },
-  { path: '/statistics', redirect: '/admin/statistics' },
-  { path: '/messages', redirect: '/admin/messages' },
-  { path: '/message-search', redirect: '/admin/message-search' },
-  { path: '/notifications', redirect: '/admin/notifications' },
-  { path: '/blacklist', redirect: '/admin/blacklist' },
-  { path: '/sensitive-words', redirect: '/admin/sensitive-words' },
-  { path: '/operation-logs', redirect: '/admin/operation-logs' },
-  { path: '/feedbacks', redirect: '/admin/feedbacks' },
-  { path: '/system-config', redirect: '/admin/system-config' },
-  { path: '/version-management', redirect: '/admin/version-management' },
-  { path: '/file-storage', redirect: '/admin/file-storage' },
-  { path: '/server-monitor', redirect: '/admin/server-monitor' },
-  { path: '/ai-assistant', redirect: '/admin/ai-assistant' },
-  { path: '/ai-ops', redirect: '/admin/ai-ops' },
-  { path: '/ai-config', redirect: '/admin/ai-config' },
-  { path: '/mcp-tools', redirect: '/admin/mcp-tools' },
-  { path: '/knowledge-graph', redirect: '/admin/knowledge-graph' },
-  { path: '/vector-data', redirect: '/admin/vector-data' },
-  { path: '/approvals', redirect: '/admin/approvals' },
-  { path: '/auth-config', redirect: '/admin/auth-config' },
-  { path: '/org-sync', redirect: '/admin/org-sync' },
-  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
     meta: { requiresAuth: false },
   },
   {
-    path: '/admin',
+    path: '/',
     component: () => import('@/layouts/AdminLayout.vue'),
     meta: { requiresAuth: true },
     children: [
@@ -240,7 +204,7 @@ const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/admin/'),
   routes,
 })
 

@@ -1,9 +1,17 @@
+declare const __APP_NAME__: string
+declare const __APP_VERSION__: string
+declare const __APP_PRODUCT_NAME_CN__: string
+declare const __APP_COPYRIGHT_YEAR__: string
+
+const productName = __APP_NAME__.toUpperCase()
+const productNameCN = __APP_PRODUCT_NAME_CN__
+
 export const APP_CONFIG = {
-  productName: 'QIM',
-  productNameCN: '青雀',
-  productFullName: 'QIM（青雀）',
-  copyrightYear: '2026',
-  version: '1.0.0'
+  productName,
+  productNameCN,
+  productFullName: `${productName}（${productNameCN}）`,
+  copyrightYear: __APP_COPYRIGHT_YEAR__,
+  version: __APP_VERSION__,
 }
 
 export const getProductName = (): string => {

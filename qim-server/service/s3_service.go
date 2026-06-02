@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,14 +11,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type S3Service struct {
-	client *s3.Client
-	bucket string
-	cfg    config.S3StorageConfig
+	client         *s3.Client
+	transferClient *transfermanager.Client
+	bucket         string
+	cfg            config.S3StorageConfig
 }
 
 func NewS3Service(cfg config.S3StorageConfig) (*S3Service, error) {
@@ -42,31 +42,29 @@ func NewS3Service(cfg config.S3StorageConfig) (*S3Service, error) {
 		o.UsePathStyle = true
 	})
 
+	transferClient := transfermanager.New(client)
+
 	return &S3Service{
-		client: client,
-		bucket: cfg.Bucket,
-		cfg:    cfg,
+		client:         client,
+		transferClient: transferClient,
+		bucket:         cfg.Bucket,
+		cfg:            cfg,
 	}, nil
 }
 
-func (s *S3Service) UploadFile(ctx context.Context, key string, data []byte, mimeType string) error {
-	uploader := manager.NewUploader(s.client)
-
-	_, err := uploader.Upload(ctx, &s3.PutObjectInput{
+func (s *S3Service) UploadFile(ctx context.Context, key string, data io.Reader, mimeType string) error {
+	_, err := s.transferClient.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
+		Body:        data,
 		ContentType: aws.String(mimeType),
 	})
 
 	return err
 }
 
-func (s *S3Service) DownloadFile(ctx context.Context, key string) ([]byte, error) {
-	downloader := manager.NewDownloader(s.client)
-
-	buf := manager.NewWriteAtBuffer([]byte{})
-	_, err := downloader.Download(ctx, buf, &s3.GetObjectInput{
+func (s *S3Service) DownloadFile(ctx context.Context, key string) (io.ReadCloser, error) {
+	output, err := s.transferClient.GetObject(ctx, &transfermanager.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
@@ -74,18 +72,7 @@ func (s *S3Service) DownloadFile(ctx context.Context, key string) ([]byte, error
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
-}
-
-func (s *S3Service) DownloadFileToWriter(ctx context.Context, key string, w io.WriterAt) (int64, error) {
-	downloader := manager.NewDownloader(s.client)
-
-	n, err := downloader.Download(ctx, w, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
-
-	return n, err
+	return io.NopCloser(output.Body), nil
 }
 
 func (s *S3Service) DeleteFile(ctx context.Context, key string) error {

@@ -1,17 +1,19 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"qim-server/di"
 	"qim-server/model"
 	"qim-server/pkg/logger"
 	"qim-server/pkg/response"
+	"qim-server/service/storage"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -323,14 +325,9 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 			return
 		}
 
-		feedbackDir := cfg.Storage.Local.Path
-		if feedbackDir == "" {
-			feedbackDir = "./uploads"
-		}
-		feedbackDir = filepath.Join(feedbackDir, "feedbacks")
-		if err := os.MkdirAll(feedbackDir, 0755); err != nil {
-			logger.WithModule("feedback").Error("创建截图目录失败", "error", err)
-			response.InternalServerError(c, "保存截图失败")
+		st := di.GlobalContainer.DefaultStorage
+		if st == nil {
+			response.InternalServerError(c, "存储服务未初始化")
 			return
 		}
 
@@ -339,14 +336,27 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 			uidVal = *userID
 		}
 		filename := fmt.Sprintf("feedback_%s_%d%s", time.Now().Format("20060102150405"), uidVal, ext)
-		filePath := filepath.Join(feedbackDir, filename)
-		if err := c.SaveUploadedFile(file, filePath); err != nil {
+		key := "uploads/feedbacks/" + filename
+
+		fileData, err := file.Open()
+		if err != nil {
+			logger.WithModule("feedback").Error("打开截图失败", "error", err)
+			response.InternalServerError(c, "保存截图失败")
+			return
+		}
+		defer fileData.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		mimeType := file.Header.Get("Content-Type")
+		if err := st.Put(ctx, key, fileData, file.Size, mimeType); err != nil {
 			logger.WithModule("feedback").Error("保存截图失败", "error", err)
 			response.InternalServerError(c, "保存截图失败")
 			return
 		}
 
-		screenshotPath = "/uploads/feedbacks/" + filename
+		screenshotPath = storage.BuildPath(st.Kind(), key)
 	}
 
 	feedback := model.UserFeedback{

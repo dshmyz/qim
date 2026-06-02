@@ -116,7 +116,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getProductName, getProductFullName, getCopyrightText } from '../config/appConfig'
-import { getVersions } from '../api/versions'
 
 const productName = getProductName()
 const productFullName = getProductFullName()
@@ -282,22 +281,23 @@ const downloadClient = () => {
 
 onMounted(async () => {
   try {
-    const response = await getVersions()
-    const versions = response.data.data.list
+    const res = await fetch('/api/v1/client/versions')
+    const json = await res.json()
+    if (json.code !== 0) throw new Error(json.message)
+    const versions = json.data?.list || []
     
     platforms.value.forEach(platform => {
       const platformVersions = versions.filter(
-        v => v.platform === platform.key && v.status === 'active'
+        (v: any) => v.platform === platform.key && v.status === 'active'
       )
       
-      platform.downloads = platformVersions.map(v => ({
+      platform.downloads = platformVersions.map((v: any) => ({
         label: `${productName} ${v.version}`,
         url: v.downloadUrl
       }))
     })
   } catch (error) {
     console.error('获取版本列表失败:', error)
-    ElMessage.error('获取版本列表失败，请稍后重试')
   }
 })
 </script>

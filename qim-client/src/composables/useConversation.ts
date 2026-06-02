@@ -156,7 +156,7 @@ export function useConversation() {
     try {
       const response: any = await request('/api/v1/conversations')
       if (response.code === 0 && response.data) {
-        chatStore.setConversations(response.data)
+        chatStore.setConversations(response.data.list || [])
       } else {
         chatStore.setConversations([])
       }

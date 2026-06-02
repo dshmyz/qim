@@ -1,0 +1,11 @@
+qim-server
+main
+dist/
+web/webroot/admin/
+web/webroot/landing/
+*.db
+*.db.*
+uploads/*
+data/*
+static/miniapps/test-permission/
+config.local.yaml

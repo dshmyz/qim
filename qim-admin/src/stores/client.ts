@@ -1,11 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getVersions, createVersion, updateVersion, deleteVersion, getVersionDistribution } from '@/api/versions'
-import type { VersionDistribution, CreateVersionParams, UpdateVersionParams } from '@/types/client'
-import type { Version } from '@/types'
+import type { VersionDistribution, ClientVersion, CreateVersionParams, UpdateVersionParams } from '@/types/client'
 
 export const useClientStore = defineStore('client', () => {
-  const versions = ref<Version[]>([])
+  const versions = ref<ClientVersion[]>([])
   const distribution = ref<VersionDistribution[]>([])
   const loading = ref(false)
 
@@ -13,7 +12,7 @@ export const useClientStore = defineStore('client', () => {
     loading.value = true
     try {
       const { data } = await getVersions()
-      versions.value = data.data.list || []
+      versions.value = (data.data.list || []) as unknown as ClientVersion[]
     } finally {
       loading.value = false
     }
@@ -23,7 +22,7 @@ export const useClientStore = defineStore('client', () => {
     loading.value = true
     try {
       const { data } = await createVersion(params as Parameters<typeof createVersion>[0])
-      versions.value.unshift(data.data)
+      versions.value.unshift(data.data as unknown as ClientVersion)
       return data.data
     } finally {
       loading.value = false
@@ -36,7 +35,7 @@ export const useClientStore = defineStore('client', () => {
       const { data } = await updateVersion(id, params as Parameters<typeof updateVersion>[1])
       const index = versions.value.findIndex(v => v.id === id)
       if (index !== -1) {
-        versions.value[index] = data.data
+        versions.value[index] = data.data as unknown as ClientVersion
       }
       return data.data
     } finally {

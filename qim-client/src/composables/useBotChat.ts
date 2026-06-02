@@ -98,8 +98,10 @@ export function useBotChat(botId: Ref<number | null>) {
    */
   const loadMessages = async (reset: boolean = true): Promise<void> => {
     if (!conversationId.value) {
-      // 无会话模式，没有服务端历史，直接返回
-      return
+      const initSuccess = await initConversation()
+      if (!initSuccess || !conversationId.value) {
+        return
+      }
     }
 
     if (isLoading.value) return

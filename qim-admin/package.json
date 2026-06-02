@@ -3,6 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "build": {
+    "extraMetadata": {
+      "productName": "NUIM",
+      "productNameCN": "青雀",
+      "copyrightYear": "2026"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",

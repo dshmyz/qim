@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { MiniApp } from '@/types'
 import { createMiniApp, updateMiniApp } from '@/api/miniApps'
@@ -159,6 +160,11 @@ const handleSubmit = async () => {
       }
       emit('saved')
       handleClose()
+      if (isEdit.value) {
+        ElMessage.success('小程序信息已更新')
+      } else {
+        ElMessage.success({ message: '小程序创建成功！默认为停用状态，请在列表中点击"上线"按钮后才能对用户可见。', duration: 5000 })
+      }
     } catch {
       // 错误已在请求拦截器中处理
     } finally {

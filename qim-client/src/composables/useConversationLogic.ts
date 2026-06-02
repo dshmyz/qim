@@ -32,7 +32,7 @@ export function useConversationLogic() {
     try {
       const response = await request('/api/v1/conversations')
       if (response.code === 0 && response.data) {
-        const serverConversations = response.data.map((conv: any) => processConversation(conv))
+        const serverConversations = response.data.list.map((conv: any) => processConversation(conv))
         chatStore.updateConversations(serverConversations)
       } else {
         chatStore.updateConversations([])

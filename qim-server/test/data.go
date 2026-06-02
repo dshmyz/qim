@@ -481,39 +481,4 @@ func InitTestData(db *gorm.DB) {
 			}
 		}
 	}
-
-	initTestMiniApps(db)
-}
-
-// SeedDemoMiniApps 初始化演示小程序数据（供外部调用）
-func SeedDemoMiniApps(db *gorm.DB) {
-	initTestMiniApps(db)
-}
-
-// initTestMiniApps 初始化演示小程序
-func initTestMiniApps(db *gorm.DB) {
-	var miniAppCount int64
-	db.Model(&model.MiniApp{}).Count(&miniAppCount)
-	if miniAppCount > 0 {
-		return
-	}
-
-	log.Println("初始化小程序数据...")
-
-	miniApps := []model.MiniApp{
-		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Icon: "", Path: "/miniapps/calculator/index.html", Status: "active"},
-		{AppID: "sticky-notes", Name: "便签", Description: "快速记录想法和灵感", Icon: "", Path: "/miniapps/sticky-notes/index.html", Status: "active"},
-		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Icon: "", Path: "/miniapps/todo/index.html", Status: "active"},
-		{AppID: "json-formatter", Name: "JSON 格式化", Description: "JSON 格式化和压缩工具", Icon: "", Path: "/miniapps/json-formatter/index.html", Status: "active"},
-		{AppID: "timestamp-converter", Name: "时间戳转换", Description: "时间戳与日期时间互转", Icon: "", Path: "/miniapps/timestamp-converter/index.html", Status: "active"},
-		{AppID: "base64-converter", Name: "Base64 编解码", Description: "Base64 编码和解码工具", Icon: "", Path: "/miniapps/base64-converter/index.html", Status: "active"},
-		{AppID: "unit-converter", Name: "单位转换", Description: "多种单位之间的转换", Icon: "", Path: "/miniapps/unit-converter/index.html", Status: "active"},
-		{AppID: "password-generator", Name: "密码生成器", Description: "生成强密码", Icon: "", Path: "/miniapps/password-generator/index.html", Status: "active"},
-	}
-
-	for _, app := range miniApps {
-		db.Create(&app)
-	}
-
-	log.Println("小程序数据初始化完成")
 }

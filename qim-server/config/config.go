@@ -34,7 +34,6 @@ type LogConfig struct {
 type DataInitConfig struct {
 	PresetData   bool `yaml:"preset_data"`
 	BotTemplates bool `yaml:"bot_templates"`
-	DemoMiniApps bool `yaml:"demo_mini_apps"`
 	TestData     bool `yaml:"test_data"`
 	SeedForce    bool `yaml:"seed_force"`
 }
@@ -299,7 +298,6 @@ func getDefaultDataInitConfig(mode string) DataInitConfig {
 		return DataInitConfig{
 			PresetData:   true,
 			BotTemplates: true,
-			DemoMiniApps: false,
 			TestData:     false,
 			SeedForce:    false,
 		}
@@ -307,7 +305,6 @@ func getDefaultDataInitConfig(mode string) DataInitConfig {
 	return DataInitConfig{
 		PresetData:   true,
 		BotTemplates: true,
-		DemoMiniApps: true,
 		TestData:     true,
 		SeedForce:    false,
 	}

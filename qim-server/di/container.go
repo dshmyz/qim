@@ -7,6 +7,7 @@ import (
 	"qim-server/middleware"
 	"qim-server/pkg/logger"
 	"qim-server/service"
+	"qim-server/service/storage"
 	"qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,8 @@ type Container struct {
 	EventService         *service.EventService
 	TaskService          *service.TaskService
 	FileService          *service.FileService
-	S3Service            *service.S3Service
+	StorageManager       *storage.Manager
+	DefaultStorage       storage.Storage
 	GroupService         *service.GroupService
 	AppService           *service.AppService
 	MiniAppService       *service.MiniAppService
@@ -46,7 +48,6 @@ type Container struct {
 	GroupDocumentService *service.GroupDocumentService
 	AIConfigService      *service.AIConfigService
 	ChunkService         *service.ChunkService
-	// 新增：RAG 和智能分身相关服务
 	VectorService        *service.VectorService
 	NoteVectorService    *service.NoteVectorService
 	AvatarMemoryService  *service.AvatarMemoryService
@@ -72,6 +73,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	fileService := service.NewFileService(db)
 
 	var s3Svc *service.S3Service
+	var defaultStorage storage.Storage
+	var s3Storage storage.Storage
+	var localStorage storage.Storage
+
 	if cfg.Storage.Type == "s3" {
 		var err error
 		s3Svc, err = service.NewS3Service(cfg.Storage.S3)
@@ -79,8 +84,20 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 			logger.WithModule("DI").Warn("S3Service 初始化失败，S3 存储功能将不可用", "error", err)
 		} else {
 			logger.WithModule("DI").Info("S3Service 初始化成功", "bucket", cfg.Storage.S3.Bucket)
+			s3Storage = storage.NewS3Storage(s3Svc, cfg.Storage.S3)
+			defaultStorage = s3Storage
 		}
 	}
+
+	localStorage, storageErr := storage.NewLocalStorage(cfg.Storage.Local)
+	if storageErr != nil {
+		logger.WithModule("DI").Warn("LocalStorage 初始化失败", "error", storageErr)
+	}
+	if defaultStorage == nil {
+		defaultStorage = localStorage
+	}
+
+	storageManager := storage.NewManager(defaultStorage, s3Storage, localStorage)
 
 	groupService := service.NewGroupService(db)
 	appService := service.NewAppService(db)
@@ -153,7 +170,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		EventService:         eventService,
 		TaskService:          taskService,
 		FileService:          fileService,
-		S3Service:            s3Svc,
+		StorageManager:       storageManager,
+		DefaultStorage:       defaultStorage,
 		GroupService:         groupService,
 		AppService:           appService,
 		MiniAppService:       miniAppService,

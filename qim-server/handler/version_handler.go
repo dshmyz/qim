@@ -35,8 +35,7 @@ func GetVersions(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&versions)
 
-	// 转换为前端期望格式
-	var frontendList []gin.H
+	frontendList := make([]gin.H, 0, len(versions))
 	for _, v := range versions {
 		status := "inactive"
 		if v.Enabled {
