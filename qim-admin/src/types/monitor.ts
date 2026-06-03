@@ -7,6 +7,8 @@ export interface ServerMetrics {
     out: number
   }
   timestamp: string
+  uptime: number
+  goRoutines: number
 }
 
 export interface ServiceStatus {
@@ -14,6 +16,7 @@ export interface ServiceStatus {
   status: 'healthy' | 'unhealthy' | 'warning'
   message: string
   lastCheck: string
+  latency: number
 }
 
 export interface AlertRule {

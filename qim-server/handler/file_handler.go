@@ -862,10 +862,13 @@ func DeleteFile(c *gin.Context) {
 	defer cancel()
 
 	if err := st.Delete(ctx, key); err != nil {
-		logger.WithModule("FileHandler").Warn("删除物理文件失败", "error", err)
+		logger.WithModule("FileHandler").Error("删除物理文件失败", "error", err)
+		response.InternalServerError(c, "删除文件失败")
+		return
 	}
 
 	if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
+		logger.WithModule("FileHandler").Error("删除文件记录失败，但物理文件已删除", "file_id", fileID, "error", err)
 		response.InternalServerError(c, "删除文件记录失败")
 		return
 	}

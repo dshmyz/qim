@@ -50,11 +50,22 @@ func GetMyBots(c *gin.Context) {
 	for _, bot := range bots {
 		approvalStatus := "approved"
 		if !bot.IsActive {
+			// 查询最新的审批记录（按时间倒序）
 			var approval model.Approval
-			if err := db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeBot, bot.ID).First(&approval).Error; err == nil {
-				approvalStatus = string(approval.Status)
+			err := db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeBot, bot.ID).
+				Order("created_at DESC").
+				First(&approval).Error
+
+			if err == nil {
+				// 如果最新审批是 approved，但 bot 未激活，说明是管理员手动停用
+				if approval.Status == model.ApprovalStatusApproved {
+					approvalStatus = "inactive"
+				} else {
+					approvalStatus = string(approval.Status)
+				}
 			} else {
-				approvalStatus = "pending"
+				// 找不到审批记录，可能是历史数据或管理员直接停用
+				approvalStatus = "inactive"
 			}
 		}
 		result = append(result, BotWithApproval{

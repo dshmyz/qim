@@ -216,16 +216,16 @@ func UpdateApp(c *gin.Context) {
 	}
 
 	var req struct {
-		Name            string `json:"name"`
-		Icon            string `json:"icon"`
-		Category        string `json:"category"`
-		URL             string `json:"url"`
-		Status          string `json:"status"`
-		OpenType        string `json:"open_type"`
-		IsGlobal        *bool  `json:"is_global"`
-		ScopeType       string `json:"scope_type"`
-		ScopeValue      string `json:"scope_value"`
-		AvailableOrgIDs string `json:"available_org_ids"`
+		Name            *string `json:"name"`
+		Icon            *string `json:"icon"`
+		Category        *string `json:"category"`
+		URL             *string `json:"url"`
+		Status          *string `json:"status"`
+		OpenType        *string `json:"open_type"`
+		IsGlobal        *bool   `json:"is_global"`
+		ScopeType       *string `json:"scope_type"`
+		ScopeValue      *string `json:"scope_value"`
+		AvailableOrgIDs *string `json:"available_org_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -274,30 +274,30 @@ func UpdateApp(c *gin.Context) {
 		}
 	}
 
-	if req.Name != "" {
-		app.Name = req.Name
+	if req.Name != nil {
+		app.Name = *req.Name
 	}
-	if req.Icon != "" {
-		app.Icon = req.Icon
+	if req.Icon != nil {
+		app.Icon = *req.Icon
 	}
-	if req.Category != "" {
-		app.Category = req.Category
+	if req.Category != nil {
+		app.Category = *req.Category
 	}
-	if req.URL != "" {
-		app.URL = req.URL
+	if req.URL != nil {
+		app.URL = *req.URL
 	}
-	if req.Status != "" {
-		app.Status = req.Status
+	if req.Status != nil {
+		app.Status = *req.Status
 	}
-	if req.OpenType != "" {
-		app.OpenType = req.OpenType
+	if req.OpenType != nil {
+		app.OpenType = *req.OpenType
 	}
 	if req.IsGlobal != nil {
 		app.IsGlobal = *req.IsGlobal
 	}
 
 	// 如果请求修改权限范围字段，需要检查管理员权限
-	if req.ScopeType != "" || req.ScopeValue != "" || req.AvailableOrgIDs != "" {
+	if req.ScopeType != nil || req.ScopeValue != nil || req.AvailableOrgIDs != nil {
 		roles, exists := c.Get("roles")
 		if !exists {
 			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
@@ -308,9 +308,15 @@ func UpdateApp(c *gin.Context) {
 			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
 			return
 		}
-		app.ScopeType = req.ScopeType
-		app.ScopeValue = req.ScopeValue
-		app.AvailableOrgIDs = req.AvailableOrgIDs
+		if req.ScopeType != nil {
+			app.ScopeType = *req.ScopeType
+		}
+		if req.ScopeValue != nil {
+			app.ScopeValue = *req.ScopeValue
+		}
+		if req.AvailableOrgIDs != nil {
+			app.AvailableOrgIDs = *req.AvailableOrgIDs
+		}
 	}
 
 	appSvc.UpdateApp(app)

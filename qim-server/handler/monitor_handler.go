@@ -13,6 +13,7 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/net"
 )
 
 type MonitorHandler struct {
@@ -26,13 +27,13 @@ func NewMonitorHandler() *MonitorHandler {
 }
 
 type ServerMetrics struct {
-	CPU       float64   `json:"cpu"`
-	Memory    float64   `json:"memory"`
-	Disk      float64   `json:"disk"`
-	Network   NetworkIO `json:"network"`
-	Timestamp string    `json:"timestamp"`
-	Uptime    int64     `json:"uptime"`
-	GoRoutines int      `json:"goRoutines"`
+	CPU        float64   `json:"cpu"`
+	Memory     float64   `json:"memory"`
+	Disk       float64   `json:"disk"`
+	Network    NetworkIO `json:"network"`
+	Timestamp  string    `json:"timestamp"`
+	Uptime     int64     `json:"uptime"`
+	GoRoutines int       `json:"goRoutines"`
 }
 
 type NetworkIO struct {
@@ -59,13 +60,26 @@ func (h *MonitorHandler) GetServerMetrics(c *gin.Context) {
 		diskInfo = &disk.UsageStat{}
 	}
 
+	// 获取网络 I/O 统计
+	netIO, err := net.IOCounters(false)
+	networkIO := NetworkIO{In: 0, Out: 0}
+	if err == nil && len(netIO) > 0 {
+		// 累加所有网络接口的流量
+		for _, iface := range netIO {
+			networkIO.In += float64(iface.BytesRecv)
+			networkIO.Out += float64(iface.BytesSent)
+		}
+	} else if err != nil {
+		logger.WithModule("monitor").Error("获取网络 I/O 失败", "error", err)
+	}
+
 	metrics := ServerMetrics{
-		CPU:       cpuPercents[0],
-		Memory:    memInfo.UsedPercent,
-		Disk:      diskInfo.UsedPercent,
-		Network:   NetworkIO{In: 0, Out: 0},
-		Timestamp: time.Now().Format(time.RFC3339),
-		Uptime:    int64(time.Since(h.startTime).Seconds()),
+		CPU:        cpuPercents[0],
+		Memory:     memInfo.UsedPercent,
+		Disk:       diskInfo.UsedPercent,
+		Network:    networkIO,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		Uptime:     int64(time.Since(h.startTime).Seconds()),
 		GoRoutines: runtime.NumGoroutine(),
 	}
 
@@ -80,24 +94,24 @@ func (h *MonitorHandler) GetServerMetricsHistory(c *gin.Context) {
 	endTime := c.Query("endTime")
 	interval := c.Query("interval")
 
-	logger.WithModule("monitor").Info("获取历史指标", 
-		"startTime", startTime, 
-		"endTime", endTime, 
+	logger.WithModule("monitor").Info("获取历史指标",
+		"startTime", startTime,
+		"endTime", endTime,
 		"interval", interval)
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"data": []ServerMetrics{},
+		"code":    0,
+		"data":    []ServerMetrics{},
 		"message": "历史数据功能待实现",
 	})
 }
 
 type ServiceStatus struct {
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	Message   string    `json:"message"`
-	LastCheck string    `json:"lastCheck"`
-	Latency   int64     `json:"latency"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	LastCheck string `json:"lastCheck"`
+	Latency   int64  `json:"latency"`
 }
 
 func (h *MonitorHandler) GetServiceStatus(c *gin.Context) {
@@ -116,7 +130,7 @@ func (h *MonitorHandler) GetServiceStatus(c *gin.Context) {
 
 func (h *MonitorHandler) checkDatabaseStatus() ServiceStatus {
 	start := time.Now()
-	
+
 	db := database.GetDB()
 	if db == nil {
 		return ServiceStatus{
@@ -198,14 +212,14 @@ func (h *MonitorHandler) HealthCheck(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
+		"code":    0,
 		"message": "健康检查完成",
 		"data": gin.H{
-			"hostname":    hostInfo.Hostname,
-			"os":          hostInfo.OS,
-			"platform":    hostInfo.Platform,
-			"uptime":      hostInfo.Uptime,
-			"serverTime":  time.Now().Format(time.RFC3339),
+			"hostname":   hostInfo.Hostname,
+			"os":         hostInfo.OS,
+			"platform":   hostInfo.Platform,
+			"uptime":     hostInfo.Uptime,
+			"serverTime": time.Now().Format(time.RFC3339),
 		},
 	})
 }
