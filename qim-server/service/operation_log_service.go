@@ -1,7 +1,7 @@
 package service
 
 import (
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/model"
 	"time"
 
 	"github.com/gin-gonic/gin"

@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/pkg/logger"
-	"qim-server/pkg/response"
-	syncpkg "qim-server/sync"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	syncpkg "github.com/dshmyz/qim/qim-server/sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

@@ -3,9 +3,9 @@ package di
 import (
 	"testing"
 
-	"qim-server/config"
-	"qim-server/database"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/config"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/ws"
 )
 
 func TestInitContainer(t *testing.T) {

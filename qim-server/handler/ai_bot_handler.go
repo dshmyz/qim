@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"qim-server/model"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

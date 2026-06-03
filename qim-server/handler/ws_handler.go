@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 )

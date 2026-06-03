@@ -2,8 +2,8 @@ package handler
 
 import (
 	"fmt"
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 	"strings"
 	"sync"
 	"time"

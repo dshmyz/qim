@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strconv"
 
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

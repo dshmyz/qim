@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"qim-server/auth/provider"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/auth/provider"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 type AuthChain struct {

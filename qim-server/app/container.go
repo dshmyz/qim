@@ -1,9 +1,9 @@
 package app
 
 import (
-	"qim-server/config"
-	"qim-server/di"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/config"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/ws"
 )
 
 type Container = di.Container

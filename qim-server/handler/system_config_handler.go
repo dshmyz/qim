@@ -2,10 +2,10 @@ package handler
 
 import (
 	"encoding/json"
-	"qim-server/di"
-	"qim-server/middleware"
-	"qim-server/pkg/response"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/middleware"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 )

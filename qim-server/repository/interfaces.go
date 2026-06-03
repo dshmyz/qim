@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"gorm.io/gorm"
 )

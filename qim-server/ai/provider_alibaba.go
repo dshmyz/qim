@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // AlibabaProvider 阿里通义千问提供商

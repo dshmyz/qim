@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/pkg/logger"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"golang.org/x/time/rate"
 	"gorm.io/gorm"

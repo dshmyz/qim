@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )

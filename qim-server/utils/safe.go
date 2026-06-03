@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"runtime/debug"
 )
 

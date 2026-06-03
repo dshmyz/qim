@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/orgsync"
-	"qim-server/pkg/logger"
-	"qim-server/sync/syncer"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/orgsync"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/sync/syncer"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

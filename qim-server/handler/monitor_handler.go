@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"time"
 
-	"qim-server/database"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shirou/gopsutil/v3/cpu"

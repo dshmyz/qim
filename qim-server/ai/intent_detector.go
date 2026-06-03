@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // MessageIntent 表示消息的意图分类

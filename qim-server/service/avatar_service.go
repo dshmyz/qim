@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
-	"qim-server/ai"
-	"qim-server/model"
-	"qim-server/pkg/logger"
-	"qim-server/utils"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/utils"
 	"strings"
 	"time"
 

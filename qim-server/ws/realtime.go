@@ -2,8 +2,8 @@ package ws
 
 import (
 	"encoding/json"
-	"qim-server/model"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"time"
 
 	"github.com/google/uuid"

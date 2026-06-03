@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"qim-server/model"
-	"qim-server/repository"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/repository"
 
 	"gorm.io/gorm"
 )

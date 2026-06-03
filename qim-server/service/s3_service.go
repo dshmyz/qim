@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"qim-server/config"
+	"github.com/dshmyz/qim/qim-server/config"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"

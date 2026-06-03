@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/database"
-	"qim-server/di"
-	"qim-server/model"
-	"qim-server/pkg/logger"
-	"qim-server/pkg/response"
-	"qim-server/service/storage"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 
 	"github.com/gin-gonic/gin"
 )

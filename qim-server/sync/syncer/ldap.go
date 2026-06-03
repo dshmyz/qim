@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"qim-server/model"
-	"qim-server/orgsync"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/orgsync"
 
 	"github.com/go-ldap/ldap/v3"
 )

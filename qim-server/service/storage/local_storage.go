@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/config"
+	"github.com/dshmyz/qim/qim-server/config"
 )
 
 type LocalStorage struct {

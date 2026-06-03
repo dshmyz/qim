@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/go-ldap/ldap/v3"
 )

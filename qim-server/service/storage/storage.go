@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"qim-server/config"
-	"qim-server/service"
+	"github.com/dshmyz/qim/qim-server/config"
+	"github.com/dshmyz/qim/qim-server/service"
 )
 
 type Storage interface {

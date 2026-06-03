@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/model"
-	"qim-server/repository"
-	"qim-server/utils"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/repository"
+	"github.com/dshmyz/qim/qim-server/utils"
 
 	"gorm.io/gorm"
 )

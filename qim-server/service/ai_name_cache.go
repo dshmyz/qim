@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 var aiNameCacheInstance *AINameCache

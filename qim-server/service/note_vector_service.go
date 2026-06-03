@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"qim-server/ai"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // NoteVectorService 笔记向量化和检索服务

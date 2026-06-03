@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log"
 	"time"
-	"qim-server/ai"
-	"qim-server/model"
-	"qim-server/utils"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/utils"
 
 	"gorm.io/gorm"
 )

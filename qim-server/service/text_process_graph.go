@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/ai"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"

@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/ai"
 )
 
 type Config struct {

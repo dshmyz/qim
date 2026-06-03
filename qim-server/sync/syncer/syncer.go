@@ -3,8 +3,8 @@ package syncer
 import (
 	"fmt"
 
-	"qim-server/model"
-	"qim-server/orgsync"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/orgsync"
 )
 
 func NewProvider(config *model.OrgSyncConfig) (orgsync.OrgSyncProvider, error) {

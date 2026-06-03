@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // AnthropicProvider Anthropic Claude 提供商

@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"gorm.io/gorm"
 )

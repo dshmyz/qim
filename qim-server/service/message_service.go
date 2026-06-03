@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/ai"
-	"qim-server/model"
-	"qim-server/pkg/mention"
-	"qim-server/utils"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
+	"github.com/dshmyz/qim/qim-server/utils"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
 )

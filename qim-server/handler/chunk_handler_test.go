@@ -11,17 +11,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"qim-server/config"
-	"qim-server/database"
-	"qim-server/di"
-	"qim-server/model"
-	"qim-server/pkg/response"
-	"qim-server/service"
+	"github.com/dshmyz/qim/qim-server/config"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
-	"qim-server/pkg/sqlite"
+	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

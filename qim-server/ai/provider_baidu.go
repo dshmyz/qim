@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // BaiduProvider 百度文心一言提供商

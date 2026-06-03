@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"

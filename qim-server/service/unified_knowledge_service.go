@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )

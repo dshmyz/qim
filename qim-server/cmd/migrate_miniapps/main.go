@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"qim-server/pkg/sqlite"
+	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 
 	"gorm.io/gorm"
 )

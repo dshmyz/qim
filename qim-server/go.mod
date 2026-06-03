@@ -1,4 +1,4 @@
-module qim-server
+module github.com/dshmyz/qim/qim-server
 
 go 1.25.0
 

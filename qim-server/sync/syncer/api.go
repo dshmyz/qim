@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"qim-server/model"
-	"qim-server/orgsync"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/orgsync"
 )
 
 type APIConfig struct {

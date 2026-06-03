@@ -3,7 +3,7 @@ package response
 import (
 	"net/http"
 
-	"qim-server/pkg/errors"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )

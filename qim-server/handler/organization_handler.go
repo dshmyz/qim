@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

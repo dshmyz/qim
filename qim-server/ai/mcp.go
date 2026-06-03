@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // MCPTool 定义工具接口

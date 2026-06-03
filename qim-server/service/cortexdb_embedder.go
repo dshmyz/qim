@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/ai"
 )
 
 const defaultEmbeddingDim = 1536

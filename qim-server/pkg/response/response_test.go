@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"qim-server/pkg/errors"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"

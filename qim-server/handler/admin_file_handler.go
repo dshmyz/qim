@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/gin-gonic/gin"
 )

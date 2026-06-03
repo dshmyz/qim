@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"qim-server/ai"
-	"qim-server/database"
-	"qim-server/model"
-	"qim-server/pkg/logger"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 )

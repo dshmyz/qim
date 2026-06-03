@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"time"
 
-	"qim-server/di"
-	"qim-server/model"
-	"qim-server/pkg/response"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

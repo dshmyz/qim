@@ -3,8 +3,8 @@ package test
 import (
 	"fmt"
 	"log"
-	"qim-server/database"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 	"time"
 
 	"gorm.io/gorm"

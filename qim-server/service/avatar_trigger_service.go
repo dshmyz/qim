@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/ai"
-	"qim-server/model"
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"gorm.io/gorm"
 )

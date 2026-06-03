@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/stretchr/testify/assert"
 )

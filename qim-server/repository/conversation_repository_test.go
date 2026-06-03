@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/stretchr/testify/assert"
-	"qim-server/pkg/sqlite"
+	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

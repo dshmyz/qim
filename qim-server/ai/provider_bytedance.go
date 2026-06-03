@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // BytedanceProvider 字节跳动豆包提供商

@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"strings"
 
-	"qim-server/di"
-	"qim-server/model"
-	"qim-server/pkg/params"
-	"qim-server/pkg/response"
-	"qim-server/service"
+	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/params"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"

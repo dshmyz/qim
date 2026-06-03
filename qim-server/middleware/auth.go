@@ -3,8 +3,8 @@ package middleware
 import (
 	"strings"
 
-	"qim-server/pkg/response"
-	"qim-server/service"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"

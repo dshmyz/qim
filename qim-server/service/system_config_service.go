@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"gorm.io/gorm"
 )

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // OpenAIProvider OpenAI 兼容的 API 提供商

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"qim-server/ai"
-	"qim-server/model"
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/compose"

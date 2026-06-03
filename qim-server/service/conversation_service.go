@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"qim-server/cache"
-	"qim-server/model"
-	"qim-server/repository"
-	"qim-server/ws"
+	"github.com/dshmyz/qim/qim-server/cache"
+	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/repository"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
 )
