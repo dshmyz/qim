@@ -214,6 +214,7 @@ import { useMessageActions } from '../../composables/useMessageActions'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
@@ -1335,40 +1336,30 @@ const currentUserRole = computed(() => {
 
 const viewMemberInfo = async () => {
   if (selectedMember.value) {
-    try {
-      const userId = selectedMember.value.user?.id || selectedMember.value.id
-      if (!userId) {
-        $message.error('无法获取用户ID')
-        return
-      }
-      
-      const response = await request(`/api/v1/users/${userId}`)
-      if (response.code === 0 && response.data) {
-        const userData = response.data
-        const userProfile = {
-          id: userData.id,
-          name: userData.nickname || userData.username || selectedMember.value.name,
-          username: userData.username,
-          email: userData.email,
-          mobile: userData.phone,
-          department: userData.department,
-          ip: userData.ip,
-          avatar: userData.avatar || selectedMember.value.avatar
-        }
-        showUserProfile(userProfile)
-      } else {
-        $message.error('获取用户信息失败')
-      }
-    } catch (error) {
-      logger.error('获取用户信息失败:', error)
+    const userId = selectedMember.value.user?.id || selectedMember.value.id
+    if (!userId) {
+      $message.error('无法获取用户ID')
+      closeMemberContextMenu()
+      return
+    }
+
+    const { profile, success } = await fetchUserProfile(userId, selectedMember.value)
+    if (!success) {
       $message.error('获取用户信息失败')
     }
+    showUserProfile(profile)
+    closeMemberContextMenu()
   }
-  closeMemberContextMenu()
 }
 
-const showUserProfile = (user: any) => {
-  selectedUser.value = user
+const showUserProfile = async (user: any) => {
+  const userId = user?.id
+  if (!userId) {
+    selectedUser.value = user
+  } else {
+    const { profile } = await fetchUserProfile(userId, user)
+    selectedUser.value = profile
+  }
   showUserProfileFlag.value = true
 }
 
@@ -1667,17 +1658,17 @@ const quoteMessage = () => {
 }
 
 // 将消息添加到便签
-const addToNote = () => {
+const addToNote = async () => {
   if (selectedMessage.value) {
     const message = selectedMessage.value
-    
+
     // 检查消息类型，仅支持文本类型
     if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
       $message.warning('仅支持文本类型的消息添加到便签')
       closeMessageContextMenu()
       return
     }
-    
+
     const rawContent = message.content || ''
     const maxNoteLength = 2000
     const truncatedContent = rawContent.length > maxNoteLength
@@ -1688,16 +1679,24 @@ const addToNote = () => {
 发送者：${message.sender.name}
 时间：${formatTime(message.timestamp)}
 内容：${truncatedContent}`
-    
-    // 触发全局事件，通知便签应用接收内容
-    window.dispatchEvent(new CustomEvent('addToNote', {
-      detail: { 
+
+    try {
+      const { useNotes } = await import('../../composables/useNotes')
+      const { createNote } = useNotes()
+      const result = await createNote({
         title: `聊天记录 ${formatTime(message.timestamp)}`,
-        content: noteContent 
+        content: noteContent,
+        type: 'sticky',
+        tags: ['聊天记录']
+      })
+      if (result) {
+        $message.success('消息已添加到便签')
+      } else {
+        $message.error('添加到便签失败')
       }
-    }))
-    
-    $message.success('消息已添加到便签')
+    } catch {
+      $message.error('添加到便签失败')
+    }
   }
   closeMessageContextMenu()
 }
@@ -1816,6 +1815,7 @@ const takeScreenshot = () => {
     // 移除所有之前的监听器，确保不会有重复监听
     logger.log('[Screenshot] Removing all previous listeners')
     window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+    window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
 
     try {
       // 定义处理函数
@@ -1825,6 +1825,7 @@ const takeScreenshot = () => {
         // 监听器触发后立即移除所有监听器，避免重复触发
         logger.log('[Screenshot] Removing all listeners after trigger')
         window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
         
         // 确保组件仍然挂载
         if (!isMounted.value) return
@@ -1849,9 +1850,19 @@ const takeScreenshot = () => {
         }
       }
       
+      // 截图组件正在初始化的提示
+      const loadingHandler = () => {
+        logger.log('[Screenshot] screenshot-loading received')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
+        if (isMounted.value) {
+          $message.info('正在准备截图组件，请稍候...')
+        }
+      }
+
       logger.log('[Screenshot] Registering new listener')
       // 注册新的监听器
       window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
+      window.electron.ipcRenderer.on('screenshot-loading', loadingHandler)
       
       logger.log('[Screenshot] Sending take-screenshot request')
       // 发送截图请求到主进程

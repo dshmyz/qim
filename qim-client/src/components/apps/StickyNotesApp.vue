@@ -565,24 +565,6 @@ const forwardNoteToChat = (note: any) => {
   logger.log('转发笔记到聊天窗口:', note)
 }
 
-// 接收添加到笔记事件
-const handleAddToNote = async (event: CustomEvent) => {
-  const { title, content } = event.detail
-  // 填充表单数据
-  formData.value = {
-    title: title,
-    content: content,
-    color: 'yellow',
-    reminder: '',
-    tags: '',
-    paperStyle: 'plain',
-    fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
-  }
-  selectedNote.value = null
-  // 自动创建笔记并保存到后端
-  await createStickyNote()
-  logger.log('收到添加到笔记:', { title, content })
-}
 
 // 处理键盘快捷键
 const handleKeydown = (event: KeyboardEvent) => {
@@ -617,16 +599,12 @@ const handleKeydown = (event: KeyboardEvent) => {
 // 组件挂载时加载便签数据
 onMounted(async () => {
   await loadStickyNotes()
-  // 添加添加到笔记事件监听器
-  window.addEventListener('addToNote', handleAddToNote as unknown as EventListener)
   // 添加键盘事件监听器
   window.addEventListener('keydown', handleKeydown)
 })
 
 // 组件卸载时移除事件监听器
 onUnmounted(() => {
-  // 移除添加到笔记事件监听器
-  window.removeEventListener('addToNote', handleAddToNote as unknown as EventListener)
   // 移除键盘事件监听器
   window.removeEventListener('keydown', handleKeydown)
 })

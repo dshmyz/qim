@@ -84,7 +84,7 @@
             <i v-else class="fas fa-check-circle"></i>
           </div>
           <p class="result-text">{{ updateResult }}</p>
-          <p class="version-info">当前版本: 1.0.0</p>
+          <p class="version-info">当前版本: v{{ APP_CONFIG.version }}</p>
         </div>
       </div>
       <div class="update-dialog-footer">
@@ -243,6 +243,7 @@ interface Props {
   groupConversations: Conversation[]
   allEmployees: any[]
   systemMessage: SystemMessage
+  orgStructure?: any[]
 }
 
 const props = defineProps<Props>()
@@ -374,44 +375,22 @@ const removeUser = (name: string) => {
 const deptSearchQuery = ref('')
 const isSearchingDept = ref(false)
 const deptSearchResults = ref<any[]>([])
-const allDeptList = ref<any[]>([])
 
-// 加载部门列表
-const loadDepartments = async () => {
-  try {
-    const token = localStorage.getItem('token')
-    const response = await fetch(
-      `${serverUrl.value}/api/v1/organization/tree`,
-      {
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      }
-    )
-    if (response.ok) {
-      const data = await response.json()
-      if (data.code === 0) {
-        // 扁平化树结构（接口返回 { departments, unassignedUsers }）
-        const flatten = (nodes: any[]): any[] => {
-          if (!Array.isArray(nodes)) return []
-          const result: any[] = []
-          for (const n of nodes) {
-            if (!n.id) continue // 跳过无 ID 的虚拟节点
-            result.push({ id: n.id, name: n.name || '' })
-            if (Array.isArray(n.subDepartments) && n.subDepartments.length > 0) {
-              result.push(...flatten(n.subDepartments))
-            }
-          }
-          return result
-        }
-        const treeData = Array.isArray(data.data?.departments) ? data.data.departments : []
-        allDeptList.value = flatten(treeData)
-      }
+// 从 props.orgStructure 扁平化部门列表，避免重复请求 /api/v1/organization/tree
+const flattenDepartments = (nodes: any[]): any[] => {
+  if (!Array.isArray(nodes)) return []
+  const result: any[] = []
+  for (const n of nodes) {
+    if (!n.id) continue
+    result.push({ id: n.id, name: n.name || '' })
+    if (Array.isArray(n.subDepartments) && n.subDepartments.length > 0) {
+      result.push(...flattenDepartments(n.subDepartments))
     }
-  } catch (error) {
-    console.error('加载部门列表失败:', error)
   }
+  return result
 }
+
+const allDeptList = computed(() => flattenDepartments(props.orgStructure || []))
 
 const showDeptResults = computed(() => {
   return localMessage.value.target === 'department' && deptSearchQuery.value.trim().length > 0
@@ -470,8 +449,6 @@ const onTargetChange = () => {
   userSearchResults.value = []
 }
 
-// 加载部门列表
-loadDepartments()
 </script>
 
 <style scoped>

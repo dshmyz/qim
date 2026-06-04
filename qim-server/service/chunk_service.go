@@ -36,8 +36,8 @@ func NewChunkService(db *gorm.DB, storage string) *ChunkService {
 }
 
 // InitUpload 初始化上传
-// 返回值：上传任务、已上传分片索引列表、是否秒传、错误
-func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, fileHash string, folderID *uint) (*model.UploadTask, []int, bool, error) {
+// 返回值：上传任务、已上传分片索引列表、是否秒传、秒传时已有文件ID、错误
+func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, fileHash string, folderID *uint) (*model.UploadTask, []int, bool, *uint, error) {
 	ctx := context.Background()
 
 	// 1. 检查秒传：文件哈希是否已存在
@@ -50,15 +50,17 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 			Filename:       filename,
 			FileSize:       fileSize,
 			FileHash:       fileHash,
+			ChunkSize:      0,
 			TotalChunks:    0,
 			UploadedChunks: 0,
 			FolderID:       folderID,
 			Status:         "completed",
 		}
 		if err := s.repo.CreateUploadTask(ctx, task); err != nil {
-			return nil, nil, false, err
+			return nil, nil, false, nil, err
 		}
-		return task, []int{}, true, nil
+		fileID := existingFile.ID
+		return task, []int{}, true, &fileID, nil
 	}
 
 	// 2. 检查断点续传：是否有未完成的上传任务
@@ -71,9 +73,9 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 		// 断点续传：返回已有任务和已上传分片列表
 		uploadedIndexes, err := s.repo.GetUploadedChunkIndexes(ctx, existingTask.UploadID)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, false, nil, err
 		}
-		return &existingTask, uploadedIndexes, false, nil
+		return &existingTask, uploadedIndexes, false, nil, nil
 	}
 
 	// 3. 新上传：创建新的上传任务
@@ -89,6 +91,7 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 		Filename:       filename,
 		FileSize:       fileSize,
 		FileHash:       fileHash,
+		ChunkSize:      chunkSize,
 		TotalChunks:    totalChunks,
 		UploadedChunks: 0,
 		FolderID:       folderID,
@@ -129,10 +132,10 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 	})
 
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("创建上传任务失败: %w", err)
+		return nil, nil, false, nil, fmt.Errorf("创建上传任务失败: %w", err)
 	}
 
-	return task, []int{}, false, nil
+	return task, []int{}, false, nil, nil
 }
 
 // UploadChunk 上传分片

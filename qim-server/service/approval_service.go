@@ -696,8 +696,21 @@ func (s *ApprovalService) CreateApproval(targetType string, targetID uint, appli
 
 func (s *ApprovalService) GetApproval(targetType string, targetID uint) (*model.Approval, error) {
 	var approval model.Approval
-	err := s.db.Where("target_type = ? AND target_id = ?", targetType, targetID).First(&approval).Error
+	err := s.db.Where("target_type = ? AND target_id = ?", targetType, targetID).Order("created_at DESC").First(&approval).Error
 	return &approval, err
+}
+
+// ReapplyApproval 重新申请审批：将已有审批记录重置为 pending 状态
+func (s *ApprovalService) ReapplyApproval(approvalID uint, appliedBy uint) error {
+	now := time.Now()
+	return s.db.Model(&model.Approval{}).Where("id = ?", approvalID).Updates(map[string]interface{}{
+		"status":        model.ApprovalStatusPending,
+		"applied_at":    now,
+		"applied_by":    appliedBy,
+		"approved_at":   nil,
+		"approved_by":   nil,
+		"reject_reason": "",
+	}).Error
 }
 
 func (s *ApprovalService) SendNotification(notification ApprovalNotification) {

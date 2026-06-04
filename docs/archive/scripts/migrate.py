@@ -56,6 +56,25 @@ MESSAGE_TYPE_MAP = {
     'code': 'markdown',
 }
 
+# 入群邀请方式映射: 老系统 w_group_join_setting.inviteType -> 新系统 groups.invite_permission
+INVITE_PERMISSION_MAP = {
+    '1': 'nobody',        # 不允许
+    '2': 'owner_admin',   # 管理员邀请
+    '3': 'anyone',        # 任何人邀请
+    '4': 'owner_admin',   # 需要验证 -> 近似 owner_admin
+}
+
+# 入群申请方式映射: 老系统 w_group_join_setting.joinType -> 新系统 groups.invite_permission
+# 综合考虑 joinType 和 inviteType，取更严格的那个
+JOIN_TYPE_PERMISSION_MAP = {
+    '1': 'anyone',        # 允许任何人
+    '2': 'owner_admin',   # 需要验证
+    '3': 'owner_admin',   # 回答问题
+    '4': 'owner_admin',   # 问题+审核
+    '5': 'invite_only',   # 仅邀请
+    '6': 'nobody',        # 不允许
+}
+
 
 class MigrationEngine:
     def __init__(self, source_config: Dict, target_config: Dict, dry_run: bool = False):
@@ -88,6 +107,11 @@ class MigrationEngine:
         self.group_id_map: Dict[str, int] = {}
         self.conversation_id_map: Dict[str, int] = {}
 
+        # 预加载的关联数据
+        self._group_invite_settings: Dict[str, Dict] = {}
+        self._group_blocked_users: Dict[str, set] = {}  # groupId -> set of userId
+        self._notice_cache: Dict[str, Dict] = {}  # textNoticeId -> notice record
+
         self.stats = {
             'users': 0,
             'groups': 0,
@@ -97,12 +121,24 @@ class MigrationEngine:
             'sessions': 0,
         }
 
+        self.skip_stats = {
+            'users': 0,
+            'groups_no_creator': 0,
+            'members_no_conv': 0,
+            'members_no_user': 0,
+            'messages_no_conv': 0,
+            'messages_no_sender': 0,
+        }
+
     def migrate_all(self):
         if self.dry_run:
             logger.warning("【测试模式】不会实际写入数据")
 
         logger.info("开始迁移数据...")
         logger.info("=" * 50)
+
+        # 预加载关联数据
+        self._preload_data()
 
         logger.info("\n[1/8] 迁移用户数据...")
         self.migrate_users()
@@ -133,13 +169,45 @@ class MigrationEngine:
         logger.info(f"  完成: {self.stats['sessions']} 条会话记录")
 
         logger.info("\n[8/8] 迁移系统通知...")
-        # self.migrate_notifications()
+        self.migrate_notifications()
         logger.info(f"  完成: 迁移通知")
 
         logger.info("\n" + "=" * 50)
         logger.info("迁移完成！统计信息:")
         for key, value in self.stats.items():
             logger.info(f"  {key}: {value}")
+        logger.info("跳过统计:")
+        for key, value in self.skip_stats.items():
+            if value > 0:
+                logger.info(f"  {key}: {value}")
+
+    def _preload_data(self):
+        """预加载关联数据，避免迁移过程中反复查询源库"""
+        logger.info("预加载关联数据...")
+
+        # 预加载群入群设置
+        with self.source_conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM w_group_join_setting")
+            for row in cursor.fetchall():
+                self._group_invite_settings[row['groupId']] = row
+
+        # 预加载群屏蔽关系（isBlocked='1' 的用户）
+        with self.source_conn.cursor() as cursor:
+            cursor.execute("SELECT groupId, userId FROM w_group_relation WHERE isBlocked='1'")
+            for row in cursor.fetchall():
+                if row['groupId'] not in self._group_blocked_users:
+                    self._group_blocked_users[row['groupId']] = set()
+                self._group_blocked_users[row['groupId']].add(row['userId'])
+
+        # 预加载通知内容（用于 w_user_text_notice 的 JOIN）
+        with self.source_conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM w_text_notice")
+            for row in cursor.fetchall():
+                self._notice_cache[row['id']] = row
+
+        logger.info(f"  入群设置: {len(self._group_invite_settings)} 条")
+        logger.info(f"  屏蔽关系: {sum(len(v) for v in self._group_blocked_users.values())} 条")
+        logger.info(f"  通知内容: {len(self._notice_cache)} 条")
 
     def migrate_users(self):
         with self.source_conn.cursor() as cursor:
@@ -164,31 +232,57 @@ class MigrationEngine:
                     user_type_map = {'0': 'user', '1': 'admin', '2': 'system'}
                     user_type = user_type_map.get(oim_type, 'user')
 
+                    # gender 映射: 老系统 1:男 2:女 3:保密
+                    gender_map = {'1': 'male', '2': 'female', '3': 'secret'}
+                    gender = gender_map.get(old_user.get('gender', '3'), 'secret')
+
+                    # created_at: 使用 createdTimestamp（创建时间戳）
+                    # 如果 createdTimestamp 为 0，则用 onlineTimestamp 近似，都没有则用当前时间
+                    created_at = self._timestamp_to_datetime(old_user.get('createdTimestamp', 0))
+                    if created_at is None:
+                        created_at = self._timestamp_to_datetime(old_user.get('onlineTimestamp', 0))
+                    if created_at is None:
+                        created_at = datetime.now()
+
+                    # last_online: w_user 没有 onlineTimestamp 字段，暂无法迁移
+                    last_online = None
+
+                    # deleted_at: 综合 canceledTimestamp、isDisable、isDeleted
+                    deleted_at = self._timestamp_to_datetime(old_user.get('canceledTimestamp', 0)) if old_user.get('canceledTimestamp', 0) > 0 else None
+                    if not deleted_at and old_user.get('isDisable', 0) == 1:
+                        deleted_at = datetime.now()
+                    if not deleted_at and old_user.get('isDeleted', 0) == 1:
+                        deleted_at = datetime.now()
+
                     new_user_data = {
                         'username': old_user['account'] if old_user.get('account') else f"user_{old_user.get('number', '')}",
                         'password_hash': old_user.get('password', ''),
                         'nickname': old_user.get('nickname', ''),
+                        'real_name': old_user.get('name', ''),
                         'avatar': old_user.get('avatar', ''),
                         'type': user_type,
+                        'gender': gender,
+                        'organization': old_user.get('remark', ''),
                         'signature': old_user.get('signature', ''),
                         'phone': old_user.get('mobile', ''),
                         'email': old_user.get('email', ''),
                         'status': 'offline',
+                        'last_online': last_online,
                         'ip': '',
                         'two_factor_enabled': False,
-                        'created_at': self._timestamp_to_datetime(old_user.get('onlineTimestamp', 0)),
+                        'created_at': created_at,
                         'updated_at': datetime.now(),
-                        'deleted_at': self._timestamp_to_datetime(old_user.get('canceledTimestamp', 0)) if old_user.get('canceledTimestamp', 0) > 0 else None,
+                        'deleted_at': deleted_at,
                     }
 
                     target_cursor.execute("""
                         INSERT INTO users (
-                            username, password_hash, nickname, avatar, type, signature,
-                            phone, email, status, ip, two_factor_enabled,
+                            username, password_hash, nickname, real_name, avatar, type, gender, organization, signature,
+                            phone, email, status, last_online, ip, two_factor_enabled,
                             created_at, updated_at, deleted_at
                         ) VALUES (
-                            %(username)s, %(password_hash)s, %(nickname)s, %(avatar)s, %(type)s, %(signature)s,
-                            %(phone)s, %(email)s, %(status)s, %(ip)s, %(two_factor_enabled)s,
+                            %(username)s, %(password_hash)s, %(nickname)s, %(real_name)s, %(avatar)s, %(type)s, %(gender)s, %(organization)s, %(signature)s,
+                            %(phone)s, %(email)s, %(status)s, %(last_online)s, %(ip)s, %(two_factor_enabled)s,
                             %(created_at)s, %(updated_at)s, %(deleted_at)s
                         )
                     """, new_user_data)
@@ -201,6 +295,7 @@ class MigrationEngine:
                         logger.info(f"  已迁移 {idx}/{len(old_users)} 用户")
                 except Exception as e:
                     logger.error(f"  用户迁移失败: id={old_user['id']}, error={e}")
+                    self.skip_stats['users'] += 1
 
             self.target_conn.commit()
 
@@ -226,23 +321,47 @@ class MigrationEngine:
                     creator_id = self._get_group_creator_id(old_group['id'])
                     if creator_id is None:
                         logger.warning(f"  跳过群组: name={old_group.get('name')}, id={old_group['id']}, 未找到群主或群主用户未迁移")
+                        self.skip_stats['groups_no_creator'] += 1
                         continue
+
+                    # 综合入群设置：取 joinType 和 inviteType 中更严格的
+                    invite_permission = 'owner_admin'
+                    setting = self._group_invite_settings.get(old_group['id'])
+                    if setting:
+                        join_perm = JOIN_TYPE_PERMISSION_MAP.get(setting.get('joinType', '2'), 'owner_admin')
+                        invite_perm = INVITE_PERMISSION_MAP.get(setting.get('inviteType', '4'), 'owner_admin')
+                        # 取更严格的：nobody > invite_only > owner_admin > anyone
+                        strictness = {'nobody': 4, 'invite_only': 3, 'owner_admin': 2, 'anyone': 1}
+                        invite_permission = join_perm if strictness.get(join_perm, 2) > strictness.get(invite_perm, 2) else invite_perm
+
+                    # 群创建时间
+                    group_created_at = self._timestamp_to_datetime(old_group.get('createdTimestamp', 0))
+                    if group_created_at is None:
+                        group_created_at = datetime.now()
+
+                    # 群删除时间
+                    group_deleted_at = None
+                    if old_group.get('isDeleted', 0) == 1:
+                        group_deleted_at = self._timestamp_to_datetime(old_group.get('updatedTimestamp', 0))
+                        if group_deleted_at is None:
+                            group_deleted_at = datetime.now()
 
                     conversation_data = {
                         'type': 'group',
                         'last_message_id': None,
                         'last_message_at': None,
-                        'created_at': datetime.now(),
+                        'created_at': group_created_at,
                         'updated_at': datetime.now(),
+                        'deleted_at': group_deleted_at,
                     }
 
                     target_cursor.execute("""
                         INSERT INTO conversations (
                             type, last_message_id,
-                            last_message_at, created_at, updated_at
+                            last_message_at, created_at, updated_at, deleted_at
                         ) VALUES (
                             %(type)s, %(last_message_id)s,
-                            %(last_message_at)s, %(created_at)s, %(updated_at)s
+                            %(last_message_at)s, %(created_at)s, %(updated_at)s, %(deleted_at)s
                         )
                     """, conversation_data)
 
@@ -255,8 +374,8 @@ class MigrationEngine:
                         'avatar': old_group.get('avatar', ''),
                         'creator_id': creator_id,
                         'announcement': old_group.get('introduce', ''),
-                        'invite_permission': 'invite_only',
-                        'created_at': datetime.now(),
+                        'invite_permission': invite_permission,
+                        'created_at': group_created_at,
                         'updated_at': datetime.now(),
                     }
 
@@ -282,14 +401,31 @@ class MigrationEngine:
             self.target_conn.commit()
 
     def _get_group_creator_id(self, group_id: str) -> Optional[int]:
+        """获取群主ID，如果找不到则用第一个已迁移的成员作为群主"""
         with self.source_conn.cursor() as cursor:
+            # 先找 position='1' 的群主
             cursor.execute(
                 "SELECT userId FROM w_group_member WHERE groupId=%s AND position='1' LIMIT 1",
                 (group_id,)
             )
             result = cursor.fetchone()
             if result:
-                return self.user_id_map.get(result['userId'])
+                creator_id = self.user_id_map.get(result['userId'])
+                if creator_id:
+                    return creator_id
+
+            # 群主未迁移或不存在，找第一个已迁移的成员作为群主
+            cursor.execute(
+                "SELECT userId FROM w_group_member WHERE groupId=%s ORDER BY id LIMIT 100",
+                (group_id,)
+            )
+            members = cursor.fetchall()
+            for member in members:
+                creator_id = self.user_id_map.get(member['userId'])
+                if creator_id:
+                    logger.warning(f"  群 {group_id} 群主未迁移，使用成员 {member['userId']} 作为群主")
+                    return creator_id
+
         return None
 
     def migrate_private_conversations(self):
@@ -383,14 +519,33 @@ class MigrationEngine:
         with self.target_conn.cursor() as target_cursor:
             for idx, member in enumerate(members, 1):
                 try:
+                    # 已删除的成员关系跳过
+                    if member.get('isDeleted', 0) == 1:
+                        continue
+
                     conv_id = self.conversation_id_map.get(f"group_{member['groupId']}")
                     user_id = self.user_id_map.get(member['userId'])
 
-                    if not conv_id or not user_id:
+                    if not conv_id:
+                        self.skip_stats['members_no_conv'] += 1
+                        continue
+                    if not user_id:
+                        self.skip_stats['members_no_user'] += 1
                         continue
 
                     role_map = {'1': 'owner', '2': 'admin', '3': 'member'}
                     role = role_map.get(member['position'], 'member')
+
+                    # 检查该用户是否屏蔽了该群
+                    muted = False
+                    blocked_users = self._group_blocked_users.get(member['groupId'], set())
+                    if member['userId'] in blocked_users:
+                        muted = True
+
+                    # 入群时间
+                    joined_at = self._timestamp_to_datetime(member.get('createdTimestamp', 0))
+                    if joined_at is None:
+                        joined_at = datetime.now()
 
                     target_cursor.execute("""
                         SELECT id FROM conversation_members 
@@ -404,15 +559,15 @@ class MigrationEngine:
                         INSERT INTO conversation_members (
                             conversation_id, user_id, role, unread_count,
                             muted, last_read_at, joined_at
-                        ) VALUES (%s, %s, %s, 0, FALSE, NULL, NOW())
-                    """, (conv_id, user_id, role))
+                        ) VALUES (%s, %s, %s, 0, %s, NULL, %s)
+                    """, (conv_id, user_id, role, muted, joined_at))
 
                     self.stats['members'] += 1
 
                     if idx % 100 == 0:
                         logger.info(f"  已迁移 {idx}/{len(members)} 成员")
                 except Exception as e:
-                    logger.error(f"  成员迁移失败: id={member.get('id')}, error={e}")
+                    logger.error(f"  成员迁移失败: id={member.get('id')}, groupId={member.get('groupId')}, userId={member.get('userId')}, error={e}")
 
             self.target_conn.commit()
 
@@ -437,7 +592,6 @@ class MigrationEngine:
 
         batch_size = 1000
         batch = []
-        processed_content_ids = set()
 
         for idx, item in enumerate(items, 1):
             try:
@@ -446,14 +600,22 @@ class MigrationEngine:
                 )
                 sender_id = self.user_id_map.get(item['sendUserId'])
 
-                if not conv_id or not sender_id:
+                if not conv_id:
+                    self.skip_stats['messages_no_conv'] += 1
+                    continue
+                if not sender_id:
+                    self.skip_stats['messages_no_sender'] += 1
                     continue
 
                 oim_type = item['type']
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
-                msg_time = self._datetime_or_default(item.get('dateTime'))
+                msg_time = self._timestamp_to_datetime(item.get('timestamp'))
+
+                # isDeleted: 老系统公共字段，0:否 1:是
+                is_deleted = item.get('isDeleted', 0) == 1
+                deleted_at = msg_time if is_deleted else None
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -467,7 +629,7 @@ class MigrationEngine:
                     'recalled_at': None,
                     'created_at': msg_time,
                     'updated_at': msg_time,
-                    'deleted_at': None,
+                    'deleted_at': deleted_at,
                 }
 
                 batch.append(message_data)
@@ -507,14 +669,22 @@ class MigrationEngine:
                 conv_id = self.conversation_id_map.get(f"group_{item['groupId']}")
                 sender_id = self.user_id_map.get(item['userId'])
 
-                if not conv_id or not sender_id:
+                if not conv_id:
+                    self.skip_stats['messages_no_conv'] += 1
+                    continue
+                if not sender_id:
+                    self.skip_stats['messages_no_sender'] += 1
                     continue
 
                 oim_type = item['type']
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
-                msg_time = self._datetime_or_default(item.get('dateTime'))
+                msg_time = self._timestamp_to_datetime(item.get('timestamp'))
+
+                # isDeleted: 老系统公共字段，0:否 1:是
+                is_deleted = item.get('isDeleted', 0) == 1
+                deleted_at = msg_time if is_deleted else None
 
                 message_data = {
                     'conversation_id': conv_id,
@@ -528,7 +698,7 @@ class MigrationEngine:
                     'recalled_at': None,
                     'created_at': msg_time,
                     'updated_at': msg_time,
-                    'deleted_at': None,
+                    'deleted_at': deleted_at,
                 }
 
                 batch.append(message_data)
@@ -586,10 +756,14 @@ class MigrationEngine:
             updated = 0
             for record in unread_records:
                 try:
+                    # 修复: im_user_chat_unread 表的字段是 receiveUserId 和 sendUserId
+                    receive_user_id = record['receiveUserId']
+                    send_user_id = record['sendUserId']
+
                     conv_id = self._get_private_conversation_id(
-                        record['userId'], record['targetUserId']
+                        receive_user_id, send_user_id
                     )
-                    user_id = self.user_id_map.get(record['userId'])
+                    user_id = self.user_id_map.get(receive_user_id)
 
                     if not conv_id or not user_id:
                         continue
@@ -609,7 +783,7 @@ class MigrationEngine:
                     else:
                         logger.warning(f"  [单聊] 未找到会话成员: conv_id={conv_id}, user_id={user_id}")
                 except Exception as e:
-                    logger.error(f"  [单聊] 未读计数更新失败: error={e}")
+                    logger.error(f"  [单聊] 未读计数更新失败: record_id={record.get('id')}, error={e}")
 
             self.target_conn.commit()
             logger.info(f"  [单聊] 成功更新 {updated} 条未读计数")
@@ -731,7 +905,7 @@ class MigrationEngine:
                     """, (
                         notice.get('title', ''),
                         notice.get('content', ''),
-                        self._datetime_or_default(notice.get('timestamp'))
+                        self._timestamp_to_datetime(notice.get('timestamp'))
                     ))
 
                     if idx % 100 == 0:
@@ -742,8 +916,16 @@ class MigrationEngine:
             self.target_conn.commit()
 
     def _migrate_user_notifications(self):
+        # 修复: w_user_text_notice 只有 id, userId, textNoticeId, isRead
+        # 需要通过 textNoticeId 关联 w_text_notice 获取 title, content, timestamp
         with self.source_conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM w_user_text_notice ORDER BY timestamp DESC")
+            cursor.execute("""
+                SELECT un.userId, un.textNoticeId, un.isRead,
+                       n.title, n.content, n.timestamp
+                FROM w_user_text_notice un
+                LEFT JOIN w_text_notice n ON un.textNoticeId = n.id
+                ORDER BY n.timestamp DESC
+            """)
             notifications = cursor.fetchall()
 
         logger.info(f"  [用户通知] 找到 {len(notifications)} 条通知")
@@ -759,9 +941,13 @@ class MigrationEngine:
                     if not user_id:
                         continue
 
+                    # 如果关联的通知内容为空，跳过
+                    if not notification.get('title') and not notification.get('content'):
+                        continue
+
                     target_cursor.execute("""
                         INSERT INTO notifications (
-                            user_id, type, title, content, `read`,
+                            user_id, type, title, content, is_read,
                             created_at
                         ) VALUES (%s, 'system', %s, %s, 
                             CASE WHEN %s = '1' THEN TRUE ELSE FALSE END, %s)
@@ -770,13 +956,13 @@ class MigrationEngine:
                         notification.get('title', ''),
                         notification.get('content', ''),
                         notification.get('isRead', '0'),
-                        self._datetime_or_default(notification.get('timestamp'))
+                        self._timestamp_to_datetime(notification.get('timestamp'))
                     ))
 
                     if idx % 100 == 0:
                         logger.info(f"  [用户通知] 已迁移 {idx}/{len(notifications)} 条")
                 except Exception as e:
-                    logger.error(f"  [用户通知] 迁移失败: id={notification.get('id')}, error={e}")
+                    logger.error(f"  [用户通知] 迁移失败: userId={notification.get('userId')}, textNoticeId={notification.get('textNoticeId')}, error={e}")
 
             self.target_conn.commit()
 

@@ -261,7 +261,10 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       if (!isCurrentConversation && !message.isStreaming) {
-        updatedConv.unread_count = (updatedConv.unread_count || 0) + 1
+        const isMuted = conv.muted === true
+        if (!isMuted) {
+          updatedConv.unread_count = (updatedConv.unread_count || 0) + 1
+        }
       }
 
       conversations.value[convIndex] = updatedConv

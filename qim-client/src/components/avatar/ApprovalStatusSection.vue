@@ -8,7 +8,7 @@
       </span>
     </div>
 
-    <!-- 未申请状态 -->
+    <!-- 未申请状态（创建时已自动申请，此状态一般不会出现） -->
     <div v-if="approvalStatus === 'none'" class="approval-action">
       <p class="approval-hint">分身功能需要管理员审批后才能启用</p>
       <button class="btn btn-primary" @click="$emit('apply')" :disabled="applying">
@@ -29,12 +29,24 @@
       </button>
     </div>
 
-    <!-- 已通过状态 -->
-    <div v-else-if="approvalStatus === 'approved'" class="approval-action approved">
+    <!-- 已通过且已启用 -->
+    <div v-else-if="approvalStatus === 'approved' && enabled" class="approval-action approved">
       <p class="approval-hint success">
         <i class="fas fa-check-circle"></i>
-        您的分身功能已通过审批，可以启用
+        分身功能已通过审批并启用
       </p>
+    </div>
+
+    <!-- 已通过但已停用（inactive） -->
+    <div v-else-if="approvalStatus === 'approved' && !enabled" class="approval-action inactive">
+      <p class="approval-hint warning">
+        <i class="fas fa-pause-circle"></i>
+        分身已通过审批，当前处于关闭状态
+      </p>
+      <button class="btn btn-primary" @click="$emit('enable')" :disabled="applying">
+        <i class="fas fa-play"></i>
+        {{ applying ? '启用中...' : '启用分身' }}
+      </button>
     </div>
 
     <!-- 已拒绝状态 -->
@@ -66,6 +78,7 @@ import { formatDate } from '../../utils/date'
 
 const props = defineProps<{
   approvalStatus: AvatarApprovalStatus
+  enabled: boolean
   rejectReason?: string | null
   appliedAt?: string | null
   approvedAt?: string | null
@@ -75,6 +88,7 @@ const props = defineProps<{
 defineEmits<{
   apply: []
   cancel: []
+  enable: []
 }>()
 
 // 状态文本
@@ -82,7 +96,7 @@ const statusText = computed(() => {
   const texts: Record<AvatarApprovalStatus, string> = {
     none: '未申请',
     pending: '审批中',
-    approved: '已通过',
+    approved: props.enabled ? '已启用' : '已停用',
     rejected: '已拒绝'
   }
   return texts[props.approvalStatus]
@@ -93,7 +107,7 @@ const statusIcon = computed(() => {
   const icons: Record<AvatarApprovalStatus, string> = {
     none: 'fas fa-minus-circle',
     pending: 'fas fa-clock',
-    approved: 'fas fa-check-circle',
+    approved: props.enabled ? 'fas fa-check-circle' : 'fas fa-pause-circle',
     rejected: 'fas fa-times-circle'
   }
   return icons[props.approvalStatus]
@@ -166,6 +180,10 @@ const statusIcon = computed(() => {
 
 .approval-hint.success {
   color: #10B981;
+}
+
+.approval-hint.warning {
+  color: #F59E0B;
 }
 
 .approval-hint.error {

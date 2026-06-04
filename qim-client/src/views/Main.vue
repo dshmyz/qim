@@ -415,11 +415,7 @@
     </div>
     </div>
 
-    <!-- 隐藏的便签应用实例，用于处理添加到笔记事件（移到 main-content 外部） -->
-    <div style="display: none">
-      <StickyNotesApp />
-    </div>
-
+  
     <!-- 右键菜单 -->
     <MainContextMenus
       :showMenu="showMenu"
@@ -616,6 +612,7 @@
       :updateResult="updateResult"
       :groupConversations="conversations.filter(c => c.type === 'group')"
       :allEmployees="allEmployees"
+      :orgStructure="orgStructure"
       :systemMessage="systemMessage"
       @closeAbout="closeAboutDialog"
       @cancelLogout="cancelLogout"
@@ -719,11 +716,12 @@ import { useSystemConfigStore } from '../stores/systemConfig'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
 import { useSettings } from '../composables/useSettings'
+import { fetchUserProfile } from '../composables/useUserProfileInfo'
 import { useNetwork } from '../composables/useNetwork'
 import { useWebSocketManager } from '../composables/useWebSocketManager'
 import { useGroup } from '../composables/useGroup'
 import { useMessageActions } from '../composables/useMessageActions'
-import { getProductName } from '../config/appConfig'
+import { getProductName, APP_CONFIG } from '../config/appConfig'
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
 import { useUI } from '../composables/useUI'
@@ -1264,7 +1262,6 @@ onMounted(async () => {
     Promise.allSettled([
       loadOrganizationTree(),
       loadUserApps(),
-      loadBuiltInApps(),
       loadAppCategories()
     ]).then(results => {
       results.forEach((result, index) => {
@@ -1591,15 +1588,10 @@ const handleNewMessage = (msg: any) => {
   
   
   
-  // 非当前会话且非流式消息，触发通知
+  // 非当前会话且非流式消息，且未设置免打扰，触发提示音和桌面通知
   if (!isCurrentConv && !newMessage.isStreaming) {
-    if (messageSettings.value.notificationsEnabled) {
-      showMessage({
-        message: `收到来自 ${newMessage.sender.name} 的新消息`,
-        type: 'info',
-        duration: 3000
-      })
-      
+    const conv = conversations.value.find(c => c.id === conversationId)
+    if (messageSettings.value.notificationsEnabled && !conv?.muted) {
       if (messageSettings.value.soundEnabled) {
         playMessageSound()
       }
@@ -1635,10 +1627,8 @@ const handleNewMessage = (msg: any) => {
     loadConversations()
   }
   
-  // 当前会话：通过 Store 统一更新消息列表
-  if (isCurrentConv) {
-    chatStore.receiveMessage(conversationId, newMessage, true)
-  }
+  // 通过 Store 统一更新会话信息（lastMessage、timestamp、未读数）
+  chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
 }
 
 let conversationSortTimer: number | null = null
@@ -2039,22 +2029,7 @@ const systemApps = computed(() => {
 // 自定义应用列表
 const customApps = ref<any[]>([])
 
-// 内置应用列表（从后端加载）
-const builtInApps = ref<any[]>([])
-
-// 加载内置应用（从后端API获取）
-const loadBuiltInApps = async () => {
-  try {
-    const response = await request('/api/v1/apps/built-in')
-    if (response.code === 0) {
-      builtInApps.value = response.data || []
-    }
-  } catch (error) {
-    logger.error('加载内置应用失败:', error)
-    // 如果加载失败，使用默认的内置应用（硬编码的列表不受影响）
-    builtInApps.value = []
-  }
-}
+// 内置应用列表已从 useAppLogic 中获取
 
 // 应用分类列表（从内置应用动态加载）
 const appCategories = computed(() => {
@@ -2250,7 +2225,7 @@ const showMiniAppList = ref(false)
 
 // 应用逻辑（使用 useAppLogic composable，共享 selectedAppId 等状态）
 const appLogic = useAppLogic({ selectedAppId, recentApps, currentUserApp, showMiniAppList, externalCustomApps: customApps })
-const { openApp, openUserApp, openExternalApp, loadBuiltInApps: loadAppCategories } = appLogic
+const { openApp, openUserApp, openExternalApp, loadBuiltInApps: loadAppCategories, builtInApps } = appLogic
 
 // 创建新笔记
 
@@ -2648,36 +2623,20 @@ const removeMemberFromGroup = async () => {
 
 const viewMemberInfo = async () => {
   if (selectedMember.value) {
-    try {
-      const userId = selectedMember.value.user?.id || selectedMember.value.id
-      if (!userId) {
-        QMessage.error('无法获取用户ID')
-        return
-      }
-      
-      const response = await request(`/api/v1/users/${userId}`)
-      if (response.code === 0 && response.data) {
-        const userData = response.data
-        const userProfile = {
-          id: userData.id,
-          name: userData.nickname || userData.username || selectedMember.value.name,
-          username: userData.username,
-          email: userData.email,
-          mobile: userData.phone,
-          department: userData.department,
-          ip: userData.ip,
-          avatar: userData.avatar || selectedMember.value.avatar
-        }
-        openUserProfile(userProfile)
-      } else {
-        QMessage.error('获取用户信息失败')
-      }
-    } catch (error) {
-      logger.error('获取用户信息失败:', error)
+    const userId = selectedMember.value.user?.id || selectedMember.value.id
+    if (!userId) {
+      QMessage.error('无法获取用户ID')
+      closeMemberContextMenu()
+      return
+    }
+
+    const { profile, success } = await fetchUserProfile(userId, selectedMember.value)
+    if (!success) {
       QMessage.error('获取用户信息失败')
     }
+    openUserProfile(profile)
+    closeMemberContextMenu()
   }
-  closeMemberContextMenu()
 }
 
 const setAsAdmin = async () => {
@@ -2945,45 +2904,82 @@ const checkForUpdates = () => {
   if (window.electron) {
     window.electron.ipcRenderer.send('check-for-updates')
   } else {
-    // 模拟检查更新的过程（开发环境）
-    setTimeout(() => {
-      isCheckingUpdate.value = false
-      // 模拟有新版本
-      if (Math.random() > 0.5) {
+    // 非 Electron 环境：通过后端 API 检查更新
+    checkUpdateViaAPI()
+  }
+}
+
+// 通过后端 API 检查更新（非 Electron 环境）
+const checkUpdateViaAPI = async () => {
+  try {
+    const platform = detectPlatform()
+    const response = await fetch(`${serverUrl.value}/api/v1/client/versions?platform=${platform}&pageSize=1`)
+    if (!response.ok) throw new Error('检查更新失败')
+    
+    const result = await response.json()
+    if (result.code === 0 && result.data?.list?.length > 0) {
+      const latestVersion = result.data.list[0]
+      const currentVersion = APP_CONFIG.version
+      
+      if (isNewerVersion(latestVersion.version, currentVersion)) {
         hasNewVersion.value = true
-        updateResult.value = '发现新版本 v1.0.1'
+        updateResult.value = `发现新版本 v${latestVersion.version}`
+        // 存储下载链接供后续使用
+        latestDownloadUrl.value = latestVersion.downloadUrl
       } else {
         hasNewVersion.value = false
         updateResult.value = '当前已是最新版本'
       }
-    }, 1500)
+    } else {
+      hasNewVersion.value = false
+      updateResult.value = '当前已是最新版本'
+    }
+  } catch (error: any) {
+    updateResult.value = `检查更新失败: ${error.message || '网络错误'}`
+  } finally {
+    isCheckingUpdate.value = false
   }
 }
 
+// 检测当前平台
+const detectPlatform = (): string => {
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('linux')) return 'linux'
+  return 'windows'
+}
+
+// 版本号比较：判断新版本是否比当前版本更新
+const isNewerVersion = (newVer: string, currentVer: string): boolean => {
+  const newParts = newVer.split('.').map(Number)
+  const currentParts = currentVer.split('.').map(Number)
+  for (let i = 0; i < Math.max(newParts.length, currentParts.length); i++) {
+    const n = newParts[i] || 0
+    const c = currentParts[i] || 0
+    if (n > c) return true
+    if (n < c) return false
+  }
+  return false
+}
+
+const latestDownloadUrl = ref('')
+
 const downloadUpdate = () => {
   logger.log('下载升级')
-  isDownloading.value = true
-  downloadProgress.value = 0
   
   // 向主进程发送下载更新请求
   if (window.electron) {
+    isDownloading.value = true
+    downloadProgress.value = 0
     window.electron.ipcRenderer.send('download-update')
   } else {
-    // 模拟下载过程（开发环境）
-    const interval = setInterval(() => {
-      downloadProgress.value += 5
-      if (downloadProgress.value >= 100) {
-        clearInterval(interval)
-        isDownloading.value = false
-        updateResult.value = '下载完成，正在安装...'
-        
-        // 模拟安装过程
-        setTimeout(() => {
-          updateResult.value = '升级成功，需要重启应用'
-          hasNewVersion.value = false
-        }, 1500)
-      }
-    }, 100)
+    // 非 Electron 环境：打开下载链接
+    if (latestDownloadUrl.value) {
+      window.open(latestDownloadUrl.value, '_blank')
+      updateResult.value = '已在浏览器中打开下载页面'
+    } else {
+      updateResult.value = '暂无可用的下载链接'
+    }
   }
 }
 

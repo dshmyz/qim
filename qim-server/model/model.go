@@ -14,8 +14,11 @@ type User struct {
 	Username         string         `json:"username" gorm:"uniqueIndex;size:50;not null"`
 	PasswordHash     string         `json:"-" gorm:"size:255;not null"`
 	Nickname         string         `json:"nickname" gorm:"size:100"`
+	RealName         string         `json:"real_name" gorm:"size:100"`
 	Avatar           string         `json:"avatar" gorm:"size:500"`
 	Type             string         `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
+	Gender           string         `json:"gender" gorm:"size:10;default:'secret'"`   // 'male' | 'female' | 'secret'
+	Organization     string         `json:"organization" gorm:"size:500"`             // 组织架构信息（冗余存储）
 	Signature        string         `json:"signature" gorm:"type:text"`
 	Phone            string         `json:"phone" gorm:"size:20;index"`
 	Email            string         `json:"email" gorm:"size:100;index"`
@@ -85,6 +88,11 @@ type Group struct {
 	UpdatedAt        time.Time       `json:"updated_at"`
 	Conversation     Conversation    `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
+
+// // TableName 指定表名，groups 是 SQL 保留关键字，加反引号避免冲突
+// func (Group) TableName() string {
+// 	return "`groups`"
+// }
 
 // GroupAIConfig 群聊AI配置
 type GroupAIConfig struct {
@@ -161,7 +169,7 @@ type ConversationMember struct {
 	UnreadCount    int          `json:"unread_count" gorm:"default:0"`
 	Muted          bool         `json:"muted" gorm:"default:false"`
 	LastReadAt     *time.Time   `json:"last_read_at"`
-	JoinedAt       time.Time    `json:"joined_at"`
+	JoinedAt       time.Time    `json:"joined_at" gorm:"default:CURRENT_TIMESTAMP"`
 	User           User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
@@ -227,7 +235,7 @@ type Note struct {
 	Title     string         `json:"title" gorm:"size:500;not null"`
 	Content   string         `json:"content" gorm:"type:text;not null"`
 	Type      string         `json:"type" gorm:"size:20;default:'note'"`
-	Style     string         `json:"style" gorm:"type:text;default:'{}'"`
+	Style     string         `json:"style" gorm:"type:text"`
 	Tags      string         `json:"tags" gorm:"type:text"`    // JSON 数组字符串
 	Summary   string         `json:"summary" gorm:"type:text"` // AI 生成的摘要
 	CreatedAt time.Time      `json:"created_at"`
@@ -414,7 +422,7 @@ type Notification struct {
 	ReadAt        *time.Time     `json:"read_at"`
 	Priority      string         `json:"priority" gorm:"size:10;default:normal"`
 	ActionType    string         `json:"action_type" gorm:"size:30;default:''"`
-	ActionPayload string         `json:"action_payload" gorm:"type:text;default:''"`
+	ActionPayload string         `json:"action_payload" gorm:"type:text"`
 	Pinned        bool           `json:"pinned" gorm:"default:false"`
 	Important     bool           `json:"important" gorm:"default:false"`
 	Handled       bool           `json:"handled" gorm:"default:false"`

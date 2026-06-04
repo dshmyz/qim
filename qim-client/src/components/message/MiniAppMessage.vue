@@ -2,7 +2,16 @@
   <div class="message-bubble mini-app-message" :class="{ self: isSelf }">
     <div class="mini-app-info" @click="openMiniApp">
       <div class="mini-app-icon-container">
-        <img :src="miniAppData?.icon" class="mini-app-icon" :alt="miniAppData?.name" />
+        <img
+          v-if="miniAppData?.icon && !iconError"
+          :src="miniAppData.icon"
+          class="mini-app-icon"
+          :alt="miniAppData?.name"
+          @error="handleIconError"
+        />
+        <div v-else class="mini-app-icon mini-app-icon-fallback" :style="{ background: iconBgColor }">
+          {{ iconInitial }}
+        </div>
         <div class="mini-app-type-label">小程序</div>
       </div>
       <div class="mini-app-details">
@@ -17,6 +26,9 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue'
+import { getAvatarColor, getInitial } from '../../utils/avatar'
+
 const props = defineProps<{
   miniAppData?: {
     icon: string
@@ -29,6 +41,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [data: any]
 }>()
+
+const iconError = ref(false)
+
+const iconInitial = computed(() => getInitial(props.miniAppData?.name || '小'))
+const iconBgColor = computed(() => getAvatarColor(props.miniAppData?.name || '小程序'))
+
+const handleIconError = () => {
+  iconError.value = true
+}
 
 const openMiniApp = () => {
   emit('open', props.miniAppData)
@@ -93,6 +114,16 @@ const openMiniApp = () => {
   background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   border: none;
   display: block;
+}
+
+.mini-app-icon-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  user-select: none;
 }
 
 .mini-app-type-label {

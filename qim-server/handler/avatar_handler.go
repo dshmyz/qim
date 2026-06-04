@@ -3,6 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -11,8 +14,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/validation"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -203,8 +204,23 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 				response.InternalServerError(c, "恢复分身配置失败")
 				return
 			}
-			response := h.toConfigResponse(existingConfig)
-			c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
+			// 恢复后自动提交审批（如果尚未有审批记录）
+			if h.approvalService != nil {
+				if _, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, existingConfig.ID); err != nil {
+					if h.approvalService.IsApprovalEnabled(model.ApprovalTypeAvatar) {
+						if err := h.approvalService.CreateApproval(model.ApprovalTypeAvatar, existingConfig.ID, userID); err != nil {
+							logger.WithModule("AvatarHandler").Error("Auto create approval on restore failed", "error", err, "configID", existingConfig.ID)
+						}
+					} else {
+						if err := h.db.Model(&existingConfig).Update("enabled", true).Error; err != nil {
+							logger.WithModule("AvatarHandler").Error("Auto enable avatar on restore failed", "error", err, "configID", existingConfig.ID)
+						}
+					}
+				}
+			}
+			h.db.First(&existingConfig, existingConfig.ID)
+			resp := h.toConfigResponse(existingConfig)
+			c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
 			return
 		}
 		response.BadRequest(c, "已存在分身配置")
@@ -263,10 +279,25 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		return
 	}
 
+	// 创建后自动提交审批：审批开启则走审批流程，审批关闭则直接启用
+	if h.approvalService != nil {
+		if h.approvalService.IsApprovalEnabled(model.ApprovalTypeAvatar) {
+			if err := h.approvalService.CreateApproval(model.ApprovalTypeAvatar, config.ID, userID); err != nil {
+				logger.WithModule("AvatarHandler").Error("Auto create approval failed", "error", err, "configID", config.ID)
+				// 审批记录创建失败不影响分身创建，但记录日志
+			}
+		} else {
+			if err := h.db.Model(&config).Update("enabled", true).Error; err != nil {
+				logger.WithModule("AvatarHandler").Error("Auto enable avatar failed", "error", err, "configID", config.ID)
+			}
+			h.db.First(&config, config.ID)
+		}
+	}
+
 	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "create_config")
 
-	response := h.toConfigResponse(config)
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
+	resp := h.toConfigResponse(config)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
 }
 
 type UpdateAvatarConfigRequest struct {
@@ -328,8 +359,14 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	if req.Name != nil {
 		updates["name"] = *req.Name
 	}
+	// Enabled 字段：只允许用户关闭分身（false），不允许自行开启（true）
+	// 开启需要通过 ApplyForApproval 接口
 	if req.Enabled != nil {
-		updates["enabled"] = *req.Enabled
+		if *req.Enabled {
+			response.BadRequest(c, "开启分身请使用申请审批接口")
+			return
+		}
+		updates["enabled"] = false
 	}
 	if req.UseSystemConfig != nil {
 		updates["use_system_config"] = *req.UseSystemConfig
@@ -654,15 +691,55 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 		return
 	}
 
-	// 检查是否已有待审批的申请
-	if h.approvalService != nil {
-		if existingApproval, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, config.ID); err == nil && existingApproval.Status == model.ApprovalStatusPending {
-			response.BadRequest(c, "已有待审批的申请")
+	// 检查审批功能是否开启
+	if h.approvalService != nil && !h.approvalService.IsApprovalEnabled(model.ApprovalTypeAvatar) {
+		// 审批功能关闭，直接启用分身
+		if err := h.db.Model(&config).Update("enabled", true).Error; err != nil {
+			response.InternalServerError(c, "启用分身失败")
 			return
+		}
+		h.db.First(&config, config.ID)
+		di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "auto_enable")
+		resp := h.toConfigResponse(config)
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
+		return
+	}
+
+	// 审批功能开启，走审批流程
+	if h.approvalService != nil {
+		if existingApproval, err := h.approvalService.GetApproval(model.ApprovalTypeAvatar, config.ID); err == nil {
+			if existingApproval.Status == model.ApprovalStatusPending {
+				response.BadRequest(c, "已有待审批的申请")
+				return
+			}
+			// 已通过审批：用户可以自由开关，直接启用
+			if existingApproval.Status == model.ApprovalStatusApproved {
+				if err := h.db.Model(&config).Update("enabled", true).Error; err != nil {
+					response.InternalServerError(c, "启用分身失败")
+					return
+				}
+				h.db.First(&config, config.ID)
+				di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "enable")
+				resp := h.toConfigResponse(config)
+				c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
+				return
+			}
+			// 已拒绝的记录，更新为重新申请状态
+			if existingApproval.Status == model.ApprovalStatusRejected {
+				if err := h.approvalService.ReapplyApproval(existingApproval.ID, userID); err != nil {
+					response.InternalServerError(c, "重新申请失败")
+					return
+				}
+				di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "apply_approval")
+				h.db.First(&config, config.ID)
+				resp := h.toConfigResponse(config)
+				c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
+				return
+			}
 		}
 	}
 
-	// 通过ApprovalService创建审批申请
+	// 首次申请，创建新的审批记录
 	if err := h.approvalService.CreateApproval(model.ApprovalTypeAvatar, config.ID, userID); err != nil {
 		response.InternalServerError(c, "申请失败")
 		return
@@ -670,8 +747,9 @@ func (h *AvatarHandler) ApplyForApproval(c *gin.Context) {
 
 	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "apply_approval")
 
-	response := h.toConfigResponse(config)
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
+	h.db.First(&config, config.ID)
+	resp := h.toConfigResponse(config)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": resp})
 }
 
 // CancelApplication 取消申请

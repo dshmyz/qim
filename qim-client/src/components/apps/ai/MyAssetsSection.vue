@@ -109,20 +109,54 @@
         </div>
         <div class="avatar-info">
           <h4>你的数字分身</h4>
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
-          </div>
-          <span class="progress-text">
-            学习进度: {{ learningProgress }}%
-            <template v-if="learningStatus === 'learning'"> · 学习中...</template>
-          </span>
+          <template v-if="hasAvatarConfig">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
+            </div>
+            <span class="progress-text">
+              学习进度: {{ learningProgress }}%
+              <template v-if="learningStatus === 'learning'"> · 学习中...</template>
+            </span>
+          </template>
+          <span v-else class="progress-text">点击创建你的 AI 分身</span>
         </div>
+        <!-- 未创建：引导创建 -->
         <button
+          v-if="!hasAvatarConfig"
+          class="toggle-btn"
+          @click="$emit('open-avatar')"
+        >
+          <i class="fas fa-plus"></i>
+          创建
+        </button>
+        <!-- 审批通过：可自由开关 -->
+        <button
+          v-else-if="avatarApprovalStatus === 'approved'"
           :class="['toggle-btn', { active: avatarEnabled }]"
           @click="$emit('toggle-avatar')"
         >
-          <i :class="avatarEnabled ? 'fas fa-power-off' : 'fas fa-power-off'"></i>
+          <i class="fas fa-power-off"></i>
           {{ avatarEnabled ? '关闭' : '开启' }}
+        </button>
+        <!-- 审批中 -->
+        <span v-else-if="avatarApprovalStatus === 'pending'" class="status-badge pending">
+          审批中
+        </span>
+        <!-- 被拒绝 -->
+        <button
+          v-else-if="avatarApprovalStatus === 'rejected'"
+          class="toggle-btn rejected"
+          @click="$emit('toggle-avatar')"
+        >
+          重新申请
+        </button>
+        <!-- 无审批记录（审批被取消等异常情况）：申请启用 -->
+        <button
+          v-else
+          class="toggle-btn"
+          @click="$emit('toggle-avatar')"
+        >
+          申请启用
         </button>
       </div>
     </section>
@@ -150,7 +184,9 @@ interface Config {
 const props = defineProps<{
   bots: Bot[]
   configs: Config[]
+  hasAvatarConfig: boolean
   avatarEnabled: boolean
+  avatarApprovalStatus: string
   learningProgress: number
   learningStatus: string
 }>()
@@ -539,5 +575,24 @@ defineEmits([
 
 .toggle-btn:hover {
   opacity: 0.9;
+}
+
+.toggle-btn.rejected {
+  border-color: var(--color-danger-500, #EF4444);
+  color: var(--color-danger-500, #EF4444);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3B82F6;
 }
 </style>

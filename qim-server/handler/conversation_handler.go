@@ -703,7 +703,7 @@ func CreateGroupConversation(c *gin.Context) {
 		return
 	}
 
-	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"}).Error; err != nil {
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner", JoinedAt: time.Now()}).Error; err != nil {
 		tx.Rollback()
 		response.InternalServerError(c, "添加成员失败")
 		return
@@ -711,7 +711,7 @@ func CreateGroupConversation(c *gin.Context) {
 
 	for _, mid := range req.MemberIDs {
 		if mid != userID.(uint) {
-			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member", JoinedAt: time.Now()}).Error; err != nil {
 				tx.Rollback()
 				response.InternalServerError(c, "添加成员失败")
 				return
@@ -804,7 +804,7 @@ func CreateDiscussionConversation(c *gin.Context) {
 		return
 	}
 
-	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner"}).Error; err != nil {
+	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "owner", JoinedAt: time.Now()}).Error; err != nil {
 		tx.Rollback()
 		response.InternalServerError(c, "添加成员失败")
 		return
@@ -812,7 +812,7 @@ func CreateDiscussionConversation(c *gin.Context) {
 
 	for _, mid := range req.MemberIDs {
 		if mid != userID.(uint) {
-			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member"}).Error; err != nil {
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: mid, Role: "member", JoinedAt: time.Now()}).Error; err != nil {
 				tx.Rollback()
 				response.InternalServerError(c, "添加成员失败")
 				return

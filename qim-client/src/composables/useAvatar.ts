@@ -66,9 +66,9 @@ export function useAvatar() {
     error.value = ''
     try {
       // 只提交用户可编辑的字段，过滤掉只读字段
+      // enabled 只允许关闭（false），不允许自行开启（true）
       const editableFields: (keyof AvatarConfig)[] = [
         'name',
-        'enabled',
         'useSystemConfig',
         'modelConfigId',
         'triggerRules',
@@ -77,12 +77,17 @@ export function useAvatar() {
         'takeoverCooldown',
         'customPersonaAddon'
       ]
-      
+
       const sanitizedUpdates: Partial<AvatarConfig> = {}
       for (const key of editableFields) {
         if (key in updates) {
           (sanitizedUpdates as any)[key] = (updates as any)[key]
         }
+      }
+
+      // enabled 特殊处理：只允许关闭，不允许开启
+      if ('enabled' in updates && updates.enabled === false) {
+        sanitizedUpdates.enabled = false
       }
       
       config.value = await avatarAPI.updateConfig(sanitizedUpdates)
@@ -111,7 +116,22 @@ export function useAvatar() {
 
   async function toggleEnabled(enabled: boolean) {
     if (!config.value) return
-    await updateConfig({ enabled })
+    if (enabled) {
+      // 启用分身需要走审批流程
+      await applyForApproval()
+    } else {
+      // 关闭分身：用户可以自行关闭，直接调用 API 绕过 editableFields 过滤
+      loading.value = true
+      error.value = ''
+      try {
+        config.value = await avatarAPI.updateConfig({ enabled: false })
+      } catch (e: any) {
+        error.value = e.message || '关闭分身失败'
+        throw e
+      } finally {
+        loading.value = false
+      }
+    }
   }
 
   async function fetchSessions(force = false) {

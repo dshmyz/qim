@@ -27,18 +27,55 @@ func NewMonitorHandler() *MonitorHandler {
 }
 
 type ServerMetrics struct {
-	CPU        float64   `json:"cpu"`
-	Memory     float64   `json:"memory"`
-	Disk       float64   `json:"disk"`
-	Network    NetworkIO `json:"network"`
-	Timestamp  string    `json:"timestamp"`
-	Uptime     int64     `json:"uptime"`
-	GoRoutines int       `json:"goRoutines"`
+	CPU        float64      `json:"cpu"`
+	Memory     float64      `json:"memory"`
+	Disk       float64      `json:"disk"`
+	Network    NetworkIO    `json:"network"`
+	DBPool     *DBPoolStats `json:"dbPool,omitempty"`
+	Timestamp  string       `json:"timestamp"`
+	Uptime     int64        `json:"uptime"`
+	GoRoutines int          `json:"goRoutines"`
 }
 
 type NetworkIO struct {
 	In  float64 `json:"in"`
 	Out float64 `json:"out"`
+}
+
+type DBPoolStats struct {
+	MaxOpenConnections int           `json:"maxOpenConnections"`
+	OpenConnections    int           `json:"openConnections"`
+	InUse              int           `json:"inUse"`
+	Idle               int           `json:"idle"`
+	WaitCount          int64         `json:"waitCount"`
+	WaitDuration       time.Duration `json:"waitDuration"`
+	MaxIdleClosed      int64         `json:"maxIdleClosed"`
+	MaxLifetimeClosed  int64         `json:"maxLifetimeClosed"`
+}
+
+func (h *MonitorHandler) getDBPoolStats() *DBPoolStats {
+	db := database.GetDB()
+	if db == nil {
+		return nil
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.WithModule("monitor").Error("获取数据库实例失败", "error", err)
+		return nil
+	}
+
+	stats := sqlDB.Stats()
+	return &DBPoolStats{
+		MaxOpenConnections: stats.MaxOpenConnections,
+		OpenConnections:    stats.OpenConnections,
+		InUse:              stats.InUse,
+		Idle:               stats.Idle,
+		WaitCount:          stats.WaitCount,
+		WaitDuration:       stats.WaitDuration,
+		MaxIdleClosed:      stats.MaxIdleClosed,
+		MaxLifetimeClosed:  stats.MaxLifetimeClosed,
+	}
 }
 
 func (h *MonitorHandler) GetServerMetrics(c *gin.Context) {
@@ -78,6 +115,7 @@ func (h *MonitorHandler) GetServerMetrics(c *gin.Context) {
 		Memory:     memInfo.UsedPercent,
 		Disk:       diskInfo.UsedPercent,
 		Network:    networkIO,
+		DBPool:     h.getDBPoolStats(),
 		Timestamp:  time.Now().Format(time.RFC3339),
 		Uptime:     int64(time.Since(h.startTime).Seconds()),
 		GoRoutines: runtime.NumGoroutine(),

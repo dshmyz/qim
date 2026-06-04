@@ -2,6 +2,14 @@
 -- OIM Server 数据库建表语句
 -- 数据库类型：MySQL
 -- 生成时间：2026-04-28
+-- 说明：所有继承 PrimaryStringEntity 的实体都包含公共字段
+-- 公共字段模板：
+--   id              VARCHAR(40)    主键ID
+--   createdTimestamp BIGINT        创建时间戳（毫秒）
+--   updatedTimestamp BIGINT        更新时间戳（毫秒）
+--   isDeleted       INT           是否删除 0:否 1:是
+--   createdDateTime VARCHAR(32)    创建时间
+--   updatedDateTime VARCHAR(32)    更新时间
 -- ============================================
 
 -- 设置字符集
@@ -57,6 +65,11 @@ CREATE TABLE `w_user` (
   `isDisable` INT NOT NULL DEFAULT 0 COMMENT '是否禁用 0:启用 1:停用',
   `canceledTimestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '注销时间',
   `type` VARCHAR(2) NOT NULL DEFAULT '0' COMMENT '用户类型 0:普通 1:管理员 2:超级管理员',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE INDEX `index_number` (`number`),
   UNIQUE INDEX `index_account` (`account`),
@@ -67,7 +80,7 @@ CREATE TABLE `w_user` (
   INDEX `index_simpleSpell` (`simpleSpell`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户主表';
 
--- 用户数字账号生成器
+-- 用户数字账号生成器（不继承PrimaryStringEntity，使用自增Long主键）
 DROP TABLE IF EXISTS `w_user_number`;
 CREATE TABLE `w_user_number` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -84,6 +97,11 @@ CREATE TABLE `w_user_head` (
   `fileName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '自定义头像文件名',
   `type` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '头像类型 1:系统头像 2:自定义头像',
   `url` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '自定义头像地址',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户头像设置';
@@ -95,6 +113,11 @@ CREATE TABLE `w_user_security_question` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `question` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '密保问题',
   `answer` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '密保答案',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户密保问题';
@@ -111,6 +134,11 @@ CREATE TABLE `m_role` (
   `introduce` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '角色描述',
   `isDisable` INT NOT NULL DEFAULT 0 COMMENT '是否禁用 0:启用 1:停用',
   `grade` INT NOT NULL DEFAULT 1 COMMENT '角色级别 0:系统角色 1:普通角色',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色表';
 
@@ -126,6 +154,11 @@ CREATE TABLE `m_function` (
   `introduce` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '功能描述',
   `sort` INT NOT NULL DEFAULT 0 COMMENT '菜单排序',
   `path` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '功能地址',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='功能菜单表';
 
@@ -136,6 +169,11 @@ CREATE TABLE `m_user_role` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `roleId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '角色ID',
   `sort` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_roleId` (`roleId`)
@@ -147,6 +185,11 @@ CREATE TABLE `m_role_function` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
   `roleId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '角色ID',
   `functionId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '功能ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_roleId` (`roleId`),
   INDEX `index_functionId` (`functionId`)
@@ -167,12 +210,17 @@ CREATE TABLE `w_group` (
   `classification` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '分类',
   `introduce` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '介绍',
   `location` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '位置',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE INDEX `index_number` (`number`),
   INDEX `index_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群组主表';
 
--- 群号码生成器
+-- 群号码生成器（不继承PrimaryStringEntity，使用自增Long主键）
 DROP TABLE IF EXISTS `w_group_number`;
 CREATE TABLE `w_group_number` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -188,6 +236,11 @@ CREATE TABLE `w_group_member` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `position` VARCHAR(2) NOT NULL DEFAULT '3' COMMENT '权限 1:群主 2:管理员 3:普通成员',
   `nickname` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '群备注名',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`),
   INDEX `index_userId` (`userId`)
@@ -202,6 +255,11 @@ CREATE TABLE `w_group_join_setting` (
   `inviteType` VARCHAR(2) NOT NULL DEFAULT '4' COMMENT '邀请加群方式 1:不允许 2:管理员邀请 3:任何人邀请 4:需要验证',
   `question` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '入群问题',
   `answer` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '入群答案',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE INDEX `index_groupId` (`groupId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='入群设置表';
@@ -222,6 +280,11 @@ CREATE TABLE `w_group_join_apply` (
   `handleTimestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '处理时间(毫秒)',
   `handleUserId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '处理验证用户的ID(群主/管理员)',
   `handleUserPosition` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '处理验证用户的权限(群主/管理员)',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_applyUserId` (`applyUserId`),
   INDEX `index_groupId` (`groupId`),
@@ -236,6 +299,11 @@ CREATE TABLE `w_group_category` (
   `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '分组名称',
   `sort` INT NOT NULL DEFAULT 0 COMMENT '排序',
   `type` INT NOT NULL DEFAULT 2 COMMENT '类型 1:系统默认 2:用户自定义',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群分组表';
@@ -260,6 +328,11 @@ CREATE TABLE `w_group_head` (
   `sha1` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件SHA1',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传用户ID',
   `groupId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传群ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群头像表';
@@ -273,6 +346,11 @@ CREATE TABLE `w_group_relation` (
   `categoryId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '群分组ID',
   `remark` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '群备注',
   `isBlocked` VARCHAR(2) NOT NULL DEFAULT '0' COMMENT '是否屏蔽 0:否 1:是',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_groupId` (`groupId`)
@@ -286,6 +364,11 @@ CREATE TABLE `w_group_notice` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '发布人ID',
   `content` TEXT COMMENT '公告内容',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '发布时间',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群公告表';
@@ -299,6 +382,11 @@ CREATE TABLE `w_group_invite_apply` (
   `targetUserId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '被邀请人ID',
   `handleType` VARCHAR(2) NOT NULL DEFAULT '0' COMMENT '处理结果 0:未处理 1:同意 2:拒绝 3:忽略',
   `handleTimestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '处理时间',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`),
   INDEX `index_inviteUserId` (`inviteUserId`),
@@ -311,6 +399,11 @@ CREATE TABLE `w_group_join_verify_question` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
   `groupId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '群ID',
   `question` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '问题',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='入群验证问题表';
@@ -322,6 +415,11 @@ CREATE TABLE `w_group_join_verify_answer` (
   `groupId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '群ID',
   `questionId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '问题ID',
   `answer` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '答案',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='入群验证答案表';
@@ -353,6 +451,10 @@ CREATE TABLE `im_user_chat_content` (
   `isDeleted` VARCHAR(2) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
   `dateTime` DATETIME NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '时间',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_messageKey` (`messageKey`),
   INDEX `index_receiveUserId` (`receiveUserId`),
@@ -376,9 +478,13 @@ CREATE TABLE `im_group_chat_content` (
   `userName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '用户姓名',
   `userNickname` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '用户昵称',
   `userGroupNickname` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '群内昵称',
-  `isDeleted` VARCHAR(2) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
   `dateTime` DATETIME NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '时间',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` VARCHAR(2) DEFAULT '0' COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_messageKey` (`messageKey`),
   INDEX `index_groupId` (`groupId`),
@@ -397,6 +503,11 @@ CREATE TABLE `im_recent_chat` (
   `type` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '类型 1:联系人 2:群 3:讨论组 4:聊天室 5:会议',
   `dateTime` DATETIME NOT NULL COMMENT '时间',
   `timestamp` BIGINT NOT NULL COMMENT '时间戳',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_messageKey` (`messageKey`),
@@ -414,6 +525,11 @@ CREATE TABLE `im_user_chat_unread` (
   `lastContentId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '最后一条消息ID',
   `unreadCount` INT(11) NOT NULL DEFAULT 0 COMMENT '未读数量',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_receiveUserId` (`receiveUserId`),
   INDEX `index_sendUserId` (`sendUserId`)
@@ -428,12 +544,17 @@ CREATE TABLE `im_group_chat_unread` (
   `lastContentId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '最后一条消息ID',
   `unreadCount` INT(11) NOT NULL DEFAULT 0 COMMENT '未读数量',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_groupId` (`groupId`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群聊未读计数表';
 
--- 单聊会话项表
+-- 单聊消息内容项表
 DROP TABLE IF EXISTS `im_user_chat_item`;
 CREATE TABLE `im_user_chat_item` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
@@ -448,6 +569,11 @@ CREATE TABLE `im_user_chat_item` (
   `sort` INT NOT NULL DEFAULT 0 COMMENT '排序',
   `section` INT NOT NULL DEFAULT 0 COMMENT '段落',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳(毫秒)',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_contentId` (`contentId`),
   INDEX `index_messageKey` (`messageKey`),
@@ -456,7 +582,7 @@ CREATE TABLE `im_user_chat_item` (
   INDEX `index_timestamp` (`timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='单聊消息内容项表';
 
--- 群聊会话项表
+-- 群聊消息内容项表
 DROP TABLE IF EXISTS `im_group_chat_item`;
 CREATE TABLE `im_group_chat_item` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
@@ -470,6 +596,11 @@ CREATE TABLE `im_group_chat_item` (
   `sort` INT NOT NULL DEFAULT 0 COMMENT '排序',
   `section` INT NOT NULL DEFAULT 0 COMMENT '段落',
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳(毫秒)',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_contentId` (`contentId`),
   INDEX `index_messageKey` (`messageKey`),
@@ -491,6 +622,11 @@ CREATE TABLE `w_contact_relation` (
   `contactUserId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '联系人用户ID',
   `remark` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '联系人备注名',
   `isBlocked` VARCHAR(2) NOT NULL DEFAULT '0' COMMENT '是否加入黑名单 0:否 1:是',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_ownerUserId` (`ownerUserId`),
   INDEX `index_categoryId` (`categoryId`),
@@ -505,6 +641,11 @@ CREATE TABLE `w_contact_category` (
   `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '分组名字',
   `sort` INT NOT NULL DEFAULT 0 COMMENT '排序',
   `type` INT NOT NULL DEFAULT 2 COMMENT '类型 1:系统默认 2:用户自定义',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='联系人分组表';
@@ -523,6 +664,11 @@ CREATE TABLE `w_contact_add_apply` (
   `handleType` VARCHAR(2) NOT NULL DEFAULT '' COMMENT '处理结果 0:未处理 1:同意 2:拒绝 3:忽略',
   `handleTimestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '处理时间',
   `applyMessage` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '附加消息',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_applyUserId` (`applyUserId`),
   INDEX `index_targetUserId` (`targetUserId`)
@@ -534,6 +680,11 @@ CREATE TABLE `w_contact_add_verify_question` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `question` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '问题',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='好友验证问题表';
@@ -545,6 +696,11 @@ CREATE TABLE `w_contact_add_verify_answer` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `questionId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '问题ID',
   `answer` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '答案',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='好友验证答案表';
@@ -556,6 +712,11 @@ CREATE TABLE `w_contact_harass_setting` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '用户ID',
   `allowStrangerChat` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '允许陌生人聊天 0:否 1:是',
   `allowStrangerFind` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '允许陌生人找到我 0:否 1:是',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='防骚扰设置表';
@@ -583,6 +744,11 @@ CREATE TABLE `base_file_data` (
   `md5` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件MD5',
   `sha1` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件SHA1',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传用户ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_md5` (`md5`)
@@ -607,6 +773,11 @@ CREATE TABLE `base_image_data` (
   `md5` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件MD5',
   `sha1` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件SHA1',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传用户ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_md5` (`md5`)
@@ -631,6 +802,11 @@ CREATE TABLE `base_user_head_data` (
   `md5` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件MD5',
   `sha1` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件SHA1',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传用户ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户头像文件表';
@@ -655,6 +831,11 @@ CREATE TABLE `base_group_head_data` (
   `sha1` VARCHAR(80) NOT NULL DEFAULT '' COMMENT '文件SHA1',
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传用户ID',
   `groupId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '上传群ID',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_groupId` (`groupId`)
@@ -673,6 +854,11 @@ CREATE TABLE `setting_app_client` (
   `version` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '发布版本号',
   `type` VARCHAR(10) NOT NULL DEFAULT '' COMMENT '客户端类型 1:JavaFX 2:Electron 3:H5 4:Android 5:iOS',
   `platform` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '客户端平台',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_build` (`build`),
   INDEX `index_version` (`version`)
@@ -684,6 +870,11 @@ CREATE TABLE `setting_multiple_online_strategy` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
   `strategy` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '策略 1:允许 2:不允许',
   `description` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '描述',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='多端在线策略表';
 
@@ -701,6 +892,11 @@ CREATE TABLE `w_text_notice` (
   `timestamp` BIGINT NOT NULL DEFAULT 0 COMMENT '时间戳',
   `openType` VARCHAR(2) NOT NULL DEFAULT '' COMMENT '打开方式 1:app 2:browser',
   `pushType` VARCHAR(2) NOT NULL DEFAULT '' COMMENT '推送类型 1:所有用户 2:指定用户',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文本通知表';
 
@@ -711,6 +907,11 @@ CREATE TABLE `w_user_text_notice` (
   `userId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '接收通知的用户ID',
   `textNoticeId` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '通知表ID',
   `isRead` VARCHAR(2) NOT NULL DEFAULT '0' COMMENT '是否已读 0:未读 1:已读',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_userId` (`userId`),
   INDEX `index_textNoticeId` (`textNoticeId`)
@@ -726,6 +927,11 @@ CREATE TABLE `im_words_filter` (
   `id` VARCHAR(40) NOT NULL COMMENT '主键ID',
   `words` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '敏感词',
   `level` INT NOT NULL DEFAULT 0 COMMENT '级别',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='敏感词过滤表';
 
@@ -739,6 +945,11 @@ CREATE TABLE `server_action_info` (
   `method` VARCHAR(10) NOT NULL DEFAULT '' COMMENT '请求方法',
   `description` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '描述',
   `isEnable` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '是否启用 0:否 1:是',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_service` (`service`),
   INDEX `index_action` (`action`)
@@ -751,6 +962,11 @@ CREATE TABLE `server_type` (
   `code` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '类型编码',
   `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '类型名称',
   `description` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '描述',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务器类型表';
 
@@ -764,6 +980,11 @@ CREATE TABLE `server_address` (
   `protocol` VARCHAR(20) NOT NULL DEFAULT '' COMMENT '协议',
   `isEnable` VARCHAR(2) NOT NULL DEFAULT '1' COMMENT '是否启用 0:否 1:是',
   `weight` INT NOT NULL DEFAULT 1 COMMENT '权重',
+  `createdTimestamp` BIGINT COMMENT '创建时间戳',
+  `updatedTimestamp` BIGINT COMMENT '更新时间戳',
+  `isDeleted` INT DEFAULT 0 COMMENT '是否删除 0:否 1:是',
+  `createdDateTime` VARCHAR(32) COMMENT '创建时间',
+  `updatedDateTime` VARCHAR(32) COMMENT '更新时间',
   PRIMARY KEY (`id`),
   INDEX `index_typeId` (`typeId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务器地址表';

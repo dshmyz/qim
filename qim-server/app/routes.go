@@ -82,7 +82,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		logger.WithModule("Routes").Warn("初始化 SmartReplyGraph 失败，将使用旧方法", "error", err)
 	}
 
-	handler.InitAnomalyDetector()
+	// 暂停异常检测功能：当前实现不完整（只告警不处理），且 UpdateBaseline 每分钟大量SQL查询有性能问题
+	// handler.InitAnomalyDetector()
 
 	utils.SafeGoWithLabel("mcp-server", func() {
 		if err := mcpServer.Start(":8081"); err != nil {
@@ -223,6 +224,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 客户端更新检查（无需认证）
 	r.GET("/api/v1/updates/:platform/latest.yml", handler.GetLatestYML)
 	r.GET("/api/v1/updates/:platform/files/:filename", handler.GetUpdateFile)
+
+	// 公开文件下载（无需认证，用于客户端安装包等）
+	r.GET("/api/v1/public/files/:id/download", handler.PublicDownloadFile)
 
 	// 使用静态文件处理函数，并确保CORS中间件应用
 

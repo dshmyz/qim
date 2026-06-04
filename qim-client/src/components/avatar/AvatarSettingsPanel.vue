@@ -148,7 +148,7 @@ async function handleCreate() {
   if (loading.value) return
   try {
     await createConfig(DEFAULT_AVATAR_CONFIG)
-    window.$QMessage.success('分身创建成功')
+    window.$QMessage.success('分身创建成功，已自动提交审批申请')
   } catch (e: any) {
     window.$QMessage.error(error.value || '创建失败')
   }

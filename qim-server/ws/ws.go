@@ -5,13 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
-	"strconv"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -74,7 +76,6 @@ type Hub struct {
 	nodes               []string
 	nodeID              string
 	db                  *gorm.DB
-	dbType              string
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
@@ -111,7 +112,7 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
-func NewHub(db *gorm.DB, dbType string) *Hub {
+func NewHub(db *gorm.DB) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
@@ -134,7 +135,6 @@ func NewHub(db *gorm.DB, dbType string) *Hub {
 		nodes:               nodes,
 		nodeID:              nodeID,
 		db:                  db,
-		dbType:              dbType,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
 		sendSem:             make(chan struct{}, 50),
 	}
@@ -787,7 +787,7 @@ func fallbackHandleReadMessage(c *Client, convID uint) {
 		return
 	}
 
-	if c.hub.dbType == "mysql" {
+	if database.D.Type() == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?

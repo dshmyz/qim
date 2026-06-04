@@ -103,7 +103,22 @@
           />
         </el-form-item>
         <el-form-item label="下载链接" prop="downloadUrl">
-          <el-input v-model="versionForm.downloadUrl" placeholder="请输入安装包下载链接" />
+          <div class="download-url-input">
+            <el-input v-model="versionForm.downloadUrl" placeholder="请输入安装包下载链接或上传文件" />
+            <el-upload
+              :show-file-list="false"
+              :before-upload="beforeUpload"
+              :http-request="handleUpload"
+              accept=".exe,.dmg,.AppImage,.zip,.tar.gz"
+            >
+              <el-button type="primary" :loading="uploading">
+                {{ uploading ? '上传中' : '上传' }}
+              </el-button>
+            </el-upload>
+          </div>
+          <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
+            <el-progress :percentage="uploadProgress" :stroke-width="6" />
+          </div>
         </el-form-item>
         <el-form-item label="强制更新">
           <el-switch v-model="versionForm.forceUpdate" />
@@ -123,6 +138,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import type { Version } from '@/types'
 import { getVersions, createVersion, updateVersion, deleteVersion, toggleVersionStatus } from '@/api/versions'
+import { request } from '@/utils/request'
 
 // 分页
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
@@ -134,6 +150,8 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const versionFormRef = ref<FormInstance>()
 const submitting = ref(false)
+const uploading = ref(false)
+const uploadProgress = ref(0)
 const versionForm = reactive({
   id: 0,
   version: '',
@@ -215,6 +233,57 @@ const resetVersionForm = () => {
   versionForm.updateNotes = ''
   versionForm.forceUpdate = false
   versionForm.downloadUrl = ''
+  uploading.value = false
+  uploadProgress.value = 0
+}
+
+function beforeUpload(file: File) {
+  const maxSize = 500 * 1024 * 1024 // 500MB
+  if (file.size > maxSize) {
+    ElMessage.error('文件大小不能超过 500MB')
+    return false
+  }
+  return true
+}
+
+async function handleUpload(options: { file: File }) {
+  uploading.value = true
+  uploadProgress.value = 0
+
+  try {
+    const formData = new FormData()
+    formData.append('file', options.file)
+    formData.append('source', 'version')
+
+    const response = await request({
+      url: '/v1/upload',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          uploadProgress.value = Math.round((progressEvent.loaded / progressEvent.total) * 100)
+        }
+      },
+    })
+
+    const res = response.data as { code: number; data: { id: number; url: string; name: string } }
+    if (res.code === 0 && res.data.url) {
+      const downloadUrl = `${window.location.origin}/api/v1/public/files/${res.data.id}/download`
+      versionForm.downloadUrl = downloadUrl
+      ElMessage.success('上传成功，下载链接已自动填入')
+    } else {
+      ElMessage.error('上传失败')
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '上传失败'
+    ElMessage.error(message)
+  } finally {
+    uploading.value = false
+    uploadProgress.value = 0
+  }
 }
 
 // 提交
@@ -313,5 +382,19 @@ onMounted(fetchVersions)
   display: flex;
   justify-content: flex-end;
   padding-top: var(--space-4);
+}
+
+.download-url-input {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.download-url-input .el-input {
+  flex: 1;
+}
+
+.upload-progress {
+  margin-top: 8px;
 }
 </style>

@@ -3,6 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -11,9 +15,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/validation"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -592,6 +593,7 @@ func GetGroupAISettings(c *gin.Context) {
 		"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
 		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
 		"ai_learn_enabled":      aiConfig.LearnEnabled,
+		"ai_extract_todos":      aiConfig.ExtractTodos,
 		"approval_status":       approvalStatus,
 		"reject_reason":         rejectReason,
 	})
@@ -784,6 +786,18 @@ func UpdateGroupAISettings(c *gin.Context) {
 	groupSvc.UpdateGroup(group)
 	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
 
+	// 开启AI助手时，确保助手账号已创建并加入群
+	if aiConfig.Enabled && !oldEnabled {
+		userSvc := service.NewUserService(database.GetDB())
+		assistantName := aiConfig.AssistantName
+		if assistantName == "" {
+			assistantName = "AI助手"
+		}
+		if _, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName); err != nil {
+			logger.WithModule("GroupAI").Error("创建群助手账号失败", "groupID", group.ID, "error", err)
+		}
+	}
+
 	di.GlobalContainer.OperationLogService.LogUserOperation(c, "group_ai", "update_settings")
 
 	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
@@ -798,6 +812,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 		"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
 		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
 		"ai_learn_enabled":      aiConfig.LearnEnabled,
+		"ai_extract_todos":      aiConfig.ExtractTodos,
 	})
 }
 

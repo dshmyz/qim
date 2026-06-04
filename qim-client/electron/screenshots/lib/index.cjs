@@ -26,6 +26,7 @@ class Screenshots extends node_events_1.default {
         this.$win = null;
         this.$view = null;
         this._capturing = false;
+        this._initialized = false;
         this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
         this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
         this.onWindowShow = () => {
@@ -38,7 +39,13 @@ class Screenshots extends node_events_1.default {
             this.$win = null;
         };
         this._nativeWarmupPromise = Promise.resolve();
-        this._initPromise = this._init(opts);
+        // 延迟初始化：避免构造函数同步执行 BrowserView 和 loadURL 抢占 GPU 资源
+        // 导致 Linux 信创环境下主窗口出现短暂白屏闪烁
+        this._initPromise = new Promise((resolve) => {
+            setTimeout(() => {
+                this._init(opts).then(resolve);
+            }, 2000);
+        });
     }
     _init(opts) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -64,6 +71,7 @@ class Screenshots extends node_events_1.default {
             // macOS：首次屏幕采集会弹出系统权限弹窗，提前触发可避免用户首次截图时卡死
             // Linux X11/Wayland：预热 desktopCapturer 通道，减少首次截图延迟
             this._nativeWarmupPromise = this._probeScreenCapture();
+            this._initialized = true;
         });
     }
     /**

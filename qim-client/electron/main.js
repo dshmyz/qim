@@ -169,14 +169,13 @@ function getWindowsVersion() {
 function getAutoUpdateFeedUrl() {
   const baseUrl = currentUpdateBaseUrl
   if (process.platform === 'win32') {
-    const winVersion = getWindowsVersion()
-    if (winVersion && winVersion < 10) {
-      return `${baseUrl}/api/v1/updates/win7/`
-    }
-    return `${baseUrl}/api/v1/updates/win10/`
+    return `${baseUrl}/api/v1/updates/win/`
   }
   if (process.platform === 'linux') {
     return `${baseUrl}/api/v1/updates/linux/`
+  }
+  if (process.platform === 'darwin') {
+    return `${baseUrl}/api/v1/updates/mac/`
   }
   return null
 }
@@ -703,6 +702,10 @@ function registerIPC() {
       console.error('[screenshot] Cannot capture: not initialized')
       return
     }
+    // 如果截图组件还在初始化中，通知前端显示加载提示
+    if (!screenshotInstance._initialized) {
+      mainWindow?.webContents?.send('screenshot-loading')
+    }
     screenshotInstance.startCapture().catch(err => {
       console.error('[screenshot] startCapture error:', err)
     })
@@ -713,6 +716,10 @@ function registerIPC() {
     if (!screenshotInstance) {
       console.error('[screenshot] Cannot capture: not initialized')
       return
+    }
+    // 如果截图组件还在初始化中，通知前端显示加载提示
+    if (!screenshotInstance._initialized) {
+      mainWindow?.webContents?.send('screenshot-loading')
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       try {
@@ -834,7 +841,13 @@ function registerIPC() {
   })
 
   ipcMain.on('download-update', () => {
-    checkForUpdates()
+    // electron-updater 会在 checkForUpdates() 发现新版本后自动开始下载
+    // 这里再次触发检查，以确保下载流程启动
+    setupAutoUpdateUrl()
+    autoUpdater.checkForUpdates().catch(error => {
+      console.error('下载更新失败:', error)
+      sendToWindow('update-error', error.message)
+    })
   })
 
   ipcMain.on('start-screen-share', async () => {

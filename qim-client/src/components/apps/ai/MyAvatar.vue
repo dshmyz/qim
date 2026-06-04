@@ -16,30 +16,58 @@
     </div>
 
     <div v-if="viewMode === 'overview'" class="overview-section">
-      <div class="avatar-header">
-        <div class="avatar-avatar">
-          <Avatar v-if="currentUser" :src="currentUser.avatar" :name="currentUser.nickname || currentUser.username" :alt="avatar" size="xl" />
-          <span class="learning-badge" v-if="learningStatus === 'learning'">学习中</span>
+      <!-- 未创建分身 -->
+      <template v-if="!avatarConfig">
+        <div class="empty-state">
+          <i class="fas fa-user-astronaut empty-icon"></i>
+          <h3>还没有分身</h3>
+          <p>创建你的 AI 分身，在你不在时代替回复消息</p>
+          <button class="btn-primary" @click="viewMode = 'settings'">
+            <i class="fas fa-plus"></i> 创建分身
+          </button>
         </div>
-        <div class="avatar-info">
-          <h3>{{ currentUser ? (currentUser.nickname || currentUser.username) : '' }}的分身</h3>
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
+      </template>
+
+      <!-- 已创建分身 -->
+      <template v-else>
+        <div class="avatar-header">
+          <div class="avatar-avatar">
+            <Avatar v-if="currentUser" :src="currentUser.avatar" :name="currentUser.nickname || currentUser.username" :alt="avatar" size="xl" />
+            <span class="learning-badge" v-if="learningStatus === 'learning'">学习中</span>
           </div>
-          <span class="progress-text">学习进度: {{ learningProgress }}%</span>
+          <div class="avatar-info">
+            <h3>{{ currentUser ? (currentUser.nickname || currentUser.username) : '' }}的分身</h3>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
+            </div>
+            <span class="progress-text">学习进度: {{ learningProgress }}%</span>
+          </div>
         </div>
-      </div>
 
-      <div class="persona-preview" v-if="persona">
-        <h4>人设预览:</h4>
-        <p>{{ persona }}</p>
-      </div>
+        <div class="persona-preview" v-if="persona">
+          <h4>人设预览:</h4>
+          <p>{{ persona }}</p>
+        </div>
 
-      <div class="actions">
-        <button class="btn-primary" @click="toggleAvatar">
-          {{ avatarEnabled ? '关闭分身' : '开启分身' }}
-        </button>
-      </div>
+        <div class="actions">
+          <!-- 已启用：可关闭 -->
+          <button v-if="avatarEnabled && approvalStatus === 'approved'" class="btn-primary" @click="toggleAvatar(false)">
+            关闭分身
+          </button>
+          <!-- 已停用（审批通过但被关闭）：可重新启用 -->
+          <button v-else-if="!avatarEnabled && approvalStatus === 'approved'" class="btn-primary" @click="toggleAvatar(true)">
+            重新启用
+          </button>
+          <!-- 待审批 -->
+          <button v-else-if="approvalStatus === 'pending'" class="btn-primary btn-disabled" disabled>
+            审批中...
+          </button>
+          <!-- 被拒绝：可重新申请 -->
+          <button v-else-if="approvalStatus === 'rejected'" class="btn-primary" @click="toggleAvatar(true)">
+            重新申请
+          </button>
+        </div>
+      </template>
     </div>
 
     <AvatarSettingsPanel v-else-if="viewMode === 'settings'" />
@@ -63,16 +91,17 @@ const personaState = useAvatarPersona()
 // 从 useAvatar 获取配置
 const avatarConfig = computed(() => avatar.config.value)
 const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
+const approvalStatus = computed(() => avatar.avatarApprovalStatus.value)
 
 // 从 useAvatarPersona 获取学习状态
 const learningStatus = computed(() => personaState.learnStatus.value.status)
 const learningProgress = computed(() => personaState.learnStatus.value.progress)
 const persona = computed(() => personaState.learnedPersona.value)
 
-async function toggleAvatar() {
+async function toggleAvatar(enabled: boolean) {
   if (!avatarConfig.value) return
   try {
-    await avatar.toggleEnabled(!avatarEnabled.value)
+    await avatar.toggleEnabled(enabled)
   } catch (e) {
     console.error('切换分身失败:', e)
   }
@@ -263,5 +292,33 @@ onMounted(async () => {
 
 .btn-primary:hover {
   opacity: 0.9;
+}
+
+.btn-primary:disabled,
+.btn-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  color: var(--text-secondary, #999);
+  margin-bottom: 16px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+}
+
+.empty-state p {
+  margin: 0 0 24px 0;
+  color: var(--text-secondary, #666);
+  font-size: 14px;
 }
 </style>

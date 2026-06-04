@@ -21,9 +21,11 @@ type InitUploadRequest struct {
 // InitUploadResponse 初始化上传响应
 type InitUploadResponse struct {
 	UploadID        string `json:"upload_id"`
+	ChunkSize       int64  `json:"chunk_size"`
 	TotalChunks     int    `json:"total_chunks"`
 	UploadedChunks  []int  `json:"uploaded_chunks"`
-	IsInstantUpload bool   `json:"is_instant_upload"`
+	IsInstantUpload bool   `json:"is_quick_upload"`
+	FileID          *uint  `json:"file_id,omitempty"`
 }
 
 // UploadChunkRequest 上传分片请求（multipart form）
@@ -69,7 +71,7 @@ func InitUpload(c *gin.Context) {
 		return
 	}
 
-	task, uploadedIndexes, isInstant, err := chunkService.InitUpload(
+	task, uploadedIndexes, isInstant, quickFileID, err := chunkService.InitUpload(
 		userID.(uint),
 		req.Filename,
 		req.FileSize,
@@ -83,9 +85,11 @@ func InitUpload(c *gin.Context) {
 
 	response.Success(c, InitUploadResponse{
 		UploadID:        task.UploadID,
+		ChunkSize:       task.ChunkSize,
 		TotalChunks:     task.TotalChunks,
 		UploadedChunks:  uploadedIndexes,
 		IsInstantUpload: isInstant,
+		FileID:          quickFileID,
 	})
 }
 

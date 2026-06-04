@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -24,9 +25,8 @@ var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 
 type MessageService struct {
-	db     *gorm.DB
-	hub    *ws.Hub
-	dbType string
+	db  *gorm.DB
+	hub *ws.Hub
 
 	aiService            *ai.AIService
 	sensitiveWordCache   []model.SensitiveWord
@@ -38,15 +38,6 @@ func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *Messa
 	return &MessageService{
 		db:        db,
 		hub:       hub,
-		aiService: aiService,
-	}
-}
-
-func NewMessageServiceWithDBType(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService, dbType string) *MessageService {
-	return &MessageService{
-		db:        db,
-		hub:       hub,
-		dbType:    dbType,
 		aiService: aiService,
 	}
 }
@@ -342,10 +333,10 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 
 	// 优化：使用全文索引搜索
 	if query.Keyword != "" {
-		if s.dbType == "mysql" {
+		if database.D.SupportsFulltext() {
 			dbQuery = dbQuery.Where("MATCH(content) AGAINST(? IN BOOLEAN MODE)", query.Keyword)
 		} else {
-			// SQLite 降级：LIKE 搜索（FTS5 虚拟表需要 JOIN，此处保持兼容）
+			// SQLite / TiDB 降级：LIKE 搜索
 			dbQuery = dbQuery.Where("content LIKE ?", "%"+query.Keyword+"%")
 		}
 	}
@@ -398,10 +389,10 @@ func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uin
 
 	if keyword != "" {
 		// 优化：使用全文索引搜索
-		if s.dbType == "mysql" {
+		if database.D.SupportsFulltext() {
 			query = query.Where("MATCH(messages.content) AGAINST(? IN BOOLEAN MODE)", keyword)
 		} else {
-			// SQLite 降级：LIKE 搜索
+			// SQLite / TiDB 降级：LIKE 搜索
 			query = query.Where("messages.content LIKE ?", "%"+keyword+"%")
 		}
 	}
@@ -523,7 +514,7 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return nil
 	}
 
-	if s.dbType == "mysql" {
+	if database.D.Type() == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
@@ -764,7 +755,7 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 
 	db := s.db
 
-	if s.dbType == "mysql" {
+	if database.D.SupportsFulltext() {
 		var messages []model.Message
 		query := db.Model(&model.Message{}).
 			Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").
@@ -789,49 +780,55 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	}
 
 	// SQLite：使用 FTS5 虚拟表
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	// 其他不支持 FULLTEXT 的数据库：降级到 LIKE 搜索
+	if database.D.Type() == "sqlite" {
+		if limit <= 0 {
+			limit = 20
+		}
+		if limit > 100 {
+			limit = 100
+		}
 
-	var messages []model.Message
-	query := db.Raw(`
-		SELECT m.* FROM messages m
-		JOIN messages_fts5 fts ON m.id = fts.rowid
-		JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
-		WHERE cm.user_id = ? AND fts.content MATCH ?
-	`, userID, keyword)
-
-	if convID != nil {
-		query = db.Raw(`
+		var messages []model.Message
+		query := db.Raw(`
 			SELECT m.* FROM messages m
 			JOIN messages_fts5 fts ON m.id = fts.rowid
 			JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
-			WHERE cm.user_id = ? AND fts.content MATCH ? AND m.conversation_id = ?
-		`, userID, keyword, *convID)
-	}
+			WHERE cm.user_id = ? AND fts.content MATCH ?
+		`, userID, keyword)
 
-	if err := query.Find(&messages).Error; err != nil {
-		return nil, err
-	}
-
-	// 预加载关联数据
-	if len(messages) > 0 {
-		msgIDs := make([]uint, len(messages))
-		for i, m := range messages {
-			msgIDs[i] = m.ID
+		if convID != nil {
+			query = db.Raw(`
+				SELECT m.* FROM messages m
+				JOIN messages_fts5 fts ON m.id = fts.rowid
+				JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
+				WHERE cm.user_id = ? AND fts.content MATCH ? AND m.conversation_id = ?
+			`, userID, keyword, *convID)
 		}
-		db.Where("id IN ?", msgIDs).
-			Preload("Sender").
-			Preload("Conversation").
-			Preload("Conversation.Members").
-			Preload("Conversation.Members.User").
-			Find(&messages)
+
+		if err := query.Find(&messages).Error; err != nil {
+			return nil, err
+		}
+
+		// 预加载关联数据
+		if len(messages) > 0 {
+			msgIDs := make([]uint, len(messages))
+			for i, m := range messages {
+				msgIDs[i] = m.ID
+			}
+			db.Where("id IN ?", msgIDs).
+				Preload("Sender").
+				Preload("Conversation").
+				Preload("Conversation.Members").
+				Preload("Conversation.Members.User").
+				Find(&messages)
+		}
+
+		return messages, nil
 	}
 
-	return messages, nil
+	// TiDB / 其他不支持 FULLTEXT 的数据库：降级到 LIKE 搜索
+	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
 func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {

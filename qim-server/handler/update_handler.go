@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -14,10 +16,44 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// platformAliasMap 平台别名映射，统一不同平台标识到数据库存储的标准平台名
+var platformAliasMap = map[string]string{
+	"win":     "windows",
+	"win7":    "windows",
+	"win10":   "windows",
+	"windows": "windows",
+	"mac":     "macos",
+	"macos":   "macos",
+	"linux":   "linux",
+}
+
+// normalizePlatform 将客户端传入的平台标识标准化
+func normalizePlatform(platform string) string {
+	if mapped, ok := platformAliasMap[strings.ToLower(platform)]; ok {
+		return mapped
+	}
+	return strings.ToLower(platform)
+}
+
+// isURL 判断字符串是否为URL
+func isURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// getFilenameFromURL 从URL中提取文件名
+func getFilenameFromURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(parsed.Path)
+}
+
 // GetLatestYML 返回 electron-updater 需要的 latest.yml 格式
 // GET /api/v1/updates/:platform/latest.yml
 func GetLatestYML(c *gin.Context) {
-	platform := c.Param("platform") // win7, win10, linux, mac
+	platformParam := c.Param("platform")
+	platform := normalizePlatform(platformParam)
 
 	db := database.GetDB()
 	var version model.ClientVersion
@@ -28,13 +64,23 @@ func GetLatestYML(c *gin.Context) {
 		return
 	}
 
-	// 计算安装包的 SHA512 和大小
-	filePath := version.DownloadURL
+	// 处理下载链接：如果是URL则直接使用，否则作为本地文件路径
+	downloadURL := version.DownloadURL
 	sha512Hash := ""
 	fileSize := int64(0)
 
-	if filePath != "" {
-		sha512Hash, fileSize = computeFileSHA512(filePath)
+	if downloadURL != "" {
+		if isURL(downloadURL) {
+			// URL模式：尝试计算本地缓存文件的SHA512
+			filename := getFilenameFromURL(downloadURL)
+			localPath := filepath.Join("./uploads/updates", platform, filename)
+			if _, err := os.Stat(localPath); err == nil {
+				sha512Hash, fileSize = computeFileSHA512(localPath)
+			}
+		} else {
+			// 本地文件路径模式
+			sha512Hash, fileSize = computeFileSHA512(downloadURL)
+		}
 	}
 
 	// 生成 latest.yml
@@ -48,10 +94,10 @@ sha512: %s
 releaseDate: %s
 `,
 		version.Version,
-		filePath,
+		downloadURL,
 		sha512Hash,
 		fileSize,
-		filePath,
+		downloadURL,
 		sha512Hash,
 		version.CreatedAt.Format("2006-01-02T15:04:05.000Z"),
 	)

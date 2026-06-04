@@ -59,7 +59,16 @@ func AddTestData() {
 
 	// 获取创建的频道
 	var createdChannels []model.Channel
-	db.Find(&createdChannels)
+	if err := db.Find(&createdChannels).Error; err != nil {
+		log.Printf("查询频道失败: %v", err)
+		return
+	}
+
+	// 检查是否有足够的频道数据
+	if len(createdChannels) < 3 {
+		log.Printf("频道数据不足，期望至少 3 个，实际 %d 个", len(createdChannels))
+		return
+	}
 
 	// 添加测试频道订阅
 	subscribers := []struct {

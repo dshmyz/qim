@@ -35,7 +35,7 @@
       "copyrightYear": "2026"
     },
     "productName": "青雀 QIM",
-    "electronVersion": "33.2.1",
+    "electronVersion": "42.3.3",
     "protocols": [
       {
         "name": "QIM Auth",
@@ -142,6 +142,7 @@
     "codemirror": "^6.0.2",
     "dompurify": "^3.4.1",
     "electron-updater": "^6.8.3",
+    "fs-extra": "^11.3.5",
     "highlight.js": "^11.11.1",
     "lunar-javascript": "^1.7.7",
     "marked": "^18.0.2",
@@ -159,7 +160,7 @@
     "@vue/test-utils": "^2.4.8",
     "@vue/tsconfig": "^0.5.0",
     "concurrently": "^9.2.1",
-    "electron": "^33.4.11",
+    "electron": "^42.3.3",
     "electron-builder": "^26.8.1",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.0.2",

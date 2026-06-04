@@ -172,13 +172,15 @@ func CreateBot(c *gin.Context) {
 		creatorName = creator.Username
 	}
 
+	needsApproval := di.GlobalContainer.ApprovalService.IsApprovalEnabled(model.ApprovalTypeBot)
+
 	bot := model.Bot{
 		Name:        req.Name,
 		Description: req.Description,
 		Type:        req.Type,
 		Avatar:      req.Avatar,
 		Config:      string(configJSON),
-		IsActive:    false, // 用户自建 Bot 默认禁用，需要审批通过后启用
+		IsActive:    !needsApproval, // 需要审批时默认禁用，否则直接启用
 		CreatorID:   userID,
 		CreatorName: creatorName,
 		IsTemplate:  false,
@@ -215,18 +217,22 @@ func CreateBot(c *gin.Context) {
 		return
 	}
 
-	// 创建审批记录
-	approval := model.Approval{
-		TargetType: model.ApprovalTypeBot,
-		TargetID:   bot.ID,
-		Status:     model.ApprovalStatusPending,
-		AppliedAt:  time.Now(),
-		AppliedBy:  userID,
-	}
-	if err := tx.Create(&approval).Error; err != nil {
-		tx.Rollback()
-		response.InternalServerError(c, "创建审批记录失败")
-		return
+	// 需要审批时创建审批记录
+	approvalStatus := model.ApprovalStatusApproved
+	if needsApproval {
+		approval := model.Approval{
+			TargetType: model.ApprovalTypeBot,
+			TargetID:   bot.ID,
+			Status:     model.ApprovalStatusPending,
+			AppliedAt:  time.Now(),
+			AppliedBy:  userID,
+		}
+		if err := tx.Create(&approval).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建审批记录失败")
+			return
+		}
+		approvalStatus = model.ApprovalStatusPending
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -242,7 +248,7 @@ func CreateBot(c *gin.Context) {
 			"id":              bot.ID,
 			"name":            bot.Name,
 			"virtual_user_id": virtualUser.ID,
-			"approval_status": model.ApprovalStatusPending,
+			"approval_status": approvalStatus,
 		},
 	})
 }

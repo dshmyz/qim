@@ -3,6 +3,9 @@ package app
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/auth"
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -10,8 +13,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/test"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strings"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -311,17 +312,14 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 		seedBusinessBotTemplates(db)
 	}
 
-	// ========== 测试数据 ==========
+	// ========== 测试数据（迁移之后） ==========
 	if cfg.DataInit.TestData {
-		// 添加测试数据
 		test.AddTestData()
-
-		// 初始化测试数据
 		test.InitTestData(db)
 	}
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub(database.GetDB(), cfg.Database.Type)
+	hub := ws.NewHub(database.GetDB())
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -334,93 +332,123 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	return cfg, db, hub
 }
 
-// tableExists 使用原生 SQL 检查表是否存在，绕过 GORM HasTable 的兼容性问题
+// tableExists 检查表是否存在，委托给方言实现
 func tableExists(db *gorm.DB, tableName string) bool {
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&count)
-	return count > 0
+	return database.D.TableExists(db, tableName)
 }
 
-// MigrateDB 自动迁移数据库表
+// MigrateDB 自动迁移数据库表（分步迁移策略）
 func MigrateDB(db *gorm.DB) {
-	models := []interface{}{
+	// ========== 第一阶段：基础表（无外键依赖） ==========
+	baseModels := []interface{}{
 		&model.User{},
 		&model.Department{},
-		&model.DepartmentEmployee{},
-		&model.Conversation{},
-		&model.ConversationMember{},
-		&model.Message{},
 		&model.File{},
 		&model.Folder{},
 		&model.Note{},
-		&model.ConversationSession{},
-		&model.MessageReadReceipt{},
 		&model.Bot{},
-		&model.BotConversation{},
+		&model.AIUsageLog{},
 		&model.Event{},
-		&model.SystemMessage{},
-		&model.App{},
-		&model.Notification{},
-		&model.UserRole{},
-		&model.Channel{},
-		&model.ChannelSubscriber{},
-		&model.ChannelMessage{},
-		&model.ChannelMessageLike{},
-		&model.ChannelMessageComment{},
-		&model.ShortLink{},
-		&model.Task{},
-		&model.RealtimeSession{},     // 实时会话
-		&model.RealtimeParticipant{}, // 实时参与者
-		&model.AIConfig{},            // AI配置
-		&model.Group{},               // 群聊
-		&model.GroupDocument{},       // 群文档
-		&model.SensitiveWord{},       // 敏感词
-		&model.SystemConfig{},        // 系统配置
-		&model.OperationLog{},        // 操作日志
-		&model.ClientVersion{},       // 客户端版本
-		&model.Blacklist{},           // 黑名单
-		&model.AIProvider{},          // AI提供商
-		&model.MiniApp{},             // 小程序
-		&model.AvatarConfig{},        // 分身配置
-		&model.AvatarSession{},       // 分身会话状态
-		&model.AvatarLearnTask{},     // 分身学习任务
-		&model.FileChunk{},           // 文件分片
-		&model.UploadTask{},          // 上传任务
-		&model.AuthProvider{},        // 认证提供者
-		&model.OrgSyncConfig{},       // 组织架构同步配置
-		&model.OrgSyncLog{},          // 组织架构同步日志
-		&model.UserFeedback{},        // 用户反馈
-		&model.CrashLog{},            // 崩溃日志
-		&model.Approval{},            // 审批记录
-		&model.ApprovalConfig{},      // 审批配置
+		&model.AlertRule{},
+		&model.AlertHistory{},
+		&model.SensitiveWord{},
+		&model.SystemConfig{},
+		&model.OperationLog{},
+		&model.ClientVersion{},
+		&model.Blacklist{},
+		&model.AIProvider{},
+		&model.MiniApp{},
+		&model.FileChunk{},
+		&model.UploadTask{},
+		&model.AuthProvider{},
+		&model.OrgSyncConfig{},
+		&model.OrgSyncLog{},
+		&model.UserFeedback{},
+		&model.CrashLog{},
+		&model.Approval{},
+		&model.ApprovalConfig{},
 	}
 
-	// 逐表迁移：SQLite 的 AutoMigrate 遇到 "already exists" 会停止，
-	// 导致后续新增模型的表无法创建。逐表迁移可跳过已存在的表，继续处理新表。
-	migrated := 0
-	skipped := 0
-	for _, m := range models {
-		if err := db.AutoMigrate(m); err != nil {
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "already exists") {
-				skipped++
-			} else {
-				logger.WithModule("Migrate").Error("迁移表失败", "model", fmt.Sprintf("%T", m), "error", err)
-			}
-		} else {
-			migrated++
-		}
+	// ========== 第二阶段：关联表（有外键依赖） ==========
+	relatedModels := []interface{}{
+		&model.DepartmentEmployee{},    // 依赖 User, Department
+		&model.Conversation{},          // 独立表
+		&model.ConversationMember{},    // 依赖 User, Conversation
+		&model.Message{},               // 依赖 User, Conversation
+		&model.ConversationSession{},   // 依赖 User, Conversation
+		&model.MessageReadReceipt{},    // 依赖 User, Message
+		&model.BotConversation{},       // 依赖 Bot, User, Conversation
+		&model.SystemMessage{},         // 依赖 User
+		&model.App{},                   // 依赖 User
+		&model.Notification{},          // 依赖 User
+		&model.UserRole{},              // 依赖 User
+		&model.Channel{},               // 依赖 User
+		&model.ChannelSubscriber{},     // 依赖 User, Channel
+		&model.ChannelMessage{},        // 依赖 User, Channel
+		&model.ChannelMessageLike{},    // 依赖 User, ChannelMessage
+		&model.ChannelMessageComment{}, // 依赖 User, ChannelMessage
+		&model.ShortLink{},             // 依赖 User
+		&model.Task{},                  // 依赖 User
+		&model.RealtimeSession{},       // 独立表
+		&model.RealtimeParticipant{},   // 依赖 RealtimeSession
+		&model.AIConfig{},              // 依赖 User
+		&model.Group{},                 // 依赖 Conversation
+		&model.GroupDocument{},         // 依赖 Group, File
+		&model.AvatarConfig{},          // 依赖 User
+		&model.AvatarSession{},         // 依赖 User, AvatarConfig
+		&model.AvatarLearnTask{},       // 依赖 User, AvatarConfig
 	}
-	if migrated > 0 {
-		logger.WithModule("Migrate").Info("数据库迁移完成", "migrated", migrated, "skipped", skipped)
-	} else if skipped > 0 {
-		logger.WithModule("Migrate").Info("所有数据库表已存在，跳过迁移")
-	}
+
+	// 分阶段迁移
+	migrateModels(db, baseModels, "基础表")
+	migrateModels(db, relatedModels, "关联表")
 
 	addIndexes(db)
 	seedBuiltInApps(db)
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
+}
+
+// migrateModels 迁移一组模型
+func migrateModels(db *gorm.DB, models []interface{}, stage string) {
+	logger.WithModule("Migrate").Info(fmt.Sprintf("开始迁移 %s", stage))
+
+	migrated := 0
+	skipped := 0
+	failed := 0
+
+	for _, m := range models {
+		modelName := fmt.Sprintf("%T", m)
+
+		// 使用事务确保每个模型的迁移是原子操作
+		err := db.Transaction(func(tx *gorm.DB) error {
+			return tx.AutoMigrate(m)
+		})
+
+		if err != nil {
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "already exists") {
+				skipped++
+				logger.WithModule("Migrate").Info("表已存在，跳过", "model", modelName)
+			} else {
+				failed++
+				logger.WithModule("Migrate").Error("迁移表失败", "model", modelName, "error", err)
+			}
+		} else {
+			migrated++
+			logger.WithModule("Migrate").Info("表迁移成功", "model", modelName)
+		}
+	}
+
+	logger.WithModule("Migrate").Info(fmt.Sprintf("%s迁移统计", stage),
+		"migrated", migrated,
+		"skipped", skipped,
+		"failed", failed,
+		"total", len(models))
+
+	if failed > 0 {
+		logger.WithModule("Migrate").Error(fmt.Sprintf("%s部分表迁移失败，请检查错误日志", stage))
+	}
 }
 
 // isMigrationCompleted 检查指定的迁移版本是否已完成
@@ -545,10 +573,10 @@ func seedApprovalConfigs(db *gorm.DB) {
 
 	now := time.Now()
 	defaultConfigs := []model.ApprovalConfig{
-		{Type: "avatar", Enabled: false, Description: "分身功能审批", CreatedAt: now, UpdatedAt: now},
-		{Type: "bot", Enabled: false, Description: "机器人创建审批", CreatedAt: now, UpdatedAt: now},
-		{Type: "channel", Enabled: false, Description: "频道创建审批", CreatedAt: now, UpdatedAt: now},
-		{Type: "group_ai", Enabled: false, Description: "群聊AI助手审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "avatar", Enabled: true, Description: "分身功能审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "bot", Enabled: true, Description: "机器人创建审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "channel", Enabled: true, Description: "频道创建审批", CreatedAt: now, UpdatedAt: now},
+		{Type: "group_ai", Enabled: true, Description: "群聊AI助手审批", CreatedAt: now, UpdatedAt: now},
 	}
 
 	for _, config := range defaultConfigs {
@@ -563,49 +591,33 @@ func seedApprovalConfigs(db *gorm.DB) {
 
 // addIndexes 添加性能优化索引，确保索引已存在则跳过创建
 func addIndexes(db *gorm.DB) {
-	cfg := config.Load()
-	isMySQL := cfg.Database.Type == "mysql"
-
 	// 1. messages(conversation_id, created_at) 复合索引
 	if !db.Migrator().HasIndex(&model.Message{}, "idx_messages_conversation_created_at") {
-		if isMySQL {
-			db.Exec("CREATE INDEX idx_messages_conversation_created_at ON messages(conversation_id, created_at)")
-		} else {
-			db.Exec("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_at ON messages(conversation_id, created_at)")
-		}
+		db.Exec(database.D.CreateIndexSQL("idx_messages_conversation_created_at", "messages", []string{"conversation_id", "created_at"}))
 		logger.WithModule("Index").Info("添加 messages(conversation_id, created_at) 复合索引")
 	}
 
 	// 2. groups(name) 索引
 	if !db.Migrator().HasIndex(&model.Group{}, "idx_groups_name") {
-		if isMySQL {
-			db.Exec("CREATE INDEX idx_groups_name ON groups(name)")
-		} else {
-			db.Exec("CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)")
-		}
+		db.Exec(database.D.CreateIndexSQL("idx_groups_name", "groups", []string{"name"}))
 		logger.WithModule("Index").Info("添加 groups(name) 索引")
 	}
 
 	// 3. notifications(user_id, read, created_at) 复合索引
 	if !db.Migrator().HasIndex(&model.Notification{}, "idx_notifications_user_read_created_at") {
-		if isMySQL {
-			db.Exec("CREATE INDEX idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
-		} else {
-			db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created_at ON notifications(user_id, `read`, created_at)")
-		}
+		db.Exec(database.D.CreateIndexSQL("idx_notifications_user_read_created_at", "notifications", []string{"user_id", "read", "created_at"}))
 		logger.WithModule("Index").Info("添加 notifications(user_id, read, created_at) 复合索引")
 	}
 
 	// 4. 消息全文搜索索引
-	if isMySQL {
-		// MySQL: 使用 FULLTEXT INDEX
-		if !hasFulltextIndex(db, "messages", "ft_messages_content") {
-			db.Exec("ALTER TABLE messages ADD FULLTEXT INDEX ft_messages_content (content)")
+	if database.D.SupportsFulltext() {
+		if !database.D.HasFulltextIndex(db, "messages", "ft_messages_content") {
+			database.D.CreateFulltextIndex(db, "messages", "ft_messages_content", []string{"content"})
 			logger.WithModule("Index").Info("添加 messages FULLTEXT 全文索引")
 		}
-	} else {
-		// SQLite: 使用 FTS5 虚拟表
-		if isFTS5Available(db) && !hasFTS5Table(db, "messages_fts5") {
+	} else if database.D.SupportsFTS5() {
+		// SQLite：使用 FTS5 虚拟表
+		if !tableExists(db, "messages_fts5") {
 			err := db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')").Error
 			if err == nil {
 				db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
@@ -615,54 +627,4 @@ func addIndexes(db *gorm.DB) {
 			}
 		}
 	}
-}
-
-// hasFulltextIndex 检查 MySQL 表是否存在指定名称的 FULLTEXT 索引
-func hasFulltextIndex(db *gorm.DB, tableName, indexName string) bool {
-	var count int64
-	db.Raw(`SELECT COUNT(*) FROM information_schema.STATISTICS 
-		WHERE TABLE_SCHEMA = DATABASE() 
-		AND TABLE_NAME = ? 
-		AND INDEX_NAME = ?`, tableName, indexName).Scan(&count)
-	return count > 0
-}
-
-// hasFTS5Table 检查 SQLite 是否存在 FTS5 虚拟表
-func hasFTS5Table(db *gorm.DB, tableName string) bool {
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", tableName).Scan(&count)
-	return count > 0
-}
-
-// isFTS5Available 检查 SQLite 是否支持 FTS5
-func isFTS5Available(db *gorm.DB) bool {
-	var result int
-	err := db.Raw("SELECT 1 FROM sqlite_master WHERE name = 'fts5' AND type = 'table'").Scan(&result).Error
-	if err == nil && result == 1 {
-		return true
-	}
-
-	err = db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS __fts5_test USING fts5(content)").Error
-	if err == nil {
-		db.Exec("DROP TABLE __fts5_test")
-		return true
-	}
-	return false
-}
-
-// createFulltextIndexMySQL 在 MySQL 上创建全文索引
-func createFulltextIndexMySQL(db *gorm.DB, tableName, indexName string, columns []string) bool {
-	var exists bool
-	db.Raw(`SELECT EXISTS(SELECT 1 FROM information_schema.STATISTICS 
-		WHERE TABLE_SCHEMA = DATABASE() 
-		AND TABLE_NAME = ? 
-		AND INDEX_NAME = ?)`, tableName, indexName).Scan(&exists)
-
-	if exists {
-		return false
-	}
-
-	cols := strings.Join(columns, ", ")
-	db.Exec(fmt.Sprintf("ALTER TABLE %s ADD FULLTEXT INDEX %s (%s)", tableName, indexName, cols))
-	return true
 }

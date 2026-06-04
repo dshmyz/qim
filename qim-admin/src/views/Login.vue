@@ -13,8 +13,8 @@
       <div class="login-card">
         <div class="login-header">
           <img src="/app-logo-v1.png" alt="QIM Logo" class="logo-img" />
-          <h1 class="login-title">QIM Admin</h1>
-          <p class="login-subtitle">企业级即时通讯管理后台</p>
+          <h1 class="login-title">{{ adminTitle }}</h1>
+          <p class="login-subtitle">{{ productNameCN }}管理后台</p>
         </div>
 
         <el-form
@@ -76,7 +76,7 @@ import type { FormInstance } from 'element-plus'
 import { login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissionStore } from '@/stores/permission'
-import { getCopyrightShort } from '@/config/appConfig'
+import { getCopyrightShort, getAdminTitle, getProductNameCN } from '@/config/appConfig'
 
 const router = useRouter()
 const route = useRoute()
@@ -85,6 +85,8 @@ const permissionStore = usePermissionStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const copyrightShort = getCopyrightShort()
+const adminTitle = getAdminTitle()
+const productNameCN = getProductNameCN()
 
 const loginForm = reactive({
   username: '',

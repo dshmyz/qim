@@ -170,16 +170,17 @@ const MAX_RETRY_COUNT = 3
  */
 export async function initUpload(
   file: File,
-  folderId?: number
+  folderId?: number,
+  fileHash?: string
 ): Promise<InitUploadResponse> {
-  // 计算 MD5
-  const fileHash = await calculateMD5(file)
+  // 如果外部已提供 MD5 则直接使用，避免重复计算
+  const hash = fileHash || await calculateMD5(file)
 
   // 调用初始化 API
   const response = await fileApi.initUpload({
     filename: file.name,
     file_size: file.size,
-    file_hash: fileHash,
+    file_hash: hash,
     folder_id: folderId ?? null,
     mime_type: file.type || 'application/octet-stream'
   })
@@ -439,8 +440,8 @@ export async function uploadFile(
     // 1. 计算文件 MD5
     const fileHash = await calculateMD5(file)
 
-    // 2. 初始化上传
-    const initResponse = await initUpload(file, folderId)
+    // 2. 初始化上传（传入 fileHash 避免重复计算）
+    const initResponse = await initUpload(file, folderId, fileHash)
 
     // 检查是否秒传
     if (initResponse.is_quick_upload && initResponse.file_id) {
@@ -452,11 +453,8 @@ export async function uploadFile(
     // 3. 分片上传
     const { chunk_size, total_chunks, uploaded_chunks } = initResponse
 
-    // 获取分片策略
-    const strategy = getChunkStrategy(file.size)
-
-    // 分片
-    const chunks = splitFile(file, strategy.chunkSize)
+    // 使用后端返回的分片大小进行分片，确保前后端分片策略一致
+    const chunks = splitFile(file, chunk_size)
 
     // 创建上传管理器
     const manager: UploadManager = {

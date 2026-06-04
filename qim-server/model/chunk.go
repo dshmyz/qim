@@ -29,6 +29,7 @@ type UploadTask struct {
 	Filename        string         `json:"filename" gorm:"size:255;not null"`             // 文件名
 	FileSize        int64          `json:"file_size" gorm:"not null"`                     // 文件大小（字节）
 	FileHash        string         `json:"file_hash" gorm:"size:64;not null"`             // 文件整体 MD5
+	ChunkSize       int64          `json:"chunk_size" gorm:"not null"`                    // 分片大小（字节）
 	TotalChunks     int            `json:"total_chunks" gorm:"not null"`                  // 总分片数
 	UploadedChunks  int            `json:"uploaded_chunks" gorm:"default:0"`              // 已上传分片数
 	FolderID        *uint          `json:"folder_id" gorm:"index"`                        // 文件夹ID，可为空

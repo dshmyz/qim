@@ -2,12 +2,14 @@
   <div class="avatar-basic-settings-simple">
     <ApprovalStatusSection
       :approval-status="approvalStatus"
+      :enabled="modelValue.enabled"
       :reject-reason="modelValue.approvalRejectedReason"
       :applied-at="modelValue.approvalAppliedAt"
       :approved-at="modelValue.approvalReviewedAt"
       :applying="applying"
       @apply="handleApply"
       @cancel="handleCancel"
+      @enable="handleEnable"
     />
 
     <div class="setting-divider"></div>
@@ -15,15 +17,39 @@
     <div class="setting-item">
       <div class="setting-row">
         <span class="setting-label">启用分身</span>
-        <Switch 
-          v-model="localEnabled" 
-          :disabled="!canEnable"
+        <!-- 审批通过后：显示 Switch 可自由开关 -->
+        <Switch
+          v-if="approvalStatus === 'approved'"
+          :model-value="modelValue.enabled"
+          :disabled="applying"
+          @update:model-value="handleSwitchChange"
         />
+        <!-- 审批中：显示状态标签 -->
+        <span v-else-if="approvalStatus === 'pending'" class="status-tag pending">
+          审批中
+        </span>
+        <!-- 被拒绝：显示重新申请按钮 -->
+        <button v-else-if="approvalStatus === 'rejected'" class="btn-apply" @click="handleApply" :disabled="applying">
+          {{ applying ? '申请中...' : '重新申请' }}
+        </button>
+        <!-- 未申请（一般不会出现，创建时已自动申请） -->
+        <button v-else class="btn-apply" @click="handleApply" :disabled="applying">
+          {{ applying ? '申请中...' : '申请启用' }}
+        </button>
       </div>
-      <span class="setting-hint" v-if="!canEnable">
-        需要先通过审批才能启用分身
+      <span class="setting-hint" v-if="applying">
+        处理中...
       </span>
-      <span class="setting-hint" v-else>
+      <span class="setting-hint" v-else-if="approvalStatus === 'pending'">
+        分身正在审批中，请等待管理员审核
+      </span>
+      <span class="setting-hint" v-else-if="approvalStatus === 'rejected'">
+        申请已被拒绝，请修改配置后重新申请
+      </span>
+      <span class="setting-hint" v-else-if="!modelValue.enabled && approvalStatus === 'approved'">
+        分身已通过审批，可开启使用
+      </span>
+      <span class="setting-hint" v-else-if="modelValue.enabled">
         开启后，分身将在你设定的规则下代替你回复消息
       </span>
     </div>
@@ -117,21 +143,17 @@ const emit = defineEmits<{
 const applying = ref(false)
 const keywordInput = ref('')
 
-const localEnabled = computed({
-  get: () => props.modelValue?.enabled ?? false,
-  set: (value: boolean) => {
-    if (canEnable.value) {
-      update('enabled', value)
-    }
+// Switch 变更处理：开启走审批，关闭直接生效
+async function handleSwitchChange(value: boolean) {
+  if (value) {
+    await handleApply()
+  } else {
+    update('enabled', false)
   }
-})
+}
 
 const approvalStatus = computed<AvatarApprovalStatus>(() => {
   return props.modelValue.approvalStatus || 'none'
-})
-
-const canEnable = computed(() => {
-  return approvalStatus.value === 'approved'
 })
 
 const modeLabel = computed(() => {
@@ -174,6 +196,18 @@ async function handleCancel() {
     emit('update:modelValue', result)
   } catch (error) {
     console.error('取消申请失败', error)
+  } finally {
+    applying.value = false
+  }
+}
+
+async function handleEnable() {
+  applying.value = true
+  try {
+    const result = await avatarAPI.applyForApproval()
+    emit('update:modelValue', result)
+  } catch (error) {
+    console.error('启用分身失败', error)
   } finally {
     applying.value = false
   }
@@ -228,6 +262,41 @@ function removeKeyword(index: number) {
 <style scoped>
 .avatar-basic-settings-simple {
   padding: 16px;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-tag.pending {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3B82F6;
+}
+
+.btn-apply {
+  padding: 4px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: var(--primary-color, #3B82F6);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.btn-apply:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .setting-divider {

@@ -1,3 +1,14 @@
+export interface DBPoolStats {
+  maxOpenConnections: number
+  openConnections: number
+  inUse: number
+  idle: number
+  waitCount: number
+  waitDuration: number
+  maxIdleClosed: number
+  maxLifetimeClosed: number
+}
+
 export interface ServerMetrics {
   cpu: number
   memory: number
@@ -6,6 +17,7 @@ export interface ServerMetrics {
     in: number
     out: number
   }
+  dbPool?: DBPoolStats
   timestamp: string
   uptime: number
   goRoutines: number

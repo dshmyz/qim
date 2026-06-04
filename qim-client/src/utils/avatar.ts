@@ -39,10 +39,9 @@ export const generateAvatar = (name: string): string => {
   const ctx = canvas.getContext('2d')
 
   if (ctx) {
+    // 绘制填满整个画布的矩形背景，避免透明缝隙
     ctx.fillStyle = bgColor
-    ctx.beginPath()
-    ctx.arc(50, 50, 50, 0, 2 * Math.PI)
-    ctx.fill()
+    ctx.fillRect(0, 0, 100, 100)
     ctx.fillStyle = '#fff'
     ctx.font = 'bold 40px Arial'
     ctx.textAlign = 'center'

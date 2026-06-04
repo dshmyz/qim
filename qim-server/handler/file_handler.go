@@ -34,6 +34,7 @@ var (
 		".txt": true, ".md": true, ".csv": true,
 		".zip": true, ".rar": true, ".7z": true,
 		".mp3": true, ".wav": true, ".mp4": true, ".avi": true, ".mov": true,
+		".exe": true, ".msi": true, ".dmg": true, ".pkg": true, ".AppImage": true, ".deb": true, ".rpm": true,
 	}
 	uploadConfigCache   map[string]interface{}
 	uploadConfigMu      sync.RWMutex
@@ -776,6 +777,50 @@ func DownloadFile(c *gin.Context) {
 	defer reader.Close()
 
 	c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	c.Header("Content-Type", file.MimeType)
+	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
+
+	if _, err := io.Copy(c.Writer, reader); err != nil {
+		logger.WithModule("FileHandler").Error("下载文件失败", "error", err)
+		return
+	}
+}
+
+// PublicDownloadFile 公开下载文件（无需认证，用于客户端安装包等）
+func PublicDownloadFile(c *gin.Context) {
+	fileIDStr := c.Param("id")
+
+	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的文件ID")
+		return
+	}
+
+	db := database.GetDB()
+	var file model.File
+	if err := db.First(&file, uint(fileID)).Error; err != nil {
+		response.NotFound(c, "文件不存在")
+		return
+	}
+
+	mgr := di.GlobalContainer.StorageManager
+	st, key, ok := mgr.ByPath(file.StoragePath)
+	if !ok || st == nil {
+		response.InternalServerError(c, "存储类型不支持")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	reader, err := st.Get(ctx, key)
+	if err != nil {
+		response.InternalServerError(c, "读取文件失败")
+		return
+	}
+	defer reader.Close()
+
+	c.Header("Content-Disposition", "attachment; filename=\""+file.OriginalName+"\"")
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
 

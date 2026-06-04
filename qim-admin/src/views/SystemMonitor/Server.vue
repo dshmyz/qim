@@ -83,6 +83,75 @@
       </el-col>
     </el-row>
 
+    <!-- 数据库连接池 -->
+    <el-card v-if="monitorStore.serverMetrics?.dbPool" style="margin-top: 20px;">
+      <template #header>
+        <div class="card-header">
+          <span>数据库连接池</span>
+          <el-tag :type="poolStatusType" size="small">{{ poolStatusText }}</el-tag>
+        </div>
+      </template>
+      <el-row :gutter="20">
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">最大连接数</div>
+            <div class="pool-stat-value">{{ dbPool.maxOpenConnections }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">打开连接数</div>
+            <div class="pool-stat-value">{{ dbPool.openConnections }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">使用中</div>
+            <div class="pool-stat-value in-use">{{ dbPool.inUse }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">空闲</div>
+            <div class="pool-stat-value idle">{{ dbPool.idle }}</div>
+          </div>
+        </el-col>
+      </el-row>
+      <el-row :gutter="20" style="margin-top: 16px;">
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">等待次数</div>
+            <div class="pool-stat-value">{{ dbPool.waitCount }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">等待耗时</div>
+            <div class="pool-stat-value">{{ formatDuration(dbPool.waitDuration) }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">空闲关闭</div>
+            <div class="pool-stat-value">{{ dbPool.maxIdleClosed }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="pool-stat">
+            <div class="pool-stat-label">超时关闭</div>
+            <div class="pool-stat-value">{{ dbPool.maxLifetimeClosed }}</div>
+          </div>
+        </el-col>
+      </el-row>
+      <div style="margin-top: 16px;">
+        <div class="pool-bar-label">连接使用率</div>
+        <el-progress
+          :percentage="poolUsagePercent"
+          :status="poolUsagePercent > 80 ? 'exception' : poolUsagePercent > 60 ? 'warning' : 'success'"
+        />
+      </div>
+    </el-card>
+
     <!-- 服务状态 -->
     <el-card style="margin-top: 20px;">
       <template #header>
@@ -161,6 +230,27 @@ const networkPercentage = computed(() => {
   return Math.min(Math.round((total / maxBandwidth) * 100), 100)
 })
 
+const dbPool = computed(() => monitorStore.serverMetrics?.dbPool!)
+
+const poolUsagePercent = computed(() => {
+  if (!dbPool.value || dbPool.value.maxOpenConnections === 0) return 0
+  return Math.round((dbPool.value.openConnections / dbPool.value.maxOpenConnections) * 100)
+})
+
+const poolStatusType = computed(() => {
+  const pct = poolUsagePercent.value
+  if (pct > 80) return 'danger'
+  if (pct > 60) return 'warning'
+  return 'success'
+})
+
+const poolStatusText = computed(() => {
+  const pct = poolUsagePercent.value
+  if (pct > 80) return '紧张'
+  if (pct > 60) return '偏高'
+  return '正常'
+})
+
 const historyTimeLabels = computed(() => {
   return historyData.value.map(item => 
     new Date(item.timestamp).toLocaleTimeString('zh-CN')
@@ -211,6 +301,14 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
+// 格式化持续时间
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
+  return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`
 }
 
 // 获取状态类型
@@ -322,5 +420,35 @@ async function loadHistoryData() {
 
 .io-out {
   color: #409eff;
+}
+
+.pool-stat {
+  text-align: center;
+}
+
+.pool-stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.pool-stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #303133;
+}
+
+.pool-stat-value.in-use {
+  color: #e6a23c;
+}
+
+.pool-stat-value.idle {
+  color: #67c23a;
+}
+
+.pool-bar-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
 }
 </style>

@@ -3,12 +3,14 @@
     <!-- 审批状态区域 -->
     <ApprovalStatusSection
       :approval-status="approvalStatus"
+      :enabled="modelValue.enabled"
       :reject-reason="modelValue.approvalRejectedReason"
       :applied-at="modelValue.approvalAppliedAt"
       :approved-at="modelValue.approvalReviewedAt"
       :applying="applying"
       @apply="handleApply"
       @cancel="handleCancel"
+      @enable="handleEnable"
     />
 
     <div class="setting-divider"></div>
@@ -17,15 +19,39 @@
     <div class="setting-item">
       <div class="setting-row">
         <span class="setting-label">启用分身</span>
-        <Switch 
-          v-model="localEnabled" 
-          :disabled="!canEnable"
+        <!-- 审批通过后：显示 Switch 可自由开关 -->
+        <Switch
+          v-if="approvalStatus === 'approved'"
+          :model-value="modelValue.enabled"
+          :disabled="applying"
+          @update:model-value="handleSwitchChange"
         />
+        <!-- 审批中：显示状态标签 -->
+        <span v-else-if="approvalStatus === 'pending'" class="status-tag pending">
+          审批中
+        </span>
+        <!-- 被拒绝：显示重新申请按钮 -->
+        <button v-else-if="approvalStatus === 'rejected'" class="btn-apply" @click="handleApply" :disabled="applying">
+          {{ applying ? '申请中...' : '重新申请' }}
+        </button>
+        <!-- 未申请 -->
+        <button v-else class="btn-apply" @click="handleApply" :disabled="applying">
+          {{ applying ? '申请中...' : '申请启用' }}
+        </button>
       </div>
-      <span class="setting-hint" v-if="!canEnable">
-        需要先通过审批才能启用分身
+      <span class="setting-hint" v-if="applying">
+        处理中...
       </span>
-      <span class="setting-hint" v-else>
+      <span class="setting-hint" v-else-if="approvalStatus === 'pending'">
+        分身正在审批中，请等待管理员审核
+      </span>
+      <span class="setting-hint" v-else-if="approvalStatus === 'rejected'">
+        申请已被拒绝，请修改配置后重新申请
+      </span>
+      <span class="setting-hint" v-else-if="!modelValue.enabled && approvalStatus === 'approved'">
+        分身已通过审批，可开启使用
+      </span>
+      <span class="setting-hint" v-else-if="modelValue.enabled">
         开启后，分身将在你设定的规则下代替你回复消息
       </span>
     </div>
@@ -76,23 +102,18 @@ const emit = defineEmits<{
 }>()
 
 const applying = ref(false)
-const localEnabled = computed({
-  get: () => props.modelValue?.enabled ?? false,
-  set: (value: boolean) => {
-    if (canEnable.value) {
-      update('enabled', value)
-    }
+// Switch 变更处理：开启走审批，关闭直接生效
+async function handleSwitchChange(value: boolean) {
+  if (value) {
+    await handleApply()
+  } else {
+    update('enabled', false)
   }
-})
+}
 
 // 审批状态
 const approvalStatus = computed<AvatarApprovalStatus>(() => {
   return props.modelValue.approvalStatus || 'none'
-})
-
-// 是否可以启用分身
-const canEnable = computed(() => {
-  return approvalStatus.value === 'approved'
 })
 
 function update<K extends keyof AvatarConfigWithApproval>(key: K, value: AvatarConfigWithApproval[K]) {
@@ -143,6 +164,19 @@ async function handleCancel() {
   }
 }
 
+async function handleEnable() {
+  applying.value = true
+  try {
+    const result = await avatarAPI.applyForApproval()
+    emit('update:modelValue', result)
+    window.$QMessage.success('已提交启用申请')
+  } catch (e: any) {
+    window.$QMessage.error(e.response?.data?.message || '启用失败')
+  } finally {
+    applying.value = false
+  }
+}
+
 function handleNameInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   const result = validateAliasName(value)
@@ -155,21 +189,7 @@ function handleNameInput(event: Event) {
 </script>
 
 <style scoped>
+@import './avatar-shared.css';
+
 .avatar-basic-settings { padding: 16px; }
-
-.setting-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: 16px 0;
-}
-
-/* 设置项样式 */
-.setting-item { margin-bottom: 16px; }
-.setting-item > label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.setting-row { display: flex; align-items: center; justify-content: space-between; }
-.setting-label { font-size: 14px; font-weight: 500; color: var(--text-color); }
-.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.setting-hint.error { color: #F44336; }
-.form-select, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15)); }
 </style>

@@ -5,7 +5,9 @@
       <MyAssetsSection
         :bots="bots"
         :configs="configs"
+        :has-avatar-config="!!avatarConfig"
         :avatar-enabled="avatarEnabled"
+        :avatar-approval-status="avatarApprovalStatus"
         :learning-progress="learningProgress"
         :learning-status="learningStatus"
         @create-bot="showCreateBot"
@@ -93,6 +95,7 @@ const editingConfig = ref<UserAIConfig | null>(null)
 
 const avatarConfig = computed(() => avatar.config.value)
 const avatarEnabled = computed(() => avatarConfig.value?.enabled ?? false)
+const avatarApprovalStatus = computed(() => avatar.avatarApprovalStatus.value)
 const learningProgress = computed(() => personaState.learnStatus.value.progress)
 const learningStatus = computed(() => personaState.learnStatus.value.status)
 
@@ -167,9 +170,16 @@ async function handleDeleteConfig(config: UserAIConfig) {
 async function handleToggleAvatar() {
   if (!avatarConfig.value) return
   try {
-    await avatar.toggleEnabled(!avatarEnabled.value)
-  } catch (e) {
-    console.error('切换分身失败:', e)
+    if (avatarEnabled.value) {
+      // 关闭分身：直接关闭
+      await avatar.toggleEnabled(false)
+    } else {
+      // 开启分身：走申请流程（后端根据审批状态决定直接启用还是走审批）
+      await avatar.toggleEnabled(true)
+    }
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '操作失败'
+    window.$QMessage?.error(msg)
   }
 }
 
