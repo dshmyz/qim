@@ -413,24 +413,34 @@ function handleUpdateAISettings(settings: any) {
 }
 
 // 成员右键菜单
-function handleShowMemberContextMenu(event: MouseEvent, member: GroupMember) {
-  event.stopPropagation()
-
-  const menuWidth = 180
-  const menuHeight = 80
+function computeMenuPosition(clientX: number, clientY: number, menuWidth: number = 160, menuHeight: number = 160) {
   const windowWidth = window.innerWidth
   const windowHeight = window.innerHeight
 
-  let x = event.clientX
-  let y = event.clientY
+  let x = clientX
+  let y = clientY
 
   if (x + menuWidth > windowWidth) {
     x = windowWidth - menuWidth - 10
+  }
+  if (x < 0) {
+    x = 10
   }
 
   if (y + menuHeight > windowHeight) {
     y = windowHeight - menuHeight - 10
   }
+  if (y < 0) {
+    y = 10
+  }
+
+  return { x, y }
+}
+
+function handleShowMemberContextMenu(event: MouseEvent, member: GroupMember) {
+  event.stopPropagation()
+
+  const { x, y } = computeMenuPosition(event.clientX, event.clientY)
 
   memberContextMenuPosition.value = { x, y }
   selectedMember.value = member

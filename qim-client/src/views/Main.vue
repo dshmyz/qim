@@ -1778,9 +1778,9 @@ const handleApplyJoinGroup = async (item) => {
     } else {
       QMessage.error(response.message || '申请加入失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error('申请加入群组失败:', error)
-    QMessage.error('网络错误，申请加入失败')
+    QMessage.error(error.message || '申请加入失败')
   }
 }
 
@@ -2596,7 +2596,7 @@ const updateAISettings = async (settings: any) => {
     }
   } catch (error: any) {
     logger.error('更新 AI 设置失败:', error)
-    QMessage.error('网络错误，更新 AI 设置失败')
+    QMessage.error(error.message || '更新 AI 设置失败')
   }
 }
 
@@ -2620,9 +2620,9 @@ const removeMemberFromGroup = async () => {
       } else {
         QMessage.error(response.message || '移除成员失败')
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('移除成员失败:', error)
-      QMessage.error('网络错误，移除成员失败')
+      QMessage.error(error.message || '移除成员失败')
     }
   }
   closeMemberContextMenu()

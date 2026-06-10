@@ -113,9 +113,9 @@ export function useGroup() {
         QMessage.error(response.message || '创建群聊失败')
         return null
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('创建群聊失败:', error)
-      QMessage.error('网络错误，创建群聊失败')
+      QMessage.error(error.message || '创建群聊失败')
       return null
     }
   }
@@ -157,9 +157,9 @@ export function useGroup() {
         QMessage.error(response.message || '解散群聊失败')
         return false
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('解散群聊失败:', error)
-      QMessage.error('网络错误，解散群聊失败')
+      QMessage.error(error.message || '解散群聊失败')
       return false
     }
   }
@@ -197,9 +197,9 @@ export function useGroup() {
         QMessage.error(response.message || '退出群聊失败')
         return false
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('退出群聊失败:', error)
-      QMessage.error('网络错误，退出群聊失败')
+      QMessage.error(error.message || '退出群聊失败')
       return false
     }
   }
@@ -221,9 +221,9 @@ export function useGroup() {
         QMessage.error(response.message || '更新群组信息失败')
         return null
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('更新群组信息失败:', error)
-      QMessage.error('网络错误，更新群组信息失败')
+      QMessage.error(error.message || '更新群组信息失败')
       return null
     }
   }
@@ -245,9 +245,9 @@ export function useGroup() {
         QMessage.error(response.message || '添加成员失败')
         return null
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('添加群组成员失败:', error)
-      QMessage.error('网络错误，添加成员失败')
+      QMessage.error(error.message || '添加成员失败')
       return null
     }
   }
@@ -270,9 +270,9 @@ export function useGroup() {
         QMessage.error(response.message || '移除成员失败')
         return false
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('移除群组成员失败:', error)
-      QMessage.error('网络错误，移除成员失败')
+      QMessage.error(error.message || '移除成员失败')
       return false
     }
   }
@@ -299,9 +299,9 @@ export function useGroup() {
         QMessage.error(response.message || '设置管理员失败')
         return false
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('设置管理员失败:', error)
-      QMessage.error('网络错误，设置管理员失败')
+      QMessage.error(error.message || '设置管理员失败')
       return false
     }
   }
@@ -323,9 +323,9 @@ export function useGroup() {
         QMessage.error(response.message || '更新群公告失败')
         return false
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('更新群公告失败:', error)
-      QMessage.error('网络错误，更新群公告失败')
+      QMessage.error(error.message || '更新群公告失败')
       return false
     }
   }
