@@ -759,16 +759,18 @@ type OperationLog struct {
 // 客户端版本
 type ClientVersion struct {
 	ID          uint           `json:"id" gorm:"primarykey"`
-	Version     string         `json:"version" gorm:"size:50;uniqueIndex;not null"`
+	Version     string         `json:"version" gorm:"size:50;uniqueIndex:idx_version_deleted;not null"`
 	Platform    string         `json:"platform" gorm:"size:20;not null"`   // windows, mac, linux
 	Type        string         `json:"type" gorm:"size:20;default:'full'"` // full, patch
 	DownloadURL string         `json:"download_url" gorm:"size:500"`
+	Sha512      string         `json:"sha512" gorm:"size:200"`     // 文件 SHA512 哈希（缓存）
+	FileSize    int64          `json:"file_size" gorm:"default:0"` // 文件大小（缓存）
 	Changelog   string         `json:"changelog" gorm:"type:text"`
 	ForceUpdate bool           `json:"force_update" gorm:"default:false"`
 	Enabled     bool           `json:"enabled" gorm:"default:true"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"uniqueIndex:idx_version_deleted"`
 }
 
 // 黑名单

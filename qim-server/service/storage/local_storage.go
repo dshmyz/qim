@@ -41,6 +41,16 @@ func (l *LocalStorage) resolvePath(key string) (string, error) {
 	if strings.Contains(cleaned, "..") {
 		return "", fmt.Errorf("非法路径: %s", key)
 	}
+
+	// 检测并去除重复的 uploads/ 前缀
+	// 如果 baseDir 是 ./uploads 且 key 以 uploads/ 开头，去除重复前缀
+	baseDirName := filepath.Base(l.baseDir)
+	if baseDirName == "uploads" && strings.HasPrefix(cleaned, "uploads/") {
+		cleaned = strings.TrimPrefix(cleaned, "uploads/")
+	} else if baseDirName == "uploads" && cleaned == "uploads" {
+		cleaned = "."
+	}
+
 	path := filepath.Join(l.baseDir, cleaned)
 	absPath, err := filepath.Abs(path)
 	if err != nil {

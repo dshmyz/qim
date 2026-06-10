@@ -170,7 +170,7 @@ async function loadAISettings() {
   }
 }
 
-watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.aiPersonality, props.aiCustomPrompt, props.aiLanguage, props.aiMaxLength, props.aiMentionReplyMode, props.aiAntiSpamInterval, props.aiTriggerKeywords, props.aiLearnEnabled, props.approvalStatus, props.rejectReason], (newVal, oldVal) => {
+watch(() => [props.aiEnabled, props.aiAssistantName, props.aiReplyMode, props.aiPersonality, props.aiCustomPrompt, props.aiLanguage, props.aiMaxLength, props.aiMentionReplyMode, props.aiAntiSpamInterval, props.aiTriggerKeywords, props.aiLearnEnabled, props.aiExtractTodos, props.approvalStatus, props.rejectReason], (newVal, oldVal) => {
   if (!oldVal) return
   settings.value = {
     aiEnabled: props.aiEnabled,

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/orgsync"
@@ -13,15 +14,16 @@ import (
 )
 
 type LDAPConfig struct {
-	Server            string            `json:"server"`
-	Port              int               `json:"port"`
-	UseTLS            bool              `json:"use_tls"`
-	BaseDN            string            `json:"base_dn"`
-	BindDN            string            `json:"bind_dn"`
-	BindPassword      string            `json:"bind_password"`
-	DepartmentFilter  string            `json:"department_filter"`
-	UserFilter        string            `json:"user_filter"`
-	AttributeMapping  map[string]string `json:"attribute_mapping"`
+	Server           string            `json:"server"`
+	Port             int               `json:"port"`
+	UseTLS           bool              `json:"use_tls"`
+	BaseDN           string            `json:"base_dn"`
+	BindDN           string            `json:"bind_dn"`
+	BindPassword     string            `json:"bind_password"`
+	DepartmentFilter string            `json:"department_filter"`
+	UserFilter       string            `json:"user_filter"`
+	AttributeMapping map[string]string `json:"attribute_mapping"`
+	IncludeBaseDN    *bool             `json:"include_base_dn"`
 }
 
 type LDAPSyncer struct {
@@ -103,8 +105,8 @@ func (s *LDAPSyncer) Fetch(ctx context.Context, configStr string) (*orgsync.OrgD
 	}
 
 	result := &orgsync.OrgData{
-		Departments:     departments,
-		Users:           users,
+		Departments:       departments,
+		Users:             users,
 		UserDeptRelations: userDeptRels,
 	}
 
@@ -142,8 +144,32 @@ func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo
 		dnToUUID[entry.DN] = uuid
 	}
 
-	departments := make([]orgsync.DepartmentInfo, 0, len(sr.Entries))
-	for _, entry := range sr.Entries {
+	departments := s.departmentsFromEntries(sr.Entries)
+
+	return departments, dnToUUID, nil
+}
+
+func (s *LDAPSyncer) departmentsFromEntries(entries []*ldap.Entry) []orgsync.DepartmentInfo {
+	dnToUUID := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		uuid := entry.GetAttributeValue("entryUUID")
+		if uuid == "" {
+			uuid = entry.DN
+		}
+		dnToUUID[entry.DN] = uuid
+	}
+
+	departments := make([]orgsync.DepartmentInfo, 0, len(entries))
+	includeBaseDN := s.includeBaseDNDepartment()
+	excludedBaseLevelOffset := 0
+	if !includeBaseDN {
+		excludedBaseLevelOffset = orgRDNCount(parseDN(s.config.BaseDN))
+	}
+	for _, entry := range entries {
+		if !includeBaseDN && sameDN(entry.DN, s.config.BaseDN) {
+			continue
+		}
+
 		name := entry.GetAttributeValue("ou")
 		if name == "" {
 			continue
@@ -162,6 +188,7 @@ func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo
 			}
 		}
 		level = ouIndex - 1
+		level -= excludedBaseLevelOffset
 		if level < 0 {
 			level = 0
 		}
@@ -169,7 +196,9 @@ func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo
 		// 从 DN 解析父部门的 entryUUID
 		if len(dnParts) > 1 {
 			parentDN := joinDN(dnParts[1:])
-			parentID = dnToUUID[parentDN]
+			if includeBaseDN || !sameDN(parentDN, s.config.BaseDN) {
+				parentID = dnToUUID[parentDN]
+			}
 		}
 
 		departments = append(departments, orgsync.DepartmentInfo{
@@ -180,7 +209,7 @@ func (s *LDAPSyncer) fetchDepartments(conn *ldap.Conn) ([]orgsync.DepartmentInfo
 		})
 	}
 
-	return departments, dnToUUID, nil
+	return departments
 }
 
 // joinDN 将 DN 各部分重新拼接为 DN 字符串
@@ -232,10 +261,7 @@ func (s *LDAPSyncer) fetchUsers(conn *ldap.Conn, dnToUUID map[string]string) ([]
 			continue
 		}
 
-		userDeptID := ""
-		if deptNumbers := entry.GetAttributeValues("departmentNumber"); len(deptNumbers) > 0 {
-			userDeptID = deptNumbers[0]
-		}
+		userDeptID := s.resolveUserDepartmentID(entry, dnToUUID)
 
 		user := orgsync.UserInfo{
 			ID:           dnToUUID[entry.DN],
@@ -264,19 +290,44 @@ func (s *LDAPSyncer) fetchUserDepartmentRelations(users []orgsync.UserInfo, dnTo
 			})
 		}
 
-		// 从用户 DN 解析父部门，再通过 dnToUUID 映射到部门 entryUUID
-		if parentDN := getParentDN(user.ID); parentDN != "" {
+	}
+
+	return relations, nil
+}
+
+func (s *LDAPSyncer) resolveUserDepartmentID(entry *ldap.Entry, dnToUUID map[string]string) string {
+	if parentDN := getParentDN(entry.DN); parentDN != "" {
+		if s.includeBaseDNDepartment() || !sameDN(parentDN, s.config.BaseDN) {
 			if deptUUID, ok := dnToUUID[parentDN]; ok {
-				relations = append(relations, orgsync.UserDeptRelation{
-					UserID:       user.ID,
-					DepartmentID: deptUUID,
-					IsLeader:     false,
-				})
+				return deptUUID
 			}
 		}
 	}
 
-	return relations, nil
+	if deptNumbers := entry.GetAttributeValues("departmentNumber"); len(deptNumbers) > 0 {
+		return deptNumbers[0]
+	}
+
+	return ""
+}
+
+func (s *LDAPSyncer) includeBaseDNDepartment() bool {
+	return s.config.IncludeBaseDN == nil || *s.config.IncludeBaseDN
+}
+
+func sameDN(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+func orgRDNCount(parts []string) int {
+	count := 0
+	for _, part := range parts {
+		if len(part) >= 3 && (part[:3] == "ou=" || part[:3] == "OU=" ||
+			part[:3] == "cn=" || part[:3] == "CN=") {
+			count++
+		}
+	}
+	return count
 }
 
 // getParentDN 从 DN 中去掉第一段 RDN，返回父节点 DN

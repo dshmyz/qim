@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
+	"strconv"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -110,8 +110,7 @@ func ExportNote(c *gin.Context) {
 	content := fmt.Sprintf("# %s\n\n%s", note.Title, note.Content)
 
 	filename := fmt.Sprintf("%s.md", note.Title)
-	encodedFilename := url.PathEscape(filename)
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", filename, encodedFilename))
+	c.Header("Content-Disposition", sanitizeFilename(filename))
 	c.Header("Content-Type", "text/markdown; charset=utf-8")
 	c.String(http.StatusOK, content)
 }

@@ -37,6 +37,7 @@ func setupChunkHandlerTestDB(t *testing.T) *gorm.DB {
 		&model.Folder{},
 		&model.UploadTask{},
 		&model.FileChunk{},
+		&model.SystemConfig{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
@@ -69,6 +70,9 @@ func setupChunkHandlerTestRouter(t *testing.T) (*gin.Engine, *gorm.DB, string) {
 	di.InitContainer(cfg, nil)
 	database.DB = db
 	SetConfig(cfg)
+
+	// 确保 SystemConfigService 使用测试 DB
+	di.GlobalContainer.SystemConfigService = service.NewSystemConfigService(db)
 
 	// 注册 ChunkService 到 DI 容器
 	tempDir := t.TempDir()
@@ -194,7 +198,7 @@ func TestUploadChunk_Success(t *testing.T) {
 
 	// 先初始化上传
 	chunkService := service.NewChunkService(db, tempDir)
-	task, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-upload", nil)
+	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-upload", nil)
 	assert.NoError(t, err)
 
 	// 准备分片数据
@@ -273,7 +277,7 @@ func TestCompleteUpload_Success(t *testing.T) {
 
 	// 初始化并上传所有分片
 	chunkService := service.NewChunkService(db, tempDir)
-	task, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-complete", nil)
+	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-complete", nil)
 	assert.NoError(t, err)
 
 	// 上传所有分片
@@ -318,7 +322,7 @@ func TestCompleteUpload_IncompleteChunks(t *testing.T) {
 
 	// 初始化但不上传所有分片
 	chunkService := service.NewChunkService(db, tempDir)
-	task, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-incomplete", nil)
+	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-incomplete", nil)
 	assert.NoError(t, err)
 
 	// 只上传一个分片
@@ -349,7 +353,7 @@ func TestCancelUpload_Success(t *testing.T) {
 
 	// 初始化上传
 	chunkService := service.NewChunkService(db, tempDir)
-	task, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-cancel", nil)
+	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-cancel", nil)
 	assert.NoError(t, err)
 
 	// 取消上传

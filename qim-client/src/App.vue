@@ -25,6 +25,7 @@ const handleLogout = () => {
   isLoggedIn.value = false
   localStorage.removeItem('user')
   localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
 }
 
 onMounted(() => {

@@ -2,12 +2,14 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -276,9 +278,9 @@ func (s *ApprovalService) approveAvatar(id uint, adminID uint, now *time.Time) e
 	tx := s.db.Begin()
 
 	if err := tx.Model(&approval).Updates(map[string]interface{}{
-		"status":       model.ApprovalStatusApproved,
-		"approved_at":  now,
-		"approved_by":  adminID,
+		"status":      model.ApprovalStatusApproved,
+		"approved_at": now,
+		"approved_by": adminID,
 	}).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -421,7 +423,10 @@ func (s *ApprovalService) approveGroupAI(id uint, adminID uint, now *time.Time) 
 	if assistantName == "" {
 		assistantName = "AI助手"
 	}
-	if _, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName); err != nil {
+	if aiUser, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName); err == nil {
+		content := fmt.Sprintf("%s 已加入群聊，开始为大家服务", assistantName)
+		NotifyMembersJoined(s.db, group.ConversationID, aiUser.ID, content, []model.User{*aiUser})
+	} else {
 		logger.WithModule("ApprovalService").Error("创建群助手账号失败", "groupID", group.ID, "error", err)
 	}
 
@@ -464,10 +469,10 @@ func (s *ApprovalService) rejectAvatar(id uint, adminID uint, now *time.Time, re
 	tx := s.db.Begin()
 
 	if err := tx.Model(&approval).Updates(map[string]interface{}{
-		"status":         model.ApprovalStatusRejected,
-		"reject_reason":  reason,
-		"approved_at":    now,
-		"approved_by":    adminID,
+		"status":        model.ApprovalStatusRejected,
+		"reject_reason": reason,
+		"approved_at":   now,
+		"approved_by":   adminID,
 	}).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -506,10 +511,10 @@ func (s *ApprovalService) rejectBot(id uint, adminID uint, now *time.Time, reaso
 	tx := s.db.Begin()
 
 	if err := tx.Model(&approval).Updates(map[string]interface{}{
-		"status":         model.ApprovalStatusRejected,
-		"reject_reason":  reason,
-		"approved_at":    now,
-		"approved_by":    adminID,
+		"status":        model.ApprovalStatusRejected,
+		"reject_reason": reason,
+		"approved_at":   now,
+		"approved_by":   adminID,
 	}).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -549,10 +554,10 @@ func (s *ApprovalService) rejectChannel(id uint, adminID uint, now *time.Time, r
 	}
 
 	if err := s.db.Model(&approval).Updates(map[string]interface{}{
-		"status":         model.ApprovalStatusRejected,
-		"reject_reason":  reason,
-		"approved_at":    now,
-		"approved_by":    adminID,
+		"status":        model.ApprovalStatusRejected,
+		"reject_reason": reason,
+		"approved_at":   now,
+		"approved_by":   adminID,
 	}).Error; err != nil {
 		return err
 	}
@@ -585,10 +590,10 @@ func (s *ApprovalService) rejectGroupAI(id uint, adminID uint, now *time.Time, r
 	tx := s.db.Begin()
 
 	if err := tx.Model(&approval).Updates(map[string]interface{}{
-		"status":         model.ApprovalStatusRejected,
-		"reject_reason":  reason,
-		"approved_at":    now,
-		"approved_by":    adminID,
+		"status":        model.ApprovalStatusRejected,
+		"reject_reason": reason,
+		"approved_at":   now,
+		"approved_by":   adminID,
 	}).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -716,14 +721,14 @@ func (s *ApprovalService) ReapplyApproval(approvalID uint, appliedBy uint) error
 func (s *ApprovalService) SendNotification(notification ApprovalNotification) {
 	if ws.GlobalHub != nil {
 		msg, _ := json.Marshal(map[string]interface{}{
-			"type":             "approval_notification",
-			"entity_name":      notification.EntityName,
-			"entity_type":      notification.EntityType,
-			"user_id":          notification.UserID,
-			"action":           string(notification.Action),
-			"reason":           notification.Reason,
-			"extra_context":    notification.ExtraContext,
-			"created_at":       time.Now().Unix(),
+			"type":          "approval_notification",
+			"entity_name":   notification.EntityName,
+			"entity_type":   notification.EntityType,
+			"user_id":       notification.UserID,
+			"action":        string(notification.Action),
+			"reason":        notification.Reason,
+			"extra_context": notification.ExtraContext,
+			"created_at":    time.Now().Unix(),
 		})
 		ws.GlobalHub.Broadcast <- msg
 	}

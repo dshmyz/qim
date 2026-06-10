@@ -84,6 +84,7 @@ export function useNetwork() {
    */
   const gotoLogin = () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     window.location.reload()
   }

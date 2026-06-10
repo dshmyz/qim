@@ -100,6 +100,7 @@
       @select-at-all="selectAtAll"
       @handle-file-select="handleFileSelect"
       @handle-paste="handlePaste"
+      @handle-drop="handleDrop"
       @handle-keydown="handleKeydown"
       @remove-pending-file="removePendingFile"
       @remove-quoted-message="quotedMessage = null"
@@ -623,6 +624,16 @@ const handlePaste = async (event: ClipboardEvent) => {
         addPendingFile(file)
       }
     }
+  }
+}
+
+// 处理拖拽文件
+const handleDrop = (event: DragEvent) => {
+  const files = event.dataTransfer?.files
+  if (!files || files.length === 0) return
+
+  for (let i = 0; i < files.length; i++) {
+    addPendingFile(files[i])
   }
 }
 
@@ -1771,8 +1782,26 @@ const createTaskFromMessage = async () => {
 }
 
 // 截图相关状态
+type ScreenshotStatus = 'idle' | 'preparing' | 'capturing' | 'processing' | 'failed'
+interface ScreenshotErrorPayload {
+  message?: string
+  code?: string
+  diagnostics?: Record<string, unknown>
+}
+
 const showScreenshotPreview = ref(false)
 const screenshotImageData = ref('')
+const screenshotStatus = ref<ScreenshotStatus>('idle')
+const isScreenshotBusy = computed(() =>
+  screenshotStatus.value === 'preparing' ||
+  screenshotStatus.value === 'capturing' ||
+  screenshotStatus.value === 'processing'
+)
+
+const getScreenshotErrorMessage = (payload?: string | ScreenshotErrorPayload) => {
+  if (typeof payload === 'string') return payload
+  return payload?.message || '截图失败，请稍后重试'
+}
 
 // 获取对方用户ID（单聊）
 const otherUserId = computed(() => {
@@ -1811,31 +1840,42 @@ const takeScreenshot = () => {
   // 检查是否在Electron环境中
   if (window.electron && window.electron.ipcRenderer) {
     logger.log('[Screenshot] takeScreenshot called')
+
+    if (isScreenshotBusy.value) {
+      $message.info('截图正在进行中，请稍候...')
+      return
+    }
+    screenshotStatus.value = 'preparing'
     
     // 移除所有之前的监听器，确保不会有重复监听
     logger.log('[Screenshot] Removing all previous listeners')
     window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
     window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
+    window.electron.ipcRenderer.removeAllListeners('screenshot-error')
 
     try {
       // 定义处理函数
-      const screenshotHandler = async (_event: any, imageData: string) => {
+      const screenshotHandler = async (_event: any, imageData: string | ArrayBuffer | Uint8Array) => {
         logger.log('[Screenshot] screenshotHandler triggered, imageData exists:', !!imageData)
+        screenshotStatus.value = 'processing'
         
         // 监听器触发后立即移除所有监听器，避免重复触发
         logger.log('[Screenshot] Removing all listeners after trigger')
         window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
         window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-error')
         
         // 确保组件仍然挂载
-        if (!isMounted.value) return
+        if (!isMounted.value) {
+          screenshotStatus.value = 'idle'
+          return
+        }
         
         try {
           // 处理截图结果
           if (imageData) {
             logger.log('[Screenshot] Processing screenshot, adding to pendingFiles')
-            // 将base64转换为File对象并添加到待发送文件列表
-            const file = await base64ToFile(imageData, 'screenshot.png')
+            const file = await screenshotPayloadToFile(imageData, 'screenshot.png')
             pendingFiles.value.push({
               file,
               name: 'screenshot.png'
@@ -1844,7 +1884,9 @@ const takeScreenshot = () => {
           } else {
             logger.log('[Screenshot] User cancelled screenshot')
           }
+          screenshotStatus.value = 'idle'
         } catch (error) {
+          screenshotStatus.value = 'failed'
           logger.error('[Screenshot] Error processing screenshot:', error)
           $message.error('处理截图失败')
         }
@@ -1855,7 +1897,19 @@ const takeScreenshot = () => {
         logger.log('[Screenshot] screenshot-loading received')
         window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
         if (isMounted.value) {
+          screenshotStatus.value = 'capturing'
           $message.info('正在准备截图组件，请稍候...')
+        }
+      }
+
+      const errorHandler = (_event: any, payload?: string | ScreenshotErrorPayload) => {
+        logger.error('[Screenshot] screenshot-error received:', payload)
+        screenshotStatus.value = 'failed'
+        window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-error')
+        if (isMounted.value) {
+          $message.error(getScreenshotErrorMessage(payload))
         }
       }
 
@@ -1863,11 +1917,13 @@ const takeScreenshot = () => {
       // 注册新的监听器
       window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
       window.electron.ipcRenderer.on('screenshot-loading', loadingHandler)
+      window.electron.ipcRenderer.on('screenshot-error', errorHandler)
       
       logger.log('[Screenshot] Sending take-screenshot request')
       // 发送截图请求到主进程
       window.electron.ipcRenderer.send('take-screenshot')
     } catch (error) {
+      screenshotStatus.value = 'failed'
       logger.error('[Screenshot] Error triggering screenshot:', error)
       $message.error('截图功能不可用')
     }
@@ -1880,29 +1936,65 @@ const takeScreenshot = () => {
 const takeScreenshotHidden = () => {
   if (window.electron && window.electron.ipcRenderer) {
     logger.log('[Screenshot] takeScreenshotHidden called')
+    if (isScreenshotBusy.value) {
+      $message.info('截图正在进行中，请稍候...')
+      return
+    }
+    screenshotStatus.value = 'preparing'
     window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+    window.electron.ipcRenderer.removeAllListeners('screenshot-error')
 
-    const screenshotHandler = async (_event: any, imageData: string) => {
+    const screenshotHandler = async (_event: any, imageData: string | ArrayBuffer | Uint8Array) => {
+      screenshotStatus.value = 'processing'
       window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
-      if (!isMounted.value) return
-      if (imageData) {
-        const file = await base64ToFile(imageData, 'screenshot.png')
-        pendingFiles.value.push({ file, name: 'screenshot.png' })
+      window.electron.ipcRenderer.removeAllListeners('screenshot-error')
+      if (!isMounted.value) {
+        screenshotStatus.value = 'idle'
+        return
+      }
+      try {
+        if (imageData) {
+          const file = await screenshotPayloadToFile(imageData, 'screenshot.png')
+          pendingFiles.value.push({ file, name: 'screenshot.png' })
+        }
+        screenshotStatus.value = 'idle'
+      } catch (error) {
+        screenshotStatus.value = 'failed'
+        logger.error('[Screenshot] Error processing hidden screenshot:', error)
+        $message.error('处理截图失败')
+      }
+    }
+
+    const errorHandler = (_event: any, payload?: string | ScreenshotErrorPayload) => {
+      screenshotStatus.value = 'failed'
+      window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+      window.electron.ipcRenderer.removeAllListeners('screenshot-error')
+      if (isMounted.value) {
+        $message.error(getScreenshotErrorMessage(payload))
       }
     }
 
     window.electron.ipcRenderer.on('screenshot-taken', screenshotHandler)
+    window.electron.ipcRenderer.on('screenshot-error', errorHandler)
     window.electron.ipcRenderer.send('take-screenshot-hidden')
   } else {
     $message.warning('截图功能仅在客户端环境中可用')
   }
 }
 
-// base64转File对象的辅助函数
-const base64ToFile = async (base64: string, filename: string): Promise<File> => {
-  const response = await fetch(base64)
-  const blob = await response.blob()
-  return new File([blob], filename, { type: blob.type })
+const screenshotPayloadToFile = async (
+  payload: string | ArrayBuffer | Uint8Array,
+  filename: string
+): Promise<File> => {
+  if (typeof payload === 'string') {
+    const response = await fetch(payload)
+    const blob = await response.blob()
+    return new File([blob], filename, { type: blob.type || 'image/png' })
+  }
+
+  const bytes = payload instanceof ArrayBuffer ? new Uint8Array(payload) : payload
+  const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  return new File([data], filename, { type: 'image/png' })
 }
 
 // 上传截图到服务器
@@ -2308,7 +2400,8 @@ const handleUpdateAISettings = async (settings: any) => {
         ai_mention_reply_mode: settings.aiMentionReplyMode,
         ai_anti_spam_interval: settings.aiAntiSpamInterval,
         ai_trigger_keywords: triggerKeywords,
-        ai_learn_enabled: settings.aiLearnEnabled
+        ai_learn_enabled: settings.aiLearnEnabled,
+        ai_extract_todos: settings.aiExtractTodos
       })
     })
 
@@ -2328,7 +2421,8 @@ const handleUpdateAISettings = async (settings: any) => {
             ai_mention_reply_mode: settings.aiMentionReplyMode,
             ai_anti_spam_interval: settings.aiAntiSpamInterval,
             ai_trigger_keywords: triggerKeywords,
-            ai_learn_enabled: settings.aiLearnEnabled
+            ai_learn_enabled: settings.aiLearnEnabled,
+            ai_extract_todos: settings.aiExtractTodos
           }
         })
       }

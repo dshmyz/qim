@@ -48,7 +48,8 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
         name: memberName,
         username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
         avatar: getAvatarUrl(memberAvatar, memberName || '用户', serverUrl.value),
-        role: member.role || member.Role || 'member'
+        role: member.role || member.Role || 'member',
+        type: member.user?.type || member.User?.Type || ''
       }
     }) : []
     

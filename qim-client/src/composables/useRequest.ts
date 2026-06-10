@@ -41,6 +41,7 @@ export function onUnauthorized() {
   isHandling401 = true
   QMessage.error('登录已过期，请重新登录', 5000)
   localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
   localStorage.removeItem('user')
   setTimeout(() => {
     window.location.reload()

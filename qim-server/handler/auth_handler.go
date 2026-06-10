@@ -199,6 +199,7 @@ func Login(c *gin.Context) {
 	}
 
 	token := generateToken(user.ID, user.Username)
+	refreshToken := generateRefreshToken(user.ID, user.Username)
 	user.Status = "online"
 	user.IP = ip
 	db.Save(&user)
@@ -213,7 +214,8 @@ func Login(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"token": token,
+		"token":         token,
+		"refresh_token": refreshToken,
 		"user": gin.H{
 			"id":                 user.ID,
 			"username":           user.Username,
@@ -310,13 +312,15 @@ func VerifyTwoFA(c *gin.Context) {
 	}
 
 	token := generateToken(user.ID, user.Username)
+	refreshToken := generateRefreshToken(user.ID, user.Username)
 	user.Status = "online"
 	db.Save(&user)
 
 	logger.WithModule("Auth").Info("2FA verification success", "user", req.Username)
 
 	response.Success(c, gin.H{
-		"token": token,
+		"token":         token,
+		"refresh_token": refreshToken,
 		"user": gin.H{
 			"id":                 user.ID,
 			"username":           user.Username,
@@ -380,6 +384,12 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// 密码强度校验
+	if err := validatePassword(req.Password); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	db := database.GetDB()
 
 	var count int64
@@ -422,9 +432,11 @@ func Register(c *gin.Context) {
 	}
 
 	token := generateToken(user.ID, user.Username)
+	refreshToken := generateRefreshToken(user.ID, user.Username)
 
 	response.Success(c, gin.H{
-		"token": token,
+		"token":         token,
+		"refresh_token": refreshToken,
 		"user": gin.H{
 			"id":       user.ID,
 			"username": user.Username,
@@ -435,13 +447,26 @@ func Register(c *gin.Context) {
 }
 
 func RefreshToken(c *gin.Context) {
+	// 从 context 获取认证信息（由 AuthMiddleware 设置）
 	userID, _ := c.Get("user_id")
 	username, _ := c.Get("username")
 
-	token := generateToken(userID.(uint), username.(string))
+	// 验证当前 token 是否为 refresh token
+	tokenType, _ := c.Get("token_type")
+	if tokenType != "refresh" {
+		response.Unauthorized(c, "无效的刷新令牌，请使用 refresh_token")
+		c.Abort()
+		return
+	}
+
+	// 生成新的 access token
+	token := generateAccessToken(userID.(uint), username.(string))
+	// 生成新的 refresh token
+	refreshToken := generateRefreshToken(userID.(uint), username.(string))
 
 	response.Success(c, gin.H{
-		"token": token,
+		"token":         token,
+		"refresh_token": refreshToken,
 	})
 }
 
@@ -487,8 +512,8 @@ func Logout(c *gin.Context) {
 
 func RefreshOAuthToken(c *gin.Context) {
 	var req struct {
-		ProviderName  string `json:"provider_name" binding:"required"`
-		RefreshToken  string `json:"refresh_token" binding:"required"`
+		ProviderName string `json:"provider_name" binding:"required"`
+		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -524,9 +549,14 @@ func RefreshOAuthToken(c *gin.Context) {
 }
 
 func generateToken(userID uint, username string) string {
+	return generateAccessToken(userID, username)
+}
+
+func generateAccessToken(userID uint, username string) string {
 	claims := middleware.Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:    userID,
+		Username:  username,
+		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(cfg.JWT.Expire) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -534,6 +564,58 @@ func generateToken(userID uint, username string) string {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(cfg.JWT.Secret))
+	tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+	if err != nil {
+		logger.WithModule("Auth").Error("Failed to sign JWT access token", "error", err)
+		return ""
+	}
 	return tokenString
+}
+
+func generateRefreshToken(userID uint, username string) string {
+	refreshDays := cfg.JWT.RefreshExpireDays
+	if refreshDays <= 0 {
+		refreshDays = 7 // 默认 7 天
+	}
+	claims := middleware.Claims{
+		UserID:    userID,
+		Username:  username,
+		TokenType: "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().AddDate(0, 0, refreshDays)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+	if err != nil {
+		logger.WithModule("Auth").Error("Failed to sign JWT refresh token", "error", err)
+		return ""
+	}
+	return tokenString
+}
+
+// validatePassword 校验密码强度：至少 8 位，包含字母和数字
+func validatePassword(password string) error {
+	if len(password) == 0 {
+		return fmt.Errorf("密码不能为空")
+	}
+	if len(password) < 8 {
+		return fmt.Errorf("密码长度不能少于8位")
+	}
+	hasLetter := false
+	hasDigit := false
+	for _, r := range password {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			hasLetter = true
+		}
+		if r >= '0' && r <= '9' {
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return fmt.Errorf("密码必须包含字母和数字")
+	}
+	return nil
 }

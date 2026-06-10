@@ -83,7 +83,8 @@ export function useMainGroupHandlers(
     const memberData = {
       id: newMember.id?.toString() || '',
       name: memberName,
-      avatar: newMember.avatar || ''
+      avatar: newMember.avatar || '',
+      type: newMember.type || ''
     }
 
     chatStore.addGroupMember(conversationId, memberData)

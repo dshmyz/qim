@@ -14,6 +14,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -76,6 +77,7 @@ type Hub struct {
 	nodes               []string
 	nodeID              string
 	db                  *gorm.DB
+	jwtSecret           string
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
@@ -94,10 +96,12 @@ type Hub struct {
 }
 
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte
-	userID uint
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan []byte
+	userID   uint
+	authed   bool   // 是否已通过认证
+	jwtToken string // 待认证的 token
 }
 
 type WSMessage struct {
@@ -112,7 +116,7 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
-func NewHub(db *gorm.DB) *Hub {
+func NewHub(db *gorm.DB, jwtSecret string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
@@ -135,6 +139,7 @@ func NewHub(db *gorm.DB) *Hub {
 		nodes:               nodes,
 		nodeID:              nodeID,
 		db:                  db,
+		jwtSecret:           jwtSecret,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
 		sendSem:             make(chan struct{}, 50),
 	}
@@ -491,6 +496,61 @@ func (h *Hub) SendToConversationAsync(convID uint, excludeUserID uint, message [
 	}
 }
 
+// wsClaims WebSocket 认证用的 JWT Claims（避免循环导入 middleware 包）
+type wsClaims struct {
+	UserID    uint   `json:"user_id"`
+	Username  string `json:"username"`
+	TokenType string `json:"token_type"`
+	jwt.RegisteredClaims
+}
+
+// handleAuth 处理 WebSocket 首条认证消息
+func (c *Client) handleAuth(data interface{}) {
+	dataMap, ok := data.(map[string]interface{})
+	if !ok {
+		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证数据格式错误"}})
+		return
+	}
+
+	tokenStr, _ := dataMap["token"].(string)
+	if tokenStr == "" {
+		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "缺少认证令牌"}})
+		return
+	}
+
+	claims := &wsClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(c.hub.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.WithModule("WS").Warn("WebSocket认证失败", "error", err)
+		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证令牌无效"}})
+		return
+	}
+
+	// 只接受 access token
+	if claims.TokenType != "" && claims.TokenType != "access" {
+		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请使用访问令牌"}})
+		return
+	}
+
+	c.userID = claims.UserID
+	c.authed = true
+	c.hub.register <- c
+
+	c.conn.WriteJSON(WSMessage{Type: "auth_success", Data: map[string]interface{}{"user_id": c.userID}})
+
+	// 更新用户在线状态
+	var user model.User
+	if err := c.hub.db.First(&user, c.userID).Error; err == nil {
+		user.Status = "online"
+		c.hub.db.Save(&user)
+	}
+
+	logger.WithModule("WS").Info("WebSocket认证成功", "userID", c.userID)
+}
+
 func (c *Client) readPump() {
 
 	defer func() {
@@ -514,6 +574,17 @@ func (c *Client) readPump() {
 				logger.WithModule("WS").Error("读取错误", "error", err)
 			}
 			break
+		}
+
+		// 未认证时只处理 auth 消息
+		if !c.authed {
+			if msg.Type != "auth" {
+				logger.WithModule("WS").Warn("未认证连接收到非auth消息", "type", msg.Type)
+				c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请先发送认证消息"}})
+				continue
+			}
+			c.handleAuth(msg.Data)
+			continue
 		}
 
 		logger.WithModule("WS").Debug("收到客户端消息", "type", msg.Type)
@@ -925,16 +996,20 @@ func handleWebRTCSignal(c *Client, data interface{}, signalType string) {
 }
 
 func ServeWs(hub *Hub, c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logger.WithModule("WS").Error("WebSocket升级失败", "error", err)
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
-	client.hub.register <- client
+	// 尝试从 context 获取 user_id（兼容旧的 header 认证方式）
+	userID, exists := c.Get("user_id")
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024)}
+	if exists {
+		client.userID = userID.(uint)
+		client.authed = true
+		client.hub.register <- client
+	}
 
 	utils.SafeGoWithLabel("ws-write", func() { client.writePump() })
 	utils.SafeGoWithLabel("ws-read", func() { client.readPump() })
@@ -942,16 +1017,20 @@ func ServeWs(hub *Hub, c *gin.Context) {
 
 // ServeScreenShare 处理屏幕共享的 WebSocket 连接
 func ServeScreenShare(hub *Hub, c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logger.WithModule("WS").Error("屏幕共享WebSocket升级失败", "error", err)
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024), userID: userID.(uint)}
-	client.hub.register <- client
+	// 尝试从 context 获取 user_id（兼容旧的 header 认证方式）
+	userID, exists := c.Get("user_id")
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024)}
+	if exists {
+		client.userID = userID.(uint)
+		client.authed = true
+		client.hub.register <- client
+	}
 
 	utils.SafeGoWithLabel("ws-write", func() { client.writePump() })
 	utils.SafeGoWithLabel("ws-read", func() { client.readPump() })

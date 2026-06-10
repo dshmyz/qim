@@ -49,3 +49,7 @@ qim-client/src-tauri/target/
 *.backup
 *.bak
 *.tmp
+
+# Python 缓存
+__pycache__/
+*.pyc

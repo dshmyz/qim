@@ -338,6 +338,9 @@ const login = async () => {
     const data = await response.json()
     if (data.code === 0) {
       localStorage.setItem('token', data.data.token)
+      if (data.data.refresh_token) {
+        localStorage.setItem('refresh_token', data.data.refresh_token)
+      }
       localStorage.setItem('user', JSON.stringify(data.data.user))
       
       if (loginForm.remember) {
@@ -384,6 +387,9 @@ const verifyTwoFA = async () => {
       const data = await response.json()
       if (data.code === 0) {
         localStorage.setItem('token', data.data.token)
+        if (data.data.refresh_token) {
+          localStorage.setItem('refresh_token', data.data.refresh_token)
+        }
         localStorage.setItem('user', JSON.stringify(data.data.user))
         
         if (loginForm.remember) {
@@ -604,6 +610,9 @@ const handleUnifiedCallback = async (provider: AuthProvider, credential: string,
       QMessage.success('登录成功')
       
       localStorage.setItem('token', data.data.token)
+      if (data.data.refresh_token) {
+        localStorage.setItem('refresh_token', data.data.refresh_token)
+      }
       localStorage.setItem('user', JSON.stringify(data.data.user))
       
       sessionStorage.removeItem('auth_state')

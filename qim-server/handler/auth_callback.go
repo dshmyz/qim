@@ -36,6 +36,7 @@ func buildAuthResponse(c *gin.Context, user *model.User) {
 	db := database.GetDB()
 
 	tokenStr := generateToken(user.ID, user.Username)
+	refreshTokenStr := generateRefreshToken(user.ID, user.Username)
 
 	var userRoles []model.UserRole
 	db.Where("user_id = ?", user.ID).Find(&userRoles)
@@ -45,7 +46,8 @@ func buildAuthResponse(c *gin.Context, user *model.User) {
 	}
 
 	response.Success(c, gin.H{
-		"token": tokenStr,
+		"token":         tokenStr,
+		"refresh_token": refreshTokenStr,
 		"user": gin.H{
 			"id":                 user.ID,
 			"username":           user.Username,

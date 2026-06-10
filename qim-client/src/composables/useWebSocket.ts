@@ -114,12 +114,83 @@ export function useWebSocket(wsUrl: string) {
   /**
    * 处理 WebSocket 消息
    */
-  const handleMessage = (event: MessageEvent) => {
+  const handleMessage = async (event: MessageEvent) => {
     try {
       const message: WebSocketMessage = JSON.parse(event.data)
 
       if (message.type === 'pong') {
         connectionMonitor.recordPong()
+        return
+      }
+
+      // 处理 WebSocket 认证响应
+      if (message.type === 'auth_success') {
+        isConnected.value = true
+        setNetworkError(false, '')
+        reconnectAttempts = 0
+        console.log('[WS] 认证成功, user_id:', message.data?.user_id)
+
+        if (onConnectedCallback) {
+          onConnectedCallback()
+        }
+
+        if (!messageQueue.isEmpty()) {
+          console.log(`[WebSocket] 刷新离线消息队列，共 ${messageQueue.size()} 条`)
+          messageQueue.flush((data) => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(data))
+              return true
+            }
+            return false
+          })
+        }
+
+        if (!networkOnlineHandler) {
+          networkOnlineHandler = () => {
+            console.log('[WebSocket] 网络恢复，立即重连')
+            reconnectAttempts = 0
+            connect()
+          }
+          window.addEventListener('online', networkOnlineHandler)
+        }
+        return
+      }
+
+      if (message.type === 'auth_error') {
+        console.error('[WS] 认证失败:', message.data?.message)
+        // 尝试用 refresh_token 刷新后重新认证
+        const refreshToken = localStorage.getItem('refresh_token')
+        if (refreshToken) {
+          try {
+            const baseURL = localStorage.getItem('serverUrl') || wsUrl
+            const cleanBaseURL = baseURL.replace(/\/+$/, '')
+            const axios = (await import('axios')).default
+            const refreshResponse = await axios.post(`${cleanBaseURL}/api/v1/auth/refresh`, {}, {
+              headers: { 'Authorization': `Bearer ${refreshToken}` }
+            })
+            if (refreshResponse.data?.code === 0 && refreshResponse.data?.data?.token) {
+              const newToken = refreshResponse.data.data.token
+              const newRefreshToken = refreshResponse.data.data.refresh_token
+              localStorage.setItem('token', newToken)
+              if (newRefreshToken) {
+                localStorage.setItem('refresh_token', newRefreshToken)
+              }
+              // 用新 token 重新发送 auth 消息
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'auth', data: { token: newToken } }))
+                console.log('[WS] token 刷新成功，重新发送认证消息')
+                return
+              }
+            }
+          } catch (e) {
+            console.error('[WS] token 刷新失败:', e)
+          }
+        }
+        // refresh 失败或无 refresh_token，触发会话过期
+        if (onSessionExpiredCallback) {
+          onSessionExpiredCallback()
+        }
+        disconnect()
         return
       }
 
@@ -208,8 +279,8 @@ export function useWebSocket(wsUrl: string) {
       const serverUrl = storedUrl || wsUrl
       const cleanUrl = serverUrl.replace(/\/+$/, '')
       const wsFullUrl = cleanUrl.startsWith('ws')
-        ? `${cleanUrl}?token=${token}`
-        : `ws${cleanUrl.startsWith('https') ? 's' : ''}://${cleanUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}`
+        ? cleanUrl
+        : `ws${cleanUrl.startsWith('https') ? 's' : ''}://${cleanUrl.replace(/^https?:\/\//, '')}/api/v1/ws`
 
       console.log('[WS] connecting to', wsFullUrl, 'localStorage serverUrl:', storedUrl, 'wsUrl:', wsUrl)
       ws = new WebSocket(wsFullUrl)
@@ -219,35 +290,10 @@ export function useWebSocket(wsUrl: string) {
       }
 
       ws.onopen = () => {
-        isConnected.value = true
-        setNetworkError(false, '')
-        reconnectAttempts = 0
+        // 连接建立后，通过首条消息发送认证 token
+        ws!.send(JSON.stringify({ type: 'auth', data: { token } }))
         startHeartbeat()
-        console.log('WebSocket connected')
-        
-        if (onConnectedCallback) {
-          onConnectedCallback()
-        }
-
-        if (!messageQueue.isEmpty()) {
-          console.log(`[WebSocket] 刷新离线消息队列，共 ${messageQueue.size()} 条`)
-          messageQueue.flush((data) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify(data))
-              return true
-            }
-            return false
-          })
-        }
-
-        if (!networkOnlineHandler) {
-          networkOnlineHandler = () => {
-            console.log('[WebSocket] 网络恢复，立即重连')
-            reconnectAttempts = 0
-            connect()
-          }
-          window.addEventListener('online', networkOnlineHandler)
-        }
+        console.log('WebSocket connected, sending auth message')
       }
 
       ws.onmessage = handleMessage

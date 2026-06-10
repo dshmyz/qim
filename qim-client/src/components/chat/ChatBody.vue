@@ -110,7 +110,8 @@ const sidebarMembers = computed<Member[]>(() => {
     id: user.id,
     name: user.name,
     avatar: getAvatarUrl(user.avatar, user.name || '用户', props.serverUrl),
-    role: user.role as Member['role'] ?? 'member'
+    role: user.role as Member['role'] ?? 'member',
+    type: (user as any).type
   }))
 })
 

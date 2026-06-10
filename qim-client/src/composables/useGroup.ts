@@ -13,12 +13,14 @@ export interface GroupMember {
   avatar?: string
   position?: string
   role?: 'owner' | 'admin' | 'member'
+  type?: string
   user?: {
     id?: string | number
     nickname?: string
     username?: string
     avatar?: string
     position?: string
+    type?: string
   }
 }
 
@@ -376,6 +378,7 @@ export function useGroup() {
       ) : (member.avatar || ''),
       position: member.user ? (member.user.position || '无职位信息') : (member.position || '无职位信息'),
       role: member.role,
+      type: member.user ? (member.user.type || '') : (member.type || ''),
       user: member.user
     }))
   }

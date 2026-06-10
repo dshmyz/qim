@@ -1,5 +1,11 @@
 import { ref } from 'vue'
 
+export interface UpdateInfo {
+  version: string
+  releaseDate?: string
+  releaseNotes?: string
+}
+
 /**
  * UI 状态管理 composable
  * 管理所有 UI 相关的状态：上下文菜单、模态框、对话框、操作菜单等
@@ -127,9 +133,12 @@ export function useUI() {
   const showUpdateDialog = ref(false)
   const isCheckingUpdate = ref(false)
   const isDownloading = ref(false)
+  const isUpdateReadyToInstall = ref(false)
   const downloadProgress = ref(0)
   const updateResult = ref('')
   const hasNewVersion = ref(false)
+  const forceUpdate = ref(false)
+  const updateInfo = ref<UpdateInfo | null>(null)
 
   // 设置模态框
   const showSettingsModal = ref(false)
@@ -538,11 +547,25 @@ export function useUI() {
 
     unregisterUpdateEventListeners()
 
+    const normalizeReleaseNotes = (releaseNotes: any): string => {
+      if (Array.isArray(releaseNotes)) {
+        return releaseNotes
+          .map((item) => typeof item === 'string' ? item : item?.note || item?.value || '')
+          .filter(Boolean)
+          .join('\n')
+      }
+      return typeof releaseNotes === 'string' ? releaseNotes : ''
+    }
+
     const handlers = [
       {
         channel: 'update-checking',
         handler: () => {
           isCheckingUpdate.value = true
+          isDownloading.value = false
+          isUpdateReadyToInstall.value = false
+          downloadProgress.value = 0
+          updateInfo.value = null
           updateResult.value = '正在检查更新...'
         }
       },
@@ -550,29 +573,77 @@ export function useUI() {
         channel: 'update-available',
         handler: (_event: any, info: any) => {
           isCheckingUpdate.value = false
+          isDownloading.value = false
+          isUpdateReadyToInstall.value = false
+          downloadProgress.value = 0
           hasNewVersion.value = true
-          updateResult.value = `发现新版本 v${info.version}`
+          forceUpdate.value = !!info.forceUpdate
+          updateInfo.value = {
+            version: info.version || '',
+            releaseDate: info.releaseDate || info.release_date || '',
+            releaseNotes: normalizeReleaseNotes(info.releaseNotes || info.release_notes || info.changelog)
+          }
+          updateResult.value = info.forceUpdate
+            ? `发现新版本 v${info.version}（需要强制更新）`
+            : `发现新版本 v${info.version}`
+          // 自动检查发现新版本时，弹出更新提示对话框
+          showUpdateDialog.value = true
         }
       },
       {
         channel: 'update-not-available',
         handler: () => {
           isCheckingUpdate.value = false
+          isDownloading.value = false
+          isUpdateReadyToInstall.value = false
+          downloadProgress.value = 0
           hasNewVersion.value = false
+          updateInfo.value = null
           updateResult.value = '当前已是最新版本'
+          // 自动检查无新版本时，不弹窗（仅在用户手动检查时对话框已打开）
         }
       },
       {
         channel: 'update-error',
         handler: (_event: any, error: any) => {
           isCheckingUpdate.value = false
-          updateResult.value = `更新错误: ${error}`
+          isDownloading.value = false
+          isUpdateReadyToInstall.value = false
+          downloadProgress.value = 0
+
+          // 解析错误信息，显示友好提示
+          let friendlyMessage = '检查更新失败'
+
+          if (typeof error === 'string') {
+            friendlyMessage = error
+            // 处理 electron-updater 的错误信息
+            if (error.includes('404') || error.includes('Cannot find channel')) {
+              friendlyMessage = '暂无可用更新'
+            } else if (error.includes('timeout') || error.includes('ETIMEDOUT')) {
+              friendlyMessage = '网络连接超时，请稍后重试'
+            } else if (error.includes('ENOTFOUND') || error.includes('ECONNREFUSED')) {
+              friendlyMessage = '无法连接到更新服务器'
+            } else if (error.includes('net::ERR')) {
+              friendlyMessage = '网络错误，请检查网络连接'
+            }
+          } else if (error?.message) {
+            // 处理 Error 对象
+            if (error.message.includes('404')) {
+              friendlyMessage = '暂无可用更新'
+            } else {
+              friendlyMessage = error.message
+            }
+          }
+
+          updateResult.value = friendlyMessage
+          console.error('更新错误:', error)
         }
       },
       {
         channel: 'update-progress',
         handler: (_event: any, progressObj: any) => {
           isDownloading.value = true
+          isUpdateReadyToInstall.value = false
           downloadProgress.value = progressObj.percent
         }
       },
@@ -580,11 +651,18 @@ export function useUI() {
         channel: 'update-downloaded',
         handler: (_event: any, _info: any) => {
           isDownloading.value = false
-          updateResult.value = '下载完成，正在安装...'
-          setTimeout(() => {
-            updateResult.value = '升级成功，需要重启应用'
-            hasNewVersion.value = false
-          }, 1500)
+          isUpdateReadyToInstall.value = true
+          downloadProgress.value = 100
+          updateResult.value = '更新已下载完成，是否立即重启安装？'
+        }
+      },
+      {
+        channel: 'update-installing',
+        handler: () => {
+          isDownloading.value = false
+          isUpdateReadyToInstall.value = false
+          downloadProgress.value = 100
+          updateResult.value = '正在重启并安装更新...'
         }
       }
     ]
@@ -687,9 +765,12 @@ export function useUI() {
     showUpdateDialog,
     isCheckingUpdate,
     isDownloading,
+    isUpdateReadyToInstall,
     downloadProgress,
     updateResult,
     hasNewVersion,
+    forceUpdate,
+    updateInfo,
     showSettingsModal,
     activeSettingsTab,
 

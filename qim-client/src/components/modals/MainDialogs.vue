@@ -57,11 +57,11 @@
   </div>
 
   <!-- 检查更新对话框 -->
-  <div v-if="showUpdateDialog" class="update-dialog-overlay" @click="$emit('closeUpdate')">
+  <div v-if="showUpdateDialog" class="update-dialog-overlay" @click="!forceUpdate && $emit('closeUpdate')">
     <div class="update-dialog" @click.stop>
       <div class="update-dialog-header">
-        <h3>检查更新</h3>
-        <button class="update-dialog-close" @click="$emit('closeUpdate')">×</button>
+        <h3>{{ forceUpdate ? '版本更新' : '检查更新' }}</h3>
+        <button v-if="!forceUpdate" class="update-dialog-close" @click="$emit('closeUpdate')">×</button>
       </div>
       <div class="update-dialog-content">
         <div v-if="isCheckingUpdate" class="update-loading">
@@ -84,12 +84,35 @@
             <i v-else class="fas fa-check-circle"></i>
           </div>
           <p class="result-text">{{ updateResult }}</p>
-          <p class="version-info">当前版本: v{{ APP_CONFIG.version }}</p>
+          <div v-if="hasNewVersion && updateInfo" class="update-info">
+            <div class="update-version-compare">
+              <div class="update-version-item">
+                <span class="update-version-label">当前版本</span>
+                <span class="update-version-value">v{{ APP_CONFIG.version }}</span>
+              </div>
+              <div class="update-version-arrow"><i class="fas fa-arrow-right"></i></div>
+              <div class="update-version-item update-version-new">
+                <span class="update-version-label">新版本</span>
+                <span class="update-version-value">v{{ updateInfo.version }}</span>
+              </div>
+            </div>
+            <div v-if="updateInfo.releaseDate" class="update-info-row">
+              <span>发布时间</span>
+              <strong>{{ formatReleaseDate(updateInfo.releaseDate) }}</strong>
+            </div>
+            <div v-if="updateInfo.releaseNotes" class="update-release-notes">
+              <div class="notes-title">发布说明</div>
+              <div class="notes-box">{{ updateInfo.releaseNotes }}</div>
+            </div>
+          </div>
+          <p v-else class="version-info">当前版本: v{{ APP_CONFIG.version }}</p>
+          <p v-if="forceUpdate && hasNewVersion" class="force-update-tip">此版本为重要更新，需要升级后才能继续使用</p>
         </div>
       </div>
       <div class="update-dialog-footer">
-        <button v-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">升级</button>
-        <button class="update-dialog-button" @click="$emit('closeUpdate')">关闭</button>
+        <button v-if="isUpdateReadyToInstall" class="update-dialog-button update-button" @click="$emit('installUpdate')">立即重启安装</button>
+        <button v-else-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">{{ forceUpdate ? '立即升级' : '升级' }}</button>
+        <button v-if="!forceUpdate" class="update-dialog-button" @click="$emit('closeUpdate')">关闭</button>
       </div>
     </div>
   </div>
@@ -230,6 +253,12 @@ interface SystemMessage {
   targetIds?: (string | number)[]
 }
 
+interface UpdateInfo {
+  version: string
+  releaseDate?: string
+  releaseNotes?: string
+}
+
 interface Props {
   showAboutDialog: boolean
   showLogoutDialog: boolean
@@ -237,9 +266,12 @@ interface Props {
   showSystemMessageModal: boolean
   isCheckingUpdate: boolean
   isDownloading: boolean
+  isUpdateReadyToInstall: boolean
   downloadProgress: number
   hasNewVersion: boolean
+  forceUpdate: boolean
   updateResult: string
+  updateInfo?: UpdateInfo | null
   groupConversations: Conversation[]
   allEmployees: any[]
   systemMessage: SystemMessage
@@ -248,12 +280,25 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const formatReleaseDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
 const emit = defineEmits<{
   'closeAbout': []
   'cancelLogout': []
   'confirmLogout': []
   'closeUpdate': []
   'downloadUpdate': []
+  'installUpdate': []
   'closeSystemMessage': []
   'sendSystemMessage': [message: SystemMessage]
   'openFeedback': []
@@ -472,8 +517,9 @@ const onTargetChange = () => {
 .update-dialog {
   background: var(--modal-bg, #fff);
   border-radius: 12px;
-  width: 400px;
+  width: 460px;
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 .about-dialog-header,
@@ -636,11 +682,8 @@ const onTargetChange = () => {
 }
 
 .update-dialog-content {
-  padding: 24px 20px;
-  min-height: 150px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 20px 24px;
+  min-height: 120px;
 }
 
 .update-loading,
@@ -669,6 +712,130 @@ const onTargetChange = () => {
 .version-info {
   margin: 8px 0;
   color: var(--text-color, #333);
+}
+
+.update-info {
+  margin: 16px 0 0;
+  padding: 14px;
+  border: 1px solid var(--border-color, #eee);
+  border-radius: 8px;
+  background: var(--card-bg, #fafafa);
+  text-align: left;
+}
+
+.update-version-compare {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.update-version-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.update-version-label {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+}
+
+.update-version-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+
+.update-version-new .update-version-value {
+  color: var(--primary-color, #409eff);
+}
+
+.update-version-arrow {
+  color: var(--text-secondary, #ccc);
+  font-size: 14px;
+}
+
+.update-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.update-info-row strong {
+  color: var(--text-color, #333);
+  font-weight: 600;
+  text-align: right;
+}
+
+.update-release-notes {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #e7ecf3);
+}
+
+.notes-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-color, #374151);
+}
+
+.notes-title::before {
+  content: "";
+  width: 4px;
+  height: 14px;
+  border-radius: 99px;
+  background: var(--primary-color, #409eff);
+  flex-shrink: 0;
+}
+
+.notes-box {
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e7ecf3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  color: var(--text-color, #1f2937);
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.notes-box::-webkit-scrollbar {
+  width: 5px;
+}
+
+.notes-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notes-box::-webkit-scrollbar-thumb {
+  background: var(--border-color, #dde3ed);
+  border-radius: 99px;
+}
+
+.force-update-tip {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background-color: #fff3e0;
+  border-left: 3px solid #ff9800;
+  border-radius: 4px;
+  color: #e65100;
+  font-size: 13px;
 }
 
 .download-icon {
@@ -700,8 +867,8 @@ const onTargetChange = () => {
 }
 
 .result-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
+  font-size: 36px;
+  margin-bottom: 8px;
 }
 
 .result-icon.new-version {

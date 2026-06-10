@@ -35,6 +35,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.SetConfig(cfg)
 	ws.SetAllowedOrigins(cfg.WS.AllowedOrigins)
 
+	// 校验 CORS 配置：AllowCredentials=true 时不允许 AllowedOrigins 含 "*"
+	cfg.CORS.AllowCredentials = true
+	corsAllowAllOrigins := cfg.ValidateCORS()
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "ok",
@@ -154,13 +158,21 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	})
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
-	corsMiddleware := cors.New(cors.Config{
-		AllowOrigins:     cfg.CORS.AllowedOrigins,
+	corsConfig := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Node-Secret"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-	})
+	}
+	if corsAllowAllOrigins {
+		// 通配符模式：动态返回请求 Origin（兼容 AllowCredentials=true）
+		corsConfig.AllowOriginFunc = func(origin string) bool {
+			return true
+		}
+	} else {
+		corsConfig.AllowOrigins = cfg.CORS.AllowedOrigins
+	}
+	corsMiddleware := cors.New(corsConfig)
 
 	// 全局应用CORS中间件
 	r.Use(corsMiddleware)
@@ -222,11 +234,21 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	})
 
 	// 客户端更新检查（无需认证）
-	r.GET("/api/v1/updates/:platform/latest.yml", handler.GetLatestYML)
-	r.GET("/api/v1/updates/:platform/files/:filename", handler.GetUpdateFile)
+	// electron-updater 会请求 latest.yml 或 latest-{platform}.yml
+	r.GET("/api/v1/updates/:platform/*action", handler.HandleUpdateRequest)
+	// 更新服务健康检查
+	r.GET("/api/v1/updates/health", handler.CheckUpdateHealth)
 
 	// 公开文件下载（无需认证，用于客户端安装包等）
 	r.GET("/api/v1/public/files/:id/download", handler.PublicDownloadFile)
+
+	// WebSocket 路由（无需 HTTP 认证，通过首条消息认证）
+	r.GET("/api/v1/ws", func(c *gin.Context) {
+		ws.ServeWs(hub, c)
+	})
+	r.GET("/api/v1/screen-share", func(c *gin.Context) {
+		ws.ServeScreenShare(hub, c)
+	})
 
 	// 使用静态文件处理函数，并确保CORS中间件应用
 
@@ -372,16 +394,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 解散群聊
 			authed.DELETE("/groups/:id", handler.DissolveGroup)
 
-			// WebSocket
-			authed.GET("/ws", func(c *gin.Context) {
-				ws.ServeWs(hub, c)
-			})
-
-			// 屏幕共享 WebSocket
-			authed.GET("/screen-share", func(c *gin.Context) {
-				ws.ServeScreenShare(hub, c)
-			})
-
 			// 文件上传
 			authed.POST("/upload", handler.UploadFile)
 
@@ -518,8 +530,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 敏感词管理
 			handler.RegisterSensitiveWordRoutes(authed)
 
-			// 管理后台路由（自动记录操作日志）
+			// 管理后台路由（需要 system_admin 角色，自动记录操作日志）
 			adminRoutes := authed.Group("")
+			adminRoutes.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
 			adminRoutes.Use(middleware.OperationLogMiddleware())
 			{
 				// 系统配置
@@ -627,9 +640,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				authed.POST("/feedbacks", feedbackHandler.CreateFeedback)
 			}
 
-			// 节点间通信
-			authed.POST("/node/broadcast", handler.BroadcastMessage)
-			authed.POST("/node/send-to-user", handler.SendToUserMessage)
+			// 节点间通信（需要节点内部认证）
+			node := authed.Group("", middleware.NodeAuthMiddleware(cfg.Node.Secret))
+			node.POST("/node/broadcast", handler.BroadcastMessage)
+			node.POST("/node/send-to-user", handler.SendToUserMessage)
 
 			// 用户角色管理
 			authed.DELETE("/users/:id/roles/:role", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.RemoveUserRole)

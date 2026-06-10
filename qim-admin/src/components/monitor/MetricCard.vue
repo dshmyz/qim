@@ -6,7 +6,7 @@
         <component :is="icon" />
       </el-icon>
     </div>
-    <div class="metric-value">{{ value }}%</div>
+    <div class="metric-value">{{ formattedValue }}%</div>
     <el-progress
       :percentage="value"
       :color="progressColor"
@@ -35,6 +35,11 @@ const iconMap = {
 }
 
 const icon = computed(() => iconMap[props.type])
+
+// 格式化数值，保留1位小数
+const formattedValue = computed(() => {
+  return props.value.toFixed(1)
+})
 
 const iconColor = computed(() => {
   if (props.value > 80) return '#f56c6c'

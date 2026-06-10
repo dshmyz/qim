@@ -483,6 +483,17 @@ func CreateSingleConversation(c *gin.Context) {
 		return
 	}
 
+	// 检查接收方用户类型，禁止与bot_assistant类型用户发起私聊
+	var recipient model.User
+	if err := db.First(&recipient, req.UserID).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+	if recipient.Type == "bot_assistant" {
+		response.BadRequest(c, "不支持与群助手发起私聊")
+		return
+	}
+
 	var existingConv model.Conversation
 	db.Raw(`
 		SELECT c.* FROM conversations c

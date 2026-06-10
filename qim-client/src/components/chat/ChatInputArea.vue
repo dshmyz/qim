@@ -40,6 +40,7 @@
     @perform-search="emit('perform-search')"
     @close-search="emit('close-search')"
     @ai-action="emit('ai-action', $event)"
+    @handle-drop="emit('handle-drop', $event)"
   />
 </template>
 
@@ -98,6 +99,7 @@ const emit = defineEmits<{
   'remove-quoted-message': []
   'send-mini-app-message': [miniApp: Message['miniAppData']]
   'ai-action': [actionId: string]
+  'handle-drop': [event: DragEvent]
   'perform-search': []
   'close-search': []
   'update:inputMessage': [value: string]

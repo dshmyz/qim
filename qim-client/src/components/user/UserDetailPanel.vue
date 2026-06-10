@@ -81,7 +81,7 @@
         </div>
         
         <div class="user-action-buttons">
-          <button class="action-btn primary" @click="$emit('privateChat', detail)">
+          <button v-if="detail.type !== 'bot_assistant'" class="action-btn primary" @click="$emit('privateChat', detail)">
             <i class="fas fa-comment"></i>
             <span>发起私聊</span>
           </button>

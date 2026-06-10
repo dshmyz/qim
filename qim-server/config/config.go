@@ -25,6 +25,7 @@ type Config struct {
 	WS       WSConfig
 	Vector   VectorConfig
 	DataInit DataInitConfig
+	Node     NodeConfig
 }
 
 type LogConfig struct {
@@ -43,11 +44,32 @@ type VectorConfig struct {
 }
 
 type CORSConfig struct {
-	AllowedOrigins []string `yaml:"allowed_origins"`
+	AllowedOrigins   []string `yaml:"allowed_origins"`
+	AllowCredentials bool     `yaml:"allow_credentials"`
 }
 
 type WSConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins"`
+}
+
+// ValidateCORS 校验 CORS 配置的合法性。
+// 浏览器规范不允许 AllowCredentials=true 且 AllowedOrigins 包含 "*"，
+// 此时会将 Origins 设为空切片，由应用层根据请求 Origin 动态设置。
+// 返回是否使用了通配符模式（需要动态 Origin 校验）。
+func (c *Config) ValidateCORS() bool {
+	hasWildcard := false
+	for _, o := range c.CORS.AllowedOrigins {
+		if o == "*" {
+			hasWildcard = true
+			break
+		}
+	}
+	// 默认 AllowCredentials 为 true（与 routes.go 中的配置一致）
+	if hasWildcard && c.CORS.AllowCredentials {
+		c.CORS.AllowedOrigins = []string{}
+		return true
+	}
+	return false
 }
 
 type ServerConfig struct {
@@ -58,6 +80,10 @@ type ServerConfig struct {
 type ClusterConfig struct {
 	Enabled bool     `yaml:"enabled"`
 	Nodes   []string `yaml:"nodes"`
+}
+
+type NodeConfig struct {
+	Secret string `yaml:"secret"`
 }
 
 type StorageConfig struct {
@@ -110,6 +136,7 @@ type yamlConfig struct {
 	WS       WSConfig       `yaml:"ws"`
 	Vector   VectorConfig   `yaml:"vector"`
 	DataInit DataInitConfig `yaml:"data_init"`
+	Node     NodeConfig     `yaml:"node"`
 }
 
 func Load() *Config {
@@ -282,6 +309,7 @@ func Load() *Config {
 		WS:       cfg.WS,
 		Vector:   cfg.Vector,
 		DataInit: cfg.DataInit,
+		Node:     cfg.Node,
 	}
 }
 

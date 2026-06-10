@@ -19,6 +19,15 @@ const fs_extra_1 = __importDefault(require("fs-extra"));
 const event_js_1 = __importDefault(require("./event.cjs"));
 const getDisplay_js_1 = __importDefault(require("./getDisplay.cjs"));
 const padStart_js_1 = __importDefault(require("./padStart.cjs"));
+function getLinuxOverlayOptions() {
+    const showMode = process.env.QIM_SCREENSHOT_LINUX_SHOW_MODE || 'show';
+    const paintDelayRaw = Number(process.env.QIM_SCREENSHOT_LINUX_PAINT_DELAY_MS || 32);
+    return {
+        showMode: showMode === 'showInactive' ? 'showInactive' : 'show',
+        paintDelayMs: Number.isFinite(paintDelayRaw) ? Math.max(0, Math.min(200, paintDelayRaw)) : 32,
+        transparent: process.env.QIM_SCREENSHOT_LINUX_TRANSPARENT === 'false' ? false : true,
+    };
+}
 class Screenshots extends node_events_1.default {
     constructor(opts) {
         super();
@@ -29,10 +38,13 @@ class Screenshots extends node_events_1.default {
         this._initialized = false;
         this.logger = (opts === null || opts === void 0 ? void 0 : opts.logger) || (0, debug_1.default)('electron-screenshots');
         this.singleWindow = (opts === null || opts === void 0 ? void 0 : opts.singleWindow) || false;
+        this._overlayOptions = getLinuxOverlayOptions();
         this.onWindowShow = () => {
             var _a, _b;
             (_a = this.$win) === null || _a === void 0 ? void 0 : _a.focus();
-            (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
+            if (process.platform !== 'linux') {
+                (_b = this.$win) === null || _b === void 0 ? void 0 : _b.setKiosk(true);
+            }
         };
         this.onWindowClosed = () => {
             this.emit('windowClosed', this.$win);
@@ -131,13 +143,18 @@ class Screenshots extends node_events_1.default {
                 this.capture(display),
                 this.isReady,
             ]);
-            yield this.createWindow(display);
             const cursorPoint = electron_1.screen.getCursorScreenPoint();
             const cursor = {
                 x: Math.max(0, Math.min(display.width - 1, cursorPoint.x - display.x)),
                 y: Math.max(0, Math.min(display.height - 1, cursorPoint.y - display.y)),
             };
+            yield this.prepareCaptureWindow(display);
             this.$view.webContents.send('SCREENSHOTS:capture', display, imageUrl, cursor);
+            // Give the hidden BrowserView a short frame to apply the captured image before
+            // the transparent overlay is shown. This avoids a transient blank/white window
+            // on Linux compositors when the overlay becomes visible before React paints.
+            yield new Promise((resolve) => setTimeout(resolve, this._overlayOptions.paintDelayMs));
+            yield this.showCaptureWindow(display);
             }
             finally {
                 this._capturing = false;
@@ -196,7 +213,7 @@ class Screenshots extends node_events_1.default {
     /**
      * 初始化窗口
      */
-    createWindow(display) {
+    prepareCaptureWindow(display) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
             // 重置截图区域
@@ -221,7 +238,7 @@ class Screenshots extends node_events_1.default {
                     frame: false,
                     show: false,
                     autoHideMenuBar: true,
-                    transparent: true,
+                    transparent: process.platform === 'linux' ? this._overlayOptions.transparent : true,
                     resizable: false,
                     movable: false,
                     minimizable: false,
@@ -237,7 +254,7 @@ class Screenshots extends node_events_1.default {
                     fullscreen: false,
                     // mac fullscreenable 设置为 true 会导致应用崩溃
                     fullscreenable: false,
-                    kiosk: true,
+                    kiosk: process.platform !== 'linux',
                     backgroundColor: '#00000000',
                     titleBarStyle: 'hidden',
                     hasShadow: false,
@@ -272,9 +289,36 @@ class Screenshots extends node_events_1.default {
                 width: display.width,
                 height: display.height,
             });
-            this.$win.setAlwaysOnTop(true);
-            this.$win.show();
         });
+    }
+    createWindow(display) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.prepareCaptureWindow(display);
+            yield this.showCaptureWindow(display);
+        });
+    }
+    showCaptureWindow(display) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.prepareCaptureWindow(display);
+            this.logger('SCREENSHOTS overlay options %o', this.getOverlayDiagnostics());
+            this.$win.setAlwaysOnTop(true);
+            if (process.platform === 'linux' && this._overlayOptions.showMode === 'showInactive') {
+                this.$win.showInactive();
+            }
+            else {
+                this.$win.show();
+            }
+            if (process.platform !== 'linux') {
+                this.$win.setKiosk(true);
+            }
+            this.$win.focus();
+        });
+    }
+    getOverlayDiagnostics() {
+        return {
+            platform: process.platform,
+            linux: this._overlayOptions,
+        };
     }
     capture(display) {
         return __awaiter(this, void 0, void 0, function* () {

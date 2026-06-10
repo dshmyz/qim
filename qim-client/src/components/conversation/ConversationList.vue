@@ -58,7 +58,7 @@
       <i class="fas fa-spinner fa-spin"></i>
       <span>加载中...</span>
     </div>
-    <div v-else-if="!hasMore && conversations.length > 0" class="no-more">
+    <div v-else-if="hasTriggeredLoadMore && !hasMore && conversations.length > 0" class="no-more">
       <span>没有更多会话了</span>
     </div>
   </div>
@@ -120,6 +120,7 @@ const emit = defineEmits<{
 }>()
 
 const listRef = ref<HTMLElement | null>(null)
+const hasTriggeredLoadMore = ref(false)
 
 const handleScroll = () => {
   if (!listRef.value || !props.hasMore || props.isLoading) return
@@ -128,6 +129,7 @@ const handleScroll = () => {
   const distanceToBottom = scrollHeight - scrollTop - clientHeight
   
   if (distanceToBottom < 200) {
+    hasTriggeredLoadMore.value = true
     emit('loadMore')
   }
 }

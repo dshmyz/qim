@@ -16,7 +16,7 @@
       <span class="context-menu-icon"><i class="fas fa-crown"></i></span>
       <span>转让群主</span>
     </div>
-    <div class="context-menu-item" @click.stop="handleSendPrivateMessage">
+    <div v-if="member?.type !== 'bot_assistant'" class="context-menu-item" @click.stop="handleSendPrivateMessage">
       <span class="context-menu-icon"><i class="fas fa-comment"></i></span>
       <span>发起私聊</span>
     </div>

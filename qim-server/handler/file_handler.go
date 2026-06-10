@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,6 +45,7 @@ var (
 type uploadConfig struct {
 	MaxSize           int64
 	AllowedExtensions map[string]bool
+	EnableTypeCheck   bool
 }
 
 func getUploadConfig() *uploadConfig {
@@ -53,6 +55,12 @@ func getUploadConfig() *uploadConfig {
 		if v, ok := uploadConfigCache["file_upload:max_size"]; ok {
 			if n, err := strconv.ParseInt(fmt.Sprintf("%v", v), 10, 64); err == nil {
 				maxSize = n
+			}
+		}
+		enableTypeCheck := false
+		if v, ok := uploadConfigCache["file_upload:enable_type_check"]; ok {
+			if s, ok := v.(string); ok {
+				enableTypeCheck = s == "true"
 			}
 		}
 		var allowed map[string]bool
@@ -70,7 +78,7 @@ func getUploadConfig() *uploadConfig {
 		if allowed == nil {
 			allowed = defaultAllowedExtensions
 		}
-		result := &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed}
+		result := &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed, EnableTypeCheck: enableTypeCheck}
 		uploadConfigMu.RUnlock()
 		return result
 	}
@@ -78,7 +86,7 @@ func getUploadConfig() *uploadConfig {
 
 	db := database.GetDB()
 	var configs []model.SystemConfig
-	db.Where("config_key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions"}).Find(&configs)
+	db.Where("config_key IN ?", []string{"file_upload:max_size", "file_upload:allowed_extensions", "file_upload:enable_type_check"}).Find(&configs)
 
 	cache := map[string]interface{}{}
 	for _, c := range configs {
@@ -96,6 +104,12 @@ func getUploadConfig() *uploadConfig {
 			maxSize = n
 		}
 	}
+	enableTypeCheck := false
+	if v, ok := cache["file_upload:enable_type_check"]; ok {
+		if s, ok := v.(string); ok {
+			enableTypeCheck = s == "true"
+		}
+	}
 	allowed := defaultAllowedExtensions
 	if v, ok := cache["file_upload:allowed_extensions"]; ok {
 		if s, ok := v.(string); ok {
@@ -109,7 +123,7 @@ func getUploadConfig() *uploadConfig {
 		}
 	}
 
-	return &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed}
+	return &uploadConfig{MaxSize: maxSize, AllowedExtensions: allowed, EnableTypeCheck: enableTypeCheck}
 }
 
 func invalidateUploadConfigCache() {
@@ -130,6 +144,36 @@ func invalidateFileStatsCache(userID uint) {
 	fileStatsCacheMu.Lock()
 	delete(fileStatsCache, userID)
 	fileStatsCacheMu.Unlock()
+}
+
+// sanitizeFilename 生成安全的 Content-Disposition 头值，使用 RFC 5987 编码文件名。
+// 格式：attachment; filename="sanitized"; filename*=UTF-8”encoded
+func sanitizeFilename(filename string) string {
+	safeName := sanitizeFallbackName(filename)
+	encoded := url.PathEscape(filename)
+	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", safeName, encoded)
+}
+
+// sanitizeInlineFilename 生成安全的 inline Content-Disposition 头值
+func sanitizeInlineFilename(filename string) string {
+	safeName := sanitizeFallbackName(filename)
+	encoded := url.PathEscape(filename)
+	return fmt.Sprintf("inline; filename=\"%s\"; filename*=UTF-8''%s", safeName, encoded)
+}
+
+// sanitizeFallbackName 生成 ASCII 安全的 fallback 文件名，用于不支持 RFC 5987 的客户端
+func sanitizeFallbackName(filename string) string {
+	var safe strings.Builder
+	for _, r := range filename {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			safe.WriteRune(r)
+		}
+	}
+	result := safe.String()
+	if result == "" {
+		return "download"
+	}
+	return result
 }
 
 func UploadFile(c *gin.Context) {
@@ -162,7 +206,7 @@ func UploadFile(c *gin.Context) {
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !ucfg.AllowedExtensions[ext] {
+	if ucfg.EnableTypeCheck && !ucfg.AllowedExtensions[ext] {
 		response.BadRequest(c, "不支持的文件类型")
 		return
 	}
@@ -776,7 +820,7 @@ func DownloadFile(c *gin.Context) {
 	}
 	defer reader.Close()
 
-	c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	c.Header("Content-Disposition", sanitizeFilename(file.Name))
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
 
@@ -803,6 +847,12 @@ func PublicDownloadFile(c *gin.Context) {
 		return
 	}
 
+	// 只允许公开类型的文件下载（如客户端更新包），私有上传文件禁止公开下载
+	if file.Source != "client_update" {
+		response.Forbidden(c, "该文件不允许公开下载")
+		return
+	}
+
 	mgr := di.GlobalContainer.StorageManager
 	st, key, ok := mgr.ByPath(file.StoragePath)
 	if !ok || st == nil {
@@ -820,7 +870,7 @@ func PublicDownloadFile(c *gin.Context) {
 	}
 	defer reader.Close()
 
-	c.Header("Content-Disposition", "attachment; filename=\""+file.OriginalName+"\"")
+	c.Header("Content-Disposition", sanitizeFilename(file.OriginalName))
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
 
@@ -870,7 +920,7 @@ func PreviewFile(c *gin.Context) {
 
 	c.Header("Content-Type", file.MimeType)
 	if !thumbnail {
-		c.Header("Content-Disposition", "inline; filename=\""+file.Name+"\"")
+		c.Header("Content-Disposition", sanitizeInlineFilename(file.Name))
 	}
 
 	if _, err := io.Copy(c.Writer, reader); err != nil {

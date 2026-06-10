@@ -3,23 +3,22 @@
     <div class="sidebar-header-container">
       <div v-if="isExpanded" class="members-header">
         <div class="header-content">
-          <ToggleSidebarBtn
-            icon="fas fa-chevron-left"
-            size="sm"
-            title="收起成员列表"
-            @click="handleToggleExpanded"
-          />
+          <button class="action-btn" @click="handleToggleExpanded" title="收起成员列表">
+            <i class="fas fa-chevron-left"></i>
+          </button>
           <h3>群成员 ({{ members.length }})</h3>
         </div>
         <div class="header-actions">
-          <button class="search-toggle-btn" @click="handleToggleMemberSearch">
+          <button class="action-btn" @click="handleToggleMemberSearch" title="搜索成员">
             <i class="fas fa-search"></i>
           </button>
         </div>
       </div>
-      <button v-else class="collapsed-toggle-btn" @click="handleToggleExpanded">
-        <i class="fas fa-user"></i>
-      </button>
+      <div v-else class="collapsed-header">
+        <button class="action-btn" @click="handleToggleExpanded" title="展开成员列表">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
     </div>
     <div v-if="showSearch && isExpanded" class="members-search">
       <input
@@ -31,7 +30,7 @@
       />
     </div>
     <div v-if="isExpanded" class="members-content">
-      <div v-for="member in filteredMembers" :key="member.id" class="member-item" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="handleStartPrivateChat(member)">
+      <div v-for="member in filteredMembers" :key="member.id" class="member-item" :class="{ 'bot-member': member.type === 'bot_assistant' }" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)">
         <Avatar
           :src="member.avatar"
           :name="member.name || '未知用户'"
@@ -43,7 +42,28 @@
           <span class="member-name">{{ member.name || '未知用户' }}</span>
           <span v-if="member.role === 'owner'" class="member-role owner" title="群主"><i class="fas fa-crown"></i></span>
           <span v-else-if="member.role === 'admin'" class="member-role admin" title="管理员"><i class="fas fa-user-shield"></i></span>
+          <span v-if="member.type === 'bot_assistant'" class="member-role bot" title="AI助手"><i class="fas fa-robot"></i></span>
         </div>
+      </div>
+    </div>
+    <div v-else class="collapsed-avatars">
+      <div
+        v-for="member in filteredMembers"
+        :key="member.id"
+        class="collapsed-avatar-item"
+        @contextmenu.prevent="handleMemberContextMenu($event, member)"
+        @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)"
+      >
+        <Avatar
+          :src="member.avatar"
+          :name="member.name || '未知用户'"
+          :alt="member.name || '未知用户'"
+          :title="member.name || '未知用户'"
+          size="sm"
+          class="collapsed-avatar"
+        />
+        <span v-if="member.role === 'owner'" class="collapsed-role owner"><i class="fas fa-crown"></i></span>
+        <span v-else-if="member.role === 'admin'" class="collapsed-role admin"><i class="fas fa-user-shield"></i></span>
       </div>
     </div>
   </div>
@@ -52,13 +72,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 interface Member {
   id: string
   name: string
   avatar: string
   role?: 'owner' | 'admin' | 'member'
+  type?: string
 }
 
 interface Props {
@@ -143,7 +163,7 @@ const handleStartPrivateChat = (member: Member) => {
 }
 
 .members-sidebar.collapsed {
-  width: 30px;
+  width: 48px;
   border-left: none;
 }
 
@@ -174,23 +194,55 @@ const handleStartPrivateChat = (member: Member) => {
   gap: 8px;
 }
 
-.collapsed-toggle-btn {
-  width: 30px;
-  height: 30px;
-  border: none;
-  background: var(--sidebar-bg);
-  cursor: pointer;
+.collapsed-header {
   display: flex;
-  align-items: center;
   justify-content: center;
-  font-size: 14px;
-  color: var(--text-color);
-  transition: all 0.2s;
+  padding: 6px 0;
 }
 
-.collapsed-toggle-btn:hover {
+.collapsed-avatars {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.collapsed-avatar-item {
+  position: relative;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.collapsed-avatar-item:hover {
   background: var(--hover-color);
-  border-radius: 4px;
+}
+
+.collapsed-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.collapsed-role {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.collapsed-role.owner {
+  color: #ffd700;
+}
+
+.collapsed-role.admin {
+  color: #4facfe;
 }
 
 .members-sidebar .members-header {
@@ -208,7 +260,7 @@ const handleStartPrivateChat = (member: Member) => {
   color: var(--text-color);
 }
 
-.search-toggle-btn {
+.action-btn {
   width: 24px;
   height: 24px;
   border: none;
@@ -219,11 +271,11 @@ const handleStartPrivateChat = (member: Member) => {
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--text-color);
+  color: var(--text-secondary);
   transition: all 0.2s;
 }
 
-.search-toggle-btn:hover {
+.action-btn:hover {
   background: var(--hover-color);
   color: var(--text-color);
 }
@@ -312,5 +364,17 @@ const handleStartPrivateChat = (member: Member) => {
 
 .members-sidebar .member-role.admin {
   color: #4facfe;
+}
+
+.members-sidebar .member-role.bot {
+  color: #7c3aed;
+}
+
+.members-sidebar .bot-member {
+  cursor: default;
+}
+
+.members-sidebar .bot-member .member-name {
+  color: var(--text-secondary);
 }
 </style>

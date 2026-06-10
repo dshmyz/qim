@@ -607,9 +607,12 @@
       :showSystemMessageModal="showSystemMessageModal"
       :isCheckingUpdate="isCheckingUpdate"
       :isDownloading="isDownloading"
+      :isUpdateReadyToInstall="isUpdateReadyToInstall"
       :downloadProgress="downloadProgress"
       :hasNewVersion="hasNewVersion"
+      :forceUpdate="forceUpdate"
       :updateResult="updateResult"
+      :updateInfo="updateInfo"
       :groupConversations="conversations.filter(c => c.type === 'group')"
       :allEmployees="allEmployees"
       :orgStructure="orgStructure"
@@ -619,6 +622,7 @@
       @confirmLogout="handleConfirmLogout"
       @closeUpdate="closeUpdateDialog"
       @downloadUpdate="downloadUpdate"
+      @installUpdate="installUpdate"
       @closeSystemMessage="closeSystemMessageModal"
       @sendSystemMessage="sendSystemMessage"
       @openFeedback="openFeedbackModal"
@@ -999,9 +1003,12 @@ const {
   showUpdateDialog,
   isCheckingUpdate,
   isDownloading,
+  isUpdateReadyToInstall,
   downloadProgress,
   updateResult,
   hasNewVersion,
+  forceUpdate,
+  updateInfo,
   openUpdateDialog,
   closeUpdateDialog,
   registerUpdateEventListeners,
@@ -2896,6 +2903,7 @@ const checkForUpdates = () => {
   isCheckingUpdate.value = true
   updateResult.value = '正在检查更新...'
   hasNewVersion.value = false
+  updateInfo.value = null
   downloadProgress.value = 0
   isDownloading.value = false
   closeSettingsMenu()
@@ -2924,17 +2932,26 @@ const checkUpdateViaAPI = async () => {
       if (isNewerVersion(latestVersion.version, currentVersion)) {
         hasNewVersion.value = true
         updateResult.value = `发现新版本 v${latestVersion.version}`
+        updateInfo.value = {
+          version: latestVersion.version,
+          releaseDate: latestVersion.releaseDate,
+          releaseNotes: latestVersion.updateNotes
+        }
         // 存储下载链接供后续使用
         latestDownloadUrl.value = latestVersion.downloadUrl
       } else {
         hasNewVersion.value = false
+        updateInfo.value = null
         updateResult.value = '当前已是最新版本'
       }
     } else {
       hasNewVersion.value = false
+      updateInfo.value = null
       updateResult.value = '当前已是最新版本'
     }
   } catch (error: any) {
+    isDownloading.value = false
+    downloadProgress.value = 0
     updateResult.value = `检查更新失败: ${error.message || '网络错误'}`
   } finally {
     isCheckingUpdate.value = false
@@ -2980,6 +2997,13 @@ const downloadUpdate = () => {
     } else {
       updateResult.value = '暂无可用的下载链接'
     }
+  }
+}
+
+const installUpdate = () => {
+  logger.log('重启安装更新')
+  if (window.electron) {
+    window.electron.ipcRenderer.send('install-update')
   }
 }
 
@@ -3085,4 +3109,3 @@ initTheme()
 <style scoped>
 @import url('./Main.css');
 </style>
-

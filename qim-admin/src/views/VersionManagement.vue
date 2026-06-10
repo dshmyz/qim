@@ -104,7 +104,11 @@
         </el-form-item>
         <el-form-item label="下载链接" prop="downloadUrl">
           <div class="download-url-input">
-            <el-input v-model="versionForm.downloadUrl" placeholder="请输入安装包下载链接或上传文件" />
+            <el-input
+              v-model="versionForm.downloadUrl"
+              :disabled="true"
+              placeholder="上传安装包后自动生成下载链接"
+            />
             <el-upload
               :show-file-list="false"
               :before-upload="beforeUpload"
@@ -119,6 +123,7 @@
           <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
             <el-progress :percentage="uploadProgress" :stroke-width="6" />
           </div>
+          <div class="form-item-tip">请先上传安装包再发布版本，系统会自动生成下载链接并计算更新校验信息。</div>
         </el-form-item>
         <el-form-item label="强制更新">
           <el-switch v-model="versionForm.forceUpdate" />
@@ -171,8 +176,8 @@ const versionRules: FormRules = {
   releaseDate: [{ required: true, message: '请选择发布日期', trigger: 'change' }],
   updateNotes: [{ required: true, message: '请输入更新说明', trigger: 'blur' }],
   downloadUrl: [
-    { required: true, message: '请输入下载链接', trigger: 'blur' },
-    { type: 'url', message: '请输入有效的 URL', trigger: 'blur' },
+    { required: true, message: '请先上传安装包', trigger: 'change' },
+    { type: 'url', message: '上传后生成的下载链接无效', trigger: 'change' },
   ],
 }
 
@@ -300,6 +305,10 @@ const handleSubmit = async () => {
         })
         ElMessage.success('更新成功')
       } else {
+        if (!versionForm.downloadUrl) {
+          ElMessage.error('请先上传安装包')
+          return
+        }
         await createVersion({
           version: versionForm.version,
           platform: versionForm.platform,
@@ -396,5 +405,12 @@ onMounted(fetchVersions)
 
 .upload-progress {
   margin-top: 8px;
+}
+
+.form-item-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
 }
 </style>

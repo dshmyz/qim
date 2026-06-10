@@ -41,7 +41,11 @@
       </el-form-item>
       <el-form-item label="下载链接" prop="downloadUrl">
         <div class="download-url-input">
-          <el-input v-model="form.downloadUrl" placeholder="请输入安装包下载链接或上传文件" />
+          <el-input
+            v-model="form.downloadUrl"
+            :disabled="true"
+            placeholder="上传安装包后自动生成下载链接"
+          />
           <el-upload
             ref="uploadRef"
             :show-file-list="false"
@@ -57,6 +61,7 @@
         <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
           <el-progress :percentage="uploadProgress" :stroke-width="6" />
         </div>
+        <div class="form-item-tip">请先上传安装包再发布版本，系统会自动生成下载链接并计算更新校验信息。</div>
       </el-form-item>
       <el-form-item label="灰度发布" prop="rolloutPercentage">
         <el-input-number
@@ -131,8 +136,8 @@ const rules: FormRules = {
   releaseDate: [{ required: true, message: '请选择发布日期', trigger: 'change' }],
   updateNotes: [{ required: true, message: '请输入更新说明', trigger: 'blur' }],
   downloadUrl: [
-    { required: true, message: '请输入下载链接', trigger: 'blur' },
-    { type: 'url', message: '请输入有效的 URL', trigger: 'blur' },
+    { required: true, message: '请先上传安装包', trigger: 'change' },
+    { type: 'url', message: '上传后生成的下载链接无效', trigger: 'change' },
   ],
   rolloutPercentage: [{ required: true, message: '请设置灰度百分比', trigger: 'change' }],
 }
@@ -218,6 +223,10 @@ async function handleConfirm() {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
+    if (!props.isEdit && !form.downloadUrl) {
+      ElMessage.error('请先上传安装包')
+      return
+    }
     emit('confirm', { ...form })
   })
 }

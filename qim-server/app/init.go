@@ -319,7 +319,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	}
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub(database.GetDB())
+	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret)
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -396,7 +396,9 @@ func MigrateDB(db *gorm.DB) {
 		&model.GroupDocument{},         // 依赖 Group, File
 		&model.AvatarConfig{},          // 依赖 User
 		&model.AvatarSession{},         // 依赖 User, AvatarConfig
+		&model.AvatarToolBinding{},     // 依赖 AvatarConfig
 		&model.AvatarLearnTask{},       // 依赖 User, AvatarConfig
+		&model.DocumentProcessStatus{}, // 依赖 GroupDocument
 	}
 
 	// 分阶段迁移
@@ -420,16 +422,23 @@ func migrateModels(db *gorm.DB, models []interface{}, stage string) {
 	for _, m := range models {
 		modelName := fmt.Sprintf("%T", m)
 
-		// 使用事务确保每个模型的迁移是原子操作
-		err := db.Transaction(func(tx *gorm.DB) error {
-			return tx.AutoMigrate(m)
-		})
+		err := db.AutoMigrate(m)
 
 		if err != nil {
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "already exists") {
-				skipped++
-				logger.WithModule("Migrate").Info("表已存在，跳过", "model", modelName)
+				if !db.Migrator().HasTable(m) {
+					if createErr := db.Migrator().CreateTable(m); createErr != nil {
+						failed++
+						logger.WithModule("Migrate").Error("迁移表失败", "model", modelName, "error", createErr)
+					} else {
+						migrated++
+						logger.WithModule("Migrate").Info("表迁移成功", "model", modelName)
+					}
+				} else {
+					skipped++
+					logger.WithModule("Migrate").Info("表已存在，跳过", "model", modelName)
+				}
 			} else {
 				failed++
 				logger.WithModule("Migrate").Error("迁移表失败", "model", modelName, "error", err)
@@ -546,7 +555,8 @@ func seedBuiltInApps(db *gorm.DB) {
 func seedFileUploadConfig(db *gorm.DB) {
 	defaultConfigs := []model.SystemConfig{
 		{ConfigKey: "file_upload:max_size", Value: "524288000", Type: "number", Desc: "文件上传最大大小（字节），默认 500MB"},
-		{ConfigKey: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov"]`, Type: "json", Desc: "允许上传的文件扩展名列表"},
+		{ConfigKey: "file_upload:enable_type_check", Value: "false", Type: "boolean", Desc: "是否启用文件类型检查，默认不启用（允许所有类型）"},
+		{ConfigKey: "file_upload:allowed_extensions", Value: `[".jpg",".jpeg",".png",".gif",".bmp",".webp",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".md",".csv",".zip",".rar",".7z",".mp3",".wav",".mp4",".avi",".mov",".exe",".msi",".dmg",".pkg",".AppImage",".deb",".rpm"]`, Type: "json", Desc: "允许上传的文件扩展名列表（仅当启用类型检查时生效）"},
 	}
 	for _, cfg := range defaultConfigs {
 		db.Where("config_key = ?", cfg.ConfigKey).FirstOrCreate(&cfg)

@@ -11,25 +11,23 @@ import (
 )
 
 type Claims struct {
-	UserID   uint   `json:"user_id"`
-	Username string `json:"username"`
+	UserID    uint   `json:"user_id"`
+	Username  string `json:"username"`
+	TokenType string `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims
 }
 
 func AuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
 		var tokenString string
 
+		// 优先从 Authorization header 获取 Bearer token
+		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) == 2 && parts[0] == "Bearer" {
 				tokenString = parts[1]
-			} else {
-				tokenString = c.Query("token")
 			}
-		} else {
-			tokenString = c.Query("token")
 		}
 
 		if tokenString == "" {
@@ -52,6 +50,7 @@ func AuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc
 
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		c.Set("token_type", claims.TokenType)
 
 		roleNames, err := userSvc.GetUserRoles(claims.UserID)
 		if err != nil {

@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -17,11 +17,44 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
+const SCREENSHOT_CAPTURE_TIMEOUT_MS = 12000
 
 // ==================== Single Instance & Protocol ====================
 
+// 获取更新服务器地址（优先级：环境变量 > 配置文件 > 根据 isPackaged 判断）
+function getUpdateServerUrl() {
+  // 优先使用环境变量
+  if (process.env.QIM_UPDATE_URL) {
+    return process.env.QIM_UPDATE_URL
+  }
+  
+  // 尝试从配置文件加载
+  const savedUrl = loadServerConfig()
+  if (savedUrl) {
+    return savedUrl
+  }
+  
+  // 根据是否打包判断环境
+  return app.isPackaged 
+    ? 'https://api.qim.work' 
+    : 'http://localhost:8080'
+}
+
 if (app.isPackaged) {
-  const gotTheLock = app.requestSingleInstanceLock()
+  let gotTheLock = app.requestSingleInstanceLock()
+  if (!gotTheLock) {
+    // 锁获取失败，可能是进程被强杀后残留的锁文件，尝试清理后重试
+    const lockPath = path.join(app.getPath('userData'), 'SingletonLock')
+    try {
+      if (fs.existsSync(lockPath)) {
+        console.log('检测到残留锁文件，尝试清理:', lockPath)
+        fs.unlinkSync(lockPath)
+        gotTheLock = app.requestSingleInstanceLock()
+      }
+    } catch (e) {
+      console.error('清理锁文件失败:', e)
+    }
+  }
   if (!gotTheLock) {
     console.log('应用已在运行，退出当前实例')
     app.quit()
@@ -181,12 +214,14 @@ function getAutoUpdateFeedUrl() {
 }
 
 const savedUrl = loadServerConfig()
-let currentUpdateBaseUrl = savedUrl || UPDATE_SERVER_URL
+let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl()
 
 // ==================== Global State ====================
 
 let mainWindow
 let tray
+let forceUpdateActive = false
+let lastForceUpdateInfo = null
 
 // Screenshot state
 let screenshotInstance = null
@@ -276,6 +311,21 @@ function createWindow() {
       console.log('Opening DevTools in development mode')
       mainWindow.webContents.openDevTools()
     }
+    if (forceUpdateActive && lastForceUpdateInfo) {
+      sendToWindow('update-available', lastForceUpdateInfo)
+    }
+  })
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!forceUpdateActive) return
+    if ((input.meta || input.control) && input.key.toLowerCase() === 'r') {
+      event.preventDefault()
+    }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!forceUpdateActive) return
+    event.preventDefault()
   })
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -377,6 +427,101 @@ function restoreMainWindowAfterScreenshot() {
   }
 }
 
+function getScreenshotDiagnostics() {
+  const cursorPoint = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursorPoint)
+  return {
+    platform: process.platform,
+    sessionType: process.env.XDG_SESSION_TYPE || 'unknown',
+    desktopSession: process.env.DESKTOP_SESSION || 'unknown',
+    waylandDisplay: process.env.WAYLAND_DISPLAY || '',
+    x11Display: process.env.DISPLAY || '',
+    displayId: display.id,
+    scaleFactor: display.scaleFactor,
+    bounds: display.bounds,
+    screenshotOverlay: screenshotInstance?.getOverlayDiagnostics?.() || null
+  }
+}
+
+function withScreenshotTimeout(capturePromise) {
+  let timer
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = Object.assign(
+        new Error(`Screenshot capture timed out after ${SCREENSHOT_CAPTURE_TIMEOUT_MS}ms`),
+        { code: 'capture_timeout' }
+      )
+      reject(err)
+    }, SCREENSHOT_CAPTURE_TIMEOUT_MS)
+  })
+
+  return Promise.race([capturePromise, timeoutPromise]).finally(() => {
+    clearTimeout(timer)
+  })
+}
+
+function sendScreenshotError(message, err, code = 'capture_failed') {
+  const diagnostics = getScreenshotDiagnostics()
+  const errorCode = err?.code || code
+  console.error('[screenshot]', message, { code: errorCode, diagnostics, err })
+  restoreMainWindowAfterScreenshot()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('screenshot-error', { message, code: errorCode, diagnostics })
+  }
+}
+
+function ensureMacScreenRecordingPermission() {
+  if (process.platform !== 'darwin') return true
+
+  const status = systemPreferences.getMediaAccessStatus('screen')
+  if (status === 'granted') return true
+
+  try {
+    systemPreferences.openSystemPreferences('security', 'Privacy_ScreenCapture')
+  } catch (err) {
+    console.error('[screenshot] Failed to open Screen Recording preferences:', err)
+  }
+
+  sendScreenshotError(
+    '请在系统设置中允许 QIM 进行屏幕录制，然后重启应用后再截图',
+    { code: 'screen_permission_denied', status },
+    'screen_permission_denied'
+  )
+  return false
+}
+
+async function startScreenshotCapture({ hideMainWindow = false } = {}) {
+  console.log('[screenshot] start capture', { hideMainWindow, diagnostics: getScreenshotDiagnostics() })
+
+  if (!ensureMacScreenRecordingPermission()) {
+    return
+  }
+
+  if (!screenshotInstance) {
+    sendScreenshotError('截图组件尚未初始化，请稍后重试', null, 'not_initialized')
+    return
+  }
+
+  if (!screenshotInstance._initialized) {
+    mainWindow?.webContents?.send('screenshot-loading')
+  }
+
+  if (hideMainWindow && mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.setContentProtection(true)
+      screenshotContentProtectionEnabled = true
+    } catch (err) {
+      console.error('[screenshot] Failed to enable content protection:', err)
+    }
+  }
+
+  try {
+    await withScreenshotTimeout(screenshotInstance.startCapture())
+  } catch (err) {
+    sendScreenshotError('截图失败，请检查屏幕录制权限或稍后重试', err)
+  }
+}
+
 function initScreenshot() {
   try {
     console.log('Initializing screenshots...')
@@ -386,9 +531,7 @@ function initScreenshot() {
       console.log('[screenshot] Captured, buffer length:', buffer.length)
       restoreMainWindowAfterScreenshot()
       if (!mainWindow || mainWindow.isDestroyed()) return
-      const img = nativeImage.createFromBuffer(buffer)
-      const dataUrl = img.toDataURL()
-      mainWindow.webContents.send('screenshot-taken', dataUrl)
+      mainWindow.webContents.send('screenshot-taken', buffer)
     })
 
     screenshotInstance.on('cancel', () => {
@@ -407,6 +550,7 @@ function initScreenshot() {
     screenshotInstance.on('error', (err) => {
       console.error('[screenshot] Error:', err)
       screenshotInitError = err
+      sendScreenshotError('截图失败，请检查屏幕录制权限或稍后重试', err)
     })
 
     console.log('[screenshot] Instance created successfully')
@@ -553,46 +697,96 @@ function setupAutoUpdateUrl() {
   if (feedUrl) {
     console.log(`设置更新服务器地址: ${feedUrl}`)
     autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+  } else {
+    console.warn('无法设置更新服务器地址: feedUrl 为空, currentUpdateBaseUrl:', currentUpdateBaseUrl, 'platform:', process.platform)
   }
+}
+
+let updatePhase = 'idle'
+let downloadedUpdateInfo = null
+
+function formatUpdateError(error, phase = updatePhase) {
+  const fallback = phase === 'download' || phase === 'downloading' ? '下载更新失败' : '检查更新失败'
+  let errorMessage = fallback
+
+  if (error?.message) {
+    const msg = error.message.toLowerCase()
+
+    if (msg.includes('404') || msg.includes('cannot find channel')) {
+      errorMessage = phase === 'download' || phase === 'downloading' ? '下载更新失败：暂无可用安装包' : '暂无可用更新'
+    } else if (msg.includes('timeout') || msg.includes('etimedout')) {
+      errorMessage = '网络连接超时，请稍后重试'
+    } else if (msg.includes('enotfound') || msg.includes('econnrefused')) {
+      errorMessage = '无法连接到更新服务器'
+    } else if (msg.includes('net::err')) {
+      errorMessage = '网络错误，请检查网络连接'
+    } else {
+      errorMessage = error.message.split('\n')[0]
+    }
+  }
+
+  if ((phase === 'download' || phase === 'downloading') && !errorMessage.includes('下载')) {
+    errorMessage = `下载更新失败：${errorMessage}`
+  }
+
+  return errorMessage
 }
 
 function setupAutoUpdater() {
   setupAutoUpdateUrl()
 
+  // 不自动下载，等用户确认后再下载
+  autoUpdater.autoDownload = false
+
   autoUpdater.on('checking-for-update', () => {
+    updatePhase = 'checking'
+    downloadedUpdateInfo = null
     console.log('正在检查更新...')
     sendToWindow('update-checking')
   })
 
   autoUpdater.on('update-available', (info) => {
-    console.log('发现新版本:', info.version)
-    sendToWindow('update-available', info)
+    updatePhase = 'available'
+    forceUpdateActive = !!info.forceUpdate
+    lastForceUpdateInfo = {
+      version: info.version,
+      forceUpdate: info.forceUpdate || false,
+      releaseDate: info.releaseDate,
+      releaseName: info.releaseName,
+      releaseNotes: info.releaseNotes
+    }
+    console.log('发现新版本:', info.version, '强制更新:', info.forceUpdate)
+    sendToWindow('update-available', lastForceUpdateInfo)
   })
 
   autoUpdater.on('update-not-available', () => {
+    updatePhase = 'idle'
+    forceUpdateActive = false
+    lastForceUpdateInfo = null
     console.log('当前已是最新版本')
     sendToWindow('update-not-available')
   })
 
   autoUpdater.on('error', (error) => {
     console.error('更新错误:', error)
-    sendToWindow('update-error', error.message)
+    const errorMessage = formatUpdateError(error)
+    updatePhase = 'idle'
+    forceUpdateActive = false
+    lastForceUpdateInfo = null
+    sendToWindow('update-error', errorMessage)
   })
 
   autoUpdater.on('download-progress', (progressObj) => {
+    updatePhase = 'downloading'
     console.log('下载进度:', progressObj.percent)
     sendToWindow('update-progress', progressObj)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('更新下载完成，准备安装')
+    updatePhase = 'downloaded'
+    downloadedUpdateInfo = info
+    console.log('更新下载完成，等待用户确认安装')
     sendToWindow('update-downloaded', info)
-
-    if (process.platform === 'linux') {
-      installLinuxUpdate(info)
-    } else {
-      autoUpdater.quitAndInstall()
-    }
   })
 
   async function installLinuxUpdate(info) {
@@ -658,6 +852,34 @@ function setupAutoUpdater() {
     }
   }
 
+  // 定期自动检查更新（每 4 小时）
+  const AUTO_UPDATE_INTERVAL = 4 * 60 * 60 * 1000
+  let autoUpdateTimer = null
+
+  // 自动检查更新（静默，不干扰用户）
+  const autoCheckForUpdates = () => {
+    if (!app.isPackaged) return
+    console.log('[自动更新] 定期检查更新...')
+    setupAutoUpdateUrl()
+    autoUpdater.checkForUpdates().catch(error => {
+      console.error('[自动更新] 定期检查失败:', error)
+    })
+  }
+
+  // 启动定期检查
+  autoUpdateTimer = setInterval(autoCheckForUpdates, AUTO_UPDATE_INTERVAL)
+
+  // 应用启动后延迟 30 秒自动检查一次（避免阻塞启动）
+  setTimeout(() => {
+    if (app.isPackaged) {
+      console.log('[自动更新] 启动后首次检查更新...')
+      setupAutoUpdateUrl()
+      autoUpdater.checkForUpdates().catch(error => {
+        console.error('[自动更新] 启动检查失败:', error)
+      })
+    }
+  }, 30000)
+
   if (app.isPackaged) {
     autoUpdater.checkForUpdates().catch(error => {
       console.error('检查更新失败:', error)
@@ -668,12 +890,42 @@ function setupAutoUpdater() {
 // ==================== IPC Handlers ====================
 
 function checkForUpdates() {
-  console.log('收到检查更新请求')
-  setupAutoUpdateUrl()
-  autoUpdater.checkForUpdates().catch(error => {
-    console.error('检查更新失败:', error)
-    sendToWindow('update-error', error.message)
-  })
+  console.log('收到检查更新请求, currentUpdateBaseUrl:', currentUpdateBaseUrl, 'platform:', process.platform)
+  const feedUrl = getAutoUpdateFeedUrl()
+  if (!feedUrl) {
+    const error = `无法检查更新: 当前平台 ${process.platform} 不支持或服务器地址未配置 (currentUpdateBaseUrl: ${currentUpdateBaseUrl})`
+    console.error(error)
+    sendToWindow('update-error', error)
+    return
+  }
+  
+  console.log('设置更新服务器地址:', feedUrl)
+  updatePhase = 'checking'
+  autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+  
+  // 设置超时，防止长时间无响应（增加到 10 秒）
+  const timeout = setTimeout(() => {
+    console.error('检查更新超时（10秒）')
+    sendToWindow('update-error', '检查更新超时，请检查网络连接或服务器地址')
+  }, 10000)
+  
+  // 监听一次 update-not-available 和 update-available 来清除超时
+  const clearTimeoutHandler = () => clearTimeout(timeout)
+  autoUpdater.once('update-not-available', clearTimeoutHandler)
+  autoUpdater.once('update-available', clearTimeoutHandler)
+  autoUpdater.once('error', clearTimeoutHandler)
+  
+  autoUpdater.checkForUpdates()
+    .then(result => {
+      clearTimeout(timeout)
+      console.log('检查更新结果:', result)
+    })
+    .catch(error => {
+      clearTimeout(timeout)
+      updatePhase = 'idle'
+      console.error('检查更新失败:', error)
+      sendToWindow('update-error', formatUpdateError(error, 'check'))
+    })
 }
 
 function registerIPC() {
@@ -698,41 +950,12 @@ function registerIPC() {
 
   ipcMain.on('take-screenshot', () => {
     console.log('[screenshot] Received take-screenshot event')
-    if (!screenshotInstance) {
-      console.error('[screenshot] Cannot capture: not initialized')
-      return
-    }
-    // 如果截图组件还在初始化中，通知前端显示加载提示
-    if (!screenshotInstance._initialized) {
-      mainWindow?.webContents?.send('screenshot-loading')
-    }
-    screenshotInstance.startCapture().catch(err => {
-      console.error('[screenshot] startCapture error:', err)
-    })
+    startScreenshotCapture({ hideMainWindow: false })
   })
 
   ipcMain.on('take-screenshot-hidden', () => {
     console.log('[screenshot] Received take-screenshot-hidden event')
-    if (!screenshotInstance) {
-      console.error('[screenshot] Cannot capture: not initialized')
-      return
-    }
-    // 如果截图组件还在初始化中，通知前端显示加载提示
-    if (!screenshotInstance._initialized) {
-      mainWindow?.webContents?.send('screenshot-loading')
-    }
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try {
-        mainWindow.setContentProtection(true)
-        screenshotContentProtectionEnabled = true
-      } catch (err) {
-        console.error('[screenshot] Failed to enable content protection:', err)
-      }
-    }
-    screenshotInstance.startCapture().catch(err => {
-      console.error('[screenshot] hidden startCapture error:', err)
-      restoreMainWindowAfterScreenshot()
-    })
+    startScreenshotCapture({ hideMainWindow: true })
   })
 
   ipcMain.on('open-auth-login', (event, data) => {
@@ -841,13 +1064,23 @@ function registerIPC() {
   })
 
   ipcMain.on('download-update', () => {
-    // electron-updater 会在 checkForUpdates() 发现新版本后自动开始下载
-    // 这里再次触发检查，以确保下载流程启动
-    setupAutoUpdateUrl()
-    autoUpdater.checkForUpdates().catch(error => {
+    updatePhase = 'downloading'
+    autoUpdater.downloadUpdate().catch(error => {
       console.error('下载更新失败:', error)
-      sendToWindow('update-error', error.message)
+      updatePhase = 'idle'
+      sendToWindow('update-error', formatUpdateError(error, 'download'))
     })
+  })
+
+  ipcMain.on('install-update', () => {
+    if (!downloadedUpdateInfo) {
+      sendToWindow('update-error', '更新文件尚未下载完成')
+      return
+    }
+    forceUpdateActive = false
+    lastForceUpdateInfo = null
+    sendToWindow('update-installing')
+    autoUpdater.quitAndInstall(false, true)
   })
 
   ipcMain.on('start-screen-share', async () => {

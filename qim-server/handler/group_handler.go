@@ -41,7 +41,6 @@ func AddMemberToGroup(c *gin.Context) {
 	convSvc := di.GlobalContainer.ConversationService
 	userSvc := di.GlobalContainer.UserService
 	notifSvc := di.GlobalContainer.NotificationService
-	msgSvc := di.GlobalContainer.MessageService
 	groupSvc := di.GlobalContainer.GroupService
 
 	group, err := groupSvc.GetGroupByConversationID(uint(convID))
@@ -163,64 +162,7 @@ func AddMemberToGroup(c *gin.Context) {
 			systemMessageContent = fmt.Sprintf("%s 添加了新成员 %s", currentUser.Username, strings.Join(memberNames, "、"))
 		}
 
-		systemMsg := &model.Message{
-			ConversationID: conv.ID,
-			SenderID:       currentUser.ID,
-			Type:           "system",
-			Content:        systemMessageContent,
-			IsRead:         true,
-		}
-		if err := msgSvc.CreateMessage(systemMsg); err != nil {
-			logger.WithModule("GroupHandler").Error("创建系统消息失败", "error", err)
-		}
-
-		systemMsg.Sender = *currentUser
-
-		now := time.Now()
-		convSvc.UpdateConversation(conv.ID, map[string]interface{}{
-			"last_message_id": systemMsg.ID,
-			"last_message_at": now,
-		})
-
-		responseData := gin.H{
-			"id":                systemMsg.ID,
-			"conversation_id":   systemMsg.ConversationID,
-			"sender_id":         systemMsg.SenderID,
-			"type":              systemMsg.Type,
-			"content":           systemMsg.Content,
-			"quoted_message_id": systemMsg.QuotedMessageID,
-			"is_recalled":       systemMsg.IsRecalled,
-			"is_read":           systemMsg.IsRead,
-			"recalled_at":       systemMsg.RecalledAt,
-			"created_at":        systemMsg.CreatedAt,
-			"sender":            systemMsg.Sender,
-		}
-
-		if ws.GlobalHub != nil {
-			for _, member := range addedMembers {
-				joinMsg := ws.WSMessage{
-					Type: "group_member_joined",
-					Data: gin.H{
-						"conversation_id": conv.ID,
-						"member": gin.H{
-							"id":       member.ID,
-							"nickname": member.Nickname,
-							"username": member.Username,
-							"avatar":   member.Avatar,
-						},
-					},
-				}
-				jsonMsg, _ := json.Marshal(joinMsg)
-				ws.GlobalHub.SendToConversation(uint(convIDUint), 0, jsonMsg)
-			}
-
-			newMsg := ws.WSMessage{
-				Type: "new_message",
-				Data: responseData,
-			}
-			newMsgJson, _ := json.Marshal(newMsg)
-			ws.GlobalHub.SendToConversation(uint(convIDUint), 0, newMsgJson)
-		}
+		service.NotifyMembersJoined(database.GetDB(), conv.ID, currentUser.ID, systemMessageContent, addedMembers)
 	}
 
 	if ws.GlobalHub != nil {
@@ -793,7 +735,10 @@ func UpdateGroupAISettings(c *gin.Context) {
 		if assistantName == "" {
 			assistantName = "AI助手"
 		}
-		if _, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName); err != nil {
+		if aiUser, err := userSvc.EnsureGroupAIAssistant(group.ID, assistantName); err == nil {
+			content := fmt.Sprintf("%s 已加入群聊，开始为大家服务", assistantName)
+			service.NotifyMembersJoined(database.GetDB(), group.ConversationID, aiUser.ID, content, []model.User{*aiUser})
+		} else {
 			logger.WithModule("GroupAI").Error("创建群助手账号失败", "groupID", group.ID, "error", err)
 		}
 	}

@@ -1,5 +1,11 @@
 <template>
-  <div class="chat-input-area">
+  <div
+    class="chat-input-area"
+    :class="{ 'drag-over': isDragOver }"
+    @dragover.prevent="handleDragOver"
+    @dragleave.prevent="handleDragLeave"
+    @drop.prevent="handleDrop"
+  >
     <ChatToolbar
       :is-electron="isElectron"
       :show-ai-actions="localShowAIActions"
@@ -160,6 +166,7 @@ const emit = defineEmits<{
   (e: 'ai-action', actionId: string): void
   (e: 'update:showMiniAppList', value: boolean): void
   (e: 'input', event: Event): void
+  (e: 'handle-drop', event: DragEvent): void
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -170,6 +177,7 @@ const atMembersListRef = ref<HTMLDivElement | null>(null)
 const atMembersSearchQuery = ref('')
 const atMemberActiveIndex = ref(-1)
 const localShowAIActions = ref(false)
+const isDragOver = ref(false)
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
 
@@ -190,6 +198,26 @@ const handleSelectFile = () => {
 
 const toggleAI = () => {
   localShowAIActions.value = !localShowAIActions.value
+}
+
+const handleDragOver = (event: DragEvent) => {
+  if (event.dataTransfer?.types.includes('Files')) {
+    isDragOver.value = true
+  }
+}
+
+const handleDragLeave = (event: DragEvent) => {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  if (event.clientX <= rect.left || event.clientX >= rect.right || event.clientY <= rect.top || event.clientY >= rect.bottom) {
+    isDragOver.value = false
+  }
+}
+
+const handleDrop = (event: DragEvent) => {
+  isDragOver.value = false
+  if (event.dataTransfer?.files.length) {
+    emit('handle-drop', event)
+  }
 }
 
 const scrollToActiveAtMember = () => {
@@ -274,6 +302,13 @@ defineExpose({ messageInputRef })
   /* gap: 10px; */
   min-height: 150px;
   position: relative;
+  transition: all 0.2s ease;
+}
+
+.chat-input-area.drag-over {
+  background: var(--primary-light, rgba(59, 130, 246, 0.08));
+  border: 2px dashed var(--primary-color);
+  border-radius: 8px;
 }
 
 .input-toolbar {

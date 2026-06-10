@@ -181,6 +181,12 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
+	// 密码强度校验
+	if err := validatePassword(req.Password); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	db := di.GlobalContainer.DB
 
 	var count int64
@@ -280,8 +286,8 @@ func GetUserByID(c *gin.Context) {
 		"status":     user.Status,
 		"email":      user.Email,
 		"phone":      user.Phone,
-		"ip":         user.IP,
 		"signature":  user.Signature,
+		"ip":         user.IP,
 		"department": departmentName,
 		"position":   position,
 	})
@@ -452,15 +458,15 @@ func UpdateAIConfig(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"id":           config.ID,
-		"user_id":      config.UserID,
-		"provider":     config.Provider,
-		"ai_enabled":   config.AIEnabled,
-		"daily_limit":  config.DailyLimit,
-		"max_tokens":   config.MaxTokens,
-		"temperature":  config.Temperature,
-		"created_at":   config.CreatedAt,
-		"updated_at":   config.UpdatedAt,
+		"id":          config.ID,
+		"user_id":     config.UserID,
+		"provider":    config.Provider,
+		"ai_enabled":  config.AIEnabled,
+		"daily_limit": config.DailyLimit,
+		"max_tokens":  config.MaxTokens,
+		"temperature": config.Temperature,
+		"created_at":  config.CreatedAt,
+		"updated_at":  config.UpdatedAt,
 	})
 }
 
