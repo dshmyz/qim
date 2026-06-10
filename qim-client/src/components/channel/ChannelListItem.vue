@@ -42,7 +42,7 @@
     <div class="channel-actions">
       <span v-if="channel.unread_count && channel.unread_count > 0" class="unread-dot">{{ channel.unread_count }}</span>
       <button
-        v-if="channel.is_subscribed"
+        v-if="channel.is_subscribed && !channel.is_default"
         class="subscribe-btn subscribed"
         @click.stop="$emit('unsubscribe', channel)"
         :aria-label="`取消订阅 ${channel.name}`"
@@ -50,6 +50,14 @@
       >
         <i class="fas fa-check"></i>
       </button>
+      <span
+        v-else-if="channel.is_subscribed && channel.is_default"
+        class="subscribe-btn default-subscribed"
+        :aria-label="`默认频道 ${channel.name} 不可取消订阅`"
+        title="默认频道，不可取消"
+      >
+        <i class="fas fa-lock"></i>
+      </span>
       <button
         v-else
         class="subscribe-btn"
@@ -286,5 +294,11 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .subscribe-btn.subscribed:hover {
   background: var(--success-dark, #5daf34);
+}
+
+.subscribe-btn.default-subscribed {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--text-secondary);
+  cursor: default;
 }
 </style>

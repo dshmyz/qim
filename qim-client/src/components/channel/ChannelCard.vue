@@ -24,7 +24,7 @@
           {{ channel.publish_permission === 'creator_only' ? '广播' : '协作' }}
         </span>
         <button
-          v-if="channel.is_subscribed"
+          v-if="channel.is_subscribed && !channel.is_default"
           class="card-subscribe-btn subscribed"
           @click.stop="$emit('unsubscribe', channel)"
           :aria-label="`取消订阅 ${channel.name}`"
@@ -32,6 +32,14 @@
         >
           <i class="fas fa-check"></i> 已订阅
         </button>
+        <span
+          v-else-if="channel.is_subscribed && channel.is_default"
+          class="card-subscribe-btn default-subscribed"
+          :aria-label="`默认频道 ${channel.name} 不可取消订阅`"
+          title="默认频道，不可取消"
+        >
+          <i class="fas fa-lock"></i> 默认
+        </span>
         <button
           v-else
           class="card-subscribe-btn"
@@ -209,6 +217,13 @@ const formatRelativeTime = (timestamp: number): string => {
   background: var(--primary-color);
   color: white;
   border-color: var(--primary-color);
+}
+
+.card-subscribe-btn.default-subscribed {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--text-secondary);
+  border-color: transparent;
+  cursor: default;
 }
 
 .card-body {

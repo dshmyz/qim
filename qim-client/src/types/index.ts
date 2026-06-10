@@ -116,6 +116,7 @@ export interface Channel {
   comment_permission: 'all_subscribers' | 'disabled'
   created_at: number
   is_subscribed?: boolean
+  is_default?: boolean
   creator?: User
   messages?: ChannelMessage[]
   subscriber_count?: number
