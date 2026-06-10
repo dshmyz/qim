@@ -310,7 +310,7 @@
   --secondary-color: #faf5ff;
   --text-color: #5b21b6;
   --border-color: #e9d5ff;
-  --hover-color: #ebd6fa;
+  --hover-color: #f5edfc;
   --active-color: #6b21a8;
   --sidebar-bg: #ffffff;
   --window-controls-bg: #ffffff;
@@ -393,9 +393,9 @@
 }
 
 /* 月牙黄主题 - 侧边栏头部 */
-[data-theme="warm-amber"] .sidebar-header {
+/* [data-theme="warm-amber"] .sidebar-header {
   background: #fffef8;
-}
+} */
 
 [data-theme="warm-amber"] .sidebar-header .user-name {
   color: var(--text-color);
@@ -762,7 +762,7 @@
   --shadow-color: rgba(0, 0, 0, 0.1);
   --shadow-color-hover: rgba(0, 0, 0, 0.15);
   --border-color: #e9d5ff;
-  --hover-color: #ebd6fa;
+  --hover-color: #f5edfc;
   --primary-color: #7e22ce;
   --primary-light: rgba(126, 34, 206, 0.1);
   --text-primary: #5b21b6;

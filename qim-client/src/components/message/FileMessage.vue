@@ -404,9 +404,8 @@ const saveFileAs = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: rgba(128, 128, 128, 0.06);
   border-radius: 12px;
-  color: #ffffff;
 }
 
 .file-type-label {
@@ -463,11 +462,11 @@ const saveFileAs = () => {
   font-size: 12px;
   border-radius: 6px;
   border: none;
-  background: var(--hover-color);
-  color: var(--text-color);
+  background: rgba(128, 128, 128, 0.08);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -476,12 +475,12 @@ const saveFileAs = () => {
 
 .file-action-btn i {
   font-size: 11px;
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
 .file-action-btn:hover {
-  background: var(--primary-color);
-  color: #ffffff;
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--text-color);
   transform: translateY(-1px);
 }
 
@@ -531,5 +530,11 @@ const saveFileAs = () => {
 .file-message.self .file-action-btn:hover {
   background: #ffffff;
   transform: translateY(-1px);
+}
+
+/* 深色主题下对方消息的文件图标 */
+[data-theme="elegant-dark"] .file-message:not(.self) .file-icon {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 </style>

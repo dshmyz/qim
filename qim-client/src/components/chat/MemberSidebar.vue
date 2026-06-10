@@ -3,22 +3,23 @@
     <div class="sidebar-header-container">
       <div v-if="isExpanded" class="members-header">
         <div class="header-content">
-          <button class="action-btn" @click="handleToggleExpanded" title="收起成员列表">
-            <i class="fas fa-chevron-left"></i>
-          </button>
+          <ToggleSidebarBtn
+            icon="fas fa-chevron-left"
+            size="sm"
+            title="收起成员列表"
+            @click="handleToggleExpanded"
+          />
           <h3>群成员 ({{ members.length }})</h3>
         </div>
         <div class="header-actions">
-          <button class="action-btn" @click="handleToggleMemberSearch" title="搜索成员">
+          <button class="search-toggle-btn" @click="handleToggleMemberSearch">
             <i class="fas fa-search"></i>
           </button>
         </div>
       </div>
-      <div v-else class="collapsed-header">
-        <button class="action-btn" @click="handleToggleExpanded" title="展开成员列表">
-          <i class="fas fa-chevron-right"></i>
-        </button>
-      </div>
+      <button v-else class="collapsed-toggle-btn" @click="handleToggleExpanded">
+        <i class="fas fa-user"></i>
+      </button>
     </div>
     <div v-if="showSearch && isExpanded" class="members-search">
       <input
@@ -46,32 +47,13 @@
         </div>
       </div>
     </div>
-    <div v-else class="collapsed-avatars">
-      <div
-        v-for="member in filteredMembers"
-        :key="member.id"
-        class="collapsed-avatar-item"
-        @contextmenu.prevent="handleMemberContextMenu($event, member)"
-        @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)"
-      >
-        <Avatar
-          :src="member.avatar"
-          :name="member.name || '未知用户'"
-          :alt="member.name || '未知用户'"
-          :title="member.name || '未知用户'"
-          size="sm"
-          class="collapsed-avatar"
-        />
-        <span v-if="member.role === 'owner'" class="collapsed-role owner"><i class="fas fa-crown"></i></span>
-        <span v-else-if="member.role === 'admin'" class="collapsed-role admin"><i class="fas fa-user-shield"></i></span>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 interface Member {
   id: string
@@ -163,7 +145,7 @@ const handleStartPrivateChat = (member: Member) => {
 }
 
 .members-sidebar.collapsed {
-  width: 48px;
+  width: 30px;
   border-left: none;
 }
 
@@ -194,55 +176,23 @@ const handleStartPrivateChat = (member: Member) => {
   gap: 8px;
 }
 
-.collapsed-header {
-  display: flex;
-  justify-content: center;
-  padding: 6px 0;
-}
-
-.collapsed-avatars {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.collapsed-avatar-item {
-  position: relative;
+.collapsed-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: var(--sidebar-bg);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-color);
+  transition: all 0.2s;
 }
 
-.collapsed-avatar-item:hover {
+.collapsed-toggle-btn:hover {
   background: var(--hover-color);
-}
-
-.collapsed-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.collapsed-role {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  font-size: 8px;
-  line-height: 1;
-}
-
-.collapsed-role.owner {
-  color: #ffd700;
-}
-
-.collapsed-role.admin {
-  color: #4facfe;
+  border-radius: 4px;
 }
 
 .members-sidebar .members-header {
@@ -260,7 +210,7 @@ const handleStartPrivateChat = (member: Member) => {
   color: var(--text-color);
 }
 
-.action-btn {
+.search-toggle-btn {
   width: 24px;
   height: 24px;
   border: none;
@@ -271,11 +221,11 @@ const handleStartPrivateChat = (member: Member) => {
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-color);
   transition: all 0.2s;
 }
 
-.action-btn:hover {
+.search-toggle-btn:hover {
   background: var(--hover-color);
   color: var(--text-color);
 }
