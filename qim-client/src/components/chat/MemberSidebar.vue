@@ -51,7 +51,7 @@
         v-for="member in filteredMembers"
         :key="member.id"
         class="collapsed-avatar-item"
-        @contextmenu.prevent="handleMemberContextMenu($event, member)"
+        @contextmenu.prevent="handleCollapsedMemberContextMenu($event, member)"
         @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)"
       >
         <Avatar
@@ -144,6 +144,26 @@ const handleSearchFocus = () => {
 
 const handleMemberContextMenu = (event: MouseEvent, member: Member) => {
   emit('show-member-context-menu', event, member)
+}
+
+const handleCollapsedMemberContextMenu = (event: MouseEvent, member: Member) => {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const anchoredEvent = new MouseEvent(event.type, {
+    bubbles: event.bubbles,
+    cancelable: event.cancelable,
+    clientX: rect.right,
+    clientY: rect.top,
+    screenX: event.screenX,
+    screenY: event.screenY,
+    button: event.button,
+    buttons: event.buttons,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    metaKey: event.metaKey,
+  })
+
+  emit('show-member-context-menu', anchoredEvent, member)
 }
 
 const handleStartPrivateChat = (member: Member) => {

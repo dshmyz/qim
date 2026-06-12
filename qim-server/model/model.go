@@ -169,7 +169,7 @@ type ConversationMember struct {
 	UnreadCount    int          `json:"unread_count" gorm:"default:0"`
 	Muted          bool         `json:"muted" gorm:"default:false"`
 	LastReadAt     *time.Time   `json:"last_read_at"`
-	JoinedAt       time.Time    `json:"joined_at" gorm:"default:CURRENT_TIMESTAMP"`
+	JoinedAt       time.Time    `json:"joined_at"`
 	User           User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
