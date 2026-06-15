@@ -33,6 +33,7 @@ import argparse
 import pymysql
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -664,6 +665,8 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
+                if self._should_skip_message_content(content):
+                    continue
                 msg_time = self._get_msg_timestamp(item)
 
                 # isDeleted: 老系统公共字段，0:否 1:是
@@ -733,6 +736,8 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
+                if self._should_skip_message_content(content):
+                    continue
                 msg_time = self._get_msg_timestamp(item)
 
                 # isDeleted: 老系统公共字段，0:否 1:是
@@ -1035,6 +1040,9 @@ class MigrationEngine:
         if not raw_content:
             return ''
 
+        if oim_type == 'at':
+            return self._transform_at_content(raw_content)
+
         if oim_type in ('image', 'file'):
             try:
                 data = json.loads(raw_content)
@@ -1057,6 +1065,58 @@ class MigrationEngine:
                 return raw_content
 
         return raw_content
+
+    def _transform_at_content(self, raw_content: str) -> str:
+        if not raw_content:
+            return ''
+
+        raw_text = str(raw_content).strip()
+        if not raw_text:
+            return ''
+
+        try:
+            data = json.loads(raw_text)
+            if isinstance(data, list):
+                return ' '.join(
+                    text for text in (self._extract_at_text(item) for item in data)
+                    if text
+                )
+            if isinstance(data, dict):
+                text = self._extract_at_text(data)
+                if text:
+                    return text
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        normalized = raw_text.replace('，', ',')
+        match = re.search(r'["\']?text["\']?\s*[:=]\s*["\']?([^,}"\']+)', normalized)
+        if match:
+            return match.group(1).strip()
+
+        return raw_text
+
+    def _extract_at_text(self, data) -> str:
+        if not isinstance(data, dict):
+            return ''
+
+        text = (
+            data.get('text')
+            or data.get('name')
+            or data.get('nickname')
+            or data.get('label')
+            or data.get('value')
+        )
+        if text:
+            return str(text).strip()
+
+        user_id = data.get('userid', data.get('userId'))
+        if str(user_id) == '0':
+            return '@所有人'
+
+        return ''
+
+    def _should_skip_message_content(self, content: str) -> bool:
+        return not str(content or '').strip()
 
     def _timestamp_to_datetime(self, timestamp) -> Optional[datetime]:
         if not timestamp or timestamp == 0:

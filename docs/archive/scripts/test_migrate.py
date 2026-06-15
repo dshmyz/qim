@@ -225,6 +225,53 @@ class MigrationCompatibilityTest(unittest.TestCase):
         self.assertEqual(1, len(member_inserts))
         self.assertEqual(200, engine.conversation_id_map['single_old-u1_old-u1'])
 
+    def test_at_content_is_migrated_as_plain_text(self):
+        engine = make_engine()
+
+        self.assertEqual('@所有人', engine._transform_content('at', '{"text":"@所有人","userid":0}'))
+        self.assertEqual('@所有人', engine._transform_content('at', '{text: @所有人， userid: 0}'))
+
+    def test_group_message_migration_skips_empty_items(self):
+        engine = make_engine()
+        engine.user_id_map = {'old-u1': 42}
+        engine.conversation_id_map = {'group_g1': 200}
+        source_cursor = FakeCursor([
+            [
+                {
+                    'contentId': 'c1',
+                    'groupId': 'g1',
+                    'userId': 'old-u1',
+                    'type': 'at',
+                    'originalValue': '{"text":"@所有人","userid":0}',
+                    'filterValue': '',
+                    'timestamp': 1710000000000,
+                    'isDeleted': 0,
+                },
+                {
+                    'contentId': 'c1',
+                    'groupId': 'g1',
+                    'userId': 'old-u1',
+                    'type': 'text',
+                    'originalValue': '',
+                    'filterValue': '',
+                    'timestamp': 1710000000000,
+                    'isDeleted': 0,
+                },
+            ],
+        ])
+        target_cursor = FakeCursor()
+        engine.source_conn = FakeConnection(source_cursor)
+        engine.target_conn = FakeConnection(target_cursor)
+
+        engine._migrate_group_messages()
+
+        message_inserts = [
+            params for sql, params in target_cursor.executed
+            if 'INSERT INTO messages' in sql
+        ]
+        self.assertEqual(1, len(message_inserts))
+        self.assertEqual('@所有人', message_inserts[0]['content'])
+
     def test_missing_notice_tables_skip_notification_migration(self):
         engine = make_engine()
         engine._source_table_exists = lambda name: False
