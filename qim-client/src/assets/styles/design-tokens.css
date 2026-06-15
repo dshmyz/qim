@@ -190,6 +190,7 @@
   --input-bg: #ffffff;
   --modal-bg: #ffffff;
   --btn-bg: #f5f5f5;
+  --message-bubble-bg: var(--color-gray-100);
 }
 
 /* ========================================

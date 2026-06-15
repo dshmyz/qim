@@ -73,7 +73,7 @@ const renderedContent = computed(() => {
   line-height: 1.5;
   color: var(--text-color);
   margin: 8px 0;
-  border: 1px solid var(--border-color);
+
 }
 
 .markdown-message code {

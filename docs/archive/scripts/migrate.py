@@ -304,6 +304,14 @@ class MigrationEngine:
                     """, new_user_data)
 
                     new_id = target_cursor.lastrowid
+                    # 修复: ON DUPLICATE KEY UPDATE 时 lastrowid 可能返回 0
+                    # 此时需要通过 username 查询获取真实 ID
+                    if not new_id:
+                        target_cursor.execute("SELECT id FROM users WHERE username=%s LIMIT 1", (new_user_data['username'],))
+                        result = target_cursor.fetchone()
+                        if result:
+                            new_id = result['id']
+
                     self.user_id_map[old_user['id']] = new_id
                     self.stats['users'] += 1
 
@@ -406,7 +414,7 @@ class MigrationEngine:
                     self.stats['groups'] += 1
 
                     target_cursor.execute("""
-                        INSERT INTO conversation_members (
+                        INSERT IGNORE INTO conversation_members (
                             conversation_id, user_id, role, unread_count,
                             muted, last_read_at, joined_at
                         ) VALUES (%s, %s, 'owner', 0, FALSE, NULL, %s)
@@ -543,21 +551,36 @@ class MigrationEngine:
             self.stats['members'] = len(members)
             return
 
+        # 预统计各跳过原因的数量，用于最终汇总日志
+        skip_no_conv = 0
+        skip_no_user = 0
+        skip_already_exists = 0
+        skip_deleted = 0
+
         with self.target_conn.cursor() as target_cursor:
             for idx, member in enumerate(members, 1):
                 try:
                     # 已删除的成员关系跳过
                     if self._is_truthy_flag(member.get('isDeleted', 0)):
+                        skip_deleted += 1
                         continue
 
                     conv_id = self.conversation_id_map.get(f"group_{member['groupId']}")
-                    user_id = self.user_id_map.get(member['userId']) or self._lookup_target_user_id_by_old_user_id(member['userId'])
-
                     if not conv_id:
                         self.skip_stats['members_no_conv'] += 1
+                        skip_no_conv += 1
                         continue
+
+                    # 修复: user_id_map.get() 可能返回 0（Python 中 0 是 falsy），
+                    # 不能用 or 短路，需要显式判断 None
+                    user_id = self.user_id_map.get(member['userId'])
+                    if user_id is None:
+                        user_id = self._lookup_target_user_id_by_old_user_id(member['userId'])
                     if not user_id:
                         self.skip_stats['members_no_user'] += 1
+                        skip_no_user += 1
+                        if skip_no_user <= 10:
+                            logger.warning(f"  成员用户映射不存在: groupId={member.get('groupId')}, userId={member.get('userId')}")
                         continue
 
                     role_map = {'1': 'owner', '2': 'admin', '3': 'member'}
@@ -580,6 +603,7 @@ class MigrationEngine:
                     """, (conv_id, user_id))
 
                     if target_cursor.fetchone():
+                        skip_already_exists += 1
                         continue
 
                     target_cursor.execute("""
@@ -592,11 +616,13 @@ class MigrationEngine:
                     self.stats['members'] += 1
 
                     if idx % 100 == 0:
-                        logger.info(f"  已迁移 {idx}/{len(members)} 成员")
+                        logger.info(f"  已迁移 {idx}/{len(members)} 成员 (新增={self.stats['members']}, 跳过_已存在={skip_already_exists}, 跳过_无用户={skip_no_user}, 跳过_无会话={skip_no_conv}, 跳过_已删除={skip_deleted})")
                 except Exception as e:
                     logger.error(f"  成员迁移失败: id={member.get('id')}, groupId={member.get('groupId')}, userId={member.get('userId')}, error={e}")
 
             self.target_conn.commit()
+
+        logger.info(f"  群成员迁移汇总: 新增={self.stats['members']}, 已存在跳过={skip_already_exists}, 无用户映射={skip_no_user}, 无会话映射={skip_no_conv}, 已删除跳过={skip_deleted}")
 
     def migrate_messages(self):
         self._migrate_private_messages()
@@ -638,7 +664,7 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
-                msg_time = self._timestamp_to_datetime(item.get('timestamp'))
+                msg_time = self._get_msg_timestamp(item)
 
                 # isDeleted: 老系统公共字段，0:否 1:是
                 is_deleted = self._is_truthy_flag(item.get('isDeleted', 0))
@@ -707,7 +733,7 @@ class MigrationEngine:
                 message_type = MESSAGE_TYPE_MAP.get(oim_type, 'text')
                 raw_content = item.get('filterValue') or item.get('originalValue') or ''
                 content = self._transform_content(oim_type, raw_content)
-                msg_time = self._timestamp_to_datetime(item.get('timestamp'))
+                msg_time = self._get_msg_timestamp(item)
 
                 # isDeleted: 老系统公共字段，0:否 1:是
                 is_deleted = self._is_truthy_flag(item.get('isDeleted', 0))
@@ -1036,9 +1062,43 @@ class MigrationEngine:
         if not timestamp or timestamp == 0:
             return None
         try:
-            return datetime.fromtimestamp(timestamp / 1000)
+            # 先按毫秒时间戳处理，如果结果远在未来则按秒处理
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            if dt.year > 2030:
+                dt = datetime.fromtimestamp(timestamp)
+            return dt
         except:
-            return None
+            try:
+                return datetime.fromtimestamp(timestamp)
+            except:
+                return None
+
+    def _get_msg_timestamp(self, item: Dict) -> datetime:
+        """从消息记录中提取时间，尝试多种可能的字段名，确保不返回 None"""
+        # 老系统可能使用的时间字段名（按优先级排列）
+        timestamp_fields = ['timestamp', 'createdTimestamp', 'sendTime', 'createTime', 'createdTime', 'time']
+        for field in timestamp_fields:
+            ts = item.get(field)
+            if ts:
+                dt = self._timestamp_to_datetime(ts)
+                if dt:
+                    return dt
+
+        # 如果所有字段都为空，尝试从 contentId 中的时间信息提取
+        content_id = item.get('contentId', '')
+        if isinstance(content_id, str) and len(content_id) >= 13:
+            try:
+                # contentId 可能包含时间戳信息
+                possible_ts = int(''.join(c for c in content_id if c.isdigit())[:13])
+                if possible_ts > 1000000000000:
+                    dt = self._timestamp_to_datetime(possible_ts)
+                    if dt:
+                        return dt
+            except:
+                pass
+
+        # 最终 fallback：使用当前时间
+        return datetime.now()
 
     def _is_truthy_flag(self, value) -> bool:
         return str(value).strip().lower() in ('1', 'true', 'yes')

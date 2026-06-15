@@ -314,7 +314,7 @@ watch(() => props.searchQuery, (newQuery) => {
 .department-name {
   font-size: 14px;
   color: var(--text-color);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .sub-department-name {

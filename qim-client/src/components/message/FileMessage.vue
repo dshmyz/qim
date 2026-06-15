@@ -359,7 +359,6 @@ const saveFileAs = () => {
   max-width: 100%;
   transition: all 0.2s ease;
   box-sizing: border-box;
-  border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
 }

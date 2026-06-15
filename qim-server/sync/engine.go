@@ -327,21 +327,45 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 func (e *Engine) resolveUserByRelation(rel orgsync.UserDeptRelation, data *orgsync.OrgData, syncSource string) *model.User {
 	var user model.User
 
-	// 1. 直接通过 username 查找
+	// 1. 直接通过 username 查找（外部系统 ID 可能恰好是 username）
 	if err := e.db.Where("username = ?", rel.UserID).First(&user).Error; err == nil {
 		return &user
 	}
 
-	// 2. 从 data.Users 解析 username 后查找
+	// 2. 从 data.Users 解析用户信息后，依次尝试 username / email / nickname 匹配
 	for _, extUser := range data.Users {
-		if extUser.ID == rel.UserID && extUser.Username != "" {
+		if extUser.ID != rel.UserID {
+			continue
+		}
+
+		// 2a. 通过 uid / username 匹配
+		if extUser.Username != "" {
 			if err := e.db.Where("username = ?", extUser.Username).First(&user).Error; err == nil {
 				return &user
 			}
-			break
 		}
+
+		// 2b. 通过 email 匹配
+		if extUser.Email != "" {
+			if err := e.db.Where("email = ?", extUser.Email).First(&user).Error; err == nil {
+				return &user
+			}
+		}
+
+		// 2c. 通过 nickname / cn 匹配
+		if extUser.Nickname != "" {
+			if err := e.db.Where("nickname = ?", extUser.Nickname).First(&user).Error; err == nil {
+				return &user
+			}
+		}
+
+		break
 	}
 
+	logger.WithModule("OrgSync").Warn("无法匹配本地用户",
+		"external_user_id", rel.UserID,
+		"department_id", rel.DepartmentID,
+	)
 	return nil
 }
 

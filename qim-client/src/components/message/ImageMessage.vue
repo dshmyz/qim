@@ -92,7 +92,6 @@ const previewImage = () => {
   cursor: pointer;
   transition: opacity 0.15s ease;
   object-fit: cover;
-  border: 1px solid var(--border-color);
 }
 
 .image-hidden {

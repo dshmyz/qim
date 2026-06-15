@@ -511,7 +511,7 @@ const isFileContent = (content: string): boolean => {
 .message-bubble {
   padding: 10px 14px;
   border-radius: 12px;
-  background: var(--sidebar-bg);
+  background: var(--message-bubble-bg);
   color: var(--text-color);
   font-size: 14px;
   line-height: 1.5;

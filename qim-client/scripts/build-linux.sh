@@ -86,7 +86,7 @@ echo ""
 echo "🌐 设置 Electron 下载镜像..."
 export ELECTRON_MIRROR="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/}"
 export ELECTRON_BUILDER_BINARIES_MIRROR="${ELECTRON_BUILDER_BINARIES_MIRROR:-https://npmmirror.com/mirrors/electron-builder-binaries/}"
-
+export NODE_TLS_REJECT_UNAUTHORIZED=0
 # 6. 构建 Linux 版本
 echo ""
 echo "🚀 开始打包 Linux 版本..."
