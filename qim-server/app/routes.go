@@ -333,6 +333,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/conversations", handler.GetConversations)
 			authed.POST("/conversations", handler.CreateConversation)
 
+			// 当前用户的群聊列表
+			authed.GET("/users/groups", handler.GetUserGroups)
+
 			authed.GET("/conversations/:id", handler.GetConversation)
 			// 会话置顶/取消置顶
 			authed.PUT("/conversations/:id/pin", handler.PinConversation)

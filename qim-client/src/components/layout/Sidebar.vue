@@ -52,6 +52,7 @@ interface Props {
   collapsed?: boolean
   hasMoreConversations?: boolean
   isLoadingConversations?: boolean
+  groups?: any[]
 }
 
 const props = defineProps<Props>()
@@ -179,12 +180,11 @@ defineExpose({})
         
         <div v-else-if="activeOption === 'groups'" key="groups" class="content-section">
           <GroupList
-            :conversations="conversations"
+            :groups="groups || []"
             :selectedGroup="selectedGroup"
             :searchQuery="searchQuery"
             @select="(group) => { logger.log('Sidebar - Selected group:', group); $emit('selectGroup', group) }"
             @enter="(conv) => $emit('enterGroup', conv)"
-            @invite="(conv) => $emit('inviteMembers', conv)"
             @showContextMenu="(event, conv) => $emit('groupContextMenu', event, conv)"
           />
         </div>

@@ -388,14 +388,15 @@ export function useGroup() {
    */
   const loadGroups = async () => {
     try {
-      const response: any = await request('/api/v1/conversations', {
-        params: { type: 'group' }
-      })
-      if (response.code === 0) {
-        groups.value = response.data || []
+      const response: any = await request('/api/v1/users/groups')
+      if (response.code === 0 && response.data) {
+        groups.value = response.data
+      } else {
+        groups.value = []
       }
     } catch (error) {
       console.error('加载群组列表失败:', error)
+      groups.value = []
     }
   }
 

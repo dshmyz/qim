@@ -1258,3 +1258,102 @@ func DissolveGroup(c *gin.Context) {
 
 	response.SuccessWithMessage(c, "群聊解散成功", nil)
 }
+
+// GetUserGroups 获取当前用户加入的所有群聊和讨论组列表
+func GetUserGroups(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	db := database.GetDB()
+
+	// 查询当前用户加入的群聊/讨论组会话成员
+	type UserGroupResult struct {
+		ConversationID   uint   `json:"conversation_id"`
+		Type             string `json:"type"`
+		Name             string `json:"name"`
+		Avatar           string `json:"avatar"`
+		CreatorID        uint   `json:"creator_id"`
+		Announcement     string `json:"announcement"`
+		InvitePermission string `json:"invite_permission"`
+		UnreadCount      int    `json:"unread_count"`
+		Muted            bool   `json:"muted"`
+	}
+
+	var results []UserGroupResult
+	query := `
+		SELECT 
+			cm.conversation_id,
+			c.type,
+			g.name,
+			g.avatar,
+			g.creator_id,
+			g.announcement,
+			g.invite_permission,
+			cm.unread_count,
+			cm.muted
+		FROM conversation_members cm
+		INNER JOIN conversations c ON c.id = cm.conversation_id AND c.type IN ('group', 'discussion') AND c.is_deleted = false
+		INNER JOIN groups g ON g.conversation_id = cm.conversation_id
+		WHERE cm.user_id = ?
+		ORDER BY g.name ASC
+	`
+	db.Raw(query, uid).Scan(&results)
+
+	// 批量查询各群组的成员信息
+	convIDs := make([]uint, 0, len(results))
+	for _, r := range results {
+		convIDs = append(convIDs, r.ConversationID)
+	}
+
+	type MemberCountInfo struct {
+		ConversationID uint
+		Count          int
+	}
+
+	var memberCounts []MemberCountInfo
+	if len(convIDs) > 0 {
+		db.Table("conversation_members").
+			Select("conversation_id, COUNT(*) as count").
+			Where("conversation_id IN ?", convIDs).
+			Group("conversation_id").
+			Scan(&memberCounts)
+	}
+
+	memberCountMap := make(map[uint]int, len(memberCounts))
+	for _, mc := range memberCounts {
+		memberCountMap[mc.ConversationID] = mc.Count
+	}
+
+	// 组装响应
+	type GroupItem struct {
+		ID               uint   `json:"id"`
+		Type             string `json:"type"`
+		Name             string `json:"name"`
+		Avatar           string `json:"avatar"`
+		CreatorID        uint   `json:"creator_id"`
+		Announcement     string `json:"announcement"`
+		InvitePermission string `json:"invite_permission"`
+		UnreadCount      int    `json:"unread_count"`
+		Muted            bool   `json:"muted"`
+		MemberCount      int    `json:"member_count"`
+	}
+
+	items := make([]GroupItem, 0, len(results))
+	for _, r := range results {
+		memberCount := memberCountMap[r.ConversationID]
+		items = append(items, GroupItem{
+			ID:               r.ConversationID,
+			Type:             r.Type,
+			Name:             r.Name,
+			Avatar:           r.Avatar,
+			CreatorID:        r.CreatorID,
+			Announcement:     r.Announcement,
+			InvitePermission: r.InvitePermission,
+			UnreadCount:      r.UnreadCount,
+			Muted:            r.Muted,
+			MemberCount:      memberCount,
+		})
+	}
+
+	response.Success(c, items)
+}

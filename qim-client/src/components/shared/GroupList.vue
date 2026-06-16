@@ -1,5 +1,5 @@
 <template>
-  <div v-if="filteredConversations.length === 0" class="empty-groups">
+  <div v-if="filteredGroups.length === 0" class="empty-groups">
     <div class="placeholder-content">
       <i class="fas fa-users fa-4x"></i>
       <h3>暂无群聊</h3>
@@ -7,20 +7,20 @@
     </div>
   </div>
   <div v-else class="groups-list">
-    <div v-for="conversation in filteredConversations" :key="conversation.id" class="group-item" :class="{ active: selectedGroup && selectedGroup.id === conversation.id }" @contextmenu.prevent="$emit('showContextMenu', $event, conversation)" @click="$emit('select', conversation)" @dblclick="$emit('enter', conversation)">
+    <div v-for="group in filteredGroups" :key="group.id" class="group-item" :class="{ active: selectedGroup && selectedGroup.id === group.id }" @contextmenu.prevent="$emit('showContextMenu', $event, group)" @click="$emit('select', group)" @dblclick="$emit('enter', group)">
       <div class="group-avatar">
-        <Avatar :src="conversation.avatar" :name="conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组')" :server-url="serverUrl" :alt="conversation.name" size="md" />
-        <span class="group-badge" :class="conversation.type === 'discussion' ? 'discussion-badge' : ''">{{ conversation.type === 'group' ? '群' : '讨' }}</span>
+        <Avatar :src="group.avatar" :name="group.name || (group.type === 'group' ? '群聊' : '讨论组')" :server-url="serverUrl" :alt="group.name" size="md" />
+        <span class="group-badge" :class="group.type === 'discussion' ? 'discussion-badge' : ''">{{ group.type === 'group' ? '群' : '讨' }}</span>
       </div>
       <div class="group-info">
         <div class="group-name">
-          {{ conversation.name }}
-          <span v-if="conversation.members" class="member-count">({{ conversation.members.length }}人)</span>
-          <span v-if="conversation.type === 'discussion'" class="conversation-type-tag">讨论组</span>
+          {{ group.name }}
+          <span v-if="group.member_count" class="member-count">({{ group.member_count }}人)</span>
+          <span v-if="group.type === 'discussion'" class="conversation-type-tag">讨论组</span>
         </div>
       </div>
-      <div v-if="conversation.unread_count && conversation.unread_count > 0" class="unread-badge">
-        {{ conversation.unread_count > 99 ? '99+' : conversation.unread_count }}
+      <div v-if="group.unread_count && group.unread_count > 0" class="unread-badge">
+        {{ group.unread_count > 99 ? '99+' : group.unread_count }}
       </div>
     </div>
   </div>
@@ -36,7 +36,7 @@ import type { Conversation, User } from '../../types'
 const { serverUrl } = useServerUrl()
 
 interface Props {
-  conversations: Conversation[]
+  groups: any[]
   selectedGroup: Conversation | null
   searchQuery?: string
 }
@@ -44,32 +44,22 @@ interface Props {
 const props = defineProps<Props>()
 
 defineEmits<{
-  select: [conversation: Conversation]
-  enter: [conversation: Conversation]
-  showContextMenu: [event: MouseEvent, conversation: Conversation]
+  select: [conversation: any]
+  enter: [conversation: any]
+  showContextMenu: [event: MouseEvent, conversation: any]
 }>()
 
-const filteredConversations = computed(() => {
-  let filtered = props.conversations.filter(c => c.type === 'group' || c.type === 'discussion')
+const filteredGroups = computed(() => {
+  if (!props.searchQuery || !props.searchQuery.trim()) return props.groups
 
-  if (props.searchQuery && props.searchQuery.trim()) {
-    const query = props.searchQuery.toLowerCase().trim()
-    filtered = filtered.filter(conv => {
-      if (conv.name && conv.name.toLowerCase().includes(query)) return true
-      if (conv.members && conv.members.length > 0) {
-        return conv.members.some((member: any) => {
-          const memberName = member.name || member.username || ''
-          return memberName.toLowerCase().includes(query)
-        })
-      }
-      return false
-    })
-  }
-
-  return filtered
+  const query = props.searchQuery.toLowerCase().trim()
+  return props.groups.filter(group => {
+    if (group.name && group.name.toLowerCase().includes(query)) return true
+    return false
+  })
 })
 
-const getConversationAvatarUrl = (conversation: Conversation) => {
+const getConversationAvatarUrl = (conversation: any) => {
   return getAvatarUrl(conversation.avatar, conversation.name || (conversation.type === 'group' ? '群聊' : '讨论组'), serverUrl.value)
 }
 </script>

@@ -72,6 +72,7 @@
         :collapsed="sidebarCollapsed"
         :hasMoreConversations="hasMoreConversations"
         :isLoadingConversations="isLoadingConversations"
+        :groups="userGroups"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showUserProfile = true"
         @showNotification="handleNotificationCenter"
@@ -876,7 +877,9 @@ const handleUserStatusChange = (data: any) => {
 const groupState = useGroup()
 const {
   isGroupOwnerCheck,
-  isGroupAdmin: isGroupAdminCheck
+  isGroupAdmin: isGroupAdminCheck,
+  groups: userGroups,
+  loadGroups: loadUserGroups
 } = groupState
 
 // 检查当前用户是否是群聊所有者
@@ -1269,11 +1272,12 @@ onMounted(async () => {
     Promise.allSettled([
       loadOrganizationTree(),
       loadUserApps(),
-      loadAppCategories()
+      loadAppCategories(),
+      loadUserGroups()
     ]).then(results => {
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          const names = ['组织架构', '用户应用', '内置应用']
+          const names = ['组织架构', '用户应用', '内置应用', '群聊列表']
           logger.warn(`[Main] ${names[index]}加载失败:`, result.reason)
         }
       })
