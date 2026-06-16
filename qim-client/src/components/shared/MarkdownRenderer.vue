@@ -112,8 +112,9 @@ const renderedContent = computed(() => {
 
 .markdown-renderer a {
   color: var(--primary-color);
+  background: transparent;
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.2s ease;
 }
 
 .markdown-renderer a:hover {

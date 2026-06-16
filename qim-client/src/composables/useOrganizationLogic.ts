@@ -29,12 +29,12 @@ export function useOrganizationLogic() {
   const orgStructure = ref<Department[]>([])
   const convertEmployee = (emp: any, deptName: string): Employee => ({
     id: emp.id ? emp.id.toString() : '',
-    name: emp.nickname || emp.username || '',
+    name: emp.nickname || emp.username || emp.real_name || '',
     nickname: emp.nickname || '',
     username: emp.username || '',
     avatar: (emp.avatar && isAbsoluteUrl(emp.avatar))
       ? emp.avatar
-      : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
+      : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar(emp.nickname || emp.username || emp.real_name || '员工')),
     email: emp.email || '',
     mobile: emp.mobile || emp.phone || '',
     position: emp.position || '',

@@ -41,8 +41,8 @@ export function useShareLogic(
               dept.employees.forEach((emp: any) => {
                 users.push({
                   id: emp.id.toString(),
-                  name: emp.nickname || emp.username,
-                  avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar('员工')),
+                  name: emp.nickname || emp.username || emp.real_name,
+                  avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar(emp.nickname || emp.username || emp.real_name || '员工')),
                   department: dept.name
                 })
               })

@@ -354,6 +354,7 @@ defineExpose({})
   overflow-y: auto;
   background: var(--sidebar-bg);
   position: relative;
+  user-select: none;
 }
 
 .content-section {

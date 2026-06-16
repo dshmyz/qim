@@ -219,7 +219,7 @@ defineExpose({
   font-size: 11px;
   margin-left: 8px;
   padding: 2px 6px;
-  background: var(--hover-color);
+  /* background: var(--hover-color); */
   border-radius: 3px;
 }
 

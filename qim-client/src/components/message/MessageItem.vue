@@ -353,7 +353,7 @@ const isFileContent = (content: string): boolean => {
 }
 
 .message-content {
-  max-width: 60%;
+  max-width: 88%;
   min-width: 0;
   margin: 0 12px;
 }

@@ -103,7 +103,9 @@ const renderedContent = computed(() => {
 
 .markdown-message a {
   color: var(--primary-color);
+  background: transparent;
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 .markdown-message a:hover {

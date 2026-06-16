@@ -319,7 +319,7 @@ class MigrationEngine:
                     if idx % 100 == 0:
                         logger.info(f"  已迁移 {idx}/{len(old_users)} 用户")
                 except Exception as e:
-                    logger.error(f"  用户迁移失败: id={old_user['id']}, error={e}")
+                    logger.error(f"  用户迁移失败: id={old_user['id']}, account={old_user.get('account')}, number={old_user.get('number')}, nickname={old_user.get('nickname')}, error={e}")
                     self.skip_stats['users'] += 1
 
             self.target_conn.commit()
@@ -345,7 +345,7 @@ class MigrationEngine:
                 try:
                     creator_id = self._get_group_creator_id(old_group['id'])
                     if creator_id is None:
-                        logger.warning(f"  跳过群组: name={old_group.get('name')}, id={old_group['id']}, 未找到群主或可兜底用户")
+                        logger.warning(f"  跳过群组: name={old_group.get('name')}, id={old_group['id']}, avatar={old_group.get('avatar')}, introduce={old_group.get('introduce', '')[:50]}, createdTimestamp={old_group.get('createdTimestamp')}, 原因: 未找到群主或可兜底用户")
                         self.skip_stats['groups_no_creator'] += 1
                         continue
 
@@ -425,7 +425,7 @@ class MigrationEngine:
                     if idx % 100 == 0:
                         logger.info(f"  已迁移 {idx}/{len(old_groups)} 群组")
                 except Exception as e:
-                    logger.error(f"  群组迁移失败: id={old_group['id']}, error={e}")
+                    logger.error(f"  群组迁移失败: id={old_group['id']}, name={old_group.get('name')}, avatar={old_group.get('avatar')}, introduce={old_group.get('introduce', '')[:50]}, createdTimestamp={old_group.get('createdTimestamp')}, error={e}")
 
             self.target_conn.commit()
 
@@ -443,6 +443,8 @@ class MigrationEngine:
                 if creator_id:
                     self._group_creator_user_map[group_id] = result['userId']
                     return creator_id
+                else:
+                    logger.warning(f"  群 {group_id} 群主 userId={result['userId']} 未迁移或不存在于目标库")
 
             # 群主未迁移或不存在，找第一个已迁移的成员作为群主
             cursor.execute(
@@ -450,12 +452,16 @@ class MigrationEngine:
                 (group_id,)
             )
             members = cursor.fetchall()
+            if not members:
+                logger.warning(f"  群 {group_id} 在 w_group_member 表中没有成员记录")
             for member in members:
                 creator_id = self.user_id_map.get(member['userId']) or self._lookup_target_user_id_by_old_user_id(member['userId'])
                 if creator_id:
-                    logger.warning(f"  群 {group_id} 群主未迁移，使用成员 {member['userId']} 作为群主")
+                    logger.warning(f"  群 {group_id} 群主未迁移，使用成员 userId={member['userId']} 作为群主")
                     self._group_creator_user_map[group_id] = member['userId']
                     return creator_id
+                else:
+                    logger.warning(f"  群 {group_id} 成员 userId={member['userId']} 未迁移或不存在于目标库")
 
         if self.user_id_map:
             fallback_user_id, fallback_creator_id = next(iter(self.user_id_map.items()))
@@ -463,6 +469,7 @@ class MigrationEngine:
             self._group_creator_user_map[group_id] = fallback_user_id
             return fallback_creator_id
 
+        logger.warning(f"  群 {group_id} 无法找到群主：user_id_map 为空（没有任何用户迁移成功）")
         return None
 
     def migrate_private_conversations(self):

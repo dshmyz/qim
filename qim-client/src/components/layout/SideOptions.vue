@@ -85,6 +85,7 @@ defineEmits<{
   flex-shrink: 0;
   gap: 20px;
   border-right: 1px solid rgba(0, 0, 0, 0.02);
+  -webkit-app-region: drag;
 }
 
 .side-options-title {
@@ -113,6 +114,7 @@ defineEmits<{
   transition: all 0.2s ease;
   position: relative;
   color: var(--text-secondary);
+  -webkit-app-region: no-drag;
 }
 
 .option-item:hover {
