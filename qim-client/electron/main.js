@@ -264,9 +264,12 @@ function createWindow() {
     }
   })
 
-  const splashPath = `file://${path.join(__dirname, 'splash.html')}`
-  splashWindow.loadURL(splashPath)
-  console.log(`Loading splash: ${splashPath}`)
+  const splashHtml = fs.readFileSync(path.join(__dirname, 'splash.html'), 'utf-8')
+    .replace('{{APP_NAME}}', 'QIM 青雀')
+    .replace('{{APP_SUBTITLE}}', '简洁 · 高效 · 智能')
+    .replace('{{APP_VERSION}}', `v${app.getVersion()}`)
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`)
+  console.log(`Loading splash for version: v${app.getVersion()}`)
 
   // Main window
   const windowOptions = {

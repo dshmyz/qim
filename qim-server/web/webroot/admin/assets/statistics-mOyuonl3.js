@@ -1,0 +1,1 @@
+import{r as t}from"./index-BoSTNsc7.js";const s=()=>t({url:"/v1/admin/dashboard/stats",method:"get"}),a=()=>t({url:"/v1/admin/dashboard/trend",method:"get"}),n=e=>t({url:"/v1/admin/recent-registrations",method:"get",params:e}),o=()=>t({url:"/v1/admin/statistics",method:"get"});export{s as a,n as b,o as c,a as g};

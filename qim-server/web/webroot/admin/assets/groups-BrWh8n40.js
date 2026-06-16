@@ -1,0 +1,1 @@
+import{r}from"./index-C-GLBFzQ.js";const s=e=>r({url:"/v1/admin/groups",method:"get",params:e}),u=(e,t)=>r({url:`/v1/groups/${e}/members`,method:"get",params:t}),m=(e,t)=>r({url:`/v1/groups/${e}/members/${t}`,method:"delete"}),d=e=>r({url:`/v1/admin/groups/${e}`,method:"delete"});export{s as a,d,u as g,m as r};

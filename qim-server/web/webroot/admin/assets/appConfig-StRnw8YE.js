@@ -1,0 +1,1 @@
+const e="/admin/app-logo-v1.png",o="qim-admin".toUpperCase(),r="青雀",t={productName:o,productNameCN:r,copyrightYear:"2026"},a=()=>t.productNameCN,c=()=>`© ${t.copyrightYear} ${t.productName}`,n=()=>`${t.productName} Admin`;export{e as _,n as a,a as b,c as g};
