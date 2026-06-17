@@ -1118,7 +1118,7 @@ const realtimeRef = ref<InstanceType<typeof RealtimeCommunication> | null>(null)
 const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
-const handleConversationSelect = (conversation: Conversation) => {
+const handleConversationSelect = async (conversation: Conversation) => {
   const conversationId = String(conversation.id)
   
   logger.log('[Main.vue] handleConversationSelect 被调用', {
@@ -1132,16 +1132,27 @@ const handleConversationSelect = (conversation: Conversation) => {
     return
   }
   
-  // 如果该会话不在对话列表中（例如从独立群组接口加载的群聊），加入对话列表
-  const existsInConversations = conversations.value.some(c => c.id === conversationId)
+  // 如果该会话不在对话列表中（例如从独立群组接口加载的群聊），
+  // 从 API 拉取完整会话数据（含 members 等）后加入 store
+  const existsInConversations = conversations.value.some(c => String(c.id) === conversationId)
+  let conversationToUse = conversation
   if (!existsInConversations) {
-    chatStore.addConversation(conversation as Conversation)
+    try {
+      const response: any = await request(`/api/v1/conversations/${conversationId}`)
+      if (response.code === 0 && response.data) {
+        const processed = processConversation(response.data) as any
+        chatStore.addConversation(processed)
+        conversationToUse = processed
+      }
+    } catch (error) {
+      logger.error('[Main.vue] 拉取会话数据失败:', error)
+    }
   }
   
-  _handleConversationSelect(conversation)
+  _handleConversationSelect(conversationToUse)
   activeOption.value = 'recent'
-  loadMessages(conversation.id)
-  chatStore.markConversationRead(conversation.id)
+  loadMessages(conversationId)
+  chatStore.markConversationRead(conversationId)
   if (window.electron?.tray) {
     window.electron.tray.stopFlash()
   }
