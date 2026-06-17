@@ -72,7 +72,7 @@
         :collapsed="sidebarCollapsed"
         :hasMoreConversations="hasMoreConversations"
         :isLoadingConversations="isLoadingConversations"
-        :groups="userGroups"
+        :groups="[...(userGroups || [])]"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showUserProfile = true"
         @showNotification="handleNotificationCenter"
@@ -1130,6 +1130,12 @@ const handleConversationSelect = (conversation: Conversation) => {
   if (currentConversationId.value === conversationId) {
     logger.log('[Main.vue] 相同会话，跳过处理')
     return
+  }
+  
+  // 如果该会话不在对话列表中（例如从独立群组接口加载的群聊），加入对话列表
+  const existsInConversations = conversations.value.some(c => c.id === conversationId)
+  if (!existsInConversations) {
+    chatStore.addConversation(conversation as Conversation)
   }
   
   _handleConversationSelect(conversation)
@@ -2511,15 +2517,15 @@ const dissolveGroup = async (group?: any) => {
   }
 }
 
-const saveAnnouncement = async () => {
+const saveAnnouncement = async (content: string) => {
   if (selectedGroup.value) {
     // 调用 useGroup 中的实现
-    const success = await groupState.updateAnnouncement(selectedGroup.value.id, editAnnouncementContent.value)
+    const success = await groupState.updateAnnouncement(selectedGroup.value.id, content)
     if (success) {
       // 更新本地群聊信息（副作用处理）
-      selectedGroup.value.announcement = editAnnouncementContent.value
+      selectedGroup.value.announcement = content
       // 使用 Store Action 更新会话
-      chatStore.patchConversation(selectedGroup.value.id, { announcement: editAnnouncementContent.value })
+      chatStore.patchConversation(selectedGroup.value.id, { announcement: content })
       closeEditAnnouncementModal()
     }
   }
