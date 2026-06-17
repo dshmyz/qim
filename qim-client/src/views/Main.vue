@@ -1607,7 +1607,7 @@ const formatNotificationContent = (message: any): string => {
 }
 
 // 处理新消息
-const handleNewMessage = (msg: any) => {
+const handleNewMessage = async (msg: any) => {
   const data = msg.data || msg
   const conversationId = data.conversation_id.toString()
   
@@ -1649,10 +1649,11 @@ const handleNewMessage = (msg: any) => {
     }
   }
   
-  // 如果会话不存在于列表中，重新加载会话列表
+  // 如果会话不存在于列表中（例如被移除后会话收到新消息），先重新加载会话列表
+  // 后端会在新消息到来时自动取消隐藏，所以 loadConversations 能拉回该会话
   const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
   if (conversationIndex === -1) {
-    loadConversations()
+    await loadConversations()
   }
   
   // 通过 Store 统一更新会话信息（lastMessage、timestamp、未读数）
