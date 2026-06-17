@@ -11,7 +11,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -103,7 +102,7 @@ type MessageResult struct {
 	PageSize    int
 }
 
-func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
+func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint, mentionUserIDs []uint) (*model.Message, error) {
 	db := s.db
 
 	if msgType == "text" && content != "" {
@@ -146,6 +145,11 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	if convType == "bot" {
 		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
 	} else {
+		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
+		db.Model(&model.ConversationSession{}).
+			Where("conversation_id = ? AND is_hidden = ?", convID, true).
+			Update("is_hidden", false)
+
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
@@ -153,7 +157,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		if s.hub != nil {
 			newMsg := ws.WSMessage{
 				Type: "new_message",
-				Data: s.buildMessageResponse(msg),
+				Data: s.buildMessageResponse(msg, mentionUserIDs),
 			}
 			jsonMsg, _ := json.Marshal(newMsg)
 			s.hub.SendToConversation(convID, senderID, jsonMsg)
@@ -660,15 +664,15 @@ func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, 
 }
 
 func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (map[uint]struct {
-	ReadUsers    []model.User
-	TotalMembers int64
-	ReadCount    int64
+	ReadUsers    []model.User `json:"read_users"`
+	TotalMembers int64        `json:"total_members"`
+	ReadCount    int64        `json:"read_count"`
 }, error) {
 	if len(msgIDs) == 0 {
 		return make(map[uint]struct {
-			ReadUsers    []model.User
-			TotalMembers int64
-			ReadCount    int64
+			ReadUsers    []model.User `json:"read_users"`
+			TotalMembers int64        `json:"total_members"`
+			ReadCount    int64        `json:"read_count"`
 		}), nil
 	}
 
@@ -715,9 +719,9 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	}
 
 	result := make(map[uint]struct {
-		ReadUsers    []model.User
-		TotalMembers int64
-		ReadCount    int64
+		ReadUsers    []model.User `json:"read_users"`
+		TotalMembers int64        `json:"total_members"`
+		ReadCount    int64        `json:"read_count"`
 	}, len(msgIDs))
 
 	for _, msgID := range msgIDs {
@@ -735,9 +739,9 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 		}
 
 		result[msgID] = struct {
-			ReadUsers    []model.User
-			TotalMembers int64
-			ReadCount    int64
+			ReadUsers    []model.User `json:"read_users"`
+			TotalMembers int64        `json:"total_members"`
+			ReadCount    int64        `json:"read_count"`
 		}{
 			ReadUsers:    readUsers,
 			TotalMembers: totalMembers,
@@ -831,13 +835,10 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
-func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {
-	mentions := mention.ExtractMentions(msg.Content)
-	mentionUserIDs := make([]uint, 0, len(mentions))
-	for _, m := range mentions {
-		mentionUserIDs = append(mentionUserIDs, m.UserID)
+func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint) map[string]interface{} {
+	if mentionUserIDs == nil {
+		mentionUserIDs = []uint{}
 	}
-
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
