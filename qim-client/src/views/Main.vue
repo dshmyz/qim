@@ -82,7 +82,7 @@
         @selectUser="handleUserClick"
         @startPrivateChat="startPrivateChat"
         @userContextMenu="showUserContextMenu"
-        @selectGroup="handleSelectGroup"
+        @selectGroup="(group) => { selectedGroup.value = group }"
         @enterGroup="handleConversationSelect"
         @inviteMembers="handleInviteMembers"
         @groupContextMenu="showGroupContextMenu"
@@ -1116,32 +1116,6 @@ const realtimeRef = ref<InstanceType<typeof RealtimeCommunication> | null>(null)
 
 // 侧边栏组件引用
 const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
-
-// 选中群聊时，拉取完整数据（包含 members）
-const handleSelectGroup = async (group: any) => {
-  const groupId = String(group.id)
-  logger.log('[Main.vue] handleSelectGroup 被调用', { groupId })
-  
-  try {
-    const response: any = await request(`/api/v1/conversations/${groupId}`)
-    logger.log('[Main.vue] 拉取群聊详情 API 返回:', response.code, response.data ? '有数据' : '无数据')
-    if (response.code === 0 && response.data) {
-      const processed = processConversation(response.data) as any
-      logger.log('[Main.vue] processConversation 后:', {
-        id: processed.id,
-        membersCount: processed.members?.length || 0,
-        type: processed.type
-      })
-      selectedGroup.value = processed
-    } else {
-      // API 失败时使用原始数据
-      selectedGroup.value = group
-    }
-  } catch (error) {
-    logger.error('[Main.vue] 拉取群聊详情失败:', error)
-    selectedGroup.value = group
-  }
-}
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
 const handleConversationSelect = async (conversation: Conversation) => {
