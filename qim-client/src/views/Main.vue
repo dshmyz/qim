@@ -82,10 +82,10 @@
         @selectUser="handleUserClick"
         @startPrivateChat="startPrivateChat"
         @userContextMenu="showUserContextMenu"
-        @selectGroup="(group) => { selectedGroup = group }"
+        @selectGroup="handleSelectGroup"
         @enterGroup="handleConversationSelect"
         @inviteMembers="handleInviteMembers"
-        @groupContextMenu="showGroupContextMenu"
+        @groupContextMenu="handleShowGroupContextMenu"
         @selectChannel="handleChannelSelect"
         @openApp="openApp"
         @openExternalApp="openExternalApp"
@@ -1116,6 +1116,79 @@ const realtimeRef = ref<InstanceType<typeof RealtimeCommunication> | null>(null)
 
 // 侧边栏组件引用
 const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null)
+
+// 选中群聊时，拉取完整数据（包含 members）
+const handleSelectGroup = async (group: any) => {
+  const groupId = String(group.id)
+  logger.log('[Main.vue] handleSelectGroup 被调用', { groupId })
+  
+  // 先设置基本信息，让 UI 立即响应
+  selectedGroup.value = group
+  
+  // 清除该群的未读数
+  if (group.unread_count > 0) {
+    try {
+      await request(`/api/v1/conversations/${groupId}/read`, { method: 'POST' })
+      // 更新本地数据
+      group.unread_count = 0
+      // 更新 groups 列表中的数据
+      const groupInList = userGroups.value.find(g => String(g.id) === groupId)
+      if (groupInList) {
+        groupInList.unread_count = 0
+      }
+    } catch (error) {
+      logger.error('[Main.vue] 清除未读数失败:', error)
+    }
+  }
+  
+  try {
+    const response: any = await request(`/api/v1/conversations/${groupId}`)
+    logger.log('[Main.vue] 拉取群聊详情 API 返回:', response.code, response.data ? '有数据' : '无数据')
+    if (response.code === 0 && response.data) {
+      const processed = processConversation(response.data) as any
+      logger.log('[Main.vue] processConversation 后:', {
+        id: processed.id,
+        membersCount: processed.members?.length || 0,
+        type: processed.type
+      })
+      // 更新为完整数据
+      selectedGroup.value = processed
+    }
+  } catch (error) {
+    logger.error('[Main.vue] 拉取群聊详情失败:', error)
+  }
+}
+
+// 重写右键菜单处理，确保有完整数据用于权限判断
+const handleShowGroupContextMenu = async (event: MouseEvent, group: any) => {
+  event.preventDefault()
+  const groupId = String(group.id)
+  
+  // 先显示菜单（使用基本信息）
+  showGroupContextMenuFlag.value = true
+  groupContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  selectedGroupForContextMenu.value = group
+  
+  // 如果已有该群的完整数据且包含 members，直接使用
+  if (selectedGroup.value?.id === groupId && selectedGroup.value?.members?.length > 0) {
+    selectedGroupForContextMenu.value = selectedGroup.value
+    return
+  }
+  
+  // 否则异步加载完整数据后再更新菜单
+  try {
+    const response: any = await request(`/api/v1/conversations/${groupId}`)
+    if (response.code === 0 && response.data) {
+      const processed = processConversation(response.data) as any
+      if (processed.members?.length > 0) {
+        selectedGroupForContextMenu.value = processed
+        // 注意：不修改 selectedGroup，避免影响右边面板显示
+      }
+    }
+  } catch (error) {
+    logger.error('[Main.vue] 右键菜单拉取群聊详情失败:', error)
+  }
+}
 
 // 重写会话选择处理，包含 Main.vue 的特定逻辑
 const handleConversationSelect = async (conversation: Conversation) => {
