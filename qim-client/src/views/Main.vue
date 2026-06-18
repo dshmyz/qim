@@ -1127,8 +1127,9 @@ const handleConversationSelect = async (conversation: Conversation) => {
     isSameConversation: currentConversationId.value === conversationId
   })
   
-  if (currentConversationId.value === conversationId) {
-    logger.log('[Main.vue] 相同会话，跳过处理')
+  // 只有当会话已在列表中且 currentConversation 存在时才跳过
+  if (currentConversationId.value === conversationId && currentConversation.value) {
+    logger.log('[Main.vue] 相同会话且已加载，跳过处理')
     return
   }
   
@@ -1138,9 +1139,16 @@ const handleConversationSelect = async (conversation: Conversation) => {
   let conversationToUse = conversation
   if (!existsInConversations) {
     try {
+      logger.log('[Main.vue] 会话不在列表中，从 API 拉取完整数据:', conversationId)
       const response: any = await request(`/api/v1/conversations/${conversationId}`)
+      logger.log('[Main.vue] API 返回:', response.code, response.data ? '有数据' : '无数据')
       if (response.code === 0 && response.data) {
         const processed = processConversation(response.data) as any
+        logger.log('[Main.vue] processConversation 后:', {
+          id: processed.id,
+          membersCount: processed.members?.length || 0,
+          type: processed.type
+        })
         chatStore.addConversation(processed)
         conversationToUse = processed
       }
@@ -1827,6 +1835,10 @@ const { handleStreamMessage } = streamMessage
 // 使用 Main.vue 专用的消息发送 composable
 const mainMessageSending = useMainMessageSending(currentConversationId, messages, currentConversation, isConnected, sessionExpired, handleStreamMessage, () => {
   nextTick(() => chatWindowRef.value?.scrollToBottom())
+}, () => {
+  // 会话不在列表中（例如被移除后发消息），重新加载会话列表
+  // 后端会在发消息时自动取消隐藏，所以 loadConversations 能拉回该会话
+  loadConversations()
 })
 const { handleSendMessage, handleRecallMessage, handleRetrySendMessage } = mainMessageSending
 
