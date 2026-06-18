@@ -864,13 +864,13 @@ const handleUserStatusChange = (data: any) => {
   if (!userId || !status) return
   
   // 更新会话列表中对应的 single 类型会话
-  conversations.value = conversations.value.map(conv => {
+  chatStore.setConversations(conversations.value.map(conv => {
     const memberId = conv.other_member_id
     if (conv.type === 'single' && Number(memberId) === Number(userId)) {
       return { ...conv, status }
     }
     return conv
-  })
+  }))
 }
 
 // 群组相关（使用别名避免与 useUI 中的同名变量冲突）
