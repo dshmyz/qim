@@ -82,7 +82,7 @@
         @selectUser="handleUserClick"
         @startPrivateChat="startPrivateChat"
         @userContextMenu="showUserContextMenu"
-        @selectGroup="(group) => { selectedGroup.value = group }"
+        @selectGroup="(group) => { selectedGroup = group }"
         @enterGroup="handleConversationSelect"
         @inviteMembers="handleInviteMembers"
         @groupContextMenu="showGroupContextMenu"
