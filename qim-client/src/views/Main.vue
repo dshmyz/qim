@@ -1127,9 +1127,10 @@ const handleConversationSelect = async (conversation: Conversation) => {
     isSameConversation: currentConversationId.value === conversationId
   })
   
-  // 只有当会话已在列表中且 currentConversation 存在时才跳过
-  if (currentConversationId.value === conversationId && currentConversation.value) {
-    logger.log('[Main.vue] 相同会话且已加载，跳过处理')
+  // 如果是相同会话，只切换视图，不重新加载
+  if (currentConversationId.value === conversationId) {
+    logger.log('[Main.vue] 相同会话，仅切换视图')
+    activeOption.value = 'recent'
     return
   }
   
