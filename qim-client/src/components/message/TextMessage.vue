@@ -91,16 +91,27 @@ const handleClick = (event: MouseEvent) => {
 }
 
 :deep(.at-mention-chip) {
-  color: var(--color-primary-500, #3b82f6);
-  font-weight: 500;
+  color: var(--color-primary-600, #2563eb);
+  font-weight: 600;
   cursor: default;
-  padding: 0 2px;
-  border-radius: 3px;
-  background: rgba(59, 130, 246, 0.1);
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.16);
 }
 
 :deep(.at-mention-chip--all) {
-  color: var(--color-warning-500, #f59e0b);
-  background: rgba(245, 158, 11, 0.1);
+  color: var(--color-warning-600, #d97706);
+  background: rgba(245, 158, 11, 0.18);
+}
+
+/* 自己发的消息：气泡背景是主色，chip 需用高对比色（白底深字） */
+.text-message.self :deep(.at-mention-chip) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.text-message.self :deep(.at-mention-chip--all) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.35);
 }
 </style>
