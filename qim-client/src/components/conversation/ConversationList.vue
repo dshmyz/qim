@@ -67,6 +67,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import { decodeToPlainText } from '../../utils/mentions'
 
 interface User {
   id: string
@@ -280,6 +281,11 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
       break
     default:
       previewText = lastMessage.content || '无内容'
+  }
+
+  // decode mention token（@{mention:3|张三} → @张三），对非文本类型也生效
+  if (previewText) {
+    previewText = decodeToPlainText(previewText)
   }
   
   const isGroupChat = conversation?.type === 'group' || conversation?.type === 'discussion'

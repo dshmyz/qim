@@ -424,6 +424,8 @@ const navigateToFirstAtMention = () => {
   const firstAtMention = props.messages.find(m => m.isAtMention && !m.isSelf && !m.isRead)
   if (firstAtMention) {
     scrollToMessage(String(firstAtMention.id))
+    // 标记该消息为已读，横幅计数 -1（触发 unreadAtMentionCount 重算）
+    firstAtMention.isRead = true
   }
 }
 
