@@ -405,9 +405,9 @@ export function useGroup() {
    */
   const loadGroupMembers = async (groupId: string) => {
     try {
-      const response: any = await request(`/api/v1/groups/${groupId}/members`)
+      const response: any = await request(`/api/v1/conversations/${groupId}`)
       if (response.code === 0) {
-        groupMembers.value = response.data || []
+        groupMembers.value = response.data?.members || []
       }
     } catch (error) {
       console.error('加载群组成员失败:', error)

@@ -3,6 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -13,9 +17,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -116,7 +117,8 @@ func resolveAIName(msg model.Message) string {
 }
 
 func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
-	isAtMention := msg.SenderID != currentUserID && mention.IsMentioned(msg.Content, currentUserID)
+	targets := mention.Parse(msg.Content)
+	isAtMention := msg.SenderID != currentUserID && mention.IsMentioned(targets, currentUserID)
 
 	aiName := resolveAIName(msg)
 
@@ -137,6 +139,8 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
+		"mention_user_ids":  targets.UserIDs,
+		"mention_all":       targets.All,
 		"is_at_mention":     isAtMention,
 	}
 
@@ -324,7 +328,6 @@ func SendMessage(c *gin.Context) {
 		Content         string                 `json:"content" binding:"required"`
 		QuotedMessageID *uint                  `json:"quoted_message_id"`
 		ShareData       map[string]interface{} `json:"share_data"`
-		MentionUserIDs  []uint                 `json:"mention_user_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -338,7 +341,7 @@ func SendMessage(c *gin.Context) {
 
 	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
-	msg, err := msgSvc.SendMessage(uint(convIDUint), userID.(uint), req.Type, req.Content, req.QuotedMessageID)
+	msg, err := msgSvc.SendMessage(uint(convIDUint), userID.(uint), req.Type, req.Content, req.QuotedMessageID, nil)
 	if err != nil {
 		if err == service.ErrMessageForbidden {
 			response.Forbidden(c, "无权限发送消息")
@@ -366,7 +369,7 @@ func SendMessage(c *gin.Context) {
 		if msg.Sender.Type != "bot" && msg.Sender.Type != "system" {
 			if smartReplyEngine != nil {
 				utils.SafeGo(func() {
-					smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
+					smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, msgSvc.MentionUserIDsForAI(uint(convIDUint), req.Content))
 				})
 			}
 		}
@@ -411,12 +414,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	}
 
-	mentions := mention.ExtractMentions(msg.Content)
-	mentionUserIDs := make([]uint, 0, len(mentions))
-	for _, m := range mentions {
-		mentionUserIDs = append(mentionUserIDs, m.UserID)
-	}
-
+	targets := mention.Parse(msg.Content)
 	aiName := resolveAIName(*msg)
 
 	responseData := gin.H{
@@ -436,7 +434,8 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  mentionUserIDs,
+		"mention_user_ids":  targets.UserIDs,
+		"mention_all":       targets.All,
 	}
 
 	// 分身消息：透出分身名称

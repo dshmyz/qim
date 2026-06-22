@@ -42,15 +42,62 @@ func (h *AIBotHandler) GetAIBots(c *gin.Context) {
 		return
 	}
 
+	// 转换为前端期望的格式
+	list := make([]gin.H, 0, len(bots))
+	for _, bot := range bots {
+		list = append(list, botToFrontend(bot))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     bots,
+			"list":     list,
 			"total":    total,
 			"page":     page,
 			"pageSize": pageSize,
 		},
 	})
+}
+
+// botToFrontend 将 Bot 模型转换为前端期望的 JSON 格式
+func botToFrontend(bot model.Bot) gin.H {
+	var config map[string]interface{}
+	if bot.Config != "" {
+		json.Unmarshal([]byte(bot.Config), &config)
+	}
+	if config == nil {
+		config = make(map[string]interface{})
+	}
+
+	systemPrompt, _ := config["systemPrompt"].(string)
+	modelName, _ := config["model"].(string)
+	temperature, _ := config["temperature"].(float64)
+	maxTokensF, _ := config["maxTokens"].(float64)
+	maxTokens := int(maxTokensF)
+
+	status := "inactive"
+	if bot.IsActive {
+		status = "active"
+	}
+
+	return gin.H{
+		"id":                bot.ID,
+		"name":              bot.Name,
+		"avatar":            bot.Avatar,
+		"description":       bot.Description,
+		"type":              bot.Type,
+		"systemPrompt":      systemPrompt,
+		"model":             modelName,
+		"temperature":       temperature,
+		"maxTokens":         maxTokens,
+		"status":            status,
+		"isActive":          bot.IsActive,
+		"conversationCount": 0,
+		"creatorId":         bot.CreatorID,
+		"creatorName":       bot.CreatorName,
+		"createdAt":         bot.CreatedAt.Format("2006-01-02 15:04:05"),
+		"isTemplate":        bot.IsTemplate,
+	}
 }
 
 func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
@@ -107,7 +154,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "创建成功",
-		"data":    bot,
+		"data":    botToFrontend(bot),
 	})
 }
 
@@ -205,7 +252,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "更新成功",
-		"data":    bot,
+		"data":    botToFrontend(bot),
 	})
 }
 
@@ -291,6 +338,6 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "状态已更新",
-		"data":    bot,
+		"data":    botToFrontend(bot),
 	})
 }

@@ -245,7 +245,7 @@ const updateInvitePermission = async () => {
   if (!props.group) return
   
   try {
-    const response = await fetch(`${serverUrl}/api/v1/conversations/${props.group.id}`, {
+    const response = await fetch(`${serverUrl}/api/v1/groups/${props.group.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -302,7 +302,7 @@ const handleAvatarChange = async (event: Event) => {
       const base64 = e.target?.result as string
       
       // 调用后端 API 更新群头像
-      const response = await fetch(`${serverUrl}/api/v1/conversations/${props.group!.id}`, {
+      const response = await fetch(`${serverUrl}/api/v1/groups/${props.group!.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

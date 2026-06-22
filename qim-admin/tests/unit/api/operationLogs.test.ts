@@ -5,6 +5,7 @@ const mockRequest = vi.fn()
 
 vi.mock('@/utils/request', () => ({
   request: (config: any) => mockRequest(config),
+  default: (config: any) => mockRequest(config),
 }))
 
 describe('operationLogs API', () => {
@@ -48,16 +49,16 @@ describe('operationLogs API', () => {
       )
     })
 
-    it('应该支持按操作人过滤', async () => {
+    it('应该支持按操作人过滤（后端参数名为 username）', async () => {
       const mockResponse = {
         data: { code: 0, message: 'success', data: { list: [], total: 0, page: 1, pageSize: 10 } },
       }
       mockRequest.mockResolvedValue(mockResponse)
 
-      await getOperationLogs({ page: 1, pageSize: 10, operatorName: 'admin' })
+      await getOperationLogs({ page: 1, pageSize: 10, username: 'admin' })
 
       expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({ params: expect.objectContaining({ operatorName: 'admin' }) })
+        expect.objectContaining({ params: expect.objectContaining({ username: 'admin' }) })
       )
     })
   })
@@ -75,16 +76,17 @@ describe('operationLogs API', () => {
   })
 
   describe('exportOperationLogs', () => {
-    it('应该导出操作日志', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: { url: 'https://example.com/export.csv' } } }
+    it('应该以 blob 方式导出操作日志', async () => {
+      const mockBlob = new Blob(['csv,data'], { type: 'text/csv' })
+      const mockResponse = { data: mockBlob }
       mockRequest.mockResolvedValue(mockResponse)
 
       const response = await exportOperationLogs({ startDate: '2024-01-01', endDate: '2024-01-31' })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/logs/operation/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
+        url: '/v1/logs/operation/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' }, responseType: 'blob',
       })
-      expect(response.data.data.url).toBe('https://example.com/export.csv')
+      expect(response.data).toBeInstanceOf(Blob)
     })
   })
 })

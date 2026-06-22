@@ -90,7 +90,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { Notification } from '@/types'
-import { getNotifications, markAsRead, markAllAsRead, deleteNotification, type GetNotificationsParams } from '@/api/notifications'
+import { getNotifications, markAsRead, markAsUnread, markAllAsRead, deleteNotification, type GetNotificationsParams } from '@/api/notifications'
 
 // 筛选和分页
 const filterForm = reactive({
@@ -145,10 +145,7 @@ const handleToggleRead = async (row: Notification) => {
       await markAsRead(row.id)
       ElMessage.success('已标记为已读')
     } else {
-      // 标记为未读可以通过直接更新本地状态处理，或调用额外 API
-      // 这里简单通过刷新列表处理
-      // 实际上后端可能需要一个 mark-as-unread 接口
-      row.isRead = false
+      await markAsUnread(row.id)
       ElMessage.success('已标记为未读')
     }
     fetchNotifications()

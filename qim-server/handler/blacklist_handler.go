@@ -32,7 +32,7 @@ func GetBlacklist(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"list":     blacklist,
+		"list":     blacklistsToFrontend(blacklist),
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
@@ -69,7 +69,7 @@ func AddToBlacklist(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, entry)
+	response.Success(c, blacklistToFrontend(entry))
 }
 
 func RemoveBlacklistEntry(c *gin.Context) {

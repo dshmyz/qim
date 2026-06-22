@@ -1,61 +1,67 @@
+// Package mention defines the wire format for semantic @ mentions in message
+// content. It deliberately does not infer mentions from a naked '@' character.
 package mention
 
 import (
-	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
-var atUserRegex = regexp.MustCompile(`@(\d+)`)
-
-type AtMention struct {
-	UserID   uint
-	Username string
-	Start    int
-	End      int
+// Targets are the semantic recipients encoded in a message.
+type Targets struct {
+	UserIDs []uint
+	All     bool
 }
 
-func ExtractMentions(content string) []AtMention {
-	var mentions []AtMention
-	matches := atUserRegex.FindAllStringSubmatchIndex(content, -1)
-	for _, match := range matches {
-		if len(match) >= 4 {
-			userIDStr := content[match[2]:match[3]]
-			userID, err := strconv.ParseUint(userIDStr, 10, 32)
-			if err == nil {
-				mentions = append(mentions, AtMention{
-					UserID: uint(userID),
-					Start:  match[0],
-					End:    match[1],
-				})
+var tokenPattern = regexp.MustCompile(`@\{mention:(all|[1-9][0-9]*)(?:\|([^}]*))?\}`)
+
+// Parse extracts only complete, well-formed mention tokens. Text such as a Go
+// module URL ending in /@v1.0.20 is ordinary text and produces no target.
+func Parse(content string) Targets {
+	targets := Targets{UserIDs: []uint{}}
+	seen := make(map[uint]struct{})
+
+	for _, match := range tokenPattern.FindAllStringSubmatch(content, -1) {
+		target, encodedName := match[1], match[2]
+		if target == "all" {
+			if encodedName == "" {
+				targets.All = true
 			}
+			continue
 		}
+		if encodedName == "" {
+			continue
+		}
+		name, err := url.PathUnescape(encodedName)
+		if err != nil || name == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(target, 10, 0)
+		if err != nil || id == 0 {
+			continue
+		}
+		userID := uint(id)
+		if _, exists := seen[userID]; exists {
+			continue
+		}
+		seen[userID] = struct{}{}
+		targets.UserIDs = append(targets.UserIDs, userID)
 	}
-	return mentions
+
+	return targets
 }
 
-func IsMentioned(content string, userID uint) bool {
-	mentions := ExtractMentions(content)
-	for _, m := range mentions {
-		if m.UserID == userID {
+// IsMentioned checks whether the user is a direct target or the message uses
+// the explicit @all token.
+func IsMentioned(targets Targets, userID uint) bool {
+	if targets.All {
+		return true
+	}
+	for _, id := range targets.UserIDs {
+		if id == userID {
 			return true
 		}
 	}
 	return false
-}
-
-func FormatMention(userID uint, username string) string {
-	return fmt.Sprintf("@%d(%s)", userID, username)
-}
-
-func StripMentionTags(content string) string {
-	return atUserRegex.ReplaceAllStringFunc(content, func(match string) string {
-		parts := strings.SplitN(match[1:], "(", 2)
-		if len(parts) == 2 {
-			username := strings.TrimSuffix(parts[1], ")")
-			return "@" + username
-		}
-		return match
-	})
 }

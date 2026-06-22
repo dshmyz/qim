@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -67,6 +68,31 @@ func TestCreateVersion_RejectsExternalURLWithoutMetadata(t *testing.T) {
 	var count int64
 	database.GetDB().Model(&model.ClientVersion{}).Count(&count)
 	assert.Equal(t, int64(0), count)
+}
+
+func TestVersionToFrontend_ReturnsCamelCaseFields(t *testing.T) {
+	v := model.ClientVersion{
+		ID:          1,
+		Version:     "2.0.0",
+		Platform:    "windows",
+		DownloadURL: "https://example.com/download",
+		Changelog:   "更新说明",
+		ForceUpdate: true,
+		Enabled:     true,
+	}
+	v.CreatedAt = time.Now()
+
+	result := versionToFrontend(v)
+
+	assert.Equal(t, uint(1), result["id"])
+	assert.Equal(t, "2.0.0", result["version"])
+	assert.Equal(t, "windows", result["platform"])
+	assert.Equal(t, "https://example.com/download", result["downloadUrl"])
+	assert.Equal(t, "更新说明", result["updateNotes"])
+	assert.Equal(t, true, result["forceUpdate"])
+	assert.Equal(t, "active", result["status"])
+	assert.NotNil(t, result["releaseDate"])
+	assert.NotNil(t, result["createdAt"])
 }
 
 func TestGetLatestYML_UsesAbsoluteURLAndFilenamePathForPublicFileDownload(t *testing.T) {

@@ -88,37 +88,8 @@ onUnmounted(() => {
   window.removeEventListener('touchend', onTouchEnd)
 })
 
-const titleMap: Record<string, string> = {
-  '/': '仪表盘',
-  '/statistics': '数据统计',
-  '/users': '用户管理',
-  '/organization': '组织架构',
-  '/roles': '角色权限',
-  '/groups': '群组管理',
-  '/conversations': '会话管理',
-  '/channels': '频道管理',
-  '/apps': '应用管理',
-  '/mini-apps': '小程序管理',
-  '/ai-assistant': 'AI 助手',
-  '/ai-ops': 'AI 运维面板',
-  '/ai-config': 'AI 模型配置',
-  '/mcp-tools': 'MCP 工具管理',
-  '/knowledge-graph': '知识图谱',
-  '/vector-data': '向量数据',
-  '/approvals': '审批管理',
-  '/messages': '系统消息',
-  '/message-search': '消息搜索',
-  '/file-storage': '文件存储管理',
-  '/server-monitor': '服务器监控',
-  '/notifications': '通知管理',
-  '/blacklist': '黑名单管理',
-  '/sensitive-words': '敏感词管理',
-  '/operation-logs': '操作日志',
-  '/system-config': '系统配置',
-  '/version-management': '版本管理',
-}
-
-const currentTitle = computed(() => titleMap[route.path] || '仪表盘')
+// 面包屑标题直接从路由 meta.title 读取，避免维护重复的 titleMap
+const currentTitle = computed(() => (route.meta.title as string) || '仪表盘')
 </script>
 
 <style scoped>

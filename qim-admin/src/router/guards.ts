@@ -1,5 +1,6 @@
 import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { usePermissionStore } from '@/stores/permission'
+import { useAuthStore } from '@/stores/auth'
 import { getCurrentUser } from '@/api/auth'
 
 let isInitializing = false
@@ -32,20 +33,20 @@ export function setupPermissionGuard() {
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
   ) => {
-    const token = sessionStorage.getItem('token')
+    const authStore = useAuthStore()
     const requiresAuth = to.meta.requiresAuth !== false
 
-    if (requiresAuth && !token) {
+    if (requiresAuth && !authStore.isAuthenticated) {
       next('/login')
       return
     }
 
-    if (to.path === '/login' && token) {
+    if (to.path === '/login' && authStore.isAuthenticated) {
       next('/')
       return
     }
 
-    if (requiresAuth && token) {
+    if (requiresAuth && authStore.isAuthenticated) {
       const permissionStore = usePermissionStore()
 
       // 页面刷新后权限未初始化时，先获取用户信息
@@ -53,10 +54,11 @@ export function setupPermissionGuard() {
         await ensurePermissionsInitialized()
       }
 
-      const requiredPermission = to.meta.permission as string | undefined
-      if (requiredPermission && permissionStore.isInitialized) {
-        const [resource, action] = requiredPermission.split(':')
-        if (!permissionStore.hasPermission(resource, action)) {
+      // 路由级角色校验：meta.roles 配置允许访问的角色码
+      const requiredRoles = to.meta.roles as string[] | undefined
+      if (requiredRoles && requiredRoles.length > 0 && permissionStore.isInitialized) {
+        const hasAccess = requiredRoles.some(role => permissionStore.isRole(role))
+        if (!hasAccess) {
           next('/403')
           return
         }

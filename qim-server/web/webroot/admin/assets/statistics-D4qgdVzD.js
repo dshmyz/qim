@@ -1,0 +1,1 @@
+import{r as t}from"./index-DoveOm9c.js";const r=()=>t({url:"/v1/admin/dashboard/stats",method:"get"}),a=()=>t({url:"/v1/admin/dashboard/trend",method:"get"}),n=e=>t({url:"/v1/admin/recent-registrations",method:"get",params:e}),d=()=>t({url:"/v1/admin/statistics",method:"get"}),o=()=>t({url:"/v1/admin/statistics/trend",method:"get"});export{r as a,n as b,d as c,o as d,a as g};

@@ -276,11 +276,10 @@ func Load() *Config {
 			fmt.Fprintln(os.Stderr, "[FATAL] JWT_SECRET 未配置！生产环境必须设置 JWT_SECRET 环境变量或配置文件中的 jwt.secret")
 			os.Exit(1)
 		} else {
-			cfg.JWT.Secret = generateRandomSecret()
+			cfg.JWT.Secret = "qim-dev-default-secret-key-2024"
 			fmt.Println("[WARN] ============================================================")
-			fmt.Println("[WARN] JWT_SECRET 未配置，已自动生成随机密钥。")
-			fmt.Println("[WARN] 重启后密钥将变化，所有已颁发的 Token 将失效！")
-			fmt.Println("[WARN] 请设置 JWT_SECRET 环境变量以使用固定密钥。")
+			fmt.Println("[WARN] JWT_SECRET 未配置，已使用固定开发密钥。")
+			fmt.Println("[WARN] 请设置 JWT_SECRET 环境变量以使用自定义密钥。")
 			fmt.Println("[WARN] 生产环境未设置 JWT_SECRET 将拒绝启动。")
 			fmt.Println("[WARN] ============================================================")
 		}

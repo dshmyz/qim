@@ -10,7 +10,7 @@ export const getAIBots = (params?: PaginationParams): Promise<AxiosResponse<ApiR
   })
 }
 
-export const createAIBot = (data: { name: string; description: string; systemPrompt: string; avatar?: string }): Promise<AxiosResponse<ApiResponse<AIBot>>> => {
+export const createAIBot = (data: { name: string; description: string; systemPrompt: string; avatar?: string; model?: string; temperature?: number; maxTokens?: number }): Promise<AxiosResponse<ApiResponse<AIBot>>> => {
   return request({
     url: '/v1/ai-bots',
     method: 'post',
@@ -18,7 +18,7 @@ export const createAIBot = (data: { name: string; description: string; systemPro
   })
 }
 
-export const updateAIBot = (id: number, data: { name?: string; description?: string; systemPrompt?: string; avatar?: string; status?: 'active' | 'inactive' }): Promise<AxiosResponse<ApiResponse<AIBot>>> => {
+export const updateAIBot = (id: number, data: { name?: string; description?: string; systemPrompt?: string; avatar?: string; model?: string; temperature?: number; maxTokens?: number; status?: 'active' | 'inactive' }): Promise<AxiosResponse<ApiResponse<AIBot>>> => {
   return request({
     url: `/v1/ai-bots/${id}`,
     method: 'put',

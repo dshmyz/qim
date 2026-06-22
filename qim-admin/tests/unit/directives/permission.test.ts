@@ -13,7 +13,7 @@ describe('v-permission directive', () => {
     store = usePermissionStore()
   })
 
-  it('should remove element when no permission', async () => {
+  it('should hide element when no permission', async () => {
     store.setPermissions([{ resource: 'user', actions: ['read'] }])
     store.markInitialized()
     const parent = document.createElement('div')
@@ -22,7 +22,7 @@ describe('v-permission directive', () => {
     const binding = { value: 'user:create' } as DirectiveBinding
     permissionDirective.mounted!(el, binding)
     await nextTick()
-    expect(el.parentNode).toBeNull()
+    expect(el.style.display).toBe('none')
   })
 
   it('should keep element when has permission', async () => {

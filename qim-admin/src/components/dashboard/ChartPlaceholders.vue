@@ -5,7 +5,13 @@
         <h3 class="chart-title">用户增长趋势</h3>
         <span class="chart-subtitle">最近 7 天</span>
       </div>
-      <div class="bar-chart">
+      <div v-if="loadError" class="chart-error">
+        <el-icon :size="24"><Warning /></el-icon>
+        <span>数据加载失败</span>
+        <el-button text type="primary" @click="fetchTrendData">重试</el-button>
+      </div>
+      <div v-else-if="userTrendData.length === 0" class="chart-empty">暂无数据</div>
+      <div v-else class="bar-chart">
         <div
           v-for="(item, index) in userTrendData"
           :key="index"
@@ -32,7 +38,13 @@
         <h3 class="chart-title">消息活跃度</h3>
         <span class="chart-subtitle">今日按时段</span>
       </div>
-      <div class="activity-bars">
+      <div v-if="loadError" class="chart-error">
+        <el-icon :size="24"><Warning /></el-icon>
+        <span>数据加载失败</span>
+        <el-button text type="primary" @click="fetchTrendData">重试</el-button>
+      </div>
+      <div v-else-if="activityData.length === 0" class="chart-empty">暂无数据</div>
+      <div v-else class="activity-bars">
         <div
           v-for="(item, index) in activityData"
           :key="index"
@@ -55,12 +67,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Warning } from '@element-plus/icons-vue'
 import { getDashboardTrend } from '@/api/statistics'
 
 const userTrendData = ref<{ label: string; value: number; percent: number }[]>([])
 const activityData = ref<{ label: string; value: number; percent: number }[]>([])
+const loadError = ref(false)
 
 const fetchTrendData = async () => {
+  loadError.value = false
   try {
     const { data } = await getDashboardTrend()
     if (data.data) {
@@ -68,7 +83,7 @@ const fetchTrendData = async () => {
       activityData.value = data.data.activityData || []
     }
   } catch {
-    // 静默失败，图表显示为空
+    loadError.value = true
   }
 }
 
@@ -106,6 +121,18 @@ onMounted(fetchTrendData)
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   box-shadow: var(--shadow-card);
+}
+
+.chart-error,
+.chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 180px;
+  color: var(--color-text-muted);
+  font-size: 14px;
 }
 
 .chart-header {

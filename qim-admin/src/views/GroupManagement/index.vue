@@ -18,6 +18,12 @@
         <SearchForm @search="handleSearch" @reset="handleReset">
           <SearchField v-model="(searchForm.keyword as string)" label="群组名称" placeholder="请输入群组名称" />
         </SearchForm>
+        <div class="toolbar-actions">
+          <el-button type="primary" @click="handleOpenCreate">
+            <el-icon><Plus /></el-icon>
+            创建群组
+          </el-button>
+        </div>
       </div>
 
       <el-table :data="list" v-loading="loading" style="width: 100%">
@@ -46,11 +52,15 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" @click="handleViewMembers(row)">
               <el-icon><User /></el-icon>
-              查看成员
+              成员
+            </el-button>
+            <el-button size="small" type="warning" plain @click="handleOpenEdit(row)">
+              <el-icon><Edit /></el-icon>
+              编辑
             </el-button>
             <el-popconfirm title="确定删除该群组吗？" @confirm="handleDeleteGroup(row.id)">
               <template #reference>
@@ -122,19 +132,89 @@
         @current-change="handleMemberPageChange"
       />
     </el-dialog>
+
+    <!-- 创建/编辑群组对话框 -->
+    <el-dialog
+      v-model="formDialogVisible"
+      :title="formIsEdit ? '编辑群组' : '创建群组'"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="formRef" :model="formData" :rules="formRules" label-width="90px">
+        <el-form-item label="群组名称" prop="name">
+          <el-input v-model="formData.name" placeholder="请输入群组名称" maxlength="50" show-word-limit />
+        </el-form-item>
+        <el-form-item v-if="!formIsEdit" label="群组类型" prop="groupType">
+          <el-radio-group v-model="formData.groupType">
+            <el-radio value="group">普通群</el-radio>
+            <el-radio value="discussion">讨论组</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="群组头像">
+          <el-input v-model="formData.avatar" placeholder="头像 URL（可选）" />
+        </el-form-item>
+        <el-form-item label="群组描述">
+          <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="群组公告/描述（可选）" maxlength="200" show-word-limit />
+        </el-form-item>
+        <el-form-item v-if="!formIsEdit" label="群主" prop="creatorId">
+          <el-select
+            v-model="formData.creatorId"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="搜索并选择群主"
+            :remote-method="searchUsers"
+            :loading="userSearchLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in userOptions"
+              :key="u.id"
+              :label="u.nickname || u.username"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="!formIsEdit" label="群成员">
+          <el-select
+            v-model="formData.memberIds"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            placeholder="搜索并选择成员（可选）"
+            :remote-method="searchUsers"
+            :loading="userSearchLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in userOptions"
+              :key="u.id"
+              :label="u.nickname || u.username"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="formDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="formSubmitting" @click="handleSubmitForm">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { User, Delete } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { User, Delete, Plus, Edit } from '@element-plus/icons-vue'
 import SearchForm from '@/components/data/SearchForm.vue'
 import SearchField from '@/components/data/SearchField.vue'
 import StatusTag from '@/components/data/StatusTag.vue'
 import { useEntity } from '@/composables/useEntity'
-import { getGroups, getGroupMembers, removeGroupMember, deleteGroup } from '@/api/groups'
-import type { Group, ConversationMember } from '@/types'
+import { getGroups, getGroupMembers, removeGroupMember, deleteGroup, createGroup, updateGroup } from '@/api/groups'
+import { getUsers } from '@/api/users'
+import type { Group, ConversationMember, User as UserType } from '@/types'
 
 const groupApi = {
   getList: (params: Record<string, unknown>) => getGroups(params as any),
@@ -151,6 +231,107 @@ const {
   searchFields: ['keyword'],
   formFields: [],
 })
+
+// 创建/编辑群组
+const formDialogVisible = ref(false)
+const formIsEdit = ref(false)
+const formSubmitting = ref(false)
+const formRef = ref<FormInstance>()
+const editingId = ref<number | null>(null)
+const userOptions = ref<UserType[]>([])
+const userSearchLoading = ref(false)
+
+const formData = reactive({
+  name: '',
+  avatar: '',
+  description: '',
+  creatorId: undefined as number | undefined,
+  memberIds: [] as number[],
+  groupType: 'group' as 'group' | 'discussion',
+})
+
+const formRules: FormRules = {
+  name: [{ required: true, message: '请输入群组名称', trigger: 'blur' }],
+  creatorId: [{ required: true, message: '请选择群主', trigger: 'change' }],
+  groupType: [{ required: true, message: '请选择群组类型', trigger: 'change' }],
+}
+
+const resetForm = () => {
+  formData.name = ''
+  formData.avatar = ''
+  formData.description = ''
+  formData.creatorId = undefined
+  formData.memberIds = []
+  formData.groupType = 'group'
+  editingId.value = null
+}
+
+const searchUsers = async (query: string) => {
+  if (!query) {
+    userOptions.value = []
+    return
+  }
+  userSearchLoading.value = true
+  try {
+    const { data } = await getUsers({ keyword: query, page: 1, pageSize: 20 })
+    userOptions.value = data.data.list ?? []
+  } catch {
+    userOptions.value = []
+  } finally {
+    userSearchLoading.value = false
+  }
+}
+
+const handleOpenCreate = () => {
+  formIsEdit.value = false
+  resetForm()
+  userOptions.value = []
+  formDialogVisible.value = true
+}
+
+const handleOpenEdit = (row: Group) => {
+  formIsEdit.value = true
+  resetForm()
+  editingId.value = row.id
+  formData.name = row.name || ''
+  formData.avatar = row.avatar || ''
+  formData.description = row.description || ''
+  formDialogVisible.value = true
+}
+
+const handleSubmitForm = async () => {
+  if (!formRef.value) return
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    formSubmitting.value = true
+    try {
+      if (formIsEdit.value && editingId.value) {
+        await updateGroup(editingId.value, {
+          name: formData.name,
+          avatar: formData.avatar,
+          description: formData.description,
+        })
+        ElMessage.success('更新成功')
+      } else {
+        await createGroup({
+          name: formData.name,
+          avatar: formData.avatar,
+          description: formData.description,
+          creatorId: formData.creatorId!,
+          memberIds: formData.memberIds,
+          groupType: formData.groupType,
+        })
+        ElMessage.success('创建成功')
+      }
+      formDialogVisible.value = false
+      fetchData()
+    } catch {
+      // 错误已在请求拦截器中处理
+    } finally {
+      formSubmitting.value = false
+    }
+  })
+}
 
 const memberDialogVisible = ref(false)
 const currentGroup = ref<Group | null>(null)
@@ -315,6 +496,16 @@ const handlePageChange = (page: number) => {
 
 .card-toolbar {
   margin-bottom: var(--space-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .group-cell {

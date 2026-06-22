@@ -160,6 +160,10 @@ func (h *FeedbackHandler) GetFeedbacks(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 	status := c.Query("status")
 	feedbackType := c.Query("type")
+	userID := c.Query("userId")
+	priority := c.Query("priority")
+	startDate := c.Query("startDate")
+	endDate := c.Query("endDate")
 
 	var feedbacks []model.UserFeedback
 	var total int64
@@ -170,6 +174,18 @@ func (h *FeedbackHandler) GetFeedbacks(c *gin.Context) {
 	}
 	if feedbackType != "" {
 		query = query.Where("type = ?", feedbackType)
+	}
+	if userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	if priority != "" {
+		query = query.Where("priority = ?", priority)
+	}
+	if startDate != "" {
+		query = query.Where("created_at >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("created_at <= ?", endDate+" 23:59:59")
 	}
 
 	query.Count(&total)

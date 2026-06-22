@@ -12,7 +12,7 @@
         <el-table-column label="名称" min-width="160">
           <template #default="{ row }">
             <div class="bot-cell">
-              <el-avatar :size="32" :src="row.avatar">{{ row.name.charAt(0) }}</el-avatar>
+              <el-avatar :size="32" :src="row.avatar">{{ row.name?.charAt(0) || '?' }}</el-avatar>
               <span class="bot-name">{{ row.name }}</span>
             </div>
           </template>
@@ -86,9 +86,18 @@
           <el-input
             v-model="botForm.systemPrompt"
             type="textarea"
-            :rows="8"
+            :rows="6"
             placeholder="请输入系统提示词，用于定义 AI 助手的行为和回答风格"
           />
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-input v-model="botForm.model" placeholder="如 gpt-4o、claude-3-sonnet（留空使用默认）" />
+        </el-form-item>
+        <el-form-item label="Temperature">
+          <el-slider v-model="botForm.temperature" :min="0" :max="2" :step="0.1" show-input style="padding-right: 16px" />
+        </el-form-item>
+        <el-form-item label="Max Tokens">
+          <el-input-number v-model="botForm.maxTokens" :min="0" :max="128000" :step="256" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -133,6 +142,9 @@ const botForm = reactive({
   avatar: '',
   description: '',
   systemPrompt: '',
+  model: '',
+  temperature: 0.7,
+  maxTokens: 4096,
 })
 
 const botRules: FormRules = {
@@ -175,7 +187,10 @@ const handleEdit = (row: AIBot) => {
   botForm.name = row.name
   botForm.avatar = row.avatar || ''
   botForm.description = row.description
-  botForm.systemPrompt = row.systemPrompt
+  botForm.systemPrompt = row.systemPrompt || ''
+  botForm.model = (row as any).model || ''
+  botForm.temperature = (row as any).temperature ?? 0.7
+  botForm.maxTokens = (row as any).maxTokens ?? 4096
   dialogVisible.value = true
 }
 
@@ -185,6 +200,9 @@ const resetBotForm = () => {
   botForm.avatar = ''
   botForm.description = ''
   botForm.systemPrompt = ''
+  botForm.model = ''
+  botForm.temperature = 0.7
+  botForm.maxTokens = 4096
 }
 
 // 提交
@@ -200,6 +218,9 @@ const handleSubmit = async () => {
           description: botForm.description,
           systemPrompt: botForm.systemPrompt,
           avatar: botForm.avatar,
+          model: botForm.model,
+          temperature: botForm.temperature,
+          maxTokens: botForm.maxTokens,
         })
         ElMessage.success('更新成功')
       } else {
@@ -208,6 +229,9 @@ const handleSubmit = async () => {
           description: botForm.description,
           systemPrompt: botForm.systemPrompt,
           avatar: botForm.avatar,
+          model: botForm.model,
+          temperature: botForm.temperature,
+          maxTokens: botForm.maxTokens,
         })
         ElMessage.success('创建成功')
       }

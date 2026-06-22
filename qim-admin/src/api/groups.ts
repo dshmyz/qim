@@ -38,3 +38,30 @@ export const deleteGroup = (id: number): Promise<AxiosResponse<ApiResponse<void>
     method: 'delete',
   })
 }
+
+export const createGroup = (data: {
+  name: string
+  avatar?: string
+  description?: string
+  creatorId: number
+  memberIds?: number[]
+  groupType?: 'group' | 'discussion'
+}): Promise<AxiosResponse<ApiResponse<{ id: number; conversation_id: number; type: string }>>> => {
+  return request({
+    url: '/v1/admin/groups',
+    method: 'post',
+    data,
+  })
+}
+
+export const updateGroup = (id: number, data: {
+  name?: string
+  avatar?: string
+  description?: string
+}): Promise<AxiosResponse<ApiResponse<void>>> => {
+  return request({
+    url: `/v1/admin/groups/${id}`,
+    method: 'put',
+    data,
+  })
+}

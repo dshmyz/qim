@@ -10,6 +10,14 @@ export const getBlacklist = (params?: PaginationParams): Promise<AxiosResponse<A
   })
 }
 
+export const addToBlacklist = (data: { userId: number; reason?: string }): Promise<AxiosResponse<ApiResponse<BlacklistEntry>>> => {
+  return request({
+    url: '/v1/users/blacklist',
+    method: 'post',
+    data,
+  })
+}
+
 export const removeBlacklistEntry = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
     url: `/v1/users/blacklist/${id}`,

@@ -1,4 +1,4 @@
-// AI provider and model management types
+// AI provider management types
 
 export type ProviderType = 'openai' | 'anthropic' | 'ollama' | 'azure' | 'custom'
 
@@ -16,22 +16,6 @@ export interface AIProvider {
   lastTestAt?: string
   priority: number
   remark?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface AIModel {
-  id: number
-  providerId: number
-  providerName: string
-  modelId: string
-  name: string
-  description?: string
-  contextWindow: number
-  maxTokens: number
-  supportsVision: boolean
-  supportsFunctionCall: boolean
-  status: 'active' | 'inactive'
   createdAt: string
   updatedAt: string
 }
@@ -65,27 +49,6 @@ export interface TestConnectionResult {
   responseTime?: number
 }
 
-export interface CreateModelParams {
-  providerId: number
-  modelId: string
-  name: string
-  description?: string
-  contextWindow: number
-  maxTokens: number
-  supportsVision: boolean
-  supportsFunctionCall: boolean
-}
-
-export interface UpdateModelParams {
-  name?: string
-  description?: string
-  contextWindow?: number
-  maxTokens?: number
-  supportsVision?: boolean
-  supportsFunctionCall?: boolean
-  status?: 'active' | 'inactive'
-}
-
 // Provider type display labels
 export const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
   openai: 'OpenAI',
@@ -111,64 +74,4 @@ export const DEFAULT_MODELS: Record<ProviderType, string[]> = {
   ollama: ['llama3', 'mistral', 'codellama', 'phi3'],
   azure: ['gpt-4o', 'gpt-4-turbo', 'gpt-35-turbo'],
   custom: [],
-}
-
-// AI Configuration
-export interface AIConfig {
-  id: number
-  defaultProvider: string
-  defaultModel: string
-  temperature: number
-  maxTokens: number
-  topP: number
-  frequencyPenalty: number
-  presencePenalty: number
-  timeout: number
-}
-
-// AI Quota
-export interface AIQuota {
-  id: number
-  targetType: 'user' | 'role'
-  targetId: number
-  dailyLimit: number
-  tokenLimit: number
-  concurrentLimit: number
-  overlimitStrategy: 'reject' | 'degrade' | 'notify'
-}
-
-// AI Usage
-export interface AIUsage {
-  id: number
-  userId: number
-  provider: string
-  model: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cost: number
-  requestTime: number
-  status: 'success' | 'error' | 'timeout'
-  errorMessage?: string
-  createdAt: string
-}
-
-// AI Usage Statistics
-export interface AIUsageStatistics {
-  totalCalls: number
-  totalTokens: number
-  totalCost: number
-  byUser: Array<{
-    userId: number
-    userName: string
-    calls: number
-    tokens: number
-    cost: number
-  }>
-  byModel: Array<{
-    model: string
-    calls: number
-    tokens: number
-    cost: number
-  }>
 }

@@ -18,23 +18,3 @@ export interface LargeFile {
   uploaderName: string
   createdAt: string
 }
-
-export interface CleanupRule {
-  id: number
-  name: string
-  type: 'time' | 'size' | 'type'
-  value: string
-  enabled: boolean
-  createdAt: string
-}
-
-export interface FileAccessLog {
-  id: number
-  fileId: number
-  fileName: string
-  action: 'upload' | 'download' | 'delete'
-  userId: number
-  userName: string
-  ipAddress: string
-  createdAt: string
-}

@@ -31,26 +31,9 @@ export const getStatistics = (): Promise<AxiosResponse<ApiResponse<any>>> => {
   })
 }
 
-export const getUserStatistics = (startDate: string, endDate: string): Promise<AxiosResponse<ApiResponse<any>>> => {
+export const getStatisticsTrend = (): Promise<AxiosResponse<ApiResponse<any>>> => {
   return request({
-    url: '/v1/admin/statistics/users',
+    url: '/v1/admin/statistics/trend',
     method: 'get',
-    params: { startDate, endDate },
-  })
-}
-
-export const getGroupStatistics = (startDate: string, endDate: string): Promise<AxiosResponse<ApiResponse<any>>> => {
-  return request({
-    url: '/v1/admin/statistics/groups',
-    method: 'get',
-    params: { startDate, endDate },
-  })
-}
-
-export const getMessageStatistics = (startDate: string, endDate: string): Promise<AxiosResponse<ApiResponse<any>>> => {
-  return request({
-    url: '/v1/admin/statistics/messages',
-    method: 'get',
-    params: { startDate, endDate },
   })
 }

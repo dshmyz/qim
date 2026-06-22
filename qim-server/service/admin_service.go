@@ -188,6 +188,103 @@ func (s *AdminService) DeleteGroup(convID uint) error {
 	return nil
 }
 
+// AdminCreateGroupInput 管理员创建群组入参
+type AdminCreateGroupInput struct {
+	Name        string   `json:"name" binding:"required"`
+	Avatar      string   `json:"avatar"`
+	Description string   `json:"description"`
+	CreatorID   uint     `json:"creatorId" binding:"required"`
+	MemberIDs   []uint   `json:"memberIds"`
+	GroupType   string   `json:"groupType"` // group / discussion，默认 group
+}
+
+// CreateGroup 管理员创建群组
+func (s *AdminService) CreateGroup(input AdminCreateGroupInput) (*model.Conversation, error) {
+	ctx := context.Background()
+
+	groupType := input.GroupType
+	if groupType != "group" && groupType != "discussion" {
+		groupType = "group"
+	}
+
+	conv := &model.Conversation{Type: groupType}
+	if err := s.db.WithContext(ctx).Create(conv).Error; err != nil {
+		return nil, err
+	}
+
+	group := &model.Group{
+		ConversationID:   conv.ID,
+		GroupType:        groupType,
+		Name:             input.Name,
+		Avatar:           input.Avatar,
+		CreatorID:        input.CreatorID,
+		Announcement:     input.Description,
+		InvitePermission: "owner_admin",
+	}
+	if err := s.db.WithContext(ctx).Create(group).Error; err != nil {
+		return nil, err
+	}
+
+	// 添加创建者为群主
+	if err := s.db.WithContext(ctx).Create(&model.ConversationMember{
+		ConversationID: conv.ID,
+		UserID:         input.CreatorID,
+		Role:           "owner",
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	// 添加其他成员
+	for _, mid := range input.MemberIDs {
+		if mid == input.CreatorID {
+			continue
+		}
+		if err := s.db.WithContext(ctx).Create(&model.ConversationMember{
+			ConversationID: conv.ID,
+			UserID:         mid,
+			Role:           "member",
+		}).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return conv, nil
+}
+
+// AdminUpdateGroupInput 管理员更新群组入参
+type AdminUpdateGroupInput struct {
+	Name        *string `json:"name"`
+	Avatar      *string `json:"avatar"`
+	Description *string `json:"description"`
+}
+
+// UpdateGroup 管理员更新群组信息
+func (s *AdminService) UpdateGroup(convID uint, input AdminUpdateGroupInput) error {
+	ctx := context.Background()
+
+	var group model.Group
+	if err := s.db.WithContext(ctx).Where("conversation_id = ?", convID).First(&group).Error; err != nil {
+		return err
+	}
+
+	updates := map[string]interface{}{}
+	if input.Name != nil {
+		updates["name"] = *input.Name
+	}
+	if input.Avatar != nil {
+		updates["avatar"] = *input.Avatar
+	}
+	if input.Description != nil {
+		updates["announcement"] = *input.Description
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	return s.db.WithContext(ctx).Model(&group).Updates(updates).Error
+}
+
 type AdminUserInfo struct {
 	model.User
 	Roles []string `json:"roles"`

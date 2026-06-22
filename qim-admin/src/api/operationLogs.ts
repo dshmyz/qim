@@ -1,8 +1,9 @@
 import type { ApiResponse, OperationLog, PaginationParams, PaginatedResponse } from '@/types'
 import { request } from '@/utils/request'
+import service from '@/utils/request'
 import type { AxiosResponse } from 'axios'
 
-export const getOperationLogs = (params?: PaginationParams & { action?: string; module?: string; status?: string; operatorName?: string; startDate?: string; endDate?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<OperationLog>>>> => {
+export const getOperationLogs = (params?: PaginationParams & { action?: string; module?: string; status?: string; username?: string; startDate?: string; endDate?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<OperationLog>>>> => {
   return request({
     url: '/v1/logs/operation',
     method: 'get',
@@ -25,10 +26,11 @@ export const getOperationLogDetail = (id: number): Promise<AxiosResponse<ApiResp
   })
 }
 
-export const exportOperationLogs = (params?: { startDate?: string; endDate?: string }): Promise<AxiosResponse<ApiResponse<{ url: string }>>> => {
-  return request({
+export const exportOperationLogs = (params?: { startDate?: string; endDate?: string }): Promise<AxiosResponse<Blob>> => {
+  return service({
     url: '/v1/logs/operation/export',
     method: 'get',
     params,
+    responseType: 'blob',
   })
 }

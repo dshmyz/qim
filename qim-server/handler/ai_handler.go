@@ -147,7 +147,7 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -400,7 +400,7 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    dashboard,
 	})
@@ -479,7 +479,7 @@ func (h *AIHandler) ListTools(c *gin.Context) {
 
 	tools := h.mcpServer.ListTools()
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    tools,
 	})
@@ -522,7 +522,7 @@ func (h *AIHandler) ExecuteTool(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -567,7 +567,7 @@ func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -612,7 +612,7 @@ func (h *AIHandler) CommandGeneration(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -657,7 +657,7 @@ func (h *AIHandler) LogAnalysis(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -702,7 +702,7 @@ func (h *AIHandler) IntelligentAlert(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})
@@ -745,7 +745,7 @@ func (h *AIHandler) OpsKnowledge(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
+		"code":    0,
 		"message": "success",
 		"data":    result,
 	})

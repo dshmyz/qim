@@ -276,8 +276,9 @@ const fetchTree = async () => {
   treeLoading.value = true
   try {
     const { data } = await getOrganizationTree()
-    const treeData = data.data
-    if (treeData && treeData.length > 0) {
+    const res = data.data
+    const treeData = res?.departments ?? []
+    if (treeData.length > 0) {
       departmentTree.value = transformTree(treeData)
     } else {
       departmentTree.value = []
@@ -332,13 +333,21 @@ const handleDepartmentSubmit = async () => {
     if (!valid) return
     submitting.value = true
     try {
-      await createDepartment({
+      const payload = {
         name: departmentForm.name,
         parentId: departmentForm.parentId,
         code: departmentForm.code,
         description: departmentForm.description,
-      })
-      ElMessage.success('创建成功')
+      }
+      if (departmentForm.id) {
+        // 编辑
+        await updateDepartment(departmentForm.id, payload)
+        ElMessage.success('更新成功')
+      } else {
+        // 创建
+        await createDepartment(payload)
+        ElMessage.success('创建成功')
+      }
       departmentDialogVisible.value = false
       fetchTree()
     } catch (error) {

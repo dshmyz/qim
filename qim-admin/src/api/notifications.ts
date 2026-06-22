@@ -22,6 +22,13 @@ export const markAsRead = (id: number): Promise<AxiosResponse<ApiResponse<void>>
   })
 }
 
+export const markAsUnread = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
+  return request({
+    url: `/v1/notifications/${id}/unread`,
+    method: 'put',
+  })
+}
+
 export const markAllAsRead = (): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
     url: '/v1/notifications/read-all',

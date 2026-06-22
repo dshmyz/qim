@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -19,6 +20,7 @@ import (
 
 var ErrMessageNotFound = errors.New("message not found")
 var ErrMessageForbidden = errors.New("access forbidden")
+var ErrInvalidMention = errors.New("invalid mention target")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
@@ -102,7 +104,9 @@ type MessageResult struct {
 	PageSize    int
 }
 
-func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint, mentionUserIDs []uint) (*model.Message, error) {
+// SendMessage keeps the final parameter for WebSocket/API compatibility. Its
+// value is intentionally ignored: mention recipients come only from content.
+func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint, _ []uint) (*model.Message, error) {
 	db := s.db
 
 	if msgType == "text" && content != "" {
@@ -114,6 +118,10 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {
 		return nil, ErrMessageForbidden
+	}
+
+	if err := s.validateMentionTokens(convID, content); err != nil {
+		return nil, err
 	}
 
 	msg := model.Message{
@@ -142,14 +150,15 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	var convType string
 	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
 
+	// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
+	// 对所有类型会话（包括 bot）统一处理，避免移除后发消息无法恢复
+	db.Model(&model.ConversationSession{}).
+		Where("conversation_id = ? AND is_hidden = ?", convID, true).
+		Update("is_hidden", false)
+
 	if convType == "bot" {
 		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
 	} else {
-		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
-		db.Model(&model.ConversationSession{}).
-			Where("conversation_id = ? AND is_hidden = ?", convID, true).
-			Update("is_hidden", false)
-
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
@@ -157,7 +166,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		if s.hub != nil {
 			newMsg := ws.WSMessage{
 				Type: "new_message",
-				Data: s.buildMessageResponse(msg, mentionUserIDs),
+				Data: s.buildMessageResponse(msg),
 			}
 			jsonMsg, _ := json.Marshal(newMsg)
 			s.hub.SendToConversation(convID, senderID, jsonMsg)
@@ -165,6 +174,60 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	}
 
 	return &msg, nil
+}
+
+func (s *MessageService) validateMentionTokens(convID uint, content string) error {
+	targets := mention.Parse(content)
+	if len(targets.UserIDs) > 100 {
+		return ErrInvalidMention
+	}
+
+	var members []model.ConversationMember
+	if len(targets.UserIDs) > 0 {
+		if err := s.db.Where("conversation_id = ? AND user_id IN ?", convID, targets.UserIDs).
+			Find(&members).Error; err != nil {
+			return err
+		}
+		if len(members) != len(targets.UserIDs) {
+			return ErrInvalidMention
+		}
+	}
+
+	if targets.All {
+		var conversation model.Conversation
+		if err := s.db.Select("type").First(&conversation, convID).Error; err != nil {
+			return err
+		}
+		if conversation.Type != "group" && conversation.Type != "discussion" {
+			return ErrInvalidMention
+		}
+	}
+	return nil
+}
+
+// MentionUserIDsForAI expands @all only for the existing AI dispatch hook;
+// it never persists this derived list.
+func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint {
+	targets := mention.Parse(content)
+	if !targets.All {
+		return targets.UserIDs
+	}
+	var members []model.ConversationMember
+	if err := s.db.Where("conversation_id = ?", convID).Find(&members).Error; err != nil {
+		return targets.UserIDs
+	}
+	ids := append([]uint{}, targets.UserIDs...)
+	seen := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
+	for _, member := range members {
+		if _, exists := seen[member.UserID]; !exists {
+			seen[member.UserID] = struct{}{}
+			ids = append(ids, member.UserID)
+		}
+	}
+	return ids
 }
 
 func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
@@ -835,10 +898,8 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
-func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint) map[string]interface{} {
-	if mentionUserIDs == nil {
-		mentionUserIDs = []uint{}
-	}
+func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {
+	targets := mention.Parse(msg.Content)
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -852,7 +913,8 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  mentionUserIDs,
+		"mention_user_ids":  targets.UserIDs,
+		"mention_all":       targets.All,
 	}
 }
 

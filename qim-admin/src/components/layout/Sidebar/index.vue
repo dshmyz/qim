@@ -98,7 +98,7 @@
             <el-icon><DataAnalysis /></el-icon>
             <template #title>向量数据</template>
           </el-menu-item>
-          <el-menu-item index="/approvals" v-permission="'ai:read'">
+          <el-menu-item index="/approvals" v-role="'system_admin'">
             <el-icon><Checked /></el-icon>
             <template #title>审批管理</template>
           </el-menu-item>
@@ -143,6 +143,10 @@
           <el-menu-item index="/feedbacks" v-permission="'feedback:read'">
             <el-icon><Message /></el-icon>
             <template #title>意见反馈</template>
+          </el-menu-item>
+          <el-menu-item index="/crash-logs" v-permission="'log:read'">
+            <el-icon><WarningFilled /></el-icon>
+            <template #title>崩溃日志</template>
           </el-menu-item>
         </el-sub-menu>
 
@@ -197,7 +201,7 @@ import {
   Connection, Grid, Monitor, Cellphone, BellFilled,
   Fold, Expand, DataAnalysis, Key, Cpu, Warning, Document,
   Lock, Setting, Tools, Upload, Search, Folder, Checked,
-  Message,
+  Message, WarningFilled,
 } from '@element-plus/icons-vue'
 import { getProductName, getAdminTitle } from '@/config/appConfig'
 

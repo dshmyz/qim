@@ -178,7 +178,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { User, Connection, UserFilled, ChatLineRound } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getStatistics } from '@/api/statistics'
+import { getStatistics, getStatisticsTrend } from '@/api/statistics'
 import type { StatisticsData } from '@/types'
 
 const stats = ref<StatisticsData>({
@@ -231,13 +231,17 @@ const getActivityPercent = (value: number, max: number): number => {
 const fetchStatistics = async () => {
   chartLoading.value = true
   try {
-    const { data } = await getStatistics()
-    if (data.data) {
-      stats.value = data.data
+    const [statsRes, trendRes] = await Promise.all([
+      getStatistics(),
+      getStatisticsTrend(),
+    ])
+    if (statsRes.data.data) {
+      stats.value = statsRes.data.data
     }
-    // 开发环境启用 mock 数据
-    if (import.meta.env.DEV) {
-      generateMockTrendData()
+    if (trendRes.data.data) {
+      userTrendData.value = trendRes.data.data.userTrend || []
+      messageTrendData.value = trendRes.data.data.messageTrend || []
+      activityData.value = trendRes.data.data.activityData || []
     }
   } catch (error) {
     console.error('[Statistics] fetch statistics failed:', error)
@@ -245,26 +249,6 @@ const fetchStatistics = async () => {
   } finally {
     chartLoading.value = false
   }
-}
-
-// 模拟生成趋势数据（开发调试用，生产环境应禁用）
-const generateMockTrendData = () => {
-  console.warn('[Statistics] 使用模拟数据，生产环境应从后端 API 获取')
-  const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-  userTrendData.value = days.map((day) => ({
-    label: day,
-    value: Math.floor(Math.random() * 50) + 10,
-  }))
-  messageTrendData.value = days.map((day) => ({
-    label: day,
-    value: Math.floor(Math.random() * 500) + 100,
-  }))
-  activityData.value = [
-    { label: '登录次数', value: Math.floor(Math.random() * 1000) + 500 },
-    { label: '消息发送', value: Math.floor(Math.random() * 5000) + 1000 },
-    { label: '群组创建', value: Math.floor(Math.random() * 50) + 5 },
-    { label: '频道订阅', value: Math.floor(Math.random() * 200) + 50 },
-  ]
 }
 
 onMounted(fetchStatistics)

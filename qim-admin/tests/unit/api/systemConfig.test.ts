@@ -26,7 +26,7 @@ describe('systemConfig API', () => {
 
       const response = await getSystemConfig()
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/system-config', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/system/config', method: 'get' })
       expect(response.data.data).toEqual(mockConfig)
     })
   })
@@ -40,7 +40,7 @@ describe('systemConfig API', () => {
       const updateData = { enableRegistration: false }
       const response = await updateSystemConfig(updateData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/system-config', method: 'put', data: updateData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/system/config', method: 'put', data: updateData })
       expect(response.data.data).toEqual(updatedConfig)
     })
   })

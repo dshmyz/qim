@@ -99,8 +99,9 @@ export const useChatStore = defineStore('chat', () => {
     const msgs = messages.value.get(conversationId) || []
     const index = msgs.findIndex(m => m.id === messageId)
     if (index !== -1) {
-      msgs[index] = { ...msgs[index], ...updates }
-      messages.value.set(conversationId, [...msgs])
+      const newMsgs = [...msgs]
+      newMsgs[index] = { ...msgs[index], ...updates }
+      messages.value.set(conversationId, newMsgs)
     }
   }
 

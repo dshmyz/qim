@@ -4,11 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>消息搜索</span>
-          <el-button type="primary" @click="handleExport">导出结果</el-button>
         </div>
       </template>
 
-      <SearchForm :users="users" @search="handleSearch" />
+      <MessageSearchForm :users="users" @search="handleSearch" />
 
       <el-table
         v-loading="messageStore.loading"
@@ -88,7 +87,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
-import SearchForm from '@/components/search/SearchForm.vue'
+import MessageSearchForm from '@/components/search/MessageSearchForm.vue'
+import { getUsers } from '@/api/users'
 import type { Message, MessageSearchParams } from '@/types/message'
 
 const messageStore = useMessageStore()
@@ -109,10 +109,15 @@ onMounted(() => {
 })
 
 async function loadUsers() {
-  users.value = [
-    { id: 1, name: '用户1' },
-    { id: 2, name: '用户2' },
-  ]
+  try {
+    const { data } = await getUsers({ page: 1, pageSize: 100 })
+    users.value = (data.data.list ?? []).map((u) => ({
+      id: u.id,
+      name: u.nickname || u.username,
+    }))
+  } catch {
+    users.value = []
+  }
 }
 
 async function handleSearch(params: Partial<MessageSearchParams>) {
@@ -137,10 +142,6 @@ async function loadData() {
 function handleViewDetail(message: Message) {
   currentMessage.value = message
   detailVisible.value = true
-}
-
-async function handleExport() {
-  console.log('Export messages')
 }
 
 function getMessageTypeTag(type: string) {

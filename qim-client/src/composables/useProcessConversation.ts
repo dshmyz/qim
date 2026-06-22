@@ -1,5 +1,6 @@
 import { Ref } from 'vue'
 import { generateAvatar, isAbsoluteUrl, getAvatarUrl } from '../utils/avatar'
+import { displayMentionTokens } from '../utils/mentions'
 
 export interface Conversation {
   id: string
@@ -103,7 +104,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       other_member_name: conv.other_member_name || conv.OtherMemberName || '',
       lastMessage: conv.lastMessage || conv.last_message ? {
         id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
-        content: conv.lastMessage?.content || conv.last_message?.content || '',
+        content: displayMentionTokens(conv.lastMessage?.content || conv.last_message?.content || ''),
         file_name: conv.lastMessage?.file_name || conv.last_message?.file_name,
         file_size: conv.lastMessage?.file_size || conv.last_message?.file_size,
         sender: (conv.lastMessage?.sender || conv.last_message?.sender) ? {

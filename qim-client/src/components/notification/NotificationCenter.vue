@@ -370,13 +370,13 @@ const handleAction = async (notification: Notification, action: string) => {
       
       if (action === 'approve') {
         await axios.post(
-          `${serverUrl.value}/api/v1/conversations/${conversation_id}/members`,
+          `${serverUrl.value}/api/v1/groups/${conversation_id}/members`,
           { member_ids: [user_id] },
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
       } else {
         await axios.delete(
-          `${serverUrl.value}/api/v1/conversations/${conversation_id}/join-requests/${user_id}`,
+          `${serverUrl.value}/api/v1/groups/${conversation_id}/join-requests/${user_id}`,
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
       }

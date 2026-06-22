@@ -185,12 +185,8 @@ const fetchDashboard = async () => {
 }
 
 const fetchKnowledgeStats = async () => {
-  try {
-    const res = await request.post('/v1/ai/ops/knowledge', { query: '' })
-    knowledgeStats.value = res.data.data || {}
-  } catch (error) {
-    // 静默失败
-  }
+  // 后端暂未提供知识库统计 API，保留默认值
+  // TODO: 后端实现 /admin/ai/knowledge-stats 后对接
 }
 
 const refreshDashboard = () => {

@@ -781,6 +781,8 @@ class MigrationEngine:
             self._batch_insert_messages(batch)
 
     def _batch_insert_messages(self, batch: List[Dict]):
+        last_messages = {}
+
         with self.target_conn.cursor() as cursor:
             for msg_data in batch:
                 cursor.execute("""
@@ -794,7 +796,33 @@ class MigrationEngine:
                         %(created_at)s, %(updated_at)s, %(deleted_at)s
                     )
                 """, msg_data)
+
+                message_id = cursor.lastrowid
+                conv_id = msg_data['conversation_id']
+                msg_time = msg_data['created_at']
+                current = last_messages.get(conv_id)
+                if msg_data.get('deleted_at') is None and (current is None or msg_time >= current['created_at']):
+                    last_messages[conv_id] = {
+                        'message_id': message_id,
+                        'created_at': msg_time,
+                    }
+
                 self.stats['messages'] += 1
+
+            for conv_id, last_msg in last_messages.items():
+                cursor.execute("""
+                    UPDATE conversations
+                    SET last_message_id = %s, last_message_at = %s, updated_at = %s
+                    WHERE id = %s
+                      AND (last_message_at IS NULL OR last_message_at <= %s)
+                """, (
+                    last_msg['message_id'],
+                    last_msg['created_at'],
+                    last_msg['created_at'],
+                    conv_id,
+                    last_msg['created_at'],
+                ))
+
             self.target_conn.commit()
 
     def _get_private_conversation_id(self, user1_id: str, user2_id: str) -> Optional[int]:

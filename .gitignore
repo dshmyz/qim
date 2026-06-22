@@ -19,6 +19,10 @@ qim-server/server
 .claude/
 .vscode/
 
+# 工具产物（不追踪）
+.codegraph/
+.playwright-mcp/
+
 # 日志文件
 *.log
 

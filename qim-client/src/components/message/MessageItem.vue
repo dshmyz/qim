@@ -186,6 +186,7 @@ import AtMentionBadge from './AtMentionBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed } from 'vue'
+import { escapeHTML } from '../../utils/sanitize'
 
 const systemConfigStore = useSystemConfigStore()
 
@@ -264,19 +265,19 @@ function formatTime(timestamp: number | string | null | undefined): string {
 const convertUrlsToLinks = (text: string): string => {
   // 正则表达式匹配URL
   const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
+  // 正则表达式匹配 @用户名，显示为高亮（纯展示样式）
   const atRegex = /@([\u4e00-\u9fa5\w]+)/g
   
-  let result = text
+  let result = escapeHTML(text)
   
   // 先处理URL
-  result = result.replace(urlRegex, (url) => {
+  result = result.replace(urlRegex, (url: string) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
   })
   
-  // 再处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
+  // 再处理@用户（在 URL 已转成链接后匹配）
+  result = result.replace(atRegex, (match: string) => {
+    return `<span class="at-user">${match}</span>`
   })
   
   return result
@@ -346,6 +347,8 @@ const isFileContent = (content: string): boolean => {
   cursor: pointer;
   transition: transform 0.2s;
   border: 1px solid var(--border-color);
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .message-avatar:hover {

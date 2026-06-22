@@ -221,6 +221,7 @@ import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import { logger } from '../../utils/logger'
+import { reconcileMentionSpans, serializeMentionTokens, type MentionSpan } from '../../utils/mentions'
 // 大组件懒加载，按需加载减少 chat chunk 体积
 const GroupModals = defineAsyncComponent(() => import('../modals/GroupModals.vue'))
 const AISummaryPanel = defineAsyncComponent(() => import('../ai/AISummaryPanel.vue'))
@@ -429,6 +430,7 @@ const {
   showReadUsersModal,
   currentReadUsers,
   fetchReadUsers,
+  batchFetchReadUsers,
   showReadUsers,
   markMessagesAsRead,
   recallMessage,
@@ -530,6 +532,18 @@ const showEmojiPanel = ref(false)
 // @成员功能相关
 const showAtMembersPanel = ref(false)
 const inputCursorPosition = ref(0)
+const mentionSpans = ref<MentionSpan[]>([])
+let trackedInputMessage = ''
+
+watch(inputMessage, (nextText) => {
+  mentionSpans.value = reconcileMentionSpans(mentionSpans.value, trackedInputMessage, nextText)
+  trackedInputMessage = nextText
+})
+
+watch(() => props.conversation?.id, () => {
+  mentionSpans.value = []
+  trackedInputMessage = inputMessage.value
+})
 
 // 打开消息管理器
 const openMessageManager = () => {
@@ -712,6 +726,15 @@ const selectAtMember = (member: { id: string; name: string; avatar: string }) =>
   
   if (atPosition >= 0) {
     const newText = value.substring(0, atPosition) + `@${member.name} ` + value.substring(cursorPos)
+    const mentionText = `@${member.name}`
+    mentionSpans.value = reconcileMentionSpans(mentionSpans.value, value, newText)
+    mentionSpans.value.push({
+      start: atPosition,
+      end: atPosition + mentionText.length,
+      text: mentionText,
+      userIds: [Number(member.id)],
+    })
+    trackedInputMessage = newText
     inputMessage.value = newText
     
     autoResizeTextarea()
@@ -742,6 +765,16 @@ const selectAtAll = () => {
   
   if (atPosition >= 0) {
     const newText = value.substring(0, atPosition) + `@所有人 ` + value.substring(cursorPos)
+    const mentionText = '@所有人'
+    mentionSpans.value = reconcileMentionSpans(mentionSpans.value, value, newText)
+    mentionSpans.value.push({
+      start: atPosition,
+      end: atPosition + mentionText.length,
+      text: mentionText,
+      userIds: [],
+      all: true,
+    })
+    trackedInputMessage = newText
     inputMessage.value = newText
     
     autoResizeTextarea()
@@ -821,49 +854,18 @@ const handleSend = async () => {
   // 再处理文本消息
   const content = inputMessage.value.trim()
   if (content) {
+    const persistedContent = serializeMentionTokens(inputMessage.value, mentionSpans.value).trim()
     // 构建消息对象，包含引用信息
     const messageData = {
-      content: content,
+      content: persistedContent,
       type: 'text',
       quotedMessage: quotedMessage.value
     }
     
-    // 检测消息中是否包含@用户
-    const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
-    const mentionUserIds: number[] = []
-    if (atUsers && props.conversation?.members?.length) {
-      // 提取@的用户名
-      const atUsernames = atUsers.map(atUser => atUser.substring(1))
-      // 查找对应的用户
-      const mentionedUsers = props.conversation.members.filter(member => 
-        atUsernames.includes(member.name)
-      )
-      
-      // 收集被@用户的ID
-      mentionedUsers.forEach(user => {
-        if (user.id) {
-          mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
-        }
-      })
-      
-      // 检查是否@了所有人
-      if (atUsernames.includes('所有人')) {
-        // @所有人时，添加所有成员的ID
-        props.conversation.members.forEach(user => {
-          if (user.id && !mentionUserIds.includes(typeof user.id === 'string' ? parseInt(user.id) : user.id)) {
-            mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
-          }
-        })
-      }
-    }
-    
-    // 如果有@用户，添加到消息数据中
-    if (mentionUserIds.length > 0) {
-      (messageData as any).mentionUserIds = mentionUserIds
-    }
-    
     emit('send', messageData)
     inputMessage.value = ''
+    mentionSpans.value = []
+    trackedInputMessage = ''
     quotedMessage.value = null
     // 发送成功后清空草稿
     if (props.conversation?.id) {
@@ -944,17 +946,43 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
   
   let shouldScroll = false
   
+  // 无条件检测已读状态变化（无论消息数量是否变化）
+  const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
+    const oldMsg = oldMessages[index]
+    return oldMsg && newMsg.isSelf && !oldMsg.isRead && newMsg.isRead
+  })
+
+  if (hasReadStatusChanged) {
+    // 立即批量获取刚变为已读的消息的已读用户数据，避免显示"0人已读"
+    const newlyReadIds: string[] = []
+    newMessages.forEach((newMsg, index) => {
+      const oldMsg = oldMessages![index]
+      if (oldMsg && newMsg.isSelf && !oldMsg.isRead && newMsg.isRead) {
+        newlyReadIds.push(newMsg.id)
+      }
+    })
+    if (newlyReadIds.length > 0) {
+      // 乐观更新：先设 read_count=1，UI 立即显示"1人已读"，API 返回后覆盖真实数据
+      for (const id of newlyReadIds) {
+        if (!readUsersMap.value[id] || !readUsersMap.value[id].read_count) {
+          readUsersMap.value[id] = { read_users: [], total_members: 0, read_count: 1 }
+        }
+      }
+      batchFetchReadUsers(newlyReadIds, true)
+    }
+  }
+
   if (newLength > oldLength) {
     const oldFirstId = oldMessages?.[0]?.id
     const newFirstId = newMessages?.[0]?.id
-    
+
     if (oldFirstId !== newFirstId) {
       debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single')
       return
     }
-    
+
     shouldScroll = true
-    
+
     const newMessagesOnly = newMessages.slice(oldLength)
     if (newMessagesOnly.length > 0) {
       debouncedLoadReadUsers(newMessagesOnly, props.conversation?.type || 'single')
@@ -963,14 +991,6 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
     const lastMessage = newMessages[newLength - 1]
     if (lastMessage?.isStreaming) {
       shouldScroll = true
-    }
-    
-    const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
-      const oldMsg = oldMessages[index]
-      return oldMsg && newMsg.isRead !== oldMsg.isRead
-    })
-    if (hasReadStatusChanged) {
-      debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single', true)
     }
   }
   
@@ -1885,10 +1905,11 @@ const takeScreenshot = () => {
           // 处理截图结果
           if (imageData) {
             logger.log('[Screenshot] Processing screenshot, adding to pendingFiles')
-            const file = await screenshotPayloadToFile(imageData, 'screenshot.png')
+            const screenshotFilename = `screenshot_${Date.now()}.png`
+            const file = await screenshotPayloadToFile(imageData, screenshotFilename)
             pendingFiles.value.push({
               file,
-              name: 'screenshot.png'
+              name: screenshotFilename
             })
             logger.log('[Screenshot] Screenshot added to pendingFiles, count:', pendingFiles.value.length)
           } else {
@@ -1964,8 +1985,9 @@ const takeScreenshotHidden = () => {
       }
       try {
         if (imageData) {
-          const file = await screenshotPayloadToFile(imageData, 'screenshot.png')
-          pendingFiles.value.push({ file, name: 'screenshot.png' })
+          const screenshotFilename = `screenshot_${Date.now()}.png`
+          const file = await screenshotPayloadToFile(imageData, screenshotFilename)
+          pendingFiles.value.push({ file, name: screenshotFilename })
         }
         screenshotStatus.value = 'idle'
       } catch (error) {
@@ -2018,7 +2040,7 @@ const uploadScreenshot = async () => {
     
     // 创建FormData
     const formData = new FormData()
-    formData.append('file', blob, 'screenshot.png')
+    formData.append('file', blob, `screenshot_${Date.now()}.png`)
     formData.append('source', 'chat')
     
     // 上传到服务器

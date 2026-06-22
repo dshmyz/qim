@@ -40,7 +40,7 @@ func GetOrganizationTree(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"departments": departments,
+			"departments": departmentsToFrontend(departments),
 		},
 	})
 }
@@ -87,8 +87,62 @@ func CreateDepartment(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": department,
+		"data": departmentToFrontend(department),
 	})
+}
+
+// UpdateDepartment 更新部门信息
+func UpdateDepartment(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的部门ID")
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Code        string `json:"code"`
+		Description string `json:"description"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	db := database.GetDB()
+
+	var department model.Department
+	if err := db.First(&department, uint(id)).Error; err != nil {
+		response.NotFound(c, "部门不存在")
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.Name != "" {
+		updates["name"] = req.Name
+	}
+	if req.Code != "" {
+		updates["code"] = req.Code
+	}
+	if req.Description != "" {
+		updates["description"] = req.Description
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": departmentToFrontend(department)})
+		return
+	}
+
+	if err := db.Model(&department).Updates(updates).Error; err != nil {
+		response.InternalServerError(c, "更新部门失败")
+		return
+	}
+
+	// 重新查询返回最新数据
+	db.First(&department, uint(id))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": departmentToFrontend(department)})
 }
 
 func AddUserToDepartment(c *gin.Context) {

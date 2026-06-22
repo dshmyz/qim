@@ -7,6 +7,7 @@ import './styles/main.css'
 import App from './App.vue'
 import router from './router'
 import { permissionDirective } from './directives/permission'
+import { roleDirective } from './directives/role'
 import { setupPermissionGuard } from './router/guards'
 
 const app = createApp(App)
@@ -16,6 +17,7 @@ app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 
 app.directive('permission', permissionDirective)
+app.directive('role', roleDirective)
 router.beforeEach(setupPermissionGuard())
 
 app.mount('#app')

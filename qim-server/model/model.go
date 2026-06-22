@@ -44,7 +44,7 @@ type Department struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 	SubDepartments []Department   `json:"subDepartments,omitempty" gorm:"foreignkey:ParentID"`
-	Employees      []User         `json:"employees,omitempty" gorm:"many2many:department_employees"`
+	Employees      []User         `json:"employees,omitempty" gorm:"-"`
 }
 
 // 部门员工关联
@@ -190,6 +190,7 @@ type Message struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 	Sender          User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
+	Conversation    *Conversation  `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 	QuotedMessage   *Message       `json:"quoted_message,omitempty" gorm:"foreignkey:QuotedMessageID"`
 }
 

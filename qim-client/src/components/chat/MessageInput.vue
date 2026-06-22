@@ -90,15 +90,24 @@
 
     <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="$emit('remove-quoted-message')" />
 
-    <div v-if="pendingFiles.length > 0" class="pending-files">
-      <div v-for="(file, index) in pendingFiles" :key="index" class="pending-file-item">
-        <span class="pending-file-icon"><i :class="getFileIcon(file.name)"></i></span>
-        <span class="pending-file-name">{{ file.name }}</span>
-        <button class="pending-file-remove" @click="$emit('remove-pending-file', index)">×</button>
-      </div>
+    <!-- 统一的 composer 容器：预览区 + textarea 融合在一个容器内 -->
+    <div class="composer">
+      <PendingFilesPreview
+        :pending-files="pendingFiles"
+        :get-file-icon="getFileIcon"
+        @remove="$emit('remove-pending-file', $event)"
+      />
+      <textarea
+        ref="messageInputRef"
+        v-model="inputMessageLocal"
+        class="message-input"
+        placeholder="输入消息..."
+        rows="4"
+        @keydown.enter="$emit('handle-keydown', $event)"
+        @input="handleInputAndResize"
+        @paste="$emit('handle-paste', $event)"
+      />
     </div>
-    
-    <textarea ref="messageInputRef" v-model="inputMessageLocal" class="message-input" placeholder="输入消息..." rows="4" @keydown.enter="$emit('handle-keydown', $event)" @input="handleInputAndResize" @paste="$emit('handle-paste', $event)" />
     
     <div class="input-actions">
       <span class="input-tip">按 Enter 发送，Shift+Enter 换行</span>
@@ -114,6 +123,7 @@ import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
 import ChatToolbar from './ChatToolbar.vue'
+import PendingFilesPreview from './PendingFilesPreview.vue'
 import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
 
@@ -459,7 +469,7 @@ defineExpose({ messageInputRef })
 .message-input {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border: none;
   font-size: 14px;
   resize: none;
   outline: none;
@@ -468,12 +478,24 @@ defineExpose({ messageInputRef })
   max-height: 200px;
   overflow-y: hidden;
   box-sizing: border-box;
-  background: var(--sidebar-bg);
+  background: transparent;
   color: var(--text-color);
-  border: 1px solid var(--border-color);
 }
 
 .message-input:focus {
+  outline: none;
+}
+
+/* composer：统一容器，包裹预览区和 textarea */
+.composer {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.composer:focus-within {
   border-color: var(--primary-color);
 }
 
@@ -608,74 +630,5 @@ defineExpose({ messageInputRef })
   font-size: 14px;
 }
 
-/* 待发送文件样式 */
-.pending-files {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: var(--list-bg);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
 
-.pending-file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: var(--content-bg);
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.pending-file-item:hover {
-  border-color: var(--primary-color);
-  background: rgba(59, 130, 246, 0.05);
-}
-
-.pending-file-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: var(--primary-light);
-  border-radius: 4px;
-  color: var(--primary-color);
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.pending-file-name {
-  flex: 1;
-  font-size: 14px;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pending-file-remove {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 16px;
-  cursor: pointer;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.pending-file-remove:hover {
-  background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
-}
 </style>

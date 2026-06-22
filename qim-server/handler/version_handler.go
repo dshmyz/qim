@@ -18,6 +18,25 @@ import (
 	"gorm.io/gorm"
 )
 
+// versionToFrontend 将 ClientVersion 模型转换为前端期望的 camelCase 格式。
+func versionToFrontend(v model.ClientVersion) gin.H {
+	status := "inactive"
+	if v.Enabled {
+		status = "active"
+	}
+	return gin.H{
+		"id":          v.ID,
+		"version":     v.Version,
+		"platform":    v.Platform,
+		"downloadUrl": v.DownloadURL,
+		"updateNotes": v.Changelog,
+		"forceUpdate": v.ForceUpdate,
+		"status":      status,
+		"releaseDate": v.CreatedAt.Format("2006-01-02"),
+		"createdAt":   v.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
 func GetVersions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
@@ -45,22 +64,7 @@ func GetVersions(c *gin.Context) {
 
 	frontendList := make([]gin.H, 0, len(versions))
 	for _, v := range versions {
-		status := "inactive"
-		if v.Enabled {
-			status = "active"
-		}
-
-		frontendList = append(frontendList, gin.H{
-			"id":           v.ID,
-			"version":      v.Version,
-			"platform":     v.Platform,
-			"downloadUrl":  v.DownloadURL,
-			"updateNotes":  v.Changelog,
-			"forceUpdate":  v.ForceUpdate,
-			"status":       status,
-			"releaseDate":  v.CreatedAt.Format("2006-01-02"),
-			"createdAt":    v.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
+		frontendList = append(frontendList, versionToFrontend(v))
 	}
 
 	response.Success(c, gin.H{
@@ -73,14 +77,14 @@ func GetVersions(c *gin.Context) {
 
 func CreateVersion(c *gin.Context) {
 	var req struct {
-		Version      string `json:"version" binding:"required"`
-		Platform     string `json:"platform" binding:"required"`
-		ReleaseDate  string `json:"releaseDate"`
-		DownloadUrl  string `json:"downloadUrl"`
-		UpdateNotes  string `json:"updateNotes"`
-		ForceUpdate  bool   `json:"forceUpdate"`
-		Sha512       string `json:"sha512"`
-		FileSize     int64  `json:"fileSize"`
+		Version     string `json:"version" binding:"required"`
+		Platform    string `json:"platform" binding:"required"`
+		ReleaseDate string `json:"releaseDate"`
+		DownloadUrl string `json:"downloadUrl"`
+		UpdateNotes string `json:"updateNotes"`
+		ForceUpdate bool   `json:"forceUpdate"`
+		Sha512      string `json:"sha512"`
+		FileSize    int64  `json:"fileSize"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -141,7 +145,7 @@ func CreateVersion(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, version)
+	response.Success(c, versionToFrontend(version))
 }
 
 // computeVersionFileSHA512 计算版本文件的 SHA512 和大小
@@ -239,7 +243,7 @@ func UpdateVersion(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, version)
+	response.Success(c, versionToFrontend(version))
 }
 
 func DeleteVersion(c *gin.Context) {
@@ -284,7 +288,7 @@ func ToggleVersionStatus(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, version)
+	response.Success(c, versionToFrontend(version))
 }
 
 func GetVersionDistribution(c *gin.Context) {

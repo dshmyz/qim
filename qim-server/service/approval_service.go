@@ -796,7 +796,7 @@ func (h *ApprovalHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": items, "total": total})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"list": items, "total": total}})
 }
 
 func (h *ApprovalHandler) Approve(c *gin.Context) {

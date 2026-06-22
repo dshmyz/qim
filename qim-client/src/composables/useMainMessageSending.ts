@@ -4,6 +4,7 @@ import { useCurrentUser } from './useCurrentUser'
 import { request } from './useRequest'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
+import { displayMentionTokens } from '../utils/mentions'
 
 function parseMessageData(messageData: any): {
   messageType: string
@@ -84,10 +85,19 @@ export function useMainMessageSending(
   isConnected: Ref<boolean>,
   sessionExpired: Ref<boolean>,
   handleStreamMessage: (conversationId: string, requestData: any, messageData: any, miniAppData: any, newsData: any) => Promise<void>,
-  onMessageSent?: () => void
+  onMessageSent?: () => void,
+  onConversationMissing?: () => void
 ) {
   const chatStore = useChatStore()
   const { currentUser } = useCurrentUser()
+
+  // 检查会话是否在列表中，不在则触发重新加载（处理移除后发消息恢复显示的场景）
+  const ensureConversationInList = (conversationId: string) => {
+    const exists = chatStore.conversations.some(c => c.id === conversationId)
+    if (!exists && onConversationMissing) {
+      onConversationMissing()
+    }
+  }
 
   const showMessage = (options: { message: string, type?: string, duration?: number }) => {
     const { message, type = 'info', duration } = options
@@ -123,10 +133,6 @@ export function useMainMessageSending(
       requestData.file_name = messageData.fileName
     }
 
-    if (messageData.mentionUserIds && Array.isArray(messageData.mentionUserIds)) {
-      requestData.mention_user_ids = messageData.mentionUserIds
-    }
-
     if (!isConnected.value) {
       QMessage.error('网络连接已断开，消息发送失败')
       const failedMessage = createFailedMessage(messageData, messageType, messageContent, miniAppData, newsData, conversationId, currentUser)
@@ -138,6 +144,7 @@ export function useMainMessageSending(
     const isBotConversation = currentConv && (currentConv.type === 'bot' || currentConv.isBot)
 
     if (isBotConversation) {
+      ensureConversationInList(conversationId)
       await handleStreamMessage(conversationId, requestData, messageData, miniAppData, newsData)
       return
     }
@@ -151,7 +158,7 @@ export function useMainMessageSending(
       if (response.code === 0) {
         const newMessage = {
           id: response.data.id?.toString() || Date.now().toString(),
-          content: response.data.content,
+          content: displayMentionTokens(response.data.content || ''),
           file_name: response.data.file_name || messageData.fileName,
           file_size: response.data.file_size || messageData.fileSize,
           sender: {
@@ -169,6 +176,7 @@ export function useMainMessageSending(
           newsData
         }
 
+        ensureConversationInList(conversationId)
         chatStore.receiveMessage(conversationId, newMessage as any, true)
         onMessageSent?.()
       } else {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { searchMessages, getMessageDetail } from '@/api/messages'
+import { searchMessages } from '@/api/messages'
 
 const mockRequest = vi.fn()
 
@@ -44,35 +44,6 @@ describe('Messages API', () => {
       url: '/v1/messages/search',
       method: 'get',
       params,
-    })
-    expect(result.data.data).toEqual(mockResponse.data.data)
-  })
-
-  it('should get message detail', async () => {
-    const mockResponse = {
-      data: {
-        code: 0,
-        message: 'success',
-        data: {
-          id: 1,
-          conversationId: 1,
-          senderId: 1,
-          senderName: 'user1',
-          messageType: 'text',
-          content: 'hello',
-          createdAt: '2026-04-28T10:00:00Z',
-          updatedAt: '2026-04-28T10:00:00Z',
-        },
-      },
-    }
-
-    mockRequest.mockResolvedValue(mockResponse)
-
-    const result = await getMessageDetail(1)
-
-    expect(mockRequest).toHaveBeenCalledWith({
-      url: '/v1/messages/1',
-      method: 'get',
     })
     expect(result.data.data).toEqual(mockResponse.data.data)
   })

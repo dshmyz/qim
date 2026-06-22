@@ -42,7 +42,7 @@
         <el-form :model="searchForm" inline>
           <el-form-item label="操作人">
             <el-input
-              v-model="searchForm.operatorName"
+              v-model="searchForm.username"
               placeholder="请输入操作人姓名"
               clearable
               @keyup.enter="handleSearch"
@@ -157,7 +157,6 @@
         <el-descriptions-item label="操作人ID">{{ currentLog?.user_id }}</el-descriptions-item>
         <el-descriptions-item label="操作">{{ currentLog ? actionLabel(currentLog.action) : '' }}</el-descriptions-item>
         <el-descriptions-item label="模块">{{ moduleLabel(currentLog?.module || '') }}</el-descriptions-item>
-        <el-descriptions-item label="请求方法" :span="2">{{ currentLog?.request_method || '-' }}</el-descriptions-item>
         <el-descriptions-item label="请求 URL" :span="2">{{ currentLog?.request_url || '-' }}</el-descriptions-item>
         <el-descriptions-item label="IP 地址">{{ currentLog?.ip }}</el-descriptions-item>
         <el-descriptions-item label="耗时">{{ currentLog?.duration }}ms</el-descriptions-item>
@@ -243,7 +242,7 @@ const isSuccess = (response: string): boolean => {
 }
 
 const searchForm = reactive({
-  operatorName: '',
+  username: '',
   action: '',
   module: '',
   status: '',
@@ -268,7 +267,7 @@ const fetchLogs = async () => {
     const { data } = await getOperationLogs({
       page: pagination.page,
       pageSize: pagination.pageSize,
-      operatorName: searchForm.operatorName || undefined,
+      username: searchForm.username || undefined,
       action: searchForm.action || undefined,
       module: searchForm.module || undefined,
       status: searchForm.status || undefined,
@@ -347,7 +346,7 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  searchForm.operatorName = ''
+  searchForm.username = ''
   searchForm.action = ''
   searchForm.module = ''
   searchForm.status = ''
@@ -371,8 +370,13 @@ const handleExport = async () => {
       startDate: searchForm.dateRange?.[0],
       endDate: searchForm.dateRange?.[1],
     })
-    window.open(data.data.url, '_blank')
-    ElMessage.success('导出链接已生成')
+    const url = window.URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'operation-logs.csv'
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
   } catch {
     // 错误已在请求拦截器中处理
   }

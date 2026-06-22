@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { getDashboardStats, getRecentRegistrations, getStatistics, getUserStatistics, getGroupStatistics, getMessageStatistics } from '@/api/statistics'
+import { getDashboardStats, getRecentRegistrations, getStatistics, getStatisticsTrend } from '@/api/statistics'
 
 const mockRequest = vi.fn()
 
@@ -23,7 +23,7 @@ describe('statistics API', () => {
 
       const response = await getDashboardStats()
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/statistics', method: 'get' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/dashboard/stats', method: 'get' })
       expect(response.data.data).toEqual(mockData)
     })
   })
@@ -58,45 +58,20 @@ describe('statistics API', () => {
     })
   })
 
-  describe('getUserStatistics', () => {
-    it('应该获取用户统计数据', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: { chartData: [] } } }
+  describe('getStatisticsTrend', () => {
+    it('应该获取统计趋势数据', async () => {
+      const mockData = {
+        userTrend: [{ label: '周一', value: 10 }],
+        messageTrend: [{ label: '周一', value: 100 }],
+        activityData: [{ label: '活跃用户', value: 50 }],
+      }
+      const mockResponse = { data: { code: 0, message: 'success', data: mockData } }
       mockRequest.mockResolvedValue(mockResponse)
 
-      const response = await getUserStatistics('2024-01-01', '2024-01-31')
+      const response = await getStatisticsTrend()
 
-      expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/admin/statistics/users', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
-      })
-      expect(response.data.data).toEqual({ chartData: [] })
-    })
-  })
-
-  describe('getGroupStatistics', () => {
-    it('应该获取群组统计数据', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: { chartData: [] } } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const response = await getGroupStatistics('2024-01-01', '2024-01-31')
-
-      expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/admin/statistics/groups', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
-      })
-      expect(response.data.data).toEqual({ chartData: [] })
-    })
-  })
-
-  describe('getMessageStatistics', () => {
-    it('应该获取消息统计数据', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: { chartData: [] } } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const response = await getMessageStatistics('2024-01-01', '2024-01-31')
-
-      expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/admin/statistics/messages', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' },
-      })
-      expect(response.data.data).toEqual({ chartData: [] })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/statistics/trend', method: 'get' })
+      expect(response.data.data).toEqual(mockData)
     })
   })
 })

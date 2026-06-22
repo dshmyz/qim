@@ -403,6 +403,100 @@ func GetConversation(c *gin.Context) {
 	response.Success(c, conv)
 }
 
+// SearchConversations 搜索当前用户参与的会话（按群名或单聊对方昵称匹配）
+func SearchConversations(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
+	query := c.Query("query")
+	if strings.TrimSpace(query) == "" {
+		response.Success(c, []interface{}{})
+		return
+	}
+
+	db := database.GetDB()
+	keyword := "%" + query + "%"
+
+	// 查询当前用户参与的会话
+	var userConvMembers []model.ConversationMember
+	db.Where("user_id = ?", uid).Find(&userConvMembers)
+	if len(userConvMembers) == 0 {
+		response.Success(c, []interface{}{})
+		return
+	}
+
+	convIDs := make([]uint, 0, len(userConvMembers))
+	for _, cm := range userConvMembers {
+		convIDs = append(convIDs, cm.ConversationID)
+	}
+
+	var convs []model.Conversation
+	db.Where("id IN ?", convIDs).Find(&convs)
+
+	// 区分群聊和单聊
+	groupConvIDs := make([]uint, 0)
+	singleConvIDs := make([]uint, 0)
+	for _, conv := range convs {
+		if conv.Type == "group" || conv.Type == "discussion" {
+			groupConvIDs = append(groupConvIDs, conv.ID)
+		} else if conv.Type == "single" {
+			singleConvIDs = append(singleConvIDs, conv.ID)
+		}
+	}
+
+	results := make([]gin.H, 0)
+
+	// 群聊：按 Group.Name 匹配
+	if len(groupConvIDs) > 0 {
+		var groups []model.Group
+		db.Where("conversation_id IN ? AND name LIKE ?", groupConvIDs, keyword).Find(&groups)
+		for _, g := range groups {
+			results = append(results, gin.H{
+				"id":     g.ConversationID,
+				"type":   "group",
+				"name":   g.Name,
+				"avatar": g.Avatar,
+			})
+		}
+	}
+
+	// 单聊：按对方用户昵称/用户名匹配
+	if len(singleConvIDs) > 0 {
+		var members []model.ConversationMember
+		db.Where("conversation_id IN ? AND user_id != ?", singleConvIDs, uid).Find(&members)
+
+		convToOtherUserID := make(map[uint]uint, len(members))
+		otherUserIDs := make([]uint, 0, len(members))
+		for _, m := range members {
+			convToOtherUserID[m.ConversationID] = m.UserID
+			otherUserIDs = append(otherUserIDs, m.UserID)
+		}
+
+		if len(otherUserIDs) > 0 {
+			var users []model.User
+			db.Where("id IN ? AND (nickname LIKE ? OR username LIKE ?)", otherUserIDs, keyword, keyword).Find(&users)
+
+			matchedUsers := make(map[uint]model.User, len(users))
+			for _, u := range users {
+				matchedUsers[u.ID] = u
+			}
+
+			for convID, otherUID := range convToOtherUserID {
+				if u, ok := matchedUsers[otherUID]; ok {
+					results = append(results, gin.H{
+						"id":     convID,
+						"type":   "single",
+						"name":   u.Nickname,
+						"avatar": u.Avatar,
+					})
+				}
+			}
+		}
+	}
+
+	response.Success(c, results)
+}
+
 func CreateSingleConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 

@@ -1,8 +1,10 @@
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import QMessage from '../utils/qmessage'
 import type { Message } from '../types'
 import { request } from './useRequest'
 import { useUIStore } from '../stores/ui'
+import { displayMentionTokens } from '../utils/mentions'
 
 function debounce<T extends (...args: any[]) => any>(
   func: T,
@@ -28,9 +30,9 @@ export function useMessageActions(
   currentUser: { value: any }
 ) {
   const uiStore = useUIStore()
+  const { showReadUsersModal } = storeToRefs(uiStore)
 
   const readUsersMap = ref<Record<string, { read_users: any[], total_members: number, read_count?: number }>>({})
-  const showReadUsersModal = uiStore.showReadUsersModal
   const currentReadUsers = ref<{ read_users: any[], total_members: number }>({ read_users: [], total_members: 0 })
   const isMounted = ref(true)
 
@@ -137,11 +139,15 @@ export function useMessageActions(
    */
   const showReadUsers = async (message: Message) => {
     if (!message.isSelf || !isMounted.value) return
-    // 强制刷新已读用户列表，确保显示最新数据
-    const data = await fetchReadUsers(message.id, true)
-    if (isMounted.value) {
-      currentReadUsers.value = data
-      showReadUsersModal.value = true
+    try {
+      // 强制刷新已读用户列表，确保显示最新数据
+      const data = await fetchReadUsers(message.id, true)
+      if (isMounted.value) {
+        currentReadUsers.value = data
+        showReadUsersModal.value = true
+      }
+    } catch (error) {
+      console.error('显示已读用户列表失败:', error)
     }
   }
 
@@ -356,7 +362,7 @@ export function useMessageActions(
         QMessage.success('图片已复制')
       } else {
         // 其他消息：复制文本内容
-        await navigator.clipboard.writeText(message.content)
+        await navigator.clipboard.writeText(displayMentionTokens(message.content))
         QMessage.success('已复制')
       }
     } catch (err) {

@@ -139,9 +139,9 @@
             class="search-result-item"
             @click="selectUser(user)"
           >
-            <el-avatar :size="32" :src="user.avatar">{{ user.nickname?.charAt(0) || user.username?.charAt(0) }}</el-avatar>
+            <el-avatar :size="32" :src="user.avatar">{{ user.name?.charAt(0) || user.username?.charAt(0) }}</el-avatar>
             <div class="result-info">
-              <span class="result-name">{{ user.nickname || user.username }}</span>
+              <span class="result-name">{{ user.name || user.username }}</span>
               <span class="result-username">@{{ user.username }}</span>
             </div>
             <el-icon class="add-icon"><Plus /></el-icon>
@@ -152,7 +152,7 @@
         </div>
         <div v-if="selectedUser" class="selected-user">
           <span>已选择：</span>
-          <strong>{{ selectedUser.nickname || selectedUser.username }}</strong>
+          <strong>{{ selectedUser.name || selectedUser.username }}</strong>
         </div>
       </div>
       <template #footer>
@@ -185,7 +185,7 @@ import { request } from '@/utils/request'
 interface User {
   id: number
   username: string
-  nickname: string
+  name: string
   avatar?: string
 }
 
@@ -375,7 +375,7 @@ const handleEnable = async () => {
 
   try {
     await ElMessageBox.confirm(
-      `确定要为「${selectedUser.value.nickname || selectedUser.value.username}」开启分身功能吗？`,
+      `确定要为「${selectedUser.value.name || selectedUser.value.username}」开启分身功能吗？`,
       '确认开启'
     )
     enabling.value = true

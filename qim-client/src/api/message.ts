@@ -110,7 +110,7 @@ class MessageAPI {
   }
 
   async markAsRead(conversationId: string): Promise<void> {
-    await http.put(`/api/v1/conversations/${conversationId}/read`)
+    await http.post(`/api/v1/conversations/${conversationId}/read`)
   }
 
   async searchMessages(params: {

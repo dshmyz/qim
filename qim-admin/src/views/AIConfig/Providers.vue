@@ -98,7 +98,8 @@ const handleToggle = async (row: AIProvider) => {
     await aiStore.toggleProvider(row.id)
     ElMessage.success(`${action}成功`)
   } catch {
-    // 错误已在请求拦截器中处理
+    // API 失败时回滚 switch 状态
+    row.enabled = !row.enabled
   }
 }
 

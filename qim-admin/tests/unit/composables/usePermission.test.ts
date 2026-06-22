@@ -11,19 +11,39 @@ describe('usePermission composable', () => {
   it('canAccess returns true for permitted action', () => {
     const { canAccess } = usePermission()
     const permStore = usePermissionStore()
-    permStore.setPermissions([{ resource: 'user', actions: ['create', 'read'] }])
+    // 权限判断基于角色：user:create / user:read 映射到 system_admin
+    permStore.setRoles([
+      { id: 1, name: '管理员', code: 'system_admin', description: '', permissions: [], userCount: 0, createdAt: '' }
+    ])
 
     expect(canAccess('user:create')).toBe(true)
     expect(canAccess('user:read')).toBe(true)
+  })
+
+  it('canAccess returns false when user lacks required role', () => {
+    const { canAccess } = usePermission()
+    const permStore = usePermissionStore()
+    // 未设置任何角色
     expect(canAccess('user:delete')).toBe(false)
   })
 
   it('canAccessAny returns true if any permission matches', () => {
     const { canAccessAny } = usePermission()
     const permStore = usePermissionStore()
-    permStore.setPermissions([{ resource: 'user', actions: ['read'] }])
+    permStore.setRoles([
+      { id: 1, name: '管理员', code: 'system_admin', description: '', permissions: [], userCount: 0, createdAt: '' }
+    ])
 
     expect(canAccessAny(['user:delete', 'user:read'])).toBe(true)
+  })
+
+  it('canAccessAny returns false when no role matches', () => {
+    const { canAccessAny } = usePermission()
+    const permStore = usePermissionStore()
+    permStore.setRoles([
+      { id: 2, name: '发布者', code: 'system_publisher', description: '', permissions: [], userCount: 0, createdAt: '' }
+    ])
+
     expect(canAccessAny(['user:delete', 'group:create'])).toBe(false)
   })
 

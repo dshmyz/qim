@@ -213,7 +213,8 @@ func UploadFile(c *gin.Context) {
 
 	source := c.DefaultPostForm("source", "upload")
 
-	filename := time.Now().Format("20060102150405") + "_" + strconv.FormatUint(uint64(userID.(uint)), 10) + ext
+	now := time.Now()
+	filename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, userID.(uint), ext)
 	key := "uploads/" + filename
 	mimeType := file.Header.Get("Content-Type")
 

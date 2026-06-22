@@ -136,10 +136,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
-	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, mentionUserIDs []uint) {
+	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, _ []uint) {
 		sre := handler.GetSmartReplyEngine()
-		if sre != nil {
-			sre.HandleMessage(senderID, conversationID, content, mentionUserIDs)
+		if sre != nil && di.GlobalContainer.MessageService != nil {
+			sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
 		}
 	}
 
@@ -318,6 +318,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/organization/tree", handler.GetOrganizationTree)
 			// 创建部门
 			authed.POST("/departments", handler.CreateDepartment)
+			// 更新部门
+			authed.PUT("/departments/:id", handler.UpdateDepartment)
 			// 删除部门
 			authed.DELETE("/departments/:id", handler.DeleteDepartment)
 			// 获取部门员工
@@ -337,6 +339,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/users/groups", handler.GetUserGroups)
 
 			authed.GET("/conversations/:id", handler.GetConversation)
+			// 搜索会话（按群名或单聊对方昵称）
+			authed.GET("/conversations/search", handler.SearchConversations)
 			// 会话置顶/取消置顶
 			authed.PUT("/conversations/:id/pin", handler.PinConversation)
 			// 设置免打扰
@@ -456,6 +460,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/system-messages", handler.GetSystemMessages)
 			authed.POST("/system-messages", middleware.RequireRole(di.GlobalContainer.UserService, "system_publisher", "system_admin"), handler.CreateSystemMessage)
 			authed.PUT("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.UpdateSystemMessage)
+			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
 
 			// 频道
 			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateChannel)
@@ -495,7 +500,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 通知管理
 			authed.GET("/notifications", handler.GetNotifications)
 			authed.PUT("/notifications/:id/read", handler.MarkNotificationAsRead)
+			authed.PUT("/notifications/:id/unread", handler.MarkNotificationAsUnread)
 			authed.PATCH("/notifications/:id", handler.PatchNotification)
+			authed.DELETE("/notifications/:id", handler.DeleteNotification)
 
 			authed.PUT("/notifications/read-all", handler.MarkAllNotificationsAsRead)
 			authed.DELETE("/notifications", handler.ClearAllNotifications)
@@ -566,12 +573,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			{
 				admin.GET("/users", handler.AdminGetUsers)
 				admin.GET("/groups", handler.AdminGetGroups)
-
+				admin.POST("/groups", handler.AdminCreateGroup)
+				admin.PUT("/groups/:id", handler.AdminUpdateGroup)
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
 				admin.GET("/channels", handler.AdminGetChannels)
 				admin.PUT("/channels/:id", handler.AdminUpdateChannel)
 				admin.DELETE("/channels/:id", handler.AdminDeleteChannel)
 				admin.GET("/statistics", handler.AdminGetStatistics)
+				admin.GET("/statistics/trend", handler.AdminGetStatisticsTrend)
 				admin.GET("/dashboard/stats", handler.AdminGetDashboardStats)
 				admin.GET("/dashboard/trend", handler.AdminGetDashboardTrend)
 				admin.GET("/recent-registrations", handler.AdminGetRecentRegistrations)

@@ -74,7 +74,7 @@ describe('groups API', () => {
       const response = await getGroupMembers(1, { page: 1, pageSize: 10 })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/conversations/1/members', method: 'get', params: { page: 1, pageSize: 10 },
+        url: '/v1/groups/1/members', method: 'get', params: { page: 1, pageSize: 10 },
       })
       expect(response.data.data.list).toHaveLength(1)
     })
@@ -87,7 +87,7 @@ describe('groups API', () => {
 
       const response = await removeGroupMember(1, 2)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/conversations/1/members/2', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/groups/1/members/2', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })
@@ -99,7 +99,7 @@ describe('groups API', () => {
 
       const response = await deleteGroup(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/groups/1', method: 'DELETE' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/groups/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })

@@ -38,7 +38,7 @@ func GetSensitiveWords(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"list":     result.List,
+		"list":     sensitiveWordsToFrontend(result.List),
 		"total":    result.Total,
 		"page":     result.Page,
 		"pageSize": result.PageSize,
@@ -85,7 +85,7 @@ func CreateSensitiveWord(c *gin.Context) {
 	}
 
 	refreshSensitiveWordCache()
-	response.Success(c, word)
+	response.Success(c, sensitiveWordToFrontend(word))
 }
 
 func UpdateSensitiveWord(c *gin.Context) {
@@ -126,7 +126,7 @@ func UpdateSensitiveWord(c *gin.Context) {
 	}
 
 	refreshSensitiveWordCache()
-	response.Success(c, word)
+	response.Success(c, sensitiveWordToFrontend(*word))
 }
 
 func DeleteSensitiveWord(c *gin.Context) {
@@ -166,7 +166,7 @@ func ToggleSensitiveWordStatus(c *gin.Context) {
 	}
 
 	refreshSensitiveWordCache()
-	response.Success(c, word)
+	response.Success(c, sensitiveWordToFrontend(*word))
 }
 
 func BatchCreateSensitiveWords(c *gin.Context) {

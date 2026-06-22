@@ -204,6 +204,32 @@ func UpdateSystemMessage(c *gin.Context) {
 	response.Success(c, systemMessage)
 }
 
+// DeleteSystemMessage 删除系统消息（仅 system_admin）
+func DeleteSystemMessage(c *gin.Context) {
+	messageIDStr := c.Param("id")
+
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	var systemMessage model.SystemMessage
+	if err := db.First(&systemMessage, uint(messageID)).Error; err != nil {
+		response.NotFound(c, "消息不存在")
+		return
+	}
+
+	if err := db.Delete(&systemMessage).Error; err != nil {
+		response.InternalServerError(c, "删除消息失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "删除成功", nil)
+}
+
 func BroadcastMessage(c *gin.Context) {
 	var req struct {
 		Message string `json:"message"`

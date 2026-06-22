@@ -157,6 +157,7 @@ const stats = ref({
 
 let canvas: HTMLCanvasElement | null = null
 let animationFrameId: number | null = null
+let resizeHandler: (() => void) | null = null
 
 const fetchGraphData = async () => {
   try {
@@ -204,6 +205,7 @@ const renderGraph = (data: GraphData) => {
     graphCanvas.height = rect.height
   }
   resizeCanvas()
+  resizeHandler = resizeCanvas
   window.addEventListener('resize', resizeCanvas)
 
   // 布局节点
@@ -387,6 +389,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
+  }
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
   }
 })
 </script>

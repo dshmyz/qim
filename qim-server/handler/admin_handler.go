@@ -174,6 +174,52 @@ func AdminDeleteGroup(c *gin.Context) {
 	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
+// AdminCreateGroup 管理员创建群组
+func AdminCreateGroup(c *gin.Context) {
+	var input service.AdminCreateGroupInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "参数无效: "+err.Error())
+		return
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	conv, err := adminSvc.CreateGroup(input)
+	if err != nil {
+		response.InternalServerError(c, "创建群组失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "创建成功", gin.H{
+		"id":              conv.ID,
+		"conversationId":  conv.ID,
+		"type":            conv.Type,
+	})
+}
+
+// AdminUpdateGroup 管理员更新群组
+func AdminUpdateGroup(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群组ID")
+		return
+	}
+
+	var input service.AdminUpdateGroupInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "参数无效: "+err.Error())
+		return
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	if err := adminSvc.UpdateGroup(uint(id), input); err != nil {
+		response.NotFound(c, "群组不存在")
+		return
+	}
+
+	response.SuccessWithMessage(c, "更新成功", nil)
+}
+
 func AdminGetUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -562,6 +608,64 @@ func AdminGetDashboardTrend(c *gin.Context) {
 	response.Success(c, gin.H{
 		"userTrend":    userTrend,
 		"activityData": activityData,
+	})
+}
+
+// AdminGetStatisticsTrend 获取统计页趋势数据
+// 返回最近 7 天的用户增长趋势、消息发送趋势，以及今日活动数据
+func AdminGetStatisticsTrend(c *gin.Context) {
+	db := database.GetDB()
+	now := time.Now()
+
+	weekdays := []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
+
+	// 用户增长趋势：最近 7 天每天新注册用户数
+	userTrend := make([]gin.H, 0, 7)
+	// 消息发送趋势：最近 7 天每天的消息数
+	messageTrend := make([]gin.H, 0, 7)
+	for i := 6; i >= 0; i-- {
+		day := now.AddDate(0, 0, -i)
+		dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+		dayEnd := dayStart.AddDate(0, 0, 1)
+
+		var userCount int64
+		db.Model(&model.User{}).Where("created_at >= ? AND created_at < ?", dayStart, dayEnd).Count(&userCount)
+
+		var msgCount int64
+		db.Model(&model.Message{}).Where("created_at >= ? AND created_at < ?", dayStart, dayEnd).Count(&msgCount)
+
+		userTrend = append(userTrend, gin.H{
+			"label": weekdays[day.Weekday()],
+			"value": userCount,
+		})
+		messageTrend = append(messageTrend, gin.H{
+			"label": weekdays[day.Weekday()],
+			"value": msgCount,
+		})
+	}
+
+	// 今日活动数据：登录次数、消息发送、群组创建、频道订阅
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	tomorrowStart := todayStart.AddDate(0, 0, 1)
+
+	var activeTodayCount, msgTodayCount, groupCreatedCount, channelSubCount int64
+	// 今日活跃用户：今天发过消息的不同用户数
+	db.Model(&model.Message{}).Where("created_at >= ? AND created_at < ?", todayStart, tomorrowStart).Distinct("sender_id").Count(&activeTodayCount)
+	db.Model(&model.Message{}).Where("created_at >= ? AND created_at < ?", todayStart, tomorrowStart).Count(&msgTodayCount)
+	db.Model(&model.Conversation{}).Where("type = ? AND created_at >= ? AND created_at < ?", "group", todayStart, tomorrowStart).Count(&groupCreatedCount)
+	db.Model(&model.Channel{}).Where("created_at >= ? AND created_at < ?", todayStart, tomorrowStart).Count(&channelSubCount)
+
+	activityData := []gin.H{
+		{"label": "活跃用户", "value": activeTodayCount},
+		{"label": "消息发送", "value": msgTodayCount},
+		{"label": "群组创建", "value": groupCreatedCount},
+		{"label": "频道订阅", "value": channelSubCount},
+	}
+
+	response.Success(c, gin.H{
+		"userTrend":     userTrend,
+		"messageTrend":  messageTrend,
+		"activityData":  activityData,
 	})
 }
 

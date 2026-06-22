@@ -31,7 +31,7 @@ describe('apps API', () => {
 
       const response = await getApps({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/apps', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/apps/all', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 

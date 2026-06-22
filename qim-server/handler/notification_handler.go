@@ -91,6 +91,47 @@ func ClearAllNotifications(c *gin.Context) {
 	response.SuccessWithMessage(c, "清空通知成功", nil)
 }
 
+// DeleteNotification 删除单条通知
+func DeleteNotification(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	notificationIDStr := c.Param("id")
+
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的通知ID")
+		return
+	}
+
+	svc := di.GlobalContainer.NotificationService
+	if err := svc.Delete(userID.(uint), uint(notificationID)); err != nil {
+		response.NotFound(c, "通知不存在")
+		return
+	}
+
+	response.SuccessWithMessage(c, "删除成功", nil)
+}
+
+// MarkNotificationAsUnread 标记通知为未读
+func MarkNotificationAsUnread(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	notificationIDStr := c.Param("id")
+
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的通知ID")
+		return
+	}
+
+	svc := di.GlobalContainer.NotificationService
+	notification, err := svc.MarkAsUnread(userID.(uint), uint(notificationID))
+	if err != nil {
+		response.NotFound(c, "通知不存在")
+		return
+	}
+
+	response.SuccessWithMessage(c, "标记未读成功", notification)
+}
+
 func HandleNotificationAction(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	notificationIDStr := c.Param("id")

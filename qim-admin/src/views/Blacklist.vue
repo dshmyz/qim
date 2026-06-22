@@ -3,6 +3,10 @@
     <el-card shadow="never">
       <div class="page-header">
         <h3>黑名单管理</h3>
+        <el-button type="danger" @click="handleOpenAdd">
+          <el-icon><Plus /></el-icon>
+          添加到黑名单
+        </el-button>
       </div>
 
       <!-- 黑名单列表 -->
@@ -48,14 +52,55 @@
         />
       </div>
     </el-card>
+
+    <!-- 添加到黑名单对话框 -->
+    <el-dialog v-model="addDialogVisible" title="添加到黑名单" width="480px" :close-on-click-modal="false">
+      <el-form ref="addFormRef" :model="addForm" :rules="addRules" label-width="90px">
+        <el-form-item label="用户" prop="userId">
+          <el-select
+            v-model="addForm.userId"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="搜索用户名/昵称"
+            :remote-method="searchUsers"
+            :loading="userSearchLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in userOptions"
+              :key="u.id"
+              :label="`${u.nickname || u.username} (ID: ${u.id})`"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="封禁原因" prop="reason">
+          <el-input
+            v-model="addForm.reason"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入封禁原因（可选）"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="addSubmitting" @click="handleAddSubmit">确定封禁</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { BlacklistEntry } from '@/types'
-import { getBlacklist, removeBlacklistEntry } from '@/api/blacklist'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import type { BlacklistEntry, User } from '@/types'
+import { getBlacklist, removeBlacklistEntry, addToBlacklist } from '@/api/blacklist'
+import { getUsers } from '@/api/users'
 
 // 分页
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
@@ -91,6 +136,61 @@ const handleRemove = async (id: number) => {
       // 错误已在请求拦截器中处理
     }
   }
+}
+
+// 添加到黑名单
+const addDialogVisible = ref(false)
+const addSubmitting = ref(false)
+const addFormRef = ref<FormInstance>()
+const userOptions = ref<User[]>([])
+const userSearchLoading = ref(false)
+const addForm = reactive({
+  userId: undefined as number | undefined,
+  reason: '',
+})
+const addRules: FormRules = {
+  userId: [{ required: true, message: '请选择用户', trigger: 'change' }],
+}
+
+const searchUsers = async (query: string) => {
+  if (!query) {
+    userOptions.value = []
+    return
+  }
+  userSearchLoading.value = true
+  try {
+    const { data } = await getUsers({ keyword: query, page: 1, pageSize: 20 })
+    userOptions.value = data.data.list ?? []
+  } catch {
+    userOptions.value = []
+  } finally {
+    userSearchLoading.value = false
+  }
+}
+
+const handleOpenAdd = () => {
+  addForm.userId = undefined
+  addForm.reason = ''
+  userOptions.value = []
+  addDialogVisible.value = true
+}
+
+const handleAddSubmit = async () => {
+  if (!addFormRef.value) return
+  await addFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    addSubmitting.value = true
+    try {
+      await addToBlacklist({ userId: addForm.userId!, reason: addForm.reason })
+      ElMessage.success('已添加到黑名单')
+      addDialogVisible.value = false
+      fetchBlacklist()
+    } catch {
+      // 错误已在请求拦截器中处理
+    } finally {
+      addSubmitting.value = false
+    }
+  })
 }
 
 onMounted(fetchBlacklist)

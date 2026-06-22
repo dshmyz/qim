@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  getVersions, createVersion, updateVersion, deleteVersion,
-  getVersionDistribution, getCrashLogs, getCrashDetail,
+  getCrashLogs, getCrashDetail,
   getFeedbacks, updateFeedback,
 } from '@/api/client'
 
@@ -12,18 +11,6 @@ vi.mock('@/utils/request', () => ({
 }))
 
 describe('client API', () => {
-  const mockVersion = {
-    id: 1,
-    version: '1.0.0',
-    platform: 'windows' as const,
-    changelog: 'Initial release',
-    downloadUrl: 'https://example.com/download',
-    forceUpdate: false,
-    grayRelease: false,
-    grayRatio: 0,
-    createdAt: '2026-04-28T10:00:00Z',
-  }
-
   const mockCrashLog = {
     id: 1,
     deviceId: 'device-1',
@@ -51,94 +38,6 @@ describe('client API', () => {
   }
 
   beforeEach(() => { vi.clearAllMocks() })
-
-  describe('getVersions', () => {
-    it('应该正确获取版本列表', async () => {
-      const mockResponse = {
-        data: { code: 0, message: 'success', data: { list: [mockVersion], total: 1, page: 1, pageSize: 10 } },
-      }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const response = await getVersions({ page: 1, pageSize: 10 })
-
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/versions', method: 'get', params: { page: 1, pageSize: 10 } })
-      expect(response.data.data.list).toHaveLength(1)
-    })
-
-    it('应该支持按平台过滤', async () => {
-      const mockResponse = {
-        data: { code: 0, message: 'success', data: { list: [], total: 0, page: 1, pageSize: 10 } },
-      }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      await getVersions({ page: 1, pageSize: 10, platform: 'mac' })
-
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({ params: expect.objectContaining({ platform: 'mac' }) })
-      )
-    })
-  })
-
-  describe('createVersion', () => {
-    it('应该正确创建版本', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: mockVersion } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const createData = {
-        version: '1.0.0',
-        platform: 'windows' as const,
-        changelog: 'Initial release',
-        downloadUrl: 'https://example.com/download',
-      }
-      const response = await createVersion(createData)
-
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/versions', method: 'post', data: createData })
-      expect(response.data.data).toEqual(mockVersion)
-    })
-  })
-
-  describe('updateVersion', () => {
-    it('应该正确更新版本', async () => {
-      const updatedVersion = { ...mockVersion, changelog: 'Updated changelog' }
-      const mockResponse = { data: { code: 0, message: 'success', data: updatedVersion } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const updateData = { changelog: 'Updated changelog' }
-      const response = await updateVersion(1, updateData)
-
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/versions/1', method: 'put', data: updateData })
-      expect(response.data.data).toEqual(updatedVersion)
-    })
-  })
-
-  describe('deleteVersion', () => {
-    it('应该正确删除版本', async () => {
-      const mockResponse = { data: { code: 0, message: 'success', data: null } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const response = await deleteVersion(1)
-
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/versions/1', method: 'delete' })
-      expect(response.data.code).toBe(0)
-    })
-  })
-
-  describe('getVersionDistribution', () => {
-    it('应该正确获取版本分布', async () => {
-      const mockDistribution = [
-        { version: '1.0.0', count: 500, percentage: 50 },
-        { version: '1.1.0', count: 300, percentage: 30 },
-        { version: '1.2.0', count: 200, percentage: 20 },
-      ]
-      const mockResponse = { data: { code: 0, message: 'success', data: mockDistribution } }
-      mockRequest.mockResolvedValue(mockResponse)
-
-      const response = await getVersionDistribution()
-
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/versions/distribution', method: 'get' })
-      expect(response.data.data).toHaveLength(3)
-    })
-  })
 
   describe('getCrashLogs', () => {
     it('应该正确获取崩溃日志列表', async () => {

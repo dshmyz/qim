@@ -255,7 +255,6 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 8px;
   padding: 2px 8px;
   background: var(--input-bg);
   border-radius: 4px;

@@ -1,0 +1,1 @@
+import{r as t}from"./index-DoveOm9c.js";function n(e){return t({url:"/v1/admin/crashes",method:"get",params:e})}function s(e){return t({url:`/v1/admin/crashes/${e}`,method:"get"})}function u(e){return t({url:"/v1/admin/feedbacks",method:"get",params:e})}function d(e,r){return t({url:`/v1/admin/feedbacks/${e}`,method:"put",data:r})}export{n as a,s as b,u as g,d as u};

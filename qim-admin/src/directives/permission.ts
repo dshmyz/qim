@@ -4,6 +4,9 @@ import { getCurrentUser } from '@/api/auth'
 
 let isInitializing = false
 
+// 初始化权限 store：拉取当前用户角色并标记为已初始化
+// 权限判断基于角色（见 permission store 的 PERMISSION_ROLE_MAP），
+// 因此只需设置 roles 即可，无需单独的 permissions 数组
 async function ensureInitialized() {
   const store = usePermissionStore()
   if (store.isInitialized || isInitializing) return
@@ -19,7 +22,9 @@ async function ensureInitialized() {
     }
     store.markInitialized()
   } catch {
-    // ignore
+    // 获取用户信息失败也标记为已初始化，避免后续指令反复触发请求
+    // 失败状态下 hasPermission 会因 roles 为空而返回 false，元素保持隐藏
+    store.markInitialized()
   } finally {
     isInitializing = false
   }
@@ -34,7 +39,7 @@ function applyVisibility(el: HTMLElement, binding: DirectiveBinding<string>) {
   if (!resource || !action) return
 
   if (!store.isInitialized) {
-    // 权限未初始化时隐藏元素，异步初始化后重新判断
+    // 权限未初始化时先隐藏元素，异步初始化完成后重新判断显隐
     el.style.display = 'none'
     ensureInitialized().then(() => {
       const s = usePermissionStore()

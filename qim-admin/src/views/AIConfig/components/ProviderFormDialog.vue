@@ -149,16 +149,18 @@ const form = reactive({
   remark: '',
 })
 
-const rules: FormRules = {
+const rules = computed<FormRules>(() => ({
   name: [{ required: true, message: '请输入提供商名称', trigger: 'blur' }],
   type: [{ required: true, message: '请选择提供商类型', trigger: 'change' }],
-  apiKey: [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
+  apiKey: props.isEdit
+    ? [] // 编辑时 apiKey 可选，留空表示不修改
+    : [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
   apiEndpoint: [
     { required: true, message: '请输入 API 端点', trigger: 'blur' },
     { type: 'url', message: '请输入有效的 URL 地址', trigger: 'blur' },
   ],
   models: [{ required: true, message: '请至少添加一个模型', trigger: 'change', type: 'array' as const }],
-}
+}))
 
 const availableModels = computed(() => DEFAULT_MODELS[form.type] || [])
 
@@ -172,7 +174,7 @@ watch(() => props.providerData, (newData) => {
     form.id = newData.id || 0
     form.name = newData.name || ''
     form.type = (newData.type as ProviderType) || 'openai'
-    form.apiKey = newData.apiKey || ''
+    form.apiKey = props.isEdit ? '' : (newData.apiKey || '')
     form.apiEndpoint = newData.apiEndpoint || ''
     form.models = Array.isArray(newData.models) ? [...newData.models] : []
     form.priority = newData.priority ?? 0
@@ -209,7 +211,12 @@ async function handleConfirm() {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
-    emit('confirm', { ...form })
+    const payload: Record<string, unknown> = { ...form }
+    // 编辑模式下若 apiKey 留空，则不传给后端，避免用脱敏值覆盖真实密钥
+    if (props.isEdit && !form.apiKey) {
+      delete payload.apiKey
+    }
+    emit('confirm', payload)
   })
 }
 </script>

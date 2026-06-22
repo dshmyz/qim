@@ -5,12 +5,22 @@ import type { ApiResponse } from '@/types'
 import { usePermissionStore } from '@/stores/permission'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
-
 declare module 'axios' {
   interface AxiosRequestConfig {
     __retryCount?: number
     __errorHandled?: boolean
+    // 是否跳过重复请求防护（默认 GET 请求自动去重，设置 skipDedupe=true 可跳过）
+    skipDedupe?: boolean
   }
+}
+
+// 重复请求防护：对相同 url+params 的 GET 请求去重，飞行中的请求复用同一个 Promise
+const pendingGetRequests = new Map<string, Promise<AxiosResponse>>()
+
+function getRequestKey(config: AxiosRequestConfig): string {
+  const url = config.url || ''
+  const params = JSON.stringify(config.params || {})
+  return `${url}:${params}`
 }
 
 interface RetryConfig {
@@ -73,7 +83,8 @@ const service: AxiosInstance = axios.create({
 
 service.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    // 统一从 authStore 读取 token（单一数据源），避免 localStorage/sessionStorage 不一致
+    const token = useAuthStore().token
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -116,7 +127,12 @@ service.interceptors.response.use(
     }
 
     if (status === 403) {
+      // 权限不足：弹消息并引导到 403 页面，避免用户停留在无权限状态不知所措
       ElMessage.error('权限不足，无法执行此操作')
+      const current = router.currentRoute.value
+      if (current.path !== '/403') {
+        router.push('/403')
+      }
       return Promise.reject(error)
     }
 
@@ -140,5 +156,20 @@ service.interceptors.response.use(
 export default service
 
 export const request = <T = unknown>(config: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> => {
+  // 对 GET 请求做重复防护：相同 url+params 的请求在飞行中时复用同一个 Promise
+  const method = (config.method || 'get').toLowerCase()
+  if (method === 'get' && !config.skipDedupe) {
+    const key = getRequestKey(config)
+    const existing = pendingGetRequests.get(key)
+    if (existing) {
+      return existing as Promise<AxiosResponse<ApiResponse<T>>>
+    }
+    const p = service(config) as Promise<AxiosResponse<ApiResponse<T>>>
+    pendingGetRequests.set(key, p as unknown as Promise<AxiosResponse>)
+    p.finally(() => {
+      pendingGetRequests.delete(key)
+    })
+    return p
+  }
   return service(config)
 }

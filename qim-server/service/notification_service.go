@@ -61,6 +61,35 @@ func (s *NotificationService) ClearAll(userID uint) error {
 	return s.repo.Delete(ctx, userID)
 }
 
+// Delete 删除单条通知
+func (s *NotificationService) Delete(userID, notificationID uint) error {
+	ctx := context.Background()
+	result := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", notificationID, userID).Delete(&model.Notification{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// MarkAsUnread 标记通知为未读
+func (s *NotificationService) MarkAsUnread(userID, notificationID uint) (*model.Notification, error) {
+	ctx := context.Background()
+
+	var notification model.Notification
+	if err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", notificationID, userID).First(&notification).Error; err != nil {
+		return nil, err
+	}
+
+	notification.Read = false
+	notification.ReadAt = nil
+	s.db.WithContext(ctx).Save(&notification)
+
+	return &notification, nil
+}
+
 func (s *NotificationService) GetByID(userID, notificationID uint) (*model.Notification, error) {
 	ctx := context.Background()
 	var notification model.Notification

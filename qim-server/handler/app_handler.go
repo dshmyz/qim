@@ -24,6 +24,209 @@ func containsRole(roles []string, role string) bool {
 	return false
 }
 
+// appFrontend 是返回给前端的 App 结构，字段使用 camelCase，
+// 与 qim-admin 的 App 接口定义保持一致。
+type appFrontend struct {
+	ID              uint   `json:"id"`
+	Name            string `json:"name"`
+	Code            string `json:"code"`
+	Icon            string `json:"icon"`
+	Category        string `json:"category"`
+	URL             string `json:"url"`
+	OpenType        string `json:"openType"`
+	IsGlobal        bool   `json:"isGlobal"`
+	ScopeType       string `json:"scopeType"`
+	ScopeValue      string `json:"scopeValue"`
+	AvailableOrgIDs string `json:"availableOrgIDs"`
+	Status          string `json:"status"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+}
+
+// appToFrontend 将 model.App 转换为前端期望的 camelCase 结构。
+func appToFrontend(app *model.App) appFrontend {
+	result := appFrontend{
+		ID:              app.ID,
+		Name:            app.Name,
+		Code:            app.Code,
+		Icon:            app.Icon,
+		Category:        app.Category,
+		URL:             app.URL,
+		OpenType:        app.OpenType,
+		IsGlobal:        app.IsGlobal,
+		ScopeType:       app.ScopeType,
+		ScopeValue:      app.ScopeValue,
+		AvailableOrgIDs: app.AvailableOrgIDs,
+		Status:          app.Status,
+	}
+	if !app.CreatedAt.IsZero() {
+		result.CreatedAt = app.CreatedAt.Format("2006-01-02 15:04:05")
+	}
+	if !app.UpdatedAt.IsZero() {
+		result.UpdatedAt = app.UpdatedAt.Format("2006-01-02 15:04:05")
+	}
+	return result
+}
+
+// appsToFrontend 批量转换 App 列表为前端结构。
+func appsToFrontend(apps []model.App) []appFrontend {
+	result := make([]appFrontend, 0, len(apps))
+	for i := range apps {
+		result = append(result, appToFrontend(&apps[i]))
+	}
+	return result
+}
+
+// appCreateRequest 同时兼容 camelCase 与 snake_case 的创建应用请求体。
+// 由于 encoding/json 一个字段只能有一个 json tag，这里通过自定义
+// UnmarshalJSON 实现双格式兼容：先按 snake_case 解析，再用 camelCase 覆盖。
+type appCreateRequest struct {
+	Name            string
+	Icon            string
+	Category        string
+	URL             string
+	Status          string
+	OpenType        string
+	IsGlobal        bool
+	ScopeType       string
+	ScopeValue      string
+	AvailableOrgIDs string
+}
+
+func (r *appCreateRequest) UnmarshalJSON(data []byte) error {
+	// snake_case 版本
+	snake := struct {
+		Name            string `json:"name"`
+		Icon            string `json:"icon"`
+		Category        string `json:"category"`
+		URL             string `json:"url"`
+		Status          string `json:"status"`
+		OpenType        string `json:"open_type"`
+		IsGlobal        bool   `json:"is_global"`
+		ScopeType       string `json:"scope_type"`
+		ScopeValue      string `json:"scope_value"`
+		AvailableOrgIDs string `json:"available_org_ids"`
+	}{}
+	if err := json.Unmarshal(data, &snake); err != nil {
+		return err
+	}
+
+	// camelCase 版本（仅含命名不一致的字段，使用指针判断是否提供）
+	camel := struct {
+		OpenType        *string `json:"openType"`
+		IsGlobal        *bool   `json:"isGlobal"`
+		ScopeType       *string `json:"scopeType"`
+		ScopeValue      *string `json:"scopeValue"`
+		AvailableOrgIDs *string `json:"availableOrgIDs"`
+	}{}
+	if err := json.Unmarshal(data, &camel); err != nil {
+		return err
+	}
+
+	r.Name = snake.Name
+	r.Icon = snake.Icon
+	r.Category = snake.Category
+	r.URL = snake.URL
+	r.Status = snake.Status
+	r.OpenType = snake.OpenType
+	r.IsGlobal = snake.IsGlobal
+	r.ScopeType = snake.ScopeType
+	r.ScopeValue = snake.ScopeValue
+	r.AvailableOrgIDs = snake.AvailableOrgIDs
+
+	// camelCase 覆盖 snake_case（如果同时存在，以前端主流的 camelCase 为准）
+	if camel.OpenType != nil {
+		r.OpenType = *camel.OpenType
+	}
+	if camel.IsGlobal != nil {
+		r.IsGlobal = *camel.IsGlobal
+	}
+	if camel.ScopeType != nil {
+		r.ScopeType = *camel.ScopeType
+	}
+	if camel.ScopeValue != nil {
+		r.ScopeValue = *camel.ScopeValue
+	}
+	if camel.AvailableOrgIDs != nil {
+		r.AvailableOrgIDs = *camel.AvailableOrgIDs
+	}
+	return nil
+}
+
+// appUpdateRequest 同时兼容 camelCase 与 snake_case 的更新应用请求体。
+type appUpdateRequest struct {
+	Name            *string
+	Icon            *string
+	Category        *string
+	URL             *string
+	Status          *string
+	OpenType        *string
+	IsGlobal        *bool
+	ScopeType       *string
+	ScopeValue      *string
+	AvailableOrgIDs *string
+}
+
+func (r *appUpdateRequest) UnmarshalJSON(data []byte) error {
+	// snake_case 版本
+	snake := struct {
+		Name            *string `json:"name"`
+		Icon            *string `json:"icon"`
+		Category        *string `json:"category"`
+		URL             *string `json:"url"`
+		Status          *string `json:"status"`
+		OpenType        *string `json:"open_type"`
+		IsGlobal        *bool   `json:"is_global"`
+		ScopeType       *string `json:"scope_type"`
+		ScopeValue      *string `json:"scope_value"`
+		AvailableOrgIDs *string `json:"available_org_ids"`
+	}{}
+	if err := json.Unmarshal(data, &snake); err != nil {
+		return err
+	}
+
+	// camelCase 版本
+	camel := struct {
+		OpenType        *string `json:"openType"`
+		IsGlobal        *bool   `json:"isGlobal"`
+		ScopeType       *string `json:"scopeType"`
+		ScopeValue      *string `json:"scopeValue"`
+		AvailableOrgIDs *string `json:"availableOrgIDs"`
+	}{}
+	if err := json.Unmarshal(data, &camel); err != nil {
+		return err
+	}
+
+	r.Name = snake.Name
+	r.Icon = snake.Icon
+	r.Category = snake.Category
+	r.URL = snake.URL
+	r.Status = snake.Status
+	r.OpenType = snake.OpenType
+	r.IsGlobal = snake.IsGlobal
+	r.ScopeType = snake.ScopeType
+	r.ScopeValue = snake.ScopeValue
+	r.AvailableOrgIDs = snake.AvailableOrgIDs
+
+	// camelCase 覆盖 snake_case
+	if camel.OpenType != nil {
+		r.OpenType = camel.OpenType
+	}
+	if camel.IsGlobal != nil {
+		r.IsGlobal = camel.IsGlobal
+	}
+	if camel.ScopeType != nil {
+		r.ScopeType = camel.ScopeType
+	}
+	if camel.ScopeValue != nil {
+		r.ScopeValue = camel.ScopeValue
+	}
+	if camel.AvailableOrgIDs != nil {
+		r.AvailableOrgIDs = camel.AvailableOrgIDs
+	}
+	return nil
+}
+
 func GetApps(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	userIDUint := userID.(uint)
@@ -59,7 +262,7 @@ func GetApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     result.List,
+			"list":     appsToFrontend(result.List),
 			"total":    result.Total,
 			"page":     result.Page,
 			"pageSize": result.PageSize,
@@ -92,7 +295,7 @@ func ToggleAppStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": app,
+		"data": appToFrontend(app),
 	})
 }
 
@@ -127,7 +330,7 @@ func GetAllApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     result.List,
+			"list":     appsToFrontend(result.List),
 			"total":    result.Total,
 			"page":     result.Page,
 			"pageSize": result.PageSize,
@@ -149,28 +352,22 @@ func GetBuiltInApps(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": result,
+		"data": appsToFrontend(result),
 	})
 }
 
 func CreateApp(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
-	var req struct {
-		Name            string `json:"name" binding:"required"`
-		Icon            string `json:"icon"`
-		Category        string `json:"category"`
-		URL             string `json:"url"`
-		Status          string `json:"status"`
-		OpenType        string `json:"open_type"`
-		IsGlobal        bool   `json:"is_global"`
-		ScopeType       string `json:"scope_type"`
-		ScopeValue      string `json:"scope_value"`
-		AvailableOrgIDs string `json:"available_org_ids"`
-	}
+	var req appCreateRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if req.Name == "" {
+		response.BadRequest(c, "应用名称不能为空")
 		return
 	}
 
@@ -184,14 +381,17 @@ func CreateApp(c *gin.Context) {
 
 	appSvc := di.GlobalContainer.AppService
 	app := model.App{
-		UserID:   userID.(uint),
-		Name:     req.Name,
-		Icon:     req.Icon,
-		Category: req.Category,
-		URL:      req.URL,
-		Status:   req.Status,
-		OpenType: req.OpenType,
-		IsGlobal: req.IsGlobal,
+		UserID:          userID.(uint),
+		Name:            req.Name,
+		Icon:            req.Icon,
+		Category:        req.Category,
+		URL:             req.URL,
+		Status:          req.Status,
+		OpenType:        req.OpenType,
+		IsGlobal:        req.IsGlobal,
+		ScopeType:       req.ScopeType,
+		ScopeValue:      req.ScopeValue,
+		AvailableOrgIDs: req.AvailableOrgIDs,
 	}
 	if err := appSvc.CreateApp(&app); err != nil {
 		response.InternalServerError(c, "创建应用失败")
@@ -200,7 +400,7 @@ func CreateApp(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": app,
+		"data": appToFrontend(&app),
 	})
 }
 
@@ -215,18 +415,7 @@ func UpdateApp(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Name            *string `json:"name"`
-		Icon            *string `json:"icon"`
-		Category        *string `json:"category"`
-		URL             *string `json:"url"`
-		Status          *string `json:"status"`
-		OpenType        *string `json:"open_type"`
-		IsGlobal        *bool   `json:"is_global"`
-		ScopeType       *string `json:"scope_type"`
-		ScopeValue      *string `json:"scope_value"`
-		AvailableOrgIDs *string `json:"available_org_ids"`
-	}
+	var req appUpdateRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
@@ -323,7 +512,7 @@ func UpdateApp(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": app,
+		"data": appToFrontend(app),
 	})
 }
 
@@ -375,15 +564,36 @@ func GetMiniApps(c *gin.Context) {
 		return
 	}
 
+	list := make([]gin.H, 0, len(result.List))
+	for _, ma := range result.List {
+		list = append(list, miniAppToFrontend(ma))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"list":     result.List,
+			"list":     list,
 			"total":    result.Total,
 			"page":     result.Page,
 			"pageSize": result.PageSize,
 		},
 	})
+}
+
+// miniAppToFrontend 将 MiniApp 模型转换为前端期望的 camelCase 格式
+func miniAppToFrontend(ma model.MiniApp) gin.H {
+	return gin.H{
+		"id":          ma.ID,
+		"appID":       ma.AppID,
+		"name":        ma.Name,
+		"description": ma.Description,
+		"icon":        ma.Icon,
+		"path":        ma.Path,
+		"status":      ma.Status,
+		"permissions": ma.Permissions,
+		"createdAt":   ma.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updatedAt":   ma.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
 }
 
 func GetMiniApp(c *gin.Context) {
@@ -404,7 +614,8 @@ func GetMiniApp(c *gin.Context) {
 
 func CreateMiniApp(c *gin.Context) {
 	var req struct {
-		AppID       string `json:"app_id" binding:"required"`
+		AppID       string `json:"app_id"`
+		AppIDCamel  string `json:"appID"`
 		Name        string `json:"name" binding:"required"`
 		Description string `json:"description"`
 		Icon        string `json:"icon"`
@@ -417,16 +628,26 @@ func CreateMiniApp(c *gin.Context) {
 		return
 	}
 
+	// 兼容 camelCase 和 snake_case
+	appID := req.AppID
+	if appID == "" {
+		appID = req.AppIDCamel
+	}
+	if appID == "" {
+		response.BadRequest(c, "appID 不能为空")
+		return
+	}
+
 	miniAppSvc := di.GlobalContainer.MiniAppService
 
-	exists, _ := miniAppSvc.IsAppIDExists(req.AppID)
+	exists, _ := miniAppSvc.IsAppIDExists(appID)
 	if exists {
 		response.BadRequest(c, "AppID已存在")
 		return
 	}
 
 	miniApp := model.MiniApp{
-		AppID:       req.AppID,
+		AppID:       appID,
 		Name:        req.Name,
 		Description: req.Description,
 		Icon:        req.Icon,
@@ -442,7 +663,7 @@ func CreateMiniApp(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": miniApp,
+		"data": miniAppToFrontend(miniApp),
 	})
 }
 
@@ -496,7 +717,7 @@ func UpdateMiniApp(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": miniApp,
+		"data": miniAppToFrontend(*miniApp),
 	})
 }
 

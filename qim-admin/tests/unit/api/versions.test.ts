@@ -30,7 +30,7 @@ describe('versions API', () => {
 
       const response = await getVersions({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/versions', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/client/versions', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -59,7 +59,7 @@ describe('versions API', () => {
       }
       const response = await createVersion(createData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/versions', method: 'post', data: createData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/client/versions', method: 'post', data: createData })
       expect(response.data.data).toEqual(mockVersion)
     })
   })
@@ -73,7 +73,7 @@ describe('versions API', () => {
       const updateData = { updateNotes: '更新后的说明' }
       const response = await updateVersion(1, updateData)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/versions/1', method: 'put', data: updateData })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/client/versions/1', method: 'put', data: updateData })
       expect(response.data.data).toEqual(updatedVersion)
     })
   })
@@ -85,7 +85,7 @@ describe('versions API', () => {
 
       const response = await deleteVersion(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/versions/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/client/versions/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })
@@ -99,7 +99,7 @@ describe('versions API', () => {
       const response = await toggleVersionStatus(1, 'inactive')
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/versions/1/status', method: 'patch', data: { status: 'inactive' },
+        url: '/v1/client/versions/1/toggle', method: 'patch', data: { status: 'inactive' },
       })
       expect(response.data.data).toEqual(updatedVersion)
     })

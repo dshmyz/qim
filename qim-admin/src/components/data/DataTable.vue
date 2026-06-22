@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <el-table :data="data" v-loading="loading" stripe>
+    <el-table :data="data" v-loading="loading" stripe @selection-change="handleSelectionChange">
       <slot></slot>
     </el-table>
 
@@ -56,9 +56,14 @@ const emit = defineEmits<{
   'page-change': [page: number]
   'size-change': [pageSize: number]
   'refresh': []
+  'selection-change': [rows: unknown[]]
 }>()
 
 const total = computed(() => props.pagination.total)
+
+const handleSelectionChange = (rows: unknown[]) => {
+  emit('selection-change', rows)
+}
 
 const handleSizeChange = (pageSize: number) => {
   emit('size-change', pageSize)

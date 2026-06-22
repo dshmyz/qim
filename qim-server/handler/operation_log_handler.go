@@ -67,7 +67,7 @@ func GetOperationLogs(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"list":     logs,
+		"list":     operationLogsToFrontend(logs),
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
@@ -88,7 +88,7 @@ func GetOperationLogDetail(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, log)
+	response.Success(c, operationLogToFrontend(log))
 }
 
 func GetOperationLogStats(c *gin.Context) {

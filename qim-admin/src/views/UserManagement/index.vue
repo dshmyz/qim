@@ -1,15 +1,33 @@
 <template>
   <DataTable :data="list" :loading="loading" :pagination="pagination"
-    @search="handleSearch" @page-change="handlePageChange" @refresh="fetchData">
+    @search="handleSearch" @page-change="handlePageChange" @refresh="fetchData"
+    @selection-change="handleSelectionChange">
     <template #search>
       <SearchForm @search="handleSearch" @reset="handleReset">
         <SearchField v-model="keyword" label="关键词" placeholder="用户名或昵称" />
       </SearchForm>
     </template>
     <template #actions>
-      <el-button v-permission="'user:create'" type="primary" @click="handleCreate">创建用户</el-button>
+      <el-button v-role="'system_admin'" type="primary" @click="handleCreate">创建用户</el-button>
+      <el-button
+        v-role="'system_admin'"
+        type="danger"
+        :disabled="selectedIds.length === 0"
+        :loading="batchDeleting"
+        @click="handleBatchDelete"
+      >
+        批量删除{{ selectedIds.length > 0 ? `(${selectedIds.length})` : '' }}
+      </el-button>
+      <el-button
+        v-role="'system_admin'"
+        :disabled="selectedIds.length === 0"
+        @click="handleBatchAssignRoles"
+      >
+        批量分配角色{{ selectedIds.length > 0 ? `(${selectedIds.length})` : '' }}
+      </el-button>
     </template>
 
+    <el-table-column type="selection" width="48" />
     <el-table-column prop="id" label="ID" width="80" />
     <el-table-column label="用户名" min-width="150">
       <template #default="{ row }">
@@ -84,11 +102,24 @@
     :user-id="aiConfigUserId"
     :username="aiConfigUsername"
   />
+
+  <el-dialog v-model="batchRoleDialogVisible" title="批量分配角色" width="400px">
+    <p class="role-dialog-hint">为选中的 <strong>{{ selectedIds.length }}</strong> 个用户分配角色</p>
+    <el-checkbox-group v-model="batchSelectedRoles" class="role-checkbox-list">
+      <el-checkbox v-for="role in roleOptions" :key="role.value" :label="role.value">
+        {{ role.label }}
+      </el-checkbox>
+    </el-checkbox-group>
+    <template #footer>
+      <el-button @click="batchRoleDialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="batchRoleSubmitting" @click="handleSaveBatchRoles">保存</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormRules } from 'element-plus'
 import DataTable from '@/components/data/DataTable.vue'
 import SearchForm from '@/components/data/SearchForm.vue'
@@ -198,6 +229,88 @@ const handleManageAIConfig = (row: User) => {
   aiConfigUserId.value = row.id
   aiConfigUsername.value = row.username
   aiConfigDialogVisible.value = true
+}
+
+// ===== 批量操作 =====
+const selectedRows = ref<User[]>([])
+const selectedIds = computed(() => selectedRows.value.map(r => r.id))
+const batchDeleting = ref(false)
+const batchRoleDialogVisible = ref(false)
+const batchSelectedRoles = ref<string[]>([])
+const batchRoleSubmitting = ref(false)
+
+const handleSelectionChange = (rows: unknown[]) => {
+  selectedRows.value = rows as User[]
+}
+
+const handleBatchDelete = async () => {
+  if (selectedIds.value.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedIds.value.length} 个用户吗？此操作不可恢复。`,
+      '批量删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  batchDeleting.value = true
+  let successCount = 0
+  let failCount = 0
+  try {
+    for (const id of selectedIds.value) {
+      try {
+        await deleteUser(id)
+        successCount++
+      } catch {
+        failCount++
+      }
+    }
+    if (failCount === 0) {
+      ElMessage.success(`成功删除 ${successCount} 个用户`)
+    } else {
+      ElMessage.warning(`删除完成：成功 ${successCount} 个，失败 ${failCount} 个`)
+    }
+    fetchData()
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+const handleBatchAssignRoles = () => {
+  if (selectedIds.value.length === 0) return
+  batchSelectedRoles.value = []
+  batchRoleDialogVisible.value = true
+}
+
+const handleSaveBatchRoles = async () => {
+  if (batchSelectedRoles.value.length === 0) {
+    ElMessage.warning('请至少选择一个角色')
+    return
+  }
+  batchRoleSubmitting.value = true
+  let successCount = 0
+  let failCount = 0
+  try {
+    for (const id of selectedIds.value) {
+      try {
+        await assignRoles(id, batchSelectedRoles.value)
+        successCount++
+      } catch {
+        failCount++
+      }
+    }
+    if (failCount === 0) {
+      ElMessage.success(`成功为 ${successCount} 个用户分配角色`)
+    } else {
+      ElMessage.warning(`分配完成：成功 ${successCount} 个，失败 ${failCount} 个`)
+    }
+    batchRoleDialogVisible.value = false
+    fetchData()
+  } finally {
+    batchRoleSubmitting.value = false
+  }
 }
 
 onMounted(fetchData)

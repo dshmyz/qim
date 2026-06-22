@@ -110,7 +110,7 @@
     <el-card shadow="never" class="list-card">
       <el-table :data="feedbacks" v-loading="loading" border>
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="user_id" label="用户ID" width="100" />
+        <el-table-column prop="userId" label="用户ID" width="100" />
         <el-table-column prop="type" label="类型" width="100">
           <template #default="{ row }">
             <el-tag :type="getTypeTagType(row.type)">{{ getTypeLabel(row.type) }}</el-tag>
@@ -131,11 +131,11 @@
             <el-tag :type="getStatusTagType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+        <el-table-column prop="createdAt" label="创建时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column prop="updated_at" label="更新时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
+        <el-table-column prop="updatedAt" label="更新时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
@@ -168,7 +168,7 @@
       <div v-if="currentFeedback" class="feedback-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="ID">{{ currentFeedback.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户ID">{{ currentFeedback.user_id }}</el-descriptions-item>
+          <el-descriptions-item label="用户ID">{{ currentFeedback.userId }}</el-descriptions-item>
           <el-descriptions-item label="反馈类型">
             <el-tag :type="getTypeTagType(currentFeedback.type)">{{ getTypeLabel(currentFeedback.type) }}</el-tag>
           </el-descriptions-item>
@@ -178,9 +178,9 @@
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusTagType(currentFeedback.status)">{{ getStatusLabel(currentFeedback.status) }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatTime(currentFeedback.created_at || currentFeedback.createdAt || '') }}</el-descriptions-item>
-          <el-descriptions-item label="更新时间">{{ formatTime(currentFeedback.updated_at || '') }}</el-descriptions-item>
-          <el-descriptions-item label="处理人ID">{{ currentFeedback.handler_id || '未分配' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatTime(currentFeedback.createdAt || '') }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ formatTime(currentFeedback.updatedAt || '') }}</el-descriptions-item>
+          <el-descriptions-item label="处理人ID">{{ currentFeedback.handlerId || '未分配' }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="detail-section">
@@ -200,10 +200,11 @@
 
         <div class="reply-section">
           <h4>回复反馈</h4>
-          <el-textarea
+          <el-input
             v-model="replyContent"
+            type="textarea"
             placeholder="请输入回复内容"
-            rows="4"
+            :rows="4"
             :disabled="currentFeedback.status === 'resolved'"
           />
           <div class="reply-actions">
@@ -227,6 +228,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Message, Clock, CircleCheck, Warning } from '@element-plus/icons-vue'
 import { getFeedbacks, updateFeedback } from '@/api/client'
 import type { UserFeedback } from '@/types/client'
@@ -343,21 +345,16 @@ const submitReply = async () => {
     const response = await updateFeedback(currentFeedback.value.id as number, {
       reply: replyContent.value.trim(),
       status: updateStatus.value,
-      handler_id: 1 // 当前管理员ID，实际应该从登录状态获取
     })
 
     if (response.data.code === 0) {
+      ElMessage.success('回复成功')
       closeDetailModal()
       loadFeedbacks()
-      import('element-plus').then(El => {
-        El.ElMessage.success('回复成功')
-      })
     }
   } catch (error) {
     console.error('回复失败:', error)
-    import('element-plus').then(El => {
-      El.ElMessage.error('回复失败')
-    })
+    ElMessage.error('回复失败')
   }
 }
 

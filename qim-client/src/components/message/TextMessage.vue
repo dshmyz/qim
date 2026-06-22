@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { escapeHTML, sanitizeHTML } from '../../utils/sanitize'
+import { displayMentionTokens } from '../../utils/mentions'
 
 const props = defineProps<{
   content: string
@@ -27,27 +28,37 @@ const handleLinkClick = (event: MouseEvent) => {
 // 转换URL为链接的函数
 // 注意：必须先对内容进行 HTML 转义，然后再插入链接，防止 XSS 攻击
 const convertUrlsToLinks = (text: string): string => {
-  // 先对用户输入进行 HTML 转义，防止 XSS 攻击
-  const escapedText = escapeHTML(text)
-  
-  // 正则表达式匹配URL（在转义后的文本中）
-  const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
-  const atRegex = /@([\u4e00-\u9fa5\w]+)/g
-  
-  let result = escapedText
-  
-  // 处理URL - 注意转义后的 URL 中的特殊字符已被转义
-  result = result.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
-  
-  // 处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
-  })
-  
-  return result
+  const linkify = (plainText: string): string => {
+    const escapedText = escapeHTML(plainText)
+    const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
+    let result = ''
+    let lastIndex = 0
+    for (const match of escapedText.matchAll(urlRegex)) {
+      const rawURL = match[0]
+      const trailingPunctuation = rawURL.match(/[.,:;!?]+$/)?.[0] || ''
+      const url = rawURL.slice(0, rawURL.length - trailingPunctuation.length)
+      const index = match.index ?? 0
+      result += escapedText.slice(lastIndex, index)
+      result += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
+      result += trailingPunctuation
+      lastIndex = index + rawURL.length
+    }
+    return result + escapedText.slice(lastIndex)
+  }
+
+  const mentionTokenPattern = /@\{mention:(?:all|[1-9]\d*)(?:\|[^}]+)?\}/g
+  let result = ''
+  let lastIndex = 0
+  for (const match of text.matchAll(mentionTokenPattern)) {
+    const token = match[0]
+    const displayText = displayMentionTokens(token)
+    if (displayText === token) continue
+    const index = match.index ?? 0
+    result += linkify(text.slice(lastIndex, index))
+    result += `<span class="at-user">${escapeHTML(displayText)}</span>`
+    lastIndex = index + token.length
+  }
+  return result + linkify(text.slice(lastIndex))
 }
 
 const convertedContent = computed(() => {

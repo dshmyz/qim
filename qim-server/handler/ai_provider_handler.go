@@ -12,6 +12,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// providerToFrontend 将 AIProvider 模型转换为前端期望的 camelCase 格式。
+// apiKey 会被脱敏，避免泄露完整密钥。
+func providerToFrontend(p model.AIProvider) gin.H {
+	lastTestAt := ""
+	if p.LastTestAt != nil {
+		lastTestAt = p.LastTestAt.Format("2006-01-02 15:04:05")
+	}
+	return gin.H{
+		"id":          p.ID,
+		"name":        p.Name,
+		"type":        p.APIType,
+		"apiKey":      maskAPIKey(p.APIKey),
+		"apiEndpoint": p.Endpoint,
+		"models":      p.Models,
+		"status":      p.Status,
+		"enabled":     p.Enabled,
+		"priority":    p.Priority,
+		"remark":      p.Config,
+		"lastTestAt":  lastTestAt,
+		"createdAt":   p.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updatedAt":   p.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
 // GetAIProviders 获取所有AI提供商
 func GetAIProviders(c *gin.Context) {
 	db := database.GetDB()
@@ -24,21 +48,7 @@ func GetAIProviders(c *gin.Context) {
 
 	result := make([]gin.H, 0, len(providers))
 	for _, p := range providers {
-		result = append(result, gin.H{
-			"id":          p.ID,
-			"name":        p.Name,
-			"type":        p.APIType,
-			"apiKey":      maskAPIKey(p.APIKey),
-			"apiEndpoint": p.Endpoint,
-			"models":     p.Models,
-			"status":      p.Status,
-			"enabled":     p.Enabled,
-			"priority":    p.Priority,
-			"remark":      p.Config,
-			"lastTestAt":  "",
-			"createdAt":   p.CreatedAt.Format("2006-01-02 15:04:05"),
-			"updatedAt":   p.UpdatedAt.Format("2006-01-02 15:04:05"),
-		})
+		result = append(result, providerToFrontend(p))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -89,7 +99,7 @@ func CreateAIProvider(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": provider,
+		"data": providerToFrontend(provider),
 	})
 }
 
@@ -159,7 +169,7 @@ func UpdateAIProvider(c *gin.Context) {
 	db.First(&provider, uint(id))
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": provider,
+		"data": providerToFrontend(provider),
 	})
 }
 
@@ -219,7 +229,7 @@ func ToggleAIProviderStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": provider,
+		"data": providerToFrontend(provider),
 	})
 }
 

@@ -1,4 +1,4 @@
-import type { ApiResponse, Organization, PaginationParams, PaginatedResponse } from '@/types'
+import type { ApiResponse, Organization, PaginationParams, PaginatedResponse, User } from '@/types'
 import { request } from '@/utils/request'
 import type { AxiosResponse } from 'axios'
 
@@ -15,7 +15,12 @@ export interface DepartmentEmployeeParams {
   userId: number
 }
 
-export const getOrganizationTree = (): Promise<AxiosResponse<ApiResponse<Organization[]>>> => {
+export interface OrganizationTreeResponse {
+  departments: Organization[]
+  unassignedUsers?: User[]
+}
+
+export const getOrganizationTree = (): Promise<AxiosResponse<ApiResponse<OrganizationTreeResponse>>> => {
   return request({
     url: '/v1/organization/tree',
     method: 'get',
