@@ -20,10 +20,10 @@ import (
 
 var ErrMessageNotFound = errors.New("message not found")
 var ErrMessageForbidden = errors.New("access forbidden")
-var ErrInvalidMention = errors.New("invalid mention target")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
+var ErrAtAllForbidden = errors.New("only owner or admin can @all")
 
 type MessageService struct {
 	db  *gorm.DB
@@ -104,9 +104,7 @@ type MessageResult struct {
 	PageSize    int
 }
 
-// SendMessage keeps the final parameter for WebSocket/API compatibility. Its
-// value is intentionally ignored: mention recipients come only from content.
-func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint, _ []uint) (*model.Message, error) {
+func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
 	db := s.db
 
 	if msgType == "text" && content != "" {
@@ -120,8 +118,14 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		return nil, ErrMessageForbidden
 	}
 
-	if err := s.validateMentionTokens(convID, content); err != nil {
-		return nil, err
+	// 解析 content 中的 @ mention token（content 是唯一事实源）
+	mentions := mention.Parse(content)
+
+	// @all 权限校验：仅群主/管理员可 @all
+	if mention.IsAllMentioned(mentions) {
+		if member.Role != "owner" && member.Role != "admin" {
+			return nil, ErrAtAllForbidden
+		}
 	}
 
 	msg := model.Message{
@@ -150,84 +154,63 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	var convType string
 	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
 
-	// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
-	// 对所有类型会话（包括 bot）统一处理，避免移除后发消息无法恢复
-	db.Model(&model.ConversationSession{}).
-		Where("conversation_id = ? AND is_hidden = ?", convID, true).
-		Update("is_hidden", false)
-
 	if convType == "bot" {
 		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
 	} else {
+		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
+		db.Model(&model.ConversationSession{}).
+			Where("conversation_id = ? AND is_hidden = ?", convID, true).
+			Update("is_hidden", false)
+
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
-		if s.hub != nil {
-			newMsg := ws.WSMessage{
-				Type: "new_message",
-				Data: s.buildMessageResponse(msg),
-			}
-			jsonMsg, _ := json.Marshal(newMsg)
-			s.hub.SendToConversation(convID, senderID, jsonMsg)
+		// 计算被提及的用户 ID（@all 展开为全体成员，排除发送者）
+		var allMembers []model.ConversationMember
+		db.Where("conversation_id = ?", convID).Find(&allMembers)
+		allMemberIDs := make([]uint, 0, len(allMembers))
+		for _, m := range allMembers {
+			allMemberIDs = append(allMemberIDs, m.UserID)
 		}
+		mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, senderID)
+
+		// 更新被提及成员的未读 @ 计数
+		if len(mentionUserIDs) > 0 {
+			db.Model(&model.ConversationMember{}).
+				Where("conversation_id = ? AND user_id IN ?", convID, mentionUserIDs).
+				UpdateColumn("unread_at_mention_count", gorm.Expr("unread_at_mention_count + 1"))
+		}
+
+		if s.hub != nil {
+			// 广播（mention_user_ids 数组随消息发送，前端据此算 is_at_mention）
+			s.broadcastMessage(&msg, mentionUserIDs, senderID)
+		}
+
+		// 触发 AI / 分身（@all 不触发 AI，避免噪音）
+		// OnMessageSent 回调由 app/routes.go 注册统一处理，此处不重复触发
+		_ = mention.IsAllMentioned(mentions) // @all 判断由 routes.go 回调内处理
 	}
 
 	return &msg, nil
 }
 
-func (s *MessageService) validateMentionTokens(convID uint, content string) error {
-	targets := mention.Parse(content)
-	if len(targets.UserIDs) > 100 {
-		return ErrInvalidMention
-	}
-
-	var members []model.ConversationMember
-	if len(targets.UserIDs) > 0 {
-		if err := s.db.Where("conversation_id = ? AND user_id IN ?", convID, targets.UserIDs).
-			Find(&members).Error; err != nil {
-			return err
-		}
-		if len(members) != len(targets.UserIDs) {
-			return ErrInvalidMention
-		}
-	}
-
-	if targets.All {
-		var conversation model.Conversation
-		if err := s.db.Select("type").First(&conversation, convID).Error; err != nil {
-			return err
-		}
-		if conversation.Type != "group" && conversation.Type != "discussion" {
-			return ErrInvalidMention
-		}
-	}
-	return nil
-}
-
-// MentionUserIDsForAI expands @all only for the existing AI dispatch hook;
-// it never persists this derived list.
+// MentionUserIDsForAI 解析 content 中的 @ mention，展开 @all，返回被提及的用户 ID 列表。
+// 供外部 AI 触发逻辑使用（如 app/routes.go 的 OnMessageSent 回调），不持久化。
 func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint {
-	targets := mention.Parse(content)
-	if !targets.All {
-		return targets.UserIDs
-	}
-	var members []model.ConversationMember
-	if err := s.db.Where("conversation_id = ?", convID).Find(&members).Error; err != nil {
-		return targets.UserIDs
-	}
-	ids := append([]uint{}, targets.UserIDs...)
-	seen := make(map[uint]struct{}, len(ids))
-	for _, id := range ids {
-		seen[id] = struct{}{}
-	}
-	for _, member := range members {
-		if _, exists := seen[member.UserID]; !exists {
-			seen[member.UserID] = struct{}{}
-			ids = append(ids, member.UserID)
+	mentions := mention.Parse(content)
+	var allMembers []model.ConversationMember
+	if mention.IsAllMentioned(mentions) {
+		if err := s.db.Where("conversation_id = ?", convID).Find(&allMembers).Error; err != nil {
+			allMembers = nil
 		}
 	}
-	return ids
+	allMemberIDs := make([]uint, 0, len(allMembers))
+	for _, m := range allMembers {
+		allMemberIDs = append(allMemberIDs, m.UserID)
+	}
+	// excludeUserID=0：不排除任何用户（AI 触发场景由调用方决定）
+	return mention.ExtractUserIDs(mentions, allMemberIDs, 0)
 }
 
 func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
@@ -898,8 +881,17 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
-func (s *MessageService) buildMessageResponse(msg model.Message) map[string]interface{} {
-	targets := mention.Parse(msg.Content)
+// buildMessageResponse 构建消息响应体。
+// HTTP 响应、WS 广播、历史拉取三路共用。
+// mentionUserIDs 为已展开（含 @all 展开）的被提及用户 ID 列表。
+// is_at_mention 不在此处计算——per-recipient，由调用方按当前用户算。
+func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint) map[string]interface{} {
+	if mentionUserIDs == nil {
+		mentionUserIDs = []uint{}
+	}
+	isAvatarReply := msg.AIType == "avatar"
+	isAIMessage := msg.AIType == "assistant" || msg.AIType == "avatar" ||
+		msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar" || msg.Sender.Type == "system"
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -909,13 +901,28 @@ func (s *MessageService) buildMessageResponse(msg model.Message) map[string]inte
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
+		"is_avatar_reply":   isAvatarReply,
+		"is_ai_message":     isAIMessage,
+		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  targets.UserIDs,
-		"mention_all":       targets.All,
+		"mention_user_ids":  mentionUserIDs,
 	}
+}
+
+// broadcastMessage 广播消息到会话所有成员（排除发送者）。
+// mention_user_ids 数组随消息一起广播，前端据此计算 is_at_mention。
+// 无需 per-recipient 发送，效率与原方案一致。
+func (s *MessageService) broadcastMessage(msg *model.Message, mentionUserIDs []uint, senderID uint) {
+	if s.hub == nil {
+		return
+	}
+	payload := s.buildMessageResponse(*msg, mentionUserIDs)
+	wsMsg := ws.WSMessage{Type: "new_message", Data: payload}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(msg.ConversationID, senderID, jsonMsg)
 }
 
 func (s *MessageService) CreateMessage(msg *model.Message) error {

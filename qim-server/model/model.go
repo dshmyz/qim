@@ -162,16 +162,17 @@ type GroupDocument struct {
 
 // 会话成员
 type ConversationMember struct {
-	ID             uint         `json:"id" gorm:"primarykey"`
-	ConversationID uint         `json:"conversation_id" gorm:"not null;index:idx_conv_member_user,priority:2;uniqueIndex:idx_conv_member_conv_user,priority:1"`
-	UserID         uint         `json:"user_id" gorm:"not null;index:idx_conv_member_user,priority:1;uniqueIndex:idx_conv_member_conv_user,priority:2"`
-	Role           string       `json:"role" gorm:"size:20;default:'member'"`
-	UnreadCount    int          `json:"unread_count" gorm:"default:0"`
-	Muted          bool         `json:"muted" gorm:"default:false"`
-	LastReadAt     *time.Time   `json:"last_read_at"`
-	JoinedAt       time.Time    `json:"joined_at"`
-	User           User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
-	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+	ID                   uint         `json:"id" gorm:"primarykey"`
+	ConversationID       uint         `json:"conversation_id" gorm:"not null;index:idx_conv_member_user,priority:2;uniqueIndex:idx_conv_member_conv_user,priority:1"`
+	UserID               uint         `json:"user_id" gorm:"not null;index:idx_conv_member_user,priority:1;uniqueIndex:idx_conv_member_conv_user,priority:2"`
+	Role                 string       `json:"role" gorm:"size:20;default:'member'"`
+	UnreadCount          int          `json:"unread_count" gorm:"default:0"`
+	UnreadAtMentionCount int          `json:"unread_at_mention_count" gorm:"default:0"`
+	Muted                bool         `json:"muted" gorm:"default:false"`
+	LastReadAt           *time.Time   `json:"last_read_at"`
+	JoinedAt             time.Time    `json:"joined_at"`
+	User                 User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	Conversation         Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
 
 // 消息

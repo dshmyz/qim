@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/handler"
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -138,9 +139,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
 	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, _ []uint) {
 		sre := handler.GetSmartReplyEngine()
-		if sre != nil && di.GlobalContainer.MessageService != nil {
-			sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
+		if sre == nil || di.GlobalContainer.MessageService == nil {
+			return
 		}
+		// @all 不触发 AI，避免噪音
+		if mention.HasAnyMention(content) && mention.IsAllMentioned(mention.Parse(content)) {
+			return
+		}
+		sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
 	}
 
 	avatarService.SetGroupDocumentService(groupDocSvc)

@@ -86,7 +86,7 @@ type Hub struct {
 	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
 
 	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
-	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint, mentionUserIDs []uint) (*model.Message, error)
+	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
 
 	// HandleReadMessage 回调：处理 WebSocket 已读消息请求
 	HandleReadMessage func(convID, userID uint) error
@@ -694,8 +694,9 @@ func handleSendMessage(c *Client, data interface{}) {
 	}
 
 	// 统一调用外部注册的 MessageService 处理
+	// service.SendMessage 内部已完成：db.Create、广播、未读计数、OnMessageSent 触发
 	if c.hub.HandleMessage != nil {
-		msg, err := c.hub.HandleMessage(convID, c.userID, msgType, content, quotedMessageID, nil)
+		_, err := c.hub.HandleMessage(convID, c.userID, msgType, content, quotedMessageID)
 		if err != nil {
 			errMsg := WSMessage{
 				Type: "error",
@@ -706,36 +707,6 @@ func handleSendMessage(c *Client, data interface{}) {
 			case c.send <- jsonErr:
 			default:
 			}
-			return
-		}
-
-		targets := mention.Parse(msg.Content)
-		wsMsg := WSMessage{
-			Type: "new_message",
-			Data: map[string]interface{}{
-				"id":                msg.ID,
-				"conversation_id":   msg.ConversationID,
-				"sender_id":         msg.SenderID,
-				"type":              msg.Type,
-				"content":           msg.Content,
-				"quoted_message_id": msg.QuotedMessageID,
-				"is_recalled":       msg.IsRecalled,
-				"is_read":           msg.IsRead,
-				"is_avatar_reply":   msg.AIType == "avatar",
-				"is_ai_message":     (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
-				"recalled_at":       msg.RecalledAt,
-				"created_at":        msg.CreatedAt,
-				"sender":            msg.Sender,
-				"quoted_message":    msg.QuotedMessage,
-				"mention_user_ids":  targets.UserIDs,
-				"mention_all":       targets.All,
-			},
-		}
-		jsonMsg, _ := json.Marshal(wsMsg)
-		c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
-
-		if c.hub.OnMessageSent != nil {
-			utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, targets.UserIDs) })
 		}
 		return
 	}
@@ -789,7 +760,21 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 		Where("conversation_id = ? AND user_id != ?", convID, c.userID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
-	targets := mention.Parse(msg.Content)
+	mentions := mention.Parse(msg.Content)
+	var allMembers []model.ConversationMember
+	db.Where("conversation_id = ?", convID).Find(&allMembers)
+	allMemberIDs := make([]uint, 0, len(allMembers))
+	for _, m := range allMembers {
+		allMemberIDs = append(allMemberIDs, m.UserID)
+	}
+	mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, c.userID)
+
+	// 更新被提及成员的未读 @ 计数
+	if len(mentionUserIDs) > 0 {
+		db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id IN ?", convID, mentionUserIDs).
+			UpdateColumn("unread_at_mention_count", gorm.Expr("unread_at_mention_count + 1"))
+	}
 
 	wsMsg := WSMessage{
 		Type: "new_message",
@@ -808,15 +793,14 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 			"created_at":        msg.CreatedAt,
 			"sender":            msg.Sender,
 			"quoted_message":    msg.QuotedMessage,
-			"mention_user_ids":  targets.UserIDs,
-			"mention_all":       targets.All,
+			"mention_user_ids":  mentionUserIDs,
 		},
 	}
 	jsonMsg, _ := json.Marshal(wsMsg)
 	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 
-	if c.hub.OnMessageSent != nil {
-		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, targets.UserIDs) })
+	if c.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
+		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
 	}
 }
 

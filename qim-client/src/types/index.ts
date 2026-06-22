@@ -37,6 +37,7 @@ export interface Message {
   isRecalled?: boolean
   isFailed?: boolean
   isAtMention?: boolean
+  mention_user_ids?: number[]
   isAvatarReply?: boolean
   is_avatar_reply?: boolean
   ai_type?: string

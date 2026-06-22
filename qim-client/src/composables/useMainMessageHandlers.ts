@@ -2,7 +2,6 @@ import { Ref } from 'vue'
 import { useCurrentUser } from './useCurrentUser'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
-import { displayMentionTokens } from '../utils/mentions'
 
 export interface Message {
   id: string
@@ -43,7 +42,7 @@ export function useMainMessageHandlers() {
   const processMessage = (msg: any, conversationId?: string): Message => {
     const messageObj: any = {
       id: msg.id ? msg.id.toString() : '',
-      content: displayMentionTokens(msg.content || ''),
+      content: msg.content || '',
       file_name: msg.file_name,
       file_size: msg.file_size,
       sender: msg.sender ? {
@@ -63,7 +62,10 @@ export function useMainMessageHandlers() {
       isRecalled: msg.is_recalled || false,
       isFailed: msg.is_failed || false,
       isStreaming: msg.is_streaming || false,
-      isAtMention: msg.is_at_mention ?? ((msg.mention_all === true || (Array.isArray(msg.mention_user_ids) && msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString()))) && msg.sender_id?.toString() !== currentUser.value?.id?.toString()) ?? false,
+      isAtMention: Array.isArray(msg.mention_user_ids)
+        ? msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString())
+          && msg.sender_id?.toString() !== currentUser.value?.id?.toString()
+        : (msg.is_at_mention === true),
       isAvatarReply: msg.ai_type === 'avatar',
       is_avatar_reply: msg.ai_type === 'avatar',
       ai_type: msg.ai_type || '',
@@ -74,7 +76,7 @@ export function useMainMessageHandlers() {
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
       quotedMessage: msg.quoted_message ? {
         id: msg.quoted_message.id?.toString() || '',
-        content: displayMentionTokens(msg.quoted_message.content || ''),
+        content: msg.quoted_message.content || '',
         file_name: msg.quoted_message.file_name,
         file_size: msg.quoted_message.file_size,
         sender: msg.quoted_message.sender ? {
