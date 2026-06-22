@@ -4,7 +4,7 @@ import QMessage from '../utils/qmessage'
 import type { Message } from '../types'
 import { request } from './useRequest'
 import { useUIStore } from '../stores/ui'
-import { displayMentionTokens } from '../utils/mentions'
+import { decodeToPlainText } from '../utils/mentions'
 
 function debounce<T extends (...args: any[]) => any>(
   func: T,
@@ -362,7 +362,7 @@ export function useMessageActions(
         QMessage.success('图片已复制')
       } else {
         // 其他消息：复制文本内容
-        await navigator.clipboard.writeText(displayMentionTokens(message.content))
+        await navigator.clipboard.writeText(decodeToPlainText(message.content))
         QMessage.success('已复制')
       }
     } catch (err) {

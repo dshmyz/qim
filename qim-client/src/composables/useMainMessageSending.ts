@@ -4,7 +4,7 @@ import { useCurrentUser } from './useCurrentUser'
 import { request } from './useRequest'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
-import { displayMentionTokens } from '../utils/mentions'
+import { decodeToPlainText } from '../utils/mentions'
 
 function parseMessageData(messageData: any): {
   messageType: string
@@ -158,7 +158,7 @@ export function useMainMessageSending(
       if (response.code === 0) {
         const newMessage = {
           id: response.data.id?.toString() || Date.now().toString(),
-          content: displayMentionTokens(response.data.content || ''),
+          content: decodeToPlainText(response.data.content || ''),
           file_name: response.data.file_name || messageData.fileName,
           file_size: response.data.file_size || messageData.fileSize,
           sender: {
