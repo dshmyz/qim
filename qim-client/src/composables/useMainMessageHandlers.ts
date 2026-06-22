@@ -62,7 +62,10 @@ export function useMainMessageHandlers() {
       isRecalled: msg.is_recalled || false,
       isFailed: msg.is_failed || false,
       isStreaming: msg.is_streaming || false,
-      isAtMention: msg.is_at_mention ?? (Array.isArray(msg.mention_user_ids) && msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString()) && msg.sender_id?.toString() !== currentUser.value?.id?.toString()) ?? false,
+      isAtMention: Array.isArray(msg.mention_user_ids)
+        ? msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString())
+          && msg.sender_id?.toString() !== currentUser.value?.id?.toString()
+        : (msg.is_at_mention === true),
       isAvatarReply: msg.ai_type === 'avatar',
       is_avatar_reply: msg.ai_type === 'avatar',
       ai_type: msg.ai_type || '',

@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -22,6 +23,7 @@ var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
+var ErrAtAllForbidden = errors.New("only owner or admin can @all")
 
 type MessageService struct {
 	db  *gorm.DB
@@ -102,7 +104,7 @@ type MessageResult struct {
 	PageSize    int
 }
 
-func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint, mentionUserIDs []uint) (*model.Message, error) {
+func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
 	db := s.db
 
 	if msgType == "text" && content != "" {
@@ -114,6 +116,16 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {
 		return nil, ErrMessageForbidden
+	}
+
+	// 解析 content 中的 @ mention token（content 是唯一事实源）
+	mentions := mention.Parse(content)
+
+	// @all 权限校验：仅群主/管理员可 @all
+	if mention.IsAllMentioned(mentions) {
+		if member.Role != "owner" && member.Role != "admin" {
+			return nil, ErrAtAllForbidden
+		}
 	}
 
 	msg := model.Message{
@@ -154,13 +166,31 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 			Where("conversation_id = ? AND user_id != ?", convID, senderID).
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
+		// 计算被提及的用户 ID（@all 展开为全体成员，排除发送者）
+		var allMembers []model.ConversationMember
+		db.Where("conversation_id = ?", convID).Find(&allMembers)
+		allMemberIDs := make([]uint, 0, len(allMembers))
+		for _, m := range allMembers {
+			allMemberIDs = append(allMemberIDs, m.UserID)
+		}
+		mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, senderID)
+
+		// 更新被提及成员的未读 @ 计数
+		if len(mentionUserIDs) > 0 {
+			db.Model(&model.ConversationMember{}).
+				Where("conversation_id = ? AND user_id IN ?", convID, mentionUserIDs).
+				UpdateColumn("unread_at_mention_count", gorm.Expr("unread_at_mention_count + 1"))
+		}
+
 		if s.hub != nil {
-			newMsg := ws.WSMessage{
-				Type: "new_message",
-				Data: s.buildMessageResponse(msg, mentionUserIDs),
-			}
-			jsonMsg, _ := json.Marshal(newMsg)
-			s.hub.SendToConversation(convID, senderID, jsonMsg)
+			// 广播（mention_user_ids 数组随消息发送，前端据此算 is_at_mention）
+			s.broadcastMessage(&msg, mentionUserIDs, senderID)
+		}
+
+		// 触发 AI / 分身（@all 不触发 AI，避免噪音）
+		if s.hub != nil && s.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
+			mentionIDsForAI := mentionUserIDs
+			utils.SafeGo(func() { s.hub.OnMessageSent(senderID, convID, content, mentionIDsForAI) })
 		}
 	}
 
@@ -835,10 +865,17 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
+// buildMessageResponse 构建消息响应体。
+// HTTP 响应、WS 广播、历史拉取三路共用。
+// mentionUserIDs 为已展开（含 @all 展开）的被提及用户 ID 列表。
+// is_at_mention 不在此处计算——per-recipient，由调用方按当前用户算。
 func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint) map[string]interface{} {
 	if mentionUserIDs == nil {
 		mentionUserIDs = []uint{}
 	}
+	isAvatarReply := msg.AIType == "avatar"
+	isAIMessage := msg.AIType == "assistant" || msg.AIType == "avatar" ||
+		msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar" || msg.Sender.Type == "system"
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -848,12 +885,28 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
+		"is_avatar_reply":   isAvatarReply,
+		"is_ai_message":     isAIMessage,
+		"ai_type":           msg.AIType,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 	}
+}
+
+// broadcastMessage 广播消息到会话所有成员（排除发送者）。
+// mention_user_ids 数组随消息一起广播，前端据此计算 is_at_mention。
+// 无需 per-recipient 发送，效率与原方案一致。
+func (s *MessageService) broadcastMessage(msg *model.Message, mentionUserIDs []uint, senderID uint) {
+	if s.hub == nil {
+		return
+	}
+	payload := s.buildMessageResponse(*msg, mentionUserIDs)
+	wsMsg := ws.WSMessage{Type: "new_message", Data: payload}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(msg.ConversationID, senderID, jsonMsg)
 }
 
 func (s *MessageService) CreateMessage(msg *model.Message) error {

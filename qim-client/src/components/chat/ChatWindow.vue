@@ -221,6 +221,11 @@ import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import { logger } from '../../utils/logger'
+import {
+  reconcileMentionSpans,
+  serializeToContent,
+  type MentionSpan,
+} from '../../utils/mentions'
 // 大组件懒加载，按需加载减少 chat chunk 体积
 const GroupModals = defineAsyncComponent(() => import('../modals/GroupModals.vue'))
 const AISummaryPanel = defineAsyncComponent(() => import('../ai/AISummaryPanel.vue'))
@@ -477,9 +482,15 @@ const loadDraft = (conversationId: string) => {
 watch(() => props.conversation?.id, (newId, oldId) => {
   if (newId && newId !== oldId) {
     loadDraft(newId)
-    
+
+    // 切换会话时重置 mention 状态
+    mentionSpans.value = []
+    trackedInputMessage.value = ''
+    pendingAtPosition.value = -1
+    showAtMembersPanel.value = false
+
     scrollToBottom()
-    
+
     lastConversationId.value = newId
   }
 })
@@ -530,6 +541,15 @@ const showEmojiPanel = ref(false)
 // @成员功能相关
 const showAtMembersPanel = ref(false)
 const inputCursorPosition = ref(0)
+const mentionSpans = ref<MentionSpan[]>([])
+const trackedInputMessage = ref('')
+const pendingAtPosition = ref(-1)
+
+// 输入文本变化时同步 mention span（编辑后维持 span 与文本一致性）
+watch(inputMessage, (nextText) => {
+  mentionSpans.value = reconcileMentionSpans(mentionSpans.value, trackedInputMessage.value, nextText)
+  trackedInputMessage.value = nextText
+})
 
 // 打开消息管理器
 const openMessageManager = () => {
@@ -602,11 +622,21 @@ const handleInput = (event: Event) => {
   const value = textarea.value
   const cursorPos = textarea.selectionStart
   inputCursorPosition.value = cursorPos
-  
-  // 检查是否输入了 @ 符号
+
+  // 仅群聊/讨论组启用 @ 功能
+  const convType = props.conversation?.type
+  if (convType !== 'group' && convType !== 'discussion') {
+    return
+  }
+
+  // 检查是否输入了 @ 符号，且前一字符为空白/行首（避免邮箱、URL 误触发）
   if (value.charAt(cursorPos - 1) === '@') {
-    // 显示 @ 成员面板
-    showAtMembersPanel.value = true
+    const prevChar = value.charAt(cursorPos - 2)
+    const isBoundary = cursorPos - 2 < 0 || /\s/.test(prevChar)
+    if (isBoundary) {
+      pendingAtPosition.value = cursorPos - 1
+      showAtMembersPanel.value = true
+    }
   }
 }
 
@@ -699,60 +729,76 @@ const uploadAndSendFile = async (file: File) => {
 const selectAtMember = (member: { id: string; name: string; avatar: string }) => {
   const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
   if (!textarea) return
-  
+
   showAtMembersPanel.value = false
-  
-  const cursorPos = textarea.selectionStart
+
+  const atPosition = pendingAtPosition.value
+  pendingAtPosition.value = -1
+  if (atPosition < 0) return
+
   const value = inputMessage.value
-  
-  let atPosition = cursorPos - 1
-  while (atPosition >= 0 && value.charAt(atPosition) !== '@') {
-    atPosition--
+  const insertText = `@${member.name} `
+  const newText = value.substring(0, atPosition) + insertText + value.substring(atPosition + 1)
+  inputMessage.value = newText
+  // 同步更新 trackedInputMessage，防止 watch 触发 reconcile 误判新 span 为跨越编辑区
+  trackedInputMessage.value = newText
+
+  // 记录 mention span（覆盖 "@姓名"，不含尾随空格）
+  const span: MentionSpan = {
+    start: atPosition,
+    end: atPosition + member.name.length + 1,
+    text: `@${member.name}`,
+    userId: typeof member.id === 'string' ? Number(member.id) : member.id,
   }
-  
-  if (atPosition >= 0) {
-    const newText = value.substring(0, atPosition) + `@${member.name} ` + value.substring(cursorPos)
-    inputMessage.value = newText
-    
-    autoResizeTextarea()
-    
-    nextTick(() => {
-      if (textarea) {
-        textarea.selectionStart = textarea.selectionEnd = atPosition + member.name.length + 2
-        textarea.focus()
-      }
-    })
-  }
+  mentionSpans.value = [...mentionSpans.value, span]
+
+  autoResizeTextarea()
+
+  nextTick(() => {
+    if (textarea) {
+      const newPos = atPosition + insertText.length
+      textarea.selectionStart = textarea.selectionEnd = newPos
+      textarea.focus()
+    }
+  })
 }
 
 // 选择 @ 所有人
 const selectAtAll = () => {
   const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
   if (!textarea) return
-  
+
   showAtMembersPanel.value = false
-  
-  const cursorPos = textarea.selectionStart
+
+  const atPosition = pendingAtPosition.value
+  pendingAtPosition.value = -1
+  if (atPosition < 0) return
+
   const value = inputMessage.value
-  
-  let atPosition = cursorPos - 1
-  while (atPosition >= 0 && value.charAt(atPosition) !== '@') {
-    atPosition--
+  const insertText = `@所有人 `
+  const newText = value.substring(0, atPosition) + insertText + value.substring(atPosition + 1)
+  inputMessage.value = newText
+  // 同步更新 trackedInputMessage，防止 watch 触发 reconcile 误判新 span 为跨越编辑区
+  trackedInputMessage.value = newText
+
+  // 记录 mention span
+  const span: MentionSpan = {
+    start: atPosition,
+    end: atPosition + 4,
+    text: '@所有人',
+    userId: 'all',
   }
-  
-  if (atPosition >= 0) {
-    const newText = value.substring(0, atPosition) + `@所有人 ` + value.substring(cursorPos)
-    inputMessage.value = newText
-    
-    autoResizeTextarea()
-    
-    nextTick(() => {
-      if (textarea) {
-        textarea.selectionStart = textarea.selectionEnd = atPosition + 5
-        textarea.focus()
-      }
-    })
-  }
+  mentionSpans.value = [...mentionSpans.value, span]
+
+  autoResizeTextarea()
+
+  nextTick(() => {
+    if (textarea) {
+      const newPos = atPosition + insertText.length
+      textarea.selectionStart = textarea.selectionEnd = newPos
+      textarea.focus()
+    }
+  })
 }
 
 // 关闭 @ 成员面板
@@ -819,52 +865,24 @@ const handleSend = async () => {
   }
   
   // 再处理文本消息
-  const content = inputMessage.value.trim()
-  if (content) {
+  const rawText = inputMessage.value.trim()
+  if (rawText) {
+    // 序列化 mention span 为 token content（单聊/bot 会话 span 为空，序列化后等于原文本）
+    const content = serializeToContent(inputMessage.value, mentionSpans.value)
+
     // 构建消息对象，包含引用信息
     const messageData = {
       content: content,
       type: 'text',
       quotedMessage: quotedMessage.value
     }
-    
-    // 检测消息中是否包含@用户
-    const atUsers = content.match(/@([\u4e00-\u9fa5\w]+)/g)
-    const mentionUserIds: number[] = []
-    if (atUsers && props.conversation?.members?.length) {
-      // 提取@的用户名
-      const atUsernames = atUsers.map(atUser => atUser.substring(1))
-      // 查找对应的用户
-      const mentionedUsers = props.conversation.members.filter(member => 
-        atUsernames.includes(member.name)
-      )
-      
-      // 收集被@用户的ID
-      mentionedUsers.forEach(user => {
-        if (user.id) {
-          mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
-        }
-      })
-      
-      // 检查是否@了所有人
-      if (atUsernames.includes('所有人')) {
-        // @所有人时，添加所有成员的ID
-        props.conversation.members.forEach(user => {
-          if (user.id && !mentionUserIds.includes(typeof user.id === 'string' ? parseInt(user.id) : user.id)) {
-            mentionUserIds.push(typeof user.id === 'string' ? parseInt(user.id) : user.id)
-          }
-        })
-      }
-    }
-    
-    // 如果有@用户，添加到消息数据中
-    if (mentionUserIds.length > 0) {
-      (messageData as any).mentionUserIds = mentionUserIds
-    }
-    
+
     emit('send', messageData)
     inputMessage.value = ''
     quotedMessage.value = null
+    mentionSpans.value = []
+    trackedInputMessage.value = ''
+    pendingAtPosition.value = -1
     // 发送成功后清空草稿
     if (props.conversation?.id) {
       localStorage.removeItem(`qim_draft_${props.conversation.id}`)

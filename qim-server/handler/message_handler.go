@@ -115,8 +115,12 @@ func resolveAIName(msg model.Message) string {
 	return "AI助手"
 }
 
-func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
-	isAtMention := msg.SenderID != currentUserID && mention.IsMentioned(msg.Content, currentUserID)
+// buildMessageResponse 构建单条消息的 HTTP 响应（历史拉取、发送响应共用）。
+// allMemberIDs 用于 @all 展开；currentUserID 用于计算 is_at_mention。
+func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []uint) gin.H {
+	mentions := mention.Parse(msg.Content)
+	mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, msg.SenderID)
+	isAtMention := msg.SenderID != currentUserID && containsUint(mentionUserIDs, currentUserID)
 
 	aiName := resolveAIName(msg)
 
@@ -137,6 +141,7 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
+		"mention_user_ids":  mentionUserIDs,
 		"is_at_mention":     isAtMention,
 	}
 
@@ -146,6 +151,28 @@ func buildMessageResponse(msg model.Message, currentUserID uint) gin.H {
 	}
 
 	return resp
+}
+
+// containsUint 判断 uint 切片是否包含 v。
+func containsUint(s []uint, v uint) bool {
+	for _, item := range s {
+		if item == v {
+			return true
+		}
+	}
+	return false
+}
+
+// getAllMemberIDs 查询会话全体成员 ID（用于 @all 展开）。
+func getAllMemberIDs(convID uint) []uint {
+	db := database.GetDB()
+	var members []model.ConversationMember
+	db.Where("conversation_id = ?", convID).Find(&members)
+	ids := make([]uint, 0, len(members))
+	for _, m := range members {
+		ids = append(ids, m.UserID)
+	}
+	return ids
 }
 
 func GetMessages(c *gin.Context) {
@@ -230,8 +257,9 @@ func GetMessages(c *gin.Context) {
 	}
 
 	var responseMessages []gin.H
+	allMemberIDs := getAllMemberIDs(uint(convIDUint))
 	for _, msg := range result.Messages {
-		responseMessages = append(responseMessages, buildMessageResponse(msg, userID.(uint)))
+		responseMessages = append(responseMessages, buildMessageResponse(msg, userID.(uint), allMemberIDs))
 	}
 
 	totalPages := int(result.Total) / pageSize
@@ -324,7 +352,6 @@ func SendMessage(c *gin.Context) {
 		Content         string                 `json:"content" binding:"required"`
 		QuotedMessageID *uint                  `json:"quoted_message_id"`
 		ShareData       map[string]interface{} `json:"share_data"`
-		MentionUserIDs  []uint                 `json:"mention_user_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -344,6 +371,10 @@ func SendMessage(c *gin.Context) {
 			response.Forbidden(c, "无权限发送消息")
 			return
 		}
+		if err == service.ErrAtAllForbidden {
+			response.Forbidden(c, "仅群主或管理员可 @所有人")
+			return
+		}
 		response.InternalServerError(c, "消息发送失败")
 		return
 	}
@@ -358,18 +389,12 @@ func SendMessage(c *gin.Context) {
 		}
 	}
 
-	responseData := buildMessageResponse(*msg, userID.(uint))
+	allMemberIDs := getAllMemberIDs(uint(convIDUint))
+	responseData := buildMessageResponse(*msg, userID.(uint), allMemberIDs)
 
 	conv, _ := convSvc.GetConversation(uint(convIDUint))
 	if conv != nil && conv.Type != "bot" {
-		// AI 生成的消息不触发其他 AI 回复
-		if msg.Sender.Type != "bot" && msg.Sender.Type != "system" {
-			if smartReplyEngine != nil {
-				utils.SafeGo(func() {
-					smartReplyEngine.HandleMessage(userID.(uint), uint(convIDUint), req.Content, req.MentionUserIDs)
-				})
-			}
-		}
+		// smartReply 已由 service.SendMessage 内部通过 OnMessageSent 触发，此处不再重复调用
 
 		if anomalyDetector != nil {
 			utils.SafeGo(func() {
@@ -411,11 +436,8 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	}
 
-	mentions := mention.ExtractMentions(msg.Content)
-	mentionUserIDs := make([]uint, 0, len(mentions))
-	for _, m := range mentions {
-		mentionUserIDs = append(mentionUserIDs, m.UserID)
-	}
+	// AI 消息不含 mention（AI 不会 @ 人），mention_user_ids 恒为空数组
+	mentionUserIDs := []uint{}
 
 	aiName := resolveAIName(*msg)
 

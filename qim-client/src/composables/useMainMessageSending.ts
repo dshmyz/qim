@@ -123,10 +123,6 @@ export function useMainMessageSending(
       requestData.file_name = messageData.fileName
     }
 
-    if (messageData.mentionUserIds && Array.isArray(messageData.mentionUserIds)) {
-      requestData.mention_user_ids = messageData.mentionUserIds
-    }
-
     if (!isConnected.value) {
       QMessage.error('网络连接已断开，消息发送失败')
       const failedMessage = createFailedMessage(messageData, messageType, messageContent, miniAppData, newsData, conversationId, currentUser)

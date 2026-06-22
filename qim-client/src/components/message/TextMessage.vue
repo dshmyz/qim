@@ -1,59 +1,81 @@
 <template>
-  <div class="message-bubble text-message" :class="{ self: isSelf }" v-html="convertedContent" @click="handleLinkClick"></div>
+  <div class="message-bubble text-message" :class="{ self: isSelf }" @click="handleClick">
+    <template v-for="(seg, i) in segments" :key="i">
+      <span
+        v-if="seg.type === 'mention'"
+        class="at-mention-chip"
+        :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
+        :data-user-id="seg.userId"
+      >{{ seg.text }}</span>
+      <span v-else v-html="seg.html"></span>
+    </template>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { escapeHTML, sanitizeHTML } from '../../utils/sanitize'
+import { parseContent } from '../../utils/mentions'
 
 const props = defineProps<{
   content: string
   isSelf?: boolean
 }>()
 
-const handleLinkClick = (event: MouseEvent) => {
+type Segment =
+  | { type: 'text'; html: string }
+  | { type: 'mention'; text: string; userId: number | 'all' }
+
+const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
+
+// 将纯文本片段转为带链接的 HTML（先转义，再插链接）
+const textToHtml = (text: string): string => {
+  const escaped = escapeHTML(text)
+  const linked = escaped.replace(urlRegex, (url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
+  })
+  return sanitizeHTML(linked)
+}
+
+const segments = computed<Segment[]>(() => {
+  const { text, mentions } = parseContent(props.content)
+  if (mentions.length === 0) {
+    return [{ type: 'text', html: textToHtml(text) }]
+  }
+
+  const result: Segment[] = []
+  let lastEnd = 0
+  for (const m of mentions) {
+    if (m.start > lastEnd) {
+      result.push({ type: 'text', html: textToHtml(text.slice(lastEnd, m.start)) })
+    }
+    result.push({ type: 'mention', text: m.text, userId: m.userId })
+    lastEnd = m.end
+  }
+  if (lastEnd < text.length) {
+    result.push({ type: 'text', html: textToHtml(text.slice(lastEnd)) })
+  }
+  return result
+})
+
+const handleClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement
+  // 链接点击：Electron 外链打开
   const link = target.closest('a')
-  
   if (link && window.electron?.shell?.openExternal) {
     event.preventDefault()
     const href = link.getAttribute('href')
     if (href) {
       window.electron.shell.openExternal(href)
     }
+    return
+  }
+  // mention chip 点击：预留扩展点（未来可打开用户资料卡）
+  const chip = target.closest('.at-mention-chip')
+  if (chip) {
+    // 暂不处理，保持默认行为
   }
 }
-
-// 转换URL为链接的函数
-// 注意：必须先对内容进行 HTML 转义，然后再插入链接，防止 XSS 攻击
-const convertUrlsToLinks = (text: string): string => {
-  // 先对用户输入进行 HTML 转义，防止 XSS 攻击
-  const escapedText = escapeHTML(text)
-  
-  // 正则表达式匹配URL（在转义后的文本中）
-  const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
-  const atRegex = /@([\u4e00-\u9fa5\w]+)/g
-  
-  let result = escapedText
-  
-  // 处理URL - 注意转义后的 URL 中的特殊字符已被转义
-  result = result.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
-  
-  // 处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
-  })
-  
-  return result
-}
-
-const convertedContent = computed(() => {
-  // 使用 sanitizeHTML 确保输出安全
-  return sanitizeHTML(convertUrlsToLinks(props.content))
-})
 </script>
 
 <style scoped>
@@ -66,5 +88,19 @@ const convertedContent = computed(() => {
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+:deep(.at-mention-chip) {
+  color: var(--color-primary-500, #3b82f6);
+  font-weight: 500;
+  cursor: default;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+:deep(.at-mention-chip--all) {
+  color: var(--color-warning-500, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
 }
 </style>
