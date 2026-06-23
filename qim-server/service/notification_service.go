@@ -85,7 +85,9 @@ func (s *NotificationService) MarkAsUnread(userID, notificationID uint) (*model.
 
 	notification.Read = false
 	notification.ReadAt = nil
-	s.db.WithContext(ctx).Save(&notification)
+	if err := s.db.WithContext(ctx).Save(&notification).Error; err != nil {
+		return nil, err
+	}
 
 	return &notification, nil
 }

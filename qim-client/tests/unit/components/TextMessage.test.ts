@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import TextMessage from '@/components/message/TextMessage.vue'
 
 describe('TextMessage', () => {
@@ -36,6 +38,34 @@ describe('TextMessage', () => {
       expect(links.length).toBe(1)
       expect(links[0].attributes('href')).toBe('https://example.com')
       expect(links[0].attributes('target')).toBe('_blank')
+    })
+
+    it('自身消息的链接使用高对比样式钩子', () => {
+      const wrapper = mount(TextMessage, {
+        props: { content: 'https://bigmodel.cn/glm-coding', isSelf: true },
+      })
+
+      expect(wrapper.find('a').classes()).toContain('message-link--self')
+    })
+
+    it('正确解析自身消息中的 Markdown 链接，不把括号吞进 URL', () => {
+      const url = 'https://bigmodel.cn/glm-coding'
+      const wrapper = mount(TextMessage, {
+        props: { content: `@v1.0.0 [${url}](${url})`, isSelf: true },
+      })
+
+      const links = wrapper.findAll('a')
+      expect(links).toHaveLength(1)
+      expect(links[0].attributes('href')).toBe(url)
+      expect(links[0].text()).toBe(url)
+      expect(wrapper.text()).toBe(`@v1.0.0 ${url}`)
+    })
+
+    it('keeps message links readable without underlining them', () => {
+      const source = readFileSync(resolve(__dirname, '../../../src/components/message/TextMessage.vue'), 'utf8')
+
+      expect(source).toContain('text-decoration: none;')
+      expect(source).not.toContain('text-decoration: underline;')
     })
 
     it('应该正确处理多个 URL', () => {

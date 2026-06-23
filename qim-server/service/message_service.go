@@ -167,13 +167,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
 		// 计算被提及的用户 ID（@all 展开为全体成员，排除发送者）
-		var allMembers []model.ConversationMember
-		db.Where("conversation_id = ?", convID).Find(&allMembers)
-		allMemberIDs := make([]uint, 0, len(allMembers))
-		for _, m := range allMembers {
-			allMemberIDs = append(allMemberIDs, m.UserID)
-		}
-		mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, senderID)
+		mentionUserIDs := s.resolveMentionUserIDs(convID, mentions, senderID)
 
 		// 更新被提及成员的未读 @ 计数
 		if len(mentionUserIDs) > 0 {
@@ -197,10 +191,9 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	return &msg, nil
 }
 
-// MentionUserIDsForAI 解析 content 中的 @ mention，展开 @all，返回被提及的用户 ID 列表。
-// 供外部 AI 触发逻辑使用（如 app/routes.go 的 OnMessageSent 回调），不持久化。
-func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint {
-	mentions := mention.Parse(content)
+// resolveMentionUserIDs 解析 mentions，展开 @all，返回被提及的用户 ID 列表。
+// excludeUserID 用于排除指定用户（如发送者）。
+func (s *MessageService) resolveMentionUserIDs(convID uint, mentions []mention.Mention, excludeUserID uint) []uint {
 	var allMembers []model.ConversationMember
 	if mention.IsAllMentioned(mentions) {
 		if err := s.db.Where("conversation_id = ?", convID).Find(&allMembers).Error; err != nil {
@@ -211,8 +204,15 @@ func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint
 	for _, m := range allMembers {
 		allMemberIDs = append(allMemberIDs, m.UserID)
 	}
+	return mention.ExtractUserIDs(mentions, allMemberIDs, excludeUserID)
+}
+
+// MentionUserIDsForAI 解析 content 中的 @ mention，展开 @all，返回被提及的用户 ID 列表。
+// 供外部 AI 触发逻辑使用（如 app/routes.go 的 OnMessageSent 回调），不持久化。
+func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint {
+	mentions := mention.Parse(content)
 	// excludeUserID=0：不排除任何用户（AI 触发场景由调用方决定）
-	return mention.ExtractUserIDs(mentions, allMemberIDs, 0)
+	return s.resolveMentionUserIDs(convID, mentions, 0)
 }
 
 func (s *MessageService) handleBotMessage(userID, convID uint, content string) {

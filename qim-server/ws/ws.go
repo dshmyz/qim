@@ -756,6 +756,11 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 	conv.LastMessageAt = &now
 	db.Save(&conv)
 
+	// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
+	db.Model(&model.ConversationSession{}).
+		Where("conversation_id = ? AND is_hidden = ?", convID, true).
+		Update("is_hidden", false)
+
 	db.Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id != ?", convID, c.userID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))

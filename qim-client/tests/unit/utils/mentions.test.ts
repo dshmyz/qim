@@ -1,7 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { decodeToPlainText, reconcileMentionSpans, serializeToContent } from '@/utils/mentions'
+import {
+  decodeToPlainText,
+  findActiveMentionToken,
+  reconcileMentionSpans,
+  replaceMentionToken,
+  serializeToContent,
+} from '@/utils/mentions'
 
 describe('resolveMentionUserIds', () => {
+  it('extracts a valid @ query and the full replacement range', () => {
+    expect(findActiveMentionToken('请 @ali 看看', 6)).toEqual({
+      start: 2,
+      end: 6,
+      query: 'ali',
+    })
+  })
+
+  it('includes the entire token when the cursor is in the middle', () => {
+    expect(findActiveMentionToken('@alice ', 3)).toEqual({
+      start: 0,
+      end: 6,
+      query: 'al',
+    })
+  })
+
+  it('rejects @ in email and URL text', () => {
+    expect(findActiveMentionToken('mail a@b.com', 8)).toBeNull()
+    expect(findActiveMentionToken('go get host/@v1', 15)).toBeNull()
+  })
+
+  it('replaces the complete query token instead of leaving its query behind', () => {
+    const token = findActiveMentionToken('请 @ali 看看', 6)
+
+    expect(token).not.toBeNull()
+    expect(replaceMentionToken('请 @ali 看看', token!, '@Alice ')).toBe('请 @Alice 看看')
+  })
+
   it('does not treat @v1.0.20 inside Go module URLs as a user mention', () => {
     const content = `go get gitee.com/xxx/xxxx/xxx/@v1.0.20
 
