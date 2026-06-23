@@ -401,12 +401,12 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  send: [content: string]
+  send: [message: { content: string; type: string; quotedMessage: unknown }]
   recall: [messageId: number]
   inviteMembers: [conversationId: string]
   'read-receipt': [conversationId: string]
   'switch-app': [app: string]
-  'loadMore': [messages: any[]]
+  'loadMore': [conversationId: string]
   'switchConversation': [conversationId: string]
   'retry-send': [message: any]
   'start-screen-share': []

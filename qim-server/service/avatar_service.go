@@ -6,7 +6,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
-	"github.com/dshmyz/qim/qim-server/utils"
 	"strings"
 	"time"
 
@@ -20,7 +19,6 @@ type AvatarService struct {
 	workerPool    *AvatarWorkerPool
 	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
 	memorySvc     *AvatarMemoryService  // 长期记忆
-	triggerSvc    *AvatarTriggerService // 智能触发
 	groupDocSvc   *GroupDocumentService // 群文档知识检索
 	replyGraph    *AvatarReplyGraph     // Eino Graph 编排
 	wsNotify      func(userID uint, eventType string, data map[string]interface{})
@@ -56,28 +54,27 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 }
 
 // SetRAGServices 设置 RAG 相关服务（可选）
-func (s *AvatarService) SetRAGServices(noteVectorSvc *NoteVectorService, memorySvc *AvatarMemoryService, triggerSvc *AvatarTriggerService) {
+func (s *AvatarService) SetRAGServices(noteVectorSvc *NoteVectorService, memorySvc *AvatarMemoryService) {
 	s.noteVectorSvc = noteVectorSvc
 	s.memorySvc = memorySvc
-	s.triggerSvc = triggerSvc
-
-	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, noteVectorSvc, memorySvc, s.groupDocSvc)
-	if err := s.replyGraph.BuildGraph(); err != nil {
-		logger.WithModule("AvatarService").Error("BuildGraph 失败 (SetRAGServices)", "error", err)
-	}
+	s.rebuildReplyGraph("SetRAGServices")
 }
 
 func (s *AvatarService) SetGroupDocumentService(groupDocSvc *GroupDocumentService) {
 	s.groupDocSvc = groupDocSvc
-
-	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, groupDocSvc)
-	if err := s.replyGraph.BuildGraph(); err != nil {
-		logger.WithModule("AvatarService").Error("BuildGraph 失败 (SetGroupDocumentService)", "error", err)
-	}
+	s.rebuildReplyGraph("SetGroupDocumentService")
 }
 
 func (s *AvatarService) SetAIService(aiService *ai.AIService) {
 	s.aiService = aiService
+	s.rebuildReplyGraph("SetAIService")
+}
+
+func (s *AvatarService) rebuildReplyGraph(source string) {
+	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
+	if err := s.replyGraph.BuildGraph(); err != nil {
+		logger.WithModule("AvatarService").Error("BuildGraph 失败", "source", source, "error", err)
+	}
 }
 
 // GetWorkerPool 获取 Worker Pool
@@ -196,110 +193,6 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 
 	ctx := context.Background()
 	return s.replyGraph.Execute(ctx, userID, conversationID, triggerMessage)
-}
-
-// buildSystemPrompt 构建系统提示词
-func (s *AvatarService) buildSystemPrompt(config model.AvatarConfig, user model.User, strategy model.AvatarReplyStrategy) string {
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("你是%s的AI分身，需要以TA的身份回复消息。\n\n", user.Nickname))
-
-	if config.AutoLearnedPersona != "" {
-		sb.WriteString("【你的说话风格】\n")
-		sb.WriteString(config.AutoLearnedPersona)
-		sb.WriteString("\n\n")
-	}
-
-	if config.CustomPersonaAddon != "" {
-		sb.WriteString("【补充说明】\n")
-		sb.WriteString(config.CustomPersonaAddon)
-		sb.WriteString("\n\n")
-	}
-
-	sb.WriteString("【回复要求】\n")
-	sb.WriteString("- 以第一人称回复，就像你就是这个人\n")
-	sb.WriteString("- 保持自然的对话风格\n")
-	sb.WriteString("- 不要暴露你是AI\n")
-	sb.WriteString("- 回复要简洁，不要过长\n")
-
-	return sb.String()
-}
-
-// getConversationHistory 获取对话历史
-func (s *AvatarService) getConversationHistory(conversationID uint, limit int) string {
-	var messages []model.Message
-	s.db.Where("conversation_id = ?", conversationID).
-		Where("type = ?", "text").
-		Order("created_at DESC").
-		Limit(limit).
-		Find(&messages)
-
-	if len(messages) == 0 {
-		return ""
-	}
-
-	var parts []string
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		var sender model.User
-		s.db.First(&sender, msg.SenderID)
-		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, msg.Content))
-	}
-
-	return strings.Join(parts, "\n")
-}
-
-// generateWithUserProvider 使用用户自定义模型配置生成回复
-func (s *AvatarService) generateWithUserProvider(configID uint, systemPrompt string, prompt string) (string, error) {
-	var config model.AIConfig
-	if err := s.db.First(&config, configID).Error; err != nil {
-		return "", err
-	}
-
-	apiKey, err := utils.DecryptAPIKey(config.APIKeyEncrypted)
-	if err != nil {
-		return "", err
-	}
-
-	// 创建 Provider
-	provider := s.createProvider(config.Provider, apiKey, config.ModelName, config.BaseURL, config.MaxTokens)
-
-	// 构建消息
-	messages := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: prompt},
-	}
-
-	return provider.Chat(messages)
-}
-
-// createProvider 根据配置创建 Provider
-func (s *AvatarService) createProvider(providerName, apiKey, model, baseURL string, maxTokens int) ai.Provider {
-	config := ai.ProviderConfig{
-		APIKey:  apiKey,
-		Model:   model,
-		BaseURL: baseURL,
-		ExtraParams: map[string]interface{}{
-			"max_tokens": maxTokens,
-		},
-	}
-
-	switch providerName {
-	case "openai":
-		return ai.NewOpenAIProvider(config)
-	case "baidu":
-		return ai.NewBaiduProvider(config)
-	case "alibaba":
-		return ai.NewAlibabaProvider(config)
-	case "tencent":
-		return ai.NewTencentProvider(config)
-	case "bytedance":
-		return ai.NewBytedanceProvider(config)
-	case "anthropic":
-		return ai.NewAnthropicProvider(config)
-	default:
-		return ai.NewOpenAIProvider(config)
-	}
 }
 
 // PreviewReply 预览回复

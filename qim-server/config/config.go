@@ -345,7 +345,7 @@ func getDefaultConfig() yamlConfig {
 		},
 		JWT: JWTConfig{
 			Secret:            "${QIM_JWT_SECRET:change-me-to-random-string}",
-			Expire:            7200,
+			Expire:            604800,
 			RefreshExpireDays: 7,
 		},
 		DB: DatabaseConfig{

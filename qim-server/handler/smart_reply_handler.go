@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +26,14 @@ type SmartReplyEngine struct {
 	promptBuilder    *SmartPromptBuilder
 	messageSender    *WebSocketMessageSender
 	avatarWorkerPool *service.AvatarWorkerPool
+	avatarTriggerSvc AvatarTriggerDecider
 	smartReplyGraph  *service.SmartReplyGraph
+}
+
+// AvatarTriggerDecider decides whether a configured avatar should reply.
+// The interface keeps the real-time trigger path independent from a concrete AI provider.
+type AvatarTriggerDecider interface {
+	ShouldReply(userID uint, conversationID uint, message string, senderName string) (bool, string, error)
 }
 
 // NewSmartReplyEngine 创建智能回复引擎
@@ -49,6 +56,11 @@ func (e *SmartReplyEngine) SetUnifiedKnowledge(uk *service.UnifiedKnowledgeServi
 // SetAvatarWorkerPool 设置分身工作池
 func (e *SmartReplyEngine) SetAvatarWorkerPool(pool *service.AvatarWorkerPool) {
 	e.avatarWorkerPool = pool
+}
+
+// SetAvatarTriggerService injects the smart-avatar decision service.
+func (e *SmartReplyEngine) SetAvatarTriggerService(triggerSvc AvatarTriggerDecider) {
+	e.avatarTriggerSvc = triggerSvc
 }
 
 // SetMemoryService sets the avatar memory service for the smart reply engine
@@ -565,7 +577,7 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 	const workerCount = 5
 	sem := make(chan struct{}, workerCount)
 	// 共享令牌桶：每秒 2 次 AI 调用，突发上限 1
-	rl := NewRateLimiter(500 * time.Millisecond, 1)
+	rl := NewRateLimiter(500*time.Millisecond, 1)
 	var wg sync.WaitGroup
 	successCount := 0
 	failCount := 0
@@ -837,8 +849,28 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 		log.Printf("[AvatarTrigger] all 模式触发: userID=%d", session.UserID)
 		return true
 	case "smart":
-		log.Printf("[AvatarTrigger] smart 模式触发: userID=%d", session.UserID)
-		return true
+		if e.avatarTriggerSvc == nil {
+			log.Printf("[AvatarTrigger] smart 模式跳过：意图判断服务未初始化 userID=%d", session.UserID)
+			return false
+		}
+
+		var sender model.User
+		if err := db.Select("nickname", "username").First(&sender, senderID).Error; err != nil {
+			log.Printf("[AvatarTrigger] smart 模式跳过：获取发送者失败 userID=%d err=%v", senderID, err)
+			return false
+		}
+		senderName := sender.Nickname
+		if senderName == "" {
+			senderName = sender.Username
+		}
+
+		shouldReply, reason, err := e.avatarTriggerSvc.ShouldReply(session.UserID, session.ConversationID, content, senderName)
+		if err != nil {
+			log.Printf("[AvatarTrigger] smart 意图判断失败，跳过回复: userID=%d err=%v", session.UserID, err)
+			return false
+		}
+		log.Printf("[AvatarTrigger] smart 意图判断: userID=%d shouldReply=%v reason=%s", session.UserID, shouldReply, reason)
+		return shouldReply
 	default:
 		log.Printf("[AvatarTrigger] 未知触发模式: userID=%d mode=%s，按 mention 处理", session.UserID, effectiveMode)
 		return isGroupChat && len(mentionUserIDs) > 0

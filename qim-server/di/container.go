@@ -36,7 +36,6 @@ type Container struct {
 	SensitiveWordService *service.SensitiveWordService
 	AvatarService        *service.AvatarService
 	ApprovalService      *service.ApprovalService
-	AuthService          *service.AuthService
 	VersionService       *service.VersionService
 	BlacklistService     *service.BlacklistService
 	OperationLogService  *service.OperationLogService
@@ -108,7 +107,6 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	sensitiveWordService := service.NewSensitiveWordService(db)
 	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
-	authService := service.NewAuthService(db, cfg.JWT.Secret)
 	versionService := service.NewVersionService(db)
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
@@ -133,7 +131,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	var vectorSvc *service.VectorService
 	var noteVectorSvc *service.NoteVectorService
 	var avatarMemorySvc *service.AvatarMemoryService
-	var avatarTriggerSvc *service.AvatarTriggerService
+	// 智能触发只依赖 AI 与主数据库，不应受向量库是否可用影响。
+	avatarTriggerSvc := service.NewAvatarTriggerService(aiService, db)
 
 	vectorPath := cfg.Vector.Path
 	embedder := service.NewCortexDBEmbedder(aiService)
@@ -147,14 +146,13 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		logger.WithModule("DI").Info("VectorService 初始化成功")
 		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
 		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService)
-		avatarTriggerSvc = service.NewAvatarTriggerService(aiService, db)
 	}
 
 	// 注入向量服务到相关服务
 	if noteVectorSvc != nil {
 		noteService.SetVectorService(noteVectorSvc)
 		groupDocumentService.SetVectorServices(vectorSvc)
-		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc, avatarTriggerSvc)
+		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc)
 	}
 
 	promptManager := service.NewPromptManager()
@@ -181,7 +179,6 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		SensitiveWordService: sensitiveWordService,
 		AvatarService:        avatarService,
 		ApprovalService:      approvalService,
-		AuthService:          authService,
 		VersionService:       versionService,
 		BlacklistService:     blacklistService,
 		OperationLogService:  operationLogService,

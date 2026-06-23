@@ -93,6 +93,10 @@ func TestInitContainer(t *testing.T) {
 		t.Error("AvatarService should not be nil")
 	}
 
+	if container.AvatarTriggerService == nil {
+		t.Error("AvatarTriggerService should not depend on vector storage initialization")
+	}
+
 	if container.ApprovalService == nil {
 		t.Error("ApprovalService should not be nil")
 	}

@@ -133,8 +133,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		logger.WithModule("Routes").Info("SmartDigestGraph 初始化成功")
 	}
 
-	avatarService := service.NewAvatarService(GetDB(), aiSvc)
+	avatarService := di.GlobalContainer.AvatarService
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
+	if avatarTriggerSvc := di.GlobalContainer.AvatarTriggerService; avatarTriggerSvc != nil {
+		handler.GetSmartReplyEngine().SetAvatarTriggerService(avatarTriggerSvc)
+	}
 
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
 	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, _ []uint) {

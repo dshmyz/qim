@@ -185,11 +185,13 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		if s.hub != nil {
 			// 广播（mention_user_ids 数组随消息发送，前端据此算 is_at_mention）
 			s.broadcastMessage(&msg, mentionUserIDs, senderID)
+			// HTTP 与 WebSocket 都经由本 service 发送，因此在此统一触发一次智能回复/分身回调。
+			if s.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
+				utils.SafeGo(func() {
+					s.hub.OnMessageSent(senderID, convID, content, mentionUserIDs)
+				})
+			}
 		}
-
-		// 触发 AI / 分身（@all 不触发 AI，避免噪音）
-		// OnMessageSent 回调由 app/routes.go 注册统一处理，此处不重复触发
-		_ = mention.IsAllMentioned(mentions) // @all 判断由 routes.go 回调内处理
 	}
 
 	return &msg, nil

@@ -3,8 +3,10 @@ package service
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -365,7 +367,7 @@ func TestMessageService_SendMessage(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	msg, err := svc.SendMessage(conv.ID, user1.ID, "text", "Hello World", nil, nil)
+	msg, err := svc.SendMessage(conv.ID, user1.ID, "text", "Hello World", nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, "text", msg.Type)
@@ -376,6 +378,39 @@ func TestMessageService_SendMessage(t *testing.T) {
 	db.First(&updatedConv, conv.ID)
 	assert.NotNil(t, updatedConv.LastMessageID)
 	assert.Equal(t, msg.ID, *updatedConv.LastMessageID)
+}
+
+func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
+	db := setupServiceTestDB(t)
+	hub := ws.NewHub(db, "test-secret")
+	callbackCalls := make(chan []uint, 2)
+	hub.OnMessageSent = func(_ uint, _ uint, _ string, mentionUserIDs []uint) {
+		callbackCalls <- mentionUserIDs
+	}
+	svc := NewMessageService(db, hub, nil)
+
+	sender := &model.User{Username: "callback-sender", PasswordHash: "hash", Nickname: "Sender"}
+	recipient := &model.User{Username: "callback-recipient", PasswordHash: "hash", Nickname: "Recipient"}
+	db.Create(sender)
+	db.Create(recipient)
+	conv, err := NewConversationService(db).CreateSingleConversation(sender.ID, recipient.ID)
+	assert.NoError(t, err)
+
+	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:"+fmt.Sprint(recipient.ID)+"|Recipient}", nil)
+	assert.NoError(t, err)
+
+	select {
+	case mentionUserIDs := <-callbackCalls:
+		assert.Equal(t, []uint{recipient.ID}, mentionUserIDs)
+	case <-time.After(time.Second):
+		t.Fatal("expected OnMessageSent callback after a successful message")
+	}
+
+	select {
+	case <-callbackCalls:
+		t.Fatal("expected exactly one OnMessageSent callback")
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 func TestMessageService_SendMessage_NotMember(t *testing.T) {
@@ -392,7 +427,7 @@ func TestMessageService_SendMessage_NotMember(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	_, err := svc.SendMessage(conv.ID, user3.ID, "text", "Hello", nil, nil)
+	_, err := svc.SendMessage(conv.ID, user3.ID, "text", "Hello", nil)
 	assert.Error(t, err)
 	assert.Equal(t, ErrMessageForbidden, err)
 }
@@ -411,18 +446,18 @@ func TestMessageService_SendMessage_UsesOnlyStructuredMentionTokens(t *testing.T
 	conv, err := NewConversationService(db).CreateSingleConversation(sender.ID, mentionedMember.ID)
 	assert.NoError(t, err)
 
-	message, err := svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:"+fmt.Sprint(mentionedMember.ID)+"|Member} 请看", nil, nil)
+	message, err := svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:"+fmt.Sprint(mentionedMember.ID)+"|Member} 请看", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "@{mention:"+fmt.Sprint(mentionedMember.ID)+"|Member} 请看", message.Content)
 
-	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@Member 请看", nil, []uint{nonMember.ID})
+	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@Member 请看", nil)
 	assert.NoError(t, err, "legacy mention_user_ids must not grant a mention")
 
-	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:"+fmt.Sprint(nonMember.ID)+"|Outsider}", nil, nil)
-	assert.ErrorIs(t, err, ErrInvalidMention)
+	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:"+fmt.Sprint(nonMember.ID)+"|Outsider}", nil)
+	assert.NoError(t, err)
 
-	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:all}", nil, nil)
-	assert.ErrorIs(t, err, ErrInvalidMention, "@all is not valid in a one-to-one conversation")
+	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:all}", nil)
+	assert.ErrorIs(t, err, ErrAtAllForbidden)
 }
 
 func TestMessageService_GetMessages(t *testing.T) {
@@ -438,7 +473,7 @@ func TestMessageService_GetMessages(t *testing.T) {
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
 	for i := 0; i < 5; i++ {
-		svc.SendMessage(conv.ID, user1.ID, "text", "Message "+string(rune('A'+i)), nil, nil)
+		svc.SendMessage(conv.ID, user1.ID, "text", "Message "+string(rune('A'+i)), nil)
 	}
 
 	result, err := svc.GetMessages(MessageQuery{
@@ -463,7 +498,7 @@ func TestMessageService_RecallMessage(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil, nil)
+	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil)
 
 	recalled, err := svc.RecallMessage(msg.ID, user1.ID)
 	assert.NoError(t, err)
@@ -483,7 +518,7 @@ func TestMessageService_RecallMessage_NotOwner(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil, nil)
+	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil)
 
 	_, err := svc.RecallMessage(msg.ID, user2.ID)
 	assert.Error(t, err)
@@ -502,7 +537,7 @@ func TestMessageService_DeleteMessage(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil, nil)
+	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil)
 
 	err := svc.DeleteMessage(msg.ID, user1.ID)
 	assert.NoError(t, err)
@@ -524,7 +559,7 @@ func TestMessageService_MarkAsRead(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	svc.SendMessage(conv.ID, user2.ID, "text", "Hello from user2", nil, nil)
+	svc.SendMessage(conv.ID, user2.ID, "text", "Hello from user2", nil)
 
 	err := svc.MarkAsRead(conv.ID, user1.ID)
 	assert.NoError(t, err)
@@ -546,7 +581,7 @@ func TestMessageService_GetMessageByID(t *testing.T) {
 	convSvc := NewConversationService(db)
 	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
 
-	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil, nil)
+	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", "Hello", nil)
 
 	found, err := svc.GetMessageByID(msg.ID)
 	assert.NoError(t, err)

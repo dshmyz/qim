@@ -1,0 +1,8 @@
+refactor: 解耦 AvatarTriggerService 与向量库依赖
+
+- 将 AvatarTriggerService 初始化从向量库条件分支中移出，确保其独立于向量存储可用性
+- 在 SmartReplyEngine 中引入 AvatarTriggerDecider 接口，通过依赖注入方式管理触发逻辑
+- 移除未使用的 AuthService，清理 DI 容器冗余字段
+- 调整 JWT 默认过期时间为 7 天，优化用户体验
+- 修复前端 mentions 工具函数命名及类型定义，统一接口契约
+- 更新相关测试用例以适配新架构
