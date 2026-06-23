@@ -522,9 +522,10 @@ const isFileContent = (content: string): boolean => {
   white-space: pre-wrap;
 }
 
+/* 自己消息：浅色主色背景 + 深色文字（反转型，提升正文与 @ chip 可读性） */
 .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: white;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
@@ -546,14 +547,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="ocean-blue"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
 [data-theme="ocean-blue"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 [data-theme="ocean-blue"] .message-item.self .recalled-message {
@@ -562,14 +563,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="elegant-purple"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
 [data-theme="elegant-purple"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 [data-theme="elegant-purple"] .message-item.self .recalled-message {
@@ -578,14 +579,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="warm-amber"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
 [data-theme="warm-amber"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 [data-theme="warm-amber"] .message-item.self .recalled-message {
@@ -594,14 +595,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="crimson-red"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
 [data-theme="crimson-red"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 [data-theme="crimson-red"] .message-item.self .recalled-message {
@@ -610,14 +611,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="emerald-green"] .message-item.self .message-bubble {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border: none;
 }
 
 [data-theme="emerald-green"] .message-item.self .file-message {
-  background: var(--primary-color);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 [data-theme="emerald-green"] .message-item.self .recalled-message {

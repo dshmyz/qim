@@ -103,15 +103,4 @@ const handleClick = (event: MouseEvent) => {
   color: var(--color-warning-600, #d97706);
   background: rgba(245, 158, 11, 0.18);
 }
-
-/* 自己发的消息：气泡背景是主色，chip 需用高对比色（白底深字） */
-.text-message.self :deep(.at-mention-chip) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.text-message.self :deep(.at-mention-chip--all) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.35);
-}
 </style>
