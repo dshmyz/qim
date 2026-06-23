@@ -74,6 +74,7 @@
       :pending-files="pendingFiles"
       :show-emoji-panel="showEmojiPanel"
       :show-at-members-panel="showAtMembersPanel"
+      :at-members-query="atMembersQuery"
       v-model:show-mini-app-list="showMiniAppList"
       :quoted-message="quotedMessage"
       :is-electron="isElectron"
@@ -83,6 +84,7 @@
       v-model:search-query="searchQuery"
       @send="handleSend"
       @input="handleInput"
+      @cursor-change="handleInput"
       @toggle-emoji-panel="toggleEmojiPanel"
       @close-emoji-panel="closeEmojiPanel"
       @select-file="selectFile"
@@ -221,8 +223,11 @@ import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
 import { logger } from '../../utils/logger'
+import { saveDraft } from '../../utils/drafts'
 import {
+  findActiveMentionToken,
   reconcileMentionSpans,
+  replaceMentionToken,
   serializeToContent,
   type MentionSpan,
 } from '../../utils/mentions'
@@ -489,6 +494,8 @@ watch(() => props.conversation?.id, (newId, oldId) => {
     mentionSpans.value = []
     trackedInputMessage.value = ''
     pendingAtPosition.value = -1
+    pendingAtEnd.value = -1
+    atMembersQuery.value = ''
     showAtMembersPanel.value = false
 
     scrollToBottom()
@@ -503,10 +510,7 @@ const isInsertingSystemMessage = ref(false)
 // 输入变化时保存草稿
 watch(inputMessage, () => {
   if (props.conversation?.id) {
-    localStorage.setItem(`qim_draft_${props.conversation.id}`, JSON.stringify({
-      text: inputMessage.value,
-      quoted: quotedMessage.value
-    }))
+    saveDraft(props.conversation.id, inputMessage.value, quotedMessage.value)
   }
 })
 
@@ -546,6 +550,8 @@ const inputCursorPosition = ref(0)
 const mentionSpans = ref<MentionSpan[]>([])
 const trackedInputMessage = ref('')
 const pendingAtPosition = ref(-1)
+const pendingAtEnd = ref(-1)
+const atMembersQuery = ref('')
 
 // 输入文本变化时同步 mention span（编辑后维持 span 与文本一致性）
 watch(inputMessage, (nextText) => {
@@ -618,6 +624,13 @@ const closeEmojiPanel = () => {
   showEmojiPanel.value = false
 }
 
+const clearActiveMention = () => {
+  pendingAtPosition.value = -1
+  pendingAtEnd.value = -1
+  atMembersQuery.value = ''
+  showAtMembersPanel.value = false
+}
+
 // 处理输入事件，处理 @ 功能
 const handleInput = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
@@ -628,18 +641,20 @@ const handleInput = (event: Event) => {
   // 仅群聊/讨论组启用 @ 功能
   const convType = props.conversation?.type
   if (convType !== 'group' && convType !== 'discussion') {
+    clearActiveMention()
     return
   }
 
-  // 检查是否输入了 @ 符号，且前一字符为空白/行首（避免邮箱、URL 误触发）
-  if (value.charAt(cursorPos - 1) === '@') {
-    const prevChar = value.charAt(cursorPos - 2)
-    const isBoundary = cursorPos - 2 < 0 || /\s/.test(prevChar)
-    if (isBoundary) {
-      pendingAtPosition.value = cursorPos - 1
-      showAtMembersPanel.value = true
-    }
+  const token = findActiveMentionToken(value, cursorPos)
+  if (!token) {
+    clearActiveMention()
+    return
   }
+
+  pendingAtPosition.value = token.start
+  pendingAtEnd.value = token.end
+  atMembersQuery.value = token.query
+  showAtMembersPanel.value = true
 }
 
 // 处理粘贴事件
@@ -735,21 +750,25 @@ const selectAtMember = (member: { id: string; name: string; avatar: string }) =>
   showAtMembersPanel.value = false
 
   const atPosition = pendingAtPosition.value
-  pendingAtPosition.value = -1
-  if (atPosition < 0) return
+  const atEnd = pendingAtEnd.value
+  if (atPosition < 0 || atEnd < atPosition) return
 
   const value = inputMessage.value
-  const insertText = `@${member.name} `
-  const newText = value.substring(0, atPosition) + insertText + value.substring(atPosition + 1)
+  const mentionText = `@${member.name}`
+  const insertText = /^\s/.test(value.slice(atEnd)) ? mentionText : `${mentionText} `
+  const newText = replaceMentionToken(value, { start: atPosition, end: atEnd }, insertText)
   inputMessage.value = newText
+  pendingAtPosition.value = -1
+  pendingAtEnd.value = -1
+  atMembersQuery.value = ''
   // 同步更新 trackedInputMessage，防止 watch 触发 reconcile 误判新 span 为跨越编辑区
   trackedInputMessage.value = newText
 
   // 记录 mention span（覆盖 "@姓名"，不含尾随空格）
   const span: MentionSpan = {
     start: atPosition,
-    end: atPosition + member.name.length + 1,
-    text: `@${member.name}`,
+    end: atPosition + mentionText.length,
+    text: mentionText,
     userId: typeof member.id === 'string' ? Number(member.id) : member.id,
   }
   mentionSpans.value = [...mentionSpans.value, span]
@@ -773,21 +792,25 @@ const selectAtAll = () => {
   showAtMembersPanel.value = false
 
   const atPosition = pendingAtPosition.value
-  pendingAtPosition.value = -1
-  if (atPosition < 0) return
+  const atEnd = pendingAtEnd.value
+  if (atPosition < 0 || atEnd < atPosition) return
 
   const value = inputMessage.value
-  const insertText = `@所有人 `
-  const newText = value.substring(0, atPosition) + insertText + value.substring(atPosition + 1)
+  const mentionText = '@所有人'
+  const insertText = /^\s/.test(value.slice(atEnd)) ? mentionText : `${mentionText} `
+  const newText = replaceMentionToken(value, { start: atPosition, end: atEnd }, insertText)
   inputMessage.value = newText
+  pendingAtPosition.value = -1
+  pendingAtEnd.value = -1
+  atMembersQuery.value = ''
   // 同步更新 trackedInputMessage，防止 watch 触发 reconcile 误判新 span 为跨越编辑区
   trackedInputMessage.value = newText
 
   // 记录 mention span
   const span: MentionSpan = {
     start: atPosition,
-    end: atPosition + 4,
-    text: '@所有人',
+    end: atPosition + mentionText.length,
+    text: mentionText,
     userId: 'all',
   }
   mentionSpans.value = [...mentionSpans.value, span]
@@ -805,7 +828,7 @@ const selectAtAll = () => {
 
 // 关闭 @ 成员面板
 const closeAtMembersPanel = () => {
-  showAtMembersPanel.value = false
+  clearActiveMention()
 }
 
 // 群成员搜索
@@ -884,10 +907,10 @@ const handleSend = async () => {
     quotedMessage.value = null
     mentionSpans.value = []
     trackedInputMessage.value = ''
-    pendingAtPosition.value = -1
+    clearActiveMention()
     // 发送成功后清空草稿
     if (props.conversation?.id) {
-      localStorage.removeItem(`qim_draft_${props.conversation.id}`)
+      saveDraft(props.conversation.id, '', null)
     }
   }
 }

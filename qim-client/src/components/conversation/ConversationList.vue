@@ -67,6 +67,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts'
 import { decodeToPlainText } from '../../utils/mentions'
 
 interface User {
@@ -160,34 +161,36 @@ function loadDraftForConversation(id: string): DraftCache {
 function updateDraftsCache() {
   const newCache = new Map<string, DraftCache>()
   for (const conversation of props.conversations) {
-    const cached = draftsCache.value.get(conversation.id)
-    if (cached) {
-      newCache.set(conversation.id, cached)
-    } else {
-      newCache.set(conversation.id, loadDraftForConversation(conversation.id))
-    }
+    newCache.set(conversation.id, loadDraftForConversation(conversation.id))
   }
   draftsCache.value = newCache
+}
+
+function refreshDraft(conversationId: string) {
+  draftsCache.value.set(conversationId, loadDraftForConversation(conversationId))
 }
 
 function handleStorageChange(event: StorageEvent) {
   if (event.key?.startsWith('qim_draft_')) {
     const id = event.key.replace('qim_draft_', '')
-    if (event.newValue) {
-      draftsCache.value.set(id, loadDraftForConversation(id))
-    } else {
-      draftsCache.value.set(id, { hasDraft: false, preview: '' })
-    }
+    refreshDraft(id)
   }
+}
+
+function handleDraftChanged(event: Event) {
+  const conversationId = (event as CustomEvent<DraftChangedDetail>).detail?.conversationId
+  if (conversationId) refreshDraft(conversationId)
 }
 
 onMounted(() => {
   updateDraftsCache()
   window.addEventListener('storage', handleStorageChange)
+  window.addEventListener(DRAFT_CHANGED_EVENT, handleDraftChanged)
 })
 
 onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener(DRAFT_CHANGED_EVENT, handleDraftChanged)
 })
 
 watch(() => props.conversations, () => {

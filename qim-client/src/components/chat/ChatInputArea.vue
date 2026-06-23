@@ -7,6 +7,7 @@
     :pending-files="pendingFiles"
     :show-emoji-panel="showEmojiPanel"
     :show-at-members-panel="showAtMembersPanel"
+    :at-members-query="atMembersQuery"
     v-model:show-mini-app-list="showMiniAppListLocal"
     :quoted-message="quotedMessage"
     :is-electron="isElectron"
@@ -16,6 +17,7 @@
     :is-processing="props.isProcessing ?? false"
     @send="emit('send')"
     @input="emit('input', $event)"
+    @cursor-change="emit('cursor-change', $event)"
     @toggle-emoji-panel="emit('toggle-emoji-panel')"
     @close-emoji-panel="emit('close-emoji-panel')"
     @select-file="emit('select-file')"
@@ -52,7 +54,7 @@ import MessageInput from './MessageInput.vue'
 interface InputConversation {
   id: string
   type: 'single' | 'group' | 'discussion'
-  members?: Array<{ id: string; name: string; avatar: string }>
+  members?: Array<{ id: string; name: string; username?: string; avatar: string }>
 }
 
 interface Props {
@@ -61,6 +63,7 @@ interface Props {
   pendingFiles: Array<{ file: File; name: string }>
   showEmojiPanel: boolean
   showAtMembersPanel: boolean
+  atMembersQuery: string
   showMiniAppList: boolean
   showSearch: boolean
   searchQuery: string
@@ -77,6 +80,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'send': []
   'input': [event: Event]
+  'cursor-change': [event: Event]
   'toggle-emoji-panel': []
   'close-emoji-panel': []
   'select-file': []
@@ -90,7 +94,7 @@ const emit = defineEmits<{
   'start-screen-share': []
   'insert-emoji': [emoji: string]
   'close-at-members-panel': []
-  'select-at-member': [member: { id: string; name: string; avatar: string }]
+  'select-at-member': [member: { id: string; name: string; username?: string; avatar: string }]
   'select-at-all': []
   'handle-file-select': [event: Event]
   'handle-paste': [event: ClipboardEvent]

@@ -25,7 +25,56 @@ export interface ParsedMention {
   userId: number | 'all'
 }
 
+/** 当前光标所在、可用于成员补全的 @token。 */
+export interface ActiveMentionToken {
+  start: number
+  end: number
+  query: string
+}
+
 const TOKEN_REGEX = /@\{mention:(all|[1-9]\d*)(?:\|([^}]*))?\}/g
+
+/**
+ * 查找光标所在的 @token。
+ *
+ * `@` 必须位于文本开头或空白字符之后，避免把邮箱和 URL 里的 @ 误作提及。
+ * token 以空白字符或文本结尾为边界；end 覆盖完整 token，用于选择成员时整体替换。
+ */
+export function findActiveMentionToken(text: string, cursor: number): ActiveMentionToken | null {
+  if (cursor < 0 || cursor > text.length) return null
+
+  let start = cursor - 1
+  while (start >= 0 && !/\s/.test(text[start])) {
+    if (text[start] === '@') break
+    start--
+  }
+
+  if (start < 0 || text[start] !== '@') return null
+  if (start > 0 && !/\s/.test(text[start - 1])) return null
+
+  let end = cursor
+  while (end < text.length && !/\s/.test(text[end])) end++
+
+  return {
+    start,
+    end,
+    query: text.slice(start + 1, cursor),
+  }
+}
+
+/** 将完整 @token 替换为已选择的提及文本。 */
+export function replaceMentionToken(
+  text: string,
+  token: Pick<ActiveMentionToken, 'start' | 'end'>,
+  replacement: string
+): string {
+  const suffix = text.slice(token.end)
+  const normalizedReplacement = /\s$/.test(replacement) && /^\s/.test(suffix)
+    ? replacement.trimEnd()
+    : replacement
+
+  return text.slice(0, token.start) + normalizedReplacement + suffix
+}
 
 /** 生成 @ 单人的 token。 */
 export function encodeMentionToken(userId: number, name: string): string {

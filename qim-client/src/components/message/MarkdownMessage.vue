@@ -203,11 +203,12 @@ const renderedContent = computed(() => {
 }
 
 .markdown-message.self a {
-  color: #e3f2fd;
+  color: #fef08a;
+  text-decoration: none;
 }
 
 .markdown-message.self a:hover {
-  color: white;
+  color: #fef08a;
 }
 
 .markdown-message.self ::selection {

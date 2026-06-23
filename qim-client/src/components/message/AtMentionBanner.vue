@@ -24,29 +24,29 @@ defineEmits<{
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-bottom: 1px solid #f59e0b;
+  background: var(--primary-light, rgba(59, 130, 246, 0.08));
+  border-bottom: 1px solid rgba(59, 130, 246, 0.18);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .at-mention-banner:hover {
-  background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .banner-text {
   flex: 1;
   font-size: 13px;
-  color: #92400e;
+  color: var(--text-secondary);
 }
 
 .banner-text strong {
-  color: #b45309;
+  color: var(--primary-color, #2563eb);
 }
 
 .banner-action {
   font-size: 12px;
-  color: #b45309;
+  color: var(--primary-color, #2563eb);
   opacity: 0.8;
 }
 </style>

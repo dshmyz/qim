@@ -39,23 +39,12 @@
     <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" class="at-members-panel-container">
       <div class="at-members-panel-backdrop" @click="$emit('close-at-members-panel')"></div>
       <div
-        ref="atMembersPanelRef"
         class="at-members-panel"
         role="listbox"
         aria-label="选择提及成员"
         @keydown="handleAtMembersKeyDown"
       >
         <div class="at-members-header"><h4>选择成员</h4></div>
-        <div class="at-members-search">
-          <input
-            ref="atMembersSearchRef"
-            v-model="atMembersSearchQuery"
-            type="text"
-            placeholder="搜索成员..."
-            class="at-members-search-input"
-            @keydown="handleAtMembersKeyDown"
-          />
-        </div>
         <div ref="atMembersListRef" class="at-members-list" role="list">
           <div
             class="at-member-item"
@@ -77,7 +66,10 @@
             @click="$emit('select-at-member', member)"
           >
             <Avatar :src="member.avatar" :name="member.name || '未知用户'" :alt="member.name || '未知用户'" size="sm" class="at-member-avatar" />
-            <span class="at-member-name">{{ member.name || '未知用户' }}</span>
+            <span class="at-member-identity">
+              <span class="at-member-name">{{ member.name || '未知用户' }}</span>
+              <span v-if="member.username && member.username !== member.name" class="at-member-username">@{{ member.username }}</span>
+            </span>
           </div>
           <div v-if="filteredAtMembers.length === 0" class="empty-at-members"><p>没有找到匹配的成员</p></div>
         </div>
@@ -103,8 +95,10 @@
         class="message-input"
         placeholder="输入消息..."
         rows="4"
-        @keydown.enter="$emit('handle-keydown', $event)"
+        @keydown="handleTextareaKeydown"
         @input="handleInputAndResize"
+        @keyup="$emit('cursor-change', $event)"
+        @click="$emit('cursor-change', $event)"
         @paste="$emit('handle-paste', $event)"
       />
     </div>
@@ -128,7 +122,7 @@ import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
 
 interface PendingFile { file: File; name: string }
-interface Member { id: string; name: string; avatar: string }
+interface Member { id: string; name: string; username?: string; avatar: string }
 interface Conversation { id: string; type: 'single' | 'group' | 'discussion'; members?: Member[] }
 
 interface Props {
@@ -137,6 +131,7 @@ interface Props {
   pendingFiles: PendingFile[]
   showEmojiPanel: boolean
   showAtMembersPanel: boolean
+  atMembersQuery: string
   showMiniAppList: boolean
   isProcessing?: boolean
   quotedMessage: any
@@ -176,15 +171,13 @@ const emit = defineEmits<{
   (e: 'ai-action', actionId: string): void
   (e: 'update:showMiniAppList', value: boolean): void
   (e: 'input', event: Event): void
+  (e: 'cursor-change', event: Event): void
   (e: 'handle-drop', event: DragEvent): void
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const messageInputRef = ref<HTMLTextAreaElement | null>(null)
-const atMembersSearchRef = ref<HTMLInputElement | null>(null)
-const atMembersPanelRef = ref<HTMLDivElement | null>(null)
 const atMembersListRef = ref<HTMLDivElement | null>(null)
-const atMembersSearchQuery = ref('')
 const atMemberActiveIndex = ref(-1)
 const localShowAIActions = ref(false)
 const isDragOver = ref(false)
@@ -193,9 +186,11 @@ const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) =
 
 const filteredAtMembers = computed(() => {
   if (!props.conversation) return []
-  if (!atMembersSearchQuery.value) return props.conversation.members || []
-  const query = atMembersSearchQuery.value.toLowerCase()
-  return (props.conversation.members || []).filter(member => member.name.toLowerCase().includes(query))
+  if (!props.atMembersQuery) return props.conversation.members || []
+  const query = props.atMembersQuery.toLowerCase()
+  return (props.conversation.members || []).filter(member =>
+    member.name.toLowerCase().includes(query) || member.username?.toLowerCase().includes(query)
+  )
 })
 
 const handleEmojiSelect = (emoji: string) => {
@@ -279,6 +274,15 @@ const handleAtMembersKeyDown = (event: KeyboardEvent) => {
   }
 }
 
+const handleTextareaKeydown = (event: KeyboardEvent) => {
+  if (props.showAtMembersPanel && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(event.key)) {
+    handleAtMembersKeyDown(event)
+    return
+  }
+
+  emit('handle-keydown', event)
+}
+
 const handleInputAndResize = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
   textarea.style.height = 'auto'
@@ -291,13 +295,17 @@ const handleInputAndResize = (event: Event) => {
 
 watch(
   () => props.showAtMembersPanel,
-  async (newVal) => {
+  (newVal) => {
     if (newVal) {
       atMemberActiveIndex.value = -1
-      atMembersSearchQuery.value = ''
-      await nextTick()
-      atMembersSearchRef.value?.focus()
     }
+  }
+)
+
+watch(
+  () => props.atMembersQuery,
+  () => {
+    atMemberActiveIndex.value = -1
   }
 )
 
@@ -571,25 +579,6 @@ defineExpose({ messageInputRef })
   color: var(--text-color);
 }
 
-.at-members-search {
-  margin-bottom: 12px;
-}
-
-.at-members-search-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--input-bg);
-  color: var(--text-color);
-  font-size: 14px;
-}
-
-.at-members-search-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-}
-
 .at-members-list {
   max-height: 200px;
   overflow-y: auto;
@@ -621,6 +610,18 @@ defineExpose({ messageInputRef })
 .at-member-name {
   font-size: 14px;
   color: var(--text-color);
+}
+
+.at-member-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.at-member-username {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .empty-at-members {

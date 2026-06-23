@@ -26,14 +26,35 @@ type Segment =
   | { type: 'text'; html: string }
   | { type: 'mention'; text: string; userId: number | 'all' }
 
-const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
+const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s<>()\[\]]+)\)/g
+const urlRegex = /(https?:\/\/[^\s<>()\[\]]+)/g
+
+const renderLink = (url: string, label = url): string => {
+  const classes = props.isSelf ? 'message-link message-link--self' : 'message-link'
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="${classes}">${label}</a>`
+}
+
+const linkifyUrls = (text: string): string => text.replace(urlRegex, (matchedUrl) => {
+  const url = matchedUrl.replace(/[.,:;!?]+$/, '')
+  const trailingText = matchedUrl.slice(url.length)
+  return renderLink(url) + trailingText
+})
 
 // 将纯文本片段转为带链接的 HTML（先转义，再插链接）
 const textToHtml = (text: string): string => {
   const escaped = escapeHTML(text)
-  const linked = escaped.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
+  let linked = ''
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  markdownLinkRegex.lastIndex = 0
+  while ((match = markdownLinkRegex.exec(escaped)) !== null) {
+    linked += linkifyUrls(escaped.slice(lastIndex, match.index))
+    linked += renderLink(match[2], match[1])
+    lastIndex = match.index + match[0].length
+  }
+  linked += linkifyUrls(escaped.slice(lastIndex))
+
   return sanitizeHTML(linked)
 }
 
@@ -96,11 +117,22 @@ const handleClick = (event: MouseEvent) => {
   cursor: default;
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(59, 130, 246, 0.16);
+  /* background: rgba(59, 130, 246, 0.16); */
 }
 
 :deep(.at-mention-chip--all) {
   color: var(--color-warning-600, #d97706);
   background: rgba(245, 158, 11, 0.18);
+}
+
+:deep(.message-link) {
+  color: var(--primary-color, #2563eb);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+:deep(.message-link--self) {
+  color: var(--self-message-link-color, #1d4ed8);
 }
 </style>

@@ -20,10 +20,10 @@ defineProps<{
   height: 18px;
   padding: 0 4px;
   border-radius: 4px;
-  background: #ef4444;
-  color: white;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary-color, #2563eb);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 </style>

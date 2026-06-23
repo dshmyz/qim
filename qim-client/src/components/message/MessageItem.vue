@@ -23,7 +23,6 @@
       <div class="message-content">
         <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && !isAIMessage" class="message-sender">
           <span>{{ message.sender.name || '未知用户' }}</span>
-          <AtMentionBadge v-if="message.isAtMention" :is-at-mention="true" />
         </div>
 
         <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && isAIMessage" class="message-sender">
@@ -182,7 +181,6 @@ import MarkdownMessage from './MarkdownMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
-import AtMentionBadge from './AtMentionBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed } from 'vue'
@@ -524,6 +522,7 @@ const isFileContent = (content: string): boolean => {
 
 /* 自己消息：浅色主色背景 + 深色文字（反转型，提升正文与 @ chip 可读性） */
 .message-item.self .message-bubble {
+  --self-message-link-color: #1d4ed8;
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
@@ -531,6 +530,7 @@ const isFileContent = (content: string): boolean => {
 
 /* 为其他主题保留原来的样式 */
 [data-theme="elegant-dark"] .message-item.self .message-bubble {
+  --self-message-link-color: #dbeafe;
   background: var(--primary-color);
   color: #fff;
   border: none;
@@ -647,13 +647,18 @@ const isFileContent = (content: string): boolean => {
   color: #999;
 }
 
-.message-item.self .message-link {
-  color: #e3f2fd;
+:global(.message-item.self .message-link) {
+  color: #0f3e91 !important;
+  text-decoration: none !important;
 }
 
-.message-item.self .message-link:hover {
-  color: white;
-  text-decoration: underline;
+:global(.message-item.self .message-link:hover) {
+  color: #0f3e91 !important;
+  text-decoration: none !important;
+}
+
+:global([data-theme="elegant-dark"] .message-item.self .message-link) {
+  color: #fef08a !important;
 }
 
 /* AI 消息样式 - 私聊中不生效 */
@@ -727,7 +732,7 @@ const isFileContent = (content: string): boolean => {
 
 .message-link:hover {
   color: #2563eb;
-  text-decoration: underline;
+  text-decoration: none;
   transform: translateY(-1px);
 }
 
@@ -748,7 +753,7 @@ const isFileContent = (content: string): boolean => {
 
 /* 自己的消息中的@用户样式 */
 .message-item.self .at-user {
-  color: #e3f2fd;
+  color: var(--self-message-link-color, #1d4ed8);
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -761,14 +766,11 @@ const isFileContent = (content: string): boolean => {
   color: white;
 }
 
-/* @ 我消息特殊背景 */
+/* @ 我消息：轻提示，不抢正文的视觉焦点 */
 .message-item.at-mention .message-bubble {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border: 1px solid #f59e0b;
-}
-
-.message-item.at-mention .message-sender {
-  color: #b45309;
-  font-weight: 600;
+  background: var(--primary-light, rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-left: 3px solid var(--primary-color, #3b82f6);
+  box-shadow: none;
 }
 </style>
