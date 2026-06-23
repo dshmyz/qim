@@ -264,11 +264,8 @@ function createWindow() {
     }
   })
 
-  const splashHtml = fs.readFileSync(path.join(__dirname, 'splash.html'), 'utf-8')
-    .replace('{{APP_NAME}}', 'QIM 青雀')
-    .replace('{{APP_SUBTITLE}}', '简洁 · 高效 · 智能')
-    .replace('{{APP_VERSION}}', `v${app.getVersion()}`)
-  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`)
+  const splashPath = path.join(__dirname, 'splash.html')
+  splashWindow.loadFile(splashPath)
   console.log(`Loading splash for version: v${app.getVersion()}`)
 
   // Main window
