@@ -177,20 +177,20 @@ const handleOpenAdd = () => {
 
 const handleAddSubmit = async () => {
   if (!addFormRef.value) return
-  await addFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    addSubmitting.value = true
-    try {
-      await addToBlacklist({ userId: addForm.userId!, reason: addForm.reason })
-      ElMessage.success('已添加到黑名单')
-      addDialogVisible.value = false
-      fetchBlacklist()
-    } catch {
-      // 错误已在请求拦截器中处理
-    } finally {
-      addSubmitting.value = false
-    }
-  })
+  const valid = await addFormRef.value.validate()
+  if (!valid) return
+  
+  addSubmitting.value = true
+  try {
+    await addToBlacklist({ userId: addForm.userId!, reason: addForm.reason })
+    ElMessage.success('已添加到黑名单')
+    addDialogVisible.value = false
+    fetchBlacklist()
+  } catch {
+    // 错误已在请求拦截器中处理
+  } finally {
+    addSubmitting.value = false
+  }
 }
 
 onMounted(fetchBlacklist)
