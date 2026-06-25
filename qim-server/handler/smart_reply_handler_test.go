@@ -5,6 +5,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,6 +23,14 @@ func (s *avatarTriggerDeciderStub) ShouldReply(userID uint, conversationID uint,
 	s.message = message
 	s.senderName = senderName
 	return s.shouldReply, "test decision", nil
+}
+
+func TestAIMentionDetectsStructuredMentionTokenByAssistantName(t *testing.T) {
+	engine := &SmartReplyEngine{}
+	content := mention.Encode(42, "青雀一号") + " 帮我总结一下"
+
+	assert.True(t, engine.isAIMention(content, "青雀一号"))
+	assert.Equal(t, "帮我总结一下", extractAIQuestion(content, "青雀一号"))
 }
 
 func TestShouldTriggerAvatar_SmartDoesNotFallbackToAllWithoutDecider(t *testing.T) {

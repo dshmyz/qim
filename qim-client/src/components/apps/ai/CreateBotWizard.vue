@@ -149,7 +149,7 @@ async function handleSubmit() {
     const response = await createBot({
       name: form.value.name,
       description: form.value.description,
-      type: 'ai',
+      type: 'assistant',
       config: {
         system_prompt: form.value.system_prompt,
         use_system_config: form.value.useSystemConfig,

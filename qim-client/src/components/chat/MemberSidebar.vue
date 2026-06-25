@@ -30,7 +30,7 @@
       />
     </div>
     <div v-if="isExpanded" class="members-content">
-      <div v-for="member in filteredMembers" :key="member.id" class="member-item" :class="{ 'bot-member': member.type === 'bot_assistant' }" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)">
+      <div v-for="member in filteredMembers" :key="member.id" class="member-item" :class="{ 'bot-member': isBotType(member.type) }" @contextmenu.prevent="handleMemberContextMenu($event, member)" @dblclick="handleStartPrivateChat(member)">
         <Avatar
           :src="member.avatar"
           :name="member.name || '未知用户'"
@@ -42,7 +42,7 @@
           <span class="member-name">{{ member.name || '未知用户' }}</span>
           <span v-if="member.role === 'owner'" class="member-role owner" title="群主"><i class="fas fa-crown"></i></span>
           <span v-else-if="member.role === 'admin'" class="member-role admin" title="管理员"><i class="fas fa-user-shield"></i></span>
-          <span v-if="member.type === 'bot_assistant'" class="member-role bot" title="AI助手"><i class="fas fa-robot"></i></span>
+          <span v-if="isBotType(member.type)" class="member-role bot" title="AI助手"><i class="fas fa-robot"></i></span>
         </div>
       </div>
     </div>
@@ -52,7 +52,7 @@
         :key="member.id"
         class="collapsed-avatar-item"
         @contextmenu.prevent="handleCollapsedMemberContextMenu($event, member)"
-        @dblclick="member.type !== 'bot_assistant' && handleStartPrivateChat(member)"
+        @dblclick="handleStartPrivateChat(member)"
       >
         <Avatar
           :src="member.avatar"
@@ -105,6 +105,8 @@ const searchQueryLocal = computed({
 })
 
 const rolePriority: Record<string, number> = { owner: 3, admin: 2, member: 1 }
+
+const isBotType = (type?: string) => type === 'bot'
 
 const filteredMembers = computed(() => {
   let members = props.members || []
@@ -167,6 +169,7 @@ const handleCollapsedMemberContextMenu = (event: MouseEvent, member: Member) => 
 }
 
 const handleStartPrivateChat = (member: Member) => {
+  if (isBotType(member.type)) return
   emit('start-private-chat', member)
 }
 </script>

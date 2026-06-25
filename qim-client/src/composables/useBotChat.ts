@@ -6,6 +6,44 @@ import { request, getToken } from './useRequest'
 import { useCurrentUser } from './useCurrentUser'
 import type { BotMessage } from '../types/bot'
 
+function normalizeSenderType(msg: any): BotMessage['senderType'] {
+  if (msg.sender_type) return msg.sender_type
+  const senderType = msg.sender?.type
+	if (
+		msg.origin === 'assistant' ||
+		msg.is_ai_message === true ||
+		msg.isAIMessage === true ||
+		senderType === 'bot' ||
+		senderType === 'system'
+	) {
+    return senderType === 'system' ? 'system' : 'bot'
+  }
+  return 'user'
+}
+
+export function processBotMessage(msg: any): BotMessage {
+  return {
+    id: msg.id,
+    conversationId: msg.conversation_id,
+    senderId: msg.sender_id,
+    senderType: normalizeSenderType(msg),
+    sender: msg.sender ? {
+      id: msg.sender.id,
+      nickname: msg.sender.nickname || msg.sender.username || '未知用户',
+      avatar: msg.sender.avatar,
+      type: msg.sender.type
+    } : undefined,
+    type: msg.type || 'text',
+    content: msg.content,
+    timestamp: new Date(msg.created_at || msg.timestamp || Date.now()),
+    isStreaming: false
+  }
+}
+
+export function normalizeBotHistoryMessages(messages: any[]): BotMessage[] {
+  return messages.map((msg: any) => processBotMessage(msg))
+}
+
 /**
  * Bot 对话管理 composable
  * 负责 Bot 会话的初始化、消息加载、发送和流式处理
@@ -32,28 +70,6 @@ export function useBotChat(botId: Ref<number | null>) {
   const currentPage = ref(1)
   const pageSize = ref(20)
   const hasMoreMessages = ref(false)
-
-  /**
-   * 处理消息数据
-   */
-  const processMessage = (msg: any): BotMessage => {
-    return {
-      id: msg.id,
-      conversationId: msg.conversation_id,
-      senderId: msg.sender_id,
-      senderType: msg.sender_type,
-      sender: msg.sender ? {
-        id: msg.sender.id,
-        nickname: msg.sender.nickname || msg.sender.username || '未知用户',
-        avatar: msg.sender.avatar,
-        type: msg.sender.type
-      } : undefined,
-      type: msg.type || 'text',
-      content: msg.content,
-      timestamp: new Date(msg.created_at || msg.timestamp || Date.now()),
-      isStreaming: false
-    }
-  }
 
   /**
    * 初始化 Bot 会话
@@ -125,13 +141,13 @@ export function useBotChat(botId: Ref<number | null>) {
         // 兼容两种返回格式：{ messages: [] } 或直接是 []
         const messagesArray = response.data?.messages || (Array.isArray(response.data) ? response.data : [])
         const serverMessages = Array.isArray(messagesArray)
-          ? messagesArray.map((msg: any) => processMessage(msg))
+          ? normalizeBotHistoryMessages(messagesArray)
           : []
 
         if (reset) {
-          messages.value = serverMessages.reverse()
+          messages.value = serverMessages
         } else {
-          messages.value = [...serverMessages.reverse(), ...messages.value]
+          messages.value = [...serverMessages, ...messages.value]
         }
 
         // 处理分页信息

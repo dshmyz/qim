@@ -1,7 +1,7 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.ai_type === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.origin === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
     :data-message-id="message.id"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -26,10 +26,10 @@
         </div>
 
         <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && isAIMessage" class="message-sender">
-          <span v-if="message.ai_type === 'avatar'">{{ message.avatar_name || message.sender.name || '未知用户' }}</span>
+          <span v-if="message.origin === 'avatar'">{{ message.avatar_name || message.sender.name || '未知用户' }}</span>
           <span v-else><i class="fas fa-robot"></i> {{ message.ai_assistant_name || 'AI 助手' }}</span>
         </div>
-        <div v-if="isAIMessage && message.ai_type === 'assistant' && !isSelf && conversationType !== 'group' && conversationType !== 'discussion'" class="message-sender">
+        <div v-if="isAIMessage && message.origin === 'assistant' && !isSelf && conversationType !== 'group' && conversationType !== 'discussion'" class="message-sender">
           <span><i class="fas fa-robot"></i> {{ message.ai_assistant_name || 'AI 助手' }}</span>
         </div>
 
@@ -146,8 +146,8 @@
 
         <div class="message-meta">
           <span class="message-meta-badge">
-            <AIMessageBadge v-if="isAIMessage && message.ai_type === 'assistant'" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
-            <AvatarReplyBadge v-if="message.ai_type === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
+            <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant'" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
+            <AvatarReplyBadge v-if="message.origin === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
           </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
           <div v-if="isSelf && message.isFailed" class="message-read-status failed" title="发送失败">
@@ -199,10 +199,10 @@ const props = defineProps<{
 }>()
 
 const isAIMessage = computed(() => {
-  const fromAIType = props.message.ai_type === 'assistant' || props.message.ai_type === 'avatar'
+  const fromOrigin = props.message.origin === 'assistant' || props.message.origin === 'avatar'
   const fromSenderIsBot = props.message.sender?.type === 'bot' || props.message.sender?.type === 'system'
   const fromField = props.message.is_ai_message || props.message.isAIMessage
-  return fromAIType || fromSenderIsBot || fromField
+  return fromOrigin || fromSenderIsBot || fromField
 })
 
 const emit = defineEmits<{
@@ -355,7 +355,7 @@ const isFileContent = (content: string): boolean => {
 }
 
 .message-content {
-  max-width: 88%;
+  max-width: 80%;
   min-width: 0;
   margin: 0 12px;
 }

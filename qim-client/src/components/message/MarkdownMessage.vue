@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
+import { decodeToPlainText } from '../../utils/mentions'
 
 const props = defineProps<{
   content: string
@@ -15,7 +16,7 @@ const props = defineProps<{
 const handleLinkClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   const link = target.closest('a')
-  
+
   if (link && window.electron?.shell?.openExternal) {
     event.preventDefault()
     const href = link.getAttribute('href')
@@ -27,7 +28,9 @@ const handleLinkClick = (event: MouseEvent) => {
 
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
-  const html = marked(props.content)
+  // 先解码 mention token：@{mention:3|张三} → @张三
+  const decodedContent = decodeToPlainText(props.content)
+  const html = marked(decodedContent)
   const htmlString = typeof html === 'string' ? html : String(html)
   // 使用 DOMPurify 进行消毒，防止 XSS 攻击
   return sanitizeMarkdown(htmlString)

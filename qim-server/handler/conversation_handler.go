@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetConversations(c *gin.Context) {
@@ -551,6 +552,7 @@ func CreateSingleConversation(c *gin.Context) {
 			Preload("Conversation").First(&botConv)
 
 		if botConv.ID > 0 {
+			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 				First(&botConv, botConv.ID)
 			response.Success(c, botConv.Conversation)
@@ -575,6 +577,13 @@ func CreateSingleConversation(c *gin.Context) {
 			tx.Rollback()
 			response.InternalServerError(c, "创建会话失败")
 			return
+		}
+		if bot.VirtualUserID != nil {
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: *bot.VirtualUserID, Role: "member"}).Error; err != nil {
+				tx.Rollback()
+				response.InternalServerError(c, "创建会话失败")
+				return
+			}
 		}
 
 		if err := tx.Create(&model.BotConversation{
@@ -609,7 +618,7 @@ func CreateSingleConversation(c *gin.Context) {
 		response.NotFound(c, "用户不存在")
 		return
 	}
-	if recipient.Type == "bot_assistant" || recipient.Type == "bot_avatar" {
+	if recipient.Type == "bot" {
 		var bot model.Bot
 		if err := db.Where("virtual_user_id = ?", req.UserID).First(&bot).Error; err != nil {
 			response.NotFound(c, "机器人不存在")
@@ -630,6 +639,7 @@ func CreateSingleConversation(c *gin.Context) {
 			db.Model(&model.ConversationSession{}).
 				Where("user_id = ? AND conversation_id = ? AND is_hidden = ?", userID.(uint), botConv.ConversationID, true).
 				Update("is_hidden", false)
+			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 				First(&botConv, botConv.ID)
 			response.Success(c, botConv.Conversation)
@@ -654,6 +664,13 @@ func CreateSingleConversation(c *gin.Context) {
 			tx.Rollback()
 			response.InternalServerError(c, "创建会话失败")
 			return
+		}
+		if bot.VirtualUserID != nil {
+			if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: *bot.VirtualUserID, Role: "member"}).Error; err != nil {
+				tx.Rollback()
+				response.InternalServerError(c, "创建会话失败")
+				return
+			}
 		}
 		if err := tx.Create(&model.BotConversation{
 			BotID:          bot.ID,
@@ -816,6 +833,7 @@ func CreateBotConversation(c *gin.Context) {
 		Preload("Conversation").First(&botConv)
 
 	if botConv.ID > 0 {
+		ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 		db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 			First(&botConv, botConv.ID)
 		response.Success(c, botConv.Conversation)
@@ -846,6 +864,17 @@ func CreateBotConversation(c *gin.Context) {
 		response.InternalServerError(c, "创建会话失败")
 		return
 	}
+	if bot.VirtualUserID != nil {
+		if err := tx.Create(&model.ConversationMember{
+			ConversationID: conv.ID,
+			UserID:         *bot.VirtualUserID,
+			Role:           "member",
+		}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+	}
 
 	if err := tx.Create(&model.BotConversation{
 		BotID:          bot.ID,
@@ -865,6 +894,18 @@ func CreateBotConversation(c *gin.Context) {
 
 	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
 	response.Success(c, conv)
+}
+
+func ensureBotConversationMember(db *gorm.DB, conversationID uint, virtualUserID *uint) {
+	if db == nil || virtualUserID == nil || *virtualUserID == 0 {
+		return
+	}
+
+	db.FirstOrCreate(&model.ConversationMember{}, model.ConversationMember{
+		ConversationID: conversationID,
+		UserID:         *virtualUserID,
+		Role:           "member",
+	})
 }
 
 func CreateGroupConversation(c *gin.Context) {

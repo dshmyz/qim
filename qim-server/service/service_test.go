@@ -1,14 +1,20 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -19,6 +25,11 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to connect database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("failed to get sql db: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
 
 	err = db.AutoMigrate(
 		&model.User{},
@@ -30,6 +41,8 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&model.Message{},
 		&model.MessageReadReceipt{},
 		&model.Notification{},
+		&model.Bot{},
+		&model.BotConversation{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
@@ -94,6 +107,36 @@ func TestUserService_SearchUsers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "张三", results[0].Nickname)
+}
+
+func TestUserService_GetDefaultAIAssistantCreatesBotUser(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewUserService(db)
+
+	user, err := svc.GetDefaultAIAssistant()
+
+	require.NoError(t, err)
+	assert.Equal(t, "bot", user.Type)
+	assert.Equal(t, "bot_ai_assistant", user.Username)
+
+	var bot model.Bot
+	require.NoError(t, db.Where("virtual_user_id = ?", user.ID).First(&bot).Error)
+	assert.Equal(t, "assistant", bot.Type)
+}
+
+func TestUserService_EnsureGroupAIAssistantCreatesBotUser(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewUserService(db)
+
+	user, err := svc.EnsureGroupAIAssistant(42, "群助手")
+
+	require.NoError(t, err)
+	assert.Equal(t, "bot", user.Type)
+	assert.Equal(t, "bot_group_assistant_42", user.Username)
+
+	var bot model.Bot
+	require.NoError(t, db.Where("virtual_user_id = ?", user.ID).First(&bot).Error)
+	assert.Equal(t, "assistant", bot.Type)
 }
 
 func TestConversationService_SearchGroupsByName_QuotesGroupsTable(t *testing.T) {
@@ -434,6 +477,77 @@ func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 		t.Fatal("expected exactly one OnMessageSent callback")
 	case <-time.After(50 * time.Millisecond):
 	}
+}
+
+func TestMessageService_SendMessageToBotPublishesReplyAndUpdatesConversation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupServiceTestDB(t)
+	hub := ws.NewHub(db, "test-secret")
+	go hub.Run()
+	svc := NewMessageService(db, hub, ai.NewAIService(&ai.AIConfig{}))
+
+	user := &model.User{Username: "bot-user", PasswordHash: "hash", Nickname: "Bot User"}
+	virtualUser := &model.User{Username: "virtual-bot", PasswordHash: "hash", Nickname: "Virtual Bot", Type: "bot"}
+	require.NoError(t, db.Create(user).Error)
+	require.NoError(t, db.Create(virtualUser).Error)
+
+	conv := &model.Conversation{Type: "bot"}
+	require.NoError(t, db.Create(conv).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: virtualUser.ID}).Error)
+
+	bot := &model.Bot{Name: "Helper", Type: "assistant", IsActive: true, VirtualUserID: &virtualUser.ID}
+	require.NoError(t, db.Create(bot).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
+
+	router := gin.New()
+	router.GET("/ws", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		ws.ServeWs(hub, c)
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	_, err = svc.SendMessage(conv.ID, user.ID, "text", "hello bot", nil)
+	require.NoError(t, err)
+
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+	var incoming ws.WSMessage
+	require.NoError(t, conn.ReadJSON(&incoming))
+	require.Equal(t, "new_message", incoming.Type)
+
+	dataBytes, err := json.Marshal(incoming.Data)
+	require.NoError(t, err)
+	var data struct {
+		ID             uint       `json:"id"`
+		ConversationID uint       `json:"conversation_id"`
+		SenderID       uint       `json:"sender_id"`
+		Type           string     `json:"type"`
+		Content        string     `json:"content"`
+		Origin         string     `json:"origin"`
+		IsAIMessage    bool       `json:"is_ai_message"`
+		Sender         model.User `json:"sender"`
+	}
+	require.NoError(t, json.Unmarshal(dataBytes, &data))
+	require.Equal(t, conv.ID, data.ConversationID)
+	require.Equal(t, virtualUser.ID, data.SenderID)
+	require.Equal(t, "markdown", data.Type)
+	require.Equal(t, "assistant", data.Origin)
+	require.True(t, data.IsAIMessage)
+	require.Equal(t, virtualUser.ID, data.Sender.ID)
+	require.Equal(t, "Virtual Bot", data.Sender.Nickname)
+	require.NotEmpty(t, data.Content)
+
+	var updatedConv model.Conversation
+	require.NoError(t, db.First(&updatedConv, conv.ID).Error)
+	require.NotNil(t, updatedConv.LastMessageID)
+	require.Equal(t, data.ID, *updatedConv.LastMessageID)
+	require.NotNil(t, updatedConv.LastMessageAt)
 }
 
 func TestMessageService_SendMessage_NotMember(t *testing.T) {

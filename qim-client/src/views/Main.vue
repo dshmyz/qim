@@ -1524,6 +1524,7 @@ const connectWebSocket = () => {
     'new_message': handleNewMessage,
     'message_recalled': handleMessageRecalled,
     'message_deleted': handleMessageDeleted,
+    'message_updated': handleMessageUpdated,
     'group_invitation': handleGroupInvitation,
     'added_to_group': handleAddedToGroup,
     'group_member_left': handleGroupMemberLeft,
@@ -1613,6 +1614,28 @@ const handleMessageDeleted = (data: any) => {
   }
 }
 
+// 处理消息更新（流式消息完成后 content 变更，如 mention token 拼接）
+const handleMessageUpdated = (data: any) => {
+  logger.log('消息更新:', data)
+  const convId = data.conversation_id?.toString()
+  const msgId = data.id?.toString()
+  if (!convId || !msgId || !data.content) return
+
+  // 优先用数据库 ID 更新
+  const msgs = chatStore.messages.get(convId)
+  if (msgs && msgs.some(m => m.id === msgId)) {
+    chatStore.updateMessage(convId, msgId, { content: data.content })
+  } else {
+    // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
+    const streamMsg = [...msgs].reverse().find(m => m.id.startsWith('stream_'))
+    if (streamMsg) {
+      chatStore.updateMessage(convId, streamMsg.id, { content: data.content })
+    }
+  }
+
+  nextTick(() => chatWindowRef.value?.scrollToBottom())
+}
+
 // 处理通知
 const handleNotification = (data: any) => {
   logger.log('收到通知:', data)
@@ -1693,7 +1716,7 @@ const formatNotificationContent = (message: any): string => {
 const handleNewMessage = async (msg: any) => {
   const data = msg.data || msg
   const conversationId = data.conversation_id.toString()
-  
+
   const newMessage = processMessage(data, conversationId)
   const isCurrentConv = currentConversationId.value === conversationId
   
@@ -1850,7 +1873,7 @@ const handleSearch = async (query) => {
 
 // 处理搜索项点击
 const handleSearchItemClick = (item) => {
-  if (item.type === 'user' || item.type === 'bot_assistant' || item.type === 'bot_avatar') {
+  if (item.type === 'user' || item.type === 'bot') {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
     // 如果是群聊或讨论组，选中该会话

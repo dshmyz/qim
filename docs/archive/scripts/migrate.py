@@ -688,7 +688,7 @@ class MigrationEngine:
                     'quoted_message_id': None,
                     'is_recalled': False,
                     'is_read': False,
-                    'ai_type': '',
+                    'origin': '',
                     'recalled_at': None,
                     'created_at': msg_time,
                     'updated_at': msg_time,
@@ -759,7 +759,7 @@ class MigrationEngine:
                     'quoted_message_id': None,
                     'is_recalled': False,
                     'is_read': False,
-                    'ai_type': '',
+                    'origin': '',
                     'recalled_at': None,
                     'created_at': msg_time,
                     'updated_at': msg_time,
@@ -788,11 +788,11 @@ class MigrationEngine:
                 cursor.execute("""
                     INSERT INTO messages (
                         conversation_id, sender_id, type, content,
-                        quoted_message_id, is_recalled, is_read, ai_type, recalled_at,
+                        quoted_message_id, is_recalled, is_read, origin, recalled_at,
                         created_at, updated_at, deleted_at
                     ) VALUES (
                         %(conversation_id)s, %(sender_id)s, %(type)s, %(content)s,
-                        %(quoted_message_id)s, %(is_recalled)s, %(is_read)s, %(ai_type)s, %(recalled_at)s,
+                        %(quoted_message_id)s, %(is_recalled)s, %(is_read)s, %(origin)s, %(recalled_at)s,
                         %(created_at)s, %(updated_at)s, %(deleted_at)s
                     )
                 """, msg_data)

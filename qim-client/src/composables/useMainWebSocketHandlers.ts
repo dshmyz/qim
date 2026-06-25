@@ -16,7 +16,7 @@ export function useMainWebSocketHandlers(
     if (currentConversationId.value === convIdStr) {
       const lastReadId = last_read_message_id?.toString()
       if (lastReadId) {
-        // 按消息顺序标记到 last_read_message_id 为止
+        // 按消息顺序标记到 last_read_message_id 为止（只标记自己发送的消息）
         for (const msg of messages.value) {
           if (msg.isSelf && !msg.isRead) {
             chatStore.updateMessage(convIdStr, msg.id, { isRead: true })

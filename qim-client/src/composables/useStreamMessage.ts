@@ -44,16 +44,23 @@ export function useStreamMessage(
 
       // 2. 创建 bot 流式响应占位符
       const streamMessageId = `stream_${Date.now()}`
+      const currentConversation = chatStore.currentConversation
+      const assistantName = currentConversation?.name || 'AI助手'
+      const assistantAvatar = currentConversation?.avatar || ''
 
       const streamMessage = {
         id: streamMessageId,
         content: '',
-        sender: { id: '0', name: 'AI助手', avatar: '' },
+        sender: { id: '0', name: assistantName, avatar: assistantAvatar, type: 'bot' },
         timestamp: new Date().getTime(),
         type: 'streaming',
         isSelf: false,
         isRead: false,
         isStreaming: true,
+        origin: 'assistant',
+        isAIMessage: true,
+        is_ai_message: true,
+        ai_assistant_name: assistantName,
         conversationId
       }
 

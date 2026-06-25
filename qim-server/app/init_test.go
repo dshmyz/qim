@@ -29,6 +29,13 @@ func hasTable(t *testing.T, db *gorm.DB, name string) bool {
 	return count > 0
 }
 
+func hasSQLiteColumn(t *testing.T, db *gorm.DB, table, column string) bool {
+	t.Helper()
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count)
+	return count > 0
+}
+
 func TestMigrateDB_CreatesCoreTables(t *testing.T) {
 	db := newTestDB(t)
 	MigrateDB(db)
@@ -53,6 +60,15 @@ func TestMigrateDB_CreatesMissingModels(t *testing.T) {
 	}
 	if !hasTable(t, db, "document_process_statuses") {
 		t.Error("DocumentProcessStatus 表缺失")
+	}
+}
+
+func TestMigrateDB_CreatesMessagesOriginColumn(t *testing.T) {
+	db := newTestDB(t)
+	MigrateDB(db)
+
+	if !hasSQLiteColumn(t, db, "messages", "origin") {
+		t.Fatal("MigrateDB 后 messages.origin 字段缺失")
 	}
 }
 

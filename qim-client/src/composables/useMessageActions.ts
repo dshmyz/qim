@@ -408,6 +408,11 @@ export function useMessageActions(
     await batchFetchReadUsers(messageIds, forceRefresh)
   }
 
+  const forceMarkMessagesAsRead = async (conversationId: string) => {
+    lastMarkReadTime.value = 0
+    await markMessagesAsRead(conversationId)
+  }
+
   /**
    * 清理资源
    */
@@ -425,6 +430,7 @@ export function useMessageActions(
     batchFetchReadUsers,
     showReadUsers,
     markMessagesAsRead,
+    forceMarkMessagesAsRead,
     recallMessage,
     deleteMessage,
     sendMessage,

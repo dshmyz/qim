@@ -15,3 +15,20 @@ func TestBuildMessageResponse_ParsesMentionTokenForCurrentUser(t *testing.T) {
 	assert.Equal(t, []uint{2}, response["mention_user_ids"])
 	assert.True(t, response["is_at_mention"].(bool))
 }
+
+func TestBuildMessageResponse_ReportsBotSenderType(t *testing.T) {
+	message := model.Message{
+		SenderID: 1,
+		Content:  "AI reply",
+		Sender: model.User{
+			ID:       1,
+			Nickname: "Helper",
+			Type:     "bot",
+		},
+	}
+
+	response := buildMessageResponse(message, 2, []uint{1, 2})
+
+	assert.Equal(t, "bot", response["sender_type"])
+	assert.True(t, response["is_ai_message"].(bool))
+}

@@ -8,15 +8,15 @@
       <span class="context-menu-icon"><i class="fas fa-user"></i></span>
       <span>查看资料</span>
     </div>
-    <div v-if="canSetAdmin" class="context-menu-item" @click.stop="handleSetAdmin">
+    <div v-if="canSetAdmin && !isBotMember" class="context-menu-item" @click.stop="handleSetAdmin">
       <span class="context-menu-icon"><i class="fas fa-star"></i></span>
       <span>{{ isSelectedMemberAdmin ? '取消管理员' : '设为管理员' }}</span>
     </div>
-    <div v-if="canTransferOwner" class="context-menu-item" @click.stop="handleTransferOwner">
+    <div v-if="canTransferOwner && !isBotMember" class="context-menu-item" @click.stop="handleTransferOwner">
       <span class="context-menu-icon"><i class="fas fa-crown"></i></span>
       <span>转让群主</span>
     </div>
-    <div v-if="member?.type !== 'bot_assistant'" class="context-menu-item" @click.stop="handleSendPrivateMessage">
+    <div v-if="member?.type !== 'bot'" class="context-menu-item" @click.stop="handleSendPrivateMessage">
       <span class="context-menu-icon"><i class="fas fa-comment"></i></span>
       <span>发起私聊</span>
     </div>
@@ -56,6 +56,11 @@ const currentUserRole = computed((): string => {
 
 const isSelectedMemberAdmin = computed((): boolean => {
   return props.member?.role === 'admin'
+})
+
+const isBotMember = computed((): boolean => {
+  const t = props.member?.type
+  return t === 'bot'
 })
 
 const canRemoveMember = computed((): boolean => {

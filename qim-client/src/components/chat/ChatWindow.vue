@@ -432,6 +432,10 @@ const navigateToFirstAtMention = () => {
     scrollToMessage(String(firstAtMention.id))
     // 标记该消息为已读，横幅计数 -1（触发 unreadAtMentionCount 重算）
     firstAtMention.isRead = true
+    // 同步到后端，确保刷新页面后状态保持（绕过节流，确保请求一定发出）
+    if (props.conversation?.id) {
+      forceMarkMessagesAsRead(props.conversation.id)
+    }
   }
 }
 
@@ -444,6 +448,7 @@ const {
   fetchReadUsers,
   showReadUsers,
   markMessagesAsRead,
+  forceMarkMessagesAsRead,
   recallMessage,
   deleteMessage,
   sendMessage,
@@ -982,33 +987,35 @@ let messageContextMenuTimeoutId: number | null = null
 watch(() => props.messages, async (newMessages, oldMessages) => {
   if (!isMounted.value) return
   if (isInsertingSystemMessage.value) return
-  
+
   const oldLength = oldMessages?.length ?? 0
   const newLength = newMessages?.length ?? 0
-  
+
+  // 判断是否需要滚动：新消息到达 或 最后一条消息内容有变化
   let shouldScroll = false
-  
   if (newLength > oldLength) {
     const oldFirstId = oldMessages?.[0]?.id
     const newFirstId = newMessages?.[0]?.id
-    
     if (oldFirstId !== newFirstId) {
       debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single')
       return
     }
-    
     shouldScroll = true
-    
+  } else if (newLength > 0 && newLength === oldLength) {
+    const lastNew = newMessages[newLength - 1]
+    const lastOld = oldMessages?.[newLength - 1]
+    if (lastNew && lastOld && lastNew.id === lastOld.id && lastNew.content !== lastOld.content) {
+      shouldScroll = true
+    }
+  }
+
+  // 加载已读状态
+  if (newLength > oldLength) {
     const newMessagesOnly = newMessages.slice(oldLength)
     if (newMessagesOnly.length > 0) {
       debouncedLoadReadUsers(newMessagesOnly, props.conversation?.type || 'single')
     }
   } else if (newLength === oldLength && newLength > 0) {
-    const lastMessage = newMessages[newLength - 1]
-    if (lastMessage?.isStreaming) {
-      shouldScroll = true
-    }
-    
     const hasReadStatusChanged = oldMessages && newMessages.some((newMsg, index) => {
       const oldMsg = oldMessages[index]
       return oldMsg && newMsg.isRead !== oldMsg.isRead
@@ -1017,10 +1024,11 @@ watch(() => props.messages, async (newMessages, oldMessages) => {
       debouncedLoadReadUsers(newMessages, props.conversation?.type || 'single', true)
     }
   }
-  
+
   if (shouldScroll) {
     nextTick(() => {
       scrollToBottom(true)
+      requestAnimationFrame(() => scrollToBottom(true))
     })
   }
 }, { deep: true })

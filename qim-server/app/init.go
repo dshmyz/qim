@@ -156,7 +156,7 @@ func seedBotTemplates(db *gorm.DB) {
 	}
 
 	var count int64
-	db.Model(&model.Bot{}).Where("type IN ?", []string{"system", "ai"}).Count(&count)
+	db.Model(&model.Bot{}).Where("type IN ?", []string{"system", "assistant"}).Count(&count)
 	if count > 0 {
 		markMigrationCompleted(db, "seed_bot_templates")
 		return
@@ -176,7 +176,7 @@ func seedBotTemplates(db *gorm.DB) {
 			Name:        "AI助手",
 			Avatar:      "",
 			Description: "基于大模型的智能助手，能回答各种问题",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个有用的AI助手，能够帮助用户回答各种问题、完成任务。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -185,7 +185,7 @@ func seedBotTemplates(db *gorm.DB) {
 			Name:        "代码助手",
 			Avatar:      "",
 			Description: "编程专家，帮助编写、审查、优化代码",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个经验丰富的编程助手，擅长多种编程语言。你能帮助用户编写高质量代码、进行代码审查、解决编程问题、优化性能。请提供清晰的代码示例和详细解释。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -194,7 +194,7 @@ func seedBotTemplates(db *gorm.DB) {
 			Name:        "翻译助手",
 			Avatar:      "",
 			Description: "多语言翻译专家，提供准确的翻译服务",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个专业的翻译助手，精通多种语言之间的翻译。请提供准确、流畅、符合语境的翻译结果。如果原文有歧义，请说明并提供多种翻译选项。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -203,7 +203,7 @@ func seedBotTemplates(db *gorm.DB) {
 			Name:        "写作助手",
 			Avatar:      "",
 			Description: "写作专家，帮助撰写文章、文案、报告等内容",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个专业的写作助手，能够帮助用户撰写各类文章、文案、报告、邮件等。请根据用户需求提供结构清晰、语言流畅、风格合适的内容。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -236,7 +236,7 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 			Name:        "代码助手",
 			Avatar:      "",
 			Description: "编程专家，帮助编写、审查、优化代码",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个经验丰富的编程助手，擅长多种编程语言。你能帮助用户编写高质量代码、进行代码审查、解决编程问题、优化性能。请提供清晰的代码示例和详细解释。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -245,7 +245,7 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 			Name:        "翻译助手",
 			Avatar:      "",
 			Description: "多语言翻译专家，提供准确的翻译服务",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个专业的翻译助手，精通多种语言之间的翻译。请提供准确、流畅、符合语境的翻译结果。如果原文有歧义，请说明并提供多种翻译选项。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,
@@ -254,7 +254,7 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 			Name:        "写作助手",
 			Avatar:      "",
 			Description: "写作专家，帮助撰写文章、文案、报告等内容",
-			Type:        "ai",
+			Type:        "assistant",
 			Config:      `{"system_prompt":"你是一个专业的写作助手，能够帮助用户撰写各类文章、文案、报告、邮件等。请根据用户需求提供结构清晰、语言流畅、风格合适的内容。","use_system_config":true}`,
 			IsActive:    true,
 			IsTemplate:  true,

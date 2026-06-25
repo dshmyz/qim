@@ -37,6 +37,8 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		&model.ConversationSession{},
 		&model.Message{},
 		&model.Notification{},
+		&model.Bot{},
+		&model.BotConversation{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
@@ -184,6 +186,46 @@ func TestCreateSingleConversation_RestoresHiddenConversationWithMembers(t *testi
 	var session model.ConversationSession
 	require.NoError(t, db.Where("user_id = ? AND conversation_id = ?", currentUser.ID, conversation.ID).First(&session).Error)
 	assert.False(t, session.IsHidden)
+}
+
+func TestCreateBotConversation_IncludesBotVirtualUserMember(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentUser := createTestUser(t, db)
+	botUser := &model.User{Username: "bot_1", PasswordHash: "hash", Nickname: "青雀一号", Type: "bot"}
+	require.NoError(t, db.Create(botUser).Error)
+	bot := &model.Bot{Name: "青雀一号", Type: "assistant", IsActive: true, VirtualUserID: &botUser.ID}
+	require.NoError(t, db.Create(bot).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "user_id": botUser.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			ID      uint   `json:"id"`
+			Type    string `json:"type"`
+			Members []struct {
+				UserID uint `json:"user_id"`
+				User   struct {
+					Nickname string `json:"nickname"`
+					Type     string `json:"type"`
+				} `json:"user"`
+			} `json:"members"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	require.Equal(t, "bot", response.Data.Type)
+	require.Len(t, response.Data.Members, 2)
+
+	memberIDs := []uint{response.Data.Members[0].UserID, response.Data.Members[1].UserID}
+	assert.Contains(t, memberIDs, currentUser.ID)
+	assert.Contains(t, memberIDs, botUser.ID)
+	assert.Contains(t, []string{response.Data.Members[0].User.Nickname, response.Data.Members[1].User.Nickname}, "青雀一号")
 }
 
 // TestCreateSingleConversation_HidesConversationForRecipient 验证创建私聊会话时，

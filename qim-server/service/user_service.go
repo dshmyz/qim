@@ -243,7 +243,7 @@ func (s *UserService) GetSystemUserID() uint {
 // GetDefaultAIAssistant 获取或创建默认 AI 助手用户（用于单聊/通用场景）
 func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	var existingBot model.Bot
-	err := s.db.Where("type = ? AND group_id IS NULL", "ai").First(&existingBot).Error
+	err := s.db.Where("type = ? AND group_id IS NULL", "assistant").First(&existingBot).Error
 	if err == nil && existingBot.VirtualUserID != nil {
 		var user model.User
 		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
@@ -256,11 +256,11 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 		bot := model.Bot{
 			Name:          "AI助手",
 			Description:   "通用 AI 助手",
-			Type:          "ai",
+			Type:          "assistant",
 			IsActive:      true,
 			VirtualUserID: &existingUser.ID,
 		}
-		if createErr := s.db.Where("type = ? AND group_id IS NULL AND virtual_user_id = ?", "ai", existingUser.ID).FirstOrCreate(&bot).Error; createErr != nil {
+		if createErr := s.db.Where("type = ? AND group_id IS NULL AND virtual_user_id = ?", "assistant", existingUser.ID).FirstOrCreate(&bot).Error; createErr != nil {
 			logger.WithModule("GetDefaultAIAssistant").Error("创建 Bot 记录失败", "error", createErr)
 		}
 		return &existingUser, nil
@@ -269,7 +269,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	aiUser := model.User{
 		Username: "bot_ai_assistant",
 		Nickname: "AI助手",
-		Type:     "bot_assistant",
+		Type:     "bot",
 		Status:   "online",
 	}
 	if err := s.db.Create(&aiUser).Error; err != nil {
@@ -279,7 +279,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	bot := model.Bot{
 		Name:          "AI助手",
 		Description:   "通用 AI 助手",
-		Type:          "ai",
+		Type:          "assistant",
 		IsActive:      true,
 		VirtualUserID: &aiUser.ID,
 	}
@@ -294,7 +294,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string) (*model.User, error) {
 	// 查找已存在的群聊 AI 助手
 	var existingBot model.Bot
-	err := s.db.Where("group_id = ? AND type = ?", groupID, "ai").First(&existingBot).Error
+	err := s.db.Where("group_id = ? AND type = ?", groupID, "assistant").First(&existingBot).Error
 	if err == nil && existingBot.VirtualUserID != nil {
 		var user model.User
 		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
@@ -303,14 +303,14 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 	}
 
 	// 创建新的 AI 助手用户
-	username := fmt.Sprintf("bot_assistant_%d", groupID)
+	username := fmt.Sprintf("bot_group_assistant_%d", groupID)
 	if assistantName == "" {
 		assistantName = "AI助手"
 	}
 	aiUser := model.User{
 		Username: username,
 		Nickname: assistantName,
-		Type:     "bot_assistant",
+		Type:     "bot",
 		Status:   "online",
 	}
 	if err := s.db.Create(&aiUser).Error; err != nil {
@@ -321,7 +321,7 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 	bot := model.Bot{
 		Name:          assistantName,
 		Description:   fmt.Sprintf("群 %d 的 AI 助手", groupID),
-		Type:          "ai",
+		Type:          "assistant",
 		IsActive:      true,
 		GroupID:       &groupID,
 		VirtualUserID: &aiUser.ID,

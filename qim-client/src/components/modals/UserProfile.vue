@@ -90,7 +90,7 @@ const close = () => {
 
 const isBot = computed(() => {
   const t = props.user.type
-  return t === 'bot_assistant' || t === 'bot_avatar'
+  return t === 'bot'
 })
 
 const handleSendPrivateMessage = () => {

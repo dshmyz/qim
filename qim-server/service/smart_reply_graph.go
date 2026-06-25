@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -54,6 +55,12 @@ type SmartReplyContext struct {
 	// 扩展配置
 	Group       *model.Group
 	GroupConfig *GroupAIConfig
+
+	// 补齐 Legacy 上下文
+	User        *model.User  // 当前提问用户
+	Tasks       []model.Task // 用户未完成任务
+	MemberNames string       // 群成员名单（逗号分隔）
+	GroupStats  string       // 群统计信息
 }
 
 type SmartReplyResult struct {
@@ -157,9 +164,49 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 		}
 	}
 
+	// 补齐：当前提问用户
+	var user model.User
+	if err := g.db.First(&user, input.UserID).Error; err == nil {
+		input.User = &user
+	}
+
+	// 补齐：用户待办任务
+	var tasks []model.Task
+	g.db.Where("user_id = ? AND status = 'todo'", input.UserID).
+		Order("due_date ASC").
+		Limit(5).
+		Find(&tasks)
+	input.Tasks = tasks
+
+	// 补齐：群成员列表 + 群统计
+	if input.Group != nil {
+		var members []model.ConversationMember
+		if err := g.db.Preload("User").Where("conversation_id = ?", input.ConversationID).Find(&members).Error; err == nil {
+			names := make([]string, 0, len(members))
+			for _, m := range members {
+				name := m.User.Nickname
+				if name == "" {
+					name = m.User.Username
+				}
+				names = append(names, name)
+			}
+			input.MemberNames = strings.Join(names, "、")
+		}
+
+		var totalMessages int64
+		g.db.Model(&model.Message{}).Where("conversation_id = ?", input.ConversationID).Count(&totalMessages)
+		var memberCount int64
+		g.db.Model(&model.ConversationMember{}).Where("conversation_id = ?", input.ConversationID).Count(&memberCount)
+		input.GroupStats = fmt.Sprintf("总消息数：%d\n成员数：%d", totalMessages, memberCount)
+	}
+
 	knowledgeCtx := ""
 	if g.unifiedKnowledge != nil && input.Group != nil {
-		knowledgeCtx = g.unifiedKnowledge.BuildContext(input.Message, input.Group.ID)
+		query := input.Message
+		if input.Group.Name != "" {
+			query = input.Group.Name
+		}
+		knowledgeCtx = g.unifiedKnowledge.BuildContext(query, input.Group.ID)
 	} else if g.legacyKnowledge != nil {
 		knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
 	}
@@ -178,18 +225,13 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	}
 	input.MemoryCtx = memoryCtx
 
-	systemUserID := uint(0)
-	if g.userSvc != nil {
-		systemUserID = g.userSvc.GetSystemUserID()
-	}
-
-	historyMessages := g.buildHistoryMessages(input, systemUserID)
+	historyMessages := g.buildHistoryMessages(input)
 
 	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
 	return chatModel.Stream(ctx, historyMessages)
 }
 
-func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext, systemUserID uint) []*schema.Message {
+func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*schema.Message {
 	var result []*schema.Message
 
 	systemPrompt := g.buildSystemPrompt(input)
@@ -252,7 +294,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext, systemU
 			senderName = msg.Sender.Username
 		}
 
-		if msg.SenderID == systemUserID {
+		if msg.Origin == "assistant" {
 			result = append(result, &schema.Message{
 				Role:    schema.Assistant,
 				Content: msg.Content,
@@ -301,7 +343,50 @@ func (g *SmartReplyGraph) createPrepareNode() *compose.Lambda {
 			var group model.Group
 			if err := g.db.Where("conversation_id = ?", input.ConversationID).First(&group).Error; err == nil {
 				input.Group = &group
+				aiConfig := group.GetAIConfig()
+				input.GroupConfig = &GroupAIConfig{
+					Personality:  aiConfig.Personality,
+					Language:     aiConfig.Language,
+					MaxLength:    aiConfig.MaxLength,
+					CustomPrompt: aiConfig.CustomPrompt,
+				}
 			}
+		}
+
+		// 补齐：当前提问用户
+		var user model.User
+		if err := g.db.First(&user, input.UserID).Error; err == nil {
+			input.User = &user
+		}
+
+		// 补齐：用户待办任务
+		var tasks []model.Task
+		g.db.Where("user_id = ? AND status = 'todo'", input.UserID).
+			Order("due_date ASC").
+			Limit(5).
+			Find(&tasks)
+		input.Tasks = tasks
+
+		// 补齐：群成员列表 + 群统计
+		if input.Group != nil {
+			var members []model.ConversationMember
+			if err := g.db.Preload("User").Where("conversation_id = ?", input.ConversationID).Find(&members).Error; err == nil {
+				names := make([]string, 0, len(members))
+				for _, m := range members {
+					name := m.User.Nickname
+					if name == "" {
+						name = m.User.Username
+					}
+					names = append(names, name)
+				}
+				input.MemberNames = strings.Join(names, "、")
+			}
+
+			var totalMessages int64
+			g.db.Model(&model.Message{}).Where("conversation_id = ?", input.ConversationID).Count(&totalMessages)
+			var memberCount int64
+			g.db.Model(&model.ConversationMember{}).Where("conversation_id = ?", input.ConversationID).Count(&memberCount)
+			input.GroupStats = fmt.Sprintf("总消息数：%d\n成员数：%d", totalMessages, memberCount)
 		}
 
 		return input, nil
@@ -313,7 +398,12 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 		content := ""
 
 		if g.unifiedKnowledge != nil && input.Group != nil {
-			content = g.unifiedKnowledge.BuildContext(input.Message, input.Group.ID)
+			// 群聊场景用群名检索，与 Legacy 保持一致
+			query := input.Message
+			if input.Group.Name != "" {
+				query = input.Group.Name
+			}
+			content = g.unifiedKnowledge.BuildContext(query, input.Group.ID)
 		} else if g.legacyKnowledge != nil {
 			content = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
 		}
@@ -364,11 +454,6 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 			messages[i], messages[j] = messages[j], messages[i]
 		}
 
-		systemUserID := uint(0)
-		if g.userSvc != nil {
-			systemUserID = g.userSvc.GetSystemUserID()
-		}
-
 		var parts []string
 		for _, msg := range messages {
 			if input.OriginalContent != "" && msg.SenderID == input.UserID && msg.Content == input.OriginalContent {
@@ -380,7 +465,7 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 				senderName = msg.Sender.Username
 			}
 
-			if msg.SenderID == systemUserID {
+			if msg.Origin == "assistant" {
 				parts = append(parts, fmt.Sprintf("[assistant]: %s", msg.Content))
 			} else {
 				parts = append(parts, fmt.Sprintf("[user:%s]: %s", senderName, msg.Content))
@@ -492,14 +577,53 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 		sb.WriteString("你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("当前时间：%s\n\n", time.Now().Format("2006-01-02 15:04")))
+	sb.WriteString(fmt.Sprintf("当前时间：%s (%s)\n\n", time.Now().Format("2006-01-02 15:04"), time.Now().Weekday().String()))
+
+	// 产品基础知识：仅在用户问题与产品使用相关时注入，从 system_configs 读取
+	if isProductQuestion(input.Message) {
+		productKB := g.getProductKnowledge()
+		if productKB != "" {
+			sb.WriteString(productKB)
+			sb.WriteString("\n\n")
+		}
+	}
 
 	if input.IsAIMention {
 		sb.WriteString(fmt.Sprintf("【触发方式】用户通过 @%s 直接向你提问，请直接回答问题。\n\n", input.AssistantName))
 	}
 
 	if input.Group != nil {
-		sb.WriteString(fmt.Sprintf("【群聊信息】群名：%s\n\n", input.Group.Name))
+		sb.WriteString(fmt.Sprintf("📋 群组信息：\n- 群名：%s\n\n", input.Group.Name))
+
+		if input.MemberNames != "" {
+			sb.WriteString(fmt.Sprintf("- 群成员：%s\n\n", input.MemberNames))
+		}
+
+		if input.GroupStats != "" {
+			sb.WriteString(fmt.Sprintf("📊 当前群状态：\n%s\n\n", input.GroupStats))
+		}
+	}
+
+	// 当前提问用户
+	if input.User != nil {
+		sb.WriteString(fmt.Sprintf("👤 当前提问用户：%s\n\n", input.User.Nickname))
+	}
+
+	// 用户待办任务
+	if len(input.Tasks) > 0 {
+		sb.WriteString("📋 用户待办任务（未完成）：\n")
+		for _, task := range input.Tasks {
+			dueStr := "无截止日期"
+			if task.DueDate != nil {
+				dueStr = task.DueDate.Format("2006-01-02")
+			}
+			prio := task.Priority
+			if prio == "" {
+				prio = "medium"
+			}
+			sb.WriteString(fmt.Sprintf("- [%s] %s (截止: %s)\n", strings.ToUpper(prio[:1]), task.Title, dueStr))
+		}
+		sb.WriteString("\n")
 	}
 
 	if input.Intent != nil {
@@ -532,4 +656,91 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 	sb.WriteString("- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"\n")
 
 	return sb.String()
+}
+
+// isProductQuestion 判断用户问题是否与 QIM 产品使用相关
+func isProductQuestion(message string) bool {
+	// 必须包含至少一个产品相关词
+	productTerms := []string{
+		"QIM", "qim",
+		"群聊", "群组", "讨论组", "频道",
+		"AI助手", "AI分身", "分身", "机器人",
+		"笔记", "待办", "任务", "日历", "日程",
+		"知识库", "文件管理",
+		"搜索", "会话",
+	}
+	hasProductTerm := false
+	msgLower := strings.ToLower(message)
+	for _, term := range productTerms {
+		if strings.Contains(msgLower, strings.ToLower(term)) {
+			hasProductTerm = true
+			break
+		}
+	}
+	if !hasProductTerm {
+		return false
+	}
+	// 包含产品词 + 操作性问题词
+	actionWords := []string{
+		"怎么", "如何", "在哪", "设置", "开启", "关闭",
+		"创建", "添加", "删除", "配置", "使用",
+		"可以", "功能", "有哪些",
+	}
+	for _, w := range actionWords {
+		if strings.Contains(msgLower, strings.ToLower(w)) {
+			return true
+		}
+	}
+	return false
+}
+
+// 产品知识缓存（DB 配置变更后 5 分钟自动刷新）
+var (
+	productKBCache    string
+	productKBCacheMu  sync.RWMutex
+	productKBCacheExp time.Time
+)
+
+// getProductKnowledge 从 system_configs 读取产品知识（带 5 分钟缓存）
+func (g *SmartReplyGraph) getProductKnowledge() string {
+	productKBCacheMu.RLock()
+	if time.Now().Before(productKBCacheExp) && productKBCache != "" {
+		defer productKBCacheMu.RUnlock()
+		return productKBCache
+	}
+	productKBCacheMu.RUnlock()
+
+	productKBCacheMu.Lock()
+	defer productKBCacheMu.Unlock()
+
+	// double check
+	if time.Now().Before(productKBCacheExp) && productKBCache != "" {
+		return productKBCache
+	}
+
+	var cfg model.SystemConfig
+	err := g.db.Where("config_key = ?", "ai_product_knowledge").First(&cfg).Error
+	if err != nil || cfg.Value == "" {
+		// DB 无配置时使用默认值
+		productKBCache = defaultProductKnowledge()
+	} else {
+		productKBCache = cfg.Value
+	}
+	productKBCacheExp = time.Now().Add(5 * time.Minute)
+	return productKBCache
+}
+
+func defaultProductKnowledge() string {
+	return `【QIM 产品知识】
+QIM 是企业即时通讯系统，核心功能如下：
+- 单聊/群聊/讨论组：左侧会话列表点击进入，群聊支持 @成员、消息置顶、群公告
+- AI 助手：在群聊中 @AI 或 @AI助手 提问；群聊还可配置关键词自动触发 AI 回复
+- AI 分身：个人设置中开启，可配置触发模式（@触发/离线自动/关键词/全部消息/智能判断），AI 分身会以你的身份自动回复
+- 知识库：群聊设置中上传文档，AI 回答时会优先参考知识库内容
+- 笔记：左侧导航「笔记」，支持创建、编辑、搜索个人笔记
+- 任务：左侧导航「任务」，可创建待办任务、设置截止日期和优先级
+- 日历：左侧导航「日历」，管理日程安排
+- 文件管理：左侧导航「文件」，查看和管理上传的文件
+- 统一搜索：顶部搜索栏支持搜索消息、笔记、文件、知识库
+当用户询问产品功能或使用方法时，根据以上信息引导用户操作。`
 }

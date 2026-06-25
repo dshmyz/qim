@@ -28,7 +28,7 @@ interface AppCategory {
 interface SearchResultItem {
   id: string
   name: string
-  type: 'user' | 'group' | 'discussion' | 'bot_assistant' | 'bot_avatar'
+  type: 'user' | 'group' | 'discussion' | 'bot'
   username?: string
   avatar?: string
   status?: 'online' | 'offline'

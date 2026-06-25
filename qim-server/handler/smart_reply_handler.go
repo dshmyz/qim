@@ -8,6 +8,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 	"log"
@@ -151,7 +152,8 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 			return
 		}
 
-		if aiConfig.TriggerKeywords != "" {
+		// 关键词过滤仅在自动回复模式下生效，@AI 提及不受关键词限制
+		if aiConfig.ReplyMode != "mention_only" && aiConfig.TriggerKeywords != "" {
 			keywords := strings.Split(aiConfig.TriggerKeywords, ",")
 			hasKeyword := false
 			for _, kw := range keywords {
@@ -168,11 +170,9 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		}
 
 		if aiConfig.AntiSpamInterval > 0 {
-			userSvc := service.NewUserService(db)
-			systemUserID := userSvc.GetSystemUserID()
 			var lastAIMsg model.Message
-			err := db.Where("conversation_id = ? AND sender_id = ? AND created_at > ?",
-				conversationID, systemUserID, time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
+			err := db.Where("conversation_id = ? AND origin = ? AND created_at > ?",
+				conversationID, "assistant", time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
 				Order("created_at DESC").First(&lastAIMsg).Error
 			if err == nil {
 				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
@@ -372,6 +372,12 @@ func (rl *RateLimiter) Stop() {
 
 // isAIMention 检测是否 @AI 或 @AI助手
 func (e *SmartReplyEngine) isAIMention(content string, assistantName string) bool {
+	for _, m := range mention.Parse(content) {
+		if isAIAssistantMentionName(m.Name, assistantName) {
+			return true
+		}
+	}
+
 	patterns := []string{
 		"@AI",
 		"@Ai",
@@ -387,8 +393,24 @@ func (e *SmartReplyEngine) isAIMention(content string, assistantName string) boo
 	return false
 }
 
+func isAIAssistantMentionName(name string, assistantName string) bool {
+	if name == "" {
+		return false
+	}
+	if assistantName != "" && name == assistantName {
+		return true
+	}
+	return strings.EqualFold(name, "ai")
+}
+
 // extractAIQuestion 提取 @AI 后的问题内容
 func extractAIQuestion(content string, assistantName string) string {
+	for _, m := range mention.Parse(content) {
+		if isAIAssistantMentionName(m.Name, assistantName) {
+			return strings.TrimSpace(content[m.End:])
+		}
+	}
+
 	patterns := []string{"@AI", "@Ai", "@ai", "@" + assistantName}
 
 	for _, pattern := range patterns {
@@ -440,6 +462,23 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		return
 	}
 
+	// @提问者模式：读取配置
+	db := database.GetDB()
+	var mentionPrefix string
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
+		if group.GetAIConfig().MentionReplyMode == "mention" {
+			var mentionUser model.User
+			if err := db.First(&mentionUser, userID).Error; err == nil {
+				name := mentionUser.Nickname
+				if name == "" {
+					name = mentionUser.Username
+				}
+				mentionPrefix = mention.Encode(userID, name) + "\n\n"
+			}
+		}
+	}
+
 	chunkCount := 0
 	totalLen := 0
 	for {
@@ -447,9 +486,19 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		if err != nil {
 			break
 		}
+		// 剥离 AI 自带的 mention token，避免重复
+		cleanContent := mention.StripTokens(msg.Content)
+		if cleanContent == "" {
+			continue
+		}
 		chunkCount++
-		totalLen += len(msg.Content)
-		sendChunk(msg.Content)
+		totalLen += len(cleanContent)
+		// 第一个 chunk 拼 mention 前缀
+		if mentionPrefix != "" {
+			cleanContent = mentionPrefix + cleanContent
+			mentionPrefix = "" // 只拼一次
+		}
+		sendChunk(cleanContent)
 	}
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符", chunkCount, totalLen)
@@ -495,17 +544,13 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 		recentMessages[i], recentMessages[j] = recentMessages[j], recentMessages[i]
 	}
 
-	systemUserID := service.NewUserService(db).GetSystemUserID()
-
 	var messages []ai.Message
-	messages = append(messages, ai.Message{Role: "system", Content: systemPrompt})
-
 	for _, msg := range recentMessages {
 		if originalContent != "" && msg.SenderID == userID && msg.Content == originalContent {
 			continue
 		}
 
-		if msg.SenderID == systemUserID {
+		if msg.Origin == "assistant" {
 			messages = append(messages, ai.Message{
 				Role:    "assistant",
 				Content: msg.Content,
@@ -539,9 +584,8 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 		return
 	}
 
-	err = finish()
-	if err != nil {
-		log.Printf("[SmartReply] 完成流式消息失败: %v", err)
+	if finish() == nil {
+		log.Printf("[SmartReply] 完成流式消息失败")
 		return
 	}
 

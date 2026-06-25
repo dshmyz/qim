@@ -166,6 +166,11 @@ func HasAnyMention(content string) bool {
 	return tokenRegex.MatchString(content)
 }
 
+// StripTokens 移除 content 中的所有 mention token，保留其余文本。
+func StripTokens(content string) string {
+	return tokenRegex.ReplaceAllString(content, "")
+}
+
 // DisplayName 返回单个 mention 的展示文本（不含 @ 前缀的 name 部分）。
 // 用于 UI chip 渲染。
 func (m Mention) DisplayName() string {

@@ -153,7 +153,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 		Type:           "text",
 		Content:        reply,
 		IsRead:         false,
-		AIType:         "avatar",
+		Origin:         "avatar",
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -185,8 +185,8 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.AIType == "avatar",
-		"ai_type":         msg.AIType,
+		"is_avatar_reply": msg.Origin == "avatar",
+		"origin":         msg.Origin,
 		"sender":          msg.Sender,
 		"avatar_name":     avatarCfgName,
 	}
@@ -198,7 +198,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		logger.WithModule("sendPrivateReply").Debug("Broadcasting",
-			"conv", conv.ID, "ai_type", msg.AIType, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
+			"conv", conv.ID, "origin", msg.Origin, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(conv.ID, 0, jsonMsg)
 	}
 
@@ -214,7 +214,7 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 		Type:           "text",
 		Content:        reply,
 		IsRead:         false,
-		AIType:         "avatar",
+		Origin:         "avatar",
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -246,8 +246,8 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 		"content":         msg.Content,
 		"is_read":         msg.IsRead,
 		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.AIType == "avatar",
-		"ai_type":         msg.AIType,
+		"is_avatar_reply": msg.Origin == "avatar",
+		"origin":         msg.Origin,
 		"sender":          msg.Sender,
 		"avatar_name":     avatarCfgName,
 	}
@@ -259,7 +259,7 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		logger.WithModule("sendDirectReply").Debug("Broadcasting",
-			"conv", task.ConversationID, "ai_type", msg.AIType, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
+			"conv", task.ConversationID, "origin", msg.Origin, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
 		ws.GlobalHub.SendToConversation(task.ConversationID, 0, jsonMsg)
 	}
 

@@ -8,7 +8,7 @@ CREATE DATABASE IF NOT EXISTS qim_server CHARACTER SET utf8mb4 COLLATE utf8mb4_u
 USE qim_server;
 
 -- Users table
--- type: 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
+-- type: 'user' | 'bot' | 'system' | 'api' | 'admin'
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `username` VARCHAR(50) NOT NULL UNIQUE,
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `quoted_message_id` INT UNSIGNED,
   `is_recalled` BOOLEAN DEFAULT FALSE,
   `is_read` BOOLEAN DEFAULT FALSE,
-  `ai_type` VARCHAR(30) DEFAULT '',
+  `origin` VARCHAR(30) DEFAULT '',
   `recalled_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

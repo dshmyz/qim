@@ -93,7 +93,7 @@ func resolveAIName(msg model.Message) string {
 	nameCache := service.GetAINameCache()
 	db := database.GetDB()
 
-	if msg.AIType == "assistant" {
+	if msg.Origin == "assistant" {
 		var group model.Group
 		if err := db.Select("ai_config").
 			Where("conversation_id = ?", msg.ConversationID).
@@ -104,12 +104,12 @@ func resolveAIName(msg model.Message) string {
 			}
 		}
 	}
-	if msg.AIType == "avatar" {
+	if msg.Origin == "avatar" {
 		if name := nameCache.GetAvatarName(msg.SenderID); name != "" {
 			return name
 		}
 	}
-	if (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system" {
+	if msg.Sender.Type == "bot" || msg.Sender.Type == "system" {
 		return msg.Sender.Nickname
 	}
 	return "AI助手"
@@ -123,20 +123,25 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 	isAtMention := msg.SenderID != currentUserID && containsUint(mentionUserIDs, currentUserID)
 
 	aiName := resolveAIName(msg)
+	senderType := msg.Sender.Type
+	if msg.Origin == "assistant" || msg.Origin == "avatar" {
+		senderType = "bot"
+	}
 
 	resp := gin.H{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
 		"sender_id":         msg.SenderID,
+		"sender_type":       senderType,
 		"type":              msg.Type,
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.AIType == "avatar",
-		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
+		"is_avatar_reply":   msg.Origin == "avatar",
+		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
 		"ai_assistant_name": aiName,
-		"ai_type":           msg.AIType,
+		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
@@ -146,7 +151,7 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 	}
 
 	// 分身消息：透出分身名称
-	if msg.AIType == "avatar" {
+	if msg.Origin == "avatar" {
 		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
@@ -434,6 +439,13 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 
 	if excludeUserID > 0 {
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
+	} else if msg.Origin == "assistant" || msg.Origin == "avatar" {
+		// AI 消息：为所有非 AI 用户增加未读计数
+		for _, member := range conv.Members {
+			if member.UserID != msg.SenderID {
+				convSvc.IncrementUnreadCount(msg.ConversationID, member.UserID)
+			}
+		}
 	}
 
 	// AI 消息不含 mention（AI 不会 @ 人），mention_user_ids 恒为空数组
@@ -450,10 +462,10 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
 		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.AIType == "avatar",
-		"is_ai_message":     msg.AIType == "assistant" || msg.AIType == "avatar" || (msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar") || msg.Sender.Type == "system",
+		"is_avatar_reply":   msg.Origin == "avatar",
+		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
 		"ai_assistant_name": aiName,
-		"ai_type":           msg.AIType,
+		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
@@ -462,7 +474,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 	}
 
 	// 分身消息：透出分身名称
-	if msg.AIType == "avatar" {
+	if msg.Origin == "avatar" {
 		responseData["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
@@ -542,31 +554,26 @@ func StreamMessage(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 
 	responseChan := make(chan ai.StreamChunk)
-	doneChan := make(chan bool)
 
 	utils.SafeGoWithLabel("stream-message", func() {
+		defer close(responseChan)
+
 		db := database.GetDB()
 		var botConv model.BotConversation
 		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
 			logger.WithModule("StreamMessage").Error("查找机器人会话关联失败", "error", err)
-			close(responseChan)
-			doneChan <- true
 			return
 		}
 
 		var bot model.Bot
 		if err := db.First(&bot, botConv.BotID).Error; err != nil {
 			logger.WithModule("StreamMessage").Error("查找机器人信息失败", "error", err)
-			close(responseChan)
-			doneChan <- true
 			return
 		}
 
 		// 检查机器人是否已启用（审批通过）
 		if !bot.IsActive {
 			logger.WithModule("StreamMessage").Error("机器人未启用", "botID", botConv.BotID)
-			close(responseChan)
-			doneChan <- true
 			return
 		}
 
@@ -646,9 +653,6 @@ func StreamMessage(c *gin.Context) {
 			fullResponse = errorMsg
 		}
 
-		close(responseChan)
-		doneChan <- true
-
 		senderID := service.NewUserService(db).GetSystemUserID()
 		if bot.VirtualUserID != nil {
 			senderID = *bot.VirtualUserID
@@ -659,9 +663,25 @@ func StreamMessage(c *gin.Context) {
 			SenderID:       senderID,
 			Type:           "markdown",
 			Content:        fullResponse,
-			AIType:         "assistant",
+			Origin:         "assistant",
 		}
-		db.Create(&botReply)
+		if err := db.Create(&botReply).Error; err != nil {
+			logger.WithModule("StreamMessage").Error("保存机器人回复失败", "error", err)
+			return
+		}
+		if err := db.Preload("Sender").First(&botReply, botReply.ID).Error; err != nil {
+			logger.WithModule("StreamMessage").Error("预加载机器人回复发送者失败", "error", err, "messageID", botReply.ID)
+			return
+		}
+
+		now := time.Now()
+		if err := convSvc.UpdateConversation(conv.ID, map[string]interface{}{
+			"last_message_id": botReply.ID,
+			"last_message_at": now,
+		}); err != nil {
+			logger.WithModule("StreamMessage").Error("更新 Bot 会话最后消息失败", "error", err, "conversationID", conv.ID, "messageID", botReply.ID)
+			return
+		}
 
 		logLength := 100
 		if len(fullResponse) < logLength {
@@ -686,8 +706,6 @@ func StreamMessage(c *gin.Context) {
 			data, _ := json.Marshal(chunk)
 			c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
 			c.Writer.Flush()
-		case <-doneChan:
-			return
 		case <-c.Request.Context().Done():
 			return
 		}

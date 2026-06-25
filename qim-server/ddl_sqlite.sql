@@ -7,7 +7,7 @@
 PRAGMA foreign_keys = ON;
 
 -- Users table
--- type: 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
+-- type: 'user' | 'bot' | 'system' | 'api' | 'admin'
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `username` VARCHAR(50) NOT NULL UNIQUE,
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `quoted_message_id` INTEGER,
   `is_recalled` INTEGER DEFAULT 0,
   `is_read` INTEGER DEFAULT 0,
-  `ai_type` VARCHAR(30) DEFAULT '',
+  `origin` VARCHAR(30) DEFAULT '',
   `recalled_at` DATETIME,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,

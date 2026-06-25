@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -228,15 +229,19 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		return
 	}
 
+	// Bot 必须有虚拟用户才能回复
+	if bot.VirtualUserID == nil {
+		logger.WithModule("handleBotMessage").Warn("Bot 没有虚拟用户", "botID", bot.ID)
+		return
+	}
+
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
-
-	systemUserID := s.GetSystemUserID()
 
 	aiMessages := make([]ai.Message, 0, len(messages))
 	for _, msg := range messages {
 		role := "user"
-		if msg.SenderID == systemUserID {
+		if msg.SenderID == *bot.VirtualUserID {
 			role = "assistant"
 		}
 		aiMessages = append(aiMessages, ai.Message{
@@ -245,11 +250,12 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		})
 	}
 
-	utils.SafeGo(func() {
-		var builder strings.Builder
+	var builder strings.Builder
+	var streamErr error
+	if s.aiService == nil {
+		streamErr = fmt.Errorf("AI 服务未配置")
+	} else {
 		done := make(chan struct{})
-		var streamErr error
-
 		go func() {
 			streamErr = s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
 				builder.WriteString(chunk.Content)
@@ -265,21 +271,51 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		case <-time.After(60 * time.Second):
 			streamErr = fmt.Errorf("AI 响应超时")
 		}
+	}
 
-		response := builder.String()
-		if streamErr != nil {
-			response = "抱歉，AI 服务暂时不可用，请稍后再试。"
-		}
+	response := builder.String()
+	if streamErr != nil {
+		logger.WithModule("handleBotMessage").Error("AI API error", "error", streamErr)
+		response = "抱歉，AI 服务暂时不可用，请稍后再试。"
+	}
 
-		senderID := s.GetSystemUserID()
-		botReply := model.Message{
-			ConversationID: convID,
-			SenderID:       senderID,
-			Type:           "markdown",
-			Content:        response,
+	senderID := *bot.VirtualUserID
+	botReply := model.Message{
+		ConversationID: convID,
+		SenderID:       senderID,
+		Type:           "markdown",
+		Content:        response,
+		Origin:         "assistant",
+	}
+	if err := db.Create(&botReply).Error; err != nil {
+		logger.WithModule("handleBotMessage").Error("创建 Bot 回复失败", "error", err)
+		return
+	}
+
+	if err := db.Preload("Sender").First(&botReply, botReply.ID).Error; err != nil {
+		logger.WithModule("handleBotMessage").Error("预加载 Bot 回复发送者失败", "error", err, "messageID", botReply.ID)
+		return
+	}
+
+	now := time.Now()
+	if err := db.Model(&model.Conversation{}).
+		Where("id = ?", convID).
+		Updates(map[string]interface{}{
+			"last_message_id": botReply.ID,
+			"last_message_at": now,
+		}).Error; err != nil {
+		logger.WithModule("handleBotMessage").Error("更新 Bot 会话最后消息失败", "error", err, "conversationID", convID, "messageID", botReply.ID)
+		return
+	}
+
+	if s.hub != nil {
+		wsMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: s.buildMessageResponse(botReply, nil),
 		}
-		db.Create(&botReply)
-	})
+		jsonMsg, _ := json.Marshal(wsMsg)
+		s.hub.SendToUser(userID, jsonMsg)
+	}
 }
 
 func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error) {
@@ -561,8 +597,20 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	// 无未读消息则跳过，避免无效的 INSERT SELECT 和 UPDATE
-	if member.UnreadCount == 0 {
+	// 检查是否有未读消息（is_read = false），而不是只看 UnreadCount
+	var unreadCount int64
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, userID).
+		Count(&unreadCount)
+
+	if unreadCount == 0 {
+		// 即使没有未读消息，也要重置计数器
+		db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id = ?", convID, userID).
+			UpdateColumns(map[string]interface{}{
+				"unread_count":           0,
+				"unread_at_mention_count": 0,
+			})
 		return nil
 	}
 
@@ -589,7 +637,10 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 
 	db.Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id = ?", convID, userID).
-		UpdateColumn("unread_count", 0)
+		UpdateColumns(map[string]interface{}{
+			"unread_count":           0,
+			"unread_at_mention_count": 0,
+		})
 
 	now := time.Now()
 	db.Model(&model.ConversationMember{}).
@@ -891,9 +942,9 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 	if mentionUserIDs == nil {
 		mentionUserIDs = []uint{}
 	}
-	isAvatarReply := msg.AIType == "avatar"
-	isAIMessage := msg.AIType == "assistant" || msg.AIType == "avatar" ||
-		msg.Sender.Type == "bot_assistant" || msg.Sender.Type == "bot_avatar" || msg.Sender.Type == "system"
+	isAvatarReply := msg.Origin == "avatar"
+	isAIMessage := msg.Origin == "assistant" || msg.Origin == "avatar" ||
+		msg.Sender.Type == "bot" || msg.Sender.Type == "system"
 	return map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
@@ -905,7 +956,7 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"is_read":           msg.IsRead,
 		"is_avatar_reply":   isAvatarReply,
 		"is_ai_message":     isAIMessage,
-		"ai_type":           msg.AIType,
+		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,

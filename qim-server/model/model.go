@@ -16,7 +16,7 @@ type User struct {
 	Nickname         string         `json:"nickname" gorm:"size:100"`
 	RealName         string         `json:"real_name" gorm:"size:100"`
 	Avatar           string         `json:"avatar" gorm:"size:500"`
-	Type             string         `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot_assistant' | 'bot_avatar' | 'system' | 'api' | 'admin'
+	Type             string         `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot' | 'system' | 'api' | 'admin'
 	Gender           string         `json:"gender" gorm:"size:10;default:'secret'"`   // 'male' | 'female' | 'secret'
 	Organization     string         `json:"organization" gorm:"size:500"`             // 组织架构信息（冗余存储）
 	Signature        string         `json:"signature" gorm:"type:text"`
@@ -185,7 +185,7 @@ type Message struct {
 	QuotedMessageID *uint          `json:"quoted_message_id"`
 	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
 	IsRead          bool           `json:"is_read" gorm:"default:false;index:idx_msg_conv_read_sender,priority:2"`
-	AIType          string         `json:"ai_type" gorm:"size:30;default:''"` // '' | 'assistant' | 'avatar'
+	Origin          string         `json:"origin" gorm:"size:30;default:''"` // '' | 'user' | 'assistant' | 'avatar'
 	RecalledAt      *time.Time     `json:"recalled_at"`
 	CreatedAt       time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -274,7 +274,7 @@ type Bot struct {
 	Name            string         `json:"name" gorm:"size:100;not null"`
 	Avatar          string         `json:"avatar" gorm:"size:500"`
 	Description     string         `json:"description" gorm:"type:text"`
-	Type            string         `json:"type" gorm:"size:50;not null"` // system, custom, ai
+	Type            string         `json:"type" gorm:"size:50;not null"` // system, custom, assistant
 	Config          string         `json:"config" gorm:"type:text"`      // JSON配置
 	IsActive        bool           `json:"is_active" gorm:"default:true"`
 	CreatedAt       time.Time      `json:"created_at"`

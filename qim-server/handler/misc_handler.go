@@ -354,7 +354,7 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 		SenderID:       *bot.VirtualUserID, // 使用虚拟用户 ID
 		Type:           "markdown",
 		Content:        reply,
-		AIType:         "assistant",
+		Origin:         "assistant",
 	}
 	db.Create(&msg)
 

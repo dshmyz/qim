@@ -16,7 +16,7 @@ import (
 type MessageSender interface {
 	SendAIMessage(conversationID uint, content string, assistantName string) error
 	SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error
-	SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() error, error)
+	SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, error)
 }
 
 type WebSocketMessageSender struct {
@@ -75,7 +75,7 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 		Type:           "markdown",
 		Content:        content,
 		IsRead:         false,
-		AIType:         "assistant",
+		Origin:         "assistant",
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
@@ -96,7 +96,7 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 	return nil
 }
 
-func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() error, error) {
+func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, error) {
 	aiUser, _, err := s.resolveAISender(conversationID, assistantName)
 	if err != nil {
 		return nil, nil, err
@@ -108,7 +108,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		Type:           "text",
 		Content:        "",
 		IsRead:         false,
-		AIType:         "assistant",
+		Origin:         "assistant",
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
@@ -144,8 +144,8 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 				"is_ai_message":     true,
 				"ai_assistant_name": assistantName,
 				"is_streaming":      true,
-				"is_avatar_reply":   aiMessage.AIType == "avatar",
-				"ai_type":           aiMessage.AIType,
+				"is_avatar_reply":   aiMessage.Origin == "avatar",
+				"origin":           aiMessage.Origin,
 				"created_at":        aiMessage.CreatedAt,
 				"sender":            aiUser,
 			}
@@ -162,19 +162,19 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		return nil
 	}
 
-	finish := func() error {
+	finish := func() *model.Message {
 		aiMessage.Content = accumulatedContent
 		aiMessage.Type = "markdown"
 		if err := s.db.Save(&aiMessage).Error; err != nil {
 			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)
-			return err
+			return nil
 		}
 
 		aiMessage.Sender = *aiUser
 		broadcastNewMessage(&aiMessage, 0, &conv)
 
 		logger.WithModule("MessageSender").Info("流式 AI 消息已完成", "conversationID", conversationID, "msgID", aiMessage.ID, "sender", aiUser.Nickname)
-		return nil
+		return &aiMessage
 	}
 
 	return sendChunk, finish, nil
@@ -193,7 +193,7 @@ func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, con
 			Type:           "markdown",
 			Content:        content,
 			IsRead:         false,
-			AIType:         "assistant",
+			Origin:         "assistant",
 		}
 
 		if err := s.db.Create(&aiMessage).Error; err != nil {
@@ -232,7 +232,7 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 		Type:           "markdown",
 		Content:        content,
 		IsRead:         false,
-		AIType:         "assistant",
+		Origin:         "assistant",
 	}
 
 	if err := db.Create(&aiMessage).Error; err != nil {
@@ -258,8 +258,8 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 			"content":           content,
 			"is_ai_message":     true,
 			"ai_assistant_name": assistantName,
-			"ai_type":           aiMessage.AIType,
-			"is_avatar_reply":   aiMessage.AIType == "avatar",
+			"origin":           aiMessage.Origin,
+			"is_avatar_reply":   aiMessage.Origin == "avatar",
 			"created_at":        aiMessage.CreatedAt,
 			"sender":            aiUser,
 		}
@@ -275,4 +275,20 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 
 	logger.WithModule("BroadcastAIMessage").Info("AI 消息已推送到会话", "conversationID", conversationID, "groupID", groupID, "msgID", aiMessage.ID)
 	return nil
+}
+
+// broadcastMessageContentUpdate 广播消息内容更新（不更新会话/未读数）
+func broadcastMessageContentUpdate(msg *model.Message) {
+	if ws.GlobalHub == nil {
+		return
+	}
+	msgData := gin.H{
+		"id":              msg.ID,
+		"conversation_id": msg.ConversationID,
+		"content":         msg.Content,
+		"type":            msg.Type,
+	}
+	wsMsg := ws.WSMessage{Type: "message_updated", Data: msgData}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 }

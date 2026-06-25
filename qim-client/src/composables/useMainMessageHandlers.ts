@@ -22,7 +22,7 @@ export interface Message {
   isAtMention?: boolean
   isAvatarReply?: boolean
   is_avatar_reply?: boolean
-  ai_type?: string
+  origin?: string
   isAIMessage?: boolean
   is_ai_message?: boolean
   ai_assistant_name?: string
@@ -57,7 +57,7 @@ export function useMainMessageHandlers() {
       },
       timestamp: msg.created_at ? new Date(msg.created_at).getTime() : Date.now(),
       type: msg.type || 'text',
-      isSelf: (msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false) || (msg.ai_type === 'avatar' && msg.sender_id?.toString() === currentUser.value?.id?.toString()),
+      isSelf: (msg.sender && msg.sender.id ? msg.sender.id.toString() === currentUser.value?.id?.toString() : false) || (msg.origin === 'avatar' && msg.sender_id?.toString() === currentUser.value?.id?.toString()),
       isRead: msg.is_read || false,
       isRecalled: msg.is_recalled || false,
       isFailed: msg.is_failed || false,
@@ -66,10 +66,10 @@ export function useMainMessageHandlers() {
         ? msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString())
           && msg.sender_id?.toString() !== currentUser.value?.id?.toString()
         : (msg.is_at_mention === true),
-      isAvatarReply: msg.ai_type === 'avatar',
-      is_avatar_reply: msg.ai_type === 'avatar',
-      ai_type: msg.ai_type || '',
-      isAIMessage: msg.ai_type === 'assistant' || msg.ai_type === 'avatar' || msg.sender?.type === 'bot' || msg.sender?.type === 'system' || msg.is_ai_message === true || msg.isAIMessage === true,
+      isAvatarReply: msg.origin === 'avatar',
+      is_avatar_reply: msg.origin === 'avatar',
+      origin: msg.origin || '',
+      isAIMessage: msg.origin === 'assistant' || msg.origin === 'avatar' || msg.sender?.type === 'bot' || msg.sender?.type === 'system' || msg.is_ai_message === true || msg.isAIMessage === true,
       is_ai_message: msg.is_ai_message || false,
       ai_assistant_name: msg.ai_assistant_name || '',
       avatar_name: msg.avatar_name || '',

@@ -28,7 +28,7 @@ func (h *AIBotHandler) GetAIBots(c *gin.Context) {
 	var bots []model.Bot
 	var total int64
 
-	query := h.db.Model(&model.Bot{}).Where("type = ?", "ai")
+	query := h.db.Model(&model.Bot{}).Where("type = ?", "assistant")
 
 	query.Count(&total)
 
@@ -102,13 +102,13 @@ func botToFrontend(bot model.Bot) gin.H {
 
 func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 	var req struct {
-		Name          string `json:"name" binding:"required"`
-		Description   string `json:"description"`
-		Avatar        string `json:"avatar"`
-		SystemPrompt  string `json:"systemPrompt"`
-		Model         string `json:"model"`
-		Temperature   float64 `json:"temperature"`
-		MaxTokens     int     `json:"maxTokens"`
+		Name         string  `json:"name" binding:"required"`
+		Description  string  `json:"description"`
+		Avatar       string  `json:"avatar"`
+		SystemPrompt string  `json:"systemPrompt"`
+		Model        string  `json:"model"`
+		Temperature  float64 `json:"temperature"`
+		MaxTokens    int     `json:"maxTokens"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -134,7 +134,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 		Name:        req.Name,
 		Description: req.Description,
 		Avatar:      req.Avatar,
-		Type:        "ai",
+		Type:        "assistant",
 		Config:      string(configJSON),
 		IsActive:    true, // 管理员创建的AI Bot直接启用
 		CreatorID:   userID,
@@ -170,14 +170,14 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	}
 
 	var req struct {
-		Name          *string  `json:"name"`
-		Description   *string  `json:"description"`
-		Avatar        *string  `json:"avatar"`
-		SystemPrompt  *string  `json:"systemPrompt"`
-		Model         *string  `json:"model"`
-		Temperature   *float64 `json:"temperature"`
-		MaxTokens     *int     `json:"maxTokens"`
-		IsActive      *bool    `json:"isActive"`
+		Name         *string  `json:"name"`
+		Description  *string  `json:"description"`
+		Avatar       *string  `json:"avatar"`
+		SystemPrompt *string  `json:"systemPrompt"`
+		Model        *string  `json:"model"`
+		Temperature  *float64 `json:"temperature"`
+		MaxTokens    *int     `json:"maxTokens"`
+		IsActive     *bool    `json:"isActive"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -189,7 +189,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "ai").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",
@@ -268,7 +268,7 @@ func (h *AIBotHandler) DeleteAIBot(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "ai").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",
@@ -315,7 +315,7 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "ai").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",
