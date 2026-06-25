@@ -659,6 +659,7 @@ func StreamMessage(c *gin.Context) {
 			SenderID:       senderID,
 			Type:           "markdown",
 			Content:        fullResponse,
+			AIType:         "assistant",
 		}
 		db.Create(&botReply)
 

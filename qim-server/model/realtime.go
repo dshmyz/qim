@@ -22,7 +22,7 @@ type RealtimeSession struct {
 // RealtimeParticipant 实时会话参与者
 type RealtimeParticipant struct {
 	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	SessionID   string     `json:"session_id" gorm:"not null;index"`
+	SessionID   string     `json:"session_id" gorm:"type:varchar(36);not null;index"`
 	UserID      uint       `json:"user_id" gorm:"not null;index"`
 	Role        string     `json:"role" gorm:"type:varchar(20);default:'viewer'"`    // initiator, viewer
 	Status      string     `json:"status" gorm:"type:varchar(20);default:'pending'"` // pending, approved, rejected, joined, left

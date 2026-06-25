@@ -170,7 +170,7 @@ type ConversationMember struct {
 	UnreadAtMentionCount int          `json:"unread_at_mention_count" gorm:"default:0"`
 	Muted                bool         `json:"muted" gorm:"default:false"`
 	LastReadAt           *time.Time   `json:"last_read_at"`
-	JoinedAt             time.Time    `json:"joined_at"`
+	JoinedAt             time.Time    `json:"joined_at" gorm:"autoCreateTime"`
 	User                 User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	Conversation         Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
@@ -551,7 +551,11 @@ func (s *StringArray) Scan(value interface{}) error {
 	default:
 		return fmt.Errorf("StringArray.Scan: unsupported type %T", value)
 	}
-	return json.Unmarshal([]byte(str), s)
+	if err := json.Unmarshal([]byte(str), s); err != nil {
+		// 兼容非 JSON 格式的纯文本，将其作为单元素数组处理
+		*s = StringArray{str}
+	}
+	return nil
 }
 
 func joinStrings(strs []string) string {

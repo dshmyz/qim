@@ -484,10 +484,14 @@ type GroupSearchResult struct {
 	IsMember       bool   `json:"is_member"`
 }
 
+func groupSearchJoinClause() string {
+	return "JOIN `groups` ON `groups`.conversation_id = conversations.id"
+}
+
 func (s *ConversationService) SearchGroupsByName(query string, userID uint) ([]GroupSearchResult, error) {
 	var conversations []model.Conversation
-	if err := s.db.Joins("JOIN groups ON groups.conversation_id = conversations.id").
-		Where("groups.name LIKE ? AND conversations.type IN ? AND conversations.is_deleted = ?",
+	if err := s.db.Joins(groupSearchJoinClause()).
+		Where("`groups`.name LIKE ? AND conversations.type IN ? AND conversations.is_deleted = ?",
 			"%"+query+"%", []string{"group", "discussion"}, false).
 		Find(&conversations).Error; err != nil {
 		return nil, err

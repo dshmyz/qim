@@ -55,7 +55,7 @@ func GetConversations(c *gin.Context) {
 		LEFT JOIN conversations c ON c.id = cm.conversation_id
 		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
 		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
-		ORDER BY is_pinned DESC, c.last_message_at DESC
+		ORDER BY is_pinned DESC, COALESCE(c.last_message_at, c.created_at) DESC
 		LIMIT ? OFFSET ?
 	`
 	db.Raw(query, uid, uid, pageSize, offset).Scan(&convMembersWithMeta)
@@ -153,7 +153,7 @@ func GetConversations(c *gin.Context) {
 		conv := conversationMap[cm.ConversationID]
 		if conv.Type == "group" || conv.Type == "discussion" {
 			groupConvIDs = append(groupConvIDs, cm.ConversationID)
-		} else if conv.Type == "single" {
+		} else if conv.Type == "single" || conv.Type == "bot" {
 			singleConvIDs = append(singleConvIDs, cm.ConversationID)
 		}
 	}
@@ -306,7 +306,7 @@ func GetConversations(c *gin.Context) {
 			}
 		}
 
-		if conv.Type == "single" {
+		if conv.Type == "single" || conv.Type == "bot" {
 			if otherUserID, ok := otherMemberMap[convID]; ok {
 				if otherUser, ok := userMap[otherUserID]; ok {
 					convWithPin.IP = otherUser.IP
@@ -400,6 +400,32 @@ func GetConversation(c *gin.Context) {
 		}
 	}
 
+	// 对于单聊和 Bot 会话，从对方成员（虚拟用户）获取名称、头像等信息
+	if conv.Type == "single" || conv.Type == "bot" {
+		for _, m := range conv.Members {
+			if m.UserID != userID.(uint) && m.UserID > 0 {
+				responseData := gin.H{
+					"id":                conv.ID,
+					"type":              conv.Type,
+					"name":              m.User.Nickname,
+					"avatar":            m.User.Avatar,
+					"other_member_id":   m.User.ID,
+					"other_member_name": m.User.Nickname,
+					"signature":         m.User.Signature,
+					"status":            m.User.Status,
+					"is_deleted":        conv.IsDeleted,
+					"last_message_id":   conv.LastMessageID,
+					"last_message_at":   conv.LastMessageAt,
+					"created_at":        conv.CreatedAt,
+					"updated_at":        conv.UpdatedAt,
+					"members":           conv.Members,
+				}
+				response.Success(c, responseData)
+				return
+			}
+		}
+	}
+
 	response.Success(c, conv)
 }
 
@@ -439,7 +465,7 @@ func SearchConversations(c *gin.Context) {
 	for _, conv := range convs {
 		if conv.Type == "group" || conv.Type == "discussion" {
 			groupConvIDs = append(groupConvIDs, conv.ID)
-		} else if conv.Type == "single" {
+		} else if conv.Type == "single" || conv.Type == "bot" {
 			singleConvIDs = append(singleConvIDs, conv.ID)
 		}
 	}
@@ -577,14 +603,74 @@ func CreateSingleConversation(c *gin.Context) {
 		return
 	}
 
-	// 检查接收方用户类型，禁止与bot_assistant类型用户发起私聊
+	// 检查接收方用户类型，bot 类型用户自动创建 bot 会话
 	var recipient model.User
 	if err := db.First(&recipient, req.UserID).Error; err != nil {
 		response.NotFound(c, "用户不存在")
 		return
 	}
-	if recipient.Type == "bot_assistant" {
-		response.BadRequest(c, "不支持与群助手发起私聊")
+	if recipient.Type == "bot_assistant" || recipient.Type == "bot_avatar" {
+		var bot model.Bot
+		if err := db.Where("virtual_user_id = ?", req.UserID).First(&bot).Error; err != nil {
+			response.NotFound(c, "机器人不存在")
+			return
+		}
+		if !bot.IsActive {
+			response.Forbidden(c, "机器人未启用")
+			return
+		}
+
+		// 查找已有 bot 会话
+		var botConv model.BotConversation
+		db.Where("bot_id = ? AND user_id = ?", bot.ID, userID.(uint)).
+			Preload("Conversation").First(&botConv)
+
+		if botConv.ID > 0 {
+			// 恢复会话显示
+			db.Model(&model.ConversationSession{}).
+				Where("user_id = ? AND conversation_id = ? AND is_hidden = ?", userID.(uint), botConv.ConversationID, true).
+				Update("is_hidden", false)
+			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
+				First(&botConv, botConv.ID)
+			response.Success(c, botConv.Conversation)
+			return
+		}
+
+		// 创建新的 bot 会话
+		tx := db.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+			}
+		}()
+
+		conv := model.Conversation{Type: "bot"}
+		if err := tx.Create(&conv).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+		if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: userID.(uint), Role: "member"}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+		if err := tx.Create(&model.BotConversation{
+			BotID:          bot.ID,
+			UserID:         userID.(uint),
+			ConversationID: conv.ID,
+		}).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建会话失败")
+			return
+		}
+		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
+		response.Success(c, conv)
 		return
 	}
 
@@ -599,9 +685,16 @@ func CreateSingleConversation(c *gin.Context) {
 
 	if existingConv.ID > 0 {
 		// 恢复会话显示：用户主动发起聊天时，如果会话被隐藏则恢复显示
-		db.Model(&model.ConversationSession{}).
+		if err := db.Model(&model.ConversationSession{}).
 			Where("user_id = ? AND conversation_id = ? AND is_hidden = ?", userID.(uint), existingConv.ID, true).
-			Update("is_hidden", false)
+			Update("is_hidden", false).Error; err != nil {
+			response.InternalServerError(c, "恢复会话失败")
+			return
+		}
+		if err := db.Preload("Members").Preload("Members.User").First(&existingConv, existingConv.ID).Error; err != nil {
+			response.InternalServerError(c, "加载会话信息失败")
+			return
+		}
 
 		response.Success(c, existingConv)
 		return
@@ -657,6 +750,19 @@ func CreateSingleConversation(c *gin.Context) {
 	}
 
 	if err := tx.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: req.UserID, Role: "member"}).Error; err != nil {
+		tx.Rollback()
+		response.InternalServerError(c, "创建会话失败")
+		return
+	}
+
+	// 默认对接收方隐藏会话，直到发起方发送第一条消息后才恢复显示
+	// 这样接收方不会在未收到任何消息前就看到空会话
+	if err := tx.Create(&model.ConversationSession{
+		UserID:         req.UserID,
+		ConversationID: conv.ID,
+		IsHidden:       true,
+		LastVisitedAt:  time.Now(),
+	}).Error; err != nil {
 		tx.Rollback()
 		response.InternalServerError(c, "创建会话失败")
 		return

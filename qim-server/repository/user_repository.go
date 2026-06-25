@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
 
@@ -69,7 +70,7 @@ func (r *userRepository) UpdateStatus(ctx context.Context, id uint, status strin
 }
 
 func (r *userRepository) UpdateLastOnline(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("last_online", gorm.Expr("datetime('now')")).Error
+	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("last_online", time.Now()).Error
 }
 
 func (r *userRepository) WithTx(tx *gorm.DB) BaseRepository[model.User] {

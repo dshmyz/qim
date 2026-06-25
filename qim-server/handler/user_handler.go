@@ -127,7 +127,7 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		if user.ID != uid {
 			responseUsers = append(responseUsers, gin.H{
 				"id":       user.ID,
-				"type":     "user",
+				"type":     user.Type,
 				"name":     user.Nickname,
 				"username": user.Username,
 				"avatar":   user.Avatar,

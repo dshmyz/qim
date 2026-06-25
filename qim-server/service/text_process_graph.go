@@ -60,7 +60,7 @@ func (g *TextProcessGraph) Build() error {
 	graph := compose.NewGraph[*TextProcessInput, *TextProcessOutput]()
 
 	graph.AddLambdaNode("build_prompt", g.createBuildPromptNode())
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeAnalysis, 0))
+	graph.AddChatModelNode("model", NewEinoChatModelNoTools(g.aiService, ai.TaskTypeAnalysis, 0))
 	graph.AddLambdaNode("format", g.createFormatNode())
 
 	graph.AddEdge(compose.START, "build_prompt")
@@ -153,6 +153,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 		sb.WriteString("2. 使用目标语言的自然表达方式\n")
 		sb.WriteString("3. 保留专业术语和专有名词\n")
 		sb.WriteString("4. 保持原文的格式和结构\n")
+		sb.WriteString("5. 只输出翻译结果，不要额外解释\n")
 		if input.SourceLang != "" {
 			sb.WriteString(fmt.Sprintf("\n【源语言】%s\n", input.SourceLang))
 		}
@@ -167,6 +168,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 		sb.WriteString("2. 调整表达方式以符合指定风格\n")
 		sb.WriteString("3. 确保改写后的文本流畅自然\n")
 		sb.WriteString("4. 保持原文的格式和结构\n")
+		sb.WriteString("5. 只输出改写结果，不要额外解释\n")
 		if input.Style != "" {
 			sb.WriteString(fmt.Sprintf("\n【风格】%s\n", input.Style))
 		}
@@ -181,6 +183,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 		sb.WriteString("2. 优化句子结构和表达\n")
 		sb.WriteString("3. 保持原文的语义和语气\n")
 		sb.WriteString("4. 使文本更加简洁和专业\n")
+		sb.WriteString("5. 只输出润色结果，不要额外解释\n")
 		if input.Language != "" {
 			sb.WriteString(fmt.Sprintf("\n【语言】%s\n", input.Language))
 		}
