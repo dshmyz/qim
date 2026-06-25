@@ -183,40 +183,74 @@ const openMiniApp = () => {
   transform: translateX(4px);
 }
 
-/* 自己的小程序消息样式 */
+/* 自己的小程序消息样式：浅色主色背景 + 深色文字 */
 .mini-app-message.self {
-  background: var(--primary-color);
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
   border: none;
+  color: var(--text-color);
 }
 
 .mini-app-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  background: var(--primary-color);
+  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
   opacity: 1;
 }
 
 .mini-app-message.self .mini-app-name {
-  color: #ffffff;
+  color: var(--text-color);
   font-weight: 600;
 }
 
 .mini-app-message.self .mini-app-description {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-secondary);
 }
 
 .mini-app-message.self .mini-app-icon {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(128, 128, 128, 0.1);
 }
 
 .mini-app-message.self .mini-app-type-label {
+  background: var(--hover-color);
+  color: var(--text-secondary);
+}
+
+.mini-app-message.self .mini-app-arrow {
+  color: var(--text-secondary);
+}
+
+.mini-app-message.self:hover .mini-app-arrow {
+  color: var(--primary-color);
+}
+
+/* 深色主题：纯主色背景 + 白色文字 */
+[data-theme="elegant-dark"] .mini-app-message.self {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .mini-app-message.self .mini-app-name {
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .mini-app-message.self .mini-app-description {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="elegant-dark"] .mini-app-message.self .mini-app-icon {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="elegant-dark"] .mini-app-message.self .mini-app-type-label {
   background: rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.85);
 }
 
-.mini-app-message.self .mini-app-arrow {
+[data-theme="elegant-dark"] .mini-app-message.self .mini-app-arrow {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.mini-app-message.self:hover .mini-app-arrow {
+[data-theme="elegant-dark"] .mini-app-message.self:hover .mini-app-arrow {
   color: #ffffff;
 }
 </style>

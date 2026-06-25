@@ -103,10 +103,6 @@ const previewImage = () => {
   visibility: hidden;
 }
 
-.message-image:hover {
-  transform: scale(1.05);
-}
-
 .image-placeholder-overlay {
   transition: opacity 0.15s ease;
 }

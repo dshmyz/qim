@@ -64,10 +64,16 @@ const renderedContent = computed(() => {
 }
 
 .streaming-message.self {
-  background: var(--primary-color);
-  color: white;
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
   border-bottom-right-radius: 4px;
   align-self: flex-end;
+}
+
+[data-theme="elegant-dark"] .streaming-message.self {
+  background: var(--primary-color);
+  color: white;
 }
 
 .streaming-message:not(.self) {

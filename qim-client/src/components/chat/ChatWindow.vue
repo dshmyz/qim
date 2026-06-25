@@ -242,6 +242,7 @@ import { useRealtimeStore } from '../../stores/realtime'
 import { useTaskStore } from '../../stores/task'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
+import { decodeToPlainText } from '../../utils/mentions'
 
 // 服务器地址
 const { serverUrl } = useServerUrl()
@@ -868,8 +869,8 @@ const performSearch = () => {
   isSearching.value = true
   
   setTimeout(() => {
-    searchResults.value = props.messages.filter(message => 
-      message.content.toLowerCase().includes(query.toLowerCase())
+    searchResults.value = props.messages.filter(message =>
+      decodeToPlainText(message.content).toLowerCase().includes(query.toLowerCase())
     )
     isSearching.value = false
   }, 300)

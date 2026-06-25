@@ -491,44 +491,80 @@ const saveFileAs = () => {
   transform: translateY(0);
 }
 
-/* 自己的文件消息样式 */
+/* 自己的文件消息样式：浅色主色背景 + 深色文字（与 message-bubble 保持一致） */
 .file-message.self {
-  background: var(--primary-color);
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
   border: none;
+  color: var(--text-color);
 }
 
 .file-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  background: var(--primary-color);
+  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
   opacity: 1;
 }
 
 .file-message.self .file-name {
-  color: #ffffff;
+  color: var(--text-color);
   font-weight: 600;
 }
 
 .file-message.self .file-size {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-secondary);
 }
 
 .file-message.self .file-icon {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(128, 128, 128, 0.1);
   color: var(--primary-color);
 }
 
 .file-message.self .file-type-label {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--hover-color);
+  color: var(--text-secondary);
 }
 
 .file-message.self .file-action-btn {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+.file-message.self .file-action-btn:hover {
+  background: var(--primary-hover, var(--primary-color));
+  transform: translateY(-1px);
+}
+
+/* 深色主题：纯主色背景 + 白色文字 */
+[data-theme="elegant-dark"] .file-message.self {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .file-message.self .file-name {
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .file-message.self .file-size {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="elegant-dark"] .file-message.self .file-icon {
   background: rgba(255, 255, 255, 0.95);
   color: var(--primary-color);
 }
 
-.file-message.self .file-action-btn:hover {
+[data-theme="elegant-dark"] .file-message.self .file-type-label {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="elegant-dark"] .file-message.self .file-action-btn {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-color);
+}
+
+[data-theme="elegant-dark"] .file-message.self .file-action-btn:hover {
   background: #ffffff;
-  transform: translateY(-1px);
 }
 
 /* 深色主题下对方消息的文件图标 */

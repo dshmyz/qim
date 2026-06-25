@@ -171,10 +171,11 @@ const renderedContent = computed(() => {
   font-weight: 600;
 }
 
-/* 自己发送的 Markdown 消息 */
+/* 自己发送的 Markdown 消息：浅色主色背景 + 深色文字 */
 .markdown-message.self {
-  background: var(--primary-color);
-  color: white;
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
+  color: var(--text-color);
 }
 
 .markdown-message.self h1,
@@ -183,45 +184,98 @@ const renderedContent = computed(() => {
 .markdown-message.self strong,
 .markdown-message.self li,
 .markdown-message.self p {
-  color: white;
+  color: var(--text-color);
 }
 
 .markdown-message.self code {
+  background-color: var(--hover-color);
+  color: var(--text-color);
+}
+
+.markdown-message.self pre {
+  background-color: var(--hover-color);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.markdown-message.self blockquote {
+  border-left-color: var(--primary-color);
+  color: var(--text-secondary);
+}
+
+.markdown-message.self a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.markdown-message.self a:hover {
+  color: var(--primary-hover, var(--primary-color));
+}
+
+.markdown-message.self ::selection {
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--text-color);
+}
+
+.markdown-message.self th {
+  background: var(--hover-color);
+}
+
+.markdown-message.self th,
+.markdown-message.self td {
+  border-color: var(--border-color);
+}
+
+/* 深色主题：纯主色背景 + 白色文字 */
+[data-theme="elegant-dark"] .markdown-message.self {
+  background: var(--primary-color);
+  color: white;
+}
+
+[data-theme="elegant-dark"] .markdown-message.self h1,
+[data-theme="elegant-dark"] .markdown-message.self h2,
+[data-theme="elegant-dark"] .markdown-message.self h3,
+[data-theme="elegant-dark"] .markdown-message.self strong,
+[data-theme="elegant-dark"] .markdown-message.self li,
+[data-theme="elegant-dark"] .markdown-message.self p {
+  color: white;
+}
+
+[data-theme="elegant-dark"] .markdown-message.self code {
   background-color: rgba(255, 255, 255, 0.2);
   color: white;
 }
 
-.markdown-message.self pre {
+[data-theme="elegant-dark"] .markdown-message.self pre {
   background-color: rgba(255, 255, 255, 0.12);
   color: white;
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.markdown-message.self blockquote {
+[data-theme="elegant-dark"] .markdown-message.self blockquote {
   border-left-color: rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.8);
 }
 
-.markdown-message.self a {
-  color: #fef08a;
-  text-decoration: none;
-}
-
-.markdown-message.self a:hover {
+[data-theme="elegant-dark"] .markdown-message.self a {
   color: #fef08a;
 }
 
-.markdown-message.self ::selection {
+[data-theme="elegant-dark"] .markdown-message.self a:hover {
+  color: #fef08a;
+}
+
+[data-theme="elegant-dark"] .markdown-message.self ::selection {
   background: rgba(0, 0, 0, 0.25);
   color: white;
 }
 
-.markdown-message.self th {
+[data-theme="elegant-dark"] .markdown-message.self th {
   background: rgba(255, 255, 255, 0.15);
 }
 
-.markdown-message.self th,
-.markdown-message.self td {
+[data-theme="elegant-dark"] .markdown-message.self th,
+[data-theme="elegant-dark"] .markdown-message.self td {
   border-color: rgba(255, 255, 255, 0.2);
 }
 </style>

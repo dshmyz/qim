@@ -31,6 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { decodeToPlainText } from '../../utils/mentions'
 
 export interface QuotedMessage {
   id: string
@@ -79,7 +80,7 @@ const typeLabel = computed(() => {
 })
 
 const displayContent = computed(() => {
-  const content = props.quotedMessage.content || '无内容'
+  const content = decodeToPlainText(props.quotedMessage.content || '无内容')
   if (content.length <= props.maxLength) {
     return content
   }

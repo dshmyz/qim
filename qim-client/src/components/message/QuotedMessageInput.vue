@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { decodeToPlainText } from '../../utils/mentions'
 
 const props = defineProps<{
   quotedMessage: any
@@ -39,7 +40,7 @@ const emit = defineEmits<{
 }>()
 
 const truncatedContent = computed(() => {
-  const content = props.quotedMessage.content || '无内容'
+  const content = decodeToPlainText(props.quotedMessage.content || '无内容')
   if (content.length > 80) {
     return content.slice(0, 80) + '...'
   }

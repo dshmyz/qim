@@ -361,45 +361,47 @@ const getShareTypeText = (type?: string): string => {
   margin-right: 6px;
 }
 
-/* 自己的分享消息样式 */
+/* 自己的分享消息样式：浅色主色背景 + 深色文字 */
 .share-message.self {
-  background: var(--primary-color);
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
   border: none;
+  color: var(--text-color);
 }
 
 .share-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  background: var(--primary-color);
+  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
   opacity: 1;
 }
 
 .share-message.self .share-name {
-  color: #ffffff;
+  color: var(--text-color);
   font-weight: 600;
 }
 
 .share-message.self .share-icon {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--primary-color);
+  background: rgba(128, 128, 128, 0.1);
 }
 
 .share-message.self .share-type-label {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--hover-color);
+  color: var(--text-secondary);
 }
 
 .share-message.self .share-action-btn {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--primary-color);
+  background: var(--primary-color);
+  color: #ffffff;
 }
 
 .share-message.self .share-action-btn:hover {
-  background: #ffffff;
+  background: var(--primary-hover, var(--primary-color));
   transform: translateY(-1px);
 }
 
 .share-message.self .share-expanded-content {
   background: var(--card-bg);
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--border-color);
   color: var(--text-color);
 }
 
@@ -432,5 +434,33 @@ const getShareTypeText = (type?: string): string => {
 .share-message.self .share-expanded-content :deep(th),
 .share-message.self .share-expanded-content :deep(td) {
   border-color: var(--border-color);
+}
+
+/* 深色主题：纯主色背景 + 白色文字 */
+[data-theme="elegant-dark"] .share-message.self {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .share-message.self .share-name {
+  color: #ffffff;
+}
+
+[data-theme="elegant-dark"] .share-message.self .share-icon {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="elegant-dark"] .share-message.self .share-type-label {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="elegant-dark"] .share-message.self .share-action-btn {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary-color);
+}
+
+[data-theme="elegant-dark"] .share-message.self .share-action-btn:hover {
+  background: #ffffff;
 }
 </style>

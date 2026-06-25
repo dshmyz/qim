@@ -40,7 +40,7 @@ const linkifyUrls = (text: string): string => text.replace(urlRegex, (matchedUrl
   return renderLink(url) + trailingText
 })
 
-// 将纯文本片段转为带链接的 HTML（先转义，再插链接）
+// 将纯文本片段转为带链接的 HTML（先转义，再处理 Markdown 链接，最后 linkify 剩余 URL）
 const textToHtml = (text: string): string => {
   const escaped = escapeHTML(text)
   let linked = ''

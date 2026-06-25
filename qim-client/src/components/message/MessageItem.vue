@@ -46,7 +46,7 @@
             </div>
             <div class="quoted-message-preview-content">
               <template v-if="message.quotedMessage.type === 'text'">
-                {{ message.quotedMessage.content || '无内容' }}
+                {{ decodeToPlainText(message.quotedMessage.content || '无内容') }}
               </template>
               <template v-else-if="message.quotedMessage.type === 'image'">
                 [图片] {{ getFileName(message.quotedMessage.content) }}
@@ -72,7 +72,7 @@
                   [文件]
                 </template>
                 <template v-else>
-                  {{ message.quotedMessage.content || '无内容' }}
+                  {{ decodeToPlainText(message.quotedMessage.content || '无内容') }}
                 </template>
               </template>
             </div>
@@ -157,7 +157,7 @@
           <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && (conversationType === 'group' || conversationType === 'discussion') && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
             {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
-          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
+          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && conversationType !== 'bot' && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
             {{ message.isRead ? '已读' : '未读' }}
           </div>
         </div>
@@ -185,6 +185,7 @@ import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
+import { decodeToPlainText } from '../../utils/mentions'
 
 const systemConfigStore = useSystemConfigStore()
 
@@ -523,6 +524,7 @@ const isFileContent = (content: string): boolean => {
 /* 自己消息：浅色主色背景 + 深色文字（反转型，提升正文与 @ chip 可读性） */
 .message-item.self .message-bubble {
   --self-message-link-color: #1d4ed8;
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
@@ -538,7 +540,7 @@ const isFileContent = (content: string): boolean => {
 
 [data-theme="elegant-dark"] .message-item.self .file-message {
   background: var(--primary-color);
-  color: var(--secondary-color);
+  color: #fff;
 }
 
 [data-theme="elegant-dark"] .message-item.self .recalled-message {
@@ -547,12 +549,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="ocean-blue"] .message-item.self .message-bubble {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
 }
 
 [data-theme="ocean-blue"] .message-item.self .file-message {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -563,12 +567,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="elegant-purple"] .message-item.self .message-bubble {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
 }
 
 [data-theme="elegant-purple"] .message-item.self .file-message {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -579,12 +585,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="warm-amber"] .message-item.self .message-bubble {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
 }
 
 [data-theme="warm-amber"] .message-item.self .file-message {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -595,12 +603,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="crimson-red"] .message-item.self .message-bubble {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
 }
 
 [data-theme="crimson-red"] .message-item.self .file-message {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -611,12 +621,14 @@ const isFileContent = (content: string): boolean => {
 }
 
 [data-theme="emerald-green"] .message-item.self .message-bubble {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
   border: none;
 }
 
 [data-theme="emerald-green"] .message-item.self .file-message {
+  background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -733,7 +745,6 @@ const isFileContent = (content: string): boolean => {
 .message-link:hover {
   color: #2563eb;
   text-decoration: none;
-  transform: translateY(-1px);
 }
 
 /* @用户样式 */

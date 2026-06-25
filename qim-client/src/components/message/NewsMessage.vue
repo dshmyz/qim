@@ -118,34 +118,62 @@ const openNewsLink = () => {
   transform: scale(1.02);
 }
 
-/* 自己的资讯消息样式 */
+/* 自己的资讯消息样式：浅色主色背景 + 深色文字 */
 .news-message.self {
-  background: var(--primary-color);
+  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color), white 88%);
 }
 
 .news-message.self::before {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.4));
+  background: var(--primary-color);
+  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
   opacity: 1;
 }
 
 .news-message.self .news-info {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hover-color);
   border-color: transparent;
 }
 
 .news-message.self .news-info:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--primary-color);
+  color: #ffffff;
 }
 
 .news-message.self .news-title {
-  color: #fff;
+  color: var(--text-color);
 }
 
 .news-message.self .news-summary {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary);
 }
 
 .news-message.self .news-image {
+  border-color: var(--border-color);
+}
+
+/* 深色主题：纯主色背景 + 白色文字 */
+[data-theme="elegant-dark"] .news-message.self {
+  background: var(--primary-color);
+}
+
+[data-theme="elegant-dark"] .news-message.self .news-info {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="elegant-dark"] .news-message.self .news-info:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="elegant-dark"] .news-message.self .news-title {
+  color: #fff;
+}
+
+[data-theme="elegant-dark"] .news-message.self .news-summary {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="elegant-dark"] .news-message.self .news-image {
   border-color: rgba(255, 255, 255, 0.2);
 }
 </style>

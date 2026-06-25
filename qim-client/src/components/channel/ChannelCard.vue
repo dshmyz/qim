@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getDisplayName } from '../../utils/avatar'
+import { decodeToPlainText } from '../../utils/mentions'
 import type { Channel } from '../../types'
 import ChannelAvatar from './ChannelAvatar.vue'
 
@@ -107,7 +108,8 @@ const latestMessage = computed(() => {
   if (!props.channel.messages || props.channel.messages.length === 0) return ''
   const sorted = [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)
   const msg = sorted[0]
-  const content = msg.content.length > 40 ? msg.content.slice(0, 40) + '...' : msg.content
+  const rawContent = decodeToPlainText(msg.content)
+  const content = rawContent.length > 40 ? rawContent.slice(0, 40) + '...' : rawContent
   return content
 })
 

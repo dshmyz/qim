@@ -109,7 +109,14 @@
                 <span class="recalled-text">此消息已被撤回</span>
               </template>
               <template v-else-if="message.type === 'text'">
-                {{ message.content }}
+                <template v-for="(seg, i) in parseTextSegments(message.content)" :key="i">
+                  <span
+                    v-if="seg.type === 'mention'"
+                    class="at-mention-chip"
+                    :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
+                  >{{ seg.text }}</span>
+                  <span v-else>{{ seg.text }}</span>
+                </template>
               </template>
               <template v-else-if="message.type === 'image'">
                 <div class="message-file-link" @click.stop="handleMediaClick(message, $event)">
@@ -239,6 +246,7 @@ import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { messageApi } from '../../api/message'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { parseContent } from '../../utils/mentions'
 
 const props = defineProps<{
   visible: boolean
@@ -528,6 +536,31 @@ const getFileName = (message: any): string => {
     // 解析失败，从content字符串中提取文件名
   }
   return message.content.split('/').pop() || '文件'
+}
+
+// 解析文本消息 content 为片段（文本 + mention），用于正确渲染 @ 提及
+type TextSegment =
+  | { type: 'text'; text: string }
+  | { type: 'mention'; text: string; userId: number | 'all' }
+
+const parseTextSegments = (content: string): TextSegment[] => {
+  const { text, mentions } = parseContent(content)
+  if (mentions.length === 0) {
+    return [{ type: 'text', text }]
+  }
+  const result: TextSegment[] = []
+  let lastEnd = 0
+  for (const m of mentions) {
+    if (m.start > lastEnd) {
+      result.push({ type: 'text', text: text.slice(lastEnd, m.start) })
+    }
+    result.push({ type: 'mention', text: m.text, userId: m.userId })
+    lastEnd = m.end
+  }
+  if (lastEnd < text.length) {
+    result.push({ type: 'text', text: text.slice(lastEnd) })
+  }
+  return result
 }
 
 // 格式化时间
@@ -938,6 +971,19 @@ onMounted(() => {
 .message-manager-item-content.is-recalled {
   font-style: italic;
   color: #9ca3af;
+}
+
+/* @ 提及 chip 样式 */
+.message-manager-item-content .at-mention-chip {
+  color: #2563eb;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.message-manager-item-content .at-mention-chip--all {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.18);
 }
 
 .message-file-link {
