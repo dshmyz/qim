@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -14,10 +15,11 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/dshmyz/qim/qim-server/auth"
+	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +34,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		&model.UserRole{},
 		&model.Conversation{},
 		&model.ConversationMember{},
+		&model.ConversationSession{},
 		&model.Message{},
 		&model.Notification{},
 	)
@@ -56,9 +59,8 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		},
 	}
 
-	di.InitContainer(cfg, nil)
-
 	database.DB = db
+	di.InitContainer(cfg, nil)
 	auth.InitAuthChain()
 	SetConfig(cfg)
 
@@ -76,6 +78,8 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	authed := r.Group("/api/v1")
 	authed.Use(authMiddleware)
 	{
+		authed.GET("/conversations", GetConversations)
+		authed.POST("/conversations", CreateConversation)
 		authed.GET("/users/me", GetCurrentUser)
 		authed.PUT("/users/me", UpdateUser)
 	}
@@ -93,6 +97,188 @@ func createTestUser(t *testing.T, db *gorm.DB) *model.User {
 	}
 	db.Create(user)
 	return user
+}
+
+func TestConversationMember_CreateSetsJoinedAt(t *testing.T) {
+	db := setupHandlerTestDB(t)
+	user := createTestUser(t, db)
+	conv := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(conv).Error)
+
+	member := &model.ConversationMember{ConversationID: conv.ID, UserID: user.ID, Role: "member"}
+	require.NoError(t, db.Create(member).Error)
+	assert.False(t, member.JoinedAt.IsZero())
+}
+
+func TestGetConversations_OrdersEmptyConversationByCreatedAt(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+
+	olderActivity := time.Now().Add(-time.Hour)
+	olderConversation := &model.Conversation{
+		Type:          "single",
+		CreatedAt:     time.Now().Add(-2 * time.Hour),
+		LastMessageAt: &olderActivity,
+	}
+	require.NoError(t, db.Create(olderConversation).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: olderConversation.ID, UserID: user.ID, Role: "member"}).Error)
+
+	newConversation := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(newConversation).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: newConversation.ID, UserID: user.ID, Role: "member"}).Error)
+
+	req := httptest.NewRequest("GET", "/api/v1/conversations?page=1&page_size=20", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID uint `json:"id"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	require.NotEmpty(t, response.Data.List)
+	assert.Equal(t, newConversation.ID, response.Data.List[0].ID)
+}
+
+func TestCreateSingleConversation_RestoresHiddenConversationWithMembers(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentUser := createTestUser(t, db)
+	recipient := &model.User{Username: "recipient", PasswordHash: "hash", Nickname: "对方用户"}
+	require.NoError(t, db.Create(recipient).Error)
+
+	conversation := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: currentUser.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: recipient.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationSession{UserID: currentUser.ID, ConversationID: conversation.ID, IsHidden: true}).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "user_id": recipient.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			ID      uint `json:"id"`
+			Members []struct {
+				User struct {
+					Nickname string `json:"nickname"`
+				} `json:"user"`
+			} `json:"members"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	assert.Equal(t, conversation.ID, response.Data.ID)
+	require.Len(t, response.Data.Members, 2)
+	assert.Contains(t, []string{response.Data.Members[0].User.Nickname, response.Data.Members[1].User.Nickname}, recipient.Nickname)
+
+	var session model.ConversationSession
+	require.NoError(t, db.Where("user_id = ? AND conversation_id = ?", currentUser.ID, conversation.ID).First(&session).Error)
+	assert.False(t, session.IsHidden)
+}
+
+// TestCreateSingleConversation_HidesConversationForRecipient 验证创建私聊会话时，
+// 接收方的会话默认被隐藏，发起方不受影响。
+func TestCreateSingleConversation_HidesConversationForRecipient(t *testing.T) {
+	r, db := setupTestRouter(t)
+	sender := createTestUser(t, db)
+	recipient := &model.User{Username: "recipient", PasswordHash: "hash", Nickname: "对方用户"}
+	require.NoError(t, db.Create(recipient).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "user_id": recipient.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			ID uint `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	assert.Greater(t, response.Data.ID, uint(0))
+
+	// 发起方不应有隐藏 session（或 session 不存在，COALESCE 默认 false）
+	var senderSession model.ConversationSession
+	err = db.Where("user_id = ? AND conversation_id = ?", sender.ID, response.Data.ID).First(&senderSession).Error
+	if err == nil {
+		assert.False(t, senderSession.IsHidden, "发起方的会话不应被隐藏")
+	}
+
+	// 接收方应有隐藏 session
+	var recipientSession model.ConversationSession
+	require.NoError(t, db.Where("user_id = ? AND conversation_id = ?", recipient.ID, response.Data.ID).First(&recipientSession).Error)
+	assert.True(t, recipientSession.IsHidden, "接收方的会话应被隐藏")
+}
+
+// TestGetConversations_HiddenConversationNotShownForRecipient 验证接收方查询会话列表时，
+// 被隐藏的空会话不会出现。
+func TestGetConversations_HiddenConversationNotShownForRecipient(t *testing.T) {
+	r, db := setupTestRouter(t)
+	createTestUser(t, db) // 发起方（user_id=1）
+	recipient := &model.User{Username: "recipient", PasswordHash: "hash", Nickname: "对方用户"}
+	require.NoError(t, db.Create(recipient).Error)
+
+	// 创建私聊会话
+	body, _ := json.Marshal(map[string]any{"type": "single", "user_id": recipient.ID})
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var createResp struct {
+		Code int `json:"code"`
+		Data struct {
+			ID uint `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &createResp))
+	require.Equal(t, 0, createResp.Code)
+
+	// 临时切换 user_id 为接收方来查询会话列表
+	r2 := gin.New()
+	authMiddleware2 := func(c *gin.Context) {
+		c.Set("user_id", recipient.ID)
+		c.Set("username", "recipient")
+		c.Set("roles", []string{})
+		c.Next()
+	}
+	authed2 := r2.Group("/api/v1")
+	authed2.Use(authMiddleware2)
+	authed2.GET("/conversations", GetConversations)
+
+	req2 := httptest.NewRequest("GET", "/api/v1/conversations?page=1&page_size=20", nil)
+	w2 := httptest.NewRecorder()
+	r2.ServeHTTP(w2, req2)
+
+	var listResp struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID uint `json:"id"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &listResp))
+	require.Equal(t, 0, listResp.Code)
+
+	// 接收方不应看到被隐藏的会话
+	for _, conv := range listResp.Data.List {
+		assert.NotEqual(t, createResp.Data.ID, conv.ID, "接收方不应在列表中看到被隐藏的会话")
+	}
 }
 
 func TestLogin_Success(t *testing.T) {

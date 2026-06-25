@@ -10,6 +10,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -93,6 +94,28 @@ func TestUserService_SearchUsers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "张三", results[0].Nickname)
+}
+
+func TestConversationService_SearchGroupsByName_QuotesGroupsTable(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewConversationService(db)
+	assert.Equal(t, "JOIN `groups` ON `groups`.conversation_id = conversations.id", groupSearchJoinClause())
+
+	user := &model.User{Username: "searcher", PasswordHash: "hash", Nickname: "搜索者"}
+	require.NoError(t, db.Create(user).Error)
+	conv := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(conv).Error)
+	require.NoError(t, db.Create(&model.Group{
+		ConversationID: conv.ID,
+		GroupType:      "group",
+		Name:           "项目组",
+		CreatorID:      user.ID,
+	}).Error)
+
+	results, err := svc.SearchGroupsByName("项目", user.ID)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, conv.ID, results[0].ConversationID)
 }
 
 func TestUserService_UpdateUserStatus(t *testing.T) {

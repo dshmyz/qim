@@ -3,9 +3,10 @@ package test
 import (
 	"fmt"
 	"log"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -413,7 +414,7 @@ func InitTestData(db *gorm.DB) {
 
 	// 初始化机器人会话数据（测试数据：为每个测试用户创建与已有 Bot 的会话）
 	var bots []model.Bot
-	db.Where("type IN ?", []string{"system", "ai"}).Find(&bots)
+	db.Where("type IN ? AND is_active = ?", []string{"system", "ai"}, true).Find(&bots)
 	if len(bots) > 0 {
 		var systemBot *model.Bot
 		var aiBot *model.Bot
@@ -423,6 +424,30 @@ func InitTestData(db *gorm.DB) {
 			} else if bots[i].Type == "ai" {
 				aiBot = &bots[i]
 			}
+		}
+
+		// 为 Bot 创建虚拟用户（如果还没有的话）
+		createVirtualUser := func(bot *model.Bot) {
+			if bot.VirtualUserID != nil {
+				return
+			}
+			virtualUser := model.User{
+				Username: fmt.Sprintf("bot_%d", bot.ID),
+				Nickname: bot.Name,
+				Avatar:   bot.Avatar,
+				Type:     "bot",
+			}
+			db.Create(&virtualUser)
+			bot.VirtualUserID = &virtualUser.ID
+			db.Save(bot)
+			log.Printf("为 Bot %s 创建虚拟用户 ID=%d", bot.Name, virtualUser.ID)
+		}
+
+		if systemBot != nil {
+			createVirtualUser(systemBot)
+		}
+		if aiBot != nil {
+			createVirtualUser(aiBot)
 		}
 
 		for _, user := range users {
@@ -435,13 +460,11 @@ func InitTestData(db *gorm.DB) {
 			if systemBot != nil {
 				systemConv := model.Conversation{Type: "bot"}
 				db.Create(&systemConv)
-				db.Create(&model.Group{
-					ConversationID:   systemConv.ID,
-					GroupType:        "bot",
-					Name:             systemBot.Name,
-					Avatar:           systemBot.Avatar,
-					CreatorID:        user.ID,
-					InvitePermission: "owner_admin",
+				// 机器人虚拟用户作为会话成员
+				db.Create(&model.ConversationMember{
+					ConversationID: systemConv.ID,
+					UserID:         *systemBot.VirtualUserID,
+					Role:           "member",
 				})
 				db.Create(&model.ConversationMember{
 					ConversationID: systemConv.ID,
@@ -458,13 +481,11 @@ func InitTestData(db *gorm.DB) {
 			if aiBot != nil {
 				aiConv := model.Conversation{Type: "bot"}
 				db.Create(&aiConv)
-				db.Create(&model.Group{
-					ConversationID:   aiConv.ID,
-					GroupType:        "bot",
-					Name:             aiBot.Name,
-					Avatar:           aiBot.Avatar,
-					CreatorID:        user.ID,
-					InvitePermission: "owner_admin",
+				// 机器人虚拟用户作为会话成员
+				db.Create(&model.ConversationMember{
+					ConversationID: aiConv.ID,
+					UserID:         *aiBot.VirtualUserID,
+					Role:           "member",
 				})
 				db.Create(&model.ConversationMember{
 					ConversationID: aiConv.ID,
@@ -478,7 +499,7 @@ func InitTestData(db *gorm.DB) {
 				})
 				welcomeMsg := model.Message{
 					ConversationID: aiConv.ID,
-					SenderID:       systemUser.ID,
+					SenderID:       *aiBot.VirtualUserID,
 					Type:           "text",
 					Content:        "你好！我是AI助手，有什么可以帮你的吗？",
 				}

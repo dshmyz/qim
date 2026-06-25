@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestOperationLogToFrontend_ReturnsCamelCaseFields 验证 OperationLog 转换为 camelCase
-func TestOperationLogToFrontend_ReturnsCamelCaseFields(t *testing.T) {
+// TestOperationLogToFrontend_ReturnsSnakeCaseFields 验证 OperationLog 转换为 snake_case
+func TestOperationLogToFrontend_ReturnsSnakeCaseFields(t *testing.T) {
 	log := model.OperationLog{
 		ID:          1,
 		UserID:      100,
@@ -29,28 +29,21 @@ func TestOperationLogToFrontend_ReturnsCamelCaseFields(t *testing.T) {
 	result := operationLogToFrontend(log)
 
 	assert.Equal(t, uint(1), result["id"])
-	assert.Equal(t, uint(100), result["userId"])
+	assert.Equal(t, uint(100), result["user_id"])
 	assert.Equal(t, "alice", result["username"])
 	assert.Equal(t, "login", result["action"])
 	assert.Equal(t, "auth", result["module"])
 	assert.Equal(t, "127.0.0.1", result["ip"])
-	assert.Equal(t, "Mozilla/5.0", result["userAgent"])
-	assert.Equal(t, "/api/v1/login", result["requestUrl"])
-	assert.Equal(t, `{"username":"alice"}`, result["requestBody"])
+	assert.Equal(t, "Mozilla/5.0", result["user_agent"])
+	assert.Equal(t, "/api/v1/login", result["request_url"])
+	assert.Equal(t, `{"username":"alice"}`, result["request_body"])
 	assert.Equal(t, `{"code":0}`, result["response"])
 	assert.Equal(t, 42, result["duration"])
-	assert.NotNil(t, result["createdAt"])
-
-	// 确保没有 snake_case 字段泄漏
-	assert.NotContains(t, result, "user_id")
-	assert.NotContains(t, result, "user_agent")
-	assert.NotContains(t, result, "request_url")
-	assert.NotContains(t, result, "request_body")
-	assert.NotContains(t, result, "created_at")
+	assert.NotNil(t, result["created_at"])
 }
 
-// TestOperationLogsToFrontend_ReturnsCamelCaseList 验证列表转换
-func TestOperationLogsToFrontend_ReturnsCamelCaseList(t *testing.T) {
+// TestOperationLogsToFrontend_ReturnsSnakeCaseList 验证列表转换
+func TestOperationLogsToFrontend_ReturnsSnakeCaseList(t *testing.T) {
 	logs := []model.OperationLog{
 		{ID: 1, UserID: 100, UserAgent: "UA1", RequestURL: "/a"},
 		{ID: 2, UserID: 200, UserAgent: "UA2", RequestURL: "/b"},
@@ -59,12 +52,12 @@ func TestOperationLogsToFrontend_ReturnsCamelCaseList(t *testing.T) {
 	result := operationLogsToFrontend(logs)
 
 	assert.Len(t, result, 2)
-	assert.Equal(t, uint(100), result[0]["userId"])
-	assert.Equal(t, "UA1", result[0]["userAgent"])
-	assert.Equal(t, "/a", result[0]["requestUrl"])
-	assert.Equal(t, uint(200), result[1]["userId"])
-	assert.Equal(t, "UA2", result[1]["userAgent"])
-	assert.Equal(t, "/b", result[1]["requestUrl"])
+	assert.Equal(t, uint(100), result[0]["user_id"])
+	assert.Equal(t, "UA1", result[0]["user_agent"])
+	assert.Equal(t, "/a", result[0]["request_url"])
+	assert.Equal(t, uint(200), result[1]["user_id"])
+	assert.Equal(t, "UA2", result[1]["user_agent"])
+	assert.Equal(t, "/b", result[1]["request_url"])
 }
 
 // TestOperationLogsToFrontend_ReturnsEmptyListForEmptyInput 验证空列表

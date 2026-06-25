@@ -140,6 +140,41 @@ func Test_PublicDownloadFile_AllowsPublicFile(t *testing.T) {
 		"PublicDownloadFile should allow download of public (source=client_update) files")
 }
 
+func Test_PublicDownloadFile_AllowsVersionSourceFile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupFileHandlerTestDB(t)
+	setupFileHandlerDI(t, db)
+
+	// 创建一个 source='version' 的公开文件，同时创建对应的物理文件
+	versionFile := model.File{
+		Name:         "app-v2.0.exe",
+		OriginalName: "app-v2.0.exe",
+		StoragePath:  storage.BuildPath("local", "uploads/app-v2.0.exe"),
+		Size:         5,
+		MimeType:     "application/octet-stream",
+		UserID:       1,
+		Source:       "version",
+		CreatedAt:    time.Now(),
+	}
+	db.Create(&versionFile)
+
+	// 创建物理文件
+	st := di.GlobalContainer.DefaultStorage
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = st.Put(ctx, "uploads/app-v2.0.exe", bytes.NewReader([]byte("hello")), 5, "application/octet-stream")
+
+	r := gin.New()
+	r.GET("/public/files/:id", PublicDownloadFile)
+
+	req := httptest.NewRequest("GET", "/public/files/"+strconv.FormatUint(uint64(versionFile.ID), 10), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code,
+		"PublicDownloadFile should allow download of public (source=version) files")
+}
+
 func Test_PublicDownloadFile_BlocksNonExistentFile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupFileHandlerTestDB(t)
