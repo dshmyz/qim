@@ -103,6 +103,16 @@ describe('TextMessage', () => {
       expect(wrapper.findAll('.at-user')).toHaveLength(0)
       expect(wrapper.text()).toBe(content)
     })
+
+    it('纯文本中的 URL 能正确 linkify（非 Markdown 格式）', () => {
+      const wrapper = mount(TextMessage, {
+        props: { content: '访问 https://example.com 看看' },
+      })
+      const links = wrapper.findAll('a')
+      expect(links).toHaveLength(1)
+      expect(links[0].attributes('href')).toBe('https://example.com')
+      expect(links[0].text()).toBe('https://example.com')
+    })
   })
 
   describe('@用户 高亮', () => {
@@ -110,15 +120,15 @@ describe('TextMessage', () => {
       const wrapper = mount(TextMessage, {
         props: { content: '@{mention:42|admin} 你好' },
       })
-      expect(wrapper.find('.at-user').exists()).toBe(true)
-      expect(wrapper.find('.at-user').text()).toBe('@admin')
+      expect(wrapper.find('.at-mention-chip').exists()).toBe(true)
+      expect(wrapper.find('.at-mention-chip').text()).toBe('@admin')
     })
 
     it('应该处理多个 @用户', () => {
       const wrapper = mount(TextMessage, {
         props: { content: '@{mention:42|admin} @{mention:43|testuser} 请查看' },
       })
-      const atUsers = wrapper.findAll('.at-user')
+      const atUsers = wrapper.findAll('.at-mention-chip')
       expect(atUsers.length).toBe(2)
     })
 
@@ -126,8 +136,8 @@ describe('TextMessage', () => {
       const wrapper = mount(TextMessage, {
         props: { content: '@{mention:42|%E7%AE%A1%E7%90%86%E5%91%98} 你好' },
       })
-      expect(wrapper.find('.at-user').exists()).toBe(true)
-      expect(wrapper.find('.at-user').text()).toBe('@管理员')
+      expect(wrapper.find('.at-mention-chip').exists()).toBe(true)
+      expect(wrapper.find('.at-mention-chip').text()).toBe('@管理员')
     })
   })
 
@@ -136,7 +146,7 @@ describe('TextMessage', () => {
       const wrapper = mount(TextMessage, {
         props: { content: '@{mention:42|admin} 请查看 https://example.com' },
       })
-      expect(wrapper.find('.at-user').exists()).toBe(true)
+      expect(wrapper.find('.at-mention-chip').exists()).toBe(true)
       expect(wrapper.find('a').exists()).toBe(true)
     })
   })

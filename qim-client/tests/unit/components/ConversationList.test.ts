@@ -24,6 +24,32 @@ afterEach(() => {
 })
 
 describe('ConversationList drafts', () => {
+
+  it('uses the conversation list as the scroll container for loading more', async () => {
+    const wrapper = mount(ConversationList, {
+      props: {
+        conversations: [{ id: 'conversation-1', name: '会话', type: 'single' }],
+        currentConversationId: null,
+        serverUrl: '',
+        hasMore: true,
+      },
+      global: {
+        stubs: { Avatar: true },
+      },
+    })
+
+    const list = wrapper.get('.conversation-list')
+    expect(list.classes()).toContain('conversation-list--scrollable')
+    Object.defineProperties(list.element, {
+      scrollTop: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    await list.trigger('scroll')
+
+    expect(wrapper.emitted('loadMore')).toHaveLength(1)
+  })
+
   it('refreshes a draft in the same page when it is cleared', async () => {
     const conversationId = 'group-1'
     storage.set(`qim_draft_${conversationId}`, JSON.stringify({ text: '@alice', quoted: null }))

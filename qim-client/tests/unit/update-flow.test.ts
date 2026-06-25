@@ -88,3 +88,43 @@ describe('update flow safeguards', () => {
     expect(versionManagement).not.toContain('请输入安装包下载链接或上传文件')
   })
 })
+
+describe('auto update feed URL per platform', () => {
+  it('uses win7/ path for Windows 7 builds (Electron 22.x)', () => {
+    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+
+    // getAutoUpdateFeedUrl 应区分 win7 和 win10
+    expect(mainProcess).toContain("updates/win7/")
+    expect(mainProcess).toContain("updates/win10/")
+    // 不应再有 win/（无后缀）的路径
+    expect(mainProcess).not.toMatch(/updates\/win["']/)
+  })
+})
+
+describe('Linux install-update routing', () => {
+  it('calls installLinuxUpdate on Linux instead of quitAndInstall', () => {
+    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+
+    // 提取 install-update IPC handler 区块
+    const installHandler = mainProcess.slice(
+      mainProcess.indexOf("ipcMain.on('install-update'"),
+      mainProcess.indexOf("ipcMain.on('start-screen-share'")
+    )
+
+    // Linux 平台应调用 installLinuxUpdate，而非直接 quitAndInstall
+    expect(installHandler).toContain("process.platform === 'linux'")
+    expect(installHandler).toContain('installLinuxUpdate')
+  })
+
+  it('still uses quitAndInstall for non-Linux platforms', () => {
+    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+
+    const installHandler = mainProcess.slice(
+      mainProcess.indexOf("ipcMain.on('install-update'"),
+      mainProcess.indexOf("ipcMain.on('start-screen-share'")
+    )
+
+    // 非 Linux 平台仍走 quitAndInstall
+    expect(installHandler).toContain('autoUpdater.quitAndInstall(false, true)')
+  })
+})

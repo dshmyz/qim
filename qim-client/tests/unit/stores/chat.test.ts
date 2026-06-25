@@ -69,6 +69,17 @@ describe('useChatStore', () => {
       expect(store.currentConversation?.name).toBe('会话1')
     })
 
+    it('新建的空会话加入列表后可以立即选中', () => {
+      const store = useChatStore()
+      const createdConversation = { id: 'new-conversation', name: '新联系人', type: 'single' } as Conversation
+
+      store.addConversation(createdConversation)
+      store.setCurrentConversation(createdConversation.id)
+
+      expect(store.conversations[0]).toEqual(createdConversation)
+      expect(store.currentConversation).toEqual(createdConversation)
+    })
+
     it('设置不存在的会话ID时，currentConversation 应该返回 null', () => {
       const store = useChatStore()
       store.setConversations([
