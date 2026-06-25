@@ -1293,7 +1293,7 @@ func GetUserGroups(c *gin.Context) {
 			cm.muted
 		FROM conversation_members cm
 		INNER JOIN conversations c ON c.id = cm.conversation_id AND c.type IN ('group', 'discussion') AND c.is_deleted = false
-		INNER JOIN groups g ON g.conversation_id = cm.conversation_id
+		INNER JOIN ` + "`groups`" + ` g ON g.conversation_id = cm.conversation_id
 		WHERE cm.user_id = ?
 		ORDER BY g.name ASC
 	`

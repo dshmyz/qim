@@ -40,7 +40,32 @@ var (
 	uploadConfigCache   map[string]interface{}
 	uploadConfigMu      sync.RWMutex
 	uploadConfigExpires time.Time
+
+	// protectedUploadSources 是允许通过 PublicDownloadFile 免鉴权公开下载的文件来源。
+	// 这些来源仅可由管理员在上传时设置，普通用户不得借此公开私有文件。
+	protectedUploadSources = map[string]bool{
+		"client_update": true,
+		"version":       true,
+	}
 )
+
+// hasRole 判断当前请求的认证用户是否具备指定角色（角色由 auth 中间件写入 context）。
+func hasRole(c *gin.Context, role string) bool {
+	raw, ok := c.Get("roles")
+	if !ok {
+		return false
+	}
+	roles, ok := raw.([]string)
+	if !ok {
+		return false
+	}
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
 
 type uploadConfig struct {
 	MaxSize           int64
@@ -212,6 +237,13 @@ func UploadFile(c *gin.Context) {
 	}
 
 	source := c.DefaultPostForm("source", "upload")
+
+	// client_update / version 等公开可下载来源仅允许管理员设置，
+	// 否则普通用户可借此让任意上传文件绕过鉴权被公开下载（见 PublicDownloadFile）。
+	if protectedUploadSources[source] && !hasRole(c, "system_admin") {
+		response.Forbidden(c, "无权使用该文件来源")
+		return
+	}
 
 	now := time.Now()
 	filename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, userID.(uint), ext)
@@ -848,8 +880,9 @@ func PublicDownloadFile(c *gin.Context) {
 		return
 	}
 
-	// 只允许公开类型的文件下载（如客户端更新包），私有上传文件禁止公开下载
-	if file.Source != "client_update" {
+	// 只允许公开类型的文件下载（如客户端更新包），私有上传文件禁止公开下载。
+	// 这些来源在上传时已限制为仅管理员可设置（见 UploadFile）。
+	if !protectedUploadSources[file.Source] {
 		response.Forbidden(c, "该文件不允许公开下载")
 		return
 	}
