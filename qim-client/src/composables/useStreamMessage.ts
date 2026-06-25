@@ -1,11 +1,15 @@
 import { Ref } from 'vue'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
+import { useChatStore } from '../stores/chat'
+import { useCurrentUser } from './useCurrentUser'
 
 export function useStreamMessage(
-  messages: Ref<any[]>,
   serverUrl: Ref<string>
 ) {
+  const chatStore = useChatStore()
+  const { currentUser } = useCurrentUser()
+
   const showMessage = (options: { message: string, type?: string, duration?: number }) => {
     const { message, type = 'info', duration } = options
     if (type === 'success') QMessage.success(message, duration)
@@ -21,6 +25,24 @@ export function useStreamMessage(
     _newsData: any
   ) => {
     try {
+      // 1. 先将用户自己的消息加入消息列表
+      const userMessage = {
+        id: `user_${Date.now()}`,
+        content: requestData.content || '',
+        sender: {
+          id: currentUser.value?.id?.toString() || '',
+          name: currentUser.value?.nickname || currentUser.value?.username || '',
+          avatar: currentUser.value?.avatar || ''
+        },
+        timestamp: new Date().getTime(),
+        type: requestData.type || 'text',
+        isSelf: true,
+        isRead: false,
+        conversationId
+      }
+      chatStore.receiveMessage(conversationId, userMessage as any, true)
+
+      // 2. 创建 bot 流式响应占位符
       const streamMessageId = `stream_${Date.now()}`
 
       const streamMessage = {
@@ -35,7 +57,8 @@ export function useStreamMessage(
         conversationId
       }
 
-      messages.value.push(streamMessage)
+      // 通过 store 方法添加，确保响应式更新
+      chatStore.appendMessage(conversationId, streamMessage as any)
 
       const token = localStorage.getItem('token')
       const response = await fetch(`${serverUrl.value}/api/v1/conversations/${conversationId}/messages/stream`, {
@@ -88,18 +111,18 @@ export function useStreamMessage(
           }
         }
 
-        const messageIndex = messages.value.findIndex((m: any) => m.id === streamMessageId)
-        if (messageIndex !== -1) {
-          messages.value[messageIndex].content = accumulatedContent
-          messages.value[messageIndex].isStreaming = true
-        }
+        // 通过 store 方法更新，确保响应式
+        chatStore.updateMessage(conversationId, streamMessageId, {
+          content: accumulatedContent,
+          isStreaming: true
+        })
       }
 
-      const messageIndex = messages.value.findIndex((m: any) => m.id === streamMessageId)
-      if (messageIndex !== -1) {
-        messages.value[messageIndex].isStreaming = false
-        messages.value[messageIndex].type = 'markdown'
-      }
+      // 流式结束，标记完成
+      chatStore.updateMessage(conversationId, streamMessageId, {
+        isStreaming: false,
+        type: 'markdown'
+      })
 
     } catch (error) {
       logger.error('流式消息处理失败:', error)

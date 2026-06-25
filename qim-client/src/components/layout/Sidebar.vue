@@ -28,7 +28,7 @@ interface AppCategory {
 interface SearchResultItem {
   id: string
   name: string
-  type: 'user' | 'group' | 'discussion'
+  type: 'user' | 'group' | 'discussion' | 'bot_assistant' | 'bot_avatar'
   username?: string
   avatar?: string
   status?: 'online' | 'offline'
@@ -146,7 +146,7 @@ defineExpose({})
     <!-- 侧边栏内容 -->
     <div class="sidebar-content" v-show="!collapsed">
       <KeepAlive>
-        <div v-if="activeOption === 'recent'" key="recent" class="content-section">
+        <div v-if="activeOption === 'recent'" key="recent" class="content-section recent-content-section">
           <SearchResult
             v-if="searchQuery && searchResults.length > 0"
             :searchQuery="searchQuery"
@@ -361,6 +361,12 @@ defineExpose({})
   height: 100%;
   overflow-y: auto;
   position: relative;
+}
+
+.recent-content-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 移动设备适配 */

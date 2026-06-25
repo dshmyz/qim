@@ -742,6 +742,7 @@ import { useShareLogic } from '../composables/useShareLogic'
 import { useUserProfile } from '../composables/useUserProfile'
 import { useStreamMessage } from '../composables/useStreamMessage'
 import { useAppLogic } from '../composables/useAppLogic'
+import { decodeToPlainText } from '../utils/mentions'
 // useUIState 已被 useAppState 替代
 
 // 服务器地址
@@ -1259,7 +1260,7 @@ const handleNewNotification = (notification: any) => {
   logger.log('收到新通知:', notification)
 
   showMessage({
-    message: notification.content || notification.title || '您有一条新通知',
+    message: decodeToPlainText(notification.content || notification.title || '您有一条新通知'),
     type: 'info',
     duration: 5000
   })
@@ -1467,7 +1468,7 @@ const handleCallNotification = (type: string, data: any) => {
       break
     default:
       title = type
-      body = data.content || '您有一条新通知'
+      body = decodeToPlainText(data.content || '您有一条新通知')
   }
   
   showMessage({
@@ -1616,7 +1617,7 @@ const handleMessageDeleted = (data: any) => {
 const handleNotification = (data: any) => {
   logger.log('收到通知:', data)
   showMessage({
-    message: data.content,
+    message: decodeToPlainText(data.content),
     type: 'info',
     duration: 5000
   })
@@ -1685,7 +1686,7 @@ const formatNotificationContent = (message: any): string => {
     }
   }
   
-  return message.content || '无内容'
+  return decodeToPlainText(message.content || '无内容')
 }
 
 // 处理新消息
@@ -1816,7 +1817,7 @@ const filteredConversations = computed(() => {
   const query = searchQuery.value.toLowerCase()
   return sortedConversations.value.filter(conv => 
     conv.name.toLowerCase().includes(query) ||
-    (conv.lastMessage?.content && conv.lastMessage.content.toLowerCase().includes(query)) ||
+    (conv.lastMessage?.content && decodeToPlainText(conv.lastMessage.content).toLowerCase().includes(query)) ||
     (conv.members && conv.members.some(member => 
       member.name.toLowerCase().includes(query)
     )) ||
@@ -1849,7 +1850,7 @@ const handleSearch = async (query) => {
 
 // 处理搜索项点击
 const handleSearchItemClick = (item) => {
-  if (item.type === 'user') {
+  if (item.type === 'user' || item.type === 'bot_assistant' || item.type === 'bot_avatar') {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
     // 如果是群聊或讨论组，选中该会话
@@ -1903,7 +1904,7 @@ watch(searchQuery, (newQuery) => {
 // 播放消息提示音
 
 // 处理流式消息
-const streamMessage = useStreamMessage(messages, serverUrl)
+const streamMessage = useStreamMessage(serverUrl)
 const { handleStreamMessage } = streamMessage
 
 // 使用 Main.vue 专用的消息发送 composable
@@ -2005,11 +2006,12 @@ const startPrivateChat = async (user: any) => {
     if (response.code === 0) {
       // 切换到最近联系人选项卡
       activeOption.value = 'recent'
-      // 重新加载会话列表
-      loadConversations()
-      // 选择新创建的会话
-      setCurrentConversationId(response.data.id.toString())
-      loadMessages(response.data.id.toString())
+      // 使用创建接口返回的会话立即打开窗口，避免空会话在列表刷新期间丢失选中状态
+      const conversation = processConversation(response.data) as any
+      chatStore.addConversation(conversation)
+      const conversationId = String(response.data.id)
+      setCurrentConversationId(conversationId)
+      await loadMessages(conversationId)
     }
   } catch (error) {
     logger.error('创建私聊失败:', error)

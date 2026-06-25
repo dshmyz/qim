@@ -3,17 +3,23 @@ export const isAbsoluteUrl = (url: string): boolean => {
   return url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')
 }
 
-// 头像背景颜色池
+// 头像背景颜色池（24色，覆盖更多色相，减少撞色概率）
 export const AVATAR_COLORS = [
   '#4285F4', '#EA4335', '#FBBC05', '#34A853',
   '#FF6D01', '#46BDC6', '#7B1FA2', '#C2185B',
-  '#673AB7', '#00BCD4', '#8BC34A', '#FF9800'
+  '#673AB7', '#00BCD4', '#8BC34A', '#FF9800',
+  '#E91E63', '#2196F3', '#009688', '#FF5722',
+  '#607D8B', '#795548', '#F44336', '#3F51B5',
+  '#00ACC1', '#8D6E63', '#546E7A', '#26A69A'
 ]
 
-// 根据名称获取头像颜色
+// 根据名称获取头像颜色（对整个名字做 hash，避免同姓撞色）
 export const getAvatarColor = (name: string): string => {
-  const charCode = name.charCodeAt(0)
-  return AVATAR_COLORS[charCode % AVATAR_COLORS.length]
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 // 获取名称的首字符

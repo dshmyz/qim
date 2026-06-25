@@ -16,20 +16,22 @@
             <Avatar :src="item.avatar" :name="item.name" :server-url="serverUrl" :alt="item.name" size="md" />
             <span v-if="item.type === 'group'" class="group-badge">群</span>
             <span v-if="item.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
+            <span v-if="item.type === 'bot_assistant' || item.type === 'bot_avatar'" class="bot-badge"><i class="fas fa-robot"></i></span>
           </div>
           <div class="search-popup-info">
             <div class="search-popup-name">{{ item.name }}</div>
             <div class="search-popup-meta">
-              <span v-if="item.type === 'user'" class="search-popup-username">{{ item.username }}</span>
+              <span v-if="item.type === 'user' || item.type === 'bot_assistant' || item.type === 'bot_avatar'" class="search-popup-username">{{ item.username }}</span>
               <span v-if="item.type === 'group'" class="search-popup-type">群聊</span>
               <span v-if="item.type === 'discussion'" class="search-popup-type">讨论组</span>
+              <span v-if="item.type === 'bot_assistant' || item.type === 'bot_avatar'" class="search-popup-type">AI 助手</span>
               <span v-if="item.type === 'user' && item.status === 'online'" class="search-popup-status online">在线</span>
               <span v-if="item.type === 'user' && item.status !== 'online'" class="search-popup-status offline">离线</span>
               <span v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-status online">已加入</span>
               <span v-if="(item.type === 'group' || item.type === 'discussion') && !item.isMember" class="search-popup-status offline">未加入</span>
             </div>
           </div>
-          <button v-if="item.type === 'user'" class="search-popup-btn" @click.stop="$emit('privateChat', item)">
+          <button v-if="item.type === 'user' || item.type === 'bot_assistant' || item.type === 'bot_avatar'" class="search-popup-btn" @click.stop="$emit('privateChat', item)">
             <i class="fas fa-comment"></i>
           </button>
           <button v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-btn" @click.stop="$emit('select', item)">
@@ -55,7 +57,7 @@ const { serverUrl } = useServerUrl()
 interface SearchResultItem {
   id: string
   name: string
-  type: 'user' | 'group' | 'discussion'
+  type: 'user' | 'group' | 'discussion' | 'bot_assistant' | 'bot_avatar'
   username?: string
   avatar?: string
   status?: 'online' | 'offline'
@@ -160,6 +162,20 @@ defineEmits<{
   justify-content: center;
   font-size: 8px;
   padding: 1px 2px;
+}
+
+.bot-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #8b5cf6;
+  color: white;
+  font-size: 8px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .search-popup-info {

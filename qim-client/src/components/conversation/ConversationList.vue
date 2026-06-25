@@ -6,7 +6,7 @@
       <p>从通讯录或群聊中发起对话吧</p>
     </div>
   </div>
-  <div v-else class="conversation-list" ref="listRef" @scroll="handleScroll">
+  <div v-else class="conversation-list conversation-list--scrollable" ref="listRef" @scroll="handleScroll">
     <div
       v-for="conversation in conversations"
       :key="conversation.id"
@@ -198,6 +198,8 @@ watch(() => props.conversations, () => {
 }, { deep: true })
 
 const hasDraft = (conversation: Conversation): boolean => {
+  // 当前正在打开的会话不显示草稿标记，只有离开后才显示
+  if (conversation.id === props.currentConversationId) return false
   return draftsCache.value.get(conversation.id)?.hasDraft ?? false
 }
 
@@ -316,6 +318,9 @@ const getUnreadCount = (conversation: Conversation): number => {
 <style scoped>
 .conversation-list {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .conversation-item {

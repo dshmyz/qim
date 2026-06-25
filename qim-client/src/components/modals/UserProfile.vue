@@ -45,7 +45,7 @@
       <div class="user-profile-footer">
         <button class="action-btn primary" @click="handleSendPrivateMessage">
           <i class="fas fa-comment"></i>
-          <span>发起私聊</span>
+          <span>{{ isBot ? '开始对话' : '发起私聊' }}</span>
         </button>
         <button class="action-btn" @click="close">
           <span>关闭</span>
@@ -70,6 +70,7 @@ interface User {
   department?: string
   ip?: string
   avatar?: string
+  type?: string
 }
 
 interface Props {
@@ -86,6 +87,11 @@ const emit = defineEmits<{
 const close = () => {
   emit('close')
 }
+
+const isBot = computed(() => {
+  const t = props.user.type
+  return t === 'bot_assistant' || t === 'bot_avatar'
+})
 
 const handleSendPrivateMessage = () => {
   emit('sendPrivateMessage', props.user)
