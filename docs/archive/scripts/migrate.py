@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 MESSAGE_TYPE_MAP = {
     'text': 'text',
-    'face': 'emoji',
+    'face': 'text',
     'image': 'image',
     'file': 'file',
     'audio': 'audio',
@@ -1078,6 +1078,9 @@ class MigrationEngine:
         if oim_type == 'at':
             return self._transform_at_content(raw_content)
 
+        if oim_type == 'face':
+            return self._transform_face_content(raw_content)
+
         if oim_type in ('image', 'file'):
             try:
                 data = json.loads(raw_content)
@@ -1149,6 +1152,19 @@ class MigrationEngine:
             return '@所有人'
 
         return ''
+
+    def _transform_face_content(self, raw_content: str) -> str:
+        """将老系统表情JSON转换为纯文本表情字符。
+        老系统格式: {"text":"嘿嘿", "categoryId":"emoji", "key":"xx"}
+        """
+        try:
+            data = json.loads(raw_content)
+            text = data.get('text', '')
+            if text:
+                return text
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return raw_content
 
     def _should_skip_message_content(self, content: str) -> bool:
         return not str(content or '').strip()

@@ -317,8 +317,6 @@
 
 .message-link:hover {
   color: #2563eb;
-  text-decoration: underline;
-  transform: translateY(-1px);
 }
 
 .at-user {

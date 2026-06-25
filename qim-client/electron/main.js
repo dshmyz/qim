@@ -202,7 +202,12 @@ function getWindowsVersion() {
 function getAutoUpdateFeedUrl() {
   const baseUrl = currentUpdateBaseUrl
   if (process.platform === 'win32') {
-    return `${baseUrl}/api/v1/updates/win/`
+    // Electron 22.x 用于 Windows 7 构建，对应 win7/ 更新通道
+    const electronMajor = parseInt(process.versions.electron.split('.')[0], 10)
+    if (electronMajor <= 22) {
+      return `${baseUrl}/api/v1/updates/win7/`
+    }
+    return `${baseUrl}/api/v1/updates/win10/`
   }
   if (process.platform === 'linux') {
     return `${baseUrl}/api/v1/updates/linux/`
@@ -732,6 +737,70 @@ function formatUpdateError(error, phase = updatePhase) {
   return errorMessage
 }
 
+// Linux 平台安装更新（通过 sudo 执行安装脚本，因为 quitAndInstall 对 deb/AppImage 不生效）
+async function installLinuxUpdate(info) {
+  const downloadPath = info.path || info.downloadedFile
+  if (!downloadPath || !fs.existsSync(downloadPath)) {
+    console.error('Linux update: 下载文件未找到:', downloadPath)
+    sendToWindow('update-error', '更新文件未找到')
+    return
+  }
+
+  const isDeb = downloadPath.endsWith('.deb')
+  const isRpm = downloadPath.endsWith('.rpm')
+
+  if (!isDeb && !isRpm) {
+    console.error('Linux update: 不支持的包格式:', downloadPath)
+    sendToWindow('update-error', '不支持的 Linux 包格式')
+    return
+  }
+
+  const helperScript = path.join(process.resourcesPath, 'install-update-linux.sh')
+  if (!fs.existsSync(helperScript)) {
+    console.error('Linux update: 安装脚本未找到:', helperScript)
+    sendToWindow('update-error', '更新安装脚本未找到')
+    return
+  }
+
+  try {
+    execSync('which sudo', { stdio: 'ignore' })
+  } catch {
+    console.error('Linux update: sudo 未安装')
+    sendToWindow('update-error', '未找到 sudo 命令')
+    return
+  }
+
+  const escapedPath = downloadPath.replace(/'/g, "'\\''")
+  const installCmd = `sudo -n "${helperScript}" "${escapedPath}"`
+
+  try {
+    console.log('Linux update: 执行安装命令:', installCmd)
+    const result = execSync(installCmd, { timeout: 180000 })
+    console.log('Linux update: 安装成功:', result.toString())
+
+    sendToWindow('update-installed')
+
+    setTimeout(() => {
+      app.relaunch()
+      app.quit()
+    }, 2000)
+  } catch (error) {
+    console.error('Linux update: 安装失败:', error)
+    let errorMsg = '安装更新失败'
+    if (error.status === 1) {
+      errorMsg = '更新安装失败，请检查系统包管理器状态'
+    } else if (error.stderr) {
+      const stderr = error.stderr.toString().trim()
+      if (stderr.includes('a password is required')) {
+        errorMsg = 'sudo 免密配置未生效，请运行: sudo visudo -f /etc/sudoers.d/qim-update'
+      } else {
+        errorMsg = stderr.split('\n').pop()
+      }
+    }
+    sendToWindow('update-error', errorMsg)
+  }
+}
+
 function setupAutoUpdater() {
   setupAutoUpdateUrl()
 
@@ -788,69 +857,6 @@ function setupAutoUpdater() {
     console.log('更新下载完成，等待用户确认安装')
     sendToWindow('update-downloaded', info)
   })
-
-  async function installLinuxUpdate(info) {
-    const downloadPath = info.path || info.downloadedFile
-    if (!downloadPath || !fs.existsSync(downloadPath)) {
-      console.error('Linux update: 下载文件未找到:', downloadPath)
-      sendToWindow('update-error', '更新文件未找到')
-      return
-    }
-
-    const isDeb = downloadPath.endsWith('.deb')
-    const isRpm = downloadPath.endsWith('.rpm')
-
-    if (!isDeb && !isRpm) {
-      console.error('Linux update: 不支持的包格式:', downloadPath)
-      sendToWindow('update-error', '不支持的 Linux 包格式')
-      return
-    }
-
-    const helperScript = path.join(process.resourcesPath, 'install-update-linux.sh')
-    if (!fs.existsSync(helperScript)) {
-      console.error('Linux update: 安装脚本未找到:', helperScript)
-      sendToWindow('update-error', '更新安装脚本未找到')
-      return
-    }
-
-    try {
-      execSync('which sudo', { stdio: 'ignore' })
-    } catch {
-      console.error('Linux update: sudo 未安装')
-      sendToWindow('update-error', '未找到 sudo 命令')
-      return
-    }
-
-    const escapedPath = downloadPath.replace(/'/g, "'\\''")
-    const installCmd = `sudo -n "${helperScript}" "${escapedPath}"`
-
-    try {
-      console.log('Linux update: 执行安装命令:', installCmd)
-      const result = execSync(installCmd, { timeout: 180000 })
-      console.log('Linux update: 安装成功:', result.toString())
-
-      sendToWindow('update-installed')
-
-      setTimeout(() => {
-        app.relaunch()
-        app.quit()
-      }, 2000)
-    } catch (error) {
-      console.error('Linux update: 安装失败:', error)
-      let errorMsg = '安装更新失败'
-      if (error.status === 1) {
-        errorMsg = '更新安装失败，请检查系统包管理器状态'
-      } else if (error.stderr) {
-        const stderr = error.stderr.toString().trim()
-        if (stderr.includes('a password is required')) {
-          errorMsg = 'sudo 免密配置未生效，请运行: sudo visudo -f /etc/sudoers.d/qim-update'
-        } else {
-          errorMsg = stderr.split('\n').pop()
-        }
-      }
-      sendToWindow('update-error', errorMsg)
-    }
-  }
 
   // 定期自动检查更新（每 4 小时）
   const AUTO_UPDATE_INTERVAL = 4 * 60 * 60 * 1000
@@ -1080,7 +1086,12 @@ function registerIPC() {
     forceUpdateActive = false
     lastForceUpdateInfo = null
     sendToWindow('update-installing')
-    autoUpdater.quitAndInstall(false, true)
+    // Linux 平台 quitAndInstall 不生效，需通过脚本安装 deb/AppImage
+    if (process.platform === 'linux') {
+      installLinuxUpdate(downloadedUpdateInfo)
+    } else {
+      autoUpdater.quitAndInstall(false, true)
+    }
   })
 
   ipcMain.on('start-screen-share', async () => {
