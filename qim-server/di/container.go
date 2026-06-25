@@ -62,6 +62,15 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	db := database.GetDB()
 
 	aiService := ai.NewAIService(&cfg.AI)
+	aiProviderService := service.NewAIProviderService(db)
+
+	// 从数据库加载已启用的 AI Provider，覆盖配置文件中的设置
+	// db 可能为 nil（测试环境未初始化），此时跳过 DB 加载
+	if db != nil {
+		if _, err := aiProviderService.ReloadEnabledProviders(aiService); err != nil {
+			logger.WithModule("DI").Warn("从数据库加载 AI Provider 失败", "error", err)
+		}
+	}
 
 	userService := service.NewUserService(db)
 	conversationService := service.NewConversationService(db)
@@ -114,7 +123,6 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
 	botService := service.NewBotService(db)
-	aiProviderService := service.NewAIProviderService(db)
 	groupDocumentService := service.NewGroupDocumentService(db)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 

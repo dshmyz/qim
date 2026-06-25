@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -97,6 +100,8 @@ func CreateAIProvider(c *gin.Context) {
 		return
 	}
 
+	reloadAIProviders()
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": providerToFrontend(provider),
@@ -167,6 +172,7 @@ func UpdateAIProvider(c *gin.Context) {
 	}
 
 	db.First(&provider, uint(id))
+	reloadAIProviders()
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": providerToFrontend(provider),
@@ -191,6 +197,8 @@ func DeleteAIProvider(c *gin.Context) {
 	}
 
 	db.Delete(&provider)
+
+	reloadAIProviders()
 
 	response.SuccessWithMessage(c, "删除成功", nil)
 }
@@ -226,6 +234,8 @@ func ToggleAIProviderStatus(c *gin.Context) {
 		response.InternalServerError(c, "更新失败")
 		return
 	}
+
+	reloadAIProviders()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -270,4 +280,18 @@ func maskAPIKey(key string) string {
 		return "****"
 	}
 	return key[:4] + "****" + key[len(key)-4:]
+}
+
+// reloadAIProviders 从数据库重新加载 AI Provider 到 AIService。
+// 在 Provider 增删改后调用，保证运行时配置与数据库一致。
+// 查询失败时记录日志但不中断请求（DB 写入已成功）。
+func reloadAIProviders() {
+	svc := di.GlobalContainer.AIService
+	if svc == nil {
+		return
+	}
+	providerSvc := service.NewAIProviderService(database.GetDB())
+	if _, err := providerSvc.ReloadEnabledProviders(svc); err != nil {
+		log.Printf("[AIProviderHandler] reload providers failed: %v", err)
+	}
 }

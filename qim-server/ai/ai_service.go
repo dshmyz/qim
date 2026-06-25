@@ -10,20 +10,22 @@ import (
 )
 
 type AIService struct {
-	config    *AIConfig
-	factory   *ProviderFactory
-	pool      map[string]Provider
-	router    *ModelRouter
-	mu        sync.RWMutex
-	mcpServer *MCPServer
+	config     *AIConfig
+	factory    *ProviderFactory
+	pool       map[string]Provider
+	configPool map[string]Provider // config.yaml 初始化的 pool 副本，DB 为空时兜底
+	router     *ModelRouter
+	mu         sync.RWMutex
+	mcpServer  *MCPServer
 }
 
 func NewAIService(cfg *AIConfig) *AIService {
 	svc := &AIService{
-		config:  cfg,
-		factory: NewProviderFactory(),
-		pool:    make(map[string]Provider),
-		router:  NewModelRouter(cfg.Router),
+		config:     cfg,
+		factory:    NewProviderFactory(),
+		pool:       make(map[string]Provider),
+		configPool: make(map[string]Provider),
+		router:     NewModelRouter(cfg.Router),
 	}
 
 	for name, providerCfg := range cfg.AllProviders() {
@@ -33,6 +35,7 @@ func NewAIService(cfg *AIConfig) *AIService {
 			continue
 		}
 		svc.pool[name] = provider
+		svc.configPool[name] = provider
 		log.Printf("[AI Service] Provider %s initialized", name)
 	}
 
@@ -57,8 +60,18 @@ func (s *AIService) GetMCPServer() *MCPServer {
 	return s.mcpServer
 }
 
+// selectProvider 在读锁保护下快照 router 与 pool 再做路由选择，
+// 避免与 ReloadProvidersFromDB / UpdateConfig 的写入发生并发 map 读写崩溃。
+func (s *AIService) selectProvider(taskType TaskType, overrides ...Override) (Provider, string, error) {
+	s.mu.RLock()
+	router := s.router
+	pool := s.pool
+	s.mu.RUnlock()
+	return router.SelectProvider(pool, taskType, overrides...)
+}
+
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
-	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return "", err
 	}
@@ -81,7 +94,7 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 }
 
 func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
-	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return err
 	}
@@ -111,7 +124,7 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 		return s.GetCompletion(taskType, messages, overrides...)
 	}
 
-	provider, modelName, err := s.router.SelectProvider(s.pool, taskType, overrides...)
+	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return "", err
 	}
@@ -310,6 +323,65 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	s.router = NewModelRouter(cfg.Router)
 }
 
+// DBProviderInfo 数据库 Provider 的纯数据描述，避免 ai 包依赖 model 包。
+type DBProviderInfo struct {
+	ID       uint
+	Name     string // 唯一标识（用于 pool key）
+	APIType  string // openai / anthropic / custom 等
+	Endpoint string // BaseURL
+	APIKey   string
+	Models   []string // 支持的模型列表
+	Enabled  bool
+	Priority int
+}
+
+// ReloadProvidersFromDB 从数据库 Provider 列表重新加载 pool。
+// 已启用的 Provider 会被加入 pool；未启用或加载失败的会被跳过。
+// 语义：DB 为覆盖性数据源——当 DB 有已启用 Provider 时完全替换 pool；
+// 当 DB 中没有已启用 Provider 时，保留现有 pool（通常是 config.yaml 配置）作为兜底。
+func (s *AIService) ReloadProvidersFromDB(providers []DBProviderInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newPool := make(map[string]Provider)
+	for _, p := range providers {
+		if !p.Enabled || p.APIKey == "" {
+			continue
+		}
+		// 选择第一个模型作为默认模型
+		model := ""
+		if len(p.Models) > 0 {
+			model = p.Models[0]
+		}
+		providerCfg := ProviderConfig{
+			APIKey:  p.APIKey,
+			Model:   model,
+			BaseURL: p.Endpoint,
+		}
+		provider, err := s.factory.CreateProviderByName(p.APIType, providerCfg)
+		if err != nil {
+			log.Printf("[AI Service] Failed to load DB provider %s (type=%s): %v", p.Name, p.APIType, err)
+			continue
+		}
+		// 使用小写 name 作为 pool key，与 config.yaml 中的 provider 命名保持一致
+		poolKey := strings.ToLower(p.Name)
+		newPool[poolKey] = provider
+		log.Printf("[AI Service] DB provider %s loaded as %q (type=%s, model=%s)", p.Name, poolKey, p.APIType, model)
+	}
+
+	if len(newPool) > 0 {
+		s.pool = newPool
+		log.Printf("[AI Service] Reloaded %d providers from DB", len(newPool))
+	} else {
+		// DB 中没有已启用的 Provider，回退到 config.yaml 初始化的 pool
+		s.pool = make(map[string]Provider)
+		for k, v := range s.configPool {
+			s.pool[k] = v
+		}
+		log.Printf("[AI Service] No enabled DB providers, restored config.yaml pool (%d)", len(s.pool))
+	}
+}
+
 func (s *AIService) GetConfig() *AIConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -342,7 +414,7 @@ func (s *AIService) IsConfigured() bool {
 }
 
 func (s *AIService) Embed(text string) ([]float32, error) {
-	provider, _, err := s.router.SelectProvider(s.pool, TaskTypeEmbedding)
+	provider, _, err := s.selectProvider(TaskTypeEmbedding)
 	if err != nil {
 		return nil, err
 	}

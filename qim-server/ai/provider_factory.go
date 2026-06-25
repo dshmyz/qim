@@ -96,9 +96,16 @@ func (f *ProviderFactory) createAnthropicProvider(cfg *AIConfig) Provider {
 	})
 }
 
+// CreateProviderByName 根据提供商类型名称创建 Provider 实例。
+// 支持内置类型（openai/deepseek/anthropic 等）以及 custom（OpenAI 兼容）类型。
 func (f *ProviderFactory) CreateProviderByName(name string, cfg ProviderConfig) (Provider, error) {
 	switch name {
-	case "openai", "deepseek":
+	case "openai", "deepseek",
+		"alibaba", "baidu", "tencent", "bytedance",
+		"ollama", "azure", "custom":
+		// 上述厂商均通过 OpenAI 兼容接口接入（DashScope 兼容模式、火山 Ark、
+		// 千帆 v2、Moonshot、本地 Ollama、Azure OpenAI 等），由 BaseURL 区分，
+		// 数据库携带的 APIKey + BaseURL + Model 即可工作。
 		return f.createGenericOpenAIProvider(name, cfg), nil
 	case "anthropic":
 		return f.createAnthropicProviderFromConfig(cfg), nil

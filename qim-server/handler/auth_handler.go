@@ -82,7 +82,16 @@ func generateTwoFACode() string {
 
 func SetConfig(c *config.Config) {
 	cfg = c
-	aiService = ai.NewAIService(&c.AI)
+	// 复用 DI 容器中已从数据库加载 Provider 的 AIService，避免重新创建导致丢失 DB Provider
+	if di.GlobalContainer != nil && di.GlobalContainer.AIService != nil {
+		aiService = di.GlobalContainer.AIService
+	} else {
+		aiService = ai.NewAIService(&c.AI)
+		// GlobalContainer 尚未初始化时（理论上不应发生），先创建一个空容器
+		if di.GlobalContainer == nil {
+			di.GlobalContainer = &di.Container{}
+		}
+	}
 	di.GlobalContainer.Config = c
 	di.GlobalContainer.AIService = aiService
 
