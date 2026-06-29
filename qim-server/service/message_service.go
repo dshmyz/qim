@@ -275,6 +275,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		case <-ctx.Done():
 			streamErr = fmt.Errorf("AI 响应超时")
 			cancel() // 取消 context，关闭 HTTP 连接，防止协程泄漏
+			<-done   // 等待子 goroutine 退出，避免并发读写 builder
 		}
 	}
 
@@ -291,6 +292,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		Type:           "markdown",
 		Content:        response,
 		Origin:         "assistant",
+		IsRead:         true, // Bot 回复默认已读
 	}
 	if err := db.Create(&botReply).Error; err != nil {
 		logger.WithModule("handleBotMessage").Error("创建 Bot 回复失败", "error", err)
