@@ -3,6 +3,7 @@ package ai
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,9 @@ type Provider interface {
 
 	// ChatStream 发送聊天请求并以流式方式返回回复（返回 JSON 编码的 StreamChunk）
 	ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error
+
+	// ChatStreamWithContext 支持 context 取消的流式请求（用于超时控制）
+	ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error
 
 	// Embedding 将文本转换为向量
 	Embedding(text string) ([]float32, error)
@@ -50,6 +54,12 @@ func NewBaseProvider() *BaseProvider {
 		},
 		MaxRetries: 2,
 	}
+}
+
+// ChatStreamWithContext 默认实现：返回未实现错误
+// 每个具体 Provider 应覆盖此方法以提供带 context 取消的流式支持
+func (bp *BaseProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return fmt.Errorf("ChatStreamWithContext not implemented")
 }
 
 // ExecuteWithRetry 执行 HTTP 请求并自动重试
@@ -168,6 +178,31 @@ func CreateJSONRequest(method, url, apiKey string, body interface{}, headers map
 	}
 
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(reqJSON))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	return req, reqJSON, nil
+}
+
+// CreateJSONRequestWithContext 创建带 context 的 JSON HTTP 请求（支持超时取消）
+func CreateJSONRequestWithContext(ctx context.Context, method, url, apiKey string, body interface{}, headers map[string]string) (*http.Request, []byte, error) {
+	reqJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(reqJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}

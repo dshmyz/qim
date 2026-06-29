@@ -503,7 +503,15 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符", chunkCount, totalLen)
 
-	_ = finish()
+	if chunkCount == 0 {
+		log.Printf("[SmartReplyGraph] AI 回复内容为空，跳过保存")
+		return
+	}
+
+	if finish() == nil {
+		log.Printf("[SmartReplyGraph] 完成流式消息失败")
+		return
+	}
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
 }
@@ -568,6 +576,9 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 	}
 
 	messages = append(messages, ai.Message{Role: "user", Content: fmt.Sprintf("💬 请回答：%s", question)})
+
+	// 将 system prompt 插入消息列表头部
+	messages = append([]ai.Message{{Role: "system", Content: systemPrompt}}, messages...)
 
 	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {

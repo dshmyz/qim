@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -94,6 +95,11 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 }
 
 func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
+	return s.GetCompletionStreamWithContext(context.Background(), taskType, messages, onChunk, overrides...)
+}
+
+// GetCompletionStreamWithContext 支持 context 取消的流式请求（用于超时控制）
+func (s *AIService) GetCompletionStreamWithContext(ctx context.Context, taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return err
@@ -101,9 +107,9 @@ func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, o
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
 	if modelName != "" {
-		err = provider.WithModel(modelName).ChatStream(filteredMessages, onChunk)
+		err = provider.WithModel(modelName).ChatStreamWithContext(ctx, filteredMessages, onChunk)
 	} else {
-		err = provider.ChatStream(filteredMessages, onChunk)
+		err = provider.ChatStreamWithContext(ctx, filteredMessages, onChunk)
 	}
 	duration := time.Since(start).Milliseconds()
 	status := "success"

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -91,6 +92,10 @@ func (p *BytedanceProvider) Chat(messages []Message) (string, error) {
 }
 
 func (p *BytedanceProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return p.ChatStreamWithContext(context.Background(), messages, onChunk)
+}
+
+func (p *BytedanceProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	if !p.IsConfigured() {
 		return fmt.Errorf("Bytedance API key is not configured")
 	}
@@ -105,7 +110,7 @@ func (p *BytedanceProvider) ChatStream(messages []Message, onChunk func(chunk St
 		"stream":      true,
 	}
 
-	req, _, err := CreateJSONRequest(
+	req, _, err := CreateJSONRequestWithContext(ctx,
 		"POST",
 		p.config.BaseURL+"/chat/completions",
 		p.config.APIKey,

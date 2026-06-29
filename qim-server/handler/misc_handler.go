@@ -3,6 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"math/rand"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -11,9 +15,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -285,9 +286,9 @@ func HandleBotMessage(userID uint, convID uint, content string) {
 
 	var reply string
 	switch bot.Type {
-	case "system":
+	case model.BotTypeSystem:
 		reply = getSystemBotReply(content)
-	case "ai":
+	case model.BotTypeAssistant, model.BotTypeGroupAssistant:
 		aiSvc := di.GlobalContainer.AIService
 		if aiSvc != nil && aiSvc.IsConfigured() {
 			var messages []ai.Message

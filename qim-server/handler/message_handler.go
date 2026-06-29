@@ -440,12 +440,8 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 	if excludeUserID > 0 {
 		convSvc.IncrementUnreadCount(msg.ConversationID, excludeUserID)
 	} else if msg.Origin == "assistant" || msg.Origin == "avatar" {
-		// AI 消息：为所有非 AI 用户增加未读计数
-		for _, member := range conv.Members {
-			if member.UserID != msg.SenderID {
-				convSvc.IncrementUnreadCount(msg.ConversationID, member.UserID)
-			}
-		}
+		// AI 消息：为所有非发送者增加未读计数（单条 SQL，排除发送者）
+		convSvc.IncrementUnreadCount(msg.ConversationID, msg.SenderID)
 	}
 
 	// AI 消息不含 mention（AI 不会 @ 人），mention_user_ids 恒为空数组

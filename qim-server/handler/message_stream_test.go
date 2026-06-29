@@ -54,7 +54,7 @@ func setupStreamMessageTest(t *testing.T) (*gin.Engine, *gorm.DB, model.User, mo
 	require.NoError(t, db.Create(&conv).Error)
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
 
-	bot := model.Bot{Name: "Writing Bot", Type: "assistant", IsActive: true, VirtualUserID: &virtualUser.ID}
+	bot := model.Bot{Name: "Writing Bot", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(&bot).Error)
 	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
 

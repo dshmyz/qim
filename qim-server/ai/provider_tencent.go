@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -94,6 +95,10 @@ func (p *TencentProvider) Chat(messages []Message) (string, error) {
 }
 
 func (p *TencentProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return fmt.Errorf("Tencent provider does not support streaming")
+}
+
+func (p *TencentProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	return fmt.Errorf("Tencent provider does not support streaming")
 }
 

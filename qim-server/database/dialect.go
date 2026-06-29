@@ -39,6 +39,16 @@ type Dialect interface {
 // D 当前运行时的方言实例，在 Init() 中初始化
 var D Dialect
 
+// NewSQLiteDialect 返回 SQLite 方言实例（供测试及外部调用）
+func NewSQLiteDialect() Dialect {
+	return &sqliteDialect{}
+}
+
+// NewMySQLDialect 返回 MySQL 方言实例（供测试及外部调用）
+func NewMySQLDialect() Dialect {
+	return &mysqlDialect{}
+}
+
 // mysqlDialect MySQL / TiDB / OceanBase 等兼容 MySQL 协议的方言
 type mysqlDialect struct {
 	supportsFulltext bool

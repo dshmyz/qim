@@ -39,6 +39,19 @@ func resolveAISender(db *gorm.DB, userSvc *service.UserService, conversationID u
 		return nil, 0, fmt.Errorf("会话不存在")
 	}
 
+	// Bot 会话：使用 Bot 关联的虚拟用户
+	if conv.Type == "bot" {
+		var botConv model.BotConversation
+		if err := db.Where("conversation_id = ?", conversationID).Preload("Bot").First(&botConv).Error; err == nil {
+			if botConv.Bot.VirtualUserID != nil {
+				var botUser model.User
+				if err := db.First(&botUser, *botConv.Bot.VirtualUserID).Error; err == nil {
+					return &botUser, 0, nil
+				}
+			}
+		}
+	}
+
 	if conv.Type != "group" && conv.Type != "discussion" {
 		aiUser, err := userSvc.GetDefaultAIAssistant()
 		if err != nil {

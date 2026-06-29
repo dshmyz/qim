@@ -86,7 +86,7 @@ func GetMyBotCount(c *gin.Context) {
 	db := database.GetDB()
 
 	var count int64
-	if err := db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'assistant')", userID).Count(&count).Error; err != nil {
+	if err := db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ?", userID, []string{model.BotTypeCustom, model.BotTypeAssistant}).Count(&count).Error; err != nil {
 		response.InternalServerError(c, "获取数量失败")
 		return
 	}
@@ -135,7 +135,7 @@ func CreateBot(c *gin.Context) {
 	}
 
 	// 校验 Type 字段
-	if req.Type != "assistant" && req.Type != "custom" {
+	if req.Type != model.BotTypeAssistant && req.Type != model.BotTypeCustom {
 		response.BadRequest(c, "Bot 类型无效")
 		return
 	}
@@ -145,7 +145,7 @@ func CreateBot(c *gin.Context) {
 
 	// 检查用户是否已达到创建上限
 	var count int64
-	db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ('custom', 'assistant')", userID).Count(&count)
+	db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ?", userID, []string{model.BotTypeCustom, model.BotTypeAssistant}).Count(&count)
 	if count >= getMaxBotsPerUser(db) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -301,7 +301,7 @@ func UpdateMyBot(c *gin.Context) {
 	}
 
 	// 校验 Type 字段
-	if req.Type != "assistant" && req.Type != "custom" {
+	if req.Type != model.BotTypeAssistant && req.Type != model.BotTypeCustom {
 		response.BadRequest(c, "Bot 类型无效")
 		return
 	}

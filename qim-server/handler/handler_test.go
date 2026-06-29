@@ -193,7 +193,7 @@ func TestCreateBotConversation_IncludesBotVirtualUserMember(t *testing.T) {
 	currentUser := createTestUser(t, db)
 	botUser := &model.User{Username: "bot_1", PasswordHash: "hash", Nickname: "青雀一号", Type: "bot"}
 	require.NoError(t, db.Create(botUser).Error)
-	bot := &model.Bot{Name: "青雀一号", Type: "assistant", IsActive: true, VirtualUserID: &botUser.ID}
+	bot := &model.Bot{Name: "青雀一号", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &botUser.ID}
 	require.NoError(t, db.Create(bot).Error)
 
 	body, err := json.Marshal(map[string]any{"type": "single", "user_id": botUser.ID})

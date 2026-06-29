@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -40,7 +41,7 @@ func (p *BaiduProvider) WithModel(model string) Provider {
 }
 
 // getAccessToken 获取百度 access token
-func (p *BaiduProvider) getAccessToken() (string, error) {
+func (p *BaiduProvider) getAccessToken(ctx context.Context) (string, error) {
 	params := url.Values{}
 	params.Add("grant_type", "client_credentials")
 	params.Add("client_id", p.config.APIKey)
@@ -48,7 +49,12 @@ func (p *BaiduProvider) getAccessToken() (string, error) {
 
 	url := p.config.BaseURL + "/oauth/2.0/token?" + params.Encode()
 
-	resp, err := p.Client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Baidu access token request: %w", err)
+	}
+
+	resp, err := p.Client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to get Baidu access token: %w", err)
 	}
@@ -75,7 +81,7 @@ func (p *BaiduProvider) Chat(messages []Message) (string, error) {
 		return "", fmt.Errorf("Baidu API key or secret key is not configured")
 	}
 
-	token, err := p.getAccessToken()
+	token, err := p.getAccessToken(context.Background())
 	if err != nil {
 		return "", err
 	}
@@ -123,11 +129,15 @@ func (p *BaiduProvider) Chat(messages []Message) (string, error) {
 }
 
 func (p *BaiduProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return p.ChatStreamWithContext(context.Background(), messages, onChunk)
+}
+
+func (p *BaiduProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	if !p.IsConfigured() {
 		return fmt.Errorf("Baidu API key or secret key is not configured")
 	}
 
-	token, err := p.getAccessToken()
+	token, err := p.getAccessToken(ctx)
 	if err != nil {
 		return err
 	}
@@ -144,7 +154,7 @@ func (p *BaiduProvider) ChatStream(messages []Message, onChunk func(chunk Stream
 
 	apiURL := p.config.BaseURL + "/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions?access_token=" + token
 
-	req, _, err := CreateJSONRequest(
+	req, _, err := CreateJSONRequestWithContext(ctx,
 		"POST",
 		apiURL,
 		"",
@@ -183,7 +193,7 @@ func (p *BaiduProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("Baidu API key or secret key is not configured")
 	}
 
-	token, err := p.getAccessToken()
+	token, err := p.getAccessToken(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Baidu access token: %w", err)
 	}

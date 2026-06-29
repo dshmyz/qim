@@ -5,7 +5,7 @@ export interface Bot {
   name: string
   avatar?: string
   description?: string
-  type: 'system' | 'custom' | 'assistant'
+  type: 'system' | 'custom' | 'assistant' | 'group_assistant'
   config?: BotConfig
   approvalStatus: 'pending' | 'approved' | 'rejected'
   creatorId: number

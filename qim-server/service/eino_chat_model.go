@@ -71,7 +71,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 	go func() {
 		defer sw.Close()
 
-		err := m.aiService.GetCompletionStream(m.taskType, aiMessages, func(chunk ai.StreamChunk) error {
+		err := m.aiService.GetCompletionStreamWithContext(ctx, m.taskType, aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
 				Role:    schema.Assistant,
 				Content: chunk.Content,

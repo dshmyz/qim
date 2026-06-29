@@ -414,14 +414,14 @@ func InitTestData(db *gorm.DB) {
 
 	// 初始化机器人会话数据（测试数据：为每个测试用户创建与已有 Bot 的会话）
 	var bots []model.Bot
-	db.Where("type IN ? AND is_active = ?", []string{"system", "assistant"}, true).Find(&bots)
+	db.Where("type IN ? AND is_active = ?", []string{model.BotTypeSystem, model.BotTypeAssistant}, true).Find(&bots)
 	if len(bots) > 0 {
 		var systemBot *model.Bot
 		var aiBot *model.Bot
 		for i := range bots {
 			if bots[i].Type == "system" {
 				systemBot = &bots[i]
-			} else if bots[i].Type == "assistant" {
+			} else if bots[i].Type == model.BotTypeAssistant {
 				aiBot = &bots[i]
 			}
 		}

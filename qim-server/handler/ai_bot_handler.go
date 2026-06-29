@@ -28,7 +28,7 @@ func (h *AIBotHandler) GetAIBots(c *gin.Context) {
 	var bots []model.Bot
 	var total int64
 
-	query := h.db.Model(&model.Bot{}).Where("type = ?", "assistant")
+	query := h.db.Model(&model.Bot{}).Where("type IN (?, ?)", model.BotTypeAssistant, model.BotTypeGroupAssistant)
 
 	query.Count(&total)
 
@@ -134,7 +134,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 		Name:        req.Name,
 		Description: req.Description,
 		Avatar:      req.Avatar,
-		Type:        "assistant",
+		Type:        model.BotTypeAssistant,
 		Config:      string(configJSON),
 		IsActive:    true, // 管理员创建的AI Bot直接启用
 		CreatorID:   userID,
@@ -189,7 +189,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",
@@ -268,7 +268,7 @@ func (h *AIBotHandler) DeleteAIBot(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",
@@ -315,7 +315,7 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	}
 
 	var bot model.Bot
-	if err := h.db.Where("id = ? AND type = ?", id, "assistant").First(&bot).Error; err != nil {
+	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    404,
 			"message": "AI 机器人不存在",

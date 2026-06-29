@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -97,6 +98,10 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 }
 
 func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return p.ChatStreamWithContext(context.Background(), messages, onChunk)
+}
+
+func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	if !p.IsConfigured() {
 		return fmt.Errorf("OpenAI API key is not configured")
 	}
@@ -127,7 +132,7 @@ func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk Strea
 		Stream: true,
 	}
 
-	req, _, err := CreateJSONRequest(
+	req, _, err := CreateJSONRequestWithContext(ctx,
 		"POST",
 		p.config.BaseURL+"/chat/completions",
 		p.config.APIKey,

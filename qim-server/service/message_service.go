@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -255,9 +256,12 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	if s.aiService == nil {
 		streamErr = fmt.Errorf("AI 服务未配置")
 	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
 		done := make(chan struct{})
 		go func() {
-			streamErr = s.aiService.GetCompletionStream(ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
+			streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
 				builder.WriteString(chunk.Content)
 				return nil
 			})
@@ -268,8 +272,9 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		select {
 		case <-done:
 			// 正常完成
-		case <-time.After(60 * time.Second):
+		case <-ctx.Done():
 			streamErr = fmt.Errorf("AI 响应超时")
+			cancel() // 取消 context，关闭 HTTP 连接，防止协程泄漏
 		}
 	}
 
@@ -597,18 +602,17 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	// 检查是否有未读消息（is_read = false），而不是只看 UnreadCount
+	// 检查实际未读消息数（is_read = false），而不是只看 UnreadCount
 	var unreadCount int64
 	db.Model(&model.Message{}).
 		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, userID).
 		Count(&unreadCount)
 
 	if unreadCount == 0 {
-		// 即使没有未读消息，也要重置计数器
 		db.Model(&model.ConversationMember{}).
 			Where("conversation_id = ? AND user_id = ?", convID, userID).
 			UpdateColumns(map[string]interface{}{
-				"unread_count":           0,
+				"unread_count":            0,
 				"unread_at_mention_count": 0,
 			})
 		return nil

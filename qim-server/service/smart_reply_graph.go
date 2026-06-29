@@ -203,7 +203,7 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	knowledgeCtx := ""
 	if g.unifiedKnowledge != nil && input.Group != nil {
 		query := input.Message
-		if input.Group.Name != "" {
+		if query == "" && input.Group.Name != "" {
 			query = input.Group.Name
 		}
 		knowledgeCtx = g.unifiedKnowledge.BuildContext(query, input.Group.ID)
@@ -398,9 +398,9 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 		content := ""
 
 		if g.unifiedKnowledge != nil && input.Group != nil {
-			// 群聊场景用群名检索，与 Legacy 保持一致
+			// 群聊场景优先用用户消息检索，无消息时回退到群名
 			query := input.Message
-			if input.Group.Name != "" {
+			if query == "" && input.Group.Name != "" {
 				query = input.Group.Name
 			}
 			content = g.unifiedKnowledge.BuildContext(query, input.Group.ID)

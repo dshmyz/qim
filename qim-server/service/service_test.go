@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -46,6 +47,11 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
+	}
+
+	// 初始化 database.D（MarkAsRead 等函数依赖此全局变量判断 MySQL/SQLite 方言）
+	if database.D == nil {
+		database.D = database.NewSQLiteDialect()
 	}
 
 	return db
@@ -121,7 +127,8 @@ func TestUserService_GetDefaultAIAssistantCreatesBotUser(t *testing.T) {
 
 	var bot model.Bot
 	require.NoError(t, db.Where("virtual_user_id = ?", user.ID).First(&bot).Error)
-	assert.Equal(t, "assistant", bot.Type)
+	assert.Equal(t, model.BotTypeAssistant, bot.Type)
+	assert.True(t, model.IsAssistantBotType(bot.Type))
 }
 
 func TestUserService_EnsureGroupAIAssistantCreatesBotUser(t *testing.T) {
@@ -136,7 +143,8 @@ func TestUserService_EnsureGroupAIAssistantCreatesBotUser(t *testing.T) {
 
 	var bot model.Bot
 	require.NoError(t, db.Where("virtual_user_id = ?", user.ID).First(&bot).Error)
-	assert.Equal(t, "assistant", bot.Type)
+	assert.Equal(t, model.BotTypeGroupAssistant, bot.Type)
+	assert.True(t, model.IsAssistantBotType(bot.Type))
 }
 
 func TestConversationService_SearchGroupsByName_QuotesGroupsTable(t *testing.T) {
@@ -496,7 +504,7 @@ func TestMessageService_SendMessageToBotPublishesReplyAndUpdatesConversation(t *
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: virtualUser.ID}).Error)
 
-	bot := &model.Bot{Name: "Helper", Type: "assistant", IsActive: true, VirtualUserID: &virtualUser.ID}
+	bot := &model.Bot{Name: "Helper", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(bot).Error)
 	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
 

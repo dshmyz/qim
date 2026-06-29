@@ -243,7 +243,7 @@ func (s *UserService) GetSystemUserID() uint {
 // GetDefaultAIAssistant 获取或创建默认 AI 助手用户（用于单聊/通用场景）
 func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	var existingBot model.Bot
-	err := s.db.Where("type = ? AND group_id IS NULL", "assistant").First(&existingBot).Error
+	err := s.db.Where("type = ? AND group_id IS NULL", model.BotTypeAssistant).First(&existingBot).Error
 	if err == nil && existingBot.VirtualUserID != nil {
 		var user model.User
 		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
@@ -256,11 +256,11 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 		bot := model.Bot{
 			Name:          "AI助手",
 			Description:   "通用 AI 助手",
-			Type:          "assistant",
+			Type:          model.BotTypeAssistant,
 			IsActive:      true,
 			VirtualUserID: &existingUser.ID,
 		}
-		if createErr := s.db.Where("type = ? AND group_id IS NULL AND virtual_user_id = ?", "assistant", existingUser.ID).FirstOrCreate(&bot).Error; createErr != nil {
+		if createErr := s.db.Where("type = ? AND virtual_user_id = ?", model.BotTypeAssistant, existingUser.ID).FirstOrCreate(&bot).Error; createErr != nil {
 			logger.WithModule("GetDefaultAIAssistant").Error("创建 Bot 记录失败", "error", createErr)
 		}
 		return &existingUser, nil
@@ -279,7 +279,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	bot := model.Bot{
 		Name:          "AI助手",
 		Description:   "通用 AI 助手",
-		Type:          "assistant",
+		Type:          model.BotTypeAssistant,
 		IsActive:      true,
 		VirtualUserID: &aiUser.ID,
 	}
@@ -294,7 +294,7 @@ func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string) (*model.User, error) {
 	// 查找已存在的群聊 AI 助手
 	var existingBot model.Bot
-	err := s.db.Where("group_id = ? AND type = ?", groupID, "assistant").First(&existingBot).Error
+	err := s.db.Where("group_id = ? AND type = ?", groupID, model.BotTypeGroupAssistant).First(&existingBot).Error
 	if err == nil && existingBot.VirtualUserID != nil {
 		var user model.User
 		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {
@@ -321,7 +321,7 @@ func (s *UserService) EnsureGroupAIAssistant(groupID uint, assistantName string)
 	bot := model.Bot{
 		Name:          assistantName,
 		Description:   fmt.Sprintf("群 %d 的 AI 助手", groupID),
-		Type:          "assistant",
+		Type:          model.BotTypeGroupAssistant,
 		IsActive:      true,
 		GroupID:       &groupID,
 		VirtualUserID: &aiUser.ID,

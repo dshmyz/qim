@@ -1625,7 +1625,7 @@ const handleMessageUpdated = (data: any) => {
   const msgs = chatStore.messages.get(convId)
   if (msgs && msgs.some(m => m.id === msgId)) {
     chatStore.updateMessage(convId, msgId, { content: data.content })
-  } else {
+  } else if (msgs) {
     // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
     const streamMsg = [...msgs].reverse().find(m => m.id.startsWith('stream_'))
     if (streamMsg) {

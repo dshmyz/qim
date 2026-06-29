@@ -274,7 +274,7 @@ type Bot struct {
 	Name            string         `json:"name" gorm:"size:100;not null"`
 	Avatar          string         `json:"avatar" gorm:"size:500"`
 	Description     string         `json:"description" gorm:"type:text"`
-	Type            string         `json:"type" gorm:"size:50;not null"` // system, custom, assistant
+	Type            string         `json:"type" gorm:"size:50;not null"` // assistant, group_assistant, custom, system
 	Config          string         `json:"config" gorm:"type:text"`      // JSON配置
 	IsActive        bool           `json:"is_active" gorm:"default:true"`
 	CreatedAt       time.Time      `json:"created_at"`

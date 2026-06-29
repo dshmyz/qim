@@ -566,7 +566,7 @@ func CreateSingleConversation(c *gin.Context) {
 			}
 		}()
 
-		conv := model.Conversation{Type: "single"}
+		conv := model.Conversation{Type: "bot"}
 		if err := tx.Create(&conv).Error; err != nil {
 			tx.Rollback()
 			response.InternalServerError(c, "创建会话失败")

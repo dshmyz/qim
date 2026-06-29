@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,6 +91,10 @@ func (p *AnthropicProvider) Chat(messages []Message) (string, error) {
 }
 
 func (p *AnthropicProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
+	return fmt.Errorf("Anthropic provider does not support streaming in this implementation")
+}
+
+func (p *AnthropicProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	return fmt.Errorf("Anthropic provider does not support streaming in this implementation")
 }
 
