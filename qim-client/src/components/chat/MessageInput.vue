@@ -186,9 +186,18 @@ const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) =
 
 const filteredAtMembers = computed(() => {
   if (!props.conversation) return []
-  if (!props.atMembersQuery) return props.conversation.members || []
+  const allMembers = props.conversation.members || []
+  // 区分普通成员和 AI 成员，把 AI 放到所有人下面
+  const normalMembers = allMembers.filter(m => m.type !== 'bot')
+  const aiMembers = allMembers.filter(m => m.type === 'bot')
+
+  if (!props.atMembersQuery) {
+    // 无搜索时：普通成员 + AI 成员
+    return [...normalMembers, ...aiMembers]
+  }
+  // 有搜索时：不区分，按名字匹配
   const query = props.atMembersQuery.toLowerCase()
-  return (props.conversation.members || []).filter(member =>
+  return allMembers.filter(member =>
     member.name.toLowerCase().includes(query) || member.username?.toLowerCase().includes(query)
   )
 })
