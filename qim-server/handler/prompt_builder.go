@@ -253,6 +253,8 @@ func (b *SmartPromptBuilder) buildRules(ctx *PromptContext) string {
 
 	rules = append(rules, "优先使用知识库中的内容回答")
 	rules = append(rules, "如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"")
+	// 重要：AI 回复不要自己添加 @ 提及，系统会自动处理 @ 提及格式
+	rules = append(rules, "回复中不要使用 @用户名 格式提及用户，系统会自动处理")
 
 	if ctx.Group != nil {
 		aiConfig := ctx.Group.GetAIConfig()
