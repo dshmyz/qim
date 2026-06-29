@@ -1627,13 +1627,24 @@ const handleMessageUpdated = (data: any) => {
     chatStore.updateMessage(convId, msgId, { content: data.content })
   } else if (msgs) {
     // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
-    const streamMsg = [...msgs].reverse().find(m => m.id.startsWith('stream_'))
+    // 增加时间窗：只匹配 60 秒内的流式消息，避免误匹配旧消息
+    const now = Date.now()
+    const streamMsg = [...msgs].reverse().find(m =>
+      m.id.startsWith('stream_') &&
+      (now - m.timestamp < 60000)
+    )
     if (streamMsg) {
       chatStore.updateMessage(convId, streamMsg.id, { content: data.content })
     }
   }
 
-  nextTick(() => chatWindowRef.value?.scrollToBottom())
+  // 只有是当前会话时才滚动
+  if (currentConversationId.value === convId) {
+    nextTick(() => {
+      chatWindowRef.value?.scrollToBottom(true)
+      requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
+    })
+  }
 }
 
 // 处理通知
@@ -1764,6 +1775,15 @@ const handleNewMessage = async (msg: any) => {
   
   // 通过 Store 统一更新会话信息（lastMessage、timestamp、未读数）
   chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
+
+  // 当前会话有新消息或流式更新时，直接触发滚动到底部
+  // 绕过 ChatWindow 内部 watch 的响应式问题，更可靠
+  if (isCurrentConv && chatWindowRef.value) {
+    nextTick(() => {
+      chatWindowRef.value?.scrollToBottom(true)
+      requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
+    })
+  }
 }
 
 let conversationSortTimer: number | null = null

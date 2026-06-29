@@ -236,7 +236,7 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
   
   switch (lastMessage.type) {
     case 'text':
-      previewText = lastMessage.content || '无内容'
+      previewText = decodeToPlainText(lastMessage.content || '无内容')
       break
     case 'image':
       let imageName = '图片'
