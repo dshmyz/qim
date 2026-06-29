@@ -69,21 +69,23 @@
             <span class="at-member-identity">
               <span class="at-member-name">{{ member.name || '未知用户' }}</span>
               <span v-if="member.username && member.username !== member.name" class="at-member-username">@{{ member.username }}</span>
+              <i v-if="member.type === 'bot'" class="fas fa-robot at-member-bot-icon" title="机器人"></i>
             </span>
           </div>
           <div v-if="filteredAtMembers.length === 0" class="empty-at-members"><p>没有找到匹配的成员</p></div>
         </div>
       </div>
     </div>
-    
+
     <MiniAppManager v-model:showMiniAppList="showMiniAppListLocal" @send-mini-app-message="$emit('send-mini-app-message', $event)" />
-    
+
     <input type="file" ref="fileInputRef" style="display: none" @change="$emit('handle-file-select', $event)" multiple />
 
     <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="$emit('remove-quoted-message')" />
 
     <!-- 统一的 composer 容器：预览区 + textarea 融合在一个容器内 -->
     <div class="composer">
+
       <PendingFilesPreview
         :pending-files="pendingFiles"
         :get-file-icon="getFileIcon"
@@ -187,13 +189,14 @@ const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) =
 const filteredAtMembers = computed(() => {
   if (!props.conversation) return []
   const allMembers = props.conversation.members || []
-  // 区分普通成员和 AI 成员，把 AI 放到所有人下面
-  const normalMembers = allMembers.filter(m => m.type !== 'bot')
+  // AI 成员放到前面，紧接在"所有人"后面
   const aiMembers = allMembers.filter(m => m.type === 'bot')
+  const normalMembers = allMembers.filter(m => m.type !== 'bot')
 
   if (!props.atMembersQuery) {
-    // 无搜索时：普通成员 + AI 成员
-    return [...normalMembers, ...aiMembers]
+    // 无搜索时：AI 成员在前，普通成员在后
+    // 整体顺序：所有人 → AI 成员 → 普通成员
+    return [...aiMembers, ...normalMembers]
   }
   // 有搜索时：不区分，按名字匹配
   const query = props.atMembersQuery.toLowerCase()
@@ -306,15 +309,17 @@ watch(
   () => props.showAtMembersPanel,
   (newVal) => {
     if (newVal) {
-      atMemberActiveIndex.value = -1
+      atMemberActiveIndex.value = props.atMembersQuery ? 0 : -1
     }
   }
 )
 
 watch(
   () => props.atMembersQuery,
-  () => {
-    atMemberActiveIndex.value = -1
+  (query) => {
+    nextTick(() => {
+      atMemberActiveIndex.value = query ? (filteredAtMembers.value.length > 0 ? 0 : -1) : -1
+    })
   }
 )
 
@@ -570,37 +575,37 @@ defineExpose({ messageInputRef })
   background: var(--list-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 16px;
+  padding: 12px;
   max-height: 300px;
   overflow-y: auto;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
 }
 
 .at-members-header {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .at-members-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-color);
 }
 
 .at-members-list {
-  max-height: 200px;
+  max-height: 220px;
   overflow-y: auto;
 }
 
 .at-member-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .at-member-item:hover,
@@ -609,28 +614,35 @@ defineExpose({ messageInputRef })
 }
 
 .at-member-avatar {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   margin-right: 8px;
   object-fit: cover;
 }
 
 .at-member-name {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-color);
 }
 
 .at-member-identity {
   display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
-  flex-direction: column;
+  flex-wrap: wrap;
 }
 
 .at-member-username {
-  margin-top: 2px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.at-member-bot-icon {
+  font-size: 11px;
+  color: var(--primary-color);
+  opacity: 0.9;
 }
 
 .empty-at-members {
