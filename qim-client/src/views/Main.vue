@@ -442,7 +442,7 @@
       :currentUser="currentUser"
       @pin="handlePin"
       @mute="handleMute"
-      @exitGroup="handleExitGroup"
+      @exitGroup="exitGroup"
       @remove="handleRemove"
       @createGroup="openCreateGroupModal"
       @createDiscussion="createDiscussionGroup"
@@ -460,6 +460,7 @@
       @about="aboutApp"
       @checkUpdate="checkForUpdates"
       @settings="openSettings"
+      @openFeedback="openFeedbackModal"
       @logout="logout"
       @setTheme="setTheme"
       @showChannels="() => { handleSidebarOptionClick('channels'); closeMoreMenu() }"
@@ -1167,7 +1168,7 @@ const handleShowGroupContextMenu = async (event: MouseEvent, group: any) => {
   
   // 先显示菜单（使用基本信息）
   showGroupContextMenuFlag.value = true
-  groupContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  groupContextMenuPosition.value = ui.computeMenuPosition(event.clientX, event.clientY, 160, 200)
   selectedGroupForContextMenu.value = group
   
   // 如果已有该群的完整数据且包含 members，直接使用
@@ -2650,12 +2651,9 @@ const dissolveGroup = async (group?: any) => {
     // 调用 useGroup 中的实现
     const success = await groupState.dissolveGroup(targetGroup)
     if (success) {
-      // 使用 Store Action 更新会话
-      chatStore.patchConversation(targetGroup.id, {
-        name: '[已解散] ' + (conversations.value.find(c => c.id === targetGroup?.id)?.name || ''),
-        is_deleted: true
-      })
+      chatStore.removeConversation(String(targetGroup.id))
       selectedGroup.value = null
+      loadGroups()
     }
   }
 }
@@ -2935,20 +2933,21 @@ const { loadShareUsersAndGroups, handleShareConfirm, buildFileContent } = shareL
 const userProfileActions = useUserProfile(currentUser, closeUserProfile)
 const { triggerAvatarInput, handleAvatarChange, saveUserProfile } = userProfileActions
 
-const exitGroup = async () => {
-  if (selectedGroup.value) {
-    if (confirm(`确定要退出${selectedGroup.value.name}吗？`)) {
+const exitGroup = async (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (targetGroup) {
+    if (confirm(`确定要退出${targetGroup.name}吗？`)) {
       try {
-        const response = await request(`/api/v1/groups/${selectedGroup.value.id}/exit`, {
+        const response = await request(`/api/v1/groups/${targetGroup.id}/exit`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           }
         })
         
-        if (response.code === 200) {
-          // 使用 Store Action 标记群聊为已退出
-          chatStore.patchConversation(selectedGroup.value.id, { isExited: true } as any)
+        if (response.code === 200 || response.code === 0) {
+          chatStore.patchConversation(String(targetGroup.id), { isExited: true } as any)
+          await loadUserGroups()
           // 关闭群聊上下文菜单
           closeGroupContextMenu()
           showMessage({ message: '退出群聊成功', type: 'success' })
@@ -3049,6 +3048,10 @@ const closeSettingsMenu = () => {
   document.removeEventListener('click', closeSettingsMenu)
 }
 
+const canUseElectronUpdater = () => {
+  return typeof window.electron?.ipcRenderer?.send === 'function'
+}
+
 const checkForUpdates = () => {
   logger.log('检查更新')
   // 显示检查更新对话框
@@ -3062,8 +3065,15 @@ const checkForUpdates = () => {
   closeSettingsMenu()
   
   // 向主进程发送检查更新请求
-  if (window.electron) {
+  if (canUseElectronUpdater()) {
     window.electron.ipcRenderer.send('check-for-updates')
+    window.setTimeout(() => {
+      if (!isCheckingUpdate.value) return
+      isCheckingUpdate.value = false
+      isDownloading.value = false
+      downloadProgress.value = 0
+      updateResult.value = '检查更新超时，请稍后重试'
+    }, 12000)
   } else {
     // 非 Electron 环境：通过后端 API 检查更新
     checkUpdateViaAPI()
@@ -3072,9 +3082,14 @@ const checkForUpdates = () => {
 
 // 通过后端 API 检查更新（非 Electron 环境）
 const checkUpdateViaAPI = async () => {
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+
   try {
     const platform = detectPlatform()
-    const response = await fetch(`${serverUrl.value}/api/v1/client/versions?platform=${platform}&pageSize=1`)
+    const response = await fetch(`${serverUrl.value}/api/v1/client/versions?platform=${platform}&pageSize=1`, {
+      signal: controller.signal,
+    })
     if (!response.ok) throw new Error('检查更新失败')
     
     const result = await response.json()
@@ -3105,8 +3120,12 @@ const checkUpdateViaAPI = async () => {
   } catch (error: any) {
     isDownloading.value = false
     downloadProgress.value = 0
-    updateResult.value = `检查更新失败: ${error.message || '网络错误'}`
+    const message = error?.name === 'AbortError'
+      ? '更新服务器响应超时'
+      : (error.message || '网络错误')
+    updateResult.value = `检查更新失败: ${message}`
   } finally {
+    window.clearTimeout(timeoutId)
     isCheckingUpdate.value = false
   }
 }
@@ -3138,7 +3157,7 @@ const downloadUpdate = () => {
   logger.log('下载升级')
   
   // 向主进程发送下载更新请求
-  if (window.electron) {
+  if (canUseElectronUpdater()) {
     isDownloading.value = true
     downloadProgress.value = 0
     window.electron.ipcRenderer.send('download-update')
@@ -3155,7 +3174,7 @@ const downloadUpdate = () => {
 
 const installUpdate = () => {
   logger.log('重启安装更新')
-  if (window.electron) {
+  if (canUseElectronUpdater()) {
     window.electron.ipcRenderer.send('install-update')
   }
 }

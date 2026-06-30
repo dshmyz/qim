@@ -56,7 +56,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
   })
 
   const fileSettings = ref<FileSettings>({
-    defaultSaveDirectory: '~/Downloads',
+    defaultSaveDirectory: '',
     autoDownload: false,
     maxFileSize: 50,
     allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
@@ -99,6 +99,9 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (savedFileSettings) {
       try {
         fileSettings.value = { ...fileSettings.value, ...JSON.parse(savedFileSettings) }
+        if (fileSettings.value.defaultSaveDirectory === '~/Downloads') {
+          fileSettings.value.defaultSaveDirectory = ''
+        }
       } catch (e) {
         console.error('Failed to load file settings:', e)
       }
@@ -208,7 +211,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
 
       window.electron.ipcRenderer.on('file-dialog-result', handleResult)
     } else {
-      fileSettings.value.defaultSaveDirectory = '~/Downloads'
+      fileSettings.value.defaultSaveDirectory = ''
       QMessage.info('使用默认下载目录')
     }
   }

@@ -115,9 +115,9 @@
           <!-- 小程序消息 -->
           <MiniAppMessage
             v-else-if="message.type === 'miniApp'"
-            :mini-app-data="message.miniAppData"
+            :mini-app-data="miniAppData"
             :is-self="isSelf"
-            @open="$emit('openMiniApp', message.miniAppData)"
+            @open="$emit('openMiniApp', miniAppData)"
           />
 
           <!-- 资讯消息 -->
@@ -203,6 +203,17 @@ const isAIMessage = computed(() => {
   const fromSenderIsBot = props.message.sender?.type === 'bot' || props.message.sender?.type === 'system'
   const fromField = props.message.is_ai_message || props.message.isAIMessage
   return fromOrigin || fromSenderIsBot || fromField
+})
+
+const miniAppData = computed(() => {
+  if (props.message.type !== 'miniApp') return props.message.miniAppData
+  try {
+    const parsed = JSON.parse(props.message.content || '{}')
+    const payload = parsed?.type === 'miniApp' && parsed?.data ? parsed.data : parsed
+    return { ...props.message.miniAppData, ...payload }
+  } catch {
+    return props.message.miniAppData
+  }
 })
 
 const emit = defineEmits<{

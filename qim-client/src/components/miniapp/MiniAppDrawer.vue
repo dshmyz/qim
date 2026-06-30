@@ -8,7 +8,15 @@
               <img v-if="miniApp?.icon" :src="miniApp.icon" :alt="miniApp.name" class="drawer-icon" />
               <span>{{ miniApp?.name || '小程序' }}</span>
             </div>
-            <button class="drawer-close-btn" @click="close" title="关闭">×</button>
+            <button
+              class="drawer-close-btn"
+              type="button"
+              title="关闭"
+              @pointerdown.stop.prevent="close"
+              @click.stop.prevent="close"
+            >
+              ×
+            </button>
           </div>
           <div class="drawer-resize-handle" @mousedown="startResize"></div>
           <div class="drawer-body">
@@ -374,6 +382,8 @@ watch(() => props.miniApp, async (newVal) => {
 }
 
 .drawer-header {
+  position: relative;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -398,20 +408,35 @@ watch(() => props.miniApp, async (newVal) => {
 }
 
 .drawer-close-btn {
-  background: none;
+  position: relative;
+  z-index: 21;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  background: transparent;
   border: none;
-  font-size: 24px;
+  font-size: 22px;
+  font-family: Arial, Helvetica, sans-serif;
   color: var(--text-secondary, #888);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  line-height: 1;
+  pointer-events: auto;
+  padding: 0;
+  border-radius: 10px;
+  line-height: 36px;
+  text-align: center;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .drawer-close-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-color, #fff);
+}
+
+.drawer-close-btn:active {
+  transform: scale(0.96);
 }
 
 .drawer-resize-handle {

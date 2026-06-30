@@ -1,5 +1,5 @@
 <template>
-  <div class="image-placeholder">
+  <div class="image-placeholder media-preview-placeholder">
     <div class="placeholder-icon">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
@@ -28,18 +28,20 @@ defineProps<{
   gap: 8px;
   width: 200px;
   height: 150px;
-  background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
-  border-radius: 8px;
-  border: 1px solid var(--border-color, #d9d9d9);
+  background: color-mix(in srgb, var(--sidebar-bg, #ffffff), #f8fafc 45%);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--border-color, #d9d9d9), transparent 20%);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .placeholder-icon {
   width: 48px;
   height: 48px;
-  color: #999;
-  opacity: 0.6;
+  color: var(--text-secondary, #64748b);
+  opacity: 0.55;
 }
 
 .placeholder-icon svg {
@@ -49,7 +51,7 @@ defineProps<{
 
 .placeholder-text {
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary, #64748b);
   user-select: none;
 }
 
@@ -73,8 +75,9 @@ defineProps<{
 }
 
 [data-theme="elegant-dark"] .image-placeholder {
-  background: linear-gradient(135deg, #2a2a3e 0%, #1f1f2e 100%);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--panel-bg, #1f1f2e), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 [data-theme="elegant-dark"] .placeholder-icon {

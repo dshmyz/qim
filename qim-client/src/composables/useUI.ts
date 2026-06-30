@@ -240,7 +240,7 @@ export function useUI() {
       
       // 菜单宽度和高度
       const menuWidth = 180
-      const menuHeight = 160
+      const menuHeight = 200
       const windowWidth = window.innerWidth
       const windowHeight = window.innerHeight
       
@@ -775,6 +775,7 @@ export function useUI() {
     activeSettingsTab,
 
     // 操作方法
+    computeMenuPosition,
     showContextMenu,
     hideContextMenu,
     showActionMenu,

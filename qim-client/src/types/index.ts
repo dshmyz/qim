@@ -3,7 +3,7 @@ export interface User {
   name: string
   avatar: string
   username?: string
-  status?: 'online' | 'offline' | 'busy'
+  status?: 'online' | 'offline' | 'busy' | 'disabled'
   email?: string
   phone?: string
   nickname?: string
@@ -14,6 +14,11 @@ export interface User {
   location?: string
   createdAt?: number
   lastOnline?: number
+  disabled?: boolean
+  is_disabled?: boolean
+  is_deleted?: boolean
+  deletedAt?: string | number
+  deleted_at?: string | number
   role?: 'owner' | 'admin' | 'user' | 'guest'
   type?: 'user' | 'bot' | 'system' | 'api'
   isBot?: boolean

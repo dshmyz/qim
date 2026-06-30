@@ -72,6 +72,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import { isVisibleGroupMember } from '../../composables/useGroup'
 
 interface Member {
   id: string
@@ -79,6 +80,13 @@ interface Member {
   avatar: string
   role?: 'owner' | 'admin' | 'member'
   type?: string
+  disabled?: boolean
+  is_disabled?: boolean
+  is_deleted?: boolean
+  deletedAt?: string | number
+  deleted_at?: string | number
+  status?: string
+  user?: Record<string, any>
 }
 
 interface Props {
@@ -109,8 +117,8 @@ const rolePriority: Record<string, number> = { owner: 3, admin: 2, member: 1 }
 const isBotType = (type?: string) => type === 'bot'
 
 const filteredMembers = computed(() => {
-  let members = props.members || []
-  
+  let members = (props.members || []).filter(isVisibleGroupMember)
+
   members = [...members].sort((a, b) => {
     const aPriority = rolePriority[a.role || 'member'] || 1
     const bPriority = rolePriority[b.role || 'member'] || 1

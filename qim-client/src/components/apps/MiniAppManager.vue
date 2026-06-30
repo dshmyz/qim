@@ -19,7 +19,7 @@
         <div v-else class="mini-app-grid">
           <div v-for="miniApp in miniApps" :key="miniApp.id" class="mini-app-item">
             <div class="mini-app-item-icon" @click="launchMiniApp(miniApp)">
-              <img :src="miniApp.icon || defaultIcon" :alt="miniApp.name" />
+              <img :src="miniApp.icon || generateAvatar(miniApp.name || '小程序')" :alt="miniApp.name" />
             </div>
             <div class="mini-app-item-name">{{ miniApp.name }}</div>
             <div class="mini-app-item-actions">
@@ -65,7 +65,6 @@ const emit = defineEmits<{
 const miniApps = ref<MiniAppData[]>([])
 const loading = ref(false)
 const activeMiniApp = ref<MiniAppData | null>(null)
-const defaultIcon = generateAvatar('default')
 
 const closeMiniAppList = () => {
   emit('update:showMiniAppList', false)
@@ -150,7 +149,7 @@ const loadMiniApps = async () => {
     miniApps.value = list.map((item: any) => ({
       id: item.id,
       name: item.name,
-      icon: item.icon || defaultIcon,
+      icon: item.icon || '',
       path: item.path,
       description: item.description || '',
       status: item.status,

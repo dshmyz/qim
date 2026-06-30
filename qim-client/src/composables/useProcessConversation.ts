@@ -50,7 +50,13 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
         username: member.user ? member.user.username || '' : (member.User ? member.User.Username || '' : ''),
         avatar: getAvatarUrl(memberAvatar, memberName || '用户', serverUrl.value),
         role: member.role || member.Role || 'member',
-        type: member.user?.type || member.User?.Type || ''
+        type: member.user?.type || member.User?.Type || '',
+        disabled: member.disabled || member.user?.disabled || member.User?.Disabled,
+        is_disabled: member.is_disabled || member.user?.is_disabled || member.User?.IsDisabled,
+        is_deleted: member.is_deleted || member.user?.is_deleted || member.User?.IsDeleted,
+        deletedAt: member.deletedAt || member.user?.deletedAt || member.User?.DeletedAt,
+        deleted_at: member.deleted_at || member.user?.deleted_at || member.User?.deleted_at,
+        status: member.status || member.user?.status || member.User?.Status
       }
     }) : []
     

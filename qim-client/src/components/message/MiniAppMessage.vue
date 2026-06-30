@@ -1,38 +1,40 @@
 <template>
-  <div class="message-bubble mini-app-message" :class="{ self: isSelf }">
-    <div class="mini-app-info" @click="openMiniApp">
-      <div class="mini-app-icon-container">
-        <img
-          v-if="miniAppData?.icon && !iconError"
-          :src="miniAppData.icon"
-          class="mini-app-icon"
-          :alt="miniAppData?.name"
-          @error="handleIconError"
-        />
-        <div v-else class="mini-app-icon mini-app-icon-fallback" :style="{ background: iconBgColor }">
-          {{ iconInitial }}
-        </div>
-        <div class="mini-app-type-label">小程序</div>
+  <div class="message-bubble mini-app-message attachment-card" :class="{ self: isSelf }" @click="openMiniApp">
+    <div class="attachment-card__icon mini-app-attachment-icon">
+      <img
+        v-if="displayIcon && !iconError"
+        :src="displayIcon"
+        class="mini-app-icon"
+        :alt="miniAppData?.name"
+        @error="handleIconError"
+      />
+      <div v-else class="mini-app-icon mini-app-icon-fallback" :style="{ background: iconBgColor }">
+        {{ iconInitial }}
       </div>
-      <div class="mini-app-details">
-        <div class="mini-app-name">{{ miniAppData?.name }}</div>
-        <div class="mini-app-description">{{ miniAppData?.description }}</div>
-      </div>
-      <div class="mini-app-arrow">
-        <i class="fas fa-chevron-right"></i>
-      </div>
+    </div>
+    <div class="attachment-card__content">
+      <div class="attachment-card__title">{{ miniAppName }}</div>
+      <div class="attachment-card__meta">小程序 · 点击打开</div>
+    </div>
+    <div class="mini-app-arrow attachment-card__action">
+      <i class="fas fa-chevron-right"></i>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { getAvatarColor, getInitial } from '../../utils/avatar'
+import { getAvatarColor, getInitial, generateAvatar } from '../../utils/avatar'
 
 const props = defineProps<{
   miniAppData?: {
     icon: string
     name: string
+    display_name?: string
+    displayName?: string
+    title?: string
+    appName?: string
+    app_name?: string
     description: string
   }
   isSelf?: boolean
@@ -44,8 +46,24 @@ const emit = defineEmits<{
 
 const iconError = ref(false)
 
-const iconInitial = computed(() => getInitial(props.miniAppData?.name || '小'))
-const iconBgColor = computed(() => getAvatarColor(props.miniAppData?.name || '小程序'))
+const miniAppName = computed(() =>
+  props.miniAppData?.display_name ||
+  props.miniAppData?.displayName ||
+  props.miniAppData?.title ||
+  props.miniAppData?.appName ||
+  props.miniAppData?.app_name ||
+  props.miniAppData?.name ||
+  '小程序'
+)
+
+const iconInitial = computed(() => getInitial(miniAppName.value))
+const iconBgColor = computed(() => getAvatarColor(miniAppName.value))
+const legacyDefaultIcon = generateAvatar('default')
+const displayIcon = computed(() => {
+  const icon = props.miniAppData?.icon || ''
+  if (icon === legacyDefaultIcon) return ''
+  return icon
+})
 
 const handleIconError = () => {
   iconError.value = true
@@ -57,61 +75,89 @@ const openMiniApp = () => {
 </script>
 
 <style scoped>
-.mini-app-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  padding: 16px;
-  width: fit-content;
-  min-width: 260px;
-  max-width: 100%;
-  transition: all 0.2s ease;
+.attachment-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 12px;
+  width: 280px;
+  max-width: min(100%, 320px);
+  padding: 12px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
   cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
-.mini-app-message::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #4facfe, #00f2fe, #43e97b);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.mini-app-message:hover {
+.attachment-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   transform: translateY(-1px);
 }
 
-.mini-app-message:hover::before {
-  opacity: 1;
-}
-
-.mini-app-info {
+.attachment-card__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--primary-color), white 88%);
 }
 
-.mini-app-icon-container {
-  flex-shrink: 0;
+.attachment-card__content {
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 3px;
+}
+
+.attachment-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-color);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.attachment-card__meta {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.attachment-card__action {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.attachment-card:hover .attachment-card__action {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color), transparent 90%);
 }
 
 .mini-app-icon {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   object-fit: cover;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border: none;
   display: block;
 }
 
@@ -119,138 +165,48 @@ const openMiniApp = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: #fff;
   user-select: none;
 }
 
-.mini-app-type-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--hover-color);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: block;
-  text-align: center;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.mini-app-details {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mini-app-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-  letter-spacing: -0.01em;
-  line-height: 1.4;
-}
-
-.mini-app-description {
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-  font-weight: 500;
-}
-
 .mini-app-arrow {
-  color: var(--text-secondary);
   font-size: 12px;
   flex-shrink: 0;
-  transition: all 0.2s ease;
-  align-self: center;
-  margin-left: 4px;
 }
 
-.mini-app-message:hover .mini-app-arrow {
-  color: var(--primary-color);
-  transform: translateX(4px);
+.attachment-card:hover .mini-app-arrow {
+  transform: translateX(2px);
 }
 
-/* 自己的小程序消息样式：浅色主色背景 + 深色文字 */
 .mini-app-message.self {
-  background: var(--hover-color);
-  background: color-mix(in srgb, var(--primary-color), white 88%);
-  border: none;
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: transparent;
   color: var(--text-color);
 }
 
-.mini-app-message.self::before {
-  background: var(--primary-color);
-  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
-  opacity: 1;
-}
-
-.mini-app-message.self .mini-app-name {
+:global(.message-item.self) .mini-app-message.self {
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: transparent;
   color: var(--text-color);
-  font-weight: 600;
 }
 
-.mini-app-message.self .mini-app-description {
-  color: var(--text-secondary);
+[data-theme="elegant-dark"] .attachment-card {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
-.mini-app-message.self .mini-app-icon {
-  background: rgba(128, 128, 128, 0.1);
-}
-
-.mini-app-message.self .mini-app-type-label {
-  background: var(--hover-color);
-  color: var(--text-secondary);
-}
-
-.mini-app-message.self .mini-app-arrow {
-  color: var(--text-secondary);
-}
-
-.mini-app-message.self:hover .mini-app-arrow {
-  color: var(--primary-color);
-}
-
-/* 深色主题：纯主色背景 + 白色文字 */
 [data-theme="elegant-dark"] .mini-app-message.self {
-  background: var(--primary-color);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: transparent;
+  color: var(--text-color);
 }
 
-[data-theme="elegant-dark"] .mini-app-message.self .mini-app-name {
-  color: #ffffff;
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self .mini-app-description {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self .mini-app-icon {
-  background: rgba(255, 255, 255, 0.95);
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self .mini-app-type-label {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.85);
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self .mini-app-arrow {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self:hover .mini-app-arrow {
-  color: #ffffff;
+:global([data-theme="elegant-dark"] .message-item.self) .mini-app-message.self {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: transparent;
+  color: var(--text-color);
 }
 </style>

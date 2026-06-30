@@ -1,100 +1,95 @@
 <template>
-  <div v-if="visible" class="image-preview-modal" @click="handleClose">
-    <div class="image-preview-content" @click.stop>
-      <div class="image-preview-header">
-        <button class="close-btn" @click.stop="handleClose">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="image-preview-body">
-        <img :src="imageUrl" alt="预览图片" />
-      </div>
-    </div>
+  <div v-if="visible" class="image-viewer-source">
+    <img :src="imageUrl" alt="预览图片" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, watch } from 'vue'
+import Viewer from 'viewerjs'
+import 'viewerjs/dist/viewer.css'
+
 interface Props {
   visible: boolean
   imageUrl: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const handleClose = () => {
-  emit('close')
+let viewer: Viewer | null = null
+
+const destroyViewer = () => {
+  viewer?.destroy()
+  viewer = null
 }
+
+const openViewer = async () => {
+  if (!props.visible || !props.imageUrl) return
+  await nextTick()
+  const source = document.querySelector('.image-viewer-source') as HTMLElement | null
+  if (!source) return
+  destroyViewer()
+  viewer = new Viewer(source, {
+    inline: false,
+    navbar: false,
+    title: false,
+    toolbar: {
+      zoomIn: 1,
+      zoomOut: 1,
+      oneToOne: 1,
+      reset: 1,
+      rotateLeft: 1,
+      rotateRight: 1,
+    },
+    hidden() {
+      emit('close')
+    },
+  })
+  viewer.show()
+}
+
+watch(() => [props.visible, props.imageUrl], () => {
+  if (props.visible) {
+    openViewer()
+  } else {
+    destroyViewer()
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  destroyViewer()
+})
 </script>
 
 <style scoped>
-/* 图片预览弹窗样式 */
-.image-preview-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  backdrop-filter: blur(8px);
+.image-viewer-source {
+  display: none;
 }
 
-.image-preview-content {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  width: 800px;
-  max-width: 90%;
-  max-height: 80vh;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 8px 25px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-}
-
-.image-preview-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.image-preview-header .close-btn {
-  background: #f0f0f0;
-  border: 1px solid #ddd;
-  color: #333;
-  font-size: 18px;
-  cursor: pointer;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  z-index: 10;
-}
-
-.image-preview-header .close-btn i {
-  display: block !important;
-  font-size: 16px !important;
-  line-height: 1 !important;
-}
-
-.image-preview-body {
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  max-height: 60vh;
-}
-
-.image-preview-body img {
+.image-viewer-source img {
   max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+</style>
+
+<style>
+.viewer-container {
+  background-color: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.viewer-button {
+  background-color: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.viewer-toolbar > ul > li,
+.viewer-navbar,
+.viewer-title {
+  background-color: rgba(15, 23, 42, 0.72);
+}
+
+.viewer-canvas img {
+  border-radius: 14px;
 }
 </style>

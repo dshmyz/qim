@@ -95,6 +95,10 @@
       <span class="context-menu-icon"><i class="fas fa-info-circle"></i></span>
       <span>关于</span>
     </div>
+    <div class="context-menu-item" @click="handleContextMenuAction('openFeedback')">
+      <span class="context-menu-icon"><i class="fas fa-comment-dots"></i></span>
+      <span>问题反馈</span>
+    </div>
     <div class="context-menu-item" @click="$emit('checkUpdate')">
       <span class="context-menu-icon"><i class="fas fa-sync"></i></span>
       <span>检查更新</span>
@@ -219,6 +223,7 @@ const emit = defineEmits<{
   'about': []
   'checkUpdate': []
   'settings': []
+  'openFeedback': []
   'logout': []
   'setTheme': [theme: string]
   'showChannels': []

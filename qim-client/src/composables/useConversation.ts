@@ -133,7 +133,7 @@ export function useConversation() {
       await request(`/api/v1/groups/${groupId}/exit`, {
         method: 'POST'
       })
-      chatStore.removeConversation(groupId)
+      chatStore.patchConversation(String(groupId), { isExited: true } as any)
     } catch (error) {
       console.error('退出群组失败:', error)
     }

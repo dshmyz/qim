@@ -60,8 +60,19 @@
   <div v-if="showUpdateDialog" class="update-dialog-overlay" @click="!forceUpdate && $emit('closeUpdate')">
     <div class="update-dialog" @click.stop>
       <div class="update-dialog-header">
-        <h3>{{ forceUpdate ? '版本更新' : '检查更新' }}</h3>
-        <button v-if="!forceUpdate" class="update-dialog-close" @click="$emit('closeUpdate')">×</button>
+        <div>
+          <span v-if="hasNewVersion || forceUpdate" class="update-dialog-kicker">{{ forceUpdate ? '重要更新' : '软件更新' }}</span>
+          <h3>{{ hasNewVersion ? '发现新版本' : '检查更新' }}</h3>
+        </div>
+        <button
+          v-if="!forceUpdate"
+          class="update-dialog-close"
+          type="button"
+          aria-label="关闭更新对话框"
+          @click="$emit('closeUpdate')"
+        >
+          ×
+        </button>
       </div>
       <div class="update-dialog-content">
         <div v-if="isCheckingUpdate" class="update-loading">
@@ -70,7 +81,8 @@
         </div>
         <div v-else-if="isDownloading" class="update-downloading">
           <div class="download-icon"><i class="fas fa-download"></i></div>
-          <p class="download-text">正在下载更新...</p>
+          <p class="download-title">正在下载更新</p>
+          <p class="download-text">下载完成后即可重启安装</p>
           <div class="download-progress">
             <div class="progress-bar">
               <div class="progress-fill" :style="{ width: downloadProgress + '%' }"></div>
@@ -102,16 +114,21 @@
             </div>
             <div v-if="updateInfo.releaseNotes" class="update-release-notes">
               <div class="notes-title">发布说明</div>
-              <div class="notes-box">{{ updateInfo.releaseNotes }}</div>
+              <ol v-if="updateReleaseNoteItems.length" class="notes-list">
+                <li v-for="(note, index) in updateReleaseNoteItems" :key="index">{{ note }}</li>
+              </ol>
+              <div v-else class="notes-box">{{ updateInfo.releaseNotes }}</div>
             </div>
           </div>
           <p v-else class="version-info">当前版本: v{{ APP_CONFIG.version }}</p>
-          <p v-if="forceUpdate && hasNewVersion" class="force-update-tip">此版本为重要更新，需要升级后才能继续使用</p>
+          <p v-if="forceUpdate && hasNewVersion" class="force-update-tip">
+            此版本包含必要修复，需要升级后才能继续使用。
+          </p>
         </div>
       </div>
       <div class="update-dialog-footer">
         <button v-if="isUpdateReadyToInstall" class="update-dialog-button update-button" @click="$emit('installUpdate')">立即重启安装</button>
-        <button v-else-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">{{ forceUpdate ? '立即升级' : '升级' }}</button>
+        <button v-else-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">立即升级</button>
         <button v-if="!forceUpdate" class="update-dialog-button" @click="$emit('closeUpdate')">关闭</button>
       </div>
     </div>
@@ -291,6 +308,16 @@ const formatReleaseDate = (value: string) => {
     day: '2-digit',
   })
 }
+
+const updateReleaseNoteItems = computed(() => {
+  const notes = props.updateInfo?.releaseNotes?.trim()
+  if (!notes) return []
+
+  return notes
+    .split(/\r?\n/)
+    .map(note => note.trim().replace(/^[-*•\d.、\s]+/, ''))
+    .filter(Boolean)
+})
 
 const emit = defineEmits<{
   'closeAbout': []
@@ -522,6 +549,14 @@ const onTargetChange = () => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
+.update-dialog {
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.18),
+    0 8px 22px rgba(37, 99, 235, 0.08);
+}
+
 .about-dialog-header,
 .logout-dialog-header,
 .update-dialog-header {
@@ -529,6 +564,14 @@ const onTargetChange = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.update-dialog-header {
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(255, 255, 255, 0) 52%),
+    #ffffff;
 }
 
 .about-dialog-header h3,
@@ -539,6 +582,25 @@ const onTargetChange = () => {
   color: var(--text-color, #333);
 }
 
+.update-dialog-header h3 {
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.update-dialog-kicker + h3 {
+  margin-top: 4px;
+}
+
+.update-dialog-kicker {
+  display: block;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .about-dialog-close,
 .logout-dialog-close,
 .update-dialog-close {
@@ -547,6 +609,19 @@ const onTargetChange = () => {
   font-size: 20px;
   cursor: pointer;
   color: var(--text-secondary, #999);
+}
+
+.update-dialog-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #64748b;
+  line-height: 1;
+}
+
+.update-dialog-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .about-dialog-content {
@@ -682,8 +757,9 @@ const onTargetChange = () => {
 }
 
 .update-dialog-content {
-  padding: 20px 24px;
-  min-height: 120px;
+  padding: 28px;
+  min-height: 220px;
+  background: #ffffff;
 }
 
 .update-loading,
@@ -714,12 +790,34 @@ const onTargetChange = () => {
   color: var(--text-color, #333);
 }
 
+.loading-text,
+.download-text,
+.version-info {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.download-title {
+  margin: 8px 0 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.result-text {
+  margin: 10px 0 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .update-info {
-  margin: 16px 0 0;
-  padding: 14px;
-  border: 1px solid var(--border-color, #eee);
-  border-radius: 8px;
-  background: var(--card-bg, #fafafa);
+  margin: 20px 0 0;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
   text-align: left;
 }
 
@@ -727,59 +825,78 @@ const onTargetChange = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .update-version-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
-  min-width: 100px;
+  min-width: 124px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .update-version-label {
   font-size: 12px;
-  color: var(--text-secondary, #999);
+  color: #64748b;
 }
 
 .update-version-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-color, #333);
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-version-new {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: linear-gradient(180deg, #ffffff, #eff6ff);
 }
 
 .update-version-new .update-version-value {
-  color: var(--primary-color, #409eff);
+  color: #2563eb;
 }
 
 .update-version-arrow {
-  color: var(--text-secondary, #ccc);
-  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  font-size: 13px;
+  border-radius: 999px;
+  background: #dbeafe;
+  flex-shrink: 0;
 }
 
 .update-info-row {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin: 6px 0;
+  margin: 8px 0;
   font-size: 13px;
-  color: var(--text-secondary, #666);
+  color: #64748b;
 }
 
 .update-info-row strong {
-  color: var(--text-color, #333);
+  color: #0f172a;
   font-weight: 600;
   text-align: right;
 }
 
 .update-release-notes {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color, #e7ecf3);
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .notes-title {
@@ -788,8 +905,8 @@ const onTargetChange = () => {
   gap: 8px;
   margin-bottom: 10px;
   font-size: 13px;
-  font-weight: 650;
-  color: var(--text-color, #374151);
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .notes-title::before {
@@ -797,19 +914,60 @@ const onTargetChange = () => {
   width: 4px;
   height: 14px;
   border-radius: 99px;
-  background: var(--primary-color, #409eff);
+  background: #2563eb;
   flex-shrink: 0;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 156px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: release-note;
+}
+
+.notes-list li {
+  counter-increment: release-note;
+  position: relative;
+  padding: 10px 12px 10px 38px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.notes-list li::before {
+  content: counter(release-note);
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .notes-box {
   max-height: 150px;
   overflow-y: auto;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e7ecf3);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  color: var(--text-color, #1f2937);
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
   font-size: 13px;
   line-height: 1.75;
   white-space: pre-wrap;
@@ -824,59 +982,121 @@ const onTargetChange = () => {
 }
 
 .notes-box::-webkit-scrollbar-thumb {
-  background: var(--border-color, #dde3ed);
+  background: #cbd5e1;
   border-radius: 99px;
 }
 
 .force-update-tip {
-  margin: 8px 0;
-  padding: 8px 12px;
-  background-color: #fff3e0;
-  border-left: 3px solid #ff9800;
-  border-radius: 4px;
-  color: #e65100;
+  margin: 16px 0 0;
+  padding: 11px 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 10px;
+  color: #92400e;
   font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
 }
 
 .download-icon {
-  font-size: 32px;
-  color: var(--primary-color, #409eff);
-  margin-bottom: 12px;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 24px;
+  margin-bottom: 8px;
 }
 
 .download-progress {
-  margin-top: 16px;
+  width: 100%;
+  margin-top: 18px;
 }
 
 .progress-bar {
-  height: 8px;
-  background: var(--border-color, #eee);
-  border-radius: 4px;
+  height: 9px;
+  background: #e2e8f0;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: var(--primary-color, #409eff);
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
   transition: width 0.3s ease;
 }
 
 .progress-text {
+  margin: 8px 0 0;
   font-size: 12px;
-  color: var(--text-secondary, #999);
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
 }
 
 .result-icon {
-  font-size: 36px;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: #ecfdf5;
+  color: #16a34a;
+  font-size: 24px;
   margin-bottom: 8px;
 }
 
 .result-icon.new-version {
-  color: var(--primary-color, #409eff);
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .result-icon:not(.new-version) {
-  color: #67c23a;
+  color: #16a34a;
+}
+
+.update-dialog-footer {
+  padding: 18px 28px 24px;
+  align-items: center;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  background: #ffffff;
+}
+
+.update-dialog-button {
+  min-width: 92px;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 650;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.update-dialog-button:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  transform: translateY(-1px);
+}
+
+.update-dialog-button.update-button {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
+}
+
+.update-dialog-button.update-button:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
 }
 
 .user-profile-modal {

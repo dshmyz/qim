@@ -3,6 +3,25 @@ import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import { request, useRequest } from './useRequest'
 import { isAbsoluteUrl } from '../utils/avatar'
+import { useUI } from './useUI'
+
+export const isVisibleGroupMember = (member: any): boolean => {
+  const user = member?.user || member?.User || {}
+  return !(
+    member?.disabled ||
+    member?.is_disabled ||
+    member?.is_deleted ||
+    member?.deletedAt ||
+    member?.deleted_at ||
+    member?.status === 'disabled' ||
+    user.disabled ||
+    user.is_disabled ||
+    user.is_deleted ||
+    user.deletedAt ||
+    user.deleted_at ||
+    user.status === 'disabled'
+  )
+}
 
 /**
  * 群组成员信息接口
@@ -14,6 +33,12 @@ export interface GroupMember {
   position?: string
   role?: 'owner' | 'admin' | 'member'
   type?: string
+  disabled?: boolean
+  is_disabled?: boolean
+  is_deleted?: boolean
+  deletedAt?: string | number
+  deleted_at?: string | number
+  status?: string
   user?: {
     id?: string | number
     nickname?: string
@@ -21,6 +46,12 @@ export interface GroupMember {
     avatar?: string
     position?: string
     type?: string
+    disabled?: boolean
+    is_disabled?: boolean
+    is_deleted?: boolean
+    deletedAt?: string | number
+    deleted_at?: string | number
+    status?: string
   }
 }
 
@@ -47,6 +78,7 @@ export function useGroup() {
     isRequesting,
     lastError
   } = useRequest()
+  const { computeMenuPosition } = useUI()
 
   // 选中的群组
   const selectedGroup = ref<GroupInfo | null>(null)
@@ -78,7 +110,7 @@ export function useGroup() {
   const showGroupContextMenu = (event: MouseEvent, group: GroupInfo) => {
     event.preventDefault()
     showGroupContextMenuFlag.value = true
-    groupContextMenuPosition.value = { x: event.clientX, y: event.clientY }
+    groupContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 200)
     selectedGroupForContextMenu.value = group
     // 同时设置 selectedGroup
     selectedGroup.value = group
@@ -368,7 +400,7 @@ export function useGroup() {
    */
   const prepareGroupMembersForDisplay = (group: GroupInfo | null, serverUrl: string = ''): GroupMember[] => {
     if (!group) return []
-    return (group.members || []).map((member: any) => ({
+    return (group.members || []).filter(isVisibleGroupMember).map((member: any) => ({
       id: member.user && member.user.id ? member.user.id.toString() : (member.id ? member.id.toString() : ''),
       name: member.user ? (member.user.nickname || member.user.username || '') : (member.name || ''),
       avatar: member.user ? (
@@ -379,6 +411,12 @@ export function useGroup() {
       position: member.user ? (member.user.position || '无职位信息') : (member.position || '无职位信息'),
       role: member.role,
       type: member.user ? (member.user.type || '') : (member.type || ''),
+      disabled: member.disabled,
+      is_disabled: member.is_disabled,
+      is_deleted: member.is_deleted,
+      deletedAt: member.deletedAt,
+      deleted_at: member.deleted_at,
+      status: member.status,
       user: member.user
     }))
   }
@@ -407,7 +445,7 @@ export function useGroup() {
     try {
       const response: any = await request(`/api/v1/conversations/${groupId}`)
       if (response.code === 0) {
-        groupMembers.value = response.data?.members || []
+        groupMembers.value = (response.data?.members || []).filter(isVisibleGroupMember)
       }
     } catch (error) {
       console.error('加载群组成员失败:', error)

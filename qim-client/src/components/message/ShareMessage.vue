@@ -1,24 +1,19 @@
 <template>
   <div class="message-bubble share-message" :class="{ self: isSelf }">
-    <div class="share-info">
-      <div class="share-icon-container">
-        <div class="share-icon" :class="shareData?.type">
-          <i v-if="shareData?.type === 'file'" class="fas fa-file"></i>
-          <i v-else-if="shareData?.type === 'note'" class="fas fa-file-alt"></i>
-          <i v-else-if="shareData?.type === 'sticky'" class="fas fa-sticky-note"></i>
-          <i v-else class="fas fa-share-alt"></i>
-        </div>
-        <div class="share-type-label">{{ getShareTypeText(shareData?.type) }}</div>
+    <div class="attachment-card" @click="toggleContent">
+      <div class="attachment-card__icon share-attachment-icon" :class="shareData?.type">
+        <i v-if="shareData?.type === 'file'" class="fas fa-file"></i>
+        <i v-else-if="shareData?.type === 'note'" class="fas fa-file-alt"></i>
+        <i v-else-if="shareData?.type === 'sticky'" class="fas fa-sticky-note"></i>
+        <i v-else class="fas fa-share-alt"></i>
       </div>
-      <div class="share-details">
-        <div class="share-name">{{ shareData?.name || content }}</div>
-        <div class="share-actions">
-          <button class="share-action-btn" @click="toggleContent">
-            <i :class="isExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
-            {{ isExpanded ? '收起' : '查看' }}
-          </button>
-        </div>
+      <div class="attachment-card__content">
+        <div class="attachment-card__title">{{ shareData?.name || content }}</div>
+        <div class="attachment-card__meta">{{ getShareTypeText(shareData?.type) }} · 点击查看</div>
       </div>
+      <button class="share-action-btn attachment-card__action" @click.stop="toggleContent" :title="isExpanded ? '收起' : '查看'">
+        <i :class="isExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+      </button>
     </div>
 
     <div v-if="isExpanded && (shareType === 'note' || shareType === 'sticky')" class="share-expanded-content" @click="handleLinkClick">
@@ -100,138 +95,100 @@ const getShareTypeText = (type?: string): string => {
 
 <style scoped>
 .share-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  padding: 10px 12px;
-  width: fit-content;
-  min-width: 260px;
-  max-width: 100%;
-  transition: all 0.2s ease;
+  width: 280px;
+  max-width: min(100%, 320px);
   box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
 }
 
-.share-message::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #f093fb, #f5576c, #4facfe);
-  opacity: 0;
-  transition: opacity 0.2s ease;
+.attachment-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
-.share-message:hover {
+.attachment-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   transform: translateY(-1px);
 }
 
-.share-message:hover::before {
-  opacity: 1;
-}
-
-.share-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.share-icon-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 6px;
-}
-
-.share-icon {
-  font-size: 18px;
+.attachment-card__icon {
   width: 42px;
   height: 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  border-radius: 10px;
   color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
+  font-size: 17px;
 }
 
-.share-type-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--hover-color);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: block;
-  text-align: center;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.attachment-card__icon.file {
+  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
 }
 
-.share-details {
-  flex: 1;
+.attachment-card__icon.note {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+}
+
+.attachment-card__icon.sticky {
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+}
+
+.attachment-card__content {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
-.share-name {
+.attachment-card__title {
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--text-color);
-  white-space: nowrap;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
-  line-height: 1.4;
-  word-break: break-all;
-  text-align: left;
   letter-spacing: -0.01em;
 }
 
-.share-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
+.attachment-card__meta {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.share-action-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 6px;
+.attachment-card__action {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
   border: none;
-  background: var(--hover-color);
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 5px;
-  white-space: nowrap;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
 
-.share-action-btn i {
-  font-size: 11px;
-  opacity: 0.8;
-}
-
-.share-action-btn:hover {
-  background: var(--primary-color);
-  color: #ffffff;
-  transform: translateY(-1px);
-}
-
-.share-action-btn:hover i {
-  opacity: 1;
-}
-
-.share-action-btn:active {
-  transform: translateY(0);
+.attachment-card:hover .attachment-card__action {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color), transparent 90%);
 }
 
 .share-expanded-content {
@@ -361,42 +318,22 @@ const getShareTypeText = (type?: string): string => {
   margin-right: 6px;
 }
 
-/* 自己的分享消息样式：浅色主色背景 + 深色文字 */
-.share-message.self {
-  background: var(--hover-color);
-  background: color-mix(in srgb, var(--primary-color), white 88%);
+.share-message.self .attachment-card {
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: color-mix(in srgb, var(--border-color), transparent 20%);
+  color: var(--text-color);
+}
+
+:global(.message-item.self) .share-message.self {
+  background: transparent;
   border: none;
   color: var(--text-color);
 }
 
-.share-message.self::before {
-  background: var(--primary-color);
-  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
-  opacity: 1;
-}
-
-.share-message.self .share-name {
+:global(.message-item.self) .share-message.self .attachment-card {
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: transparent;
   color: var(--text-color);
-  font-weight: 600;
-}
-
-.share-message.self .share-icon {
-  background: rgba(128, 128, 128, 0.1);
-}
-
-.share-message.self .share-type-label {
-  background: var(--hover-color);
-  color: var(--text-secondary);
-}
-
-.share-message.self .share-action-btn {
-  background: var(--primary-color);
-  color: #ffffff;
-}
-
-.share-message.self .share-action-btn:hover {
-  background: var(--primary-hover, var(--primary-color));
-  transform: translateY(-1px);
 }
 
 .share-message.self .share-expanded-content {
@@ -436,31 +373,21 @@ const getShareTypeText = (type?: string): string => {
   border-color: var(--border-color);
 }
 
-/* 深色主题：纯主色背景 + 白色文字 */
-[data-theme="elegant-dark"] .share-message.self {
-  background: var(--primary-color);
-  color: #ffffff;
+[data-theme="elegant-dark"] .attachment-card {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
-[data-theme="elegant-dark"] .share-message.self .share-name {
-  color: #ffffff;
+[data-theme="elegant-dark"] .share-message.self .attachment-card {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-color);
 }
 
-[data-theme="elegant-dark"] .share-message.self .share-icon {
-  background: rgba(255, 255, 255, 0.95);
-}
-
-[data-theme="elegant-dark"] .share-message.self .share-type-label {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.85);
-}
-
-[data-theme="elegant-dark"] .share-message.self .share-action-btn {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--primary-color);
-}
-
-[data-theme="elegant-dark"] .share-message.self .share-action-btn:hover {
-  background: #ffffff;
+:global([data-theme="elegant-dark"] .message-item.self) .share-message.self .attachment-card {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: transparent;
+  color: var(--text-color);
 }
 </style>

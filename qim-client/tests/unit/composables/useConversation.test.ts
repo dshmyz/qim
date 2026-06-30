@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useConversation } from '@/composables/useConversation'
+import { request } from '@/composables/useRequest'
 import { useChatStore } from '@/stores/chat'
 import type { Conversation, Message } from '@/types'
+
+vi.mock('@/composables/useRequest', () => ({
+  request: vi.fn(),
+}))
 
 describe('useConversation', () => {
   let conversation: ReturnType<typeof useConversation>
@@ -74,5 +79,22 @@ describe('useConversation', () => {
     conversation.clearMessages()
 
     expect(conversation.messages.value).toEqual([])
+  })
+
+  it('退出群聊成功后保留最近会话和历史消息并标记已退出', async () => {
+    ;(request as any).mockResolvedValueOnce({ code: 0 })
+    chatStore.setConversations([
+      { id: 'group1', name: '群聊1', type: 'group' } as Conversation,
+      { id: 'conv1', name: '会话1', type: 'single' } as Conversation,
+    ])
+    chatStore.setCurrentConversation('group1')
+    chatStore.appendMessage('group1', { id: 'msg1' } as Message)
+
+    await conversation.handleExitGroup({ id: 'group1' })
+
+    expect(request).toHaveBeenCalledWith('/api/v1/groups/group1/exit', { method: 'POST' })
+    expect(conversation.conversations.value.map(c => c.id)).toEqual(['group1', 'conv1'])
+    expect(conversation.conversations.value[0]).toMatchObject({ id: 'group1', isExited: true })
+    expect(chatStore.messages.get('group1')).toEqual([{ id: 'msg1' }])
   })
 })

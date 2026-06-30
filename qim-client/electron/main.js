@@ -1151,7 +1151,7 @@ function registerIPC() {
 
   ipcMain.on('download-file', async (event, { buffer, fileName, mime, saveDir }) => {
     try {
-      const targetDir = saveDir || app.getPath('downloads')
+      const targetDir = saveDir && saveDir !== '~/Downloads' ? saveDir : app.getPath('downloads')
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true })
       }

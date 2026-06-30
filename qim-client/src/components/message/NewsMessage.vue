@@ -1,13 +1,15 @@
 <template>
-  <div class="message-bubble news-message" :class="{ self: isSelf }">
-    <div class="news-info" @click="openNewsLink">
-      <div class="news-content">
-        <div class="news-title">{{ newsData?.title }}</div>
-        <div class="news-summary">{{ newsData?.summary }}</div>
-      </div>
-      <div class="news-image-container" v-if="newsData?.image">
-        <img :src="newsData?.image" class="news-image" :alt="newsData?.title" />
-      </div>
+  <div class="message-bubble news-message attachment-card" :class="{ self: isSelf }" @click="openNewsLink">
+    <div class="attachment-card__icon news-attachment-icon">
+      <img v-if="newsData?.image" :src="newsData.image" class="news-image" :alt="newsData?.title" />
+      <i v-else class="fas fa-newspaper"></i>
+    </div>
+    <div class="attachment-card__content">
+      <div class="attachment-card__title">{{ newsData?.title }}</div>
+      <div class="attachment-card__meta">资讯 · 查看详情</div>
+    </div>
+    <div class="attachment-card__action">
+      <i class="fas fa-chevron-right"></i>
     </div>
   </div>
 </template>
@@ -35,145 +37,122 @@ const openNewsLink = () => {
 </script>
 
 <style scoped>
-.news-message {
-  background: var(--sidebar-bg);
-  border-radius: 12px;
-  width: fit-content;
-  max-width: 100%;
-  transition: all 0.2s ease;
+.attachment-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 12px;
+  width: 280px;
+  max-width: min(100%, 320px);
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
-.news-message::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #f59e0b, #ef4444, #f59e0b);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.news-message:hover::before {
-  opacity: 1;
-}
-
-.news-message:hover {
+.attachment-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   transform: translateY(-1px);
 }
 
-.news-info {
-  display: flex;
-  padding: 16px;
-  cursor: pointer;
-  gap: 12px;
-  transition: all 0.2s ease;
+.attachment-card__icon {
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
-  border: 1px solid var(--border-color);
-}
-
-.news-info:hover {
-  background: var(--hover-color);
-}
-
-.news-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.news-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: 6px;
-  word-break: break-all;
-  line-height: 1.3;
-}
-
-.news-summary {
-  font-size: 12px;
-  color: var(--text-secondary);
-  word-break: break-all;
-  line-height: 1.3;
-}
-
-.news-image-container {
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #d97706;
+  background: color-mix(in srgb, #f59e0b, transparent 88%);
+  font-size: 17px;
 }
 
 .news-image {
-  width: 80px;
-  height: 60px;
-  border-radius: 8px;
+  width: 42px;
+  height: 42px;
   object-fit: cover;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
+  display: block;
 }
 
-.news-info:hover .news-image {
-  transform: scale(1.02);
+.attachment-card__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
-/* 自己的资讯消息样式：浅色主色背景 + 深色文字 */
+.attachment-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-color);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.attachment-card__meta {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.attachment-card__action {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 12px;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.attachment-card:hover .attachment-card__action {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color), transparent 90%);
+  transform: translateX(2px);
+}
+
 .news-message.self {
-  background: var(--hover-color);
-  background: color-mix(in srgb, var(--primary-color), white 88%);
-}
-
-.news-message.self::before {
-  background: var(--primary-color);
-  background: linear-gradient(90deg, var(--primary-color), color-mix(in srgb, var(--primary-color), white 40%), var(--primary-color));
-  opacity: 1;
-}
-
-.news-message.self .news-info {
-  background: var(--hover-color);
-  border-color: transparent;
-}
-
-.news-message.self .news-info:hover {
-  background: var(--primary-color);
-  color: #ffffff;
-}
-
-.news-message.self .news-title {
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: color-mix(in srgb, var(--border-color), transparent 20%);
   color: var(--text-color);
 }
 
-.news-message.self .news-summary {
-  color: var(--text-secondary);
+:global(.message-item.self) .news-message.self {
+  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
+  border-color: transparent;
+  color: var(--text-color);
 }
 
-.news-message.self .news-image {
-  border-color: var(--border-color);
+[data-theme="elegant-dark"] .attachment-card {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
-/* 深色主题：纯主色背景 + 白色文字 */
 [data-theme="elegant-dark"] .news-message.self {
-  background: var(--primary-color);
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-color);
 }
 
-[data-theme="elegant-dark"] .news-message.self .news-info {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="elegant-dark"] .news-message.self .news-info:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-[data-theme="elegant-dark"] .news-message.self .news-title {
-  color: #fff;
-}
-
-[data-theme="elegant-dark"] .news-message.self .news-summary {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-[data-theme="elegant-dark"] .news-message.self .news-image {
-  border-color: rgba(255, 255, 255, 0.2);
+:global([data-theme="elegant-dark"] .message-item.self) .news-message.self {
+  background: color-mix(in srgb, var(--panel-bg), white 5%);
+  border-color: transparent;
+  color: var(--text-color);
 }
 </style>

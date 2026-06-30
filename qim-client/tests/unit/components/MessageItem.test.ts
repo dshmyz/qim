@@ -40,6 +40,68 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.find('.at-mention-badge').exists()).toBe(false)
   })
 
+  it('passes parsed mini app content to the mini app message card', () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'message-mini-app',
+          type: 'miniApp',
+          content: JSON.stringify({ name: '审批助手', icon: '', description: '处理审批' }),
+          miniAppData: { name: 'Default', icon: '', description: '默认' },
+          sender: { id: '42', name: 'Alice', avatar: '' },
+          timestamp: Date.now(),
+        },
+        isSelf: false,
+        isRecalled: false,
+        conversationType: 'group',
+        readUsersMap: {},
+        serverUrl: '',
+      },
+      global: {
+        stubs: {
+          Avatar: true,
+          MiniAppMessage: {
+            props: ['miniAppData'],
+            template: '<div class="mini-app-stub">{{ miniAppData.name }}</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.mini-app-stub').text()).toBe('审批助手')
+  })
+
+  it('passes nested mini app payload data to the mini app message card', () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'message-mini-app-nested',
+          type: 'miniApp',
+          content: JSON.stringify({ type: 'miniApp', data: { name: '审批助手', icon: '', description: '处理审批' } }),
+          miniAppData: { name: 'Default', icon: '', description: '默认' },
+          sender: { id: '42', name: 'Alice', avatar: '' },
+          timestamp: Date.now(),
+        },
+        isSelf: false,
+        isRecalled: false,
+        conversationType: 'group',
+        readUsersMap: {},
+        serverUrl: '',
+      },
+      global: {
+        stubs: {
+          Avatar: true,
+          MiniAppMessage: {
+            props: ['miniAppData'],
+            template: '<div class="mini-app-stub">{{ miniAppData.name }}</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.mini-app-stub').text()).toBe('审批助手')
+  })
+
   it('uses a global high-contrast rule for links inside self message bubbles', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MessageItem.vue'), 'utf8')
 

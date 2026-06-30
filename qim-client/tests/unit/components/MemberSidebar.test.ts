@@ -8,12 +8,13 @@ const members = [
   { id: 'member', name: '成员', avatar: '', role: 'member' as const },
 ]
 
-const mountCollapsedSidebar = () => mount(MemberSidebar, {
+const mountSidebar = (props: Record<string, unknown>) => mount(MemberSidebar, {
   props: {
     members,
     isExpanded: false,
     showSearch: false,
     searchQuery: '',
+    ...props,
   },
   global: {
     stubs: {
@@ -24,6 +25,34 @@ const mountCollapsedSidebar = () => mount(MemberSidebar, {
       ToggleSidebarBtn: true,
     },
   },
+})
+
+const mountCollapsedSidebar = () => mountSidebar({})
+
+describe('MemberSidebar member filtering', () => {
+  it('hides disabled and deleted members', () => {
+    const wrapper = mountSidebar({
+      isExpanded: true,
+      members: [
+        { id: 'active', name: '正常成员', avatar: '', role: 'member' as const },
+        { id: 'disabled', name: '禁用成员', avatar: '', role: 'member' as const, disabled: true },
+        { id: 'is-disabled', name: '停用成员', avatar: '', role: 'member' as const, is_disabled: true },
+        { id: 'status-disabled', name: '状态禁用成员', avatar: '', role: 'member' as const, status: 'disabled' },
+        { id: 'deleted-at', name: '删除成员', avatar: '', role: 'member' as const, deletedAt: 1710000000 },
+        { id: 'deleted-snake', name: '软删成员', avatar: '', role: 'member' as const, deleted_at: '2026-06-30T00:00:00Z' },
+        { id: 'is-deleted', name: '已删成员', avatar: '', role: 'member' as const, is_deleted: true },
+      ],
+    })
+
+    expect(wrapper.findAll('.member-item')).toHaveLength(1)
+    expect(wrapper.text()).toContain('正常成员')
+    expect(wrapper.text()).not.toContain('禁用成员')
+    expect(wrapper.text()).not.toContain('停用成员')
+    expect(wrapper.text()).not.toContain('状态禁用成员')
+    expect(wrapper.text()).not.toContain('删除成员')
+    expect(wrapper.text()).not.toContain('软删成员')
+    expect(wrapper.text()).not.toContain('已删成员')
+  })
 })
 
 describe('MemberSidebar collapsed state', () => {
