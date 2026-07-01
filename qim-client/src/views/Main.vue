@@ -839,6 +839,7 @@ const {
 // 手动重连：重新连接 WebSocket
 const handleManualReconnect = () => {
     systemConfigStore.fetchPublicConfig()
+    loadUserGroups()
     connectWebSocket()
   }
 
@@ -883,6 +884,23 @@ const {
   groups: userGroups,
   loadGroups: loadUserGroups
 } = groupState
+
+let userGroupsRefreshTimer: number | null = null
+
+const scheduleUserGroupsRefresh = () => {
+  if (userGroupsRefreshTimer !== null) {
+    window.clearTimeout(userGroupsRefreshTimer)
+  }
+
+  userGroupsRefreshTimer = window.setTimeout(async () => {
+    userGroupsRefreshTimer = null
+    try {
+      await loadUserGroups()
+    } catch (error) {
+      logger.error('[Main] 刷新群聊列表失败:', error)
+    }
+  }, 300)
+}
 
 // 检查当前用户是否是群聊所有者
 const isGroupOwner = (group: any) => {
@@ -1401,6 +1419,7 @@ const setupPostLoadTasks = () => {
   setOnConnectedCallback(() => {
     if (!isFirstConnect) {
       loadConversations()
+      loadUserGroups()
       systemConfigStore.fetchPublicConfig()
       fetchMissedMessages()
     }
@@ -1519,6 +1538,13 @@ const connectWebSocket = () => {
     handleGroupMemberRoleUpdated,
     handleGroupOwnerTransferred
   } = mainGroupHandlers
+
+  const refreshUserGroupsAfter = (handler: (data: any) => void) => {
+    return (data: any) => {
+      handler(data)
+      scheduleUserGroupsRefresh()
+    }
+  }
   
   const messageHandlers = {
     'message_read': handleReadReceipt,
@@ -1527,13 +1553,13 @@ const connectWebSocket = () => {
     'message_deleted': handleMessageDeleted,
     'message_updated': handleMessageUpdated,
     'group_invitation': handleGroupInvitation,
-    'added_to_group': handleAddedToGroup,
-    'group_member_left': handleGroupMemberLeft,
-    'group_member_joined': handleGroupMemberJoined,
-    'group_member_role_updated': handleGroupMemberRoleUpdated,
-    'group_owner_transferred': handleGroupOwnerTransferred,
+    'added_to_group': refreshUserGroupsAfter(handleAddedToGroup),
+    'group_member_left': refreshUserGroupsAfter(handleGroupMemberLeft),
+    'group_member_joined': refreshUserGroupsAfter(handleGroupMemberJoined),
+    'group_member_role_updated': refreshUserGroupsAfter(handleGroupMemberRoleUpdated),
+    'group_owner_transferred': refreshUserGroupsAfter(handleGroupOwnerTransferred),
     'conversation_updated': handleConversationUpdated,
-    'group_announcement_updated': handleGroupAnnouncementUpdated,
+    'group_announcement_updated': refreshUserGroupsAfter(handleGroupAnnouncementUpdated),
     'notification': handleNotification,
     'new_notification': handleNewNotification,
     'system_config_updated': (data: any) => systemConfigStore.updateFromServer(data),
@@ -1842,6 +1868,10 @@ onUnmounted(() => {
   if (conversationSortTimer !== null) {
     clearTimeout(conversationSortTimer)
     conversationSortTimer = null
+  }
+  if (userGroupsRefreshTimer !== null) {
+    clearTimeout(userGroupsRefreshTimer)
+    userGroupsRefreshTimer = null
   }
 })
 
@@ -2436,19 +2466,27 @@ const filteredAddMembersEmployees = computed(() => {
 
 // 处理会话创建成功
 const handleConversationCreated = (newConversation: any) => {
-  // 重新加载会话列表
-  loadConversations()
-  
-  // 如果传递了新创建的会话对象，直接切换到新会话
+  // 如果传递了新创建的会话对象，先增量插入列表并直接切换到新会话
   if (newConversation && newConversation.id) {
+    const processed = processConversation(newConversation) as any
+    chatStore.addConversation(processed)
+
     const conversationId = String(newConversation.id)
     setCurrentConversationId(conversationId)
     chatStore.clearMessages(conversationId)
     messagePage.value = 1
     hasMoreMessages.value = true
-    
+
     // 加载新会话的消息
     loadMessages(conversationId)
+  }
+
+  // 后台刷新会话列表以与服务端对齐
+  loadConversations()
+
+  // 群聊需同步刷新「我的群」列表（UI 绑定的是 userGroups，由 loadUserGroups 刷新）
+  if (newConversation && newConversation.type === 'group') {
+    loadUserGroups()
   }
 }
 
@@ -2935,31 +2973,48 @@ const { triggerAvatarInput, handleAvatarChange, saveUserProfile } = userProfileA
 
 const exitGroup = async (group?: any) => {
   const targetGroup = group || selectedGroup.value
-  if (targetGroup) {
-    if (confirm(`确定要退出${targetGroup.name}吗？`)) {
-      try {
-        const response = await request(`/api/v1/groups/${targetGroup.id}/exit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (response.code === 200 || response.code === 0) {
-          chatStore.patchConversation(String(targetGroup.id), { isExited: true } as any)
-          await loadUserGroups()
-          // 关闭群聊上下文菜单
-          closeGroupContextMenu()
-          showMessage({ message: '退出群聊成功', type: 'success' })
-        } else {
-          showMessage({ message: '退出群聊失败: ' + response.message, type: 'error' })
-        }
-      } catch (error) {
-        logger.error('退出群聊失败:', error)
-        showMessage({ message: '退出群聊失败，请稍后重试', type: 'error' })
-      }
-    }
+  if (!targetGroup) {
+    closeGroupContextMenu()
+    selectedGroup.value = null
+    return
   }
+
+  try {
+    await QMessageBox.confirm(
+      `确定要退出群聊 "${targetGroup.name}" 吗？`,
+      '确认退出群聊',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    closeGroupContextMenu()
+    selectedGroup.value = null
+    return
+  }
+
+  try {
+    const response = await request(`/api/v1/groups/${targetGroup.id}/exit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (response.code === 200 || response.code === 0) {
+      chatStore.patchConversation(String(targetGroup.id), { isExited: true } as any)
+      await loadUserGroups()
+      showMessage({ message: '退出群聊成功', type: 'success' })
+    } else {
+      showMessage({ message: '退出群聊失败: ' + response.message, type: 'error' })
+    }
+  } catch (error) {
+    logger.error('退出群聊失败:', error)
+    showMessage({ message: '退出群聊失败，请稍后重试', type: 'error' })
+  }
+
   closeGroupContextMenu()
   selectedGroup.value = null
 }

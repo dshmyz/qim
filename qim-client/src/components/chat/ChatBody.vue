@@ -11,7 +11,6 @@
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
       @scroll-to-quoted-message="(id) => emit('scroll-to-quoted-message', id)"
-      @preview-image="(d) => emit('preview-image', d)"
       @download-file="(d) => emit('download-file', d)"
       @save-as="(d) => emit('save-as', d)"
       @open-mini-app="(a) => emit('open-mini-app', a)"
@@ -76,7 +75,6 @@ const emit = defineEmits<{
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
   'scroll-to-quoted-message': [id: string]
-  'preview-image': [data: string]
   'download-file': [data: string]
   'save-as': [data: string]
   'open-mini-app': [app: Message['miniAppData']]

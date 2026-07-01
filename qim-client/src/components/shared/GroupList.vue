@@ -69,8 +69,8 @@ const getConversationAvatarUrl = (conversation: any) => {
   flex-shrink: 0;
   /* border-right: 1px solid #e8e8e8; */
   overflow-y: auto;
-  padding: 16px;
-  margin: 8px 8px;
+  padding: 8px;
+  margin: 4px 8px 8px;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   /* background: #fafafa; */
@@ -80,11 +80,11 @@ const getConversationAvatarUrl = (conversation: any) => {
 .group-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .group-item:hover {
@@ -97,7 +97,7 @@ const getConversationAvatarUrl = (conversation: any) => {
 
 .group-avatar {
   position: relative;
-  margin-right: 12px;
+  margin-right: 6px;
 }
 
 .group-avatar img {

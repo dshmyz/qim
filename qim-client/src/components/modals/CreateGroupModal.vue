@@ -201,7 +201,7 @@ const handleSearchInput = () => {
     try {
       const token = localStorage.getItem('token')
       const response = await fetch(
-        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
+        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}&scope=users`,
         {
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})

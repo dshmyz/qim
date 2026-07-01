@@ -243,7 +243,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 12px 20px 8px;
+  padding: 8px 20px 8px;
 }
 
 .search-input-wrapper {

@@ -90,7 +90,6 @@
             :src="message.content"
             :is-self="isSelf"
             :server-url="serverUrl"
-            @preview="$emit('previewImage', message.content)"
             @image-loaded="$emit('imageLoaded')"
           />
 
@@ -220,7 +219,6 @@ const emit = defineEmits<{
   contextmenu: [event: MouseEvent, message: any]
   showUserProfile: [user: any]
   scrollToQuotedMessage: [messageId: string]
-  previewImage: [url: string]
   downloadFile: [url: string, fileName?: string]
   saveAs: [url: string, fileName?: string]
   openMiniApp: [data: any]

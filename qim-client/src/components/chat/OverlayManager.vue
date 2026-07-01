@@ -21,7 +21,6 @@
     :visible="showMessageContextMenu"
     :position="messageContextMenuPosition"
     :message="selectedMessage"
-    @preview-image="emit('preview-image', $event); closeMessageMenu()"
     @save-file-as="emit('save-file-as', $event); closeMessageMenu()"
     @download-file="emit('download-file', $event); closeMessageMenu()"
     @copy-message="emit('copy-message'); closeMessageMenu()"
@@ -79,13 +78,6 @@
     @send="emit('send-screenshot')"
   />
 
-  <!-- 图片预览弹窗 -->
-  <ImagePreviewDialog
-    :visible="showImagePreview"
-    :image-url="previewImageUrl"
-    @close="emit('close-image-preview')"
-  />
-
   <!-- 小程序加载器 -->
   <div style="display: contents">
     <MiniAppLoader
@@ -105,7 +97,6 @@ import MemberContextMenu from './MemberContextMenu.vue'
 import MessageManager from './MessageManager.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
-import ImagePreviewDialog from './ImagePreviewDialog.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
@@ -131,8 +122,6 @@ interface Props {
   confirmDialogMessage: string
   showScreenshotPreview: boolean
   screenshotImageData: string
-  showImagePreview: boolean
-  previewImageUrl: string
   otherUserId: string | number | null
   activeMiniApp: MiniAppData | null
   getFileIcon: (fileName: string) => string
@@ -147,7 +136,6 @@ const emit = defineEmits<{
   'close-user-profile': []
   'send-private-message': [userId: string | number]
   'close-read-users': []
-  'preview-image': [data: string]
   'save-file-as': [data: string]
   'download-file': [data: string]
   'copy-message': []
@@ -171,7 +159,6 @@ const emit = defineEmits<{
   'cancel-screenshot': []
   'retake-screenshot': []
   'send-screenshot': []
-  'close-image-preview': []
   'close-mini-app': []
   'mini-app-toast': [message: string]
   'ai-summary': []

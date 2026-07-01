@@ -11,10 +11,22 @@
         <button class="icon-btn" :class="{ active: showSearch }" @click="toggleSearch" title="搜索">
           <i class="fas fa-search"></i>
         </button>
-        <button class="text-btn" @click="markAllAsRead" title="一键已读">
+        <button
+          class="header-action-btn"
+          @click="markAllAsRead"
+          :disabled="!hasUnreadNotifications"
+          title="一键已读"
+        >
           <span>一键已读</span>
         </button>
-        <button class="clear-all-btn" @click="clearAll">清空</button>
+        <button
+          class="header-action-btn danger"
+          @click="clearAll"
+          :disabled="!hasNotifications"
+          title="清空通知"
+        >
+          清空
+        </button>
       </div>
     </div>
 
@@ -208,6 +220,8 @@ const sortOptions = [
 ]
 
 const hasAnyFilters = computed(() => currentFilter.value !== 'all' || searchKeyword.value !== '')
+const hasNotifications = computed(() => notifications.value.length > 0)
+const hasUnreadNotifications = computed(() => notifications.value.some(n => !n.read))
 
 const emptyText = computed(() => {
   if (searchKeyword.value) return '未找到匹配的通知'
@@ -547,43 +561,42 @@ defineExpose({
   background: var(--primary-light);
 }
 
-.text-btn {
-  padding: 4px 10px;
+.header-action-btn {
+  height: 32px;
+  padding: 0 12px;
   font-size: 12px;
   background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
-.text-btn:hover {
+.header-action-btn:hover:not(:disabled) {
   background: var(--hover-color);
   color: var(--text-color);
 }
 
-.text-btn i {
-  font-size: 11px;
+.header-action-btn.danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--danger-color, #ef4444);
 }
 
-.clear-all-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
+.header-action-btn.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--danger-color, #ef4444);
+  color: var(--danger-color, #ef4444);
 }
 
-.clear-all-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
+.header-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .notification-search {

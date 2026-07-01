@@ -1,9 +1,6 @@
 <template>
   <div v-if="group" class="group-detail-panel">
     <div class="group-profile-container">
-      <!-- 顶部背景 -->
-      <div class="group-profile-header-bg"></div>
-      
       <!-- 群聊信息卡片 -->
       <div class="group-profile-card">
         <!-- 群头像和基本信息 -->
@@ -184,7 +181,13 @@ const getMemberAvatar = (member: User) => {
 const getGroupOwner = (group: Conversation | null) => {
   if (!group || !group.members) return ''
   const owner = group.members.find((member: User) => member.role === 'owner')
-  return owner ? owner.name : ''
+  if (owner) return owner.name
+
+  const ownerId = (group as any).ownerId || (group as any).owner_id || (group as any).creator_id
+  if (!ownerId) return ''
+
+  const ownerById = group.members.find((member: User) => String(member.id) === String(ownerId))
+  return ownerById ? (ownerById.name || ownerById.nickname || ownerById.username || '') : ''
 }
 
 // 检查当前用户是否是群主
@@ -369,47 +372,24 @@ const handleAvatarChange = async (event: Event) => {
 /* 群聊详情样式 */
 .group-profile-container {
   position: relative;
-  padding: 16px;
-  margin: 10px 5px;
-}
-
-.group-profile-header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: linear-gradient(135deg, var(--primary-light), var(--active-color));
-  border-radius: 8px 8px 0 0;
-  z-index: 1;
+  padding: 12px;
+  margin: 0;
 }
 
 .group-profile-card {
   position: relative;
   background: var(--card-bg);
   border-radius: 10px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  z-index: 2;
-  margin-top: 40px;
-  animation: cardSlideIn 0.4s ease-out;
-}
-
-@keyframes cardSlideIn {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  padding: 18px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+  z-index: 1;
 }
 
 .group-profile-avatar-section {
   display: flex;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   padding-bottom: 0;
 }
 
@@ -525,21 +505,12 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .group-info-sections {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .info-section {
-  /* margin-bottom: 16px; */
-  /* background: var(--list-bg); */
   border-radius: 8px;
-  padding: 16px;
-  /* border: 1px solid var(--border-color); */
-  transition: all 0.3s ease;
-}
-
-.info-section:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+  padding: 10px 12px;
 }
 
 .section-title {
@@ -629,8 +600,8 @@ const handleAvatarChange = async (event: Event) => {
   display: flex;
   gap: 8px;
   justify-content: center;
-  padding-top: 12px;
-  margin-bottom: 16px;
+  padding-top: 8px;
+  margin-bottom: 12px;
 }
 
 .action-btn {
@@ -691,7 +662,7 @@ const handleAvatarChange = async (event: Event) => {
 }
 
 .group-members-section {
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .members-grid {

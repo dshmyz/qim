@@ -19,6 +19,7 @@ describe('image message media preview style', () => {
 
     expect(wrapper.find('.media-preview').exists()).toBe(true)
     expect(wrapper.find('.media-preview__image').exists()).toBe(true)
+    expect(wrapper.find('.media-preview__image').attributes('data-viewer-image')).toBe('')
     expect(wrapper.find('.attachment-card').exists()).toBe(false)
   })
 

@@ -42,11 +42,13 @@
       <span class="option-icon"><i class="fas fa-bullhorn"></i></span>
     </div>
     <div class="option-spacer"></div>
-    <div class="option-item" @click="$emit('showThemeMenu', $event)" title="皮肤">
-      <span class="option-icon"><i class="fas fa-palette"></i></span>
-    </div>
-    <div class="option-item settings-option" @click="$emit('showSettingsMenu', $event)" title="设置">
-      <span class="option-icon"><i class="fas fa-cog"></i></span>
+    <div class="bottom-options">
+      <div class="option-item" @click="$emit('showThemeMenu', $event)" title="皮肤">
+        <span class="option-icon"><i class="fas fa-palette"></i></span>
+      </div>
+      <div class="option-item settings-option" @click="$emit('showSettingsMenu', $event)" title="设置">
+        <span class="option-icon"><i class="fas fa-cog"></i></span>
+      </div>
     </div>
   </div>
 </template>
@@ -140,9 +142,15 @@ defineEmits<{
   flex: 1;
 }
 
+.bottom-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
 .settings-option {
-  margin-top: auto;
-  margin-bottom: 10px;
+  margin: 0;
 }
 
 @media (max-width: 767px) {
@@ -163,11 +171,15 @@ defineEmits<{
   .option-spacer {
     display: none;
   }
+
+  .bottom-options {
+    flex-direction: row;
+    gap: 16px;
+  }
   
   .settings-option {
     transform: none;
-    margin-top: 0;
-    margin-bottom: 0;
+    margin: 0;
 
   }
   

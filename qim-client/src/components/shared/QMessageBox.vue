@@ -1,65 +1,63 @@
 <template>
-  <Transition name="q-message-box-fade">
-    <div v-if="visible" class="q-message-box-mask" @click.self="handleClose">
-      <div class="q-message-box">
-        <div class="q-message-box__header">
-          <h3 class="q-message-box__title">{{ title }}</h3>
-          <button v-if="showClose" class="q-message-box__close" @click="handleClose">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+  <div v-if="visible" class="q-message-box-mask" @click.self="handleClose">
+    <div class="q-message-box">
+      <div class="q-message-box__header">
+        <h3 class="q-message-box__title">{{ title }}</h3>
+        <button v-if="showClose" class="q-message-box__close" @click="handleClose">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="q-message-box__body">
+        <div v-if="type" :class="['q-message-box__icon', `q-message-box__icon--${type}`]">
+          <svg v-if="type === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <svg v-else-if="type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M15 9l-6 6M9 9l6 6"/>
+          </svg>
+          <svg v-else-if="type === 'success'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
         </div>
-        <div class="q-message-box__body">
-          <div v-if="type" :class="['q-message-box__icon', `q-message-box__icon--${type}`]">
-            <svg v-if="type === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            <svg v-else-if="type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M15 9l-6 6M9 9l6 6"/>
-            </svg>
-            <svg v-else-if="type === 'success'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 6L9 17l-5-5"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="16" x2="12" y2="12"/>
-              <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
-          </div>
-          <p class="q-message-box__message">{{ message }}</p>
-          <div v-if="inputType" class="q-message-box__input">
-            <input
-              ref="inputRef"
-              v-model="inputValue"
-              :type="inputType"
-              :placeholder="inputPlaceholder"
-              class="q-message-box__input-field"
-            />
-          </div>
-        </div>
-        <div class="q-message-box__footer">
-          <button
-            v-if="showCancelButton"
-            class="q-button q-button--default"
-            @click="handleCancel"
-          >
-            {{ cancelButtonText }}
-          </button>
-          <button
-            class="q-button q-button--primary"
-            @click="handleConfirm"
-          >
-            {{ confirmButtonText }}
-          </button>
+        <p class="q-message-box__message">{{ message }}</p>
+        <div v-if="inputType" class="q-message-box__input">
+          <input
+            ref="inputRef"
+            v-model="inputValue"
+            :type="inputType"
+            :placeholder="inputPlaceholder"
+            class="q-message-box__input-field"
+          />
         </div>
       </div>
+      <div class="q-message-box__footer">
+        <button
+          v-if="showCancelButton"
+          class="q-button q-button--default"
+          @click="handleCancel"
+        >
+          {{ cancelButtonText }}
+        </button>
+        <button
+          class="q-button q-button--primary"
+          @click="handleConfirm"
+        >
+          {{ confirmButtonText }}
+        </button>
+      </div>
     </div>
-  </Transition>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -95,6 +93,8 @@ const inputPlaceholder = ref('')
 const inputValue = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 let resolve: ((result: MessageBoxResult) => void) | null = null
+let reject: ((reason: MessageBoxResult) => void) | null = null
+let rejectOnCancel = false
 
 const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
   title.value = options.title || '提示'
@@ -107,6 +107,9 @@ const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
   inputType.value = options.inputType || ''
   inputPlaceholder.value = options.inputPlaceholder || ''
   inputValue.value = ''
+  // 有取消按钮的弹窗（confirm/prompt）在取消或关闭时 reject，
+  // 让调用方的 try/catch 能正确跳过后续危险操作。
+  rejectOnCancel = showCancelButton.value
   visible.value = true
 
   nextTick(() => {
@@ -115,30 +118,33 @@ const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
     }
   })
 
-  return new Promise(resolveFn => {
+  return new Promise((resolveFn, rejectFn) => {
     resolve = resolveFn
+    reject = rejectFn
   })
 }
 
-const handleClose = () => {
-  if (resolve) {
-    resolve({ action: 'close' })
-  }
+const settle = (result: MessageBoxResult) => {
   visible.value = false
+  if (result.action !== 'confirm' && rejectOnCancel) {
+    reject?.(result)
+  } else {
+    resolve?.(result)
+  }
+  resolve = null
+  reject = null
+}
+
+const handleClose = () => {
+  settle({ action: 'close' })
 }
 
 const handleCancel = () => {
-  if (resolve) {
-    resolve({ action: 'cancel' })
-  }
-  visible.value = false
+  settle({ action: 'cancel' })
 }
 
 const handleConfirm = () => {
-  if (resolve) {
-    resolve({ action: 'confirm', value: inputValue.value })
-  }
-  visible.value = false
+  settle({ action: 'confirm', value: inputValue.value })
 }
 
 const confirm = (message: string, title?: string, options?: Partial<MessageBoxOptions>) => {
@@ -356,16 +362,5 @@ if (!window.$QMessageBox) {
 
 .q-button--default:hover {
   background: var(--color-gray-100);
-}
-
-.q-message-box-fade-enter-active,
-.q-message-box-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.q-message-box-fade-enter-from,
-.q-message-box-fade-leave-to {
-  opacity: 0;
-  transform: scale(0.95);
 }
 </style>

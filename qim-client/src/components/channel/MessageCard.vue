@@ -274,15 +274,15 @@ const submitComment = async () => {
 .message-card {
   display: flex;
   background: var(--card-bg);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-color);
-  transition: box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.2s;
 }
 
 .message-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .card-accent-bar {
@@ -304,7 +304,7 @@ const submitComment = async () => {
 
 .card-body {
   flex: 1;
-  padding: 16px 20px;
+  padding: 18px;
   min-width: 0;
 }
 

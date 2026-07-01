@@ -159,6 +159,9 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       members: members,
       is_pinned: conv.is_pinned || false,
       muted: conv.muted || false,
+      creator_id: conv.creator_id || conv.CreatorID || '',
+      owner_id: conv.owner_id || conv.OwnerID || '',
+      ownerId: conv.ownerId || conv.owner_id || conv.creator_id || conv.OwnerID || conv.CreatorID || '',
       announcement: conv.announcement || ''
     }
     

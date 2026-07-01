@@ -1,6 +1,6 @@
 <template>
   <div class="message-list-wrapper">
-    <div ref="messageListRef" class="message-list" @scroll="throttledHandleScroll">
+    <div ref="messageListRef" class="message-list" data-viewer-gallery @scroll="throttledHandleScroll">
       <!-- 没有更多消息提示 -->
       <div v-if="!hasMoreMessages" class="no-more-messages">
         <div class="no-more-divider">
@@ -31,7 +31,6 @@
           @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, message)"
           @show-user-profile="(user: any) => emit('show-user-profile', user)"
           @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
-          @preview-image="(data: string) => emit('preview-image', data)"
           @download-file="(data: string) => emit('download-file', data)"
           @save-as="(data: string) => emit('save-as', data)"
           @open-mini-app="(app: any) => emit('open-mini-app', app)"
@@ -56,7 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import Viewer from 'viewerjs'
+import 'viewerjs/dist/viewer.css'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
@@ -75,7 +76,6 @@ interface Emits {
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
   'scroll-to-quoted-message': [id: string]
-  'preview-image': [data: string]
   'download-file': [data: string]
   'save-as': [data: string]
   'open-mini-app': [app: Message['miniAppData']]
@@ -98,6 +98,42 @@ const isMounted = ref(false)
 
 let scrollTimeoutId: number | null = null
 let throttleTimeoutId: number | null = null
+let imageViewer: Viewer | null = null
+
+const destroyImageViewer = () => {
+  imageViewer?.destroy()
+  imageViewer = null
+}
+
+const initImageViewer = () => {
+  if (!messageListRef.value || imageViewer) return
+  imageViewer = new Viewer(messageListRef.value, {
+    inline: false,
+    transition: false,
+    filter(image: HTMLImageElement) {
+      return image.matches('img[data-viewer-image]')
+    },
+    navbar: true,
+    title: false,
+    toolbar: {
+      zoomIn: 1,
+      zoomOut: 1,
+      oneToOne: 1,
+      reset: 1,
+      prev: 1,
+      next: 1,
+      rotateLeft: 1,
+      rotateRight: 1,
+    },
+  })
+}
+
+const updateImageViewer = async () => {
+  await nextTick()
+  if (!isMounted.value) return
+  initImageViewer()
+  imageViewer?.update()
+}
 
 const handleScroll = () => {
   if (!messageListRef.value) return
@@ -157,6 +193,7 @@ const scrollToBottomWithDelay = (delay: number = 100) => {
 }
 
 const handleImageLoaded = () => {
+  updateImageViewer()
   nextTick(() => {
     if (!isMounted.value || !messageListRef.value) return
 
@@ -178,6 +215,7 @@ defineExpose({
 onMounted(() => {
   isMounted.value = true
   scrollToBottomWithDelay(100)
+  updateImageViewer()
 })
 
 onUnmounted(() => {
@@ -190,7 +228,12 @@ onUnmounted(() => {
     clearTimeout(throttleTimeoutId)
     throttleTimeoutId = null
   }
+  destroyImageViewer()
 })
+
+watch(() => props.messages, () => {
+  updateImageViewer()
+}, { deep: true })
 </script>
 
 <style scoped>

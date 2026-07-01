@@ -58,7 +58,8 @@ export function useShareLogic(
 
       const convResponse = await request('/api/v1/conversations')
       if (convResponse.code === 0) {
-        const groups = convResponse.data.filter((conv: any) => conv.type === 'group')
+        const conversationList = Array.isArray(convResponse.data) ? convResponse.data : (convResponse.data?.list || [])
+        const groups = conversationList.filter((conv: any) => conv.type === 'group')
         shareGroups.value = groups.map((group: any) => ({
           id: group.id.toString(),
           name: group.name,

@@ -19,7 +19,7 @@
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  gap: 12px;
+  gap: 8px;
 }
 
 .group-item:hover {

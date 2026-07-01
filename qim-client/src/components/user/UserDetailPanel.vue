@@ -11,8 +11,6 @@
       </div>
     </div>
     <div class="user-profile-container">
-      <div class="user-profile-header-bg"></div>
-      
       <div class="user-profile-card">
         <div class="user-profile-avatar-section">
           <div class="user-avatar-container">
@@ -198,49 +196,26 @@ defineEmits<{
 
 .user-profile-container {
   position: relative;
-  padding: 16px;
-  margin: 10px 5px;
+  padding: 12px;
+  margin: 0;
   flex: 1;
   overflow-y: auto;
-}
-
-.user-profile-header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: linear-gradient(135deg, var(--primary-light), var(--active-color));
-  border-radius: 8px 8px 0 0;
-  z-index: 1;
 }
 
 .user-profile-card {
   position: relative;
   background: var(--card-bg);
   border-radius: 10px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  z-index: 2;
-  margin-top: 40px;
-  animation: cardSlideIn 0.4s ease-out;
-}
-
-@keyframes cardSlideIn {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  padding: 18px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+  z-index: 1;
 }
 
 .user-profile-avatar-section {
   display: flex;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   padding-bottom: 0;
 }
 
@@ -288,12 +263,12 @@ defineEmits<{
 }
 
 .user-info-sections {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .info-section {
   border-radius: 8px;
-  padding: 16px;
+  padding: 10px 12px;
 }
 
 .section-title {
@@ -344,8 +319,8 @@ defineEmits<{
   display: flex;
   gap: 8px;
   justify-content: center;
-  padding-top: 12px;
-  margin-bottom: 16px;
+  padding-top: 8px;
+  margin-bottom: 12px;
 }
 
 .action-btn {
@@ -397,8 +372,7 @@ defineEmits<{
   }
   
   .user-profile-card {
-    padding: 20px;
-    margin-top: 40px;
+    padding: 14px;
   }
   
   .info-grid {

@@ -307,7 +307,7 @@ defineExpose({})
 }
 
 .search-box {
-  padding: 12px 8px;
+  padding: 8px 8px;
   background: transparent;
   box-shadow: var(--shadow-xs);
   position: relative;

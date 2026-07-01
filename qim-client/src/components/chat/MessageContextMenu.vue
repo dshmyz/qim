@@ -1,13 +1,13 @@
 <template>
   <div v-if="visible" class="context-menu" :style="{ left: position.x + 'px', top: position.y + 'px' }" @click.stop>
     <!-- 图片消息选项 -->
-    <div v-if="message && message.type === 'image'" class="context-menu-item" @click="handlePreviewImage">
-      <span class="context-menu-icon"><i class="fas fa-eye"></i></span>
-      <span>预览</span>
+     <div v-if="message && message.type === 'image'" class="context-menu-item" @click="handleCopyMessage">
+      <span class="context-menu-icon"><i class="fas fa-copy"></i></span>
+      <span>复制</span>
     </div>
     <div v-if="message && message.type === 'image'" class="context-menu-item" @click="handleSaveImage">
       <span class="context-menu-icon"><i class="fas fa-save"></i></span>
-      <span>保存图片</span>
+      <span>另存为</span>
     </div>
     <!-- 文件消息选项 -->
     <div v-if="message && message.type === 'file'" class="context-menu-item" @click="handleDownloadFile">
@@ -117,7 +117,7 @@ const isAIMessage = computed(() => {
 const isTextLikeMessage = computed(() => {
   if (!props.message) return false
   const type = props.message.type
-  return type === 'text' || type === 'image' || isAIMessage.value
+  return type === 'text' || isAIMessage.value
 })
 
 const canSendReminder = computed((): boolean => {
@@ -136,12 +136,6 @@ const canSmartReply = computed(() => {
   if (props.message.isSelf) return false
   return props.message.type === 'text'
 })
-
-const handlePreviewImage = () => {
-  if (props.message && props.message.content) {
-    emit('preview-image', props.message.content)
-  }
-}
 
 const handleSaveImage = () => {
   if (props.message && props.message.content) {

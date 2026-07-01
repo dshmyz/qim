@@ -88,6 +88,9 @@ export interface Conversation {
   announcement?: string
   other_member_id?: number
   other_member_name?: string
+  creator_id?: string | number
+  owner_id?: string | number
+  ownerId?: string | number
   user_id?: number
   is_deleted?: boolean
   ai_config?: {

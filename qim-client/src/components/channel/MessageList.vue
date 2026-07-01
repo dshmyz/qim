@@ -258,14 +258,14 @@ const handleCopyLink = (message: ChannelMessage) => {
 .list-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 12px;
 }
 
 .card-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 720px;
-  margin: 0 auto;
+  gap: 12px;
+  max-width: 760px;
+  margin: 0;
 }
 </style>

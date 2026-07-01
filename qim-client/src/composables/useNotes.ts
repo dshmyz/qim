@@ -14,10 +14,12 @@ export function useNotes() {
     try {
       const response = await get<any>('/api/v1/notes')
       const notes = response?.data || []
-      return notes.map((n: any) => ({
-        ...n,
-        tags: parseTags(n.tags)
-      }))
+      return notes
+        .filter((n: any) => n.type !== 'sticky')
+        .map((n: any) => ({
+          ...n,
+          tags: parseTags(n.tags)
+        }))
     } catch (e: any) {
       error.value = e.message
       return []

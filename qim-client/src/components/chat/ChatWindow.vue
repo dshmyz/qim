@@ -49,7 +49,6 @@
       @message-contextmenu="showMessageContextMenu"
       @show-user-profile="showUserProfile"
       @scroll-to-quoted-message="scrollToQuotedMessage"
-      @preview-image="previewImage"
       @download-file="downloadFile"
       @save-as="saveFileAs"
       @open-mini-app="(app) => app && openMiniApp(app as MiniAppData)"
@@ -138,8 +137,6 @@
       :confirm-dialog-message="confirmDialogMessage"
       :show-screenshot-preview="showScreenshotPreview"
       :screenshot-image-data="screenshotImageData"
-      :show-image-preview="showImagePreview"
-      :preview-image-url="previewImageUrl"
       :other-user-id="otherUserId"
       :active-mini-app="activeMiniApp"
       :get-file-icon="getFileIcon"
@@ -149,7 +146,6 @@
       @close-user-profile="closeUserProfile"
       @send-private-message="handleSendPrivateMessage"
       @close-read-users="showReadUsersModal = false"
-      @preview-image="previewImage"
       @save-file-as="saveFileAs"
       @download-file="downloadFile"
       @copy-message="selectedMessage && copyMessage(selectedMessage)"
@@ -176,7 +172,6 @@
       @cancel-screenshot="cancelScreenshot"
       @retake-screenshot="retakeScreenshot"
       @send-screenshot="uploadScreenshot"
-      @close-image-preview="closeImagePreview"
       @close-mini-app="activeMiniApp = null"
       @mini-app-toast="handleMiniAppToast"
     />
@@ -1040,15 +1035,6 @@ const handleForwardNote = (event: CustomEvent) => {
   autoResizeTextarea()
 }
 
-// 处理全局键盘事件
-const handleGlobalKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    if (showImagePreview.value) {
-      closeImagePreview()
-    }
-  }
-}
-
 // 组件挂载时添加事件监听器
 onMounted(() => {
   isMounted.value = true
@@ -1058,7 +1044,6 @@ onMounted(() => {
   initWebSocketMessageHandler()
   scrollToBottom()
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  window.addEventListener('keydown', handleGlobalKeydown)
 
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
@@ -1264,8 +1249,7 @@ onUnmounted(() => {
   
   // 移除全局事件监听器
   window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
-  window.removeEventListener('keydown', handleGlobalKeydown)
-  
+
   // 清理 WebSocket handler（使用新的清理机制）
   if (wsHandlersCleanup) {
     wsHandlersCleanup()
@@ -2328,44 +2312,6 @@ const saveFileAs = async (fileContent: string, fileName?: string) => {
     logger.error('文件保存失败:', error)
     $message.error('文件保存失败: 网络错误')
   }
-}
-
-// 图片预览相关
-const showImagePreview = ref(false)
-const previewImageUrl = ref('')
-
-const previewImage = (imageData: string | any) => {
-  // 处理可能是字符串或对象的情况
-  let imageUrl = ''
-  
-  if (typeof imageData === 'string') {
-    try {
-      // 尝试解析为JSON
-      const parsedData = JSON.parse(imageData)
-      imageUrl = parsedData.url || ''
-    } catch {
-      // 如果不是JSON，直接使用
-      imageUrl = imageData
-    }
-  } else {
-    // 已经是对象
-    imageUrl = imageData.url || ''
-  }
-  
-  // 确保图片URL包含服务器地址
-  if (imageUrl && !imageUrl.startsWith('http')) {
-    // 确保serverUrl末尾没有斜杠，imageUrl开头没有斜杠
-    const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
-    const cleanImageUrl = imageUrl.replace(/^\//, '')
-    imageUrl = `${cleanServerUrl}/${cleanImageUrl}`
-  }
-  previewImageUrl.value = imageUrl
-  showImagePreview.value = true
-}
-
-const closeImagePreview = () => {
-  showImagePreview.value = false
-  previewImageUrl.value = ''
 }
 
 // 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示

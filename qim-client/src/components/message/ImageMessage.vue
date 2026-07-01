@@ -10,9 +10,8 @@
       v-if="isVisible && fullImageUrl"
       :src="fullImageUrl"
       class="message-image media-preview__image"
+      data-viewer-image
       :class="{ 'image-hidden': !imageLoaded || loadError }"
-      @click="previewImage"
-      @dblclick="previewImage"
       @load="onImageLoad"
       @error="onImageError"
     />
@@ -31,7 +30,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  preview: [url: string]
   imageLoaded: []
 }>()
 
@@ -70,10 +68,6 @@ const onImageLoad = () => {
 
 const onImageError = () => {
   loadError.value = true
-}
-
-const previewImage = () => {
-  emit('preview', fullImageUrl.value)
 }
 </script>
 
