@@ -89,6 +89,19 @@ func GetChannels(c *gin.Context) {
 		subscribedMap[sub.ChannelID] = true
 	}
 
+	// 懒订阅兜底：为当前用户补订阅未订阅的默认频道（覆盖钩子上线前的存量用户）
+	for _, channel := range channels {
+		if channel.IsDefault && !subscribedMap[channel.ID] {
+			db.Where("channel_id = ? AND user_id = ?", channel.ID, userID).
+				FirstOrCreate(&model.ChannelSubscriber{
+					ChannelID: channel.ID,
+					UserID:    userID.(uint),
+					JoinedAt:  time.Now(),
+				})
+			subscribedMap[channel.ID] = true
+		}
+	}
+
 	type ChannelWithSubscription struct {
 		model.Channel
 		IsSubscribed bool `json:"is_subscribed"`
@@ -161,6 +174,12 @@ func UnsubscribeChannel(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	var channel model.Channel
+	if err := db.First(&channel, uint(channelID)).Error; err == nil && channel.IsDefault {
+		response.BadRequest(c, "默认频道不可取消订阅")
+		return
+	}
 
 	var subscription model.ChannelSubscriber
 	if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {

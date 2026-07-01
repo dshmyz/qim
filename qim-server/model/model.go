@@ -31,6 +31,25 @@ type User struct {
 	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// AfterCreate 新用户创建后自动订阅所有默认频道（仅真人用户）。
+// 覆盖所有创建路径（注册/管理员建号/OAuth/CAS/LDAP/webhook），无需各入口单独处理。
+func (u *User) AfterCreate(tx *gorm.DB) error {
+	if u.Type != "" && u.Type != "user" {
+		return nil // 排除 bot/system/admin/api
+	}
+
+	var defaults []Channel
+	if err := tx.Where("is_default = ? AND status = ?", true, "active").Find(&defaults).Error; err != nil {
+		return nil // 容错：订阅失败不阻断用户创建
+	}
+
+	for _, ch := range defaults {
+		sub := ChannelSubscriber{ChannelID: ch.ID, UserID: u.ID, JoinedAt: time.Now()}
+		tx.Where("channel_id = ? AND user_id = ?", ch.ID, u.ID).FirstOrCreate(&sub)
+	}
+	return nil
+}
+
 // 部门
 type Department struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
@@ -444,6 +463,7 @@ type Channel struct {
 	Status            string         `json:"status" gorm:"size:20;default:'active'"`
 	PublishPermission string         `json:"publish_permission" gorm:"size:20;default:'creator_only'"`
 	CommentPermission string         `json:"comment_permission" gorm:"size:20;default:'all_subscribers'"`
+	IsDefault         bool           `json:"is_default" gorm:"default:false;index"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`

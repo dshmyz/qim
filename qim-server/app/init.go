@@ -304,6 +304,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 		// 初始化内置小程序（无论什么环境都需要）
 		seedMiniApps(db)
+
+		// 初始化系统默认频道（所有真人用户自动订阅）
+		seedDefaultChannel(db)
 	}
 
 	// ========== Bot 模板 ==========
@@ -511,6 +514,43 @@ func seedMiniApps(db *gorm.DB) {
 	}
 
 	logger.WithModule("Init").Info("内置小程序数据初始化完成", "count", len(miniApps))
+}
+
+// seedDefaultChannel 初始化系统默认频道（所有真人用户自动订阅）
+func seedDefaultChannel(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_default_channel") {
+		return
+	}
+	if !tableExists(db, "channels") {
+		return
+	}
+
+	var count int64
+	db.Model(&model.Channel{}).Where("is_default = ?", true).Count(&count)
+	if count == 0 {
+		var creatorID uint
+		var sysUser model.User
+		if err := db.Where("type = ?", "system").First(&sysUser).Error; err == nil {
+			creatorID = sysUser.ID
+		}
+
+		channel := model.Channel{
+			Name:              "公告频道",
+			Description:       "系统默认频道，所有成员自动订阅",
+			CreatorID:         creatorID,
+			Status:            "active",
+			PublishPermission: "creator_only",
+			CommentPermission: "all_subscribers",
+			IsDefault:         true,
+		}
+		if err := db.Create(&channel).Error; err != nil {
+			logger.WithModule("Init").Error("创建默认频道失败", "error", err)
+			return
+		}
+		logger.WithModule("Init").Info("创建默认频道成功", "id", channel.ID)
+	}
+
+	markMigrationCompleted(db, "seed_default_channel")
 }
 
 // seedBuiltInApps 初始化默认内置应用
