@@ -192,11 +192,14 @@ func GetConversations(c *gin.Context) {
 		}
 
 		// 将成员信息按会话 ID 分组并填充 User 信息
+		// 跳过用户已被软删除（查询不到有效 User）的成员
 		groupMembersByConv := make(map[uint][]model.ConversationMember)
 		for _, gm := range groupMembers {
-			if user, ok := groupMemberUserMap[gm.UserID]; ok {
-				gm.User = user
+			user, ok := groupMemberUserMap[gm.UserID]
+			if !ok {
+				continue
 			}
+			gm.User = user
 			groupMembersByConv[gm.ConversationID] = append(groupMembersByConv[gm.ConversationID], gm)
 		}
 
@@ -353,6 +356,15 @@ func GetConversation(c *gin.Context) {
 		response.NotFound(c, "会话不存在")
 		return
 	}
+
+	// 过滤掉用户已被软删除（关联 User 查询不到）的成员
+	activeMembers := make([]model.ConversationMember, 0, len(conv.Members))
+	for _, m := range conv.Members {
+		if m.User.ID != 0 {
+			activeMembers = append(activeMembers, m)
+		}
+	}
+	conv.Members = activeMembers
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err != nil {

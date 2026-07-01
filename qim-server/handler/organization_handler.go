@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -12,11 +13,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// errBoundary 表示部门已到达同级列表边界，无法继续移动。
+var errBoundary = errors.New("boundary reached")
+
 func GetOrganizationTree(c *gin.Context) {
 	db := database.GetDB()
 
 	var departments []model.Department
-	if err := db.Where("parent_id IS NULL").Find(&departments).Error; err != nil {
+	if err := db.Where("parent_id IS NULL").Order("sort_order ASC, id ASC").Find(&departments).Error; err != nil {
 		response.InternalServerError(c, "查询失败")
 		return
 	}
@@ -77,7 +81,7 @@ func CreateDepartment(c *gin.Context) {
 		ParentID:  req.ParentID,
 		Level:     level,
 		Path:      path,
-		SortOrder: 0,
+		SortOrder: nextSortOrder(db, req.ParentID),
 	}
 
 	if err := db.Create(&department).Error; err != nil {
@@ -191,7 +195,7 @@ func AddUserToDepartment(c *gin.Context) {
 }
 
 func loadDepartmentChildren(dept *model.Department, db *gorm.DB) {
-	db.Where("parent_id = ?", dept.ID).Find(&dept.SubDepartments)
+	db.Where("parent_id = ?", dept.ID).Order("sort_order ASC, id ASC").Find(&dept.SubDepartments)
 	for i := range dept.SubDepartments {
 		loadDepartmentChildren(&dept.SubDepartments[i], db)
 	}
@@ -328,4 +332,107 @@ func RemoveEmployeeFromDepartment(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "移出成功", nil)
+}
+
+// siblingScope 按父部门约束查询范围，处理 parent_id 为 NULL 的根部门。
+func siblingScope(db *gorm.DB, parentID *uint) *gorm.DB {
+	if parentID == nil {
+		return db.Where("parent_id IS NULL")
+	}
+	return db.Where("parent_id = ?", *parentID)
+}
+
+// nextSortOrder 返回同级部门末尾的排序值。
+func nextSortOrder(db *gorm.DB, parentID *uint) int {
+	var maxOrder *int
+	siblingScope(db.Model(&model.Department{}), parentID).
+		Select("MAX(sort_order)").Scan(&maxOrder)
+	if maxOrder == nil {
+		return 0
+	}
+	return *maxOrder + 1
+}
+
+// MoveDepartment 上移/下移部门，交换与同级相邻部门的排序值。
+func MoveDepartment(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的部门ID")
+		return
+	}
+
+	var req struct {
+		Direction string `json:"direction" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	if req.Direction != "up" && req.Direction != "down" {
+		response.BadRequest(c, "方向参数无效")
+		return
+	}
+
+	db := database.GetDB()
+
+	var target model.Department
+	if err := db.First(&target, uint(id)).Error; err != nil {
+		response.NotFound(c, "部门不存在")
+		return
+	}
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		// 查出所有同级部门并按当前顺序规范化 sort_order（历史数据可能全为 0）
+		var siblings []model.Department
+		if err := siblingScope(tx, target.ParentID).
+			Order("sort_order ASC, id ASC").Find(&siblings).Error; err != nil {
+			return err
+		}
+
+		idx := -1
+		for i := range siblings {
+			if siblings[i].ID == target.ID {
+				idx = i
+			}
+			if siblings[i].SortOrder != i {
+				if err := tx.Model(&model.Department{}).
+					Where("id = ?", siblings[i].ID).
+					Update("sort_order", i).Error; err != nil {
+					return err
+				}
+				siblings[i].SortOrder = i
+			}
+		}
+
+		swapWith := idx - 1
+		if req.Direction == "down" {
+			swapWith = idx + 1
+		}
+		if idx == -1 || swapWith < 0 || swapWith >= len(siblings) {
+			return errBoundary
+		}
+
+		a, b := siblings[idx], siblings[swapWith]
+		if err := tx.Model(&model.Department{}).Where("id = ?", a.ID).
+			Update("sort_order", b.SortOrder).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Department{}).Where("id = ?", b.ID).
+			Update("sort_order", a.SortOrder).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err == errBoundary {
+		response.BadRequest(c, "已到达边界，无法移动")
+		return
+	}
+	if err != nil {
+		response.InternalServerError(c, "移动部门失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "移动成功", nil)
 }

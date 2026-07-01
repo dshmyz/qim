@@ -304,24 +304,22 @@ func (s *ConversationService) DeleteConversation(convID, userID uint) error {
 		return ErrNotConversationOwner
 	}
 
-	tx := s.db.Begin()
-
-	group, err := s.groupRepo.FindByConversationID(ctx, convID)
-	if err == nil {
-		group.Name = "[已解散] " + group.Name
-		if err := tx.Save(group).Error; err != nil {
-			tx.Rollback()
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var group model.Group
+		if err := tx.Where("conversation_id = ?", convID).First(&group).Error; err == nil {
+			group.Name = "[已解散] " + group.Name
+			if err := tx.Save(&group).Error; err != nil {
+				return err
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-	}
 
-	conv.IsDeleted = true
-	if err := tx.Save(conv).Error; err != nil {
-		tx.Rollback()
+		conv.IsDeleted = true
+		return tx.Save(conv).Error
+	}); err != nil {
 		return err
 	}
-
-	tx.Commit()
 
 	if ws.GlobalHub != nil {
 		dissolveMsg := ws.WSMessage{

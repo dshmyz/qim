@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -42,21 +43,79 @@ type ApprovalNotification struct {
 	ExtraContext map[string]any
 }
 
-func (s *ApprovalService) ListApprovals(entityType string, status string) ([]model.ApprovalListItem, int64, error) {
+func (s *ApprovalService) ListApprovals(entityType string, status string, page int, pageSize int) ([]model.ApprovalListItem, int64, error) {
 	var items []model.ApprovalListItem
+	var total int64
+	var err error
 
 	switch entityType {
 	case model.ApprovalTypeAvatar:
-		return s.listAvatarApprovals(status)
+		items, total, err = s.listAvatarApprovals(status)
 	case model.ApprovalTypeBot:
-		return s.listBotApprovals(status)
+		items, total, err = s.listBotApprovals(status)
 	case model.ApprovalTypeChannel:
-		return s.listChannelApprovals(status)
+		items, total, err = s.listChannelApprovals(status)
 	case model.ApprovalTypeGroupAI:
-		return s.listGroupAIApprovals(status)
+		items, total, err = s.listGroupAIApprovals(status)
+	case "all", "":
+		items, total, err = s.listAllApprovals(status)
 	default:
 		return items, 0, nil
 	}
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return paginateApprovals(items, total, page, pageSize), total, nil
+}
+
+// listAllApprovals 聚合四种类型的审批，并按申请时间（无则用创建时间）倒序统一排序。
+func (s *ApprovalService) listAllApprovals(status string) ([]model.ApprovalListItem, int64, error) {
+	listers := []func(string) ([]model.ApprovalListItem, int64, error){
+		s.listAvatarApprovals,
+		s.listBotApprovals,
+		s.listChannelApprovals,
+		s.listGroupAIApprovals,
+	}
+
+	all := make([]model.ApprovalListItem, 0)
+	for _, lister := range listers {
+		items, _, err := lister(status)
+		if err != nil {
+			return nil, 0, err
+		}
+		all = append(all, items...)
+	}
+
+	sort.SliceStable(all, func(i, j int) bool {
+		return approvalSortTime(all[i]).After(approvalSortTime(all[j]))
+	})
+
+	return all, int64(len(all)), nil
+}
+
+// approvalSortTime 返回用于排序的时间：优先申请时间，缺失时回退创建时间。
+func approvalSortTime(item model.ApprovalListItem) time.Time {
+	if item.AppliedAt != nil && !item.AppliedAt.IsZero() {
+		return *item.AppliedAt
+	}
+	return item.CreatedAt
+}
+
+// paginateApprovals 对内存中的审批列表做分页切片；page/pageSize 非法时返回全部。
+func paginateApprovals(items []model.ApprovalListItem, total int64, page int, pageSize int) []model.ApprovalListItem {
+	if page <= 0 || pageSize <= 0 {
+		return items
+	}
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return []model.ApprovalListItem{}
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end]
 }
 
 func (s *ApprovalService) listAvatarApprovals(status string) ([]model.ApprovalListItem, int64, error) {
@@ -791,7 +850,9 @@ func (h *ApprovalHandler) RegisterRoutes(router *gin.RouterGroup) {
 func (h *ApprovalHandler) List(c *gin.Context) {
 	entityType := c.Query("type")
 	status := c.Query("status")
-	items, total, err := h.service.ListApprovals(entityType, status)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	items, total, err := h.service.ListApprovals(entityType, status, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": err.Error()})
 		return

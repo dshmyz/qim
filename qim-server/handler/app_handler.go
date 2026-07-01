@@ -779,7 +779,7 @@ func CreateNote(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		Title   string `json:"title" binding:"required"`
+		Title   string `json:"title" binding:"omitempty"`
 		Content string `json:"content" binding:"omitempty"`
 		Color   string `json:"color"`
 		Type    string `json:"type"`
@@ -833,7 +833,7 @@ func UpdateNote(c *gin.Context) {
 	}
 
 	var req struct {
-		Title   string `json:"title" binding:"required"`
+		Title   string `json:"title" binding:"omitempty"`
 		Content string `json:"content" binding:"omitempty"`
 		Color   string `json:"color"`
 		Type    string `json:"type"`

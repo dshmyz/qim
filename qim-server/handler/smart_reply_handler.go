@@ -128,13 +128,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		return
 	}
 
+	// 私聊不走全局 AI 助手自动回复：分身回复已在上面的 checkAvatarTriggers 处理，
+	// 两个真人之间的私聊不应让 AI 助手插话
 	if conv.Type == "single" {
-		var avatarSessions []model.AvatarSession
-		db.Where("conversation_id = ? AND avatar_enabled = ? AND user_id != ?", conv.ID, true, userID).Find(&avatarSessions)
-		if len(avatarSessions) > 0 {
-			log.Printf("[SmartReply] 私聊中对方分身已激活，跳过 AI 助手回复 (对方userID=%d)", avatarSessions[0].UserID)
-			return
-		}
+		log.Printf("[SmartReply] 私聊会话，跳过 AI 助手自动回复 (convID=%d)", conv.ID)
+		return
 	}
 
 	var group *model.Group

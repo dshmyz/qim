@@ -291,41 +291,44 @@
         }
       }
 
-      async function createNote() {
-        try {
-          var res = await QIMBridge.api('POST', '/api/v1/notes', {
-            title: '',
-            content: '',
-            type: 'sticky'
-          });
-          if (res && res.data) {
-            notes.push(res.data);
-            loadNote(res.data.id);
-            showStatus('创建成功', 'success');
-          }
-        } catch (e) {
-          showStatus('创建失败: ' + e.message, 'error');
-        }
+      function newNote() {
+        activeNoteId = null;
+        noteTitleInput.value = '';
+        noteContentInput.value = '';
+        renderList();
+        noteTitleInput.focus();
       }
 
-      async function updateNote() {
-        if (!activeNoteId) {
-          showStatus('请先选择或新建便签', 'error');
+      async function saveNote() {
+        var title = noteTitleInput.value.trim();
+        var content = noteContentInput.value;
+        if (!title && !content) {
+          showStatus('请输入便签内容', 'error');
           return;
         }
+        var payload = {
+          title: title || '新便签',
+          content: content,
+          type: 'sticky'
+        };
         try {
-          var res = await QIMBridge.api('PUT', '/api/v1/notes/' + activeNoteId, {
-            title: noteTitleInput.value,
-            content: noteContentInput.value,
-            type: 'sticky'
-          });
-          if (res && res.data) {
-            var idx = notes.findIndex(function(n) { return n.id === activeNoteId; });
-            if (idx !== -1) {
-              notes[idx] = res.data;
+          if (activeNoteId) {
+            var res = await QIMBridge.api('PUT', '/api/v1/notes/' + activeNoteId, payload);
+            if (res && res.data) {
+              var idx = notes.findIndex(function(n) { return n.id === activeNoteId; });
+              if (idx !== -1) {
+                notes[idx] = res.data;
+              }
+              renderList();
+              showStatus('保存成功', 'success');
             }
-            renderList();
-            showStatus('保存成功', 'success');
+          } else {
+            var res = await QIMBridge.api('POST', '/api/v1/notes', payload);
+            if (res && res.data) {
+              notes.push(res.data);
+              loadNote(res.data.id);
+              showStatus('保存成功', 'success');
+            }
           }
         } catch (e) {
           showStatus('保存失败: ' + e.message, 'error');
@@ -350,8 +353,8 @@
         }
       }
 
-      newBtn.addEventListener('click', createNote);
-      saveBtn.addEventListener('click', updateNote);
+      newBtn.addEventListener('click', newNote);
+      saveBtn.addEventListener('click', saveNote);
       deleteBtn.addEventListener('click', deleteNote);
 
       QIMBridge.init(function() {

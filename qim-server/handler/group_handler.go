@@ -318,9 +318,14 @@ func ExitGroup(c *gin.Context) {
 		return
 	}
 
-	_, err = convSvc.GetMember(convIDUint, userID.(uint))
+	member, err := convSvc.GetMember(convIDUint, userID.(uint))
 	if err != nil {
 		response.Forbidden(c, "您不是群成员")
+		return
+	}
+
+	if member.Role == "owner" {
+		response.BadRequest(c, "群主退出前请先转让群主或解散群聊")
 		return
 	}
 

@@ -169,6 +169,44 @@ func TestConversationService_SearchGroupsByName_QuotesGroupsTable(t *testing.T) 
 	assert.Equal(t, conv.ID, results[0].ConversationID)
 }
 
+func TestConversationService_DeleteConversation_DoesNotBlockWithSingleSQLiteConnection(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewConversationService(db)
+	previousHub := ws.GlobalHub
+	ws.GlobalHub = nil
+	t.Cleanup(func() {
+		ws.GlobalHub = previousHub
+	})
+
+	owner := &model.User{Username: "owner", PasswordHash: "hash", Nickname: "群主"}
+	require.NoError(t, db.Create(owner).Error)
+	conversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.Group{
+		ConversationID: conversation.ID,
+		GroupType:      "group",
+		Name:           "测试群",
+		CreatorID:      owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{
+		ConversationID: conversation.ID,
+		UserID:         owner.ID,
+		Role:           "owner",
+	}).Error)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.DeleteConversation(conversation.ID, owner.ID)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("DeleteConversation blocked with a single SQLite connection")
+	}
+}
+
 func TestUserService_UpdateUserStatus(t *testing.T) {
 	db := setupServiceTestDB(t)
 	svc := NewUserService(db)

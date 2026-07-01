@@ -329,6 +329,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/departments", handler.CreateDepartment)
 			// 更新部门
 			authed.PUT("/departments/:id", handler.UpdateDepartment)
+			// 上移/下移部门
+			authed.PUT("/departments/:id/move", handler.MoveDepartment)
 			// 删除部门
 			authed.DELETE("/departments/:id", handler.DeleteDepartment)
 			// 获取部门员工

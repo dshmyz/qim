@@ -110,6 +110,7 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		return
 	}
 	query := c.Query("q")
+	scope := c.Query("scope")
 
 	if query == "" {
 		response.BadRequest(c, "搜索关键词不能为空")
@@ -136,16 +137,18 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 		}
 	}
 
-	groups, err := h.convService.SearchGroupsByName(query, uid)
-	if err == nil {
-		for _, g := range groups {
-			responseUsers = append(responseUsers, gin.H{
-				"id":       g.ConversationID,
-				"type":     g.ConvType,
-				"name":     g.Name,
-				"avatar":   g.Avatar,
-				"isMember": g.IsMember,
-			})
+	if scope != "users" {
+		groups, err := h.convService.SearchGroupsByName(query, uid)
+		if err == nil {
+			for _, g := range groups {
+				responseUsers = append(responseUsers, gin.H{
+					"id":       g.ConversationID,
+					"type":     g.ConvType,
+					"name":     g.Name,
+					"avatar":   g.Avatar,
+					"isMember": g.IsMember,
+				})
+			}
 		}
 	}
 

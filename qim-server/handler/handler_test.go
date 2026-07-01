@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,7 +82,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	authed.Use(authMiddleware)
 	{
 		authed.GET("/conversations", GetConversations)
+		authed.GET("/conversations/:id", GetConversation)
 		authed.POST("/conversations", CreateConversation)
+		authed.POST("/groups/:id/exit", ExitGroup)
 		authed.GET("/users/me", GetCurrentUser)
 		authed.PUT("/users/me", UpdateUser)
 	}
@@ -110,6 +113,133 @@ func TestConversationMember_CreateSetsJoinedAt(t *testing.T) {
 	member := &model.ConversationMember{ConversationID: conv.ID, UserID: user.ID, Role: "member"}
 	require.NoError(t, db.Create(member).Error)
 	assert.False(t, member.JoinedAt.IsZero())
+}
+
+func TestGetConversations_OmitsSoftDeletedGroupMembers(t *testing.T) {
+	r, db := setupTestRouter(t)
+	if !db.Migrator().HasTable(&model.Group{}) {
+		require.NoError(t, db.Migrator().CreateTable(&model.Group{}))
+	}
+	currentUser := createTestUser(t, db)
+	activeUser := &model.User{Username: "active", PasswordHash: "hash", Nickname: "有效成员"}
+	require.NoError(t, db.Create(activeUser).Error)
+	deletedUser := &model.User{Username: "deleted", PasswordHash: "hash", Nickname: "已删成员"}
+	require.NoError(t, db.Create(deletedUser).Error)
+	require.NoError(t, db.Delete(deletedUser).Error)
+
+	conversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.Group{ConversationID: conversation.ID, Name: "测试群", GroupType: "group", CreatorID: currentUser.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: currentUser.ID, Role: "owner"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: activeUser.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: deletedUser.ID, Role: "member"}).Error)
+
+	req := httptest.NewRequest("GET", "/api/v1/conversations?page=1&page_size=20", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID      uint `json:"id"`
+				Members []struct {
+					UserID uint `json:"user_id"`
+					User   struct {
+						Nickname string `json:"nickname"`
+					} `json:"user"`
+				} `json:"members"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	require.Len(t, response.Data.List, 1)
+
+	memberIDs := make([]uint, 0, len(response.Data.List[0].Members))
+	memberNames := make([]string, 0, len(response.Data.List[0].Members))
+	for _, member := range response.Data.List[0].Members {
+		memberIDs = append(memberIDs, member.UserID)
+		memberNames = append(memberNames, member.User.Nickname)
+	}
+	assert.ElementsMatch(t, []uint{currentUser.ID, activeUser.ID}, memberIDs)
+	assert.NotContains(t, memberNames, deletedUser.Nickname)
+}
+
+func TestGetConversation_OmitsSoftDeletedGroupMembers(t *testing.T) {
+	r, db := setupTestRouter(t)
+	if !db.Migrator().HasTable(&model.Group{}) {
+		require.NoError(t, db.Migrator().CreateTable(&model.Group{}))
+	}
+	currentUser := createTestUser(t, db)
+	activeUser := &model.User{Username: "active", PasswordHash: "hash", Nickname: "有效成员"}
+	require.NoError(t, db.Create(activeUser).Error)
+	deletedUser := &model.User{Username: "deleted", PasswordHash: "hash", Nickname: "已删成员"}
+	require.NoError(t, db.Create(deletedUser).Error)
+	require.NoError(t, db.Delete(deletedUser).Error)
+
+	conversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.Group{ConversationID: conversation.ID, Name: "测试群", GroupType: "group", CreatorID: currentUser.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: currentUser.ID, Role: "owner"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: activeUser.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: deletedUser.ID, Role: "member"}).Error)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/conversations/%d", conversation.ID), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			Members []struct {
+				UserID uint `json:"user_id"`
+				User   struct {
+					Nickname string `json:"nickname"`
+				} `json:"user"`
+			} `json:"members"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+
+	memberIDs := make([]uint, 0, len(response.Data.Members))
+	memberNames := make([]string, 0, len(response.Data.Members))
+	for _, member := range response.Data.Members {
+		memberIDs = append(memberIDs, member.UserID)
+		memberNames = append(memberNames, member.User.Nickname)
+	}
+	assert.ElementsMatch(t, []uint{currentUser.ID, activeUser.ID}, memberIDs)
+	assert.NotContains(t, memberNames, deletedUser.Nickname)
+}
+
+func TestExitGroup_RejectsOwnerWithoutRemovingMembership(t *testing.T) {
+	r, db := setupTestRouter(t)
+	if !db.Migrator().HasTable(&model.Group{}) {
+		require.NoError(t, db.Migrator().CreateTable(&model.Group{}))
+	}
+	currentUser := createTestUser(t, db)
+	conversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.Group{ConversationID: conversation.ID, Name: "测试群", GroupType: "group", CreatorID: currentUser.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: currentUser.ID, Role: "owner"}).Error)
+
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/exit", conversation.ID), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, "群主退出前请先转让群主或解散群聊", response.Message)
+
+	var member model.ConversationMember
+	err := db.Where("conversation_id = ? AND user_id = ?", conversation.ID, currentUser.ID).First(&member).Error
+	require.NoError(t, err)
+	assert.Equal(t, "owner", member.Role)
 }
 
 func TestGetConversations_OrdersEmptyConversationByCreatedAt(t *testing.T) {
