@@ -70,4 +70,36 @@ describe('MainContextMenus group menu', () => {
 
     expect(wrapper.emitted('exitGroup')?.[0]).toEqual([selectedGroup])
   })
+
+  it('hides 退出群聊 and shows 解散群聊 for the group owner', () => {
+    const selectedGroup = { id: 'group-1', name: '测试群', type: 'group' }
+    const wrapper = mount(MainContextMenus, {
+      props: {
+        ...baseProps,
+        showGroupContextMenuFlag: true,
+        selectedGroupForContextMenu: selectedGroup,
+        isGroupOwner: true,
+      },
+    })
+
+    const labels = wrapper.findAll('.context-menu-item').map(item => item.text())
+    expect(labels.some(text => text.includes('解散群聊'))).toBe(true)
+    expect(labels.some(text => text.includes('退出群聊'))).toBe(false)
+  })
+
+  it('shows 退出群聊 and hides 解散群聊 for a non-owner', () => {
+    const selectedGroup = { id: 'group-1', name: '测试群', type: 'group' }
+    const wrapper = mount(MainContextMenus, {
+      props: {
+        ...baseProps,
+        showGroupContextMenuFlag: true,
+        selectedGroupForContextMenu: selectedGroup,
+        isGroupOwner: false,
+      },
+    })
+
+    const labels = wrapper.findAll('.context-menu-item').map(item => item.text())
+    expect(labels.some(text => text.includes('退出群聊'))).toBe(true)
+    expect(labels.some(text => text.includes('解散群聊'))).toBe(false)
+  })
 })

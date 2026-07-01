@@ -707,9 +707,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)
 
-			// 管理员操作用户AI配置
-			admin.GET("/users/:id/ai-configs", handler.AdminGetUserAIConfigs)
-			admin.PUT("/users/:id/ai-configs/:configId", handler.AdminUpdateUserAIConfig)
+			// 管理员操作用户分身配置
+			admin.GET("/users/:id/avatar-config", handler.AdminGetUserAvatarConfig)
+			admin.PUT("/users/:id/avatar-config", handler.AdminUpdateUserAvatarConfig)
 
 			// 向量数据库管理（管理员）
 			admin.GET("/vector/collections", handler.AdminListVectorCollections)

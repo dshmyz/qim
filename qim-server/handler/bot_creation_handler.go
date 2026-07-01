@@ -166,7 +166,7 @@ func CreateBot(c *gin.Context) {
 	}
 
 	var creator model.User
-	db.Select("nickname").First(&creator, "id = ?", userID)
+	db.Select("nickname", "avatar").First(&creator, "id = ?", userID)
 	creatorName := creator.Nickname
 	if creatorName == "" {
 		creatorName = creator.Username
@@ -220,12 +220,18 @@ func CreateBot(c *gin.Context) {
 	// 需要审批时创建审批记录
 	approvalStatus := model.ApprovalStatusApproved
 	if needsApproval {
+		extraJSON, _ := json.Marshal(map[string]any{"bot_type": bot.Type})
 		approval := model.Approval{
-			TargetType: model.ApprovalTypeBot,
-			TargetID:   bot.ID,
-			Status:     model.ApprovalStatusPending,
-			AppliedAt:  time.Now(),
-			AppliedBy:  userID,
+			TargetType:        model.ApprovalTypeBot,
+			TargetID:          bot.ID,
+			Status:            model.ApprovalStatusPending,
+			AppliedAt:         time.Now(),
+			AppliedBy:         userID,
+			TargetName:        bot.Name,
+			TargetDescription: bot.Description,
+			CreatorName:       creatorName,
+			CreatorAvatar:     creator.Avatar,
+			ExtraJSON:         string(extraJSON),
 		}
 		if err := tx.Create(&approval).Error; err != nil {
 			tx.Rollback()

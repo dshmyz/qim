@@ -129,12 +129,11 @@ async function handleLearn() {
 }
 
 async function handleClear() {
-  try {
-    await window.$QMessageBox.confirm('确定要清除学习到的风格吗？', '清除风格')
-    await clearLearnedPersona()
-    window.$QMessage.success('已清除学习结果')
-  } catch {
-  }
+  const result = await window.$QMessageBox.confirm('确定要清除学习到的风格吗？', '清除风格')
+  if (result.action !== 'confirm') return
+
+  await clearLearnedPersona()
+  window.$QMessage.success('已清除学习结果')
 }
 
 async function handlePreview() {

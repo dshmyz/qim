@@ -147,20 +147,18 @@ async function handleApply() {
 }
 
 async function handleCancel() {
+  const confirmResult = await window.$QMessageBox.confirm('确定要取消申请吗？', '取消申请')
+  if (confirmResult.action !== 'confirm') return
+
+  applying.value = true
   try {
-    await window.$QMessageBox.confirm('确定要取消申请吗？', '取消申请')
-    applying.value = true
-    try {
-      const result = await avatarAPI.cancelApplication()
-      emit('update:modelValue', result)
-      window.$QMessage.success('已取消申请')
-    } catch (e: any) {
-      window.$QMessage.error(e.response?.data?.message || '取消失败')
-    } finally {
-      applying.value = false
-    }
-  } catch {
-    // 用户取消
+    const result = await avatarAPI.cancelApplication()
+    emit('update:modelValue', result)
+    window.$QMessage.success('已取消申请')
+  } catch (e: any) {
+    window.$QMessage.error(e.response?.data?.message || '取消失败')
+  } finally {
+    applying.value = false
   }
 }
 

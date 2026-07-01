@@ -1093,7 +1093,6 @@ const {
   clearMessages: _clearMessages,
   addConversation,
   handleExitGroup,
-  loadGroups,
   loadConversations: loadConversationsFromApi,
   resetState: _resetConversationState,
   updateConversations,
@@ -2691,7 +2690,7 @@ const dissolveGroup = async (group?: any) => {
     if (success) {
       chatStore.removeConversation(String(targetGroup.id))
       selectedGroup.value = null
-      loadGroups()
+      loadUserGroups()
     }
   }
 }
@@ -2979,17 +2978,16 @@ const exitGroup = async (group?: any) => {
     return
   }
 
-  try {
-    await QMessageBox.confirm(
-      `确定要退出群聊 "${targetGroup.name}" 吗？`,
-      '确认退出群聊',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-  } catch {
+  const result = await QMessageBox.confirm(
+    `确定要退出群聊 "${targetGroup.name}" 吗？`,
+    '确认退出群聊',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+  if (result.action !== 'confirm') {
     closeGroupContextMenu()
     selectedGroup.value = null
     return
@@ -3010,9 +3008,9 @@ const exitGroup = async (group?: any) => {
     } else {
       showMessage({ message: '退出群聊失败: ' + response.message, type: 'error' })
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error('退出群聊失败:', error)
-    showMessage({ message: '退出群聊失败，请稍后重试', type: 'error' })
+    showMessage({ message: error?.response?.data?.message || '退出群聊失败，请稍后重试', type: 'error' })
   }
 
   closeGroupContextMenu()

@@ -39,10 +39,6 @@
           <el-radio-button value="rejected">已拒绝</el-radio-button>
         </el-radio-group>
       </div>
-      <el-button type="primary" @click="showEnableDialog" v-if="filterType === 'avatar' || filterType === 'all'">
-        <el-icon><Plus /></el-icon>
-        主动开启 Avatar
-      </el-button>
     </div>
 
     <!-- 审批列表 -->
@@ -117,78 +113,22 @@
         <el-button type="danger" @click="confirmReject" :disabled="!rejectReason.trim()">确认拒绝</el-button>
       </template>
     </el-dialog>
-
-    <!-- 主动开启对话框 -->
-    <el-dialog v-model="enableDialogVisible" title="主动开启用户分身" width="500px">
-      <div class="enable-form">
-        <p class="enable-hint">搜索用户并为其开启分身功能，用户将收到系统通知</p>
-        <el-input
-          v-model="searchKeyword"
-          placeholder="输入用户名或昵称搜索..."
-          :prefix-icon="Search"
-          clearable
-          @input="handleSearch"
-        />
-        <div v-if="searching" class="search-loading">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          <span>搜索中...</span>
-        </div>
-        <div v-else-if="searchResults.length > 0" class="search-results">
-          <div
-            v-for="user in searchResults"
-            :key="user.id"
-            class="search-result-item"
-            @click="selectUser(user)"
-          >
-            <el-avatar :size="32" :src="user.avatar">{{ user.name?.charAt(0) || user.username?.charAt(0) }}</el-avatar>
-            <div class="result-info">
-              <span class="result-name">{{ user.name || user.username }}</span>
-              <span class="result-username">@{{ user.username }}</span>
-            </div>
-            <el-icon class="add-icon"><Plus /></el-icon>
-          </div>
-        </div>
-        <div v-else-if="searchKeyword && !searching" class="no-results">
-          未找到匹配的用户
-        </div>
-        <div v-if="selectedUser" class="selected-user">
-          <span>已选择：</span>
-          <strong>{{ selectedUser.name || selectedUser.username }}</strong>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="closeEnableDialog">取消</el-button>
-        <el-button type="primary" @click="handleEnable" :disabled="!selectedUser" :loading="enabling">
-          确认开启
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Loading } from '@element-plus/icons-vue'
-import { 
-  getApprovals, 
-  approveEntity, 
-  rejectEntity, 
-  enableAvatar, 
+import {
+  getApprovals,
+  approveEntity,
+  rejectEntity,
   getApprovalConfigs,
   updateApprovalConfig,
-  type ApprovalItem, 
+  type ApprovalItem,
   type ApprovalType,
-  type ApprovalConfig 
+  type ApprovalConfig
 } from '@/api/approvals'
-import { request } from '@/utils/request'
-
-interface User {
-  id: number
-  username: string
-  name: string
-  avatar?: string
-}
 
 const filterType = ref<ApprovalType>('all')
 const filterStatus = ref<'all' | 'pending' | 'approved' | 'rejected'>('all')
@@ -260,17 +200,6 @@ const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectingItem = ref<ApprovalItem | null>(null)
 
-// 主动开启弹窗
-const enableDialogVisible = ref(false)
-const searchKeyword = ref('')
-const searching = ref(false)
-const searchResults = ref<User[]>([])
-const selectedUser = ref<User | null>(null)
-const enabling = ref(false)
-
-// 搜索防抖
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-
 const fetchApprovals = async () => {
   loading.value = true
   try {
@@ -329,72 +258,6 @@ const confirmReject = async () => {
     fetchApprovals()
   } catch {
     // 错误已在请求拦截器中处理
-  }
-}
-
-const showEnableDialog = () => {
-  enableDialogVisible.value = true
-  searchKeyword.value = ''
-  searchResults.value = []
-  selectedUser.value = null
-}
-
-const closeEnableDialog = () => {
-  enableDialogVisible.value = false
-  searchKeyword.value = ''
-  searchResults.value = []
-  selectedUser.value = null
-}
-
-const handleSearch = () => {
-  if (searchTimer) {
-    clearTimeout(searchTimer)
-  }
-
-  if (!searchKeyword.value.trim()) {
-    searchResults.value = []
-    return
-  }
-
-  searchTimer = setTimeout(async () => {
-    searching.value = true
-    try {
-      const { data } = await request({
-        url: `/v1/users/search?q=${encodeURIComponent(searchKeyword.value.trim())}`,
-        method: 'get',
-      }) as any
-      searchResults.value = (data?.data?.list || data?.data || []) as User[]
-    } catch {
-      searchResults.value = []
-    } finally {
-      searching.value = false
-    }
-  }, 300)
-}
-
-const selectUser = (user: User) => {
-  selectedUser.value = user
-  searchResults.value = []
-  searchKeyword.value = ''
-}
-
-const handleEnable = async () => {
-  if (!selectedUser.value) return
-
-  try {
-    await ElMessageBox.confirm(
-      `确定要为「${selectedUser.value.name || selectedUser.value.username}」开启分身功能吗？`,
-      '确认开启'
-    )
-    enabling.value = true
-    await enableAvatar(selectedUser.value.id)
-    ElMessage.success('已开启分身功能')
-    closeEnableDialog()
-    fetchApprovals()
-  } catch {
-    // 用户取消或请求失败
-  } finally {
-    enabling.value = false
   }
 }
 
@@ -515,85 +378,5 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   padding-top: var(--space-4);
-}
-
-/* 主动开启弹窗 */
-.enable-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.enable-hint {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.search-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-}
-
-.search-results {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.search-result-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.search-result-item:hover {
-  background: var(--color-surface-hover);
-}
-
-.result-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.result-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.result-username {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.add-icon {
-  color: var(--color-primary);
-  font-size: 12px;
-}
-
-.no-results {
-  padding: 20px;
-  text-align: center;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-}
-
-.selected-user {
-  padding: 10px 12px;
-  background: var(--color-primary-light);
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  color: var(--color-primary);
 }
 </style>

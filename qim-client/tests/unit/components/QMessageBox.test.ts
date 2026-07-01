@@ -15,24 +15,24 @@ describe('QMessageBox confirm', () => {
     await expect(promise).resolves.toMatchObject({ action: 'confirm' })
   })
 
-  it('rejects when the cancel button is clicked', async () => {
+  it('resolves with cancel action when the cancel button is clicked', async () => {
     const wrapper = mountBox()
     const promise = wrapper.vm.confirm('确定要解散群聊吗？', '确认解散群聊')
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.q-button--default').trigger('click')
 
-    await expect(promise).rejects.toBeTruthy()
+    await expect(promise).resolves.toMatchObject({ action: 'cancel' })
   })
 
-  it('rejects when the close button is clicked', async () => {
+  it('resolves with close action when the close button is clicked', async () => {
     const wrapper = mountBox()
     const promise = wrapper.vm.confirm('确定要解散群聊吗？', '确认解散群聊')
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.q-message-box__close').trigger('click')
 
-    await expect(promise).rejects.toBeTruthy()
+    await expect(promise).resolves.toMatchObject({ action: 'close' })
   })
 })
 

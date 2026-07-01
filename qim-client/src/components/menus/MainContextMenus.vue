@@ -82,11 +82,13 @@
       <span class="context-menu-icon"><i class="fas fa-trash-alt"></i></span>
       <span>解散群聊</span>
     </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" @click="$emit('exitGroup', selectedGroupForContextMenu)">
-      <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-      <span>退出群聊</span>
-    </div>
+    <template v-if="!isGroupOwner">
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" @click="$emit('exitGroup', selectedGroupForContextMenu)">
+        <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
+        <span>退出群聊</span>
+      </div>
+    </template>
   </div>
 
   <!-- 设置菜单 -->

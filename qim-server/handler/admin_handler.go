@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"log"
 	"strconv"
 	"time"
 
@@ -431,8 +433,69 @@ func AdminGetRecentRegistrations(c *gin.Context) {
 	})
 }
 
-// AdminGetUserAIConfigs 管理员获取指定用户的AI配置列表
-func AdminGetUserAIConfigs(c *gin.Context) {
+// AdminAvatarConfigResponse 管理员视角的用户分身配置
+type AdminAvatarConfigResponse struct {
+	ID                 uint                       `json:"id"`
+	UserID             uint                       `json:"user_id"`
+	Name               string                     `json:"name"`
+	Enabled            bool                       `json:"enabled"`
+	AutoLearnedPersona string                     `json:"auto_learned_persona"`
+	CustomPersonaAddon string                     `json:"custom_persona_addon"`
+	PersonaVersion     int                        `json:"persona_version"`
+	LastLearnedAt      *time.Time                 `json:"last_learned_at"`
+	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledge_scope"`
+	TriggerRules       model.AvatarTriggerRules   `json:"trigger_rules"`
+	ReplyStrategy      model.AvatarReplyStrategy  `json:"reply_strategy"`
+	ModelConfigID      *uint                      `json:"model_config_id"`
+	UseSystemConfig    bool                       `json:"use_system_config"`
+	TakeoverCooldown   int                        `json:"takeover_cooldown"`
+	CreatedAt          time.Time                  `json:"created_at"`
+	UpdatedAt          time.Time                  `json:"updated_at"`
+}
+
+func toAdminAvatarConfigResponse(cfg model.AvatarConfig) AdminAvatarConfigResponse {
+	var knowledgeScope model.AvatarKnowledgeScope
+	var triggerRules model.AvatarTriggerRules
+	var replyStrategy model.AvatarReplyStrategy
+
+	if cfg.KnowledgeScopeJSON != "" {
+		if err := json.Unmarshal([]byte(cfg.KnowledgeScopeJSON), &knowledgeScope); err != nil {
+			log.Printf("[toAdminAvatarConfigResponse] 解析 knowledge_scope_json 失败: config_id=%d, error=%v", cfg.ID, err)
+		}
+	}
+	if cfg.TriggerRulesJSON != "" {
+		if err := json.Unmarshal([]byte(cfg.TriggerRulesJSON), &triggerRules); err != nil {
+			log.Printf("[toAdminAvatarConfigResponse] 解析 trigger_rules_json 失败: config_id=%d, error=%v", cfg.ID, err)
+		}
+	}
+	if cfg.ReplyStrategyJSON != "" {
+		if err := json.Unmarshal([]byte(cfg.ReplyStrategyJSON), &replyStrategy); err != nil {
+			log.Printf("[toAdminAvatarConfigResponse] 解析 reply_strategy_json 失败: config_id=%d, error=%v", cfg.ID, err)
+		}
+	}
+
+	return AdminAvatarConfigResponse{
+		ID:                 cfg.ID,
+		UserID:             cfg.UserID,
+		Name:               cfg.Name,
+		Enabled:            cfg.Enabled,
+		AutoLearnedPersona: cfg.AutoLearnedPersona,
+		CustomPersonaAddon: cfg.CustomPersonaAddon,
+		PersonaVersion:     cfg.PersonaVersion,
+		LastLearnedAt:      cfg.LastLearnedAt,
+		KnowledgeScope:     knowledgeScope,
+		TriggerRules:       triggerRules,
+		ReplyStrategy:      replyStrategy,
+		ModelConfigID:      cfg.ModelConfigID,
+		UseSystemConfig:    cfg.UseSystemConfig,
+		TakeoverCooldown:   cfg.TakeoverCooldown,
+		CreatedAt:          cfg.CreatedAt,
+		UpdatedAt:          cfg.UpdatedAt,
+	}
+}
+
+// AdminGetUserAvatarConfig 管理员获取指定用户的分身配置
+func AdminGetUserAvatarConfig(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
@@ -440,95 +503,143 @@ func AdminGetUserAIConfigs(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	svc := di.GlobalContainer.AIConfigService
-	configs, total, err := svc.ListUserConfigs(uint(userID), page, pageSize)
+	db := di.GlobalContainer.DB
+	var config model.AvatarConfig
+	err = db.Where("user_id = ?", uint(userID)).First(&config).Error
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 用户尚未创建分身配置，返回 null 让前端展示"未开启"
+			response.Success(c, nil)
+			return
+		}
 		response.InternalServerError(c, "查询失败")
 		return
 	}
 
-	responses := make([]ConfigResponse, len(configs))
-	for i, cfg := range configs {
-		responses[i] = toConfigResponse(cfg)
-	}
-
-	response.Success(c, gin.H{
-		"list":     responses,
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
-	})
+	response.Success(c, toAdminAvatarConfigResponse(config))
 }
 
-// AdminUpdateUserAIConfig 管理员更新指定用户的AI配置
-func AdminUpdateUserAIConfig(c *gin.Context) {
+// AdminUpdateUserAvatarConfig 管理员更新指定用户的分身配置
+func AdminUpdateUserAvatarConfig(c *gin.Context) {
 	userIDStr := c.Param("id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	userID64, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的用户ID")
 		return
 	}
-
-	configIDStr := c.Param("configId")
-	configID, err := strconv.ParseUint(configIDStr, 10, 64)
-	if err != nil {
-		response.BadRequest(c, "无效的配置ID")
-		return
-	}
+	userID := uint(userID64)
+	adminID := c.GetUint("user_id")
 
 	var req struct {
-		ConfigName  string  `json:"config_name"`
-		Provider    string  `json:"provider"`
-		APIKey      string  `json:"api_key"`
-		ModelName   string  `json:"model_name"`
-		BaseURL     string  `json:"base_url"`
-		AIEnabled   *bool   `json:"ai_enabled"`
-		DailyLimit  *int    `json:"daily_limit"`
-		MaxTokens   *int    `json:"max_tokens"`
-		Temperature *float64 `json:"temperature"`
+		Name               *string                     `json:"name"`
+		Enabled            *bool                       `json:"enabled"`
+		UseSystemConfig    *bool                       `json:"use_system_config"`
+		ModelConfigID      *uint                       `json:"model_config_id"`
+		TriggerRules       *model.AvatarTriggerRules   `json:"trigger_rules"`
+		KnowledgeScope     *model.AvatarKnowledgeScope `json:"knowledge_scope"`
+		ReplyStrategy      *model.AvatarReplyStrategy  `json:"reply_strategy"`
+		TakeoverCooldown   *int                        `json:"takeover_cooldown"`
+		CustomPersonaAddon *string                     `json:"custom_persona_addon"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	svc := di.GlobalContainer.AIConfigService
-	config, err := svc.UpdateConfig(uint(userID), uint(configID), req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
-	if err != nil {
-		response.InternalServerError(c, "更新配置失败")
-		return
-	}
-
-	// 更新额外的配置字段
 	db := di.GlobalContainer.DB
-	updates := make(map[string]interface{})
-	if req.AIEnabled != nil {
-		updates["ai_enabled"] = *req.AIEnabled
-	}
-	if req.DailyLimit != nil {
-		updates["daily_limit"] = *req.DailyLimit
-	}
-	if req.MaxTokens != nil {
-		updates["max_tokens"] = *req.MaxTokens
-	}
-	if req.Temperature != nil {
-		updates["temperature"] = *req.Temperature
-	}
-	if len(updates) > 0 {
-		db.Model(config).Updates(updates)
+	approvalSvc := di.GlobalContainer.ApprovalService
+
+	// 先查当前配置，判断 enabled 是否真的从 false→true
+	var config model.AvatarConfig
+	if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 配置不存在时，仅在请求显式开启分身时走 EnableAvatar 创建
+			if req.Enabled != nil && *req.Enabled {
+				if approvalSvc == nil {
+					response.InternalServerError(c, "审批服务不可用")
+					return
+				}
+				if err := approvalSvc.EnableAvatar(userID, adminID); err != nil {
+					response.InternalServerError(c, "开启分身失败")
+					return
+				}
+				// 重新查出刚创建的配置，用于后续更新其他字段
+				if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+					response.InternalServerError(c, "查询失败")
+					return
+				}
+			} else {
+				response.BadRequest(c, "该用户尚未创建分身配置")
+				return
+			}
+		} else {
+			response.InternalServerError(c, "查询失败")
+			return
+		}
+	} else {
+		// 配置已存在：仅在 enabled 从 false→true 时才调用 EnableAvatar，避免重复触发
+		if req.Enabled != nil && *req.Enabled && !config.Enabled {
+			if approvalSvc == nil {
+				response.InternalServerError(c, "审批服务不可用")
+				return
+			}
+			if err := approvalSvc.EnableAvatar(userID, adminID); err != nil {
+				response.InternalServerError(c, "开启分身失败")
+				return
+			}
+			// EnableAvatar 内部已更新 enabled=true，重新查出最新状态
+			if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+				response.InternalServerError(c, "查询失败")
+				return
+			}
+		}
 	}
 
-	response.Success(c, toConfigResponse(*config))
+	updates := map[string]interface{}{}
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	// 关闭分身直接置 false；开启已由上面的 EnableAvatar 处理
+	if req.Enabled != nil && !*req.Enabled {
+		updates["enabled"] = false
+	}
+	if req.UseSystemConfig != nil {
+		updates["use_system_config"] = *req.UseSystemConfig
+	}
+	if req.ModelConfigID != nil {
+		updates["model_config_id"] = *req.ModelConfigID
+	}
+	if req.TakeoverCooldown != nil {
+		updates["takeover_cooldown"] = *req.TakeoverCooldown
+	}
+	if req.CustomPersonaAddon != nil {
+		updates["custom_persona_addon"] = *req.CustomPersonaAddon
+	}
+	if req.TriggerRules != nil {
+		if b, err := json.Marshal(req.TriggerRules); err == nil {
+			updates["trigger_rules_json"] = string(b)
+		}
+	}
+	if req.KnowledgeScope != nil {
+		if b, err := json.Marshal(req.KnowledgeScope); err == nil {
+			updates["knowledge_scope_json"] = string(b)
+		}
+	}
+	if req.ReplyStrategy != nil {
+		if b, err := json.Marshal(req.ReplyStrategy); err == nil {
+			updates["reply_strategy_json"] = string(b)
+		}
+	}
+
+	if len(updates) > 0 {
+		if err := db.Model(&config).Updates(updates).Error; err != nil {
+			response.InternalServerError(c, "更新失败")
+			return
+		}
+	}
+
+	db.First(&config, config.ID)
+	response.Success(c, toAdminAvatarConfigResponse(config))
 }
 
 // AdminGetDashboardTrend 获取仪表盘趋势数据（用户增长 + 消息活跃度）

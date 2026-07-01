@@ -140,17 +140,6 @@ export function useConversation() {
   }
 
   // 数据加载
-  const loadGroups = async () => {
-    try {
-      const response: any = await request('/api/v1/groups')
-      if (response.code === 0) {
-        groups.value = response.data || []
-      }
-    } catch (error) {
-      console.error('加载群组失败:', error)
-    }
-  }
-
   const loadConversations = async () => {
     isLoading.value = true
     try {
@@ -236,7 +225,6 @@ export function useConversation() {
     clearMessages,
     addConversation,
     handleExitGroup,
-    loadGroups,
     loadConversations,
     searchConversations,
     setCurrentConversationId,

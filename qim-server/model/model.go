@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -40,12 +41,19 @@ func (u *User) AfterCreate(tx *gorm.DB) error {
 
 	var defaults []Channel
 	if err := tx.Where("is_default = ? AND status = ?", true, "active").Find(&defaults).Error; err != nil {
-		return nil // 容错：订阅失败不阻断用户创建
+		// 查询失败不阻断用户创建，但记录日志便于排查
+		log.Printf("[User.AfterCreate] 查询默认频道失败，跳过自动订阅: user_id=%d, error=%v", u.ID, err)
+		return nil
 	}
 
 	for _, ch := range defaults {
 		sub := ChannelSubscriber{ChannelID: ch.ID, UserID: u.ID, JoinedAt: time.Now()}
-		tx.Where("channel_id = ? AND user_id = ?", ch.ID, u.ID).FirstOrCreate(&sub)
+		result := tx.Where("channel_id = ? AND user_id = ?", ch.ID, u.ID).FirstOrCreate(&sub)
+		if result.Error != nil {
+			// 订阅写入失败不阻断用户创建，但记录日志便于排查
+			log.Printf("[User.AfterCreate] 自动订阅默认频道失败: user_id=%d, channel_id=%d, error=%v",
+				u.ID, ch.ID, result.Error)
+		}
 	}
 	return nil
 }

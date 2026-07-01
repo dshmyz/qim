@@ -78,14 +78,6 @@ export const rejectEntity = (
   })
 }
 
-export const enableAvatar = (userId: number): Promise<AxiosResponse<ApiResponse<void>>> => {
-  return request({
-    url: '/v1/admin/approvals/avatar/enable',
-    method: 'post',
-    data: { user_id: userId },
-  })
-}
-
 // 审批配置相关
 export const getApprovalConfigs = (): Promise<AxiosResponse<ApiResponse<ApprovalConfig[]>>> => {
   return request({

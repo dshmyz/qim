@@ -162,19 +162,16 @@ export function useGroup() {
       return false
     }
 
-    try {
-      await QMessageBox.confirm(
-        `确定要解散群聊 "${group.name}" 吗？此操作不可恢复。`,
-        '确认解散群聊',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return false
-    }
+    const result = await QMessageBox.confirm(
+      `确定要解散群聊 "${group.name}" 吗？此操作不可恢复。`,
+      '确认解散群聊',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    if (result.action !== 'confirm') return false
 
     try {
       const response: any = await request(`/api/v1/groups/${group.id}`, {
@@ -202,19 +199,16 @@ export function useGroup() {
   const exitGroup = async (group: GroupInfo) => {
     if (!group) return false
 
-    try {
-      await QMessageBox.confirm(
-        `确定要退出群聊 "${group.name}" 吗？`,
-        '确认退出群聊',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return false
-    }
+    const confirmResult = await QMessageBox.confirm(
+      `确定要退出群聊 "${group.name}" 吗？`,
+      '确认退出群聊',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    if (confirmResult.action !== 'confirm') return false
 
     try {
       const response: any = await request(`/api/v1/groups/${group.id}/exit`, {

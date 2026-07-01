@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -58,7 +57,7 @@ func (s *ApprovalService) ListApprovals(entityType string, status string, page i
 	case model.ApprovalTypeGroupAI:
 		items, total, err = s.listGroupAIApprovals(status)
 	case "all", "":
-		items, total, err = s.listAllApprovals(status)
+		return s.listAllApprovals(status, page, pageSize)
 	default:
 		return items, 0, nil
 	}
@@ -69,37 +68,51 @@ func (s *ApprovalService) ListApprovals(entityType string, status string, page i
 	return paginateApprovals(items, total, page, pageSize), total, nil
 }
 
-// listAllApprovals 聚合四种类型的审批，并按申请时间（无则用创建时间）倒序统一排序。
-func (s *ApprovalService) listAllApprovals(status string) ([]model.ApprovalListItem, int64, error) {
-	listers := []func(string) ([]model.ApprovalListItem, int64, error){
-		s.listAvatarApprovals,
-		s.listBotApprovals,
-		s.listChannelApprovals,
-		s.listGroupAIApprovals,
+// listAllApprovals 使用快照字段单表分页查询，无需回查源表
+func (s *ApprovalService) listAllApprovals(status string, page, pageSize int) ([]model.ApprovalListItem, int64, error) {
+	query := s.db.Model(&model.Approval{})
+	if status != "all" && status != "" {
+		query = query.Where("status = ?", status)
+	} else {
+		query = query.Where("status != ?", model.ApprovalStatusNone)
 	}
 
-	all := make([]model.ApprovalListItem, 0)
-	for _, lister := range listers {
-		items, _, err := lister(status)
-		if err != nil {
-			return nil, 0, err
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var approvals []model.Approval
+	offset := (page - 1) * pageSize
+	if err := query.Order("applied_at DESC").Offset(offset).Limit(pageSize).Find(&approvals).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]model.ApprovalListItem, 0, len(approvals))
+	for _, a := range approvals {
+		item := model.ApprovalListItem{
+			ID:             a.ID,
+			Type:           a.TargetType,
+			CreatorID:      a.AppliedBy,
+			CreatorName:    a.CreatorName,
+			CreatorAvatar:  a.CreatorAvatar,
+			Name:           a.TargetName,
+			Description:    a.TargetDescription,
+			ApprovalStatus: a.Status,
+			AppliedAt:      &a.AppliedAt,
+			ApprovedAt:     a.ApprovedAt,
+			RejectReason:   a.RejectReason,
+			CreatedAt:      a.CreatedAt,
 		}
-		all = append(all, items...)
+		if a.ExtraJSON != "" && a.ExtraJSON != "{}" {
+			var extra map[string]any
+			if err := json.Unmarshal([]byte(a.ExtraJSON), &extra); err == nil {
+				item.Extra = extra
+			}
+		}
+		items = append(items, item)
 	}
-
-	sort.SliceStable(all, func(i, j int) bool {
-		return approvalSortTime(all[i]).After(approvalSortTime(all[j]))
-	})
-
-	return all, int64(len(all)), nil
-}
-
-// approvalSortTime 返回用于排序的时间：优先申请时间，缺失时回退创建时间。
-func approvalSortTime(item model.ApprovalListItem) time.Time {
-	if item.AppliedAt != nil && !item.AppliedAt.IsZero() {
-		return *item.AppliedAt
-	}
-	return item.CreatedAt
+	return items, total, nil
 }
 
 // paginateApprovals 对内存中的审批列表做分页切片；page/pageSize 非法时返回全部。
@@ -706,14 +719,20 @@ func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 			return err
 		}
 
+		creatorName, creatorAvatar := s.fetchUserSnapshot(userID)
 		approval := model.Approval{
-			TargetType: model.ApprovalTypeAvatar,
-			TargetID:   config.ID,
-			Status:     model.ApprovalStatusApproved,
-			AppliedAt:  now,
-			AppliedBy:  userID,
-			ApprovedAt: &now,
-			ApprovedBy: &adminID,
+			TargetType:        model.ApprovalTypeAvatar,
+			TargetID:          config.ID,
+			Status:            model.ApprovalStatusApproved,
+			AppliedAt:         now,
+			AppliedBy:         userID,
+			ApprovedAt:        &now,
+			ApprovedBy:        &adminID,
+			TargetName:        config.Name,
+			TargetDescription: "用户分身功能",
+			CreatorName:       creatorName,
+			CreatorAvatar:     creatorAvatar,
+			ExtraJSON:         "{}",
 		}
 		if err := s.db.Create(&approval).Error; err != nil {
 			return err
@@ -723,14 +742,43 @@ func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 			return err
 		}
 
-		if err := s.db.Model(&model.Approval{}).
-			Where("target_type = ? AND target_id = ?", model.ApprovalTypeAvatar, config.ID).
-			Updates(map[string]interface{}{
+		// 查找该分身最新的审批记录（可能有多条，如先拒绝再申请）
+		var existing model.Approval
+		findErr := s.db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeAvatar, config.ID).
+			Order("created_at DESC").
+			First(&existing).Error
+
+		if findErr == gorm.ErrRecordNotFound {
+			// 审批记录不存在（如审批系统上线前创建的配置），补建一条已通过记录
+			creatorName, creatorAvatar := s.fetchUserSnapshot(userID)
+			approval := model.Approval{
+				TargetType:        model.ApprovalTypeAvatar,
+				TargetID:          config.ID,
+				Status:            model.ApprovalStatusApproved,
+				AppliedAt:         now,
+				AppliedBy:         userID,
+				ApprovedAt:        &now,
+				ApprovedBy:        &adminID,
+				TargetName:        config.Name,
+				TargetDescription: "用户分身功能",
+				CreatorName:       creatorName,
+				CreatorAvatar:     creatorAvatar,
+				ExtraJSON:         "{}",
+			}
+			if err := s.db.Create(&approval).Error; err != nil {
+				return err
+			}
+		} else if findErr != nil {
+			return findErr
+		} else {
+			// 已有审批记录，只更新最新一条
+			if err := s.db.Model(&existing).Updates(map[string]interface{}{
 				"status":      model.ApprovalStatusApproved,
 				"approved_at": &now,
 				"approved_by": adminID,
 			}).Error; err != nil {
-			return err
+				return err
+			}
 		}
 	}
 
@@ -747,15 +795,70 @@ func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 func (s *ApprovalService) CreateApproval(targetType string, targetID uint, appliedBy uint) error {
 	now := time.Now()
 
+	name, desc, extraJSON := s.fetchTargetSnapshot(targetType, targetID)
+	creatorName, creatorAvatar := s.fetchUserSnapshot(appliedBy)
+
 	approval := model.Approval{
-		TargetType: targetType,
-		TargetID:   targetID,
-		Status:     model.ApprovalStatusPending,
-		AppliedAt:  now,
-		AppliedBy:  appliedBy,
+		TargetType:        targetType,
+		TargetID:          targetID,
+		Status:            model.ApprovalStatusPending,
+		AppliedAt:         now,
+		AppliedBy:         appliedBy,
+		TargetName:        name,
+		TargetDescription: desc,
+		CreatorName:       creatorName,
+		CreatorAvatar:     creatorAvatar,
+		ExtraJSON:         extraJSON,
 	}
 
 	return s.db.Create(&approval).Error
+}
+
+// fetchTargetSnapshot 按 target_type 查源表，返回名称、描述和 extra JSON
+func (s *ApprovalService) fetchTargetSnapshot(targetType string, targetID uint) (name, desc, extraJSON string) {
+	switch targetType {
+	case model.ApprovalTypeAvatar:
+		var config model.AvatarConfig
+		if err := s.db.Where("id = ?", targetID).First(&config).Error; err == nil {
+			return config.Name, "用户分身功能", "{}"
+		}
+	case model.ApprovalTypeBot:
+		var bot model.Bot
+		if err := s.db.Where("id = ?", targetID).First(&bot).Error; err == nil {
+			extra, _ := json.Marshal(map[string]any{"bot_type": bot.Type})
+			return bot.Name, bot.Description, string(extra)
+		}
+	case model.ApprovalTypeChannel:
+		var channel model.Channel
+		if err := s.db.Where("id = ?", targetID).First(&channel).Error; err == nil {
+			extra, _ := json.Marshal(map[string]any{
+				"channel_id":         channel.ID,
+				"publish_permission": channel.PublishPermission,
+			})
+			return channel.Name, channel.Description, string(extra)
+		}
+	case model.ApprovalTypeGroupAI:
+		var group model.Group
+		if err := s.db.Where("id = ?", targetID).First(&group).Error; err == nil {
+			aiConfig := group.GetAIConfig()
+			extra, _ := json.Marshal(map[string]any{
+				"group_id":        group.ID,
+				"conversation_id": group.ConversationID,
+				"assistant_name":  aiConfig.AssistantName,
+			})
+			return group.Name, "群聊AI助手", string(extra)
+		}
+	}
+	return "", "", "{}"
+}
+
+// fetchUserSnapshot 返回申请人的昵称和头像
+func (s *ApprovalService) fetchUserSnapshot(userID uint) (name, avatar string) {
+	var user model.User
+	if err := s.db.Where("id = ?", userID).First(&user).Error; err == nil {
+		return user.Nickname, user.Avatar
+	}
+	return "", ""
 }
 
 func (s *ApprovalService) GetApproval(targetType string, targetID uint) (*model.Approval, error) {
@@ -841,7 +944,6 @@ func (h *ApprovalHandler) RegisterRoutes(router *gin.RouterGroup) {
 		approvals.GET("", h.List)
 		approvals.POST("/:type/:id/approve", h.Approve)
 		approvals.POST("/:type/:id/reject", h.Reject)
-		approvals.POST("/avatar/enable", h.EnableAvatar)
 		approvals.GET("/configs", h.GetConfigs)
 		approvals.PUT("/configs/:type", h.UpdateConfig)
 	}
@@ -892,23 +994,6 @@ func (h *ApprovalHandler) Reject(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已拒绝"})
-}
-
-func (h *ApprovalHandler) EnableAvatar(c *gin.Context) {
-	var req struct {
-		UserID uint `json:"user_id"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": -1, "message": "参数错误"})
-		return
-	}
-	adminID := c.GetUint("user_id")
-
-	if err := h.service.EnableAvatar(req.UserID, adminID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已启用"})
 }
 
 func (h *ApprovalHandler) GetConfigs(c *gin.Context) {

@@ -93,8 +93,6 @@ const inputPlaceholder = ref('')
 const inputValue = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 let resolve: ((result: MessageBoxResult) => void) | null = null
-let reject: ((reason: MessageBoxResult) => void) | null = null
-let rejectOnCancel = false
 
 const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
   title.value = options.title || '提示'
@@ -107,9 +105,6 @@ const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
   inputType.value = options.inputType || ''
   inputPlaceholder.value = options.inputPlaceholder || ''
   inputValue.value = ''
-  // 有取消按钮的弹窗（confirm/prompt）在取消或关闭时 reject，
-  // 让调用方的 try/catch 能正确跳过后续危险操作。
-  rejectOnCancel = showCancelButton.value
   visible.value = true
 
   nextTick(() => {
@@ -118,21 +113,15 @@ const show = (options: MessageBoxOptions): Promise<MessageBoxResult> => {
     }
   })
 
-  return new Promise((resolveFn, rejectFn) => {
+  return new Promise((resolveFn) => {
     resolve = resolveFn
-    reject = rejectFn
   })
 }
 
 const settle = (result: MessageBoxResult) => {
   visible.value = false
-  if (result.action !== 'confirm' && rejectOnCancel) {
-    reject?.(result)
-  } else {
-    resolve?.(result)
-  }
+  resolve?.(result)
   resolve = null
-  reject = null
 }
 
 const handleClose = () => {

@@ -1,4 +1,4 @@
-import type { ApiResponse, User, UserAIConfig, PaginationParams, PaginatedResponse } from '@/types'
+import type { ApiResponse, User, AdminAvatarConfig, AvatarTriggerRules, AvatarKnowledgeScope, AvatarReplyStrategy, PaginationParams, PaginatedResponse } from '@/types'
 import { request } from '@/utils/request'
 import type { AxiosResponse } from 'axios'
 
@@ -87,30 +87,29 @@ export const unbanUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>>
   })
 }
 
-// 管理员操作用户AI配置
-export interface UpdateUserAIConfigParams {
-  config_name?: string
-  provider?: string
-  api_key?: string
-  model_name?: string
-  base_url?: string
-  ai_enabled?: boolean
-  daily_limit?: number
-  max_tokens?: number
-  temperature?: number
+// 管理员操作用户分身配置
+export interface UpdateUserAvatarConfigParams {
+  name?: string
+  enabled?: boolean
+  use_system_config?: boolean
+  model_config_id?: number
+  trigger_rules?: AvatarTriggerRules
+  knowledge_scope?: AvatarKnowledgeScope
+  reply_strategy?: AvatarReplyStrategy
+  takeover_cooldown?: number
+  custom_persona_addon?: string
 }
 
-export const getUserAIConfigs = (userId: number, params?: { page?: number; pageSize?: number }): Promise<AxiosResponse<ApiResponse<{ list: UserAIConfig[]; total: number }>>> => {
+export const getUserAvatarConfig = (userId: number): Promise<AxiosResponse<ApiResponse<AdminAvatarConfig | null>>> => {
   return request({
-    url: `/v1/admin/users/${userId}/ai-configs`,
+    url: `/v1/admin/users/${userId}/avatar-config`,
     method: 'get',
-    params,
   })
 }
 
-export const updateUserAIConfig = (userId: number, configId: number, data: UpdateUserAIConfigParams): Promise<AxiosResponse<ApiResponse<UserAIConfig>>> => {
+export const updateUserAvatarConfig = (userId: number, data: UpdateUserAvatarConfigParams): Promise<AxiosResponse<ApiResponse<AdminAvatarConfig>>> => {
   return request({
-    url: `/v1/admin/users/${userId}/ai-configs/${configId}`,
+    url: `/v1/admin/users/${userId}/avatar-config`,
     method: 'put',
     data,
   })

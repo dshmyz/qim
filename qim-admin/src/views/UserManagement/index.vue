@@ -63,7 +63,7 @@
       <template #default="{ row }">
         <ActionButton v-permission="'user:update'" @click="handleEdit(row)">编辑</ActionButton>
         <ActionButton v-permission="'user:update'" @click="handleManageRoles(row)">管理角色</ActionButton>
-        <ActionButton v-permission="'user:update'" @click="handleManageAIConfig(row)">AI 配置</ActionButton>
+        <ActionButton v-permission="'user:update'" @click="handleManageAvatarConfig(row)">分身配置</ActionButton>
         <el-popconfirm title="确定删除该用户吗？" @confirm="handleDelete(row.id)">
           <template #reference>
             <ActionButton v-permission="'user:delete'" type="danger">删除</ActionButton>
@@ -97,10 +97,10 @@
     </template>
   </el-dialog>
 
-  <AIConfigDialog
-    v-model:visible="aiConfigDialogVisible"
-    :user-id="aiConfigUserId"
-    :username="aiConfigUsername"
+  <AvatarConfigDialog
+    v-model:visible="avatarConfigDialogVisible"
+    :user-id="avatarConfigUserId"
+    :username="avatarConfigUsername"
   />
 
   <el-dialog v-model="batchRoleDialogVisible" title="批量分配角色" width="400px">
@@ -127,7 +127,7 @@ import SearchField from '@/components/data/SearchField.vue'
 import StatusTag from '@/components/data/StatusTag.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import EntityDialog from '@/components/forms/EntityDialog.vue'
-import AIConfigDialog from './components/AIConfigDialog.vue'
+import AvatarConfigDialog from './components/AvatarConfigDialog.vue'
 import { useEntity } from '@/composables/useEntity'
 import { getUsers, createUser, updateUser, deleteUser, assignRoles } from '@/api/users'
 import { userFields, userRules, roleOptions } from './config'
@@ -221,14 +221,14 @@ const handlePageChange = (page: number) => {
   fetchData()
 }
 
-const aiConfigDialogVisible = ref(false)
-const aiConfigUserId = ref(0)
-const aiConfigUsername = ref('')
+const avatarConfigDialogVisible = ref(false)
+const avatarConfigUserId = ref(0)
+const avatarConfigUsername = ref('')
 
-const handleManageAIConfig = (row: User) => {
-  aiConfigUserId.value = row.id
-  aiConfigUsername.value = row.username
-  aiConfigDialogVisible.value = true
+const handleManageAvatarConfig = (row: User) => {
+  avatarConfigUserId.value = row.id
+  avatarConfigUsername.value = row.username
+  avatarConfigDialogVisible.value = true
 }
 
 // ===== 批量操作 =====

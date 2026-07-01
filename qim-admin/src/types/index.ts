@@ -355,3 +355,54 @@ export interface UserAIConfig {
   last_tested_at?: string
   created_at: string
 }
+
+// 分身触发规则
+export interface AvatarTimeRange {
+  dayOfWeek: number[]
+  startHour: number
+  endHour: number
+}
+
+export interface AvatarTriggerRules {
+  mode: 'mention' | 'offline' | 'keyword' | 'all' | 'smart'
+  keywords: string[]
+  timeRanges: AvatarTimeRange[]
+  excludedConversations: number[]
+}
+
+// 分身知识范围
+export interface AvatarKnowledgeScope {
+  conversationHistory: boolean
+  knowledgeDocs: boolean
+  notes: boolean
+  tasks: boolean
+}
+
+// 分身回复策略
+export interface AvatarReplyStrategy {
+  maxReplyLength: 'short' | 'medium' | 'long'
+  replyDelay: number
+  confidenceThreshold: number
+  disclaimerStyle: 'badge' | 'footer' | 'both'
+  replyOutOfScope: boolean
+}
+
+// 管理员视角的用户分身配置
+export interface AdminAvatarConfig {
+  id: number
+  user_id: number
+  name: string
+  enabled: boolean
+  auto_learned_persona: string
+  custom_persona_addon: string
+  persona_version: number
+  last_learned_at?: string | null
+  knowledge_scope: AvatarKnowledgeScope
+  trigger_rules: AvatarTriggerRules
+  reply_strategy: AvatarReplyStrategy
+  model_config_id?: number | null
+  use_system_config: boolean
+  takeover_cooldown: number
+  created_at: string
+  updated_at: string
+}
