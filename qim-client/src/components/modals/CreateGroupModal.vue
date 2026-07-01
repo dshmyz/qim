@@ -7,28 +7,29 @@
       </div>
       <div class="user-profile-body">
         <div class="profile-info">
-          <!-- 名称输入 -->
-          <div class="info-item">
-            <label>{{ props && props.type === 'group' ? '群聊名称' : '讨论组名称' }}</label>
-            <input type="text" v-model="name" class="profile-input" :placeholder="'请输入' + (props && props.type === 'group' ? '群聊' : '讨论组') + (props && props.type === 'group' ? '名称' : '名称（可选）')" />
-          </div>
-          
-          <!-- 头像上传 -->
-          <div class="info-item avatar-item">
-            <label>头像（可选）</label>
-            <div class="avatar-upload">
-              <div class="avatar-preview" @click="triggerAvatarUpload">
-                <img v-if="avatar" :src="avatar" alt="头像" />
-                <div v-else class="avatar-placeholder">
-                  <i class="fas fa-camera"></i>
-                  <span>上传头像</span>
+          <div class="group-form-row">
+            <!-- 名称输入 -->
+            <div class="info-item name-item">
+              <label>{{ props && props.type === 'group' ? '群聊名称' : '讨论组名称' }}</label>
+              <input type="text" v-model="name" class="profile-input" :placeholder="'请输入' + (props && props.type === 'group' ? '群聊' : '讨论组') + (props && props.type === 'group' ? '名称' : '名称（可选）')" />
+            </div>
+
+            <!-- 头像上传 -->
+            <div class="info-item avatar-item">
+              <label>头像</label>
+              <div class="avatar-upload">
+                <div class="avatar-preview" @click="triggerAvatarUpload" title="上传头像">
+                  <img v-if="avatar" :src="avatarDisplayUrl" alt="头像" />
+                  <div v-else class="avatar-placeholder">
+                    <i class="fas fa-camera"></i>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
           
           <!-- 成员选择 -->
-          <div class="info-item">
+          <div class="info-item members-item">
             <div class="member-selector-header">
               <label>{{ props && props.type === 'group' ? '群聊成员' : '讨论组成员' }}</label>
               <div class="selected-count" v-if="selectedMembers.length > 0">
@@ -65,10 +66,10 @@
                   class="member-item"
                   @click="toggleMember(employee)"
                 >
-                  <input 
-                    type="checkbox" 
-                    :checked="isMemberSelected(employee)" 
-                    @change.stop="toggleMember(employee)"
+                  <input
+                    type="checkbox"
+                    :checked="isMemberSelected(employee)"
+                    tabindex="-1"
                   />
                   <div class="member-info">
                     <div class="member-avatar">
@@ -166,6 +167,15 @@ const displayedMembers = computed(() => {
 // 是否有更多成员
 const hasMoreMembers = computed(() => {
   return displayedMembers.value.length < filteredMembers.value.length
+})
+
+// 头像显示地址：dataURL 或绝对地址直接用，相对路径拼接服务器地址
+const avatarDisplayUrl = computed(() => {
+  if (!avatar.value) return ''
+  if (avatar.value.startsWith('data:') || isAbsoluteUrl(avatar.value)) {
+    return avatar.value
+  }
+  return serverUrl.value + avatar.value
 })
 
 watch(() => props.visible, (newValue) => {
@@ -422,12 +432,14 @@ const createConversation = async () => {
   width: 90%;
   max-width: 520px;
   max-height: 85vh;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .user-profile-header {
-  padding: 20px 24px;
+  padding: 14px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -437,7 +449,7 @@ const createConversation = async () => {
 
 .user-profile-header h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-color, #1f2937);
 }
@@ -463,27 +475,56 @@ const createConversation = async () => {
 }
 
 .user-profile-body {
-  padding: 24px;
+  padding: 16px 20px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 表单样式 */
 .profile-info {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+}
+
+.group-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: start;
+}
+
+.name-item {
+  min-width: 0;
+}
+
+.avatar-item {
+  align-items: flex-start;
+}
+
+.group-form-row label {
+  height: 20px;
+  line-height: 20px;
+}
+
+.members-item {
+  flex: 1;
+  min-height: 0;
 }
 
 .member-selector-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .info-item label {
@@ -552,7 +593,8 @@ const createConversation = async () => {
 
 .profile-input {
   width: 100%;
-  padding: 12px 16px;
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 8px;
   font-size: 14px;
@@ -575,7 +617,7 @@ const createConversation = async () => {
 
 /* 搜索框样式 */
 .member-search-box {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .search-input-wrapper {
@@ -593,7 +635,7 @@ const createConversation = async () => {
 
 .member-search-input {
   width: 100%;
-  padding: 10px 14px 10px 36px;
+  padding: 9px 14px 9px 36px;
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 6px;
   font-size: 14px;
@@ -632,13 +674,14 @@ const createConversation = async () => {
 
 /* 头像上传样式 */
 .avatar-upload {
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .avatar-preview {
-  width: 80px;
-  height: 80px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  margin-top: -4px;
+  border-radius: 8px;
   border: 2px dashed var(--border-color, #d1d5db);
   display: flex;
   align-items: center;
@@ -668,13 +711,7 @@ const createConversation = async () => {
 }
 
 .avatar-placeholder i {
-  font-size: 20px;
-  margin-bottom: 6px;
-}
-
-.avatar-placeholder span {
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 18px;
 }
 
 .avatar-preview:hover .avatar-placeholder {
@@ -683,11 +720,13 @@ const createConversation = async () => {
 
 /* 成员选择样式 */
 .member-selector {
-  max-height: 300px;
+  flex: 1;
+  min-height: 260px;
+  max-height: none;
   overflow-y: auto;
-  border: 1px solid var(--border-color, #d1d5db);
+  /* border: 1px solid var(--border-color, #d1d5db); */
   border-radius: 8px;
-  padding: 8px;
+  padding: 6px;
   background-color: var(--secondary-color, #f9fafb);
 }
 
@@ -717,12 +756,13 @@ const createConversation = async () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 0px;
 }
 
 .member-item {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
   background-color: var(--card-bg, white);
@@ -735,9 +775,9 @@ const createConversation = async () => {
 }
 
 .member-item input[type="checkbox"] {
-  margin-right: 12px;
-  width: 18px;
-  height: 18px;
+  margin-right: 10px;
+  width: 16px;
+  height: 16px;
   cursor: pointer;
   accent-color: var(--primary-color, #3b82f6);
 }
@@ -749,22 +789,13 @@ const createConversation = async () => {
 }
 
 .member-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  overflow: hidden;
-  margin-right: 12px;
-  border: 2px solid var(--border-color, #e5e7eb);
-}
-
-.member-item:hover .member-avatar {
-  border-color: var(--primary-color, #3b82f6);
-}
-
-.member-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
 }
 
 .member-details {
@@ -791,7 +822,7 @@ const createConversation = async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 28px 20px;
   color: var(--text-secondary, #6b7280);
 }
 
@@ -813,7 +844,7 @@ const createConversation = async () => {
 /* 空状态样式 */
 .empty-state {
   text-align: center;
-  padding: 32px 24px;
+  padding: 24px 20px;
   color: var(--text-secondary, #9ca3af);
   background-color: var(--card-bg, white);
   border-radius: 6px;
@@ -829,8 +860,8 @@ const createConversation = async () => {
 /* 加载更多 */
 .load-more {
   text-align: center;
-  padding: 16px;
-  margin-top: 8px;
+  padding: 10px;
+  margin-top: 4px;
 }
 
 .load-more-btn {
@@ -851,7 +882,7 @@ const createConversation = async () => {
 
 /* 底部按钮样式 */
 .user-profile-footer {
-  padding: 20px 24px;
+  padding: 12px 20px;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -861,7 +892,7 @@ const createConversation = async () => {
 
 .cancel-btn,
 .save-btn {
-  padding: 10px 20px;
+  padding: 9px 18px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -938,12 +969,12 @@ const createConversation = async () => {
   }
   
   .avatar-preview {
-    width: 80px;
-    height: 80px;
+    width: 48px;
+    height: 48px;
   }
   
   .member-selector {
-    max-height: 250px;
+    min-height: 220px;
   }
 }
 </style>
