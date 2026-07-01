@@ -26,13 +26,14 @@
     <!-- 操作栏 -->
     <div class="action-bar">
       <div class="filter-left">
-        <el-radio-group v-model="filterType" @change="fetchApprovals">
+        <el-radio-group v-model="filterType" @change="handleFilterChange">
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="avatar">Avatar</el-radio-button>
           <el-radio-button value="bot">Bot</el-radio-button>
           <el-radio-button value="group_ai">群聊AI</el-radio-button>
         </el-radio-group>
-        <el-radio-group v-model="filterStatus" @change="fetchApprovals" style="margin-left: 16px">
+        <el-radio-group v-model="filterStatus" @change="handleFilterChange" style="margin-left: 16px">
+          <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="pending">待审批 ({{ pendingCount }})</el-radio-button>
           <el-radio-button value="approved">已通过</el-radio-button>
           <el-radio-button value="rejected">已拒绝</el-radio-button>
@@ -190,7 +191,7 @@ interface User {
 }
 
 const filterType = ref<ApprovalType>('all')
-const filterStatus = ref<'pending' | 'approved' | 'rejected'>('pending')
+const filterStatus = ref<'all' | 'pending' | 'approved' | 'rejected'>('all')
 const loading = ref(false)
 const approvals = ref<ApprovalItem[]>([])
 const pendingCount = ref(0)
@@ -276,6 +277,8 @@ const fetchApprovals = async () => {
     const { data } = await getApprovals({
       type: filterType.value,
       status: filterStatus.value,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
     })
     approvals.value = data.data.list || []
     pagination.total = data.data.total || 0
@@ -292,6 +295,11 @@ const fetchApprovals = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const handleFilterChange = () => {
+  pagination.page = 1
+  fetchApprovals()
 }
 
 const handleApprove = async (row: ApprovalItem) => {

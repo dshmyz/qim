@@ -22,11 +22,13 @@
               <TreeNode
                 :node="dept"
                 :level="0"
+                :is-first="index === 0"
                 :is-last="index === departmentTree.length - 1"
                 :selected-id="selectedDepartment?.id"
                 @select="handleNodeClick"
                 @add-child="handleAddSubDepartment"
                 @delete="handleDeleteDepartment"
+                @move="handleMoveDepartment"
               />
             </template>
           </div>
@@ -195,6 +197,7 @@ import {
   createDepartment,
   updateDepartment,
   deleteDepartment,
+  moveDepartment,
   addEmployeeToDepartment,
   removeEmployeeFromDepartment,
   getDepartmentEmployees,
@@ -375,6 +378,14 @@ const handleDeleteDepartment = async (data: Organization) => {
 const handleAddEmployee = () => {
   selectedEmployeeId.value = null
   employeeDialogVisible.value = true
+}
+
+const handleMoveDepartment = async (payload: { node: Organization; direction: 'up' | 'down' }) => {
+  try {
+    await moveDepartment(payload.node.id, payload.direction)
+    await fetchTree()
+  } catch (error) {
+  }
 }
 
 const searchEmployees = async (query: string) => {

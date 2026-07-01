@@ -58,6 +58,14 @@ export const addEmployeeToDepartment = (data: DepartmentEmployeeParams): Promise
   })
 }
 
+export const moveDepartment = (id: number, direction: 'up' | 'down'): Promise<AxiosResponse<ApiResponse<void>>> => {
+  return request({
+    url: `/v1/departments/${id}/move`,
+    method: 'put',
+    data: { direction },
+  })
+}
+
 export const removeEmployeeFromDepartment = (departmentId: number, userId: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
     url: `/v1/department-employees/${departmentId}/${userId}`,

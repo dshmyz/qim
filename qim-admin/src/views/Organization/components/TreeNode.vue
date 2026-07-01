@@ -30,6 +30,20 @@
       <div class="node-actions">
         <el-button
           size="small"
+          :icon="Top"
+          circle
+          :disabled="isFirst"
+          @click.stop="emit('move', { node, direction: 'up' })"
+        />
+        <el-button
+          size="small"
+          :icon="Bottom"
+          circle
+          :disabled="isLast"
+          @click.stop="emit('move', { node, direction: 'down' })"
+        />
+        <el-button
+          size="small"
           :icon="Plus"
           circle
           @click.stop="emit('add-child', node)"
@@ -50,11 +64,13 @@
         <TreeNode
           :node="child"
           :level="level + 1"
+          :is-first="index === 0"
           :is-last="index === children.length - 1"
           :selected-id="selectedId"
           @select="emit('select', $event)"
           @add-child="emit('add-child', $event)"
           @delete="emit('delete', $event)"
+          @move="emit('move', $event)"
         />
       </template>
     </div>
@@ -63,12 +79,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ArrowRight, Plus, Delete, OfficeBuilding } from '@element-plus/icons-vue'
+import { ArrowRight, Plus, Delete, OfficeBuilding, Top, Bottom } from '@element-plus/icons-vue'
 import type { Organization } from '@/types'
 
 const props = defineProps<{
   node: Organization
   level: number
+  isFirst: boolean
   isLast: boolean
   selectedId?: number
 }>()
@@ -77,6 +94,7 @@ const emit = defineEmits<{
   select: [node: Organization]
   'add-child': [node: Organization]
   delete: [node: Organization]
+  move: [payload: { node: Organization; direction: 'up' | 'down' }]
 }>()
 
 const isExpanded = ref(true)

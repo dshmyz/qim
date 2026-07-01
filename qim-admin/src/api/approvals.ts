@@ -45,7 +45,9 @@ export interface ApprovalConfig {
 
 export const getApprovals = (params?: {
   type?: ApprovalType
-  status?: ApprovalStatus
+  status?: ApprovalStatus | 'all'
+  page?: number
+  pageSize?: number
 }): Promise<AxiosResponse<ApiResponse<ApprovalListResponse>>> => {
   return request({
     url: '/v1/admin/approvals',
