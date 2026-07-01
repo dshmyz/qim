@@ -90,7 +90,7 @@
     }
     .todo-item {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 10px;
       padding: 10px 12px;
       background: #ffffff;
@@ -112,6 +112,7 @@
       align-items: center;
       justify-content: center;
       transition: all 0.2s ease;
+      margin-top: 1px;
     }
     .todo-checkbox.checked {
       background: #2ecc71;
@@ -123,6 +124,18 @@
       font-size: 12px;
       font-weight: bold;
     }
+    .todo-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .todo-title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .todo-text {
       flex: 1;
       font-size: 14px;
@@ -131,6 +144,56 @@
     .todo-text.completed {
       color: #9ca3af;
       text-decoration: line-through;
+    }
+    .priority-badge {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 1px 7px;
+      border-radius: 10px;
+      line-height: 1.6;
+    }
+    .priority-badge.high {
+      background: rgba(231, 76, 60, 0.12);
+      color: #e74c3c;
+    }
+    .priority-badge.medium {
+      background: rgba(243, 156, 18, 0.12);
+      color: #e67e22;
+    }
+    .priority-badge.low {
+      background: rgba(52, 152, 219, 0.12);
+      color: #3498db;
+    }
+    .todo-desc {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .todo-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .todo-due {
+      font-size: 11px;
+      color: #6b7280;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .todo-due.overdue {
+      color: #e74c3c;
+    }
+    .todo-tag {
+      font-size: 11px;
+      color: #4a90d9;
+      background: rgba(74, 144, 217, 0.1);
+      padding: 1px 7px;
+      border-radius: 10px;
     }
     .todo-delete-btn {
       background: none;
@@ -220,6 +283,29 @@
         statsEl.textContent = total > 0 ? '共 ' + total + ' 项，已完成 ' + completed + ' 项' : '暂无待办事项';
       }
 
+      var PRIORITY_LABELS = { high: '高', medium: '中', low: '低' };
+
+      function parseTags(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try {
+          var parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          return String(raw).split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+        }
+      }
+
+      function formatDueDate(raw) {
+        var d = new Date(raw);
+        if (isNaN(d.getTime())) return '';
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return month + '-' + day + ' ' + hour + ':' + min;
+      }
+
       function render() {
         updateStats(tasks);
         listEl.innerHTML = '';
@@ -230,18 +316,65 @@
         }
 
         tasks.forEach(function(task) {
+          var isCompleted = task.status === 'completed';
+
           var item = document.createElement('div');
           item.className = 'todo-item';
 
           var checkbox = document.createElement('div');
-          checkbox.className = 'todo-checkbox' + (task.status === 'completed' ? ' checked' : '');
+          checkbox.className = 'todo-checkbox' + (isCompleted ? ' checked' : '');
           checkbox.addEventListener('click', function() {
             toggleTaskStatus(task);
           });
 
+          var body = document.createElement('div');
+          body.className = 'todo-body';
+
+          var titleRow = document.createElement('div');
+          titleRow.className = 'todo-title-row';
+
           var text = document.createElement('span');
-          text.className = 'todo-text' + (task.status === 'completed' ? ' completed' : '');
+          text.className = 'todo-text' + (isCompleted ? ' completed' : '');
           text.textContent = task.title;
+          titleRow.appendChild(text);
+
+          if (task.priority && PRIORITY_LABELS[task.priority]) {
+            var badge = document.createElement('span');
+            badge.className = 'priority-badge ' + task.priority;
+            badge.textContent = PRIORITY_LABELS[task.priority];
+            titleRow.appendChild(badge);
+          }
+          body.appendChild(titleRow);
+
+          if (task.description) {
+            var desc = document.createElement('div');
+            desc.className = 'todo-desc';
+            desc.textContent = task.description;
+            body.appendChild(desc);
+          }
+
+          var tags = parseTags(task.tags);
+          var dueText = task.due_date ? formatDueDate(task.due_date) : '';
+          if (dueText || tags.length > 0) {
+            var meta = document.createElement('div');
+            meta.className = 'todo-meta';
+
+            if (dueText) {
+              var due = document.createElement('span');
+              var overdue = !isCompleted && new Date(task.due_date).getTime() < Date.now();
+              due.className = 'todo-due' + (overdue ? ' overdue' : '');
+              due.textContent = '📅 ' + dueText;
+              meta.appendChild(due);
+            }
+
+            tags.forEach(function(tag) {
+              var tagEl = document.createElement('span');
+              tagEl.className = 'todo-tag';
+              tagEl.textContent = '#' + tag;
+              meta.appendChild(tagEl);
+            });
+            body.appendChild(meta);
+          }
 
           var deleteBtn = document.createElement('button');
           deleteBtn.className = 'todo-delete-btn';
@@ -251,7 +384,7 @@
           });
 
           item.appendChild(checkbox);
-          item.appendChild(text);
+          item.appendChild(body);
           item.appendChild(deleteBtn);
           listEl.appendChild(item);
         });

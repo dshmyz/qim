@@ -89,6 +89,8 @@ const shouldSandbox = computed(() => true)
 
 // 从后端获取最新路径，避免历史消息中嵌入的旧路径过期
 const resolvedPath = ref('')
+// 每次打开小程序刷新，用于绕过 iframe 缓存加载最新文件
+const cacheBuster = ref('')
 
 const fetchLatestMiniApp = async () => {
   if (!props.miniApp?.appID) return
@@ -106,8 +108,11 @@ const fetchLatestMiniApp = async () => {
 const iframeSrc = computed(() => {
   const path = resolvedPath.value || props.miniApp?.path
   if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${getStoredServerUrl()}${path.startsWith('/') ? '' : '/'}${path}`
+  const base = (path.startsWith('http://') || path.startsWith('https://'))
+    ? path
+    : `${getStoredServerUrl()}${path.startsWith('/') ? '' : '/'}${path}`
+  if (!cacheBuster.value) return base
+  return `${base}${base.includes('?') ? '&' : '?'}_t=${cacheBuster.value}`
 })
 
 const hasPermission = (perm: string): boolean => {
@@ -307,6 +312,7 @@ onBeforeUnmount(() => {
 
 watch(() => props.miniApp, async (newVal) => {
   if (newVal) {
+    cacheBuster.value = String(Date.now())
     await fetchLatestMiniApp()
     loadMiniApp()
   }
