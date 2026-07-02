@@ -529,9 +529,12 @@ func seedDefaultChannel(db *gorm.DB) {
 	db.Model(&model.Channel{}).Where("is_default = ?", true).Count(&count)
 	if count == 0 {
 		var creatorID uint
-		var sysUser model.User
-		if err := db.Where("type = ?", "system").First(&sysUser).Error; err == nil {
-			creatorID = sysUser.ID
+		var creator model.User
+		// 优先归属管理员，找不到再回退系统用户
+		if err := db.Where("type = ?", "admin").First(&creator).Error; err == nil {
+			creatorID = creator.ID
+		} else if err := db.Where("type = ?", "system").First(&creator).Error; err == nil {
+			creatorID = creator.ID
 		}
 
 		channel := model.Channel{

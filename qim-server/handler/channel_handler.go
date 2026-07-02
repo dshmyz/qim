@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -227,14 +228,26 @@ func CreateChannelMessage(c *gin.Context) {
 	}
 
 	if channel.CreatorID != userID.(uint) {
-		if channel.PublishPermission == "creator_only" {
-			response.Forbidden(c, "无权限发布消息，仅频道创建者可发布")
-			return
+		// 系统管理员可在任意频道发布消息（不受 creator_only 限制）
+		roles, _ := di.GlobalContainer.UserService.GetUserRoles(userID.(uint))
+		isAdmin := false
+		for _, r := range roles {
+			if r == "system_admin" {
+				isAdmin = true
+				break
+			}
 		}
-		var subscription model.ChannelSubscriber
-		if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
-			response.Forbidden(c, "无权限发布消息，需先订阅该频道")
-			return
+
+		if !isAdmin {
+			if channel.PublishPermission == "creator_only" {
+				response.Forbidden(c, "无权限发布消息，仅频道创建者可发布")
+				return
+			}
+			var subscription model.ChannelSubscriber
+			if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
+				response.Forbidden(c, "无权限发布消息，需先订阅该频道")
+				return
+			}
 		}
 	}
 
