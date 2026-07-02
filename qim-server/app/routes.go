@@ -474,7 +474,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
 
 			// 频道
-			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateChannel)
+			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin", "channel_manager"), handler.CreateChannel)
 			authed.GET("/channels", handler.GetChannels)
 			authed.POST("/channels/:id/subscribe", handler.SubscribeChannel)
 			authed.DELETE("/channels/:id/subscribe", handler.UnsubscribeChannel)
@@ -587,9 +587,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.POST("/groups", handler.AdminCreateGroup)
 				admin.PUT("/groups/:id", handler.AdminUpdateGroup)
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
-				admin.GET("/channels", handler.AdminGetChannels)
-				admin.PUT("/channels/:id", handler.AdminUpdateChannel)
-				admin.DELETE("/channels/:id", handler.AdminDeleteChannel)
+				admin.GET("/conversations", handler.AdminGetConversations)
+				admin.GET("/conversations/:id/members", handler.AdminGetConversationMembers)
+				admin.DELETE("/conversations/:id", handler.AdminDeleteConversation)
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/statistics/trend", handler.AdminGetStatisticsTrend)
 				admin.GET("/dashboard/stats", handler.AdminGetDashboardStats)
@@ -661,6 +661,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/feedbacks", feedbackHandler.GetFeedbacks)
 				admin.PUT("/feedbacks/:id", feedbackHandler.UpdateFeedback)
 				authed.POST("/feedbacks", feedbackHandler.CreateFeedback)
+			}
+
+			// 频道管理后台接口（system_admin 或 channel_manager）
+			adminChannel := authed.Group("/admin")
+			adminChannel.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin", "channel_manager"))
+			{
+				adminChannel.GET("/channels", handler.AdminGetChannels)
+				adminChannel.PUT("/channels/:id", handler.AdminUpdateChannel)
+				adminChannel.DELETE("/channels/:id", handler.AdminDeleteChannel)
 			}
 
 			// 节点间通信（需要节点内部认证）

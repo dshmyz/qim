@@ -129,8 +129,8 @@ import ActionButton from '@/components/common/ActionButton.vue'
 import EntityDialog from '@/components/forms/EntityDialog.vue'
 import AvatarConfigDialog from './components/AvatarConfigDialog.vue'
 import { useEntity } from '@/composables/useEntity'
-import { getUsers, createUser, updateUser, deleteUser, assignRoles } from '@/api/users'
-import { userFields, userRules, roleOptions } from './config'
+import { getUsers, createUser, updateUser, deleteUser, assignRoles, getRoles } from '@/api/users'
+import { userFields, userRules } from './config'
 import type { User } from '@/types'
 import type { FormField as EntityFormField } from '@/composables/useEntity'
 import type { FormField as RendererFormField } from '@/components/forms/FieldRenderer.vue'
@@ -189,8 +189,19 @@ const currentUser = ref<User | null>(null)
 const selectedRoles = ref<string[]>([])
 const roleSubmitting = ref(false)
 
+const roleOptions = ref<{ label: string; value: string }[]>([])
+
+const fetchRoles = async () => {
+  try {
+    const { data } = await getRoles()
+    roleOptions.value = (data.data.list || []).map((r) => ({ label: r.name, value: r.code }))
+  } catch (error) {
+    console.error('[UserManagement] fetch roles failed:', error)
+  }
+}
+
 const getRoleName = (roleId: string): string => {
-  const option = roleOptions.find((r) => r.value === roleId)
+  const option = roleOptions.value.find((r) => r.value === roleId)
   return option?.label || `角色 #${roleId}`
 }
 
@@ -313,7 +324,10 @@ const handleSaveBatchRoles = async () => {
   }
 }
 
-onMounted(fetchData)
+onMounted(() => {
+  fetchData()
+  fetchRoles()
+})
 </script>
 
 <style scoped>

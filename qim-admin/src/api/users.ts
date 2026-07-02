@@ -73,6 +73,24 @@ export const removeRole = (userId: number, role: string): Promise<AxiosResponse<
   })
 }
 
+export interface RoleInfo {
+  id: number
+  name: string
+  code: string
+  description: string
+  permissions: string[]
+  userCount: number
+  createdAt: string
+}
+
+export const getRoles = (): Promise<AxiosResponse<ApiResponse<PaginatedResponse<RoleInfo>>>> => {
+  return request({
+    url: '/v1/admin/roles',
+    method: 'get',
+    params: { page: 1, pageSize: 100 },
+  })
+}
+
 export const banUser = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
     url: `/v1/admin/users/${id}/ban`,

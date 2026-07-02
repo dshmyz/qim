@@ -18,10 +18,3 @@ export const userRules: FormRules = {
     { type: 'email', message: '请输入有效邮箱', trigger: 'blur' },
   ],
 }
-
-export const roleOptions = [
-  { label: '系统管理员', value: 'system_admin' },
-  { label: '系统发布者', value: 'system_publisher' },
-  { label: '系统审核员', value: 'system_moderator' },
-  { label: '系统运营', value: 'system_operator' },
-]

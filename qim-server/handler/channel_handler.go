@@ -228,11 +228,11 @@ func CreateChannelMessage(c *gin.Context) {
 	}
 
 	if channel.CreatorID != userID.(uint) {
-		// 系统管理员可在任意频道发布消息（不受 creator_only 限制）
+		// 系统管理员/频道管理员可在任意频道发布消息（不受 creator_only 限制）
 		roles, _ := di.GlobalContainer.UserService.GetUserRoles(userID.(uint))
 		isAdmin := false
 		for _, r := range roles {
-			if r == "system_admin" {
+			if r == "system_admin" || r == "channel_manager" {
 				isAdmin = true
 				break
 			}
