@@ -59,3 +59,19 @@ export const deleteChannel = (id: number): Promise<AxiosResponse<ApiResponse<voi
     method: 'delete',
   })
 }
+
+export interface CreateChannelMessageParams {
+  content: string
+  type?: string
+}
+
+export const createChannelMessage = (
+  id: number,
+  data: CreateChannelMessageParams,
+): Promise<AxiosResponse<ApiResponse<unknown>>> => {
+  return request({
+    url: `/v1/channels/${id}/messages`,
+    method: 'post',
+    data,
+  })
+}

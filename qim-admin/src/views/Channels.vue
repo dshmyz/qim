@@ -41,8 +41,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" type="primary" @click="handlePublish(row)">发布消息</el-button>
             <el-button size="small" @click="handleEdit(row)">编辑</el-button>
             <el-popconfirm
               title="确定删除该频道吗？删除后订阅和消息将一并清除。"
@@ -101,6 +102,32 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="publishDialogVisible"
+      :title="`发布消息 - ${publishChannelName}`"
+      width="500px"
+    >
+      <el-form
+        ref="publishFormRef"
+        :model="publishForm"
+        :rules="publishRules"
+        label-width="80px"
+      >
+        <el-form-item label="内容" prop="content">
+          <el-input
+            v-model="publishForm.content"
+            type="textarea"
+            :rows="5"
+            placeholder="请输入要发布的消息内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="publishDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="publishing" @click="handlePublishSubmit">发布</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -108,7 +135,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { getChannels, createChannel, updateChannel, deleteChannel } from '@/api/channels'
+import { getChannels, createChannel, updateChannel, deleteChannel, createChannelMessage } from '@/api/channels'
 import type { ChannelInfo } from '@/api/channels'
 
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
@@ -131,6 +158,17 @@ const channelForm = reactive({
 
 const channelRules: FormRules = {
   name: [{ required: true, message: '请输入频道名称', trigger: 'blur' }],
+}
+
+const publishDialogVisible = ref(false)
+const publishFormRef = ref<FormInstance>()
+const publishing = ref(false)
+const publishChannelId = ref<number | null>(null)
+const publishChannelName = ref('')
+const publishForm = reactive({ content: '' })
+
+const publishRules: FormRules = {
+  content: [{ required: true, message: '请输入消息内容', trigger: 'blur' }],
 }
 
 const fetchChannels = async () => {
@@ -210,6 +248,30 @@ const handleDelete = async (id: number) => {
   } catch (error) {
     // 错误已在请求拦截器中处理
   }
+}
+
+const handlePublish = (row: ChannelInfo) => {
+  publishChannelId.value = row.id
+  publishChannelName.value = row.name
+  publishForm.content = ''
+  publishDialogVisible.value = true
+}
+
+const handlePublishSubmit = async () => {
+  if (!publishFormRef.value) return
+  await publishFormRef.value.validate(async (valid) => {
+    if (!valid || !publishChannelId.value) return
+    publishing.value = true
+    try {
+      await createChannelMessage(publishChannelId.value, { content: publishForm.content })
+      ElMessage.success('发布成功')
+      publishDialogVisible.value = false
+    } catch (error) {
+      // 错误已在请求拦截器中处理
+    } finally {
+      publishing.value = false
+    }
+  })
 }
 
 onMounted(fetchChannels)
