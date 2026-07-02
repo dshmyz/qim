@@ -50,8 +50,8 @@ defineEmits<{
 .back-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border-color);
-  background: var(--hover-color);
+  border: none;
+  background: none;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
@@ -69,8 +69,8 @@ defineEmits<{
 .header-left :deep(.icon-btn) {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border-color);
-  background: var(--hover-color);
+  border: none;
+  background: none;
   border-radius: 6px;
   cursor: pointer;
   display: flex;

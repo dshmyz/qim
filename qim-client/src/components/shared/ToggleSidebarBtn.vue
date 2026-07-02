@@ -35,8 +35,8 @@ defineEmits<{
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border-color);
-  background: var(--hover-color);
+  border: none;
+  background: none;
   border-radius: 6px;
   cursor: pointer;
   color: var(--primary-color);

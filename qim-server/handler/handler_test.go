@@ -277,6 +277,42 @@ func TestGetConversations_OrdersEmptyConversationByCreatedAt(t *testing.T) {
 	assert.Equal(t, newConversation.ID, response.Data.List[0].ID)
 }
 
+func TestGetConversations_SelfChatUsesCurrentUserAsDisplayMember(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+	user.Avatar = "/avatars/self.png"
+	require.NoError(t, db.Save(user).Error)
+
+	conversation := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(conversation).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: user.ID, Role: "member"}).Error)
+
+	req := httptest.NewRequest("GET", "/api/v1/conversations?page=1&page_size=20", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID              uint   `json:"id"`
+				Name            string `json:"name"`
+				Avatar          string `json:"avatar"`
+				OtherMemberID   uint   `json:"other_member_id"`
+				OtherMemberName string `json:"other_member_name"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	require.Len(t, response.Data.List, 1)
+	assert.Equal(t, conversation.ID, response.Data.List[0].ID)
+	assert.Equal(t, user.Nickname, response.Data.List[0].Name)
+	assert.Equal(t, user.Avatar, response.Data.List[0].Avatar)
+	assert.Equal(t, user.ID, response.Data.List[0].OtherMemberID)
+	assert.Equal(t, user.Nickname, response.Data.List[0].OtherMemberName)
+}
+
 func TestCreateSingleConversation_RestoresHiddenConversationWithMembers(t *testing.T) {
 	r, db := setupTestRouter(t)
 	currentUser := createTestUser(t, db)
@@ -316,6 +352,40 @@ func TestCreateSingleConversation_RestoresHiddenConversationWithMembers(t *testi
 	var session model.ConversationSession
 	require.NoError(t, db.Where("user_id = ? AND conversation_id = ?", currentUser.ID, conversation.ID).First(&session).Error)
 	assert.False(t, session.IsHidden)
+}
+
+func TestCreateSingleConversation_SelfChatDoesNotReuseConversationWithAnotherUser(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentUser := createTestUser(t, db)
+	recipient := &model.User{Username: "recipient", PasswordHash: "hash", Nickname: "对方用户"}
+	require.NoError(t, db.Create(recipient).Error)
+
+	existingConversation := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(existingConversation).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: existingConversation.ID, UserID: currentUser.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: existingConversation.ID, UserID: recipient.ID, Role: "member"}).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "user_id": currentUser.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			ID      uint `json:"id"`
+			Members []struct {
+				UserID uint `json:"user_id"`
+			} `json:"members"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	assert.NotEqual(t, existingConversation.ID, response.Data.ID)
+	require.Len(t, response.Data.Members, 1)
+	assert.Equal(t, currentUser.ID, response.Data.Members[0].UserID)
 }
 
 func TestCreateBotConversation_IncludesBotVirtualUserMember(t *testing.T) {

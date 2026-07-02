@@ -6,8 +6,8 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/model"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
 
@@ -112,4 +112,28 @@ func TestConversationRepository_FindSingleConversation(t *testing.T) {
 	found, err := repo.FindSingleConversation(ctx, user1.ID, user2.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, conv.ID, found.ID)
+}
+
+func TestConversationRepository_FindSingleConversation_SelfChatDoesNotMatchTwoMemberConversation(t *testing.T) {
+	db := setupConvTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	user1 := &model.User{Username: "user1", PasswordHash: "hash"}
+	user2 := &model.User{Username: "user2", PasswordHash: "hash"}
+	db.Create(user1)
+	db.Create(user2)
+
+	twoMemberConv := &model.Conversation{Type: "single"}
+	db.Create(twoMemberConv)
+	db.Create(&model.ConversationMember{ConversationID: twoMemberConv.ID, UserID: user1.ID, Role: "member"})
+	db.Create(&model.ConversationMember{ConversationID: twoMemberConv.ID, UserID: user2.ID, Role: "member"})
+
+	selfConv := &model.Conversation{Type: "single"}
+	db.Create(selfConv)
+	db.Create(&model.ConversationMember{ConversationID: selfConv.ID, UserID: user1.ID, Role: "member"})
+
+	found, err := repo.FindSingleConversation(ctx, user1.ID, user1.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, selfConv.ID, found.ID)
 }

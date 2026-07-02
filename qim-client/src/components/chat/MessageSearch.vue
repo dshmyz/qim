@@ -19,6 +19,7 @@
         :is-recalled="message.isRecalled"
         :conversation-type="conversationType"
         :read-users-map="readUsersMap"
+        :show-read-receipt="showReadReceipt"
         :server-url="serverUrl"
         @contextmenu="(e: MouseEvent) => $emit('message-contextmenu', e, message)"
         @show-user-profile="(user: any) => $emit('show-user-profile', user)"
@@ -58,10 +59,13 @@ interface Props {
   isSearching: boolean
   conversationType: 'single' | 'group' | 'discussion'
   readUsersMap: Record<string, { read_users: any[], total_members: number }>
+  showReadReceipt?: boolean
   serverUrl: string
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  showReadReceipt: true
+})
 
 defineEmits<{
   (e: 'clear-search'): void

@@ -7,6 +7,7 @@
       :has-more-messages="hasMoreMessages"
       :conversation-type="conversation?.type || 'single'"
       :read-users-map="readUsersMap"
+      :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
@@ -63,6 +64,7 @@ interface Props {
   messages: Message[]
   hasMoreMessages: boolean
   readUsersMap: Record<string, MessageReadInfo>
+  showReadReceipt: boolean
   serverUrl: string
   isMembersSidebarExpanded: boolean
   showMemberSearch: boolean

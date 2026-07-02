@@ -153,10 +153,10 @@
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
           </div>
-          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && (conversationType === 'group' || conversationType === 'discussion') && !isRecalled" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
+          <div v-else-if="shouldShowReadReceipt && (conversationType === 'group' || conversationType === 'discussion')" class="message-read-status clickable" :class="{ 'read': message.isRead }" @click="$emit('showReadUsers', message)">
             {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
-          <div v-else-if="isSelf && systemConfigStore.enableReadReceipt && conversationType !== 'bot' && !isRecalled" class="message-read-status" :class="{ 'read': message.isRead }">
+          <div v-else-if="shouldShowReadReceipt" class="message-read-status" :class="{ 'read': message.isRead }">
             {{ message.isRead ? '已读' : '未读' }}
           </div>
         </div>
@@ -181,21 +181,25 @@ import StreamingMessage from './StreamingMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
-import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
 import { decodeToPlainText } from '../../utils/mentions'
 
-const systemConfigStore = useSystemConfigStore()
-
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   message: any
   isSelf: boolean
   isRecalled: boolean
   conversationType: string
   readUsersMap: Record<string, { read_users: any[], total_members: number, read_count?: number }>
+  showReadReceipt?: boolean
   serverUrl: string
-}>()
+}>(), {
+  showReadReceipt: true
+})
+
+const shouldShowReadReceipt = computed(() => {
+  return props.isSelf && props.showReadReceipt && !props.isRecalled
+})
 
 const isAIMessage = computed(() => {
   const fromOrigin = props.message.origin === 'assistant' || props.message.origin === 'avatar'

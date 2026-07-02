@@ -43,13 +43,24 @@ func (r *conversationRepository) FindByUserID(ctx context.Context, userID uint) 
 
 func (r *conversationRepository) FindSingleConversation(ctx context.Context, userID1, userID2 uint) (*model.Conversation, error) {
 	var conv model.Conversation
-	err := r.db.WithContext(ctx).
-		Joins("JOIN conversation_members cm1 ON cm1.conversation_id = conversations.id").
-		Joins("JOIN conversation_members cm2 ON cm2.conversation_id = conversations.id").
+	query := r.db.WithContext(ctx).
+		Model(&model.Conversation{}).
+		Select("conversations.*").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = conversations.id").
 		Where("conversations.type = ?", "single").
-		Where("cm1.user_id = ?", userID1).
-		Where("cm2.user_id = ?", userID2).
-		First(&conv).Error
+		Group("conversations.id")
+
+	if userID1 == userID2 {
+		query = query.Having("COUNT(cm.id) = 1 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1", userID1)
+	} else {
+		query = query.Having(
+			"COUNT(cm.id) = 2 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1",
+			userID1,
+			userID2,
+		)
+	}
+
+	err := query.First(&conv).Error
 	if err != nil {
 		return nil, err
 	}

@@ -42,6 +42,7 @@
       :messages="messages"
       :has-more-messages="hasMoreMessages"
       :read-users-map="readUsersMap"
+      :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
       :is-members-sidebar-expanded="isMembersSidebarExpanded"
       :show-member-search="showMemberSearch"
@@ -235,6 +236,7 @@ import AtMentionBanner from '../message/AtMentionBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useTaskStore } from '../../stores/task'
+import { useSystemConfigStore } from '../../stores/systemConfig'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
@@ -256,6 +258,7 @@ const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, o
 
 // 实时通信 store 和连接管理器
 const realtimeStore = useRealtimeStore()
+const systemConfigStore = useSystemConfigStore()
 const connectionManager = new RealtimeConnectionManager()
 const viewerConnection = new RealtimeViewerConnection()
 
@@ -419,6 +422,34 @@ const unreadAtMentionCount = computed(() => {
   const currentUserId = props.currentUser?.id?.toString()
   if (!currentUserId) return 0
   return props.messages.filter(m => m.isAtMention && !m.isSelf && !m.isRead).length
+})
+
+const getConversationMemberUserId = (member: any): string => {
+  const userId = member?.id ?? member?.user_id ?? member?.UserID ?? member?.user?.id ?? member?.User?.ID
+  return userId === undefined || userId === null ? '' : String(userId)
+}
+
+const isSelfChatConversation = computed(() => {
+  const conversation = props.conversation
+  const currentId = props.currentUser?.id
+
+  if (!conversation || currentId === undefined || currentId === null) return false
+  if (conversation.type !== 'single') return false
+
+  const currentIdText = String(currentId)
+  const members = conversation.members || []
+  if (members.length === 1) {
+    return getConversationMemberUserId(members[0]) === currentIdText
+  }
+
+  return String((conversation as any).other_member_id || '') === currentIdText
+})
+
+const showReadReceipt = computed(() => {
+  if (!systemConfigStore.enableReadReceipt) return false
+  if (props.conversation?.type === 'bot') return false
+  if (isSelfChatConversation.value) return false
+  return true
 })
 
 const navigateToFirstAtMention = () => {

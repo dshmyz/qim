@@ -162,7 +162,8 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       creator_id: conv.creator_id || conv.CreatorID || '',
       owner_id: conv.owner_id || conv.OwnerID || '',
       ownerId: conv.ownerId || conv.owner_id || conv.creator_id || conv.OwnerID || conv.CreatorID || '',
-      announcement: conv.announcement || ''
+      announcement: conv.announcement || '',
+      invite_permission: conv.invite_permission || 'owner_admin'
     }
     
     if ((conversationObj.type === 'group' || conversationObj.type === 'discussion') && conversationObj.lastMessage) {

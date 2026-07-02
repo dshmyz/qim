@@ -219,6 +219,15 @@ func GetConversations(c *gin.Context) {
 		for _, om := range otherMembers {
 			otherMemberMap[om.ConversationID] = om.UserID
 		}
+
+		for _, convID := range singleConvIDs {
+			conv := conversationMap[convID]
+			if conv.Type == "single" {
+				if _, ok := otherMemberMap[convID]; !ok {
+					otherMemberMap[convID] = uid
+				}
+			}
+		}
 	}
 
 	uniqueUserIDs := make([]uint, 0, len(otherMemberMap))
@@ -704,13 +713,29 @@ func CreateSingleConversation(c *gin.Context) {
 	}
 
 	var existingConv model.Conversation
-	db.Raw(`
-		SELECT c.* FROM conversations c
-		JOIN conversation_members cm1 ON c.id = cm1.conversation_id
-		JOIN conversation_members cm2 ON c.id = cm2.conversation_id
-		WHERE c.type = 'single'
-		AND cm1.user_id = ? AND cm2.user_id = ?
-	`, userID, req.UserID).Scan(&existingConv)
+	existingQuery := db.Model(&model.Conversation{}).
+		Select("conversations.*").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = conversations.id").
+		Where("conversations.type = ?", "single").
+		Group("conversations.id")
+
+	if userID.(uint) == req.UserID {
+		existingQuery = existingQuery.Having(
+			"COUNT(cm.id) = 1 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1",
+			userID.(uint),
+		)
+	} else {
+		existingQuery = existingQuery.Having(
+			"COUNT(cm.id) = 2 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1 AND SUM(CASE WHEN cm.user_id = ? THEN 1 ELSE 0 END) = 1",
+			userID.(uint),
+			req.UserID,
+		)
+	}
+
+	if err := existingQuery.Scan(&existingConv).Error; err != nil {
+		response.InternalServerError(c, "查询会话失败")
+		return
+	}
 
 	if existingConv.ID > 0 {
 		// 恢复会话显示：用户主动发起聊天时，如果会话被隐藏则恢复显示
