@@ -8,6 +8,10 @@ qim-server/qim-server
 qim-server/main
 qim-server/server
 .DS_Store
+
+# 误生成的 home 目录备份
+~/
+
 .trae.worktrees/
 .worktrees/
 

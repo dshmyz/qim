@@ -27,7 +27,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
+        <el-table-column label="内容" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ formatMessageContent(row.content) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="createdAt" label="时间" width="180">
           <template #default="{ row }">
             {{ formatTime(row.createdAt) }}
@@ -35,7 +39,7 @@
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleViewDetail(row)">
+            <el-button class="detail-action-button" size="small" type="primary" @click="handleViewDetail(row)">
               详情
             </el-button>
           </template>
@@ -77,7 +81,7 @@
           {{ formatTime(currentMessage?.createdAt) }}
         </el-descriptions-item>
         <el-descriptions-item label="消息内容" :span="2">
-          {{ currentMessage?.content }}
+          {{ formatMessageContent(currentMessage?.content) }}
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
@@ -90,6 +94,7 @@ import { useMessageStore } from '@/stores/message'
 import MessageSearchForm from '@/components/search/MessageSearchForm.vue'
 import { getUsers } from '@/api/users'
 import type { Message, MessageSearchParams } from '@/types/message'
+import { decodeMentionTokens } from '@/utils/mentions'
 
 const messageStore = useMessageStore()
 const users = ref<Array<{ id: number; name: string }>>([])
@@ -170,6 +175,11 @@ function formatTime(time?: string) {
   if (!time) return '-'
   return new Date(time).toLocaleString('zh-CN')
 }
+
+function formatMessageContent(content?: string) {
+  if (!content) return ''
+  return decodeMentionTokens(content)
+}
 </script>
 
 <style scoped>
@@ -186,5 +196,10 @@ function formatTime(time?: string) {
 .el-pagination {
   margin-top: 20px;
   justify-content: flex-end;
+}
+
+.detail-action-button {
+  min-width: 56px;
+  font-weight: 600;
 }
 </style>

@@ -428,6 +428,102 @@ func TestCreateBotConversation_IncludesBotVirtualUserMember(t *testing.T) {
 	assert.Contains(t, []string{response.Data.Members[0].User.Nickname, response.Data.Members[1].User.Nickname}, "青雀一号")
 }
 
+func TestCreateSingleConversation_RejectsBotInitiatorForBotRecipient(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentBotUser := &model.User{Username: "bot_current", PasswordHash: "hash", Nickname: "当前机器人", Type: "bot"}
+	require.NoError(t, db.Create(currentBotUser).Error)
+	require.Equal(t, uint(1), currentBotUser.ID)
+
+	recipientBotUser := &model.User{Username: "bot_recipient", PasswordHash: "hash", Nickname: "目标机器人", Type: "bot"}
+	require.NoError(t, db.Create(recipientBotUser).Error)
+	recipientBot := &model.Bot{Name: "目标机器人", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &recipientBotUser.ID}
+	require.NoError(t, db.Create(recipientBot).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "user_id": recipientBotUser.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	var botConvCount int64
+	require.NoError(t, db.Model(&model.BotConversation{}).Count(&botConvCount).Error)
+	assert.Equal(t, int64(0), botConvCount)
+}
+
+func TestCreateBotConversation_RejectsBotInitiator(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentBotUser := &model.User{Username: "bot_current", PasswordHash: "hash", Nickname: "当前机器人", Type: "bot"}
+	require.NoError(t, db.Create(currentBotUser).Error)
+	require.Equal(t, uint(1), currentBotUser.ID)
+
+	targetBotUser := &model.User{Username: "bot_target", PasswordHash: "hash", Nickname: "目标机器人", Type: "bot"}
+	require.NoError(t, db.Create(targetBotUser).Error)
+	targetBot := &model.Bot{Name: "目标机器人", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &targetBotUser.ID}
+	require.NoError(t, db.Create(targetBot).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "bot", "bot_id": targetBot.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	var botConvCount int64
+	require.NoError(t, db.Model(&model.BotConversation{}).Count(&botConvCount).Error)
+	assert.Equal(t, int64(0), botConvCount)
+}
+
+// TestCreateBotConversation_RejectsSystemInitiator 验证 system 类型用户不能创建机器人会话。
+func TestCreateBotConversation_RejectsSystemInitiator(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentSystemUser := &model.User{Username: "sys_current", PasswordHash: "hash", Nickname: "系统用户", Type: "system"}
+	require.NoError(t, db.Create(currentSystemUser).Error)
+	require.Equal(t, uint(1), currentSystemUser.ID)
+
+	targetBotUser := &model.User{Username: "bot_target", PasswordHash: "hash", Nickname: "目标机器人", Type: "bot"}
+	require.NoError(t, db.Create(targetBotUser).Error)
+	targetBot := &model.Bot{Name: "目标机器人", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &targetBotUser.ID}
+	require.NoError(t, db.Create(targetBot).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "bot", "bot_id": targetBot.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	var botConvCount int64
+	require.NoError(t, db.Model(&model.BotConversation{}).Count(&botConvCount).Error)
+	assert.Equal(t, int64(0), botConvCount)
+}
+
+// TestCreateBotConversation_AllowsUnknownTypeInitiator 验证未知用户类型（如 "guest"）
+// 仍可创建机器人会话——采用正向判断，只拦截 bot/system/api。
+func TestCreateBotConversation_AllowsUnknownTypeInitiator(t *testing.T) {
+	r, db := setupTestRouter(t)
+	guestUser := &model.User{Username: "guest_user", PasswordHash: "hash", Nickname: "访客", Type: "guest"}
+	require.NoError(t, db.Create(guestUser).Error)
+	require.Equal(t, uint(1), guestUser.ID)
+
+	targetBotUser := &model.User{Username: "bot_target", PasswordHash: "hash", Nickname: "目标机器人", Type: "bot"}
+	require.NoError(t, db.Create(targetBotUser).Error)
+	targetBot := &model.Bot{Name: "目标机器人", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &targetBotUser.ID}
+	require.NoError(t, db.Create(targetBot).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "bot", "bot_id": targetBot.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "guest 类型用户应被允许创建机器人会话")
+}
+
 // TestCreateSingleConversation_HidesConversationForRecipient 验证创建私聊会话时，
 // 接收方的会话默认被隐藏，发起方不受影响。
 func TestCreateSingleConversation_HidesConversationForRecipient(t *testing.T) {
@@ -630,6 +726,76 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestLogin_DisabledAccountRejected 验证 AccountStatus=disabled 的用户不能登录。
+func TestLogin_DisabledAccountRejected(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+	user.AccountStatus = "disabled"
+	require.NoError(t, db.Save(user).Error)
+
+	body := map[string]string{
+		"username": "testuser",
+		"password": "password123",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEqual(t, 0, resp.Code)
+}
+
+// TestLogin_BannedAccountRejected 验证 AccountStatus=banned 的用户不能登录。
+func TestLogin_BannedAccountRejected(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+	user.AccountStatus = "banned"
+	require.NoError(t, db.Save(user).Error)
+
+	body := map[string]string{
+		"username": "testuser",
+		"password": "password123",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// TestAdminUpdateUser_UpdatesAccountStatus 验证管理员可以通过 PUT /admin/users/:id 更新用户账号状态。
+func TestAdminUpdateUser_UpdatesAccountStatus(t *testing.T) {
+	r, db := setupTestRouter(t)
+	// 注册 admin 路由
+	r.PUT("/api/v1/admin/users/:id", AdminUpdateUser)
+
+	target := createTestUser(t, db)
+
+	body, _ := json.Marshal(map[string]any{
+		"nickname":      "新昵称",
+		"accountStatus": "disabled",
+	})
+	req := httptest.NewRequest("PUT", fmt.Sprintf("/api/v1/admin/users/%d", target.ID), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var updated model.User
+	require.NoError(t, db.First(&updated, target.ID).Error)
+	assert.Equal(t, "新昵称", updated.Nickname)
+	assert.Equal(t, "disabled", updated.AccountStatus)
 }
 
 func TestGetCurrentUser_Success(t *testing.T) {

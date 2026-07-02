@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -11,10 +16,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"log"
-	"strings"
-	"sync"
-	"time"
 )
 
 // SmartReplyEngine 智能回复引擎
@@ -217,13 +218,6 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 	if shouldReply {
 		go e.generateAndSendReply(userID, conversationID, content, intent)
-	}
-
-	// 待办提取（所有群聊消息都尝试提取）
-	if todoExtractor != nil && conv.Type == "group" {
-		if group != nil && group.GetAIConfig().ExtractTodos {
-			go todoExtractor.ExtractAndCreateTodos(content, userID, conversationID)
-		}
 	}
 }
 
@@ -755,26 +749,39 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 	var convMembers []model.ConversationMember
 	db.Where("conversation_id = ? AND user_id != ?", conv.ID, senderID).Find(&convMembers)
 
+	// 收集已有 session 的 userID，筛出缺失 session 的成员
+	sessionUserIDs := make(map[uint]bool, len(sessions))
+	for _, s := range sessions {
+		sessionUserIDs[s.UserID] = true
+	}
+
+	var missingUserIDs []uint
 	for _, member := range convMembers {
-		hasSession := false
-		for _, session := range sessions {
-			if session.UserID == member.UserID {
-				hasSession = true
-				break
-			}
+		if !sessionUserIDs[member.UserID] {
+			missingUserIDs = append(missingUserIDs, member.UserID)
+		}
+	}
+
+	// 批量查询缺失 session 成员的全局分身配置，避免 N+1 查询
+	if len(missingUserIDs) > 0 {
+		var configs []model.AvatarConfig
+		db.Where("user_id IN ? AND enabled = ?", missingUserIDs, true).Find(&configs)
+
+		configMap := make(map[uint]bool, len(configs))
+		for _, c := range configs {
+			configMap[c.UserID] = true
 		}
 
-		if !hasSession {
-			var avatarConfig model.AvatarConfig
-			if err := db.Where("user_id = ? AND enabled = ?", member.UserID, true).First(&avatarConfig).Error; err == nil {
-				log.Printf("[AvatarTrigger] 用户 %d 全局分身已启用但无会话级记录，自动创建 (convID=%d)", member.UserID, conv.ID)
+		for _, uid := range missingUserIDs {
+			if configMap[uid] {
+				log.Printf("[AvatarTrigger] 用户 %d 全局分身已启用但无会话级记录，自动创建 (convID=%d)", uid, conv.ID)
 				newSession := model.AvatarSession{
 					ConversationID: conv.ID,
-					UserID:         member.UserID,
+					UserID:         uid,
 					AvatarEnabled:  true,
 				}
 				if err := db.Create(&newSession).Error; err != nil {
-					log.Printf("[AvatarTrigger] 自动创建分身会话失败: userID=%d err=%v", member.UserID, err)
+					log.Printf("[AvatarTrigger] 自动创建分身会话失败: userID=%d err=%v", uid, err)
 				} else {
 					sessions = append(sessions, newSession)
 				}

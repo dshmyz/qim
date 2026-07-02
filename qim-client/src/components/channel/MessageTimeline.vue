@@ -13,9 +13,13 @@
       </div>
       <div class="timeline-content">
         <div class="timeline-header">
-          <img
-            :src="getAvatarUrl(message.sender?.avatar, getSenderName(message), serverUrl)"
+          <Avatar
+            :src="message.sender?.avatar"
+            :name="getSenderName(message)"
+            :server-url="serverUrl"
             :alt="`${getSenderName(message)}的头像`"
+            size="sm"
+            shape="rounded"
             class="timeline-avatar"
           />
           <div class="timeline-info">
@@ -39,9 +43,10 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { getAvatarUrl, getDisplayName } from '../../utils/avatar'
+import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
+import Avatar from '../shared/Avatar.vue'
 import type { ChannelMessage } from '../../types'
 
 const { serverUrl } = useServerUrl()
@@ -141,8 +146,6 @@ const isCreator = (message: ChannelMessage): boolean => {
 .timeline-avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
   flex-shrink: 0;
 }
 

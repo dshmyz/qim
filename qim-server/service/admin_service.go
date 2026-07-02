@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -15,6 +17,350 @@ type AdminService struct {
 
 func NewAdminService(db *gorm.DB) *AdminService {
 	return &AdminService{db: db}
+}
+
+type AdminConversationQuery struct {
+	Page     int
+	PageSize int
+	Type     string
+	Keyword  string
+}
+
+type AdminConversationInfo struct {
+	ID            uint   `json:"id"`
+	Type          string `json:"type"`
+	Name          string `json:"name"`
+	CreatorID     uint   `json:"creatorId"`
+	CreatorName   string `json:"creatorName"`
+	MemberCount   int64  `json:"memberCount"`
+	IsPinned      bool   `json:"isPinned"`
+	LastMessageAt string `json:"lastMessageAt"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+type AdminConversationMemberInfo struct {
+	ID       uint   `json:"id"`
+	UserID   uint   `json:"userId"`
+	Username string `json:"username"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	Role     string `json:"role"`
+	JoinedAt string `json:"joinedAt"`
+}
+
+type AdminMessageSearchQuery struct {
+	Page             int
+	PageSize         int
+	Keyword          string
+	SenderID         uint
+	MessageType      string
+	ConversationType string
+	StartTime        *time.Time
+	EndTime          *time.Time
+}
+
+type AdminMessageInfo struct {
+	ID             uint   `json:"id"`
+	ConversationID uint   `json:"conversationId"`
+	SenderID       uint   `json:"senderId"`
+	SenderName     string `json:"senderName"`
+	ReceiverID     uint   `json:"receiverId,omitempty"`
+	ReceiverName   string `json:"receiverName,omitempty"`
+	GroupID        uint   `json:"groupId,omitempty"`
+	GroupName      string `json:"groupName,omitempty"`
+	MessageType    string `json:"messageType"`
+	Content        string `json:"content"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+func formatAdminTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04:05")
+}
+
+func formatAdminOptionalTime(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return formatAdminTime(*t)
+}
+
+func adminUserDisplayName(user model.User) string {
+	if user.Nickname != "" {
+		return user.Nickname
+	}
+	return user.Username
+}
+
+func (s *AdminService) GetConversations(query AdminConversationQuery) ([]AdminConversationInfo, int64, error) {
+	ctx := context.Background()
+
+	dbQuery := s.db.WithContext(ctx).Model(&model.Conversation{}).Where("conversations.is_deleted = ?", false)
+	if query.Type != "" {
+		dbQuery = dbQuery.Where("conversations.type = ?", query.Type)
+	}
+	if query.Keyword != "" {
+		keyword := "%" + query.Keyword + "%"
+		dbQuery = dbQuery.
+			Joins("LEFT JOIN `groups` g_filter ON g_filter.conversation_id = conversations.id").
+			Joins("LEFT JOIN conversation_members cm_filter ON cm_filter.conversation_id = conversations.id").
+			Joins("LEFT JOIN users u_filter ON u_filter.id = cm_filter.user_id").
+			Where("g_filter.name LIKE ? OR u_filter.nickname LIKE ? OR u_filter.username LIKE ?", keyword, keyword, keyword)
+	}
+
+	var total int64
+	if err := dbQuery.Distinct("conversations.id").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var conversationIDs []uint
+	offset := (query.Page - 1) * query.PageSize
+	if err := dbQuery.
+		Distinct("conversations.id").
+		Order("conversations.id DESC").
+		Offset(offset).
+		Limit(query.PageSize).
+		Pluck("conversations.id", &conversationIDs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var conversations []model.Conversation
+	if len(conversationIDs) > 0 {
+		if err := s.db.WithContext(ctx).
+			Where("id IN ?", conversationIDs).
+			Order("id DESC").
+			Find(&conversations).Error; err != nil {
+			return nil, 0, err
+		}
+	}
+
+	result := make([]AdminConversationInfo, 0, len(conversations))
+	for _, conv := range conversations {
+		info := AdminConversationInfo{
+			ID:            conv.ID,
+			Type:          conv.Type,
+			LastMessageAt: formatAdminOptionalTime(conv.LastMessageAt),
+			CreatedAt:     formatAdminTime(conv.CreatedAt),
+		}
+
+		var members []model.ConversationMember
+		if err := s.db.WithContext(ctx).
+			Where("conversation_id = ?", conv.ID).
+			Preload("User").
+			Find(&members).Error; err != nil {
+			return nil, 0, err
+		}
+		info.MemberCount = int64(len(members))
+
+		if conv.Type == "group" || conv.Type == "discussion" {
+			var group model.Group
+			if err := s.db.WithContext(ctx).Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
+				info.Name = group.Name
+				info.CreatorID = group.CreatorID
+
+				var creator model.User
+				if err := s.db.WithContext(ctx).First(&creator, group.CreatorID).Error; err == nil {
+					info.CreatorName = creator.Nickname
+					if info.CreatorName == "" {
+						info.CreatorName = creator.Username
+					}
+				}
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, 0, err
+			}
+		} else {
+			names := make([]string, 0, len(members))
+			for _, member := range members {
+				name := member.User.Nickname
+				if name == "" {
+					name = member.User.Username
+				}
+				if name != "" {
+					names = append(names, name)
+				}
+			}
+			info.Name = strings.Join(names, "、")
+		}
+
+		result = append(result, info)
+	}
+
+	return result, total, nil
+}
+
+func (s *AdminService) SearchMessages(query AdminMessageSearchQuery) ([]AdminMessageInfo, int64, error) {
+	ctx := context.Background()
+
+	dbQuery := s.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Joins("JOIN conversations c ON c.id = messages.conversation_id").
+		Where("c.is_deleted = ?", false)
+
+	if query.Keyword != "" {
+		dbQuery = dbQuery.Where("messages.content LIKE ?", "%"+query.Keyword+"%")
+	}
+	if query.SenderID > 0 {
+		dbQuery = dbQuery.Where("messages.sender_id = ?", query.SenderID)
+	}
+	if query.MessageType != "" {
+		dbQuery = dbQuery.Where("messages.type = ?", query.MessageType)
+	}
+	if query.ConversationType != "" {
+		dbQuery = dbQuery.Where("c.type = ?", query.ConversationType)
+	}
+	if query.StartTime != nil {
+		dbQuery = dbQuery.Where("messages.created_at >= ?", *query.StartTime)
+	}
+	if query.EndTime != nil {
+		dbQuery = dbQuery.Where("messages.created_at <= ?", *query.EndTime)
+	}
+
+	var total int64
+	if err := dbQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var messages []model.Message
+	offset := (query.Page - 1) * query.PageSize
+	if err := dbQuery.
+		Preload("Sender").
+		Preload("Conversation").
+		Preload("Conversation.Members").
+		Preload("Conversation.Members.User").
+		Order("messages.created_at DESC").
+		Offset(offset).
+		Limit(query.PageSize).
+		Find(&messages).Error; err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]AdminMessageInfo, 0, len(messages))
+
+	// 批量预加载群聊会话的 Group 信息，避免循环内 N+1 查询
+	groupConvIDs := make([]uint, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Conversation != nil && (msg.Conversation.Type == "group" || msg.Conversation.Type == "discussion") {
+			groupConvIDs = append(groupConvIDs, msg.ConversationID)
+		}
+	}
+	groupByConvID := make(map[uint]model.Group, len(groupConvIDs))
+	if len(groupConvIDs) > 0 {
+		var groups []model.Group
+		if err := s.db.WithContext(ctx).Where("conversation_id IN ?", groupConvIDs).Find(&groups).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, g := range groups {
+			groupByConvID[g.ConversationID] = g
+		}
+	}
+
+	for _, msg := range messages {
+		info := AdminMessageInfo{
+			ID:             msg.ID,
+			ConversationID: msg.ConversationID,
+			SenderID:       msg.SenderID,
+			SenderName:     adminUserDisplayName(msg.Sender),
+			MessageType:    msg.Type,
+			Content:        msg.Content,
+			CreatedAt:      formatAdminTime(msg.CreatedAt),
+			UpdatedAt:      formatAdminTime(msg.UpdatedAt),
+		}
+
+		if msg.Conversation != nil {
+			switch msg.Conversation.Type {
+			case "single", "bot":
+				for _, member := range msg.Conversation.Members {
+					if member.UserID == msg.SenderID {
+						continue
+					}
+					info.ReceiverID = member.UserID
+					info.ReceiverName = adminUserDisplayName(member.User)
+					break
+				}
+			case "group", "discussion":
+				if group, ok := groupByConvID[msg.ConversationID]; ok {
+					info.GroupID = group.ID
+					info.GroupName = group.Name
+				}
+			}
+		}
+
+		result = append(result, info)
+	}
+
+	return result, total, nil
+}
+
+func (s *AdminService) GetConversationMembers(convID uint, page, pageSize int) ([]AdminConversationMemberInfo, int64, error) {
+	ctx := context.Background()
+
+	var conv model.Conversation
+	if err := s.db.WithContext(ctx).First(&conv, convID).Error; err != nil {
+		return nil, 0, err
+	}
+
+	query := s.db.WithContext(ctx).Model(&model.ConversationMember{}).Where("conversation_id = ?", convID)
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var members []model.ConversationMember
+	offset := (page - 1) * pageSize
+	if err := query.
+		Preload("User").
+		Order("id ASC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&members).Error; err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]AdminConversationMemberInfo, 0, len(members))
+	for _, member := range members {
+		result = append(result, AdminConversationMemberInfo{
+			ID:       member.ID,
+			UserID:   member.UserID,
+			Username: member.User.Username,
+			Nickname: member.User.Nickname,
+			Avatar:   member.User.Avatar,
+			Role:     member.Role,
+			JoinedAt: formatAdminTime(member.JoinedAt),
+		})
+	}
+
+	return result, total, nil
+}
+
+func (s *AdminService) DeleteConversation(convID uint) error {
+	ctx := context.Background()
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var conv model.Conversation
+		if err := tx.First(&conv, convID).Error; err != nil {
+			return err
+		}
+
+		if conv.Type == "group" || conv.Type == "discussion" {
+			var group model.Group
+			if err := tx.Where("conversation_id = ?", convID).First(&group).Error; err == nil {
+				if !strings.HasPrefix(group.Name, "[已解散] ") {
+					group.Name = "[已解散] " + group.Name
+				}
+				if err := tx.Save(&group).Error; err != nil {
+					return err
+				}
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
+		conv.IsDeleted = true
+		return tx.Save(&conv).Error
+	})
 }
 
 type RoleQuery struct {
@@ -173,29 +519,20 @@ func (s *AdminService) GetRoleUsers(role string, page, pageSize int) ([]RoleUser
 	return users, total, nil
 }
 
+// DeleteGroup 软删除群组会话，复用 DeleteConversation 的统一删除逻辑：
+// 软删除会话 + 群名加 [已解散] 前缀 + 保留成员关系。
 func (s *AdminService) DeleteGroup(convID uint) error {
-	ctx := context.Background()
-
-	var conversation model.Conversation
-	if err := s.db.WithContext(ctx).First(&conversation, convID).Error; err != nil {
-		return err
-	}
-
-	conversation.IsDeleted = true
-	s.db.WithContext(ctx).Save(&conversation)
-	s.db.WithContext(ctx).Where("conversation_id = ?", convID).Delete(&model.ConversationMember{})
-
-	return nil
+	return s.DeleteConversation(convID)
 }
 
 // AdminCreateGroupInput 管理员创建群组入参
 type AdminCreateGroupInput struct {
-	Name        string   `json:"name" binding:"required"`
-	Avatar      string   `json:"avatar"`
-	Description string   `json:"description"`
-	CreatorID   uint     `json:"creatorId" binding:"required"`
-	MemberIDs   []uint   `json:"memberIds"`
-	GroupType   string   `json:"groupType"` // group / discussion，默认 group
+	Name        string `json:"name" binding:"required"`
+	Avatar      string `json:"avatar"`
+	Description string `json:"description"`
+	CreatorID   uint   `json:"creatorId" binding:"required"`
+	MemberIDs   []uint `json:"memberIds"`
+	GroupType   string `json:"groupType"` // group / discussion，默认 group
 }
 
 // CreateGroup 管理员创建群组

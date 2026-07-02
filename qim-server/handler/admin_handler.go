@@ -159,6 +159,71 @@ func GetRoleUsers(c *gin.Context) {
 	})
 }
 
+// AdminUpdateUser 管理员编辑用户信息（含账号状态）。
+func AdminUpdateUser(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的用户ID")
+		return
+	}
+
+	var req struct {
+		Nickname      *string `json:"nickname"`
+		Email         *string `json:"email"`
+		Phone         *string `json:"phone"`
+		Avatar        *string `json:"avatar"`
+		Signature     *string `json:"signature"`
+		AccountStatus *string `json:"accountStatus"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	// 校验 accountStatus 只允许合法值
+	if req.AccountStatus != nil {
+		switch *req.AccountStatus {
+		case "active", "disabled", "banned":
+		default:
+			response.BadRequest(c, "无效的账号状态")
+			return
+		}
+	}
+
+	db := database.GetDB()
+	var user model.User
+	if err := db.First(&user, uint(id)).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	if req.Nickname != nil {
+		user.Nickname = *req.Nickname
+	}
+	if req.Email != nil {
+		user.Email = *req.Email
+	}
+	if req.Phone != nil {
+		user.Phone = *req.Phone
+	}
+	if req.Avatar != nil {
+		user.Avatar = *req.Avatar
+	}
+	if req.Signature != nil {
+		user.Signature = *req.Signature
+	}
+	if req.AccountStatus != nil {
+		user.AccountStatus = *req.AccountStatus
+	}
+
+	if err := db.Save(&user).Error; err != nil {
+		response.InternalServerError(c, "更新失败")
+		return
+	}
+
+	response.SuccessWithMessage(c, "更新成功", user)
+}
+
 func AdminDeleteGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -192,9 +257,9 @@ func AdminCreateGroup(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "创建成功", gin.H{
-		"id":              conv.ID,
-		"conversationId":  conv.ID,
-		"type":            conv.Type,
+		"id":             conv.ID,
+		"conversationId": conv.ID,
+		"type":           conv.Type,
 	})
 }
 
@@ -382,6 +447,153 @@ func AdminGetGroups(c *gin.Context) {
 	response.Success(c, gin.H{
 		"list":  groups,
 		"total": total,
+	})
+}
+
+// AdminGetGroupMembers 查询群组成员（复用 AdminGetConversationMembers）。
+func AdminGetGroupMembers(c *gin.Context) {
+	AdminGetConversationMembers(c)
+}
+
+func AdminGetConversations(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	convType := c.Query("type")
+	keyword := c.Query("keyword")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	conversations, total, err := adminSvc.GetConversations(service.AdminConversationQuery{
+		Page:     page,
+		PageSize: pageSize,
+		Type:     convType,
+		Keyword:  keyword,
+	})
+	if err != nil {
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"list":  conversations,
+		"total": total,
+	})
+}
+
+func AdminGetConversationMembers(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的会话ID")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	members, total, err := adminSvc.GetConversationMembers(uint(id), page, pageSize)
+	if err != nil {
+		response.NotFound(c, "会话不存在")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"list":  members,
+		"total": total,
+	})
+}
+
+func AdminDeleteConversation(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的会话ID")
+		return
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	if err := adminSvc.DeleteConversation(uint(id)); err != nil {
+		response.NotFound(c, "会话不存在")
+		return
+	}
+
+	response.SuccessWithMessage(c, "删除成功", nil)
+}
+
+func AdminSearchMessages(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var senderID uint
+	if senderIDStr := c.Query("senderId"); senderIDStr != "" {
+		id, err := strconv.ParseUint(senderIDStr, 10, 32)
+		if err != nil {
+			response.BadRequest(c, "无效的发送者ID")
+			return
+		}
+		senderID = uint(id)
+	}
+
+	parseTimeQuery := func(key string) (*time.Time, bool) {
+		value := c.Query(key)
+		if value == "" {
+			return nil, true
+		}
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			response.BadRequest(c, "无效的时间格式")
+			return nil, false
+		}
+		return &parsed, true
+	}
+
+	startTime, ok := parseTimeQuery("startTime")
+	if !ok {
+		return
+	}
+	endTime, ok := parseTimeQuery("endTime")
+	if !ok {
+		return
+	}
+
+	adminSvc := di.GlobalContainer.AdminService
+	messages, total, err := adminSvc.SearchMessages(service.AdminMessageSearchQuery{
+		Page:             page,
+		PageSize:         pageSize,
+		Keyword:          c.Query("keyword"),
+		SenderID:         senderID,
+		MessageType:      c.Query("messageType"),
+		ConversationType: c.Query("conversationType"),
+		StartTime:        startTime,
+		EndTime:          endTime,
+	})
+	if err != nil {
+		response.InternalServerError(c, "搜索消息失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"list":     messages,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
 	})
 }
 
@@ -774,9 +986,9 @@ func AdminGetStatisticsTrend(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"userTrend":     userTrend,
-		"messageTrend":  messageTrend,
-		"activityData":  activityData,
+		"userTrend":    userTrend,
+		"messageTrend": messageTrend,
+		"activityData": activityData,
 	})
 }
 

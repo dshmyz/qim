@@ -478,22 +478,22 @@ onMounted(fetchTree)
   font-weight: 500;
 }
 
-:deep(.el-button--primary) {
+.page-header :deep(.el-button--primary) {
   background: rgba(255, 255, 255, 0.15) !important;
   border-color: rgba(255, 255, 255, 0.3) !important;
   color: white !important;
   backdrop-filter: blur(8px);
 }
 
-:deep(.el-button--primary:hover) {
+.page-header :deep(.el-button--primary:hover) {
   background: rgba(255, 255, 255, 0.25) !important;
   border-color: rgba(255, 255, 255, 0.5) !important;
 }
 
 .content-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: var(--space-3);
+  grid-template-columns: minmax(420px, 0.85fr) minmax(360px, 1.15fr);
+  gap: var(--space-4);
   min-height: 560px;
 }
 
@@ -510,6 +510,7 @@ onMounted(fetchTree)
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 .panel-header {
@@ -534,13 +535,14 @@ onMounted(fetchTree)
 
 .tree-content {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: var(--space-3);
 }
 
 .tree-root {
   display: flex;
   flex-direction: column;
+  min-width: 360px;
 }
 
 .detail-panel {

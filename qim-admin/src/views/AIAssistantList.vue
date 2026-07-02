@@ -18,6 +18,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+        <el-table-column label="创建者" width="120">
+          <template #default="{ row }">
+            <span v-if="row.creatorId">{{ row.creatorName || `用户${row.creatorId}` }}</span>
+            <span v-else style="color: var(--el-text-color-secondary)">系统</span>
+          </template>
+        </el-table-column>
         <el-table-column label="对话数" width="100">
           <template #default="{ row }">
             <el-tag type="info" size="small">{{ row.conversationCount }}</el-tag>

@@ -70,9 +70,18 @@ func botToFrontend(bot model.Bot) gin.H {
 	}
 
 	systemPrompt, _ := config["systemPrompt"].(string)
+	if systemPrompt == "" {
+		systemPrompt, _ = config["system_prompt"].(string)
+	}
 	modelName, _ := config["model"].(string)
+	if modelName == "" {
+		modelName, _ = config["model_name"].(string)
+	}
 	temperature, _ := config["temperature"].(float64)
 	maxTokensF, _ := config["maxTokens"].(float64)
+	if maxTokensF == 0 {
+		maxTokensF, _ = config["max_tokens"].(float64)
+	}
 	maxTokens := int(maxTokensF)
 
 	status := "inactive"

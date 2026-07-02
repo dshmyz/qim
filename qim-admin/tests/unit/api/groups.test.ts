@@ -74,7 +74,7 @@ describe('groups API', () => {
       const response = await getGroupMembers(1, { page: 1, pageSize: 10 })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/groups/1/members', method: 'get', params: { page: 1, pageSize: 10 },
+        url: '/v1/admin/groups/1/members', method: 'get', params: { page: 1, pageSize: 10 },
       })
       expect(response.data.data.list).toHaveLength(1)
     })

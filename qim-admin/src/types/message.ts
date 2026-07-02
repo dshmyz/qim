@@ -19,7 +19,7 @@ export interface MessageSearchParams {
   keyword?: string
   senderId?: number
   receiverId?: number
-  conversationType?: 'single' | 'group' | 'channel'
+  conversationType?: 'single' | 'group' | 'discussion' | 'bot'
   messageType?: string
   startTime?: string
   endTime?: string

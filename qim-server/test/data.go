@@ -224,7 +224,7 @@ func InitTestData(db *gorm.DB) {
 		}
 	} else {
 		// 从数据库中查询用户数据
-		db.Find(&users)
+		db.Where("type IN ? OR type IS NULL OR type = ?", []string{"user", "admin"}, "").Find(&users)
 	}
 
 	// 检查是否已有部门数据
@@ -451,6 +451,10 @@ func InitTestData(db *gorm.DB) {
 		}
 
 		for _, user := range users {
+			if user.Type != "" && user.Type != "user" && user.Type != "admin" {
+				continue
+			}
+
 			var userBotConvCount int64
 			db.Model(&model.BotConversation{}).Where("user_id = ?", user.ID).Count(&userBotConvCount)
 			if userBotConvCount > 0 {

@@ -22,11 +22,13 @@ export interface User {
   id: number
   username: string
   nickname?: string
+  type?: string // 'user' | 'bot' | 'system' | 'api' | 'admin'
   email: string
   phone: string
   avatar?: string
   signature?: string
-  status: 'active' | 'inactive' | 'banned'
+  status: 'online' | 'offline' // 连接状态（系统自动维护）
+  accountStatus?: 'active' | 'disabled' | 'banned' // 账号状态（管理员维护）
   roles?: string[]
   role?: string
   createdAt: string
@@ -199,7 +201,7 @@ export interface Notification {
 
 export interface Conversation {
   id: number
-  type: 'single' | 'group' | 'discussion'
+  type: 'single' | 'group' | 'discussion' | 'bot'
   name: string
   creatorId: number
   creatorName: string

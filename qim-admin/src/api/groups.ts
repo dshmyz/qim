@@ -19,7 +19,7 @@ export const getGroupById = (id: number): Promise<AxiosResponse<ApiResponse<Grou
 
 export const getGroupMembers = (groupId: number, params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<ConversationMember>>>> => {
   return request({
-    url: `/v1/groups/${groupId}/members`,
+    url: `/v1/admin/groups/${groupId}/members`,
     method: 'get',
     params,
   })

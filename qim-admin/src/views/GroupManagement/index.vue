@@ -110,9 +110,9 @@
           </div>
           <el-button
             v-if="member.userId !== currentGroup?.ownerId"
+            class="remove-member-button"
             size="small"
             type="danger"
-            text
             @click="handleRemoveMember(member.userId)"
           >
             移除
@@ -600,6 +600,13 @@ const handlePageChange = (page: number) => {
 .member-time {
   font-size: 11px;
   color: var(--color-text-muted);
+}
+
+.remove-member-button {
+  flex-shrink: 0;
+  min-width: 56px;
+  color: white;
+  font-weight: 600;
 }
 
 .member-pagination {

@@ -562,6 +562,10 @@ func CreateSingleConversation(c *gin.Context) {
 	db := database.GetDB()
 
 	if req.BotID != nil && *req.BotID > 0 {
+		if !ensureHumanConversationInitiator(c, db, userID.(uint)) {
+			return
+		}
+
 		var bot model.Bot
 		if err := db.First(&bot, *req.BotID).Error; err != nil {
 			response.NotFound(c, "机器人不存在")
@@ -640,6 +644,10 @@ func CreateSingleConversation(c *gin.Context) {
 		return
 	}
 	if recipient.Type == "bot" {
+		if !ensureHumanConversationInitiator(c, db, userID.(uint)) {
+			return
+		}
+
 		var bot model.Bot
 		if err := db.Where("virtual_user_id = ?", req.UserID).First(&bot).Error; err != nil {
 			response.NotFound(c, "机器人不存在")
@@ -851,6 +859,10 @@ func CreateBotConversation(c *gin.Context) {
 
 	db := database.GetDB()
 
+	if !ensureHumanConversationInitiator(c, db, userID.(uint)) {
+		return
+	}
+
 	// 检查 Bot 是否存在
 	var bot model.Bot
 	if err := db.First(&bot, req.BotID).Error; err != nil {
@@ -931,6 +943,23 @@ func CreateBotConversation(c *gin.Context) {
 
 	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
 	response.Success(c, conv)
+}
+
+func ensureHumanConversationInitiator(c *gin.Context, db *gorm.DB, userID uint) bool {
+	var currentUser model.User
+	if err := db.First(&currentUser, userID).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return false
+	}
+
+	// 正向判断：只拦截明确的非人类类型，新增用户类型时无需修改此处
+	switch currentUser.Type {
+	case "bot", "system", "api":
+		response.Forbidden(c, "机器人或系统用户不能创建机器人会话")
+		return false
+	}
+
+	return true
 }
 
 func ensureBotConversationMember(db *gorm.DB, conversationID uint, virtualUserID *uint) {

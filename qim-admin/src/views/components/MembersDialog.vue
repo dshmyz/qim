@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { Conversation, ConversationMember } from '@/types'
-import { getGroupMembers } from '@/api/groups'
+import { getConversationMembers } from '@/api/conversations'
 
 const props = defineProps<{
   modelValue: boolean
@@ -56,7 +56,7 @@ const fetchMembers = async () => {
   if (!props.conversation) return
   loading.value = true
   try {
-    const { data } = await getGroupMembers(props.conversation.id, { page: 1, pageSize: 100 })
+    const { data } = await getConversationMembers(props.conversation.id, { page: 1, pageSize: 100 })
     members.value = data.data.list
   } catch {
     // 错误已在请求拦截器中处理

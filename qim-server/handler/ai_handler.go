@@ -13,7 +13,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
 )
 
 // AIResponse 标准AI响应结构体
@@ -231,23 +230,9 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
-	db := vectorSvc.GetDB()
-	if db == nil {
-		response.Success(c, gin.H{
-			"nodes":       nodes,
-			"edges":       edges,
-			"total_nodes": 0,
-			"total_edges": 0,
-		})
-		return
-	}
-
 	ctx := context.Background()
 
-	searchResults, err := db.Vector().Search(ctx, nil, core.SearchOptions{
-		Collection: collection,
-		TopK:       maxNodes,
-	})
+	searchResults, err := vectorSvc.GetByCollection(ctx, collection, maxNodes)
 
 	if err == nil && len(searchResults) > 0 {
 		for i, result := range searchResults {

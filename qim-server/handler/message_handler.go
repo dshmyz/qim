@@ -3,6 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -13,9 +17,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,8 +24,13 @@ import (
 // Global smart reply engine instance
 var smartReplyEngine *SmartReplyEngine
 
+// TodoExtractorInterface 待办提取接口，便于测试替换
+type TodoExtractorInterface interface {
+	ExtractAndCreateTodos(content string, senderID uint, conversationID uint)
+}
+
 // Global todo extractor instance
-var todoExtractor *TodoExtractor
+var todoExtractor TodoExtractorInterface
 
 // Global anomaly detector instance
 var anomalyDetector *AnomalyDetector
@@ -87,6 +93,47 @@ func InitAnomalyDetector() {
 // GetSmartReplyEngine returns the smart reply engine instance
 func GetSmartReplyEngine() *SmartReplyEngine {
 	return smartReplyEngine
+}
+
+// TryExtractTodos 独立的待办提取入口。
+// 仅依赖群聊配置中的 ExtractTodos 开关，不受智能回复 Enabled/ReplyMode 等条件影响。
+func TryExtractTodos(senderID uint, conversationID uint, content string) {
+	if todoExtractor == nil {
+		return
+	}
+
+	db := database.GetDB()
+
+	var conv model.Conversation
+	if err := db.First(&conv, conversationID).Error; err != nil {
+		return
+	}
+
+	TryExtractTodosWithPreloaded(senderID, &conv, conversationID, content)
+}
+
+// TryExtractTodosWithPreloaded 使用预加载的 conv 执行待办提取，避免重复查会话表。
+// 内部仍需查询 Group 获取 ExtractTodos 配置（每次仅 1 次查询）。
+func TryExtractTodosWithPreloaded(senderID uint, conv *model.Conversation, conversationID uint, content string) {
+	if todoExtractor == nil || conv == nil {
+		return
+	}
+
+	if conv.Type != "group" {
+		return
+	}
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err != nil {
+		return
+	}
+
+	if !group.GetAIConfig().ExtractTodos {
+		return
+	}
+
+	go todoExtractor.ExtractAndCreateTodos(content, senderID, conversationID)
 }
 
 func resolveAIName(msg model.Message) string {

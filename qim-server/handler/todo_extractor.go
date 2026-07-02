@@ -3,13 +3,14 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"strings"
-	"time"
 )
 
 // TodoExtractor 待办提取引擎
@@ -69,8 +70,9 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 		memberNames += name + "、"
 	}
 
-	// 动态生成当前日期的参考信息
-	today := time.Now()
+	// 动态生成当前日期时间的参考信息
+	now := time.Now()
+	today := now
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 	dayAfter := today.AddDate(0, 0, 2)
@@ -82,7 +84,7 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 
 群成员：` + strings.TrimRight(memberNames, "、") + `
 
-当前日期：` + today.Format("2006-01-02") + ` (` + today.Weekday().String() + `)
+当前日期时间：` + now.Format("2006-01-02 15:04") + ` (` + now.Weekday().String() + `)
 
 相对日期对照表：
 - 昨天 = ` + yesterday.Format("2006-01-02") + `
@@ -96,12 +98,14 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 提取规则：
 - 如果消息中包含明确的任务/待办/安排，提取出来
 - 识别任务标题、描述、负责人（@的人或提到的人名）、截止时间、优先级
-- 截止时间必须转换为 YYYY-MM-DD 格式，使用上面的对照表
+- 截止时间必须转换为 YYYY-MM-DD HH:mm 格式，使用上面的对照表
+- 如果只提到时间没提到日期（如"下午两点"），默认为今天；如果今天该时间已过，则为明天
+- 如果只提到日期没提到时间，使用 23:59 作为截止时间
 - 如果提到"所有人"、"大家"、"@all"等，assignee 填 "all"
 - 如果没有明确的待办，返回空数组
 
 只返回 JSON 数组格式：
-[{"title": "任务标题", "description": "任务描述", "assignee": "负责人名称", "due_date": "YYYY-MM-DD", "priority": "low|medium|high"}]
+[{"title": "任务标题", "description": "任务描述", "assignee": "负责人名称", "due_date": "YYYY-MM-DD HH:mm", "priority": "low|medium|high"}]
 
 如果没有待办，返回 []。`
 
@@ -193,25 +197,7 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 
 	var dueDate *time.Time
 	if todo.DueDate != "" {
-		formats := []string{
-			"2006-01-02",
-			"2006/01/02",
-			"01-02",
-			"01/02",
-			"2006-01-02T15:04:05",
-		}
-		for _, format := range formats {
-			t, err := time.ParseInLocation(format, todo.DueDate, time.Local)
-			if err == nil {
-				if t.Year() == 0 {
-					t = time.Date(time.Now().Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.Local)
-				} else {
-					t = time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.Local)
-				}
-				dueDate = &t
-				break
-			}
-		}
+		dueDate = parseDueDate(todo.DueDate)
 	}
 
 	priority := "medium"
@@ -242,6 +228,37 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	if len(assigneeIDs) > 1 {
 		logger.WithModule("TodoExtractor").Info("已为多人创建待办", "count", len(assigneeIDs), "title", todo.Title)
 	}
+}
+
+// parseDueDate 解析待办截止时间字符串。
+// - 带时间的格式：保留解析到的时间
+// - 纯日期格式（如 "2006-01-02" 或 "01-02"）：统一使用 23:59 作为截止时间
+func parseDueDate(s string) *time.Time {
+	formats := []struct {
+		layout   string
+		dateOnly bool
+	}{
+		{"2006-01-02 15:04", false},
+		{"2006-01-02 15:04:05", false},
+		{"2006/01/02 15:04", false},
+		{"2006-01-02T15:04:05", false},
+		{"2006-01-02", true},
+		{"2006/01/02", true},
+		{"01-02", true},
+		{"01/02", true},
+	}
+	for _, f := range formats {
+		t, err := time.ParseInLocation(f.layout, s, time.Local)
+		if err == nil {
+			if t.Year() == 0 {
+				t = time.Date(time.Now().Year(), t.Month(), t.Day(), 23, 59, 0, 0, time.Local)
+			} else if f.dateOnly {
+				t = time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 0, 0, time.Local)
+			}
+			return &t
+		}
+	}
+	return nil
 }
 
 // notifyTodoAssigned 通知负责人有新的待办

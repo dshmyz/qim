@@ -39,7 +39,8 @@
       <el-select v-model="form.conversationType" placeholder="选择类型" clearable>
         <el-option label="单聊" value="single" />
         <el-option label="群聊" value="group" />
-        <el-option label="频道" value="channel" />
+        <el-option label="讨论组" value="discussion" />
+        <el-option label="机器人" value="bot" />
       </el-select>
     </el-form-item>
 

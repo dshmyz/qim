@@ -196,6 +196,19 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// 检查账号管理状态（disabled/banned 不影响 LocalProvider 认证本身，
+	// 由此处统一拦截并返回 403 Forbidden）
+	switch user.AccountStatus {
+	case "disabled":
+		logger.WithModule("Auth").Info("Login blocked", "user", req.Username, "ip", ip, "reason", "account disabled")
+		response.Forbidden(c, "该账户已被禁用，请联系管理员")
+		return
+	case "banned":
+		logger.WithModule("Auth").Info("Login blocked", "user", req.Username, "ip", ip, "reason", "account banned")
+		response.Forbidden(c, "该账户已被封禁")
+		return
+	}
+
 	if user.TwoFactorEnabled {
 		code := generateTwoFACode()
 		sessionID := generateTwoFASession(req.Username, code)

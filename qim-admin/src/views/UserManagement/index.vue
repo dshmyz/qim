@@ -42,6 +42,13 @@
     </el-table-column>
     <el-table-column prop="email" label="邮箱" min-width="180" />
     <el-table-column prop="phone" label="手机号" min-width="140" />
+    <el-table-column label="用户类型" width="100">
+      <template #default="{ row }">
+        <el-tag :type="userTypeMap[row.type]?.tagType || 'info'" size="small">
+          {{ userTypeMap[row.type]?.label || row.type || '未知' }}
+        </el-tag>
+      </template>
+    </el-table-column>
     <el-table-column label="角色" min-width="200">
       <template #default="{ row }">
         <el-tag v-for="role in (row.roles || []).slice(0, 3)" :key="role" size="small" class="role-tag">
@@ -53,9 +60,14 @@
         <span v-if="!row.roles || row.roles.length === 0" class="text-muted">未分配</span>
       </template>
     </el-table-column>
-    <el-table-column label="状态" width="100">
+    <el-table-column label="连接状态" width="90">
       <template #default="{ row }">
-        <StatusTag :status="row.status" />
+        <StatusTag :status="row.status" :map="userPresenceMap" />
+      </template>
+    </el-table-column>
+    <el-table-column label="账号状态" width="90">
+      <template #default="{ row }">
+        <StatusTag :status="row.accountStatus || 'active'" :map="userAccountStatusMap" />
       </template>
     </el-table-column>
     <el-table-column prop="createdAt" label="创建时间" width="180" />
@@ -63,7 +75,7 @@
       <template #default="{ row }">
         <ActionButton v-permission="'user:update'" @click="handleEdit(row)">编辑</ActionButton>
         <ActionButton v-permission="'user:update'" @click="handleManageRoles(row)">管理角色</ActionButton>
-        <ActionButton v-permission="'user:update'" @click="handleManageAvatarConfig(row)">分身配置</ActionButton>
+        <ActionButton v-permission="'user:update'" @click="handleManageAvatarConfig(row)" v-if="row.type === 'user' || row.type === 'admin' || !row.type">分身配置</ActionButton>
         <el-popconfirm title="确定删除该用户吗？" @confirm="handleDelete(row.id)">
           <template #reference>
             <ActionButton v-permission="'user:delete'" type="danger">删除</ActionButton>
@@ -81,7 +93,7 @@
     :initial-data="formData"
     :create-title="'创建用户'"
     :edit-title="'编辑用户'"
-    @save="handleSave"
+    @save="handleUserSave"
   />
 
   <el-dialog v-model="roleDialogVisible" title="管理角色" width="400px">
@@ -147,7 +159,7 @@ const typedFields = userFields as EntityFormField[]
 const {
   list, loading, pagination, searchForm,
   dialogVisible, dialogMode, formData,
-  handleSearch, handleReset, handleCreate, handleEdit, handleDelete, handleSave,
+  handleSearch, handleReset, handleCreate, handleEdit, handleDelete, handleSave: saveEntity,
   fetchData
 } = useEntity<User>({
   api: userApi,
@@ -164,12 +176,31 @@ const entityFields = computed<RendererFormField[]>(() => [
   { name: 'phone', label: '手机号', type: 'input' },
   { name: 'avatar', label: '头像', type: 'input', props: { placeholder: '请输入头像URL' } },
   { name: 'signature', label: '个性签名', type: 'textarea', props: { rows: 3, placeholder: '请输入个性签名' } },
-  { name: 'status', label: '状态', type: 'select', options: [
-    { label: '在线', value: 'online' },
-    { label: '离线', value: 'offline' },
-    { label: '禁用', value: 'banned' },
+  { name: 'accountStatus', label: '账号状态', type: 'select', options: [
+    { label: '正常', value: 'active' },
+    { label: '禁用', value: 'disabled' },
+    { label: '封禁', value: 'banned' },
   ] },
 ])
+
+const userPresenceMap = {
+  online: { label: '在线', type: 'success' },
+  offline: { label: '离线', type: 'info' },
+} satisfies Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }>
+
+const userAccountStatusMap = {
+  active: { label: '正常', type: 'success' },
+  disabled: { label: '禁用', type: 'danger' },
+  banned: { label: '封禁', type: 'danger' },
+} satisfies Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }>
+
+const userTypeMap: Record<string, { label: string; tagType: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
+  user: { label: '普通用户', tagType: 'primary' },
+  admin: { label: '管理员', tagType: 'warning' },
+  bot: { label: '机器人', tagType: 'info' },
+  system: { label: '系统', tagType: 'info' },
+  api: { label: 'API', tagType: 'info' },
+}
 
 const entityRules = computed<FormRules>(() => {
   const rules: FormRules = { ...userRules }
@@ -178,6 +209,23 @@ const entityRules = computed<FormRules>(() => {
   }
   return rules
 })
+
+const handleUserSave = (data: Record<string, unknown>) => {
+  const allowedFields = ['username', 'password', 'nickname', 'email', 'phone', 'avatar', 'signature', 'accountStatus']
+  const payload: Record<string, unknown> = {}
+
+  for (const field of allowedFields) {
+    if (data[field] !== undefined) {
+      payload[field] = data[field]
+    }
+  }
+
+  if (dialogMode.value === 'edit' && payload.password === '') {
+    delete payload.password
+  }
+
+  saveEntity(payload)
+}
 
 const keyword = computed({
   get: () => (searchForm.keyword as string) || '',

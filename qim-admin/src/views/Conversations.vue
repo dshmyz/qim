@@ -9,6 +9,7 @@
               <el-option label="单聊" value="single" />
               <el-option label="群聊" value="group" />
               <el-option label="讨论组" value="discussion" />
+              <el-option label="机器人" value="bot" />
             </el-select>
           </el-form-item>
           <el-form-item label="名称">
@@ -108,12 +109,12 @@ const membersDialogRef = ref<InstanceType<typeof MembersDialog>>()
 
 // 工具函数
 const conversationTypeLabel = (type: string): string => {
-  const map: Record<string, string> = { single: '单聊', group: '群聊', discussion: '讨论组' }
+  const map: Record<string, string> = { single: '单聊', group: '群聊', discussion: '讨论组', bot: '机器人' }
   return map[type] || type
 }
 
-const conversationTypeColor = (type: string): 'primary' | 'success' | 'info' => {
-  const map: Record<string, 'primary' | 'success' | 'info'> = { single: 'primary', group: 'success', discussion: 'info' }
+const conversationTypeColor = (type: string): 'primary' | 'success' | 'info' | 'warning' => {
+  const map: Record<string, 'primary' | 'success' | 'info' | 'warning'> = { single: 'primary', group: 'success', discussion: 'info', bot: 'warning' }
   return map[type] || 'info'
 }
 
@@ -125,7 +126,7 @@ const fetchConversations = async () => {
       page: pagination.page,
       pageSize: pagination.pageSize,
     }
-    if (filterForm.type) params.type = filterForm.type as 'single' | 'group' | 'discussion'
+    if (filterForm.type) params.type = filterForm.type as 'single' | 'group' | 'discussion' | 'bot'
     if (filterForm.keyword) params.keyword = filterForm.keyword
 
     const { data } = await getConversations(params)

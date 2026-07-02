@@ -23,7 +23,8 @@ type User struct {
 	Signature        string         `json:"signature" gorm:"type:text"`
 	Phone            string         `json:"phone" gorm:"size:20;index"`
 	Email            string         `json:"email" gorm:"size:100;index"`
-	Status           string         `json:"status" gorm:"size:20;default:'offline'"`
+	Status           string         `json:"status" gorm:"size:20;default:'offline'"`           // 连接状态：online / offline（系统自动维护）
+	AccountStatus    string         `json:"accountStatus" gorm:"size:20;default:'active'"`   // 账号状态：active / disabled / banned（管理员维护）
 	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`

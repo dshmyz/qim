@@ -121,11 +121,13 @@ const toggleExpand = () => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) 104px var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
   position: relative;
+  min-width: 0;
 }
 
 .node-content:hover {
@@ -222,22 +224,34 @@ const toggleExpand = () => {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-code {
   font-size: 11px;
   color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-actions {
   display: flex;
   gap: 4px;
   opacity: 0;
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
   transition: opacity var(--duration-fast);
+  pointer-events: none;
 }
 
 .node-content:hover .node-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .node-children {

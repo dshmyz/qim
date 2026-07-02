@@ -142,14 +142,18 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
 	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, _ []uint) {
 		sre := handler.GetSmartReplyEngine()
-		if sre == nil || di.GlobalContainer.MessageService == nil {
-			return
-		}
 		// @all 不触发 AI，避免噪音
 		if mention.HasAnyMention(content) && mention.IsAllMentioned(mention.Parse(content)) {
 			return
 		}
-		sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
+
+		// 待办提取：独立于智能回复，只看群聊 ExtractTodos 配置
+		handler.TryExtractTodos(senderID, conversationID, content)
+
+		// 智能回复：受 Enabled/ReplyMode 等控制
+		if sre != nil && di.GlobalContainer.MessageService != nil {
+			sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
+		}
 	}
 
 	avatarService.SetGroupDocumentService(groupDocSvc)
@@ -583,13 +587,16 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			admin.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
 			{
 				admin.GET("/users", handler.AdminGetUsers)
+				admin.PUT("/users/:id", handler.AdminUpdateUser)
 				admin.GET("/groups", handler.AdminGetGroups)
 				admin.POST("/groups", handler.AdminCreateGroup)
 				admin.PUT("/groups/:id", handler.AdminUpdateGroup)
 				admin.DELETE("/groups/:id", handler.AdminDeleteGroup)
+				admin.GET("/groups/:id/members", handler.AdminGetGroupMembers)
 				admin.GET("/conversations", handler.AdminGetConversations)
 				admin.GET("/conversations/:id/members", handler.AdminGetConversationMembers)
 				admin.DELETE("/conversations/:id", handler.AdminDeleteConversation)
+				admin.GET("/messages/search", handler.AdminSearchMessages)
 				admin.GET("/statistics", handler.AdminGetStatistics)
 				admin.GET("/statistics/trend", handler.AdminGetStatisticsTrend)
 				admin.GET("/dashboard/stats", handler.AdminGetDashboardStats)

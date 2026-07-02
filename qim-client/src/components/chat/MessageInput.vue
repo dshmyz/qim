@@ -1,11 +1,20 @@
 <template>
   <div
+    ref="inputAreaRef"
     class="chat-input-area"
-    :class="{ 'drag-over': isDragOver }"
+    :class="{ 'drag-over': isDragOver, 'is-resizing': isResizing, 'is-manually-resized': inputAreaHeight !== null }"
+    :style="inputAreaStyle"
     @dragover.prevent="handleDragOver"
     @dragleave.prevent="handleDragLeave"
     @drop.prevent="handleDrop"
   >
+    <div
+      class="input-resize-handle"
+      title="拖拽调整输入区高度，双击恢复默认"
+      @pointerdown="handleResizePointerDown"
+      @dblclick="resetInputAreaHeight"
+    ></div>
+
     <ChatToolbar
       :is-electron="isElectron"
       :show-ai-actions="localShowAIActions"
@@ -84,7 +93,7 @@
     <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="$emit('remove-quoted-message')" />
 
     <!-- 统一的 composer 容器：预览区 + textarea 融合在一个容器内 -->
-    <div class="composer">
+    <div ref="composerRef" class="composer">
 
       <PendingFilesPreview
         :pending-files="pendingFiles"
@@ -113,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import EmojiPanel from './EmojiPanel.vue'
 import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
@@ -179,12 +188,80 @@ const emit = defineEmits<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const messageInputRef = ref<HTMLTextAreaElement | null>(null)
+const inputAreaRef = ref<HTMLElement | null>(null)
+const composerRef = ref<HTMLElement | null>(null)
 const atMembersListRef = ref<HTMLDivElement | null>(null)
 const atMemberActiveIndex = ref(-1)
 const localShowAIActions = ref(false)
 const isDragOver = ref(false)
+const isResizing = ref(false)
+const inputAreaHeight = ref<number | null>(null)
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
+
+const minInputAreaHeight = 150
+const maxInputAreaHeight = 420
+let resizeStartY = 0
+let resizeStartHeight = minInputAreaHeight
+
+const inputAreaStyle = computed(() => {
+  if (inputAreaHeight.value === null) return undefined
+  return {
+    height: `${inputAreaHeight.value}px`,
+    minHeight: `${inputAreaHeight.value}px`,
+  }
+})
+
+const clampInputAreaHeight = (height: number) => Math.min(Math.max(height, minInputAreaHeight), maxInputAreaHeight)
+
+const syncTextareaToComposerHeight = () => {
+  nextTick(() => {
+    if (inputAreaHeight.value === null || !messageInputRef.value) return
+    messageInputRef.value.style.height = '100%'
+    messageInputRef.value.style.maxHeight = 'none'
+    messageInputRef.value.style.overflowY = messageInputRef.value.scrollHeight > messageInputRef.value.clientHeight ? 'auto' : 'hidden'
+  })
+}
+
+const handleResizePointerMove = (event: PointerEvent) => {
+  if (!isResizing.value) return
+  const nextHeight = clampInputAreaHeight(resizeStartHeight + resizeStartY - event.clientY)
+  inputAreaHeight.value = nextHeight
+  syncTextareaToComposerHeight()
+}
+
+const stopResize = () => {
+  isResizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  window.removeEventListener('pointermove', handleResizePointerMove)
+  window.removeEventListener('pointerup', stopResize)
+  window.removeEventListener('pointercancel', stopResize)
+}
+
+const handleResizePointerDown = (event: PointerEvent) => {
+  if (event.button !== 0 || !inputAreaRef.value) return
+  event.preventDefault()
+  resizeStartY = event.clientY
+  resizeStartHeight = inputAreaHeight.value ?? inputAreaRef.value.getBoundingClientRect().height
+  inputAreaHeight.value = clampInputAreaHeight(resizeStartHeight)
+  isResizing.value = true
+  document.body.style.cursor = 'ns-resize'
+  document.body.style.userSelect = 'none'
+  syncTextareaToComposerHeight()
+  window.addEventListener('pointermove', handleResizePointerMove)
+  window.addEventListener('pointerup', stopResize)
+  window.addEventListener('pointercancel', stopResize)
+}
+
+const resetInputAreaHeight = () => {
+  inputAreaHeight.value = null
+  nextTick(() => {
+    if (!messageInputRef.value) return
+    messageInputRef.value.style.maxHeight = ''
+    handleInputAndResize({ target: messageInputRef.value } as unknown as Event)
+  })
+}
 
 const filteredAtMembers = computed(() => {
   if (!props.conversation) return []
@@ -297,6 +374,12 @@ const handleTextareaKeydown = (event: KeyboardEvent) => {
 
 const handleInputAndResize = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
+  if (inputAreaHeight.value !== null) {
+    syncTextareaToComposerHeight()
+    emit('input', event)
+    return
+  }
+  textarea.style.maxHeight = ''
   textarea.style.height = 'auto'
   const maxHeight = 200
   const scrollHeight = textarea.scrollHeight
@@ -323,6 +406,10 @@ watch(
   }
 )
 
+onBeforeUnmount(() => {
+  stopResize()
+})
+
 defineExpose({ messageInputRef })
 </script>
 
@@ -333,8 +420,44 @@ defineExpose({ messageInputRef })
   flex-direction: column;
   /* gap: 10px; */
   min-height: 150px;
+  max-height: 420px;
+  flex-shrink: 0;
   position: relative;
   transition: all 0.2s ease;
+}
+
+.chat-input-area.is-resizing {
+  transition: none;
+}
+
+.input-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 2;
+}
+
+.input-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  width: 48px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-color);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.input-resize-handle:hover::after,
+.chat-input-area.is-resizing .input-resize-handle::after {
+  background: var(--primary-color);
+  opacity: 0.55;
 }
 
 .chat-input-area.drag-over {
@@ -515,6 +638,19 @@ defineExpose({ messageInputRef })
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.2s ease;
+}
+
+.chat-input-area.is-manually-resized .composer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-input-area.is-manually-resized .message-input {
+  flex: 1;
+  height: 100% !important;
+  max-height: none;
 }
 
 .composer:focus-within {

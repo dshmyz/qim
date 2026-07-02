@@ -17,7 +17,7 @@ export interface UpdateUserParams {
   phone?: string
   avatar?: string
   signature?: string
-  status?: 'active' | 'inactive' | 'banned'
+  accountStatus?: 'active' | 'disabled' | 'banned'
 }
 
 export const getUsers = (params: PaginationParams & { keyword?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<User>>>> => {
