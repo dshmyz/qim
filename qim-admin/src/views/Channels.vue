@@ -90,6 +90,18 @@
         <el-form-item label="头像" prop="avatar">
           <el-input v-model="channelForm.avatar" placeholder="请输入头像URL" />
         </el-form-item>
+        <el-form-item label="发布权限" prop="publish_permission">
+          <el-select v-model="channelForm.publish_permission" placeholder="请选择发布权限">
+            <el-option label="仅创建者可发布" value="creator_only" />
+            <el-option label="所有订阅者可发布" value="all_subscribers" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="评论权限" prop="comment_permission">
+          <el-select v-model="channelForm.comment_permission" placeholder="请选择评论权限">
+            <el-option label="所有订阅者可评论" value="all_subscribers" />
+            <el-option label="关闭评论" value="disabled" />
+          </el-select>
+        </el-form-item>
         <el-form-item v-if="isEditing" label="状态" prop="status">
           <el-select v-model="channelForm.status" placeholder="请选择状态">
             <el-option label="正常" value="active" />
@@ -154,6 +166,8 @@ const channelForm = reactive({
   description: '',
   avatar: '',
   status: 'active' as 'active' | 'inactive',
+  publish_permission: 'creator_only' as 'creator_only' | 'all_subscribers',
+  comment_permission: 'all_subscribers' as 'all_subscribers' | 'disabled',
 })
 
 const channelRules: FormRules = {
@@ -195,6 +209,8 @@ const handleCreate = () => {
   channelForm.description = ''
   channelForm.avatar = ''
   channelForm.status = 'active'
+  channelForm.publish_permission = 'creator_only'
+  channelForm.comment_permission = 'all_subscribers'
   channelDialogVisible.value = true
 }
 
@@ -205,6 +221,8 @@ const handleEdit = (row: ChannelInfo) => {
   channelForm.description = row.description
   channelForm.avatar = row.avatar
   channelForm.status = row.status as 'active' | 'inactive'
+  channelForm.publish_permission = row.publish_permission
+  channelForm.comment_permission = row.comment_permission
   channelDialogVisible.value = true
 }
 
@@ -220,6 +238,8 @@ const handleSubmit = async () => {
           description: channelForm.description,
           avatar: channelForm.avatar,
           status: channelForm.status,
+          publish_permission: channelForm.publish_permission,
+          comment_permission: channelForm.comment_permission,
         })
         ElMessage.success('更新成功')
       } else {
@@ -227,6 +247,8 @@ const handleSubmit = async () => {
           name: channelForm.name,
           description: channelForm.description,
           avatar: channelForm.avatar,
+          publish_permission: channelForm.publish_permission,
+          comment_permission: channelForm.comment_permission,
         })
         ElMessage.success('创建成功')
       }

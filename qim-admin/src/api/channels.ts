@@ -7,6 +7,7 @@ export interface CreateChannelParams {
   description?: string
   avatar?: string
   publish_permission?: 'creator_only' | 'all_subscribers'
+  comment_permission?: 'all_subscribers' | 'disabled'
 }
 
 export interface UpdateChannelParams {
@@ -15,6 +16,7 @@ export interface UpdateChannelParams {
   avatar?: string
   status?: 'active' | 'inactive'
   publish_permission?: 'creator_only' | 'all_subscribers'
+  comment_permission?: 'all_subscribers' | 'disabled'
 }
 
 export interface ChannelInfo {
@@ -24,6 +26,7 @@ export interface ChannelInfo {
   description: string
   status: string
   publish_permission: 'creator_only' | 'all_subscribers'
+  comment_permission: 'all_subscribers' | 'disabled'
   creatorName: string
   memberCount: number
   createdAt: string
