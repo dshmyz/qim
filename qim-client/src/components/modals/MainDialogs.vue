@@ -88,6 +88,7 @@
               <div class="progress-fill" :style="{ width: downloadProgress + '%' }"></div>
             </div>
             <p class="progress-text">{{ downloadProgress }}%</p>
+            <p v-if="downloadSizeText" class="progress-size-text">{{ downloadSizeText }}</p>
           </div>
         </div>
         <div v-else class="update-result">
@@ -285,6 +286,7 @@ interface Props {
   isDownloading: boolean
   isUpdateReadyToInstall: boolean
   downloadProgress: number
+  downloadSizeText?: string
   hasNewVersion: boolean
   forceUpdate: boolean
   updateResult: string
@@ -1034,6 +1036,13 @@ const onTargetChange = () => {
   margin: 8px 0 0;
   font-size: 12px;
   color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-size-text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
   font-variant-numeric: tabular-nums;
 }
 

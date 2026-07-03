@@ -2,7 +2,7 @@
   <div v-if="visible" class="feedback-modal-overlay" @click="$emit('close')">
     <div class="feedback-modal" @click.stop>
       <div class="feedback-modal-header">
-        <h3>意见反馈</h3>
+        <h3>问题反馈</h3>
         <button class="feedback-modal-close" @click="$emit('close')">×</button>
       </div>
       <div class="feedback-modal-content">

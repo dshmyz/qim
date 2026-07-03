@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useUI } from '@/composables/useUI'
 
 const setWindowSize = (width: number, height: number) => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  delete (window as unknown as { electron?: unknown }).electron
+})
 
 describe('useUI settings menu', () => {
   it('positions the settings menu higher than the clicked settings button', () => {
@@ -45,5 +50,47 @@ describe('useUI group context menu', () => {
     } as unknown as MouseEvent, { id: 'group-1' })
 
     expect(ui.groupContextMenuPosition.value.y).toBeLessThanOrEqual(590)
+  })
+})
+
+describe('useUI update progress', () => {
+  it('rounds update download progress to one decimal place', () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>()
+    ;(window as unknown as { electron: unknown }).electron = {
+      ipcRenderer: {
+        on: vi.fn((channel: string, handler: (...args: unknown[]) => void) => {
+          listeners.set(channel, handler)
+        }),
+        removeListener: vi.fn(),
+      },
+    }
+
+    const ui = useUI()
+    ui.registerUpdateEventListeners()
+    listeners.get('update-progress')?.({}, { percent: 12.3456789 })
+
+    expect(ui.downloadProgress.value).toBe(12.3)
+  })
+
+  it('formats update download byte counts', () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>()
+    ;(window as unknown as { electron: unknown }).electron = {
+      ipcRenderer: {
+        on: vi.fn((channel: string, handler: (...args: unknown[]) => void) => {
+          listeners.set(channel, handler)
+        }),
+        removeListener: vi.fn(),
+      },
+    }
+
+    const ui = useUI()
+    ui.registerUpdateEventListeners()
+    listeners.get('update-progress')?.({}, {
+      percent: 25,
+      transferred: 5 * 1024 * 1024,
+      total: 20 * 1024 * 1024,
+    })
+
+    expect(ui.downloadSizeText.value).toBe('5.0 MB / 20.0 MB')
   })
 })

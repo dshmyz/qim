@@ -28,9 +28,13 @@ export const connectWebSocket = (serverUrl: string, token: string): WebSocket =>
   if (ws && ws.readyState === WebSocket.OPEN) {
     return ws;
   }
-  
-  // 连接 WebSocket
-  const wsUrl = `ws${serverUrl.startsWith('https') ? 's' : ''}://${serverUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}`;
+
+  // 携带客户端版本和平台信息，用于版本分布统计
+  const platform = navigator.userAgent.toLowerCase().includes('mac') ? 'macos'
+    : navigator.userAgent.toLowerCase().includes('linux') ? 'linux'
+    : 'windows'
+  const version = (window as any).APP_CONFIG?.version || ''
+  const wsUrl = `ws${serverUrl.startsWith('https') ? 's' : ''}://${serverUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}&version=${encodeURIComponent(version)}&platform=${platform}`;
   ws = new WebSocket(wsUrl);
   
   // 暴露到全局，供其他模块使用

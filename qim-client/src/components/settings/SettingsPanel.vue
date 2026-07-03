@@ -149,7 +149,7 @@
                 </div>
                 <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
                   <i class="fas fa-bullhorn"></i>
-                  意见反馈
+                  问题反馈
                 </button>
               </div>
             </div>

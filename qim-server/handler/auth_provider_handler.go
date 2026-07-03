@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dshmyz/qim/qim-server/auth"
 	"github.com/dshmyz/qim/qim-server/auth/provider"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -77,6 +78,9 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 		return
 	}
 
+	// 配置变更后立即重建认证链，使新增的认证方式即时生效
+	auth.InitAuthChain()
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -135,6 +139,9 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 
 	h.db.First(&provider, id)
 
+	// 配置变更后立即重建认证链，使修改后的认证方式即时生效
+	auth.InitAuthChain()
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -161,6 +168,9 @@ func (h *AuthProviderHandler) DeleteProvider(c *gin.Context) {
 		})
 		return
 	}
+
+	// 配置变更后立即重建认证链，使删除后的认证方式即时失效
+	auth.InitAuthChain()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,

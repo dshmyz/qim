@@ -342,6 +342,8 @@ func tableExists(db *gorm.DB, tableName string) bool {
 
 // MigrateDB 自动迁移数据库表（分步迁移策略）
 func MigrateDB(db *gorm.DB) {
+	migrateCompatibilityColumns(db)
+
 	// ========== 第一阶段：基础表（无外键依赖） ==========
 	baseModels := []interface{}{
 		&model.User{},
@@ -413,6 +415,17 @@ func MigrateDB(db *gorm.DB) {
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+}
+
+// migrateCompatibilityColumns 修补历史库中 AutoMigrate 无法可靠补齐的关键字段。
+func migrateCompatibilityColumns(db *gorm.DB) {
+	if tableExists(db, "users") && !db.Migrator().HasColumn(&model.User{}, "AccountStatus") {
+		if err := db.Migrator().AddColumn(&model.User{}, "AccountStatus"); err != nil {
+			logger.WithModule("Migrate").Error("添加 users.account_status 字段失败", "error", err)
+		} else {
+			logger.WithModule("Migrate").Info("添加 users.account_status 字段")
+		}
+	}
 }
 
 // migrateModels 迁移一组模型

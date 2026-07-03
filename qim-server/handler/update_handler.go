@@ -4,7 +4,6 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +18,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -134,15 +134,16 @@ func HandleUpdateRequest(c *gin.Context) {
 
 func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 	platform := normalizePlatform(platformParam)
+	clientID := c.Query("client")
 	db := database.GetDB()
-	var version model.ClientVersion
-	if err := db.Where("platform = ? AND enabled = ?", platform, true).
-		Order("created_at DESC").First(&version).Error; err != nil {
+	svc := service.NewVersionService(db)
+	version, err := svc.GetLatestEnabled(platform, clientID)
+	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	if filename != safeUpdatePathFilename(db, version) {
+	if filename != safeUpdatePathFilename(db, *version) {
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -155,37 +156,24 @@ func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 func GetLatestYML(c *gin.Context) {
 	platformParam := c.Param("platform")
 	platform := normalizePlatform(platformParam)
+	clientID := c.Query("client")
 
 	logger.WithModule("Update").Info("检查更新请求",
 		"platform_param", platformParam,
 		"platform", platform,
+		"client_id", clientID,
 		"client_ip", c.ClientIP(),
 	)
 
 	db := database.GetDB()
-	var version model.ClientVersion
-	err := db.Where("platform = ? AND enabled = ?", platform, true).
-		Order("created_at DESC").First(&version).Error
+	svc := service.NewVersionService(db)
+	version, err := svc.GetLatestEnabled(platform, clientID)
 	if err != nil {
-		// 区分"无记录"和"数据库错误"
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.WithModule("Update").Warn("无可用版本记录",
-				"platform", platform,
-				"platform_param", platformParam,
-			)
-			// electron-updater 期望 404 时返回空内容，而不是 JSON
-			// 这样它会触发 update-not-available 事件
-			c.Status(http.StatusNotFound)
-		} else {
-			logger.WithModule("Update").Error("查询版本失败",
-				"platform", platform,
-				"error", err,
-			)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    500,
-				"message": "查询更新失败",
-			})
-		}
+		logger.WithModule("Update").Warn("无可用版本记录",
+			"platform", platform,
+			"platform_param", platformParam,
+		)
+		c.Status(http.StatusNotFound)
 		return
 	}
 
@@ -227,11 +215,17 @@ func GetLatestYML(c *gin.Context) {
 	// electron-updater 使用 files.url 生成本地缓存文件名。
 	// 这里必须输出扁平安装包文件名，不能输出绝对 URL 或 /api/v1/.../download 这类多级路径。
 	// 实际下载由 /api/v1/updates/:platform/:filename 重定向到真实下载地址。
-	updatePathName := safeUpdatePathFilename(db, version)
+	updatePathName := safeUpdatePathFilename(db, *version)
 
 	forceUpdateStr := "false"
 	if version.ForceUpdate {
 		forceUpdateStr = "true"
+	}
+
+	// 增量更新 blockmap 字段（仅预留，非空时才输出）
+	blockmapLine := ""
+	if version.BlockmapURL != "" {
+		blockmapLine = fmt.Sprintf("blockmap: %s\n", version.BlockmapURL)
 	}
 
 	yml := fmt.Sprintf(`version: %s
@@ -244,7 +238,7 @@ sha512: %s
 releaseDate: %s
 releaseNotes: %s
 forceUpdate: %s
-`,
+%s`,
 		version.Version,
 		updatePathName,
 		sha512Base64,
@@ -254,6 +248,7 @@ forceUpdate: %s
 		version.CreatedAt.Format("2006-01-02T15:04:05.000Z"),
 		formatYAMLBlockString(version.Changelog),
 		forceUpdateStr,
+		blockmapLine,
 	)
 
 	c.Header("Content-Type", "text/yaml")

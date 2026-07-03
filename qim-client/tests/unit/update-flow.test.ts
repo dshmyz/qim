@@ -3,6 +3,22 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 describe('update flow safeguards', () => {
+  it('uses the preferred update service naming', () => {
+    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+
+    expect(updateModule).toContain('export function createUpdateService')
+    expect(updateModule).toContain('function startUpdateService')
+    expect(updateModule).toContain('function registerUpdateIpc')
+    expect(updateModule).toContain('function installDownloadedUpdate')
+    expect(updateModule).not.toContain('createAutoUpdateManager')
+    expect(updateModule).not.toContain('function setup()')
+    expect(updateModule).not.toContain('function registerIpc()')
+    expect(mainProcess).toContain('const updateService = createUpdateService')
+    expect(mainProcess).toContain('updateService.registerUpdateIpc()')
+    expect(mainProcess).toContain('updateService.startUpdateService()')
+  })
+
   it('resets downloading state when update-error is received', () => {
     const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
 
@@ -13,27 +29,27 @@ describe('update flow safeguards', () => {
 
   it('preserves download failure messages instead of replacing them with check failure', () => {
     const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
 
     expect(useUI).toContain("friendlyMessage = error")
-    expect(mainProcess).toContain("updatePhase = 'downloading'")
-    expect(mainProcess).toContain("formatUpdateError(error, 'download')")
+    expect(updateModule).toContain("updatePhase = 'downloading'")
+    expect(updateModule).toContain("formatUpdateError(error, 'download')")
   })
 
   it('waits for user confirmation before installing a downloaded update', () => {
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
     const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
     const mainDialogs = readFileSync(resolve(__dirname, '../../src/components/modals/MainDialogs.vue'), 'utf8')
     const mainView = readFileSync(resolve(__dirname, '../../src/views/Main.vue'), 'utf8')
 
-    const downloadedHandler = mainProcess.slice(
-      mainProcess.indexOf("autoUpdater.on('update-downloaded'"),
-      mainProcess.indexOf("async function installLinuxUpdate")
+    const downloadedHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-downloaded'"),
+      updateModule.indexOf('const autoCheckForUpdates')
     )
 
     expect(downloadedHandler).not.toContain('autoUpdater.quitAndInstall()')
-    expect(mainProcess).toContain("ipcMain.on('install-update'")
-    expect(mainProcess).toContain('autoUpdater.quitAndInstall(false, true)')
+    expect(updateModule).toContain("ipcMain.on('install-update'")
+    expect(updateModule).toContain('autoUpdater.quitAndInstall(false, true)')
     expect(useUI).toContain('isUpdateReadyToInstall.value = true')
     expect(mainDialogs).toContain("$emit('installUpdate')")
     expect(mainDialogs).toContain('立即重启安装')
@@ -42,12 +58,12 @@ describe('update flow safeguards', () => {
   })
 
   it('shows installing status and forces install when install-update is clicked', () => {
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
     const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
 
-    const installHandler = mainProcess.slice(
-      mainProcess.indexOf("ipcMain.on('install-update'"),
-      mainProcess.indexOf("ipcMain.on('start-screen-share'")
+    const installHandler = updateModule.slice(
+      updateModule.indexOf('function installDownloadedUpdate'),
+      updateModule.indexOf('function listenToUpdaterEvents')
     )
 
     expect(installHandler).toContain("sendToWindow('update-installing')")
@@ -58,14 +74,16 @@ describe('update flow safeguards', () => {
 
   it('blocks reload shortcuts while a force update dialog is active', () => {
     const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
 
-    expect(mainProcess).toContain('let forceUpdateActive = false')
-    expect(mainProcess).toContain('forceUpdateActive = !!info.forceUpdate')
+    expect(updateModule).toContain('let forceUpdateActive = false')
+    expect(updateModule).toContain('forceUpdateActive = !!info.forceUpdate')
     expect(mainProcess).toContain("mainWindow.webContents.on('before-input-event'")
     expect(mainProcess).toContain("input.key.toLowerCase() === 'r'")
     expect(mainProcess).toContain('input.meta || input.control')
     expect(mainProcess).toContain('event.preventDefault()')
     expect(mainProcess).toContain("mainWindow.webContents.on('will-navigate'")
+    expect(mainProcess).toContain('updateService.isForceUpdateActive()')
     expect(mainProcess).toContain("sendToWindow('update-available'")
   })
 
@@ -77,9 +95,19 @@ describe('update flow safeguards', () => {
     expect(mainDialogs).toContain('updateInfo.releaseNotes')
   })
 
+  it('shows downloaded size in the update progress dialog', () => {
+    const mainDialogs = readFileSync(resolve(__dirname, '../../src/components/modals/MainDialogs.vue'), 'utf8')
+    const mainView = readFileSync(resolve(__dirname, '../../src/views/Main.vue'), 'utf8')
+    const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
+
+    expect(useUI).toContain('downloadSizeText')
+    expect(mainView).toContain(':downloadSizeText="downloadSizeText"')
+    expect(mainDialogs).toContain('downloadSizeText')
+  })
+
   it('keeps admin version publishing upload-only for update packages', () => {
     const versionManagement = readFileSync(
-      resolve(__dirname, '../../../qim-admin/src/views/VersionManagement.vue'),
+      resolve(__dirname, '../../../qim-admin/src/views/ClientManagement/components/VersionFormDialog.vue'),
       'utf8'
     )
 
@@ -91,40 +119,39 @@ describe('update flow safeguards', () => {
 
 describe('auto update feed URL per platform', () => {
   it('uses win7/ path for Windows 7 builds (Electron 22.x)', () => {
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
 
-    // getAutoUpdateFeedUrl 应区分 win7 和 win10
-    expect(mainProcess).toContain("updates/win7/")
-    expect(mainProcess).toContain("updates/win10/")
+    // getFeedUrl 应区分 win7 和 win10
+    expect(updateModule).toContain("'win7' : 'win10'")
     // 不应再有 win/（无后缀）的路径
-    expect(mainProcess).not.toMatch(/updates\/win["']/)
+    expect(updateModule).not.toMatch(/updates\/win["']/)
   })
 })
 
-describe('Linux install-update routing', () => {
-  it('calls installLinuxUpdate on Linux instead of quitAndInstall', () => {
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+describe('install-update routing', () => {
+  it('uses electron-updater quitAndInstall for every platform', () => {
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
 
-    // 提取 install-update IPC handler 区块
-    const installHandler = mainProcess.slice(
-      mainProcess.indexOf("ipcMain.on('install-update'"),
-      mainProcess.indexOf("ipcMain.on('start-screen-share'")
+    const installHandler = updateModule.slice(
+      updateModule.indexOf('function installDownloadedUpdate'),
+      updateModule.indexOf('function listenToUpdaterEvents')
     )
 
-    // Linux 平台应调用 installLinuxUpdate，而非直接 quitAndInstall
-    expect(installHandler).toContain("process.platform === 'linux'")
-    expect(installHandler).toContain('installLinuxUpdate')
+    expect(installHandler).toContain('autoUpdater.quitAndInstall(false, true)')
+    expect(installHandler).not.toContain("process.platform === 'linux'")
+    expect(installHandler).not.toContain('installLinuxUpdate')
   })
 
-  it('still uses quitAndInstall for non-Linux platforms', () => {
-    const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+  it('does not keep manual Linux package installation helpers', () => {
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+    const packageJson = readFileSync(resolve(__dirname, '../../package.json'), 'utf8')
 
-    const installHandler = mainProcess.slice(
-      mainProcess.indexOf("ipcMain.on('install-update'"),
-      mainProcess.indexOf("ipcMain.on('start-screen-share'")
-    )
-
-    // 非 Linux 平台仍走 quitAndInstall
-    expect(installHandler).toContain('autoUpdater.quitAndInstall(false, true)')
+    expect(updateModule).not.toContain('install-update-linux.sh')
+    expect(updateModule).not.toContain('resolveDownloadedUpdatePath')
+    expect(updateModule).not.toContain('downloadedUpdateFiles')
+    expect(packageJson).not.toContain('install-update-linux.sh')
+    expect(packageJson).not.toContain('qim-update.sudoers')
+    expect(packageJson).not.toContain('after-install-linux.sh')
+    expect(packageJson).not.toContain('before-remove-linux.sh')
   })
 })

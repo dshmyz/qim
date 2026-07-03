@@ -1,9 +1,30 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 export interface UpdateInfo {
   version: string
   releaseDate?: string
   releaseNotes?: string
+}
+
+const formatDownloadProgress = (percent: unknown): number => {
+  const value = typeof percent === 'number' ? percent : Number(percent)
+  if (!Number.isFinite(value)) return 0
+
+  const clamped = Math.min(Math.max(value, 0), 100)
+  return Math.round(clamped * 10) / 10
+}
+
+const formatDownloadBytes = (bytes: number): string => {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  }
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${bytes} B`
 }
 
 /**
@@ -135,6 +156,12 @@ export function useUI() {
   const isDownloading = ref(false)
   const isUpdateReadyToInstall = ref(false)
   const downloadProgress = ref(0)
+  const downloadTransferred = ref(0)
+  const downloadTotal = ref(0)
+  const downloadSizeText = computed(() => {
+    if (downloadTransferred.value <= 0 || downloadTotal.value <= 0) return ''
+    return `${formatDownloadBytes(downloadTransferred.value)} / ${formatDownloadBytes(downloadTotal.value)}`
+  })
   const updateResult = ref('')
   const hasNewVersion = ref(false)
   const forceUpdate = ref(false)
@@ -565,6 +592,8 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
           downloadProgress.value = 0
+          downloadTransferred.value = 0
+          downloadTotal.value = 0
           updateInfo.value = null
           updateResult.value = '正在检查更新...'
         }
@@ -576,6 +605,8 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
           downloadProgress.value = 0
+          downloadTransferred.value = 0
+          downloadTotal.value = 0
           hasNewVersion.value = true
           forceUpdate.value = !!info.forceUpdate
           updateInfo.value = {
@@ -597,6 +628,8 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
           downloadProgress.value = 0
+          downloadTransferred.value = 0
+          downloadTotal.value = 0
           hasNewVersion.value = false
           updateInfo.value = null
           updateResult.value = '当前已是最新版本'
@@ -610,6 +643,8 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
           downloadProgress.value = 0
+          downloadTransferred.value = 0
+          downloadTotal.value = 0
 
           // 解析错误信息，显示友好提示
           let friendlyMessage = '检查更新失败'
@@ -644,7 +679,9 @@ export function useUI() {
         handler: (_event: any, progressObj: any) => {
           isDownloading.value = true
           isUpdateReadyToInstall.value = false
-          downloadProgress.value = progressObj.percent
+          downloadProgress.value = formatDownloadProgress(progressObj?.percent)
+          downloadTransferred.value = Math.max(Number(progressObj?.transferred) || 0, 0)
+          downloadTotal.value = Math.max(Number(progressObj?.total) || 0, 0)
         }
       },
       {
@@ -653,6 +690,7 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = true
           downloadProgress.value = 100
+          downloadTransferred.value = downloadTotal.value
           updateResult.value = '更新已下载完成，是否立即重启安装？'
         }
       },
@@ -662,6 +700,7 @@ export function useUI() {
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
           downloadProgress.value = 100
+          downloadTransferred.value = downloadTotal.value
           updateResult.value = '正在重启并安装更新...'
         }
       }
@@ -767,6 +806,9 @@ export function useUI() {
     isDownloading,
     isUpdateReadyToInstall,
     downloadProgress,
+    downloadTransferred,
+    downloadTotal,
+    downloadSizeText,
     updateResult,
     hasNewVersion,
     forceUpdate,

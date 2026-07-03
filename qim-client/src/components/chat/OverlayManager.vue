@@ -21,6 +21,7 @@
     :visible="showMessageContextMenu"
     :position="messageContextMenuPosition"
     :message="selectedMessage"
+    :conversation-type="conversation?.type"
     @save-file-as="emit('save-file-as', $event); closeMessageMenu()"
     @download-file="emit('download-file', $event); closeMessageMenu()"
     @copy-message="emit('copy-message'); closeMessageMenu()"

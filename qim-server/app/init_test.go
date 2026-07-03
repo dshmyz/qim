@@ -72,6 +72,29 @@ func TestMigrateDB_CreatesMessagesOriginColumn(t *testing.T) {
 	}
 }
 
+func TestMigrateDB_AddsAccountStatusToExistingUsers(t *testing.T) {
+	db := newTestDB(t)
+	if err := db.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username VARCHAR(50) NOT NULL UNIQUE,
+			password_hash VARCHAR(255) NOT NULL,
+			status VARCHAR(20) DEFAULT 'offline',
+			created_at DATETIME,
+			updated_at DATETIME,
+			deleted_at DATETIME
+		)
+	`).Error; err != nil {
+		t.Fatalf("创建旧版 users 表失败: %v", err)
+	}
+
+	MigrateDB(db)
+
+	if !hasSQLiteColumn(t, db, "users", "account_status") {
+		t.Fatal("MigrateDB 后 users.account_status 字段缺失")
+	}
+}
+
 func TestInitAdminUser_CreatesAdminWithRole(t *testing.T) {
 	db := newTestDB(t)
 	MigrateDB(db)

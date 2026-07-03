@@ -316,7 +316,7 @@ export const adminModuleGroups: AdminModuleGroup[] = [
       {
         path: 'feedbacks',
         name: 'Feedbacks',
-        title: '意见反馈',
+        title: '问题反馈',
         icon: Message,
         component: () => import('@/views/FeedbackManagement.vue'),
         roles: ['system_admin'],

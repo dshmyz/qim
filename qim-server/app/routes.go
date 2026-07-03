@@ -571,11 +571,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				adminRoutes.GET("/logs/operation/export", handler.ExportOperationLogs)
 
 				// 版本管理
-				adminRoutes.POST("/client/versions", handler.CreateVersion)
-				adminRoutes.PUT("/client/versions/:id", handler.UpdateVersion)
-				adminRoutes.DELETE("/client/versions/:id", handler.DeleteVersion)
-				adminRoutes.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
-				adminRoutes.GET("/client/versions/distribution", handler.GetVersionDistribution)
+			adminRoutes.POST("/client/versions", handler.CreateVersion)
+			adminRoutes.PUT("/client/versions/:id", handler.UpdateVersion)
+			adminRoutes.DELETE("/client/versions/:id", handler.DeleteVersion)
+			adminRoutes.PATCH("/client/versions/:id/toggle", handler.ToggleVersionStatus)
+			adminRoutes.POST("/client/versions/:id/rollback", handler.RollbackVersion)
+			adminRoutes.GET("/client/versions/distribution", func(c *gin.Context) {
+				c.Set("hub", hub)
+				handler.GetVersionDistribution(c)
+			})
 
 				// 黑名单管理
 				adminRoutes.GET("/users/blacklist", handler.GetBlacklist)

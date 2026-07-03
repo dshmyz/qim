@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
   `status` VARCHAR(20) DEFAULT 'offline',
+  `account_status` VARCHAR(20) DEFAULT 'active',
   `last_online` DATETIME,
   `ip` VARCHAR(50),
   `two_factor_enabled` BOOLEAN DEFAULT FALSE,
@@ -610,16 +611,21 @@ CREATE TABLE IF NOT EXISTS `operation_logs` (
 -- Client versions table
 CREATE TABLE IF NOT EXISTS `client_versions` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  `version` VARCHAR(50) NOT NULL UNIQUE,
+  `version` VARCHAR(50) NOT NULL,
   `platform` VARCHAR(20) NOT NULL,
   `type` VARCHAR(20) DEFAULT 'full',
   `download_url` VARCHAR(500),
+  `sha512` VARCHAR(200),
+  `file_size` BIGINT DEFAULT 0,
   `changelog` TEXT,
   `force_update` BOOLEAN DEFAULT FALSE,
+  `rollout_percentage` INT DEFAULT 100,
+  `min_version` VARCHAR(50),
   `enabled` BOOLEAN DEFAULT TRUE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME,
+  UNIQUE KEY `idx_version_platform` (`version`, `platform`, `deleted_at`),
   INDEX `idx_client_versions_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

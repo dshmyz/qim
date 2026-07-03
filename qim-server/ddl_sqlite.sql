@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `phone` VARCHAR(20),
   `email` VARCHAR(100),
   `status` VARCHAR(20) DEFAULT 'offline',
+  `account_status` VARCHAR(20) DEFAULT 'active',
   `last_online` DATETIME,
   `ip` VARCHAR(50),
   `two_factor_enabled` INTEGER DEFAULT 0,
@@ -609,17 +610,22 @@ CREATE INDEX IF NOT EXISTS `idx_operation_logs_user_id` ON `operation_logs`(`use
 -- Client versions table
 CREATE TABLE IF NOT EXISTS `client_versions` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `version` VARCHAR(50) NOT NULL UNIQUE,
+  `version` VARCHAR(50) NOT NULL,
   `platform` VARCHAR(20) NOT NULL,
   `type` VARCHAR(20) DEFAULT 'full',
   `download_url` VARCHAR(500),
+  `sha512` VARCHAR(200),
+  `file_size` INTEGER DEFAULT 0,
   `changelog` TEXT,
   `force_update` INTEGER DEFAULT 0,
+  `rollout_percentage` INTEGER DEFAULT 100,
+  `min_version` VARCHAR(50),
   `enabled` INTEGER DEFAULT 1,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` DATETIME
 );
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_version_platform` ON `client_versions`(`version`, `platform`, `deleted_at`);
 CREATE INDEX IF NOT EXISTS `idx_client_versions_deleted_at` ON `client_versions`(`deleted_at`);
 
 -- Blacklists table

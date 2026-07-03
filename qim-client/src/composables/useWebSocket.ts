@@ -278,9 +278,17 @@ export function useWebSocket(wsUrl: string) {
       const storedUrl = localStorage.getItem('serverUrl')
       const serverUrl = storedUrl || wsUrl
       const cleanUrl = serverUrl.replace(/\/+$/, '')
+
+      // 携带客户端版本和平台信息，用于版本分布统计
+      const platform = navigator.userAgent.toLowerCase().includes('mac') ? 'macos'
+        : navigator.userAgent.toLowerCase().includes('linux') ? 'linux'
+        : 'windows'
+      const version = (window as any).APP_CONFIG?.version || ''
+      const versionQuery = `&version=${encodeURIComponent(version)}&platform=${platform}`
+
       const wsFullUrl = cleanUrl.startsWith('ws')
-        ? cleanUrl
-        : `ws${cleanUrl.startsWith('https') ? 's' : ''}://${cleanUrl.replace(/^https?:\/\//, '')}/api/v1/ws`
+        ? cleanUrl + (cleanUrl.includes('?') ? versionQuery : `?${versionQuery.slice(1)}`)
+        : `ws${cleanUrl.startsWith('https') ? 's' : ''}://${cleanUrl.replace(/^https?:\/\//, '')}/api/v1/ws?${versionQuery.slice(1)}`
 
       console.log('[WS] connecting to', wsFullUrl, 'localStorage serverUrl:', storedUrl, 'wsUrl:', wsUrl)
       ws = new WebSocket(wsFullUrl)

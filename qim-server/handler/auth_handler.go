@@ -224,7 +224,10 @@ func Login(c *gin.Context) {
 	refreshToken := generateRefreshToken(user.ID, user.Username)
 	user.Status = "online"
 	user.IP = ip
-	db.Save(&user)
+	db.Model(&model.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+		"status": user.Status,
+		"ip":     user.IP,
+	})
 
 	logger.WithModule("Auth").Info("Login success", "user", req.Username, "ip", ip, "os", op, "version", clientVersion, "provider", providerName)
 
@@ -336,7 +339,7 @@ func VerifyTwoFA(c *gin.Context) {
 	token := generateToken(user.ID, user.Username)
 	refreshToken := generateRefreshToken(user.ID, user.Username)
 	user.Status = "online"
-	db.Save(&user)
+	db.Model(&model.User{}).Where("id = ?", user.ID).Update("status", user.Status)
 
 	logger.WithModule("Auth").Info("2FA verification success", "user", req.Username)
 
@@ -499,7 +502,7 @@ func Logout(c *gin.Context) {
 	var user model.User
 	if err := db.First(&user, userID).Error; err == nil {
 		user.Status = "offline"
-		db.Save(&user)
+		db.Model(&model.User{}).Where("id = ?", user.ID).Update("status", user.Status)
 	}
 
 	result := gin.H{

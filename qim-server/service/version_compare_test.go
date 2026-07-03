@@ -1,0 +1,137 @@
+package service
+
+import (
+	"testing"
+
+	"github.com/dshmyz/qim/qim-server/model"
+)
+
+func TestIsValidVersion(t *testing.T) {
+	tests := []struct {
+		version string
+		want    bool
+	}{
+		{"2.1.0", true},
+		{"1.0.0", true},
+		{"10.20.30", true},
+		{"2.1.0-beta", true},
+		{"", false},
+		{"abc", false},
+		{"2.1", true}, // semver 允许
+	}
+	for _, tt := range tests {
+		got := IsValidVersion(tt.version)
+		if got != tt.want {
+			t.Errorf("IsValidVersion(%q) = %v, want %v", tt.version, got, tt.want)
+		}
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"2.1.0", "2.0.0", 1},
+		{"2.0.0", "2.1.0", -1},
+		{"2.1.0", "2.1.0", 0},
+		{"3.0.0", "2.99.99", 1},
+		{"1.0.0", "1.0.1", -1},
+		{"10.0.0", "9.0.0", 1},
+	}
+	for _, tt := range tests {
+		got := CompareVersions(tt.a, tt.b)
+		if got != tt.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
+func TestLatestVersion(t *testing.T) {
+	versions := []model.ClientVersion{
+		{Version: "2.0.0"},
+		{Version: "2.1.0"},
+		{Version: "1.9.0"},
+		{Version: "2.0.1"},
+	}
+	latest, err := LatestVersion(versions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if latest.Version != "2.1.0" {
+		t.Errorf("expected 2.1.0, got %s", latest.Version)
+	}
+}
+
+func TestLatestVersion_SupplementaryOldVersion(t *testing.T) {
+	// 补录旧版本场景：创建时间晚但版本号低，不应被误判为最新
+	versions := []model.ClientVersion{
+		{Version: "2.1.0"}, // 先创建（旧记录）
+		{Version: "1.0.0"}, // 后创建（补录旧版本）
+	}
+	latest, err := LatestVersion(versions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if latest.Version != "2.1.0" {
+		t.Errorf("expected 2.1.0 (semver), got %s (might be created_at sort)", latest.Version)
+	}
+}
+
+func TestLatestVersion_Empty(t *testing.T) {
+	_, err := LatestVersion([]model.ClientVersion{})
+	if err == nil {
+		t.Error("expected error for empty list")
+	}
+}
+
+func TestLatestVersion_Single(t *testing.T) {
+	versions := []model.ClientVersion{
+		{Version: "3.0.0"},
+	}
+	latest, err := LatestVersion(versions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if latest.Version != "3.0.0" {
+		t.Errorf("expected 3.0.0, got %s", latest.Version)
+	}
+}
+
+func TestNormalizePlatform(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"win", "windows"},
+		{"win7", "windows"},
+		{"win10", "windows"},
+		{"windows", "windows"},
+		{"WIN", "windows"},
+		{"Windows", "windows"},
+		{"mac", "macos"},
+		{"macos", "macos"},
+		{"Mac", "macos"},
+		{"linux", "linux"},
+		{"LINUX", "linux"},
+		{"unknown", "unknown"},
+	}
+	for _, tt := range tests {
+		got := NormalizePlatform(tt.input)
+		if got != tt.want {
+			t.Errorf("NormalizePlatform(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestValidateVersionFormat(t *testing.T) {
+	if err := ValidateVersionFormat(""); err == nil {
+		t.Error("expected error for empty version")
+	}
+	if err := ValidateVersionFormat("abc"); err == nil {
+		t.Error("expected error for invalid version")
+	}
+	if err := ValidateVersionFormat("2.1.0"); err != nil {
+		t.Errorf("expected no error for valid version, got %v", err)
+	}
+}

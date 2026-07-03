@@ -52,16 +52,6 @@
       "output": "electron-dist",
       "buildResources": "electron/icons"
     },
-    "extraResources": [
-      {
-        "from": "electron/install-update-linux.sh",
-        "to": "install-update-linux.sh"
-      },
-      {
-        "from": "electron/qim-update.sudoers",
-        "to": "qim-update.sudoers"
-      }
-    ],
     "artifactName": "QIM-${version}.${ext}",
     "win": {
       "icon": "electron/icons/icon.ico",
@@ -105,10 +95,6 @@
         "url": "${env.QIM_UPDATE_URL}/api/v1/updates/linux/",
         "channel": "latest"
       }
-    },
-    "deb": {
-      "afterInstall": "electron/after-install-linux.sh",
-      "afterRemove": "electron/before-remove-linux.sh"
     },
     "mac": {
       "icon": "electron/icons/QIM.icns",

@@ -3020,7 +3020,7 @@ const checkForUpdates = () => {
       isDownloading.value = false
       downloadProgress.value = 0
       updateResult.value = '检查更新超时，请稍后重试'
-    }, 12000)
+    }, 30000)
   } else {
     // 非 Electron 环境：通过后端 API 检查更新
     checkUpdateViaAPI()

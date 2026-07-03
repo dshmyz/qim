@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
@@ -81,6 +83,7 @@ type Hub struct {
 
 	statusDebouncer *StatusDebouncer
 	userSubscribers sync.Map
+	versionStats    sync.Map // key: "version|platform" → *int64，用于版本分布统计
 
 	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发
 	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
@@ -102,6 +105,8 @@ type Client struct {
 	userID   uint
 	authed   bool   // 是否已通过认证
 	jwtToken string // 待认证的 token
+	version  string // 客户端版本号（用于版本分布统计）
+	platform string // 客户端平台（windows/macos/linux）
 }
 
 type WSMessage struct {
@@ -191,6 +196,7 @@ func (h *Hub) Run() {
 			} else {
 				h.userClients.Store(client.userID, []*Client{client})
 			}
+			h.incVersionStats(client.version, client.platform)
 			logger.WithModule("WS").Info("用户连接", "userID", client.userID)
 
 			// 更新用户在线状态并广播
@@ -199,6 +205,7 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			h.clients.LoadAndDelete(client)
 			safeCloseSend(client.send)
+			h.decVersionStats(client.version, client.platform)
 
 			if existingClients, ok := h.userClients.Load(client.userID); ok {
 				clients := existingClients.([]*Client)
@@ -336,6 +343,21 @@ func (h *Hub) BroadcastToAllOnlineUsers(message []byte) {
 		h.SendToUser(userID, message)
 		return true
 	})
+}
+
+// BroadcastNewVersion 新版本发布时主动推送给所有在线客户端
+// 预留接口：客户端收到后可立即触发 checkForUpdates
+func (h *Hub) BroadcastNewVersion(version, platform string, forceUpdate bool) {
+	msg, _ := json.Marshal(map[string]interface{}{
+		"type": "new_version_available",
+		"data": map[string]interface{}{
+			"version":      version,
+			"platform":     platform,
+			"force_update": forceUpdate,
+			"timestamp":    time.Now().Format(time.RFC3339),
+		},
+	})
+	h.Broadcast <- msg
 }
 
 // IsUserOnline 检查用户是否在线
@@ -541,12 +563,8 @@ func (c *Client) handleAuth(data interface{}) {
 
 	c.conn.WriteJSON(WSMessage{Type: "auth_success", Data: map[string]interface{}{"user_id": c.userID}})
 
-	// 更新用户在线状态
-	var user model.User
-	if err := c.hub.db.First(&user, c.userID).Error; err == nil {
-		user.Status = "online"
-		c.hub.db.Save(&user)
-	}
+	// 更新用户在线状态，只写连接状态，避免全量 Save 触碰账号管理等无关字段。
+	c.hub.db.Model(&model.User{}).Where("id = ?", c.userID).Update("status", StatusOnline)
 
 	logger.WithModule("WS").Info("WebSocket认证成功", "userID", c.userID)
 }
@@ -986,7 +1004,13 @@ func ServeWs(hub *Hub, c *gin.Context) {
 
 	// 尝试从 context 获取 user_id（兼容旧的 header 认证方式）
 	userID, exists := c.Get("user_id")
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 1024)}
+	client := &Client{
+		hub:      hub,
+		conn:     conn,
+		send:     make(chan []byte, 1024),
+		version:  c.Query("version"),  // 客户端版本号（用于版本分布统计）
+		platform: c.Query("platform"), // 客户端平台
+	}
 	if exists {
 		client.userID = userID.(uint)
 		client.authed = true
@@ -1779,4 +1803,70 @@ func handleUnsubscribeUserStatus(c *Client, data interface{}) {
 	logger.WithModule("WS").Info("用户取消订阅状态变更", "subscriberID", c.userID, "targetUserID", targetUserID)
 
 	c.hub.UnsubscribeUserStatus(c.userID, targetUserID)
+}
+
+// versionStatsKey 生成版本统计的 map key
+func versionStatsKey(version, platform string) string {
+	return version + "|" + platform
+}
+
+// incVersionStats 版本计数 +1
+func (h *Hub) incVersionStats(version, platform string) {
+	if version == "" {
+		return
+	}
+	key := versionStatsKey(version, platform)
+	for {
+		if v, ok := h.versionStats.Load(key); ok {
+			atomic.AddInt64(v.(*int64), 1)
+			return
+		}
+		var count int64 = 1
+		actual, loaded := h.versionStats.LoadOrStore(key, &count)
+		if !loaded {
+			return
+		}
+		atomic.AddInt64(actual.(*int64), 1)
+		return
+	}
+}
+
+// decVersionStats 版本计数 -1，不低于 0
+func (h *Hub) decVersionStats(version, platform string) {
+	if version == "" {
+		return
+	}
+	key := versionStatsKey(version, platform)
+	if v, ok := h.versionStats.Load(key); ok {
+		atomic.AddInt64(v.(*int64), -1)
+	}
+}
+
+// VersionStat 版本统计项
+type VersionStat struct {
+	Version  string `json:"version"`
+	Platform string `json:"platform"`
+	Count    int64  `json:"count"`
+}
+
+// GetVersionStats 返回版本分布统计快照
+func (h *Hub) GetVersionStats() []VersionStat {
+	var stats []VersionStat
+	h.versionStats.Range(func(key, value interface{}) bool {
+		count := atomic.LoadInt64(value.(*int64))
+		if count <= 0 {
+			return true
+		}
+		parts := strings.Split(key.(string), "|")
+		if len(parts) != 2 {
+			return true
+		}
+		stats = append(stats, VersionStat{
+			Version:  parts[0],
+			Platform: parts[1],
+			Count:    count,
+		})
+		return true
+	})
+	return stats
 }

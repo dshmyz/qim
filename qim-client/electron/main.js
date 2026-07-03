@@ -3,15 +3,13 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { execSync } from 'child_process'
 import fs from 'fs'
 import crypto from 'crypto'
-import pkg from 'electron-updater'
 import { createRequire } from 'node:module'
+import { createUpdateService } from './auto-update.js'
 
 const require = createRequire(import.meta.url)
 const screenshots = require('./screenshots/lib/index.cjs').default
-const { autoUpdater } = pkg
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -41,13 +39,70 @@ function getUpdateServerUrl() {
 }
 
 if (app.isPackaged) {
+  // 检查 SingletonLock 是否为陈旧锁（锁持有进程已不存在）
+  // macOS/Linux: SingletonLock 是符号链接，目标格式为 {appName}-{pid}
+  // Windows: 单实例锁使用命名 mutex，不存在锁文件，直接认为锁有效
+  const isStaleSingletonLock = (lockPath) => {
+    if (process.platform === 'win32') {
+      return false
+    }
+    let pid = null
+    try {
+      const target = fs.readlinkSync(lockPath)
+      const match = String(target).match(/(\d+)$/)
+      if (match) {
+        pid = parseInt(match[1], 10)
+      }
+    } catch (e) {
+      // 不是符号链接，尝试读取文件内容解析 PID
+      try {
+        const content = fs.readFileSync(lockPath, 'utf8')
+        const match = content.match(/(\d+)/)
+        if (match) {
+          pid = parseInt(match[1], 10)
+        }
+      } catch (e2) {
+        return false
+      }
+    }
+    if (!pid || pid <= 0) {
+      return false
+    }
+    try {
+      // process.kill(pid, 0) 仅检查进程是否存在，不实际发送信号
+      process.kill(pid, 0)
+      return false
+    } catch (e) {
+      // ESRCH: 进程不存在 → 陈旧锁；EPERM: 进程存在但无权限 → 非陈旧锁
+      return e.code === 'ESRCH'
+    }
+  }
+
+  // 同步等待（app 未就绪前无法使用异步 API）
+  const sleepSync = (ms) => {
+    const arr = new Int32Array(new SharedArrayBuffer(4))
+    Atomics.wait(arr, 0, 0, ms)
+  }
+
   let gotTheLock = app.requestSingleInstanceLock()
+
+  // 拿不到锁时先等待重试（最多 2.5 秒，每 500ms 一次，共 5 次）
+  // 避免与前一个实例的 quitAndInstall 产生竞争
+  const LOCK_RETRY_INTERVAL_MS = 500
+  const LOCK_MAX_RETRIES = 5
+  let retry = 0
+  while (!gotTheLock && retry < LOCK_MAX_RETRIES) {
+    retry++
+    sleepSync(LOCK_RETRY_INTERVAL_MS)
+    gotTheLock = app.requestSingleInstanceLock()
+  }
+
+  // 仍拿不到锁：仅当确认为陈旧锁时才清理，清理后重新请求锁
   if (!gotTheLock) {
-    // 锁获取失败，可能是进程被强杀后残留的锁文件，尝试清理后重试
     const lockPath = path.join(app.getPath('userData'), 'SingletonLock')
     try {
-      if (fs.existsSync(lockPath)) {
-        console.log('检测到残留锁文件，尝试清理:', lockPath)
+      if (fs.existsSync(lockPath) && isStaleSingletonLock(lockPath)) {
+        console.log('检测到陈旧锁文件，尝试清理:', lockPath)
         fs.unlinkSync(lockPath)
         gotTheLock = app.requestSingleInstanceLock()
       }
@@ -55,6 +110,8 @@ if (app.isPackaged) {
       console.error('清理锁文件失败:', e)
     }
   }
+
+  // 仍失败则退出当前实例（已有实例会通过 second-instance 事件聚焦窗口）
   if (!gotTheLock) {
     console.log('应用已在运行，退出当前实例')
     app.quit()
@@ -199,25 +256,6 @@ function getWindowsVersion() {
   return 10
 }
 
-function getAutoUpdateFeedUrl() {
-  const baseUrl = currentUpdateBaseUrl
-  if (process.platform === 'win32') {
-    // Electron 22.x 用于 Windows 7 构建，对应 win7/ 更新通道
-    const electronMajor = parseInt(process.versions.electron.split('.')[0], 10)
-    if (electronMajor <= 22) {
-      return `${baseUrl}/api/v1/updates/win7/`
-    }
-    return `${baseUrl}/api/v1/updates/win10/`
-  }
-  if (process.platform === 'linux') {
-    return `${baseUrl}/api/v1/updates/linux/`
-  }
-  if (process.platform === 'darwin') {
-    return `${baseUrl}/api/v1/updates/mac/`
-  }
-  return null
-}
-
 const savedUrl = loadServerConfig()
 let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl()
 
@@ -225,8 +263,14 @@ let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl()
 
 let mainWindow
 let tray
-let forceUpdateActive = false
-let lastForceUpdateInfo = null
+const updateService = createUpdateService({
+  app,
+  ipcMain,
+  sendToWindow,
+  getUpdateBaseUrl: () => currentUpdateBaseUrl,
+  setUpdateBaseUrl: serverUrl => { currentUpdateBaseUrl = serverUrl },
+  saveServerConfig
+})
 
 // Screenshot state
 let screenshotInstance = null
@@ -316,20 +360,21 @@ function createWindow() {
       console.log('Opening DevTools in development mode')
       mainWindow.webContents.openDevTools()
     }
-    if (forceUpdateActive && lastForceUpdateInfo) {
+    const lastForceUpdateInfo = updateService.getLastForceUpdateInfo()
+    if (updateService.isForceUpdateActive() && lastForceUpdateInfo) {
       sendToWindow('update-available', lastForceUpdateInfo)
     }
   })
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (!forceUpdateActive) return
+    if (!updateService.isForceUpdateActive()) return
     if ((input.meta || input.control) && input.key.toLowerCase() === 'r') {
       event.preventDefault()
     }
   })
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!forceUpdateActive) return
+    if (!updateService.isForceUpdateActive()) return
     event.preventDefault()
   })
 
@@ -695,244 +740,7 @@ function stopTrayFlash() {
   }
 }
 
-// ==================== Auto Updater ====================
-
-function setupAutoUpdateUrl() {
-  const feedUrl = getAutoUpdateFeedUrl()
-  if (feedUrl) {
-    console.log(`设置更新服务器地址: ${feedUrl}`)
-    autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
-  } else {
-    console.warn('无法设置更新服务器地址: feedUrl 为空, currentUpdateBaseUrl:', currentUpdateBaseUrl, 'platform:', process.platform)
-  }
-}
-
-let updatePhase = 'idle'
-let downloadedUpdateInfo = null
-
-function formatUpdateError(error, phase = updatePhase) {
-  const fallback = phase === 'download' || phase === 'downloading' ? '下载更新失败' : '检查更新失败'
-  let errorMessage = fallback
-
-  if (error?.message) {
-    const msg = error.message.toLowerCase()
-
-    if (msg.includes('404') || msg.includes('cannot find channel')) {
-      errorMessage = phase === 'download' || phase === 'downloading' ? '下载更新失败：暂无可用安装包' : '暂无可用更新'
-    } else if (msg.includes('timeout') || msg.includes('etimedout')) {
-      errorMessage = '网络连接超时，请稍后重试'
-    } else if (msg.includes('enotfound') || msg.includes('econnrefused')) {
-      errorMessage = '无法连接到更新服务器'
-    } else if (msg.includes('net::err')) {
-      errorMessage = '网络错误，请检查网络连接'
-    } else {
-      errorMessage = error.message.split('\n')[0]
-    }
-  }
-
-  if ((phase === 'download' || phase === 'downloading') && !errorMessage.includes('下载')) {
-    errorMessage = `下载更新失败：${errorMessage}`
-  }
-
-  return errorMessage
-}
-
-// Linux 平台安装更新（通过 sudo 执行安装脚本，因为 quitAndInstall 对 deb/AppImage 不生效）
-async function installLinuxUpdate(info) {
-  const downloadPath = info.path || info.downloadedFile
-  if (!downloadPath || !fs.existsSync(downloadPath)) {
-    console.error('Linux update: 下载文件未找到:', downloadPath)
-    sendToWindow('update-error', '更新文件未找到')
-    return
-  }
-
-  const isDeb = downloadPath.endsWith('.deb')
-  const isRpm = downloadPath.endsWith('.rpm')
-
-  if (!isDeb && !isRpm) {
-    console.error('Linux update: 不支持的包格式:', downloadPath)
-    sendToWindow('update-error', '不支持的 Linux 包格式')
-    return
-  }
-
-  const helperScript = path.join(process.resourcesPath, 'install-update-linux.sh')
-  if (!fs.existsSync(helperScript)) {
-    console.error('Linux update: 安装脚本未找到:', helperScript)
-    sendToWindow('update-error', '更新安装脚本未找到')
-    return
-  }
-
-  try {
-    execSync('which sudo', { stdio: 'ignore' })
-  } catch {
-    console.error('Linux update: sudo 未安装')
-    sendToWindow('update-error', '未找到 sudo 命令')
-    return
-  }
-
-  const escapedPath = downloadPath.replace(/'/g, "'\\''")
-  const installCmd = `sudo -n "${helperScript}" "${escapedPath}"`
-
-  try {
-    console.log('Linux update: 执行安装命令:', installCmd)
-    const result = execSync(installCmd, { timeout: 180000 })
-    console.log('Linux update: 安装成功:', result.toString())
-
-    sendToWindow('update-installed')
-
-    setTimeout(() => {
-      app.relaunch()
-      app.quit()
-    }, 2000)
-  } catch (error) {
-    console.error('Linux update: 安装失败:', error)
-    let errorMsg = '安装更新失败'
-    if (error.status === 1) {
-      errorMsg = '更新安装失败，请检查系统包管理器状态'
-    } else if (error.stderr) {
-      const stderr = error.stderr.toString().trim()
-      if (stderr.includes('a password is required')) {
-        errorMsg = 'sudo 免密配置未生效，请运行: sudo visudo -f /etc/sudoers.d/qim-update'
-      } else {
-        errorMsg = stderr.split('\n').pop()
-      }
-    }
-    sendToWindow('update-error', errorMsg)
-  }
-}
-
-function setupAutoUpdater() {
-  setupAutoUpdateUrl()
-
-  // 不自动下载，等用户确认后再下载
-  autoUpdater.autoDownload = false
-
-  autoUpdater.on('checking-for-update', () => {
-    updatePhase = 'checking'
-    downloadedUpdateInfo = null
-    console.log('正在检查更新...')
-    sendToWindow('update-checking')
-  })
-
-  autoUpdater.on('update-available', (info) => {
-    updatePhase = 'available'
-    forceUpdateActive = !!info.forceUpdate
-    lastForceUpdateInfo = {
-      version: info.version,
-      forceUpdate: info.forceUpdate || false,
-      releaseDate: info.releaseDate,
-      releaseName: info.releaseName,
-      releaseNotes: info.releaseNotes
-    }
-    console.log('发现新版本:', info.version, '强制更新:', info.forceUpdate)
-    sendToWindow('update-available', lastForceUpdateInfo)
-  })
-
-  autoUpdater.on('update-not-available', () => {
-    updatePhase = 'idle'
-    forceUpdateActive = false
-    lastForceUpdateInfo = null
-    console.log('当前已是最新版本')
-    sendToWindow('update-not-available')
-  })
-
-  autoUpdater.on('error', (error) => {
-    console.error('更新错误:', error)
-    const errorMessage = formatUpdateError(error)
-    updatePhase = 'idle'
-    forceUpdateActive = false
-    lastForceUpdateInfo = null
-    sendToWindow('update-error', errorMessage)
-  })
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    updatePhase = 'downloading'
-    console.log('下载进度:', progressObj.percent)
-    sendToWindow('update-progress', progressObj)
-  })
-
-  autoUpdater.on('update-downloaded', (info) => {
-    updatePhase = 'downloaded'
-    downloadedUpdateInfo = info
-    console.log('更新下载完成，等待用户确认安装')
-    sendToWindow('update-downloaded', info)
-  })
-
-  // 定期自动检查更新（每 4 小时）
-  const AUTO_UPDATE_INTERVAL = 4 * 60 * 60 * 1000
-  let autoUpdateTimer = null
-
-  // 自动检查更新（静默，不干扰用户）
-  const autoCheckForUpdates = () => {
-    if (!app.isPackaged) return
-    console.log('[自动更新] 定期检查更新...')
-    setupAutoUpdateUrl()
-    autoUpdater.checkForUpdates().catch(error => {
-      console.error('[自动更新] 定期检查失败:', error)
-    })
-  }
-
-  // 启动定期检查
-  autoUpdateTimer = setInterval(autoCheckForUpdates, AUTO_UPDATE_INTERVAL)
-
-  // 应用启动后延迟 30 秒自动检查一次（避免阻塞启动）
-  setTimeout(() => {
-    if (app.isPackaged) {
-      console.log('[自动更新] 启动后首次检查更新...')
-      setupAutoUpdateUrl()
-      autoUpdater.checkForUpdates().catch(error => {
-        console.error('[自动更新] 启动检查失败:', error)
-      })
-    }
-  }, 30000)
-
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdates().catch(error => {
-      console.error('检查更新失败:', error)
-    })
-  }
-}
-
 // ==================== IPC Handlers ====================
-
-function checkForUpdates() {
-  console.log('收到检查更新请求, currentUpdateBaseUrl:', currentUpdateBaseUrl, 'platform:', process.platform)
-  const feedUrl = getAutoUpdateFeedUrl()
-  if (!feedUrl) {
-    const error = `无法检查更新: 当前平台 ${process.platform} 不支持或服务器地址未配置 (currentUpdateBaseUrl: ${currentUpdateBaseUrl})`
-    console.error(error)
-    sendToWindow('update-error', error)
-    return
-  }
-  
-  console.log('设置更新服务器地址:', feedUrl)
-  updatePhase = 'checking'
-  autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
-  
-  // 设置超时，防止长时间无响应（增加到 10 秒）
-  const timeout = setTimeout(() => {
-    console.error('检查更新超时（10秒）')
-    sendToWindow('update-error', '检查更新超时，请检查网络连接或服务器地址')
-  }, 10000)
-  
-  // 监听一次 update-not-available 和 update-available 来清除超时
-  const clearTimeoutHandler = () => clearTimeout(timeout)
-  autoUpdater.once('update-not-available', clearTimeoutHandler)
-  autoUpdater.once('update-available', clearTimeoutHandler)
-  autoUpdater.once('error', clearTimeoutHandler)
-  
-  autoUpdater.checkForUpdates()
-    .then(result => {
-      clearTimeout(timeout)
-      console.log('检查更新结果:', result)
-    })
-    .catch(error => {
-      clearTimeout(timeout)
-      updatePhase = 'idle'
-      console.error('检查更新失败:', error)
-      sendToWindow('update-error', formatUpdateError(error, 'check'))
-    })
-}
 
 function registerIPC() {
   ipcMain.on('minimize-window', () => {
@@ -1047,51 +855,10 @@ function registerIPC() {
     stopTrayFlash()
   })
 
-  ipcMain.on('set-server-url', (event, serverUrl) => {
-    console.log('收到服务器地址更新:', serverUrl)
-    if (serverUrl && typeof serverUrl === 'string') {
-      currentUpdateBaseUrl = serverUrl.replace(/\/+$/, '')
-      saveServerConfig(currentUpdateBaseUrl)
-      setupAutoUpdateUrl()
-      console.log('更新服务器地址已保存:', currentUpdateBaseUrl)
-    }
-  })
-
-  ipcMain.on('get-server-url', (event) => {
-    event.sender.send('server-url', currentUpdateBaseUrl)
-  })
+  updateService.registerUpdateIpc()
 
   ipcMain.handle('get-default-download-path', () => {
     return app.getPath('downloads')
-  })
-
-  ipcMain.on('check-for-updates', () => {
-    checkForUpdates()
-  })
-
-  ipcMain.on('download-update', () => {
-    updatePhase = 'downloading'
-    autoUpdater.downloadUpdate().catch(error => {
-      console.error('下载更新失败:', error)
-      updatePhase = 'idle'
-      sendToWindow('update-error', formatUpdateError(error, 'download'))
-    })
-  })
-
-  ipcMain.on('install-update', () => {
-    if (!downloadedUpdateInfo) {
-      sendToWindow('update-error', '更新文件尚未下载完成')
-      return
-    }
-    forceUpdateActive = false
-    lastForceUpdateInfo = null
-    sendToWindow('update-installing')
-    // Linux 平台 quitAndInstall 不生效，需通过脚本安装 deb/AppImage
-    if (process.platform === 'linux') {
-      installLinuxUpdate(downloadedUpdateInfo)
-    } else {
-      autoUpdater.quitAndInstall(false, true)
-    }
   })
 
   ipcMain.on('start-screen-share', async () => {
@@ -1273,7 +1040,7 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
   registerIPC()
-  setupAutoUpdater()
+  updateService.startUpdateService()
 
   if (app.dock) {
     const image = loadIcon(512)

@@ -2,7 +2,7 @@
   <div class="feedback-management-page">
     <div class="page-header">
       <h2>用户反馈管理</h2>
-      <p class="page-description">管理用户提交的意见反馈，及时处理和回复用户问题</p>
+      <p class="page-description">管理用户提交的问题反馈，及时处理和回复用户问题</p>
     </div>
 
     <!-- 统计卡片 -->
