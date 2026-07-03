@@ -26,9 +26,98 @@ import (
 // Global smart reply engine instance
 var smartReplyEngine *SmartReplyEngine
 
-// remindRateLimiter 消息提醒频率限制器，key: messageID, value: 上次提醒时间
-// 重启清零，对提醒场景可接受（用户大不了再点一次）
-var remindRateLimiter sync.Map
+type reminderLimiterState struct {
+	pending bool
+	lastOK  time.Time
+}
+
+type reminderLimiterReason int
+
+const (
+	reminderAllowed reminderLimiterReason = iota
+	reminderPending
+	reminderCoolingDown
+)
+
+type reminderLimiter struct {
+	mu      sync.Mutex
+	entries map[uint]reminderLimiterState
+}
+
+func newReminderLimiter() *reminderLimiter {
+	return &reminderLimiter{entries: make(map[uint]reminderLimiterState)}
+}
+
+func (l *reminderLimiter) cleanupExpiredLocked(now time.Time) {
+	for id, entry := range l.entries {
+		if !entry.pending && !entry.lastOK.IsZero() && now.Sub(entry.lastOK) >= time.Hour {
+			delete(l.entries, id)
+		}
+	}
+}
+
+func (l *reminderLimiter) checkLocked(messageID uint, now time.Time) reminderLimiterReason {
+	entry := l.entries[messageID]
+	if entry.pending {
+		return reminderPending
+	}
+	if !entry.lastOK.IsZero() && now.Sub(entry.lastOK) < time.Hour {
+		return reminderCoolingDown
+	}
+	return reminderAllowed
+}
+
+func (l *reminderLimiter) check(messageID uint, now time.Time) reminderLimiterReason {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.cleanupExpiredLocked(now)
+	return l.checkLocked(messageID, now)
+}
+
+func (l *reminderLimiter) start(messageID uint, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.cleanupExpiredLocked(now)
+	if l.checkLocked(messageID, now) != reminderAllowed {
+		return false
+	}
+
+	entry := l.entries[messageID]
+	entry.pending = true
+	l.entries[messageID] = entry
+	return true
+}
+
+func (l *reminderLimiter) finish(messageID uint, success bool, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	entry := l.entries[messageID]
+	entry.pending = false
+	if success {
+		entry.lastOK = now
+	} else if entry.lastOK.IsZero() {
+		delete(l.entries, messageID)
+		return
+	}
+	l.entries[messageID] = entry
+}
+
+func reminderLimiterReasonMessage(reason reminderLimiterReason) string {
+	if reason == reminderPending {
+		return "提醒发送中，请稍候"
+	}
+	return "该消息已提醒过，请 1 小时后再试"
+}
+
+func finishReminderAttempt(limiter *reminderLimiter, messageID uint, success *bool) {
+	limiter.finish(messageID, *success, time.Now())
+}
+
+// remindRateLimiter 消息提醒频率限制器；重启清零，对提醒场景可接受。
+var remindRateLimiter = newReminderLimiter()
 
 // TodoExtractorInterface 待办提取接口，便于测试替换
 type TodoExtractorInterface interface {
@@ -852,12 +941,9 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
-	// 频率限制：同一消息每小时最多 1 次
-	if last, ok := remindRateLimiter.Load(msg.ID); ok {
-		if time.Since(last.(time.Time)) < time.Hour {
-			response.BadRequest(c, "该消息已提醒过，请 1 小时后再试")
-			return
-		}
+	if reason := remindRateLimiter.check(msg.ID, time.Now()); reason != reminderAllowed {
+		response.BadRequest(c, reminderLimiterReasonMessage(reason))
+		return
 	}
 
 	// 读取 webhook 配置
@@ -902,8 +988,12 @@ func RemindMessage(c *gin.Context) {
 		MessageURL:            messageURL,
 	}
 
-	// 记录频率限制
-	remindRateLimiter.Store(msg.ID, time.Now())
+	// 频率限制：同一消息成功提醒后每小时最多 1 次；调用中阻止重复点击。
+	if !remindRateLimiter.start(msg.ID, time.Now()) {
+		reason := remindRateLimiter.check(msg.ID, time.Now())
+		response.BadRequest(c, reminderLimiterReasonMessage(reason))
+		return
+	}
 
 	// 立即返回，异步调用 webhook
 	response.Success(c, gin.H{"message": "提醒发送中"})
@@ -911,6 +1001,9 @@ func RemindMessage(c *gin.Context) {
 	// 异步调用 webhook，结果通过 WebSocket 回执给发送方
 	senderID := userID.(uint)
 	utils.SafeGoWithLabel("webhook-remind", func() {
+		success := false
+		defer finishReminderAttempt(remindRateLimiter, msg.ID, &success)
+
 		hub := di.GlobalContainer.WebSocketHub
 		var result []byte
 
@@ -927,6 +1020,7 @@ func RemindMessage(c *gin.Context) {
 				},
 			})
 		} else {
+			success = true
 			result, _ = json.Marshal(map[string]interface{}{
 				"type": "remind_result",
 				"data": map[string]interface{}{
