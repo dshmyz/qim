@@ -10,10 +10,11 @@ import (
 
 // 版本相关错误
 var (
-	ErrVersionExists       = errors.New("该版本已存在")
-	ErrVersionNotFound     = errors.New("版本不存在")
-	ErrMissingDownloadURL = errors.New("下载链接不能为空")
-	ErrHashComputeFailed  = errors.New("安装包校验信息计算失败")
+	ErrVersionExists            = errors.New("该版本已存在")
+	ErrVersionNotFound          = errors.New("版本不存在")
+	ErrMissingDownloadURL       = errors.New("下载链接不能为空")
+	ErrHashComputeFailed        = errors.New("SHA512 和文件大小计算失败")
+	ErrInvalidRolloutPercentage = errors.New("灰度百分比必须在 0 到 100 之间")
 )
 
 // CreateVersionInput 创建版本的入参
@@ -23,7 +24,7 @@ type CreateVersionInput struct {
 	DownloadURL       string
 	Changelog         string
 	ForceUpdate       bool
-	RolloutPercentage int
+	RolloutPercentage *int
 	MinVersion        string
 	Sha512            string
 	FileSize          int64
@@ -63,6 +64,11 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		return nil, ErrVersionExists
 	}
 
+	rolloutPercentage, err := NormalizeRolloutPercentage(input.RolloutPercentage)
+	if err != nil {
+		return nil, err
+	}
+
 	version := model.ClientVersion{
 		Version:           input.Version,
 		Platform:          platform,
@@ -70,7 +76,7 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		DownloadURL:       input.DownloadURL,
 		Changelog:         input.Changelog,
 		ForceUpdate:       input.ForceUpdate,
-		RolloutPercentage: defaultRollout(input.RolloutPercentage),
+		RolloutPercentage: rolloutPercentage,
 		MinVersion:        input.MinVersion,
 		Enabled:           true,
 	}
@@ -144,8 +150,8 @@ func (s *VersionService) Update(id uint, input UpdateVersionInput) (*model.Clien
 	if input.Status != nil {
 		version.Enabled = *input.Status == "active"
 	}
-	if input.RolloutPercentage != nil {
-		version.RolloutPercentage = *input.RolloutPercentage
+	if err := ApplyRolloutPercentageUpdate(version, input.RolloutPercentage); err != nil {
+		return nil, err
 	}
 	if input.MinVersion != nil {
 		version.MinVersion = *input.MinVersion
@@ -210,13 +216,25 @@ func (s *VersionService) Rollback(id uint) error {
 	return s.db.Model(target).Update("enabled", true).Error
 }
 
-// defaultRollout 确保灰度百分比在 0-100 范围内，默认 100
-func defaultRollout(p int) int {
-	if p <= 0 {
-		return 100
+// NormalizeRolloutPercentage 确保灰度百分比在 0-100 范围内；未传时默认 100。
+func NormalizeRolloutPercentage(p *int) (int, error) {
+	if p == nil {
+		return 100, nil
 	}
-	if p > 100 {
-		return 100
+	if *p < 0 || *p > 100 {
+		return 0, ErrInvalidRolloutPercentage
 	}
-	return p
+	return *p, nil
+}
+
+func ApplyRolloutPercentageUpdate(version *model.ClientVersion, p *int) error {
+	if p == nil {
+		return nil
+	}
+	rolloutPercentage, err := NormalizeRolloutPercentage(p)
+	if err != nil {
+		return err
+	}
+	version.RolloutPercentage = rolloutPercentage
+	return nil
 }

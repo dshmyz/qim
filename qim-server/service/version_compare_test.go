@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -134,4 +135,64 @@ func TestValidateVersionFormat(t *testing.T) {
 	if err := ValidateVersionFormat("2.1.0"); err != nil {
 		t.Errorf("expected no error for valid version, got %v", err)
 	}
+}
+
+func TestNormalizeRolloutPercentage(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *int
+		want  int
+	}{
+		{name: "missing defaults to full rollout", input: nil, want: 100},
+		{name: "zero means disabled", input: intPtr(0), want: 0},
+		{name: "partial rollout is preserved", input: intPtr(30), want: 30},
+		{name: "full rollout is preserved", input: intPtr(100), want: 100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeRolloutPercentage(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeRolloutPercentageRejectsOutOfRange(t *testing.T) {
+	for _, value := range []int{-1, 101} {
+		_, err := NormalizeRolloutPercentage(intPtr(value))
+		if !errors.Is(err, ErrInvalidRolloutPercentage) {
+			t.Fatalf("expected ErrInvalidRolloutPercentage for %d, got %v", value, err)
+		}
+	}
+}
+
+func TestApplyRolloutPercentageUpdate(t *testing.T) {
+	version := model.ClientVersion{RolloutPercentage: 25}
+
+	if err := ApplyRolloutPercentageUpdate(&version, nil); err != nil {
+		t.Fatalf("unexpected error for missing rollout percentage: %v", err)
+	}
+	if version.RolloutPercentage != 25 {
+		t.Fatalf("expected missing rollout percentage to leave value unchanged, got %d", version.RolloutPercentage)
+	}
+
+	if err := ApplyRolloutPercentageUpdate(&version, intPtr(0)); err != nil {
+		t.Fatalf("unexpected error for zero rollout percentage: %v", err)
+	}
+	if version.RolloutPercentage != 0 {
+		t.Fatalf("expected zero rollout percentage to be preserved, got %d", version.RolloutPercentage)
+	}
+
+	if err := ApplyRolloutPercentageUpdate(&version, intPtr(101)); !errors.Is(err, ErrInvalidRolloutPercentage) {
+		t.Fatalf("expected ErrInvalidRolloutPercentage, got %v", err)
+	}
+}
+
+func intPtr(v int) *int {
+	return &v
 }

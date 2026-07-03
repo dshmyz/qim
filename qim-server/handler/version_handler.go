@@ -69,7 +69,7 @@ func CreateVersion(c *gin.Context) {
 		ForceUpdate       bool   `json:"forceUpdate"`
 		Sha512            string `json:"sha512"`
 		FileSize          int64  `json:"fileSize"`
-		RolloutPercentage int    `json:"rolloutPercentage"`
+		RolloutPercentage *int   `json:"rolloutPercentage"`
 		MinVersion        string `json:"minVersion"`
 	}
 
@@ -97,6 +97,8 @@ func CreateVersion(c *gin.Context) {
 		case errors.Is(err, service.ErrMissingDownloadURL):
 			response.BadRequest(c, "下载链接不能为空")
 		case errors.Is(err, service.ErrHashComputeFailed):
+			response.BadRequest(c, err.Error())
+		case errors.Is(err, service.ErrInvalidRolloutPercentage):
 			response.BadRequest(c, err.Error())
 		default:
 			response.InternalServerError(c, "创建失败")
@@ -134,6 +136,10 @@ func UpdateVersion(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, service.ErrVersionNotFound) {
 			response.NotFound(c, "版本不存在")
+			return
+		}
+		if errors.Is(err, service.ErrInvalidRolloutPercentage) {
+			response.BadRequest(c, err.Error())
 			return
 		}
 		response.InternalServerError(c, "更新失败")

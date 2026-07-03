@@ -126,6 +126,29 @@ describe('auto update feed URL per platform', () => {
     // 不应再有 win/（无后缀）的路径
     expect(updateModule).not.toMatch(/updates\/win["']/)
   })
+
+  it('adds a stable client id to update feed URLs for rollout bucketing', () => {
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+
+    expect(updateModule).toContain('getOrCreateUpdateClientId')
+    expect(updateModule).toContain('client=${encodeURIComponent(getOrCreateUpdateClientId())}')
+    expect(updateModule).toContain("'X-QIM-Update-Client': clientId")
+  })
+})
+
+describe('websocket version reporting', () => {
+  it('uses the module app config version instead of an optional window global', () => {
+    const useWebSocket = readFileSync(resolve(__dirname, '../../src/composables/useWebSocket.ts'), 'utf8')
+    const websocketManager = readFileSync(resolve(__dirname, '../../src/utils/websocketManager.ts'), 'utf8')
+
+    expect(useWebSocket).toContain("import { APP_CONFIG } from '../config/appConfig'")
+    expect(useWebSocket).toContain('const version = APP_CONFIG.version')
+    expect(useWebSocket).not.toContain('(window as any).APP_CONFIG?.version')
+
+    expect(websocketManager).toContain("import { APP_CONFIG } from '../config/appConfig'")
+    expect(websocketManager).toContain('const version = APP_CONFIG.version')
+    expect(websocketManager).not.toContain('(window as any).APP_CONFIG?.version')
+  })
 })
 
 describe('install-update routing', () => {

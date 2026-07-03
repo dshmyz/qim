@@ -134,7 +134,7 @@ func HandleUpdateRequest(c *gin.Context) {
 
 func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 	platform := normalizePlatform(platformParam)
-	clientID := c.Query("client")
+	clientID := updateClientID(c)
 	db := database.GetDB()
 	svc := service.NewVersionService(db)
 	version, err := svc.GetLatestEnabled(platform, clientID)
@@ -156,7 +156,7 @@ func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 func GetLatestYML(c *gin.Context) {
 	platformParam := c.Param("platform")
 	platform := normalizePlatform(platformParam)
-	clientID := c.Query("client")
+	clientID := updateClientID(c)
 
 	logger.WithModule("Update").Info("检查更新请求",
 		"platform_param", platformParam,
@@ -253,6 +253,13 @@ forceUpdate: %s
 
 	c.Header("Content-Type", "text/yaml")
 	c.String(http.StatusOK, yml)
+}
+
+func updateClientID(c *gin.Context) string {
+	if clientID := c.Query("client"); clientID != "" {
+		return clientID
+	}
+	return c.GetHeader("X-QIM-Update-Client")
 }
 
 func formatYAMLBlockString(value string) string {

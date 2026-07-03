@@ -3,6 +3,7 @@ import QMessage from '../utils/qmessage'
 import { calculateReconnectDelay, shouldReconnect, DEFAULT_RECONNECT_CONFIG } from '../utils/websocketReconnect'
 import { connectionMonitor } from '../utils/connectionMonitor'
 import { messageQueue } from '../utils/messageQueue'
+import { APP_CONFIG } from '../config/appConfig'
 
 export interface WebSocketMessage {
   type: string
@@ -283,7 +284,7 @@ export function useWebSocket(wsUrl: string) {
       const platform = navigator.userAgent.toLowerCase().includes('mac') ? 'macos'
         : navigator.userAgent.toLowerCase().includes('linux') ? 'linux'
         : 'windows'
-      const version = (window as any).APP_CONFIG?.version || ''
+      const version = APP_CONFIG.version
       const versionQuery = `&version=${encodeURIComponent(version)}&platform=${platform}`
 
       const wsFullUrl = cleanUrl.startsWith('ws')

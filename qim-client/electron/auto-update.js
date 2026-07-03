@@ -1,4 +1,7 @@
 import pkg from 'electron-updater'
+import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
 
 const { autoUpdater } = pkg
 
@@ -19,15 +22,58 @@ export function createUpdateService({
   let lastForceUpdateInfo = null
   let downloadedUpdateInfo = null
   let updaterEventsReady = false
+  let updateClientId = null
+
+  function getOrCreateUpdateClientId() {
+    if (updateClientId) return updateClientId
+
+    const clientIdPath = path.join(app.getPath('userData'), 'update-client-id')
+    try {
+      const existing = fs.readFileSync(clientIdPath, 'utf8').trim()
+      if (existing) {
+        updateClientId = existing
+        return updateClientId
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn('读取更新客户端 ID 失败，将重新生成:', error)
+      }
+    }
+
+    updateClientId = crypto.randomUUID()
+    try {
+      fs.mkdirSync(path.dirname(clientIdPath), { recursive: true })
+      fs.writeFileSync(clientIdPath, updateClientId, 'utf8')
+    } catch (error) {
+      console.warn('保存更新客户端 ID 失败，本次运行仍会使用内存 ID:', error)
+    }
+    return updateClientId
+  }
+
+  function withRolloutClientQuery(url) {
+    const separator = url.includes('?') ? '&' : '?'
+    return `${url}${separator}client=${encodeURIComponent(getOrCreateUpdateClientId())}`
+  }
+
+  function updateFeedOptions(feedUrl) {
+    const clientId = getOrCreateUpdateClientId()
+    return {
+      provider: 'generic',
+      url: feedUrl,
+      requestHeaders: {
+        'X-QIM-Update-Client': clientId
+      }
+    }
+  }
 
   function resolveUpdateFeedUrl() {
     const baseUrl = getUpdateBaseUrl()
     if (process.platform === 'win32') {
       const electronMajor = parseInt(process.versions.electron.split('.')[0], 10)
-      return `${baseUrl}/api/v1/updates/${electronMajor <= 22 ? 'win7' : 'win10'}/`
+      return withRolloutClientQuery(`${baseUrl}/api/v1/updates/${electronMajor <= 22 ? 'win7' : 'win10'}/`)
     }
-    if (process.platform === 'linux') return `${baseUrl}/api/v1/updates/linux/`
-    if (process.platform === 'darwin') return `${baseUrl}/api/v1/updates/mac/`
+    if (process.platform === 'linux') return withRolloutClientQuery(`${baseUrl}/api/v1/updates/linux/`)
+    if (process.platform === 'darwin') return withRolloutClientQuery(`${baseUrl}/api/v1/updates/mac/`)
     return null
   }
 
@@ -35,7 +81,7 @@ export function createUpdateService({
     const feedUrl = resolveUpdateFeedUrl()
     if (feedUrl) {
       console.log(`设置更新服务器地址: ${feedUrl}`)
-      autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+      autoUpdater.setFeedURL(updateFeedOptions(feedUrl))
     } else {
       console.warn('无法设置更新服务器地址: feedUrl 为空, currentUpdateBaseUrl:', getUpdateBaseUrl(), 'platform:', process.platform)
     }
@@ -89,7 +135,7 @@ export function createUpdateService({
 
     console.log('设置更新服务器地址:', feedUrl)
     updatePhase = 'checking'
-    autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+    autoUpdater.setFeedURL(updateFeedOptions(feedUrl))
 
     const timeout = setTimeout(() => {
       console.error('检查更新超时（10秒）')
