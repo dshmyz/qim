@@ -412,6 +412,7 @@ func MigrateDB(db *gorm.DB) {
 	seedBuiltInApps(db)
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
+	seedMessageRemindWebhook(db)
 }
 
 // migrateModels 迁移一组模型
@@ -605,6 +606,19 @@ func seedFileUploadConfig(db *gorm.DB) {
 		db.Where("config_key = ?", cfg.ConfigKey).FirstOrCreate(&cfg)
 	}
 	logger.WithModule("Migrate").Info("文件上传配置初始化完成")
+}
+
+// seedMessageRemindWebhook 初始化消息提醒 webhook 配置
+// 管理员在后台系统配置页面填写 URL/secret/body_template 等，启用后右键消息"发送提醒"将调用外部系统
+func seedMessageRemindWebhook(db *gorm.DB) {
+	defaultCfg := model.SystemConfig{
+		ConfigKey: "message_remind_webhook",
+		Value:     `{"enabled":false,"url":"","method":"POST","secret":"","timeout_seconds":10,"headers":{"Content-Type":"application/json"},"body_template":""}`,
+		Type:      "json",
+		Desc:      "消息提醒 webhook 配置（管理员配置）",
+	}
+	db.Where("config_key = ?", defaultCfg.ConfigKey).FirstOrCreate(&defaultCfg)
+	logger.WithModule("Migrate").Info("消息提醒 webhook 配置初始化完成")
 }
 
 // seedApprovalConfigs 初始化审批配置

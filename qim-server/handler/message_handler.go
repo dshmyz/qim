@@ -3,8 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -23,6 +25,10 @@ import (
 
 // Global smart reply engine instance
 var smartReplyEngine *SmartReplyEngine
+
+// remindRateLimiter 消息提醒频率限制器，key: messageID, value: 上次提醒时间
+// 重启清零，对提醒场景可接受（用户大不了再点一次）
+var remindRateLimiter sync.Map
 
 // TodoExtractorInterface 待办提取接口，便于测试替换
 type TodoExtractorInterface interface {
@@ -803,6 +809,7 @@ func RemindMessage(c *gin.Context) {
 	}
 
 	msgSvc := di.GlobalContainer.MessageService
+	db := di.GlobalContainer.DB
 
 	msg, err := msgSvc.GetMessageByID(uint(msgID))
 	if err != nil {
@@ -810,13 +817,126 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
+	// 校验：是发送者本人
 	if msg.SenderID != userID.(uint) {
 		response.Forbidden(c, "无权限发送提醒")
 		return
 	}
 
-	response.Success(c, gin.H{
-		"message": "提醒已发送",
+	// 校验：单聊（与前端 canSendReminder 逻辑一致，后端兜底）
+	var conv model.Conversation
+	if err := db.First(&conv, msg.ConversationID).Error; err != nil {
+		response.InternalServerError(c, "会话不存在")
+		return
+	}
+	if conv.Type != "single" {
+		response.BadRequest(c, "仅支持单聊消息提醒")
+		return
+	}
+
+	// 校验：消息未读
+	if msg.IsRead {
+		response.BadRequest(c, "消息已被读，无需提醒")
+		return
+	}
+
+	// 校验：超 1 小时
+	if time.Since(msg.CreatedAt) < time.Hour {
+		response.BadRequest(c, "消息发送未满 1 小时")
+		return
+	}
+
+	// 校验：非 bot 消息
+	if msg.Sender.Type == "bot" {
+		response.BadRequest(c, "不支持机器人消息提醒")
+		return
+	}
+
+	// 频率限制：同一消息每小时最多 1 次
+	if last, ok := remindRateLimiter.Load(msg.ID); ok {
+		if time.Since(last.(time.Time)) < time.Hour {
+			response.BadRequest(c, "该消息已提醒过，请 1 小时后再试")
+			return
+		}
+	}
+
+	// 读取 webhook 配置
+	webhookCfg, err := service.LoadWebhookConfig(db)
+	if err != nil || !webhookCfg.Enabled {
+		response.BadRequest(c, "提醒功能未配置或未启用")
+		return
+	}
+
+	// 查询接收者（单聊中除发送者外的成员）
+	var recipient model.User
+	if err := db.Where("id IN (?) AND id != ?",
+		db.Model(&model.ConversationMember{}).Select("user_id").Where("conversation_id = ?", msg.ConversationID),
+		userID.(uint),
+	).First(&recipient).Error; err != nil {
+		response.InternalServerError(c, "接收者不存在")
+		return
+	}
+
+	// 构造 MessageURL（可选，依赖 QIM_BASE_URL 环境变量）
+	baseURL := os.Getenv("QIM_BASE_URL")
+	messageURL := ""
+	if baseURL != "" {
+		messageURL = fmt.Sprintf("%s/chat?conv=%d&msg=%d", baseURL, msg.ConversationID, msg.ID)
+	}
+
+	data := service.RemindData{
+		MessageID:             msg.ID,
+		ConversationID:        msg.ConversationID,
+		ConversationType:      conv.Type,
+		SenderID:              msg.Sender.ID,
+		SenderUsername:        msg.Sender.Username,
+		SenderNickname:        msg.Sender.Nickname,
+		SenderEmail:           msg.Sender.Email,
+		RecipientID:           recipient.ID,
+		RecipientUsername:     recipient.Username,
+		RecipientNickname:     recipient.Nickname,
+		RecipientEmail:        recipient.Email,
+		MessageContentPreview: msg.Content,
+		MessageType:           msg.Type,
+		MessageSentAt:         msg.CreatedAt.Format(time.RFC3339),
+		MessageURL:            messageURL,
+	}
+
+	// 记录频率限制
+	remindRateLimiter.Store(msg.ID, time.Now())
+
+	// 立即返回，异步调用 webhook
+	response.Success(c, gin.H{"message": "提醒发送中"})
+
+	// 异步调用 webhook，结果通过 WebSocket 回执给发送方
+	senderID := userID.(uint)
+	utils.SafeGoWithLabel("webhook-remind", func() {
+		hub := di.GlobalContainer.WebSocketHub
+		var result []byte
+
+		if err := service.SendRemind(webhookCfg, data); err != nil {
+			logger.WithModule("Remind").Error("webhook 调用失败",
+				"message_id", msg.ID, "error", err)
+			result, _ = json.Marshal(map[string]interface{}{
+				"type": "remind_result",
+				"data": map[string]interface{}{
+					"message_id": msg.ID,
+					"success":    false,
+					"error":      err.Error(),
+					"timestamp":  time.Now().Format(time.RFC3339),
+				},
+			})
+		} else {
+			result, _ = json.Marshal(map[string]interface{}{
+				"type": "remind_result",
+				"data": map[string]interface{}{
+					"message_id": msg.ID,
+					"success":    true,
+					"timestamp":  time.Now().Format(time.RFC3339),
+				},
+			})
+		}
+		hub.SendToUser(senderID, result)
 	})
 }
 

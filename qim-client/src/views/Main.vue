@@ -611,6 +611,7 @@
       :isDownloading="isDownloading"
       :isUpdateReadyToInstall="isUpdateReadyToInstall"
       :downloadProgress="downloadProgress"
+      :downloadSizeText="downloadSizeText"
       :hasNewVersion="hasNewVersion"
       :forceUpdate="forceUpdate"
       :updateResult="updateResult"
@@ -651,7 +652,7 @@
     @openFeedback="openFeedbackModal"
   />
 
-  <!-- 意见反馈弹窗 -->
+  <!-- 问题反馈弹窗 -->
   <FeedbackModal
     :visible="showFeedbackModal"
     @close="closeFeedbackModal"
@@ -1028,6 +1029,7 @@ const {
   isDownloading,
   isUpdateReadyToInstall,
   downloadProgress,
+  downloadSizeText,
   updateResult,
   hasNewVersion,
   forceUpdate,
@@ -1045,7 +1047,7 @@ const {
   handleClickOutside
 } = ui
 
-// 意见反馈弹窗状态
+// 问题反馈弹窗状态
 const showFeedbackModal = ref(false)
 
 const openFeedbackModal = () => {
@@ -1591,7 +1593,15 @@ const connectWebSocket = () => {
     },
     'call.answer': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.answer', data: msg }),
     'call.reject': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.reject', data: msg }),
-    'call.end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.end', data: msg })
+    'call.end': (msg: any) => realtimeRef.value?.handleVideoCallSignaling({ type: 'call.end', data: msg }),
+    // 消息提醒 webhook 调用结果回执
+    'remind_result': (data: any) => {
+      if (data.success) {
+        showMessage({ message: '提醒已送达外部系统', type: 'success' })
+      } else {
+        showMessage({ message: `提醒发送失败：${data.error || '未知错误'}`, type: 'error', duration: 5000 })
+      }
+    }
   }
   
   // 使用WebSocket管理器连接

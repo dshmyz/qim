@@ -79,6 +79,7 @@ interface Props {
   visible: boolean
   position: { x: number; y: number }
   message: Message | null
+  conversationType?: string
 }
 
 interface Emits {
@@ -122,6 +123,8 @@ const isTextLikeMessage = computed(() => {
 
 const canSendReminder = computed((): boolean => {
   if (!props.message || !props.message.timestamp || props.message.isRead) return false
+  // 群聊/讨论组不支持提醒，避免给太多人发提醒
+  if (props.conversationType === 'group' || props.conversationType === 'discussion') return false
   if (props.message.sender?.isBot) return false
 
   const now = Date.now()

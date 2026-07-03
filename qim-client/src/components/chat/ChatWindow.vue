@@ -1684,23 +1684,6 @@ const handleSmartReply = async () => {
   }
 }
 
-// 判断是否可以发送提醒
-const canSendReminder = (message: any): boolean => {
-  if (!message.timestamp || message.isRead) return false
-  
-  // 群聊不支持提醒
-  if (props.conversation.type === 'group') return false
-  
-  // 机器人消息不支持提醒
-  if (message.sender && message.sender.isBot) return false
-  
-  const now = Date.now()
-  const messageTime = new Date(message.timestamp).getTime()
-  const oneHour = 60 * 60 * 1000
-  
-  return now - messageTime > oneHour
-}
-
 // 发送消息提醒
 const sendMessageReminder = async () => {
   if (!selectedMessage.value) {
@@ -1719,7 +1702,7 @@ const sendMessageReminder = async () => {
     })
     
     if (response.code === 0) {
-      $message.success('提醒已发送')
+      $message.info('提醒发送中，结果稍后通知')
     } else {
       $message.error('发送提醒失败: ' + response.message)
     }

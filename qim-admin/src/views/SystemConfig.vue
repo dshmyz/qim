@@ -213,6 +213,8 @@
           <el-button @click="fetchConfig">重置</el-button>
         </el-form-item>
       </el-form>
+
+      <MessageRemindWebhookConfig />
     </el-card>
   </div>
 </template>
@@ -223,6 +225,7 @@ import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import type { SystemConfig } from '@/types'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
+import MessageRemindWebhookConfig from './components/MessageRemindWebhookConfig.vue'
 
 const loading = ref(false)
 const submitting = ref(false)
