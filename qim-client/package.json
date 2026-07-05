@@ -96,6 +96,10 @@
         "channel": "latest"
       }
     },
+    "deb": {
+      "afterInstall": "electron/after-install-linux.sh",
+      "afterRemove": "electron/before-remove-linux.sh"
+    },
     "mac": {
       "icon": "electron/icons/QIM.icns",
       "target": [

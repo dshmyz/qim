@@ -174,7 +174,6 @@ describe('install-update routing', () => {
     expect(updateModule).not.toContain('downloadedUpdateFiles')
     expect(packageJson).not.toContain('install-update-linux.sh')
     expect(packageJson).not.toContain('qim-update.sudoers')
-    expect(packageJson).not.toContain('after-install-linux.sh')
-    expect(packageJson).not.toContain('before-remove-linux.sh')
+    // after-install-linux.sh / before-remove-linux.sh 现用于桌面快捷方式（deb 钩子），不再是 sudo 安装辅助
   })
 })
