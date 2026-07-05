@@ -172,14 +172,18 @@ func (s *VersionService) Delete(id uint) error {
 	return s.db.Delete(version).Error
 }
 
-// ToggleStatus 切换版本启用状态
-func (s *VersionService) ToggleStatus(id uint, enabled bool) error {
+// ToggleStatus 切换版本启用状态，返回更新后的版本对象。
+// 返回版本对象可让 handler 无需二次 GetByID，避免并发删除时 nil 解引用 panic。
+func (s *VersionService) ToggleStatus(id uint, enabled bool) (*model.ClientVersion, error) {
 	version, err := s.GetByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	version.Enabled = enabled
-	return s.db.Save(version).Error
+	if err := s.db.Save(version).Error; err != nil {
+		return nil, err
+	}
+	return version, nil
 }
 
 // GetLatestEnabled 获取平台最新已启用版本（semver 排序 + 灰度过滤）
@@ -217,14 +221,16 @@ func (s *VersionService) Rollback(id uint) error {
 }
 
 // NormalizeRolloutPercentage 确保灰度百分比在 0-100 范围内；未传时默认 100。
-func NormalizeRolloutPercentage(p *int) (int, error) {
+// 返回 *int 以便 GORM 把显式 0 写入 DB（int 零值会被 GORM 省略而触发 default:100）。
+func NormalizeRolloutPercentage(p *int) (*int, error) {
 	if p == nil {
-		return 100, nil
+		defaultValue := 100
+		return &defaultValue, nil
 	}
 	if *p < 0 || *p > 100 {
-		return 0, ErrInvalidRolloutPercentage
+		return nil, ErrInvalidRolloutPercentage
 	}
-	return *p, nil
+	return p, nil
 }
 
 func ApplyRolloutPercentageUpdate(version *model.ClientVersion, p *int) error {

@@ -26,7 +26,7 @@ func versionToFrontend(v model.ClientVersion) gin.H {
 		"downloadUrl":       v.DownloadURL,
 		"updateNotes":       v.Changelog,
 		"forceUpdate":       v.ForceUpdate,
-		"rolloutPercentage": v.RolloutPercentage,
+		"rolloutPercentage": v.GetRolloutPercentage(),
 		"minVersion":        v.MinVersion,
 		"status":            status,
 		"releaseDate":       v.CreatedAt.Format("2006-01-02"),
@@ -177,7 +177,8 @@ func ToggleVersionStatus(c *gin.Context) {
 	}
 
 	svc := service.NewVersionService(database.GetDB())
-	if err := svc.ToggleStatus(uint(id), req.Status == "active"); err != nil {
+	version, err := svc.ToggleStatus(uint(id), req.Status == "active")
+	if err != nil {
 		if errors.Is(err, service.ErrVersionNotFound) {
 			response.NotFound(c, "版本不存在")
 			return
@@ -186,8 +187,6 @@ func ToggleVersionStatus(c *gin.Context) {
 		return
 	}
 
-	// 返回更新后的版本
-	version, _ := svc.GetByID(uint(id))
 	response.Success(c, versionToFrontend(*version))
 }
 

@@ -39,46 +39,7 @@ function getUpdateServerUrl() {
 }
 
 if (app.isPackaged) {
-  // 检查 SingletonLock 是否为陈旧锁（锁持有进程已不存在）
-  // macOS/Linux: SingletonLock 是符号链接，目标格式为 {appName}-{pid}
-  // Windows: 单实例锁使用命名 mutex，不存在锁文件，直接认为锁有效
-  const isStaleSingletonLock = (lockPath) => {
-    if (process.platform === 'win32') {
-      return false
-    }
-    let pid = null
-    try {
-      const target = fs.readlinkSync(lockPath)
-      const match = String(target).match(/(\d+)$/)
-      if (match) {
-        pid = parseInt(match[1], 10)
-      }
-    } catch (e) {
-      // 不是符号链接，尝试读取文件内容解析 PID
-      try {
-        const content = fs.readFileSync(lockPath, 'utf8')
-        const match = content.match(/(\d+)/)
-        if (match) {
-          pid = parseInt(match[1], 10)
-        }
-      } catch (e2) {
-        return false
-      }
-    }
-    if (!pid || pid <= 0) {
-      return false
-    }
-    try {
-      // process.kill(pid, 0) 仅检查进程是否存在，不实际发送信号
-      process.kill(pid, 0)
-      return false
-    } catch (e) {
-      // ESRCH: 进程不存在 → 陈旧锁；EPERM: 进程存在但无权限 → 非陈旧锁
-      return e.code === 'ESRCH'
-    }
-  }
-
-  // 同步等待（app 未就绪前无法使用异步 API）
+  // app.whenReady 前不能用异步 API，用 Atomics.wait 同步阻塞（跨平台）
   const sleepSync = (ms) => {
     const arr = new Int32Array(new SharedArrayBuffer(4))
     Atomics.wait(arr, 0, 0, ms)
@@ -86,32 +47,15 @@ if (app.isPackaged) {
 
   let gotTheLock = app.requestSingleInstanceLock()
 
-  // 拿不到锁时先等待重试（最多 2.5 秒，每 500ms 一次，共 5 次）
-  // 避免与前一个实例的 quitAndInstall 产生竞争
-  const LOCK_RETRY_INTERVAL_MS = 500
-  const LOCK_MAX_RETRIES = 5
+  // 拿不到锁时重试，等待前一个实例的 quitAndInstall 释放锁（最多 2.5 秒）
+  // 陈旧锁（前实例崩溃残留）由 Electron 的 requestSingleInstanceLock 自身处理，无需手动删锁
   let retry = 0
-  while (!gotTheLock && retry < LOCK_MAX_RETRIES) {
+  while (!gotTheLock && retry < 5) {
     retry++
-    sleepSync(LOCK_RETRY_INTERVAL_MS)
+    sleepSync(500)
     gotTheLock = app.requestSingleInstanceLock()
   }
 
-  // 仍拿不到锁：仅当确认为陈旧锁时才清理，清理后重新请求锁
-  if (!gotTheLock) {
-    const lockPath = path.join(app.getPath('userData'), 'SingletonLock')
-    try {
-      if (fs.existsSync(lockPath) && isStaleSingletonLock(lockPath)) {
-        console.log('检测到陈旧锁文件，尝试清理:', lockPath)
-        fs.unlinkSync(lockPath)
-        gotTheLock = app.requestSingleInstanceLock()
-      }
-    } catch (e) {
-      console.error('清理锁文件失败:', e)
-    }
-  }
-
-  // 仍失败则退出当前实例（已有实例会通过 second-instance 事件聚焦窗口）
   if (!gotTheLock) {
     console.log('应用已在运行，退出当前实例')
     app.quit()
@@ -1074,4 +1018,8 @@ app.on('activate', function () {
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit()
   globalShortcut.unregisterAll()
+})
+
+app.on('before-quit', () => {
+  updateService.stopUpdateService()
 })

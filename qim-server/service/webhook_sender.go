@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"text/template"
 	"time"
 
@@ -16,6 +18,32 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// sharedHTTPClient 复用 TCP 连接池，避免每次提醒调用都新建 http.Client
+var sharedHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
+
+// templateCache 缓存已解析的 body_template，key 为模板字符串，value 为 *template.Template
+// 相同模板只解析一次，后续调用直接复用
+var templateCache sync.Map
+
+// getCompiledTemplate 解析并缓存 body 模板；并发场景下相同模板可能被解析多次，但只会存储一份
+func getCompiledTemplate(bodyTemplate string) (*template.Template, error) {
+	if v, ok := templateCache.Load(bodyTemplate); ok {
+		return v.(*template.Template), nil
+	}
+	tmpl, err := template.New("body").Parse(bodyTemplate)
+	if err != nil {
+		return nil, err
+	}
+	actual, _ := templateCache.LoadOrStore(bodyTemplate, tmpl)
+	return actual.(*template.Template), nil
+}
 
 // WebhookConfig 消息提醒 webhook 配置
 // 由管理员在后台系统配置页面填写，存储在 SystemConfig 表中（key=message_remind_webhook）
@@ -78,8 +106,8 @@ func SendRemind(cfg *WebhookConfig, data RemindData) error {
 	deliveryID := uuid.New().String()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	// 渲染 body 模板
-	tmpl, err := template.New("body").Parse(cfg.BodyTemplate)
+	// 渲染 body 模板（已解析的模板会被缓存，避免每次调用重复 Parse）
+	tmpl, err := getCompiledTemplate(cfg.BodyTemplate)
 	if err != nil {
 		return fmt.Errorf("body_template 解析失败: %w", err)
 	}
@@ -111,8 +139,15 @@ func SendRemind(cfg *WebhookConfig, data RemindData) error {
 	}
 	bodyBytes := bodyBuf.Bytes()
 
-	// 构造 HTTP 请求
-	req, err := http.NewRequest(cfg.Method, cfg.URL, bytes.NewReader(bodyBytes))
+	// 构造 HTTP 请求，使用 context 控制单次请求超时（复用共享 client 的连接池）
+	// 兜底处理直接构造的 cfg（如测试或未走 LoadWebhookConfig 归一化的场景），避免 timeout 为 0 导致 context 立即过期
+	timeoutSeconds := cfg.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 10
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, cfg.Method, cfg.URL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("构造请求失败: %w", err)
 	}
@@ -134,9 +169,8 @@ func SendRemind(cfg *WebhookConfig, data RemindData) error {
 		req.Header.Set("X-QIM-Signature", hex.EncodeToString(mac.Sum(nil)))
 	}
 
-	// 调用
-	client := &http.Client{Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
-	resp, err := client.Do(req)
+	// 调用（复用共享 client 的连接池）
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("webhook 调用失败: %w", err)
 	}

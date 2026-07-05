@@ -5,6 +5,12 @@ import crypto from 'crypto'
 
 const { autoUpdater } = pkg
 
+// Linux 下 electron-updater 默认按 gksudo>kdesudo>pkexec>beesu>sudo 的顺序选择提权命令，
+// 优先使用 sudo 以便配合免密配置
+if (process.platform === 'linux') {
+  autoUpdater.determineSudoCommand = () => 'sudo'
+}
+
 const CHECK_UPDATE_TIMEOUT_MS = 12000
 const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 const STARTUP_CHECK_DELAY_MS = 30000
@@ -23,6 +29,11 @@ export function createUpdateService({
   let downloadedUpdateInfo = null
   let updaterEventsReady = false
   let updateClientId = null
+  // 一次操作（检查/下载）周期内是否已发送错误，防止 timeout/.catch/on('error') 重复报错
+  let errorReported = false
+  // 自动检查与启动延迟检查的定时器，应用退出时需清理
+  let autoCheckTimer = null
+  let startupCheckTimer = null
 
   function getOrCreateUpdateClientId() {
     if (updateClientId) return updateClientId
@@ -124,6 +135,10 @@ export function createUpdateService({
   }
 
   function checkForUpdates() {
+    if (updatePhase === 'checking' || updatePhase === 'downloading') {
+      console.log('更新检查已在进行中，忽略重复请求, currentUpdatePhase:', updatePhase)
+      return
+    }
     console.log('收到检查更新请求, currentUpdateBaseUrl:', getUpdateBaseUrl(), 'platform:', process.platform)
     const feedUrl = resolveUpdateFeedUrl()
     if (!feedUrl) {
@@ -135,10 +150,14 @@ export function createUpdateService({
 
     console.log('设置更新服务器地址:', feedUrl)
     updatePhase = 'checking'
+    errorReported = false
     autoUpdater.setFeedURL(updateFeedOptions(feedUrl))
 
     const timeout = setTimeout(() => {
-      console.error('检查更新超时（10秒）')
+      if (errorReported) return
+      errorReported = true
+      updatePhase = 'idle'
+      console.error(`检查更新超时（${CHECK_UPDATE_TIMEOUT_MS / 1000}秒）`)
       sendToWindow('update-error', '检查更新超时，请检查网络连接或服务器地址')
     }, CHECK_UPDATE_TIMEOUT_MS)
 
@@ -154,6 +173,8 @@ export function createUpdateService({
       })
       .catch(error => {
         clearTimeout(timeout)
+        if (errorReported) return // 超时已处理，避免重复报错
+        errorReported = true
         updatePhase = 'idle'
         console.error('检查更新失败:', error)
         sendToWindow('update-error', formatUpdateError(error, 'check'))
@@ -162,11 +183,14 @@ export function createUpdateService({
 
   function downloadUpdate() {
     updatePhase = 'downloading'
+    errorReported = false
     autoUpdater.downloadUpdate()
       .catch(error => {
         console.error('下载更新失败:', error)
         updatePhase = 'idle'
         resetDownloadedUpdate()
+        if (errorReported) return // on('error') 已报告，避免重复报错
+        errorReported = true
         sendToWindow('update-error', formatUpdateError(error, 'download'))
       })
   }
@@ -218,10 +242,12 @@ export function createUpdateService({
 
     autoUpdater.on('error', (error) => {
       console.error('更新错误:', error)
-      const errorMessage = formatUpdateError(error)
+      const errorMessage = formatUpdateError(error) // formatUpdateError 依赖当前 phase，需在重置前计算
       updatePhase = 'idle'
       resetDownloadedUpdate()
       clearForceUpdate()
+      if (errorReported) return // 错误已由 timeout 或 .catch 报告，这里只做状态清理
+      errorReported = true
       sendToWindow('update-error', errorMessage)
     })
 
@@ -241,11 +267,21 @@ export function createUpdateService({
 
   function checkForUpdatesQuietly(source) {
     if (!app.isPackaged) return
+    if (updatePhase === 'checking' || updatePhase === 'downloading') {
+      console.log(`[自动更新] ${source}跳过：更新检查已在进行中, currentUpdatePhase: ${updatePhase}`)
+      return
+    }
 
     console.log(`[自动更新] ${source}...`)
+    updatePhase = 'checking'
+    errorReported = false
     applyUpdateFeedUrl()
     autoUpdater.checkForUpdates().catch(error => {
       console.error(`[自动更新] ${source}失败:`, error)
+      // 兜底：若 Promise reject 且未触发 error 事件，重置状态避免卡在 checking
+      if (updatePhase === 'checking') {
+        updatePhase = 'idle'
+      }
     })
   }
 
@@ -258,15 +294,20 @@ export function createUpdateService({
       checkForUpdatesQuietly('定期检查更新')
     }
 
-    setInterval(autoCheckForUpdates, AUTO_CHECK_INTERVAL_MS)
-    setTimeout(() => {
+    autoCheckTimer = setInterval(autoCheckForUpdates, AUTO_CHECK_INTERVAL_MS)
+    startupCheckTimer = setTimeout(() => {
       checkForUpdatesQuietly('启动后首次检查更新')
     }, STARTUP_CHECK_DELAY_MS)
+  }
 
-    if (app.isPackaged) {
-      autoUpdater.checkForUpdates().catch(error => {
-        console.error('检查更新失败:', error)
-      })
+  function stopUpdateService() {
+    if (autoCheckTimer) {
+      clearInterval(autoCheckTimer)
+      autoCheckTimer = null
+    }
+    if (startupCheckTimer) {
+      clearTimeout(startupCheckTimer)
+      startupCheckTimer = null
     }
   }
 
@@ -301,6 +342,7 @@ export function createUpdateService({
 
   return {
     startUpdateService,
+    stopUpdateService,
     registerUpdateIpc,
     isForceUpdateActive: () => forceUpdateActive,
     getLastForceUpdateInfo: () => lastForceUpdateInfo

@@ -272,6 +272,8 @@ func (h *Hub) asyncBroadcast(message []byte) {
 	for client := range failedChan {
 		h.clients.Delete(client)
 		safeCloseSend(client.send)
+		// 与 unregister 路径一致：清理失败客户端时同步扣减版本统计，避免分布虚高
+		h.decVersionStats(client.version, client.platform)
 
 		// 同步清理 userClients，防止悬空
 		if existingClients, ok := h.userClients.Load(client.userID); ok {

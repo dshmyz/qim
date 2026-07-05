@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -194,4 +195,50 @@ func TestGetLatestYML_RejectsIncompleteEnabledVersion(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Empty(t, w.Body.String())
+}
+
+func TestToggleVersionStatus_ReturnsUpdatedStatus(t *testing.T) {
+	db := setupVersionUpdateTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	version := model.ClientVersion{
+		Version:     "2.0.0",
+		Platform:    "windows",
+		DownloadURL: "https://example.com/QIM-2.0.0.exe",
+		Sha512:      "abc",
+		FileSize:    1024,
+		Enabled:     true,
+	}
+	assert.NoError(t, db.Create(&version).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(int(version.ID))}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/toggle", bytes.NewBufferString(`{"status":"inactive"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ToggleVersionStatus(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "inactive")
+
+	// DB 中状态确实已更新
+	var updated model.ClientVersion
+	assert.NoError(t, db.First(&updated, version.ID).Error)
+	assert.False(t, updated.Enabled)
+}
+
+func TestToggleVersionStatus_Returns404ForMissingVersion(t *testing.T) {
+	setupVersionUpdateTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/toggle", bytes.NewBufferString(`{"status":"active"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ToggleVersionStatus(c)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

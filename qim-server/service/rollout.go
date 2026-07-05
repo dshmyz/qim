@@ -18,14 +18,15 @@ func FilterByRollout(versions []model.ClientVersion, clientID string) []model.Cl
 		bucket = binary.BigEndian.Uint16(sum[:2]) % 100 // 0-99
 	}
 	for _, v := range versions {
-		if v.RolloutPercentage >= 100 {
+		rollout := v.GetRolloutPercentage()
+		if rollout >= 100 {
 			result = append(result, v)
 			continue
 		}
 		if clientID == "" {
 			continue // 未携带 clientID 时跳过灰度版本
 		}
-		if bucket < uint16(v.RolloutPercentage) {
+		if bucket < uint16(rollout) {
 			result = append(result, v)
 		}
 	}

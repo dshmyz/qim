@@ -23,8 +23,8 @@ type User struct {
 	Signature        string         `json:"signature" gorm:"type:text"`
 	Phone            string         `json:"phone" gorm:"size:20;index"`
 	Email            string         `json:"email" gorm:"size:100;index"`
-	Status           string         `json:"status" gorm:"size:20;default:'offline'"`           // 连接状态：online / offline（系统自动维护）
-	AccountStatus    string         `json:"accountStatus" gorm:"size:20;default:'active'"`   // 账号状态：active / disabled / banned（管理员维护）
+	Status           string         `json:"status" gorm:"size:20;default:'offline'"`       // 连接状态：online / offline（系统自动维护）
+	AccountStatus    string         `json:"accountStatus" gorm:"size:20;default:'active'"` // 账号状态：active / disabled / banned（管理员维护）
 	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
@@ -798,17 +798,26 @@ type ClientVersion struct {
 	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // windows, macos, linux
 	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                // full, patch
 	DownloadURL       string         `json:"download_url" gorm:"size:500"`
-	Sha512            string         `json:"sha512" gorm:"size:200"`           // 文件 SHA512 哈希（缓存）
-	BlockmapURL       string         `json:"blockmap_url" gorm:"size:500"`     // 增量更新 blockmap 文件 URL（预留）
-	FileSize          int64          `json:"file_size" gorm:"default:0"`       // 文件大小（缓存）
+	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（缓存）
+	BlockmapURL       string         `json:"blockmap_url" gorm:"size:500"` // 增量更新 blockmap 文件 URL（预留）
+	FileSize          int64          `json:"file_size" gorm:"default:0"`   // 文件大小（缓存）
 	Changelog         string         `json:"changelog" gorm:"type:text"`
 	ForceUpdate       bool           `json:"force_update" gorm:"default:false"`
-	RolloutPercentage int            `json:"rollout_percentage" gorm:"default:100"` // 灰度发布百分比（0-100，100=全量）
+	RolloutPercentage *int           `json:"rollout_percentage" gorm:"default:100"` // 灰度发布百分比（0-100，100=全量）；*int 区分"未设置(→默认100)"与"显式 0"，避免 GORM 吞零值
 	MinVersion        string         `json:"min_version" gorm:"size:50"`            // 最低兼容版本
 	Enabled           bool           `json:"enabled" gorm:"default:true"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt `json:"-" gorm:"uniqueIndex:idx_version_platform"`
+}
+
+// GetRolloutPercentage 返回灰度百分比的有效值；nil 视为默认 100（全量）。
+// 供 FilterByRollout、versionToFrontend 等读取处统一解引用，避免散落的 nil 检查。
+func (v ClientVersion) GetRolloutPercentage() int {
+	if v.RolloutPercentage == nil {
+		return 100
+	}
+	return *v.RolloutPercentage
 }
 
 // 黑名单

@@ -15,10 +15,12 @@ func TestIsValidVersion(t *testing.T) {
 		{"2.1.0", true},
 		{"1.0.0", true},
 		{"10.20.30", true},
-		{"2.1.0-beta", true},
+		{"2.1.0-beta", false},  // 与前端一致，不接受预发布后缀
+		{"2.1.0+build", false}, // 与前端一致，不接受构建元数据
+		{"v2.1.0", false},      // 不接受 v 前缀
 		{"", false},
 		{"abc", false},
-		{"2.1", true}, // semver 允许
+		{"2.1", false}, // 与前端一致，要求三段数字
 	}
 	for _, tt := range tests {
 		got := IsValidVersion(tt.version)
@@ -155,8 +157,8 @@ func TestNormalizeRolloutPercentage(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tt.want {
-				t.Fatalf("expected %d, got %d", tt.want, got)
+			if got == nil || *got != tt.want {
+				t.Fatalf("expected %d, got %v", tt.want, got)
 			}
 		})
 	}
@@ -172,20 +174,20 @@ func TestNormalizeRolloutPercentageRejectsOutOfRange(t *testing.T) {
 }
 
 func TestApplyRolloutPercentageUpdate(t *testing.T) {
-	version := model.ClientVersion{RolloutPercentage: 25}
+	version := model.ClientVersion{RolloutPercentage: intPtr(25)}
 
 	if err := ApplyRolloutPercentageUpdate(&version, nil); err != nil {
 		t.Fatalf("unexpected error for missing rollout percentage: %v", err)
 	}
-	if version.RolloutPercentage != 25 {
-		t.Fatalf("expected missing rollout percentage to leave value unchanged, got %d", version.RolloutPercentage)
+	if version.GetRolloutPercentage() != 25 {
+		t.Fatalf("expected missing rollout percentage to leave value unchanged, got %d", version.GetRolloutPercentage())
 	}
 
 	if err := ApplyRolloutPercentageUpdate(&version, intPtr(0)); err != nil {
 		t.Fatalf("unexpected error for zero rollout percentage: %v", err)
 	}
-	if version.RolloutPercentage != 0 {
-		t.Fatalf("expected zero rollout percentage to be preserved, got %d", version.RolloutPercentage)
+	if version.GetRolloutPercentage() != 0 {
+		t.Fatalf("expected zero rollout percentage to be preserved, got %d", version.GetRolloutPercentage())
 	}
 
 	if err := ApplyRolloutPercentageUpdate(&version, intPtr(101)); !errors.Is(err, ErrInvalidRolloutPercentage) {

@@ -1,11 +1,9 @@
 package handler
 
 import (
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -24,25 +22,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// platformAliasMap 平台别名映射，统一不同平台标识到数据库存储的标准平台名
-var platformAliasMap = map[string]string{
-	"win":     "windows",
-	"win7":    "windows",
-	"win10":   "windows",
-	"windows": "windows",
-	"mac":     "macos",
-	"macos":   "macos",
-	"linux":   "linux",
-}
-
-// normalizePlatform 将客户端传入的平台标识标准化
-func normalizePlatform(platform string) string {
-	if mapped, ok := platformAliasMap[strings.ToLower(platform)]; ok {
-		return mapped
-	}
-	return strings.ToLower(platform)
-}
-
 // isURL 判断字符串是否为URL
 func isURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
@@ -59,7 +38,7 @@ func getFilenameFromURL(rawURL string) string {
 
 func defaultUpdateFilename(version model.ClientVersion) string {
 	ext := ".zip"
-	switch normalizePlatform(version.Platform) {
+	switch service.NormalizePlatform(version.Platform) {
 	case "macos":
 		ext = ".dmg"
 	case "windows":
@@ -133,7 +112,7 @@ func HandleUpdateRequest(c *gin.Context) {
 }
 
 func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
-	platform := normalizePlatform(platformParam)
+	platform := service.NormalizePlatform(platformParam)
 	clientID := updateClientID(c)
 	db := database.GetDB()
 	svc := service.NewVersionService(db)
@@ -155,7 +134,7 @@ func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 // GET /api/v1/updates/:platform/latest.yml
 func GetLatestYML(c *gin.Context) {
 	platformParam := c.Param("platform")
-	platform := normalizePlatform(platformParam)
+	platform := service.NormalizePlatform(platformParam)
 	clientID := updateClientID(c)
 
 	logger.WithModule("Update").Info("检查更新请求",
@@ -301,29 +280,6 @@ func GetUpdateFile(c *gin.Context) {
 	}
 
 	c.File(absPath)
-}
-
-// computeFileSHA512 计算文件的 SHA512 哈希和大小
-func computeFileSHA512(filePath string) (string, int64) {
-	// 如果是相对路径，直接使用
-	// 如果是绝对路径，也直接使用
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Printf("打开文件失败: %s, error: %v", filePath, err)
-		return "", 0
-	}
-	defer file.Close()
-
-	hash := sha512.New()
-	size, err := io.Copy(hash, file)
-	if err != nil {
-		log.Printf("计算哈希失败: %s, error: %v", filePath, err)
-		return "", 0
-	}
-
-	// electron-updater 需要 base64 格式的 SHA512
-	sum := hash.Sum(nil)
-	return fmt.Sprintf("%x", sum), size
 }
 
 // CheckUpdateHealth 检查更新服务健康状态

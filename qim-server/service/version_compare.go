@@ -3,15 +3,19 @@ package service
 import (
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"golang.org/x/mod/semver"
 )
 
-// IsValidVersion 校验版本号是否符合 semver
-// 前端要求格式 \d+\.\d+\.\d+，semver 库要求 "v" 前缀，内部自动补
+// versionFormatRegex 与前端 \d+\.\d+\.\d+ 校验保持一致，要求三段数字
+var versionFormatRegex = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// IsValidVersion 校验版本号格式
+// 与前端 \d+\.\d+\.\d+ 校验一致，要求三段数字（如 2.1.0），不接受 2.1 或 2.1.0-beta
 func IsValidVersion(v string) bool {
-	return semver.IsValid("v" + v)
+	return versionFormatRegex.MatchString(v)
 }
 
 // CompareVersions 比较 semver 版本号
