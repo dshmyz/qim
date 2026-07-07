@@ -65,13 +65,28 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
   })
 
   const loadSettings = () => {
-    // 通过 Electron IPC 获取系统默认下载路径
-    if (window.electron?.ipcRenderer?.invoke) {
-      window.electron.ipcRenderer.invoke('get-default-download-path').then(path => {
-        if (path) fileSettings.value.defaultSaveDirectory = path
-      }).catch(() => {
-        // IPC 失败则用默认路径
-      })
+    // 1. 先读取 localStorage（同步），判断用户是否已设置自定义目录
+    const savedFileSettings = localStorage.getItem('fileSettings')
+    let userSavedDir = ''
+    if (savedFileSettings) {
+      try {
+        const parsed = JSON.parse(savedFileSettings)
+        fileSettings.value = { ...fileSettings.value, ...parsed }
+        userSavedDir = parsed.defaultSaveDirectory || ''
+      } catch (e) {
+        console.error('Failed to load file settings:', e)
+      }
+    }
+
+    // 2. 只有用户没有自定义目录（空或 ~/Downloads）时，才去获取系统默认下载路径
+    if (!userSavedDir || userSavedDir === '~/Downloads') {
+      if (window.electron?.ipcRenderer?.invoke) {
+        window.electron.ipcRenderer.invoke('get-default-download-path').then(path => {
+          if (path) fileSettings.value.defaultSaveDirectory = path
+        }).catch(() => {
+          // IPC 失败则用默认路径
+        })
+      }
     }
 
     const savedMessageSettings = localStorage.getItem('messageSettings')
@@ -92,18 +107,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
         }
       } catch (e) {
         console.error('Failed to load appearance settings:', e)
-      }
-    }
-
-    const savedFileSettings = localStorage.getItem('fileSettings')
-    if (savedFileSettings) {
-      try {
-        fileSettings.value = { ...fileSettings.value, ...JSON.parse(savedFileSettings) }
-        if (fileSettings.value.defaultSaveDirectory === '~/Downloads') {
-          fileSettings.value.defaultSaveDirectory = ''
-        }
-      } catch (e) {
-        console.error('Failed to load file settings:', e)
       }
     }
 
@@ -198,7 +201,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (window.electron && window.electron.ipcRenderer) {
       window.electron.ipcRenderer.send('open-file-dialog', { properties: ['openDirectory'] })
 
-      const handleResult = (result: any) => {
+      const handleResult = (event: any, result: any) => {
         window.electron.ipcRenderer.removeListener('file-dialog-result', handleResult)
         if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
           fileSettings.value.defaultSaveDirectory = result.filePaths[0]

@@ -166,7 +166,7 @@
               <div class="settings-item-content">
                 <div class="input-with-btn">
                   <input type="text" v-model="localFileSettings.defaultSaveDirectory" class="settings-input" placeholder="选择默认保存目录" />
-                  <button class="browse-btn" @click="$emit('browseDirectory')">
+                  <button class="browse-btn" @click="$emit('browseDirectory', (path: string) => { localFileSettings.defaultSaveDirectory = path })">
                     <i class="fas fa-folder-open"></i>
                     <span>浏览</span>
                   </button>
@@ -292,7 +292,7 @@ const emit = defineEmits<{
   'clearCache': []
   'saveTwoFactor': [enabled: boolean]
   'openSecurity': []
-  'browseDirectory': []
+  'browseDirectory': [callback: (path: string) => void]
   'openFeedback': []
 }>()
 
