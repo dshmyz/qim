@@ -36,35 +36,6 @@ function getConnectionErrorMessage(error: any): string {
   return '建立通话连接失败，请检查网络连接后重试'
 }
 
-async function checkDeviceAvailability(callType: 'voice' | 'video'): Promise<void> {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-    return
-  }
-
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    const hasAudioInput = devices.some(d => d.kind === 'audioinput')
-    const hasVideoInput = devices.some(d => d.kind === 'videoinput')
-
-    if (!hasAudioInput && !hasVideoInput) {
-      throw Object.assign(new Error(), { name: 'NotFoundError' })
-    }
-
-    if (!hasAudioInput) {
-      const label = callType === 'video' ? '摄像头和麦克风' : '麦克风'
-      throw Object.assign(new Error(`未检测到${label}，请检查设备连接`), { name: 'NotFoundError' })
-    }
-
-    if (callType === 'video' && !hasVideoInput) {
-      throw Object.assign(new Error(), { name: 'NotFoundError' })
-    }
-  } catch (error: any) {
-    if (error.name === 'NotFoundError') {
-      throw error
-    }
-  }
-}
-
 let videoCallInstance: ReturnType<typeof createVideoCall> | null = null
 
 function createVideoCall() {
@@ -100,12 +71,12 @@ function createVideoCall() {
     callStatus.value = 'calling'
 
     try {
-      await checkDeviceAvailability(type)
+      // 先获取本地媒体流（getUserMedia），设备不可用或无权限时在此阶段就抛错
+      // 必须在发信令之前，避免信令已发出对方收到打扰，本地才发现没设备
+      await session.start(targetUserId, { needVideo: type !== 'voice' })
 
       signaling.sendCallStart(targetUserId, type)
       console.log('[VideoCall] Sent call.start with type:', type)
-      
-      await session.start(targetUserId, { needVideo: type !== 'voice' })
 
       console.log('[VideoCall] Call started successfully')
     } catch (error: any) {
