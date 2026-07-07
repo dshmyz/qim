@@ -1382,6 +1382,7 @@ onMounted(async () => {
     logger.log('[Main] 阶段1: 加载核心数据...')
     await refreshUser()
     await loadConversations()
+    loadSettings()
     
     // 核心数据加载完成，立即展示主界面
     isLoading.value = false

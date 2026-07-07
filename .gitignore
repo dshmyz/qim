@@ -29,6 +29,8 @@ qim-server/server
 
 # 日志文件
 *.log
+*.log.*
+logs/
 
 # 环境变量文件
 .env
