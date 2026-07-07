@@ -35,6 +35,14 @@
       @navigate="navigateToFirstAtMention"
     />
 
+    <!-- 上传进度条 -->
+    <Transition name="slide-down">
+      <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress-bar">
+        <div class="upload-progress-bar__inner" :style="{ width: uploadProgress + '%' }"></div>
+        <span class="upload-progress-bar__text">正在上传文件 {{ uploadProgress }}%</span>
+      </div>
+    </Transition>
+
     <!-- 消息列表和成员侧边栏 -->
     <ChatBody
       ref="chatBodyRef"
@@ -735,38 +743,71 @@ const uploadAndSendFile = async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('source', 'chat')
-    
+
     const token = getToken()
-    const response = await fetch(`${serverUrl.value}/api/v1/upload`, {
-      method: 'POST',
-      headers: {
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: formData
-    })
-    
-    if (response.ok) {
-      const data = await response.json()
-      if (data.code === 0) {
-        const fileUrl = data.data.url
-        const fileId = data.data.id
-        const fileName = data.data.name || file.name
-        const fileSize = data.data.size || file.size
-        
-        const messageData = {
-          content: JSON.stringify({ url: fileUrl, id: fileId, name: fileName, size: fileSize }),
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          quotedMessage: quotedMessage.value
+    uploadProgress.value = 0
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${serverUrl.value}/api/v1/upload`)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.floor((e.loaded / e.total) * 100)
         }
-        
-        // 发送消息
-        emit('send', messageData)
-        
-        // 清空引用消息
-        quotedMessage.value = null
       }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (data.code === 0) {
+              const fileUrl = data.data.url
+              const fileId = data.data.id
+              const fileName = data.data.name || file.name
+              const fileSize = data.data.size || file.size
+
+              const messageData = {
+                content: JSON.stringify({ url: fileUrl, id: fileId, name: fileName, size: fileSize }),
+                type: file.type.startsWith('image/') ? 'image' : 'file',
+                quotedMessage: quotedMessage.value
+              }
+
+              emit('send', messageData)
+              quotedMessage.value = null
+              resolve(data)
+            } else {
+              $message.error('上传文件失败: ' + data.message)
+              reject(new Error(data.message))
+            }
+          } catch (e) {
+            reject(e)
+          }
+        } else {
+          $message.error('上传文件失败')
+          reject(new Error(`HTTP ${xhr.status}`))
+        }
+      }
+
+      xhr.onerror = () => {
+        $message.error('上传文件失败')
+        reject(new Error('Network error'))
+      }
+
+      xhr.onloadend = () => {
+        uploadProgress.value = 0
+      }
+
+      xhr.send(formData)
+    })
+
+    // 清空文件输入，以便可以重复选择同一个文件
+    if (fileInput.value) {
+      fileInput.value.value = ''
     }
   } catch (error) {
+    uploadProgress.value = 0
     logger.error('上传文件失败:', error)
     $message.error('上传文件失败')
   }
@@ -2070,55 +2111,69 @@ const screenshotPayloadToFile = async (
 // 上传截图到服务器
 const uploadScreenshot = async () => {
   if (!screenshotImageData.value) return
-  
+
   try {
     // 将base64转换为Blob
     const response = await fetch(screenshotImageData.value)
     const blob = await response.blob()
-    
+
     // 创建FormData
     const formData = new FormData()
     formData.append('file', blob, 'screenshot.png')
     formData.append('source', 'chat')
-    
-    // 上传到服务器
-    const uploadResponse = await fetch(`${serverUrl.value}/api/v1/upload`, {
-      method: 'POST',
-      headers: {
-        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-      },
-      body: formData
-    })
-    
-    if (uploadResponse.ok) {
-      const data = await uploadResponse.json()
-      if (data.code === 0) {
-        // 上传成功，获取文件URL
-        const fileUrl = data.data.url
-        
-        // 构建图片消息
-        const messageData = {
-          content: fileUrl,
-          type: 'image'
+
+    const token = getToken()
+    uploadProgress.value = 0
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${serverUrl.value}/api/v1/upload`)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.floor((e.loaded / e.total) * 100)
         }
-        
-        // 发送消息
-        emit('send', messageData)
-        
-        // 关闭预览
-        showScreenshotPreview.value = false
-        screenshotImageData.value = ''
-        
-        $message.success('截图发送成功')
-      } else {
-        $message.error('截图上传失败: ' + data.message)
       }
-    } else {
-      $message.error('截图上传失败: 服务器错误')
-    }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (data.code === 0) {
+              const fileUrl = data.data.url
+              emit('send', { content: fileUrl, type: 'image' })
+              showScreenshotPreview.value = false
+              screenshotImageData.value = ''
+              $message.success('截图发送成功')
+              resolve(data)
+            } else {
+              $message.error('截图上传失败: ' + data.message)
+              reject(new Error(data.message))
+            }
+          } catch (e) {
+            reject(e)
+          }
+        } else {
+          $message.error('截图上传失败: 服务器错误')
+          reject(new Error(`HTTP ${xhr.status}`))
+        }
+      }
+
+      xhr.onerror = () => {
+        $message.error('截图上传失败: 网络错误')
+        reject(new Error('Network error'))
+      }
+
+      xhr.onloadend = () => {
+        uploadProgress.value = 0
+      }
+
+      xhr.send(formData)
+    })
   } catch (error) {
+    uploadProgress.value = 0
     logger.error('截图上传失败:', error)
-    $message.error('截图上传失败: 网络错误')
   }
 }
 
@@ -2218,6 +2273,9 @@ const handleFileSelect = (event: Event) => {
 // 文件下载进度：key = 消息 id，value = 百分比(0-100)；完成/失败后删除
 const downloadProgress = ref<Record<string, number>>({})
 provide('downloadProgress', downloadProgress)
+
+// 上传进度：0=不上传，1-100=上传中
+const uploadProgress = ref(0)
 
 const downloadFile = async (fileContent: string, messageId?: string) => {
   try {
@@ -2525,6 +2583,50 @@ defineExpose({
 <style scoped>
 /* ===== ChatWindow 组件自身使用的样式 ===== */
 /* 基础布局样式已移至全局 chat.css */
+
+/* ===== 上传进度条 ===== */
+.upload-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: var(--primary-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.upload-progress-bar__inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: width 0.15s ease;
+}
+
+.upload-progress-bar__text {
+  position: relative;
+  z-index: 1;
+}
+
+/* slide-down 动画 */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
 
 /* ===== 小程序面板样式 ===== */
 
