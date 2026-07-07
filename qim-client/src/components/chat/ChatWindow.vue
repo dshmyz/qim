@@ -35,14 +35,6 @@
       @navigate="navigateToFirstAtMention"
     />
 
-    <!-- 上传进度条 -->
-    <Transition name="slide-down">
-      <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress-bar">
-        <div class="upload-progress-bar__inner" :style="{ width: uploadProgress + '%' }"></div>
-        <span class="upload-progress-bar__text">正在上传文件 {{ uploadProgress }}%</span>
-      </div>
-    </Transition>
-
     <!-- 消息列表和成员侧边栏 -->
     <ChatBody
       ref="chatBodyRef"
@@ -73,6 +65,14 @@
       @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
       @update:member-search-query="(val) => memberSearchQuery = val"
     />
+
+    <!-- 上传进度条 -->
+    <Transition name="fade">
+      <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress-bar">
+        <div class="upload-progress-bar__inner" :style="{ width: uploadProgress + '%' }"></div>
+        <span class="upload-progress-bar__text">正在上传 {{ uploadProgress }}%</span>
+      </div>
+    </Transition>
 
     <!-- 输入区域 -->
     <ChatInputArea
@@ -2218,7 +2218,8 @@ const startVideoCall = () => {
 }
 
 const selectFile = () => {
-  // 触发文件选择对话框
+  // 先清空，允许重复选择同一文件
+  if (fileInput.value) fileInput.value.value = ''
   fileInput.value?.click()
 }
 const selectImage = () => {
@@ -2586,20 +2587,19 @@ defineExpose({
 
 /* ===== 上传进度条 ===== */
 .upload-progress-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 32px;
-  background: var(--primary-color);
-  color: white;
+  width: 300px;
+  height: 18px;
+  margin: 0 auto 4px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary-color), transparent 88%);
+  color: var(--primary-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  overflow: hidden;
 }
 
 .upload-progress-bar__inner {
@@ -2607,7 +2607,8 @@ defineExpose({
   left: 0;
   top: 0;
   height: 100%;
-  background: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--primary-color), transparent 70%);
+  border-radius: 12px;
   transition: width 0.15s ease;
 }
 
@@ -2616,16 +2617,16 @@ defineExpose({
   z-index: 1;
 }
 
-/* slide-down 动画 */
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+/* fade 动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.slide-down-enter-from,
-.slide-down-leave-to {
-  transform: translateY(-100%);
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
+  transform: translateY(4px);
 }
 
 /* ===== 小程序面板样式 ===== */

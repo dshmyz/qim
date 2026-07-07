@@ -287,6 +287,8 @@ const handleEmojiSelect = (emoji: string) => {
 }
 
 const handleSelectFile = () => {
+  // 先清空，允许重复选择同一文件
+  if (fileInputRef.value) fileInputRef.value.value = ''
   fileInputRef.value?.click()
 }
 
