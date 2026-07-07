@@ -6,6 +6,8 @@ import (
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/ws"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInitContainer(t *testing.T) {
@@ -23,7 +25,10 @@ func TestInitContainer(t *testing.T) {
 	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret)
 	go hub.Run()
 
-	container := InitContainer(cfg, hub)
+	container, err := InitContainer(cfg, hub)
+	if err != nil {
+		t.Fatalf("InitContainer returned error: %v", err)
+	}
 
 	if container == nil {
 		t.Fatal("InitContainer returned nil")
@@ -116,4 +121,27 @@ func TestInitContainer(t *testing.T) {
 	if GlobalContainer != container {
 		t.Error("GlobalContainer should be set to the returned container")
 	}
+}
+
+// TestInitContainer_S3MisconfigFailsFast 验证配置了 type=s3 但 S3 不可达时，
+// InitContainer 应 fail-fast 返回 error，而非静默降级到 local（否则数据写本地而运维无感）。
+func TestInitContainer_S3MisconfigFailsFast(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", Path: ":memory:"},
+		JWT:      config.JWTConfig{Secret: "test-secret"},
+		Storage: config.StorageConfig{
+			Type: "s3",
+			S3: config.S3StorageConfig{
+				Endpoint:  "http://127.0.0.1:1", // 不可达端口
+				AccessKey: "x",
+				SecretKey: "x",
+				Bucket:    "nonexistent",
+				Region:    "us-east-1",
+			},
+		},
+	}
+	database.Init(cfg)
+
+	_, err := InitContainer(cfg, nil)
+	assert.Error(t, err, "type=s3 配置错误应 fail-fast 返回 error，不静默降级 local")
 }

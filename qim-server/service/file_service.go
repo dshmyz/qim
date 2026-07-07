@@ -5,14 +5,16 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/repository"
 
 	"gorm.io/gorm"
 )
 
 type FileService struct {
-	repo repository.FileRepository
-	db   *gorm.DB
+	repo  repository.FileRepository
+	db    *gorm.DB
+	store StorageAccessor
 }
 
 func NewFileService(db *gorm.DB) *FileService {
@@ -20,6 +22,11 @@ func NewFileService(db *gorm.DB) *FileService {
 		repo: repository.NewFileRepository(db),
 		db:   db,
 	}
+}
+
+// SetStorageAccessor 注入存储访问器，用于批量删除时清理物理文件。
+func (s *FileService) SetStorageAccessor(store StorageAccessor) {
+	s.store = store
 }
 
 func (s *FileService) CreateFile(file *model.File) error {
@@ -148,8 +155,31 @@ func (s *FileService) ToggleStar(userID, fileID uint) (*model.File, error) {
 
 func (s *FileService) BatchDelete(userID uint, fileIDs []uint) (int64, error) {
 	ctx := context.Background()
+	// 先查出待删文件的 StoragePath，用于清理物理文件
+	var files []model.File
+	if err := s.db.WithContext(ctx).Where("id IN ? AND user_id = ?", fileIDs, userID).Find(&files).Error; err != nil {
+		return 0, err
+	}
+	if len(files) == 0 {
+		return 0, nil
+	}
+	// 删 DB 记录
 	result := s.db.WithContext(ctx).Where("id IN ? AND user_id = ?", fileIDs, userID).Delete(&model.File{})
-	return result.RowsAffected, result.Error
+	if result.Error != nil {
+		return result.RowsAffected, result.Error
+	}
+	// best-effort 清理物理文件：失败只记日志，不阻断批量删除
+	if s.store != nil {
+		for _, f := range files {
+			if f.StoragePath == "" {
+				continue
+			}
+			if err := s.store.DeleteByPath(ctx, f.StoragePath); err != nil {
+				logger.WithModule("FileService").Warn("批量删除物理文件失败", "file_id", f.ID, "error", err)
+			}
+		}
+	}
+	return result.RowsAffected, nil
 }
 
 func (s *FileService) BatchMove(userID uint, fileIDs []uint, targetFolderID uint) (int64, error) {

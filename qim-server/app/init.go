@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -327,7 +328,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	go hub.Run()
 
 	// 初始化依赖注入容器
-	InitContainer(cfg, hub)
+	if _, err := InitContainer(cfg, hub); err != nil {
+		log.Fatalf("初始化依赖容器失败: %v", err)
+	}
 
 	// 初始化认证链
 	auth.InitAuthChain()

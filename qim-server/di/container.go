@@ -1,6 +1,8 @@
 package di
 
 import (
+	"fmt"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -58,7 +60,7 @@ type Container struct {
 
 var GlobalContainer *Container
 
-func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
+func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	db := database.GetDB()
 
 	aiService := ai.NewAIService(&cfg.AI)
@@ -89,12 +91,13 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 		var err error
 		s3Svc, err = service.NewS3Service(cfg.Storage.S3)
 		if err != nil {
-			logger.WithModule("DI").Warn("S3Service 初始化失败，S3 存储功能将不可用", "error", err)
-		} else {
-			logger.WithModule("DI").Info("S3Service 初始化成功", "bucket", cfg.Storage.S3.Bucket)
-			s3Storage = storage.NewS3Storage(s3Svc, cfg.Storage.S3)
-			defaultStorage = s3Storage
+			// fail-fast：配置了 type=s3 却不可用，拒绝启动，避免静默降级 local 导致数据写本地而运维无感
+			logger.WithModule("DI").Error("S3 存储初始化失败，配置了 type=s3 但不可用，拒绝启动", "error", err)
+			return nil, fmt.Errorf("S3 存储初始化失败: %w", err)
 		}
+		logger.WithModule("DI").Info("S3Service 初始化成功", "bucket", cfg.Storage.S3.Bucket)
+		s3Storage = storage.NewS3Storage(s3Svc, cfg.Storage.S3)
+		defaultStorage = s3Storage
 	}
 
 	localStorage, storageErr := storage.NewLocalStorage(cfg.Storage.Local)
@@ -107,6 +110,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 
 	storageManager := storage.NewManager(defaultStorage, s3Storage, localStorage)
 	storageAccessor := NewStorageAccessor(storageManager)
+	fileService.SetStorageAccessor(storageAccessor)
 
 	groupService := service.NewGroupService(db)
 	appService := service.NewAppService(db)
@@ -210,5 +214,5 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 
 	GlobalContainer = container
 
-	return container
+	return container, nil
 }

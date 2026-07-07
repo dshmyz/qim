@@ -44,6 +44,13 @@ func NewS3Service(cfg config.S3StorageConfig) (*S3Service, error) {
 
 	transferClient := transfermanager.New(client)
 
+	// 启动时探测 bucket 可达性，凭证/端点/bucket 错误立即暴露，避免 di 静默降级到 local
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer probeCancel()
+	if _, err := client.HeadBucket(probeCtx, &s3.HeadBucketInput{Bucket: aws.String(cfg.Bucket)}); err != nil {
+		return nil, fmt.Errorf("S3 bucket 不可达（检查端点/凭证/bucket）: %w", err)
+	}
+
 	return &S3Service{
 		client:         client,
 		transferClient: transferClient,
@@ -64,15 +71,17 @@ func (s *S3Service) UploadFile(ctx context.Context, key string, data io.Reader, 
 }
 
 func (s *S3Service) DownloadFile(ctx context.Context, key string) (io.ReadCloser, error) {
-	output, err := s.transferClient.GetObject(ctx, &transfermanager.GetObjectInput{
+	// 直接用 s3 client 读取，返回真正的 io.ReadCloser，调用方 Close 即可释放底层 HTTP 连接。
+	// 不用 transferClient：其 GetObject 返回的 Body 非 ReadCloser，io.NopCloser 会使 Close 变成空操作，
+	// 客户端中断下载时底层连接/goroutine 泄漏。
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	return io.NopCloser(output.Body), nil
+	return output.Body, nil
 }
 
 func (s *S3Service) DeleteFile(ctx context.Context, key string) error {

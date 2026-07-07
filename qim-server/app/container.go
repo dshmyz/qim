@@ -10,6 +10,6 @@ type Container = di.Container
 
 var GlobalContainer = di.GlobalContainer
 
-func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
+func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	return di.InitContainer(cfg, hub)
 }
