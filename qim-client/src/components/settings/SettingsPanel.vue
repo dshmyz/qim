@@ -228,7 +228,7 @@
 
           <div v-if="localTab === 'shortcut'" class="settings-section">
             <div class="settings-section-header"><h4>快捷键设置</h4></div>
-            <ShortcutSettings />
+            <ShortcutSettings ref="shortcutSettingsRef" v-model="localShortcuts" />
           </div>
         </div>
       </div>
@@ -252,6 +252,7 @@ import { ref, watch, computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
+import type { ShortcutsConfig } from '../../composables/useShortcuts'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {
@@ -288,7 +289,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close': []
-  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File }]
+  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
   'clearCache': []
   'saveTwoFactor': [enabled: boolean]
   'openSecurity': []
@@ -302,6 +303,8 @@ const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
 const localAdvancedSettings = ref({ ...props.advancedSettings })
 const localFileSettings = ref({ ...props.fileSettings })
+const localShortcuts = ref<ShortcutsConfig>()
+const shortcutSettingsRef = ref<InstanceType<typeof ShortcutSettings> | null>(null)
 
 const avatarInputRef = ref<HTMLInputElement | null>(null)
 const showCropper = ref(false)
@@ -360,12 +363,21 @@ const handleCropCancel = () => {
 }
 
 const save = () => {
+  // 快捷键冲突检测
+  if (shortcutSettingsRef.value) {
+    const conflicts = shortcutSettingsRef.value.checkConflicts()
+    if (conflicts.length > 0) {
+      const c = conflicts[0]
+      window.$QMessage?.warning(`快捷键冲突：「${c.a.label}」与「${c.b.label}」使用了相同的组合`, 5000)
+    }
+  }
   emit('save', {
     profile: { ...localProfile.value },
     messageSettings: { ...localMessageSettings.value },
     appearanceSettings: { ...localAppearanceSettings.value },
     fileSettings: { ...localFileSettings.value },
-    avatarFile: pendingAvatarFile.value || undefined
+    avatarFile: pendingAvatarFile.value || undefined,
+    shortcuts: localShortcuts.value ? JSON.parse(JSON.stringify(localShortcuts.value)) : undefined
   })
   pendingAvatarFile.value = null
 }

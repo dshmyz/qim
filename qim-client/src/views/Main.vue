@@ -3165,7 +3165,7 @@ const handleConfirmLogout = async () => {
 }
 
 
-const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File }) => {
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File; shortcuts?: any }) => {
   try {
     if (data.avatarFile) {
       const formData = new FormData()
@@ -3211,7 +3211,12 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
     if (data.appearanceSettings.fontSize) {
       applyFontSize(data.appearanceSettings.fontSize)
     }
-    
+
+    // 保存快捷键配置
+    if (data.shortcuts) {
+      await window.electron.ipcRenderer.invoke('set-shortcuts', data.shortcuts)
+    }
+
     await saveSettings()
     closeSettingsModal()
   } catch (error) {

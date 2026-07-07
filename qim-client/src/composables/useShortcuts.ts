@@ -30,13 +30,13 @@ export const SHORTCUT_LABELS: Record<string, Record<string, string>> = {
   }
 }
 
-// 默认快捷键配置
+// 默认快捷键配置（全局快捷键默认关闭，避免与系统菜单等冲突，用户按需开启）
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
   global: {
-    minimize:   { accelerator: 'CommandOrControl+M', enabled: true },
-    maximize:   { accelerator: 'CommandOrControl+K', enabled: true },
-    hide:       { accelerator: 'CommandOrControl+W', enabled: true },
-    quit:       { accelerator: 'CommandOrControl+Q', enabled: true },
+    minimize:   { accelerator: 'CommandOrControl+M', enabled: false },
+    maximize:   { accelerator: 'CommandOrControl+K', enabled: false },
+    hide:       { accelerator: 'CommandOrControl+W', enabled: false },
+    quit:       { accelerator: 'CommandOrControl+Q', enabled: false },
     screenshot: { accelerator: 'CommandOrControl+Shift+A', enabled: true }
   },
   editor: {
@@ -116,17 +116,38 @@ export function checkConflicts(shortcuts: ShortcutsConfig): ShortcutConflict[] {
   return conflicts
 }
 
+/**
+ * 合并默认值，补全缺失的项（兼容旧配置或不完整写入）
+ */
+function mergeDefaults(config: ShortcutsConfig): ShortcutsConfig {
+  const result: ShortcutsConfig = { global: {}, editor: {} }
+  for (const scope of ['global', 'editor'] as const) {
+    for (const [name, def] of Object.entries(DEFAULT_SHORTCUTS[scope])) {
+      const saved = config?.[scope]?.[name]
+      result[scope][name] = {
+        accelerator: saved?.accelerator ?? def.accelerator,
+        enabled: saved?.enabled ?? def.enabled
+      }
+    }
+  }
+  return result
+}
+
 export function useShortcuts() {
   const loadShortcuts = async (): Promise<ShortcutsConfig> => {
+    let config: ShortcutsConfig = DEFAULT_SHORTCUTS
     if (window.electron?.ipcRenderer?.invoke) {
-      return await window.electron.ipcRenderer.invoke('get-shortcuts')
+      config = await window.electron.ipcRenderer.invoke('get-shortcuts')
     }
-    return DEFAULT_SHORTCUTS
+    // 合并默认值，补全缺失的项（兼容旧配置或不完整写入）
+    return mergeDefaults(config)
   }
 
   const saveShortcuts = async (shortcuts: ShortcutsConfig): Promise<ShortcutsConfig> => {
     if (window.electron?.ipcRenderer?.invoke) {
-      return await window.electron.ipcRenderer.invoke('set-shortcuts', shortcuts)
+      // 深拷贝为普通对象，避免 Vue Proxy 无法被 IPC 结构化克隆
+      const plain = JSON.parse(JSON.stringify(shortcuts))
+      return await window.electron.ipcRenderer.invoke('set-shortcuts', plain)
     }
     return shortcuts
   }

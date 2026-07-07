@@ -193,10 +193,10 @@ function saveConfig(config) {
 function getDefaultShortcuts() {
   return {
     global: {
-      minimize:   { accelerator: 'CommandOrControl+M', enabled: true },
-      maximize:   { accelerator: 'CommandOrControl+K', enabled: true },
-      hide:       { accelerator: 'CommandOrControl+W', enabled: true },
-      quit:       { accelerator: 'CommandOrControl+Q', enabled: true },
+      minimize:   { accelerator: 'CommandOrControl+M', enabled: false },
+      maximize:   { accelerator: 'CommandOrControl+K', enabled: false },
+      hide:       { accelerator: 'CommandOrControl+W', enabled: false },
+      quit:       { accelerator: 'CommandOrControl+Q', enabled: false },
       screenshot: { accelerator: 'CommandOrControl+Shift+A', enabled: true }
     },
     editor: {
@@ -255,6 +255,88 @@ let trayFlashInterval = null
 let isTrayFlashing = false
 let normalTrayIcon = null
 let hasUnread = false
+
+// ==================== File Download (built-in download manager) ====================
+// 用 Electron 内置下载管理器流式写盘，内存恒定，不受大文件影响。
+// key: 请求 URL；value: 该次下载的元信息，供 will-download 匹配消费。
+const pendingDownloads = new Map()
+let downloadHandlerRegistered = false
+
+function triggerDownload({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel }) {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    const contents = mainWindow.webContents
+    const sess = contents.session
+
+    // 为该 URL 注入鉴权头
+    if (token) {
+      sess.webRequest.onBeforeSendHeaders({ urls: [url] }, (details, cb) => {
+        cb({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } })
+      })
+    }
+
+    pendingDownloads.set(url, { fileName, saveDir, saveAs, downloadId, completeChannel })
+
+    if (!downloadHandlerRegistered) {
+      downloadHandlerRegistered = true
+      sess.on('will-download', (event, item) => {
+        const meta = pendingDownloads.get(item.getURL())
+        if (!meta) return
+        pendingDownloads.delete(item.getURL())
+
+        const name = meta.fileName || item.getFilename()
+        if (meta.saveAs) {
+          // 不设 savePath → Electron 弹出系统另存为对话框
+          item.setSaveDialogOptions({
+            title: '保存文件',
+            defaultPath: name,
+            filters: [{ name: 'All Files', extensions: ['*'] }]
+          })
+        } else {
+          const targetDir = meta.saveDir && meta.saveDir !== '~/Downloads' ? meta.saveDir : app.getPath('downloads')
+          if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
+          item.setSavePath(path.join(targetDir, name))
+        }
+
+        const sendProgress = (percent, state) => {
+          if (meta.downloadId == null || !mainWindow || mainWindow.isDestroyed()) return
+          mainWindow.webContents.send('download-progress', {
+            downloadId: meta.downloadId,
+            percent,
+            received: item.getReceivedBytes(),
+            total: item.getTotalBytes(),
+            state
+          })
+        }
+
+        item.on('updated', (_e, state) => {
+          if (state !== 'progressing') return
+          const total = item.getTotalBytes()
+          const percent = total > 0 ? Math.floor((item.getReceivedBytes() / total) * 100) : 0
+          sendProgress(percent, 'progressing')
+        })
+
+        item.once('done', (_e, state) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendProgress(state === 'completed' ? 100 : 0, state)
+            if (state === 'completed') {
+              mainWindow.webContents.send(meta.completeChannel, { success: true, filePath: item.getSavePath() })
+            } else if (state === 'cancelled') {
+              // 用户取消另存为，不提示错误
+            } else {
+              mainWindow.webContents.send(meta.completeChannel, { success: false, error: state })
+            }
+          }
+        })
+      })
+    }
+
+    contents.downloadURL(url)
+  } catch (error) {
+    console.error('文件下载失败:', error)
+    mainWindow?.webContents.send(completeChannel, { success: false, error: error.message })
+  }
+}
 
 // ==================== Window: Core ====================
 
@@ -926,37 +1008,12 @@ function registerIPC() {
     }
   })
 
-  ipcMain.on('download-file', async (event, { buffer, fileName, mime, saveDir }) => {
-    try {
-      const targetDir = saveDir && saveDir !== '~/Downloads' ? saveDir : app.getPath('downloads')
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true })
-      }
-      const filePath = path.join(targetDir, fileName)
-      fs.writeFileSync(filePath, Buffer.from(buffer))
-      mainWindow?.webContents.send('download-complete', { success: true, filePath })
-    } catch (error) {
-      console.error('文件下载失败:', error)
-      mainWindow?.webContents.send('download-complete', { success: false, error: error.message })
-    }
+  ipcMain.on('download-file', (event, { url, token, fileName, saveDir, downloadId }) => {
+    triggerDownload({ url, token, fileName, saveDir, downloadId, completeChannel: 'download-complete' })
   })
 
-  ipcMain.on('save-file-as', async (event, { buffer, fileName, mime }) => {
-    try {
-      const result = await dialog.showSaveDialog(mainWindow, {
-        title: '保存文件',
-        defaultPath: fileName,
-        filters: [{ name: 'All Files', extensions: ['*'] }]
-      })
-
-      if (!result.canceled && result.filePath) {
-        fs.writeFileSync(result.filePath, Buffer.from(buffer))
-        mainWindow?.webContents.send('save-file-complete', { success: true, filePath: result.filePath })
-      }
-    } catch (error) {
-      console.error('文件保存失败:', error)
-      mainWindow?.webContents.send('save-file-complete', { success: false, error: error.message })
-    }
+  ipcMain.on('save-file-as', (event, { url, token, fileName, downloadId }) => {
+    triggerDownload({ url, token, fileName, saveAs: true, downloadId, completeChannel: 'save-file-complete' })
   })
 
   ipcMain.on('open-file-dialog', async (event, { properties }) => {
