@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// versionStorageAccessor 从全局容器获取存储访问器；容器未初始化时返回 nil（测试环境）。
+func versionStorageAccessor() service.StorageAccessor {
+	if di.GlobalContainer == nil || di.GlobalContainer.StorageManager == nil {
+		return nil
+	}
+	return di.NewStorageAccessor(di.GlobalContainer.StorageManager)
+}
 
 // versionToFrontend 将 ClientVersion 模型转换为前端期望的 camelCase 格式。
 func versionToFrontend(v model.ClientVersion) gin.H {
@@ -39,7 +48,7 @@ func GetVersions(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 	platform := c.Query("platform")
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	versions, total, err := svc.List(page, pageSize, platform)
 	if err != nil {
 		response.InternalServerError(c, "查询失败")
@@ -78,7 +87,7 @@ func CreateVersion(c *gin.Context) {
 		return
 	}
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	version, err := svc.Create(service.CreateVersionInput{
 		Version:           req.Version,
 		Platform:          req.Platform,
@@ -125,7 +134,7 @@ func UpdateVersion(c *gin.Context) {
 		return
 	}
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	version, err := svc.Update(uint(id), service.UpdateVersionInput{
 		Changelog:         req.UpdateNotes,
 		ForceUpdate:       req.ForceUpdate,
@@ -152,7 +161,7 @@ func UpdateVersion(c *gin.Context) {
 func DeleteVersion(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	if err := svc.Delete(uint(id)); err != nil {
 		if errors.Is(err, service.ErrVersionNotFound) {
 			response.NotFound(c, "版本不存在")
@@ -176,7 +185,7 @@ func ToggleVersionStatus(c *gin.Context) {
 		return
 	}
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	version, err := svc.ToggleStatus(uint(id), req.Status == "active")
 	if err != nil {
 		if errors.Is(err, service.ErrVersionNotFound) {
@@ -195,7 +204,7 @@ func ToggleVersionStatus(c *gin.Context) {
 func RollbackVersion(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	svc := service.NewVersionService(database.GetDB())
+	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	if err := svc.Rollback(uint(id)); err != nil {
 		if errors.Is(err, service.ErrVersionNotFound) {
 			response.NotFound(c, "版本不存在")

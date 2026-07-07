@@ -76,7 +76,7 @@ func setupChunkHandlerTestRouter(t *testing.T) (*gin.Engine, *gorm.DB, string) {
 
 	// 注册 ChunkService 到 DI 容器
 	tempDir := t.TempDir()
-	chunkService := service.NewChunkService(db, tempDir)
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	di.GlobalContainer.ChunkService = chunkService
 
 	r := gin.New()
@@ -197,7 +197,7 @@ func TestUploadChunk_Success(t *testing.T) {
 	createChunkTestUser(t, db)
 
 	// 先初始化上传
-	chunkService := service.NewChunkService(db, tempDir)
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-upload", nil)
 	assert.NoError(t, err)
 
@@ -276,7 +276,7 @@ func TestCompleteUpload_Success(t *testing.T) {
 	createChunkTestUser(t, db)
 
 	// 初始化并上传所有分片
-	chunkService := service.NewChunkService(db, tempDir)
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-complete", nil)
 	assert.NoError(t, err)
 
@@ -321,7 +321,7 @@ func TestCompleteUpload_IncompleteChunks(t *testing.T) {
 	createChunkTestUser(t, db)
 
 	// 初始化但不上传所有分片
-	chunkService := service.NewChunkService(db, tempDir)
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-incomplete", nil)
 	assert.NoError(t, err)
 
@@ -352,7 +352,7 @@ func TestCancelUpload_Success(t *testing.T) {
 	createChunkTestUser(t, db)
 
 	// 初始化上传
-	chunkService := service.NewChunkService(db, tempDir)
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-cancel", nil)
 	assert.NoError(t, err)
 

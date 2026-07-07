@@ -1,7 +1,10 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -224,6 +227,36 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		}
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.File(cleanPath)
+	})
+	// S3 存储代理：/s3/uploads/... 即 StoragePath，走存储抽象读取（S3 模式下文件不在本地）
+	r.GET("/s3/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if strings.Contains(fp, "..") {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		storagePath := "/s3" + fp
+		mgr := di.GlobalContainer.StorageManager
+		st, key, ok := mgr.ByPath(storagePath)
+		if !ok || st == nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
+		reader, err := st.Get(ctx, key)
+		if err != nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		defer reader.Close()
+		c.Header("Cache-Control", "public, max-age=86400")
+		if ct := mime.TypeByExtension(filepath.Ext(storagePath)); ct != "" {
+			c.Header("Content-Type", ct)
+		}
+		if _, err := io.Copy(c.Writer, reader); err != nil {
+			return
+		}
 	})
 	r.GET("/miniapps/*filepath", func(c *gin.Context) {
 		fp := c.Param("filepath")

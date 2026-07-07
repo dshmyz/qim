@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -115,7 +114,7 @@ func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 	platform := service.NormalizePlatform(platformParam)
 	clientID := updateClientID(c)
 	db := database.GetDB()
-	svc := service.NewVersionService(db)
+	svc := service.NewVersionService(db, versionStorageAccessor())
 	version, err := svc.GetLatestEnabled(platform, clientID)
 	if err != nil {
 		c.Status(http.StatusNotFound)
@@ -145,7 +144,7 @@ func GetLatestYML(c *gin.Context) {
 	)
 
 	db := database.GetDB()
-	svc := service.NewVersionService(db)
+	svc := service.NewVersionService(db, versionStorageAccessor())
 	version, err := svc.GetLatestEnabled(platform, clientID)
 	if err != nil {
 		logger.WithModule("Update").Warn("无可用版本记录",
@@ -254,32 +253,6 @@ func formatYAMLBlockString(value string) string {
 		lines[i] = "  " + line
 	}
 	return "|-\n" + strings.Join(lines, "\n")
-}
-
-// GetUpdateFile 下载更新文件
-// GET /api/v1/updates/:platform/files/:filename
-func GetUpdateFile(c *gin.Context) {
-	platform := c.Param("platform")
-	filename := c.Param("filename")
-
-	// 构建文件路径
-	baseDir := "./uploads/updates"
-	filePath := filepath.Join(baseDir, platform, filename)
-
-	// 安全检查：防止目录穿越
-	absPath, err := filepath.Abs(filePath)
-	if err != nil || absPath != filepath.Clean(absPath) || !filepath.HasPrefix(absPath, filepath.Join(baseDir, platform)) {
-		c.Status(http.StatusForbidden)
-		return
-	}
-
-	// 检查文件是否存在
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		c.Status(http.StatusNotFound)
-		return
-	}
-
-	c.File(absPath)
 }
 
 // CheckUpdateHealth 检查更新服务健康状态

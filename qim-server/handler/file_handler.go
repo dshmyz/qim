@@ -247,7 +247,7 @@ func UploadFile(c *gin.Context) {
 
 	now := time.Now()
 	filename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, userID.(uint), ext)
-	key := "uploads/" + filename
+	key := fmt.Sprintf("uploads/%s/%s", now.Format("2006/01"), filename)
 	mimeType := file.Header.Get("Content-Type")
 
 	st := di.GlobalContainer.DefaultStorage

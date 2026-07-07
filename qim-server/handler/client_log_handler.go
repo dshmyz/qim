@@ -351,8 +351,9 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 		if userID != nil {
 			uidVal = *userID
 		}
-		filename := fmt.Sprintf("feedback_%s_%d%s", time.Now().Format("20060102150405"), uidVal, ext)
-		key := "uploads/feedbacks/" + filename
+		now := time.Now()
+		filename := fmt.Sprintf("feedback_%s_%d%s", now.Format("20060102150405"), uidVal, ext)
+		key := fmt.Sprintf("uploads/feedbacks/%s/%s", now.Format("2006/01"), filename)
 
 		fileData, err := file.Open()
 		if err != nil {

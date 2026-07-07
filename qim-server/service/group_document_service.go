@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -15,10 +18,11 @@ type GroupDocumentService struct {
 	db       *gorm.DB
 	cortexDB *cortexdb.DB
 	parser   *DocumentParser
+	store    StorageAccessor
 }
 
-func NewGroupDocumentService(db *gorm.DB) *GroupDocumentService {
-	return &GroupDocumentService{db: db}
+func NewGroupDocumentService(db *gorm.DB, store StorageAccessor) *GroupDocumentService {
+	return &GroupDocumentService{db: db, store: store}
 }
 
 func (s *GroupDocumentService) SetVectorServices(vectorSvc *VectorService) {
@@ -108,8 +112,40 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 		"status": "processing",
 	})
 
-	filePath := doc.File.StoragePath
-	text, err := s.parser.Parse(filePath)
+	// 通过存储抽象读取文件内容到临时文件，再交给 parser（pdf/docx 库需要文件路径）
+	reader, err := s.store.GetByPath(context.Background(), doc.File.StoragePath)
+	if err != nil {
+		s.db.Model(&status).Updates(map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("读取文件失败: %v", err),
+		})
+		return err
+	}
+	tmpFile, err := os.CreateTemp("", "qim-doc-*"+filepath.Ext(doc.File.Name))
+	if err != nil {
+		reader.Close()
+		s.db.Model(&status).Updates(map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("创建临时文件失败: %v", err),
+		})
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		reader.Close()
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		s.db.Model(&status).Updates(map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("写入临时文件失败: %v", err),
+		})
+		return err
+	}
+	reader.Close()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	text, err := s.parser.Parse(tmpPath)
 	if err != nil {
 		s.db.Model(&status).Updates(map[string]interface{}{
 			"status": "failed",

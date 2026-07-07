@@ -24,14 +24,16 @@ type ChunkService struct {
 	repo    repository.ChunkRepository
 	db      *gorm.DB
 	storage string // 分片存储目录
+	store   StorageAccessor
 }
 
 // NewChunkService 创建分片服务实例
-func NewChunkService(db *gorm.DB, storage string) *ChunkService {
+func NewChunkService(db *gorm.DB, storage string, store StorageAccessor) *ChunkService {
 	return &ChunkService{
 		repo:    repository.NewChunkRepository(db),
 		db:      db,
 		storage: storage,
+		store:   store,
 	}
 }
 
@@ -230,7 +232,7 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 		return nil, fmt.Errorf("分片未全部上传: %d/%d", uploadedCount, task.TotalChunks)
 	}
 
-	// 4. 合并分片
+	// 4. 合并分片到本地临时文件
 	finalPath := filepath.Join(s.storage, "files", uploadID, task.Filename)
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
 		return nil, fmt.Errorf("创建文件目录失败: %w", err)
@@ -240,33 +242,54 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建文件失败: %w", err)
 	}
-	defer outFile.Close()
 
 	hash := md5.New()
 	for _, chunk := range chunks {
 		inFile, err := os.Open(chunk.StoragePath)
 		if err != nil {
+			outFile.Close()
+			os.Remove(finalPath)
 			return nil, fmt.Errorf("打开分片文件失败: %w", err)
 		}
-
 		if _, err := io.Copy(outFile, io.TeeReader(inFile, hash)); err != nil {
 			inFile.Close()
+			outFile.Close()
+			os.Remove(finalPath)
 			return nil, fmt.Errorf("合并分片失败: %w", err)
 		}
 		inFile.Close()
 	}
+	outFile.Close()
 
 	// 5. 计算最终文件哈希
 	checksum := hex.EncodeToString(hash.Sum(nil))
 
-	// 6. 创建文件记录
+	// 6. 上传合并文件到存储后端（local/S3），key 与普通上传一致
+	now := time.Now()
+	ext := filepath.Ext(task.Filename)
+	keyFilename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, task.UserID, ext)
+	key := fmt.Sprintf("uploads/%s/%s", now.Format("2006/01"), keyFilename)
+
+	mergedFile, err := os.Open(finalPath)
+	if err != nil {
+		os.Remove(finalPath)
+		return nil, fmt.Errorf("打开合并文件失败: %w", err)
+	}
+	storagePath, err := s.store.Put(ctx, key, mergedFile, task.FileSize, getMimeType(task.Filename))
+	mergedFile.Close()
+	os.Remove(finalPath) // 清理本地合并临时文件
+	if err != nil {
+		return nil, fmt.Errorf("上传合并文件失败: %w", err)
+	}
+
+	// 7. 创建文件记录
 	file := &model.File{
 		UserID:       task.UserID,
 		Name:         task.Filename,
 		OriginalName: task.Filename,
 		Size:         task.FileSize,
 		MimeType:     getMimeType(task.Filename),
-		StoragePath:  finalPath,
+		StoragePath:  storagePath,
 		Checksum:     checksum,
 		FolderID:     task.FolderID,
 		Source:       "upload",

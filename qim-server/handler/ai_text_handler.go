@@ -1,17 +1,19 @@
 package handler
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -72,65 +74,60 @@ func imageToDataURL(imageURL string) string {
 		return imageURL
 	}
 
-	// 处理 http(s) URL
-	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
-		// 尝试从本地 uploads 目录读取
-		if idx := strings.Index(imageURL, "/uploads/"); idx != -1 {
-			localPath := imageURL[idx+1:] // "uploads/xxx"
-			if dataURL := readFileAsDataURL(localPath); dataURL != "" {
-				return dataURL
-			}
-			// 本地文件不存在，尝试从 HTTP 下载
+	// 提取 StoragePath（/uploads/ 或 /s3/ 前缀，含 http URL 内嵌），走存储抽象读取
+	if sp := extractStoragePath(imageURL); sp != "" {
+		if dataURL := storageReadAsDataURL(sp); dataURL != "" {
+			return dataURL
+		}
+		// 存储读取失败，http URL 尝试 HTTP 下载降级
+		if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
 			if dataURL := downloadAsDataURL(imageURL); dataURL != "" {
 				return dataURL
 			}
 		}
-		// 外部 URL，直接返回让 AI 访问
-		return imageURL
 	}
 
-	// 以 /uploads/ 开头，从本地读取
-	if strings.HasPrefix(imageURL, "/uploads/") {
-		if dataURL := readFileAsDataURL(imageURL[1:]); dataURL != "" {
-			return dataURL
-		}
-	}
-
-	// 尝试直接作为本地路径读取（兼容相对路径）
-	if dataURL := readFileAsDataURL(imageURL); dataURL != "" {
-		return dataURL
-	}
-
-	// 非本地 URL 原样返回
+	// 外部 http URL（非本站存储），直接返回让 AI 访问
 	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
 		return imageURL
 	}
 	return ""
 }
 
-// readFileAsDataURL 从本地文件系统读取图片转为 data URL
-func readFileAsDataURL(relPath string) string {
-	// 清理路径
-	relPath = strings.TrimPrefix(relPath, "./")
-	fullPath := filepath.Clean(filepath.Join(".", relPath))
+// extractStoragePath 从 imageURL 中提取 StoragePath：
+// "/uploads/xxx" / "/s3/xxx" → 原样；"http://host/uploads/xxx" → "/uploads/xxx"
+func extractStoragePath(imageURL string) string {
+	for _, prefix := range []string{"/s3/", "/uploads/"} {
+		if idx := strings.Index(imageURL, prefix); idx != -1 {
+			return imageURL[idx:]
+		}
+	}
+	return ""
+}
 
-	// 安全检查：确保路径在 uploads 目录内
-	absPath, err := filepath.Abs(fullPath)
+// storageReadAsDataURL 通过存储抽象读取文件，转为 data URL（受 maxImageTranslateSize 限制）
+func storageReadAsDataURL(storagePath string) string {
+	mgr := di.GlobalContainer.StorageManager
+	if mgr == nil {
+		return ""
+	}
+	st, key, ok := mgr.ByPath(storagePath)
+	if !ok || st == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	reader, err := st.Get(ctx, key)
 	if err != nil {
 		return ""
 	}
-	uploadsDir, _ := filepath.Abs("./uploads")
-	if !strings.HasPrefix(absPath, uploadsDir) {
-		return ""
-	}
+	defer reader.Close()
 
-	data, err := os.ReadFile(absPath)
+	data, err := io.ReadAll(io.LimitReader(reader, maxImageTranslateSize))
 	if err != nil {
 		return ""
 	}
-
-	ext := filepath.Ext(absPath)
-	contentType := mime.TypeByExtension(ext)
+	contentType := mime.TypeByExtension(filepath.Ext(storagePath))
 	if contentType == "" {
 		contentType = http.DetectContentType(data)
 	}

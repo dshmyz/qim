@@ -29,7 +29,7 @@ func newVersionServiceTestDB(t *testing.T) *gorm.DB {
 // 复现审查发现的安全事故级 bug：前端显示 0%，后端实际全量发布。
 func TestCreate_RolloutPercentageZero_PersistedAsZero(t *testing.T) {
 	db := newVersionServiceTestDB(t)
-	svc := NewVersionService(db)
+	svc := NewVersionService(db, nil)
 
 	zero := 0
 	version, err := svc.Create(CreateVersionInput{
@@ -58,7 +58,7 @@ func TestCreate_RolloutPercentageZero_PersistedAsZero(t *testing.T) {
 // 使 handler 无需再二次 GetByID（原实现忽略二次 GetByID 的错误，并发删除时 nil 解引用 panic）。
 func TestToggleStatus_ReturnsUpdatedVersion(t *testing.T) {
 	db := newVersionServiceTestDB(t)
-	svc := NewVersionService(db)
+	svc := NewVersionService(db, nil)
 
 	created, err := svc.Create(CreateVersionInput{
 		Version:     "2.1.0",
@@ -95,7 +95,7 @@ func TestToggleStatus_ReturnsUpdatedVersion(t *testing.T) {
 // handler 据此返回 404 而非 panic。
 func TestToggleStatus_MissingVersionReturnsNotFound(t *testing.T) {
 	db := newVersionServiceTestDB(t)
-	svc := NewVersionService(db)
+	svc := NewVersionService(db, nil)
 
 	_, err := svc.ToggleStatus(99999, true)
 	if !errors.Is(err, ErrVersionNotFound) {

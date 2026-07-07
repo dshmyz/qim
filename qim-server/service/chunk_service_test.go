@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -39,6 +42,45 @@ func createTestUser(t *testing.T, db *gorm.DB) *model.User {
 	return user
 }
 
+// testStorageAccessor 是测试用的 StorageAccessor，基于本地文件系统实现，
+// 不依赖 storage/di 包以避免循环依赖。
+type testStorageAccessor struct {
+	dir string
+}
+
+func newTestAccessor(t *testing.T) *testStorageAccessor {
+	t.Helper()
+	return &testStorageAccessor{dir: t.TempDir()}
+}
+
+func (a *testStorageAccessor) GetByPath(ctx context.Context, storagePath string) (io.ReadCloser, error) {
+	rel := strings.TrimPrefix(storagePath, "/")
+	return os.Open(filepath.Join(a.dir, rel))
+}
+
+func (a *testStorageAccessor) Put(ctx context.Context, key string, data io.Reader, size int64, mime string) (string, error) {
+	path := filepath.Join(a.dir, key)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, data); err != nil {
+		return "", err
+	}
+	return "/" + key, nil
+}
+
+func (a *testStorageAccessor) DeleteByPath(ctx context.Context, storagePath string) error {
+	rel := strings.TrimPrefix(storagePath, "/")
+	return os.Remove(filepath.Join(a.dir, rel))
+}
+
+func (a *testStorageAccessor) Kind() string { return "local" }
+
 func TestChunkService_InitUpload_NewUpload(t *testing.T) {
 	db := setupChunkServiceTestDB(t)
 	user := createTestUser(t, db)
@@ -46,7 +88,7 @@ func TestChunkService_InitUpload_NewUpload(t *testing.T) {
 	// 创建临时目录用于存储分片
 	tempDir := t.TempDir()
 
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-123", nil)
 
@@ -80,7 +122,7 @@ func TestChunkService_InitUpload_InstantUpload(t *testing.T) {
 	db.Create(existingFile)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 尝试上传相同哈希的文件
 	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "new.txt", 1024, "same-hash-123", nil)
@@ -122,7 +164,7 @@ func TestChunkService_InitUpload_ResumeUpload(t *testing.T) {
 	db.Create(chunk)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 尝试继续上传
 	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-456", nil)
@@ -139,7 +181,7 @@ func TestChunkService_UploadChunk(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-789", nil)
@@ -175,7 +217,7 @@ func TestChunkService_UploadChunk_InvalidHash(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-invalid", nil)
@@ -195,7 +237,7 @@ func TestChunkService_CompleteUpload(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-complete", nil)
@@ -239,7 +281,7 @@ func TestChunkService_CancelUpload(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-cancel", nil)
@@ -358,7 +400,7 @@ func TestChunkService_InitUpload_WithFolder(t *testing.T) {
 	db.Create(folder)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 10*1024*1024, "file-hash-folder", &folder.ID)
 
@@ -372,7 +414,8 @@ func TestChunkService_CompleteUpload_VerifyFileIntegrity(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	accessor := newTestAccessor(t)
+	service := NewChunkService(db, tempDir, accessor)
 
 	// 创建一个小文件用于测试
 	fileSize := int64(3 * 1024 * 1024) // 3MB
@@ -412,8 +455,11 @@ func TestChunkService_CompleteUpload_VerifyFileIntegrity(t *testing.T) {
 	assert.NotNil(t, file)
 	assert.Equal(t, expectedChecksum, file.Checksum)
 
-	// 验证合并后的文件内容
-	mergedData, err := os.ReadFile(file.StoragePath)
+	// 验证合并后的文件内容（通过存储抽象读回）
+	reader, err := accessor.GetByPath(context.Background(), file.StoragePath)
+	assert.NoError(t, err)
+	mergedData, err := io.ReadAll(reader)
+	reader.Close()
 	assert.NoError(t, err)
 	assert.Equal(t, fullData, mergedData)
 }
@@ -423,7 +469,7 @@ func TestChunkService_UploadChunk_OutOfOrder(t *testing.T) {
 	user := createTestUser(t, db)
 
 	tempDir := t.TempDir()
-	service := NewChunkService(db, tempDir)
+	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
 	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-order", nil)

@@ -40,11 +40,12 @@ type UpdateVersionInput struct {
 }
 
 type VersionService struct {
-	db *gorm.DB
+	db      *gorm.DB
+	storage StorageAccessor
 }
 
-func NewVersionService(db *gorm.DB) *VersionService {
-	return &VersionService{db: db}
+func NewVersionService(db *gorm.DB, storage StorageAccessor) *VersionService {
+	return &VersionService{db: db, storage: storage}
 }
 
 // Create 创建版本，自动校验唯一性、计算哈希
@@ -86,7 +87,7 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		version.Sha512 = input.Sha512
 		version.FileSize = input.FileSize
 	} else if input.DownloadURL != "" {
-		hash, size, err := MustComputeFileHash(s.db, input.DownloadURL, platform)
+		hash, size, err := MustComputeFileHash(s.db, s.storage, input.DownloadURL, platform)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrHashComputeFailed, err)
 		}

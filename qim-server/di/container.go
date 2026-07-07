@@ -106,6 +106,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	}
 
 	storageManager := storage.NewManager(defaultStorage, s3Storage, localStorage)
+	storageAccessor := NewStorageAccessor(storageManager)
 
 	groupService := service.NewGroupService(db)
 	appService := service.NewAppService(db)
@@ -116,14 +117,14 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	sensitiveWordService := service.NewSensitiveWordService(db)
 	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
-	versionService := service.NewVersionService(db)
+	versionService := service.NewVersionService(db, storageAccessor)
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
 	botService := service.NewBotService(db)
-	groupDocumentService := service.NewGroupDocumentService(db)
+	groupDocumentService := service.NewGroupDocumentService(db, storageAccessor)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 
 	// 初始化 ChunkService
@@ -131,7 +132,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) *Container {
 	if chunkStoragePath == "" {
 		chunkStoragePath = "./uploads/chunks"
 	}
-	chunkService := service.NewChunkService(db, chunkStoragePath)
+	chunkService := service.NewChunkService(db, chunkStoragePath, storageAccessor)
 
 	authMiddleware := middleware.AuthMiddleware(cfg.JWT.Secret, userService)
 
