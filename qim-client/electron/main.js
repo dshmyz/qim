@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -165,29 +165,58 @@ function getConfigPath() {
   return path.join(app.getPath('userData'), 'config.json')
 }
 
-function loadServerConfig() {
+function loadConfig() {
   try {
     const configPath = getConfigPath()
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-      if (config.serverUrl) {
-        return config.serverUrl
+      if (!config.shortcuts) {
+        config.shortcuts = getDefaultShortcuts()
       }
+      return config
     }
   } catch (error) {
     console.error('读取配置失败:', error)
   }
-  return null
+  return { serverUrl: null, shortcuts: getDefaultShortcuts() }
 }
 
-function saveServerConfig(serverUrl) {
+function saveConfig(config) {
   try {
     const configPath = getConfigPath()
-    const config = { serverUrl }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
   } catch (error) {
     console.error('保存配置失败:', error)
   }
+}
+
+function getDefaultShortcuts() {
+  return {
+    global: {
+      minimize:   { accelerator: 'CommandOrControl+M', enabled: true },
+      maximize:   { accelerator: 'CommandOrControl+K', enabled: true },
+      hide:       { accelerator: 'CommandOrControl+W', enabled: true },
+      quit:       { accelerator: 'CommandOrControl+Q', enabled: true },
+      screenshot: { accelerator: 'CommandOrControl+Shift+A', enabled: true }
+    },
+    editor: {
+      bold:   { accelerator: 'Mod-b', enabled: true },
+      italic: { accelerator: 'Mod-i', enabled: true },
+      link:   { accelerator: 'Mod-k', enabled: true },
+      save:   { accelerator: 'Mod-s', enabled: true }
+    }
+  }
+}
+
+// 兼容旧接口：只读写 serverUrl
+function loadServerConfig() {
+  return loadConfig().serverUrl
+}
+
+function saveServerConfig(serverUrl) {
+  const config = loadConfig()
+  config.serverUrl = serverUrl
+  saveConfig(config)
 }
 
 function getWindowsVersion() {
@@ -385,23 +414,30 @@ function createWindow() {
     mainWindow = null
   })
 
-  registerGlobalShortcuts()
   initScreenshot()
+  registerGlobalShortcuts()
 }
 
 function registerGlobalShortcuts() {
-  globalShortcut.register('CommandOrControl+M', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize()
-  })
-  globalShortcut.register('CommandOrControl+K', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    if (mainWindow.isMaximized()) mainWindow.unmaximize()
-    else mainWindow.maximize()
-  })
-  globalShortcut.register('CommandOrControl+W', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
-  })
-  globalShortcut.register('CommandOrControl+Q', () => app.quit())
+  const { shortcuts } = loadConfig()
+  const handlers = {
+    minimize:   () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize() },
+    maximize:   () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (mainWindow.isMaximized()) mainWindow.unmaximize()
+      else mainWindow.maximize()
+    },
+    hide:       () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() },
+    quit:       () => app.quit(),
+    screenshot: () => screenshotInstance?.startCapture?.()
+  }
+  for (const [name, conf] of Object.entries(shortcuts.global)) {
+    if (!conf.enabled || !conf.accelerator) continue
+    const registered = globalShortcut.register(conf.accelerator, handlers[name])
+    if (!registered) {
+      console.warn(`[shortcut] 注册失败: ${conf.accelerator} (${name})，可能被其他应用占用`)
+    }
+  }
 }
 
 // ==================== Screenshot ====================
@@ -501,11 +537,16 @@ async function startScreenshotCapture({ hideMainWindow = false } = {}) {
   }
 
   if (hideMainWindow && mainWindow && !mainWindow.isDestroyed()) {
-    try {
-      mainWindow.setContentProtection(true)
-      screenshotContentProtectionEnabled = true
-    } catch (err) {
-      console.error('[screenshot] Failed to enable content protection:', err)
+    if (process.platform === 'linux') {
+      // Linux 上 setContentProtection 是 no-op，需要真正隐藏窗口
+      mainWindow.hide()
+    } else {
+      try {
+        mainWindow.setContentProtection(true)
+        screenshotContentProtectionEnabled = true
+      } catch (err) {
+        console.error('[screenshot] Failed to enable content protection:', err)
+      }
     }
   }
 
@@ -548,10 +589,6 @@ function initScreenshot() {
     })
 
     console.log('[screenshot] Instance created successfully')
-
-    globalShortcut.register('CommandOrControl+Shift+A', () => {
-      screenshotInstance?.startCapture?.()
-    })
   } catch (error) {
     console.error('[screenshot] Failed to initialize:', error)
     screenshotInitError = error
@@ -805,6 +842,35 @@ function registerIPC() {
     return app.getPath('downloads')
   })
 
+  ipcMain.handle('get-shortcuts', () => {
+    return loadConfig().shortcuts
+  })
+
+  ipcMain.handle('set-shortcuts', (event, shortcuts) => {
+    const config = loadConfig()
+    config.shortcuts = shortcuts
+    saveConfig(config)
+    globalShortcut.unregisterAll()
+    registerGlobalShortcuts()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('shortcuts-updated', shortcuts)
+    }
+    return shortcuts
+  })
+
+  ipcMain.handle('reset-shortcuts', () => {
+    const defaults = getDefaultShortcuts()
+    const config = loadConfig()
+    config.shortcuts = defaults
+    saveConfig(config)
+    globalShortcut.unregisterAll()
+    registerGlobalShortcuts()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('shortcuts-updated', defaults)
+    }
+    return defaults
+  })
+
   ipcMain.on('start-screen-share', async () => {
     try {
       console.log('启动屏幕共享')
@@ -979,8 +1045,31 @@ function cleanupAvatarCache(maxAge = 7 * 24 * 60 * 60 * 1000) {
 
 // ==================== App Lifecycle ====================
 
-app.whenReady().then(() => {
+// 请求麦克风/摄像头系统权限（macOS），确保 getUserMedia 能正常触发授权
+async function ensureMediaPermissions() {
+  // macOS: 主动触发系统授权弹窗
+  if (process.platform === 'darwin') {
+    try {
+      await systemPreferences.askForMediaAccess('microphone')
+      await systemPreferences.askForMediaAccess('camera')
+    } catch (err) {
+      console.error('[MediaPermission] 请求媒体权限失败:', err)
+    }
+  }
+
+  // 所有平台: 配置权限请求处理器，允许 media 类型权限请求
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true)
+    } else {
+      callback(false)
+    }
+  })
+}
+
+app.whenReady().then(async () => {
   console.log('App ready')
+  await ensureMediaPermissions()
   createWindow()
   createTray()
   registerIPC()
