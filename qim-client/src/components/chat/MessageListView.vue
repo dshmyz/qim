@@ -32,8 +32,8 @@
           @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, message)"
           @show-user-profile="(user: any) => emit('show-user-profile', user)"
           @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
-          @download-file="(data: string) => emit('download-file', data)"
-          @save-as="(data: string) => emit('save-as', data)"
+          @download-file="(data: string, id?: string) => emit('download-file', data, id)"
+          @save-as="(data: string, id?: string) => emit('save-as', data, id)"
           @open-mini-app="(app: any) => emit('open-mini-app', app)"
           @open-news-link="(url: string) => emit('open-news-link', url)"
           @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
@@ -78,8 +78,8 @@ interface Emits {
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
   'scroll-to-quoted-message': [id: string]
-  'download-file': [data: string]
-  'save-as': [data: string]
+  'download-file': [data: string, id?: string]
+  'save-as': [data: string, id?: string]
   'open-mini-app': [app: Message['miniAppData']]
   'open-news-link': [url: string]
   'retry-send-message': [msg: Message]

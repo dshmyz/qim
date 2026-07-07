@@ -19,11 +19,14 @@
         <i class="fas fa-save"></i>
       </button>
     </div>
+    <div v-if="isDownloading" class="attachment-card__progress">
+      <div class="attachment-card__progress-bar" :style="{ width: progressPercent + '%' }"></div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, type Ref } from 'vue'
 import { getFileIcon, getFileIconColor, getFileTypeLabel } from '../../utils/fileType'
 import { getFileExtension } from '../../utils/fileType'
 
@@ -31,12 +34,22 @@ const props = defineProps<{
   content: string
   isSelf?: boolean
   serverUrl: string
+  messageId?: string
 }>()
 
 const emit = defineEmits<{
   download: [url: string, fileName?: string]
   saveAs: [url: string, fileName?: string]
 }>()
+
+// 下载进度（由 ChatWindow provide，key = 消息 id）
+const downloadProgress = inject<Ref<Record<string, number>>>('downloadProgress')
+const isDownloading = computed(() =>
+  !!props.messageId && downloadProgress?.value?.[props.messageId] !== undefined
+)
+const progressPercent = computed(() =>
+  props.messageId ? (downloadProgress?.value?.[props.messageId] ?? 0) : 0
+)
 
 // 解析文件数据
 const fileData = computed(() => {
@@ -413,6 +426,21 @@ const saveFileAs = () => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.attachment-card__progress {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-secondary), transparent 82%);
+}
+
+.attachment-card__progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary-color);
+  transition: width 0.15s ease;
 }
 
 .attachment-card__action {

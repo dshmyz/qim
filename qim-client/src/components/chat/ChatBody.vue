@@ -12,8 +12,8 @@
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
       @scroll-to-quoted-message="(id) => emit('scroll-to-quoted-message', id)"
-      @download-file="(d) => emit('download-file', d)"
-      @save-as="(d) => emit('save-as', d)"
+      @download-file="(d, id) => emit('download-file', d, id)"
+      @save-as="(d, id) => emit('save-as', d, id)"
       @open-mini-app="(a) => emit('open-mini-app', a)"
       @open-news-link="(u) => emit('open-news-link', u)"
       @retry-send-message="(m) => emit('retry-send-message', m)"
@@ -77,8 +77,8 @@ const emit = defineEmits<{
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
   'scroll-to-quoted-message': [id: string]
-  'download-file': [data: string]
-  'save-as': [data: string]
+  'download-file': [data: string, id?: string]
+  'save-as': [data: string, id?: string]
   'open-mini-app': [app: Message['miniAppData']]
   'open-news-link': [url: string]
   'retry-send-message': [msg: Message]

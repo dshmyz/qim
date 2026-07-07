@@ -147,8 +147,8 @@
       @close-user-profile="closeUserProfile"
       @send-private-message="handleSendPrivateMessage"
       @close-read-users="showReadUsersModal = false"
-      @save-file-as="saveFileAs"
-      @download-file="downloadFile"
+      @save-file-as="(d: string) => saveFileAs(d, selectedMessage ? String(selectedMessage.id) : undefined)"
+      @download-file="(d: string) => downloadFile(d, selectedMessage ? String(selectedMessage.id) : undefined)"
       @copy-message="selectedMessage && copyMessage(selectedMessage)"
       @forward-message="forwardMessage"
       @quote-message="quoteMessage"
@@ -199,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent, provide, reactive } from 'vue'
 import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
 import ChatBody from './ChatBody.vue'
@@ -1077,6 +1077,16 @@ onMounted(() => {
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
 
   if (window.electron?.ipcRenderer) {
+    window.electron.ipcRenderer.on('download-progress', (_event: any, result: { downloadId?: string; percent: number; state?: string }) => {
+      if (!result.downloadId) return
+      if (result.state === 'progressing') {
+        downloadProgress.value[result.downloadId] = result.percent
+      } else {
+        // completed / cancelled / interrupted：清除进度条
+        delete downloadProgress.value[result.downloadId]
+      }
+    })
+
     window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
       if (result.success) {
         $message.success(`文件已下载到: ${result.filePath}`)
@@ -1084,7 +1094,7 @@ onMounted(() => {
         $message.error('文件下载失败: ' + (result.error || '未知错误'))
       }
     })
-    
+
     window.electron.ipcRenderer.on('save-file-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string }) => {
       if (result.success) {
         $message.success(`文件已保存到: ${result.filePath}`)
@@ -2205,123 +2215,119 @@ const handleFileSelect = (event: Event) => {
   }
 }
 
-const downloadFile = async (fileContent: string, fileName?: string) => {
+// 文件下载进度：key = 消息 id，value = 百分比(0-100)；完成/失败后删除
+const downloadProgress = ref<Record<string, number>>({})
+provide('downloadProgress', downloadProgress)
+
+const downloadFile = async (fileContent: string, messageId?: string) => {
   try {
     const parsedContent = JSON.parse(fileContent)
-    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+    const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
     let fileUrl = parsedContent.url
-    
+
     if (fileUrl && !fileUrl.startsWith('http')) {
       const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
       const cleanFileUrl = fileUrl.replace(/^\//, '')
       fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
     }
-    
+
     if (!fileUrl) {
       $message.error('文件URL为空，无法下载')
       return
     }
-    
+
+    // Electron：交给主进程用内置下载管理器流式写盘，避免大文件整块读入内存
+    if (window.electron?.ipcRenderer) {
+      if (messageId) downloadProgress.value[messageId] = 0
+      window.electron.ipcRenderer.send('download-file', {
+        url: fileUrl,
+        token: getToken() || '',
+        fileName: finalFileName,
+        saveDir: props.fileSettings?.defaultSaveDirectory,
+        downloadId: messageId
+      })
+      return
+    }
+
+    // 浏览器环境：fetch + blob 直链下载
     const response = await fetch(fileUrl, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
       }
     })
-    
     if (!response.ok) {
-      if (response.status === 403) {
-        $message.error('文件下载失败: 权限不足，请检查您的权限')
-      } else {
-        $message.error('文件下载失败: 服务器错误')
-      }
+      $message.error(response.status === 403 ? '文件下载失败: 权限不足，请检查您的权限' : '文件下载失败: 服务器错误')
       return
     }
-    
     const blob = await response.blob()
-    
-    if (window.electron?.ipcRenderer) {
-      const arrayBuffer = await blob.arrayBuffer()
-      const buffer = Array.from(new Uint8Array(arrayBuffer))
-      const saveDir = props.fileSettings?.defaultSaveDirectory
-      window.electron.ipcRenderer.send('download-file', {
-        buffer,
-        fileName: finalFileName,
-        mime: blob.type || 'application/octet-stream',
-        saveDir
-      })
-      $message.success(`文件 ${finalFileName} 已下载到默认目录`)
-    } else {
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = finalFileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      $message.success(`文件 ${finalFileName} 已下载到默认目录`)
-    }
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = finalFileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    $message.success(`文件 ${finalFileName} 已下载到默认目录`)
   } catch (error) {
     logger.error('文件下载失败:', error)
     $message.error('文件下载失败: 网络错误')
   }
 }
 
-const saveFileAs = async (fileContent: string, fileName?: string) => {
+const saveFileAs = async (fileContent: string, messageId?: string) => {
   try {
     const parsedContent = JSON.parse(fileContent)
-    const finalFileName = fileName || parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
+    const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
     let fileUrl = parsedContent.url
-    
+
     if (fileUrl && !fileUrl.startsWith('http')) {
       const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
       const cleanFileUrl = fileUrl.replace(/^\//, '')
       fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
     }
-    
+
     if (!fileUrl) {
       $message.error('文件URL为空，无法保存')
       return
     }
-    
+
+    // Electron：交给主进程用内置下载管理器（弹出另存为对话框）流式写盘
+    if (window.electron?.ipcRenderer) {
+      if (messageId) downloadProgress.value[messageId] = 0
+      window.electron.ipcRenderer.send('save-file-as', {
+        url: fileUrl,
+        token: getToken() || '',
+        fileName: finalFileName,
+        downloadId: messageId
+      })
+      return
+    }
+
+    // 浏览器环境：fetch + blob 直链下载
     const response = await fetch(fileUrl, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
       }
     })
-    
     if (!response.ok) {
-      if (response.status === 403) {
-        $message.error('文件保存失败: 权限不足，请检查您的权限')
-      } else {
-        $message.error('文件保存失败: 服务器错误')
-      }
+      $message.error(response.status === 403 ? '文件保存失败: 权限不足，请检查您的权限' : '文件保存失败: 服务器错误')
       return
     }
-    
     const blob = await response.blob()
-    
-    if (window.electron?.ipcRenderer) {
-      const arrayBuffer = await blob.arrayBuffer()
-      const buffer = Array.from(new Uint8Array(arrayBuffer))
-      window.electron.ipcRenderer.send('save-file-as', {
-        buffer,
-        fileName: finalFileName,
-        mime: blob.type || 'application/octet-stream'
-      })
-    } else {
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = finalFileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      $message.success(`文件 ${finalFileName} 已保存`)
-    }
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = finalFileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    $message.success(`文件 ${finalFileName} 已保存`)
   } catch (error) {
     logger.error('文件保存失败:', error)
     $message.error('文件保存失败: 网络错误')

@@ -99,8 +99,9 @@
             :content="message.content"
             :is-self="isSelf"
             :server-url="serverUrl"
-            @download="$emit('downloadFile', message.content)"
-            @save-as="$emit('saveAs', message.content)"
+            :message-id="String(message.id)"
+            @download="$emit('downloadFile', message.content, String(message.id))"
+            @save-as="$emit('saveAs', message.content, String(message.id))"
           />
 
           <!-- 分享消息 -->
@@ -223,8 +224,8 @@ const emit = defineEmits<{
   contextmenu: [event: MouseEvent, message: any]
   showUserProfile: [user: any]
   scrollToQuotedMessage: [messageId: string]
-  downloadFile: [url: string, fileName?: string]
-  saveAs: [url: string, fileName?: string]
+  downloadFile: [url: string, messageId?: string]
+  saveAs: [url: string, messageId?: string]
   openMiniApp: [data: any]
   openNewsLink: [url: string]
   retrySendMessage: [message: any]
