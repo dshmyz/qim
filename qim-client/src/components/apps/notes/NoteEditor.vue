@@ -57,6 +57,7 @@ const codemirrorRef = ref<HTMLElement | null>(null)
 const editorContainerRef = ref<HTMLElement | null>(null)
 const editorView = shallowRef<EditorView | null>(null)
 const themeCompartment = new Compartment()
+const keymapCompartment = new Compartment()
 
 type LayoutMode = 'edit' | 'split' | 'preview'
 const layoutMode = ref<LayoutMode>('edit')
@@ -139,6 +140,46 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.processingInstruction, color: 'var(--text-secondary, #999)' },
 ])
 
+interface EditorShortcutConf {
+  accelerator: string
+  enabled: boolean
+}
+
+function buildEditorKeymap(shortcuts?: Record<string, EditorShortcutConf>) {
+  const editorShortcuts = shortcuts || {
+    bold:   { accelerator: 'Mod-b', enabled: true },
+    italic: { accelerator: 'Mod-i', enabled: true },
+    link:   { accelerator: 'Mod-k', enabled: true },
+    save:   { accelerator: 'Mod-s', enabled: true }
+  }
+  const customKeymap: { key: string, run: () => boolean }[] = []
+  if (editorShortcuts.bold?.enabled) {
+    customKeymap.push({ key: editorShortcuts.bold.accelerator, run: () => { insertFormat('**', '**'); return true } })
+  }
+  if (editorShortcuts.italic?.enabled) {
+    customKeymap.push({ key: editorShortcuts.italic.accelerator, run: () => { insertFormat('*', '*'); return true } })
+  }
+  if (editorShortcuts.link?.enabled) {
+    customKeymap.push({ key: editorShortcuts.link.accelerator, run: () => { insertLink(); return true } })
+  }
+  if (editorShortcuts.save?.enabled) {
+    customKeymap.push({ key: editorShortcuts.save.accelerator, run: () => { emit('save'); return true } })
+  }
+  return customKeymap
+}
+
+function buildFullKeymap(shortcuts?: Record<string, EditorShortcutConf>) {
+  return keymap.of([
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+    indentWithTab,
+    ...buildEditorKeymap(shortcuts),
+  ])
+}
+
 function createEditor() {
   if (!codemirrorRef.value) return
 
@@ -174,18 +215,7 @@ function createEditor() {
       syntaxHighlighting(markdownHighlightStyle),
       noteEditorTheme,
       themeCompartment.of(isDark ? oneDark : []),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        indentWithTab,
-        { key: 'Mod-b', run: () => { insertFormat('**', '**'); return true } },
-        { key: 'Mod-i', run: () => { insertFormat('*', '*'); return true } },
-        { key: 'Mod-k', run: () => { insertLink(); return true } },
-        { key: 'Mod-s', run: () => { emit('save'); return true } },
-      ]),
+      keymapCompartment.of(buildFullKeymap()),
       updateListener,
       EditorView.editable.of(true),
     ],
@@ -242,13 +272,35 @@ defineExpose({ insertFormat, insertLink })
 
 let themeQuery: MediaQueryList | null = null
 
+// 快捷键更新监听器（提升为组件级，便于 onUnmounted 清理）
+const handleShortcutsUpdated = (_event: unknown, shortcuts: { editor?: Record<string, EditorShortcutConf> }) => {
+  if (editorView.value && shortcuts?.editor) {
+    editorView.value.dispatch({
+      effects: keymapCompartment.reconfigure(buildFullKeymap(shortcuts.editor))
+    })
+  }
+}
+
 onMounted(() => {
   nextTick(() => {
     createEditor()
+    // 拉取快捷键配置并应用
+    if (window.electron?.ipcRenderer?.invoke) {
+      window.electron.ipcRenderer.invoke('get-shortcuts').then((shortcuts) => {
+        if (editorView.value && shortcuts?.editor) {
+          editorView.value.dispatch({
+            effects: keymapCompartment.reconfigure(buildFullKeymap(shortcuts.editor))
+          })
+        }
+      }).catch(() => {})
+    }
   })
 
   themeQuery = window.matchMedia('(prefers-color-scheme: dark)')
   themeQuery.addEventListener('change', handleThemeChange)
+
+  // 监听快捷键更新
+  window.electron?.ipcRenderer?.on('shortcuts-updated', handleShortcutsUpdated)
 })
 
 onUnmounted(() => {
@@ -258,6 +310,9 @@ onUnmounted(() => {
   }
   if (themeQuery) {
     themeQuery.removeEventListener('change', handleThemeChange)
+  }
+  if (window.electron?.ipcRenderer?.removeListener) {
+    window.electron.ipcRenderer.removeListener('shortcuts-updated', handleShortcutsUpdated)
   }
 })
 </script>

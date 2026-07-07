@@ -27,6 +27,10 @@
             <i class="fas fa-file"></i>
             <span>文件设置</span>
           </div>
+          <div class="settings-sidebar-item" :class="{ active: localTab === 'shortcut' }" @click="localTab = 'shortcut'">
+            <i class="fas fa-keyboard"></i>
+            <span>快捷键</span>
+          </div>
         </div>
         <div class="settings-main">
           <div v-if="localTab === 'basic'" class="settings-section">
@@ -221,6 +225,11 @@
               </div>
             </div>
           </div>
+
+          <div v-if="localTab === 'shortcut'" class="settings-section">
+            <div class="settings-section-header"><h4>快捷键设置</h4></div>
+            <ShortcutSettings />
+          </div>
         </div>
       </div>
       <div class="settings-footer">
@@ -242,6 +251,7 @@
 import { ref, watch, computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
+import ShortcutSettings from './ShortcutSettings.vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {
