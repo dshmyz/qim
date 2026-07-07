@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { decodeToPlainText } from '../../utils/mentions'
+import { emojiToHtml, classicToHtml } from '../../utils/emoji'
 
 const props = defineProps<{
   content: string
@@ -32,8 +33,8 @@ const renderedContent = computed(() => {
   const decodedContent = decodeToPlainText(props.content)
   const html = marked(decodedContent)
   const htmlString = typeof html === 'string' ? html : String(html)
-  // 使用 DOMPurify 进行消毒，防止 XSS 攻击
-  return sanitizeMarkdown(htmlString)
+  // 使用 DOMPurify 进行消毒，防止 XSS 攻击，再把表情字符/经典标记替换为 <img>
+  return classicToHtml(emojiToHtml(sanitizeMarkdown(htmlString)))
 })
 </script>
 

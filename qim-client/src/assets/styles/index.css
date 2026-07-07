@@ -106,6 +106,18 @@ body.linux-platform::after {
 }
 
 /* ========================================
+   表情图片 - Emoji Images (Twemoji)
+   v-html 注入的 <img> 不受 scoped 样式影响，故置于此全局样式表。
+   ======================================== */
+.emoji-img {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.18em;
+  user-select: none;
+}
+
+/* ========================================
    滚动条样式 - Scrollbar Styles
    ======================================== */
 ::-webkit-scrollbar {

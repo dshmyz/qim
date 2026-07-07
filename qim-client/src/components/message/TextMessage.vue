@@ -16,6 +16,7 @@
 import { computed } from 'vue'
 import { escapeHTML, sanitizeHTML } from '../../utils/sanitize'
 import { parseContent } from '../../utils/mentions'
+import { emojiToHtml, classicToHtml } from '../../utils/emoji'
 
 const props = defineProps<{
   content: string
@@ -55,7 +56,8 @@ const textToHtml = (text: string): string => {
   }
   linked += linkifyUrls(escaped.slice(lastIndex))
 
-  return sanitizeHTML(linked)
+  // 先消毒（sanitizeHTML 不允许 <img>，用户输入无法伪造），再把表情字符/经典标记替换为 <img>
+  return classicToHtml(emojiToHtml(sanitizeHTML(linked)))
 }
 
 const segments = computed<Segment[]>(() => {

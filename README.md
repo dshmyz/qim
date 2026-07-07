@@ -500,6 +500,12 @@ SQLite 数据库会在首次运行时自动创建，无需手动执行建表语�
 
 ***
 
+## 🙏 第三方资产致谢
+
+- **Twemoji** (© Twitter, Inc.) — 表情图片资产，采用 [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可，解析器采用 MIT 许可。本项目自托管其 72×72 PNG 资产用于跨平台一致的表情渲染，详见 <https://github.com/twitter/twemoji>。
+
+***
+
 ## 📄 许可证
 
 MIT License
