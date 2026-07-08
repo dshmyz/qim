@@ -408,7 +408,7 @@ interface Props {
   currentUser: any
   hasMoreMessages: boolean
   updateConversation?: (conversation: Conversation) => void
-  fileSettings?: { defaultSaveDirectory?: string }
+  messageSettings?: { defaultSaveDirectory?: string }
 }
 
 const props = defineProps<Props>()
@@ -2326,7 +2326,7 @@ const downloadFile = async (fileContent: string, messageId?: string) => {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
-        saveDir: props.fileSettings?.defaultSaveDirectory,
+        saveDir: props.messageSettings?.defaultSaveDirectory,
         downloadId: messageId
       })
       return

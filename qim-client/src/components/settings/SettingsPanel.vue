@@ -23,10 +23,6 @@
             <i class="fas fa-cog"></i>
             <span>高级设置</span>
           </div>
-          <div class="settings-sidebar-item" :class="{ active: localTab === 'file' }" @click="localTab = 'file'">
-            <i class="fas fa-file"></i>
-            <span>文件设置</span>
-          </div>
           <div class="settings-sidebar-item" :class="{ active: localTab === 'shortcut' }" @click="localTab = 'shortcut'">
             <i class="fas fa-keyboard"></i>
             <span>快捷键</span>
@@ -96,6 +92,19 @@
                 </select>
               </div>
             </div>
+            <div class="settings-item">
+              <label>默认保存目录</label>
+              <div class="settings-item-content">
+                <div class="input-with-btn">
+                  <input type="text" v-model="localMessageSettings.defaultSaveDirectory" class="settings-input" placeholder="选择默认保存目录" readonly />
+                  <button class="browse-btn" @click="$emit('browseDirectory', (path: string) => { localMessageSettings.defaultSaveDirectory = path })">
+                    <i class="fas fa-folder-open"></i>
+                    <span>浏览</span>
+                  </button>
+                </div>
+                <div class="settings-hint">设置接收文件的默认保存位置</div>
+              </div>
+            </div>
           </div>
           
           <div v-if="localTab === 'appearance'" class="settings-section">
@@ -158,73 +167,6 @@
               </div>
             </div>
           </div>
-          
-          <div v-if="localTab === 'file'" class="settings-section">
-            <div class="settings-section-header"><h4>文件设置</h4></div>
-            <div class="settings-item">
-              <label>默认保存目录</label>
-              <div class="settings-item-content">
-                <div class="input-with-btn">
-                  <input type="text" v-model="localFileSettings.defaultSaveDirectory" class="settings-input" placeholder="选择默认保存目录" />
-                  <button class="browse-btn" @click="$emit('browseDirectory', (path: string) => { localFileSettings.defaultSaveDirectory = path })">
-                    <i class="fas fa-folder-open"></i>
-                    <span>浏览</span>
-                  </button>
-                </div>
-                <div class="settings-hint">设置接收文件的默认保存位置</div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>文件自动下载</label>
-              <div class="settings-item-content">
-                <div class="setting-row">
-                  <label class="switch">
-                    <input type="checkbox" v-model="localFileSettings.autoDownload" />
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>最大上传文件大小</label>
-              <div class="settings-item-content">
-                <div class="input-with-unit">
-                  <input type="number" v-model.number="localFileSettings.maxFileSize" class="settings-input" placeholder="文件大小限制" />
-                  <span class="size-unit">MB</span>
-                </div>
-                <div class="settings-hint">设置单个文件的最大上传大小</div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>允许的文件类型</label>
-              <div class="settings-item-content">
-                <input type="text" v-model="localFileSettings.allowedFileTypes" class="settings-input" placeholder="例如：jpg,png,pdf,doc" />
-                <div class="settings-hint">设置允许上传的文件类型，用逗号分隔</div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>图片自动预览</label>
-              <div class="settings-item-content">
-                <div class="setting-row">
-                  <label class="switch">
-                    <input type="checkbox" v-model="localFileSettings.autoPreviewImages" />
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>文件历史记录</label>
-              <div class="settings-item-content">
-                <div class="setting-row">
-                  <label class="switch">
-                    <input type="checkbox" v-model="localFileSettings.enableFileHistory" />
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
 
           <div v-if="localTab === 'shortcut'" class="settings-section">
             <div class="settings-section-header"><h4>快捷键设置</h4></div>
@@ -279,17 +221,16 @@ interface Props {
   currentUser?: { username?: string; avatar?: string }
   serverUrl: string
   profile: { nickname?: string; signature?: string }
-  messageSettings: { notificationsEnabled?: boolean; soundEnabled?: boolean; desktopNotificationsEnabled?: boolean; dndMode?: string }
+  messageSettings: { notificationsEnabled?: boolean; soundEnabled?: boolean; desktopNotificationsEnabled?: boolean; dndMode?: string; defaultSaveDirectory?: string }
   appearanceSettings: { theme?: string; fontSize?: number }
   advancedSettings: { twoFactorEnabled?: boolean }
-  fileSettings: { defaultSaveDirectory?: string; autoDownload?: boolean; maxFileSize?: number; allowedFileTypes?: string; autoPreviewImages?: boolean; enableFileHistory?: boolean }
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close': []
-  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
+  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
   'clearCache': []
   'saveTwoFactor': [enabled: boolean]
   'openSecurity': []
@@ -302,7 +243,6 @@ const localProfile = ref({ ...props.profile })
 const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
 const localAdvancedSettings = ref({ ...props.advancedSettings })
-const localFileSettings = ref({ ...props.fileSettings })
 const localShortcuts = ref<ShortcutsConfig>()
 const shortcutSettingsRef = ref<InstanceType<typeof ShortcutSettings> | null>(null)
 
@@ -318,7 +258,6 @@ watch(() => props.visible, (val) => {
     localMessageSettings.value = { ...props.messageSettings }
     localAppearanceSettings.value = { ...props.appearanceSettings }
     localAdvancedSettings.value = { ...props.advancedSettings }
-    localFileSettings.value = { ...props.fileSettings }
   }
 })
 
@@ -369,13 +308,13 @@ const save = () => {
     if (conflicts.length > 0) {
       const c = conflicts[0]
       window.$QMessage?.warning(`快捷键冲突：「${c.a.label}」与「${c.b.label}」使用了相同的组合`, 5000)
+      return
     }
   }
   emit('save', {
     profile: { ...localProfile.value },
     messageSettings: { ...localMessageSettings.value },
     appearanceSettings: { ...localAppearanceSettings.value },
-    fileSettings: { ...localFileSettings.value },
     avatarFile: pendingAvatarFile.value || undefined,
     shortcuts: localShortcuts.value ? JSON.parse(JSON.stringify(localShortcuts.value)) : undefined
   })

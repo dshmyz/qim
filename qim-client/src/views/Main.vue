@@ -124,7 +124,7 @@
             :currentUser="currentUser"
             :hasMoreMessages="hasMoreMessages"
             :updateConversation="updateConversation"
-            :fileSettings="fileSettings"
+            :messageSettings="messageSettings"
             @send="handleSendMessage"
             @recall="handleRecallMessage"
             @inviteMembers="handleInviteMembers"
@@ -642,7 +642,6 @@
     :messageSettings="messageSettings"
     :appearanceSettings="appearanceSettings"
     :advancedSettings="advancedSettings"
-    :fileSettings="fileSettings"
     @close="closeSettingsModal"
     @save="handleSaveSettings"
     @clearCache="clearCache"
@@ -745,6 +744,8 @@ import { useUserProfile } from '../composables/useUserProfile'
 import { useStreamMessage } from '../composables/useStreamMessage'
 import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText } from '../utils/mentions'
+import { sameConversationId } from '../utils/conversationId'
+import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
 // useUIState 已被 useAppState 替代
 
 // 服务器地址
@@ -817,7 +818,6 @@ const {
   messageSettings,
   appearanceSettings,
   advancedSettings,
-  fileSettings,
   loadSettings,
   saveSettings,
   clearCache,
@@ -1772,7 +1772,7 @@ const handleNewMessage = async (msg: any) => {
   
   // 非当前会话且非流式消息，且未设置免打扰，触发提示音和桌面通知
   if (!isCurrentConv && !newMessage.isStreaming) {
-    const conv = conversations.value.find(c => c.id === conversationId)
+    const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
     if (messageSettings.value.notificationsEnabled && !conv?.muted) {
       if (messageSettings.value.soundEnabled) {
         playMessageSound()
@@ -1805,7 +1805,7 @@ const handleNewMessage = async (msg: any) => {
   
   // 如果会话不存在于列表中（例如被移除后会话收到新消息），先重新加载会话列表
   // 后端会在新消息到来时自动取消隐藏，所以 loadConversations 能拉回该会话
-  const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
+  const conversationIndex = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
   if (conversationIndex === -1) {
     await loadConversations()
   }
@@ -1934,7 +1934,7 @@ const handleSearch = async (query) => {
 
 // 处理搜索项点击
 const handleSearchItemClick = (item) => {
-  if (item.type === 'user' || item.type === 'bot') {
+  if (isPrivateChatSearchResult(item)) {
     startPrivateChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
     // 如果是群聊或讨论组，选中该会话
@@ -2066,19 +2066,13 @@ const startPrivateChat = async (user: any) => {
   hideMemberContextMenu()
   
   try {
-    // 检查用户ID格式
-    let userId = user.id
-    
-    // 确保userId是数字类型
-    if (typeof userId === 'string') {
-      // 如果是字符串格式（如 'emp1'），尝试提取数字部分
-      if (userId.startsWith('emp')) {
-        userId = userId.replace('emp', '')
-      }
-      // 转换为数字
-      userId = parseInt(userId)
+    const userId = getPrivateChatUserId(user)
+    if (!userId) {
+      logger.error('创建私聊失败: 无效的用户ID', user)
+      QMessage.error('无法发起私聊：用户信息无效')
+      return
     }
-    
+
     const response = await request('/api/v1/conversations', {
       method: 'POST',
       body: JSON.stringify({
@@ -2780,7 +2774,7 @@ const handleInviteMembers = (groupOrId) => {
   let group = null
   // 处理传递的是ID的情况（来自ChatWindow）
   if (typeof groupOrId === 'string') {
-    group = conversations.value.find(c => c.id === groupOrId)
+    group = conversations.value.find(c => sameConversationId(c.id, groupOrId))
   } else {
     // 处理传递的是完整group对象的情况（来自GroupDetail）
     group = groupOrId
@@ -3165,17 +3159,17 @@ const handleConfirmLogout = async () => {
 }
 
 
-const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; fileSettings: any; avatarFile?: File; shortcuts?: any }) => {
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any }) => {
   try {
     if (data.avatarFile) {
       const formData = new FormData()
       formData.append('file', data.avatarFile)
-      
+
       const uploadResponse = await request('/api/v1/upload', {
         method: 'POST',
         body: formData
       })
-      
+
       if (uploadResponse.code === 0 && uploadResponse.data && uploadResponse.data.url) {
         const updateResponse = await request('/api/v1/users/me', {
           method: 'PUT',
@@ -3186,7 +3180,7 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
             avatar: uploadResponse.data.url
           })
         })
-        
+
         if (updateResponse.code === 0 && updateResponse.data) {
           if (currentUser.value) {
             currentUser.value.avatar = updateResponse.data.avatar || uploadResponse.data.url
@@ -3199,11 +3193,10 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
         return
       }
     }
-    
+
     settingsProfile.value = { ...settingsProfile.value, ...data.profile }
     messageSettings.value = { ...messageSettings.value, ...data.messageSettings }
     appearanceSettings.value = { ...appearanceSettings.value, ...data.appearanceSettings }
-    fileSettings.value = { ...fileSettings.value, ...data.fileSettings }
     
     if (data.appearanceSettings.theme && data.appearanceSettings.theme !== currentTheme.value) {
       setTheme(data.appearanceSettings.theme)

@@ -11,6 +11,7 @@ export interface MessageSettings {
   soundEnabled: boolean
   desktopNotificationsEnabled: boolean
   dndMode: 'none' | 'mute' | 'custom'
+  defaultSaveDirectory: string
 }
 
 export interface AppearanceSettings {
@@ -20,15 +21,6 @@ export interface AppearanceSettings {
 
 export interface AdvancedSettings {
   twoFactorEnabled: boolean
-}
-
-export interface FileSettings {
-  defaultSaveDirectory: string
-  autoDownload: boolean
-  maxFileSize: number
-  allowedFileTypes: string
-  autoPreviewImages: boolean
-  enableFileHistory: boolean
 }
 
 export function useSettings(currentUser: any, serverUrl: any, request: any) {
@@ -43,7 +35,8 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     notificationsEnabled: true,
     soundEnabled: true,
     desktopNotificationsEnabled: true,
-    dndMode: 'none'
+    dndMode: 'none',
+    defaultSaveDirectory: ''
   })
 
   const appearanceSettings = ref<AppearanceSettings>({
@@ -55,26 +48,17 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     twoFactorEnabled: currentUser.value?.two_factor_enabled || false
   })
 
-  const fileSettings = ref<FileSettings>({
-    defaultSaveDirectory: '',
-    autoDownload: false,
-    maxFileSize: 50,
-    allowedFileTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar',
-    autoPreviewImages: true,
-    enableFileHistory: true
-  })
-
   const loadSettings = () => {
     // 1. 先读取 localStorage（同步），判断用户是否已设置自定义目录
-    const savedFileSettings = localStorage.getItem('fileSettings')
+    const savedMessageSettings = localStorage.getItem('messageSettings')
     let userSavedDir = ''
-    if (savedFileSettings) {
+    if (savedMessageSettings) {
       try {
-        const parsed = JSON.parse(savedFileSettings)
-        fileSettings.value = { ...fileSettings.value, ...parsed }
+        const parsed = JSON.parse(savedMessageSettings)
+        messageSettings.value = { ...messageSettings.value, ...parsed }
         userSavedDir = parsed.defaultSaveDirectory || ''
       } catch (e) {
-        console.error('Failed to load file settings:', e)
+        console.error('Failed to load message settings:', e)
       }
     }
 
@@ -82,7 +66,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (!userSavedDir || userSavedDir === '~/Downloads') {
       if (window.electron?.ipcRenderer?.invoke) {
         window.electron.ipcRenderer.invoke('get-default-download-path').then(path => {
-          if (path) fileSettings.value.defaultSaveDirectory = path
+          if (path) messageSettings.value.defaultSaveDirectory = path
         }).catch(() => {
           // IPC 失败则用默认路径
         })
@@ -136,7 +120,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       localStorage.setItem('fontSize', appearanceSettings.value.fontSize.toString())
       localStorage.setItem('messageSettings', JSON.stringify(messageSettings.value))
       localStorage.setItem('appearanceSettings', JSON.stringify(appearanceSettings.value))
-      localStorage.setItem('fileSettings', JSON.stringify(fileSettings.value))
 
       if (profileResponse.code === 0) {
         if (currentUser.value) {
@@ -160,7 +143,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (confirm('确定要清除缓存吗？')) {
       localStorage.removeItem('messageSettings')
       localStorage.removeItem('appearanceSettings')
-      localStorage.removeItem('fileSettings')
       QMessage.success('缓存已清除')
     }
   }
@@ -204,7 +186,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       const handleResult = (event: any, result: any) => {
         window.electron.ipcRenderer.removeListener('file-dialog-result', handleResult)
         if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
-          fileSettings.value.defaultSaveDirectory = result.filePaths[0]
+          messageSettings.value.defaultSaveDirectory = result.filePaths[0]
           QMessage.success('目录已选择')
           if (callback) {
             callback(result.filePaths[0])
@@ -214,7 +196,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
 
       window.electron.ipcRenderer.on('file-dialog-result', handleResult)
     } else {
-      fileSettings.value.defaultSaveDirectory = ''
+      messageSettings.value.defaultSaveDirectory = ''
       QMessage.info('使用默认下载目录')
     }
   }
@@ -264,7 +246,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     messageSettings,
     appearanceSettings,
     advancedSettings,
-    fileSettings,
     loadSettings,
     saveSettings,
     clearCache,
