@@ -1131,6 +1131,7 @@ onMounted(() => {
     window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
       if (result.success && result.filePath) {
         if (result.downloadId) {
+          delete downloadProgress.value[result.downloadId]
           saveDownloadedFile(result.downloadId, result.filePath)
         }
         $message.success(`文件已下载到: ${result.filePath}`)
@@ -1142,6 +1143,7 @@ onMounted(() => {
     window.electron.ipcRenderer.on('save-file-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
       if (result.success && result.filePath) {
         if (result.downloadId) {
+          delete downloadProgress.value[result.downloadId]
           saveDownloadedFile(result.downloadId, result.filePath)
         }
         $message.success(`文件已保存到: ${result.filePath}`)
@@ -2286,14 +2288,12 @@ const uploadProgress = ref(0)
 
 // 已下载文件记录：key = 消息 id，value = 本地文件路径（刷新不丢）
 const DOWNLOAD_CACHE_KEY = 'qim_downloaded_files'
-const downloadedFiles = ref<Record<string, string>>(() => {
-  try {
-    const cached = localStorage.getItem(DOWNLOAD_CACHE_KEY)
-    return cached ? JSON.parse(cached) : {}
-  } catch {
-    return {}
-  }
-})
+const downloadedFiles = ref<Record<string, string>>({})
+// 初始化时从 localStorage 读取
+try {
+  const cached = localStorage.getItem(DOWNLOAD_CACHE_KEY)
+  if (cached) downloadedFiles.value = JSON.parse(cached)
+} catch {}
 provide('downloadedFiles', downloadedFiles)
 
 // 持久化下载记录

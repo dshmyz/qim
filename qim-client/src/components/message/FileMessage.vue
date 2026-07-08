@@ -54,9 +54,11 @@ const emit = defineEmits<{
 
 // 下载进度（由 ChatWindow provide，key = 消息 id）
 const downloadProgress = inject<Ref<Record<string, number>>>('downloadProgress')
-const isDownloading = computed(() =>
-  !!props.messageId && downloadProgress?.value?.[props.messageId] !== undefined
-)
+const isDownloading = computed(() => {
+  if (!props.messageId || !downloadProgress?.value) return false
+  const percent = downloadProgress.value[props.messageId]
+  return percent !== undefined && percent >= 0 && percent < 100
+})
 const progressPercent = computed(() =>
   props.messageId ? (downloadProgress?.value?.[props.messageId] ?? 0) : 0
 )
