@@ -1,5 +1,5 @@
 <template>
-  <div class="message-bubble file-message attachment-card" :class="{ self: isSelf }">
+  <div class="message-bubble file-message attachment-card" :class="{ self: isSelf }" @click="handleCardClick">
     <div class="attachment-card__icon file-attachment-icon" :style="{ color: iconColor }">
       <i :class="fileIcon"></i>
     </div>
@@ -12,12 +12,22 @@
       </div>
     </div>
     <div class="attachment-card__actions">
-      <button class="file-action-btn attachment-card__action" @click="downloadFile" title="下载文件">
-        <i class="fas fa-download"></i>
-      </button>
-      <button class="file-action-btn attachment-card__action" @click="saveFileAs" title="另存为">
-        <i class="fas fa-save"></i>
-      </button>
+      <template v-if="isDownloaded">
+        <button class="file-action-btn attachment-card__action" @click.stop="openFile" title="打开文件">
+          <i class="fas fa-external-link-alt"></i>
+        </button>
+        <button class="file-action-btn attachment-card__action" @click.stop="showInFolder" title="在文件夹中显示">
+          <i class="fas fa-folder-open"></i>
+        </button>
+      </template>
+      <template v-else>
+        <button class="file-action-btn attachment-card__action" @click.stop="downloadFile" title="下载文件">
+          <i class="fas fa-download"></i>
+        </button>
+        <button class="file-action-btn attachment-card__action" @click.stop="saveFileAs" title="另存为">
+          <i class="fas fa-save"></i>
+        </button>
+      </template>
     </div>
     <div v-if="isDownloading" class="attachment-card__progress">
       <div class="attachment-card__progress-bar" :style="{ width: progressPercent + '%' }"></div>
@@ -38,8 +48,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  download: [url: string, fileName?: string]
-  saveAs: [url: string, fileName?: string]
+  download: [content: string, messageId?: string]
+  saveAs: [content: string, messageId?: string]
 }>()
 
 // 下载进度（由 ChatWindow provide，key = 消息 id）
@@ -50,6 +60,34 @@ const isDownloading = computed(() =>
 const progressPercent = computed(() =>
   props.messageId ? (downloadProgress?.value?.[props.messageId] ?? 0) : 0
 )
+
+// 已下载文件路径（由 ChatWindow provide）
+const downloadedFiles = inject<Ref<Record<string, string>>>('downloadedFiles')
+const isDownloaded = computed(() =>
+  !!props.messageId && downloadedFiles?.value?.[props.messageId] !== undefined
+)
+const filePath = computed(() =>
+  props.messageId ? downloadedFiles?.value?.[props.messageId] : undefined
+)
+
+// 点击卡片：已下载就打开，否则下载
+const handleCardClick = () => {
+  if (isDownloaded.value) {
+    openFile()
+  } else {
+    downloadFile()
+  }
+}
+
+const openFile = async () => {
+  if (!filePath.value || !window.electron?.ipcRenderer) return
+  await window.electron.ipcRenderer.invoke('open-file', filePath.value)
+}
+
+const showInFolder = async () => {
+  if (!filePath.value || !window.electron?.ipcRenderer) return
+  await window.electron.ipcRenderer.invoke('show-file-in-folder', filePath.value)
+}
 
 // 解析文件数据
 const fileData = computed(() => {
@@ -351,11 +389,11 @@ const formatFileSize = (size: number): string => {
 }
 
 const downloadFile = () => {
-  emit('download', fileUrl.value, fileName.value)
+  emit('download', props.content, props.messageId)
 }
 
 const saveFileAs = () => {
-  emit('saveAs', fileUrl.value, fileName.value)
+  emit('saveAs', props.content, props.messageId)
 }
 </script>
 

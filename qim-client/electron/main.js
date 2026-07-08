@@ -1,12 +1,13 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
+import { DownloadRegistry } from './download-registry.js'
 
 const require = createRequire(import.meta.url)
 const screenshots = require('./screenshots/lib/index.cjs').default
@@ -258,80 +259,94 @@ let hasUnread = false
 
 // ==================== File Download (built-in download manager) ====================
 // 用 Electron 内置下载管理器流式写盘，内存恒定，不受大文件影响。
-// key: 请求 URL；value: 该次下载的元信息，供 will-download 匹配消费。
-const pendingDownloads = new Map()
+// 每次下载生成唯一 requestUrl，避免同一文件并发下载互相覆盖元信息。
+const downloadRegistry = new DownloadRegistry()
 let downloadHandlerRegistered = false
+
+function registerDownloadHandlers(sess) {
+  if (downloadHandlerRegistered) return
+  downloadHandlerRegistered = true
+
+  sess.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, cb) => {
+    const authorization = downloadRegistry.getAuthHeader(details.url)
+    if (!authorization) {
+      cb({ requestHeaders: details.requestHeaders })
+      return
+    }
+    cb({ requestHeaders: { ...details.requestHeaders, Authorization: authorization } })
+  })
+
+  sess.on('will-download', (event, item) => {
+    const meta = downloadRegistry.consume(item.getURL())
+    if (!meta) return
+
+    const name = meta.fileName || item.getFilename()
+    if (meta.saveAs) {
+      // 不设 savePath → Electron 弹出系统另存为对话框
+      item.setSaveDialogOptions({
+        title: '保存文件',
+        defaultPath: name,
+        filters: [{ name: 'All Files', extensions: ['*'] }]
+      })
+    } else {
+      const targetDir = meta.saveDir && meta.saveDir !== '~/Downloads' ? meta.saveDir : app.getPath('downloads')
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
+      item.setSavePath(path.join(targetDir, name))
+    }
+
+    const sendProgress = (percent, state) => {
+      if (meta.downloadId == null || !mainWindow || mainWindow.isDestroyed()) return
+      mainWindow.webContents.send('download-progress', {
+        downloadId: meta.downloadId,
+        percent,
+        received: item.getReceivedBytes(),
+        total: item.getTotalBytes(),
+        state
+      })
+    }
+
+    item.on('updated', (_e, state) => {
+      if (state !== 'progressing') return
+      const total = item.getTotalBytes()
+      const percent = total > 0 ? Math.floor((item.getReceivedBytes() / total) * 100) : 0
+      sendProgress(percent, 'progressing')
+    })
+
+    item.once('done', (_e, state) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        sendProgress(state === 'completed' ? 100 : 0, state)
+        if (state === 'completed') {
+          mainWindow.webContents.send(meta.completeChannel, {
+            success: true,
+            filePath: item.getSavePath(),
+            downloadId: meta.downloadId
+          })
+        } else if (state === 'cancelled') {
+          mainWindow.webContents.send(meta.completeChannel, {
+            success: false,
+            cancelled: true,
+            downloadId: meta.downloadId
+          })
+        } else {
+          mainWindow.webContents.send(meta.completeChannel, {
+            success: false,
+            error: state,
+            downloadId: meta.downloadId
+          })
+        }
+      }
+    })
+  })
+}
 
 function triggerDownload({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel }) {
   try {
     if (!mainWindow || mainWindow.isDestroyed()) return
     const contents = mainWindow.webContents
     const sess = contents.session
-
-    // 为该 URL 注入鉴权头
-    if (token) {
-      sess.webRequest.onBeforeSendHeaders({ urls: [url] }, (details, cb) => {
-        cb({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } })
-      })
-    }
-
-    pendingDownloads.set(url, { fileName, saveDir, saveAs, downloadId, completeChannel })
-
-    if (!downloadHandlerRegistered) {
-      downloadHandlerRegistered = true
-      sess.on('will-download', (event, item) => {
-        const meta = pendingDownloads.get(item.getURL())
-        if (!meta) return
-        pendingDownloads.delete(item.getURL())
-
-        const name = meta.fileName || item.getFilename()
-        if (meta.saveAs) {
-          // 不设 savePath → Electron 弹出系统另存为对话框
-          item.setSaveDialogOptions({
-            title: '保存文件',
-            defaultPath: name,
-            filters: [{ name: 'All Files', extensions: ['*'] }]
-          })
-        } else {
-          const targetDir = meta.saveDir && meta.saveDir !== '~/Downloads' ? meta.saveDir : app.getPath('downloads')
-          if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
-          item.setSavePath(path.join(targetDir, name))
-        }
-
-        const sendProgress = (percent, state) => {
-          if (meta.downloadId == null || !mainWindow || mainWindow.isDestroyed()) return
-          mainWindow.webContents.send('download-progress', {
-            downloadId: meta.downloadId,
-            percent,
-            received: item.getReceivedBytes(),
-            total: item.getTotalBytes(),
-            state
-          })
-        }
-
-        item.on('updated', (_e, state) => {
-          if (state !== 'progressing') return
-          const total = item.getTotalBytes()
-          const percent = total > 0 ? Math.floor((item.getReceivedBytes() / total) * 100) : 0
-          sendProgress(percent, 'progressing')
-        })
-
-        item.once('done', (_e, state) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendProgress(state === 'completed' ? 100 : 0, state)
-            if (state === 'completed') {
-              mainWindow.webContents.send(meta.completeChannel, { success: true, filePath: item.getSavePath() })
-            } else if (state === 'cancelled') {
-              // 用户取消另存为，不提示错误
-            } else {
-              mainWindow.webContents.send(meta.completeChannel, { success: false, error: state })
-            }
-          }
-        })
-      })
-    }
-
-    contents.downloadURL(url)
+    registerDownloadHandlers(sess)
+    const meta = downloadRegistry.create({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel })
+    contents.downloadURL(meta.requestUrl)
   } catch (error) {
     console.error('文件下载失败:', error)
     mainWindow?.webContents.send(completeChannel, { success: false, error: error.message })
@@ -398,7 +413,10 @@ function createWindow() {
     windowOptions.titleBarOverlay = { visible: false, height: 0 }
     windowOptions.trafficLightPosition = { x: -100, y: -100 }
   }
-
+  if (isLinux) {
+    windowOptions.transparent = true
+    windowOptions.icon = loadIcon(64)
+  }
   mainWindow = new BrowserWindow(windowOptions)
 
   const isDev = !app.isPackaged
@@ -1014,6 +1032,28 @@ function registerIPC() {
 
   ipcMain.on('save-file-as', (event, { url, token, fileName, downloadId }) => {
     triggerDownload({ url, token, fileName, saveAs: true, downloadId, completeChannel: 'save-file-complete' })
+  })
+
+  // 用系统默认应用打开文件
+  ipcMain.handle('open-file', async (event, filePath) => {
+    try {
+      await shell.openPath(filePath)
+      return { success: true }
+    } catch (error) {
+      console.error('打开文件失败:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 在资源管理器/访达中显示文件所在位置
+  ipcMain.handle('show-file-in-folder', async (event, filePath) => {
+    try {
+      shell.showItemInFolder(filePath)
+      return { success: true }
+    } catch (error) {
+      console.error('显示文件位置失败:', error)
+      return { success: false, error: String(error) }
+    }
   })
 
   ipcMain.on('open-file-dialog', async (event, { properties }) => {
