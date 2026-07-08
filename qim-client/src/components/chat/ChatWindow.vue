@@ -2377,13 +2377,17 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
       return
     }
 
-    // Electron：交给主进程用内置下载管理器（弹出另存为对话框）流式写盘
+    // Electron：先弹保存对话框，用户确认后才开始下载（避免"还没选文件夹就开始下载"的困惑）
     if (window.electron?.ipcRenderer) {
+      const dialogResult = await window.electron.ipcRenderer.invoke('show-save-dialog', { defaultPath: finalFileName })
+      if (dialogResult.canceled || !dialogResult.filePath) return
+
       if (messageId) downloadProgress.value[messageId] = 0
       window.electron.ipcRenderer.send('save-file-as', {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
+        savePath: dialogResult.filePath,
         downloadId: messageId
       })
       return

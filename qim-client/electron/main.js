@@ -282,13 +282,9 @@ function registerDownloadHandlers(sess) {
     if (!meta) return
 
     const name = meta.fileName || item.getFilename()
-    if (meta.saveAs) {
-      // 不设 savePath → Electron 弹出系统另存为对话框
-      item.setSaveDialogOptions({
-        title: '保存文件',
-        defaultPath: name,
-        filters: [{ name: 'All Files', extensions: ['*'] }]
-      })
+    if (meta.savePath) {
+      // 前端已选好路径（另存为模式），直接用
+      item.setSavePath(meta.savePath)
     } else {
       const targetDir = meta.saveDir && meta.saveDir !== '~/Downloads' ? meta.saveDir : app.getPath('downloads')
       if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
@@ -342,13 +338,13 @@ function registerDownloadHandlers(sess) {
   })
 }
 
-function triggerDownload({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel }) {
+function triggerDownload({ url, token, fileName, saveDir, savePath, downloadId, completeChannel }) {
   try {
     if (!mainWindow || mainWindow.isDestroyed()) return
     const contents = mainWindow.webContents
     const sess = contents.session
     registerDownloadHandlers(sess)
-    const meta = downloadRegistry.create({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel })
+    const meta = downloadRegistry.create({ url, token, fileName, saveDir, savePath, downloadId, completeChannel })
     contents.downloadURL(meta.requestUrl)
   } catch (error) {
     console.error('文件下载失败:', error)
@@ -1033,8 +1029,17 @@ function registerIPC() {
     triggerDownload({ url, token, fileName, saveDir, downloadId, completeChannel: 'download-complete' })
   })
 
-  ipcMain.on('save-file-as', (event, { url, token, fileName, downloadId }) => {
-    triggerDownload({ url, token, fileName, saveAs: true, downloadId, completeChannel: 'save-file-complete' })
+  ipcMain.handle('show-save-dialog', async (event, { defaultPath }) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '保存文件',
+      defaultPath,
+      filters: [{ name: 'All Files', extensions: ['*'] }]
+    })
+    return result
+  })
+
+  ipcMain.on('save-file-as', (event, { url, token, fileName, savePath, downloadId }) => {
+    triggerDownload({ url, token, fileName, savePath, downloadId, completeChannel: 'save-file-complete' })
   })
 
   // 用系统默认应用打开文件

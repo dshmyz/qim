@@ -4,9 +4,9 @@ export class DownloadRegistry {
     this.byOriginalUrl = new Map()
   }
 
-  create({ url, token, fileName, saveDir, saveAs, downloadId, completeChannel }) {
+  create({ url, token, fileName, saveDir, savePath, downloadId, completeChannel }) {
     const id = downloadId || `download-${Date.now()}-${++this.counter}`
-    const meta = { url, token, fileName, saveDir, saveAs, downloadId: id, completeChannel }
+    const meta = { url, token, fileName, saveDir, savePath, downloadId: id, completeChannel }
     this.byOriginalUrl.set(url, meta)
     // 直接用原始 URL，不加 nonce——avoid 重定向/编码导致匹配失败
     return { requestUrl: url, ...meta }
