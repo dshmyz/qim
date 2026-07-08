@@ -277,7 +277,8 @@ function registerDownloadHandlers(sess) {
   })
 
   sess.on('will-download', (event, item) => {
-    const meta = downloadRegistry.consume(item.getURL())
+    const actualUrl = item.getURL()
+    const meta = downloadRegistry.consume(actualUrl)
     if (!meta) return
 
     const name = meta.fileName || item.getFilename()
@@ -313,14 +314,16 @@ function registerDownloadHandlers(sess) {
     })
 
     item.once('done', (_e, state) => {
+      console.log('[download] done state:', state, 'downloadId:', meta.downloadId, 'path:', item.getSavePath())
       if (mainWindow && !mainWindow.isDestroyed()) {
         sendProgress(state === 'completed' ? 100 : 0, state)
         if (state === 'completed') {
-          mainWindow.webContents.send(meta.completeChannel, {
+          const payload = {
             success: true,
             filePath: item.getSavePath(),
             downloadId: meta.downloadId
-          })
+          }
+          mainWindow.webContents.send(meta.completeChannel, payload)
         } else if (state === 'cancelled') {
           mainWindow.webContents.send(meta.completeChannel, {
             success: false,
@@ -330,7 +333,7 @@ function registerDownloadHandlers(sess) {
         } else {
           mainWindow.webContents.send(meta.completeChannel, {
             success: false,
-            error: state,
+            error: state === 'interrupted' ? '下载中断' : state,
             downloadId: meta.downloadId
           })
         }

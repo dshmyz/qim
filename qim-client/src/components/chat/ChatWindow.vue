@@ -1129,8 +1129,10 @@ onMounted(() => {
     })
 
     window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
-      if (result.success && result.filePath && result.downloadId) {
-        downloadedFiles.value[result.downloadId] = result.filePath
+      if (result.success && result.filePath) {
+        if (result.downloadId) {
+          saveDownloadedFile(result.downloadId, result.filePath)
+        }
         $message.success(`文件已下载到: ${result.filePath}`)
       } else if (!result.cancelled) {
         $message.error('文件下载失败: ' + (result.error || '未知错误'))
@@ -1138,8 +1140,10 @@ onMounted(() => {
     })
 
     window.electron.ipcRenderer.on('save-file-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
-      if (result.success && result.filePath && result.downloadId) {
-        downloadedFiles.value[result.downloadId] = result.filePath
+      if (result.success && result.filePath) {
+        if (result.downloadId) {
+          saveDownloadedFile(result.downloadId, result.filePath)
+        }
         $message.success(`文件已保存到: ${result.filePath}`)
       } else if (!result.cancelled) {
         $message.error('文件保存失败: ' + (result.error || '未知错误'))
@@ -2280,9 +2284,23 @@ provide('downloadProgress', downloadProgress)
 // 上传进度：0=不上传，1-100=上传中
 const uploadProgress = ref(0)
 
-// 已下载文件记录：key = 消息 id，value = 本地文件路径
-const downloadedFiles = ref<Record<string, string>>({})
+// 已下载文件记录：key = 消息 id，value = 本地文件路径（刷新不丢）
+const DOWNLOAD_CACHE_KEY = 'qim_downloaded_files'
+const downloadedFiles = ref<Record<string, string>>(() => {
+  try {
+    const cached = localStorage.getItem(DOWNLOAD_CACHE_KEY)
+    return cached ? JSON.parse(cached) : {}
+  } catch {
+    return {}
+  }
+})
 provide('downloadedFiles', downloadedFiles)
+
+// 持久化下载记录
+const saveDownloadedFile = (id: string, path: string) => {
+  downloadedFiles.value[id] = path
+  localStorage.setItem(DOWNLOAD_CACHE_KEY, JSON.stringify(downloadedFiles.value))
+}
 
 const downloadFile = async (fileContent: string, messageId?: string) => {
   try {

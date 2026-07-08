@@ -63,9 +63,10 @@ const progressPercent = computed(() =>
 
 // 已下载文件路径（由 ChatWindow provide）
 const downloadedFiles = inject<Ref<Record<string, string>>>('downloadedFiles')
-const isDownloaded = computed(() =>
-  !!props.messageId && downloadedFiles?.value?.[props.messageId] !== undefined
-)
+const isDownloaded = computed(() => {
+  const result = !!props.messageId && downloadedFiles?.value?.[props.messageId] !== undefined
+  return result
+})
 const filePath = computed(() =>
   props.messageId ? downloadedFiles?.value?.[props.messageId] : undefined
 )
