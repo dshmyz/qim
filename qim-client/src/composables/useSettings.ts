@@ -73,15 +73,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
       }
     }
 
-    const savedMessageSettings = localStorage.getItem('messageSettings')
-    if (savedMessageSettings) {
-      try {
-        messageSettings.value = { ...messageSettings.value, ...JSON.parse(savedMessageSettings) }
-      } catch (e) {
-        console.error('Failed to load message settings:', e)
-      }
-    }
-
     const savedAppearanceSettings = localStorage.getItem('appearanceSettings')
     if (savedAppearanceSettings) {
       try {
