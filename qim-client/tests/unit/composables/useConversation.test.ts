@@ -33,6 +33,16 @@ describe('useConversation', () => {
     expect(conversation.selectedConversation.value).toEqual(mockConv)
   })
 
+  it('会话列表混入数字 id 时 currentConversation 仍能匹配当前会话', () => {
+    chatStore.setConversations([
+      { id: 7 as any, name: '线上原始会话', type: 'single' } as Conversation
+    ])
+
+    conversation.setCurrentConversationId('7')
+
+    expect(conversation.currentConversation.value?.name).toBe('线上原始会话')
+  })
+
   it('应该能更新已存在的会话（通过 store）', () => {
     chatStore.setConversations([
       { id: 'conv1', name: 'Old' } as Conversation

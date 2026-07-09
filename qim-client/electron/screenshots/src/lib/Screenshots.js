@@ -2670,6 +2670,18 @@ function Screenshots({ url, width, height, lang, initialPosition, className, ...
     }, [
         url
     ]);
+    useEffect(()=>{
+        if (!url || !image) return;
+        requestAnimationFrame(()=>{
+            requestAnimationFrame(()=>{
+                call('onImageReady');
+            });
+        });
+    }, [
+        url,
+        image,
+        call
+    ]);
     return /*#__PURE__*/ React.createElement(ScreenshotsContext.Provider, {
         value: {
             store,

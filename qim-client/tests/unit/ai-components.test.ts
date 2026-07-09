@@ -55,7 +55,7 @@ describe('AI组件单元测试', () => {
       })
 
       const actions = wrapper.findAllComponents(AIQuickActionItem)
-      expect(actions.length).toBeGreaterThanOrEqual(5) // 默认5个按钮
+      expect(actions.length).toBeGreaterThanOrEqual(4) // 默认4个按钮（总结对话、翻译、改写、润色）
     })
 
     it('应支持自定义actions列表', () => {
@@ -136,7 +136,9 @@ describe('AI组件单元测试', () => {
         },
       })
 
-      expect(wrapper.text()).toContain('由 AI 生成')
+      // 模板为"由 AI助手 {{ assistantName || 'AI 助手' }} 生成"，默认显示"由 AI助手 AI 助手 生成"
+      expect(wrapper.text()).toContain('AI助手')
+      expect(wrapper.text()).toContain('生成')
     })
   })
 })

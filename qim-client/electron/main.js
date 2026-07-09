@@ -222,6 +222,11 @@ function saveServerConfig(serverUrl) {
 
 function getWindowsVersion() {
   if (process.platform !== 'win32') return null
+  if (typeof process.getSystemVersion === 'function') {
+    const systemVersion = process.getSystemVersion()
+    const major = Number(systemVersion.split('.')[0])
+    if (Number.isFinite(major)) return major
+  }
   const userAgent = app.getUserAgent()
   const match = userAgent.match(/Windows NT (\d+)/)
   if (match) {
@@ -619,6 +624,33 @@ function ensureMacScreenRecordingPermission() {
   return false
 }
 
+function shouldHideMainWindowForScreenshot() {
+  return process.platform === 'linux' || (process.platform === 'win32' && getWindowsVersion() <= 6)
+}
+
+function waitForWindowHiddenBeforeScreenshot(win) {
+  if (!win || win.isDestroyed()) return Promise.resolve()
+  const settleDelayMs = process.platform === 'win32' ? 180 : 80
+
+  return new Promise((resolve) => {
+    if (!win.isVisible()) {
+      setTimeout(resolve, settleDelayMs)
+      return
+    }
+
+    let settled = false
+    const done = () => {
+      if (settled) return
+      settled = true
+      setTimeout(resolve, settleDelayMs)
+    }
+
+    win.once('hide', done)
+    win.hide()
+    setTimeout(done, settleDelayMs)
+  })
+}
+
 async function startScreenshotCapture({ hideMainWindow = false } = {}) {
   console.log('[screenshot] start capture', { hideMainWindow, diagnostics: getScreenshotDiagnostics() })
 
@@ -636,9 +668,9 @@ async function startScreenshotCapture({ hideMainWindow = false } = {}) {
   }
 
   if (hideMainWindow && mainWindow && !mainWindow.isDestroyed()) {
-    if (process.platform === 'linux') {
-      // Linux 上 setContentProtection 是 no-op，需要真正隐藏窗口
-      mainWindow.hide()
+    if (shouldHideMainWindowForScreenshot()) {
+      // Win7 的内容保护会被截图成灰色面板；Linux 上 setContentProtection 也是 no-op。
+      await waitForWindowHiddenBeforeScreenshot(mainWindow)
     } else {
       try {
         mainWindow.setContentProtection(true)
@@ -671,6 +703,10 @@ function initScreenshot() {
     screenshotInstance.on('cancel', () => {
       console.log('[screenshot] Cancelled')
       restoreMainWindowAfterScreenshot()
+      // 通知渲染进程截图已取消，避免 screenshotStatus 卡在非 idle 状态
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('screenshot-taken', null)
+      }
     })
 
     screenshotInstance.on('save', (e, buffer) => {

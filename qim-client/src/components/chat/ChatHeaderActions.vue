@@ -58,24 +58,16 @@
       </Transition>
     </Teleport>
 
-    <!-- 本地确认对话框 -->
-    <Teleport to="body">
-      <div v-if="localShowConfirmDialog" class="confirm-dialog-modal" @click="closeLocalConfirmDialog">
-        <div class="confirm-dialog-content" @click.stop>
-          <div class="confirm-dialog-header">
-            <h3>{{ localConfirmDialogTitle }}</h3>
-            <button class="close-btn" @click="closeLocalConfirmDialog">&times;</button>
-          </div>
-          <div class="confirm-dialog-body">
-            <p>{{ localConfirmDialogMessage }}</p>
-          </div>
-          <div class="confirm-dialog-footer">
-            <button class="cancel" @click="closeLocalConfirmDialog">取消</button>
-            <button class="confirm" @click="executeConfirmCallback">确定</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- 确认对话框 -->
+    <ConfirmDialog
+      :visible="localShowConfirmDialog"
+      :title="localConfirmDialogTitle"
+      :message="localConfirmDialogMessage"
+      confirm-text="确定"
+      cancel-text="取消"
+      @update:visible="handleConfirmDialogVisibleChange"
+      @confirm="executeConfirmCallback"
+    />
 
     <!-- AI 助手设置模态框 -->
     <ModalContainer
@@ -118,6 +110,7 @@ import MemberContextMenu from './MemberContextMenu.vue'
 import GroupAIPanel from '../ai/GroupAIPanel.vue'
 import Switch from '../common/Switch.vue'
 import ModalContainer from '../shared/ModalContainer.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
 
 const systemConfigStore = useSystemConfigStore()
 
@@ -377,6 +370,14 @@ function closeLocalConfirmDialog() {
   localConfirmDialogCallback.value = null
 }
 
+// ConfirmDialog 的 visible 变化处理（关闭按钮/遮罩点击触发）
+function handleConfirmDialogVisibleChange(value: boolean) {
+  localShowConfirmDialog.value = value
+  if (!value) {
+    localConfirmDialogCallback.value = null
+  }
+}
+
 function executeConfirmCallback() {
   if (localConfirmDialogCallback.value) {
     localConfirmDialogCallback.value()
@@ -604,305 +605,6 @@ onUnmounted(() => {
   color: var(--text-tertiary);
 }
 
-/* 模态框样式 */
-.modal-overlay {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background: rgba(0, 0, 0, 0.5) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 2000 !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-.modal-content {
-  background: var(--sidebar-bg);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  width: 90%;
-  max-width: 500px;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.modal-header .close-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.modal-header .close-btn:hover {
-  background: var(--hover-bg);
-}
-
-.modal-body {
-  padding: 20px;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-light);
-}
-
-/* 表单样式 */
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--background-light);
-  color: var(--text-color);
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--background-light);
-  color: var(--text-color);
-  resize: vertical;
-  min-height: 100px;
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-}
-
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color);
-}
-
-.form-tip {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 0;
-}
-
-/* 按钮样式 */
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--primary-color);
-  color: white;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-}
-
-.btn-secondary {
-  background: var(--background-light);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background: var(--hover-bg);
-}
-
-/* 确认对话框样式 */
-.confirm-dialog-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  backdrop-filter: blur(8px);
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.confirm-dialog-content {
-  background: var(--panel-bg, #ffffff);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  width: 90%;
-  max-width: 420px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  animation: slideUp 0.3s ease;
-  overflow: hidden;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.confirm-dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px 0;
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.confirm-dialog-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.confirm-dialog-header .close-btn {
-  background: var(--color-gray-100, #f5f5f5);
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.confirm-dialog-header .close-btn:hover {
-  background: var(--color-gray-200, #e5e5e5);
-  color: var(--text-color);
-}
-
-.confirm-dialog-body {
-  padding: 24px;
-  background: transparent;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.confirm-dialog-body p {
-  margin: 0;
-  font-size: 15px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  text-align: center;
-}
-
-.confirm-dialog-footer {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  padding: 0 24px 24px;
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.confirm-dialog-footer button {
-  padding: 10px 28px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-}
-
-.confirm-dialog-footer button.cancel {
-  background: var(--color-gray-100, #f5f5f5);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.confirm-dialog-footer button.cancel:hover {
-  background: var(--color-gray-200, #e5e5e5);
-  border-color: var(--color-gray-300, #d4d4d4);
-}
-
-.confirm-dialog-footer button.confirm {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-}
-
-.confirm-dialog-footer button.confirm:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-  transform: translateY(-1px);
-}
-
 /* 下拉动画 */
 .dropdown-enter-active,
 .dropdown-leave-active {
@@ -913,14 +615,5 @@ onUnmounted(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-8px);
-}
-
-/* AI 设置模态框 */
-.ai-settings-modal {
-  max-width: 480px;
-}
-
-.ai-settings-modal .modal-body {
-  padding: 0;
 }
 </style>

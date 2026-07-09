@@ -23,10 +23,13 @@ export function useShareLogic(
   const { serverUrl } = useServerUrl()
 
   const buildFileContent = (file: any): string => {
+    const downloadUrl = file.id ? `/api/v1/files/${file.id}/download` : (file.url ?? file.content ?? file.storage_path)
     return JSON.stringify({
-      url: file.url ?? file.storage_path ?? file.content,
+      url: downloadUrl,
+      id: file.id,
       name: file.name ?? file.original_name,
       size: file.size,
+      mimeType: file.mime_type ?? file.mimeType,
     })
   }
 
@@ -42,6 +45,7 @@ export function useShareLogic(
                 users.push({
                   id: emp.id.toString(),
                   name: emp.nickname || emp.username || emp.real_name,
+                  username: emp.username,
                   avatar: (emp.avatar && isAbsoluteUrl(emp.avatar)) ? emp.avatar : (emp.avatar ? serverUrl.value + emp.avatar : generateAvatar(emp.nickname || emp.username || emp.real_name || '员工')),
                   department: dept.name
                 })

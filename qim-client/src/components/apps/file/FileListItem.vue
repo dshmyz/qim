@@ -5,6 +5,7 @@
     :style="gridStyle"
     @click="handleClick"
     @dblclick="handleDoubleClick"
+    @contextmenu.prevent="handleContextMenu"
     @mouseenter="isHovered = true"
     @mouseleave="isHovered = false"
   >
@@ -122,6 +123,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'click', file: FileItem): void
   (e: 'dblclick', file: FileItem): void
+  (e: 'context-menu', file: FileItem, event: MouseEvent): void
   (e: 'preview', file: FileItem): void
   (e: 'download', file: FileItem): void
   (e: 'star', file: FileItem): void
@@ -180,6 +182,10 @@ function handleClick() {
 
 function handleDoubleClick() {
   emit('dblclick', props.file)
+}
+
+function handleContextMenu(event: MouseEvent) {
+  emit('context-menu', props.file, event)
 }
 
 function handlePreview() {

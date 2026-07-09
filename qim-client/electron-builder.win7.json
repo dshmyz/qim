@@ -1,0 +1,48 @@
+{
+  "appId": "com.qim.app",
+  "productName": "青雀 QIM",
+  "electronVersion": "22.3.27",
+  "extraMetadata": {
+    "main": "electron/main.win7.cjs",
+    "productNameCN": "青雀",
+    "copyrightYear": "2026"
+  },
+  "protocols": [
+    {
+      "name": "QIM Auth",
+      "schemes": [
+        "qim"
+      ]
+    }
+  ],
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "electron/main.win7.cjs"
+  ],
+  "directories": {
+    "output": "electron-dist/win7",
+    "buildResources": "electron/icons"
+  },
+  "artifactName": "QIM-${version}-win7-${arch}.${ext}",
+  "win": {
+    "icon": "electron/icons/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false
+  }
+}

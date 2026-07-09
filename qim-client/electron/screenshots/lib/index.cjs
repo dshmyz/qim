@@ -28,6 +28,16 @@ function getLinuxOverlayOptions() {
         transparent: process.env.QIM_SCREENSHOT_LINUX_TRANSPARENT === 'false' ? false : true,
     };
 }
+function isLegacyWindows() {
+    if (process.platform !== 'win32') {
+        return false;
+    }
+    if (typeof process.getSystemVersion === 'function') {
+        const major = Number(process.getSystemVersion().split('.')[0]);
+        return Number.isFinite(major) && major <= 6;
+    }
+    return false;
+}
 class Screenshots extends node_events_1.default {
     constructor(opts) {
         super();
@@ -150,6 +160,7 @@ class Screenshots extends node_events_1.default {
             };
             yield this.prepareCaptureWindow(display);
             this.$view.webContents.send('SCREENSHOTS:capture', display, imageUrl, cursor);
+            yield this.waitCaptureReady();
             // Give the hidden BrowserView a short frame to apply the captured image before
             // the transparent overlay is shown. This avoids a transient blank/white window
             // on Linux compositors when the overlay becomes visible before React paints.
@@ -159,6 +170,18 @@ class Screenshots extends node_events_1.default {
             finally {
                 this._capturing = false;
             }
+        });
+    }
+    waitCaptureReady() {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield Promise.race([
+                new Promise((resolve) => {
+                    electron_1.ipcMain.once('SCREENSHOTS:captureReady', () => resolve());
+                }),
+                new Promise((resolve) => {
+                    setTimeout(() => resolve(), 500);
+                }),
+            ]);
         });
     }
     /**
@@ -238,7 +261,7 @@ class Screenshots extends node_events_1.default {
                     frame: false,
                     show: false,
                     autoHideMenuBar: true,
-                    transparent: process.platform === 'linux' ? this._overlayOptions.transparent : true,
+                    transparent: process.platform === 'linux' ? this._overlayOptions.transparent : !isLegacyWindows(),
                     resizable: false,
                     movable: false,
                     minimizable: false,
@@ -255,7 +278,7 @@ class Screenshots extends node_events_1.default {
                     // mac fullscreenable 设置为 true 会导致应用崩溃
                     fullscreenable: false,
                     kiosk: process.platform !== 'linux',
-                    backgroundColor: '#00000000',
+                    backgroundColor: isLegacyWindows() ? '#000000' : '#00000000',
                     titleBarStyle: 'hidden',
                     hasShadow: false,
                     paintWhenInitiallyHidden: false,

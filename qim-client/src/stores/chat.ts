@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Message, Conversation, User } from '../types'
+import { sameConversationId } from '../utils/conversationId'
 
 export interface MessageReadInfo {
   read_users: User[]
@@ -59,7 +60,7 @@ export const useChatStore = defineStore('chat', () => {
   // 计算属性
   const currentConversation = computed(() => {
     if (!currentConversationId.value) return null
-    return conversations.value.find(c => c.id === currentConversationId.value) || null
+    return conversations.value.find(c => sameConversationId(c.id, currentConversationId.value)) || null
   })
 
   const currentMessages = computed(() => {
@@ -110,7 +111,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function updateConversation(conversation: Conversation) {
-    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, conversation.id))
     if (index !== -1) {
       conversations.value[index] = conversation
       conversations.value = [...conversations.value]
@@ -118,7 +119,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function patchConversation(id: string, updates: Partial<Conversation>) {
-    const index = conversations.value.findIndex(c => c.id === id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
@@ -130,7 +131,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function addConversation(conversation: Conversation) {
-    const exists = conversations.value.some(c => c.id === conversation.id)
+    const exists = conversations.value.some(c => sameConversationId(c.id, conversation.id))
     if (!exists) {
       conversations.value = [conversation, ...conversations.value]
       saveToStorage(conversations.value)
@@ -179,7 +180,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // 业务逻辑方法
   function pinConversation(id: string, is_pinned: boolean) {
-    const index = conversations.value.findIndex(c => c.id === id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
@@ -192,7 +193,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function muteConversation(id: string, muted: boolean) {
-    const index = conversations.value.findIndex(c => c.id === id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
@@ -204,7 +205,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function removeConversation(id: string) {
-    const index = conversations.value.findIndex(c => c.id === id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
     if (index !== -1) {
       conversations.value.splice(index, 1)
       conversations.value = [...conversations.value]
@@ -220,7 +221,7 @@ export const useChatStore = defineStore('chat', () => {
       isRecalled: true
     })
 
-    const convIndex = conversations.value.findIndex(c => c.id === conversationId)
+    const convIndex = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
     if (convIndex !== -1) {
       const conv = conversations.value[convIndex]
       if (conv.lastMessage && conv.lastMessage.id === messageId) {
@@ -252,7 +253,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.set(conversationId, [...msgs])
     }
 
-    const convIndex = conversations.value.findIndex(c => c.id === conversationId)
+    const convIndex = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
     if (convIndex !== -1) {
       const conv = conversations.value[convIndex]
       const updatedConv = {
@@ -284,7 +285,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function markConversationRead(id: string) {
-    const index = conversations.value.findIndex(c => c.id === id)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
     if (index !== -1) {
       conversations.value[index] = {
         ...conversations.value[index],
@@ -296,7 +297,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function addGroupMember(conversationId: string, member: any) {
-    const index = conversations.value.findIndex(c => c.id === conversationId)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
     if (index !== -1) {
       const conv = conversations.value[index]
       const members = conv.members || []
@@ -313,7 +314,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function removeGroupMember(conversationId: string, userId: string) {
-    const index = conversations.value.findIndex(c => c.id === conversationId)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
     if (index !== -1) {
       const conv = conversations.value[index]
       if (conv.members) {
@@ -328,7 +329,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function updateMemberRole(conversationId: string, userId: string, role: string) {
-    const index = conversations.value.findIndex(c => c.id === conversationId)
+    const index = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))
     if (index !== -1) {
       const conv = conversations.value[index]
       if (conv.members) {

@@ -94,4 +94,33 @@ describe('useShareLogic - loadShareUsersAndGroups', () => {
       },
     ])
   })
+
+  it('keeps usernames on loaded share users for account search', async () => {
+    ;(request as any)
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          departments: [
+            {
+              name: '研发部',
+              employees: [{ id: 2, username: 'alice', nickname: 'Alice' }],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: [],
+      })
+
+    const { loadShareUsersAndGroups, shareUsers } = createShareLogic()
+    await loadShareUsersAndGroups()
+
+    expect(shareUsers.value[0]).toMatchObject({
+      id: '2',
+      name: 'Alice',
+      username: 'alice',
+      department: '研发部',
+    })
+  })
 })

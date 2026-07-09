@@ -269,11 +269,17 @@ func CreateChannelMessage(c *gin.Context) {
 	db.Where("channel_id = ?", uint(channelID)).Find(&subscribers)
 
 	for _, subscriber := range subscribers {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"channel_id": channel.ID,
+			"channel_name": channel.Name,
+		})
 		notification := model.Notification{
-			UserID:  subscriber.UserID,
-			Type:    "channel_message",
-			Title:   fmt.Sprintf("频道消息: %s", channel.Name),
-			Content: req.Content,
+			UserID:         subscriber.UserID,
+			Type:           "channel_message",
+			Title:          fmt.Sprintf("频道消息: %s", channel.Name),
+			Content:        req.Content,
+			ActionType:     "channel_message",
+			ActionPayload:  string(payload),
 		}
 		db.Create(&notification)
 

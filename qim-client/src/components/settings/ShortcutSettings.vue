@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import ShortcutInput from './ShortcutInput.vue'
 import {
   useShortcuts, checkConflicts, SHORTCUT_LABELS,
@@ -48,7 +48,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: ShortcutsConfig]
 }>()
 
-const { loadShortcuts, resetShortcuts } = useShortcuts()
+const { loadShortcuts } = useShortcuts()
 
 const loading = ref(true)
 const localShortcuts = ref<ShortcutsConfig>(JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS)))
@@ -77,15 +77,10 @@ function emitChange() {
   emit('update:modelValue', JSON.parse(JSON.stringify(localShortcuts.value)))
 }
 
-async function handleReset() {
-  try {
-    localShortcuts.value = await resetShortcuts()
-    emitChange()
-    window.$QMessage?.success('已恢复默认快捷键')
-  } catch (e) {
-    console.error('重置快捷键失败:', e)
-    window.$QMessage?.error('重置失败，请重试')
-  }
+function handleReset() {
+  localShortcuts.value = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS))
+  emitChange()
+  window.$QMessage?.success('已恢复默认快捷键')
 }
 
 // 暴露冲突检测，供父组件保存前调用

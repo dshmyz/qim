@@ -71,11 +71,15 @@ describe('screenshots selection layering', () => {
     );
 
     const sendCaptureIndex = screenshotRuntime.indexOf("this.$view.webContents.send('SCREENSHOTS:capture'");
+    const waitCaptureReadyIndex = screenshotRuntime.indexOf('yield this.waitCaptureReady()');
     const showOverlayIndex = screenshotRuntime.indexOf('yield this.showCaptureWindow(display)');
 
     expect(sendCaptureIndex).toBeGreaterThan(-1);
+    expect(waitCaptureReadyIndex).toBeGreaterThan(-1);
     expect(showOverlayIndex).toBeGreaterThan(-1);
-    expect(sendCaptureIndex).toBeLessThan(showOverlayIndex);
+    expect(sendCaptureIndex).toBeLessThan(waitCaptureReadyIndex);
+    expect(waitCaptureReadyIndex).toBeLessThan(showOverlayIndex);
+    expect(screenshotRuntime).toContain("electron_1.ipcMain.once('SCREENSHOTS:captureReady'");
   });
 
   it('reports screenshot startCapture failures back to the renderer', () => {
@@ -114,6 +118,29 @@ describe('screenshots selection layering', () => {
     expect(mainProcess).toContain("mainWindow.webContents.send('screenshot-error', { message, code: errorCode, diagnostics })");
     expect(mainProcess).toContain("startScreenshotCapture({ hideMainWindow: false })");
     expect(mainProcess).toContain("startScreenshotCapture({ hideMainWindow: true })");
+  });
+
+  it('hides the main window instead of relying on content protection for hidden screenshots on Windows 7', () => {
+    const mainProcess = readFileSync(
+      resolve(__dirname, '../../electron/main.js'),
+      'utf8'
+    );
+
+    expect(mainProcess).toContain('function shouldHideMainWindowForScreenshot()');
+    expect(mainProcess).toContain('getWindowsVersion() <= 6');
+    expect(mainProcess).toContain('if (shouldHideMainWindowForScreenshot())');
+    expect(mainProcess).toContain('await waitForWindowHiddenBeforeScreenshot(mainWindow)');
+  });
+
+  it('uses an opaque screenshot overlay window on Windows 7 to avoid transparent gray panels', () => {
+    const screenshotRuntime = readFileSync(
+      resolve(__dirname, '../../electron/screenshots/lib/index.cjs'),
+      'utf8'
+    );
+
+    expect(screenshotRuntime).toContain('function isLegacyWindows()');
+    expect(screenshotRuntime).toContain('!isLegacyWindows()');
+    expect(screenshotRuntime).toContain("isLegacyWindows() ? '#000000' : '#00000000'");
   });
 
   it('guards renderer screenshot requests with a visible capture state', () => {

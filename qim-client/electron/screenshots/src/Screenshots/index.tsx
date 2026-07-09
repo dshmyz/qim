@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactElement } from 'react';
-import { useCallback, useLayoutEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import composeImage from './composeImage';
 import './icons/iconfont.less';
 import './screenshots.less';
@@ -155,6 +155,15 @@ export default function Screenshots({
   useLayoutEffect(() => {
     reset();
   }, [url]);
+
+  useEffect(() => {
+    if (!url || !image) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        call('onImageReady');
+      });
+    });
+  }, [url, image, call]);
 
   return (
     <ScreenshotsContext.Provider value={{ store, dispatcher }}>

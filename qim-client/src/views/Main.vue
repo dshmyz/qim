@@ -180,6 +180,7 @@
                 @like="handleMessageLike"
                 @unlike="handleMessageUnlike"
                 @comment="handleMessageComment"
+                @refresh="handleChannelRefresh"
               />
               <div v-else class="channel-empty-state-wrapper">
                 <div class="panel-header">
@@ -1706,6 +1707,23 @@ const handleNotification = (data: any) => {
       chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
     }
   }
+
+  if (data.type === 'channel_message' && data.action_payload) {
+    try {
+      const payload = typeof data.action_payload === 'string'
+        ? JSON.parse(data.action_payload)
+        : data.action_payload
+      if (payload.channel_id) {
+        const channelId = String(payload.channel_id)
+        channelStore.incrementUnread(channelId)
+        if (channelStore.selectedChannelId === channelId && activeOption.value === 'channels') {
+          channelStore.fetchChannelMessages(channelId)
+        }
+      }
+    } catch (e) {
+      logger.error('解析频道消息通知 payload 失败:', e)
+    }
+  }
 }
 
 // 处理会话更新
@@ -2480,6 +2498,12 @@ const handleChannelSubscribe = async (channel: any) => {
 
 const handleChannelUnsubscribe = async (channel: any) => {
   await channelStore.unsubscribeChannel(channel.id)
+}
+
+const handleChannelRefresh = () => {
+  if (channelStore.selectedChannelId) {
+    channelStore.fetchChannelMessages(channelStore.selectedChannelId)
+  }
 }
 
 const handleChannelSendMessage = async (channel: any, message: string) => {

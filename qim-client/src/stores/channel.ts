@@ -118,9 +118,7 @@ export const useChannelStore = defineStore('channel', () => {
     const channel = channels.value.find(c => c.id === channelId)
     if (channel) {
       addTab(channel)
-      if (!channel.messages || channel.messages.length === 0) {
-        await fetchChannelMessages(channelId)
-      }
+      await fetchChannelMessages(channelId)
       markChannelRead(channelId)
     }
   }

@@ -136,50 +136,42 @@
     </div>
 
     <!-- 新建文件夹对话框 -->
-    <Teleport to="body">
-      <div v-if="showCreateDialog" class="folder-tree-modal-overlay" @click="closeCreateDialog">
-        <div class="folder-tree-modal" @click.stop>
-          <div class="folder-tree-modal__header">
-            <h3>新建文件夹</h3>
-            <button class="folder-tree-modal__close" @click="closeCreateDialog">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="folder-tree-modal__body">
-            <div class="folder-tree-form-group">
-              <label for="folder-name">文件夹名称</label>
-              <input
-                id="folder-name"
-                ref="folderNameInput"
-                v-model="newFolderName"
-                class="folder-tree-form-input"
-                placeholder="请输入文件夹名称"
-                type="text"
-                @keyup.enter="handleCreate"
-              />
-            </div>
-            <div v-if="createError" class="folder-tree-form-error">
-              {{ createError }}
-            </div>
-          </div>
-          <div class="folder-tree-modal__footer">
-            <button class="folder-tree-btn folder-tree-btn--secondary" @click="closeCreateDialog">
-              取消
-            </button>
-            <button
-              class="folder-tree-btn folder-tree-btn--primary"
-              :disabled="!newFolderName.trim() || isCreating"
-              @click="handleCreate"
-            >
-              {{ isCreating ? '创建中...' : '创建' }}
-            </button>
-          </div>
-        </div>
+    <ModalContainer
+      :visible="showCreateDialog"
+      title="新建文件夹"
+      width="420px"
+      @close="closeCreateDialog"
+      @cancel="closeCreateDialog"
+    >
+      <div class="folder-tree-form-group">
+        <label for="folder-name">文件夹名称</label>
+        <input
+          id="folder-name"
+          ref="folderNameInput"
+          v-model="newFolderName"
+          class="folder-tree-form-input"
+          placeholder="请输入文件夹名称"
+          type="text"
+          @keyup.enter="handleCreate"
+        />
       </div>
-    </Teleport>
+      <div v-if="createError" class="folder-tree-form-error">
+        {{ createError }}
+      </div>
+
+      <template #footer>
+        <button class="folder-tree-btn folder-tree-btn--secondary" @click="closeCreateDialog">
+          取消
+        </button>
+        <button
+          class="folder-tree-btn folder-tree-btn--primary"
+          :disabled="!newFolderName.trim() || isCreating"
+          @click="handleCreate"
+        >
+          {{ isCreating ? '创建中...' : '创建' }}
+        </button>
+      </template>
+    </ModalContainer>
   </div>
 </template>
 
@@ -187,6 +179,7 @@
 import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from 'vue'
 import QMessage from '../../../utils/qmessage'
 import FolderTreeItem from './FolderTreeItem.vue'
+import ModalContainer from '../../shared/ModalContainer.vue'
 import { useFolderTree, type FolderNode } from '../../../composables/useFolderTree'
 
 interface Props {
@@ -656,66 +649,6 @@ defineExpose({
   text-align: center;
 }
 
-/* 模态框覆盖层 */
-.folder-tree-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal);
-  animation: fadeIn var(--transition-base);
-}
-
-/* 模态框 */
-.folder-tree-modal {
-  background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  width: 90%;
-  max-width: 420px;
-  box-shadow: var(--shadow-xl);
-  animation: slideUp var(--transition-slow);
-}
-
-.folder-tree-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-4) var(--spacing-5);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.folder-tree-modal__header h3 {
-  margin: 0;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
-}
-
-.folder-tree-modal__close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all var(--transition-base);
-}
-
-.folder-tree-modal__close:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.folder-tree-modal__body {
-  padding: var(--spacing-5);
-}
-
 .folder-tree-form-group {
   display: flex;
   flex-direction: column;
@@ -755,14 +688,6 @@ defineExpose({
   color: var(--color-error-500);
 }
 
-.folder-tree-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4) var(--spacing-5);
-  border-top: 1px solid var(--border-color);
-}
-
 /* 按钮 */
 .folder-tree-btn {
   padding: 8px 20px;
@@ -797,22 +722,5 @@ defineExpose({
 .folder-tree-btn--primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-/* 动画 */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 </style>

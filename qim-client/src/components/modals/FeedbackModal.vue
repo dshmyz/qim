@@ -1,78 +1,78 @@
 <template>
-  <div v-if="visible" class="feedback-modal-overlay" @click="$emit('close')">
-    <div class="feedback-modal" @click.stop>
-      <div class="feedback-modal-header">
-        <h3>问题反馈</h3>
-        <button class="feedback-modal-close" @click="$emit('close')">×</button>
-      </div>
-      <div class="feedback-modal-content">
-        <div class="feedback-type-section">
-          <label class="feedback-label">反馈类型</label>
-          <div class="feedback-type-options">
-            <button
-              v-for="type in feedbackTypes"
-              :key="type.value"
-              class="feedback-type-btn"
-              :class="{ active: selectedType === type.value }"
-              @click="selectedType = type.value"
-            >
-              <i :class="type.icon"></i>
-              {{ type.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="feedback-content-section">
-          <label class="feedback-label">反馈内容</label>
-          <textarea
-            v-model="content"
-            class="feedback-textarea"
-            :placeholder="placeholderText"
-            rows="6"
-          ></textarea>
-          <div class="feedback-hint">请详细描述您遇到的问题或建议，以便我们更好地改进（至少 10 个字）</div>
-        </div>
-
-        <div class="feedback-screenshot-section">
-          <label class="feedback-label">截图（可选）</label>
-          <div class="feedback-screenshot-upload" @click="triggerScreenshotUpload">
-            <i class="fas fa-image"></i>
-            <span v-if="!screenshotFile">点击上传截图</span>
-            <span v-else>{{ screenshotFile.name }}</span>
-          </div>
-          <div v-if="screenshotFile" class="feedback-screenshot-preview">
-            <img :src="screenshotPreview" alt="截图预览" />
-            <button class="feedback-screenshot-remove" @click="removeScreenshot">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-          <input
-            ref="screenshotInput"
-            type="file"
-            accept="image/*"
-            style="display: none"
-            @change="handleScreenshotChange"
-          />
-        </div>
-      </div>
-      <div class="feedback-modal-footer">
-        <button class="feedback-btn cancel" @click="$emit('close')">取消</button>
+  <ModalContainer
+    :visible="visible"
+    title="问题反馈"
+    width="500px"
+    @close="$emit('close')"
+    @cancel="$emit('close')"
+  >
+    <div class="feedback-type-section">
+      <label class="feedback-label">反馈类型</label>
+      <div class="feedback-type-options">
         <button
-          class="feedback-btn submit"
-          :disabled="!canSubmit || submitting"
-          @click="submitFeedback"
+          v-for="type in feedbackTypes"
+          :key="type.value"
+          class="feedback-type-btn"
+          :class="{ active: selectedType === type.value }"
+          @click="selectedType = type.value"
         >
-          <span v-if="submitting">提交中...</span>
-          <span v-else>提交反馈</span>
+          <i :class="type.icon"></i>
+          {{ type.label }}
         </button>
       </div>
     </div>
-  </div>
+
+    <div class="feedback-content-section">
+      <label class="feedback-label">反馈内容</label>
+      <textarea
+        v-model="content"
+        class="feedback-textarea"
+        :placeholder="placeholderText"
+        rows="6"
+      ></textarea>
+      <div class="feedback-hint">请详细描述您遇到的问题或建议，以便我们更好地改进（至少 10 个字）</div>
+    </div>
+
+    <div class="feedback-screenshot-section">
+      <label class="feedback-label">截图（可选）</label>
+      <div class="feedback-screenshot-upload" @click="triggerScreenshotUpload">
+        <i class="fas fa-image"></i>
+        <span v-if="!screenshotFile">点击上传截图</span>
+        <span v-else>{{ screenshotFile.name }}</span>
+      </div>
+      <div v-if="screenshotFile" class="feedback-screenshot-preview">
+        <img :src="screenshotPreview" alt="截图预览" />
+        <button class="feedback-screenshot-remove" @click="removeScreenshot">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <input
+        ref="screenshotInput"
+        type="file"
+        accept="image/*"
+        style="display: none"
+        @change="handleScreenshotChange"
+      />
+    </div>
+
+    <template #footer>
+      <button class="feedback-btn cancel" @click="$emit('close')">取消</button>
+      <button
+        class="feedback-btn submit"
+        :disabled="!canSubmit || submitting"
+        @click="submitFeedback"
+      >
+        <span v-if="submitting">提交中...</span>
+        <span v-else>提交反馈</span>
+      </button>
+    </template>
+  </ModalContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { request } from '../../composables/useRequest'
+import ModalContainer from '../shared/ModalContainer.vue'
 
 const QMessage = (window as any).$QMessage
 
@@ -179,73 +179,6 @@ const submitFeedback = async () => {
 </script>
 
 <style scoped>
-.feedback-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.feedback-modal {
-  background: var(--modal-bg);
-  border-radius: 12px;
-  width: 500px;
-  max-width: calc(100vw - 40px);
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.feedback-modal-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
-
-.feedback-modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.feedback-modal-close {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.feedback-modal-close:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.feedback-modal-content {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
 .feedback-label {
   display: block;
   margin-bottom: 12px;
@@ -380,15 +313,6 @@ const submitFeedback = async () => {
 
 .feedback-screenshot-upload.has-image {
   display: none;
-}
-
-.feedback-modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  flex-shrink: 0;
 }
 
 .feedback-btn {

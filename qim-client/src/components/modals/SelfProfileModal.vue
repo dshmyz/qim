@@ -1,102 +1,100 @@
 <template>
-  <div v-if="visible" class="self-profile-modal" @click="$emit('close')">
-    <div class="self-profile-content" @click.stop>
-      <div class="modal-header">
-        <h3>个人信息</h3>
-        <button class="close-btn" @click="$emit('close')">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      
-      <div class="modal-body">
-        <div class="profile-layout">
-          <div class="avatar-section">
-            <div class="avatar-wrapper">
-              <img 
-                :src="avatarUrl"
-                :alt="currentUser?.username || 'avatar'"
-                class="avatar-image"
-              />
-              <div class="avatar-overlay" @click="triggerAvatarUpload">
-                <i class="fas fa-camera"></i>
-                <span>更换头像</span>
-              </div>
-            </div>
-            <input 
-              ref="avatarInputRef"
-              type="file" 
-              accept="image/*" 
-              class="avatar-input-hidden" 
-              @change="handleAvatarSelect" 
-            />
-            <p class="avatar-hint">点击头像可更换，支持 JPG、PNG 格式</p>
-          </div>
-          
-          <div class="form-section">
-            <div class="form-group">
-              <label class="form-label">姓名</label>
-              <div class="form-value readonly">{{ localProfile.nickname }}</div>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">账号</label>
-              <div class="form-value readonly">{{ localProfile.username }}</div>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">签名</label>
-              <textarea 
-                v-model="localProfile.signature" 
-                class="form-textarea" 
-                placeholder="输入个人签名，让大家更了解你"
-                rows="3"
-              ></textarea>
-            </div>
-            
-            <div class="form-row">
-              <div class="form-group half">
-                <label class="form-label">部门</label>
-                <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
-              </div>
-              <div class="form-group half">
-                <label class="form-label">ID</label>
-                <div class="form-value readonly">{{ localProfile.id }}</div>
-              </div>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">加入时间</label>
-              <div class="form-value readonly">{{ localProfile.joinDate }}</div>
-            </div>
+  <ModalContainer
+    :visible="visible"
+    title="个人信息"
+    width="680px"
+    :overlay-style="{ backdropFilter: 'blur(4px)', webkitBackdropFilter: 'blur(4px)' }"
+    @close="$emit('close')"
+    @cancel="$emit('close')"
+  >
+    <div class="profile-layout">
+      <div class="avatar-section">
+        <div class="avatar-wrapper">
+          <img
+            :src="avatarUrl"
+            :alt="currentUser?.username || 'avatar'"
+            class="avatar-image"
+          />
+          <div class="avatar-overlay" @click="triggerAvatarUpload">
+            <i class="fas fa-camera"></i>
+            <span>更换头像</span>
           </div>
         </div>
+        <input
+          ref="avatarInputRef"
+          type="file"
+          accept="image/*"
+          class="avatar-input-hidden"
+          @change="handleAvatarSelect"
+        />
+        <p class="avatar-hint">点击头像可更换，支持 JPG、PNG 格式</p>
       </div>
-      
-      <div class="modal-footer">
-        <button class="btn btn-secondary" @click="$emit('close')">取消</button>
-        <button class="btn btn-primary" @click="handleSave">保存</button>
+
+      <div class="form-section">
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <div class="form-value readonly">{{ localProfile.nickname }}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">账号</label>
+          <div class="form-value readonly">{{ localProfile.username }}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">签名</label>
+          <textarea
+            v-model="localProfile.signature"
+            class="form-textarea"
+            placeholder="输入个人签名，让大家更了解你"
+            rows="3"
+          ></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label class="form-label">部门</label>
+            <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
+          </div>
+          <div class="form-group half">
+            <label class="form-label">ID</label>
+            <div class="form-value readonly">{{ localProfile.id }}</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">加入时间</label>
+          <div class="form-value readonly">{{ localProfile.joinDate }}</div>
+        </div>
       </div>
     </div>
-    
+
+    <template #footer>
+      <button class="btn btn-secondary" @click="$emit('close')">取消</button>
+      <button class="btn btn-primary" @click="handleSave">保存</button>
+    </template>
+
+    <!-- AvatarCropper 放在 modal 的 stacking context 内，确保层级正确 -->
     <AvatarCropper
       v-if="showCropper"
       :image-url="pendingImageUrl"
       @confirm="handleCropConfirm"
       @cancel="handleCropCancel"
     />
-  </div>
+  </ModalContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 import AvatarCropper from './AvatarCropper.vue'
+import ModalContainer from '../shared/ModalContainer.vue'
 
 interface Props {
   visible: boolean
   currentUser?: { username?: string; avatar?: string; id?: string | number; department?: string }
   serverUrl: string
-  profile: { 
+  profile: {
     nickname?: string
     signature?: string
     username?: string
@@ -137,15 +135,15 @@ const handleAvatarSelect = (event: Event) => {
   const input = event.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
     const file = input.files[0]
-    
+
     if (!file.type.startsWith('image/')) {
       return
     }
-    
+
     if (file.size > 5 * 1024 * 1024) {
       return
     }
-    
+
     pendingImageUrl.value = URL.createObjectURL(file)
     showCropper.value = true
     input.value = ''
@@ -175,88 +173,6 @@ const handleSave = () => {
 </script>
 
 <style scoped>
-.self-profile-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.self-profile-content {
-  background: var(--modal-bg, #ffffff);
-  border-radius: 16px;
-  width: 680px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color, #111827);
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: var(--hover-color, #f3f4f6);
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text-secondary, #6b7280);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--active-color, #e5e7eb);
-  color: var(--text-color, #111827);
-}
-
-.modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
 .profile-layout {
   display: grid;
   grid-template-columns: 200px 1fr;
@@ -382,14 +298,6 @@ const handleSave = () => {
   color: var(--text-color, #111827);
 }
 
-.modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color, #e5e7eb);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
 .btn {
   padding: 10px 24px;
   border: none;
@@ -421,24 +329,18 @@ const handleSave = () => {
 }
 
 @media (max-width: 768px) {
-  .self-profile-content {
-    width: 95%;
-    max-height: 90vh;
-  }
-  
   .profile-layout {
     grid-template-columns: 1fr;
     gap: 24px;
   }
-  
+
   .avatar-section {
     padding-bottom: 16px;
     border-bottom: 1px solid var(--border-color, #e5e7eb);
   }
-  
+
   .form-row {
     grid-template-columns: 1fr;
   }
 }
-
 </style>

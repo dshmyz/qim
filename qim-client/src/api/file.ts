@@ -109,6 +109,14 @@ export const fileApi = {
     return api.get(`/api/v1/files/${fileId}/download`, { responseType: 'blob' })
   },
 
+  // 预览文件（返回 blob，接口需 JWT 认证，故不能用裸 URL）
+  previewFile(fileId: number, thumbnail = false) {
+    return api.get(`/api/v1/files/${fileId}/preview`, {
+      responseType: 'blob',
+      params: thumbnail ? { thumbnail: 'true' } : undefined
+    })
+  },
+
   // 删除文件
   deleteFile(fileId: number) {
     return api.delete<{ code: number }>(`/api/v1/files/${fileId}`)

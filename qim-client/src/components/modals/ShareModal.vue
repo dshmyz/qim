@@ -1,104 +1,104 @@
 <template>
-  <div v-if="visible" class="share-modal" @click="close">
-    <div class="share-modal-content" @click.stop>
-      <div class="share-modal-header">
-        <h3>分享{{ shareType === 'file' ? '文件' : shareType === 'note' ? '笔记' : shareType === 'message' ? '消息' : '便签' }}</h3>
-        <button class="close-btn" @click="close">×</button>
-      </div>
-      <div class="share-modal-body">
-        <div class="share-search-box">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="share-search-input"
-            placeholder="搜索用户或群聊..."
-          />
-          <i class="fas fa-search share-search-icon"></i>
+  <ModalContainer
+    :visible="visible"
+    :title="`分享${shareType === 'file' ? '文件' : shareType === 'note' ? '笔记' : shareType === 'message' ? '消息' : '便签'}`"
+    width="480px"
+    @close="close"
+    @cancel="close"
+  >
+    <div class="share-search-box">
+      <input
+        v-model="searchQuery"
+        type="text"
+        class="share-search-input"
+        placeholder="搜索用户或群聊..."
+      />
+      <i class="fas fa-search share-search-icon"></i>
+    </div>
+
+    <div class="share-tabs">
+      <button
+        class="share-tab"
+        :class="{ active: activeTab === 'users' }"
+        @click="activeTab = 'users'"
+      >
+        用户
+      </button>
+      <button
+        class="share-tab"
+        :class="{ active: activeTab === 'groups' }"
+        @click="activeTab = 'groups'"
+      >
+        群聊
+      </button>
+    </div>
+
+    <div v-if="activeTab === 'users'" class="share-list">
+      <div
+        v-for="user in filteredUsers"
+        :key="user.id"
+        class="share-item"
+        :class="{ selected: selectedUsers.includes(user.id) }"
+        @click="toggleUserSelection(user.id)"
+      >
+        <Avatar :src="user.avatar" :name="user.name" :alt="user.name" size="md" class="share-item-avatar" />
+        <div class="share-item-info">
+          <div class="share-item-name">{{ user.name }}</div>
+          <div class="share-item-desc">{{ user.department || '无部门' }}</div>
         </div>
-        
-        <div class="share-tabs">
-          <button 
-            class="share-tab" 
-            :class="{ active: activeTab === 'users' }"
-            @click="activeTab = 'users'"
-          >
-            用户
-          </button>
-          <button 
-            class="share-tab" 
-            :class="{ active: activeTab === 'groups' }"
-            @click="activeTab = 'groups'"
-          >
-            群聊
-          </button>
-        </div>
-        
-        <div v-if="activeTab === 'users'" class="share-list">
-          <div 
-            v-for="user in filteredUsers" 
-            :key="user.id"
-            class="share-item"
-            :class="{ selected: selectedUsers.includes(user.id) }"
-            @click="toggleUserSelection(user.id)"
-          >
-            <Avatar :src="user.avatar" :name="user.name" :alt="user.name" size="md" class="share-item-avatar" />
-            <div class="share-item-info">
-              <div class="share-item-name">{{ user.name }}</div>
-              <div class="share-item-desc">{{ user.department || '无部门' }}</div>
-            </div>
-            <div class="share-item-checkbox">
-              <i v-if="selectedUsers.includes(user.id)" class="fas fa-check"></i>
-            </div>
-          </div>
-          <div v-if="filteredUsers.length === 0" class="empty-share">
-            没有找到匹配的用户
-          </div>
-        </div>
-        
-        <div v-else-if="activeTab === 'groups'" class="share-list">
-          <div 
-            v-for="group in filteredGroups" 
-            :key="group.id"
-            class="share-item"
-            :class="{ selected: selectedGroups.includes(group.id) }"
-            @click="toggleGroupSelection(group.id)"
-          >
-            <Avatar :src="group.avatar" :name="group.name" :alt="group.name" size="md" class="share-item-avatar" />
-            <div class="share-item-info">
-              <div class="share-item-name">{{ group.name }}</div>
-              <div class="share-item-desc">{{ group.members.length }} 成员</div>
-            </div>
-            <div class="share-item-checkbox">
-              <i v-if="selectedGroups.includes(group.id)" class="fas fa-check"></i>
-            </div>
-          </div>
-          <div v-if="filteredGroups.length === 0" class="empty-share">
-            没有找到匹配的群聊
-          </div>
+        <div class="share-item-checkbox">
+          <i v-if="selectedUsers.includes(user.id)" class="fas fa-check"></i>
         </div>
       </div>
-      <div class="share-modal-footer">
-        <button class="cancel-btn" @click="close">取消</button>
-        <button 
-          class="confirm-btn" 
-          :disabled="selectedUsers.length === 0 && selectedGroups.length === 0"
-          @click="confirm"
-        >
-          分享
-        </button>
+      <div v-if="filteredUsers.length === 0" class="empty-share">
+        没有找到匹配的用户
       </div>
     </div>
-  </div>
+
+    <div v-else-if="activeTab === 'groups'" class="share-list">
+      <div
+        v-for="group in filteredGroups"
+        :key="group.id"
+        class="share-item"
+        :class="{ selected: selectedGroups.includes(group.id) }"
+        @click="toggleGroupSelection(group.id)"
+      >
+        <Avatar :src="group.avatar" :name="group.name" :alt="group.name" size="md" class="share-item-avatar" />
+        <div class="share-item-info">
+          <div class="share-item-name">{{ group.name }}</div>
+          <div class="share-item-desc">{{ group.members.length }} 成员</div>
+        </div>
+        <div class="share-item-checkbox">
+          <i v-if="selectedGroups.includes(group.id)" class="fas fa-check"></i>
+        </div>
+      </div>
+      <div v-if="filteredGroups.length === 0" class="empty-share">
+        没有找到匹配的群聊
+      </div>
+    </div>
+
+    <template #footer>
+      <button class="cancel-btn" @click="close">取消</button>
+      <button
+        class="confirm-btn"
+        :disabled="selectedUsers.length === 0 && selectedGroups.length === 0"
+        @click="confirm"
+      >
+        分享
+      </button>
+    </template>
+  </ModalContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import ModalContainer from '../shared/ModalContainer.vue'
 
 const props = defineProps<{
   visible: boolean
   shareType: string
-  users: { id: string; name: string; avatar: string; department?: string }[]
+  users: { id: string; name: string; username?: string; avatar: string; department?: string }[]
   groups: { id: string; name: string; avatar: string; members: any[] }[]
 }>()
 
@@ -113,8 +113,9 @@ const filteredUsers = computed(() => {
   if (!props.users || !Array.isArray(props.users)) return []
   if (!searchQuery.value) return props.users
   const query = searchQuery.value.toLowerCase()
-  return props.users.filter(user => 
+  return props.users.filter(user =>
     user.name.toLowerCase().includes(query) ||
+    (user.username && user.username.toLowerCase().includes(query)) ||
     (user.department && user.department.toLowerCase().includes(query))
   )
 })
@@ -123,7 +124,7 @@ const filteredGroups = computed(() => {
   if (!props.groups || !Array.isArray(props.groups)) return []
   if (!searchQuery.value) return props.groups
   const query = searchQuery.value.toLowerCase()
-  return props.groups.filter(group => 
+  return props.groups.filter(group =>
     group.name.toLowerCase().includes(query)
   )
 })
@@ -168,72 +169,6 @@ watch(() => props.visible, (newVal) => {
 </script>
 
 <style scoped>
-.share-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.share-modal-content {
-  background: var(--card-bg, #ffffff);
-  border-radius: 8px;
-  width: 480px;
-  max-width: 90%;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.share-modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.share-modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-color, #333);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text-secondary, #999);
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--hover-color, #f5f5f5);
-  color: var(--text-color, #333);
-}
-
-.share-modal-body {
-  padding: 20px;
-  flex: 1;
-  overflow-y: auto;
-}
-
 .share-search-box {
   position: relative;
   margin-bottom: 16px;
@@ -248,6 +183,7 @@ watch(() => props.visible, (newVal) => {
   transition: all 0.3s;
   background: var(--input-bg, #ffffff);
   color: var(--text-color, #333);
+  box-sizing: border-box;
 }
 
 .share-search-input:focus {
@@ -371,15 +307,6 @@ watch(() => props.visible, (newVal) => {
   padding: 40px 0;
   color: var(--text-secondary, #999);
   font-size: 14px;
-}
-
-.share-modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e8e8e8);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
 }
 
 .cancel-btn {

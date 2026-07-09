@@ -11,7 +11,7 @@
       v-for="conversation in conversations"
       :key="conversation.id"
       class="conversation-item"
-      :class="{ active: conversation.id === currentConversationId }"
+      :class="{ active: sameConversationId(conversation.id, currentConversationId) }"
       @click="$emit('select', conversation)"
       @contextmenu.prevent="$emit('contextMenu', $event, conversation)"
     >
@@ -69,6 +69,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts'
 import { decodeToPlainText } from '../../utils/mentions'
+import { sameConversationId } from '../../utils/conversationId'
 
 interface User {
   id: string
@@ -199,7 +200,7 @@ watch(() => props.conversations, () => {
 
 const hasDraft = (conversation: Conversation): boolean => {
   // 当前正在打开的会话不显示草稿标记，只有离开后才显示
-  if (conversation.id === props.currentConversationId) return false
+  if (sameConversationId(conversation.id, props.currentConversationId)) return false
   return draftsCache.value.get(conversation.id)?.hasDraft ?? false
 }
 

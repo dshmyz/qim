@@ -125,6 +125,11 @@ async function refreshAccessToken(): Promise<string | null> {
 
 api.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
+    // blob/arraybuffer 等非 JSON 响应（文件下载/预览）直接放行，不解析业务 code
+    if (response.config.responseType === 'blob' || response.config.responseType === 'arraybuffer') {
+      return response
+    }
+
     const { code, data, message } = response.data
 
     if (code !== 0) {

@@ -80,6 +80,29 @@ describe('useChatStore', () => {
       expect(store.currentConversation).toEqual(createdConversation)
     })
 
+    it('会话列表混入数字 id 时也能选中当前会话', () => {
+      const store = useChatStore()
+      store.setConversations([
+        { id: 7 as any, name: '线上原始会话', type: 'single' } as Conversation
+      ])
+
+      store.setCurrentConversation('7')
+
+      expect(store.currentConversation?.name).toBe('线上原始会话')
+    })
+
+    it('数字 id 与字符串 id 表示同一会话时不会重复添加', () => {
+      const store = useChatStore()
+      store.setConversations([
+        { id: 7 as any, name: '已有会话', type: 'single' } as Conversation
+      ])
+
+      store.addConversation({ id: '7', name: '新返回会话', type: 'single' } as Conversation)
+
+      expect(store.conversations).toHaveLength(1)
+      expect(store.conversations[0].name).toBe('已有会话')
+    })
+
     it('设置不存在的会话ID时，currentConversation 应该返回 null', () => {
       const store = useChatStore()
       store.setConversations([

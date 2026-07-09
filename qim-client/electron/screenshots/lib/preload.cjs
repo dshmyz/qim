@@ -12,6 +12,10 @@ electron_1.contextBridge.exposeInMainWorld('screenshots', {
         console.log('contextBridge reset');
         electron_1.ipcRenderer.send('SCREENSHOTS:reset');
     },
+    captureReady: () => {
+        console.log('contextBridge captureReady');
+        electron_1.ipcRenderer.send('SCREENSHOTS:captureReady');
+    },
     save: (arrayBuffer, data) => {
         console.log('contextBridge save', arrayBuffer, data);
         electron_1.ipcRenderer.send('SCREENSHOTS:save', Buffer.from(arrayBuffer), data);

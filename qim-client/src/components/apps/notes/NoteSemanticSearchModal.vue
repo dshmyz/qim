@@ -1,63 +1,69 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-container">
-      <div class="modal-header">
-        <h3>智能搜索笔记</h3>
-        <button class="close-btn" @click="$emit('close')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="search-box">
-          <input
-            ref="searchInputRef"
-            v-model="query"
-            type="text"
-            placeholder="输入搜索内容（支持语义理解）..."
-            @keyup.enter="handleSearch"
-          />
-          <button class="search-btn" :disabled="!query.trim() || searching" @click="handleSearch">
-            <span v-if="searching" class="spinner"></span>
-            <span v-else>搜索</span>
-          </button>
-        </div>
+  <ModalContainer
+    :visible="visible"
+    title="智能搜索笔记"
+    width="560px"
+    :show-footer="false"
+    @close="$emit('close')"
+    @cancel="$emit('close')"
+  >
+    <div class="search-box">
+      <input
+        ref="searchInputRef"
+        v-model="query"
+        type="text"
+        placeholder="输入搜索内容（支持语义理解）..."
+        @keyup.enter="handleSearch"
+      />
+      <button class="search-btn" :disabled="!query.trim() || searching" @click="handleSearch">
+        <span v-if="searching" class="spinner"></span>
+        <span v-else>搜索</span>
+      </button>
+    </div>
 
-        <div v-if="searching" class="searching-hint">
-          <span class="spinner"></span>
-          正在语义检索笔记...
-        </div>
+    <div v-if="searching" class="searching-hint">
+      <span class="spinner"></span>
+      正在语义检索笔记...
+    </div>
 
-        <div v-else-if="results.length > 0" class="results-list">
-          <div class="results-count">找到 {{ results.length }} 条相关结果</div>
-          <div
-            v-for="(item, index) in results"
-            :key="index"
-            class="result-item"
-            @click="selectNote(item)"
-          >
-            <div class="result-title">{{ item.title }}</div>
-            <div class="result-content">{{ item.content }}</div>
-            <div class="result-meta">
-              <span class="result-score">相似度: {{ (item.score * 100).toFixed(1) }}%</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="searched" class="empty-result">
-          <p>未找到相关的笔记内容</p>
-          <p class="hint">可以尝试换个搜索词，或者先创建一些笔记</p>
-        </div>
-
-        <div v-else class="empty-hint">
-          <p>输入关键词，系统会自动理解语义并检索最相关的笔记内容</p>
+    <div v-else-if="results.length > 0" class="results-list">
+      <div class="results-count">找到 {{ results.length }} 条相关结果</div>
+      <div
+        v-for="(item, index) in results"
+        :key="index"
+        class="result-item"
+        @click="selectNote(item)"
+      >
+        <div class="result-title">{{ item.title }}</div>
+        <div class="result-content">{{ item.content }}</div>
+        <div class="result-meta">
+          <span class="result-score">相似度: {{ (item.score * 100).toFixed(1) }}%</span>
         </div>
       </div>
     </div>
-  </div>
+
+    <div v-else-if="searched" class="empty-result">
+      <p>未找到相关的笔记内容</p>
+      <p class="hint">可以尝试换个搜索词，或者先创建一些笔记</p>
+    </div>
+
+    <div v-else class="empty-hint">
+      <p>输入关键词，系统会自动理解语义并检索最相关的笔记内容</p>
+    </div>
+  </ModalContainer>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useNotes } from '../../../composables/useNotes'
 import type { NoteVectorSearchResult } from '../../../types/note'
+import ModalContainer from '../../shared/ModalContainer.vue'
+
+interface Props {
+  visible: boolean
+}
+
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   close: []
@@ -72,8 +78,15 @@ const results = ref<NoteVectorSearchResult[]>([])
 const searching = ref(false)
 const searched = ref(false)
 
-nextTick(() => {
-  searchInputRef.value?.focus()
+// 弹窗打开时聚焦输入框
+watch(() => props.visible, async (newVal) => {
+  if (newVal) {
+    query.value = ''
+    results.value = []
+    searched.value = false
+    await nextTick()
+    searchInputRef.value?.focus()
+  }
 })
 
 async function handleSearch() {
@@ -97,65 +110,6 @@ function selectNote(item: NoteVectorSearchResult) {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal-container {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  width: 560px;
-  max-width: 90vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary, #111827);
-}
-
-.close-btn {
-  border: none;
-  background: transparent;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--text-secondary, #6b7280);
-  padding: 0;
-  line-height: 1;
-}
-
-.close-btn:hover {
-  color: var(--text-primary, #111827);
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
 .search-box {
   display: flex;
   gap: 8px;

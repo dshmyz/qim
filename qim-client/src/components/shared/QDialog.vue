@@ -1,26 +1,24 @@
 <template>
   <Teleport to="body">
-    <Transition name="q-dialog-fade">
-      <div v-if="visible" class="q-dialog-mask" @click.self="handleMaskClick">
-        <div :class="['q-dialog', className]" :style="dialogStyle">
-          <div class="q-dialog__header">
-            <h3 class="q-dialog__title">{{ title }}</h3>
-            <button v-if="showClose" class="q-dialog__close" @click="handleClose">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <div class="q-dialog__body">
-            <slot></slot>
-          </div>
-          <div v-if="$slots.footer" class="q-dialog__footer">
-            <slot name="footer"></slot>
-          </div>
+    <div v-if="visible" class="q-dialog-mask" @click.self="handleMaskClick">
+      <div :class="['q-dialog', className]" :style="dialogStyle">
+        <div class="q-dialog__header">
+          <h3 class="q-dialog__title">{{ title }}</h3>
+          <button v-if="showClose" class="q-dialog__close" @click="handleClose">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="q-dialog__body">
+          <slot></slot>
+        </div>
+        <div v-if="$slots.footer" class="q-dialog__footer">
+          <slot name="footer"></slot>
         </div>
       </div>
-    </Transition>
+    </div>
   </Teleport>
 </template>
 
@@ -142,16 +140,5 @@ const handleMaskClick = () => {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-3);
-}
-
-.q-dialog-fade-enter-active,
-.q-dialog-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.q-dialog-fade-enter-from,
-.q-dialog-fade-leave-to {
-  opacity: 0;
-  transform: scale(0.95);
 }
 </style>

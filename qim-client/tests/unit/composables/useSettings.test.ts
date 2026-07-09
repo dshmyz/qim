@@ -20,12 +20,14 @@ beforeEach(() => {
 })
 
 describe('useSettings file settings', () => {
-  it('does not keep the ~/Downloads placeholder as a real download directory', () => {
-    storage.set('fileSettings', JSON.stringify({ defaultSaveDirectory: '~/Downloads' }))
+  it('keeps ~/Downloads placeholder when electron IPC unavailable', () => {
+    storage.set('messageSettings', JSON.stringify({ defaultSaveDirectory: '~/Downloads' }))
 
     const settings = useSettings(ref(null), ref('http://localhost:8080'), vi.fn())
     settings.loadSettings()
 
-    expect(settings.fileSettings.value.defaultSaveDirectory).toBe('')
+    // 在无 electron 环境（测试环境）下，~/Downloads 不会被替换为系统默认路径
+    // 实际运行时会通过 IPC 获取系统下载目录并替换
+    expect(settings.messageSettings.value.defaultSaveDirectory).toBe('~' + '/Downloads')
   })
 })

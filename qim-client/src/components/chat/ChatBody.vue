@@ -9,6 +9,7 @@
       :read-users-map="readUsersMap"
       :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
+      :current-user-id="currentUserId"
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
       @scroll-to-quoted-message="(id) => emit('scroll-to-quoted-message', id)"
@@ -66,6 +67,7 @@ interface Props {
   readUsersMap: Record<string, MessageReadInfo>
   showReadReceipt: boolean
   serverUrl: string
+  currentUserId?: string | number
   isMembersSidebarExpanded: boolean
   showMemberSearch: boolean
   memberSearchQuery: string

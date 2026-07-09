@@ -10,13 +10,8 @@
 -->
 <template>
   <div class="pdf-preview">
-    <!-- 加载状态 -->
-    <div v-if="loading" class="pdf-loading">
-      <LoadingSpinner text="加载 PDF 中..." />
-    </div>
-
     <!-- 错误状态 -->
-    <div v-else-if="error" class="pdf-error">
+    <div v-if="error" class="pdf-error">
       <i class="fas fa-exclamation-circle"></i>
       <p>{{ error }}</p>
       <button class="retry-btn" @click="loadPDF">
@@ -83,6 +78,9 @@
       <!-- PDF 画布容器 -->
       <div class="pdf-canvas-container" ref="containerRef">
         <canvas ref="canvasRef" class="pdf-canvas"></canvas>
+        <div v-if="loading" class="pdf-loading">
+          <LoadingSpinner text="加载 PDF 中..." />
+        </div>
       </div>
     </div>
   </div>
@@ -90,6 +88,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import type { PDFDocumentProxy } from 'pdfjs-dist'
 import LoadingSpinner from '../../shared/LoadingSpinner.vue'
 
 // 动态导入 pdfjs-dist，避免首屏加载 400KB+
@@ -98,7 +97,9 @@ let pdfjsLib: typeof import('pdfjs-dist') | null = null
 async function ensurePdfLib() {
   if (!pdfjsLib) {
     pdfjsLib = await import('pdfjs-dist')
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+    // 从本地打包 worker，避免依赖 CDN（离线不可用且 v5 已改用 .mjs）
+    const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
   }
 }
 
@@ -118,14 +119,14 @@ const loading = ref(true)
 const error = ref('')
 const currentPage = ref(1)
 const totalPages = ref(0)
-const scale = ref(1.5)
+const scale = ref(1)
 const minScale = 0.5
 const maxScale = 3.0
 const scaleStep = 0.25
 const isFullscreen = ref(false)
 
 // PDF 文档和页面
-let pdfDoc: Awaited<ReturnType<typeof import('pdfjs-dist').getDocument>> | null = null
+let pdfDoc: PDFDocumentProxy | null = null
 let pageRendering = false
 let pageNumPending: number | null = null
 
@@ -135,28 +136,40 @@ const canvasRef = ref<HTMLCanvasElement>()
 
 // 加载 PDF
 async function loadPDF() {
+  if (!props.url) {
+    loading.value = false
+    return
+  }
+
   loading.value = true
   error.value = ''
 
   try {
+    if (pdfDoc) {
+      await pdfDoc.destroy()
+      pdfDoc = null
+    }
+
     // 确保 pdfjs-dist 已加载
     await ensurePdfLib()
     if (!pdfjsLib) return
 
-    // 加载 PDF 文档
-    const loadingTask = pdfjsLib.getDocument(props.url)
+    // 加载 PDF 文档（url 为已带认证拉取的本地 blob URL）
+    const loadingTask = pdfjsLib.getDocument({
+      url: props.url,
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS
+    })
     pdfDoc = await loadingTask.promise
     totalPages.value = pdfDoc.numPages
     currentPage.value = 1
 
-    // 渲染第一页
     await nextTick()
     await renderPage(currentPage.value)
+    loading.value = false
   } catch (err: any) {
     console.error('PDF 加载失败:', err)
     error.value = 'PDF 加载失败，请重试'
     emit('error', error.value)
-  } finally {
     loading.value = false
   }
 }
@@ -180,6 +193,7 @@ async function renderPage(num: number) {
     canvas.width = viewport.width
 
     const renderContext = {
+      canvas,
       canvasContext: context,
       viewport: viewport
     }
@@ -235,7 +249,7 @@ function zoomOut() {
 }
 
 function resetZoom() {
-  scale.value = 1.5
+  scale.value = 1
   queueRenderPage(currentPage.value)
 }
 
@@ -262,16 +276,10 @@ function handleFullscreenChange() {
 // 监听 URL 变化
 watch(() => props.url, () => {
   loadPDF()
-})
-
-// 监听缩放变化
-watch(scale, () => {
-  queueRenderPage(currentPage.value)
-})
+}, { immediate: true })
 
 // 生命周期
 onMounted(() => {
-  loadPDF()
   document.addEventListener('fullscreenchange', handleFullscreenChange)
 })
 
@@ -300,6 +308,13 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 400px;
   gap: 16px;
+}
+
+.pdf-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(245, 245, 245, 0.88);
+  z-index: 1;
 }
 
 .pdf-error i {
@@ -388,15 +403,19 @@ onUnmounted(() => {
 }
 
 .pdf-canvas-container {
+  position: relative;
   flex: 1;
   overflow: auto;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   padding: 20px;
   background: #f5f5f5;
 }
 
 .pdf-canvas {
+  flex: 0 0 auto;
+  display: block;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   background: white;
 }
@@ -407,7 +426,7 @@ onUnmounted(() => {
 }
 
 .pdf-canvas-container:fullscreen .pdf-canvas {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
 }
 </style>

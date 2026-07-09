@@ -23,7 +23,7 @@
 
         <MessageItem
           :message="message"
-          :is-self="message.isSelf"
+          :is-self="isMessageSelf(message)"
           :is-recalled="!!message.isRecalled"
           :conversation-type="conversationType"
           :read-users-map="readUsersMap"
@@ -72,6 +72,7 @@ interface Props {
   readUsersMap: Record<string, { read_users: User[]; total_members: number }>
   showReadReceipt: boolean
   serverUrl: string
+  currentUserId?: string | number
 }
 
 interface Emits {
@@ -101,6 +102,36 @@ const isMounted = ref(false)
 let scrollTimeoutId: number | null = null
 let throttleTimeoutId: number | null = null
 let imageViewer: Viewer | null = null
+
+const normalizeId = (id: unknown): string => {
+  return id === undefined || id === null ? '' : String(id)
+}
+
+const getMessageSenderId = (message: any): string => {
+  return normalizeId(
+    message.sender_id ??
+    message.senderId ??
+    message.from_user_id ??
+    message.fromUserId ??
+    message.user_id ??
+    message.userId ??
+    message.sender?.id ??
+    message.sender?.user_id ??
+    message.sender?.userId ??
+    message.sender?.UserID ??
+    message.sender?.user?.id ??
+    message.sender?.User?.ID
+  )
+}
+
+const isMessageSelf = (message: any): boolean => {
+  if (message.isSelf === true) return true
+
+  const currentUserId = normalizeId(props.currentUserId)
+  if (!currentUserId) return false
+
+  return getMessageSenderId(message) === currentUserId
+}
 
 const destroyImageViewer = () => {
   imageViewer?.destroy()

@@ -21,17 +21,17 @@
           <div class="search-popup-info">
             <div class="search-popup-name">{{ item.name }}</div>
             <div class="search-popup-meta">
-              <span v-if="item.type === 'user' || item.type === 'bot'" class="search-popup-username">{{ item.username }}</span>
+              <span v-if="isPrivateChatSearchResult(item)" class="search-popup-username">{{ item.username }}</span>
               <span v-if="item.type === 'group'" class="search-popup-type">群聊</span>
               <span v-if="item.type === 'discussion'" class="search-popup-type">讨论组</span>
               <span v-if="item.type === 'bot'" class="search-popup-type">AI 助手</span>
-              <span v-if="item.type === 'user' && item.status === 'online'" class="search-popup-status online">在线</span>
-              <span v-if="item.type === 'user' && item.status !== 'online'" class="search-popup-status offline">离线</span>
+              <span v-if="isPrivateChatSearchResult(item) && item.type !== 'bot' && item.status === 'online'" class="search-popup-status online">在线</span>
+              <span v-if="isPrivateChatSearchResult(item) && item.type !== 'bot' && item.status !== 'online'" class="search-popup-status offline">离线</span>
               <span v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-status online">已加入</span>
               <span v-if="(item.type === 'group' || item.type === 'discussion') && !item.isMember" class="search-popup-status offline">未加入</span>
             </div>
           </div>
-          <button v-if="item.type === 'user' || item.type === 'bot'" class="search-popup-btn" @click.stop="$emit('privateChat', item)">
+          <button v-if="isPrivateChatSearchResult(item)" class="search-popup-btn" @click.stop="$emit('privateChat', item)">
             <i class="fas fa-comment"></i>
           </button>
           <button v-if="(item.type === 'group' || item.type === 'discussion') && item.isMember" class="search-popup-btn" @click.stop="$emit('select', item)">
@@ -51,13 +51,14 @@ import { ref } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
+import { isPrivateChatSearchResult } from '../../utils/privateChatTarget'
 
 const { serverUrl } = useServerUrl()
 
 interface SearchResultItem {
   id: string
   name: string
-  type: 'user' | 'group' | 'discussion' | 'bot'
+  type: string
   username?: string
   avatar?: string
   status?: 'online' | 'offline'

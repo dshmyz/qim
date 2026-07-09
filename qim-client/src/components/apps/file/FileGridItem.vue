@@ -4,6 +4,7 @@
     :class="{ 'file-grid-item--selected': isSelected }"
     @click="handleClick"
     @dblclick="handleDoubleClick"
+    @contextmenu.prevent="handleContextMenu"
     @mouseenter="isHovered = true"
     @mouseleave="isHovered = false"
   >
@@ -77,8 +78,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import type { FileItem } from '../../../api/file'
+import { ref, watch, onUnmounted } from 'vue'
+import { fileApi, type FileItem } from '../../../api/file'
 import {
   isImage,
   getFileIcon,
@@ -86,7 +87,6 @@ import {
   formatFileSize,
   getFileTypeLabel
 } from '../../../utils/fileType'
-import { useServerUrl } from '../../../composables/useServerUrl'
 
 defineOptions({
   name: 'FileGridItem'
@@ -104,6 +104,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'click', file: FileItem): void
   (e: 'dblclick', file: FileItem): void
+  (e: 'context-menu', file: FileItem, event: MouseEvent): void
   (e: 'preview', file: FileItem): void
   (e: 'download', file: FileItem): void
   (e: 'star', file: FileItem): void
@@ -135,11 +136,34 @@ const hideTooltip = () => {
   tooltipVisible.value = false
 }
 
-const { serverUrl } = useServerUrl()
+// 缩略图接口需 JWT 认证，无法用裸 URL，改为带 token 请求拉取 blob 再生成本地 URL
+const thumbnailUrl = ref('')
 
-const thumbnailUrl = computed(() => {
-  if (!props.file?.id) return ''
-  return `${serverUrl}/api/v1/files/${props.file.id}/preview?thumbnail=true`
+function revokeThumbnail() {
+  if (thumbnailUrl.value) {
+    URL.revokeObjectURL(thumbnailUrl.value)
+    thumbnailUrl.value = ''
+  }
+}
+
+async function loadThumbnail() {
+  revokeThumbnail()
+  imageError.value = false
+  if (!props.file?.id || !isImage(props.file.mime_type)) return
+  try {
+    const res = await fileApi.previewFile(props.file.id, true)
+    thumbnailUrl.value = URL.createObjectURL(res.data as Blob)
+  } catch {
+    imageError.value = true
+  }
+}
+
+watch(() => props.file?.id, () => {
+  loadThumbnail()
+}, { immediate: true })
+
+onUnmounted(() => {
+  revokeThumbnail()
 })
 
 function handleImageError() {
@@ -152,6 +176,10 @@ function handleClick() {
 
 function handleDoubleClick() {
   emit('dblclick', props.file)
+}
+
+function handleContextMenu(event: MouseEvent) {
+  emit('context-menu', props.file, event)
 }
 
 function handlePreview() {

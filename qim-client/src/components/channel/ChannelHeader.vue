@@ -32,6 +32,14 @@
     </div>
     <div class="header-actions">
       <button
+        class="refresh-btn"
+        @click="$emit('refresh')"
+        :aria-label="`刷新 ${channel.name} 消息`"
+        title="刷新消息"
+      >
+        <i class="fas fa-sync-alt"></i>
+      </button>
+      <button
         v-if="channel.is_subscribed && !channel.is_default"
         class="subscribe-btn subscribed"
         @click="$emit('unsubscribe', channel)"
@@ -76,6 +84,7 @@ const props = defineProps<Props>()
 defineEmits<{
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
+  refresh: []
 }>()
 
 const messageCount = computed(() => {
@@ -226,5 +235,35 @@ const messageCount = computed(() => {
   background: rgba(156, 163, 175, 0.15);
   color: var(--text-secondary);
   cursor: default;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 8px;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-color);
+}
+
+.refresh-btn:active {
+  transform: rotate(180deg);
+}
+
+.refresh-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 </style>

@@ -44,6 +44,7 @@
       :read-users-map="readUsersMap"
       :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
+      :current-user-id="currentUserId"
       :is-members-sidebar-expanded="isMembersSidebarExpanded"
       :show-member-search="showMemberSearch"
       :member-search-query="memberSearchQuery"

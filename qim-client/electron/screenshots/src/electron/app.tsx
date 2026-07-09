@@ -45,6 +45,10 @@ export default function App(): ReactElement {
     [display],
   );
 
+  const onImageReady = useCallback(() => {
+    window.screenshots.captureReady();
+  }, []);
+
   useEffect(() => {
     const onSetLang = (lang: Lang) => {
       setLang(lang);
@@ -93,6 +97,20 @@ export default function App(): ReactElement {
     };
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onCancel]);
+
   return (
     <div className="body">
       <Screenshots
@@ -101,6 +119,7 @@ export default function App(): ReactElement {
         height={height}
         lang={lang}
         initialPosition={initialPosition}
+        onImageReady={onImageReady}
         onSave={onSave}
         onCancel={onCancel}
         onOk={onOk}

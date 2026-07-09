@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import type { Conversation, Message } from '../types'
 import { request } from './useRequest'
 import { useChatStore } from '../stores/chat'
+import { sameConversationId } from '../utils/conversationId'
 
 /**
  * 会话管理 composable
@@ -27,7 +28,7 @@ export function useConversation() {
   const messages = computed(() => chatStore.currentMessages)
 
   const currentConversation = computed(() => {
-    return conversations.value.find(c => c.id === currentConversationId.value) || null
+    return conversations.value.find(c => sameConversationId(c.id, currentConversationId.value)) || null
   })
 
   const pinnedConversations = computed(() => {

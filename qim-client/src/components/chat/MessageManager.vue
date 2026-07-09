@@ -163,6 +163,9 @@
                   </div>
                 </div>
               </template>
+              <template v-else-if="message.type === 'markdown'">
+                <MarkdownRenderer :content="message.content" />
+              </template>
             </div>
           </div>
         </div>
@@ -247,6 +250,7 @@ import QMessageBox from '../../utils/qmessagebox'
 import { messageApi } from '../../api/message'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { parseContent } from '../../utils/mentions'
+import MarkdownRenderer from '../shared/MarkdownRenderer.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -287,6 +291,17 @@ const currentPageCount = computed(() => {
 watch(() => props.visible, (newVal) => {
   if (newVal && props.conversationId) {
     loadMessages()
+  } else if (!newVal) {
+    searchQuery.value = ''
+    selectedMessageType.value = 'all'
+    selectedDateRange.value = 'all'
+    customDateStart.value = ''
+    customDateEnd.value = ''
+    messages.value = []
+    total.value = 0
+    currentPage.value = 1
+    jumpToPage.value = 1
+    isLoadingMessages.value = false
   }
 })
 
@@ -303,6 +318,7 @@ const loadMessages = async (page: number = 1) => {
 
   isLoadingMessages.value = true
   currentPage.value = page
+  jumpToPage.value = page
 
   try {
     const params: Record<string, string> = {
@@ -357,12 +373,14 @@ const loadMessages = async (page: number = 1) => {
         name: message.sender.name || message.sender.nickname || message.sender.username || '未知用户'
       } : null
     }))
-    messages.value.sort((a, b) => b.timestamp - a.timestamp)
     total.value = result.total
-  } catch (error) {
-    if (error instanceof Error) {
-      QMessage.error(error.message || '加载消息失败，请稍后重试')
-    }
+  } catch (error: any) {
+    const msg = error?.response?.data?.message
+      || error?.message
+      || '加载消息失败，请稍后重试'
+    QMessage.error(msg)
+    messages.value = []
+    total.value = 0
   } finally {
     isLoadingMessages.value = false
   }
@@ -370,6 +388,18 @@ const loadMessages = async (page: number = 1) => {
 
 // 应用过滤器
 const applyFilters = () => {
+  if (selectedDateRange.value === 'custom') {
+    const start = customDateStart.value
+    const end = customDateEnd.value
+    if (!start || !end) {
+      QMessage.warning('请选择完整的日期范围')
+      return
+    }
+    if (start > end) {
+      QMessage.warning('开始日期不能晚于结束日期')
+      return
+    }
+  }
   loadMessages(1)
 }
 
@@ -469,7 +499,20 @@ const currentMediaMessage = ref<any>(null)
 const handleMediaClick = (message: any, event: MouseEvent) => {
   event.stopPropagation()
   currentMediaMessage.value = message
-  mediaMenuPosition.value = { x: event.clientX, y: event.clientY }
+  const menuWidth = 140
+  const menuHeight = 80
+  const padding = 8
+  let x = event.clientX
+  let y = event.clientY
+  if (x + menuWidth + padding > window.innerWidth) {
+    x = window.innerWidth - menuWidth - padding
+  }
+  if (y + menuHeight + padding > window.innerHeight) {
+    y = window.innerHeight - menuHeight - padding
+  }
+  if (x < padding) x = padding
+  if (y < padding) y = padding
+  mediaMenuPosition.value = { x, y }
   mediaMenuVisible.value = true
 }
 

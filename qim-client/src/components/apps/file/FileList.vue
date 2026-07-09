@@ -7,13 +7,14 @@
     >
       <!-- 网格视图 -->
       <div v-if="viewMode === 'grid'" class="file-grid">
-        <FileGridItem
+          <FileGridItem
           v-for="file in files"
           :key="file.id"
           :file="file"
           :is-selected="selectedFileIds.has(file.id)"
           @click="handleFileClick"
           @dblclick="handleFileDoubleClick"
+          @context-menu="handleFileContextMenu"
           @preview="handleFilePreview"
           @download="handleFileDownload"
           @star="handleFileStar"
@@ -45,6 +46,7 @@
             :grid-style="gridStyle"
             @click="handleFileClick"
             @dblclick="handleFileDoubleClick"
+            @context-menu="handleFileContextMenu"
             @preview="handleFilePreview"
             @download="handleFileDownload"
             @star="handleFileStar"
@@ -107,6 +109,7 @@ const emit = defineEmits<{
   (e: 'star', file: FileItem): void
   (e: 'share', file: FileItem): void
   (e: 'delete', file: FileItem): void
+  (e: 'context-menu', file: FileItem, event: MouseEvent): void
   (e: 'selection-change', fileIds: Set<number>): void
 }>()
 
@@ -140,6 +143,10 @@ function handleFileDoubleClick(file: FileItem) {
 
 function handleFilePreview(file: FileItem) {
   emit('preview', file)
+}
+
+function handleFileContextMenu(file: FileItem, event: MouseEvent) {
+  emit('context-menu', file, event)
 }
 
 function handleFileDownload(file: FileItem) {

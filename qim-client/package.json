@@ -21,7 +21,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:unit && npm run test:e2e",
     "electron:build": "electron-builder",
-    "electron:build:win7": "electron-builder --win --x64 --c.electronVersion=22.3.27 --c.publish.url='${env.QIM_UPDATE_URL}/api/v1/updates/win7/'",
+    "electron:build:win7": "electron-builder --win --x64 -c electron-builder.win7.json --publish never",
     "electron:build:win10": "electron-builder --win --x64",
     "electron:build:linux": "electron-builder --linux",
     "electron:build:mac": "electron-builder --mac",

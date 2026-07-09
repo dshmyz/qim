@@ -4,6 +4,7 @@
       :channel="channel"
       @subscribe="$emit('subscribe', $event)"
       @unsubscribe="$emit('unsubscribe', $event)"
+      @refresh="$emit('refresh')"
     />
 
     <div v-if="!channel.is_subscribed && !isCreator" class="subscribe-banner">
@@ -126,6 +127,7 @@ const emit = defineEmits<{
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
   copyLink: [message: ChannelMessage]
+  refresh: []
 }>()
 
 const localMessage = ref(props.initialMessage)

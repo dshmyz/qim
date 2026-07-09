@@ -143,10 +143,10 @@ export function useWebSocketHandlers() {
 
   const handleGroupAnnouncementUpdated = (data: any) => {
     logger.log('群公告更新:', data)
-    const { group_id, announcement, announcer_name } = data
+    const { group_id, announcement, updater_name } = data
     
     showMessage({
-      message: `${announcer_name} 更新了群公告`,
+      message: `${updater_name ?? '有人'} 更新了群公告`,
       type: 'info',
       duration: 5000
     })

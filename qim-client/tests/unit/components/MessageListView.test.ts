@@ -18,6 +18,7 @@ const baseProps = {
   hasMoreMessages: false,
   conversationType: 'single',
   readUsersMap: {},
+  showReadReceipt: true,
   serverUrl: 'http://localhost:8080',
 }
 
@@ -82,5 +83,60 @@ describe('MessageListView image viewer', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     expect(viewerUpdate).toHaveBeenCalled()
+  })
+})
+
+describe('MessageListView self message detection', () => {
+  it('marks messages from the current user as self even when isSelf is missing', () => {
+    const wrapper = mount(MessageListView, {
+      props: {
+        ...baseProps,
+        currentUserId: 7,
+        messages: [
+          {
+            id: 'm1',
+            type: 'text',
+            content: 'hello',
+            timestamp: 1,
+            sender: { id: '7', name: 'me' },
+          },
+        ],
+      },
+      global: {
+        stubs: {
+          MessageItem: true,
+        },
+      },
+    })
+
+    const item = wrapper.findComponent({ name: 'MessageItem' })
+    expect(item.props('isSelf')).toBe(true)
+  })
+
+  it('falls back to sender_id for self message detection', () => {
+    const wrapper = mount(MessageListView, {
+      props: {
+        ...baseProps,
+        currentUserId: '9',
+        messages: [
+          {
+            id: 'm2',
+            type: 'text',
+            content: 'hello',
+            timestamp: 1,
+            sender_id: 9,
+            sender: { name: 'me' },
+          },
+        ],
+      },
+      global: {
+        stubs: {
+          MessageItem: true,
+        },
+      },
+    })
+
+    const item = wrapper.findComponent({ name: 'MessageItem' })
+    expect(item.props('isSelf')).toBe(true)
   })
 })
