@@ -277,6 +277,83 @@ func TestGetConversations_OrdersEmptyConversationByCreatedAt(t *testing.T) {
 	assert.Equal(t, newConversation.ID, response.Data.List[0].ID)
 }
 
+func TestGetConversationsCursorDoesNotRepeatRowsAfterActivityChanges(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+	activity := time.Date(2026, time.July, 10, 10, 0, 0, 0, time.UTC)
+
+	conversations := make([]*model.Conversation, 0, 3)
+	for range 3 {
+		conversation := &model.Conversation{Type: "single", LastMessageAt: &activity}
+		require.NoError(t, db.Create(conversation).Error)
+		require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: user.ID, Role: "member"}).Error)
+		conversations = append(conversations, conversation)
+	}
+
+	first := getConversationPage(t, r, "/api/v1/conversations?page_size=2")
+	require.Len(t, first.List, 2)
+	require.NotEmpty(t, first.NextCursor)
+
+	newestActivity := activity.Add(time.Hour)
+	require.NoError(t, db.Model(&model.Conversation{}).Where("id = ?", conversations[0].ID).Update("last_message_at", newestActivity).Error)
+
+	second := getConversationPage(t, r, "/api/v1/conversations?cursor="+first.NextCursor+"&page_size=2")
+	for _, conversation := range second.List {
+		assert.NotContains(t, first.List, conversation)
+	}
+	assert.Empty(t, second.List)
+}
+
+func TestGetConversationsCursorBreaksActivityTiesByConversationID(t *testing.T) {
+	r, db := setupTestRouter(t)
+	user := createTestUser(t, db)
+	activity := time.Date(2026, time.July, 10, 10, 0, 0, 0, time.UTC)
+
+	conversations := make([]*model.Conversation, 0, 3)
+	for range 3 {
+		conversation := &model.Conversation{Type: "single", LastMessageAt: &activity}
+		require.NoError(t, db.Create(conversation).Error)
+		require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conversation.ID, UserID: user.ID, Role: "member"}).Error)
+		conversations = append(conversations, conversation)
+	}
+
+	first := getConversationPage(t, r, "/api/v1/conversations?page_size=2")
+	require.Equal(t, []uint{conversations[2].ID, conversations[1].ID}, first.List)
+	require.NotEmpty(t, first.NextCursor)
+
+	second := getConversationPage(t, r, "/api/v1/conversations?cursor="+first.NextCursor+"&page_size=2")
+	assert.Equal(t, []uint{conversations[0].ID}, second.List)
+}
+
+type conversationPageResponse struct {
+	List       []uint
+	NextCursor string `json:"next_cursor"`
+}
+
+func getConversationPage(t *testing.T, r *gin.Engine, target string) conversationPageResponse {
+	t.Helper()
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID uint `json:"id"`
+			} `json:"list"`
+			NextCursor string `json:"next_cursor"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code)
+	page := conversationPageResponse{NextCursor: response.Data.NextCursor}
+	for _, conversation := range response.Data.List {
+		page.List = append(page.List, conversation.ID)
+	}
+	return page
+}
+
 func TestGetConversations_SelfChatUsesCurrentUserAsDisplayMember(t *testing.T) {
 	r, db := setupTestRouter(t)
 	user := createTestUser(t, db)

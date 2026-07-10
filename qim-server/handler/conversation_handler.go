@@ -2,7 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -15,6 +17,40 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+type conversationCursor struct {
+	Pinned   bool   `json:"pinned"`
+	Activity string `json:"activity"`
+	ID       uint   `json:"id"`
+}
+
+func encodeConversationCursor(pinned bool, activity time.Time, id uint) (string, error) {
+	payload, err := json.Marshal(conversationCursor{
+		Pinned:   pinned,
+		Activity: activity.UTC().Format(time.RFC3339Nano),
+		ID:       id,
+	})
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decodeConversationCursor(encoded string) (conversationCursor, time.Time, error) {
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return conversationCursor{}, time.Time{}, err
+	}
+	var cursor conversationCursor
+	if err := json.Unmarshal(payload, &cursor); err != nil {
+		return conversationCursor{}, time.Time{}, err
+	}
+	activity, err := time.Parse(time.RFC3339Nano, cursor.Activity)
+	if err != nil || cursor.ID == 0 {
+		return conversationCursor{}, time.Time{}, fmt.Errorf("invalid cursor")
+	}
+	return cursor, activity, nil
+}
 
 func GetConversations(c *gin.Context) {
 	userID, _ := c.Get("user_id")
@@ -33,6 +69,17 @@ func GetConversations(c *gin.Context) {
 		pageSize = 100
 	}
 	offset := (page - 1) * pageSize
+	cursorValue := c.Query("cursor")
+	var cursor conversationCursor
+	var cursorActivity time.Time
+	if cursorValue != "" {
+		var err error
+		cursor, cursorActivity, err = decodeConversationCursor(cursorValue)
+		if err != nil {
+			response.BadRequest(c, "无效的分页游标")
+			return
+		}
+	}
 
 	db := database.GetDB()
 
@@ -41,6 +88,7 @@ func GetConversations(c *gin.Context) {
 	type ConversationMemberWithMeta struct {
 		model.ConversationMember
 		LastMessageAt *time.Time
+		CreatedAt     time.Time
 		IsPinned      bool
 		IsHidden      bool
 	}
@@ -50,16 +98,36 @@ func GetConversations(c *gin.Context) {
 		SELECT 
 			cm.*,
 			c.last_message_at,
+			c.created_at,
 			COALESCE(cs.is_pinned, false) as is_pinned,
 			COALESCE(cs.is_hidden, false) as is_hidden
 		FROM conversation_members cm
 		LEFT JOIN conversations c ON c.id = cm.conversation_id
 		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
 		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
-		ORDER BY is_pinned DESC, COALESCE(c.last_message_at, c.created_at) DESC
-		LIMIT ? OFFSET ?
 	`
-	db.Raw(query, uid, uid, pageSize, offset).Scan(&convMembersWithMeta)
+	args := []interface{}{uid, uid}
+	if cursorValue != "" {
+		query += `
+			AND (
+				COALESCE(cs.is_pinned, false) < ?
+				OR (COALESCE(cs.is_pinned, false) = ? AND COALESCE(c.last_message_at, c.created_at) < ?)
+				OR (COALESCE(cs.is_pinned, false) = ? AND COALESCE(c.last_message_at, c.created_at) = ? AND cm.conversation_id < ?)
+			)
+		`
+		args = append(args, cursor.Pinned, cursor.Pinned, cursorActivity, cursor.Pinned, cursorActivity, cursor.ID)
+	}
+	query += `
+		ORDER BY is_pinned DESC, COALESCE(c.last_message_at, c.created_at) DESC, cm.conversation_id DESC
+		LIMIT ?
+	`
+	if cursorValue == "" {
+		query += " OFFSET ?"
+		args = append(args, pageSize, offset)
+	} else {
+		args = append(args, pageSize+1)
+	}
+	db.Raw(query, args...).Scan(&convMembersWithMeta)
 
 	// 查询总数（排除已隐藏的会话）
 	var total int64
@@ -73,13 +141,39 @@ func GetConversations(c *gin.Context) {
 
 	if len(convMembersWithMeta) == 0 {
 		response.Success(c, gin.H{
-			"list":      []interface{}{},
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
-			"has_more":  false,
+			"list":        []interface{}{},
+			"total":       total,
+			"page":        page,
+			"page_size":   pageSize,
+			"has_more":    false,
+			"next_cursor": "",
 		})
 		return
+	}
+
+	hasMore := false
+	if cursorValue != "" {
+		hasMore = len(convMembersWithMeta) > pageSize
+		if hasMore {
+			convMembersWithMeta = convMembersWithMeta[:pageSize]
+		}
+	} else {
+		hasMore = offset+len(convMembersWithMeta) < int(total)
+	}
+
+	nextCursor := ""
+	if hasMore {
+		last := convMembersWithMeta[len(convMembersWithMeta)-1]
+		var err error
+		activity := last.CreatedAt
+		if last.LastMessageAt != nil {
+			activity = *last.LastMessageAt
+		}
+		nextCursor, err = encodeConversationCursor(last.IsPinned, activity, last.ConversationID)
+		if err != nil {
+			response.InternalServerError(c, "生成分页游标失败")
+			return
+		}
 	}
 
 	// 提取会话成员记录和会话 ID
@@ -341,13 +435,13 @@ func GetConversations(c *gin.Context) {
 	}
 
 	// 返回分页数据
-	hasMore := offset+len(convMembers) < int(total)
 	response.Success(c, gin.H{
-		"list":      conversations,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-		"has_more":  hasMore,
+		"list":        conversations,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
+		"has_more":    hasMore,
+		"next_cursor": nextCursor,
 	})
 }
 
