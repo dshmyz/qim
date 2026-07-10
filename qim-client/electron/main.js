@@ -1198,9 +1198,9 @@ async function ensureMediaPermissions() {
     }
   }
 
-  // 所有平台: 配置权限请求处理器，允许 media 类型权限请求
+  // 所有平台: 配置权限请求处理器，允许 media 和安全的剪贴板写入请求
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    if (permission === 'media') {
+    if (['media', 'clipboard-sanitized-write'].includes(permission)) {
       callback(true)
     } else {
       callback(false)
