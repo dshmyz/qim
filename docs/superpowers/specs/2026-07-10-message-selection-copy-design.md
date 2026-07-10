@@ -6,7 +6,7 @@ Make the chat context menu copy the complete text selected at the moment the men
 
 ## Design
 
-The chat window owns the context-menu interaction state. When it opens the message context menu, it snapshots `window.getSelection()?.toString().trim()` into the existing menu state. The copy action receives that snapshot and writes it directly when non-empty; otherwise it copies the clicked message's decoded text.
+The chat window owns the context-menu interaction state. When it opens the message context menu, it snapshots `window.getSelection()?.toString()` into the existing menu state. The copy action receives that snapshot and writes it directly when it is non-empty; otherwise it copies the clicked message's decoded text.
 
 The snapshot is never re-read after the menu opens. This removes dependence on browser selection changes caused by clicking the custom menu, and does not introduce module-level mutable state.
 

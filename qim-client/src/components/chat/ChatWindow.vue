@@ -158,7 +158,7 @@
       @close-read-users="showReadUsersModal = false"
       @save-file-as="(d: string) => saveFileAs(d, selectedMessage ? String(selectedMessage.id) : undefined)"
       @download-file="(d: string) => downloadFile(d, selectedMessage ? String(selectedMessage.id) : undefined)"
-      @copy-message="selectedMessage && copyMessage(selectedMessage)"
+      @copy-message="selectedMessage && copyMessage(selectedMessage, messageMenuSelection)"
       @forward-message="forwardMessage"
       @quote-message="quoteMessage"
       @add-to-notes-app="addToNotesApp"
@@ -575,6 +575,7 @@ const selectedUser = ref<any>(null)
 const showMessageContextMenuFlag = ref(false)
 const messageContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMessage = ref<any>(null)
+const messageMenuSelection = ref('')
 
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
@@ -1686,6 +1687,7 @@ const handleRecallMessage = async () => {
 const closeMessageContextMenu = () => {
   showMessageContextMenuFlag.value = false
   selectedMessage.value = null
+  messageMenuSelection.value = ''
   document.removeEventListener('click', closeMessageContextMenu)
 }
 
@@ -2452,6 +2454,8 @@ const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   if (message.isRecalled) {
     return
   }
+
+  messageMenuSelection.value = window.getSelection?.().toString() ?? ''
   
   // 计算菜单位置，确保在屏幕内显示
   const menuWidth = 180 // 菜单宽度

@@ -283,8 +283,19 @@ export function useMessageActions(
 
   /**
    * 复制消息内容
+   * 优先复制用户选中的文本，无选中时复制整条消息
    */
-  const copyMessage = async (message: Message) => {
+  const copyMessage = async (message: Message, selectedText?: string) => {
+    if (selectedText !== undefined && selectedText !== '') {
+      try {
+        await navigator.clipboard.writeText(selectedText)
+        QMessage.success('已复制')
+      } catch (err) {
+        console.error('复制失败:', err)
+      }
+      return
+    }
+
     if (!message || !message.content) {
       console.warn('消息内容为空')
       return
