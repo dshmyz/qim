@@ -45,6 +45,32 @@ describe('useChatStore', () => {
       expect(store.conversations).toEqual(mockConvs)
     })
 
+    it('deduplicates numeric and string forms of an ID, using incoming data', () => {
+      const store = useChatStore()
+
+      store.setConversations([
+        { id: 7 as any, name: '旧数据', type: 'single' } as Conversation,
+        { id: '7', name: '新数据', type: 'single' } as Conversation,
+      ])
+
+      expect(store.conversations).toEqual([
+        { id: '7', name: '新数据', type: 'single' }
+      ])
+    })
+
+    it('replaces an overlapping page row instead of appending it', () => {
+      const store = useChatStore()
+      store.setConversations([{ id: '1', name: '旧会话', type: 'single' } as Conversation])
+
+      store.mergeConversations([
+        { id: '1', name: '新会话', type: 'single' } as Conversation,
+        { id: '2', name: '下一页', type: 'group' } as Conversation,
+      ])
+
+      expect(store.conversations.map(c => c.id)).toEqual(['1', '2'])
+      expect(store.conversations[0].name).toBe('新会话')
+    })
+
     it('应该能更新已存在的会话', () => {
       const store = useChatStore()
       store.setConversations([

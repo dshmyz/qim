@@ -1099,6 +1099,7 @@ const {
   loadConversations: loadConversationsFromApi,
   resetState: _resetConversationState,
   updateConversations,
+  mergeConversations,
   setCurrentConversationId
 } = conversation
 
@@ -1106,7 +1107,7 @@ const {
 const mainWsHandlers = useMainWebSocketHandlers(currentConversationId, messages)
 
 // Main.vue 专用的会话逻辑
-const mainConvLogic = useMainConversationLogic(updateConversations, processConversation, conversations)
+const mainConvLogic = useMainConversationLogic(updateConversations, mergeConversations, processConversation, conversations)
 
 // Main.vue 专用的群组 handlers
 const mainGroupHandlers = useMainGroupHandlers(conversations, currentConversationId, messages)

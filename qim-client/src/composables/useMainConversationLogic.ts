@@ -6,6 +6,7 @@ import QMessage from '../utils/qmessage'
 
 export function useMainConversationLogic(
   updateConversations: (conversations: Conversation[]) => void,
+  mergeConversations: (conversations: Conversation[]) => void,
   processConversation: (conv: any) => Conversation,
   conversations: { value: Conversation[] }
 ) {
@@ -25,7 +26,7 @@ export function useMainConversationLogic(
         
         if (append) {
           // 追加模式：滚动加载更多
-          updateConversations([...conversations.value, ...serverConversations])
+          mergeConversations(serverConversations)
         } else {
           // 替换模式：首次加载或刷新
           updateConversations(serverConversations)

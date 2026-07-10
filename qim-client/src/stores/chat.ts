@@ -13,6 +13,14 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let lastSaveTime = 0
 const SAVE_THROTTLE = 500 // ms
 
+function mergeByConversationId(existing: Conversation[], incoming: Conversation[]) {
+  const merged = new Map<string, Conversation>()
+  for (const conversation of [...existing, ...incoming]) {
+    merged.set(String(conversation.id), conversation)
+  }
+  return [...merged.values()]
+}
+
 function saveToStorage(convs: Conversation[]) {
   const now = Date.now()
   // 如果距上次写入不足 throttle 时间，延迟写入
@@ -107,7 +115,11 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function setConversations(convs: Conversation[]) {
-    conversations.value = convs
+    conversations.value = mergeByConversationId([], convs)
+  }
+
+  function mergeConversations(incoming: Conversation[]) {
+    conversations.value = mergeByConversationId(conversations.value, incoming)
   }
 
   function updateConversation(conversation: Conversation) {
@@ -390,6 +402,7 @@ export const useChatStore = defineStore('chat', () => {
     prependMessages,
     updateMessage,
     setConversations,
+    mergeConversations,
     updateConversation,
     patchConversation,
     addConversation,

@@ -109,6 +109,10 @@ export function useConversation() {
     chatStore.setConversations(newConversations)
   }
 
+  const mergeConversations = (incoming: Conversation[]) => {
+    chatStore.mergeConversations(incoming)
+  }
+
   const addMessage = (message: Message) => {
     if (currentConversationId.value) {
       chatStore.appendMessage(currentConversationId.value, message)
@@ -222,6 +226,7 @@ export function useConversation() {
     handleMarkRead,
     updateConversation,
     updateConversations,
+    mergeConversations,
     addMessage,
     clearMessages,
     addConversation,
