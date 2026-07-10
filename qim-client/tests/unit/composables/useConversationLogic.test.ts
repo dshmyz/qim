@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 import { useConversationLogic } from '@/composables/useConversationLogic'
+import { useMainConversationLogic } from '@/composables/useMainConversationLogic'
+
+const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }))
+
+vi.mock('@/composables/useRequest', () => ({
+  request: requestMock
+}))
 
 describe.skip('useConversationLogic', () => {
   let conversationLogic: ReturnType<typeof useConversationLogic>
@@ -19,11 +27,6 @@ describe.skip('useConversationLogic', () => {
     })
 
     it('should handle load error gracefully', async () => {
-      // Mock request to throw error
-      vi.mock('../composables/useRequest', () => ({
-        request: vi.fn().mockRejectedValue(new Error('Network error'))
-      }))
-
       await conversationLogic.loadConversations()
 
       // 验证错误处理
@@ -80,5 +83,78 @@ describe.skip('useConversationLogic', () => {
       // 验证新会话被选中
       // 验证消息被加载
     })
+  })
+})
+
+describe('useMainConversationLogic', () => {
+  beforeEach(() => {
+    requestMock.mockReset()
+  })
+
+  it('uses next_cursor for the next incremental request', async () => {
+    requestMock
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          list: [{ id: '1', name: 'First', type: 'single' }],
+          has_more: true,
+          next_cursor: 'cursor-1'
+        }
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          list: [{ id: '2', name: 'Second', type: 'single' }],
+          has_more: false
+        }
+      })
+
+    const logic = useMainConversationLogic(
+      vi.fn(),
+      vi.fn(),
+      conversation => conversation,
+      ref([])
+    )
+
+    await logic.loadConversations()
+    await logic.loadMoreConversations()
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/conversations?page=2&page_size=20&cursor=cursor-1'
+    )
+  })
+
+  it('keeps numeric page requests when the server does not provide next_cursor', async () => {
+    requestMock
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          list: [{ id: '1', name: 'First', type: 'single' }],
+          has_more: true
+        }
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          list: [{ id: '2', name: 'Second', type: 'single' }],
+          has_more: false
+        }
+      })
+
+    const logic = useMainConversationLogic(
+      vi.fn(),
+      vi.fn(),
+      conversation => conversation,
+      ref([])
+    )
+
+    await logic.loadConversations()
+    await logic.loadMoreConversations()
+
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/conversations?page=2&page_size=20'
+    )
   })
 })

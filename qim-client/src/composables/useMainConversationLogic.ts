@@ -12,15 +12,17 @@ export function useMainConversationLogic(
 ) {
   const conversationPage = ref(1)
   const conversationPageSize = ref(20)
+  const nextCursor = ref<string | null>(null)
   const hasMoreConversations = ref(true)
   const isLoadingConversations = ref(false)
 
-  const loadConversations = async (page: number = 1, append: boolean = false) => {
+  const loadConversations = async (page: number = 1, append: boolean = false, cursor: string | null = null) => {
     if (isLoadingConversations.value) return
     
     isLoadingConversations.value = true
     try {
-      const response = await request(`/api/v1/conversations?page=${page}&page_size=${conversationPageSize.value}`)
+      const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+      const response = await request(`/api/v1/conversations?page=${page}&page_size=${conversationPageSize.value}${cursorQuery}`)
       if (response.code === 0 && response.data) {
         const serverConversations = response.data.list.map((conv: any) => processConversation(conv))
         
@@ -33,6 +35,7 @@ export function useMainConversationLogic(
         }
         
         conversationPage.value = page
+        nextCursor.value = response.data.next_cursor || null
         hasMoreConversations.value = response.data.has_more
       } else {
         if (!append) {
@@ -54,7 +57,7 @@ export function useMainConversationLogic(
 
   const loadMoreConversations = async () => {
     if (!hasMoreConversations.value || isLoadingConversations.value) return
-    await loadConversations(conversationPage.value + 1, true)
+    await loadConversations(conversationPage.value + 1, true, nextCursor.value)
   }
 
   return {
