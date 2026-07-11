@@ -28,7 +28,8 @@ function mountSettingsPanel() {
 // 通过文本匹配点击侧边栏 Tab，避免 Tab 增减后索引变化导致测试失效
 async function clickTab(wrapper: ReturnType<typeof mountSettingsPanel>, tabName: string) {
   const tab = wrapper.findAll('.settings-sidebar-item').find(item => item.text().includes(tabName))
-  if (tab) await tab.trigger('click')
+  expect(tab, `应找到 Tab：${tabName}`).toBeTruthy()
+  await tab!.trigger('click')
 }
 
 describe('SettingsPanel 清理与修补', () => {
