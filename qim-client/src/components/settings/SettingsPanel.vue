@@ -706,25 +706,6 @@ input:checked + .slider:before {
   box-shadow: var(--shadow-sm);
 }
 
-.clear-cache-btn,
-.security-btn {
-  padding: 10px 20px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--btn-bg);
-  cursor: pointer;
-  color: var(--text-color);
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.clear-cache-btn:hover,
-.security-btn:hover {
-  background: var(--hover-color);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
 .browse-btn {
   padding: 10px 16px;
   border: 1px solid var(--border-color);
