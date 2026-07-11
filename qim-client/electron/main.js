@@ -260,6 +260,7 @@ let screenshotContentProtectionEnabled = false
 let trayFlashInterval = null
 let isTrayFlashing = false
 let normalTrayIcon = null
+let blankTrayIcon = null
 let hasUnread = false
 
 // ==================== File Download (built-in download manager) ====================
@@ -516,6 +517,10 @@ function createWindow() {
   mainWindow.on('destroyed', function () {
     console.log('Window destroyed event triggered')
     mainWindow = null
+  })
+
+  mainWindow.on('focus', () => {
+    stopTrayFlash()
   })
 
   initScreenshot()
@@ -783,6 +788,15 @@ function createTray() {
   }
 }
 
+function getBlankTrayIcon() {
+  if (!blankTrayIcon) {
+    blankTrayIcon = nativeImage.createFromDataURL(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAF0lEQVR4nGNgGAWjYBSMglEwCkbB4AQAB6YAAW3k4IMAAAAASUVORK5CYII='
+    )
+  }
+  return blankTrayIcon
+}
+
 function flashTray() {
   if (!tray) return
 
@@ -806,26 +820,15 @@ function flashTray() {
     normalTrayIcon = loadIcon(22)
   }
   let flashCount = 0
-  const maxFlashCount = 20
 
   trayFlashInterval = setInterval(() => {
     flashCount++
-    if (flashCount > maxFlashCount) {
-      clearInterval(trayFlashInterval)
-      trayFlashInterval = null
-      isTrayFlashing = false
-      if (normalTrayIcon) {
-        tray.setImage(normalTrayIcon)
-      }
-      return
-    }
-
     if (flashCount % 2 === 0) {
       if (normalTrayIcon) {
         tray.setImage(normalTrayIcon)
       }
     } else {
-      tray.setImage(nativeImage.createEmpty())
+      tray.setImage(getBlankTrayIcon())
     }
   }, 500)
 }

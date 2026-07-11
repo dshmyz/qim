@@ -22,6 +22,7 @@
         :show-read-receipt="showReadReceipt"
         :server-url="serverUrl"
         @contextmenu="(e: MouseEvent) => $emit('message-contextmenu', e, message)"
+          @mousedown="(e: MouseEvent) => { if (e.button === 2) recordSelectionBeforeContextMenu() }"
         @show-user-profile="(user: any) => $emit('show-user-profile', user)"
         @preview-image="(img: any) => $emit('preview-image', img)"
         @download-file="(file: any) => $emit('download-file', file)"
@@ -42,6 +43,7 @@
 
 <script setup lang="ts">
 import MessageItem from '../message/MessageItem.vue'
+import { recordSelectionBeforeContextMenu } from '../../composables/useMessageActions'
 
 interface Message {
   id: string

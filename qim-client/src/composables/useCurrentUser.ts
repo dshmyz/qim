@@ -6,7 +6,10 @@ export interface UserProfile {
   nickname: string
   username: string
   signature: string
-  id: string
+  phone: string
+  email: string
+  gender: string
+  department: string
   joinDate: string
 }
 
@@ -24,13 +27,25 @@ export interface CurrentUser {
 export function useCurrentUser() {
   const currentUser = ref<CurrentUser | null>(getCurrentUser())
 
-  const userProfile = ref<UserProfile>({
+  const formatJoinDate = (createdAt?: string | Date): string => {
+    if (!createdAt) return ''
+    const d = new Date(createdAt)
+    if (isNaN(d.getTime())) return ''
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  const buildProfile = (): UserProfile => ({
     nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
     username: currentUser.value?.username || '',
-    signature: currentUser.value?.signature || '这个人很懒，什么都没留下',
-    id: currentUser.value?.id?.toString() || 'user_123456',
-    joinDate: '2023-01-01'
+    signature: currentUser.value?.signature || '',
+    phone: currentUser.value?.phone || '',
+    email: currentUser.value?.email || '',
+    gender: currentUser.value?.gender || 'secret',
+    department: currentUser.value?.organization || '',
+    joinDate: formatJoinDate(currentUser.value?.created_at),
   })
+
+  const userProfile = ref<UserProfile>(buildProfile())
 
   function getCurrentUser(): CurrentUser | null {
     const userStr = localStorage.getItem('user')
@@ -73,13 +88,7 @@ export function useCurrentUser() {
   }
 
   const syncUserProfile = () => {
-    userProfile.value = {
-      nickname: currentUser.value?.nickname || currentUser.value?.username || '我的账号',
-      username: currentUser.value?.username || '',
-      signature: currentUser.value?.signature || '这个人很懒，什么都没留下',
-      id: currentUser.value?.id?.toString() || 'user_123456',
-      joinDate: '2023-01-01'
-    }
+    userProfile.value = buildProfile()
   }
 
   watch(() => currentUser.value, () => {

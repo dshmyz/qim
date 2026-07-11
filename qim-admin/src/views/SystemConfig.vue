@@ -5,13 +5,15 @@
         <h3>系统配置</h3>
       </div>
 
-      <el-form
-        ref="configFormRef"
-        :model="configForm"
-        label-width="140px"
-        v-loading="loading"
-        class="config-form"
-      >
+      <el-tabs v-model="activeTab" class="config-tabs">
+        <el-tab-pane label="基础配置" name="basic">
+          <el-form
+            ref="configFormRef"
+            :model="configForm"
+            label-width="140px"
+            v-loading="loading"
+            class="config-form"
+          >
         <el-divider content-position="left">消息设置</el-divider>
 
         <el-form-item label="消息撤回时限">
@@ -213,8 +215,12 @@
           <el-button @click="fetchConfig">重置</el-button>
         </el-form-item>
       </el-form>
+        </el-tab-pane>
 
-      <MessageRemindWebhookConfig />
+        <el-tab-pane label="消息提醒 Webhook" name="webhook">
+          <MessageRemindWebhookConfig />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
@@ -230,6 +236,7 @@ import MessageRemindWebhookConfig from './components/MessageRemindWebhookConfig.
 const loading = ref(false)
 const submitting = ref(false)
 const configFormRef = ref<FormInstance>()
+const activeTab = ref<'basic' | 'webhook'>('basic')
 
 const configForm = reactive<SystemConfig>({
   messageRecallTime: 120,
@@ -309,6 +316,10 @@ onMounted(fetchConfig)
 
 .config-form {
   max-width: 600px;
+}
+
+.config-tabs {
+  margin-top: 8px;
 }
 
 .form-item-with-desc {

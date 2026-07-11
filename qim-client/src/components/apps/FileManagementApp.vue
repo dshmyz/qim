@@ -228,8 +228,9 @@ const FileActionsModal = defineAsyncComponent(() => import('./file/FileActionsMo
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
 import { useFileUpload, uploadFile as uploadFileChunked } from '../../composables/useFileUpload'
+import { useFileDownload } from '../../composables/useFileDownload'
 import { useUploadStore } from '../../stores/upload'
-import { fileApi, type FileItem, type FolderItem } from '../../api/file'
+import { type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
@@ -271,6 +272,7 @@ const {
 
 const uploadStore = useUploadStore()
 const { tasks } = useFileUpload()
+const { downloadFile } = useFileDownload()
 
 const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
 const fileListRef = ref<InstanceType<typeof FileList> | null>(null)
@@ -390,16 +392,7 @@ const closePreviewModal = () => {
 
 const handleFileDownload = async (file: FileItem) => {
   try {
-    const response = await fileApi.downloadFile(file.id)
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', file.name)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    QMessage.success('文件下载成功')
+    await downloadFile(file)
   } catch (e) {
     QMessage.error('文件下载失败')
   }

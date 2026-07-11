@@ -106,6 +106,10 @@ func (s *SystemConfigService) BatchUpdate(configs map[string]interface{}) error 
 				cfgType = "number"
 			} else if _, ok := value.(bool); ok {
 				cfgType = "boolean"
+			} else if _, ok := value.(int); ok {
+				cfgType = "number"
+			} else if _, ok := value.(int64); ok {
+				cfgType = "number"
 			}
 
 			if result.Error != nil {

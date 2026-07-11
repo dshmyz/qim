@@ -175,53 +175,79 @@
       document.querySelectorAll('.calculator-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           const value = this.getAttribute('data-value');
-
-          if (value === 'C') {
-            currentInput = '';
-            previousInput = '';
-            operator = null;
-            shouldResetScreen = false;
-            inputDisplay.textContent = '';
-          } else if (value === 'backspace') {
-            currentInput = currentInput.slice(0, -1);
-          } else if (['+', '-', '*', '/', '%'].includes(value)) {
-            if (operator && !shouldResetScreen) {
-              const result = calculate(previousInput, currentInput, operator);
-              currentInput = result.toString();
-              previousInput = currentInput;
-            } else {
-              previousInput = currentInput;
-            }
-            operator = value;
-            shouldResetScreen = true;
-            inputDisplay.textContent = previousInput + ' ' + value;
-          } else if (value === '=') {
-            if (operator) {
-              const result = calculate(previousInput, currentInput, operator);
-              currentInput = result.toString();
-              previousInput = '';
-              operator = null;
-              shouldResetScreen = true;
-              inputDisplay.textContent = '';
-            }
-          } else if (value === '.') {
-            if (shouldResetScreen) {
-              currentInput = '0.';
-              shouldResetScreen = false;
-            } else if (!currentInput.includes('.')) {
-              currentInput += '.';
-            }
-          } else {
-            if (shouldResetScreen || currentInput === '0') {
-              currentInput = value;
-              shouldResetScreen = false;
-            } else {
-              currentInput += value;
-            }
-          }
-          updateDisplay();
+          handleInput(value);
         });
       });
+
+      // 统一输入处理（按钮点击和键盘输入共用）
+      function handleInput(value) {
+        if (!value) return;
+
+        if (value === 'C') {
+          currentInput = '';
+          previousInput = '';
+          operator = null;
+          shouldResetScreen = false;
+          inputDisplay.textContent = '';
+        } else if (value === 'backspace') {
+          currentInput = currentInput.slice(0, -1);
+        } else if (['+', '-', '*', '/', '%'].includes(value)) {
+          if (operator && !shouldResetScreen) {
+            const result = calculate(previousInput, currentInput, operator);
+            currentInput = result.toString();
+            previousInput = currentInput;
+          } else {
+            previousInput = currentInput;
+          }
+          operator = value;
+          shouldResetScreen = true;
+          inputDisplay.textContent = previousInput + ' ' + value;
+        } else if (value === '=') {
+          if (operator) {
+            const result = calculate(previousInput, currentInput, operator);
+            currentInput = result.toString();
+            previousInput = '';
+            operator = null;
+            shouldResetScreen = true;
+            inputDisplay.textContent = '';
+          }
+        } else if (value === '.') {
+          if (shouldResetScreen) {
+            currentInput = '0.';
+            shouldResetScreen = false;
+          } else if (!currentInput.includes('.')) {
+            currentInput += '.';
+          }
+        } else {
+          if (shouldResetScreen || currentInput === '0') {
+            currentInput = value;
+            shouldResetScreen = false;
+          } else {
+            currentInput += value;
+          }
+        }
+        updateDisplay();
+      }
+
+      // 键盘输入支持：iframe 获得焦点后原生 keydown 直接生效
+      const keyMap = {
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+        '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+        '.': '.', '+': '+', '-': '-', '*': '*', '/': '/', '%': '%',
+        'Enter': '=', '=': '=',
+        'Backspace': 'backspace',
+        'Escape': 'C',
+      };
+
+      document.addEventListener('keydown', function(e) {
+        const value = keyMap[e.key];
+        if (!value) return;
+        e.preventDefault();
+        handleInput(value);
+      });
+
+      // 向父窗口声明需要键盘输入，父窗口会聚焦本 iframe
+      window.parent.postMessage({ type: 'request-keyboard' }, '*');
 
       // 向父窗口发送加载完成消息
       window.parent.postMessage({ type: 'miniapp-loaded', appId: 'calculator' }, '*');

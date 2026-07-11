@@ -10,7 +10,9 @@ export interface MessageSettings {
   notificationsEnabled: boolean
   soundEnabled: boolean
   desktopNotificationsEnabled: boolean
-  dndMode: 'none' | 'mute' | 'custom'
+  dndMode: 'none' | 'all_day' | 'custom'
+  dndStartTime: string
+  dndEndTime: string
   defaultSaveDirectory: string
 }
 
@@ -36,6 +38,8 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     soundEnabled: true,
     desktopNotificationsEnabled: true,
     dndMode: 'none',
+    dndStartTime: '22:00',
+    dndEndTime: '08:00',
     defaultSaveDirectory: ''
   })
 
@@ -55,6 +59,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (savedMessageSettings) {
       try {
         const parsed = JSON.parse(savedMessageSettings)
+        if (parsed.dndMode === 'work') parsed.dndMode = 'all_day'
         messageSettings.value = { ...messageSettings.value, ...parsed }
         userSavedDir = parsed.defaultSaveDirectory || ''
       } catch (e) {

@@ -185,6 +185,37 @@ const handleScroll = () => {
   }
 }
 
+// 信创系统（UOS/Kylin 等）将系统滚轮速度设为“最慢”时，Chromium 收到的 wheel
+// 事件 deltaY 过小甚至为 0，原生 overflow 滚动几乎无法移动，导致聊天窗口滚轮
+// 看似失效。这里仅在判定为“离散滚轮”且 delta 过小时补一个最小步长，保证可
+// 滚动；触控板/连续滚动以及正常 delta 仍交给原生处理，不影响其它平台体验。
+const WHEEL_DELTA_THRESHOLD = 16 // 像素：低于此值视为 OS 报告的过小 delta
+const WHEEL_MIN_STEP = 40        // 每次离散滚轮的最小滚动距离（像素）
+const WHEEL_DISCRETE_GAP = 80   // 两次 wheel 间隔大于此值（ms）视为离散滚轮
+let lastWheelTime = 0
+
+const handleWheel = (event: WheelEvent) => {
+  const el = messageListRef.value
+  if (!el) return
+
+  const now = event.timeStamp
+  const isDiscrete = now - lastWheelTime > WHEEL_DISCRETE_GAP
+  lastWheelTime = now
+
+  // 连续/触控板滚动交给原生处理
+  if (!isDiscrete) return
+
+  let delta = event.deltaY
+  if (event.deltaMode === 1) delta *= 16 // 行 -> 像素
+  else if (event.deltaMode === 2) delta *= el.clientHeight // 页 -> 像素
+
+  // delta 足够大时让原生滚动处理，避免影响正常平台体验
+  if (Math.abs(delta) >= WHEEL_DELTA_THRESHOLD) return
+
+  event.preventDefault()
+  el.scrollTop += delta < 0 ? -WHEEL_MIN_STEP : WHEEL_MIN_STEP
+}
+
 const throttledHandleScroll = () => {
   if (throttleTimeoutId !== null) return
   throttleTimeoutId = window.setTimeout(() => {
@@ -249,6 +280,7 @@ onMounted(() => {
   isMounted.value = true
   scrollToBottomWithDelay(100)
   updateImageViewer()
+  messageListRef.value?.addEventListener('wheel', handleWheel, { passive: false })
 })
 
 onUnmounted(() => {
@@ -261,6 +293,7 @@ onUnmounted(() => {
     clearTimeout(throttleTimeoutId)
     throttleTimeoutId = null
   }
+  messageListRef.value?.removeEventListener('wheel', handleWheel)
   destroyImageViewer()
 })
 

@@ -53,18 +53,29 @@
 
         <div class="form-row">
           <div class="form-group half">
-            <label class="form-label">部门</label>
-            <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
+            <label class="form-label">手机</label>
+            <div class="form-value readonly">{{ localProfile.phone || '未设置' }}</div>
           </div>
           <div class="form-group half">
-            <label class="form-label">ID</label>
-            <div class="form-value readonly">{{ localProfile.id }}</div>
+            <label class="form-label">邮箱</label>
+            <div class="form-value readonly">{{ localProfile.email || '未设置' }}</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label class="form-label">性别</label>
+            <div class="form-value readonly">{{ formatGender(localProfile.gender) }}</div>
+          </div>
+          <div class="form-group half">
+            <label class="form-label">部门</label>
+            <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label">加入时间</label>
-          <div class="form-value readonly">{{ localProfile.joinDate }}</div>
+          <div class="form-value readonly">{{ localProfile.joinDate || '未设置' }}</div>
         </div>
       </div>
     </div>
@@ -92,13 +103,15 @@ import ModalContainer from '../shared/ModalContainer.vue'
 
 interface Props {
   visible: boolean
-  currentUser?: { username?: string; avatar?: string; id?: string | number; department?: string }
+  currentUser?: { username?: string; avatar?: string; id?: string | number }
   serverUrl: string
   profile: {
     nickname?: string
     signature?: string
     username?: string
-    id?: string | number
+    phone?: string
+    email?: string
+    gender?: string
     joinDate?: string
     department?: string
   }
@@ -114,6 +127,14 @@ const localProfile = ref({ ...props.profile })
 const avatarInputRef = ref<HTMLInputElement | null>(null)
 const showCropper = ref(false)
 const pendingImageUrl = ref('')
+
+const formatGender = (gender?: string): string => {
+  switch (gender) {
+    case 'male': return '男'
+    case 'female': return '女'
+    default: return '保密'
+  }
+}
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -175,14 +196,15 @@ const handleSave = () => {
 <style scoped>
 .profile-layout {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 32px;
+  grid-template-columns: 180px 1fr;
+  gap: 28px;
 }
 
 .avatar-section {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding-top: 4px;
 }
 
 .avatar-wrapper {
@@ -192,7 +214,8 @@ const handleSave = () => {
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 2px solid var(--border-color, #e5e7eb);
 }
 
 .avatar-image {
@@ -204,7 +227,7 @@ const handleSave = () => {
 .avatar-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -219,7 +242,7 @@ const handleSave = () => {
 }
 
 .avatar-overlay i {
-  font-size: 24px;
+  font-size: 22px;
   margin-bottom: 4px;
 }
 
@@ -232,16 +255,17 @@ const handleSave = () => {
 }
 
 .avatar-hint {
-  margin-top: 12px;
+  margin-top: 10px;
   font-size: 12px;
   color: var(--text-secondary, #6b7280);
   text-align: center;
+  line-height: 1.5;
 }
 
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .form-group {
@@ -261,20 +285,21 @@ const handleSave = () => {
 }
 
 .form-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary, #6b7280);
+  letter-spacing: 0.2px;
 }
 
 .form-input,
 .form-textarea {
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
   font-size: 14px;
   color: var(--text-color, #111827);
   background: var(--input-bg, #ffffff);
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-input:focus,
@@ -286,20 +311,22 @@ const handleSave = () => {
 
 .form-textarea {
   resize: vertical;
-  min-height: 80px;
+  min-height: 72px;
   line-height: 1.5;
+  font-family: inherit;
 }
 
 .form-value.readonly {
-  padding: 10px 12px;
+  padding: 9px 12px;
   background: var(--secondary-color, #f9fafb);
   border-radius: 8px;
   font-size: 14px;
   color: var(--text-color, #111827);
+  border: 1px solid transparent;
 }
 
 .btn {
-  padding: 10px 24px;
+  padding: 9px 22px;
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -331,7 +358,7 @@ const handleSave = () => {
 @media (max-width: 768px) {
   .profile-layout {
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 20px;
   }
 
   .avatar-section {

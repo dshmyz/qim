@@ -1468,6 +1468,47 @@ const fetchMissedMessages = async () => {
 
 // WebSocket连接
 
+const DEFAULT_NOTIFICATION_ICON = '/app-logo.png'
+
+const getNotificationIcon = (avatar?: string | null, name = 'user') => {
+  if (!avatar?.trim()) return DEFAULT_NOTIFICATION_ICON
+
+  const icon = getAvatarUrl(avatar, name, serverUrl.value)
+  if (!icon || icon.startsWith('data:') || icon.startsWith('blob:')) {
+    return DEFAULT_NOTIFICATION_ICON
+  }
+  return icon
+}
+
+const isInDndTimeRange = (start: string, end: string, now = new Date()) => {
+  const toMinutes = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number)
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+    return hours * 60 + minutes
+  }
+
+  const startMinutes = toMinutes(start)
+  const endMinutes = toMinutes(end)
+  if (startMinutes === null || endMinutes === null) return false
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  if (startMinutes === endMinutes) return true
+  if (startMinutes < endMinutes) {
+    return nowMinutes >= startMinutes && nowMinutes < endMinutes
+  }
+  return nowMinutes >= startMinutes || nowMinutes < endMinutes
+}
+
+const isGlobalDndEnabled = () => {
+  const { dndMode, dndStartTime, dndEndTime } = messageSettings.value
+  if (dndMode === 'none') return false
+  if (dndMode === 'all_day') return true
+  if (dndMode === 'custom') {
+    return isInDndTimeRange(dndStartTime || '22:00', dndEndTime || '08:00')
+  }
+  return false
+}
+
 // 处理通话和屏幕共享通知
 const handleCallNotification = (type: string, data: any) => {
   const fromUserId = data.from_user_id || data.user_id
@@ -1506,9 +1547,7 @@ const handleCallNotification = (type: string, data: any) => {
   }
   
   if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
-    const notificationIcon = fromUserAvatar 
-      ? getAvatarUrl(fromUserAvatar, fromUserName, serverUrl.value)
-      : undefined
+    const notificationIcon = getNotificationIcon(fromUserAvatar, fromUserName)
     
     if (Notification.permission === 'granted') {
       new Notification(title, {
@@ -1792,8 +1831,12 @@ const handleNewMessage = async (msg: any) => {
   // 非当前会话且非流式消息，且未设置免打扰，触发提示音和桌面通知
   if (!isCurrentConv && !newMessage.isStreaming) {
     const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
-    if (messageSettings.value.notificationsEnabled && !conv?.muted) {
-      if (messageSettings.value.soundEnabled) {
+    const canAlert = messageSettings.value.notificationsEnabled && !isGlobalDndEnabled() && !conv?.muted
+    const canPlaySound = canAlert && messageSettings.value.soundEnabled
+    const canShowDesktopNotification = canAlert && messageSettings.value.desktopNotificationsEnabled && 'Notification' in window
+
+    if (canAlert) {
+      if (canPlaySound) {
         playMessageSound()
       }
 
@@ -1801,19 +1844,19 @@ const handleNewMessage = async (msg: any) => {
         window.electron.tray.flash()
       }
       
-      if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+      if (canShowDesktopNotification) {
         const notificationBody = formatNotificationContent(newMessage)
         if (Notification.permission === 'granted') {
           new Notification('新消息', {
             body: notificationBody,
-            icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
+            icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
           })
         } else if (Notification.permission !== 'denied') {
           Notification.requestPermission().then(permission => {
             if (permission === 'granted') {
               new Notification('新消息', {
                 body: notificationBody,
-                icon: getAvatarUrl(newMessage.sender.avatar, newMessage.sender.name || 'user', serverUrl.value)
+                icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
               })
             }
           })

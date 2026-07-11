@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import MessageManager from '@/components/chat/MessageManager.vue'
 import { messageApi } from '@/api/message'
 import QMessage from '@/utils/qmessage'
+import { downloadUrl } from '@/utils/download'
 
 vi.mock('@/api/message', () => ({
   messageApi: {
@@ -20,13 +21,25 @@ vi.mock('@/utils/qmessage', () => ({
   },
 }))
 
+vi.mock('@/utils/download', () => ({
+  downloadUrl: vi.fn(),
+}))
+
 vi.mock('@/composables/useServerUrl', () => ({
   getStoredServerUrl: () => 'http://localhost:3000',
 }))
 
-vi.mock('@/utils/mentions', () => ({
-  parseContent: (content: string) => ({ text: content, mentions: [] }),
+vi.mock('@/composables/useRequest', () => ({
+  getToken: () => 'token-1',
 }))
+
+vi.mock('@/utils/mentions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/mentions')>()
+  return {
+    ...actual,
+    parseContent: (content: string) => ({ text: content, mentions: [] }),
+  }
+})
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -73,7 +86,92 @@ describe('MessageManager', () => {
 
       const content = wrapper.find('.message-manager-item-content')
       expect(content.exists()).toBe(true)
-      expect(content.find('.markdown-renderer').exists()).toBe(true)
+      expect(content.find('.markdown-message').exists()).toBe(true)
+      expect(content.find('h1').text()).toContain('标题')
+      expect(content.find('strong').text()).toContain('粗体')
+    })
+
+    it('markdown 消息中的 @ mention token 应被解码为 @用户名', async () => {
+      mockMessages([
+        {
+          id: 2,
+          type: 'markdown',
+          content: '@{mention:3|张三} 请看 **文档**',
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: true,
+          },
+        },
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      const content = wrapper.find('.message-manager-item-content')
+      expect(content.exists()).toBe(true)
+      const html = content.html()
+      expect(html).toContain('@张三')
+      expect(html).not.toContain('@{mention:3|张三}')
+      expect(html).toContain('请看')
+      expect(content.find('strong').text()).toContain('文档')
+    })
+  })
+
+  describe('搜索高亮', () => {
+    it('搜索文本消息时应高亮所有命中的关键字', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'text',
+          content: 'Hello world, hello QIM',
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: true,
+          },
+        },
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.findAll('.search-highlight')).toHaveLength(0)
+
+      await wrapper.find('.search-input').setValue('hello')
+      await wrapper.find('.search-input').trigger('keyup.enter')
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalledTimes(2)
+      })
+      await wrapper.vm.$nextTick()
+
+      const highlights = wrapper.findAll('.search-highlight')
+      expect(highlights).toHaveLength(2)
+      expect(highlights.map(item => item.text())).toEqual(['Hello', 'hello'])
     })
   })
 
@@ -418,7 +516,268 @@ describe('MessageManager', () => {
     })
   })
 
+  describe('消息点击跳转', () => {
+    it('单击消息项不应跳转', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'text',
+          content: '点击查看原消息',
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const getSelectionSpy = vi
+        .spyOn(window, 'getSelection')
+        .mockReturnValue({ toString: () => '' } as Selection)
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: true,
+          },
+        },
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-manager-item').trigger('click')
+
+      expect(wrapper.emitted('scrollToMessage')).toBeUndefined()
+
+      getSelectionSpy.mockRestore()
+    })
+
+    it('双击消息项应跳转', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'text',
+          content: '双击查看原消息',
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const getSelectionSpy = vi
+        .spyOn(window, 'getSelection')
+        .mockReturnValue({ toString: () => '' } as Selection)
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: true,
+          },
+        },
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-manager-item').trigger('dblclick')
+
+      expect(wrapper.emitted('scrollToMessage')).toEqual([[1]])
+
+      getSelectionSpy.mockRestore()
+    })
+
+    it('选中文字后双击消息项不应跳转', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'text',
+          content: '这段内容需要复制',
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const getSelectionSpy = vi
+        .spyOn(window, 'getSelection')
+        .mockReturnValue({ toString: () => '内容需要复制' } as Selection)
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: true,
+          },
+        },
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-manager-item').trigger('dblclick')
+
+      expect(wrapper.emitted('scrollToMessage')).toBeUndefined()
+
+      getSelectionSpy.mockRestore()
+    })
+  })
+
   describe('媒体菜单边界检测', () => {
+    it('右键图片入口应打开媒体菜单', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'image',
+          content: JSON.stringify({ url: '/uploads/photo.jpg', name: 'photo.jpg' }),
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: { template: '<div><slot /></div>' },
+          },
+        },
+        attachTo: document.body,
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-file-link').trigger('contextmenu', {
+        clientX: 120,
+        clientY: 160,
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.media-action-menu').exists()).toBe(true)
+
+      wrapper.unmount()
+    })
+
+    it('下载预览图片时应使用图片原始文件名', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'image',
+          content: JSON.stringify({ url: '/uploads/photo.jpg', name: 'photo.jpg' }),
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+      ;(downloadUrl as any).mockResolvedValue({ mode: 'browser' })
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: { template: '<div><slot /></div>' },
+          },
+        },
+        attachTo: document.body,
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-file-link').trigger('click', {
+        clientX: 100,
+        clientY: 100,
+      })
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.media-menu-item')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.image-preview-download').trigger('click')
+
+      expect(downloadUrl).toHaveBeenCalledWith({
+        url: 'http://localhost:3000/uploads/photo.jpg',
+        filename: 'photo.jpg',
+        token: 'token-1',
+      })
+
+      wrapper.unmount()
+    })
+
+    it('下载文件时应复用通用下载工具', async () => {
+      mockMessages([
+        {
+          id: 1,
+          type: 'file',
+          content: JSON.stringify({ url: '/uploads/report.pdf', name: 'report.pdf' }),
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+      ;(downloadUrl as any).mockResolvedValue({ mode: 'browser' })
+
+      const wrapper = mount(MessageManager, {
+        props: {
+          visible: true,
+          conversationId: '1',
+        },
+        global: {
+          stubs: {
+            Teleport: { template: '<div><slot /></div>' },
+          },
+        },
+        attachTo: document.body,
+      })
+
+      await vi.waitFor(() => {
+        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.message-file-link').trigger('click', {
+        clientX: 100,
+        clientY: 100,
+      })
+      await wrapper.vm.$nextTick()
+
+      await wrapper.findAll('.media-menu-item')[1].trigger('click')
+
+      expect(downloadUrl).toHaveBeenCalledWith({
+        url: 'http://localhost:3000/uploads/report.pdf',
+        filename: 'report.pdf',
+        token: 'token-1',
+      })
+
+      wrapper.unmount()
+    })
+
     it('菜单靠近右边缘时应向左偏移避免溢出', async () => {
       mockMessages([
         {

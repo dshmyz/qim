@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"strconv"
+
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
@@ -36,6 +38,13 @@ func mapConfigToFrontend(raw map[string]interface{}) map[string]interface{} {
 		case "file_upload:max_size":
 			if n, ok := v.(int); ok {
 				out["maxFileSize"] = n / (1024 * 1024)
+			} else if s, ok := v.(string); ok {
+				// 兜底：旧记录可能因类型识别 bug 被写成 type=string，按字符串解析回 int
+				if n, err := strconv.Atoi(s); err == nil {
+					out["maxFileSize"] = n / (1024 * 1024)
+				} else {
+					out["maxFileSize"] = 50
+				}
 			} else {
 				out["maxFileSize"] = 50
 			}

@@ -87,9 +87,17 @@
               <div class="dnd-setting">
                 <select v-model="localMessageSettings.dndMode" class="settings-select">
                   <option value="none">关闭</option>
-                  <option value="work">工作时间</option>
-                  <option value="custom">自定义</option>
+                  <option value="all_day">全天免打扰</option>
+                  <option value="custom">自定义时间段</option>
                 </select>
+              </div>
+            </div>
+            <div v-if="localMessageSettings.dndMode === 'custom'" class="settings-item">
+              <label>免打扰时间</label>
+              <div class="dnd-time-range">
+                <input v-model="localMessageSettings.dndStartTime" type="time" class="settings-select" />
+                <span>至</span>
+                <input v-model="localMessageSettings.dndEndTime" type="time" class="settings-select" />
               </div>
             </div>
             <div class="settings-item">
@@ -221,7 +229,7 @@ interface Props {
   currentUser?: { username?: string; avatar?: string }
   serverUrl: string
   profile: { nickname?: string; signature?: string }
-  messageSettings: { notificationsEnabled?: boolean; soundEnabled?: boolean; desktopNotificationsEnabled?: boolean; dndMode?: string; defaultSaveDirectory?: string }
+  messageSettings: { notificationsEnabled?: boolean; soundEnabled?: boolean; desktopNotificationsEnabled?: boolean; dndMode?: string; dndStartTime?: string; dndEndTime?: string; defaultSaveDirectory?: string }
   appearanceSettings: { theme?: string; fontSize?: number }
   advancedSettings: { twoFactorEnabled?: boolean }
 }
@@ -505,6 +513,17 @@ const handleTwoFactorChange = (event: Event) => {
   min-height: 80px;
   resize: vertical;
   font-family: inherit;
+}
+
+.dnd-time-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.dnd-time-range .settings-select {
+  max-width: 140px;
 }
 
 .settings-value {

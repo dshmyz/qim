@@ -86,7 +86,14 @@
           <div v-else-if="messages.length === 0" class="empty-message">
             暂无消息
           </div>
-          <div v-else v-for="message in messages" :key="message.id" class="message-manager-item" :class="{ 'is-recalled': message.isRecalled }" @click="!message.isRecalled && handleMessageClick(message.id)">
+          <div
+            v-else
+            v-for="message in messages"
+            :key="message.id"
+            class="message-manager-item"
+            :class="{ 'is-recalled': message.isRecalled }"
+            @dblclick="handleMessageClick(message)"
+          >
             <div class="message-manager-item-header">
               <span class="message-sender">{{ message.sender?.name || '未知用户' }}</span>
               <span class="message-time">{{ formatTime(message.timestamp) }}</span>
@@ -115,17 +122,30 @@
                     class="at-mention-chip"
                     :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
                   >{{ seg.text }}</span>
-                  <span v-else>{{ seg.text }}</span>
+                  <template v-else>
+                    <template v-for="(part, partIndex) in splitHighlightParts(seg.text)" :key="partIndex">
+                      <mark v-if="part.highlight" class="search-highlight">{{ part.text }}</mark>
+                      <span v-else>{{ part.text }}</span>
+                    </template>
+                  </template>
                 </template>
               </template>
               <template v-else-if="message.type === 'image'">
-                <div class="message-file-link" @click.stop="handleMediaClick(message, $event)">
+                <div
+                  class="message-file-link"
+                  @click.stop="handleMediaClick(message, $event)"
+                  @contextmenu.prevent.stop="handleMediaClick(message, $event)"
+                >
                   <i class="fas fa-image"></i>
                   <span>{{ getFileName(message) }}</span>
                 </div>
               </template>
               <template v-else-if="message.type === 'file'">
-                <div class="message-file-link" @click.stop="handleMediaClick(message, $event)">
+                <div
+                  class="message-file-link"
+                  @click.stop="handleMediaClick(message, $event)"
+                  @contextmenu.prevent.stop="handleMediaClick(message, $event)"
+                >
                   <i class="fas fa-file"></i>
                   <span>{{ getFileName(message) }}</span>
                 </div>
@@ -164,7 +184,7 @@
                 </div>
               </template>
               <template v-else-if="message.type === 'markdown'">
-                <MarkdownRenderer :content="message.content" />
+                <MarkdownMessage :content="message.content" />
               </template>
             </div>
           </div>
@@ -249,8 +269,10 @@ import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { messageApi } from '../../api/message'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { getToken } from '../../composables/useRequest'
 import { parseContent } from '../../utils/mentions'
-import MarkdownRenderer from '../shared/MarkdownRenderer.vue'
+import { downloadUrl } from '../../utils/download'
+import MarkdownMessage from '../message/MarkdownMessage.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -276,6 +298,7 @@ const pageSize = 20
 const jumpToPage = ref(1)
 const showImagePreview = ref(false)
 const previewImageUrl = ref('')
+const previewImageFilename = ref('image.png')
 
 const totalPages = computed(() => {
   return Math.ceil(total.value / pageSize)
@@ -419,69 +442,57 @@ const handleJump = () => {
 }
 
 // 处理消息点击，跳转到聊天窗口中的对应消息
-const handleMessageClick = (messageId: string) => {
-  emit('scrollToMessage', messageId)
+const handleMessageClick = (message: any) => {
+  if (message.isRecalled || window.getSelection()?.toString().trim()) {
+    return
+  }
+  emit('scrollToMessage', message.id)
+}
+
+const resolveMediaUrl = (message: any): string => {
+  const serverUrl = getStoredServerUrl()
+  let mediaUrl = message.content
+  try {
+    const contentObj = JSON.parse(message.content)
+    if (contentObj.url) {
+      mediaUrl = contentObj.url
+    }
+  } catch (e) {
+    mediaUrl = message.content
+  }
+  if (mediaUrl && !mediaUrl.startsWith('http')) {
+    return `${serverUrl.replace(/\/$/, '')}/${mediaUrl.replace(/^\//, '')}`
+  }
+  return mediaUrl
+}
+
+const downloadMedia = async (url: string, filename: string, successMessage: string, errorMessage: string) => {
+  if (!url) {
+    QMessage.error(errorMessage)
+    return
+  }
+  try {
+    await downloadUrl({
+      url,
+      filename,
+      token: getToken(),
+    })
+    QMessage.success(successMessage)
+  } catch (error) {
+    console.error(errorMessage, error)
+    QMessage.error(errorMessage)
+  }
 }
 
 // 下载文件
-const downloadFile = (message: any) => {
-  const serverUrl = getStoredServerUrl()
-  let fileUrl = message.content
-  try {
-    // 尝试解析content为JSON
-    const contentObj = JSON.parse(message.content)
-    if (contentObj.url) {
-      fileUrl = contentObj.url
-      // 确保文件URL包含服务器地址
-      if (fileUrl && !fileUrl.startsWith('http')) {
-        fileUrl = serverUrl + fileUrl
-      }
-    }
-  } catch (e) {
-    // 解析失败，直接使用content
-    // 确保文件URL包含服务器地址
-    if (fileUrl && !fileUrl.startsWith('http')) {
-      fileUrl = serverUrl + fileUrl
-    }
-  }
-  const link = document.createElement('a')
-  link.href = fileUrl
-  link.download = getFileName(message)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+const downloadFile = async (message: any) => {
+  await downloadMedia(resolveMediaUrl(message), getFileName(message), '文件下载已开始', '文件下载失败')
 }
 
 // 预览图片
 const previewImage = (message: any) => {
-  const serverUrl = getStoredServerUrl()
-  try {
-    // 尝试解析content为JSON
-    const contentObj = JSON.parse(message.content)
-    if (contentObj.url) {
-      let imageUrl = contentObj.url
-      // 确保图片URL包含服务器地址
-      if (imageUrl && !imageUrl.startsWith('http')) {
-        imageUrl = serverUrl + imageUrl
-      }
-      previewImageUrl.value = imageUrl
-    } else {
-      let imageUrl = message.content
-      // 确保图片URL包含服务器地址
-      if (imageUrl && !imageUrl.startsWith('http')) {
-        imageUrl = serverUrl + imageUrl
-      }
-      previewImageUrl.value = imageUrl
-    }
-  } catch (e) {
-    // 解析失败，直接使用content
-    let imageUrl = message.content
-    // 确保图片URL包含服务器地址
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      imageUrl = serverUrl + imageUrl
-    }
-    previewImageUrl.value = imageUrl
-  }
+  previewImageUrl.value = resolveMediaUrl(message)
+  previewImageFilename.value = getFileName(message) || 'image.png'
   showImagePreview.value = true
 }
 
@@ -489,6 +500,7 @@ const previewImage = (message: any) => {
 const closeImagePreview = () => {
   showImagePreview.value = false
   previewImageUrl.value = ''
+  previewImageFilename.value = 'image.png'
 }
 
 // 处理媒体文件点击
@@ -523,12 +535,12 @@ const closeMediaMenu = () => {
 
 const handleJumpFromMenu = () => {
   if (currentMediaMessage.value) {
-    handleMessageClick(currentMediaMessage.value.id)
+    emit('scrollToMessage', currentMediaMessage.value.id)
   }
   closeMediaMenu()
 }
 
-const handleDownloadFromMenu = () => {
+const handleDownloadFromMenu = async () => {
   if (currentMediaMessage.value) {
     if (currentMediaMessage.value.type === 'image') {
       previewImage(currentMediaMessage.value)
@@ -542,27 +554,7 @@ const handleDownloadFromMenu = () => {
 // 下载图片
 const downloadImage = async () => {
   if (!previewImageUrl.value) return
-  
-  try {
-    const response = await fetch(previewImageUrl.value)
-    if (response.ok) {
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'image.png'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      QMessage.success('图片下载成功')
-    } else {
-      QMessage.error('图片下载失败')
-    }
-  } catch (error) {
-    console.error('图片下载失败:', error)
-    QMessage.error('图片下载失败')
-  }
+  await downloadMedia(previewImageUrl.value, previewImageFilename.value, '图片下载已开始', '图片下载失败')
 }
 
 // 获取文件名
@@ -586,6 +578,11 @@ type TextSegment =
   | { type: 'text'; text: string }
   | { type: 'mention'; text: string; userId: number | 'all' }
 
+type HighlightPart = {
+  text: string
+  highlight: boolean
+}
+
 const parseTextSegments = (content: string): TextSegment[] => {
   const { text, mentions } = parseContent(content)
   if (mentions.length === 0) {
@@ -604,6 +601,35 @@ const parseTextSegments = (content: string): TextSegment[] => {
     result.push({ type: 'text', text: text.slice(lastEnd) })
   }
   return result
+}
+
+const splitHighlightParts = (text: string): HighlightPart[] => {
+  const keyword = searchQuery.value.trim()
+  if (!keyword) {
+    return [{ text, highlight: false }]
+  }
+
+  const lowerText = text.toLowerCase()
+  const lowerKeyword = keyword.toLowerCase()
+  const parts: HighlightPart[] = []
+  let cursor = 0
+  let index = lowerText.indexOf(lowerKeyword)
+
+  while (index !== -1) {
+    if (index > cursor) {
+      parts.push({ text: text.slice(cursor, index), highlight: false })
+    }
+    const end = index + keyword.length
+    parts.push({ text: text.slice(index, end), highlight: true })
+    cursor = end
+    index = lowerText.indexOf(lowerKeyword, cursor)
+  }
+
+  if (cursor < text.length) {
+    parts.push({ text: text.slice(cursor), highlight: false })
+  }
+
+  return parts.length > 0 ? parts : [{ text, highlight: false }]
 }
 
 // 格式化时间
@@ -1009,6 +1035,7 @@ onMounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   padding-left: 0;
+  user-select: text;
 }
 
 .message-manager-item-content.is-recalled {
@@ -1027,6 +1054,13 @@ onMounted(() => {
 .message-manager-item-content .at-mention-chip--all {
   color: #d97706;
   background: rgba(245, 158, 11, 0.18);
+}
+
+.search-highlight {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #fff3a3;
+  color: inherit;
 }
 
 .message-file-link {

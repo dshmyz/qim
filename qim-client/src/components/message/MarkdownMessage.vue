@@ -9,10 +9,15 @@ import { sanitizeMarkdown } from '../../utils/sanitize'
 import { decodeToPlainText } from '../../utils/mentions'
 import { emojiToHtml, classicToHtml } from '../../utils/emoji'
 
-const props = defineProps<{
-  content: string
-  isSelf: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    content: string
+    isSelf?: boolean
+  }>(),
+  {
+    isSelf: false,
+  }
+)
 
 const handleLinkClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement

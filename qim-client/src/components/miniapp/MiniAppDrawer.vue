@@ -48,26 +48,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { getStoredServerUrl } from '../../composables/useServerUrl'
-import { request } from '../../composables/useRequest'
-import { getCurrentUser } from '../../utils/user'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useMiniAppBridge, type MiniAppData } from '../../composables/useMiniAppBridge'
 
-export interface MiniAppData {
-  id: number | string
-  appID: string
-  name: string
-  icon?: string
-  path: string
-  description?: string
-  status?: string
-  permissions?: string
-}
-
-export interface MiniAppBridgeMessage {
-  type: string
-  payload?: any
-}
+export type { MiniAppData }
+export type { MiniAppBridgeMessage } from '../../composables/useMiniAppBridge'
 
 const props = defineProps<{
   miniApp: MiniAppData | null
@@ -78,234 +63,24 @@ const emit = defineEmits<{
   'show-toast': [message: string]
 }>()
 
-const visible = computed(() => !!props.miniApp)
-const iframeRef = ref<HTMLIFrameElement | null>(null)
-const loading = ref(false)
-const error = ref(false)
-const errorMessage = ref('')
+const {
+  visible,
+  iframeRef,
+  loading,
+  error,
+  errorMessage,
+  iframeSrc,
+  shouldSandbox,
+  getIframeAllow,
+  loadMiniApp,
+  close,
+  handleOverlayClick,
+  handleIframeLoad,
+  handleIframeError,
+} = useMiniAppBridge(props, emit)
+
+// Drawer 独有：宽度拖拽
 const drawerWidth = ref(400)
-
-const hasClipboardPermission = computed(() => {
-  try {
-    const perms = props.miniApp?.permissions ? JSON.parse(props.miniApp.permissions) as string[] : []
-    return perms.includes('clipboard')
-  } catch {
-    return false
-  }
-})
-
-const getIframeAllow = (): string => {
-  if (hasClipboardPermission.value) {
-    return 'clipboard-read; clipboard-write'
-  }
-  return ''
-}
-
-const shouldSandbox = computed(() => true)
-
-const resolvedPath = ref('')
-
-const fetchLatestMiniApp = async () => {
-  if (!props.miniApp?.appID) return
-  try {
-    const response = await request(`/api/v1/mini-apps/${props.miniApp.appID}`)
-    if (response.code === 0 && response.data?.path) {
-      resolvedPath.value = response.data.path
-      return
-    }
-  } catch {}
-  resolvedPath.value = props.miniApp?.path || ''
-}
-
-const iframeSrc = computed(() => {
-  const path = resolvedPath.value || props.miniApp?.path
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${getStoredServerUrl()}${path.startsWith('/') ? '' : '/'}${path}`
-})
-
-const hasPermission = (perm: string): boolean => {
-  try {
-    const perms = props.miniApp?.permissions ? JSON.parse(props.miniApp.permissions) as string[] : []
-    return perms.includes(perm)
-  } catch {
-    return false
-  }
-}
-
-const handleIframeLoad = () => {
-  loading.value = false
-  error.value = false
-  injectBridgeScript()
-}
-
-const handleIframeError = () => {
-  loading.value = false
-  error.value = true
-  errorMessage.value = '小程序加载失败，请检查网络或稍后重试'
-}
-
-const loadMiniApp = () => {
-  if (!props.miniApp?.path) {
-    error.value = true
-    errorMessage.value = '小程序路径未配置'
-    return
-  }
-  loading.value = true
-  error.value = false
-  setTimeout(() => {
-    if (loading.value) {
-      handleIframeError()
-    }
-  }, 10000)
-}
-
-const close = () => {
-  emit('close')
-  loading.value = false
-  error.value = false
-  errorMessage.value = ''
-}
-
-const handleOverlayClick = () => {
-  close()
-}
-
-const handleMiniAppMessage = (event: MessageEvent) => {
-  if (!event.data || typeof event.data !== 'object') return
-  const data = event.data as MiniAppBridgeMessage
-
-  switch (data.type) {
-    case 'miniapp-loaded':
-      break
-    case 'miniapp-toast':
-      emit('show-toast', data.payload?.message || '')
-      break
-    case 'get-user-info':
-      if (!hasPermission('user_info')) {
-        iframeRef.value?.contentWindow?.postMessage({
-          type: 'user-info-response',
-          payload: { error: '未授予 user_info 权限' },
-        }, '*')
-        return
-      }
-      const user = getCurrentUser()
-      iframeRef.value?.contentWindow?.postMessage({
-        type: 'user-info-response',
-        payload: {
-          id: user.id,
-          username: user.username,
-          nickname: user.nickname || '',
-          avatar: user.avatar || '',
-        },
-      }, '*')
-      break
-    case 'get-token':
-      if (!hasPermission('token')) {
-        iframeRef.value?.contentWindow?.postMessage({
-          type: 'token-response',
-          payload: { error: '未授予 token 权限' },
-        }, '*')
-        return
-      }
-      const token = localStorage.getItem('token') || ''
-      iframeRef.value?.contentWindow?.postMessage({
-        type: 'token-response',
-        payload: { token },
-      }, '*')
-      break
-    case 'api-request':
-      if (!hasPermission('api_request')) {
-        iframeRef.value?.contentWindow?.postMessage({
-          type: 'api-response',
-          payload: { code: 403, message: '无权限调用此 API' },
-        }, '*')
-        return
-      }
-      handleApiRequest(data.payload)
-      break
-    case 'clipboard-read':
-      if (!hasPermission('clipboard')) {
-        iframeRef.value?.contentWindow?.postMessage({
-          type: 'clipboard-read-response',
-          payload: { error: '未授予 clipboard 权限' },
-        }, '*')
-        return
-      }
-      navigator.clipboard.readText()
-        .then(text => {
-          iframeRef.value?.contentWindow?.postMessage({
-            type: 'clipboard-read-response',
-            payload: { text },
-          }, '*')
-        })
-        .catch(err => {
-          iframeRef.value?.contentWindow?.postMessage({
-            type: 'clipboard-read-response',
-            payload: { error: err.message || '读取剪贴板失败' },
-          }, '*')
-        })
-      break
-    case 'clipboard-write':
-      if (!hasPermission('clipboard')) {
-        iframeRef.value?.contentWindow?.postMessage({
-          type: 'clipboard-write-response',
-          payload: { error: '未授予 clipboard 权限' },
-        }, '*')
-        return
-      }
-      navigator.clipboard.writeText(data.payload?.text || '')
-        .then(() => {
-          iframeRef.value?.contentWindow?.postMessage({
-            type: 'clipboard-write-response',
-            payload: { success: true },
-          }, '*')
-        })
-        .catch(err => {
-          iframeRef.value?.contentWindow?.postMessage({
-            type: 'clipboard-write-response',
-            payload: { error: err.message || '写入剪贴板失败' },
-          }, '*')
-        })
-      break
-  }
-}
-
-const handleApiRequest = async (payload: { method: string; url: string; body?: any }) => {
-  if (!payload || !payload.url) return
-  const token = localStorage.getItem('token') || ''
-  const url = payload.url.startsWith('http') ? payload.url : `${getStoredServerUrl()}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`
-
-  try {
-    const response = await fetch(url, {
-      method: payload.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: payload.body ? JSON.stringify(payload.body) : undefined,
-    })
-    const result = await response.json()
-    iframeRef.value?.contentWindow?.postMessage({
-      type: 'api-response',
-      payload: result,
-    }, '*')
-  } catch (err: any) {
-    iframeRef.value?.contentWindow?.postMessage({
-      type: 'api-response',
-      payload: { code: 500, message: err.message || '请求失败' },
-    }, '*')
-  }
-}
-
-const injectBridgeScript = () => {
-  if (!iframeRef.value?.contentWindow) return
-  iframeRef.value.contentWindow.postMessage({
-    type: 'bridge-ready',
-    payload: { appId: props.miniApp?.appID },
-  }, '*')
-}
-
 const isResizing = ref(false)
 const startX = ref(0)
 const startWidth = ref(0)
@@ -332,6 +107,7 @@ const stopResize = () => {
   document.removeEventListener('mouseup', stopResize)
 }
 
+// Drawer 独有：Esc 关闭
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && visible.value) {
     close()
@@ -339,23 +115,14 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 onMounted(() => {
-  window.addEventListener('message', handleMiniAppMessage)
   window.addEventListener('keydown', handleKeyDown)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('message', handleMiniAppMessage)
   window.removeEventListener('keydown', handleKeyDown)
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
 })
-
-watch(() => props.miniApp, async (newVal) => {
-  if (newVal) {
-    await fetchLatestMiniApp()
-    loadMiniApp()
-  }
-}, { immediate: true })
 </script>
 
 <style scoped>

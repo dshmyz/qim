@@ -14,7 +14,7 @@
             </div>
             <div class="progress-text">
               <span class="progress-title">
-                {{ uploadingText }}
+                {{ transferText }}
               </span>
               <span class="progress-percentage">{{ totalProgress }}%</span>
             </div>
@@ -55,7 +55,7 @@
           <div v-show="isExpanded" class="task-list">
             <div
               v-for="task in sortedTasks"
-              :key="task.uploadId"
+              :key="task.id"
               class="task-item"
               :class="`task-item--${task.status}`"
             >
@@ -67,18 +67,18 @@
                   </svg>
                 </div>
                 <div class="task-details">
-                  <div class="task-name" :title="task.file.name">
-                    {{ task.file.name }}
+                  <div class="task-name" :title="task.name">
+                    {{ task.name }}
                   </div>
                   <div class="task-meta">
                     <span class="task-size">
-                      {{ formatSize(task.uploadedSize) }} / {{ formatSize(task.totalSize) }}
+                      {{ formatSize(task.transferred) }} / {{ formatSize(task.total) }}
                     </span>
                     <span class="task-status" :class="`status--${task.status}`">
                       {{ statusText(task.status) }}
                     </span>
                   </div>
-                  <div v-if="task.status === 'uploading' || task.status === 'pending'" class="task-progress-bar">
+                  <div v-if="task.status === 'uploading' || task.status === 'downloading' || task.status === 'pending'" class="task-progress-bar">
                     <div class="task-progress" :style="{ width: `${task.progress}%` }"></div>
                   </div>
                   <div v-if="task.error" class="task-error">
@@ -89,9 +89,9 @@
 
               <div class="task-actions">
                 <button
-                  v-if="task.status === 'uploading' || task.status === 'pending'"
+                  v-if="task.kind === 'upload' && (task.status === 'uploading' || task.status === 'pending')"
                   class="task-action-btn cancel-btn"
-                  @click="handleCancel(task.uploadId)"
+                  @click="handleCancel(task.id)"
                   title="取消上传"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -100,9 +100,9 @@
                   </svg>
                 </button>
                 <button
-                  v-if="task.status === 'failed'"
+                  v-if="task.kind === 'upload' && task.status === 'failed'"
                   class="task-action-btn retry-btn"
-                  @click="handleRetry(task.uploadId)"
+                  @click="handleRetry(task.id)"
                   title="重试"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -111,9 +111,19 @@
                   </svg>
                 </button>
                 <button
+                  v-if="task.kind === 'download' && task.status === 'completed'"
+                  class="task-action-btn folder-btn"
+                  @click="handleOpenFolder(task.filePath)"
+                  title="在文件夹中显示"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <button
                   v-if="task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled'"
                   class="task-action-btn delete-btn"
-                  @click="handleRemove(task.uploadId)"
+                  @click="handleRemove(task)"
                   title="删除"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -133,6 +143,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useUploadStore, type UploadTask } from '../../stores/upload'
+import { useDownloadStore, type DownloadTask } from '../../stores/download'
 import { uploadFile, cancelUpload } from '../../composables/useFileUpload'
 
 interface Props {
@@ -142,47 +153,99 @@ interface Props {
 defineProps<Props>()
 
 const uploadStore = useUploadStore()
+const downloadStore = useDownloadStore()
+
+type TransferStatus = UploadTask['status'] | DownloadTask['status']
+
+interface TransferTask {
+  id: string
+  kind: 'upload' | 'download'
+  name: string
+  status: TransferStatus
+  progress: number
+  transferred: number
+  total: number
+  error?: string
+  filePath?: string
+}
+
+// 合并上传与下载任务为统一展示形状
+const allTasks = computed<TransferTask[]>(() => {
+  const uploads: TransferTask[] = Array.from(uploadStore.tasks.values()).map(t => ({
+    id: t.uploadId,
+    kind: 'upload',
+    name: t.file.name,
+    status: t.status,
+    progress: t.progress,
+    transferred: t.uploadedSize,
+    total: t.totalSize,
+    error: t.error
+  }))
+  const downloads: TransferTask[] = Array.from(downloadStore.tasks.values()).map(t => ({
+    id: t.downloadId,
+    kind: 'download',
+    name: t.fileName,
+    status: t.status,
+    progress: t.percent,
+    transferred: t.receivedBytes,
+    total: t.totalBytes,
+    error: t.error,
+    filePath: t.filePath
+  }))
+  return [...uploads, ...downloads]
+})
 
 // 计算属性
-const hasTasks = computed(() => uploadStore.tasks.size > 0)
+const hasTasks = computed(() => allTasks.value.length > 0)
 
-const hasCompletedTasks = computed(() => uploadStore.completedTasks.length > 0)
+const hasCompletedTasks = computed(() =>
+  uploadStore.completedTasks.length > 0 || downloadStore.completedTasks.length > 0
+)
 
-const totalProgress = computed(() => uploadStore.totalProgress)
+const totalProgress = computed(() => {
+  const all = allTasks.value
+  if (all.length === 0) return 0
+  const total = all.reduce((sum, task) => sum + task.total, 0)
+  if (total === 0) return 0
+  const transferred = all.reduce((sum, task) => sum + task.transferred, 0)
+  return Math.round((transferred / total) * 100)
+})
 
-const isExpanded = computed(() => uploadStore.isExpanded)
+const isExpanded = computed(() => uploadStore.isExpanded.value)
 
-const uploadingText = computed(() => {
-  const activeCount = uploadStore.activeTasks.length
-  const failedCount = uploadStore.failedTasks.length
-  const completedCount = uploadStore.completedTasks.length
+const transferText = computed(() => {
+  const activeUploads = uploadStore.activeTasks.length
+  const activeDownloads = downloadStore.activeTasks.length
+  const failedCount = uploadStore.failedTasks.length + downloadStore.failedTasks.length
+  const completedCount = uploadStore.completedTasks.length + downloadStore.completedTasks.length
 
-  if (activeCount > 0) {
-    return `正在上传 ${activeCount} 个文件`
+  if (activeUploads > 0 || activeDownloads > 0) {
+    return `正在传输 ${activeUploads + activeDownloads} 个文件`
   } else if (failedCount > 0) {
-    return `${failedCount} 个文件上传失败`
+    return `${failedCount} 个传输失败`
   } else if (completedCount > 0) {
-    return `已完成 ${completedCount} 个文件上传`
+    return `已完成 ${completedCount} 个传输`
   }
-  return '上传任务'
+  return '传输任务'
 })
 
 const sortedTasks = computed(() => {
-  const tasks = Array.from(uploadStore.tasks.values())
-  // 按状态排序：uploading > pending > failed > completed > cancelled
+  // uploading/downloading 优先，其次 pending，最后 failed/completed/cancelled
   const statusOrder: Record<string, number> = {
     uploading: 0,
+    downloading: 0,
     pending: 1,
     failed: 2,
     completed: 3,
     cancelled: 4
   }
-  return tasks.sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+  return [...allTasks.value].sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
 })
 
 // 方法
 function toggleExpand() {
   uploadStore.toggleExpanded()
+  downloadStore.toggleExpanded()
 }
 
 function formatSize(bytes: number): string {
@@ -193,10 +256,11 @@ function formatSize(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
-function statusText(status: UploadTask['status']): string {
+function statusText(status: TransferStatus): string {
   const statusMap: Record<string, string> = {
     pending: '等待中',
     uploading: '上传中',
+    downloading: '下载中',
     completed: '已完成',
     failed: '失败',
     cancelled: '已取消'
@@ -217,10 +281,8 @@ async function handleRetry(uploadId: string) {
   const task = uploadStore.tasks.get(uploadId)
   if (!task) return
 
-  // 移除旧任务
   uploadStore.removeTask(uploadId)
 
-  // 重新上传
   try {
     await uploadFile(task.file, task.folderId ?? undefined)
   } catch (error) {
@@ -228,12 +290,25 @@ async function handleRetry(uploadId: string) {
   }
 }
 
-function handleRemove(uploadId: string) {
-  uploadStore.removeTask(uploadId)
+function handleRemove(task: TransferTask) {
+  if (task.kind === 'upload') {
+    uploadStore.removeTask(task.id)
+  } else {
+    downloadStore.removeTask(task.id)
+  }
+}
+
+async function handleOpenFolder(filePath: string) {
+  try {
+    await window.electron?.ipcRenderer.invoke('show-file-in-folder', filePath)
+  } catch (error) {
+    console.error('打开文件夹失败:', error)
+  }
 }
 
 function handleClearCompleted() {
   uploadStore.clearCompleted()
+  downloadStore.clearCompleted()
 }
 </script>
 
@@ -411,6 +486,10 @@ function handleClearCompleted() {
   background: linear-gradient(135deg, #f6fff9, #f0fdf4);
 }
 
+.task-item--downloading {
+  background: linear-gradient(135deg, #f8faff, #eef5ff);
+}
+
 .task-item--failed {
   background: linear-gradient(135deg, #fff6f6, #fef2f2);
 }
@@ -488,6 +567,11 @@ function handleClearCompleted() {
   color: var(--primary-color, #3385ff);
 }
 
+.status--downloading {
+  background: var(--color-primary-50, #f8faff);
+  color: var(--primary-color, #3385ff);
+}
+
 .status--completed {
   background: var(--color-success-50, #f6fff9);
   color: var(--success-color, #26b361);
@@ -561,6 +645,10 @@ function handleClearCompleted() {
 
 .cancel-btn:hover {
   color: var(--error-color, #f34040);
+}
+
+.folder-btn:hover {
+  color: var(--primary-color, #3385ff);
 }
 
 .retry-btn:hover {

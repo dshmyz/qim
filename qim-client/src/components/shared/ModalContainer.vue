@@ -9,7 +9,7 @@
       <div 
         class="modal-container-content" 
         @click.stop
-        :style="contentStyle"
+        :style="computedContentStyle"
       >
         <div v-if="showHeader" class="modal-container-header">
           <h3 class="modal-container-title">{{ title }}</h3>

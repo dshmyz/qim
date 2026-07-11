@@ -163,6 +163,7 @@
               <i class="fas fa-exchange-alt"></i>
             </button>
             <button
+              v-if="!isInitiator"
               class="control-btn"
               @click="toggleFullscreen"
               :title="isFullscreen ? '退出全屏' : '全屏'"
@@ -200,7 +201,7 @@
             <div class="minimized-name">{{ screenShareName || '屏幕共享' }}</div>
           </div>
           <div class="minimized-actions" @click.stop>
-            <button class="action-btn expand-btn" @click="toggleMinimize">
+            <button v-if="!isInitiator" class="action-btn expand-btn" @click="toggleMinimize">
               <i class="fas fa-expand"></i>
               <span>展开</span>
             </button>
@@ -723,6 +724,10 @@ watch([localStream, isInitiator], ([stream, initiator]) => {
       if (localVideoRef.value && localVideoRef.value.srcObject !== stream) {
         localVideoRef.value.srcObject = stream
       }
+      // 发起方最小化预览也需要绑定 stream
+      if (isMinimized.value && minimizedVideoRef.value && minimizedVideoRef.value.srcObject !== stream) {
+        minimizedVideoRef.value.srcObject = stream
+      }
     })
   }
 }, { immediate: true })
@@ -753,8 +758,13 @@ watch(sessionState, (state) => {
     startDurationTimer()
     showWaitingAccept.value = false
     emit('screen-share-start', { conversationId: props.conversationId || props.receiverId || 0 })
+    // 发起方共享开始时自动最小化，避免全屏预览导致 Droste 嵌套回路
+    if (isInitiator.value) {
+      isMinimized.value = true
+    }
   } else if (state === 'idle' || state === 'ended') {
     stopDurationTimer()
+    isMinimized.value = false
   }
 })
 
