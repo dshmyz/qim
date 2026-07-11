@@ -59,7 +59,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (savedMessageSettings) {
       try {
         const parsed = JSON.parse(savedMessageSettings)
-        if (parsed.dndMode === 'work') parsed.dndMode = 'all_day'
         messageSettings.value = { ...messageSettings.value, ...parsed }
         userSavedDir = parsed.defaultSaveDirectory || ''
       } catch (e) {

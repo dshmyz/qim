@@ -14,10 +14,9 @@ describe('message do-not-disturb settings', () => {
     expect(settingsPanel).toContain('localMessageSettings.dndEndTime')
   })
 
-  it('persists custom do-not-disturb defaults and migrates the old work value', () => {
+  it('persists custom do-not-disturb defaults', () => {
     expect(useSettings).toContain("dndMode: 'none'")
     expect(useSettings).toContain("dndStartTime: '22:00'")
     expect(useSettings).toContain("dndEndTime: '08:00'")
-    expect(useSettings).toContain("if (parsed.dndMode === 'work') parsed.dndMode = 'all_day'")
   })
 })

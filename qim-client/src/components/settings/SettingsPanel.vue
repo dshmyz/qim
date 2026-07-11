@@ -156,12 +156,6 @@
               </div>
             </div>
             <div class="settings-item">
-              <label>账号安全</label>
-              <div class="settings-item-content">
-                <button class="action-btn" @click="$emit('openSecurity')">查看安全设置</button>
-              </div>
-            </div>
-            <div class="settings-item">
               <label>关于</label>
               <div class="settings-item-content">
                 <div class="about-info">
@@ -198,12 +192,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
-import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 
 interface Theme {
   id: string
@@ -241,7 +234,6 @@ const emit = defineEmits<{
   'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
   'clearCache': []
   'saveTwoFactor': [enabled: boolean]
-  'openSecurity': []
   'browseDirectory': [callback: (path: string) => void]
   'openFeedback': []
 }>()
@@ -267,12 +259,6 @@ watch(() => props.visible, (val) => {
     localAppearanceSettings.value = { ...props.appearanceSettings }
     localAdvancedSettings.value = { ...props.advancedSettings }
   }
-})
-
-const currentUserAvatar = computed(() => {
-  if (!props.currentUser?.avatar) return generateAvatar('me')
-  if (isAbsoluteUrl(props.currentUser.avatar)) return props.currentUser.avatar
-  return props.serverUrl + props.currentUser.avatar
 })
 
 const triggerAvatarUpload = () => {
