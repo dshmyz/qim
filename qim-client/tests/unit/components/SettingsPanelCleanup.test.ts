@@ -86,7 +86,7 @@ describe('SettingsPanel 清理与修补', () => {
   it('消息设置 Tab 包含 C1 发送方式切换', async () => {
     const wrapper = mountSettingsPanel()
     // 切换到消息设置 Tab
-    clickTab(wrapper, '消息设置')
+    await clickTab(wrapper, '消息设置')
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('发送方式')
     const sendShortcutSelect = wrapper.find('[data-testid="send-shortcut-select"]')
@@ -95,7 +95,7 @@ describe('SettingsPanel 清理与修补', () => {
 
   it('消息设置 Tab 包含 C2 通知细化项', async () => {
     const wrapper = mountSettingsPanel()
-    clickTab(wrapper, '消息设置')
+    await clickTab(wrapper, '消息设置')
     await wrapper.vm.$nextTick()
     // @提及强提醒
     expect(wrapper.text()).toContain('@提及强提醒')
@@ -109,7 +109,7 @@ describe('SettingsPanel 清理与修补', () => {
 
   it('勿扰例外名单输入应更新 localMessageSettings', async () => {
     const wrapper = mountSettingsPanel()
-    clickTab(wrapper, '消息设置')
+    await clickTab(wrapper, '消息设置')
     await wrapper.vm.$nextTick()
     const exceptionInput = wrapper.find('[data-testid="dnd-exception-input"]')
     expect(exceptionInput.exists()).toBe(true)
