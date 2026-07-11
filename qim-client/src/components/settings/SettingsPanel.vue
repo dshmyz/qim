@@ -143,7 +143,7 @@
                 <button class="action-btn" @click="$emit('clearCache')">清除缓存</button>
               </div>
             </div>
-            <div class="settings-item">
+            <div v-if="showTwoFactorSetting" class="settings-item">
               <label>双因素认证</label>
               <div class="settings-item-content">
                 <div class="setting-row">
@@ -239,6 +239,8 @@ const emit = defineEmits<{
 }>()
 
 const localTab = ref('basic')
+// 2FA 功能暂未完整实现，前端隐藏开关（后端字段保留不动）
+const showTwoFactorSetting = false
 const localProfile = ref({ ...props.profile })
 const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
