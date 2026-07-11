@@ -2,6 +2,11 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
+// mock APP_CONFIG 以验证版本号动态读取（A4）
+vi.mock('@/config/appConfig', () => ({
+  APP_CONFIG: { version: '9.9.9' },
+}))
+
 const invokeMock = vi.fn()
 
 function mountSettingsPanel() {
@@ -66,5 +71,15 @@ describe('SettingsPanel 清理与修补', () => {
     await clickTab(wrapper, '高级设置')
     expect(wrapper.text()).not.toContain('账号安全')
     expect(wrapper.text()).not.toContain('查看安全设置')
+  })
+
+  it('版本号应动态读取而非硬编码（A4）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    const versionBadge = wrapper.find('.version-badge')
+    expect(versionBadge.exists()).toBe(true)
+    // APP_CONFIG 被 mock 为 9.9.9，如果版本号动态读取则显示 v9.9.9
+    // 如果仍为硬编码则显示 v1.0.0，测试会失败
+    expect(versionBadge.text()).toBe('v9.9.9')
   })
 })

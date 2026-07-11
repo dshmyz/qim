@@ -159,7 +159,7 @@
               <label>关于</label>
               <div class="settings-item-content">
                 <div class="about-info">
-                  <span class="version-badge">v1.0.0</span>
+                  <span class="version-badge">v{{ appVersion }}</span>
                   <span class="about-text">当前为最新版本</span>
                 </div>
                 <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
@@ -196,6 +196,7 @@ import { ref, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
+import { APP_CONFIG } from '../../config/appConfig'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
 
 interface Theme {
@@ -241,6 +242,8 @@ const emit = defineEmits<{
 const localTab = ref('basic')
 // 2FA 功能暂未完整实现，前端隐藏开关（后端字段保留不动）
 const showTwoFactorSetting = false
+// 版本号从构建时常量动态读取（A4）
+const appVersion = APP_CONFIG.version
 const localProfile = ref({ ...props.profile })
 const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
