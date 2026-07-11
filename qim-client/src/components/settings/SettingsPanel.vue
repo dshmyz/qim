@@ -100,6 +100,91 @@
                 <input v-model="localMessageSettings.dndEndTime" type="time" class="settings-select" />
               </div>
             </div>
+            <!-- C1: 发送方式 -->
+            <div class="settings-item">
+              <label>发送方式</label>
+              <div class="settings-item-content">
+                <select v-model="localMessageSettings.sendShortcut" class="settings-select" data-testid="send-shortcut-select">
+                  <option value="enter">Enter 发送（Shift+Enter 换行）</option>
+                  <option value="ctrl_enter">Ctrl+Enter 发送（Enter 换行）</option>
+                </select>
+              </div>
+            </div>
+            <!-- C2: @提及强提醒 -->
+            <div class="settings-item">
+              <label>@提及强提醒</label>
+              <div class="settings-item-content">
+                <label class="switch">
+                  <input type="checkbox" v-model="localMessageSettings.mentionAlert" />
+                  <span class="slider round"></span>
+                </label>
+                <div class="settings-hint">静音时被 @ 仍会提醒</div>
+              </div>
+            </div>
+            <!-- C2: 通知内容预览 -->
+            <div class="settings-item">
+              <label>通知内容预览</label>
+              <div class="settings-item-content">
+                <select v-model="localMessageSettings.notificationPreview" class="settings-select">
+                  <option value="content">显示消息内容</option>
+                  <option value="simple">仅显示"新消息"</option>
+                </select>
+              </div>
+            </div>
+            <!-- C2: 通知声音 -->
+            <div class="settings-item">
+              <label>通知声音</label>
+              <div class="settings-item-content">
+                <select v-model="localMessageSettings.notificationSound" class="settings-select">
+                  <option value="default">默认</option>
+                  <option value="chime">清脆</option>
+                  <option value="bell">铃声</option>
+                  <option value="none">无声</option>
+                </select>
+              </div>
+            </div>
+            <!-- C2: 勿扰例外名单 -->
+            <div class="settings-item">
+              <label>勿扰例外</label>
+              <div class="settings-item-content">
+                <div class="input-with-btn">
+                  <input
+                    v-model="dndExceptionInput"
+                    type="text"
+                    class="settings-input"
+                    data-testid="dnd-exception-input"
+                    placeholder="输入用户名后回车添加"
+                    @keyup.enter="addDndException"
+                  />
+                  <button class="browse-btn" @click="addDndException">添加</button>
+                </div>
+                <div v-if="localMessageSettings.dndExceptions && localMessageSettings.dndExceptions.length > 0" class="exception-list">
+                  <span v-for="(item, index) in localMessageSettings.dndExceptions" :key="index" class="exception-tag">
+                    {{ item }}
+                    <button class="exception-remove" @click="removeDndException(index)">×</button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <!-- C2: 夜间自动免打扰 -->
+            <div class="settings-item">
+              <label>夜间免打扰</label>
+              <div class="settings-item-content">
+                <label class="switch">
+                  <input type="checkbox" v-model="localMessageSettings.nightDndEnabled" />
+                  <span class="slider round"></span>
+                </label>
+                <div class="settings-hint">到点自动开启免打扰</div>
+              </div>
+            </div>
+            <div v-if="localMessageSettings.nightDndEnabled" class="settings-item">
+              <label>夜间免打扰时间</label>
+              <div class="dnd-time-range">
+                <input v-model="localMessageSettings.nightDndStart" type="time" class="settings-select" />
+                <span>至</span>
+                <input v-model="localMessageSettings.nightDndEnd" type="time" class="settings-select" />
+              </div>
+            </div>
             <div class="settings-item">
               <label>默认保存目录</label>
               <div class="settings-item-content">
@@ -198,6 +283,7 @@ import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import { APP_CONFIG } from '../../config/appConfig'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
+import type { MessageSettings, AppearanceSettings } from '../../composables/useSettings'
 
 interface Theme {
   id: string
@@ -223,8 +309,8 @@ interface Props {
   currentUser?: { username?: string; avatar?: string }
   serverUrl: string
   profile: { nickname?: string; signature?: string }
-  messageSettings: { notificationsEnabled?: boolean; soundEnabled?: boolean; desktopNotificationsEnabled?: boolean; dndMode?: string; dndStartTime?: string; dndEndTime?: string; defaultSaveDirectory?: string }
-  appearanceSettings: { theme?: string; fontSize?: number }
+  messageSettings: Partial<MessageSettings>
+  appearanceSettings: Partial<AppearanceSettings>
   advancedSettings: { twoFactorEnabled?: boolean }
 }
 
@@ -250,6 +336,23 @@ const localAppearanceSettings = ref({ ...props.appearanceSettings })
 const localAdvancedSettings = ref({ ...props.advancedSettings })
 const localShortcuts = ref<ShortcutsConfig>()
 const shortcutSettingsRef = ref<InstanceType<typeof ShortcutSettings> | null>(null)
+
+// 勿扰例外名单输入值
+const dndExceptionInput = ref('')
+
+const addDndException = () => {
+  const value = dndExceptionInput.value.trim()
+  if (value && !localMessageSettings.value.dndExceptions?.includes(value)) {
+    localMessageSettings.value.dndExceptions = [...(localMessageSettings.value.dndExceptions || []), value]
+    dndExceptionInput.value = ''
+  }
+}
+
+const removeDndException = (index: number) => {
+  const exceptions = [...(localMessageSettings.value.dndExceptions || [])]
+  exceptions.splice(index, 1)
+  localMessageSettings.value.dndExceptions = exceptions
+}
 
 const avatarInputRef = ref<HTMLInputElement | null>(null)
 const showCropper = ref(false)
@@ -815,5 +918,37 @@ input:checked + .slider:before {
 .save-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+.exception-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.exception-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--hover-color);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+.exception-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.exception-remove:hover {
+  color: var(--primary-color);
 }
 </style>

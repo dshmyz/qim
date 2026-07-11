@@ -82,4 +82,40 @@ describe('SettingsPanel 清理与修补', () => {
     // 如果仍为硬编码则显示 v1.0.0，测试会失败
     expect(versionBadge.text()).toBe('v9.9.9')
   })
+
+  it('消息设置 Tab 包含 C1 发送方式切换', async () => {
+    const wrapper = mountSettingsPanel()
+    // 切换到消息设置 Tab
+    clickTab(wrapper, '消息设置')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('发送方式')
+    const sendShortcutSelect = wrapper.find('[data-testid="send-shortcut-select"]')
+    expect(sendShortcutSelect.exists()).toBe(true)
+  })
+
+  it('消息设置 Tab 包含 C2 通知细化项', async () => {
+    const wrapper = mountSettingsPanel()
+    clickTab(wrapper, '消息设置')
+    await wrapper.vm.$nextTick()
+    // @提及强提醒
+    expect(wrapper.text()).toContain('@提及强提醒')
+    // 通知内容预览
+    expect(wrapper.text()).toContain('通知内容预览')
+    // 通知声音
+    expect(wrapper.text()).toContain('通知声音')
+    // 夜间自动免打扰
+    expect(wrapper.text()).toContain('夜间免打扰')
+  })
+
+  it('勿扰例外名单输入应更新 localMessageSettings', async () => {
+    const wrapper = mountSettingsPanel()
+    clickTab(wrapper, '消息设置')
+    await wrapper.vm.$nextTick()
+    const exceptionInput = wrapper.find('[data-testid="dnd-exception-input"]')
+    expect(exceptionInput.exists()).toBe(true)
+    await exceptionInput.setValue('user123')
+    await exceptionInput.trigger('keyup.enter')
+    // 验证输入值被添加到例外名单
+    expect((wrapper.vm as any).localMessageSettings.dndExceptions).toContain('user123')
+  })
 })
