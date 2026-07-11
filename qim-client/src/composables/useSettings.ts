@@ -14,11 +14,26 @@ export interface MessageSettings {
   dndStartTime: string
   dndEndTime: string
   defaultSaveDirectory: string
+  // C1: 发送方式
+  sendShortcut: 'enter' | 'ctrl_enter'
+  // C2: 通知细化
+  mentionAlert: boolean
+  notificationPreview: 'content' | 'simple'
+  notificationSound: string
+  dndExceptions: string[]
+  nightDndEnabled: boolean
+  nightDndStart: string
+  nightDndEnd: string
 }
 
 export interface AppearanceSettings {
   theme: string
   fontSize: number
+  // C4: 外观补充
+  followSystemTheme: boolean
+  language: string
+  showSidebar: boolean
+  chatFontSize: number
 }
 
 export interface AdvancedSettings {
@@ -40,12 +55,27 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     dndMode: 'none',
     dndStartTime: '22:00',
     dndEndTime: '08:00',
-    defaultSaveDirectory: ''
+    defaultSaveDirectory: '',
+    // C1: 发送方式
+    sendShortcut: 'enter',
+    // C2: 通知细化
+    mentionAlert: true,
+    notificationPreview: 'content',
+    notificationSound: 'default',
+    dndExceptions: [],
+    nightDndEnabled: false,
+    nightDndStart: '23:00',
+    nightDndEnd: '07:00'
   })
 
   const appearanceSettings = ref<AppearanceSettings>({
     theme: currentTheme.value,
-    fontSize: 14
+    fontSize: 14,
+    // C4: 外观补充
+    followSystemTheme: false,
+    language: 'zh-CN',
+    showSidebar: true,
+    chatFontSize: 14
   })
 
   const advancedSettings = ref<AdvancedSettings>({
