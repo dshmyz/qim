@@ -6,7 +6,6 @@ import { request } from './useRequest'
 import { useUIStore } from '../stores/ui'
 import { decodeToPlainText } from '../utils/mentions'
 import { extractCodeBlocks } from '../utils/codeBlock'
-import { markdownToPlainText } from '../utils/markdown'
 
 function debounce<T extends (...args: any[]) => any>(
   func: T,
@@ -411,19 +410,6 @@ export function useMessageActions(
     }
   }
 
-  /**
-   * 复制消息的纯文本（剥离 markdown 语法，保留代码内容）。
-   */
-  const copyPlainText = async (message: Message) => {
-    if (!message || !message.content) return
-    try {
-      await navigator.clipboard.writeText(markdownToPlainText(message.content))
-      QMessage.success('已复制纯文本')
-    } catch (err) {
-      console.error('复制纯文本失败:', err)
-    }
-  }
-
   const debouncedLoadReadUsers = debounce(
     async (messages: Message[], conversationType: string, forceRefresh: boolean = false) => {
       if (!isMounted.value || conversationType !== 'group') return
@@ -482,7 +468,6 @@ export function useMessageActions(
     retrySendMessage,
     copyMessage,
     copyCode,
-    copyPlainText,
     loadReadUsersForMessages,
     debouncedLoadReadUsers,
     cleanup

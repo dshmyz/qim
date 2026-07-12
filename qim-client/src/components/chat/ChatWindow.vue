@@ -166,7 +166,6 @@
       @download-file="(d: string) => downloadFile(d, selectedMessage ? String(selectedMessage.id) : undefined)"
       @copy-message="selectedMessage && copyMessage(selectedMessage, messageMenuSelection)"
       @copy-code="selectedMessage && handleCopyCode(selectedMessage)"
-      @copy-plain-text="selectedMessage && handleCopyPlainText(selectedMessage)"
       @forward-message="forwardMessage"
       @quote-message="quoteMessage"
       @add-to-notes-app="addToNotesApp"
@@ -499,7 +498,6 @@ const {
   retrySendMessage,
   copyMessage,
   copyCode,
-  copyPlainText,
   loadReadUsersForMessages,
   debouncedLoadReadUsers,
   cleanup: cleanupMessageActions
@@ -1015,10 +1013,6 @@ const handleSendCodeBlock = (markdown: string) => {
 
 const handleCopyCode = (message: Message) => {
   copyCode(message)
-}
-
-const handleCopyPlainText = (message: Message) => {
-  copyPlainText(message)
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
