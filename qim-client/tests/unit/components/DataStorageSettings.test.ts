@@ -102,11 +102,30 @@ describe('DataStorageSettings 子组件', () => {
 
     const wrapper = mountDataStorageSettings()
     const clearAllBtn = wrapper.find('[data-testid="clear-all-btn"]')
+    // clearAll 有二次确认，mock confirm 返回 true
+    window.confirm = vi.fn().mockReturnValue(true)
     await clearAllBtn.trigger('click')
 
     expect(storage.get('messageSettings')).toBeUndefined()
     expect(storage.get('theme')).toBeUndefined()
     expect(storage.get('token')).toBe('abc123')
+  })
+
+  it('clearAll 二次确认取消时不清理任何数据', async () => {
+    storage.set('messageSettings', '{"notificationsEnabled":true}')
+    storage.set('theme', 'modern-light')
+
+    const wrapper = mountDataStorageSettings()
+    const clearAllBtn = wrapper.find('[data-testid="clear-all-btn"]')
+    // mock confirm 返回 false，用户取消
+    window.confirm = vi.fn().mockReturnValue(false)
+    await clearAllBtn.trigger('click')
+
+    // 数据应保留
+    expect(storage.get('messageSettings')).toBe('{"notificationsEnabled":true}')
+    expect(storage.get('theme')).toBe('modern-light')
+    // 不应发出 cacheCleared 事件
+    expect(wrapper.emitted('cacheCleared')).toBeFalsy()
   })
 
   it('清理后发出 cacheCleared 事件通知父组件刷新', async () => {

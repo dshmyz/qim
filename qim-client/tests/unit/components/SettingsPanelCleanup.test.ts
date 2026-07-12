@@ -118,4 +118,18 @@ describe('SettingsPanel 清理与修补', () => {
     // 验证输入值被添加到例外名单
     expect((wrapper.vm as any).localMessageSettings.dndExceptions).toContain('user123')
   })
+
+  it('DataStorageSettings 缓存清理后 SettingsPanel 应向上 emit cacheCleared（A2）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '数据与存储')
+    await wrapper.vm.$nextTick()
+    // 找到清除全部缓存按钮
+    const clearAllBtn = wrapper.find('[data-testid="clear-all-btn"]')
+    expect(clearAllBtn.exists()).toBe(true)
+    // mock confirm 返回 true
+    window.confirm = vi.fn().mockReturnValue(true)
+    await clearAllBtn.trigger('click')
+    // SettingsPanel 应向上 emit cacheCleared
+    expect(wrapper.emitted('cacheCleared')).toBeTruthy()
+  })
 })

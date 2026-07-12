@@ -167,6 +167,7 @@ const clearCategory = (categoryId: string) => {
 
 // 清理全部缓存（保留受保护数据）
 const clearAll = () => {
+  if (!confirm('确定要清除全部缓存吗？这将重置所有设置数据为默认值（登录凭证除外）。')) return
   const keysToRemove: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)

@@ -315,6 +315,7 @@ const emit = defineEmits<{
   'close': []
   'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
   'clearCache': []
+  'cacheCleared': []
   'saveTwoFactor': [enabled: boolean]
   'browseDirectory': [callback: (path: string) => void]
   'openFeedback': []
@@ -423,24 +424,9 @@ const handleTwoFactorChange = (event: Event) => {
   emit('saveTwoFactor', target.checked)
 }
 
-// 缓存被清理后重新从 localStorage 加载，避免保存时把旧数据写回 localStorage
+// 缓存被清理后通知父组件重新加载设置，避免保存时把旧数据写回 localStorage
 const handleCacheCleared = () => {
-  const savedMessage = localStorage.getItem('messageSettings')
-  if (savedMessage) {
-    try {
-      localMessageSettings.value = { ...localMessageSettings.value, ...JSON.parse(savedMessage) }
-    } catch (e) {
-      // 解析失败保持现状
-    }
-  }
-  const savedAppearance = localStorage.getItem('appearanceSettings')
-  if (savedAppearance) {
-    try {
-      localAppearanceSettings.value = { ...localAppearanceSettings.value, ...JSON.parse(savedAppearance) }
-    } catch (e) {
-      // 解析失败保持现状
-    }
-  }
+  emit('cacheCleared')
 }
 </script>
 
