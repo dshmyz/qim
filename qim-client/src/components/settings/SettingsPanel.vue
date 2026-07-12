@@ -216,6 +216,7 @@
               :defaultSaveDirectory="localMessageSettings.defaultSaveDirectory || ''"
               @update:defaultSaveDirectory="localMessageSettings.defaultSaveDirectory = $event"
               @browseDirectory="$emit('browseDirectory', $event)"
+              @cacheCleared="handleCacheCleared"
             />
           </div>
 
@@ -420,6 +421,26 @@ const save = () => {
 const handleTwoFactorChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   emit('saveTwoFactor', target.checked)
+}
+
+// 缓存被清理后重新从 localStorage 加载，避免保存时把旧数据写回 localStorage
+const handleCacheCleared = () => {
+  const savedMessage = localStorage.getItem('messageSettings')
+  if (savedMessage) {
+    try {
+      localMessageSettings.value = { ...localMessageSettings.value, ...JSON.parse(savedMessage) }
+    } catch (e) {
+      // 解析失败保持现状
+    }
+  }
+  const savedAppearance = localStorage.getItem('appearanceSettings')
+  if (savedAppearance) {
+    try {
+      localAppearanceSettings.value = { ...localAppearanceSettings.value, ...JSON.parse(savedAppearance) }
+    } catch (e) {
+      // 解析失败保持现状
+    }
+  }
 }
 </script>
 
