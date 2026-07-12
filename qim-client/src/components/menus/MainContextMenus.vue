@@ -330,7 +330,7 @@ onUnmounted(() => {
 .light-theme { background: #fff; border: 1px solid #ddd; }
 .elegant-dark-theme { background: #333; }
 .ocean-blue-theme { background: #0078d4; }
-.elegant-purple-theme { background: #6b4c9a; }
+.elegant-purple-theme { background: #75629a; }
 .warm-amber-theme { background: #d4893a; }
 .crimson-red-theme { background: #c4352e; }
 .emerald-green-theme { background: #2d8b4e; }

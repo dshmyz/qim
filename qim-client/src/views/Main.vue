@@ -725,6 +725,7 @@ import { useWebSocketManager } from '../composables/useWebSocketManager'
 import { useGroup } from '../composables/useGroup'
 import { useMessageActions } from '../composables/useMessageActions'
 import { getProductName, APP_CONFIG } from '../config/appConfig'
+import { versionsApi } from '../api'
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
 import { useUI } from '../composables/useUI'
@@ -3099,21 +3100,13 @@ const checkForUpdates = () => {
 
 // 通过后端 API 检查更新（非 Electron 环境）
 const checkUpdateViaAPI = async () => {
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
-
   try {
     const platform = detectPlatform()
-    const response = await fetch(`${serverUrl.value}/api/v1/client/versions?platform=${platform}&pageSize=1`, {
-      signal: controller.signal,
-    })
-    if (!response.ok) throw new Error('检查更新失败')
-    
-    const result = await response.json()
-    if (result.code === 0 && result.data?.list?.length > 0) {
-      const latestVersion = result.data.list[0]
+    const latestVersion = await versionsApi.getLatest(platform)
+
+    if (latestVersion) {
       const currentVersion = APP_CONFIG.version
-      
+
       if (isNewerVersion(latestVersion.version, currentVersion)) {
         hasNewVersion.value = true
         updateResult.value = `发现新版本 v${latestVersion.version}`
@@ -3123,7 +3116,7 @@ const checkUpdateViaAPI = async () => {
           releaseNotes: latestVersion.updateNotes
         }
         // 存储下载链接供后续使用
-        latestDownloadUrl.value = latestVersion.downloadUrl
+        latestDownloadUrl.value = latestVersion.downloadUrl || ''
       } else {
         hasNewVersion.value = false
         updateInfo.value = null
@@ -3137,12 +3130,8 @@ const checkUpdateViaAPI = async () => {
   } catch (error: any) {
     isDownloading.value = false
     downloadProgress.value = 0
-    const message = error?.name === 'AbortError'
-      ? '更新服务器响应超时'
-      : (error.message || '网络错误')
-    updateResult.value = `检查更新失败: ${message}`
+    updateResult.value = `检查更新失败: ${error?.message || '网络错误'}`
   } finally {
-    window.clearTimeout(timeoutId)
     isCheckingUpdate.value = false
   }
 }

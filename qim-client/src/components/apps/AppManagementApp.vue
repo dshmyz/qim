@@ -113,8 +113,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
-import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { appsApi } from '../../api'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
@@ -143,31 +142,12 @@ const formData = ref({
 // 加载用户应用
 const loadApps = async () => {
   try {
-    const token = localStorage.getItem('token')
-    const serverUrl = getStoredServerUrl()
-    logger.log('加载应用列表，服务器地址:', serverUrl)
-    const response = await axios.get(`${serverUrl}/api/v1/apps`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    logger.log('加载应用列表响应:', response.data)
-    if (response.data.code === 0) {
-      // 后端返回的数据结构是 { list: [...], pagination: {...} }
-      const appsArray = response.data.data.list || response.data.data
-      if (Array.isArray(appsArray)) {
-        // 处理后端返回的open_type字段
-        userApps.value = appsArray.map((app: any) => ({
-          ...app,
-          openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
-        }))
-        logger.log('应用列表加载成功:', userApps.value)
-      } else {
-        console.error('应用列表数据格式异常:', response.data.data)
-      }
-    } else {
-      console.error('加载应用列表失败:', response.data.message)
-    }
+    const appsArray = await appsApi.list()
+    userApps.value = appsArray.map((app: any) => ({
+      ...app,
+      openType: app.open_type || app.openType || 'in-app' // 默认为在应用内打开
+    }))
+    logger.log('应用列表加载成功:', userApps.value)
   } catch (error) {
     console.error('加载应用列表异常:', error)
   }
@@ -225,44 +205,27 @@ const saveApp = async () => {
     QMessage.warning('请输入应用名称')
     return
   }
-  
+
   try {
-    const token = localStorage.getItem('token')
-    const serverUrl = getStoredServerUrl()
-    let response
-    
     // 转换 openType 为后端期望的 open_type 字段
     const { openType, ...restFormData } = formData.value
     const payload = {
       ...restFormData,
       open_type: openType
     }
-    
+
     if (selectedApp.value) {
       logger.log('编辑应用:', payload)
-      response = await axios.put(`${serverUrl}/api/v1/apps/${selectedApp.value.id}`, payload, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      await appsApi.update(selectedApp.value.id, payload)
     } else {
       logger.log('创建应用:', payload)
-      response = await axios.post(`${serverUrl}/api/v1/apps`, payload, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      await appsApi.create(payload)
     }
-    
-    logger.log('保存应用响应:', response.data)
-    if (response.data.code === 0) {
-      closeAppModal()
-      await loadApps()
-      window.dispatchEvent(new CustomEvent('refresh-user-apps'))
-      logger.log('应用保存成功')
-    } else {
-      console.error('应用保存失败:', response.data.message)
-    }
+
+    closeAppModal()
+    await loadApps()
+    window.dispatchEvent(new CustomEvent('refresh-user-apps'))
+    logger.log('应用保存成功')
   } catch (error) {
     console.error('应用保存异常:', error)
   }
@@ -272,23 +235,12 @@ const saveApp = async () => {
 const deleteApp = async (appId: number) => {
   if (confirm('确定要删除这个应用吗？')) {
     try {
-      const token = localStorage.getItem('token')
-      const serverUrl = getStoredServerUrl()
       logger.log('删除应用:', appId)
-      const response = await axios.delete(`${serverUrl}/api/v1/apps/${appId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      logger.log('删除应用响应:', response.data)
-      if (response.data.code === 0) {
-        await loadApps()
-        // 通知父组件重新加载用户应用
-        window.dispatchEvent(new CustomEvent('refresh-user-apps'))
-        logger.log('应用删除成功')
-      } else {
-        console.error('应用删除失败:', response.data.message)
-      }
+      await appsApi.remove(appId)
+      await loadApps()
+      // 通知父组件重新加载用户应用
+      window.dispatchEvent(new CustomEvent('refresh-user-apps'))
+      logger.log('应用删除成功')
     } catch (error) {
       console.error('应用删除异常:', error)
     }

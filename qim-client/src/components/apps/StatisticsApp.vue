@@ -154,13 +154,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { statisticsApi } from '../../api'
 import QMessage from '../../utils/qmessage'
-import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
-
-// 服务器URL
-const { serverUrl } = useServerUrl()
 
 // 统计报表相关状态
 const selectedPeriod = ref('week')
@@ -185,23 +181,11 @@ const periods = [
   { label: '年', value: 'year' }
 ]
 
-// 获取token
-const getToken = () => {
-  return localStorage.getItem('token')
-}
-
 // 加载统计数据
 const loadStatistics = async () => {
   try {
-    const token = getToken()
-    const response = await axios.get(`${serverUrl.value}/api/v1/statistics`, {
-      params: { period: selectedPeriod.value },
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      }
-    })
-    statisticsData.value = response.data.data
+    const data = await statisticsApi.get(selectedPeriod.value as 'day' | 'week' | 'month' | 'year')
+    statisticsData.value = data as any
   } catch (error) {
     console.error('加载统计数据失败:', error)
     QMessage.error('加载统计数据失败，请稍后重试')

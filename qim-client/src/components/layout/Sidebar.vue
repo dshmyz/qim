@@ -131,7 +131,7 @@ defineExpose({})
         @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
         type="text"
         class="search-input"
-        :placeholder="activeOption === 'recent' ? '搜索用户或群组...' : '搜索...'"
+        :placeholder="activeOption === 'recent' ? '搜索用户、群组、IP或组织...' : '搜索...'"
       />
       <button
         v-if="searchQuery"

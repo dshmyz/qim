@@ -274,21 +274,21 @@ const avatarUrl = computed(() => {
 /* 高雅紫主题 */
 [data-theme="elegant-purple"] .user-profile-header {
   background-color: var(--sidebar-bg, #ffffff);
-  border-bottom: 1px solid var(--border-color, #e9d5ff);
+  border-bottom: 1px solid var(--border-color, #e5e0ef);
 }
 
 [data-theme="elegant-purple"] .user-profile-header h3 {
-  color: var(--text-color, #5b21b6);
+  color: var(--text-color, #342e43);
 }
 
 [data-theme="elegant-purple"] .action-btn.primary {
-  background: var(--primary-color, #7e22ce);
-  border-color: var(--primary-color, #7e22ce);
+  background: var(--primary-color, #75629a);
+  border-color: var(--primary-color, #75629a);
 }
 
 [data-theme="elegant-purple"] .action-btn.primary:hover {
-  background: var(--active-color, #6b21a8);
-  border-color: var(--active-color, #6b21a8);
+  background: var(--active-color, #665486);
+  border-color: var(--active-color, #665486);
 }
 
 /* 中国红主题 */

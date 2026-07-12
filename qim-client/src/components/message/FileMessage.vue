@@ -540,4 +540,24 @@ const saveFileAs = () => {
   border-color: transparent;
   color: var(--text-color);
 }
+
+:global([data-theme="elegant-purple"] .message-item.self .file-message.self) {
+  background: var(--hover-color);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+:global([data-theme="elegant-purple"] .message-item.self .attachment-card__title) {
+  color: var(--text-color);
+}
+
+:global([data-theme="elegant-purple"] .message-item.self .attachment-card__meta),
+:global([data-theme="elegant-purple"] .message-item.self .attachment-card__action) {
+  color: var(--text-secondary);
+}
+
+:global([data-theme="elegant-purple"] .message-item.self .attachment-card__action:hover) {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color), transparent 90%);
+}
 </style>

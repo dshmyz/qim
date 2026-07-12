@@ -580,22 +580,16 @@ const isFileContent = (content: string): boolean => {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="elegant-purple"] .message-item.self .message-bubble {
-  background: var(--hover-color);
-  background: color-mix(in srgb, var(--primary-color), white 88%);
-  color: var(--text-color);
-  border: none;
-}
-
+[data-theme="elegant-purple"] .message-item.self .message-bubble,
 [data-theme="elegant-purple"] .message-item.self .file-message {
   background: var(--hover-color);
-  background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
+  border: 1px solid var(--border-color);
 }
 
 [data-theme="elegant-purple"] .message-item.self .recalled-message {
-  background: rgba(139, 92, 246, 0.8) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
+  background: var(--hover-color) !important;
+  color: var(--text-secondary) !important;
 }
 
 [data-theme="warm-amber"] .message-item.self .message-bubble {
