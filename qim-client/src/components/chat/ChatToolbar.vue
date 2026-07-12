@@ -41,6 +41,11 @@
       title="发送图片"
       @click="$emit('select-image')"
     />
+    <ChatToolbarButton
+      icon="fas fa-code"
+      title="代码块"
+      @click="$emit('open-code-block')"
+    />
     <div class="screenshot-dropdown" v-if="isElectron">
       <ChatToolbarButton
         class="screenshot-btn"
@@ -135,6 +140,7 @@ const emit = defineEmits<{
   'toggle-emoji-panel': []
   'select-file': []
   'select-image': []
+  'open-code-block': []
   'take-screenshot': []
   'take-screenshot-hidden': []
   'open-message-manager': []
