@@ -183,4 +183,32 @@ describe('SettingsPanel 清理与修补', () => {
     const chatFontSlider = wrapper.find('[data-testid="chat-font-size-slider"]')
     expect(chatFontSlider.exists()).toBe(true)
   })
+
+  it('C4 跟随系统主题开关切换应更新 localAppearanceSettings', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    const followSystemSwitch = wrapper.find('[data-testid="follow-system-theme-switch"]')
+    const before = (wrapper.vm as any).localAppearanceSettings.followSystemTheme
+    await followSystemSwitch.setValue(!before)
+    expect((wrapper.vm as any).localAppearanceSettings.followSystemTheme).toBe(!before)
+  })
+
+  it('C4 语言切换应更新 localAppearanceSettings', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    const languageSelect = wrapper.find('[data-testid="language-select"]')
+    await languageSelect.setValue('en-US')
+    expect((wrapper.vm as any).localAppearanceSettings.language).toBe('en-US')
+  })
+
+  it('C4 聊天字体滑块应更新 localAppearanceSettings', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    const chatFontSlider = wrapper.find('[data-testid="chat-font-size-slider"]')
+    await chatFontSlider.setValue('18')
+    expect((wrapper.vm as any).localAppearanceSettings.chatFontSize).toBe(18)
+  })
 })
