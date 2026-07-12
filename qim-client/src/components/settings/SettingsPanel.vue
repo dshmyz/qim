@@ -280,10 +280,24 @@
                   <span class="version-badge">v{{ appVersion }}</span>
                   <span class="about-text">当前为最新版本</span>
                 </div>
-                <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
-                  <i class="fas fa-bullhorn"></i>
-                  问题反馈
-                </button>
+                <div class="about-actions">
+                  <button class="action-btn" data-testid="check-update-btn" @click="$emit('checkUpdate')">
+                    <i class="fas fa-sync-alt"></i>
+                    检查更新
+                  </button>
+                  <button class="action-btn" data-testid="open-changelog-btn" @click="$emit('openChangelog')">
+                    <i class="fas fa-list"></i>
+                    更新日志
+                  </button>
+                  <button class="action-btn" data-testid="open-licenses-btn" @click="$emit('openLicenses')">
+                    <i class="fas fa-file-alt"></i>
+                    开源许可
+                  </button>
+                  <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
+                    <i class="fas fa-bullhorn"></i>
+                    问题反馈
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -358,6 +372,9 @@ const emit = defineEmits<{
   'saveTwoFactor': [enabled: boolean]
   'browseDirectory': [callback: (path: string) => void]
   'openFeedback': []
+  'checkUpdate': []
+  'openChangelog': []
+  'openLicenses': []
 }>()
 
 const localTab = ref('basic')
@@ -913,6 +930,13 @@ input:checked + .slider:before {
 
 .about-info {
   padding: 12px 0;
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .version-badge {

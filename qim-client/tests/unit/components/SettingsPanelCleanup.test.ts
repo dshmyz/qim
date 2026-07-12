@@ -211,4 +211,55 @@ describe('SettingsPanel 清理与修补', () => {
     await chatFontSlider.setValue('18')
     expect((wrapper.vm as any).localAppearanceSettings.chatFontSize).toBe(18)
   })
+
+  it('关于区域包含检查更新按钮（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const checkUpdateBtn = wrapper.find('[data-testid="check-update-btn"]')
+    expect(checkUpdateBtn.exists()).toBe(true)
+  })
+
+  it('点击检查更新按钮发出 checkUpdate 事件（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const checkUpdateBtn = wrapper.find('[data-testid="check-update-btn"]')
+    await checkUpdateBtn.trigger('click')
+    expect(wrapper.emitted('checkUpdate')).toBeTruthy()
+  })
+
+  it('关于区域包含更新日志按钮（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const changelogBtn = wrapper.find('[data-testid="open-changelog-btn"]')
+    expect(changelogBtn.exists()).toBe(true)
+  })
+
+  it('点击更新日志按钮发出 openChangelog 事件（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const changelogBtn = wrapper.find('[data-testid="open-changelog-btn"]')
+    await changelogBtn.trigger('click')
+    expect(wrapper.emitted('openChangelog')).toBeTruthy()
+  })
+
+  it('关于区域包含开源许可按钮（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const licensesBtn = wrapper.find('[data-testid="open-licenses-btn"]')
+    expect(licensesBtn.exists()).toBe(true)
+  })
+
+  it('点击开源许可按钮发出 openLicenses 事件（C5）', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '高级设置')
+    await wrapper.vm.$nextTick()
+    const licensesBtn = wrapper.find('[data-testid="open-licenses-btn"]')
+    await licensesBtn.trigger('click')
+    expect(wrapper.emitted('openLicenses')).toBeTruthy()
+  })
 })
