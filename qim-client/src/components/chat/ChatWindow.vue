@@ -409,7 +409,7 @@ interface Props {
   currentUser: any
   hasMoreMessages: boolean
   updateConversation?: (conversation: Conversation) => void
-  messageSettings?: { defaultSaveDirectory?: string }
+  messageSettings?: { defaultSaveDirectory?: string; sendShortcut?: 'enter' | 'ctrl_enter' }
 }
 
 const props = defineProps<Props>()
@@ -991,16 +991,30 @@ const handleSend = async () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    try {
-      handleSend()
-    } catch (error) {
-      logger.error('发送消息失败:', error)
-      $message.error('发送消息失败，请重试')
+  const sendShortcut = props.messageSettings?.sendShortcut || 'enter'
+  if (sendShortcut === 'enter') {
+    // Enter 发送，Shift+Enter 换行
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      try {
+        handleSend()
+      } catch (error) {
+        logger.error('发送消息失败:', error)
+        $message.error('发送消息失败，请重试')
+      }
+    }
+  } else {
+    // Ctrl+Enter 发送，Enter 换行
+    if (event.key === 'Enter' && event.ctrlKey) {
+      event.preventDefault()
+      try {
+        handleSend()
+      } catch (error) {
+        logger.error('发送消息失败:', error)
+        $message.error('发送消息失败，请重试')
+      }
     }
   }
-  // Shift+Enter 会默认换行，不需要额外处理
 }
 
 const scrollToBottom = (instant: boolean = false) => {

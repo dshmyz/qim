@@ -19,7 +19,6 @@ export interface MessageSettings {
   // C2: 通知细化
   mentionAlert: boolean
   notificationPreview: 'content' | 'simple'
-  notificationSound: string
   dndExceptions: string[]
   nightDndEnabled: boolean
   nightDndStart: string
@@ -52,7 +51,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     // C2: 通知细化
     mentionAlert: true,
     notificationPreview: 'content',
-    notificationSound: 'default',
     dndExceptions: [],
     nightDndEnabled: false,
     nightDndStart: '23:00',

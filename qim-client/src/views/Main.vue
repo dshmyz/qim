@@ -740,7 +740,7 @@ import { useShareLogic } from '../composables/useShareLogic'
 import { useUserProfile } from '../composables/useUserProfile'
 import { useStreamMessage } from '../composables/useStreamMessage'
 import { useAppLogic } from '../composables/useAppLogic'
-import { decodeToPlainText } from '../utils/mentions'
+import { decodeToPlainText, parseContent } from '../utils/mentions'
 import { sameConversationId } from '../utils/conversationId'
 import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
 // useUIState 已被 useAppState 替代
@@ -1492,9 +1492,13 @@ const isInDndTimeRange = (start: string, end: string, now = new Date()) => {
   return nowMinutes >= startMinutes || nowMinutes < endMinutes
 }
 
-const isGlobalDndEnabled = () => {
-  const { dndMode, dndStartTime, dndEndTime } = messageSettings.value
+const isGlobalDndEnabled = (senderName?: string) => {
+  const { dndMode, dndStartTime, dndEndTime, dndExceptions } = messageSettings.value
   if (dndMode === 'none') return false
+  // 勿扰例外名单：发送者在名单中时不免打扰
+  if (senderName && dndExceptions && dndExceptions.includes(senderName)) {
+    return false
+  }
   if (dndMode === 'all_day') return true
   if (dndMode === 'custom') {
     return isInDndTimeRange(dndStartTime || '22:00', dndEndTime || '08:00')
@@ -1824,7 +1828,14 @@ const handleNewMessage = async (msg: any) => {
   // 非当前会话且非流式消息，且未设置免打扰，触发提示音和桌面通知
   if (!isCurrentConv && !newMessage.isStreaming) {
     const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
-    const canAlert = messageSettings.value.notificationsEnabled && !isGlobalDndEnabled() && !conv?.muted
+    const senderName = newMessage.sender?.name || newMessage.sender?.username || ''
+    // C2: 检查消息是否 @到了当前用户
+    const { mentions } = parseContent(newMessage.content || '')
+    const isMentioned = mentions.some(m => m.userId === 'all' || m.userId === currentUser.value?.id)
+    // C2: @提及强提醒 — 被提到时绕过免打扰
+    const dndBlocked = isGlobalDndEnabled(senderName)
+    const alertBypassed = isMentioned && messageSettings.value.mentionAlert
+    const canAlert = messageSettings.value.notificationsEnabled && (!dndBlocked || alertBypassed) && !conv?.muted
     const canPlaySound = canAlert && messageSettings.value.soundEnabled
     const canShowDesktopNotification = canAlert && messageSettings.value.desktopNotificationsEnabled && 'Notification' in window
 
@@ -1836,9 +1847,12 @@ const handleNewMessage = async (msg: any) => {
       if (window.electron?.tray) {
         window.electron.tray.flash()
       }
-      
+
       if (canShowDesktopNotification) {
-        const notificationBody = formatNotificationContent(newMessage)
+        // C2: 通知内容预览 — 'simple' 模式只显示"新消息"，不泄露内容
+        const notificationBody = messageSettings.value.notificationPreview === 'simple'
+          ? '新消息'
+          : formatNotificationContent(newMessage)
         if (Notification.permission === 'granted') {
           new Notification('新消息', {
             body: notificationBody,

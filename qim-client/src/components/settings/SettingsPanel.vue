@@ -131,18 +131,6 @@
                 </select>
               </div>
             </div>
-            <!-- C2: 通知声音 -->
-            <div class="settings-item">
-              <label>通知声音</label>
-              <div class="settings-item-content">
-                <select v-model="localMessageSettings.notificationSound" class="settings-select">
-                  <option value="default">默认</option>
-                  <option value="chime">清脆</option>
-                  <option value="bell">铃声</option>
-                  <option value="none">无声</option>
-                </select>
-              </div>
-            </div>
             <!-- C2: 勿扰例外名单 -->
             <div class="settings-item">
               <label>勿扰例外</label>

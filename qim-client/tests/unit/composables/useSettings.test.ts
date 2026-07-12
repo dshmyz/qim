@@ -40,7 +40,6 @@ describe('useSettings 扩展字段', () => {
     // C2: 通知细化
     expect(settings.messageSettings.value.mentionAlert).toBe(true)
     expect(settings.messageSettings.value.notificationPreview).toBe('content')
-    expect(settings.messageSettings.value.notificationSound).toBe('default')
     expect(settings.messageSettings.value.dndExceptions).toEqual([])
     expect(settings.messageSettings.value.nightDndEnabled).toBe(false)
     expect(settings.messageSettings.value.nightDndStart).toBe('23:00')
@@ -52,7 +51,6 @@ describe('useSettings 扩展字段', () => {
       sendShortcut: 'ctrl_enter',
       mentionAlert: false,
       notificationPreview: 'simple',
-      notificationSound: 'chime',
       dndExceptions: ['user1', 'user2'],
       nightDndEnabled: true,
       nightDndStart: '22:00',
@@ -65,7 +63,6 @@ describe('useSettings 扩展字段', () => {
     expect(settings.messageSettings.value.sendShortcut).toBe('ctrl_enter')
     expect(settings.messageSettings.value.mentionAlert).toBe(false)
     expect(settings.messageSettings.value.notificationPreview).toBe('simple')
-    expect(settings.messageSettings.value.notificationSound).toBe('chime')
     expect(settings.messageSettings.value.dndExceptions).toEqual(['user1', 'user2'])
     expect(settings.messageSettings.value.nightDndEnabled).toBe(true)
     expect(settings.messageSettings.value.nightDndStart).toBe('22:00')
