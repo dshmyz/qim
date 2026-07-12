@@ -38,6 +38,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
 import QDialog from '../shared/QDialog.vue'
 import { formatCodeBlock } from '../../utils/codeBlock'
+import { isAppDarkTheme, onAppThemeChange } from '../../utils/theme'
 
 interface Props {
   visible: boolean
@@ -96,7 +97,7 @@ function applyLanguage(langName: string) {
 
 function createEditor() {
   if (!codemirrorRef.value) return
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const isDark = isAppDarkTheme()
 
   const updateListener = EditorView.updateListener.of((update) => {
     if (update.docChanged) {
@@ -177,14 +178,27 @@ watch(
 
 watch(selectedLanguage, (lang) => applyLanguage(lang))
 
+// 主题变化时动态切换 CodeMirror 主题（跟随 app 主题而非系统主题）
+let unsubscribeTheme: (() => void) | null = null
+
 onMounted(() => {
   if (props.visible) {
     nextTick(() => createEditor())
   }
+  unsubscribeTheme = onAppThemeChange(() => {
+    if (!editorView.value) return
+    editorView.value.dispatch({
+      effects: themeCompartment.reconfigure(isAppDarkTheme() ? oneDark : []),
+    })
+  })
 })
 
 onUnmounted(() => {
   destroyEditor()
+  if (unsubscribeTheme) {
+    unsubscribeTheme()
+    unsubscribeTheme = null
+  }
 })
 </script>
 
