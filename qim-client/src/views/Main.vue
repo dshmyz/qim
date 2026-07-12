@@ -642,16 +642,10 @@
     :profile="settingsProfile"
     :messageSettings="messageSettings"
     :appearanceSettings="appearanceSettings"
-    :advancedSettings="advancedSettings"
     @close="closeSettingsModal"
     @save="handleSaveSettings"
     @cacheCleared="handleCacheCleared"
-    @saveTwoFactor="saveTwoFactorSetting"
     @browseDirectory="browseDefaultSaveDirectory"
-    @openFeedback="openFeedbackModal"
-    @checkUpdate="checkForUpdates"
-    @openChangelog="openChangelog"
-    @openLicenses="openLicenses"
   />
 
   <!-- 问题反馈弹窗 -->
@@ -820,10 +814,8 @@ const {
   settingsProfile,
   messageSettings,
   appearanceSettings,
-  advancedSettings,
   loadSettings,
   saveSettings,
-  saveTwoFactorSetting,
   browseDefaultSaveDirectory,
   applyFontSize,
   setTheme,
@@ -1062,16 +1054,6 @@ const closeFeedbackModal = () => {
 
 const handleFeedbackSuccess = () => {
   QMessage.success('感谢您的反馈！我们会尽快处理。')
-}
-
-// 更新日志功能（C5）
-const openChangelog = () => {
-  QMessage.info('更新日志功能开发中')
-}
-
-// 开源许可功能（C5）
-const openLicenses = () => {
-  QMessage.info('开源许可功能开发中')
 }
 
 // 创建频道弹窗状态

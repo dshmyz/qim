@@ -23,10 +23,6 @@
             <i class="fas fa-database"></i>
             <span>数据与存储</span>
           </div>
-          <div class="settings-sidebar-item" :class="{ active: localTab === 'advanced' }" @click="localTab = 'advanced'">
-            <i class="fas fa-cog"></i>
-            <span>高级设置</span>
-          </div>
           <div class="settings-sidebar-item" :class="{ active: localTab === 'shortcut' }" @click="localTab = 'shortcut'">
             <i class="fas fa-keyboard"></i>
             <span>快捷键</span>
@@ -209,45 +205,6 @@
                 <span class="font-size-value">{{ localAppearanceSettings.fontSize }}px</span>
               </div>
             </div>
-            <!-- C4: 跟随系统主题 -->
-            <div class="settings-item">
-              <label>跟随系统主题</label>
-              <div class="settings-item-content">
-                <label class="switch">
-                  <input type="checkbox" v-model="localAppearanceSettings.followSystemTheme" data-testid="follow-system-theme-switch" />
-                  <span class="slider round"></span>
-                </label>
-                <div class="settings-hint">根据系统深浅色自动切换主题</div>
-              </div>
-            </div>
-            <!-- C4: 语言切换 -->
-            <div class="settings-item">
-              <label>语言</label>
-              <div class="settings-item-content">
-                <select v-model="localAppearanceSettings.language" class="settings-select" data-testid="language-select">
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en-US">English</option>
-                </select>
-              </div>
-            </div>
-            <!-- C4: 显示侧边栏 -->
-            <div class="settings-item">
-              <label>显示侧边栏</label>
-              <div class="settings-item-content">
-                <label class="switch">
-                  <input type="checkbox" v-model="localAppearanceSettings.showSidebar" data-testid="show-sidebar-switch" />
-                  <span class="slider round"></span>
-                </label>
-              </div>
-            </div>
-            <!-- C4: 聊天字体大小 -->
-            <div class="settings-item">
-              <label>聊天字体</label>
-              <div class="font-size-slider">
-                <input type="range" v-model.number="localAppearanceSettings.chatFontSize" min="12" max="20" step="1" data-testid="chat-font-size-slider" />
-                <span class="font-size-value">{{ localAppearanceSettings.chatFontSize }}px</span>
-              </div>
-            </div>
           </div>
           
           <div v-if="localTab === 'data-storage'" class="settings-section">
@@ -257,49 +214,6 @@
               @browseDirectory="$emit('browseDirectory', $event)"
               @cacheCleared="handleCacheCleared"
             />
-          </div>
-
-          <div v-if="localTab === 'advanced'" class="settings-section">
-            <div class="settings-section-header"><h4>高级设置</h4></div>
-            <div v-if="showTwoFactorSetting" class="settings-item">
-              <label>双因素认证</label>
-              <div class="settings-item-content">
-                <div class="setting-row">
-                  <label class="switch">
-                    <input type="checkbox" v-model="localAdvancedSettings.twoFactorEnabled" @change="handleTwoFactorChange" />
-                    <span class="slider round"></span>
-                  </label>
-                </div>
-                <div class="settings-hint">开启后，下次登录需要输入验证码</div>
-              </div>
-            </div>
-            <div class="settings-item">
-              <label>关于</label>
-              <div class="settings-item-content">
-                <div class="about-info">
-                  <span class="version-badge">v{{ appVersion }}</span>
-                  <span class="about-text">当前为最新版本</span>
-                </div>
-                <div class="about-actions">
-                  <button class="action-btn" data-testid="check-update-btn" @click="$emit('checkUpdate')">
-                    <i class="fas fa-sync-alt"></i>
-                    检查更新
-                  </button>
-                  <button class="action-btn" data-testid="open-changelog-btn" @click="$emit('openChangelog')">
-                    <i class="fas fa-list"></i>
-                    更新日志
-                  </button>
-                  <button class="action-btn" data-testid="open-licenses-btn" @click="$emit('openLicenses')">
-                    <i class="fas fa-file-alt"></i>
-                    开源许可
-                  </button>
-                  <button class="action-btn feedback-btn" @click="$emit('openFeedback')">
-                    <i class="fas fa-bullhorn"></i>
-                    问题反馈
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div v-if="localTab === 'shortcut'" class="settings-section">
@@ -329,7 +243,6 @@ import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import DataStorageSettings from './DataStorageSettings.vue'
-import { APP_CONFIG } from '../../config/appConfig'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
 import type { MessageSettings, AppearanceSettings } from '../../composables/useSettings'
 
@@ -359,7 +272,6 @@ interface Props {
   profile: { nickname?: string; signature?: string }
   messageSettings: Partial<MessageSettings>
   appearanceSettings: Partial<AppearanceSettings>
-  advancedSettings: { twoFactorEnabled?: boolean }
 }
 
 const props = defineProps<Props>()
@@ -368,23 +280,13 @@ const emit = defineEmits<{
   'close': []
   'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
   'cacheCleared': []
-  'saveTwoFactor': [enabled: boolean]
   'browseDirectory': [callback: (path: string) => void]
-  'openFeedback': []
-  'checkUpdate': []
-  'openChangelog': []
-  'openLicenses': []
 }>()
 
 const localTab = ref('basic')
-// 2FA 功能暂未完整实现，前端隐藏开关（后端字段保留不动）
-const showTwoFactorSetting = false
-// 版本号从构建时常量动态读取（A4）
-const appVersion = APP_CONFIG.version
 const localProfile = ref({ ...props.profile })
 const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
-const localAdvancedSettings = ref({ ...props.advancedSettings })
 const localShortcuts = ref<ShortcutsConfig>()
 const shortcutSettingsRef = ref<InstanceType<typeof ShortcutSettings> | null>(null)
 
@@ -416,7 +318,6 @@ watch(() => props.visible, (val) => {
     localProfile.value = { ...props.profile }
     localMessageSettings.value = { ...props.messageSettings }
     localAppearanceSettings.value = { ...props.appearanceSettings }
-    localAdvancedSettings.value = { ...props.advancedSettings }
   }
 })
 
@@ -482,11 +383,6 @@ const save = () => {
     shortcuts: localShortcuts.value ? JSON.parse(JSON.stringify(localShortcuts.value)) : undefined
   })
   pendingAvatarFile.value = null
-}
-
-const handleTwoFactorChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  emit('saveTwoFactor', target.checked)
 }
 
 // 缓存被清理后通知父组件重新加载设置，避免保存时把旧数据写回 localStorage

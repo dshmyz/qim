@@ -29,15 +29,6 @@ export interface MessageSettings {
 export interface AppearanceSettings {
   theme: string
   fontSize: number
-  // C4: 外观补充
-  followSystemTheme: boolean
-  language: string
-  showSidebar: boolean
-  chatFontSize: number
-}
-
-export interface AdvancedSettings {
-  twoFactorEnabled: boolean
 }
 
 export function useSettings(currentUser: any, serverUrl: any, request: any) {
@@ -70,16 +61,7 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
 
   const appearanceSettings = ref<AppearanceSettings>({
     theme: currentTheme.value,
-    fontSize: 14,
-    // C4: 外观补充
-    followSystemTheme: false,
-    language: 'zh-CN',
-    showSidebar: true,
-    chatFontSize: 14
-  })
-
-  const advancedSettings = ref<AdvancedSettings>({
-    twoFactorEnabled: currentUser.value?.two_factor_enabled || false
+    fontSize: 14
   })
 
   const loadSettings = () => {
@@ -164,46 +146,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     }
   }
 
-  const clearCache = async () => {
-    if (confirm('确定要清除缓存吗？')) {
-      localStorage.removeItem('messageSettings')
-      localStorage.removeItem('appearanceSettings')
-      QMessage.success('缓存已清除')
-    }
-  }
-
-  const saveTwoFactorSetting = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        QMessage.error('请先登录')
-        return false
-      }
-      const response = await fetch(`${serverUrl.value}/api/v1/users/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          two_factor_enabled: advancedSettings.value.twoFactorEnabled
-        })
-      })
-      const data = await response.json()
-      if (data.code === 0) {
-        QMessage.success('设置保存成功')
-        return true
-      } else {
-        QMessage.error(data.message || '设置保存失败')
-        return false
-      }
-    } catch (error) {
-      console.error('保存双因素认证设置失败:', error)
-      QMessage.error('保存设置失败')
-      return false
-    }
-  }
-
   const browseDefaultSaveDirectory = (callback?: (path: string) => void) => {
     if (window.electron && window.electron.ipcRenderer) {
       window.electron.ipcRenderer.send('open-file-dialog', { properties: ['openDirectory'] })
@@ -257,7 +199,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     if (currentUser.value) {
       settingsProfile.value.nickname = currentUser.value.nickname || currentUser.value.username || '我的账号'
       settingsProfile.value.signature = currentUser.value.signature || '这个人很懒，什么都没留下'
-      advancedSettings.value.twoFactorEnabled = currentUser.value.two_factor_enabled || false
     }
   }
 
@@ -270,10 +211,8 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     settingsProfile,
     messageSettings,
     appearanceSettings,
-    advancedSettings,
     loadSettings,
     saveSettings,
-    saveTwoFactorSetting,
     browseDefaultSaveDirectory,
     applyFontSize,
     setTheme,

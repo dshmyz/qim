@@ -47,14 +47,6 @@ describe('useSettings 扩展字段', () => {
     expect(settings.messageSettings.value.nightDndEnd).toBe('07:00')
   })
 
-  it('外观设置包含 C4 新字段默认值', () => {
-    const settings = useSettings(ref(null), ref('http://localhost:8080'), vi.fn())
-    expect(settings.appearanceSettings.value.followSystemTheme).toBe(false)
-    expect(settings.appearanceSettings.value.language).toBe('zh-CN')
-    expect(settings.appearanceSettings.value.showSidebar).toBe(true)
-    expect(settings.appearanceSettings.value.chatFontSize).toBe(14)
-  })
-
   it('从 localStorage 加载时恢复 C1/C2 新字段', () => {
     storage.set('messageSettings', JSON.stringify({
       sendShortcut: 'ctrl_enter',
@@ -80,24 +72,7 @@ describe('useSettings 扩展字段', () => {
     expect(settings.messageSettings.value.nightDndEnd).toBe('06:00')
   })
 
-  it('从 localStorage 加载时恢复 C4 新字段', () => {
-    storage.set('appearanceSettings', JSON.stringify({
-      followSystemTheme: true,
-      language: 'en-US',
-      showSidebar: false,
-      chatFontSize: 16,
-    }))
-
-    const settings = useSettings(ref(null), ref('http://localhost:8080'), vi.fn())
-    settings.loadSettings()
-
-    expect(settings.appearanceSettings.value.followSystemTheme).toBe(true)
-    expect(settings.appearanceSettings.value.language).toBe('en-US')
-    expect(settings.appearanceSettings.value.showSidebar).toBe(false)
-    expect(settings.appearanceSettings.value.chatFontSize).toBe(16)
-  })
-
-  it('保存设置时 C1/C2/C4 新字段写入 localStorage', async () => {
+  it('保存设置时 C1/C2 新字段写入 localStorage', async () => {
     const mockRequest = vi.fn().mockResolvedValue({ code: 0, message: 'success' })
     const settings = useSettings(
       ref({ nickname: 'test', username: 'test' }),
@@ -107,9 +82,6 @@ describe('useSettings 扩展字段', () => {
     settings.messageSettings.value.sendShortcut = 'ctrl_enter'
     settings.messageSettings.value.mentionAlert = false
     settings.messageSettings.value.dndExceptions = ['user_a']
-    settings.appearanceSettings.value.followSystemTheme = true
-    settings.appearanceSettings.value.language = 'en-US'
-    settings.appearanceSettings.value.chatFontSize = 16
 
     await settings.saveSettings()
 
@@ -117,10 +89,5 @@ describe('useSettings 扩展字段', () => {
     expect(savedMessage.sendShortcut).toBe('ctrl_enter')
     expect(savedMessage.mentionAlert).toBe(false)
     expect(savedMessage.dndExceptions).toEqual(['user_a'])
-
-    const savedAppearance = JSON.parse(storage.get('appearanceSettings') || '{}')
-    expect(savedAppearance.followSystemTheme).toBe(true)
-    expect(savedAppearance.language).toBe('en-US')
-    expect(savedAppearance.chatFontSize).toBe(16)
   })
 })

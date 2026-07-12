@@ -2,11 +2,6 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
-// mock APP_CONFIG 以验证版本号动态读取（A4）
-vi.mock('@/config/appConfig', () => ({
-  APP_CONFIG: { version: '9.9.9' },
-}))
-
 const invokeMock = vi.fn()
 
 function mountSettingsPanel(overrides: { messageSettings?: any; appearanceSettings?: any } = {}) {
@@ -18,7 +13,6 @@ function mountSettingsPanel(overrides: { messageSettings?: any; appearanceSettin
       profile: {},
       messageSettings: {},
       appearanceSettings: {},
-      advancedSettings: {},
       ...overrides,
     },
     global: {
@@ -56,32 +50,6 @@ describe('SettingsPanel 清理与修补', () => {
       if (channel === 'get-shortcuts') return Promise.resolve({})
       return Promise.resolve()
     })
-  })
-
-  it('2FA 开关应被隐藏（A8）', async () => {
-    const wrapper = mountSettingsPanel()
-    // 切换到高级设置 Tab
-    await clickTab(wrapper, '高级设置')
-    // 2FA 相关文本不应出现在 DOM 中
-    expect(wrapper.text()).not.toContain('双因素认证')
-    expect(wrapper.text()).not.toContain('开启后，下次登录需要输入验证码')
-  })
-
-  it('账号安全占位按钮应已删除（A1）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    expect(wrapper.text()).not.toContain('账号安全')
-    expect(wrapper.text()).not.toContain('查看安全设置')
-  })
-
-  it('版本号应动态读取而非硬编码（A4）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    const versionBadge = wrapper.find('.version-badge')
-    expect(versionBadge.exists()).toBe(true)
-    // APP_CONFIG 被 mock 为 9.9.9，如果版本号动态读取则显示 v9.9.9
-    // 如果仍为硬编码则显示 v1.0.0，测试会失败
-    expect(versionBadge.text()).toBe('v9.9.9')
   })
 
   it('消息设置 Tab 包含 C1 发送方式切换', async () => {
@@ -146,127 +114,5 @@ describe('SettingsPanel 清理与修补', () => {
     // localMessageSettings 应同步为新的 props 值
     expect((wrapper.vm as any).localMessageSettings.sendShortcut).toBe('enter')
     expect((wrapper.vm as any).localMessageSettings.mentionAlert).toBe(true)
-  })
-
-  it('外观设置 Tab 包含 C4 主题跟随系统开关', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('跟随系统主题')
-    const followSystemSwitch = wrapper.find('[data-testid="follow-system-theme-switch"]')
-    expect(followSystemSwitch.exists()).toBe(true)
-  })
-
-  it('外观设置 Tab 包含 C4 语言切换', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('语言')
-    const languageSelect = wrapper.find('[data-testid="language-select"]')
-    expect(languageSelect.exists()).toBe(true)
-  })
-
-  it('外观设置 Tab 包含 C4 侧边栏显示开关', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('显示侧边栏')
-    const sidebarSwitch = wrapper.find('[data-testid="show-sidebar-switch"]')
-    expect(sidebarSwitch.exists()).toBe(true)
-  })
-
-  it('外观设置 Tab 包含 C4 聊天字体大小滑块', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('聊天字体')
-    const chatFontSlider = wrapper.find('[data-testid="chat-font-size-slider"]')
-    expect(chatFontSlider.exists()).toBe(true)
-  })
-
-  it('C4 跟随系统主题开关切换应更新 localAppearanceSettings', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    const followSystemSwitch = wrapper.find('[data-testid="follow-system-theme-switch"]')
-    const before = (wrapper.vm as any).localAppearanceSettings.followSystemTheme
-    await followSystemSwitch.setValue(!before)
-    expect((wrapper.vm as any).localAppearanceSettings.followSystemTheme).toBe(!before)
-  })
-
-  it('C4 语言切换应更新 localAppearanceSettings', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    const languageSelect = wrapper.find('[data-testid="language-select"]')
-    await languageSelect.setValue('en-US')
-    expect((wrapper.vm as any).localAppearanceSettings.language).toBe('en-US')
-  })
-
-  it('C4 聊天字体滑块应更新 localAppearanceSettings', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '外观设置')
-    await wrapper.vm.$nextTick()
-    const chatFontSlider = wrapper.find('[data-testid="chat-font-size-slider"]')
-    await chatFontSlider.setValue('18')
-    expect((wrapper.vm as any).localAppearanceSettings.chatFontSize).toBe(18)
-  })
-
-  it('关于区域包含检查更新按钮（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const checkUpdateBtn = wrapper.find('[data-testid="check-update-btn"]')
-    expect(checkUpdateBtn.exists()).toBe(true)
-  })
-
-  it('点击检查更新按钮发出 checkUpdate 事件（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const checkUpdateBtn = wrapper.find('[data-testid="check-update-btn"]')
-    await checkUpdateBtn.trigger('click')
-    expect(wrapper.emitted('checkUpdate')).toBeTruthy()
-  })
-
-  it('关于区域包含更新日志按钮（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const changelogBtn = wrapper.find('[data-testid="open-changelog-btn"]')
-    expect(changelogBtn.exists()).toBe(true)
-  })
-
-  it('点击更新日志按钮发出 openChangelog 事件（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const changelogBtn = wrapper.find('[data-testid="open-changelog-btn"]')
-    await changelogBtn.trigger('click')
-    expect(wrapper.emitted('openChangelog')).toBeTruthy()
-  })
-
-  it('关于区域包含开源许可按钮（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const licensesBtn = wrapper.find('[data-testid="open-licenses-btn"]')
-    expect(licensesBtn.exists()).toBe(true)
-  })
-
-  it('点击开源许可按钮发出 openLicenses 事件（C5）', async () => {
-    const wrapper = mountSettingsPanel()
-    await clickTab(wrapper, '高级设置')
-    await wrapper.vm.$nextTick()
-    const licensesBtn = wrapper.find('[data-testid="open-licenses-btn"]')
-    await licensesBtn.trigger('click')
-    expect(wrapper.emitted('openLicenses')).toBeTruthy()
-  })
-
-  it('SettingsPanel 不再发出 openSecurity 事件（A1 清理验证）', () => {
-    const wrapper = mountSettingsPanel()
-    // openSecurity emit 已从定义中移除
-    // 验证组件不会发出此事件
-    expect(wrapper.emitted('openSecurity')).toBeUndefined()
   })
 })
