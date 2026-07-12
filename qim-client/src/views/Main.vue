@@ -645,7 +645,6 @@
     :advancedSettings="advancedSettings"
     @close="closeSettingsModal"
     @save="handleSaveSettings"
-    @clearCache="clearCache"
     @cacheCleared="handleCacheCleared"
     @saveTwoFactor="saveTwoFactorSetting"
     @browseDirectory="browseDefaultSaveDirectory"
@@ -824,7 +823,6 @@ const {
   advancedSettings,
   loadSettings,
   saveSettings,
-  clearCache,
   saveTwoFactorSetting,
   browseDefaultSaveDirectory,
   applyFontSize,

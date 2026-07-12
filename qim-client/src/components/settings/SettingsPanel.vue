@@ -367,7 +367,6 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'close': []
   'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
-  'clearCache': []
   'cacheCleared': []
   'saveTwoFactor': [enabled: boolean]
   'browseDirectory': [callback: (path: string) => void]
@@ -824,7 +823,7 @@ input:checked + .slider:before {
 .light-theme { background: #fff; }
 .dark-theme { background: #333; }
 .netblue-theme { background: #0078d4; }
-.elegant-purple-theme { background: #6b4c9a; }
+.elegant-purple-theme { background: #75629a; }
 .warm-amber-theme { background: #d4893a; }
 .crimson-red-theme { background: #c4352e; }
 .emerald-green-theme { background: #2d8b4e; }

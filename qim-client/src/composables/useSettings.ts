@@ -273,7 +273,6 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
     advancedSettings,
     loadSettings,
     saveSettings,
-    clearCache,
     saveTwoFactorSetting,
     browseDefaultSaveDirectory,
     applyFontSize,
