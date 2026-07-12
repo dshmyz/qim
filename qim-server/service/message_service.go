@@ -109,7 +109,7 @@ type MessageResult struct {
 func (s *MessageService) SendMessage(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error) {
 	db := s.db
 
-	if msgType == "text" && content != "" {
+	if (msgType == "text" || msgType == "markdown") && content != "" {
 		if contains, words := s.CheckSensitiveContent(content); contains {
 			return nil, fmt.Errorf("%w: %v", ErrSensitiveWordBlocked, words)
 		}
