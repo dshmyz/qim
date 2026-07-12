@@ -41,6 +41,16 @@
       <span class="context-menu-icon"><i class="fas fa-copy"></i></span>
       <span>复制</span>
     </div>
+    <!-- markdown 专属：复制代码（仅当含代码块时） -->
+    <div v-if="hasCodeBlock" class="context-menu-item" @click="handleCopyCode">
+      <span class="context-menu-icon"><i class="fas fa-code"></i></span>
+      <span>复制代码</span>
+    </div>
+    <!-- markdown 专属：复制纯文本 -->
+    <div v-if="isMarkdownMessage" class="context-menu-item" @click="handleCopyPlainText">
+      <span class="context-menu-icon"><i class="fas fa-file-alt"></i></span>
+      <span>复制纯文本</span>
+    </div>
     <div class="context-menu-item" @click="handleForwardMessage">
       <span class="context-menu-icon"><i class="fas fa-share-alt"></i></span>
       <span>转发</span>
@@ -87,6 +97,8 @@ interface Emits {
   (e: 'save-file-as', content: string): void
   (e: 'download-file', content: string): void
   (e: 'copy-message'): void
+  (e: 'copy-code'): void
+  (e: 'copy-plain-text'): void
   (e: 'forward-message'): void
   (e: 'quote-message'): void
   (e: 'add-to-notes-app'): void
@@ -118,7 +130,17 @@ const isAIMessage = computed(() => {
 const isTextLikeMessage = computed(() => {
   if (!props.message) return false
   const type = props.message.type
-  return type === 'text' || isAIMessage.value
+  return type === 'text' || type === 'markdown' || isAIMessage.value
+})
+
+const isMarkdownMessage = computed(() => {
+  if (!props.message) return false
+  return props.message.type === 'markdown'
+})
+
+const hasCodeBlock = computed(() => {
+  if (!props.message || !props.message.content) return false
+  return /```[a-zA-Z0-9]*\n[\s\S]*?```/.test(props.message.content)
 })
 
 const canSendReminder = computed((): boolean => {
@@ -160,6 +182,14 @@ const handleSaveFileAs = () => {
 
 const handleCopyMessage = () => {
   emit('copy-message')
+}
+
+const handleCopyCode = () => {
+  emit('copy-code')
+}
+
+const handleCopyPlainText = () => {
+  emit('copy-plain-text')
 }
 
 const handleForwardMessage = () => {

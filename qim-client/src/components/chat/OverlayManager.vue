@@ -25,6 +25,8 @@
     @save-file-as="emit('save-file-as', $event); closeMessageMenu()"
     @download-file="emit('download-file', $event); closeMessageMenu()"
     @copy-message="emit('copy-message'); closeMessageMenu()"
+    @copy-code="emit('copy-code'); closeMessageMenu()"
+    @copy-plain-text="emit('copy-plain-text'); closeMessageMenu()"
     @forward-message="emit('forward-message'); closeMessageMenu()"
     @quote-message="emit('quote-message'); closeMessageMenu()"
     @add-to-notes-app="emit('add-to-notes-app'); closeMessageMenu()"
@@ -140,6 +142,8 @@ const emit = defineEmits<{
   'save-file-as': [data: string]
   'download-file': [data: string]
   'copy-message': []
+  'copy-code': []
+  'copy-plain-text': []
   'forward-message': []
   'quote-message': []
   'add-to-notes-app': []

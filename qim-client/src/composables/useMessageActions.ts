@@ -5,6 +5,8 @@ import type { Message } from '../types'
 import { request } from './useRequest'
 import { useUIStore } from '../stores/ui'
 import { decodeToPlainText } from '../utils/mentions'
+import { extractCodeBlocks } from '../utils/codeBlock'
+import { markdownToPlainText } from '../utils/markdown'
 
 function debounce<T extends (...args: any[]) => any>(
   func: T,
@@ -390,6 +392,38 @@ export function useMessageActions(
     }
   }
 
+  /**
+   * 复制消息中的代码块内容（仅代码，不含围栏和语言标识）。
+   * 多个代码块用换行分隔合并。
+   */
+  const copyCode = async (message: Message) => {
+    if (!message || !message.content) return
+    const blocks = extractCodeBlocks(message.content)
+    if (blocks.length === 0) {
+      QMessage.warning('消息中没有代码块')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(blocks.join('\n\n'))
+      QMessage.success(blocks.length > 1 ? `已复制 ${blocks.length} 个代码块` : '已复制代码')
+    } catch (err) {
+      console.error('复制代码失败:', err)
+    }
+  }
+
+  /**
+   * 复制消息的纯文本（剥离 markdown 语法，保留代码内容）。
+   */
+  const copyPlainText = async (message: Message) => {
+    if (!message || !message.content) return
+    try {
+      await navigator.clipboard.writeText(markdownToPlainText(message.content))
+      QMessage.success('已复制纯文本')
+    } catch (err) {
+      console.error('复制纯文本失败:', err)
+    }
+  }
+
   const debouncedLoadReadUsers = debounce(
     async (messages: Message[], conversationType: string, forceRefresh: boolean = false) => {
       if (!isMounted.value || conversationType !== 'group') return
@@ -447,6 +481,8 @@ export function useMessageActions(
     sendMessage,
     retrySendMessage,
     copyMessage,
+    copyCode,
+    copyPlainText,
     loadReadUsersForMessages,
     debouncedLoadReadUsers,
     cleanup
