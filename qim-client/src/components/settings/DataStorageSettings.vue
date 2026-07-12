@@ -91,21 +91,6 @@ const cacheCategories: CacheCategory[] = [
     label: '设置数据',
     match: (key) => ['messageSettings', 'appearanceSettings', 'theme', 'fontSize'].includes(key),
   },
-  {
-    id: 'messages',
-    label: '消息缓存',
-    match: (key) => key.startsWith('msg_') || key.startsWith('message_cache_'),
-  },
-  {
-    id: 'images',
-    label: '图片缓存',
-    match: (key) => key.startsWith('img_') || key.startsWith('image_cache_'),
-  },
-  {
-    id: 'files',
-    label: '文件缓存',
-    match: (key) => key.startsWith('file_') || key.startsWith('file_cache_'),
-  },
 ]
 
 // 受保护的 key，清理时不删除
