@@ -646,6 +646,7 @@
     @close="closeSettingsModal"
     @save="handleSaveSettings"
     @clearCache="clearCache"
+    @cacheCleared="handleCacheCleared"
     @saveTwoFactor="saveTwoFactorSetting"
     @openSecurity="QMessage.info('打开安全设置')"
     @browseDirectory="browseDefaultSaveDirectory"
@@ -3226,6 +3227,12 @@ const handleConfirmLogout = async () => {
   gotoLogin()
 }
 
+
+// 缓存被清理后重新加载设置，确保 messageSettings/appearanceSettings 恢复默认值
+// 避免 SettingsPanel 的 local 状态仍持有旧数据，导致用户点保存时把旧数据写回 localStorage
+const handleCacheCleared = () => {
+  loadSettings()
+}
 
 const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any }) => {
   try {

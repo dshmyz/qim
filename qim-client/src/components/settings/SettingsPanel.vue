@@ -365,6 +365,16 @@ watch(() => props.visible, (val) => {
   }
 })
 
+// 父组件重新加载设置后（例如缓存被清理后调用 loadSettings），props 会变化，
+// 此时需要同步刷新 local 状态，避免用户点保存时把旧数据写回 localStorage
+watch(() => props.messageSettings, (newVal) => {
+  localMessageSettings.value = { ...localMessageSettings.value, ...newVal }
+}, { deep: true })
+
+watch(() => props.appearanceSettings, (newVal) => {
+  localAppearanceSettings.value = { ...localAppearanceSettings.value, ...newVal }
+}, { deep: true })
+
 const triggerAvatarUpload = () => {
   const input = document.createElement('input')
   input.type = 'file'

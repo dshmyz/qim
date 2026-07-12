@@ -9,7 +9,7 @@ vi.mock('@/config/appConfig', () => ({
 
 const invokeMock = vi.fn()
 
-function mountSettingsPanel() {
+function mountSettingsPanel(overrides: { messageSettings?: any; appearanceSettings?: any } = {}) {
   return mount(SettingsPanel, {
     props: {
       visible: true,
@@ -19,6 +19,7 @@ function mountSettingsPanel() {
       messageSettings: {},
       appearanceSettings: {},
       advancedSettings: {},
+      ...overrides,
     },
     global: {
       stubs: {
@@ -131,5 +132,19 @@ describe('SettingsPanel 清理与修补', () => {
     await clearAllBtn.trigger('click')
     // SettingsPanel 应向上 emit cacheCleared
     expect(wrapper.emitted('cacheCleared')).toBeTruthy()
+  })
+
+  it('清缓存后 SettingsPanel 的 local 状态应同步刷新（端到端）', async () => {
+    const wrapper = mountSettingsPanel({
+      messageSettings: { sendShortcut: 'ctrl_enter', mentionAlert: false }
+    })
+    await clickTab(wrapper, '数据与存储')
+    await wrapper.vm.$nextTick()
+    // 模拟父组件 cacheCleared 后重新加载设置（messageSettings 被清空）
+    await wrapper.setProps({ messageSettings: { sendShortcut: 'enter', mentionAlert: true } })
+    await wrapper.vm.$nextTick()
+    // localMessageSettings 应同步为新的 props 值
+    expect((wrapper.vm as any).localMessageSettings.sendShortcut).toBe('enter')
+    expect((wrapper.vm as any).localMessageSettings.mentionAlert).toBe(true)
   })
 })
