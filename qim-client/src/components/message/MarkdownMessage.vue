@@ -1,13 +1,14 @@
 <template>
-  <div class="markdown-message" :class="{ self: isSelf }" v-html="renderedContent" @click="handleLinkClick"></div>
+  <div ref="containerRef" class="markdown-message" :class="{ self: isSelf }" v-html="renderedContent" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { decodeToPlainText } from '../../utils/mentions'
 import { emojiToHtml, classicToHtml } from '../../utils/emoji'
+import { useCodeHighlight } from '../../composables/useCodeHighlight'
 
 const props = withDefaults(
   defineProps<{
@@ -41,6 +42,9 @@ const renderedContent = computed(() => {
   // 使用 DOMPurify 进行消毒，防止 XSS 攻击，再把表情字符/经典标记替换为 <img>
   return classicToHtml(emojiToHtml(sanitizeMarkdown(htmlString)))
 })
+
+const containerRef = ref<HTMLElement | null>(null)
+useCodeHighlight(containerRef, renderedContent)
 </script>
 
 <style>
@@ -286,5 +290,10 @@ const renderedContent = computed(() => {
 [data-theme="elegant-dark"] .markdown-message.self th,
 [data-theme="elegant-dark"] .markdown-message.self td {
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.markdown-message .hljs {
+  background: transparent !important;
+  padding: 0 !important;
 }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <div class="streaming-message" :class="{ 'self': isSelf }" @click="handleLinkClick">
     <div class="message-content">
-      <div v-html="renderedContent" class="markdown-content"></div>
+      <div ref="containerRef" v-html="renderedContent" class="markdown-content"></div>
       <div v-if="isStreaming" class="typing-indicator">
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
@@ -12,10 +12,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { emojiToHtml, classicToHtml } from '../../utils/emoji'
+import { useCodeHighlight } from '../../composables/useCodeHighlight'
 
 const props = defineProps<{
   content: string
@@ -51,6 +52,9 @@ const renderedContent = computed(() => {
     return props.content
   }
 })
+
+const containerRef = ref<HTMLElement | null>(null)
+useCodeHighlight(containerRef, renderedContent)
 </script>
 
 <style scoped>
@@ -201,13 +205,18 @@ const renderedContent = computed(() => {
     background: #333;
     color: #e0e0e0;
   }
-  
+
   .markdown-content pre {
     background: rgba(255, 255, 255, 0.1);
   }
-  
+
   .markdown-content code {
     background: rgba(255, 255, 255, 0.1);
   }
+}
+
+.markdown-content .hljs {
+  background: transparent !important;
+  padding: 0 !important;
 }
 </style>

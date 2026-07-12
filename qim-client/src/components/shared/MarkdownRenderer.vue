@@ -1,11 +1,12 @@
 <template>
-  <div class="markdown-renderer" v-html="renderedContent" @click="handleLinkClick"></div>
+  <div ref="containerRef" class="markdown-renderer" v-html="renderedContent" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
+import { useCodeHighlight } from '../../composables/useCodeHighlight'
 
 const props = withDefaults(
   defineProps<{
@@ -43,6 +44,9 @@ const renderedContent = computed(() => {
   const htmlString = typeof html === 'string' ? html : String(html)
   return sanitizeMarkdown(htmlString)
 })
+
+const containerRef = ref<HTMLElement | null>(null)
+useCodeHighlight(containerRef, renderedContent)
 </script>
 
 <style scoped>
@@ -163,5 +167,10 @@ const renderedContent = computed(() => {
 .markdown-renderer th {
   background: var(--hover-color);
   font-weight: 600;
+}
+
+.markdown-renderer .hljs {
+  background: transparent !important;
+  padding: 0 !important;
 }
 </style>
