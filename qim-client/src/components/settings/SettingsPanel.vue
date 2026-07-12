@@ -209,6 +209,45 @@
                 <span class="font-size-value">{{ localAppearanceSettings.fontSize }}px</span>
               </div>
             </div>
+            <!-- C4: 跟随系统主题 -->
+            <div class="settings-item">
+              <label>跟随系统主题</label>
+              <div class="settings-item-content">
+                <label class="switch">
+                  <input type="checkbox" v-model="localAppearanceSettings.followSystemTheme" data-testid="follow-system-theme-switch" />
+                  <span class="slider round"></span>
+                </label>
+                <div class="settings-hint">根据系统深浅色自动切换主题</div>
+              </div>
+            </div>
+            <!-- C4: 语言切换 -->
+            <div class="settings-item">
+              <label>语言</label>
+              <div class="settings-item-content">
+                <select v-model="localAppearanceSettings.language" class="settings-select" data-testid="language-select">
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en-US">English</option>
+                </select>
+              </div>
+            </div>
+            <!-- C4: 显示侧边栏 -->
+            <div class="settings-item">
+              <label>显示侧边栏</label>
+              <div class="settings-item-content">
+                <label class="switch">
+                  <input type="checkbox" v-model="localAppearanceSettings.showSidebar" data-testid="show-sidebar-switch" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+            <!-- C4: 聊天字体大小 -->
+            <div class="settings-item">
+              <label>聊天字体</label>
+              <div class="font-size-slider">
+                <input type="range" v-model.number="localAppearanceSettings.chatFontSize" min="12" max="20" step="1" data-testid="chat-font-size-slider" />
+                <span class="font-size-value">{{ localAppearanceSettings.chatFontSize }}px</span>
+              </div>
+            </div>
           </div>
           
           <div v-if="localTab === 'data-storage'" class="settings-section">

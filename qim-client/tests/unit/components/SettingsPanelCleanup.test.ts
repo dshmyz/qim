@@ -147,4 +147,40 @@ describe('SettingsPanel 清理与修补', () => {
     expect((wrapper.vm as any).localMessageSettings.sendShortcut).toBe('enter')
     expect((wrapper.vm as any).localMessageSettings.mentionAlert).toBe(true)
   })
+
+  it('外观设置 Tab 包含 C4 主题跟随系统开关', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('跟随系统主题')
+    const followSystemSwitch = wrapper.find('[data-testid="follow-system-theme-switch"]')
+    expect(followSystemSwitch.exists()).toBe(true)
+  })
+
+  it('外观设置 Tab 包含 C4 语言切换', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('语言')
+    const languageSelect = wrapper.find('[data-testid="language-select"]')
+    expect(languageSelect.exists()).toBe(true)
+  })
+
+  it('外观设置 Tab 包含 C4 侧边栏显示开关', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('显示侧边栏')
+    const sidebarSwitch = wrapper.find('[data-testid="show-sidebar-switch"]')
+    expect(sidebarSwitch.exists()).toBe(true)
+  })
+
+  it('外观设置 Tab 包含 C4 聊天字体大小滑块', async () => {
+    const wrapper = mountSettingsPanel()
+    await clickTab(wrapper, '外观设置')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('聊天字体')
+    const chatFontSlider = wrapper.find('[data-testid="chat-font-size-slider"]')
+    expect(chatFontSlider.exists()).toBe(true)
+  })
 })
