@@ -19,6 +19,10 @@
             <i class="fas fa-paint-brush"></i>
             <span>外观设置</span>
           </div>
+          <div class="settings-sidebar-item" :class="{ active: localTab === 'data-storage' }" @click="localTab = 'data-storage'">
+            <i class="fas fa-database"></i>
+            <span>数据与存储</span>
+          </div>
           <div class="settings-sidebar-item" :class="{ active: localTab === 'advanced' }" @click="localTab = 'advanced'">
             <i class="fas fa-cog"></i>
             <span>高级设置</span>
@@ -185,21 +189,8 @@
                 <input v-model="localMessageSettings.nightDndEnd" type="time" class="settings-select" />
               </div>
             </div>
-            <div class="settings-item">
-              <label>默认保存目录</label>
-              <div class="settings-item-content">
-                <div class="input-with-btn">
-                  <input type="text" v-model="localMessageSettings.defaultSaveDirectory" class="settings-input" placeholder="选择默认保存目录" readonly />
-                  <button class="browse-btn" @click="$emit('browseDirectory', (path: string) => { localMessageSettings.defaultSaveDirectory = path })">
-                    <i class="fas fa-folder-open"></i>
-                    <span>浏览</span>
-                  </button>
-                </div>
-                <div class="settings-hint">设置接收文件的默认保存位置</div>
-              </div>
-            </div>
           </div>
-          
+
           <div v-if="localTab === 'appearance'" class="settings-section">
             <div class="settings-section-header"><h4>主题设置</h4></div>
             <div class="settings-item">
@@ -220,14 +211,16 @@
             </div>
           </div>
           
+          <div v-if="localTab === 'data-storage'" class="settings-section">
+            <DataStorageSettings
+              :defaultSaveDirectory="localMessageSettings.defaultSaveDirectory || ''"
+              @update:defaultSaveDirectory="localMessageSettings.defaultSaveDirectory = $event"
+              @browseDirectory="$emit('browseDirectory', $event)"
+            />
+          </div>
+
           <div v-if="localTab === 'advanced'" class="settings-section">
             <div class="settings-section-header"><h4>高级设置</h4></div>
-            <div class="settings-item">
-              <label>清除缓存</label>
-              <div class="settings-item-content">
-                <button class="action-btn" @click="$emit('clearCache')">清除缓存</button>
-              </div>
-            </div>
             <div v-if="showTwoFactorSetting" class="settings-item">
               <label>双因素认证</label>
               <div class="settings-item-content">
@@ -281,6 +274,7 @@ import { ref, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
+import DataStorageSettings from './DataStorageSettings.vue'
 import { APP_CONFIG } from '../../config/appConfig'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
 import type { MessageSettings, AppearanceSettings } from '../../composables/useSettings'
