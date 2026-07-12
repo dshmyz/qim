@@ -648,7 +648,6 @@
     @clearCache="clearCache"
     @cacheCleared="handleCacheCleared"
     @saveTwoFactor="saveTwoFactorSetting"
-    @openSecurity="QMessage.info('打开安全设置')"
     @browseDirectory="browseDefaultSaveDirectory"
     @openFeedback="openFeedbackModal"
     @checkUpdate="checkForUpdates"

@@ -262,4 +262,11 @@ describe('SettingsPanel 清理与修补', () => {
     await licensesBtn.trigger('click')
     expect(wrapper.emitted('openLicenses')).toBeTruthy()
   })
+
+  it('SettingsPanel 不再发出 openSecurity 事件（A1 清理验证）', () => {
+    const wrapper = mountSettingsPanel()
+    // openSecurity emit 已从定义中移除
+    // 验证组件不会发出此事件
+    expect(wrapper.emitted('openSecurity')).toBeUndefined()
+  })
 })
