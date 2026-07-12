@@ -98,6 +98,7 @@
       @close-emoji-panel="closeEmojiPanel"
       @select-file="selectFile"
       @select-image="selectImage"
+      @open-code-block="showCodeBlockEditor = true"
       @take-screenshot="takeScreenshot"
       @take-screenshot-hidden="takeScreenshotHidden"
       @open-message-manager="openMessageManager"
@@ -121,6 +122,11 @@
       @update:input-message="(val) => inputMessage = val"
       @update:show-mini-app-list="(val) => showMiniAppList = val"
       @update:search-query="(val) => searchQuery = val"
+    />
+
+    <CodeBlockEditor
+      v-model:visible="showCodeBlockEditor"
+      @confirm="handleSendCodeBlock"
     />
 
     <!-- 弹窗管理器 -->
@@ -213,6 +219,7 @@ import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
 import ChatBody from './ChatBody.vue'
 import ChatInputArea from './ChatInputArea.vue'
+import CodeBlockEditor from './CodeBlockEditor.vue'
 import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
 import { useServerUrl } from '../../composables/useServerUrl'
@@ -502,6 +509,7 @@ const startScreenShare = () => {
 
 const inputMessage = ref('')
 const quotedMessage = ref<any>(null)
+const showCodeBlockEditor = ref(false)
 const messageListRef = ref<HTMLDivElement>()
 const chatHeaderRef = ref<any>()
 const chatBodyRef = ref<InstanceType<typeof ChatBody>>()
@@ -988,6 +996,17 @@ const handleSend = async () => {
       saveDraft(props.conversation.id, '', null)
     }
   }
+}
+
+const handleSendCodeBlock = (markdown: string) => {
+  if (!markdown.trim()) return
+  const messageData = {
+    content: markdown,
+    type: 'markdown' as const,
+    quotedMessage: quotedMessage.value
+  }
+  emit('send', messageData)
+  quotedMessage.value = null
 }
 
 const handleKeydown = (event: KeyboardEvent) => {

@@ -22,6 +22,7 @@
     @close-emoji-panel="emit('close-emoji-panel')"
     @select-file="emit('select-file')"
     @select-image="emit('select-image')"
+    @open-code-block="emit('open-code-block')"
     @take-screenshot="emit('take-screenshot')"
     @take-screenshot-hidden="emit('take-screenshot-hidden')"
     @open-message-manager="emit('open-message-manager')"
@@ -85,6 +86,7 @@ const emit = defineEmits<{
   'close-emoji-panel': []
   'select-file': []
   'select-image': []
+  'open-code-block': []
   'take-screenshot': []
   'take-screenshot-hidden': []
   'open-message-manager': []

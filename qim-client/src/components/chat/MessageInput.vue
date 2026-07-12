@@ -24,6 +24,7 @@
       @toggle-emoji-panel="$emit('toggle-emoji-panel')"
       @select-file="handleSelectFile"
       @select-image="$emit('select-image')"
+      @open-code-block="$emit('open-code-block')"
       @take-screenshot="$emit('take-screenshot')"
       @take-screenshot-hidden="$emit('take-screenshot-hidden')"
       @open-message-manager="$emit('open-message-manager')"
@@ -161,6 +162,7 @@ const emit = defineEmits<{
   (e: 'close-emoji-panel'): void
   (e: 'select-file'): void
   (e: 'select-image'): void
+  (e: 'open-code-block'): void
   (e: 'take-screenshot'): void
   (e: 'take-screenshot-hidden'): void
   (e: 'open-message-manager'): void

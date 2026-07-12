@@ -73,3 +73,14 @@ describe('MessageInput mention suggestions', () => {
     expect(wrapper.emitted('cursor-change')).toHaveLength(2)
   })
 })
+
+describe('MessageInput code block forwarding', () => {
+  it('forwards open-code-block event from ChatToolbar', async () => {
+    const wrapper = mountMessageInput({ showAtMembersPanel: false })
+    // ChatToolbar 被 stub，通过 vm 直接触发其 emit
+    const toolbar = wrapper.findComponent({ name: 'ChatToolbar' })
+    toolbar.vm.$emit('open-code-block')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('open-code-block')).toBeTruthy()
+  })
+})
