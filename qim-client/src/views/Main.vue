@@ -743,7 +743,7 @@ import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText, parseContent } from '../utils/mentions'
 import { sameConversationId } from '../utils/conversationId'
 import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
-import { shouldRequestMessageAttention } from '../utils/messageAttention'
+import { requestMessageAttention } from '../utils/messageAttentionOrchestrator'
 // useUIState 已被 useAppState 替代
 
 // 服务器地址
@@ -1823,65 +1823,46 @@ const handleNewMessage = async (msg: any) => {
 
   const newMessage = processMessage(data, conversationId)
   const isCurrentConv = currentConversationId.value === conversationId
+  const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
+  const senderName = newMessage.sender?.name || newMessage.sender?.username || ''
+  // C2: 检查消息是否 @到了当前用户
+  const { mentions } = parseContent(newMessage.content || '')
+  const isMentioned = mentions.some(m => m.userId === 'all' || m.userId === currentUser.value?.id)
+  // C2: @提及强提醒 — 被提到时绕过免打扰
+  const dndBlocked = isGlobalDndEnabled(senderName)
+  const alertBypassed = isMentioned && messageSettings.value.mentionAlert
+  const canAlert = messageSettings.value.notificationsEnabled && (!dndBlocked || alertBypassed) && !conv?.muted
+  const canPlaySound = canAlert && messageSettings.value.soundEnabled
+  const canShowDesktopNotification = canAlert && messageSettings.value.desktopNotificationsEnabled && 'Notification' in window
 
-  let isWindowActive = false
-  if (window.electron?.windowState?.isActive) {
-    try {
-      isWindowActive = await window.electron.windowState.isActive()
-    } catch (error) {
-      logger.warn('读取主窗口状态失败，按非活动窗口处理:', error)
+  const performMessageAttention = () => {
+    if (canPlaySound) {
+      playMessageSound()
     }
-  }
 
-  const shouldRequestAttention = shouldRequestMessageAttention({
-    isCurrentConversation: isCurrentConv,
-    isStreaming: Boolean(newMessage.isStreaming),
-    isWindowActive,
-  })
+    if (window.electron?.tray) {
+      window.electron.tray.flash()
+    }
 
-  // 非活动窗口或非当前会话收到非流式消息时，按提醒设置触发提示音和桌面通知
-  if (shouldRequestAttention) {
-    const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
-    const senderName = newMessage.sender?.name || newMessage.sender?.username || ''
-    // C2: 检查消息是否 @到了当前用户
-    const { mentions } = parseContent(newMessage.content || '')
-    const isMentioned = mentions.some(m => m.userId === 'all' || m.userId === currentUser.value?.id)
-    // C2: @提及强提醒 — 被提到时绕过免打扰
-    const dndBlocked = isGlobalDndEnabled(senderName)
-    const alertBypassed = isMentioned && messageSettings.value.mentionAlert
-    const canAlert = messageSettings.value.notificationsEnabled && (!dndBlocked || alertBypassed) && !conv?.muted
-    const canPlaySound = canAlert && messageSettings.value.soundEnabled
-    const canShowDesktopNotification = canAlert && messageSettings.value.desktopNotificationsEnabled && 'Notification' in window
-
-    if (canAlert) {
-      if (canPlaySound) {
-        playMessageSound()
-      }
-
-      if (window.electron?.tray) {
-        window.electron.tray.flash()
-      }
-
-      if (canShowDesktopNotification) {
-        // C2: 通知内容预览 — 'simple' 模式只显示"新消息"，不泄露内容
-        const notificationBody = messageSettings.value.notificationPreview === 'simple'
-          ? '新消息'
-          : formatNotificationContent(newMessage)
-        if (Notification.permission === 'granted') {
-          new Notification('新消息', {
-            body: notificationBody,
-            icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
-          })
-        } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission().then(permission => {
-            if (permission === 'granted') {
-              new Notification('新消息', {
-                body: notificationBody,
-                icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
-              })
-            }
-          })
-        }
+    if (canShowDesktopNotification) {
+      // C2: 通知内容预览 — 'simple' 模式只显示"新消息"，不泄露内容
+      const notificationBody = messageSettings.value.notificationPreview === 'simple'
+        ? '新消息'
+        : formatNotificationContent(newMessage)
+      if (Notification.permission === 'granted') {
+        new Notification('新消息', {
+          body: notificationBody,
+          icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
+        })
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification('新消息', {
+              body: notificationBody,
+              icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
+            })
+          }
+        })
       }
     }
   }
@@ -1902,6 +1883,20 @@ const handleNewMessage = async (msg: any) => {
     nextTick(() => {
       chatWindowRef.value?.scrollToBottom(true)
       requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
+    })
+  }
+
+  if (canAlert) {
+    requestMessageAttention({
+      isCurrentConversation: isCurrentConv,
+      isStreaming: Boolean(newMessage.isStreaming),
+      getIsWindowActive: window.electron?.windowState?.isActive
+        ? () => window.electron.windowState.isActive()
+        : async () => false,
+      onAttention: performMessageAttention,
+      onWindowStateError: (error) => {
+        logger.warn('读取主窗口状态失败，按非活动窗口处理:', error)
+      },
     })
   }
 }

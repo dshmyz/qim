@@ -32,6 +32,7 @@ describe('tray attention behavior', () => {
 
   it('treats main-window state query failures as inactive', () => {
     expect(mainProcess).toMatch(/ipcMain\.handle\('is-main-window-active',[\s\S]*?try\s*\{[\s\S]*?catch\s*\([^)]*\)\s*\{[\s\S]*?return false/)
+    expect(mainProcess).toMatch(/ipcMain\.handle\('is-main-window-active',[\s\S]*?catch\s*\([^)]*\)\s*\{[\s\S]*?console\.warn/)
   })
 
   it('exposes main-window activity through the preload bridge and types', () => {

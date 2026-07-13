@@ -984,6 +984,7 @@ function registerIPC() {
         mainWindow.isFocused()
       )
     } catch (error) {
+      console.warn('Failed to read main window activity; treating it as inactive:', error)
       return false
     }
   })
