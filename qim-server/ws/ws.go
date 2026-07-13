@@ -851,12 +851,32 @@ func handleReadMessage(c *Client, data interface{}) {
 func fallbackHandleReadMessage(c *Client, convID uint) {
 	db := c.hub.db
 
-	// 检查 unread_count，无未读则跳过
+	// 检查会话成员资格
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
 		return
 	}
-	if member.UnreadCount == 0 {
+
+	// 用 per-user 的 message_read_receipts 表判断"该用户尚未读过的消息"，
+	// 不能用 messages.is_read 全局字段（详见 MessageService.MarkAsRead 注释）
+	now := time.Now()
+
+	var unreadMsgIDs []uint
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ?", convID, c.userID).
+		Where("id NOT IN (?)", db.Model(&model.MessageReadReceipt{}).Select("message_id").Where("user_id = ?", c.userID)).
+		Pluck("id", &unreadMsgIDs)
+
+	// 即使没有未读，也要清零 unread_count 和推进 last_read_at
+	db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", convID, c.userID).
+		Updates(map[string]interface{}{
+			"unread_count":            0,
+			"unread_at_mention_count": 0,
+			"last_read_at":            now,
+		})
+
+	if len(unreadMsgIDs) == 0 {
 		return
 	}
 
@@ -865,56 +885,51 @@ func fallbackHandleReadMessage(c *Client, convID uint) {
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
-		`, convID, c.userID, time.Now(), convID, c.userID)
+			WHERE conversation_id = ? AND sender_id != ?
+			  AND id NOT IN (SELECT message_id FROM message_read_receipts WHERE user_id = ?)
+		`, convID, c.userID, now, convID, c.userID, c.userID)
 	} else {
 		db.Exec(`
 			INSERT INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
+			WHERE conversation_id = ? AND sender_id != ?
+			  AND id NOT IN (SELECT message_id FROM message_read_receipts WHERE user_id = ?)
 			ON CONFLICT (message_id, user_id) DO NOTHING
-		`, convID, c.userID, time.Now(), convID, c.userID)
+		`, convID, c.userID, now, convID, c.userID, c.userID)
 	}
 
-	db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", convID, c.userID).
-		Updates(map[string]interface{}{
-			"unread_count": 0,
-			"last_read_at": time.Now(),
-		})
-
-	result := db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, c.userID).
+	// messages.is_read 仅作为缓存标志
+	db.Model(&model.Message{}).
+		Where("id IN ? AND is_read = false", unreadMsgIDs).
 		UpdateColumn("is_read", true)
 
-	if result.RowsAffected > 0 {
-		var conv model.Conversation
-		if err := db.First(&conv, convID).Error; err != nil {
-			return
-		}
+	var conv model.Conversation
+	if err := db.First(&conv, convID).Error; err != nil {
+		return
+	}
 
-		readMsg := WSMessage{
-			Type: "message_read",
-			Data: map[string]interface{}{
-				"conversation_id": convID,
-				"user_id":         c.userID,
-				"timestamp":       time.Now().Unix(),
-			},
-		}
-		jsonMsg, _ := json.Marshal(readMsg)
+	readMsg := WSMessage{
+		Type: "message_read",
+		Data: map[string]interface{}{
+			"conversation_id": convID,
+			"user_id":         c.userID,
+			"message_ids":     unreadMsgIDs,
+			"timestamp":       now.Unix(),
+		},
+	}
+	jsonMsg, _ := json.Marshal(readMsg)
 
-		if conv.Type == "single" {
-			var otherMember model.ConversationMember
-			db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).First(&otherMember)
-			c.hub.SendToUser(otherMember.UserID, jsonMsg)
-		} else if conv.Type == "group" {
-			var members []model.ConversationMember
-			db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).Find(&members)
+	if conv.Type == "single" {
+		var otherMember model.ConversationMember
+		db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).First(&otherMember)
+		c.hub.SendToUser(otherMember.UserID, jsonMsg)
+	} else if conv.Type == "group" {
+		var members []model.ConversationMember
+		db.Where("conversation_id = ? AND user_id != ?", convID, c.userID).Find(&members)
 
-			for _, member := range members {
-				c.hub.SendToUser(member.UserID, jsonMsg)
-			}
+		for _, member := range members {
+			c.hub.SendToUser(member.UserID, jsonMsg)
 		}
 	}
 }

@@ -10,13 +10,22 @@ export function useMainWebSocketHandlers(
   const chatStore = useChatStore()
 
   const handleReadReceipt = (data: any) => {
-    const { conversation_id, user_id, last_read_message_id } = data
+    const { conversation_id, user_id, message_ids, last_read_message_id } = data
     const convIdStr = conversation_id.toString()
 
     if (currentConversationId.value === convIdStr) {
-      const lastReadId = last_read_message_id?.toString()
-      if (lastReadId) {
-        // 按消息顺序标记到 last_read_message_id 为止（只标记自己发送的消息）
+      // 新协议：后端推送 message_ids（本次新写入回执的消息 ID 列表）
+      // 精确标记这些消息为已读，避免误标未读消息
+      if (Array.isArray(message_ids) && message_ids.length > 0) {
+        const idSet = new Set(message_ids.map((id: any) => id.toString()))
+        messages.value.forEach(msg => {
+          if (msg.isSelf && !msg.isRead && idSet.has(msg.id.toString())) {
+            chatStore.updateMessage(convIdStr, msg.id, { isRead: true })
+          }
+        })
+      } else if (last_read_message_id) {
+        // 兼容旧协议：按消息顺序标记到 last_read_message_id 为止
+        const lastReadId = last_read_message_id.toString()
         for (const msg of messages.value) {
           if (msg.isSelf && !msg.isRead) {
             chatStore.updateMessage(convIdStr, msg.id, { isRead: true })
@@ -26,7 +35,7 @@ export function useMainWebSocketHandlers(
           }
         }
       } else {
-        // 没有 last_read_message_id 时，标记所有自发送消息为已读
+        // 兼容旧协议：无 message_ids 时标记所有自发送消息为已读
         messages.value.forEach(msg => {
           if (msg.isSelf && !msg.isRead) {
             chatStore.updateMessage(convIdStr, msg.id, { isRead: true })
@@ -37,7 +46,7 @@ export function useMainWebSocketHandlers(
 
     chatStore.markConversationRead(convIdStr)
 
-    logger.log('处理已读回执，会话:', convIdStr, '用户:', user_id, 'last_read_message_id:', last_read_message_id)
+    logger.log('处理已读回执，会话:', convIdStr, '用户:', user_id, 'message_ids:', message_ids, 'last_read_message_id:', last_read_message_id)
   }
 
   const handleMessageRecalled = (data: any) => {

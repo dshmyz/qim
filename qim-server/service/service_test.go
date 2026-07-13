@@ -752,6 +752,72 @@ func TestMessageService_MarkAsRead(t *testing.T) {
 	assert.Equal(t, 0, member.UnreadCount)
 }
 
+// TestMessageService_MarkAsRead_GroupMultipleReaders 复现群聊多读者 bug：
+// 3 人群聊中 A 发消息，B 读取后，C 再读取，已读回执应包含 B 和 C 两条记录。
+// 历史 bug：用 messages.is_read 全局字段判断未读，导致只有第一个读者能写入回执。
+func TestMessageService_MarkAsRead_GroupMultipleReaders(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewMessageService(db, nil, nil)
+
+	userA := &model.User{Username: "userA", PasswordHash: "hash", Nickname: "A"}
+	userB := &model.User{Username: "userB", PasswordHash: "hash", Nickname: "B"}
+	userC := &model.User{Username: "userC", PasswordHash: "hash", Nickname: "C"}
+	db.Create(userA)
+	db.Create(userB)
+	db.Create(userC)
+
+	convSvc := NewConversationService(db)
+	conv, err := convSvc.CreateGroupConversation("Group", userA.ID, []uint{userB.ID, userC.ID}, "")
+	assert.NoError(t, err)
+
+	msg, err := svc.SendMessage(conv.ID, userA.ID, "text", "Hello group", nil)
+	assert.NoError(t, err)
+
+	// B 先读
+	err = svc.MarkAsRead(conv.ID, userB.ID)
+	assert.NoError(t, err)
+
+	// C 再读
+	err = svc.MarkAsRead(conv.ID, userC.ID)
+	assert.NoError(t, err)
+
+	// 校验：message_read_receipts 表应有 B、C 两条回执
+	var receiptCount int64
+	db.Model(&model.MessageReadReceipt{}).Where("message_id = ?", msg.ID).Count(&receiptCount)
+	assert.Equal(t, int64(2), receiptCount, "群聊已读回执应包含 B 和 C 两个读者的记录")
+
+	// 校验：GetMessageReadUsers 返回 B 和 C（不含发送者 A）
+	readUsers, totalMembers, err := svc.GetMessageReadUsers(msg.ID, userA.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), totalMembers, "群成员总数应为 3")
+	assert.Len(t, readUsers, 2, "已读用户列表应包含 2 人")
+}
+
+// TestMessageService_MarkAsRead_Idempotent 同一用户重复调用 MarkAsRead
+// 不应重复插入回执，也不应报错。
+func TestMessageService_MarkAsRead_Idempotent(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewMessageService(db, nil, nil)
+
+	userA := &model.User{Username: "userA", PasswordHash: "hash", Nickname: "A"}
+	userB := &model.User{Username: "userB", PasswordHash: "hash", Nickname: "B"}
+	db.Create(userA)
+	db.Create(userB)
+
+	convSvc := NewConversationService(db)
+	conv, _ := convSvc.CreateGroupConversation("Group", userA.ID, []uint{userB.ID}, "")
+
+	msg, _ := svc.SendMessage(conv.ID, userA.ID, "text", "Hello", nil)
+
+	// B 连续调用两次
+	_ = svc.MarkAsRead(conv.ID, userB.ID)
+	_ = svc.MarkAsRead(conv.ID, userB.ID)
+
+	var receiptCount int64
+	db.Model(&model.MessageReadReceipt{}).Where("message_id = ?", msg.ID).Count(&receiptCount)
+	assert.Equal(t, int64(1), receiptCount, "同一用户重复调用不应重复插入回执")
+}
+
 func TestMessageService_GetMessageByID(t *testing.T) {
 	db := setupServiceTestDB(t)
 	svc := NewMessageService(db, nil, nil)

@@ -1285,6 +1285,12 @@ const handleNewNotification = (notification: any) => {
     duration: 5000
   })
 
+  // 新通知触发闪烁+桌面通知（受勿扰模式控制）
+  triggerAttention(
+    notification.title || '新通知',
+    decodeToPlainText(notification.content || '您有一条新通知')
+  )
+
   if (notificationCenterRef.value) {
     const mapped = mapNotification(notification)
     const currentNotifications = notificationCenterRef.value.notifications || []
@@ -1511,15 +1517,51 @@ const isGlobalDndEnabled = (senderName?: string) => {
   return false
 }
 
+/**
+ * 触发用户注意力提醒：托盘闪烁 + 桌面通知
+ * 统一处理勿扰模式、桌面通知开关、权限检查
+ * @param title 通知标题
+ * @param body 通知正文
+ * @param options.skipDnd 是否跳过勿扰检查（来电/屏幕共享等强提醒用）
+ * @param options.icon 通知图标，默认应用 logo
+ */
+const triggerAttention = (title: string, body: string, options?: {
+  skipDnd?: boolean
+  icon?: string
+}) => {
+  const { skipDnd = false, icon = DEFAULT_NOTIFICATION_ICON } = options || {}
+
+  // 勿扰模式检查（强提醒跳过）
+  if (!skipDnd && isGlobalDndEnabled()) return
+
+  // 托盘闪烁
+  if (window.electron?.tray) {
+    window.electron.tray.flash()
+  }
+
+  // 桌面通知（受用户设置开关控制）
+  if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, icon })
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification(title, { body, icon })
+        }
+      })
+    }
+  }
+}
+
 // 处理通话和屏幕共享通知
 const handleCallNotification = (type: string, data: any) => {
   const fromUserId = data.from_user_id || data.user_id
   const fromUserName = data.from_user_name || data.sender_name || '对方'
   const fromUserAvatar = data.from_user_avatar || data.sender_avatar || ''
-  
+
   let title = ''
   let body = ''
-  
+
   switch (type) {
     case '来电':
       title = '来电提醒'
@@ -1537,36 +1579,18 @@ const handleCallNotification = (type: string, data: any) => {
       title = type
       body = decodeToPlainText(data.content || '您有一条新通知')
   }
-  
+
   showMessage({
     message: body,
     type: 'info',
     duration: 5000
   })
-  
-  if (window.electron?.tray) {
-    window.electron.tray.flash()
-  }
-  
-  if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
-    const notificationIcon = getNotificationIcon(fromUserAvatar, fromUserName)
-    
-    if (Notification.permission === 'granted') {
-      new Notification(title, {
-        body: body,
-        icon: notificationIcon
-      })
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification(title, {
-            body: body,
-            icon: notificationIcon
-          })
-        }
-      })
-    }
-  }
+
+  // 来电/屏幕共享是强提醒，跳过勿扰模式
+  triggerAttention(title, body, {
+    skipDnd: true,
+    icon: getNotificationIcon(fromUserAvatar, fromUserName)
+  })
 }
 
 // 连接WebSocket
@@ -1662,13 +1686,16 @@ const connectWebSocket = () => {
 // 处理系统消息
 const handleSystemMessage = (data: any) => {
   logger.log('收到系统消息:', data)
-  
+
   showMessage({
     message: `系统消息: ${data.title}`,
     type: 'info',
     duration: 5000
   })
-  
+
+  // 系统消息触发闪烁+桌面通知（受勿扰模式控制）
+  triggerAttention('系统消息', data.title || '')
+
   if (notificationCenterRef.value) {
     const newNotification = {
       id: Date.now().toString(),
@@ -1678,10 +1705,10 @@ const handleSystemMessage = (data: any) => {
       read: false,
       type: 'system' as const
     }
-    
+
     const currentNotifications = notificationCenterRef.value.notifications || []
     notificationCenterRef.value.notifications = [newNotification, ...currentNotifications]
-    
+
     unreadNotificationCount.value++
   }
 }
@@ -1735,6 +1762,9 @@ const handleNotification = (data: any) => {
     type: 'info',
     duration: 5000
   })
+
+  // 通知触发闪烁+桌面通知（受勿扰模式控制）
+  triggerAttention('新通知', decodeToPlainText(data.content || data.title || ''))
 
   if (notificationCenterRef.value) {
     const mapped = mapNotification(data)

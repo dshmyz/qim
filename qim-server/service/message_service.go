@@ -600,63 +600,72 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 		return ErrMessageForbidden
 	}
 
-	// 检查实际未读消息数（is_read = false），而不是只看 UnreadCount
-	var unreadCount int64
-	db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, userID).
-		Count(&unreadCount)
+	// 用 per-user 的 message_read_receipts 表判断"该用户尚未读过的消息"，
+	// 不能用 messages.is_read 全局字段——那是"是否被任何人读过"的缓存，
+	// 会被第一个读者置 true，导致后续读者无法插入回执（群聊已读人数卡在 1）。
+	now := time.Now()
 
-	if unreadCount == 0 {
-		db.Model(&model.ConversationMember{}).
-			Where("conversation_id = ? AND user_id = ?", convID, userID).
-			UpdateColumns(map[string]interface{}{
-				"unread_count":            0,
-				"unread_at_mention_count": 0,
-			})
+	// 查询该用户尚未写入回执的消息 ID（即对该用户的未读消息）
+	var unreadMsgIDs []uint
+	if err := db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id != ?", convID, userID).
+		Where("id NOT IN (?)", db.Model(&model.MessageReadReceipt{}).Select("message_id").Where("user_id = ?", userID)).
+		Pluck("id", &unreadMsgIDs).Error; err != nil {
+		return err
+	}
+
+	// 即使没有未读，也要清零 unread_count 和推进 last_read_at（保证幂等调用正确）
+	db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", convID, userID).
+		UpdateColumns(map[string]interface{}{
+			"unread_count":            0,
+			"unread_at_mention_count": 0,
+			"last_read_at":            now,
+		})
+
+	if len(unreadMsgIDs) == 0 {
 		return nil
 	}
 
+	// 批量插入回执（按数据库方言选语法，唯一索引保证幂等）
 	if database.D.Type() == "mysql" {
 		db.Exec(`
 			INSERT IGNORE INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
-		`, convID, userID, time.Now(), convID, userID)
+			WHERE conversation_id = ? AND sender_id != ?
+			  AND id NOT IN (SELECT message_id FROM message_read_receipts WHERE user_id = ?)
+		`, convID, userID, now, convID, userID, userID)
 	} else {
 		db.Exec(`
 			INSERT INTO message_read_receipts (message_id, conversation_id, user_id, created_at)
 			SELECT id, ?, ?, ?
 			FROM messages
-			WHERE conversation_id = ? AND sender_id != ? AND is_read = false
+			WHERE conversation_id = ? AND sender_id != ?
+			  AND id NOT IN (SELECT message_id FROM message_read_receipts WHERE user_id = ?)
 			ON CONFLICT (message_id, user_id) DO NOTHING
-		`, convID, userID, time.Now(), convID, userID)
+		`, convID, userID, now, convID, userID, userID)
 	}
 
-	result := db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id != ? AND is_read = false", convID, userID).
+	// messages.is_read 仅作为"是否被任何人读过"的缓存标志：第一个读者置 true 即可
+	db.Model(&model.Message{}).
+		Where("id IN ? AND is_read = false", unreadMsgIDs).
 		UpdateColumn("is_read", true)
 
-	db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", convID, userID).
-		UpdateColumns(map[string]interface{}{
-			"unread_count":           0,
-			"unread_at_mention_count": 0,
-		})
-
-	now := time.Now()
-	db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", convID, userID).
-		UpdateColumn("last_read_at", now)
-
-	if result.RowsAffected > 0 {
-		s.notifyMessageRead(convID, userID)
-	}
+	// 推送带 message_ids 的已读事件，让发送方前端精确刷新已读人数
+	s.notifyMessageReadWithMsgIDs(convID, userID, unreadMsgIDs)
 
 	return nil
 }
 
 func (s *MessageService) notifyMessageRead(convID, userID uint) {
+	s.notifyMessageReadWithMsgIDs(convID, userID, nil)
+}
+
+// notifyMessageReadWithMsgIDs 推送已读事件，msgIDs 为本次新写入回执的消息 ID 列表。
+// 群聊场景下发送方前端可用 message_ids 精确刷新对应消息的已读人数；
+// 单聊场景下 message_ids 可为空，前端按 isRead=true 渲染即可。
+func (s *MessageService) notifyMessageReadWithMsgIDs(convID, userID uint, msgIDs []uint) {
 	if s.hub == nil {
 		return
 	}
@@ -668,13 +677,18 @@ func (s *MessageService) notifyMessageRead(convID, userID uint) {
 		return
 	}
 
+	data := map[string]interface{}{
+		"conversation_id": convID,
+		"user_id":         userID,
+		"timestamp":       time.Now().Unix(),
+	}
+	if len(msgIDs) > 0 {
+		data["message_ids"] = msgIDs
+	}
+
 	readMsg := ws.WSMessage{
 		Type: "message_read",
-		Data: map[string]interface{}{
-			"conversation_id": convID,
-			"user_id":         userID,
-			"timestamp":       time.Now().Unix(),
-		},
+		Data: data,
 	}
 	jsonMsg, _ := json.Marshal(readMsg)
 
