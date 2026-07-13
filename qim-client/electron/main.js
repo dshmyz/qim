@@ -94,18 +94,6 @@ function loadIcon(size = 512) {
   }
 }
 
-function getIconDataURL(size = 512) {
-  const iconPath = getIconPath(size)
-  try {
-    const iconImage = fs.readFileSync(iconPath)
-    const base64 = iconImage.toString('base64')
-    return `data:image/png;base64,${base64}`
-  } catch (error) {
-    console.error('Error creating icon data URL:', error)
-    return null
-  }
-}
-
 // ==================== Helpers ====================
 
 function sendToWindow(channel, ...args) {
@@ -714,14 +702,6 @@ function initScreenshot() {
       }
     })
 
-    screenshotInstance.on('save', (e, buffer) => {
-      console.log('[screenshot] Save triggered, buffer length:', buffer.length)
-    })
-
-    screenshotInstance.on('ready', () => {
-      console.log('[screenshot] Tool ready')
-    })
-
     screenshotInstance.on('error', (err) => {
       console.error('[screenshot] Error:', err)
       screenshotInitError = err
@@ -1059,13 +1039,6 @@ function registerIPC() {
         })
       }
     }, 100)
-  })
-
-  ipcMain.on('webrtc-message', (event, message) => {
-    console.log('处理WebRTC消息:', message.type)
-    if (mainWindow) {
-      mainWindow.webContents.send('webrtc-message', message)
-    }
   })
 
   ipcMain.on('cache-avatar', async (event, avatarUrl) => {

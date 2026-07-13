@@ -23,11 +23,6 @@ interface ElectronAPI {
     onMessage: (callback: (message: any) => void) => void
     removeOnMessage: (callback: (message: any) => void) => void
   }
-  webrtc: {
-    send: (message: any) => void
-    onMessage: (callback: (message: any) => void) => void
-    removeOnMessage: (callback: (message: any) => void) => void
-  }
   tray: {
     flash: () => void
     stopFlash: () => void

@@ -109,29 +109,6 @@ contextBridge.exposeInMainWorld('electron', {
       }
     }
   },
-  webrtc: {
-    send: (message) => {
-      ipcRenderer.send('webrtc-message', message)
-    },
-    onMessage: (callback) => {
-      const listener = (event, message) => callback(message)
-      if (!listenerMap.has('webrtc-message')) {
-        listenerMap.set('webrtc-message', new Set())
-      }
-      listenerMap.get('webrtc-message').add({ callback, listener })
-      ipcRenderer.on('webrtc-message', listener)
-    },
-    removeOnMessage: (callback) => {
-      const listeners = listenerMap.get('webrtc-message')
-      if (listeners) {
-        const entry = [...listeners].find(e => e.callback === callback)
-        if (entry) {
-          listeners.delete(entry)
-          ipcRenderer.removeListener('webrtc-message', entry.listener)
-        }
-      }
-    }
-  },
   tray: {
     flash: () => {
       ipcRenderer.send('flash-tray')
