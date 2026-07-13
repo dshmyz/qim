@@ -57,9 +57,11 @@ func (r *userRepository) FindByIDs(ctx context.Context, ids []uint) ([]*model.Us
 func (r *userRepository) Search(ctx context.Context, query string, limit int) ([]*model.User, error) {
 	var users []*model.User
 	searchPattern := "%" + query + "%"
+	// 部门匹配走子查询关联 department_employees + departments，支持按组织搜索
+	deptSubquery := "id IN (SELECT de.user_id FROM department_employees de JOIN departments d ON de.department_id = d.id WHERE d.name LIKE ? AND d.deleted_at IS NULL)"
 	err := r.db.WithContext(ctx).
-		Where("type = ? AND (username LIKE ? OR nickname LIKE ? OR phone LIKE ? OR email LIKE ?)",
-			"user", searchPattern, searchPattern, searchPattern, searchPattern).
+		Where("type = ? AND (username LIKE ? OR nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR ip LIKE ? OR "+deptSubquery+")",
+			"user", searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern).
 		Limit(limit).
 		Find(&users).Error
 	return users, err

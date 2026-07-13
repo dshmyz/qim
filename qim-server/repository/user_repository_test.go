@@ -17,7 +17,7 @@ func setupUserTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
-	err = db.AutoMigrate(&model.User{}, &model.UserRole{})
+	err = db.AutoMigrate(&model.User{}, &model.UserRole{}, &model.Department{}, &model.DepartmentEmployee{})
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -79,6 +79,56 @@ func TestUserRepository_Search(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "张三", results[0].Nickname)
+}
+
+func TestUserRepository_SearchByIP(t *testing.T) {
+	db := setupUserTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, &model.User{
+		Username:     "zhangsan",
+		Nickname:     "张三",
+		PasswordHash: "hash",
+		IP:           "192.168.1.100",
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	results, err := repo.Search(ctx, "192.168.1.100", 10)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "zhangsan", results[0].Username)
+
+	// 局部 IP 也能命中（LIKE 匹配）
+	results, err = repo.Search(ctx, "192.168", 10)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+}
+
+func TestUserRepository_SearchByDepartment(t *testing.T) {
+	db := setupUserTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	user := &model.User{Username: "lisi", Nickname: "李四", PasswordHash: "hash"}
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	dept := model.Department{Name: "技术部", Level: 1}
+	if err := db.Create(&dept).Error; err != nil {
+		t.Fatalf("create department: %v", err)
+	}
+	if err := db.Create(&model.DepartmentEmployee{UserID: user.ID, DepartmentID: dept.ID, IsPrimary: true}).Error; err != nil {
+		t.Fatalf("create dept employee: %v", err)
+	}
+
+	// 按部门名搜索能命中该用户
+	results, err := repo.Search(ctx, "技术", 10)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "lisi", results[0].Username)
 }
 
 func TestUserRepository_UpdateStatus(t *testing.T) {
