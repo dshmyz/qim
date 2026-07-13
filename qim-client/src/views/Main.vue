@@ -743,6 +743,7 @@ import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText, parseContent } from '../utils/mentions'
 import { sameConversationId } from '../utils/conversationId'
 import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
+import { shouldRequestMessageAttention } from '../utils/messageAttention'
 // useUIState 已被 useAppState 替代
 
 // 服务器地址
@@ -1822,11 +1823,24 @@ const handleNewMessage = async (msg: any) => {
 
   const newMessage = processMessage(data, conversationId)
   const isCurrentConv = currentConversationId.value === conversationId
-  
-  
-  
-  // 非当前会话且非流式消息，且未设置免打扰，触发提示音和桌面通知
-  if (!isCurrentConv && !newMessage.isStreaming) {
+
+  let isWindowActive = false
+  if (window.electron?.windowState?.isActive) {
+    try {
+      isWindowActive = await window.electron.windowState.isActive()
+    } catch (error) {
+      logger.warn('读取主窗口状态失败，按非活动窗口处理:', error)
+    }
+  }
+
+  const shouldRequestAttention = shouldRequestMessageAttention({
+    isCurrentConversation: isCurrentConv,
+    isStreaming: Boolean(newMessage.isStreaming),
+    isWindowActive,
+  })
+
+  // 非活动窗口或非当前会话收到非流式消息时，按提醒设置触发提示音和桌面通知
+  if (shouldRequestAttention) {
     const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
     const senderName = newMessage.sender?.name || newMessage.sender?.username || ''
     // C2: 检查消息是否 @到了当前用户
