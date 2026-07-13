@@ -318,6 +318,7 @@ watch(() => props.messages, () => {
   -webkit-overflow-scrolling: touch;
 }
 
+
 .time-divider {
   display: flex;
   justify-content: center;

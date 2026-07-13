@@ -321,6 +321,22 @@ func (e *Engine) syncDepartmentEmployees(data *orgsync.OrgData, extToLocalDept m
 				}
 			}
 		}
+
+		// 同步冗余字段 User.Organization：取该用户所属部门名拼接，便于按组织检索/展示
+		var deptNames []string
+		if err := e.db.Model(&model.Department{}).
+			Where("id IN ? AND deleted_at IS NULL", targetDeptIDs).
+			Order("id ASC").
+			Pluck("name", &deptNames).Error; err != nil {
+			logger.WithModule("OrgSync").Warn("查询用户部门名失败", "user_id", userID, "error", err)
+			continue
+		}
+		orgStr := strings.Join(deptNames, "、")
+		if orgStr != "" {
+			if err := e.db.Model(&model.User{}).Where("id = ?", userID).Update("organization", orgStr).Error; err != nil {
+				logger.WithModule("OrgSync").Warn("更新用户组织字段失败", "user_id", userID, "error", err)
+			}
+		}
 	}
 }
 

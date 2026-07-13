@@ -217,6 +217,7 @@
   --context-menu-bg: #ffffff;
   --context-menu-hover: #fef2f2;
   --accent-color: #f87171;
+  --shadow-sm: 0 1px 2px 0 rgba(127, 29, 29, 0.08);
   --panel-bg: #ffffff;
   --list-bg: #fef2f2;
   --card-bg: #ffffff;
@@ -247,6 +248,7 @@
   --context-menu-bg: #ffffff;
   --context-menu-hover: #ecfdf5;
   --accent-color: #34d399;
+  --shadow-sm: 0 1px 2px 0 rgba(6, 78, 59, 0.08);
   --panel-bg: #ffffff;
   --list-bg: #ecfdf5;
   --card-bg: #ffffff;

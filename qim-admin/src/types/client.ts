@@ -50,6 +50,9 @@ export interface CrashLog {
 export interface UserFeedback {
   id: number
   userId?: number
+  username?: string
+  nickname?: string
+  handlerName?: string
   type: string
   content: string
   status: string

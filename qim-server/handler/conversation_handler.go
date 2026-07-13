@@ -602,7 +602,7 @@ func SearchConversations(c *gin.Context) {
 		}
 	}
 
-	// 单聊：按对方用户昵称/用户名匹配
+	// 单聊：按对方用户昵称/用户名/IP/部门 匹配（IP 可定位登录地址不同的对方，部门通过 department_employees 关联）
 	if len(singleConvIDs) > 0 {
 		var members []model.ConversationMember
 		db.Where("conversation_id IN ? AND user_id != ?", singleConvIDs, uid).Find(&members)
@@ -616,7 +616,9 @@ func SearchConversations(c *gin.Context) {
 
 		if len(otherUserIDs) > 0 {
 			var users []model.User
-			db.Where("id IN ? AND (nickname LIKE ? OR username LIKE ?)", otherUserIDs, keyword, keyword).Find(&users)
+			// 部门匹配走子查询关联 department_employees + departments，避免冗余字段漂移
+			deptSubquery := "id IN (SELECT de.user_id FROM department_employees de JOIN departments d ON de.department_id = d.id WHERE d.name LIKE ? AND d.deleted_at IS NULL)"
+			db.Where("id IN ? AND (nickname LIKE ? OR username LIKE ? OR ip LIKE ? OR "+deptSubquery+")", otherUserIDs, keyword, keyword, keyword, keyword).Find(&users)
 
 			matchedUsers := make(map[uint]model.User, len(users))
 			for _, u := range users {

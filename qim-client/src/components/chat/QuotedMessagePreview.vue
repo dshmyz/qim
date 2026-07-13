@@ -215,6 +215,6 @@ const handleClick = () => {
 
 /* 优雅紫色主题 */
 [data-theme='elegant-purple'] .quoted-message-preview {
-  border-left-color: #8b5cf6;
+  border-left-color: var(--accent-color);
 }
 </style>

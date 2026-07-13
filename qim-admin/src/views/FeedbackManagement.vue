@@ -110,7 +110,11 @@
     <el-card shadow="never" class="list-card">
       <el-table :data="feedbacks" v-loading="loading" border>
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="userId" label="用户ID" width="100" />
+        <el-table-column label="用户" width="140">
+          <template #default="{ row }">
+            <span>{{ row.nickname || row.username || row.userId }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="type" label="类型" width="100">
           <template #default="{ row }">
             <el-tag :type="getTypeTagType(row.type)">{{ getTypeLabel(row.type) }}</el-tag>
@@ -168,7 +172,7 @@
       <div v-if="currentFeedback" class="feedback-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="ID">{{ currentFeedback.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户ID">{{ currentFeedback.userId }}</el-descriptions-item>
+          <el-descriptions-item label="用户">{{ currentFeedback.nickname || currentFeedback.username || currentFeedback.userId }}</el-descriptions-item>
           <el-descriptions-item label="反馈类型">
             <el-tag :type="getTypeTagType(currentFeedback.type)">{{ getTypeLabel(currentFeedback.type) }}</el-tag>
           </el-descriptions-item>
@@ -180,7 +184,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(currentFeedback.createdAt || '') }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatTime(currentFeedback.updatedAt || '') }}</el-descriptions-item>
-          <el-descriptions-item label="处理人ID">{{ currentFeedback.handlerId || '未分配' }}</el-descriptions-item>
+          <el-descriptions-item label="处理人">{{ currentFeedback.handlerName || currentFeedback.handlerId || '未分配' }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="detail-section">
