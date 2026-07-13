@@ -974,6 +974,16 @@ function registerIPC() {
     stopTrayFlash()
   })
 
+  ipcMain.handle('is-main-window-active', () => {
+    return Boolean(
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      mainWindow.isVisible() &&
+      !mainWindow.isMinimized() &&
+      mainWindow.isFocused()
+    )
+  })
+
   updateService.registerUpdateIpc()
 
   ipcMain.handle('get-default-download-path', () => {

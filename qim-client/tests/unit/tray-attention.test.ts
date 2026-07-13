@@ -3,6 +3,8 @@ import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 
 const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+const preloadProcess = readFileSync(resolve(__dirname, '../../electron/preload.cjs'), 'utf8')
+const electronTypes = readFileSync(resolve(__dirname, '../../src/types/electron.d.ts'), 'utf8')
 
 describe('tray attention behavior', () => {
   it('keeps tray flashing until it is explicitly stopped', () => {
@@ -21,5 +23,16 @@ describe('tray attention behavior', () => {
     expect(mainProcess).toContain('function getBlankTrayIcon()')
     expect(mainProcess).toContain('nativeImage.createFromDataURL')
     expect(mainProcess).not.toContain('nativeImage.createEmpty()')
+  })
+
+  it('reports the main window as active only when it is viewable and focused', () => {
+    expect(mainProcess).toContain("ipcMain.handle('is-main-window-active'")
+    expect(mainProcess).toMatch(/!mainWindow\.isDestroyed\(\)[\s\S]*?mainWindow\.isVisible\(\)[\s\S]*?!mainWindow\.isMinimized\(\)[\s\S]*?mainWindow\.isFocused\(\)/)
+  })
+
+  it('exposes main-window activity through the preload bridge and types', () => {
+    expect(preloadProcess).toContain("ipcRenderer.invoke('is-main-window-active')")
+    expect(electronTypes).toContain('windowState: {')
+    expect(electronTypes).toContain('isActive: () => Promise<boolean>')
   })
 })

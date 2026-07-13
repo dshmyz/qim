@@ -139,6 +139,9 @@ contextBridge.exposeInMainWorld('electron', {
     stopFlash: () => {
       ipcRenderer.send('stop-tray-flash')
     }
+  },
+  windowState: {
+    isActive: () => ipcRenderer.invoke('is-main-window-active')
   }
 })
 

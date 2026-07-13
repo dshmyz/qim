@@ -32,6 +32,9 @@ interface ElectronAPI {
     flash: () => void
     stopFlash: () => void
   }
+  windowState: {
+    isActive: () => Promise<boolean>
+  }
 }
 
 interface Window {
