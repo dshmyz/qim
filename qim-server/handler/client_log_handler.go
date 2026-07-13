@@ -155,6 +155,62 @@ func NewFeedbackHandler(db *gorm.DB) *FeedbackHandler {
 	return &FeedbackHandler{db: db}
 }
 
+// fillUserNames 批量填充反馈列表的用户名/昵称/处理人名，避免 N+1 查询
+func (h *FeedbackHandler) fillUserNames(feedbacks []model.UserFeedback) {
+	if len(feedbacks) == 0 {
+		return
+	}
+	// 收集所有需要查询的 userId（含提交者和处理人）
+	idSet := make(map[uint]struct{})
+	for i := range feedbacks {
+		if feedbacks[i].UserID != nil {
+			idSet[*feedbacks[i].UserID] = struct{}{}
+		}
+		if feedbacks[i].HandlerID != nil {
+			idSet[*feedbacks[i].HandlerID] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	var users []model.User
+	if err := h.db.Select("id, username, nickname").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		logger.WithModule("feedback").Warn("批量查询反馈用户名失败", "error", err)
+		return
+	}
+	nameMap := make(map[uint]model.User, len(users))
+	for _, u := range users {
+		nameMap[u.ID] = u
+	}
+	for i := range feedbacks {
+		if feedbacks[i].UserID != nil {
+			if u, ok := nameMap[*feedbacks[i].UserID]; ok {
+				feedbacks[i].Username = u.Username
+				feedbacks[i].Nickname = u.Nickname
+			}
+		}
+		if feedbacks[i].HandlerID != nil {
+			if u, ok := nameMap[*feedbacks[i].HandlerID]; ok {
+				feedbacks[i].HandlerName = u.Nickname
+				if feedbacks[i].HandlerName == "" {
+					feedbacks[i].HandlerName = u.Username
+				}
+			}
+		}
+	}
+}
+
+// fillUserNamesSingle 填充单条反馈的用户名，详情/更新场景使用
+func (h *FeedbackHandler) fillUserNamesSingle(feedback *model.UserFeedback) {
+	list := []model.UserFeedback{*feedback}
+	h.fillUserNames(list)
+	*feedback = list[0]
+}
+
 func (h *FeedbackHandler) GetFeedbacks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
@@ -200,6 +256,8 @@ func (h *FeedbackHandler) GetFeedbacks(c *gin.Context) {
 		return
 	}
 
+	h.fillUserNames(feedbacks)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
@@ -230,6 +288,8 @@ func (h *FeedbackHandler) GetFeedbackDetail(c *gin.Context) {
 		})
 		return
 	}
+
+	h.fillUserNamesSingle(&feedback)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -299,6 +359,7 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 	}
 
 	h.db.First(&feedback, id)
+	h.fillUserNamesSingle(&feedback)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,

@@ -20,18 +20,23 @@ type CrashLog struct {
 }
 
 type UserFeedback struct {
-	ID        uint           `json:"id" gorm:"primaryKey"`
-	UserID    *uint          `json:"userId"`
-	Type      string         `json:"type" gorm:"not null"`
-	Content   string         `json:"content" gorm:"type:text;not null"`
-	Status    string         `json:"status" gorm:"default:pending"`
-	Priority  string         `json:"priority" gorm:"default:normal"`
-	Screenshot string        `json:"screenshot"`
-	Reply     string         `json:"reply" gorm:"type:text"`
-	HandlerID *uint          `json:"handlerId"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID         uint           `json:"id" gorm:"primaryKey"`
+	UserID     *uint          `json:"userId"`
+	Type       string         `json:"type" gorm:"not null"`
+	Content    string         `json:"content" gorm:"type:text;not null"`
+	Status     string         `json:"status" gorm:"default:pending"`
+	Priority   string         `json:"priority" gorm:"default:normal"`
+	Screenshot string         `json:"screenshot"`
+	Reply      string         `json:"reply" gorm:"type:text"`
+	HandlerID  *uint          `json:"handlerId"`
+	CreatedAt  time.Time      `json:"createdAt"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
+	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// 非持久化字段：由 handler 层填充，便于前端直接展示
+	Username     string `json:"username" gorm:"-"`
+	Nickname     string `json:"nickname" gorm:"-"`
+	HandlerName  string `json:"handlerName" gorm:"-"`
 }
 
 func (CrashLog) TableName() string {
