@@ -18,11 +18,6 @@ interface ElectronAPI {
     cancelSelection: () => void
     getScreenInfo: () => Promise<any>
   }
-  websocket: {
-    send: (message: any) => void
-    onMessage: (callback: (message: any) => void) => void
-    removeOnMessage: (callback: (message: any) => void) => void
-  }
   tray: {
     flash: () => void
     stopFlash: () => void

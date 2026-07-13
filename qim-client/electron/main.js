@@ -197,6 +197,79 @@ function getDefaultShortcuts() {
   }
 }
 
+// 自定义应用菜单：替代 Electron 默认菜单，去掉默认的 Close(role: close, Ctrl/Cmd+W)，
+// 改为由 hide 快捷键配置驱动的"隐藏窗口"项。菜单 accelerator 只在应用前台时生效，
+// 不会像 globalShortcut 那样系统级抢占其他应用的 Ctrl/Cmd+W。
+function buildAppMenu() {
+  const { shortcuts } = loadConfig()
+  const hide = shortcuts?.global?.hide
+  const isMac = process.platform === 'darwin'
+
+  const windowSubmenu = [
+    { role: 'minimize' },
+    { role: 'zoom' }
+  ]
+  if (hide?.enabled && hide.accelerator) {
+    windowSubmenu.push({
+      label: '隐藏窗口',
+      accelerator: hide.accelerator,
+      click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() }
+    })
+  }
+  if (isMac) {
+    windowSubmenu.push({ type: 'separator' })
+    windowSubmenu.push({ role: 'front' })
+  }
+
+  const template = []
+  if (isMac) {
+    template.push({ role: 'appMenu' })
+  } else {
+    template.push({ label: '文件', submenu: [{ role: 'quit' }] })
+  }
+
+  template.push({
+    label: '编辑',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      ...(isMac ? [{ role: 'pasteAndMatchStyle' }] : []),
+      { role: 'delete' },
+      { role: 'selectAll' }
+    ]
+  })
+
+  template.push({
+    label: '视图',
+    submenu: [
+      { role: 'reload' },
+      { role: 'forceReload' },
+      { role: 'toggleDevTools' },
+      { type: 'separator' },
+      { role: 'resetZoom' },
+      { role: 'zoomIn' },
+      { role: 'zoomOut' },
+      { type: 'separator' },
+      { role: 'togglefullscreen' }
+    ]
+  })
+
+  template.push({ label: '窗口', submenu: windowSubmenu })
+
+  template.push({
+    role: 'help',
+    submenu: [
+      { label: '了解更多', click: () => shell.openExternal('https://www.electronjs.org') }
+    ]
+  })
+
+  return Menu.buildFromTemplate(template)
+}
+
 // 兼容旧接口：只读写 serverUrl
 function loadServerConfig() {
   return loadConfig().serverUrl
@@ -1024,21 +1097,6 @@ function registerIPC() {
     } catch (error) {
       console.error('获取屏幕源失败:', error)
     }
-  })
-
-  ipcMain.on('send-websocket-message', (event, message) => {
-    console.log('发送WebSocket消息:', message.type)
-    setTimeout(() => {
-      if (mainWindow) {
-        mainWindow.webContents.send('websocket-message', {
-          type: message.type,
-          data: {
-            ...message.data,
-            from_user_id: 1
-          }
-        })
-      }
-    }, 100)
   })
 
   ipcMain.on('cache-avatar', async (event, avatarUrl) => {

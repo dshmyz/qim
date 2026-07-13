@@ -86,29 +86,6 @@ contextBridge.exposeInMainWorld('electron', {
       }
     }
   },
-  websocket: {
-    send: (message) => {
-      ipcRenderer.send('send-websocket-message', message)
-    },
-    onMessage: (callback) => {
-      const listener = (event, message) => callback(message)
-      if (!listenerMap.has('websocket-message')) {
-        listenerMap.set('websocket-message', new Set())
-      }
-      listenerMap.get('websocket-message').add({ callback, listener })
-      ipcRenderer.on('websocket-message', listener)
-    },
-    removeOnMessage: (callback) => {
-      const listeners = listenerMap.get('websocket-message')
-      if (listeners) {
-        const entry = [...listeners].find(e => e.callback === callback)
-        if (entry) {
-          listeners.delete(entry)
-          ipcRenderer.removeListener('websocket-message', entry.listener)
-        }
-      }
-    }
-  },
   tray: {
     flash: () => {
       ipcRenderer.send('flash-tray')

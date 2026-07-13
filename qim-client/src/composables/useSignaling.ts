@@ -6,9 +6,6 @@ export function useSignaling() {
       const message = JSON.stringify({ type, data })
       console.log('Sending signaling message:', type, data)
       window.ws.send(message)
-    } else if (typeof window !== 'undefined' && window.electron && window.electron.websocket) {
-      console.log('Sending signaling message via IPC:', type, data)
-      window.electron.websocket.send({ type, data })
     } else {
       console.error('WebSocket connection not available')
       throw new Error('WebSocket connection not available')

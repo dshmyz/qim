@@ -27,9 +27,7 @@ const ICE_SERVERS: RTCConfiguration = {
 }
 
 function sendSignalingMessage(message: SignalingMessage): void {
-  if (window.electron?.websocket) {
-    window.electron.websocket.send(message)
-  } else if ((window as any).ws) {
+  if ((window as any).ws) {
     ;(window as any).ws.send(JSON.stringify(message))
   }
 }

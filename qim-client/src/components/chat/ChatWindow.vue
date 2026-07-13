@@ -1086,8 +1086,6 @@ const handleMarkRead = () => {
 const isMounted = ref(true)
 // 跟踪 WebSocket 消息处理器的清理函数
 let wsHandlersCleanup: (() => void) | null = null
-// 跟踪 Electron WebSocket 消息监听器的引用
-let electronWsHandler: ((message: any) => void) | null = null
 // 跟踪 context menu 的 setTimeout ID 以便清理
 let memberContextMenuTimeoutId: number | null = null
 let messageContextMenuTimeoutId: number | null = null
@@ -1324,12 +1322,6 @@ const initWebSocketMessageHandler = () => {
     wsHandlersCleanup = null
   }
   
-  // 清理旧的 Electron WebSocket 监听器
-  if (electronWsHandler && window.electron?.websocket?.removeOnMessage) {
-    window.electron.websocket.removeOnMessage(electronWsHandler)
-    electronWsHandler = null
-  }
-
   const realtimeMessageTypes = [
     'realtime:session:created',
     'realtime:join:requested',
@@ -1356,15 +1348,6 @@ const initWebSocketMessageHandler = () => {
   });
   
   wsHandlersCleanup = addWsHandlers(handlerMap);
-  
-  if (window.electron && window.electron.websocket) {
-    electronWsHandler = (message) => {
-      if (realtimeMessageTypes.includes(message.type)) {
-        handleRealtimeMessage(message.type, message.data);
-      }
-    };
-    window.electron.websocket.onMessage(electronWsHandler);
-  }
 };
 
 // 组件卸载时移除事件监听器
@@ -1385,12 +1368,6 @@ onUnmounted(() => {
   if (wsHandlersCleanup) {
     wsHandlersCleanup()
     wsHandlersCleanup = null
-  }
-  
-  // 清理 Electron WebSocket 监听器
-  if (electronWsHandler && window.electron?.websocket?.removeOnMessage) {
-    window.electron.websocket.removeOnMessage(electronWsHandler)
-    electronWsHandler = null
   }
   
   // 清理 context menu 监听器和定时器
