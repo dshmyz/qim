@@ -8,6 +8,19 @@ export interface MessageAttentionRequest {
   onWindowStateError?: (error: unknown) => void
 }
 
+export interface CoreMessageAttentionSequence {
+  completeCoreMessage: () => void
+  requestAttention: () => void
+}
+
+export function completeCoreMessageThenRequestAttention({
+  completeCoreMessage,
+  requestAttention,
+}: CoreMessageAttentionSequence): void {
+  completeCoreMessage()
+  requestAttention()
+}
+
 export function requestMessageAttention({
   isCurrentConversation,
   isStreaming,

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { requestMessageAttention } from '../../../src/utils/messageAttentionOrchestrator'
+import {
+  completeCoreMessageThenRequestAttention,
+  requestMessageAttention,
+} from '../../../src/utils/messageAttentionOrchestrator'
 
 describe('requestMessageAttention', () => {
   it('does not alert for the selected conversation while the window is active', async () => {
@@ -79,19 +82,27 @@ describe('requestMessageAttention', () => {
     expect(alert).not.toHaveBeenCalled()
   })
 
-  it('does not block core message storage on a pending window-state query', () => {
+  it('completes core message handling before starting non-blocking attention', () => {
     const getIsWindowActive = vi.fn(() => new Promise<boolean>(() => {}))
-    const receiveMessage = vi.fn()
+    const calls: string[] = []
 
-    requestMessageAttention({
-      isCurrentConversation: true,
-      isStreaming: false,
-      getIsWindowActive,
-      onAttention: vi.fn(),
+    const result = completeCoreMessageThenRequestAttention({
+      completeCoreMessage: () => {
+        calls.push('core')
+      },
+      requestAttention: () => {
+        calls.push('attention')
+        requestMessageAttention({
+          isCurrentConversation: true,
+          isStreaming: false,
+          getIsWindowActive,
+          onAttention: vi.fn(),
+        })
+      },
     })
-    receiveMessage()
 
+    expect(result).toBeUndefined()
+    expect(calls).toEqual(['core', 'attention'])
     expect(getIsWindowActive).toHaveBeenCalledOnce()
-    expect(receiveMessage).toHaveBeenCalledOnce()
   })
 })

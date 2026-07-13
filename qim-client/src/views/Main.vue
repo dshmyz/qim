@@ -743,7 +743,10 @@ import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText, parseContent } from '../utils/mentions'
 import { sameConversationId } from '../utils/conversationId'
 import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
-import { requestMessageAttention } from '../utils/messageAttentionOrchestrator'
+import {
+  completeCoreMessageThenRequestAttention,
+  requestMessageAttention,
+} from '../utils/messageAttentionOrchestrator'
 // useUIState 已被 useAppState 替代
 
 // 服务器地址
@@ -1874,31 +1877,36 @@ const handleNewMessage = async (msg: any) => {
     await loadConversations()
   }
   
-  // 通过 Store 统一更新会话信息（lastMessage、timestamp、未读数）
-  chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
+  completeCoreMessageThenRequestAttention({
+    completeCoreMessage: () => {
+      // 通过 Store 统一更新会话信息（lastMessage、timestamp、未读数）
+      chatStore.receiveMessage(conversationId, newMessage, isCurrentConv)
 
-  // 当前会话有新消息或流式更新时，直接触发滚动到底部
-  // 绕过 ChatWindow 内部 watch 的响应式问题，更可靠
-  if (isCurrentConv && chatWindowRef.value) {
-    nextTick(() => {
-      chatWindowRef.value?.scrollToBottom(true)
-      requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
-    })
-  }
-
-  if (canAlert) {
-    requestMessageAttention({
-      isCurrentConversation: isCurrentConv,
-      isStreaming: Boolean(newMessage.isStreaming),
-      getIsWindowActive: window.electron?.windowState?.isActive
-        ? () => window.electron.windowState.isActive()
-        : async () => false,
-      onAttention: performMessageAttention,
-      onWindowStateError: (error) => {
-        logger.warn('读取主窗口状态失败，按非活动窗口处理:', error)
-      },
-    })
-  }
+      // 当前会话有新消息或流式更新时，直接触发滚动到底部
+      // 绕过 ChatWindow 内部 watch 的响应式问题，更可靠
+      if (isCurrentConv && chatWindowRef.value) {
+        nextTick(() => {
+          chatWindowRef.value?.scrollToBottom(true)
+          requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
+        })
+      }
+    },
+    requestAttention: () => {
+      if (canAlert) {
+        requestMessageAttention({
+          isCurrentConversation: isCurrentConv,
+          isStreaming: Boolean(newMessage.isStreaming),
+          getIsWindowActive: window.electron?.windowState?.isActive
+            ? () => window.electron.windowState.isActive()
+            : async () => false,
+          onAttention: performMessageAttention,
+          onWindowStateError: (error) => {
+            logger.warn('读取主窗口状态失败，按非活动窗口处理:', error)
+          },
+        })
+      }
+    },
+  })
 }
 
 let conversationSortTimer: number | null = null
