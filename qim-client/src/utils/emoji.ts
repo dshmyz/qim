@@ -6,10 +6,14 @@ import { CLASSIC_EMOJIS } from './classic-emoji'
  *
  * 资产已自托管在 public/emoji/72x72/，不依赖系统表情字体，
  * 保证 macOS / Windows / Linux 下渲染一致。
+ *
+ * 路径前缀使用 import.meta.env.BASE_URL（与 vite 的 base 一致），
+ * dev 下为 '/'、打包后为 './'，确保 Electron file:// 加载也能解析到 dist/emoji。
  */
+const EMOJI_ASSET_BASE = `${import.meta.env.BASE_URL}emoji/`
 
 const EMOJI_OPTIONS = {
-  base: '/emoji/',
+  base: EMOJI_ASSET_BASE,
   size: '72x72',
   ext: '.png',
   className: 'emoji-img',
@@ -33,7 +37,7 @@ export function emojiUrl(emoji: string): string {
   if (!emoji) return ''
   const hasZwj = emoji.includes('‍')
   const cleaned = hasZwj ? emoji : emoji.replace(/️/g, '')
-  return `/emoji/72x72/${twemoji.convert.toCodePoint(cleaned)}.png`
+  return `${EMOJI_ASSET_BASE}72x72/${twemoji.convert.toCodePoint(cleaned)}.png`
 }
 
 // 经典表情：名称 → id，用于把 [名称] 标记替换为 <img>
@@ -65,7 +69,7 @@ export function classicToHtml(html: string): string {
   return html.replace(CLASSIC_MARKER_REGEX, (_, name: string) => {
     const id = CLASSIC_NAME_TO_ID.get(name)
     if (id === undefined) return _
-    return `<img class="emoji-img classic-emoji-img" src="/emoji/classic/${id}.gif" alt="[${name}]" title="[${name}]" draggable="false"/>`
+    return `<img class="emoji-img classic-emoji-img" src="${EMOJI_ASSET_BASE}classic/${id}.gif" alt="[${name}]" title="[${name}]" draggable="false"/>`
   })
 }
 

@@ -184,7 +184,7 @@ for (const e of CLASSIC_EMOJIS) {
 
 /** 经典表情图片 URL */
 export function classicUrl(id: number): string {
-  return `/emoji/classic/${id}.gif`
+  return `${import.meta.env.BASE_URL}emoji/classic/${id}.gif`
 }
 
 /** 插入到输入框的文字标记 */
