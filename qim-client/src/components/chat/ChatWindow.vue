@@ -229,6 +229,7 @@ import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import '../../assets/styles/modules/modals.css'
 import { useChatRequest } from '../../composables/useChatRequest'
+import { useMessageReminder } from '../../composables/useMessageReminder'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
@@ -270,6 +271,7 @@ const currentUserId = computed((): string | number => {
 
 // 初始化 composables
 const { getToken, request } = useChatRequest(serverUrl.value)
+const { remind } = useMessageReminder(serverUrl.value)
 const { formatTime, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
 
@@ -1146,6 +1148,25 @@ const handleForwardNote = (event: CustomEvent) => {
   autoResizeTextarea()
 }
 
+const handleReadReceiptUpdated = (event: Event) => {
+  const { conversationId, messageIds } = (event as CustomEvent<{
+    conversationId?: string
+    messageIds?: Array<string | number>
+  }>).detail || {}
+
+  if (!conversationId || conversationId !== props.conversation?.id?.toString()) return
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return
+
+  const messageIdSet = new Set(messageIds.map(id => id.toString()))
+  const messagesToRefresh = props.messages.filter(message =>
+    message.isSelf && messageIdSet.has(message.id.toString())
+  )
+
+  if (messagesToRefresh.length === 0) return
+
+  void loadReadUsersForMessages(messagesToRefresh, props.conversation?.type || 'single', true)
+}
+
 // 组件挂载时添加事件监听器
 onMounted(() => {
   isMounted.value = true
@@ -1155,6 +1176,7 @@ onMounted(() => {
   initWebSocketMessageHandler()
   scrollToBottom()
   window.addEventListener('forwardNoteToChat', handleForwardNote as EventListener)
+  window.addEventListener('message-read-receipt-updated', handleReadReceiptUpdated)
 
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('download-progress', (_event: any, result: { downloadId?: string; percent: number; state?: string }) => {
@@ -1363,6 +1385,7 @@ onUnmounted(() => {
   
   // 移除全局事件监听器
   window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
+  window.removeEventListener('message-read-receipt-updated', handleReadReceiptUpdated)
 
   // 清理 WebSocket handler（使用新的清理机制）
   if (wsHandlersCleanup) {
@@ -1762,33 +1785,13 @@ const handleSmartReply = async () => {
   }
 }
 
-// 发送消息提醒
-const sendMessageReminder = async () => {
+// 发送消息提醒（右键菜单路径；铃铛直接调 composable 的 remind）
+const sendMessageReminder = () => {
   if (!selectedMessage.value) {
     closeMessageContextMenu()
     return
   }
-  
-  const message = selectedMessage.value
-  
-  try {
-    const response = await request(`/api/v1/messages/${message.id}/remind`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    if (response.code === 0) {
-      $message.info('提醒发送中，结果稍后通知')
-    } else {
-      $message.error('发送提醒失败: ' + response.message)
-    }
-  } catch (error) {
-    logger.error('发送提醒失败:', error)
-    $message.error('发送提醒失败: ' + error.message)
-  }
-  
+  remind(selectedMessage.value)
   closeMessageContextMenu()
 }
 
