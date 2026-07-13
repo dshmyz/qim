@@ -77,6 +77,7 @@
 import { computed } from 'vue'
 import type { Message } from '../../types'
 import { useSystemConfigStore } from '../../stores/systemConfig'
+import { canRemind } from '../../composables/useMessageReminder'
 
 const systemConfigStore = useSystemConfigStore()
 
@@ -132,18 +133,8 @@ const hasCodeBlock = computed(() => {
   return /```[a-zA-Z0-9]*\n[\s\S]*?```/.test(props.message.content)
 })
 
-const canSendReminder = computed((): boolean => {
-  if (!props.message || !props.message.timestamp || props.message.isRead) return false
-  // 群聊/讨论组不支持提醒，避免给太多人发提醒
-  if (props.conversationType === 'group' || props.conversationType === 'discussion') return false
-  if (props.message.sender?.isBot) return false
-
-  const now = Date.now()
-  const messageTime = new Date(props.message.timestamp).getTime()
-  const oneHour = 60 * 60 * 1000
-
-  return now - messageTime > oneHour
-})
+// 复用单一事实源 canRemind，与 MessageItem 铃铛显示条件同源
+const canSendReminder = computed((): boolean => canRemind(props.message, props.conversationType))
 
 const canSmartReply = computed(() => {
   if (!props.message || !aiEnabled.value) return false

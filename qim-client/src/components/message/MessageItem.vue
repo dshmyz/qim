@@ -158,6 +158,7 @@
             {{ message.isRead ? `${readUsersMap[message.id]?.read_count || readUsersMap[message.id]?.read_users?.length || 0}人已读` : '未读' }}
           </div>
           <div v-else-if="shouldShowReadReceipt" class="message-read-status" :class="{ 'read': message.isRead }">
+            <span v-if="canSendReminder" class="reminder-hint clickable" title="对方超过1小时未读，点击发送提醒" @click.stop="remind(message)"><i class="fas fa-bell"></i></span>
             {{ message.isRead ? '已读' : '未读' }}
           </div>
         </div>
@@ -185,6 +186,7 @@ import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
 import { decodeToPlainText } from '../../utils/mentions'
+import { useMessageReminder, canRemind } from '../../composables/useMessageReminder'
 
 const props = withDefaults(defineProps<{
   message: any
@@ -201,6 +203,12 @@ const props = withDefaults(defineProps<{
 const shouldShowReadReceipt = computed(() => {
   return props.isSelf && props.showReadReceipt && !props.isRecalled
 })
+
+// 铃铛：直接调用 composable 的 remind，省去事件逐层转发
+const { remind } = useMessageReminder(props.serverUrl)
+
+// canSendReminder 复用单一事实源 canRemind，与右键菜单显示条件同源
+const canSendReminder = computed((): boolean => canRemind(props.message, props.conversationType))
 
 const isAIMessage = computed(() => {
   const fromOrigin = props.message.origin === 'assistant' || props.message.origin === 'avatar'
@@ -488,6 +496,27 @@ const isFileContent = (content: string): boolean => {
   font-size: 10px;
   color: #999;
   opacity: 0.8;
+}
+
+/* 可发送提醒标识：未读且超过1小时的自发送消息前置铃铛 */
+.reminder-hint {
+  margin-right: 4px;
+  color: var(--color-warning-500, #f59e0b);
+  font-size: 11px;
+  animation: reminder-pulse 2s ease-in-out infinite;
+}
+
+.reminder-hint.clickable {
+  cursor: pointer;
+}
+
+.reminder-hint.clickable:hover {
+  transform: scale(1.15);
+}
+
+@keyframes reminder-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
 }
 
 .message-read-status.failed {
