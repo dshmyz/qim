@@ -975,13 +975,17 @@ function registerIPC() {
   })
 
   ipcMain.handle('is-main-window-active', () => {
-    return Boolean(
-      mainWindow &&
-      !mainWindow.isDestroyed() &&
-      mainWindow.isVisible() &&
-      !mainWindow.isMinimized() &&
-      mainWindow.isFocused()
-    )
+    try {
+      return Boolean(
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        mainWindow.isVisible() &&
+        !mainWindow.isMinimized() &&
+        mainWindow.isFocused()
+      )
+    } catch (error) {
+      return false
+    }
   })
 
   updateService.registerUpdateIpc()

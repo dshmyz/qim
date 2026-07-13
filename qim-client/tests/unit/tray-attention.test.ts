@@ -30,6 +30,10 @@ describe('tray attention behavior', () => {
     expect(mainProcess).toMatch(/!mainWindow\.isDestroyed\(\)[\s\S]*?mainWindow\.isVisible\(\)[\s\S]*?!mainWindow\.isMinimized\(\)[\s\S]*?mainWindow\.isFocused\(\)/)
   })
 
+  it('treats main-window state query failures as inactive', () => {
+    expect(mainProcess).toMatch(/ipcMain\.handle\('is-main-window-active',[\s\S]*?try\s*\{[\s\S]*?catch\s*\([^)]*\)\s*\{[\s\S]*?return false/)
+  })
+
   it('exposes main-window activity through the preload bridge and types', () => {
     expect(preloadProcess).toContain("ipcRenderer.invoke('is-main-window-active')")
     expect(electronTypes).toContain('windowState: {')
