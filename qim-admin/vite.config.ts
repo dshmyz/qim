@@ -31,6 +31,9 @@ export default defineConfig(({ mode }) => {
     },
     base: '/admin/',
     build: {
+      // 直接输出到 Go embed 源目录，省去手动拷贝，避免 embed 进二进制的产物与源码脱节
+      outDir: '../qim-server/web/webroot/admin',
+      emptyOutDir: true,
       chunkSizeWarningLimit: 500,
       minify: isProd ? 'esbuild' : false,
       rollupOptions: {
