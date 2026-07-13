@@ -27,9 +27,12 @@ const ICE_SERVERS: RTCConfiguration = {
 }
 
 function sendSignalingMessage(message: SignalingMessage): void {
-  if ((window as any).ws) {
-    ;(window as any).ws.send(JSON.stringify(message))
+  const ws = (window as any).ws as WebSocket | undefined
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    throw new Error('WebSocket connection not available')
   }
+
+  ws.send(JSON.stringify(message))
 }
 
 export class RealtimeConnectionManager {

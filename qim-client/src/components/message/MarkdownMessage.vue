@@ -206,7 +206,7 @@ useCodeHighlight(containerRef, renderedContent)
 }
 
 .markdown-message.self pre {
-  background-color: var(--hover-color);
+  background-color: var(--input-bg);
   color: var(--text-color);
   border-color: var(--border-color);
 }

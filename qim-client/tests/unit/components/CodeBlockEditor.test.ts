@@ -1,6 +1,8 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import CodeBlockEditor from '@/components/chat/CodeBlockEditor.vue'
+
+const matchLanguageNameMock = vi.hoisted(() => vi.fn(() => null))
 
 // mock CodeMirror，避免 jsdom 下初始化失败
 vi.mock('@codemirror/view', () => ({
@@ -34,7 +36,7 @@ vi.mock('@codemirror/commands', () => ({
   indentWithTab: {},
 }))
 vi.mock('@codemirror/language', () => ({
-  LanguageDescription: { matchLanguageName: () => null },
+  LanguageDescription: { matchLanguageName: matchLanguageNameMock },
   defaultHighlightStyle: {},
   syntaxHighlighting: () => ({}),
   bracketMatching: () => ({}),
@@ -54,7 +56,7 @@ vi.mock('@codemirror/search', () => ({
 }))
 vi.mock('@lezer/highlight', () => ({ tags: {} }))
 vi.mock('@codemirror/lang-markdown', () => ({ markdown: () => ({}), markdownLanguage: {} }))
-vi.mock('@codemirror/language-data', () => ({ languages: [] }))
+vi.mock('@codemirror/language-data', () => ({ languages: [{ name: 'javascript' }] }))
 vi.mock('@codemirror/theme-one-dark', () => ({ oneDark: {} }))
 
 const mountEditor = (props: Record<string, unknown> = {}) =>
@@ -66,6 +68,10 @@ const mountEditor = (props: Record<string, unknown> = {}) =>
   })
 
 describe('CodeBlockEditor', () => {
+  beforeEach(() => {
+    matchLanguageNameMock.mockClear()
+  })
+
   it('renders language selector and editor when visible', () => {
     const wrapper = mountEditor()
     expect(wrapper.find('.code-block-editor__lang-select').exists()).toBe(true)
@@ -83,5 +89,15 @@ describe('CodeBlockEditor', () => {
     const wrapper = mountEditor()
     const confirmBtn = wrapper.find('.code-block-editor__btn--confirm')
     expect(confirmBtn.attributes('disabled')).toBeDefined()
+  })
+
+  it('looks up the selected language with the CodeMirror language list', async () => {
+    mountEditor()
+    await flushPromises()
+
+    expect(matchLanguageNameMock).toHaveBeenCalledWith(
+      [{ name: 'javascript' }],
+      'javascript',
+    )
   })
 })

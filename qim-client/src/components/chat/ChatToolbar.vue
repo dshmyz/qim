@@ -46,20 +46,32 @@
       title="代码块"
       @click="$emit('open-code-block')"
     />
-    <div class="screenshot-dropdown" v-if="isElectron">
+    <div
+      class="screenshot-dropdown"
+      v-if="isElectron"
+      @mouseleave="showScreenshotShortcutTooltip = false"
+    >
       <ChatToolbarButton
         class="screenshot-btn"
         icon="fas fa-scissors"
-        title="截图"
+        :title="screenshotButtonTitle"
+        @mouseenter="showScreenshotTooltip"
         @click="$emit('take-screenshot')"
       />
+      <div
+        v-if="showScreenshotShortcutTooltip"
+        class="screenshot-shortcut-tooltip"
+        data-testid="screenshot-shortcut-tooltip"
+      >
+        {{ screenshotButtonTitle }}
+      </div>
       <button class="screenshot-dropdown-trigger" @click="toggleScreenshotMenu" title="更多截图选项">
         <i class="fas fa-caret-down"></i>
       </button>
       <div v-show="showScreenshotMenu" class="screenshot-menu" @click.stop>
         <div class="screenshot-menu-item" @click="selectScreenshot('region')">
           <i class="fas fa-crop-alt"></i>
-          <span>区域截图</span>
+          <span>{{ screenshotButtonTitle }}</span>
         </div>
         <div class="screenshot-menu-item" @click="selectScreenshot('hidden')">
           <i class="fas fa-window-minimize"></i>
@@ -93,15 +105,73 @@
 <script setup lang="ts">
 import ChatToolbarButton from './ChatToolbarButton.vue'
 import { useSystemConfigStore } from '../../stores/systemConfig'
-import { ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { DEFAULT_SHORTCUTS, type ShortcutsConfig } from '../../composables/useShortcuts'
 
 const systemConfigStore = useSystemConfigStore()
 
 const showScreenshotMenu = ref(false)
 const showCallMenu = ref(false)
+const showScreenshotShortcutTooltip = ref(false)
+const shortcuts = ref<ShortcutsConfig>(DEFAULT_SHORTCUTS)
+
+const formatShortcutForTooltip = (accelerator: string): string => {
+  return accelerator
+    .split('+')
+    .map(part => {
+      const key = part.trim()
+      if (key === 'CommandOrControl' || key === 'Control' || key === 'Mod') return 'Ctrl'
+      if (key === 'Alt' || key === 'Option') return 'Alt'
+      return key.length === 1 ? key.toUpperCase() : key
+    })
+    .join('+')
+}
+
+const screenshotButtonTitle = computed(() => {
+  const shortcut = shortcuts.value.global?.screenshot
+  if (!shortcut?.enabled || !shortcut.accelerator) return '截图'
+  return `截图（${formatShortcutForTooltip(shortcut.accelerator)}）`
+})
+
+const loadScreenshotShortcut = async () => {
+  if (!window.electron?.ipcRenderer?.invoke) return
+  const loaded = await window.electron.ipcRenderer.invoke('get-shortcuts')
+  shortcuts.value = {
+    ...DEFAULT_SHORTCUTS,
+    ...loaded,
+    global: {
+      ...DEFAULT_SHORTCUTS.global,
+      ...loaded?.global,
+    },
+    editor: {
+      ...DEFAULT_SHORTCUTS.editor,
+      ...loaded?.editor,
+    },
+  }
+}
+
+const handleShortcutsUpdated = (_event: unknown, updatedShortcuts: ShortcutsConfig) => {
+  shortcuts.value = {
+    ...DEFAULT_SHORTCUTS,
+    ...updatedShortcuts,
+    global: {
+      ...DEFAULT_SHORTCUTS.global,
+      ...updatedShortcuts?.global,
+    },
+    editor: {
+      ...DEFAULT_SHORTCUTS.editor,
+      ...updatedShortcuts?.editor,
+    },
+  }
+}
 
 const toggleScreenshotMenu = () => {
   showScreenshotMenu.value = !showScreenshotMenu.value
+}
+
+const showScreenshotTooltip = () => {
+  showScreenshotShortcutTooltip.value = true
+  void loadScreenshotShortcut()
 }
 
 const toggleCallMenu = () => {
@@ -159,9 +229,16 @@ const onDocumentClick = (e: MouseEvent) => {
   }
 }
 
-import { onMounted, onUnmounted } from 'vue'
-onMounted(() => document.addEventListener('mousedown', onDocumentClick))
-onUnmounted(() => document.removeEventListener('mousedown', onDocumentClick))
+onMounted(() => {
+  document.addEventListener('mousedown', onDocumentClick)
+  void loadScreenshotShortcut()
+  window.electron?.ipcRenderer?.on?.('shortcuts-updated', handleShortcutsUpdated)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocumentClick)
+  window.electron?.ipcRenderer?.removeListener?.('shortcuts-updated', handleShortcutsUpdated)
+})
 </script>
 
 <style scoped>
@@ -185,6 +262,33 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocumentClick))
   position: relative;
   display: inline-flex;
   align-items: center;
+}
+
+.screenshot-shortcut-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 1200;
+  transform: translateX(-50%);
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--tooltip-bg, rgba(32, 32, 32, 0.92));
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.screenshot-shortcut-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--tooltip-bg, rgba(32, 32, 32, 0.92));
 }
 
 .screenshot-btn {

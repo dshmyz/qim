@@ -26,6 +26,49 @@ function getSourceFromMediaType(mediaType: MediaType): MediaStreamSourceType {
   }
 }
 
+function createMediaNotFoundError(message: string) {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException(message, 'NotFoundError')
+  }
+
+  const error = new Error(message)
+  error.name = 'NotFoundError'
+  return error
+}
+
+async function ensureAudioInputAvailable() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  const hasAudioInput = devices.some(device => device.kind === 'audioinput')
+
+  if (!hasAudioInput) {
+    throw createMediaNotFoundError('No audio input device found')
+  }
+}
+
+function ensureLiveAudioTrack(stream: MediaStream) {
+  const hasLiveAudioTrack = stream
+    .getAudioTracks()
+    .some(track => track.readyState === 'live')
+
+  if (!hasLiveAudioTrack) {
+    stream.getTracks().forEach(track => track.stop())
+    throw createMediaNotFoundError('No live audio track found')
+  }
+}
+
+async function getValidatedUserMedia(needVideo: boolean) {
+  await ensureAudioInputAvailable()
+
+  const constraints = needVideo ? { video: true, audio: true } : { video: false, audio: true }
+  const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  ensureLiveAudioTrack(stream)
+  return stream
+}
+
 const rtcInstances = new Map<MediaType, ReturnType<typeof createRealtimeCommunication>>()
 
 export function useRealtimeCommunication(mediaType: MediaType) {
@@ -116,8 +159,7 @@ function createRealtimeCommunication(mediaType: MediaType) {
     }
 
     if (options?.needVideo !== undefined) {
-      const constraints = options.needVideo ? { video: true, audio: true } : { video: false, audio: true }
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      const newStream = await getValidatedUserMedia(options.needVideo)
       mediaStream.stream.value = newStream
       console.log(`[RTC] Got media stream:`, newStream.getTracks().map(t => `${t.kind}:${t.readyState}`))
       return options.needVideo ? 'video' : 'audio'
@@ -166,8 +208,7 @@ function createRealtimeCommunication(mediaType: MediaType) {
     const answerMediaType = options?.answerMediaType ?? mediaType
 
     if (options?.needVideo !== undefined) {
-      const constraints = options.needVideo ? { video: true, audio: true } : { video: false, audio: true }
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      const newStream = await getValidatedUserMedia(options.needVideo)
       mediaStream.stream.value = newStream
       console.log(`[RTC] receiveWithMedia got media stream:`, newStream.getTracks().map(t => `${t.kind}:${t.readyState}`))
       return options.needVideo ? 'video' : 'audio'
@@ -210,8 +251,7 @@ function createRealtimeCommunication(mediaType: MediaType) {
     console.log(`[RTC] Starting media stream for ${mediaType}, needVideo: ${needVideo}`)
 
     try {
-      const constraints = needVideo ? { video: true, audio: true } : { video: false, audio: true }
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      const newStream = await getValidatedUserMedia(needVideo)
       mediaStream.stream.value = newStream
 
       const pc = connection.peerConnection.value

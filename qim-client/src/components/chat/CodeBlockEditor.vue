@@ -2,7 +2,7 @@
   <QDialog
     :visible="visible"
     @update:visible="$emit('update:visible', $event)"
-    title="发送代码块"
+    title="代码块"
     width="720px"
     :close-on-click-mask="false"
   >
@@ -33,6 +33,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLi
 import { EditorState, Compartment } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { defaultHighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput, foldGutter, foldKeymap, LanguageDescription } from '@codemirror/language'
+import { languages } from '@codemirror/language-data'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -87,7 +88,7 @@ function applyLanguage(langName: string) {
     editorView.value.dispatch({ effects: langCompartment.reconfigure([]) })
     return
   }
-  const desc = LanguageDescription.matchLanguageName(langName)
+  const desc = LanguageDescription.matchLanguageName(languages, langName)
   if (desc) {
     desc.load().then((support) => {
       editorView.value?.dispatch({ effects: langCompartment.reconfigure(support) })

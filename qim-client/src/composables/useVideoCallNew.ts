@@ -68,13 +68,13 @@ function createVideoCall() {
     }
 
     callType.value = type
-    callStatus.value = 'calling'
 
     try {
       // 先获取本地媒体流（getUserMedia），设备不可用或无权限时在此阶段就抛错
       // 必须在发信令之前，避免信令已发出对方收到打扰，本地才发现没设备
       await session.start(targetUserId, { needVideo: type !== 'voice' })
 
+      callStatus.value = 'calling'
       signaling.sendCallStart(targetUserId, type)
       console.log('[VideoCall] Sent call.start with type:', type)
 

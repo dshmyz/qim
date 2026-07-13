@@ -35,7 +35,7 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
   global: {
     minimize:   { accelerator: 'CommandOrControl+M', enabled: false },
     maximize:   { accelerator: 'CommandOrControl+K', enabled: false },
-    hide:       { accelerator: 'CommandOrControl+W', enabled: false },
+    hide:       { accelerator: 'CommandOrControl+Shift+H', enabled: false },
     quit:       { accelerator: 'CommandOrControl+Q', enabled: false },
     screenshot: { accelerator: 'CommandOrControl+Shift+A', enabled: true }
   },
