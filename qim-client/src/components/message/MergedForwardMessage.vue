@@ -4,20 +4,22 @@
       <div class="merged-forward-header">
         <span class="merged-forward-icon" aria-hidden="true"><i class="fas fa-comments"></i></span>
         <span class="merged-forward-title">聊天记录（{{ payload.messages.length }}条）</span>
-        <button :aria-expanded="expanded" data-testid="merged-forward-toggle" type="button" @click="expanded = !expanded">
-          {{ expanded ? '收起' : '展开' }}
-          <i :class="expanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" aria-hidden="true"></i>
+        <button data-testid="merged-forward-open" type="button" @click="isRecordVisible = true">
+          查看聊天记录
+          <i class="fas fa-chevron-right" aria-hidden="true"></i>
         </button>
       </div>
-      <div v-if="expanded" class="merged-forward-list">
-        <div v-for="message in payload.messages" :key="message.id" class="merged-forward-item">
+      <div class="merged-forward-list">
+        <div v-for="message in payload.messages.slice(0, 3)" :key="message.id" class="merged-forward-item">
           <strong>{{ message.senderName }}</strong>
           <span class="merged-forward-preview">
             <i :class="previewIcon(getMessagePreview(message).kind)" aria-hidden="true"></i>
             <span>{{ getMessagePreview(message).label }}</span>
           </span>
         </div>
+        <span v-if="payload.messages.length > 3" class="merged-forward-more">还有 {{ payload.messages.length - 3 }} 条消息</span>
       </div>
+      <MergedForwardRecordDialog :payload="payload" :visible="isRecordVisible" @close="isRecordVisible = false" />
     </template>
     <span v-else>聊天记录无法加载</span>
   </div>
@@ -25,6 +27,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import MergedForwardRecordDialog from './MergedForwardRecordDialog.vue'
 import { parseMergedForwardPayload } from '@/utils/mergedForward'
 import { getMessagePreview, type MessagePreview } from '@/utils/messagePreview'
 
@@ -33,7 +36,7 @@ const props = defineProps<{
   isSelf?: boolean
 }>()
 
-const expanded = ref(false)
+const isRecordVisible = ref(false)
 const payload = computed(() => parseMergedForwardPayload(props.content))
 
 const previewIcon = (kind: MessagePreview['kind']): string => ({
@@ -120,6 +123,11 @@ const previewIcon = (kind: MessagePreview['kind']): string => ({
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.merged-forward-more {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (max-width: 640px) {

@@ -6,6 +6,18 @@ import { resolve } from 'node:path'
 import MessageItem from '@/components/message/MessageItem.vue'
 import MergedForwardMessage from '@/components/message/MergedForwardMessage.vue'
 
+const makePayload = (count: number) => JSON.stringify({
+  version: 1,
+  title: '聊天记录',
+  messages: Array.from({ length: count }, (_, index) => ({
+    id: `message-${index + 1}`,
+    type: 'text',
+    content: `第 ${index + 1} 条消息`,
+    senderName: `用户 ${index + 1}`,
+    timestamp: index * 1_000,
+  })),
+})
+
 beforeEach(() => {
   setActivePinia(createPinia())
 })
@@ -147,7 +159,7 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('聊天记录无法加载')
   })
 
-  it('renders formatted rich previews instead of serialized message content', async () => {
+  it('renders formatted rich previews instead of serialized message content', () => {
     const wrapper = mount(MergedForwardMessage, {
       props: {
         content: JSON.stringify({
@@ -161,19 +173,28 @@ describe('MessageItem mention emphasis', () => {
       },
     })
 
-    await wrapper.get('[data-testid="merged-forward-toggle"]').trigger('click')
-
     expect(wrapper.text()).toContain('方案.pdf · 1 KB')
     expect(wrapper.text()).toContain('分享：设计说明')
     expect(wrapper.text()).not.toContain('{"name"')
     expect(wrapper.find('.fa-file').exists()).toBe(true)
   })
 
-  it('marks the merged-forward card as responsive and its toggle as accessible', () => {
+  it('shows only three previews and opens a complete record dialog', async () => {
+    const wrapper = mount(MergedForwardMessage, { props: { content: makePayload(4) } })
+
+    expect(wrapper.findAll('.merged-forward-preview').length).toBe(3)
+
+    await wrapper.get('[data-testid="merged-forward-open"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="merged-forward-record-dialog"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('聊天记录（共 4 条）')
+  })
+
+  it('marks the merged-forward card as responsive and its open button as accessible', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MergedForwardMessage.vue'), 'utf8')
 
     expect(source).toContain('class="merged-forward-icon"')
-    expect(source).toContain('aria-expanded="expanded"')
+    expect(source).toContain('data-testid="merged-forward-open"')
     expect(source).toContain('@media (max-width: 640px)')
     expect(source).toContain(':focus-visible')
     expect(source).toContain('width: fit-content;')
