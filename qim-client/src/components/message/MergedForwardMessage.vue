@@ -55,7 +55,8 @@ const messagePreview = (message: MergedForwardItem): string => {
 
 <style scoped>
 .merged-forward-message {
-  width: min(360px, 100%);
+  width: fit-content;
+  max-width: 100%;
   padding: 14px;
   border: 1px solid var(--border-color);
   border-radius: 12px;

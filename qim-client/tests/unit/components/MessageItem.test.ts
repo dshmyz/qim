@@ -154,6 +154,8 @@ describe('MessageItem mention emphasis', () => {
     expect(source).toContain('aria-expanded="expanded"')
     expect(source).toContain('@media (max-width: 640px)')
     expect(source).toContain(':focus-visible')
+    expect(source).toContain('width: fit-content;')
+    expect(source).toContain('max-width: 100%;')
   })
 
   it('uses a global high-contrast rule for links inside self message bubbles', () => {
