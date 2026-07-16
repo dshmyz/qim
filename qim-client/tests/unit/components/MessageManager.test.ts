@@ -54,6 +54,41 @@ const mockMessages = (messages: any[], total = messages.length) => {
 }
 
 describe('MessageManager', () => {
+  describe('结构化消息渲染', () => {
+    it('renders a merged-forward card instead of leaving its content blank', async () => {
+      mockMessages([
+        {
+          id: 9,
+          type: 'merged_forward',
+          content: JSON.stringify({
+            version: 1,
+            title: '聊天记录',
+            messages: [{ id: 'message-1', type: 'text', content: '第一条', senderName: 'Alice', timestamp: 1 }],
+          }),
+          created_at: '2024-01-01T00:00:00Z',
+          is_recalled: false,
+          sender: { id: 1, name: 'Alice', avatar: '' },
+        },
+      ])
+
+      const wrapper = mount(MessageManager, {
+        props: { visible: true, conversationId: '1' },
+        global: {
+          stubs: {
+            Teleport: true,
+            MergedForwardMessage: { props: ['content'], template: '<div data-testid="merged-forward-card">{{ content }}</div>' },
+          },
+        },
+      })
+
+      await vi.waitFor(() => expect(messageApi.getMessagesByFilter).toHaveBeenCalled())
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.get('[data-testid="merged-forward-card"]').text()).toContain('聊天记录')
+      expect(wrapper.text()).toContain('聊天记录')
+    })
+  })
+
   describe('Markdown 消息渲染', () => {
     it('markdown 类型消息应显示渲染后的内容', async () => {
       mockMessages([

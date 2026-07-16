@@ -68,9 +68,8 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts'
-import { decodeToPlainText } from '../../utils/mentions'
 import { sameConversationId } from '../../utils/conversationId'
-import { getMessagePreview } from '../../utils/messagePreview'
+import { resolveMessageDisplay } from '../../utils/messageDisplay'
 
 interface User {
   id: string
@@ -233,83 +232,7 @@ const formatTime = (timestamp?: string | number): string => {
 
 const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversation): string => {
   if (!lastMessage) return '暂无消息'
-  
-  let previewText = ''
-  
-  switch (lastMessage.type) {
-    case 'merged_forward':
-      previewText = getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label
-      break
-    case 'text':
-      previewText = decodeToPlainText(lastMessage.content || '无内容')
-      break
-    case 'image':
-      let imageName = '图片'
-      try {
-        const imageData = JSON.parse(lastMessage.content || '{}')
-        imageName = imageData.name || imageData.fileName || lastMessage.file_name || (imageData.url ? imageData.url.split('/').pop() : '图片')
-      } catch (e) {
-        imageName = lastMessage.file_name || (lastMessage.content ? lastMessage.content.split('/').pop() : '图片') || '图片'
-      }
-      previewText = `[图片] ${imageName}`
-      break
-    case 'file':
-      let fileName = '文件'
-      try {
-        const fileData = JSON.parse(lastMessage.content || '{}')
-        fileName = fileData.name || fileData.fileName || lastMessage.file_name || (fileData.url ? fileData.url.split('/').pop() : '文件')
-      } catch (e) {
-        fileName = lastMessage.file_name || (lastMessage.content ? lastMessage.content.split('/').pop() : '文件') || '文件'
-      }
-      previewText = `[文件] ${fileName}`
-      break
-    case 'miniApp':
-    case 'mini_app':
-      if (lastMessage.miniAppData) {
-        previewText = `[小程序] ${lastMessage.miniAppData.name || '小程序'}`
-      } else {
-        try {
-          const data = JSON.parse(lastMessage.content || '{}')
-          const miniAppName = data.data?.name || data.name || '小程序'
-          previewText = `[小程序] ${miniAppName}`
-        } catch {
-          previewText = '[小程序]'
-        }
-      }
-      break
-    case 'share':
-      if (lastMessage.shareData) {
-        const shareType = lastMessage.shareData.type === 'file' ? '文件' : lastMessage.shareData.type === 'note' ? '笔记' : lastMessage.shareData.type === 'sticky' ? '便签' : '分享'
-        const shareName = lastMessage.shareData.name || lastMessage.content || '分享内容'
-        previewText = `[${shareType}] ${shareName}`
-      } else {
-        previewText = '[分享]'
-      }
-      break
-    case 'system':
-      previewText = lastMessage.content || '[系统消息]'
-      break
-    case 'news':
-      previewText = `[资讯] ${getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label}`
-      break
-    case 'markdown':
-    case 'streaming':
-      previewText = getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label
-      break
-    case 'video':
-      previewText = '[视频]'
-      break
-    case 'audio':
-      previewText = '[语音]'
-      break
-    default:
-      previewText = lastMessage.content || '无内容'
-  }
-
-  // decode mention token（@{mention:3|张三} → @张三），对非文本类型也生效
-  if (previewText) {
-    previewText = decodeToPlainText(previewText)
-  }
+  const previewText = resolveMessageDisplay(lastMessage).summary
   
   const isGroupChat = conversation?.type === 'group' || conversation?.type === 'discussion'
   

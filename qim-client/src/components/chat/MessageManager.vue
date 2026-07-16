@@ -46,6 +46,9 @@
               <option value="share">分享</option>
               <option value="news">资讯</option>
               <option value="markdown">Markdown</option>
+              <option value="merged_forward">聊天记录</option>
+              <option value="video">视频</option>
+              <option value="audio">语音</option>
             </select>
           </div>
           <div class="filter-group">
@@ -108,7 +111,10 @@
                 <i v-else-if="message.type === 'share'" class="fas fa-share-alt"></i>
                 <i v-else-if="message.type === 'news'" class="fas fa-newspaper"></i>
                 <i v-else-if="message.type === 'markdown'" class="fas fa-code"></i>
-                {{ message.type === 'text' ? '文本' : message.type === 'image' ? '图片' : message.type === 'file' ? '文件' : message.type === 'miniApp' ? '小程序' : message.type === 'share' ? '分享' : message.type === 'news' ? '资讯' : message.type === 'markdown' ? 'Markdown' : '其他' }}
+                <i v-else-if="message.type === 'merged_forward'" class="fas fa-comments"></i>
+                <i v-else-if="message.type === 'video'" class="fas fa-video"></i>
+                <i v-else-if="message.type === 'audio'" class="fas fa-microphone"></i>
+                {{ messageTypeLabel(message) }}
               </span>
             </div>
             <div class="message-manager-item-content" :class="[`message-content-${message.type}`, { 'is-recalled': message.isRecalled }]">
@@ -156,8 +162,8 @@
                     <i class="fas fa-th-large"></i>
                   </div>
                   <div class="mini-app-details">
-                    <div class="mini-app-name">{{ message.title || '小程序' }}</div>
-                    <div class="mini-app-description">{{ message.description || '点击打开小程序' }}</div>
+                    <div class="mini-app-name">{{ getMessageDisplay(message).title }}</div>
+                    <div class="mini-app-description">{{ getMessageDisplay(message).description }}</div>
                   </div>
                 </div>
               </template>
@@ -167,8 +173,8 @@
                     <i class="fas fa-share-alt"></i>
                   </div>
                   <div class="share-details">
-                    <div class="share-title">{{ message.title || '分享内容' }}</div>
-                    <div class="share-description">{{ message.description || '点击查看分享' }}</div>
+                    <div class="share-title">{{ getMessageDisplay(message).title }}</div>
+                    <div class="share-description">{{ getMessageDisplay(message).description }}</div>
                   </div>
                 </div>
               </template>
@@ -178,13 +184,19 @@
                     <i class="fas fa-newspaper"></i>
                   </div>
                   <div class="news-details">
-                    <div class="news-title">{{ message.title || '资讯' }}</div>
-                    <div class="news-description">{{ message.description || '点击查看资讯' }}</div>
+                    <div class="news-title">{{ getMessageDisplay(message).title }}</div>
+                    <div class="news-description">{{ getMessageDisplay(message).description }}</div>
                   </div>
                 </div>
               </template>
               <template v-else-if="message.type === 'markdown'">
                 <MarkdownMessage :content="message.content" />
+              </template>
+              <template v-else-if="message.type === 'merged_forward'">
+                <MergedForwardMessage :content="message.content" />
+              </template>
+              <template v-else-if="message.type === 'video' || message.type === 'audio' || message.type === 'system' || message.type === 'streaming'">
+                <div class="message-structured-summary">{{ getMessageDisplay(message).summary }}</div>
               </template>
             </div>
           </div>
@@ -272,7 +284,9 @@ import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { getToken } from '../../composables/useRequest'
 import { parseContent } from '../../utils/mentions'
 import { downloadUrl } from '../../utils/download'
+import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import MarkdownMessage from '../message/MarkdownMessage.vue'
+import MergedForwardMessage from '../message/MergedForwardMessage.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -299,6 +313,23 @@ const jumpToPage = ref(1)
 const showImagePreview = ref(false)
 const previewImageUrl = ref('')
 const previewImageFilename = ref('image.png')
+
+const getMessageDisplay = (message: any) => resolveMessageDisplay(message)
+
+const messageTypeLabel = (message: any): string => ({
+  text: '文本',
+  image: '图片',
+  file: '文件',
+  miniApp: '小程序',
+  share: '分享',
+  news: '资讯',
+  video: '视频',
+  audio: '语音',
+  system: '系统',
+  streaming: '流式消息',
+  mergedForward: '聊天记录',
+  unknown: '其他',
+}[getMessageDisplay(message).kind] ?? '其他')
 
 const totalPages = computed(() => {
   return Math.ceil(total.value / pageSize)
