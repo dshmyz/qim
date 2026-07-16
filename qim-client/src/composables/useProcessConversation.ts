@@ -1,5 +1,6 @@
 import { Ref } from 'vue'
 import { generateAvatar, isAbsoluteUrl, getAvatarUrl } from '../utils/avatar'
+import { resolveMessageDisplay } from '../utils/messageDisplay'
 
 export interface Conversation {
   id: string
@@ -81,6 +82,12 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
     }
     
     const unreadCount = conv.unread_count || 0
+    const lastMessage = conv.lastMessage || conv.last_message
+    const lastMessageContent = lastMessage?.content || ''
+    const lastMessageType = lastMessage?.type || 'text'
+    const lastMessageDisplay = lastMessage
+      ? resolveMessageDisplay({ type: lastMessageType, content: lastMessageContent })
+      : undefined
     
     const getSenderInfo = (senderId: string, members: any[]) => {
       const member = members.find(m => m.id === senderId)
@@ -107,9 +114,9 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       signature: conv.signature || '',
       other_member_id: conv.other_member_id || conv.OtherMemberID || '',
       other_member_name: conv.other_member_name || conv.OtherMemberName || '',
-      lastMessage: conv.lastMessage || conv.last_message ? {
+      lastMessage: lastMessage ? {
         id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
-        content: conv.lastMessage?.content || conv.last_message?.content || '',
+        content: lastMessageContent,
         file_name: conv.lastMessage?.file_name || conv.last_message?.file_name,
         file_size: conv.lastMessage?.file_size || conv.last_message?.file_size,
         sender: (conv.lastMessage?.sender || conv.last_message?.sender) ? {
@@ -125,32 +132,10 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
           avatar: ''
         },
         timestamp: conv.lastMessage?.created_at || conv.last_message?.created_at ? new Date(conv.lastMessage?.created_at || conv.last_message?.created_at).getTime() : Date.now(),
-        type: conv.lastMessage?.type || conv.last_message?.type || 'text',
+        type: lastMessageType,
         isSelf: false,
-        miniAppData: (() => {
-          try {
-            const content = conv.lastMessage?.content || conv.last_message?.content
-            if ((conv.lastMessage?.type || conv.last_message?.type) === 'miniApp' && content && content !== '[消息已撤回]') {
-              return JSON.parse(content)
-            }
-            return undefined
-          } catch (e) {
-            console.error('解析小程序数据失败:', e)
-            return undefined
-          }
-        })(),
-        shareData: (() => {
-          try {
-            const content = conv.lastMessage?.content || conv.last_message?.content
-            if ((conv.lastMessage?.type || conv.last_message?.type) === 'share' && content && content !== '[消息已撤回]') {
-              return JSON.parse(content)
-            }
-            return undefined
-          } catch (e) {
-            console.error('解析分享数据失败:', e)
-            return undefined
-          }
-        })()
+        miniAppData: lastMessageDisplay?.kind === 'miniApp' ? lastMessageDisplay.data : undefined,
+        shareData: lastMessageDisplay?.kind === 'share' ? lastMessageDisplay.data : undefined,
       } : undefined,
       unread_count: unreadCount,
       timestamp: conv.last_message_at ? new Date(conv.last_message_at).getTime() : (conv.created_at ? new Date(conv.created_at).getTime() : Date.now()),

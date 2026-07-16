@@ -31,7 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { decodeToPlainText } from '../../utils/mentions'
+import { resolveMessageDisplay } from '../../utils/messageDisplay'
 
 export interface QuotedMessage {
   id: string
@@ -66,21 +66,30 @@ const senderName = computed(() => {
   return props.quotedMessage.sender?.name || '未知用户'
 })
 
+const messageDisplay = computed(() => resolveMessageDisplay(props.quotedMessage))
+
 const typeLabel = computed(() => {
-  const type = props.quotedMessage.type
-  const typeMap: Record<string, string> = {
+  const typeMap: Partial<Record<typeof messageDisplay.value.kind, string>> = {
     image: '[图片]',
     file: '[文件]',
     share: '[分享]',
     miniApp: '[小程序]',
     news: '[资讯]',
     system: '[系统]',
+    video: '[视频]',
+    audio: '[语音]',
+    mergedForward: '[聊天记录]',
   }
-  return typeMap[type] || ''
+  return typeMap[messageDisplay.value.kind] || ''
 })
 
 const displayContent = computed(() => {
-  const content = decodeToPlainText(props.quotedMessage.content || '无内容')
+  const display = messageDisplay.value
+  const content = display.kind === 'mergedForward'
+    ? display.description
+    : display.kind === 'text' || display.kind === 'system' || display.kind === 'streaming'
+      ? display.summary
+      : display.title
   if (content.length <= props.maxLength) {
     return content
   }
