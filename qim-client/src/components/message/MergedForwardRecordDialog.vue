@@ -44,14 +44,14 @@
                 <ShareMessage
                   v-else-if="message.type === 'share'"
                   :content="message.content"
-                  :share-data="structuredContent(message.content)"
+                  :share-data="recordMessageData(message)"
                 />
                 <MiniAppMessage
                   v-else-if="message.type === 'miniApp' || message.type === 'mini-app'"
-                  :mini-app-data="structuredContent(message.content)"
+                  :mini-app-data="recordMessageData(message)"
                 />
-                <NewsMessage v-else-if="message.type === 'news'" :news-data="structuredContent(message.content)" />
-                <p v-else class="merged-forward-record-summary">{{ getMessagePreview(message).label }}</p>
+                <NewsMessage v-else-if="message.type === 'news'" :news-data="recordMessageData(message)" />
+                <p v-else class="merged-forward-record-summary">{{ resolveMessageDisplay(message).label }}</p>
               </div>
             </article>
           </template>
@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 import { type MergedForwardPayload } from '@/utils/mergedForward'
-import { getMessagePreview } from '@/utils/messagePreview'
+import { resolveMessageDisplay } from '@/utils/messageDisplay'
 import { useServerUrl } from '@/composables/useServerUrl'
 import TextMessage from './TextMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
@@ -99,13 +99,9 @@ const showTimestampDivider = (timestamp: number, index: number): boolean => inde
 
 const formatTimestamp = (timestamp: number): string => new Date(timestamp).toLocaleString()
 
-const structuredContent = (content: string): Record<string, any> | undefined => {
-  try {
-    const value = JSON.parse(content)
-    return value && typeof value === 'object' ? value : undefined
-  } catch {
-    return undefined
-  }
+const recordMessageData = (message: { type: string; content: string }): Record<string, any> | undefined => {
+  const data = resolveMessageDisplay(message).data
+  return data && !('messages' in data) ? data : undefined
 }
 
 onMounted(() => window.addEventListener('keydown', handleKeydown))

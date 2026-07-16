@@ -90,10 +90,18 @@ const stripMarkdown = (content: string): string => content
   .trim()
   .slice(0, 120)
 
+const unwrapPayload = (value: MessagePayload | null | undefined): MessagePayload | null => {
+  if (!value) return null
+  const nested = value.data
+  return nested && typeof nested === 'object' && !Array.isArray(nested) ? nested as MessagePayload : value
+}
+
 const asPayload = (value: Record<string, unknown> | undefined, fallback: MessagePayload | null): MessagePayload | null => {
-  if (value) return value
-  const nested = fallback?.data
-  return nested && typeof nested === 'object' && !Array.isArray(nested) ? nested as MessagePayload : fallback
+  const supplied = unwrapPayload(value)
+  const parsed = unwrapPayload(fallback)
+  if (!supplied) return parsed
+  if (!parsed) return supplied
+  return { ...supplied, ...parsed }
 }
 
 const display = (

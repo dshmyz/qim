@@ -45,36 +45,7 @@
               <span>{{ message.quotedMessage.sender?.name || message.quotedMessage.name || '未知用户' }}</span>
             </div>
             <div class="quoted-message-preview-content">
-              <template v-if="message.quotedMessage.type === 'text'">
-                {{ decodeToPlainText(message.quotedMessage.content || '无内容') }}
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'image'">
-                [图片] {{ getFileName(message.quotedMessage.content) }}
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'file'">
-                [文件] {{ getFileName(message.quotedMessage.content) }}
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'mini-app' || message.quotedMessage.type === 'miniApp'">
-                [小程序]
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'news'">
-                [资讯]
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'markdown'">
-                [Markdown]
-              </template>
-              <template v-else-if="message.quotedMessage.type === 'streaming'">
-                [流式消息]
-              </template>
-              <template v-else>
-                <!-- 尝试检测内容是否为JSON格式的文件数据 -->
-                <template v-if="isFileContent(message.quotedMessage.content)">
-                  [文件]
-                </template>
-                <template v-else>
-                  {{ decodeToPlainText(message.quotedMessage.content || '无内容') }}
-                </template>
-              </template>
+              {{ quotedMessageSummary }}
             </div>
           </div>
 
@@ -108,7 +79,7 @@
           <ShareMessage
             v-else-if="message.type === 'share'"
             :content="message.content"
-            :share-data="message.shareData"
+            :share-data="shareData"
             :is-self="isSelf"
           />
 
@@ -123,9 +94,9 @@
           <!-- 资讯消息 -->
           <NewsMessage
             v-else-if="message.type === 'news'"
-            :news-data="message.newsData"
+            :news-data="newsData"
             :is-self="isSelf"
-            @open="$emit('openNewsLink', message.newsData?.url)"
+            @open="$emit('openNewsLink', newsData?.url)"
           />
 
           <!-- Markdown消息 -->
@@ -193,8 +164,8 @@ import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
-import { decodeToPlainText } from '../../utils/mentions'
 import { useMessageReminder, canRemind } from '../../composables/useMessageReminder'
+import { resolveMessageDisplay } from '../../utils/messageDisplay'
 
 const props = withDefaults(defineProps<{
   message: any
@@ -225,16 +196,24 @@ const isAIMessage = computed(() => {
   return fromOrigin || fromSenderIsBot || fromField
 })
 
+const messageDisplay = computed(() => resolveMessageDisplay(props.message))
+
+const quotedMessageSummary = computed(() => props.message.quotedMessage
+  ? resolveMessageDisplay(props.message.quotedMessage).summary
+  : '')
+
 const miniAppData = computed(() => {
-  if (props.message.type !== 'miniApp') return props.message.miniAppData
-  try {
-    const parsed = JSON.parse(props.message.content || '{}')
-    const payload = parsed?.type === 'miniApp' && parsed?.data ? parsed.data : parsed
-    return { ...props.message.miniAppData, ...payload }
-  } catch {
-    return props.message.miniAppData
-  }
+  if (messageDisplay.value.kind !== 'miniApp') return props.message.miniAppData
+  return { ...props.message.miniAppData, ...messageDisplay.value.data }
 })
+
+const shareData = computed(() => messageDisplay.value.kind === 'share'
+  ? messageDisplay.value.data
+  : props.message.shareData)
+
+const newsData = computed(() => messageDisplay.value.kind === 'news'
+  ? messageDisplay.value.data
+  : props.message.newsData)
 
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, message: any]
@@ -312,31 +291,6 @@ const convertUrlsToLinks = (text: string): string => {
   return result
 }
 
-// 获取文件名
-const getFileName = (content: string): string => {
-  try {
-    // 尝试解析content为JSON
-    const contentObj = JSON.parse(content)
-    if (contentObj.name) {
-      return contentObj.name
-    } else if (contentObj.fileName) {
-      return contentObj.fileName
-    }
-  } catch (e) {
-    // 解析失败，从content字符串中提取文件名
-  }
-  return content.split('/').pop() || ''
-}
-
-// 检测内容是否为JSON格式的文件数据
-const isFileContent = (content: string): boolean => {
-  try {
-    const contentObj = JSON.parse(content)
-    return contentObj.url && (contentObj.name || contentObj.fileName) && (contentObj.size || contentObj.fileSize)
-  } catch (e) {
-    return false
-  }
-}
 </script>
 
 <style scoped>

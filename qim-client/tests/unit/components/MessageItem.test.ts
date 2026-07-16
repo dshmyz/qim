@@ -60,6 +60,35 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.find('.at-mention-badge').exists()).toBe(false)
   })
 
+  it('uses the shared summary for a quoted merged-forward message', () => {
+    const quotedContent = JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [{ id: 'quoted-1', type: 'text', content: '第一条', senderName: 'Alice', timestamp: 1 }],
+    })
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'message-with-quote',
+          type: 'text',
+          content: '请查看引用',
+          quotedMessage: { id: 'quoted-1', type: 'merged_forward', content: quotedContent, sender: { name: 'Alice' } },
+          sender: { id: '42', name: 'Bob', avatar: '' },
+          timestamp: Date.now(),
+        },
+        isSelf: false,
+        isRecalled: false,
+        conversationType: 'group',
+        readUsersMap: {},
+        serverUrl: '',
+      },
+      global: { stubs: { Avatar: true, TextMessage: true } },
+    })
+
+    expect(wrapper.find('.quoted-message-preview-content').text()).toBe('[聊天记录] 1 条消息')
+    expect(wrapper.text()).not.toContain('{"version"')
+  })
+
   it('passes parsed mini app content to the mini app message card', () => {
     const wrapper = mount(MessageItem, {
       props: {
