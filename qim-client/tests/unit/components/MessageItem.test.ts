@@ -147,6 +147,28 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('聊天记录无法加载')
   })
 
+  it('renders formatted rich previews instead of serialized message content', async () => {
+    const wrapper = mount(MergedForwardMessage, {
+      props: {
+        content: JSON.stringify({
+          version: 1,
+          title: '聊天记录',
+          messages: [
+            { id: 'file-1', senderName: 'Alice', timestamp: 1, type: 'file', content: JSON.stringify({ name: '方案.pdf', size: 1024 }) },
+            { id: 'share-1', senderName: 'Bob', timestamp: 2, type: 'share', content: JSON.stringify({ name: '设计说明' }) },
+          ],
+        }),
+      },
+    })
+
+    await wrapper.get('[data-testid="merged-forward-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('方案.pdf · 1 KB')
+    expect(wrapper.text()).toContain('分享：设计说明')
+    expect(wrapper.text()).not.toContain('{"name"')
+    expect(wrapper.find('.fa-file').exists()).toBe(true)
+  })
+
   it('marks the merged-forward card as responsive and its toggle as accessible', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MergedForwardMessage.vue'), 'utf8')
 

@@ -13,9 +13,8 @@
         <div v-for="message in payload.messages" :key="message.id" class="merged-forward-item">
           <strong>{{ message.senderName }}</strong>
           <span class="merged-forward-preview">
-            <i v-if="message.type === 'image'" class="fas fa-image" aria-hidden="true"></i>
-            <i v-else-if="message.type === 'file'" class="fas fa-file" aria-hidden="true"></i>
-            <span>{{ messagePreview(message) }}</span>
+            <i :class="previewIcon(getMessagePreview(message).kind)" aria-hidden="true"></i>
+            <span>{{ getMessagePreview(message).label }}</span>
           </span>
         </div>
       </div>
@@ -26,7 +25,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { parseMergedForwardPayload, type MergedForwardItem } from '@/utils/mergedForward'
+import { parseMergedForwardPayload } from '@/utils/mergedForward'
+import { getMessagePreview, type MessagePreview } from '@/utils/messagePreview'
 
 const props = defineProps<{
   content: string
@@ -36,21 +36,15 @@ const props = defineProps<{
 const expanded = ref(false)
 const payload = computed(() => parseMergedForwardPayload(props.content))
 
-const fileName = (content: string): string => {
-  try {
-    const value = JSON.parse(content)
-    if (value?.name || value?.fileName) return value.name || value.fileName
-  } catch {
-    // File content may be a URL rather than JSON metadata.
-  }
-  return content.split('/').pop() || content
-}
-
-const messagePreview = (message: MergedForwardItem): string => {
-  if (message.type === 'image') return '[图片]'
-  if (message.type === 'file') return fileName(message.content)
-  return message.content
-}
+const previewIcon = (kind: MessagePreview['kind']): string => ({
+  text: 'fas fa-comment',
+  image: 'fas fa-image',
+  file: 'fas fa-file',
+  share: 'fas fa-share-nodes',
+  miniApp: 'fas fa-mobile-screen',
+  news: 'fas fa-newspaper',
+  unknown: 'fas fa-circle-question',
+}[kind])
 </script>
 
 <style scoped>
