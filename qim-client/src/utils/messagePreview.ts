@@ -1,5 +1,7 @@
+import { parseMergedForwardPayload } from './mergedForward'
+
 export type MessagePreview = {
-  kind: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news' | 'unknown'
+  kind: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news' | 'video' | 'audio' | 'mergedForward' | 'unknown'
   label: string
 }
 
@@ -69,8 +71,16 @@ const stripMarkdown = (content: string): string => content
 
 export const getMessagePreview = ({ type, content }: MessagePreviewInput): MessagePreview => {
   const data = safeParse(content)
+  if (type === 'merged_forward') {
+    const payload = parseMergedForwardPayload(content)
+    return payload
+      ? { kind: 'mergedForward', label: `[聊天记录] ${payload.messages.length} 条消息` }
+      : { kind: 'mergedForward', label: '[聊天记录]' }
+  }
   if (type === 'image') return { kind: 'image', label: '图片' }
   if (type === 'file' || isFilePayload(data)) return { kind: 'file', label: formatFile(data, content) }
+  if (type === 'video') return { kind: 'video', label: '视频' }
+  if (type === 'audio') return { kind: 'audio', label: '语音' }
   if (type === 'share') return { kind: 'share', label: `分享：${getString(data, 'name') || '内容'}` }
   if (type === 'miniApp' || type === 'mini-app') return { kind: 'miniApp', label: `小程序：${getString(data, 'name') || '未命名'}` }
   if (type === 'news') return { kind: 'news', label: getString(data, 'title') || '资讯' }

@@ -25,6 +25,33 @@ afterEach(() => {
 
 describe('ConversationList drafts', () => {
 
+  it('shows a compact summary instead of merged-forward JSON', () => {
+    const content = JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [
+        { id: 'first', type: 'text', content: '第一条', senderName: 'Alice', timestamp: 1 },
+        { id: 'second', type: 'image', content: '/image.png', senderName: 'Bob', timestamp: 2 },
+      ],
+    })
+    const wrapper = mount(ConversationList, {
+      props: {
+        conversations: [{
+          id: 'conversation-1',
+          name: '会话',
+          type: 'single',
+          lastMessage: { type: 'merged_forward', content },
+        }],
+        currentConversationId: null,
+        serverUrl: '',
+      },
+      global: { stubs: { Avatar: true } },
+    })
+
+    expect(wrapper.text()).toContain('[聊天记录] 2 条消息')
+    expect(wrapper.text()).not.toContain('{"version"')
+  })
+
   it('uses the conversation list as the scroll container for loading more', async () => {
     const wrapper = mount(ConversationList, {
       props: {

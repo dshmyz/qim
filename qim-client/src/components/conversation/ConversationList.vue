@@ -70,6 +70,7 @@ import Avatar from '../shared/Avatar.vue'
 import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts'
 import { decodeToPlainText } from '../../utils/mentions'
 import { sameConversationId } from '../../utils/conversationId'
+import { getMessagePreview } from '../../utils/messagePreview'
 
 interface User {
   id: string
@@ -236,6 +237,9 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
   let previewText = ''
   
   switch (lastMessage.type) {
+    case 'merged_forward':
+      previewText = getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label
+      break
     case 'text':
       previewText = decodeToPlainText(lastMessage.content || '无内容')
       break
@@ -284,6 +288,19 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
       break
     case 'system':
       previewText = lastMessage.content || '[系统消息]'
+      break
+    case 'news':
+      previewText = `[资讯] ${getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label}`
+      break
+    case 'markdown':
+    case 'streaming':
+      previewText = getMessagePreview({ type: lastMessage.type, content: lastMessage.content || '' }).label
+      break
+    case 'video':
+      previewText = '[视频]'
+      break
+    case 'audio':
+      previewText = '[语音]'
       break
     default:
       previewText = lastMessage.content || '无内容'

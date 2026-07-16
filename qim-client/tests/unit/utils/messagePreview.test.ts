@@ -26,6 +26,16 @@ describe('getMessagePreview', () => {
       .toEqual({ kind: 'miniApp', label: '小程序：审批助手' })
     expect(getMessagePreview({ type: 'news', content: JSON.stringify({ title: '今日资讯' }) }))
       .toEqual({ kind: 'news', label: '今日资讯' })
+    expect(getMessagePreview({ type: 'video', content: '/video.mp4' })).toEqual({ kind: 'video', label: '视频' })
+    expect(getMessagePreview({ type: 'audio', content: '/audio.mp3' })).toEqual({ kind: 'audio', label: '语音' })
+    expect(getMessagePreview({
+      type: 'merged_forward',
+      content: JSON.stringify({
+        version: 1,
+        title: '聊天记录',
+        messages: [{ id: 'message-1', type: 'text', content: '消息', senderName: 'Alice', timestamp: 1 }],
+      }),
+    })).toEqual({ kind: 'mergedForward', label: '[聊天记录] 1 条消息' })
   })
 
   it('strips markdown formatting and safely falls back for plain or malformed content', () => {
