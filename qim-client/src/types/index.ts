@@ -36,7 +36,7 @@ export interface Message {
   content: string
   sender: User
   timestamp: number
-  type: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news' | 'system' | 'markdown' | 'streaming'
+  type: 'text' | 'image' | 'file' | 'share' | 'miniApp' | 'news' | 'system' | 'markdown' | 'streaming' | 'merged_forward'
   isSelf: boolean
   isRead?: boolean
   isRecalled?: boolean

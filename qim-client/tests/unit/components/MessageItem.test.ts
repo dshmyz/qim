@@ -102,6 +102,36 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.find('.mini-app-stub').text()).toBe('审批助手')
   })
 
+  it('renders merged forward messages with their content payload', () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'merged-1',
+          type: 'merged_forward',
+          content: JSON.stringify({ version: 1, title: '聊天记录', messages: [] }),
+          sender: { id: '42', name: 'Alice', avatar: '' },
+          timestamp: Date.now(),
+        },
+        isSelf: false,
+        isRecalled: false,
+        conversationType: 'group',
+        readUsersMap: {},
+        serverUrl: '',
+      },
+      global: {
+        stubs: {
+          Avatar: true,
+          MergedForwardMessage: {
+            props: ['content'],
+            template: '<div class="merged-forward-stub">{{ content }}</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.merged-forward-stub').text()).toContain('聊天记录')
+  })
+
   it('uses a global high-contrast rule for links inside self message bubbles', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MessageItem.vue'), 'utf8')
 

@@ -135,6 +135,13 @@
             :is-self="isSelf"
           />
 
+          <!-- 合并转发消息 -->
+          <MergedForwardMessage
+            v-else-if="message.type === 'merged_forward'"
+            :content="message.content"
+            :is-self="isSelf"
+          />
+
           <!-- 流式消息 -->
           <StreamingMessage
             v-else-if="message.type === 'streaming'"
@@ -179,6 +186,7 @@ import MiniAppMessage from './MiniAppMessage.vue'
 import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
+import MergedForwardMessage from './MergedForwardMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
