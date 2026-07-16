@@ -331,10 +331,40 @@ watch(() => props.messages, () => {
 
 .message-selection-control {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   margin: -24px 12px 8px;
   position: relative;
   z-index: 1;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.message-selection-control input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--card-bg);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.message-selection-control input:checked {
+  border-color: var(--primary-color);
+  background-color: var(--primary-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.25 8.25 2.75 2.75 6.75-6.75' fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'/%3E%3C/svg%3E");
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--primary-color), transparent 55%);
+}
+
+.message-selection-control input:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
 }
 
 

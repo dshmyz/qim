@@ -1,4 +1,6 @@
 import { shallowMount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
@@ -93,5 +95,14 @@ describe('ChatWindow merged forwarding', () => {
     await (wrapper.vm as any).forwardSelectedMessages()
 
     expect(received[0].messages.map((message: any) => message.id)).toEqual(['1', '3'])
+  })
+
+  it('keeps a labelled selection toolbar with primary and secondary actions', () => {
+    const source = readFileSync(resolve(__dirname, '../../../src/components/chat/ChatWindow.vue'), 'utf8')
+
+    expect(source).toContain('aria-label="多选消息操作"')
+    expect(source).toContain('class="message-selection-cancel"')
+    expect(source).toContain('class="message-selection-forward"')
+    expect(source).toContain('@media (max-width: 640px)')
   })
 })

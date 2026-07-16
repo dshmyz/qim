@@ -70,10 +70,10 @@
       @update:member-search-query="(val) => memberSearchQuery = val"
     />
 
-    <div v-if="isMessageSelectionMode" class="message-selection-actions">
-      <span>已选择 {{ selectedMessages.length }} 条</span>
-      <button type="button" @click="cancelMessageSelection">取消</button>
-      <button type="button" :disabled="selectedMessages.length < 2" @click="forwardSelectedMessages">合并转发</button>
+    <div v-if="isMessageSelectionMode" class="message-selection-actions" aria-label="多选消息操作" role="toolbar">
+      <span class="message-selection-count">已选择 {{ selectedMessages.length }} 条</span>
+      <button class="message-selection-cancel" type="button" @click="cancelMessageSelection">取消</button>
+      <button class="message-selection-forward" type="button" :disabled="selectedMessages.length < 2" @click="forwardSelectedMessages">合并转发</button>
     </div>
 
     <!-- 上传进度条 -->
@@ -2686,13 +2686,74 @@ defineExpose({
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding: 10px 20px;
+  padding: 12px max(20px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   border-top: 1px solid var(--border-color);
-  background: var(--card-bg);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08);
 }
 
-.message-selection-actions span {
+.message-selection-count {
   margin-right: auto;
+  color: var(--text-color);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.message-selection-actions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.message-selection-cancel {
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+}
+
+.message-selection-cancel:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.message-selection-forward {
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--primary-color), transparent 70%);
+}
+
+.message-selection-forward:not(:disabled):hover {
+  background: var(--primary-hover, var(--primary-color));
+  border-color: var(--primary-hover, var(--primary-color));
+}
+
+.message-selection-forward:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  .message-selection-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .message-selection-count {
+    grid-column: 1 / -1;
+    margin-right: 0;
+  }
+
+  .message-selection-actions button {
+    width: 100%;
+  }
 }
 
 /* ===== 上传进度条 ===== */
