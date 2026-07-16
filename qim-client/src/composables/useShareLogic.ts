@@ -6,6 +6,7 @@ import { request } from './useRequest'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
 import { generateAvatar, isAbsoluteUrl, getAvatarUrl } from '../utils/avatar'
+import { createMergedForwardPayload } from '../utils/mergedForward'
 
 export function useShareLogic(
   shareData: Ref<any>,
@@ -82,6 +83,8 @@ export function useShareLogic(
       const { users, groups } = selection
       logger.log('分享数据:', shareData.value)
 
+      const forwardedMessages = Array.isArray(shareData.value) ? shareData.value : [shareData.value]
+      const primaryShareData = forwardedMessages[0]
       let shareContent = ''
       let shareName = ''
       switch (shareType.value) {
@@ -98,10 +101,10 @@ export function useShareLogic(
           shareName = shareData.value.title
           break
         case 'message':
-          if (shareData.value.type === 'text' || shareData.value.type === 'markdown') {
-            shareContent = `转发了消息: ${shareData.value.content.substring(0, 20)}${shareData.value.content.length > 20 ? '...' : ''}`
-            shareName = shareData.value.type === 'markdown' ? 'AI 消息' : '文本消息'
-          } else if (shareData.value.type === 'image') {
+          if (primaryShareData.type === 'text' || primaryShareData.type === 'markdown') {
+            shareContent = `转发了消息: ${primaryShareData.content.substring(0, 20)}${primaryShareData.content.length > 20 ? '...' : ''}`
+            shareName = primaryShareData.type === 'markdown' ? 'AI 消息' : '文本消息'
+          } else if (primaryShareData.type === 'image') {
             shareContent = '转发了图片'
             shareName = '图片消息'
           } else {
@@ -116,12 +119,36 @@ export function useShareLogic(
 
       const shareDataObj = {
         type: shareType.value,
-        id: shareData.value.id || shareData.value.messageId,
+        id: primaryShareData.id || primaryShareData.messageId,
         name: shareName,
         content: shareContent,
-        originalContent: shareData.value.content,
-        originalMessage: shareType.value === 'message' ? shareData.value : undefined
+        originalContent: primaryShareData.content,
+        originalMessage: shareType.value === 'message' ? primaryShareData : undefined
       }
+
+      const buildForwardedMessage = (message: any) => {
+        if (shareType.value === 'file' && message) {
+          return { type: 'file', content: buildFileContent(message) }
+        }
+
+        if (shareType.value === 'message' && message) {
+          if (message.type === 'text') {
+            return { type: 'text', content: `[转发] ${message.content}` }
+          }
+          if (message.type === 'markdown') {
+            return { type: 'markdown', content: `[转发] ${message.content}` }
+          }
+          if (message.type === 'image' || message.type === 'file' || message.type === 'miniApp' || message.type === 'share') {
+            return { type: message.type, content: message.content }
+          }
+        }
+
+        return { type: 'share', content: JSON.stringify(shareDataObj) }
+      }
+
+      const messageData = shareType.value === 'message' && forwardedMessages.length > 1
+        ? { type: 'merged_forward', content: JSON.stringify(createMergedForwardPayload(forwardedMessages)) }
+        : buildForwardedMessage(primaryShareData)
 
       for (const userId of users) {
         const convResponse = await request('/api/v1/conversations', {
@@ -130,21 +157,6 @@ export function useShareLogic(
         })
 
         if (convResponse.code === 0) {
-          let messageData: any = { type: 'share', content: JSON.stringify(shareDataObj) }
-
-          if (shareType.value === 'file' && shareData.value) {
-            messageData = { type: 'file', content: buildFileContent(shareData.value) }
-          } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
-            const originalMessage = shareDataObj.originalMessage
-            if (originalMessage.type === 'text') {
-              messageData = { type: 'text', content: `[转发] ${originalMessage.content}` }
-            } else if (originalMessage.type === 'markdown') {
-              messageData = { type: 'markdown', content: `[转发] ${originalMessage.content}` }
-            } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp' || originalMessage.type === 'share') {
-              messageData = { type: originalMessage.type, content: originalMessage.content }
-            }
-          }
-
           const messageResponse = await request(`/api/v1/conversations/${convResponse.data.id}/messages`, {
             method: 'POST',
             body: JSON.stringify(messageData)
@@ -166,19 +178,6 @@ export function useShareLogic(
       }
 
       for (const groupId of groups) {
-        let messageData: any = { type: 'share', content: JSON.stringify(shareDataObj) }
-
-        if (shareType.value === 'file' && shareData.value) {
-          messageData = { type: 'file', content: buildFileContent(shareData.value) }
-        } else if (shareType.value === 'message' && shareDataObj.originalMessage) {
-          const originalMessage = shareDataObj.originalMessage
-          if (originalMessage.type === 'text') {
-            messageData = { type: 'text', content: `[转发] ${originalMessage.content}` }
-          } else if (originalMessage.type === 'image' || originalMessage.type === 'file' || originalMessage.type === 'miniApp' || originalMessage.type === 'share') {
-            messageData = { type: originalMessage.type, content: originalMessage.content }
-          }
-        }
-
         const messageResponse = await request(`/api/v1/conversations/${parseInt(groupId)}/messages`, {
           method: 'POST',
           body: JSON.stringify(messageData)

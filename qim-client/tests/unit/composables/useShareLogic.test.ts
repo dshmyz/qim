@@ -124,3 +124,26 @@ describe('useShareLogic - loadShareUsersAndGroups', () => {
     })
   })
 })
+
+describe('useShareLogic - message forwarding', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('sends one merged forward message for multiple source messages', async () => {
+    ;(request as any)
+      .mockResolvedValueOnce({ code: 0, data: { id: 10 } })
+      .mockResolvedValueOnce({ code: 0, data: { id: 99 } })
+    const logic = useShareLogic(ref([
+      { id: '1', type: 'text', content: '第一条', sender: { name: '甲' }, timestamp: 1 },
+      { id: '2', type: 'text', content: '第二条', sender: { name: '乙' }, timestamp: 2 },
+    ]), ref('message'), ref([]), ref([]), ref([]), ref(null), vi.fn(), vi.fn(), vi.fn())
+
+    await logic.handleShareConfirm({ users: ['2'], groups: [] })
+
+    expect(request).toHaveBeenLastCalledWith('/api/v1/conversations/10/messages', expect.objectContaining({
+      body: expect.stringContaining('"type":"merged_forward"'),
+    }))
+  })
+})
