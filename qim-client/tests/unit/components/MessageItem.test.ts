@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import MessageItem from '@/components/message/MessageItem.vue'
+import MergedForwardMessage from '@/components/message/MergedForwardMessage.vue'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -130,6 +131,20 @@ describe('MessageItem mention emphasis', () => {
     })
 
     expect(wrapper.find('.merged-forward-stub').text()).toContain('聊天记录')
+  })
+
+  it('shows the merged-forward fallback for malformed message items', () => {
+    const wrapper = mount(MergedForwardMessage, {
+      props: {
+        content: JSON.stringify({
+          version: 1,
+          title: '聊天记录',
+          messages: [null],
+        }),
+      },
+    })
+
+    expect(wrapper.text()).toContain('聊天记录无法加载')
   })
 
   it('uses a global high-contrast rule for links inside self message bubbles', () => {

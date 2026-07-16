@@ -11,4 +11,12 @@ describe('merged forward payload', () => {
     expect(payload.messages.map(item => item.id)).toEqual(['2', '1'])
     expect(parseMergedForwardPayload('{invalid')).toBeNull()
   })
+
+  it('rejects payloads with malformed message items', () => {
+    expect(parseMergedForwardPayload(JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [null],
+    }))).toBeNull()
+  })
 })

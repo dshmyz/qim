@@ -29,7 +29,19 @@ export const createMergedForwardPayload = (messages: Message[]): MergedForwardPa
 export const parseMergedForwardPayload = (content: string): MergedForwardPayload | null => {
   try {
     const value = JSON.parse(content)
-    return value?.version === 1 && value?.title === '聊天记录' && Array.isArray(value?.messages) ? value : null
+    const hasValidMessages = Array.isArray(value?.messages) && value.messages.every((message: unknown) => {
+      if (!message || typeof message !== 'object') return false
+
+      const item = message as Record<string, unknown>
+      return typeof item.id === 'string'
+        && typeof item.type === 'string'
+        && typeof item.content === 'string'
+        && typeof item.senderName === 'string'
+        && typeof item.timestamp === 'number'
+        && Number.isFinite(item.timestamp)
+    })
+
+    return value?.version === 1 && value?.title === '聊天记录' && hasValidMessages ? value : null
   } catch {
     return null
   }
