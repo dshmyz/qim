@@ -234,10 +234,10 @@ const handleAIAction = (actionId: string) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 8px 16px;
   cursor: pointer;
   transition: background 0.15s;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-color);
 }
 

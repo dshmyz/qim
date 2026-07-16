@@ -217,8 +217,7 @@ defineExpose({
   color: var(--text-color);
   opacity: 0.7;
   font-size: 11px;
-  margin-left: 8px;
-  padding: 2px 6px;
+  /* padding: 2px 0px; */
   /* background: var(--hover-color); */
   border-radius: 3px;
 }
@@ -244,8 +243,7 @@ defineExpose({
   color: var(--text-color);
   opacity: 0.6;
   font-size: 12px;
-  margin-left: 8px;
-  max-width: 200px;
+  max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -255,12 +253,11 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
   background: var(--input-bg);
   border-radius: 4px;
   font-size: 12px;
   color: var(--text-secondary);
-  max-width: 300px;
+  max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

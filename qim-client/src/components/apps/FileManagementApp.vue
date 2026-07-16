@@ -173,6 +173,7 @@
     <Teleport to="body">
       <div
         v-if="contextMenu.visible"
+        ref="contextMenuRef"
         class="context-menu"
         :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
       >
@@ -215,7 +216,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import FolderTree from './file/FolderTree.vue'
 import FileList from './file/FileList.vue'
 import CreateFolderModal from './file/CreateFolderModal.vue'
@@ -290,6 +291,9 @@ const contextMenu = ref({
   y: 0,
   file: null as FileItem | null
 })
+
+// 右键菜单 DOM 引用，用于渲染后取真实尺寸做二次校正
+const contextMenuRef = ref<HTMLElement | null>(null)
 
 const folders = ref<FolderItem[]>([])
 const filterValue = ref('all')
@@ -446,12 +450,57 @@ const triggerFileUpload = () => {
 }
 
 const handleContextMenu = (file: FileItem, event: MouseEvent) => {
+  event.preventDefault()
+  // 视口尺寸与安全边距
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const padding = 8
+  // 菜单预估尺寸（min-width: 180px，7 个菜单项 + 2 个分隔线，估算高度 300px）
+  const estimatedWidth = 180
+  const estimatedHeight = 300
+
+  let x = event.clientX
+  let y = event.clientY
+
+  // 预夹取：右边界
+  if (x + estimatedWidth + padding > viewportWidth) {
+    x = viewportWidth - estimatedWidth - padding
+  }
+  // 预夹取：下边界
+  if (y + estimatedHeight + padding > viewportHeight) {
+    y = viewportHeight - estimatedHeight - padding
+  }
+  // 不允许负值
+  if (x < padding) x = padding
+  if (y < padding) y = padding
+
   contextMenu.value = {
     visible: true,
-    x: event.clientX,
-    y: event.clientY,
+    x,
+    y,
     file
   }
+
+  // 渲染后用真实尺寸二次校正，避免预估误差导致仍越界
+  nextTick(() => {
+    const el = contextMenuRef.value
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    let nx = x
+    let ny = y
+    if (rect.right > viewportWidth - padding) {
+      nx = viewportWidth - rect.width - padding
+    }
+    if (rect.bottom > viewportHeight - padding) {
+      ny = viewportHeight - rect.height - padding
+    }
+    if (nx < padding) nx = padding
+    if (ny < padding) ny = padding
+    if (nx !== x || ny !== y) {
+      contextMenu.value.x = nx
+      contextMenu.value.y = ny
+    }
+  })
 }
 
 const handleContextMenuAction = (action: string) => {
@@ -517,14 +566,26 @@ const handleClickOutside = () => {
   }
 }
 
+// 滚动或窗口缩放时关闭菜单，避免菜单飘在原地与内容错位
+const handleContextMenuDismiss = () => {
+  if (contextMenu.value.visible) {
+    contextMenu.value.visible = false
+  }
+}
+
 onMounted(async () => {
   await loadFiles()
   await loadRootFolders()
   document.addEventListener('click', handleClickOutside)
+  // capture: true 以便捕获子元素（文件列表、文件夹树）内部的滚动
+  window.addEventListener('scroll', handleContextMenuDismiss, true)
+  window.addEventListener('resize', handleContextMenuDismiss)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleContextMenuDismiss, true)
+  window.removeEventListener('resize', handleContextMenuDismiss)
 })
 </script>
 
@@ -725,10 +786,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   cursor: pointer;
   color: var(--text-color, #4a5568);
-  font-size: 14px;
+  font-size: 12px;
   border-radius: 8px;
   transition: all 0.15s ease;
 }

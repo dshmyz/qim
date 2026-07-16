@@ -300,7 +300,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   color: var(--text-color);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .context-menu-item:hover {

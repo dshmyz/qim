@@ -183,6 +183,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   color: var(--text-color);
 }
 
+.merged-forward-record-content :deep(.text-message){
+  padding: 5px 0px;
+}
+
 .merged-forward-record-content :deep(.message-bubble),
 .merged-forward-record-content :deep(.markdown-message),
 .merged-forward-record-content :deep(.message-content-image) {
@@ -190,7 +194,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 
 .merged-forward-record-time {
-  margin: 12px 0 4px;
+  margin: 5px 0 5px;
   text-align: center;
   font-size: 12px;
   color: var(--text-secondary);
