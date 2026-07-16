@@ -31,7 +31,28 @@
             </div>
             <article class="merged-forward-record-item">
               <strong class="merged-forward-record-sender">{{ message.senderName }}</strong>
-              <p class="merged-forward-record-content">{{ getMessagePreview(message).label }}</p>
+              <div class="merged-forward-record-content">
+                <TextMessage v-if="message.type === 'text'" :content="message.content" />
+                <MarkdownMessage v-else-if="message.type === 'markdown'" :content="message.content" />
+                <ImageMessage v-else-if="message.type === 'image'" :src="message.content" :server-url="serverUrl" />
+                <FileMessage
+                  v-else-if="message.type === 'file'"
+                  :content="message.content"
+                  :message-id="message.id"
+                  :server-url="serverUrl"
+                />
+                <ShareMessage
+                  v-else-if="message.type === 'share'"
+                  :content="message.content"
+                  :share-data="structuredContent(message.content)"
+                />
+                <MiniAppMessage
+                  v-else-if="message.type === 'miniApp' || message.type === 'mini-app'"
+                  :mini-app-data="structuredContent(message.content)"
+                />
+                <NewsMessage v-else-if="message.type === 'news'" :news-data="structuredContent(message.content)" />
+                <p class="merged-forward-record-summary">{{ getMessagePreview(message).label }}</p>
+              </div>
             </article>
           </template>
         </div>
@@ -47,6 +68,14 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 import { type MergedForwardPayload } from '@/utils/mergedForward'
 import { getMessagePreview } from '@/utils/messagePreview'
+import { useServerUrl } from '@/composables/useServerUrl'
+import TextMessage from './TextMessage.vue'
+import MarkdownMessage from './MarkdownMessage.vue'
+import ImageMessage from './ImageMessage.vue'
+import FileMessage from './FileMessage.vue'
+import ShareMessage from './ShareMessage.vue'
+import MiniAppMessage from './MiniAppMessage.vue'
+import NewsMessage from './NewsMessage.vue'
 
 const props = defineProps<{
   payload: MergedForwardPayload | null
@@ -56,6 +85,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
 }>()
+
+const { serverUrl } = useServerUrl()
 
 const close = () => emit('close')
 
@@ -67,6 +98,15 @@ const showTimestampDivider = (timestamp: number, index: number): boolean => inde
   && timestamp - props.payload!.messages[index - 1].timestamp > 300_000
 
 const formatTimestamp = (timestamp: number): string => new Date(timestamp).toLocaleString()
+
+const structuredContent = (content: string): Record<string, any> | undefined => {
+  try {
+    const value = JSON.parse(content)
+    return value && typeof value === 'object' ? value : undefined
+  } catch {
+    return undefined
+  }
+}
 
 onMounted(() => window.addEventListener('keydown', handleKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
@@ -133,10 +173,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   font-size: 13px;
 }
 
-.merged-forward-record-item p {
+.merged-forward-record-content {
+  min-width: 0;
+}
+
+.merged-forward-record-summary {
   margin: 0;
   white-space: pre-wrap;
   color: var(--text-color);
+}
+
+.merged-forward-record-content :deep(.message-bubble),
+.merged-forward-record-content :deep(.markdown-message),
+.merged-forward-record-content :deep(.message-content-image) {
+  max-width: 100%;
 }
 
 .merged-forward-record-time {

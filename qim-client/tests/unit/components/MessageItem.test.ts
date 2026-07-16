@@ -218,6 +218,34 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).not.toContain('{"name"')
   })
 
+  it('renders complete record entries with their native message components', () => {
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([
+          { id: 'text', senderName: 'Alice', timestamp: 1, type: 'text', content: '正文' },
+          { id: 'markdown', senderName: 'Bob', timestamp: 2, type: 'markdown', content: '**加粗**' },
+          { id: 'image', senderName: 'Chris', timestamp: 3, type: 'image', content: '/image.png' },
+          { id: 'file', senderName: 'Dana', timestamp: 4, type: 'file', content: JSON.stringify({ name: '方案.pdf', size: 1024 }) },
+        ]),
+      },
+      global: {
+        stubs: {
+          Teleport: { template: '<slot />' },
+          TextMessage: { props: ['content'], template: '<div data-testid="native-text">{{ content }}</div>' },
+          MarkdownMessage: { props: ['content'], template: '<div data-testid="native-markdown">{{ content }}</div>' },
+          ImageMessage: { props: ['src'], template: '<div data-testid="native-image">{{ src }}</div>' },
+          FileMessage: { props: ['content'], template: '<div data-testid="native-file">{{ content }}</div>' },
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="native-text"]').text()).toBe('正文')
+    expect(wrapper.get('[data-testid="native-markdown"]').text()).toBe('**加粗**')
+    expect(wrapper.get('[data-testid="native-image"]').text()).toBe('/image.png')
+    expect(wrapper.get('[data-testid="native-file"]').text()).toContain('方案.pdf')
+  })
+
   it('adds a time divider only after gaps longer than five minutes', () => {
     const baseTimestamp = 1_700_000_000_000
     const wrapper = mount(MergedForwardRecordDialog, {
