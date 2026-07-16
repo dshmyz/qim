@@ -601,7 +601,7 @@ const messageMenuSelection = ref('')
 const isMessageSelectionMode = ref(false)
 const selectedMessageIds = ref(new Set<string>())
 const selectedMessages = computed(() =>
-  props.messages.filter(message => selectedMessageIds.value.has(String(message.id)))
+  props.messages.filter(message => selectedMessageIds.value.has(String(message.id)) && !message.isRecalled)
 )
 
 // 头部下拉菜单状态
