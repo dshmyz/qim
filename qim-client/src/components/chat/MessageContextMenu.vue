@@ -50,6 +50,10 @@
       <span class="context-menu-icon"><i class="fas fa-share-alt"></i></span>
       <span>转发</span>
     </div>
+    <div class="context-menu-item" @click="handleSelectMessages">
+      <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
+      <span>多选</span>
+    </div>
     <div class="context-menu-item" @click="handleQuoteMessage">
       <span class="context-menu-icon"><i class="fas fa-quote-right"></i></span>
       <span>引用</span>
@@ -95,6 +99,7 @@ interface Emits {
   (e: 'copy-message'): void
   (e: 'copy-code'): void
   (e: 'forward-message'): void
+  (e: 'select-messages'): void
   (e: 'quote-message'): void
   (e: 'add-to-notes-app'): void
   (e: 'create-task'): void
@@ -170,6 +175,10 @@ const handleCopyCode = () => {
 
 const handleForwardMessage = () => {
   emit('forward-message')
+}
+
+const handleSelectMessages = () => {
+  emit('select-messages')
 }
 
 const handleQuoteMessage = () => {

@@ -40,6 +40,14 @@
           @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           @image-loaded="handleImageLoaded"
         />
+        <label v-if="selectionMode && !message.isRecalled" class="message-selection-control">
+          <input
+            type="checkbox"
+            :data-testid="`message-select-${message.id}`"
+            :checked="selectedMessageIds.has(String(message.id))"
+            @change="emit('toggle-message-selection', String(message.id))"
+          >
+        </label>
       </div>
 
       <!-- AI 思考中指示器 -->
@@ -73,6 +81,8 @@ interface Props {
   showReadReceipt: boolean
   serverUrl: string
   currentUserId?: string | number
+  selectionMode: boolean
+  selectedMessageIds: Set<string>
 }
 
 interface Emits {
@@ -88,6 +98,7 @@ interface Emits {
   'scroll-to-bottom': []
   'load-more': []
   'mark-read': []
+  'toggle-message-selection': [messageId: string]
 }
 
 const props = defineProps<Props>()
@@ -316,6 +327,14 @@ watch(() => props.messages, () => {
   padding: 20px;
   opacity: 0.95;
   -webkit-overflow-scrolling: touch;
+}
+
+.message-selection-control {
+  display: flex;
+  justify-content: flex-end;
+  margin: -24px 12px 8px;
+  position: relative;
+  z-index: 1;
 }
 
 

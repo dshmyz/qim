@@ -10,6 +10,8 @@
       :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
       :current-user-id="currentUserId"
+      :selection-mode="selectionMode"
+      :selected-message-ids="selectedMessageIds"
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
       @scroll-to-quoted-message="(id) => emit('scroll-to-quoted-message', id)"
@@ -20,6 +22,7 @@
       @retry-send-message="(m) => emit('retry-send-message', m)"
       @show-read-users="(m) => emit('show-read-users', m)"
       @mark-read="emit('mark-read')"
+      @toggle-message-selection="emit('toggle-message-selection', $event)"
       @load-more="emit('load-more')"
     />
 
@@ -68,6 +71,8 @@ interface Props {
   showReadReceipt: boolean
   serverUrl: string
   currentUserId?: string | number
+  selectionMode: boolean
+  selectedMessageIds: Set<string>
   isMembersSidebarExpanded: boolean
   showMemberSearch: boolean
   memberSearchQuery: string
@@ -86,6 +91,7 @@ const emit = defineEmits<{
   'retry-send-message': [msg: Message]
   'show-read-users': [msg: Message]
   'mark-read': []
+  'toggle-message-selection': [messageId: string]
   'load-more': []
   'toggle-members-sidebar': []
   'toggle-member-search': []

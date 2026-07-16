@@ -27,6 +27,7 @@
     @copy-message="emit('copy-message'); closeMessageMenu()"
     @copy-code="emit('copy-code'); closeMessageMenu()"
     @forward-message="emit('forward-message'); closeMessageMenu()"
+    @select-messages="emit('select-messages'); closeMessageMenu()"
     @quote-message="emit('quote-message'); closeMessageMenu()"
     @add-to-notes-app="emit('add-to-notes-app'); closeMessageMenu()"
     @create-task="emit('create-task'); closeMessageMenu()"
@@ -143,6 +144,7 @@ const emit = defineEmits<{
   'copy-message': []
   'copy-code': []
   'forward-message': []
+  'select-messages': []
   'quote-message': []
   'add-to-notes-app': []
   'create-task': []

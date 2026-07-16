@@ -45,6 +45,8 @@
       :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"
       :current-user-id="currentUserId"
+      :selection-mode="isMessageSelectionMode"
+      :selected-message-ids="selectedMessageIds"
       :is-members-sidebar-expanded="isMembersSidebarExpanded"
       :show-member-search="showMemberSearch"
       :member-search-query="memberSearchQuery"
@@ -58,6 +60,7 @@
       @retry-send-message="retrySendMessage"
       @show-read-users="showReadUsers"
       @mark-read="handleMarkRead"
+      @toggle-message-selection="toggleMessageSelection"
       @load-more="loadMoreMessages"
       @toggle-members-sidebar="toggleMembersSidebar"
       @toggle-member-search="toggleMemberSearch"
@@ -66,6 +69,12 @@
       @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
       @update:member-search-query="(val) => memberSearchQuery = val"
     />
+
+    <div v-if="isMessageSelectionMode" class="message-selection-actions">
+      <span>已选择 {{ selectedMessages.length }} 条</span>
+      <button type="button" @click="cancelMessageSelection">取消</button>
+      <button type="button" :disabled="selectedMessages.length < 2" @click="forwardSelectedMessages">合并转发</button>
+    </div>
 
     <!-- 上传进度条 -->
     <Transition name="fade">
@@ -167,6 +176,7 @@
       @copy-message="selectedMessage && copyMessage(selectedMessage, messageMenuSelection)"
       @copy-code="selectedMessage && handleCopyCode(selectedMessage)"
       @forward-message="forwardMessage"
+      @select-messages="startMessageSelection"
       @quote-message="quoteMessage"
       @add-to-notes-app="addToNotesApp"
       @create-task="createTaskFromMessage"
@@ -588,6 +598,11 @@ const showMessageContextMenuFlag = ref(false)
 const messageContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMessage = ref<any>(null)
 const messageMenuSelection = ref('')
+const isMessageSelectionMode = ref(false)
+const selectedMessageIds = ref(new Set<string>())
+const selectedMessages = computed(() =>
+  props.messages.filter(message => selectedMessageIds.value.has(String(message.id)))
+)
 
 // 头部下拉菜单状态
 const showHeaderMenu = ref(false)
@@ -1742,6 +1757,32 @@ const forwardMessage = () => {
   closeMessageContextMenu()
 }
 
+const startMessageSelection = () => {
+  isMessageSelectionMode.value = true
+  selectedMessageIds.value = selectedMessage.value
+    ? new Set([String(selectedMessage.value.id)])
+    : new Set()
+}
+
+const toggleMessageSelection = (id: string) => {
+  const ids = new Set(selectedMessageIds.value)
+  ids.has(id) ? ids.delete(id) : ids.add(id)
+  selectedMessageIds.value = ids
+}
+
+const cancelMessageSelection = () => {
+  isMessageSelectionMode.value = false
+  selectedMessageIds.value = new Set()
+}
+
+const forwardSelectedMessages = () => {
+  if (selectedMessages.value.length < 2) return
+  window.dispatchEvent(new CustomEvent('forwardMessage', {
+    detail: { messages: selectedMessages.value }
+  }))
+  cancelMessageSelection()
+}
+
 // AI 总结消息
 const handleAISummary = () => {
   if (!selectedMessage.value || !props.conversation?.id) {
@@ -2629,13 +2670,30 @@ const canEditGroupName = computed(() => {
 
 defineExpose({
   startScreenShare,
-  scrollToBottom
+  scrollToBottom,
+  startMessageSelection,
+  toggleMessageSelection,
+  forwardSelectedMessages,
 })
 </script>
 
 <style scoped>
 /* ===== ChatWindow 组件自身使用的样式 ===== */
 /* 基础布局样式已移至全局 chat.css */
+
+.message-selection-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.message-selection-actions span {
+  margin-right: auto;
+}
 
 /* ===== 上传进度条 ===== */
 .upload-progress-bar {
