@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import MessageItem from '@/components/message/MessageItem.vue'
 import MergedForwardMessage from '@/components/message/MergedForwardMessage.vue'
+import MergedForwardRecordDialog from '@/components/message/MergedForwardRecordDialog.vue'
 
 const makePayload = (count: number) => JSON.stringify({
   version: 1,
@@ -16,6 +17,12 @@ const makePayload = (count: number) => JSON.stringify({
     senderName: `用户 ${index + 1}`,
     timestamp: index * 1_000,
   })),
+})
+
+const makeRecordPayload = (messages: Array<Record<string, unknown>>) => ({
+  version: 1,
+  title: '聊天记录',
+  messages,
 })
 
 beforeEach(() => {
@@ -188,6 +195,60 @@ describe('MessageItem mention emphasis', () => {
 
     expect(wrapper.find('[data-testid="merged-forward-record-dialog"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('聊天记录（共 4 条）')
+  })
+
+  it('renders record messages in source order with formatted rich previews', () => {
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([
+          { id: 'first', senderName: 'Alice', timestamp: 1, type: 'file', content: JSON.stringify({ name: '方案.pdf', size: 1024 }) },
+          { id: 'second', senderName: 'Bob', timestamp: 2, type: 'share', content: JSON.stringify({ name: '设计说明' }) },
+        ]),
+      },
+    })
+
+    expect(wrapper.findAll('.merged-forward-record-item strong').map((item) => item.text())).toEqual(['Alice', 'Bob'])
+    expect(wrapper.text()).toContain('方案.pdf · 1 KB')
+    expect(wrapper.text()).toContain('分享：设计说明')
+    expect(wrapper.text()).not.toContain('{"name"')
+  })
+
+  it('adds a time divider only after gaps longer than five minutes', () => {
+    const baseTimestamp = 1_700_000_000_000
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([
+          { id: 'first', senderName: 'Alice', timestamp: baseTimestamp, type: 'text', content: '第一条' },
+          { id: 'boundary', senderName: 'Bob', timestamp: baseTimestamp + 300_000, type: 'text', content: '刚好五分钟' },
+          { id: 'later', senderName: 'Chris', timestamp: baseTimestamp + 600_001, type: 'text', content: '超过五分钟' },
+        ]),
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="merged-forward-time-divider"]')).toHaveLength(1)
+  })
+
+  it('closes the record dialog from its button, backdrop, and Escape key', async () => {
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([{ id: 'first', senderName: 'Alice', timestamp: 1, type: 'text', content: '第一条' }]),
+      },
+    })
+
+    await wrapper.get('[aria-label="关闭聊天记录"]').trigger('click')
+    await wrapper.get('[data-testid="merged-forward-record-dialog"]').trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(wrapper.emitted('close')).toHaveLength(3)
+  })
+
+  it('shows a fallback when the record payload is unavailable', () => {
+    const wrapper = mount(MergedForwardRecordDialog, { props: { visible: true, payload: null } })
+
+    expect(wrapper.text()).toContain('聊天记录无法加载')
   })
 
   it('marks the merged-forward card as responsive and its open button as accessible', () => {

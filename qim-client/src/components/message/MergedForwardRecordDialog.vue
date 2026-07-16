@@ -1,12 +1,13 @@
 <template>
   <div
-    v-if="visible && payload"
+    v-if="visible"
     class="merged-forward-record-backdrop"
     data-testid="merged-forward-record-dialog"
     role="presentation"
     @click.self="close"
   >
     <section
+      v-if="payload"
       aria-modal="true"
       aria-labelledby="merged-forward-record-title"
       class="merged-forward-record-dialog"
@@ -20,15 +21,22 @@
       </header>
       <div class="merged-forward-record-list">
         <template v-for="(message, index) in payload.messages" :key="message.id">
-          <div v-if="showTimestampDivider(message.timestamp, index)" class="merged-forward-record-time">
+          <div
+            v-if="showTimestampDivider(message.timestamp, index)"
+            class="merged-forward-record-time"
+            data-testid="merged-forward-time-divider"
+          >
             {{ formatTimestamp(message.timestamp) }}
           </div>
           <article class="merged-forward-record-item">
-            <strong>{{ message.senderName }}</strong>
-            <p>{{ getMessagePreview(message).label }}</p>
+            <strong class="merged-forward-record-sender">{{ message.senderName }}</strong>
+            <p class="merged-forward-record-content">{{ getMessagePreview(message).label }}</p>
           </article>
         </template>
       </div>
+    </section>
+    <section v-else class="merged-forward-record-dialog merged-forward-record-fallback" role="alert">
+      聊天记录无法加载
     </section>
   </div>
 </template>
@@ -70,12 +78,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgb(0 0 0 / 50%);
+  background: var(--modal-overlay, rgb(0 0 0 / 50%));
 }
 
 .merged-forward-record-dialog {
   display: flex;
-  width: min(640px, 100%);
+  width: min(720px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 40px));
   flex-direction: column;
   overflow: hidden;
@@ -131,5 +139,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   text-align: center;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.merged-forward-record-fallback {
+  padding: 24px;
+  color: var(--text-secondary);
+  text-align: center;
 }
 </style>
