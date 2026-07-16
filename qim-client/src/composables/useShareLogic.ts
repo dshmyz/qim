@@ -126,7 +126,7 @@ export function useShareLogic(
         originalMessage: shareType.value === 'message' ? primaryShareData : undefined
       }
 
-      const buildForwardedMessage = (message: any) => {
+      const buildForwardedMessage = (message: any, destination: 'user' | 'group') => {
         if (shareType.value === 'file' && message) {
           return { type: 'file', content: buildFileContent(message) }
         }
@@ -135,7 +135,7 @@ export function useShareLogic(
           if (message.type === 'text') {
             return { type: 'text', content: `[转发] ${message.content}` }
           }
-          if (message.type === 'markdown') {
+          if (message.type === 'markdown' && destination === 'user') {
             return { type: 'markdown', content: `[转发] ${message.content}` }
           }
           if (message.type === 'image' || message.type === 'file' || message.type === 'miniApp' || message.type === 'share') {
@@ -146,11 +146,12 @@ export function useShareLogic(
         return { type: 'share', content: JSON.stringify(shareDataObj) }
       }
 
-      const messageData = shareType.value === 'message' && forwardedMessages.length > 1
+      const buildMessageData = (destination: 'user' | 'group') => shareType.value === 'message' && forwardedMessages.length > 1
         ? { type: 'merged_forward', content: JSON.stringify(createMergedForwardPayload(forwardedMessages)) }
-        : buildForwardedMessage(primaryShareData)
+        : buildForwardedMessage(primaryShareData, destination)
 
       for (const userId of users) {
+        const messageData = buildMessageData('user')
         const convResponse = await request('/api/v1/conversations', {
           method: 'POST',
           body: JSON.stringify({ type: 'single', user_id: parseInt(userId) })
@@ -178,6 +179,7 @@ export function useShareLogic(
       }
 
       for (const groupId of groups) {
+        const messageData = buildMessageData('group')
         const messageResponse = await request(`/api/v1/conversations/${parseInt(groupId)}/messages`, {
           method: 'POST',
           body: JSON.stringify(messageData)

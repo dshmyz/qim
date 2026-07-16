@@ -146,4 +146,17 @@ describe('useShareLogic - message forwarding', () => {
       body: expect.stringContaining('"type":"merged_forward"'),
     }))
   })
+
+  it('sends a single markdown message to a group as the legacy share payload', async () => {
+    ;(request as any).mockResolvedValueOnce({ code: 0, data: { id: 99 } })
+    const logic = useShareLogic(ref({
+      id: '1', type: 'markdown', content: '# AI response', sender: { name: '甲' }, timestamp: 1,
+    }), ref('message'), ref([]), ref([]), ref([]), ref(null), vi.fn(), vi.fn(), vi.fn())
+
+    await logic.handleShareConfirm({ users: [], groups: ['20'] })
+
+    expect(request).toHaveBeenLastCalledWith('/api/v1/conversations/20/messages', expect.objectContaining({
+      body: expect.stringContaining('"type":"share"'),
+    }))
+  })
 })
