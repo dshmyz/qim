@@ -13,7 +13,6 @@
         <div v-for="message in payload.messages.slice(0, 3)" :key="message.id" class="merged-forward-item">
           <strong>{{ message.senderName }}</strong>
           <span class="merged-forward-preview">
-            <i :class="previewIcon(getMessagePreview(message).kind)" aria-hidden="true"></i>
             <span>{{ getMessagePreview(message).label }}</span>
           </span>
         </div>
@@ -29,7 +28,7 @@
 import { computed, ref } from 'vue'
 import MergedForwardRecordDialog from './MergedForwardRecordDialog.vue'
 import { parseMergedForwardPayload } from '@/utils/mergedForward'
-import { getMessagePreview, type MessagePreview } from '@/utils/messagePreview'
+import { getMessagePreview } from '@/utils/messagePreview'
 
 const props = defineProps<{
   content: string
@@ -39,15 +38,6 @@ const props = defineProps<{
 const isRecordVisible = ref(false)
 const payload = computed(() => parseMergedForwardPayload(props.content))
 
-const previewIcon = (kind: MessagePreview['kind']): string => ({
-  text: 'fas fa-comment',
-  image: 'fas fa-image',
-  file: 'fas fa-file',
-  share: 'fas fa-share-nodes',
-  miniApp: 'fas fa-mobile-screen',
-  news: 'fas fa-newspaper',
-  unknown: 'fas fa-circle-question',
-}[kind])
 </script>
 
 <style scoped>
@@ -114,7 +104,6 @@ const previewIcon = (kind: MessagePreview['kind']): string => ({
 .merged-forward-preview {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
   color: var(--text-secondary);
 }
 

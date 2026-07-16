@@ -183,7 +183,7 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('方案.pdf · 1 KB')
     expect(wrapper.text()).toContain('分享：设计说明')
     expect(wrapper.text()).not.toContain('{"name"')
-    expect(wrapper.find('.fa-file').exists()).toBe(true)
+    expect(wrapper.find('.merged-forward-preview i').exists()).toBe(false)
   })
 
   it('shows only three previews and opens a complete record dialog', async () => {
