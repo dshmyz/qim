@@ -39,7 +39,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }))
 
 describe('useShareLogic file content', () => {
-  it('builds shared file content with an authenticated download API URL', () => {
+  it('preserves the source file URL when forwarding a file with an id', () => {
     const { buildFileContent } = useShareLogic(
       ref(null),
       ref('file'),
@@ -57,11 +57,11 @@ describe('useShareLogic file content', () => {
       name: 'report.pdf',
       size: 1024,
       mime_type: 'application/pdf',
-      storage_path: '/private/storage/report.pdf',
+      storage_path: 'uploads/2026/07/report.pdf',
     }))
 
     expect(content).toEqual({
-      url: '/api/v1/files/7/download',
+      url: '/uploads/2026/07/report.pdf',
       id: 7,
       name: 'report.pdf',
       size: 1024,

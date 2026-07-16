@@ -24,7 +24,19 @@ export function useShareLogic(
   const { serverUrl } = useServerUrl()
 
   const buildFileContent = (file: any): string => {
-    const downloadUrl = file.id ? `/api/v1/files/${file.id}/download` : (file.url ?? file.content ?? file.storage_path)
+    let contentUrl: string | undefined
+    if (typeof file.content === 'string') {
+      try {
+        const content = JSON.parse(file.content)
+        contentUrl = typeof content?.url === 'string' ? content.url : undefined
+      } catch {
+        contentUrl = file.content
+      }
+    }
+    const originalUrl = file.url ?? contentUrl ?? file.storage_path
+    const downloadUrl = typeof originalUrl === 'string' && originalUrl
+      ? (originalUrl.startsWith('http') || originalUrl.startsWith('/') ? originalUrl : `/${originalUrl}`)
+      : (file.id ? `/api/v1/files/${file.id}/download` : '')
     return JSON.stringify({
       url: downloadUrl,
       id: file.id,
