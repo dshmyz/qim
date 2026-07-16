@@ -200,7 +200,7 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('聊天记录（共 4 条）')
   })
 
-  it('renders record messages in source order with formatted rich previews', () => {
+  it('renders record messages in source order with native rich components', () => {
     const wrapper = mount(MergedForwardRecordDialog, {
       props: {
         visible: true,
@@ -213,9 +213,10 @@ describe('MessageItem mention emphasis', () => {
     })
 
     expect(wrapper.findAll('.merged-forward-record-item strong').map((item) => item.text())).toEqual(['Alice', 'Bob'])
-    expect(wrapper.text()).toContain('方案.pdf · 1 KB')
-    expect(wrapper.text()).toContain('分享：设计说明')
+    expect(wrapper.text()).toContain('方案.pdf')
+    expect(wrapper.text()).toContain('设计说明')
     expect(wrapper.text()).not.toContain('{"name"')
+    expect(wrapper.find('.merged-forward-record-summary').exists()).toBe(false)
   })
 
   it('renders complete record entries with their native message components', () => {
@@ -244,6 +245,7 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.get('[data-testid="native-markdown"]').text()).toBe('**加粗**')
     expect(wrapper.get('[data-testid="native-image"]').text()).toBe('/image.png')
     expect(wrapper.get('[data-testid="native-file"]').text()).toContain('方案.pdf')
+    expect(wrapper.find('.merged-forward-record-summary').exists()).toBe(false)
   })
 
   it('adds a time divider only after gaps longer than five minutes', () => {

@@ -51,7 +51,7 @@
                   :mini-app-data="structuredContent(message.content)"
                 />
                 <NewsMessage v-else-if="message.type === 'news'" :news-data="structuredContent(message.content)" />
-                <p class="merged-forward-record-summary">{{ getMessagePreview(message).label }}</p>
+                <p v-else class="merged-forward-record-summary">{{ getMessagePreview(message).label }}</p>
               </div>
             </article>
           </template>
