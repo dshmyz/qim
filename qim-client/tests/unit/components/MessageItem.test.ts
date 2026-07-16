@@ -187,7 +187,10 @@ describe('MessageItem mention emphasis', () => {
   })
 
   it('shows only three previews and opens a complete record dialog', async () => {
-    const wrapper = mount(MergedForwardMessage, { props: { content: makePayload(4) } })
+    const wrapper = mount(MergedForwardMessage, {
+      props: { content: makePayload(4) },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
+    })
 
     expect(wrapper.findAll('.merged-forward-preview').length).toBe(3)
 
@@ -206,6 +209,7 @@ describe('MessageItem mention emphasis', () => {
           { id: 'second', senderName: 'Bob', timestamp: 2, type: 'share', content: JSON.stringify({ name: '设计说明' }) },
         ]),
       },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
     })
 
     expect(wrapper.findAll('.merged-forward-record-item strong').map((item) => item.text())).toEqual(['Alice', 'Bob'])
@@ -225,6 +229,7 @@ describe('MessageItem mention emphasis', () => {
           { id: 'later', senderName: 'Chris', timestamp: baseTimestamp + 600_001, type: 'text', content: '超过五分钟' },
         ]),
       },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
     })
 
     expect(wrapper.findAll('[data-testid="merged-forward-time-divider"]')).toHaveLength(1)
@@ -236,6 +241,7 @@ describe('MessageItem mention emphasis', () => {
         visible: true,
         payload: makeRecordPayload([{ id: 'first', senderName: 'Alice', timestamp: 1, type: 'text', content: '第一条' }]),
       },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
     })
 
     await wrapper.get('[aria-label="关闭聊天记录"]').trigger('click')
@@ -246,9 +252,18 @@ describe('MessageItem mention emphasis', () => {
   })
 
   it('shows a fallback when the record payload is unavailable', () => {
-    const wrapper = mount(MergedForwardRecordDialog, { props: { visible: true, payload: null } })
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: { visible: true, payload: null },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
+    })
 
     expect(wrapper.text()).toContain('聊天记录无法加载')
+  })
+
+  it('teleports the record dialog outside the message list', () => {
+    const source = readFileSync(resolve(__dirname, '../../../src/components/message/MergedForwardRecordDialog.vue'), 'utf8')
+
+    expect(source).toContain('<Teleport to="body">')
   })
 
   it('marks the merged-forward card as responsive and its open button as accessible', () => {

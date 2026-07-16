@@ -1,44 +1,46 @@
 <template>
-  <div
-    v-if="visible"
-    class="merged-forward-record-backdrop"
-    data-testid="merged-forward-record-dialog"
-    role="presentation"
-    @click.self="close"
-  >
-    <section
-      v-if="payload"
-      aria-modal="true"
-      aria-labelledby="merged-forward-record-title"
-      class="merged-forward-record-dialog"
-      role="dialog"
+  <Teleport to="body">
+    <div
+      v-if="visible"
+      class="merged-forward-record-backdrop"
+      data-testid="merged-forward-record-dialog"
+      role="presentation"
+      @click.self="close"
     >
-      <header class="merged-forward-record-header">
-        <h2 id="merged-forward-record-title">聊天记录（共 {{ payload.messages.length }} 条）</h2>
-        <button aria-label="关闭聊天记录" class="merged-forward-record-close" type="button" @click="close">
-          <i aria-hidden="true" class="fas fa-xmark"></i>
-        </button>
-      </header>
-      <div class="merged-forward-record-list">
-        <template v-for="(message, index) in payload.messages" :key="message.id">
-          <div
-            v-if="showTimestampDivider(message.timestamp, index)"
-            class="merged-forward-record-time"
-            data-testid="merged-forward-time-divider"
-          >
-            {{ formatTimestamp(message.timestamp) }}
-          </div>
-          <article class="merged-forward-record-item">
-            <strong class="merged-forward-record-sender">{{ message.senderName }}</strong>
-            <p class="merged-forward-record-content">{{ getMessagePreview(message).label }}</p>
-          </article>
-        </template>
-      </div>
-    </section>
-    <section v-else class="merged-forward-record-dialog merged-forward-record-fallback" role="alert">
-      聊天记录无法加载
-    </section>
-  </div>
+      <section
+        v-if="payload"
+        aria-modal="true"
+        aria-labelledby="merged-forward-record-title"
+        class="merged-forward-record-dialog"
+        role="dialog"
+      >
+        <header class="merged-forward-record-header">
+          <h2 id="merged-forward-record-title">聊天记录（共 {{ payload.messages.length }} 条）</h2>
+          <button aria-label="关闭聊天记录" class="merged-forward-record-close" type="button" @click="close">
+            <i aria-hidden="true" class="fas fa-xmark"></i>
+          </button>
+        </header>
+        <div class="merged-forward-record-list">
+          <template v-for="(message, index) in payload.messages" :key="message.id">
+            <div
+              v-if="showTimestampDivider(message.timestamp, index)"
+              class="merged-forward-record-time"
+              data-testid="merged-forward-time-divider"
+            >
+              {{ formatTimestamp(message.timestamp) }}
+            </div>
+            <article class="merged-forward-record-item">
+              <strong class="merged-forward-record-sender">{{ message.senderName }}</strong>
+              <p class="merged-forward-record-content">{{ getMessagePreview(message).label }}</p>
+            </article>
+          </template>
+        </div>
+      </section>
+      <section v-else class="merged-forward-record-dialog merged-forward-record-fallback" role="alert">
+        聊天记录无法加载
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -85,6 +87,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   display: flex;
   width: min(720px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 40px));
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
@@ -114,6 +117,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 
 .merged-forward-record-list {
+  min-height: 0;
+  flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
 }
