@@ -181,6 +181,38 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.find('.merged-forward-stub').text()).toContain('聊天记录')
   })
 
+  it('connects forwarded record downloads to the chat download handler', async () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'merged-download-1',
+          type: 'merged_forward',
+          content: JSON.stringify({ version: 1, title: '聊天记录', messages: [] }),
+          sender: { id: '42', name: 'Alice', avatar: '' },
+          timestamp: Date.now(),
+        },
+        isSelf: false,
+        isRecalled: false,
+        conversationType: 'group',
+        readUsersMap: {},
+        serverUrl: '',
+      },
+      global: {
+        stubs: {
+          Avatar: true,
+          MergedForwardMessage: {
+            emits: ['download'],
+            template: '<button data-testid="message-item-forwarded-download" @click="$emit(\'download\', \'file-content\', \'original-file\')">下载</button>',
+          },
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="message-item-forwarded-download"]').trigger('click')
+
+    expect(wrapper.emitted('downloadFile')).toEqual([[ 'file-content', 'original-file' ]])
+  })
+
   it('shows the merged-forward fallback for malformed message items', () => {
     const wrapper = mount(MergedForwardMessage, {
       props: {
@@ -213,6 +245,31 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('分享：设计说明')
     expect(wrapper.text()).not.toContain('{"name"')
     expect(wrapper.find('.merged-forward-preview i').exists()).toBe(false)
+  })
+
+  it('relays downloads from a forwarded record file to the chat message', async () => {
+    const fileContent = JSON.stringify({ url: '/files/方案.pdf', name: '方案.pdf', size: 1024 })
+    const wrapper = mount(MergedForwardMessage, {
+      props: {
+        content: JSON.stringify({
+          version: 1,
+          title: '聊天记录',
+          messages: [{ id: 'original-file', senderName: 'Alice', timestamp: 1, type: 'file', content: fileContent }],
+        }),
+      },
+      global: {
+        stubs: {
+          MergedForwardRecordDialog: {
+            emits: ['download', 'saveAs'],
+            template: '<button data-testid="forwarded-file-download" @click="$emit(\'download\', \'file-content\', \'original-file\')">下载</button>',
+          },
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="forwarded-file-download"]').trigger('click')
+
+    expect(wrapper.emitted('download')).toEqual([[ 'file-content', 'original-file' ]])
   })
 
   it('shows only three previews and opens a complete record dialog', async () => {

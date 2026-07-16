@@ -40,6 +40,8 @@
                   :content="message.content"
                   :message-id="message.id"
                   :server-url="serverUrl"
+                  @download="(content, messageId) => emit('download', content, messageId)"
+                  @save-as="(content, messageId) => emit('saveAs', content, messageId)"
                 />
                 <ShareMessage
                   v-else-if="message.type === 'share'"
@@ -84,6 +86,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  download: [content: string, messageId?: string]
+  saveAs: [content: string, messageId?: string]
 }>()
 
 const { serverUrl } = useServerUrl()

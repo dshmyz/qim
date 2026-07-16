@@ -18,7 +18,13 @@
         </div>
         <span v-if="payload.messages.length > 3" class="merged-forward-more">还有 {{ payload.messages.length - 3 }} 条消息</span>
       </div>
-      <MergedForwardRecordDialog :payload="payload" :visible="isRecordVisible" @close="isRecordVisible = false" />
+      <MergedForwardRecordDialog
+        :payload="payload"
+        :visible="isRecordVisible"
+        @close="isRecordVisible = false"
+        @download="(content, messageId) => emit('download', content, messageId)"
+        @save-as="(content, messageId) => emit('saveAs', content, messageId)"
+      />
     </template>
     <span v-else>聊天记录无法加载</span>
   </div>
@@ -33,6 +39,11 @@ import { getMessagePreview } from '@/utils/messagePreview'
 const props = defineProps<{
   content: string
   isSelf?: boolean
+}>()
+
+const emit = defineEmits<{
+  download: [content: string, messageId?: string]
+  saveAs: [content: string, messageId?: string]
 }>()
 
 const isRecordVisible = ref(false)

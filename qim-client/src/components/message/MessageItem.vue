@@ -111,6 +111,8 @@
             v-else-if="message.type === 'merged_forward'"
             :content="message.content"
             :is-self="isSelf"
+            @download="(content, messageId) => $emit('downloadFile', content, messageId)"
+            @save-as="(content, messageId) => $emit('saveAs', content, messageId)"
           />
 
           <!-- 流式消息 -->
