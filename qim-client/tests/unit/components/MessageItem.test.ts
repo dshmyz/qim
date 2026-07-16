@@ -147,6 +147,15 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('聊天记录无法加载')
   })
 
+  it('marks the merged-forward card as responsive and its toggle as accessible', () => {
+    const source = readFileSync(resolve(__dirname, '../../../src/components/message/MergedForwardMessage.vue'), 'utf8')
+
+    expect(source).toContain('class="merged-forward-icon"')
+    expect(source).toContain('aria-expanded="expanded"')
+    expect(source).toContain('@media (max-width: 640px)')
+    expect(source).toContain(':focus-visible')
+  })
+
   it('uses a global high-contrast rule for links inside self message bubbles', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MessageItem.vue'), 'utf8')
 
