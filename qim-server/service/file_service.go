@@ -168,18 +168,31 @@ func (s *FileService) BatchDelete(userID uint, fileIDs []uint) (int64, error) {
 	if result.Error != nil {
 		return result.RowsAffected, result.Error
 	}
-	// best-effort 清理物理文件：失败只记日志，不阻断批量删除
-	if s.store != nil {
-		for _, f := range files {
-			if f.StoragePath == "" {
-				continue
-			}
-			if err := s.store.DeleteByPath(ctx, f.StoragePath); err != nil {
-				logger.WithModule("FileService").Warn("批量删除物理文件失败", "file_id", f.ID, "error", err)
-			}
+	// Shared references reuse a storage path. A physical object is removed only when
+	// this batch leaves no active record that still points at it.
+	for _, f := range files {
+		if err := deleteStoragePathIfUnreferenced(ctx, s.db, s.store, f); err != nil {
+			logger.WithModule("FileService").Warn("批量删除物理文件失败", "file_id", f.ID, "error", err)
 		}
 	}
 	return result.RowsAffected, nil
+}
+
+// deleteStoragePathIfUnreferenced preserves shared references and performs the
+// storage cleanup only after the caller has soft-deleted the current record.
+func deleteStoragePathIfUnreferenced(ctx context.Context, db *gorm.DB, store StorageAccessor, file model.File) error {
+	if store == nil || file.StoragePath == "" || file.Source == "shared_reference" {
+		return nil
+	}
+
+	var remaining int64
+	if err := db.WithContext(ctx).Model(&model.File{}).Where("storage_path = ?", file.StoragePath).Count(&remaining).Error; err != nil {
+		return err
+	}
+	if remaining != 0 {
+		return nil
+	}
+	return store.DeleteByPath(ctx, file.StoragePath)
 }
 
 func (s *FileService) BatchMove(userID uint, fileIDs []uint, targetFolderID uint) (int64, error) {
