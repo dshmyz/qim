@@ -227,13 +227,15 @@ type Message struct {
 type File struct {
 	ID           uint           `json:"id" gorm:"primarykey"`
 	UserID       uint           `json:"user_id" gorm:"not null;index"`
+	ScopeType    string         `json:"scope_type" gorm:"size:20;not null;default:'user';index:idx_file_scope_folder,priority:1"`
+	ScopeID      uint           `json:"scope_id" gorm:"not null;default:0;index:idx_file_scope_folder,priority:2"`
 	Name         string         `json:"name" gorm:"size:255;not null"`
 	OriginalName string         `json:"original_name" gorm:"size:255"`
 	Size         int64          `json:"size" gorm:"not null"`
 	MimeType     string         `json:"mime_type" gorm:"size:100"`
 	StoragePath  string         `json:"storage_path" gorm:"size:500;not null"`
 	Checksum     string         `json:"checksum" gorm:"size:64"`
-	FolderID     *uint          `json:"folder_id" gorm:"index"`
+	FolderID     *uint          `json:"folder_id" gorm:"index;index:idx_file_scope_folder,priority:3"`
 	Source       string         `json:"source" gorm:"size:20;default:'upload'"`
 	SourceID     string         `json:"source_id" gorm:"size:100"`
 	IsStarred    bool           `json:"is_starred" gorm:"default:false"`
@@ -248,8 +250,10 @@ type File struct {
 type Folder struct {
 	ID        uint           `json:"id" gorm:"primarykey"`
 	UserID    uint           `json:"user_id" gorm:"not null;index"`
+	ScopeType string         `json:"scope_type" gorm:"size:20;not null;default:'user';index:idx_folder_scope_parent,priority:1"`
+	ScopeID   uint           `json:"scope_id" gorm:"not null;default:0;index:idx_folder_scope_parent,priority:2"`
 	Name      string         `json:"name" gorm:"size:255;not null"`
-	ParentID  *uint          `json:"parent_id" gorm:"index"`
+	ParentID  *uint          `json:"parent_id" gorm:"index;index:idx_folder_scope_parent,priority:3"`
 	SortOrder int            `json:"sort_order" gorm:"default:0"`
 	Icon      string         `json:"icon" gorm:"size:50"`
 	Color     string         `json:"color" gorm:"size:20"`

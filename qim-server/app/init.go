@@ -412,12 +412,36 @@ func MigrateDB(db *gorm.DB) {
 	// 分阶段迁移
 	migrateModels(db, baseModels, "基础表")
 	migrateModels(db, relatedModels, "关联表")
+	if err := MigrateFileSpaces(db); err != nil {
+		logger.WithModule("Migrate").Error("回填文件空间范围失败", "error", err)
+	}
 
 	addIndexes(db)
 	seedBuiltInApps(db)
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+}
+
+// MigrateFileSpaces assigns the legacy personal scope to file and folder
+// records that predate reusable file spaces. It is safe to run repeatedly.
+func MigrateFileSpaces(db *gorm.DB) error {
+	legacyScope := "scope_type = '' OR scope_type IS NULL OR (scope_type = ? AND scope_id = ?)"
+	if err := db.Where(legacyScope, "user", 0).
+		Model(&model.File{}).
+		Updates(map[string]interface{}{
+			"scope_type": "user",
+			"scope_id":   gorm.Expr("user_id"),
+		}).Error; err != nil {
+		return err
+	}
+
+	return db.Where(legacyScope, "user", 0).
+		Model(&model.Folder{}).
+		Updates(map[string]interface{}{
+			"scope_type": "user",
+			"scope_id":   gorm.Expr("user_id"),
+		}).Error
 }
 
 // migrateCompatibilityColumns 修补历史库中 AutoMigrate 无法可靠补齐的关键字段。
