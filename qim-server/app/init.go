@@ -426,8 +426,8 @@ func MigrateDB(db *gorm.DB) {
 // MigrateFileSpaces assigns the legacy personal scope to file and folder
 // records that predate reusable file spaces. It is safe to run repeatedly.
 func MigrateFileSpaces(db *gorm.DB) error {
-	legacyScope := "scope_type = '' OR scope_type IS NULL OR (scope_type = ? AND scope_id = ?)"
-	if err := db.Where(legacyScope, "user", 0).
+	legacyScope := "scope_type = '' OR scope_type IS NULL"
+	if err := db.Where(legacyScope).
 		Model(&model.File{}).
 		Updates(map[string]interface{}{
 			"scope_type": "user",
@@ -436,7 +436,7 @@ func MigrateFileSpaces(db *gorm.DB) error {
 		return err
 	}
 
-	return db.Where(legacyScope, "user", 0).
+	return db.Where(legacyScope).
 		Model(&model.Folder{}).
 		Updates(map[string]interface{}{
 			"scope_type": "user",

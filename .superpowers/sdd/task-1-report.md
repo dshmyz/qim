@@ -1,92 +1,95 @@
-# Task 1 report: snapshot protocol and card
+# Task 1 Report: Reusable File-Space Scope Migration
 
-## Changes
+## Status
 
-- Added `MergedForwardPayload` and `MergedForwardItem`, plus payload creation and parsing helpers.
-- Added the `merged_forward` message type and routed it through `MessageItem`.
-- Added an expandable merged-forward card that shows the record count, text, image markers, file names, and an invalid-payload fallback.
-- Added utility and message-item unit coverage.
+Completed and committed as `2685e60272f3b015105db4b1ee987314ec18f4e3` (`feat(files): add reusable file space scope`).
+
+## Files changed
+
+- `qim-server/model/model.go`
+  - Added `File.ScopeType` and `File.ScopeID`.
+  - Added the `(scope_type, scope_id, folder_id)` index through GORM field tags.
+  - Added `Folder.ScopeType` and `Folder.ScopeID`, while preserving `Folder.UserID` as the creator.
+  - Added the `(scope_type, scope_id, parent_id)` folder-tree index through GORM field tags.
+  - Kept the pre-existing `File.Source` and `File.SourceID` fields unchanged.
+- `qim-server/app/init.go`
+  - Added idempotent `MigrateFileSpaces(db *gorm.DB) error`.
+  - Invokes the migration after the model AutoMigrate stages in `MigrateDB`.
+  - Backfills legacy file and folder rows to `scope_type=user` and `scope_id=user_id`; populated group scopes remain unchanged.
+  - Limits backfill strictly to records whose `scope_type` is empty or `NULL`; `scope_type=user, scope_id=0` remains untouched.
+- `qim-server/app/file_space_migration_test.go`
+  - Covers legacy backfill, preservation of already populated scopes, and the `MigrateDB` integration path.
 
 ## TDD evidence
 
-### RED
+1. Added the migration test before the implementation.
+2. Ran:
 
-Command:
+   ```sh
+   cd qim-server && go test ./app -run 'TestMigrateFileSpaces(BackfillsLegacyUserRecords|LeavesExistingScopesUntouched)' -v
+   ```
 
-```bash
-cd qim-client && npm exec vitest run tests/unit/utils/mergedForward.test.ts
+   Initial result: failed to build because `MigrateFileSpaces`, `File.ScopeType`, `File.ScopeID`, `Folder.ScopeType`, and `Folder.ScopeID` did not exist.
+3. Added the minimal model and migration implementation, then added the MigrateDB integration regression and verified it fails when the MigrateDB hook is absent.
+4. Restored the hook and reran the tests successfully.
+
+## Verification commands and output
+
+```sh
+cd qim-server && go test ./app -run 'TestMigrate(FileSpaces|DBBackfillsLegacyFileSpaces)' -v
 ```
 
-Result: failed as expected because `@/utils/mergedForward` did not exist (`Failed to resolve import`).
+Output: `PASS` — 3 migration tests passed.
 
-The message-item routing test was also run before implementation and failed as expected because no `.merged-forward-stub` was rendered.
-
-### GREEN
-
-Command:
-
-```bash
-cd qim-client && npm exec vitest run tests/unit/utils/mergedForward.test.ts tests/unit/components/MessageItem.test.ts
+```sh
+cd qim-server && go test ./app && go test ./service -run 'Test.*(Folder|File)' -v
 ```
 
-Result: passed: 2 test files, 6 tests.
+Output: both packages passed (`app` in 7.211s, `service` in 3.515s).
 
-## Verification
+```sh
+cd qim-server && go test ./...
+```
 
-- Re-ran the focused GREEN command after self-review: 2 test files and 6 tests passed.
-- Ran `npm exec vitest run` once. It failed outside this task in `FileManagementPreview.test.ts` (8 failures from missing active Pinia) and reported 21 existing `ScreenShareSimple` media-stream environment errors.
-- Ran `npm exec vue-tsc --noEmit`; it reports numerous existing project-wide type errors unrelated to the new merged-forward files.
-- `git diff --check` passed.
+Output: exit code 0; all discovered server packages completed successfully.
 
-## Files
+```sh
+git diff --check
+```
 
-- `qim-client/src/utils/mergedForward.ts`
-- `qim-client/src/components/message/MergedForwardMessage.vue`
-- `qim-client/src/types/index.ts`
-- `qim-client/src/components/message/MessageItem.vue`
-- `qim-client/tests/unit/utils/mergedForward.test.ts`
-- `qim-client/tests/unit/components/MessageItem.test.ts`
+Output: exit code 0; no whitespace errors.
 
 ## Concerns
 
-The focused task tests pass. The full frontend suite and project typecheck are currently blocked by unrelated pre-existing failures; no unrelated files were changed for this task.
+- Existing service tests emit expected SQLite log noise for tables they intentionally do not migrate (for example, `channels` and `folders`); the selected suite still exits successfully. This task does not alter those tests or their setup.
+- This task intentionally does not change the existing personal-file service queries. They continue to use `user_id`, preserving their behavior while later scoped-file work adopts the new fields.
+- `group_documents` was not modified, so it remains reserved for AI knowledge-base behavior.
 
-## Review follow-up: malformed snapshot structure
+## Follow-up review fix
 
-### Changes
+- Corrected `MigrateFileSpaces` to target only `scope_type = '' OR scope_type IS NULL`. This prevents a deliberately stored `user` scope with `scope_id=0` from being rewritten.
+- Expanded `TestMigrateFileSpacesBackfillsLegacyUserRecords` to create legacy nullable schemas and exercise both empty-string and `NULL` scope values for files and folders. It also asserts that `user/0` remains unchanged and repeats the migration to verify idempotence.
+- Updated the `MigrateDB` integration fixture to explicitly represent an empty legacy scope instead of relying on the current-model default.
 
-- `parseMergedForwardPayload` now validates every message item before returning a payload: `id`, `type`, `content`, and `senderName` must be strings, and `timestamp` must be a finite number.
-- A malformed item such as `messages: [null]` is rejected, so `MergedForwardMessage` takes its existing `聊天记录无法加载` fallback instead of allowing expansion to dereference missing fields.
-- Added a parser regression test and a card fallback test covering `messages: [null]`.
+### Follow-up TDD and verification evidence
 
-### TDD evidence
+1. The expanded regression was run before the predicate fix and failed as expected: the old migration changed `user/0` to `user/9`.
+2. After narrowing the predicate, the following commands completed with exit code 0:
 
-#### RED
+   ```sh
+   cd qim-server && go test ./app -run TestMigrateFileSpacesBackfillsLegacyUserRecords -v
+   ```
 
-Command:
+   Output: `PASS` — covers empty and NULL legacy scopes, preserves `user/0`, and verifies a second migration execution.
 
-```bash
-cd qim-client && npm exec vitest run tests/unit/utils/mergedForward.test.ts tests/unit/components/MessageItem.test.ts
-```
+   ```sh
+   cd qim-server && go test ./app -run 'TestMigrate(FileSpaces|DBBackfillsLegacyFileSpaces)' -v
+   ```
 
-Output: failed as expected with 2 failed tests and 6 passed tests. The parser returned the malformed object instead of `null`; the card rendered `聊天记录（1条）展开` instead of `聊天记录无法加载`.
+   Output: `PASS` — 3 migration tests passed.
 
-#### GREEN
+   ```sh
+   cd qim-server && go test ./app
+   ```
 
-Command:
-
-```bash
-cd qim-client && npm exec vitest run tests/unit/utils/mergedForward.test.ts tests/unit/components/MessageItem.test.ts
-```
-
-Output: passed: 2 test files, 8 tests, 0 failures.
-
-### Self-review
-
-Command:
-
-```bash
-git diff --check -- qim-client/src/utils/mergedForward.ts qim-client/tests/unit/utils/mergedForward.test.ts qim-client/tests/unit/components/MessageItem.test.ts .superpowers/sdd/task-1-report.md
-```
-
-Output: passed with no whitespace errors. The review confirmed the guard rejects null, primitive, missing-field, wrong-type, and non-finite-timestamp entries without changing the valid snapshot path.
+   Output: `ok github.com/dshmyz/qim/qim-server/app`.
