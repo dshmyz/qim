@@ -629,7 +629,7 @@ func seedFileUploadConfig(db *gorm.DB) {
 func seedMessageRemindWebhook(db *gorm.DB) {
 	defaultCfg := model.SystemConfig{
 		ConfigKey: "message_remind_webhook",
-		Value:     `{"enabled":false,"url":"","method":"POST","secret":"","timeout_seconds":10,"headers":{"Content-Type":"application/json"},"body_template":""}`,
+		Value:     `{"enabled":false,"system_name":"","url":"","method":"POST","secret":"","timeout_seconds":10,"headers":{"Content-Type":"application/json"},"body_template":""}`,
 		Type:      "json",
 		Desc:      "消息提醒 webhook 配置（管理员配置）",
 	}

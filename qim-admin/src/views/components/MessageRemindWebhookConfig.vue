@@ -8,6 +8,15 @@
         <span class="desc" style="margin-left: 8px">（开启后右键消息"发送提醒"将调用外部系统）</span>
       </el-form-item>
 
+      <el-form-item label="系统名称">
+        <el-input
+          v-model="config.system_name"
+          placeholder="例如：企业微信、飞书、Slack"
+          clearable
+        />
+        <span class="desc">（用于提醒成功后的客户端提示）</span>
+      </el-form-item>
+
       <el-form-item label="请求地址">
         <el-input
           v-model="config.url"
@@ -86,6 +95,7 @@ import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
 
 interface WebhookConfig {
   enabled: boolean
+  system_name: string
   url: string
   method: string
   secret: string
@@ -99,6 +109,7 @@ const submitting = ref(false)
 
 const config = reactive<WebhookConfig>({
   enabled: false,
+  system_name: '',
   url: '',
   method: 'POST',
   secret: '',

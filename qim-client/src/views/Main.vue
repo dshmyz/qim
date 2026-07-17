@@ -1666,7 +1666,8 @@ const connectWebSocket = () => {
     // 消息提醒 webhook 调用结果回执
     'remind_result': (data: any) => {
       if (data.success) {
-        showMessage({ message: '提醒已送达外部系统', type: 'success' })
+        const systemName = data.system_name?.trim() || '外部系统'
+        showMessage({ message: `提醒已送达${systemName}`, type: 'success' })
       } else {
         showMessage({ message: `提醒发送失败：${data.error || '未知错误'}`, type: 'error', duration: 5000 })
       }

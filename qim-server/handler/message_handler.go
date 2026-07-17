@@ -44,6 +44,24 @@ type reminderLimiter struct {
 	entries map[uint]reminderLimiterState
 }
 
+func buildRemindResult(messageID uint, success bool, reminderError, systemName string) ([]byte, error) {
+	data := map[string]interface{}{
+		"message_id": messageID,
+		"success":    success,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+	if success {
+		data["system_name"] = systemName
+	} else {
+		data["error"] = reminderError
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"type": "remind_result",
+		"data": data,
+	})
+}
+
 func newReminderLimiter() *reminderLimiter {
 	return &reminderLimiter{entries: make(map[uint]reminderLimiterState)}
 }
@@ -1010,25 +1028,10 @@ func RemindMessage(c *gin.Context) {
 		if err := service.SendRemind(webhookCfg, data); err != nil {
 			logger.WithModule("Remind").Error("webhook 调用失败",
 				"message_id", msg.ID, "error", err)
-			result, _ = json.Marshal(map[string]interface{}{
-				"type": "remind_result",
-				"data": map[string]interface{}{
-					"message_id": msg.ID,
-					"success":    false,
-					"error":      err.Error(),
-					"timestamp":  time.Now().Format(time.RFC3339),
-				},
-			})
+			result, _ = buildRemindResult(msg.ID, false, err.Error(), "")
 		} else {
 			success = true
-			result, _ = json.Marshal(map[string]interface{}{
-				"type": "remind_result",
-				"data": map[string]interface{}{
-					"message_id": msg.ID,
-					"success":    true,
-					"timestamp":  time.Now().Format(time.RFC3339),
-				},
-			})
+			result, _ = buildRemindResult(msg.ID, true, "", webhookCfg.SystemName)
 		}
 		hub.SendToUser(senderID, result)
 	})

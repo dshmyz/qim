@@ -49,6 +49,7 @@ func getCompiledTemplate(bodyTemplate string) (*template.Template, error) {
 // 由管理员在后台系统配置页面填写，存储在 SystemConfig 表中（key=message_remind_webhook）
 type WebhookConfig struct {
 	Enabled        bool              `json:"enabled"`         // 启用开关
+	SystemName     string            `json:"system_name"`     // 管理员配置的目标系统展示名称
 	URL            string            `json:"url"`             // 外部系统接收地址
 	Method         string            `json:"method"`          // HTTP 方法，默认 POST
 	Secret         string            `json:"secret"`          // HMAC-SHA256 签名密钥，空则不签名
