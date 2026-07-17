@@ -41,8 +41,8 @@ func TestFileService_BatchDelete_DeletesPhysicalFiles(t *testing.T) {
 	sp2, err := accessor.Put(ctx, "uploads/2026/07/b.txt", strings.NewReader("bbb"), 3, "text/plain")
 	assert.NoError(t, err)
 
-	f1 := &model.File{UserID: user.ID, Name: "a.txt", OriginalName: "a.txt", StoragePath: sp1, Size: 3, MimeType: "text/plain"}
-	f2 := &model.File{UserID: user.ID, Name: "b.txt", OriginalName: "b.txt", StoragePath: sp2, Size: 3, MimeType: "text/plain"}
+	f1 := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "a.txt", OriginalName: "a.txt", StoragePath: sp1, Size: 3, MimeType: "text/plain"}
+	f2 := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "b.txt", OriginalName: "b.txt", StoragePath: sp2, Size: 3, MimeType: "text/plain"}
 	assert.NoError(t, db.Create(f1).Error)
 	assert.NoError(t, db.Create(f2).Error)
 
@@ -85,7 +85,7 @@ func TestFileService_BatchDelete_OnlyAffectsOwnedFiles(t *testing.T) {
 	ctx := context.Background()
 	// other 的文件，其 ID 恰好在删除请求里（越权尝试）
 	spOther, _ := accessor.Put(ctx, "uploads/2026/07/other.txt", strings.NewReader("ooo"), 3, "text/plain")
-	otherFile := &model.File{UserID: other.ID, Name: "other.txt", OriginalName: "other.txt", StoragePath: spOther, Size: 3, MimeType: "text/plain"}
+	otherFile := &model.File{UserID: other.ID, ScopeType: "user", ScopeID: other.ID, Name: "other.txt", OriginalName: "other.txt", StoragePath: spOther, Size: 3, MimeType: "text/plain"}
 	assert.NoError(t, db.Create(otherFile).Error)
 
 	// me 请求删除 other 的文件 ID

@@ -219,3 +219,59 @@ func TestFileSpaceDeleteRemovesUnreferencedStorage(t *testing.T) {
 	_, err = accessor.GetByPath(ctx, storagePath)
 	require.Error(t, err)
 }
+
+func TestFileServiceLegacyOperationsExcludeGroupScopedRecords(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	admin := createFileSpaceUser(t, db, "admin")
+	group, _ := createFileSpaceGroup(t, db, admin.ID)
+	service := NewFileService(db)
+
+	personal := createUserFile(t, db, admin.ID, "personal.pdf")
+	groupFile := &model.File{
+		UserID:       admin.ID,
+		ScopeType:    "group",
+		ScopeID:      group.ID,
+		Name:         "group.pdf",
+		OriginalName: "group.pdf",
+		MimeType:     "application/pdf",
+		StoragePath:  "uploads/group.pdf",
+	}
+	require.NoError(t, db.Create(groupFile).Error)
+
+	files, total, err := service.GetFiles(admin.ID, 1, 50, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, files, 1)
+	require.Equal(t, personal.ID, files[0].ID)
+
+	_, err = service.GetFile(admin.ID, groupFile.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	deleted, err := service.BatchDelete(admin.ID, []uint{groupFile.ID})
+	require.NoError(t, err)
+	require.Zero(t, deleted)
+	require.NoError(t, db.First(&groupFile, groupFile.ID).Error)
+}
+
+func TestFileSpaceDeleteFinalReferenceCleansStorageAfterOriginalIsDeleted(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	admin := createFileSpaceUser(t, db, "admin")
+	group, _ := createFileSpaceGroup(t, db, admin.ID)
+	spaces := NewFileSpaceService(db)
+	accessor := newTestAccessor(t)
+	spaces.SetStorageAccessor(accessor)
+	source := createUserFile(t, db, admin.ID, "chat.pdf")
+	storagePath, err := accessor.Put(ctx, "uploads/chat.pdf", bytes.NewReader([]byte("pdf")), 3, "application/pdf")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(source).Update("storage_path", storagePath).Error)
+	source.StoragePath = storagePath
+
+	shared, err := spaces.ShareReference(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, source.ID, nil)
+	require.NoError(t, err)
+	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "user", ID: admin.ID}, source.ID))
+	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, shared.ID))
+
+	_, err = accessor.GetByPath(ctx, storagePath)
+	require.Error(t, err)
+}
