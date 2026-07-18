@@ -446,12 +446,40 @@ func MigrateFileSpaces(db *gorm.DB) error {
 
 // migrateCompatibilityColumns 修补历史库中 AutoMigrate 无法可靠补齐的关键字段。
 func migrateCompatibilityColumns(db *gorm.DB) {
-	if tableExists(db, "users") && !db.Migrator().HasColumn(&model.User{}, "AccountStatus") {
+	if tableExists(db, "users") && !db.Migrator().HasColumn(&model.User{}, "account_status") {
 		if err := db.Migrator().AddColumn(&model.User{}, "AccountStatus"); err != nil {
 			logger.WithModule("Migrate").Error("添加 users.account_status 字段失败", "error", err)
 		} else {
 			logger.WithModule("Migrate").Info("添加 users.account_status 字段")
 		}
+	}
+
+	migrateFileSpaceColumns(db, "files", &model.File{})
+	migrateFileSpaceColumns(db, "folders", &model.Folder{})
+}
+
+// migrateFileSpaceColumns adds the scope fields explicitly because legacy SQLite
+// tables may be skipped after AutoMigrate encounters an existing-table error.
+func migrateFileSpaceColumns(db *gorm.DB, table string, entity interface{}) {
+	if !tableExists(db, table) {
+		return
+	}
+
+	for _, column := range []struct {
+		field string
+		name  string
+	}{
+		{field: "ScopeType", name: "scope_type"},
+		{field: "ScopeID", name: "scope_id"},
+	} {
+		if db.Migrator().HasColumn(entity, column.name) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(entity, column.field); err != nil {
+			logger.WithModule("Migrate").Error("添加文件空间字段失败", "table", table, "field", column.name, "error", err)
+			continue
+		}
+		logger.WithModule("Migrate").Info("添加文件空间字段", "table", table, "field", column.name)
 	}
 }
 

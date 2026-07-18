@@ -93,3 +93,24 @@ func TestMigrateDBBackfillsLegacyFileSpaces(t *testing.T) {
 	require.Equal(t, "user", folder.ScopeType)
 	require.Equal(t, uint(8), folder.ScopeID)
 }
+
+func TestMigrateDBAddsFileSpaceColumnsToLegacyTables(t *testing.T) {
+	db := newTestDB(t)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE files (
+			id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT, size INTEGER,
+			storage_path TEXT, created_at DATETIME, updated_at DATETIME, deleted_at DATETIME
+		);
+		CREATE TABLE folders (
+			id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT,
+			created_at DATETIME, updated_at DATETIME, deleted_at DATETIME
+		)
+	`).Error)
+
+	MigrateDB(db)
+
+	require.True(t, hasSQLiteColumn(t, db, "files", "scope_type"))
+	require.True(t, hasSQLiteColumn(t, db, "files", "scope_id"))
+	require.True(t, hasSQLiteColumn(t, db, "folders", "scope_type"))
+	require.True(t, hasSQLiteColumn(t, db, "folders", "scope_id"))
+}
