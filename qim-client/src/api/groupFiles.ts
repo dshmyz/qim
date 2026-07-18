@@ -52,6 +52,17 @@ export const groupFiles = {
     })
   },
 
+  attach(groupId: string | number, fileId: number, folderId: number | null = null) {
+    return api.post<{ code: number; data: GroupFile }>(`/api/v1/groups/${groupId}/files`, {
+      file_id: fileId,
+      folder_id: folderId,
+    })
+  },
+
+  download(groupId: string | number, fileId: number) {
+    return api.get(`/api/v1/groups/${groupId}/files/${fileId}/download`, { responseType: 'blob' })
+  },
+
   move(groupId: string | number, fileId: number, folderId: number | null) {
     return api.patch<{ code: number }>(`/api/v1/groups/${groupId}/files/${fileId}`, {
       folder_id: folderId,

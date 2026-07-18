@@ -82,6 +82,7 @@
 import { ref, watch } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { groupFiles, type GroupFile, type GroupFolder } from '../../api/groupFiles'
+import { fileApi } from '../../api/file'
 
 const props = withDefaults(defineProps<{
   groupId: string | number
@@ -176,19 +177,35 @@ const saveReference = async () => {
   }
 }
 
-const handleUpload = (event: Event) => {
+const handleUpload = async (event: Event) => {
   const input = event.target as HTMLInputElement
-  if (!input.files?.length) return
-  // Task 3 intentionally exposes only list/manage/reference endpoints. Do not upload
-  // to the personal-file route here: that would create an inaccessible user-scoped file.
-  QMessage.warning('服务器暂未提供群文件上传接口')
-  input.value = ''
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const upload = await fileApi.uploadFile(file)
+    const uploadedFileId = upload.data.data.id
+    await groupFiles.attach(props.groupId, uploadedFileId, currentFolderId.value)
+    await loadFiles(1)
+    QMessage.success('文件已上传到群文件')
+  } catch (error: any) {
+    QMessage.error(error?.message || '上传群文件失败')
+  } finally {
+    input.value = ''
+  }
 }
 
-const download = (_file: GroupFile) => {
-  // A group-scoped download route is likewise required server-side so authorization
-  // remains in FileSpaceService rather than falling back to personal-file endpoints.
-  QMessage.warning('服务器暂未提供群文件下载接口')
+const download = async (file: GroupFile) => {
+  try {
+    const response = await groupFiles.download(props.groupId, file.id)
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    QMessage.error(error?.message || '下载群文件失败')
+  }
 }
 
 const uploaderName = (file: GroupFile) => file.uploader?.name || `用户 ${file.user_id}`
