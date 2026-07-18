@@ -18,17 +18,8 @@
       @start-private-chat="handleStartPrivateChat"
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
+      @open-group-files="openGroupFiles()"
     />
-    <button
-      v-if="isGroupFileConversation"
-      class="chat-group-files-trigger"
-      type="button"
-      title="群文件"
-      aria-label="打开群文件"
-      @click="openGroupFiles()"
-    >
-      <i class="fas fa-folder-open"></i>
-    </button>
 
     <!-- 分身接管横幅 -->
     <AvatarTakeoverBanner
@@ -1560,7 +1551,6 @@ const currentUserRole = computed(() => {
   return member?.role || 'member'
 })
 
-const isGroupFileConversation = computed(() => props.conversation?.type === 'group')
 const canManageGroupFiles = computed(() =>
   currentUserRole.value === 'owner' || currentUserRole.value === 'admin'
 )
@@ -2807,27 +2797,6 @@ defineExpose({
   .message-selection-actions button {
     width: 100%;
   }
-}
-
-/* ===== 上传进度条 ===== */
-.chat-group-files-trigger {
-  position: absolute;
-  top: 10px;
-  right: 72px;
-  z-index: 2;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-color);
-  cursor: pointer;
-  font-size: 16px;
-}
-
-.chat-group-files-trigger:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
 }
 
 .upload-progress-bar {

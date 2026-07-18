@@ -4,13 +4,17 @@ import { nextTick } from 'vue'
 import GroupDetail from '@/components/shared/GroupDetail.vue'
 import type { Conversation } from '@/types'
 
+const { currentUser } = vi.hoisted(() => ({
+  currentUser: { id: '1', name: '群主' },
+}))
+
 // mock 外部依赖
 vi.mock('@/composables/useServerUrl', () => ({
   getStoredServerUrl: () => 'http://localhost:8080',
 }))
 
 vi.mock('@/utils/user', () => ({
-  getCurrentUser: () => ({ id: '1', name: '群主' }),
+  getCurrentUser: () => currentUser,
 }))
 
 vi.mock('@/utils/qmessage', () => ({
@@ -30,6 +34,14 @@ vi.mock('@/utils/avatar', () => ({
   isAbsoluteUrl: (url: string) => url.startsWith('http'),
 }))
 
+vi.mock('@/components/groups/GroupFilesPanel.vue', () => ({
+  default: {
+    name: 'GroupFilesPanel',
+    props: ['groupId', 'canManage'],
+    template: '<div class="group-files-panel-stub" />',
+  },
+}))
+
 const mockGroup = {
   id: '3',
   type: 'group',
@@ -44,7 +56,44 @@ const mockGroup = {
 describe('GroupDetail - API 路由修正', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    currentUser.id = '1'
+    currentUser.name = '群主'
     global.fetch = vi.fn()
+  })
+
+  it('为当前管理员开启群资料管理权限，而非仅检查第一个管理员', async () => {
+    const groupWithMultipleAdmins = {
+      ...mockGroup,
+      members: [
+        { id: '2', name: '管理员甲', role: 'admin' },
+        { id: '1', name: '管理员乙', role: 'admin' },
+        { id: '3', name: '普通成员', role: 'member' },
+      ],
+    } as unknown as Conversation
+    currentUser.name = '管理员乙'
+
+    const wrapper = mount(GroupDetail, {
+      props: { group: groupWithMultipleAdmins },
+      global: { stubs: ['Avatar'] },
+    })
+
+    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群资料'))
+    expect(groupFilesButton).toBeDefined()
+    await groupFilesButton!.trigger('click')
+
+    expect(wrapper.findComponent({ name: 'GroupFilesPanel' }).props('canManage')).toBe(true)
+  })
+
+  it('将群资料作为独立的次级操作呈现', () => {
+    const wrapper = mount(GroupDetail, {
+      props: { group: mockGroup },
+      global: { stubs: ['Avatar'] },
+    })
+
+    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群资料'))
+    expect(groupFilesButton).toBeDefined()
+    expect(groupFilesButton!.classes()).toContain('secondary')
+    expect(groupFilesButton!.classes()).not.toContain('primary')
   })
 
   it('更新邀请权限时应调用 PUT /api/v1/groups/:id（而非 /conversations/:id）', async () => {

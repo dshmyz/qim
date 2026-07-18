@@ -98,9 +98,9 @@
             <i class="fas fa-user-plus"></i>
             <span>邀请成员</span>
           </button>
-          <button v-if="group.type === 'group'" class="action-btn secondary" @click="showGroupFiles = true">
+          <button v-if="group.type === 'group'" class="action-btn secondary group-files-action" @click="showGroupFiles = true">
             <i class="fas fa-folder-open"></i>
-            <span>群文件</span>
+            <span>群资料</span>
           </button>
           <button class="action-btn tertiary" @click="$emit('openAISettings')" v-if="group.type === 'group'">
             <i class="fas fa-robot"></i>
@@ -202,32 +202,30 @@ const getGroupOwner = (group: Conversation | null) => {
   return ownerById ? (ownerById.name || ownerById.nickname || ownerById.username || '') : ''
 }
 
-// 检查当前用户是否是群主
-const isGroupOwner = (group: Conversation | null) => {
+const getCurrentUserGroupRole = (group: Conversation | null) => {
   if (!group || !group.members) return false
   const currentUser = getCurrentUser()
   if (!currentUser || !currentUser.id) return false
-  const owner = group.members.find((member: User) => member.role === 'owner')
-  if (!owner) return false
-  // 转换为字符串进行比较，避免类型不匹配
-  const isOwner = String(owner.id) === String(currentUser.id)
+
+  const currentMember = group.members.find((member: User) =>
+    String((member as any).user?.id ?? member.id) === String(currentUser.id)
+  )
+
   logger.log('权限检查:', { 
     currentUserId: currentUser.id, 
-    ownerId: owner.id, 
-    ownerName: owner.name,
-    isOwner 
+    currentUserRole: currentMember?.role,
   })
-  return isOwner
+  return currentMember?.role || 'member'
+}
+
+// 检查当前用户是否是群主
+const isGroupOwner = (group: Conversation | null) => {
+  return getCurrentUserGroupRole(group) === 'owner'
 }
 
 // 检查当前用户是否是群管理员
 const isGroupAdmin = (group: Conversation | null) => {
-  if (!group || !group.members) return false
-  const currentUser = getCurrentUser()
-  if (!currentUser || !currentUser.id) return false
-  const admin = group.members.find((member: User) => member.role === 'admin')
-  if (!admin) return false
-  return String(admin.id) === String(currentUser.id)
+  return getCurrentUserGroupRole(group) === 'admin'
 }
 
 // 邀请权限
@@ -657,6 +655,18 @@ const handleAvatarChange = async (event: Event) => {
   color: var(--primary-color);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.action-btn.secondary.group-files-action {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+.action-btn.secondary.group-files-action:hover {
+  background: var(--hover-color);
+  transform: none;
+  box-shadow: none;
 }
 
 .action-btn.tertiary {

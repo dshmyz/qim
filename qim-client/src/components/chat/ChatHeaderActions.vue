@@ -2,6 +2,9 @@
   <div class="group-panel-container">
     <!-- 头部操作区域 -->
     <div class="group-header-actions">
+      <span v-if="conversation?.type === 'group'" class="header-icon" title="群资料" @click.stop="emit('open-group-files')">
+        <i class="fas fa-folder-open"></i>
+      </span>
       <span v-if="isGroupOrDiscussion" class="header-icon" title="邀请成员" @click.stop="handleInviteMembers">
         <i class="fas fa-user-plus"></i>
       </span>
@@ -190,6 +193,7 @@ const emit = defineEmits<{
     aiLearnEnabled: boolean;
   }]
   'update-avatar-enabled': [value: boolean]
+  'open-group-files': []
 }>()
 
 // 注入群管理操作（来自 Main.vue）
