@@ -74,12 +74,34 @@
           </footer>
         </main>
       </div>
+
+      <div v-if="dialogMode" class="group-files-dialog-backdrop">
+        <form class="group-files-dialog" role="dialog" aria-modal="true" @submit.prevent="submitDialog">
+          <h3>{{ dialogTitle }}</h3>
+          <label v-if="dialogMode === 'create'">
+            文件夹名称
+            <input v-model="folderName" aria-label="文件夹名称" autocomplete="off" maxlength="255" autofocus />
+          </label>
+          <label v-else-if="dialogMode === 'move'">
+            目标目录
+            <select v-model="targetFolderId" aria-label="目标目录">
+              <option value="">根目录</option>
+              <option v-for="folder in folders" :key="folder.id" :value="String(folder.id)">{{ folder.name }}</option>
+            </select>
+          </label>
+          <p v-else>确定删除“{{ pendingFile?.name }}”吗？</p>
+          <div class="group-files-dialog__actions">
+            <button type="button" @click="closeDialog">取消</button>
+            <button class="primary-action" type="submit">{{ dialogMode === 'remove' ? '删除' : '确认' }}</button>
+          </div>
+        </form>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { groupFiles, type GroupFile, type GroupFolder } from '../../api/groupFiles'
 import { fileApi } from '../../api/file'
@@ -101,6 +123,15 @@ const currentFolderId = ref<number | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const dialogMode = ref<'create' | 'move' | 'remove' | null>(null)
+const folderName = ref('')
+const targetFolderId = ref('')
+const pendingFile = ref<GroupFile | null>(null)
+const dialogTitle = computed(() => ({
+  create: '新建文件夹',
+  move: '移动文件',
+  remove: '删除文件',
+}[dialogMode.value || 'create']))
 
 const loadFiles = async (targetPage = page.value) => {
   loading.value = true
@@ -130,39 +161,47 @@ const openFolder = (folderId: number | null) => {
 }
 
 const createFolder = async () => {
-  const name = window.prompt('文件夹名称')?.trim()
-  if (!name) return
-  try {
-    await groupFiles.createFolder(props.groupId, name, currentFolderId.value)
-    await loadFiles(1)
-  } catch (error: any) {
-    QMessage.error(error?.message || '新建文件夹失败')
-  }
+  folderName.value = ''
+  dialogMode.value = 'create'
 }
 
-const move = async (file: GroupFile) => {
-  const folderId = window.prompt('目标文件夹 ID（留空移到根目录）')
-  if (folderId === null) return
-  const target = folderId.trim() ? Number(folderId) : null
-  if (target !== null && (!Number.isInteger(target) || target <= 0)) {
-    QMessage.error('请输入有效的文件夹 ID')
-    return
-  }
-  try {
-    await groupFiles.move(props.groupId, file.id, target)
-    await loadFiles()
-  } catch (error: any) {
-    QMessage.error(error?.message || '移动文件失败')
-  }
+const move = (file: GroupFile) => {
+  pendingFile.value = file
+  targetFolderId.value = file.folder_id ? String(file.folder_id) : ''
+  dialogMode.value = 'move'
 }
 
-const remove = async (file: GroupFile) => {
-  if (!window.confirm(`确定删除“${file.name}”吗？`)) return
+const remove = (file: GroupFile) => {
+  pendingFile.value = file
+  dialogMode.value = 'remove'
+}
+
+const closeDialog = () => {
+  dialogMode.value = null
+  pendingFile.value = null
+}
+
+const submitDialog = async () => {
+  const mode = dialogMode.value
+  if (!mode) return
   try {
-    await groupFiles.remove(props.groupId, file.id)
-    await loadFiles()
+    if (mode === 'create') {
+      const name = folderName.value.trim()
+      if (!name) return
+      await groupFiles.createFolder(props.groupId, name, currentFolderId.value)
+      await loadFiles(1)
+    } else if (mode === 'move' && pendingFile.value) {
+      const target = targetFolderId.value ? Number(targetFolderId.value) : null
+      await groupFiles.move(props.groupId, pendingFile.value.id, target)
+      await loadFiles()
+    } else if (mode === 'remove' && pendingFile.value) {
+      await groupFiles.remove(props.groupId, pendingFile.value.id)
+      await loadFiles()
+    }
+    closeDialog()
   } catch (error: any) {
-    QMessage.error(error?.message || '删除文件失败')
+    const fallback = mode === 'create' ? '新建文件夹失败' : mode === 'move' ? '移动文件失败' : '删除文件失败'
+    QMessage.error(error?.message || fallback)
   }
 }
 
@@ -230,5 +269,6 @@ watch(() => props.groupId, () => {
 .group-files-panel__header h2 { margin: 0; font-size: 18px; }.group-files-panel__header p { margin: 4px 0 0; color: var(--text-secondary, #6b7280); font-size: 13px; }
 .group-files-panel__toolbar { align-items: center; border-bottom: 1px solid var(--border-color, #e5e7eb); }.primary-action, .secondary-action, .file-list__actions button, .pagination button, .icon-button { border: 0; border-radius: 6px; cursor: pointer; padding: 8px 10px; background: transparent; color: inherit; }.primary-action { background: var(--primary-color, #4f46e5); color: #fff; }.secondary-action { border: 1px solid var(--border-color, #d1d5db); }.upload-action input { display: none; }.search-field { margin-left: auto; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-color, #d1d5db); border-radius: 6px; padding: 7px 9px; }.search-field input { width: 180px; border: 0; outline: 0; background: transparent; color: inherit; }
 .group-files-panel__content { min-height: 340px; align-items: stretch; }.folder-tree { width: 190px; flex: 0 0 auto; border-right: 1px solid var(--border-color, #e5e7eb); padding-right: 12px; }.folder-tree__item { display: block; width: 100%; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; padding: 9px; text-align: left; }.folder-tree__item.active, .folder-tree__item:hover { background: var(--hover-color, #f3f4f6); }.file-list { min-width: 0; flex: 1; }.file-list table { width: 100%; border-collapse: collapse; font-size: 13px; }.file-list th, .file-list td { border-bottom: 1px solid var(--border-color, #e5e7eb); padding: 11px 8px; text-align: left; }.file-list th { color: var(--text-secondary, #6b7280); font-weight: 500; }.file-list__state { padding: 36px; text-align: center; color: var(--text-secondary, #6b7280); }.file-list__actions { white-space: nowrap; }.file-list__actions button:hover { background: var(--hover-color, #f3f4f6); }.file-list__actions .danger { color: #dc2626; }.reference-callout { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; padding: 10px; border-radius: 6px; background: #eef2ff; color: #3730a3; }.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 14px; font-size: 13px; }.pagination button:disabled { opacity: .45; cursor: not-allowed; }
+.group-files-dialog-backdrop { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: rgba(0, 0, 0, .35); }.group-files-dialog { width: min(360px, calc(100vw - 40px)); display: grid; gap: 16px; padding: 20px; border-radius: 10px; background: var(--card-bg, #fff); box-shadow: 0 16px 36px rgba(0, 0, 0, .24); }.group-files-dialog h3, .group-files-dialog p { margin: 0; }.group-files-dialog label { display: grid; gap: 7px; font-size: 14px; }.group-files-dialog input, .group-files-dialog select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color, #d1d5db); border-radius: 6px; background: transparent; color: inherit; }.group-files-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }.group-files-dialog__actions button { border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
 @media (max-width: 650px) { .group-files-panel__toolbar { flex-wrap: wrap; }.search-field { margin-left: 0; }.group-files-panel__content { padding: 12px; }.folder-tree { width: 130px; }.file-list table th:nth-child(2), .file-list table td:nth-child(2), .file-list table th:nth-child(3), .file-list table td:nth-child(3) { display: none; } }
 </style>

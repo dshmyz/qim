@@ -3,15 +3,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import GroupFilesPanel from '@/components/groups/GroupFilesPanel.vue'
 
-const { list, attach, download } = vi.hoisted(() => ({
+const { list, attach, createFolder, download } = vi.hoisted(() => ({
   list: vi.fn(() => Promise.resolve({ data: { data: { files: [], folders: [], total: 0, page: 1, page_size: 20 } } })),
   attach: vi.fn(),
+  createFolder: vi.fn(),
   download: vi.fn(),
 }))
 const { uploadFile } = vi.hoisted(() => ({ uploadFile: vi.fn() }))
 
 vi.mock('@/api/groupFiles', () => ({
-  groupFiles: { list, attach, download },
+  groupFiles: { list, attach, createFolder, download },
 }))
 
 vi.mock('@/api/file', () => ({
@@ -43,6 +44,15 @@ describe('GroupFilesPanel', () => {
 
     expect(uploadFile).toHaveBeenCalledWith(expect.any(File))
     expect(attach).toHaveBeenCalledWith(7, 24, null)
+  })
+
+  it('opens an in-app folder name dialog instead of using the native prompt', async () => {
+    const wrapper = mount(GroupFilesPanel, { props: { groupId: 7, canManage: true } })
+
+    await wrapper.get('button.secondary-action').trigger('click')
+
+    expect(wrapper.get('[role="dialog"] input[aria-label="文件夹名称"]').exists()).toBe(true)
+    expect(wrapper.get('[role="dialog"] h3').text()).toBe('新建文件夹')
   })
 
   it('downloads files through the group-scoped endpoint', async () => {
