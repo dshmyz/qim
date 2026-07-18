@@ -417,6 +417,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/messages/:id/quote-chain", handler.GetMessageQuoteChain)
 
 			// 群聊管理（群特有功能）
+			handler.RegisterGroupFileRoutes(authed)
 			authed.POST("/groups/:id/members", handler.AddMemberToGroup)
 			// 移除群成员
 			authed.DELETE("/groups/:id/members/:user_id", handler.RemoveMemberFromGroup)

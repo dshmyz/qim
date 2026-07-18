@@ -27,6 +27,7 @@ type Container struct {
 	EventService         *service.EventService
 	TaskService          *service.TaskService
 	FileService          *service.FileService
+	FileSpaceService     *service.FileSpaceService
 	StorageManager       *storage.Manager
 	DefaultStorage       storage.Storage
 	GroupService         *service.GroupService
@@ -111,6 +112,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	storageManager := storage.NewManager(defaultStorage, s3Storage, localStorage)
 	storageAccessor := NewStorageAccessor(storageManager)
 	fileService.SetStorageAccessor(storageAccessor)
+	fileSpaceService := service.NewFileSpaceService(db)
+	fileSpaceService.SetStorageAccessor(storageAccessor)
 
 	groupService := service.NewGroupService(db)
 	appService := service.NewAppService(db)
@@ -181,6 +184,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		EventService:         eventService,
 		TaskService:          taskService,
 		FileService:          fileService,
+		FileSpaceService:     fileSpaceService,
 		StorageManager:       storageManager,
 		DefaultStorage:       defaultStorage,
 		GroupService:         groupService,
