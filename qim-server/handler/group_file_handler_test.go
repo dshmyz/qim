@@ -109,3 +109,45 @@ func TestGroupFileHandlerListsOnlyRequestedGroupScope(t *testing.T) {
 	require.Len(t, payload.Data.Files, 1)
 	require.Equal(t, "群文件.txt", payload.Data.Files[0].Name)
 }
+
+func TestGroupFileHandlerAllowsMemberToAttachOwnUpload(t *testing.T) {
+	router, db, group, _, member := setupGroupFileHandler(t)
+	upload := &model.File{
+		UserID:       member.ID,
+		ScopeType:    "user",
+		ScopeID:      member.ID,
+		Name:         "member-upload.pdf",
+		OriginalName: "member-upload.pdf",
+		MimeType:     "application/pdf",
+		StoragePath:  "uploads/member-upload.pdf",
+		Size:         42,
+		Source:       "upload",
+	}
+	require.NoError(t, db.Create(upload).Error)
+
+	response := requestAsGroupFileUser(t, router, member.ID, http.MethodPost, "/api/v1/groups/"+strconv.FormatUint(uint64(group.ConversationID), 10)+"/files", `{"file_id":`+strconv.FormatUint(uint64(upload.ID), 10)+`}`)
+	require.Equal(t, http.StatusOK, response.Code)
+
+	require.NoError(t, db.First(upload, upload.ID).Error)
+	require.Equal(t, "group", upload.ScopeType)
+	require.Equal(t, group.ID, upload.ScopeID)
+}
+
+func TestGroupFileHandlerRejectsFormerMemberDownload(t *testing.T) {
+	router, db, group, _, member := setupGroupFileHandler(t)
+	file := &model.File{
+		UserID:       member.ID,
+		ScopeType:    "group",
+		ScopeID:      group.ID,
+		Name:         "group-file.pdf",
+		OriginalName: "group-file.pdf",
+		MimeType:     "application/pdf",
+		StoragePath:  "uploads/group-file.pdf",
+		Size:         42,
+	}
+	require.NoError(t, db.Create(file).Error)
+	require.NoError(t, db.Where("conversation_id = ? AND user_id = ?", group.ConversationID, member.ID).Delete(&model.ConversationMember{}).Error)
+
+	response := requestAsGroupFileUser(t, router, member.ID, http.MethodGet, "/api/v1/groups/"+strconv.FormatUint(uint64(group.ConversationID), 10)+"/files/"+strconv.FormatUint(uint64(file.ID), 10)+"/download", "")
+	require.Equal(t, http.StatusForbidden, response.Code)
+}

@@ -258,6 +258,67 @@ func (s *FileSpaceService) ShareReference(ctx context.Context, actorID uint, spa
 	return shared, nil
 }
 
+// AttachUpload moves an actor's freshly uploaded personal file into a group
+// space. Unlike ShareReference, it keeps the same file record and storage
+// object so the upload has a single owner after attachment.
+func (s *FileSpaceService) AttachUpload(ctx context.Context, actorID uint, space FileSpace, fileID uint, folderID *uint) (*model.File, error) {
+	if fileID == 0 {
+		return nil, ErrFileSpaceInvalid
+	}
+	if err := s.authorize(ctx, actorID, space, FileSpaceActionUpload); err != nil {
+		return nil, err
+	}
+	if err := s.validateFolder(ctx, space, folderID); err != nil {
+		return nil, err
+	}
+
+	file := &model.File{}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ? AND user_id = ? AND scope_type = ? AND scope_id = ?", fileID, actorID, "user", actorID).First(file).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrFileSpaceForbidden
+			}
+			return err
+		}
+
+		if err := tx.Model(file).Updates(map[string]interface{}{
+			"scope_type": space.Type,
+			"scope_id":   space.ID,
+			"folder_id":  folderID,
+		}).Error; err != nil {
+			return err
+		}
+		file.ScopeType = space.Type
+		file.ScopeID = space.ID
+		file.FolderID = folderID
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+// OpenDownload returns a group-scoped file only after the requesting user has
+// been authorized as a current member of that group.
+func (s *FileSpaceService) OpenDownload(ctx context.Context, actorID uint, space FileSpace, fileID uint) (*model.File, error) {
+	if fileID == 0 {
+		return nil, ErrFileSpaceInvalid
+	}
+	if err := s.authorize(ctx, actorID, space, FileSpaceActionDownload); err != nil {
+		return nil, err
+	}
+
+	file := &model.File{}
+	if err := s.db.WithContext(ctx).Where("id = ? AND scope_type = ? AND scope_id = ?", fileID, space.Type, space.ID).First(file).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFileSpaceForbidden
+		}
+		return nil, err
+	}
+	return file, nil
+}
+
 func (s *FileSpaceService) validateFolder(ctx context.Context, space FileSpace, folderID *uint) error {
 	if folderID == nil {
 		return nil

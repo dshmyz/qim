@@ -180,6 +180,45 @@ func TestFileSpaceMemberCanListGroupFiles(t *testing.T) {
 	require.Len(t, items.Files, 1)
 }
 
+func TestFileSpaceMemberCanAttachOwnUploadToGroup(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	owner := createFileSpaceUser(t, db, "owner")
+	member := createFileSpaceUser(t, db, "member")
+	group, _ := createFileSpaceGroup(t, db, owner.ID)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ConversationID, UserID: member.ID, Role: "member"}).Error)
+	spaces := NewFileSpaceService(db)
+	upload := createUserFile(t, db, member.ID, "member-upload.pdf")
+
+	attached, err := spaces.AttachUpload(ctx, member.ID, FileSpace{Type: "group", ID: group.ID}, upload.ID, nil)
+	require.NoError(t, err)
+	require.Equal(t, upload.ID, attached.ID)
+	require.Equal(t, "group", attached.ScopeType)
+	require.Equal(t, group.ID, attached.ScopeID)
+
+	var stored model.File
+	require.NoError(t, db.First(&stored, upload.ID).Error)
+	require.Equal(t, "group", stored.ScopeType)
+	require.Equal(t, group.ID, stored.ScopeID)
+}
+
+func TestFileSpaceOpenDownloadRejectsFormerMember(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	owner := createFileSpaceUser(t, db, "owner")
+	member := createFileSpaceUser(t, db, "member")
+	group, _ := createFileSpaceGroup(t, db, owner.ID)
+	membership := &model.ConversationMember{ConversationID: group.ConversationID, UserID: member.ID, Role: "member"}
+	require.NoError(t, db.Create(membership).Error)
+	spaces := NewFileSpaceService(db)
+	file := &model.File{UserID: owner.ID, ScopeType: "group", ScopeID: group.ID, Name: "group.pdf", StoragePath: "uploads/group.pdf"}
+	require.NoError(t, db.Create(file).Error)
+	require.NoError(t, db.Delete(membership).Error)
+
+	_, err := spaces.OpenDownload(ctx, member.ID, FileSpace{Type: "group", ID: group.ID}, file.ID)
+	require.ErrorIs(t, err, ErrFileSpaceForbidden)
+}
+
 func TestFileSpaceDeleteKeepsStorageWhileAReferenceIsActive(t *testing.T) {
 	db := setupFileSpaceTestDB(t)
 	ctx := context.Background()
