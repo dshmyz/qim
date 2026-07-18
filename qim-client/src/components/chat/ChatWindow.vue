@@ -19,6 +19,16 @@
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
     />
+    <button
+      v-if="isGroupFileConversation"
+      class="chat-group-files-trigger"
+      type="button"
+      title="群文件"
+      aria-label="打开群文件"
+      @click="openGroupFiles()"
+    >
+      <i class="fas fa-folder-open"></i>
+    </button>
 
     <!-- 分身接管横幅 -->
     <AvatarTakeoverBanner
@@ -153,6 +163,7 @@
       :show-message-context-menu="showMessageContextMenuFlag"
       :message-context-menu-position="messageContextMenuPosition"
       :selected-message="selectedMessage"
+      :can-manage-group-files="canManageGroupFiles"
       :show-member-context-menu="showMemberContextMenuFlag"
       :member-context-menu-position="memberContextMenuPosition"
       :selected-member="selectedMember"
@@ -185,6 +196,7 @@
       @ai-summary="handleAISummary"
       @translate="handleAITranslate"
       @smart-reply="handleSmartReply"
+      @save-to-group-files="saveMessageToGroupFiles"
       @close-message-menu="closeMessageContextMenu"
       @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
@@ -220,6 +232,14 @@
       :original-text="translateContent"
       :message-type="translateMessageType"
       @close="showTranslatePanel = false"
+    />
+
+    <GroupFilesPanel
+      v-if="showGroupFiles"
+      :group-id="conversation.id"
+      :can-manage="canManageGroupFiles"
+      :reference-file-id="referenceFileId"
+      @close="closeGroupFiles"
     />
   </div>
 </template>
@@ -268,6 +288,7 @@ import { useSystemConfigStore } from '../../stores/systemConfig'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
+import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
 
 // 服务器地址
 const { serverUrl } = useServerUrl()
@@ -324,6 +345,8 @@ const showSummaryPanel = ref(false)
 const showTranslatePanel = ref(false)
 const translateContent = ref('')
 const translateMessageType = ref<'image' | 'text' | undefined>(undefined)
+const showGroupFiles = ref(false)
+const referenceFileId = ref<number | null>(null)
 
 // 处理分身启用状态更新（只控制当前会话，不影响全局配置）
 const handleUpdateAvatarEnabled = async (enabled: boolean) => {
@@ -1536,6 +1559,36 @@ const currentUserRole = computed(() => {
   })
   return member?.role || 'member'
 })
+
+const isGroupFileConversation = computed(() => props.conversation?.type === 'group')
+const canManageGroupFiles = computed(() =>
+  currentUserRole.value === 'owner' || currentUserRole.value === 'admin'
+)
+
+const openGroupFiles = (fileId: number | null = null) => {
+  referenceFileId.value = fileId
+  showGroupFiles.value = true
+}
+
+const closeGroupFiles = () => {
+  showGroupFiles.value = false
+  referenceFileId.value = null
+}
+
+const saveMessageToGroupFiles = () => {
+  if (!selectedMessage.value || !canManageGroupFiles.value) return
+  try {
+    const payload = JSON.parse(selectedMessage.value.content)
+    const fileId = Number(payload?.id)
+    if (!Number.isInteger(fileId) || fileId <= 0) {
+      $message.error('无法识别聊天附件')
+      return
+    }
+    openGroupFiles(fileId)
+  } catch {
+    $message.error('无法识别聊天附件')
+  }
+}
 
 const viewMemberInfo = async () => {
   if (selectedMember.value) {
@@ -2757,6 +2810,26 @@ defineExpose({
 }
 
 /* ===== 上传进度条 ===== */
+.chat-group-files-trigger {
+  position: absolute;
+  top: 10px;
+  right: 72px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.chat-group-files-trigger:hover {
+  background: var(--hover-color);
+  color: var(--primary-color);
+}
+
 .upload-progress-bar {
   width: 300px;
   height: 18px;

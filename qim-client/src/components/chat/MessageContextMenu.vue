@@ -18,6 +18,10 @@
       <span class="context-menu-icon"><i class="fas fa-save"></i></span>
       <span>另存为</span>
     </div>
+    <div v-if="canSaveFileToGroup" class="context-menu-item" @click="handleSaveToGroupFiles">
+      <span class="context-menu-icon"><i class="fas fa-folder-plus"></i></span>
+      <span>保存到群文件</span>
+    </div>
     <!-- 分隔线 -->
     <div v-if="message && (message.type === 'image' || message.type === 'file')" class="context-menu-divider"></div>
 
@@ -90,6 +94,7 @@ interface Props {
   position: { x: number; y: number }
   message: Message | null
   conversationType?: string
+  canManageGroupFiles?: boolean
 }
 
 interface Emits {
@@ -108,6 +113,7 @@ interface Emits {
   (e: 'ai-summary'): void
   (e: 'translate'): void
   (e: 'smart-reply'): void
+  (e: 'save-to-group-files'): void
 }
 
 const props = defineProps<Props>()
@@ -147,6 +153,10 @@ const canSmartReply = computed(() => {
   return props.message.type === 'text'
 })
 
+const canSaveFileToGroup = computed(() =>
+  props.message?.type === 'file' && props.conversationType === 'group' && props.canManageGroupFiles === true
+)
+
 const handleSaveImage = () => {
   if (props.message && props.message.content) {
     emit('save-file-as', props.message.content)
@@ -163,6 +173,10 @@ const handleSaveFileAs = () => {
   if (props.message && props.message.content) {
     emit('save-file-as', props.message.content)
   }
+}
+
+const handleSaveToGroupFiles = () => {
+  emit('save-to-group-files')
 }
 
 const handleCopyMessage = () => {

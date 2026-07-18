@@ -22,6 +22,7 @@
     :position="messageContextMenuPosition"
     :message="selectedMessage"
     :conversation-type="conversation?.type"
+    :can-manage-group-files="canManageGroupFiles"
     @save-file-as="emit('save-file-as', $event); closeMessageMenu()"
     @download-file="emit('download-file', $event); closeMessageMenu()"
     @copy-message="emit('copy-message'); closeMessageMenu()"
@@ -36,6 +37,7 @@
     @ai-summary="emit('ai-summary'); closeMessageMenu()"
     @translate="emit('translate'); closeMessageMenu()"
     @smart-reply="emit('smart-reply'); closeMessageMenu()"
+    @save-to-group-files="emit('save-to-group-files'); closeMessageMenu()"
   />
 
   <!-- 成员右键菜单 -->
@@ -116,6 +118,7 @@ interface Props {
   showMessageContextMenu: boolean
   messageContextMenuPosition: { x: number; y: number }
   selectedMessage: Message | null
+  canManageGroupFiles?: boolean
   showMemberContextMenu: boolean
   memberContextMenuPosition: { x: number; y: number }
   selectedMember: User | null
@@ -169,6 +172,7 @@ const emit = defineEmits<{
   'ai-summary': []
   'translate': []
   'smart-reply': []
+  'save-to-group-files': []
 }>()
 
 const closeMessageMenu = () => {

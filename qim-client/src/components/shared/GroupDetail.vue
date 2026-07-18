@@ -98,6 +98,10 @@
             <i class="fas fa-user-plus"></i>
             <span>邀请成员</span>
           </button>
+          <button v-if="group.type === 'group'" class="action-btn secondary" @click="showGroupFiles = true">
+            <i class="fas fa-folder-open"></i>
+            <span>群文件</span>
+          </button>
           <button class="action-btn tertiary" @click="$emit('openAISettings')" v-if="group.type === 'group'">
             <i class="fas fa-robot"></i>
             <span>AI 设置</span>
@@ -121,6 +125,12 @@
         </div>
       </div>
     </div>
+    <GroupFilesPanel
+      v-if="showGroupFiles"
+      :group-id="group.id"
+      :can-manage="isGroupOwner(group) || isGroupAdmin(group)"
+      @close="showGroupFiles = false"
+    />
   </div>
   <div v-else class="group-detail-placeholder">
     <div class="placeholder-content">
@@ -140,9 +150,11 @@ import type { Conversation, User } from '../../types'
 import { logger } from '../../utils/logger';
 import QMessage from '../../utils/qmessage'
 import { getCurrentUser } from '../../utils/user'
+import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
 
 const serverUrl = getStoredServerUrl()
 const avatarInput = ref<HTMLInputElement | null>(null)
+const showGroupFiles = ref(false)
 
 interface Props {
   group: Conversation | null
