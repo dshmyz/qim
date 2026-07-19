@@ -10,6 +10,7 @@
 
     <!-- 普通消息 -->
     <template v-else>
+      <slot name="selection-control" />
       <Avatar
         :src="message.sender.avatar"
         :name="message.sender.name || '用户'"

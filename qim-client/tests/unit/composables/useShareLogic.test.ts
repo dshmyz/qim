@@ -147,6 +147,68 @@ describe('useShareLogic - message forwarding', () => {
     }))
   })
 
+  it('uses the source conversation title when creating a merged forward record', async () => {
+    ;(request as any)
+      .mockResolvedValueOnce({ code: 0, data: { id: 10 } })
+      .mockResolvedValueOnce({ code: 0, data: { id: 99 } })
+    const logic = useShareLogic(ref({
+      messages: [
+        { id: '1', type: 'text', content: '第一条', sender: { name: '甲' }, timestamp: 1 },
+        { id: '2', type: 'text', content: '第二条', sender: { name: '乙' }, timestamp: 2 },
+      ],
+      sourceTitle: '来自「产品讨论群」的聊天记录',
+    }), ref('message'), ref([]), ref([]), ref([]), ref(null), vi.fn(), vi.fn(), vi.fn())
+
+    await logic.handleShareConfirm({ users: ['2'], groups: [] })
+
+    const [, requestOptions] = (request as any).mock.calls.at(-1)
+    expect(JSON.parse(JSON.parse(requestOptions.body).content).title).toBe('来自「产品讨论群」的聊天记录')
+  })
+
+  it('preserves a single merged forward message instead of degrading it to a share card', async () => {
+    const content = JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [{ id: 'nested-1', type: 'text', content: '原消息', senderName: '甲', timestamp: 1 }],
+    })
+    ;(request as any)
+      .mockResolvedValueOnce({ code: 0, data: { id: 10 } })
+      .mockResolvedValueOnce({ code: 0, data: { id: 99 } })
+    const logic = useShareLogic(ref({
+      id: 'record-1', type: 'merged_forward', content, sender: { name: '甲' }, timestamp: 1,
+    }), ref('message'), ref([]), ref([]), ref([]), ref(null), vi.fn(), vi.fn(), vi.fn())
+
+    await logic.handleShareConfirm({ users: ['2'], groups: [] })
+
+    const [, requestOptions] = (request as any).mock.calls.at(-1)
+    expect(JSON.parse(requestOptions.body)).toMatchObject({ type: 'merged_forward', content })
+  })
+
+  it('keeps merged forward records as nested record items during multi-message forwarding', async () => {
+    const nestedContent = JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [{ id: 'nested-1', type: 'text', content: '原消息', senderName: '甲', timestamp: 1 }],
+    })
+    ;(request as any)
+      .mockResolvedValueOnce({ code: 0, data: { id: 10 } })
+      .mockResolvedValueOnce({ code: 0, data: { id: 99 } })
+    const logic = useShareLogic(ref([
+      { id: 'text-1', type: 'text', content: '外层消息', sender: { name: '乙' }, timestamp: 2 },
+      { id: 'record-1', type: 'merged_forward', content: nestedContent, sender: { name: '甲' }, timestamp: 1 },
+    ]), ref('message'), ref([]), ref([]), ref([]), ref(null), vi.fn(), vi.fn(), vi.fn())
+
+    await logic.handleShareConfirm({ users: ['2'], groups: [] })
+
+    const [, requestOptions] = (request as any).mock.calls.at(-1)
+    const sentMessage = JSON.parse(requestOptions.body)
+    const payload = JSON.parse(sentMessage.content)
+    expect(payload.messages).toContainEqual(expect.objectContaining({
+      type: 'merged_forward',
+      content: nestedContent,
+    }))
+  })
+
   it('sends a single markdown message to a group as the legacy share payload', async () => {
     ;(request as any).mockResolvedValueOnce({ code: 0, data: { id: 99 } })
     const logic = useShareLogic(ref({

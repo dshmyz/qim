@@ -10,13 +10,13 @@ export type MergedForwardItem = {
 
 export type MergedForwardPayload = {
   version: 1
-  title: '聊天记录'
+  title: string
   messages: MergedForwardItem[]
 }
 
-export const createMergedForwardPayload = (messages: Message[]): MergedForwardPayload => ({
+export const createMergedForwardPayload = (messages: Message[], title?: string): MergedForwardPayload => ({
   version: 1,
-  title: '聊天记录',
+  title: title?.trim() || '聊天记录',
   messages: messages.map(message => ({
     id: String(message.id),
     type: message.type,
@@ -41,7 +41,7 @@ export const parseMergedForwardPayload = (content: string): MergedForwardPayload
         && Number.isFinite(item.timestamp)
     })
 
-    return value?.version === 1 && value?.title === '聊天记录' && hasValidMessages ? value : null
+    return value?.version === 1 && typeof value?.title === 'string' && value.title.trim().length > 0 && hasValidMessages ? value : null
   } catch {
     return null
   }

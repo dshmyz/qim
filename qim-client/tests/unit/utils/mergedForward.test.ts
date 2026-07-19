@@ -19,4 +19,13 @@ describe('merged forward payload', () => {
       messages: [null],
     }))).toBeNull()
   })
+
+  it('stores a supplied source title in the forwarded record snapshot', () => {
+    const payload = createMergedForwardPayload([
+      { id: '1', type: 'text', content: '你好', sender: { name: '甲' }, timestamp: 1 },
+    ] as any, '来自「产品讨论群」的聊天记录')
+
+    expect(payload.title).toBe('来自「产品讨论群」的聊天记录')
+    expect(parseMergedForwardPayload(JSON.stringify(payload))?.title).toBe('来自「产品讨论群」的聊天记录')
+  })
 })

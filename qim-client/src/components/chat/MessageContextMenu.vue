@@ -54,7 +54,7 @@
       <span class="context-menu-icon"><i class="fas fa-share-alt"></i></span>
       <span>转发</span>
     </div>
-    <div class="context-menu-item" @click="handleSelectMessages">
+    <div v-if="message?.type !== 'system'" class="context-menu-item" @click="handleSelectMessages">
       <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
       <span>多选</span>
     </div>

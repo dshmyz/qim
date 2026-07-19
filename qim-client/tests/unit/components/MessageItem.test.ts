@@ -286,6 +286,20 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.text()).toContain('聊天记录（共 4 条）')
   })
 
+  it('shows the source title stored in a forwarded record', () => {
+    const wrapper = mount(MergedForwardMessage, {
+      props: {
+        content: JSON.stringify({
+          version: 1,
+          title: '来自「产品讨论群」的聊天记录',
+          messages: [],
+        }),
+      },
+    })
+
+    expect(wrapper.find('.merged-forward-title').text()).toBe('来自「产品讨论群」的聊天记录（0条）')
+  })
+
   it('renders record messages in source order with native rich components', () => {
     const wrapper = mount(MergedForwardRecordDialog, {
       props: {
@@ -332,6 +346,72 @@ describe('MessageItem mention emphasis', () => {
     expect(wrapper.get('[data-testid="native-image"]').text()).toBe('/image.png')
     expect(wrapper.get('[data-testid="native-file"]').text()).toContain('方案.pdf')
     expect(wrapper.find('.merged-forward-record-summary').exists()).toBe(false)
+  })
+
+  it('opens nested forwarded records in the same dialog and returns to the parent record', async () => {
+    const nestedContent = JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: [{ id: 'nested-text', type: 'text', content: '原消息', senderName: '甲', timestamp: 1 }],
+    })
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([
+          { id: 'nested-record', senderName: '乙', timestamp: 2, type: 'merged_forward', content: nestedContent },
+        ]),
+      },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
+    })
+
+    expect(wrapper.get('[data-testid="merged-forward-open-nested"]').text()).toContain('[聊天记录] 1 条消息')
+
+    await wrapper.get('[data-testid="merged-forward-open-nested"]').trigger('click')
+
+    expect(wrapper.text()).toContain('聊天记录 / 聊天记录')
+    expect(wrapper.text()).toContain('原消息')
+    expect(wrapper.text()).not.toContain('[聊天记录] 1 条消息')
+
+    await wrapper.get('[data-testid="merged-forward-record-back"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="merged-forward-open-nested"]').exists()).toBe(true)
+  })
+
+  it('stops nested record navigation at five levels', async () => {
+    const createNestedContent = (remainingLevels: number): string => JSON.stringify({
+      version: 1,
+      title: '聊天记录',
+      messages: remainingLevels === 0
+        ? [{ id: 'leaf', senderName: '甲', timestamp: 1, type: 'text', content: '最深消息' }]
+        : [{
+            id: `nested-${remainingLevels}`,
+            senderName: '甲',
+            timestamp: remainingLevels,
+            type: 'merged_forward',
+            content: createNestedContent(remainingLevels - 1),
+          }],
+    })
+    const wrapper = mount(MergedForwardRecordDialog, {
+      props: {
+        visible: true,
+        payload: makeRecordPayload([{
+          id: 'root-nested',
+          senderName: '乙',
+          timestamp: 0,
+          type: 'merged_forward',
+          content: createNestedContent(5),
+        }]),
+      },
+      global: { stubs: { Teleport: { template: '<slot />' } } },
+    })
+
+    for (let level = 0; level < 4; level += 1) {
+      await wrapper.get('[data-testid="merged-forward-open-nested"]').trigger('click')
+    }
+
+    const nestedButton = wrapper.get('[data-testid="merged-forward-open-nested"]')
+    expect(nestedButton.attributes('disabled')).toBeDefined()
+    expect(nestedButton.text()).toContain('最多展开 5 层')
   })
 
   it('adds a time divider only after gaps longer than five minutes', () => {

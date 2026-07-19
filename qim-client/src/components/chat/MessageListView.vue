@@ -22,6 +22,7 @@
         </div>
 
         <MessageItem
+          :class="{ 'message-selection-active': selectionMode && selectedMessageIds.has(String(message.id)) }"
           :message="message"
           :is-self="isMessageSelf(message)"
           :is-recalled="!!message.isRecalled"
@@ -39,15 +40,18 @@
           @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
           @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           @image-loaded="handleImageLoaded"
-        />
-        <label v-if="selectionMode && !message.isRecalled" class="message-selection-control">
-          <input
-            type="checkbox"
-            :data-testid="`message-select-${message.id}`"
-            :checked="selectedMessageIds.has(String(message.id))"
-            @change="emit('toggle-message-selection', String(message.id))"
-          >
-        </label>
+        >
+          <template #selection-control>
+            <label v-if="selectionMode && isMessageSelectionEligible(message)" class="message-selection-control">
+              <input
+                type="checkbox"
+                :data-testid="`message-select-${message.id}`"
+                :checked="selectedMessageIds.has(String(message.id))"
+                @change="emit('toggle-message-selection', String(message.id))"
+              >
+            </label>
+          </template>
+        </MessageItem>
       </div>
 
       <!-- AI 思考中指示器 -->
@@ -70,6 +74,7 @@ import 'viewerjs/dist/viewer.css'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { isMessageSelectionEligible } from '../../utils/messageSelection'
 
 const { formatTime, shouldShowTimeDivider } = useChatUtils()
 
@@ -333,19 +338,23 @@ watch(() => props.messages, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  margin: -24px 12px 8px;
-  position: relative;
-  z-index: 1;
+  width: 32px;
+  min-width: 32px;
+  height: 40px;
+  margin: 0;
   border-radius: 50%;
   cursor: pointer;
 }
 
+.message-selection-active {
+  background: color-mix(in srgb, var(--primary-color), transparent 92%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color), transparent 80%);
+  border-radius: 12px;
+}
+
 .message-selection-control input {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   appearance: none;
   border: 2px solid var(--border-color);

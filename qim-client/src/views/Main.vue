@@ -1337,11 +1337,11 @@ const handleShareStickyNote = async (event: Event) => {
 
 const handleForwardMessage = async (event: Event) => {
   const customEvent = event as CustomEvent
-  const { message, messages } = customEvent.detail
+  const { message, messages, sourceTitle } = customEvent.detail
   const data = Array.isArray(messages) ? messages : message
   if (data) {
     await loadShareUsersAndGroups()
-    openShareModal('message', data)
+    openShareModal('message', sourceTitle ? { messages: Array.isArray(data) ? data : [data], sourceTitle } : data)
   }
 }
 

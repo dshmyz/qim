@@ -28,6 +28,54 @@ beforeEach(() => {
 })
 
 describe('MessageListView image viewer', () => {
+  it('does not show a selection control for system messages', () => {
+    const wrapper = mount(MessageListView, {
+      props: {
+        ...baseProps,
+        selectionMode: true,
+        selectedMessageIds: new Set<string>(),
+        messages: [
+          { id: 'system-1', type: 'system', content: '用户加入群聊', isSelf: false, isRecalled: false, timestamp: 1 },
+          { id: 'text-1', type: 'text', content: '普通消息', isSelf: false, isRecalled: false, timestamp: 2 },
+        ],
+      },
+      global: {
+        stubs: {
+          MessageItem: {
+            template: '<article class="message-item-stub"><slot name="selection-control" /></article>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="message-select-system-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="message-select-text-1"]').exists()).toBe(true)
+  })
+
+  it('places the selection control in the message item and highlights selected messages', () => {
+    const wrapper = mount(MessageListView, {
+      props: {
+        ...baseProps,
+        selectionMode: true,
+        selectedMessageIds: new Set(['text-1']),
+        messages: [
+          { id: 'text-1', type: 'text', content: '普通消息', isSelf: false, isRecalled: false, timestamp: 1 },
+        ],
+      },
+      global: {
+        stubs: {
+          MessageItem: {
+            template: '<article class="message-item-stub"><slot name="selection-control" /></article>',
+          },
+        },
+      },
+    })
+
+    const item = wrapper.get('.message-item-stub')
+    expect(item.classes()).toContain('message-selection-active')
+    expect(item.get('[data-testid="message-select-text-1"]').exists()).toBe(true)
+  })
+
   it('marks the message list as the Viewer.js gallery root', () => {
     const wrapper = mount(MessageListView, {
       props: baseProps,

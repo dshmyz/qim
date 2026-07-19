@@ -279,6 +279,7 @@ import { useSystemConfigStore } from '../../stores/systemConfig'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
+import { isMessageSelectionEligible } from '../../utils/messageSelection'
 import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
 
 // 服务器地址
@@ -615,7 +616,9 @@ const messageMenuSelection = ref('')
 const isMessageSelectionMode = ref(false)
 const selectedMessageIds = ref(new Set<string>())
 const selectedMessages = computed(() =>
-  props.messages.filter(message => selectedMessageIds.value.has(String(message.id)) && !message.isRecalled)
+  props.messages.filter(message =>
+    selectedMessageIds.value.has(String(message.id)) && isMessageSelectionEligible(message)
+  )
 )
 
 // 头部下拉菜单状态
@@ -1788,12 +1791,18 @@ const closeMessageContextMenu = () => {
   document.removeEventListener('click', closeMessageContextMenu)
 }
 
+const getForwardRecordTitle = (): string => {
+  const conversationName = props.conversation?.name || props.conversation?.other_member_name
+  return conversationName ? `来自「${conversationName}」的聊天记录` : '聊天记录'
+}
+
 const forwardMessage = () => {
   if (selectedMessage.value) {
     // 触发全局事件，打开分享弹窗并传递消息数据
     window.dispatchEvent(new CustomEvent('forwardMessage', {
       detail: {
-        message: selectedMessage.value
+        message: selectedMessage.value,
+        sourceTitle: getForwardRecordTitle(),
       }
     }))
   }
@@ -1802,12 +1811,15 @@ const forwardMessage = () => {
 
 const startMessageSelection = () => {
   isMessageSelectionMode.value = true
-  selectedMessageIds.value = selectedMessage.value
+  selectedMessageIds.value = selectedMessage.value && isMessageSelectionEligible(selectedMessage.value)
     ? new Set([String(selectedMessage.value.id)])
     : new Set()
 }
 
 const toggleMessageSelection = (id: string) => {
+  const message = props.messages.find(item => String(item.id) === id)
+  if (!message || !isMessageSelectionEligible(message)) return
+
   const ids = new Set(selectedMessageIds.value)
   ids.has(id) ? ids.delete(id) : ids.add(id)
   selectedMessageIds.value = ids
@@ -1821,7 +1833,7 @@ const cancelMessageSelection = () => {
 const forwardSelectedMessages = () => {
   if (selectedMessages.value.length < 2) return
   window.dispatchEvent(new CustomEvent('forwardMessage', {
-    detail: { messages: selectedMessages.value }
+    detail: { messages: selectedMessages.value, sourceTitle: getForwardRecordTitle() }
   }))
   cancelMessageSelection()
 }

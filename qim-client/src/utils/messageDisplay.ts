@@ -121,7 +121,7 @@ export const resolveMessageDisplay = (input: MessageDisplayInput): MessageDispla
   if (type === 'merged_forward') {
     const payload = parseMergedForwardPayload(content)
     const label = payload ? `[聊天记录] ${payload.messages.length} 条消息` : '[聊天记录]'
-    return display('mergedForward', label, label, '聊天记录', payload ? `${payload.messages.length} 条消息` : '聊天记录无法加载', payload || undefined)
+    return display('mergedForward', label, label, payload?.title || '聊天记录', payload ? `${payload.messages.length} 条消息` : '聊天记录无法加载', payload || undefined)
   }
   if (type === 'image') return display('image', '图片', `[图片] ${getFileName(parsed, input)}`, getFileName(parsed, input))
   if (type === 'file' || isFilePayload(parsed)) {

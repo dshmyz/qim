@@ -95,7 +95,12 @@ export function useShareLogic(
       const { users, groups } = selection
       logger.log('分享数据:', shareData.value)
 
-      const forwardedMessages = Array.isArray(shareData.value) ? shareData.value : [shareData.value]
+      const forwardedMessages = Array.isArray(shareData.value)
+        ? shareData.value
+        : Array.isArray(shareData.value?.messages)
+          ? shareData.value.messages
+          : [shareData.value]
+      const sourceTitle = typeof shareData.value?.sourceTitle === 'string' ? shareData.value.sourceTitle : undefined
       const primaryShareData = forwardedMessages[0]
       let shareContent = ''
       let shareName = ''
@@ -150,7 +155,7 @@ export function useShareLogic(
           if (message.type === 'markdown' && destination === 'user') {
             return { type: 'markdown', content: `[转发] ${message.content}` }
           }
-          if (message.type === 'image' || message.type === 'file' || message.type === 'miniApp' || message.type === 'share') {
+          if (message.type === 'image' || message.type === 'file' || message.type === 'miniApp' || message.type === 'share' || message.type === 'merged_forward') {
             return { type: message.type, content: message.content }
           }
         }
@@ -159,7 +164,7 @@ export function useShareLogic(
       }
 
       const buildMessageData = (destination: 'user' | 'group') => shareType.value === 'message' && forwardedMessages.length > 1
-        ? { type: 'merged_forward', content: JSON.stringify(createMergedForwardPayload(forwardedMessages)) }
+        ? { type: 'merged_forward', content: JSON.stringify(createMergedForwardPayload(forwardedMessages, sourceTitle)) }
         : buildForwardedMessage(primaryShareData, destination)
 
       for (const userId of users) {

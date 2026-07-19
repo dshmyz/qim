@@ -59,6 +59,7 @@ describe('ChatWindow merged forwarding', () => {
     await (wrapper.vm as any).forwardSelectedMessages()
 
     expect(received[0].messages.map((message: any) => message.id)).toEqual(['1', '2'])
+    expect(received[0].sourceTitle).toBe('来自「测试会话」的聊天记录')
   })
 
   it('excludes recalled selected messages when forwarding', async () => {

@@ -3,7 +3,7 @@
     <template v-if="payload">
       <div class="merged-forward-header">
         <span class="merged-forward-icon" aria-hidden="true"><i class="fas fa-comments"></i></span>
-        <span class="merged-forward-title">聊天记录（{{ payload.messages.length }}条）</span>
+        <span class="merged-forward-title">{{ payload.title }}（{{ payload.messages.length }}条）</span>
         <button data-testid="merged-forward-open" type="button" @click="isRecordVisible = true">
           查看聊天记录
           <i class="fas fa-chevron-right" aria-hidden="true"></i>

@@ -8,20 +8,36 @@
       @click.self="close"
     >
       <section
-        v-if="payload"
+        v-if="currentPayload"
         aria-modal="true"
         aria-labelledby="merged-forward-record-title"
         class="merged-forward-record-dialog"
         role="dialog"
       >
         <header class="merged-forward-record-header">
-          <h2 id="merged-forward-record-title">聊天记录（共 {{ payload.messages.length }} 条）</h2>
+          <div class="merged-forward-record-heading">
+            <nav v-if="payloadTrail.length > 1" aria-label="聊天记录路径" class="merged-forward-record-breadcrumb">
+              {{ breadcrumb }}
+            </nav>
+            <h2 id="merged-forward-record-title">{{ currentPayload.title }}（共 {{ currentPayload.messages.length }} 条）</h2>
+          </div>
+          <button
+            v-if="payloadTrail.length > 1"
+            aria-label="返回上一层聊天记录"
+            class="merged-forward-record-back"
+            data-testid="merged-forward-record-back"
+            type="button"
+            @click="backToParentRecord"
+          >
+            <i aria-hidden="true" class="fas fa-chevron-left"></i>
+            返回
+          </button>
           <button aria-label="关闭聊天记录" class="merged-forward-record-close" type="button" @click="close">
             <i aria-hidden="true" class="fas fa-xmark"></i>
           </button>
         </header>
         <div class="merged-forward-record-list">
-          <template v-for="(message, index) in payload.messages" :key="message.id">
+          <template v-for="(message, index) in currentPayload.messages" :key="message.id">
             <div
               v-if="showTimestampDivider(message.timestamp, index)"
               class="merged-forward-record-time"
@@ -53,6 +69,20 @@
                   :mini-app-data="recordMessageData(message)"
                 />
                 <NewsMessage v-else-if="message.type === 'news'" :news-data="recordMessageData(message)" />
+                <button
+                  v-else-if="nestedPayload(message)"
+                  :disabled="!canEnterNestedRecord"
+                  class="merged-forward-record-nested"
+                  data-testid="merged-forward-open-nested"
+                  type="button"
+                  @click="enterNestedRecord(message)"
+                >
+                  <span>{{ resolveMessageDisplay(message).label }}</span>
+                  <span v-if="canEnterNestedRecord" class="merged-forward-record-nested-action">
+                    查看 <i aria-hidden="true" class="fas fa-chevron-right"></i>
+                  </span>
+                  <span v-else class="merged-forward-record-nested-limit">最多展开 {{ MAX_RECORD_DEPTH }} 层</span>
+                </button>
                 <p v-else class="merged-forward-record-summary">{{ resolveMessageDisplay(message).label }}</p>
               </div>
             </article>
@@ -67,8 +97,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
-import { type MergedForwardPayload } from '@/utils/mergedForward'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { parseMergedForwardPayload, type MergedForwardItem, type MergedForwardPayload } from '@/utils/mergedForward'
 import { resolveMessageDisplay } from '@/utils/messageDisplay'
 import { useServerUrl } from '@/composables/useServerUrl'
 import TextMessage from './TextMessage.vue'
@@ -92,14 +122,43 @@ const emit = defineEmits<{
 
 const { serverUrl } = useServerUrl()
 
+const MAX_RECORD_DEPTH = 5
+const payloadTrail = ref<MergedForwardPayload[]>([])
+const currentPayload = computed(() => payloadTrail.value.at(-1) || null)
+const breadcrumb = computed(() => payloadTrail.value.map(payload => payload.title).join(' / '))
+const canEnterNestedRecord = computed(() => payloadTrail.value.length < MAX_RECORD_DEPTH)
+
+watch(
+  [() => props.visible, () => props.payload],
+  ([visible, payload]) => {
+    payloadTrail.value = visible && payload ? [payload] : []
+  },
+  { immediate: true },
+)
+
 const close = () => emit('close')
+
+const nestedPayload = (message: MergedForwardItem): MergedForwardPayload | null =>
+  message.type === 'merged_forward' ? parseMergedForwardPayload(message.content) : null
+
+const enterNestedRecord = (message: MergedForwardItem) => {
+  const nested = nestedPayload(message)
+  if (!nested || !canEnterNestedRecord.value) return
+
+  payloadTrail.value = [...payloadTrail.value, nested]
+}
+
+const backToParentRecord = () => {
+  if (payloadTrail.value.length <= 1) return
+  payloadTrail.value = payloadTrail.value.slice(0, -1)
+}
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (props.visible && event.key === 'Escape') close()
 }
 
 const showTimestampDivider = (timestamp: number, index: number): boolean => index > 0
-  && timestamp - props.payload!.messages[index - 1].timestamp > 300_000
+  && timestamp - currentPayload.value!.messages[index - 1].timestamp > 300_000
 
 const formatTimestamp = (timestamp: number): string => new Date(timestamp).toLocaleString()
 
@@ -138,9 +197,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .merged-forward-record-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.merged-forward-record-heading {
+  min-width: 0;
+  flex: 1;
 }
 
 .merged-forward-record-header h2 {
@@ -148,12 +212,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   font-size: 16px;
 }
 
+.merged-forward-record-breadcrumb {
+  overflow: hidden;
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merged-forward-record-back,
 .merged-forward-record-close {
   border: 0;
   padding: 4px 8px;
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
+}
+
+.merged-forward-record-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .merged-forward-record-list {
@@ -181,6 +262,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   margin: 0;
   white-space: pre-wrap;
   color: var(--text-color);
+}
+
+.merged-forward-record-nested {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--text-color);
+  background: var(--hover-color);
+  text-align: left;
+  cursor: pointer;
+}
+
+.merged-forward-record-nested:not(:disabled):hover {
+  border-color: var(--primary-color);
+}
+
+.merged-forward-record-nested:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.merged-forward-record-nested-action,
+.merged-forward-record-nested-limit {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.merged-forward-record-nested-action {
+  color: var(--primary-color);
 }
 
 .merged-forward-record-content :deep(.text-message){
