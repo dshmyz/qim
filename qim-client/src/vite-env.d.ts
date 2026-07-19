@@ -3,6 +3,7 @@
 
 declare const __APP_NAME__: string
 declare const __APP_VERSION__: string
+declare const __APP_PRODUCT_NAME__: string
 declare const __APP_PRODUCT_NAME_CN__: string
 declare const __APP_COPYRIGHT_YEAR__: string
 

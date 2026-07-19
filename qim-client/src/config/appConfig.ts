@@ -1,4 +1,4 @@
-const productName = __APP_NAME__.toUpperCase()
+const productName = __APP_PRODUCT_NAME__
 const productNameCN = __APP_PRODUCT_NAME_CN__
 
 export const APP_CONFIG = {
