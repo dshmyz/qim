@@ -14,6 +14,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/sync/syncer"
 
+	"github.com/robfig/cron/v3"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -474,49 +475,84 @@ func ParseCron(schedule string) (*ParseCronResult, error) {
 		return nil, fmt.Errorf("cron表达式为空")
 	}
 
-	var interval time.Duration
-	switch schedule {
-	case "@hourly":
-		interval = time.Hour
-	case "@daily", "@midnight":
-		interval = 24 * time.Hour
-	case "@weekly":
-		interval = 7 * 24 * time.Hour
-	case "@monthly":
-		interval = 30 * 24 * time.Hour
-	default:
-		d, err := parseMinuteInterval(schedule)
-		if err != nil {
-			return nil, err
-		}
-		interval = d
+	// 转译为 robfig/cron v3 兼容表达式
+	cronExpr, err := translateToCronV3(schedule)
+	if err != nil {
+		return nil, err
+	}
+
+	// 用 robfig/cron 解析表达式（不启动调度器，只用于计算下次触发）
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	sched, err := parser.Parse(cronExpr)
+	if err != nil {
+		return nil, fmt.Errorf("解析 cron 表达式失败: %w", err)
 	}
 
 	now := time.Now()
-	next := now.Add(interval)
-	nextRounded := next.Truncate(time.Minute)
-	if nextRounded.Before(now) {
-		nextRounded = nextRounded.Add(time.Minute)
+	next := sched.Next(now)
+	if next.IsZero() {
+		return nil, fmt.Errorf("无法计算下次触发时间")
 	}
+
+	nextRun := next.Sub(now)
+	if nextRun < 0 {
+		nextRun = 0
+	}
+
+	// Interval 字段：保留对外兼容性，按表达式语义返回周期性时长
+	// 对于预设 @hourly/@daily 等，直接映射；对于 5 段式，估算为最近两次触发间隔
+	interval := estimateInterval(cronExpr, next, now)
 
 	return &ParseCronResult{
 		Interval: interval,
-		NextRun:  nextRounded.Sub(now),
+		NextRun:  nextRun,
 	}, nil
 }
 
-func parseMinuteInterval(schedule string) (time.Duration, error) {
-	var minutes int
-	if _, err := fmt.Sscanf(schedule, "every %d minutes", &minutes); err == nil && minutes > 0 {
-		return time.Duration(minutes) * time.Minute, nil
-	}
-	if _, err := fmt.Sscanf(schedule, "every %d hours", &minutes); err == nil && minutes > 0 {
-		return time.Duration(minutes) * time.Hour, nil
-	}
-
-	if len(schedule) >= 5 && strings.Count(schedule, " ") == 4 {
-		return 24 * time.Hour, nil
+// translateToCronV3 把项目自定义语法转译为 robfig/cron v3 兼容表达式
+func translateToCronV3(schedule string) (string, error) {
+	// 预设 descriptor 直接透传（robfig/cron v3 内置支持）
+	switch schedule {
+	case "@hourly", "@daily", "@midnight", "@weekly", "@monthly", "@annually", "@yearly":
+		return schedule, nil
 	}
 
-	return 0, fmt.Errorf("不支持的调度格式: %s", schedule)
+	// "every N minutes" / "every N hours"
+	var n int
+	if _, err := fmt.Sscanf(schedule, "every %d minutes", &n); err == nil && n > 0 {
+		return fmt.Sprintf("*/%d * * * *", n), nil
+	}
+	if _, err := fmt.Sscanf(schedule, "every %d hours", &n); err == nil && n > 0 {
+		return fmt.Sprintf("0 */%d * * *", n), nil
+	}
+
+	// 否则视为标准 5 段式 cron 表达式，直接透传由 robfig/cron 校验
+	return schedule, nil
+}
+
+// estimateInterval 估算周期性时长，仅用于日志展示
+// 真正的触发时刻已由 robfig/cron 计算
+func estimateInterval(cronExpr string, next, now time.Time) time.Duration {
+	switch {
+	case strings.HasPrefix(cronExpr, "@hourly"):
+		return time.Hour
+	case strings.HasPrefix(cronExpr, "@daily"), strings.HasPrefix(cronExpr, "@midnight"):
+		return 24 * time.Hour
+	case strings.HasPrefix(cronExpr, "@weekly"):
+		return 7 * 24 * time.Hour
+	case strings.HasPrefix(cronExpr, "@monthly"):
+		return 30 * 24 * time.Hour
+	}
+
+	// 对于 every N / 5 段式，再算下一次触发后取两次间隔
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	if sched, err := parser.Parse(cronExpr); err == nil {
+		nextNext := sched.Next(next)
+		if !nextNext.IsZero() {
+			return nextNext.Sub(next)
+		}
+	}
+
+	// 兜底：返回 24 小时
+	return 24 * time.Hour
 }

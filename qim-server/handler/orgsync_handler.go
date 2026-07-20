@@ -21,6 +21,9 @@ type OrgSyncHandler struct {
 	engine  *syncpkg.Engine
 	running map[uint]bool
 	mu      sync.Mutex
+	// reloadFn 由 main.go 注入：用于在 Create/Update/Delete 后让调度器立即重载 OrgSyncConfig
+	// 为 nil 时跳过 reload（向后兼容）
+	reloadFn func() error
 }
 
 func NewOrgSyncHandler() *OrgSyncHandler {
@@ -32,6 +35,21 @@ func NewOrgSyncHandler() *OrgSyncHandler {
 		db:      database.GetDB(),
 		engine:  engine,
 		running: make(map[uint]bool),
+	}
+}
+
+// SetReloadFn 由 main.go 在启动时注入，用于让 handler 在配置变更后触发调度器 reload
+func (h *OrgSyncHandler) SetReloadFn(fn func() error) {
+	h.reloadFn = fn
+}
+
+// tryReload 在 reloadFn 已注入时调用；失败仅记录日志，不影响业务返回
+func (h *OrgSyncHandler) tryReload() {
+	if h.reloadFn == nil {
+		return
+	}
+	if err := h.reloadFn(); err != nil {
+		logger.WithModule("OrgSync").Error("触发调度器重载 OrgSync 配置失败", "error", err)
 	}
 }
 
@@ -55,6 +73,9 @@ func (h *OrgSyncHandler) CreateConfig(c *gin.Context) {
 		response.InternalServerError(c, "创建同步配置失败")
 		return
 	}
+
+	// 让调度器立即生效
+	h.tryReload()
 
 	response.Success(c, req)
 }
@@ -83,6 +104,9 @@ func (h *OrgSyncHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
+	// Schedule/Enabled 可能变更，让调度器重新加载
+	h.tryReload()
+
 	response.Success(c, config)
 }
 
@@ -103,6 +127,9 @@ func (h *OrgSyncHandler) DeleteConfig(c *gin.Context) {
 		response.InternalServerError(c, "删除同步配置失败")
 		return
 	}
+
+	// 删除后让调度器移除对应 Job
+	h.tryReload()
 
 	response.Success(c, nil)
 }

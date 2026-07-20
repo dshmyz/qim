@@ -15,14 +15,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/app"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/handler"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/scheduler"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
-	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,26 +36,33 @@ func main() {
 	// 注册 WS 消息处理回调，统一使用 MessageService
 	handler.InitWSHandlers()
 
-	// 启动群聊总结定时任务
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	summaryJob := handler.NewGroupSummaryJob(app.GetAIService())
-	go runDailyJob(ctx, "22:00", func() {
+	// 启动统一调度器（基于 robfig/cron/v3，管理所有定时任务）
+	sched := scheduler.New()
+	if err := sched.AddDailyJob("group-summary", "22:00", func(ctx context.Context) {
+		summaryJob := handler.NewGroupSummaryJob(app.GetAIService())
 		summaryJob.GenerateDailySummaries()
-	})
-	logger.L().Info("定时任务已启动：群聊总结 (每天 22:00)")
-
-	// 启动组织架构同步定时调度器
+	}); err != nil {
+		logger.L().Error("注册群聊总结 cron job 失败", "error", err)
+	}
+	// 事件提醒：每 30 秒扫描需要提醒的事件
+	if err := sched.AddIntervalJob("event-reminder", 30*time.Second, func(ctx context.Context) {
+		di.GlobalContainer.EventService.ProcessReminders()
+	}); err != nil {
+		logger.L().Error("注册事件提醒 cron job 失败", "error", err)
+	}
+	// 组织架构同步：从 DB 加载 OrgSyncConfig 并注册为 cron job
 	syncEngine := syncpkg.NewEngine()
 	syncpkg.SharedEngine = syncEngine
-	syncScheduler := syncpkg.NewScheduler(syncEngine)
-	syncScheduler.Start()
-	logger.L().Info("组织架构同步调度器已启动")
+	if err := syncpkg.LoadOrgSyncJobs(sched, syncEngine, db); err != nil {
+		logger.L().Error("加载 OrgSync cron jobs 失败", "error", err)
+	}
+	// 注入到 DI 容器，让 handler 通过 di.GlobalContainer 访问
+	di.GlobalContainer.Scheduler = sched
+	di.GlobalContainer.SyncEngine = syncEngine
 
-	// 启动事件提醒定时调度器
-	go di.GlobalContainer.EventService.StartReminderScheduler()
-	logger.L().Info("事件提醒调度器已启动")
+	jobCtx, jobCancel := context.WithCancel(context.Background())
+	sched.Start(jobCtx)
+	logger.L().Info("统一调度器已启动（群聊总结 22:00 / 事件提醒 30s / OrgSync 配置驱动）")
 
 	// 使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
 	r := gin.New()
@@ -74,9 +83,8 @@ func main() {
 	go func() {
 		<-quit
 		logger.L().Info("收到退出信号，正在优雅关闭...")
-		cancel()                                                // 停止定时任务
-		syncScheduler.Stop()                                    // 停止同步调度器
-		di.GlobalContainer.EventService.StopReminderScheduler() // 停止事件提醒调度器
+		jobCancel()  // 停止统一调度器（所有 Job：群聊总结 / 事件提醒 / OrgSync）
+		sched.Stop() // 等待所有 Job 退出
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
@@ -97,37 +105,6 @@ func main() {
 	database.Close(db)
 	logger.L().Info("服务器已关闭")
 	os.Exit(0)
-}
-
-// runDailyJob runs a job daily at the specified time (format: "HH:MM")
-// 支持 context 优雅退出
-func runDailyJob(ctx context.Context, timeStr string, job func()) {
-	for {
-		now := time.Now()
-		scheduledTime, err := time.ParseInLocation("15:04", timeStr, time.Local)
-		if err != nil {
-			logger.WithModule("main").Error("定时任务时间解析失败", "error", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Hour):
-				continue
-			}
-		}
-
-		scheduledTime = scheduledTime.AddDate(now.Year(), int(now.Month())-1, now.Day()-1)
-		if scheduledTime.Before(now) {
-			scheduledTime = scheduledTime.Add(24 * time.Hour)
-		}
-
-		select {
-		case <-ctx.Done():
-			logger.WithModule("main").Info("定时任务收到退出信号，停止运行")
-			return
-		case <-time.After(scheduledTime.Sub(now)):
-			job()
-		}
-	}
 }
 
 // loggerRequestMiddleware 轻量请求日志，替代 gin.Default() 的 Logger

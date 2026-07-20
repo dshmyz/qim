@@ -149,3 +149,10 @@ cors:
 # 向量数据库配置（用于 RAG 和知识图谱）
 vector:
   path: "./vector.db"
+
+# 静态资源路径配置（routes.go 中 /uploads /miniapps 路由使用）
+# 未配置时使用默认值：uploads_dir=uploads, miniapps_dir=static/miniapps
+# 也可用环境变量覆盖：QIM_STATIC_UPLOADS_DIR / QIM_STATIC_MINIAPPS_DIR
+static:
+  uploads_dir: "uploads"
+  miniapps_dir: "static/miniapps"

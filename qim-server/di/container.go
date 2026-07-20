@@ -8,8 +8,10 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/scheduler"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/service/storage"
+	syncpkg "github.com/dshmyz/qim/qim-server/sync"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -57,6 +59,10 @@ type Container struct {
 	PromptManager        *service.PromptManager
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
+	// Scheduler 是统一调度器（robfig/cron/v3），由 main.go 在启动时注入
+	Scheduler *scheduler.Scheduler
+	// SyncEngine 是 OrgSync 引擎，由 main.go 在启动时注入
+	SyncEngine *syncpkg.Engine
 }
 
 var GlobalContainer *Container

@@ -13,16 +13,14 @@ import (
 )
 
 type EventService struct {
-	repo   repository.EventRepository
-	db     *gorm.DB
-	stopCh chan struct{}
+	repo repository.EventRepository
+	db   *gorm.DB
 }
 
 func NewEventService(db *gorm.DB) *EventService {
 	return &EventService{
-		repo:   repository.NewEventRepository(db),
-		db:     db,
-		stopCh: make(chan struct{}),
+		repo: repository.NewEventRepository(db),
+		db:   db,
 	}
 }
 
@@ -75,27 +73,9 @@ func (s *EventService) DeleteEvent(userID, eventID uint) error {
 	return s.repo.DeleteByUserIDAndID(ctx, userID, eventID)
 }
 
-func (s *EventService) StartReminderScheduler() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	s.processReminders()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.processReminders()
-		case <-s.stopCh:
-			return
-		}
-	}
-}
-
-func (s *EventService) StopReminderScheduler() {
-	close(s.stopCh)
-}
-
-func (s *EventService) processReminders() {
+// ProcessReminders 扫描所有需要提醒的事件并发送通知。
+// 由统一调度器（pkg/scheduler）每 30 秒调用一次。
+func (s *EventService) ProcessReminders() {
 	now := time.Now()
 
 	var events []model.Event

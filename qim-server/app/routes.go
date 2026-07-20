@@ -219,7 +219,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := "uploads"
+		baseDir := cfg.Static.UploadsDir
 		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
 		if !strings.HasPrefix(cleanPath, baseDir) {
 			c.AbortWithStatus(http.StatusForbidden)
@@ -264,7 +264,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := "static/miniapps"
+		baseDir := cfg.Static.MiniAppsDir
 		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
 		if !strings.HasPrefix(cleanPath, baseDir) {
 			c.AbortWithStatus(http.StatusForbidden)
@@ -667,6 +667,17 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 				// 组织架构同步管理
 				orgSyncHandler := handler.NewOrgSyncHandler()
+				// 注入 reload 回调：在 Create/Update/Delete 后立即让调度器重载 OrgSyncConfig
+				// 这样管理员修改调度配置后无需重启服务即可生效
+				if di.GlobalContainer.Scheduler != nil && di.GlobalContainer.SyncEngine != nil {
+					orgSyncHandler.SetReloadFn(func() error {
+						return syncpkg.ReloadOrgSyncJobs(
+							di.GlobalContainer.Scheduler,
+							di.GlobalContainer.SyncEngine,
+							di.GlobalContainer.DB,
+						)
+					})
+				}
 				admin.GET("/org/sync/configs", orgSyncHandler.GetConfigs)
 				admin.POST("/org/sync/configs", orgSyncHandler.CreateConfig)
 				admin.PUT("/org/sync/configs/:id", orgSyncHandler.UpdateConfig)

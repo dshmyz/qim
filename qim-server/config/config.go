@@ -26,6 +26,13 @@ type Config struct {
 	Vector   VectorConfig
 	DataInit DataInitConfig
 	Node     NodeConfig
+	Static   StaticConfig
+}
+
+// StaticConfig 静态资源路径配置，避免在 routes.go 中硬编码工作目录相对路径
+type StaticConfig struct {
+	UploadsDir  string `yaml:"uploads_dir"`  // 上传文件根目录，默认 "uploads"
+	MiniAppsDir string `yaml:"miniapps_dir"` // 内置小程序根目录，默认 "static/miniapps"
 }
 
 type LogConfig struct {
@@ -137,6 +144,7 @@ type yamlConfig struct {
 	Vector   VectorConfig   `yaml:"vector"`
 	DataInit DataInitConfig `yaml:"data_init"`
 	Node     NodeConfig     `yaml:"node"`
+	Static   StaticConfig   `yaml:"static"`
 }
 
 func Load() *Config {
@@ -296,6 +304,20 @@ func Load() *Config {
 		cfg.Log.Dir = logDir
 	}
 
+	// 静态资源路径：未配置时使用与 routes.go 既有硬编码等价的默认值
+	if cfg.Static.UploadsDir == "" {
+		cfg.Static.UploadsDir = "uploads"
+	}
+	if cfg.Static.MiniAppsDir == "" {
+		cfg.Static.MiniAppsDir = "static/miniapps"
+	}
+	if v := os.Getenv("QIM_STATIC_UPLOADS_DIR"); v != "" {
+		cfg.Static.UploadsDir = v
+	}
+	if v := os.Getenv("QIM_STATIC_MINIAPPS_DIR"); v != "" {
+		cfg.Static.MiniAppsDir = v
+	}
+
 	return &Config{
 		Server:   cfg.Server,
 		Database: cfg.DB,
@@ -309,6 +331,7 @@ func Load() *Config {
 		Vector:   cfg.Vector,
 		DataInit: cfg.DataInit,
 		Node:     cfg.Node,
+		Static:   cfg.Static,
 	}
 }
 
@@ -417,6 +440,10 @@ func getDefaultConfig() yamlConfig {
 		},
 		Vector: VectorConfig{
 			Path: "./data/vector.db",
+		},
+		Static: StaticConfig{
+			UploadsDir:  "uploads",
+			MiniAppsDir: "static/miniapps",
 		},
 	}
 }
