@@ -125,6 +125,7 @@ const currentFolderId = ref<number | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const latestListRequest = ref(0)
 const dialogMode = ref<'create' | 'move' | 'remove' | null>(null)
 const folderName = ref('')
 const targetFolderId = ref('')
@@ -136,6 +137,7 @@ const dialogTitle = computed(() => ({
 }[dialogMode.value || 'create']))
 
 const loadFiles = async (targetPage = page.value) => {
+  const requestVersion = ++latestListRequest.value
   loading.value = true
   try {
     const response = await groupFiles.list(props.groupId, {
@@ -144,6 +146,7 @@ const loadFiles = async (targetPage = page.value) => {
       page_size: pageSize.value,
       search: search.value || undefined,
     })
+    if (requestVersion !== latestListRequest.value) return
     const data = response.data.data
     files.value = data.files
     folders.value = data.folders
@@ -151,9 +154,12 @@ const loadFiles = async (targetPage = page.value) => {
     pageSize.value = data.page_size
     total.value = data.total
   } catch (error: any) {
+    if (requestVersion !== latestListRequest.value) return
     QMessage.error(error?.message || '加载群文件失败')
   } finally {
-    loading.value = false
+    if (requestVersion === latestListRequest.value) {
+      loading.value = false
+    }
   }
 }
 

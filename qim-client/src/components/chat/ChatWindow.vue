@@ -568,6 +568,7 @@ const loadDraft = (conversationId: string) => {
 
 watch(() => props.conversation?.id, (newId, oldId) => {
   if (newId && newId !== oldId) {
+    closeGroupFiles()
     loadDraft(newId)
 
     // 切换会话时重置 mention 状态

@@ -82,4 +82,32 @@ describe('GroupFilesPanel', () => {
 
     expect(shareReference).toHaveBeenCalledWith(7, 18, 24, null)
   })
+
+  it('keeps the newest group response when group requests resolve out of order', async () => {
+    let resolveGroupOne: (value: any) => void
+    let resolveGroupTwo: (value: any) => void
+    list
+      .mockImplementationOnce(() => new Promise(resolve => { resolveGroupOne = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveGroupTwo = resolve }))
+
+    const wrapper = mount(GroupFilesPanel, { props: { groupId: 1, canManage: false } })
+    await wrapper.setProps({ groupId: 2 })
+
+    resolveGroupTwo!({ data: { data: {
+      files: [{ id: 2, user_id: 2, name: 'group-two.txt', size: 2, created_at: '' }],
+      folders: [{ id: 22, name: '群组二' }], total: 1, page: 1, page_size: 20,
+    } } })
+    await flushPromises()
+
+    resolveGroupOne!({ data: { data: {
+      files: [{ id: 1, user_id: 1, name: 'group-one.txt', size: 1, created_at: '' }],
+      folders: [{ id: 11, name: '群组一' }], total: 1, page: 1, page_size: 20,
+    } } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('group-two.txt')
+    expect(wrapper.text()).toContain('群组二')
+    expect(wrapper.text()).not.toContain('group-one.txt')
+    expect(wrapper.text()).not.toContain('群组一')
+  })
 })
