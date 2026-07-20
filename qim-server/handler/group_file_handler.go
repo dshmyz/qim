@@ -191,15 +191,16 @@ func ShareGroupFileReference(c *gin.Context) {
 		return
 	}
 	var request struct {
-		FileID   uint  `json:"file_id"`
-		FolderID *uint `json:"folder_id"`
+		MessageID uint  `json:"message_id"`
+		FileID    uint  `json:"file_id"`
+		FolderID  *uint `json:"folder_id"`
 	}
-	if err := c.ShouldBindJSON(&request); err != nil || request.FileID == 0 {
+	if err := c.ShouldBindJSON(&request); err != nil || request.MessageID == 0 || request.FileID == 0 {
 		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	file, err := di.GlobalContainer.FileSpaceService.ShareReference(c.Request.Context(), actorID, space, request.FileID, request.FolderID)
+	file, err := di.GlobalContainer.FileSpaceService.ShareMessageAttachment(c.Request.Context(), actorID, space.ID, request.MessageID, request.FileID, request.FolderID)
 	if !respondGroupFileError(c, err) {
 		return
 	}

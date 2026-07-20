@@ -43,7 +43,7 @@
         </aside>
 
         <main class="file-list">
-          <div v-if="referenceFileId" class="reference-callout">
+          <div v-if="referenceMessageId && referenceFileId" class="reference-callout">
             <span>选择当前目录后保存聊天附件。</span>
             <button class="primary-action" type="button" @click="saveReference">保存到当前目录</button>
           </div>
@@ -109,8 +109,10 @@ import { fileApi } from '../../api/file'
 const props = withDefaults(defineProps<{
   groupId: string | number
   canManage: boolean
+  referenceMessageId?: number | null
   referenceFileId?: number | null
 }>(), {
+  referenceMessageId: null,
   referenceFileId: null,
 })
 
@@ -206,9 +208,9 @@ const submitDialog = async () => {
 }
 
 const saveReference = async () => {
-  if (!props.referenceFileId) return
+  if (!props.referenceMessageId || !props.referenceFileId) return
   try {
-    await groupFiles.shareReference(props.groupId, props.referenceFileId, currentFolderId.value)
+    await groupFiles.shareReference(props.groupId, props.referenceMessageId, props.referenceFileId, currentFolderId.value)
     QMessage.success('已保存到群文件')
     emit('close')
   } catch (error: any) {

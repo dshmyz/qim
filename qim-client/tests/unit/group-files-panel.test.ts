@@ -3,16 +3,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import GroupFilesPanel from '@/components/groups/GroupFilesPanel.vue'
 
-const { list, attach, createFolder, download } = vi.hoisted(() => ({
+const { list, attach, createFolder, download, shareReference } = vi.hoisted(() => ({
   list: vi.fn(() => Promise.resolve({ data: { data: { files: [], folders: [], total: 0, page: 1, page_size: 20 } } })),
   attach: vi.fn(),
   createFolder: vi.fn(),
   download: vi.fn(),
+  shareReference: vi.fn(),
 }))
 const { uploadFile } = vi.hoisted(() => ({ uploadFile: vi.fn() }))
 
 vi.mock('@/api/groupFiles', () => ({
-  groupFiles: { list, attach, createFolder, download },
+  groupFiles: { list, attach, createFolder, download, shareReference },
 }))
 
 vi.mock('@/api/file', () => ({
@@ -68,5 +69,17 @@ describe('GroupFilesPanel', () => {
     await flushPromises()
 
     expect(download).toHaveBeenCalledWith(7, 9)
+  })
+
+  it('shares a chat attachment using its message and file IDs', async () => {
+    shareReference.mockResolvedValueOnce({})
+    const wrapper = mount(GroupFilesPanel, {
+      props: { groupId: 7, canManage: true, referenceMessageId: 18, referenceFileId: 24 },
+    })
+
+    await wrapper.get('.reference-callout button').trigger('click')
+    await flushPromises()
+
+    expect(shareReference).toHaveBeenCalledWith(7, 18, 24, null)
   })
 })

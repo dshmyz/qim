@@ -73,8 +73,9 @@ export const groupFiles = {
     return api.delete<{ code: number }>(`/api/v1/groups/${groupId}/files/${fileId}`)
   },
 
-  shareReference(groupId: string | number, fileId: number, folderId: number | null = null) {
+  shareReference(groupId: string | number, messageId: number, fileId: number, folderId: number | null = null) {
     return api.post<{ code: number; data: GroupFile }>(`/api/v1/groups/${groupId}/files/references`, {
+      message_id: messageId,
       file_id: fileId,
       folder_id: folderId,
     })

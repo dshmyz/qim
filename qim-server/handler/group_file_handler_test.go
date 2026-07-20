@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -30,6 +31,7 @@ func setupGroupFileHandler(t *testing.T) (*gin.Engine, *gorm.DB, *model.Group, *
 		&model.Conversation{},
 		&model.ConversationMember{},
 		&model.Group{},
+		&model.Message{},
 		&model.File{},
 		&model.Folder{},
 	))
@@ -131,6 +133,51 @@ func TestGroupFileHandlerAllowsMemberToAttachOwnUpload(t *testing.T) {
 	require.NoError(t, db.First(upload, upload.ID).Error)
 	require.Equal(t, "group", upload.ScopeType)
 	require.Equal(t, group.ID, upload.ScopeID)
+}
+
+func TestGroupFileHandlerShareMessageAttachment(t *testing.T) {
+	router, db, group, owner, _ := setupGroupFileHandler(t)
+	upload := &model.File{
+		UserID:       owner.ID,
+		ScopeType:    "user",
+		ScopeID:      owner.ID,
+		Name:         "chat-attachment.pdf",
+		OriginalName: "chat-attachment.pdf",
+		MimeType:     "application/pdf",
+		StoragePath:  "uploads/chat-attachment.pdf",
+		Size:         42,
+		Source:       "upload",
+	}
+	require.NoError(t, db.Create(upload).Error)
+	message := &model.Message{
+		ConversationID: group.ConversationID,
+		SenderID:       owner.ID,
+		Type:           "file",
+		Content:        fmt.Sprintf(`{"id":%d}`, upload.ID),
+	}
+	require.NoError(t, db.Create(message).Error)
+	path := "/api/v1/groups/" + strconv.FormatUint(uint64(group.ConversationID), 10) + "/files/references"
+
+	response := requestAsGroupFileUser(t, router, owner.ID, http.MethodPost, path,
+		fmt.Sprintf(`{"message_id":%d,"file_id":%d}`, message.ID, upload.ID))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	otherConversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(otherConversation).Error)
+	otherMessage := &model.Message{
+		ConversationID: otherConversation.ID,
+		SenderID:       owner.ID,
+		Type:           "file",
+		Content:        fmt.Sprintf(`{"id":%d}`, upload.ID),
+	}
+	require.NoError(t, db.Create(otherMessage).Error)
+	response = requestAsGroupFileUser(t, router, owner.ID, http.MethodPost, path,
+		fmt.Sprintf(`{"message_id":%d,"file_id":%d}`, otherMessage.ID, upload.ID))
+	require.Equal(t, http.StatusForbidden, response.Code)
+
+	response = requestAsGroupFileUser(t, router, owner.ID, http.MethodPost, path,
+		fmt.Sprintf(`{"message_id":%d,"file_id":%d}`, message.ID, upload.ID+1))
+	require.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestGroupFileHandlerRejectsFormerMemberDownload(t *testing.T) {

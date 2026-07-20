@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -218,25 +219,44 @@ func (s *FileSpaceService) Delete(ctx context.Context, actorID uint, space FileS
 	return nil
 }
 
-func (s *FileSpaceService) ShareReference(ctx context.Context, actorID uint, space FileSpace, sourceFileID uint, folderID *uint) (*model.File, error) {
+// ShareMessageAttachment creates a group-scoped reference only for a file
+// attachment that belongs to the target group's conversation.
+func (s *FileSpaceService) ShareMessageAttachment(ctx context.Context, actorID, groupID, messageID, fileID uint, folderID *uint) (*model.File, error) {
+	space := FileSpace{Type: "group", ID: groupID}
 	if err := s.authorize(ctx, actorID, space, FileSpaceActionManage); err != nil {
 		return nil, err
 	}
-	if err := s.validateFolder(ctx, space, folderID); err != nil {
-		return nil, err
-	}
 
+	var group model.Group
+	if err := s.db.WithContext(ctx).Where("id = ?", groupID).First(&group).Error; err != nil {
+		return nil, ErrFileSpaceForbidden
+	}
+	var message model.Message
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND conversation_id = ? AND type = ?", messageID, group.ConversationID, "file").
+		First(&message).Error; err != nil {
+		return nil, ErrFileSpaceForbidden
+	}
+	var attachment struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(message.Content), &attachment); err != nil || attachment.ID != fileID {
+		return nil, ErrFileSpaceForbidden
+	}
 	var source model.File
-	if err := s.db.WithContext(ctx).First(&source, sourceFileID).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&source, fileID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrFileSpaceForbidden
 		}
 		return nil, err
 	}
-	if err := s.authorize(ctx, actorID, FileSpace{Type: source.ScopeType, ID: source.ScopeID}, FileSpaceActionDownload); err != nil {
+	if err := s.validateFolder(ctx, space, folderID); err != nil {
 		return nil, err
 	}
+	return s.shareReference(ctx, actorID, space, source, folderID)
+}
 
+func (s *FileSpaceService) shareReference(ctx context.Context, actorID uint, space FileSpace, source model.File, folderID *uint) (*model.File, error) {
 	shared := &model.File{
 		UserID:       actorID,
 		ScopeType:    space.Type,
@@ -259,7 +279,7 @@ func (s *FileSpaceService) ShareReference(ctx context.Context, actorID uint, spa
 }
 
 // AttachUpload moves an actor's freshly uploaded personal file into a group
-// space. Unlike ShareReference, it keeps the same file record and storage
+// space. Unlike ShareMessageAttachment, it keeps the same file record and storage
 // object so the upload has a single owner after attachment.
 func (s *FileSpaceService) AttachUpload(ctx context.Context, actorID uint, space FileSpace, fileID uint, folderID *uint) (*model.File, error) {
 	if fileID == 0 {

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -21,6 +22,7 @@ func setupFileSpaceTestDB(t *testing.T) *gorm.DB {
 		&model.Conversation{},
 		&model.ConversationMember{},
 		&model.Group{},
+		&model.Message{},
 		&model.File{},
 		&model.Folder{},
 	))
@@ -63,7 +65,19 @@ func createUserFile(t *testing.T, db *gorm.DB, userID uint, name string) *model.
 	return file
 }
 
-func TestFileSpaceShareReferenceDoesNotDeleteOriginal(t *testing.T) {
+func createFileMessage(t *testing.T, db *gorm.DB, conversationID, senderID, fileID uint) *model.Message {
+	t.Helper()
+	message := &model.Message{
+		ConversationID: conversationID,
+		SenderID:       senderID,
+		Type:           "file",
+		Content:        fmt.Sprintf(`{"id":%d}`, fileID),
+	}
+	require.NoError(t, db.Create(message).Error)
+	return message
+}
+
+func TestFileSpaceShareMessageAttachmentDoesNotDeleteOriginal(t *testing.T) {
 	db := setupFileSpaceTestDB(t)
 	ctx := context.Background()
 	admin := createFileSpaceUser(t, db, "admin")
@@ -71,7 +85,8 @@ func TestFileSpaceShareReferenceDoesNotDeleteOriginal(t *testing.T) {
 	spaces := NewFileSpaceService(db)
 
 	source := createUserFile(t, db, admin.ID, "chat.pdf")
-	shared, err := spaces.ShareReference(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, source.ID, nil)
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+	shared, err := spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
 	require.NoError(t, err)
 	require.Equal(t, "shared_reference", shared.Source)
 	require.Equal(t, strconv.FormatUint(uint64(source.ID), 10), shared.SourceID)
@@ -80,6 +95,30 @@ func TestFileSpaceShareReferenceDoesNotDeleteOriginal(t *testing.T) {
 
 	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, shared.ID))
 	require.NoError(t, db.First(&source, source.ID).Error)
+}
+
+func TestFileSpaceShareMessageAttachmentRequiresTargetGroupFileMessage(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	admin := createFileSpaceUser(t, db, "admin")
+	group, _ := createFileSpaceGroup(t, db, admin.ID)
+	spaces := NewFileSpaceService(db)
+	source := createUserFile(t, db, admin.ID, "chat.pdf")
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+
+	shared, err := spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
+	require.NoError(t, err)
+	require.Equal(t, "shared_reference", shared.Source)
+	require.Equal(t, strconv.FormatUint(uint64(source.ID), 10), shared.SourceID)
+
+	otherConversation := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(otherConversation).Error)
+	otherMessage := createFileMessage(t, db, otherConversation.ID, admin.ID, source.ID)
+	_, err = spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, otherMessage.ID, source.ID, nil)
+	require.ErrorIs(t, err, ErrFileSpaceForbidden)
+
+	_, err = spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID+1, nil)
+	require.ErrorIs(t, err, ErrFileSpaceForbidden)
 }
 
 func TestFileSpaceRejectsMemberFolderManagement(t *testing.T) {
@@ -172,7 +211,8 @@ func TestFileSpaceMemberCanListGroupFiles(t *testing.T) {
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ConversationID, UserID: member.ID, Role: "member"}).Error)
 	spaces := NewFileSpaceService(db)
 	source := createUserFile(t, db, admin.ID, "chat.pdf")
-	_, err := spaces.ShareReference(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, source.ID, nil)
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+	_, err := spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
 	require.NoError(t, err)
 
 	items, err := spaces.List(ctx, member.ID, FileSpace{Type: "group", ID: group.ID}, FileSpaceQuery{})
@@ -233,7 +273,8 @@ func TestFileSpaceDeleteKeepsStorageWhileAReferenceIsActive(t *testing.T) {
 	require.NoError(t, db.Model(source).Update("storage_path", storagePath).Error)
 	source.StoragePath = storagePath
 
-	_, err = spaces.ShareReference(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, source.ID, nil)
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+	_, err = spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
 	require.NoError(t, err)
 	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "user", ID: admin.ID}, source.ID))
 
@@ -306,7 +347,8 @@ func TestFileSpaceDeleteFinalReferenceCleansStorageAfterOriginalIsDeleted(t *tes
 	require.NoError(t, db.Model(source).Update("storage_path", storagePath).Error)
 	source.StoragePath = storagePath
 
-	shared, err := spaces.ShareReference(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, source.ID, nil)
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+	shared, err := spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
 	require.NoError(t, err)
 	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "user", ID: admin.ID}, source.ID))
 	require.NoError(t, spaces.Delete(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, shared.ID))

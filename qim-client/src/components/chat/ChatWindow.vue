@@ -229,6 +229,7 @@
       v-if="showGroupFiles"
       :group-id="conversation.id"
       :can-manage="canManageGroupFiles"
+      :reference-message-id="referenceMessageId"
       :reference-file-id="referenceFileId"
       @close="closeGroupFiles"
     />
@@ -338,6 +339,7 @@ const showTranslatePanel = ref(false)
 const translateContent = ref('')
 const translateMessageType = ref<'image' | 'text' | undefined>(undefined)
 const showGroupFiles = ref(false)
+const referenceMessageId = ref<number | null>(null)
 const referenceFileId = ref<number | null>(null)
 
 // 处理分身启用状态更新（只控制当前会话，不影响全局配置）
@@ -1558,26 +1560,29 @@ const canManageGroupFiles = computed(() =>
   currentUserRole.value === 'owner' || currentUserRole.value === 'admin'
 )
 
-const openGroupFiles = (fileId: number | null = null) => {
+const openGroupFiles = (messageId: number | null = null, fileId: number | null = null) => {
+  referenceMessageId.value = messageId
   referenceFileId.value = fileId
   showGroupFiles.value = true
 }
 
 const closeGroupFiles = () => {
   showGroupFiles.value = false
+  referenceMessageId.value = null
   referenceFileId.value = null
 }
 
 const saveMessageToGroupFiles = () => {
   if (!selectedMessage.value || !canManageGroupFiles.value) return
   try {
+    const messageId = Number(selectedMessage.value.id)
     const payload = JSON.parse(selectedMessage.value.content)
     const fileId = Number(payload?.id)
-    if (!Number.isInteger(fileId) || fileId <= 0) {
+    if (!Number.isInteger(messageId) || messageId <= 0 || !Number.isInteger(fileId) || fileId <= 0) {
       $message.error('无法识别聊天附件')
       return
     }
-    openGroupFiles(fileId)
+    openGroupFiles(messageId, fileId)
   } catch {
     $message.error('无法识别聊天附件')
   }
