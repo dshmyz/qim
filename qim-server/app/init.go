@@ -293,7 +293,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	SetDB(db)
 
 	// 自动迁移表
-	MigrateDB(db)
+	if err := MigrateDB(db); err != nil {
+		log.Fatalf("数据库迁移失败: %v", err)
+	}
 
 	// ========== 预置数据 ==========
 	if cfg.DataInit.PresetData {
@@ -344,8 +346,10 @@ func tableExists(db *gorm.DB, tableName string) bool {
 }
 
 // MigrateDB 自动迁移数据库表（分步迁移策略）
-func MigrateDB(db *gorm.DB) {
-	migrateCompatibilityColumns(db)
+func MigrateDB(db *gorm.DB) error {
+	if err := migrateCompatibilityColumns(db); err != nil {
+		return fmt.Errorf("迁移兼容字段失败: %w", err)
+	}
 
 	// ========== 第一阶段：基础表（无外键依赖） ==========
 	baseModels := []interface{}{
@@ -410,10 +414,14 @@ func MigrateDB(db *gorm.DB) {
 	}
 
 	// 分阶段迁移
-	migrateModels(db, baseModels, "基础表")
-	migrateModels(db, relatedModels, "关联表")
+	if err := migrateModels(db, baseModels, "基础表"); err != nil {
+		return err
+	}
+	if err := migrateModels(db, relatedModels, "关联表"); err != nil {
+		return err
+	}
 	if err := MigrateFileSpaces(db); err != nil {
-		logger.WithModule("Migrate").Error("回填文件空间范围失败", "error", err)
+		return fmt.Errorf("回填文件空间范围失败: %w", err)
 	}
 
 	addIndexes(db)
@@ -421,6 +429,7 @@ func MigrateDB(db *gorm.DB) {
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+	return nil
 }
 
 // MigrateFileSpaces assigns the legacy personal scope to file and folder
@@ -448,24 +457,33 @@ func MigrateFileSpaces(db *gorm.DB) error {
 }
 
 // migrateCompatibilityColumns 修补历史库中 AutoMigrate 无法可靠补齐的关键字段。
-func migrateCompatibilityColumns(db *gorm.DB) {
-	if tableExists(db, "users") && !db.Migrator().HasColumn(&model.User{}, "account_status") {
-		if err := db.Migrator().AddColumn(&model.User{}, "AccountStatus"); err != nil {
-			logger.WithModule("Migrate").Error("添加 users.account_status 字段失败", "error", err)
-		} else {
-			logger.WithModule("Migrate").Info("添加 users.account_status 字段")
+func migrateCompatibilityColumns(db *gorm.DB) error {
+	if tableExists(db, "users") {
+		usersHasAccountStatus, err := migrationColumnExists(db, &model.User{}, "account_status")
+		if err != nil {
+			return fmt.Errorf("检查 users.account_status 字段: %w", err)
+		}
+		if !usersHasAccountStatus {
+			if err := db.Migrator().AddColumn(&model.User{}, "AccountStatus"); err != nil {
+				logger.WithModule("Migrate").Error("添加 users.account_status 字段失败", "error", err)
+				return fmt.Errorf("添加 users.account_status 字段: %w", err)
+			} else {
+				logger.WithModule("Migrate").Info("添加 users.account_status 字段")
+			}
 		}
 	}
 
-	migrateFileSpaceColumns(db, "files", &model.File{})
-	migrateFileSpaceColumns(db, "folders", &model.Folder{})
+	if err := migrateFileSpaceColumns(db, "files", &model.File{}); err != nil {
+		return err
+	}
+	return migrateFileSpaceColumns(db, "folders", &model.Folder{})
 }
 
 // migrateFileSpaceColumns adds the scope fields explicitly because legacy SQLite
 // tables may be skipped after AutoMigrate encounters an existing-table error.
-func migrateFileSpaceColumns(db *gorm.DB, table string, entity interface{}) {
+func migrateFileSpaceColumns(db *gorm.DB, table string, entity interface{}) error {
 	if !tableExists(db, table) {
-		return
+		return nil
 	}
 
 	for _, column := range []struct {
@@ -475,24 +493,45 @@ func migrateFileSpaceColumns(db *gorm.DB, table string, entity interface{}) {
 		{field: "ScopeType", name: "scope_type"},
 		{field: "ScopeID", name: "scope_id"},
 	} {
-		if db.Migrator().HasColumn(entity, column.name) {
+		hasColumn, err := migrationColumnExists(db, entity, column.name)
+		if err != nil {
+			return fmt.Errorf("检查 %s.%s 字段: %w", table, column.name, err)
+		}
+		if hasColumn {
 			continue
 		}
 		if err := db.Migrator().AddColumn(entity, column.field); err != nil {
 			logger.WithModule("Migrate").Error("添加文件空间字段失败", "table", table, "field", column.name, "error", err)
-			continue
+			return fmt.Errorf("添加 %s.%s 字段: %w", table, column.name, err)
 		}
 		logger.WithModule("Migrate").Info("添加文件空间字段", "table", table, "field", column.name)
 	}
+	return nil
+}
+
+// migrationColumnExists uses ColumnTypes because the SQLite HasColumn
+// implementation can miss backtick-quoted columns in existing schemas.
+func migrationColumnExists(db *gorm.DB, entity interface{}, column string) (bool, error) {
+	columnTypes, err := db.Migrator().ColumnTypes(entity)
+	if err != nil {
+		return false, err
+	}
+	for _, columnType := range columnTypes {
+		if strings.EqualFold(columnType.Name(), column) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // migrateModels 迁移一组模型
-func migrateModels(db *gorm.DB, models []interface{}, stage string) {
+func migrateModels(db *gorm.DB, models []interface{}, stage string) error {
 	logger.WithModule("Migrate").Info(fmt.Sprintf("开始迁移 %s", stage))
 
 	migrated := 0
 	skipped := 0
 	failed := 0
+	var migrationErr error
 
 	for _, m := range models {
 		modelName := fmt.Sprintf("%T", m)
@@ -502,10 +541,23 @@ func migrateModels(db *gorm.DB, models []interface{}, stage string) {
 		if err != nil {
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "already exists") {
-				if !db.Migrator().HasTable(m) {
-					if createErr := db.Migrator().CreateTable(m); createErr != nil {
+				migrationDB := db.Session(&gorm.Session{})
+				stmt := &gorm.Statement{DB: migrationDB}
+				if parseErr := stmt.Parse(m); parseErr != nil {
+					failed++
+					logger.WithModule("Migrate").Error("解析迁移表失败", "model", modelName, "error", parseErr)
+					if migrationErr == nil {
+						migrationErr = fmt.Errorf("解析 %s: %w", modelName, parseErr)
+					}
+					continue
+				}
+				if !tableExists(migrationDB, stmt.Table) {
+					if createErr := migrationDB.Migrator().CreateTable(m); createErr != nil {
 						failed++
 						logger.WithModule("Migrate").Error("迁移表失败", "model", modelName, "error", createErr)
+						if migrationErr == nil {
+							migrationErr = fmt.Errorf("迁移 %s: %w", modelName, createErr)
+						}
 					} else {
 						migrated++
 						logger.WithModule("Migrate").Info("表迁移成功", "model", modelName)
@@ -517,6 +569,9 @@ func migrateModels(db *gorm.DB, models []interface{}, stage string) {
 			} else {
 				failed++
 				logger.WithModule("Migrate").Error("迁移表失败", "model", modelName, "error", err)
+				if migrationErr == nil {
+					migrationErr = fmt.Errorf("迁移 %s: %w", modelName, err)
+				}
 			}
 		} else {
 			migrated++
@@ -533,6 +588,7 @@ func migrateModels(db *gorm.DB, models []interface{}, stage string) {
 	if failed > 0 {
 		logger.WithModule("Migrate").Error(fmt.Sprintf("%s部分表迁移失败，请检查错误日志", stage))
 	}
+	return migrationErr
 }
 
 // isMigrationCompleted 检查指定的迁移版本是否已完成

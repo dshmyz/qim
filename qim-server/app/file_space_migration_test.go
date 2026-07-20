@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -82,8 +83,7 @@ func TestMigrateDBBackfillsLegacyFileSpaces(t *testing.T) {
 	require.NoError(t, db.Create(&folder).Error)
 	require.NoError(t, db.Model(&model.File{}).Where("id = ?", file.ID).Update("scope_type", "").Error)
 	require.NoError(t, db.Model(&model.Folder{}).Where("id = ?", folder.ID).Update("scope_type", "").Error)
-
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	require.NoError(t, db.First(&file, file.ID).Error)
 	require.NoError(t, db.First(&folder, folder.ID).Error)
@@ -91,6 +91,18 @@ func TestMigrateDBBackfillsLegacyFileSpaces(t *testing.T) {
 	require.Equal(t, uint(8), file.ScopeID)
 	require.Equal(t, "user", folder.ScopeType)
 	require.Equal(t, uint(8), folder.ScopeID)
+}
+
+func TestMigrateDBReturnsFileSpaceMigrationError(t *testing.T) {
+	db := newTestDB(t)
+	expectedErr := errors.New("files scope backfill failed")
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:fail_files_scope_backfill", func(tx *gorm.DB) {
+		if tx.Statement.Table == "files" {
+			tx.AddError(expectedErr)
+		}
+	}))
+
+	require.ErrorIs(t, MigrateDB(db), expectedErr)
 }
 
 func TestMigrateDBAddsFileSpaceColumnsToLegacyTables(t *testing.T) {
@@ -106,7 +118,7 @@ func TestMigrateDBAddsFileSpaceColumnsToLegacyTables(t *testing.T) {
 		)
 	`).Error)
 
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	require.True(t, hasSQLiteColumn(t, db, "files", "scope_type"))
 	require.True(t, hasSQLiteColumn(t, db, "files", "scope_id"))

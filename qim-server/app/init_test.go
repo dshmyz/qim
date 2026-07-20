@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -38,7 +39,7 @@ func hasSQLiteColumn(t *testing.T, db *gorm.DB, table, column string) bool {
 
 func TestMigrateDB_CreatesCoreTables(t *testing.T) {
 	db := newTestDB(t)
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	core := []string{
 		"users", "conversations", "messages", "user_roles",
@@ -53,7 +54,7 @@ func TestMigrateDB_CreatesCoreTables(t *testing.T) {
 
 func TestMigrateDB_CreatesMissingModels(t *testing.T) {
 	db := newTestDB(t)
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	if !hasTable(t, db, "avatar_tool_bindings") {
 		t.Error("AvatarToolBinding 表缺失")
@@ -65,7 +66,7 @@ func TestMigrateDB_CreatesMissingModels(t *testing.T) {
 
 func TestMigrateDB_CreatesMessagesOriginColumn(t *testing.T) {
 	db := newTestDB(t)
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	if !hasSQLiteColumn(t, db, "messages", "origin") {
 		t.Fatal("MigrateDB 后 messages.origin 字段缺失")
@@ -88,7 +89,7 @@ func TestMigrateDB_AddsAccountStatusToExistingUsers(t *testing.T) {
 		t.Fatalf("创建旧版 users 表失败: %v", err)
 	}
 
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 
 	if !hasSQLiteColumn(t, db, "users", "account_status") {
 		t.Fatal("MigrateDB 后 users.account_status 字段缺失")
@@ -97,7 +98,7 @@ func TestMigrateDB_AddsAccountStatusToExistingUsers(t *testing.T) {
 
 func TestInitAdminUser_CreatesAdminWithRole(t *testing.T) {
 	db := newTestDB(t)
-	MigrateDB(db)
+	require.NoError(t, MigrateDB(db))
 	initAdminUser()
 
 	var user model.User
