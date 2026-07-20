@@ -43,7 +43,7 @@ func setupFileServiceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("连接数据库失败: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.File{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.File{}, &model.Folder{}); err != nil {
 		t.Fatalf("AutoMigrate 失败: %v", err)
 	}
 	return db
@@ -149,4 +149,62 @@ func TestFileServiceDeleteFileDeletesUnreferencedStorage(t *testing.T) {
 	assert.Equal(t, 1, accessor.DeleteCount())
 	_, err = accessor.GetByPath(ctx, storagePath)
 	assert.Error(t, err)
+}
+
+func TestFileServiceDeleteFolderFilesCleansOnlyUnreferencedStorage(t *testing.T) {
+	db := setupFileServiceTestDB(t)
+	user := &model.User{Username: "folder-delete", PasswordHash: "h"}
+	assert.NoError(t, db.Create(user).Error)
+	folder := &model.Folder{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "folder"}
+	assert.NoError(t, db.Create(folder).Error)
+
+	base := newTestAccessor(t)
+	accessor := &deleteCountingAccessor{StorageAccessor: base}
+	svc := NewFileService(db)
+	svc.SetStorageAccessor(accessor)
+	ctx := context.Background()
+
+	orphanPath, err := base.Put(ctx, "uploads/folder-orphan.txt", strings.NewReader("orphan"), 6, "text/plain")
+	assert.NoError(t, err)
+	sharedPath, err := base.Put(ctx, "uploads/folder-shared.txt", strings.NewReader("shared"), 6, "text/plain")
+	assert.NoError(t, err)
+	orphan := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, FolderID: &folder.ID, Name: "orphan.txt", StoragePath: orphanPath}
+	shared := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, FolderID: &folder.ID, Name: "shared.txt", StoragePath: sharedPath}
+	activeReference := &model.File{UserID: user.ID, ScopeType: "group", ScopeID: 99, Name: "shared-ref.txt", StoragePath: sharedPath, Source: "shared_reference"}
+	assert.NoError(t, db.Create(orphan).Error)
+	assert.NoError(t, db.Create(shared).Error)
+	assert.NoError(t, db.Create(activeReference).Error)
+
+	assert.NoError(t, svc.DeleteFolderFiles(user.ID, folder.ID))
+	_, err = accessor.GetByPath(ctx, orphanPath)
+	assert.Error(t, err)
+	reader, err := accessor.GetByPath(ctx, sharedPath)
+	assert.NoError(t, err)
+	assert.NoError(t, reader.Close())
+	assert.Equal(t, 1, accessor.DeleteCount())
+}
+
+func TestFileServiceDeleteFolderRecursiveCleansChildStorage(t *testing.T) {
+	db := setupFileServiceTestDB(t)
+	user := &model.User{Username: "folder-recursive", PasswordHash: "h"}
+	assert.NoError(t, db.Create(user).Error)
+	parent := &model.Folder{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "parent"}
+	assert.NoError(t, db.Create(parent).Error)
+	child := &model.Folder{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "child", ParentID: &parent.ID}
+	assert.NoError(t, db.Create(child).Error)
+
+	base := newTestAccessor(t)
+	accessor := &deleteCountingAccessor{StorageAccessor: base}
+	svc := NewFileService(db)
+	svc.SetStorageAccessor(accessor)
+	ctx := context.Background()
+	storagePath, err := base.Put(ctx, "uploads/recursive.txt", strings.NewReader("child"), 5, "text/plain")
+	assert.NoError(t, err)
+	file := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, FolderID: &child.ID, Name: "child.txt", StoragePath: storagePath}
+	assert.NoError(t, db.Create(file).Error)
+
+	assert.NoError(t, svc.DeleteFolderRecursive(user.ID, parent.ID))
+	_, err = accessor.GetByPath(ctx, storagePath)
+	assert.Error(t, err)
+	assert.Equal(t, 1, accessor.DeleteCount())
 }

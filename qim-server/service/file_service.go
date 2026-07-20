@@ -400,12 +400,20 @@ func (s *FileService) DeleteFolderRecursive(userID, folderID uint) error {
 	ctx := context.Background()
 
 	var children []model.Folder
-	s.legacyUserFolders(ctx, userID).Where("parent_id = ?", folderID).Find(&children)
+	if err := s.legacyUserFolders(ctx, userID).Where("parent_id = ?", folderID).Find(&children).Error; err != nil {
+		return err
+	}
 
 	for _, child := range children {
-		s.legacyUserFiles(ctx, userID).Where("folder_id = ?", child.ID).Delete(&model.File{})
-		s.DeleteFolderRecursive(userID, child.ID)
-		s.db.WithContext(ctx).Delete(&child)
+		if err := s.DeleteFolderFiles(userID, child.ID); err != nil {
+			return err
+		}
+		if err := s.DeleteFolderRecursive(userID, child.ID); err != nil {
+			return err
+		}
+		if err := s.legacyUserFolders(ctx, userID).Where("id = ?", child.ID).Delete(&model.Folder{}).Error; err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -413,7 +421,16 @@ func (s *FileService) DeleteFolderRecursive(userID, folderID uint) error {
 
 func (s *FileService) DeleteFolderFiles(userID, folderID uint) error {
 	ctx := context.Background()
-	return s.legacyUserFiles(ctx, userID).Where("folder_id = ?", folderID).Delete(&model.File{}).Error
+	var files []model.File
+	if err := s.legacyUserFiles(ctx, userID).Where("folder_id = ?", folderID).Find(&files).Error; err != nil {
+		return err
+	}
+	for _, file := range files {
+		if _, err := s.deleteLegacyFile(ctx, userID, file.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *FileService) GetFolderFiles(userID, folderID uint, page, pageSize int) ([]model.File, int64, error) {

@@ -974,30 +974,14 @@ func DeleteFile(c *gin.Context) {
 	}
 
 	svc := di.GlobalContainer.FileService
-	file, err := svc.GetFile(userID.(uint), uint(fileID))
+	_, err = svc.GetFile(userID.(uint), uint(fileID))
 	if err != nil {
 		response.NotFound(c, "文件不存在")
 		return
 	}
 
-	mgr := di.GlobalContainer.StorageManager
-	st, key, ok := mgr.ByPath(file.StoragePath)
-	if !ok || st == nil {
-		response.InternalServerError(c, "存储类型不支持")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := st.Delete(ctx, key); err != nil {
-		logger.WithModule("FileHandler").Error("删除物理文件失败", "error", err)
-		response.InternalServerError(c, "删除文件失败")
-		return
-	}
-
 	if err := svc.DeleteFile(userID.(uint), uint(fileID)); err != nil {
-		logger.WithModule("FileHandler").Error("删除文件记录失败，但物理文件已删除", "file_id", fileID, "error", err)
+		logger.WithModule("FileHandler").Error("删除文件失败", "file_id", fileID, "error", err)
 		response.InternalServerError(c, "删除文件记录失败")
 		return
 	}

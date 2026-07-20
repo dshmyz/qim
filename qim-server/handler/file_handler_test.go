@@ -71,6 +71,7 @@ func setupFileHandlerDI(t *testing.T, db *gorm.DB) {
 	di.GlobalContainer.DefaultStorage = localStorage
 	di.GlobalContainer.StorageManager = storage.NewManager(localStorage)
 	di.GlobalContainer.FileService = service.NewFileService(db)
+	di.GlobalContainer.FileService.SetStorageAccessor(di.NewStorageAccessor(di.GlobalContainer.StorageManager))
 	di.GlobalContainer.SystemConfigService = service.NewSystemConfigService(db)
 }
 
@@ -103,6 +104,37 @@ func Test_PublicDownloadFile_BlocksPrivateFile(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, w.Code,
 		"PublicDownloadFile should block download of private (source=upload) files")
+}
+
+func TestDeleteFileKeepsStorageForActiveGroupReference(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupFileHandlerTestDB(t)
+	setupFileHandlerDI(t, db)
+
+	ctx := context.Background()
+	storagePath := storage.BuildPath("local", "uploads/original.txt")
+	st := di.GlobalContainer.DefaultStorage
+	assert.NoError(t, st.Put(ctx, "uploads/original.txt", bytes.NewReader([]byte("original")), 8, "text/plain"))
+	original := &model.File{UserID: 1, ScopeType: "user", ScopeID: 1, Name: "original.txt", StoragePath: storagePath}
+	reference := &model.File{UserID: 1, ScopeType: "group", ScopeID: 99, Name: "shared.txt", StoragePath: storagePath, Source: "shared_reference"}
+	assert.NoError(t, db.Create(original).Error)
+	assert.NoError(t, db.Create(reference).Error)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("user_id", uint(1))
+		c.Next()
+	})
+	r.DELETE("/files/:id", DeleteFile)
+	req := httptest.NewRequest(http.MethodDelete, "/files/"+strconv.FormatUint(uint64(original.ID), 10), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	reader, err := st.Get(ctx, "uploads/original.txt")
+	assert.NoError(t, err)
+	assert.NoError(t, reader.Close())
+	assert.NoError(t, db.First(reference, reference.ID).Error)
 }
 
 func Test_PublicDownloadFile_AllowsPublicFile(t *testing.T) {
