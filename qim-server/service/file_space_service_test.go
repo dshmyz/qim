@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
@@ -16,6 +19,22 @@ import (
 func setupFileSpaceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Conversation{},
+		&model.ConversationMember{},
+		&model.Group{},
+		&model.Message{},
+		&model.File{},
+		&model.Folder{},
+	))
+	return db
+}
+
+func setupFileSpaceConcurrentTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "file-space.db")), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
@@ -355,4 +374,77 @@ func TestFileSpaceDeleteFinalReferenceCleansStorageAfterOriginalIsDeleted(t *tes
 
 	_, err = accessor.GetByPath(ctx, storagePath)
 	require.Error(t, err)
+}
+
+func TestFileSpaceConcurrentShareReferencePreventsStorageDeletion(t *testing.T) {
+	db := setupFileSpaceConcurrentTestDB(t)
+	ctx := context.Background()
+	admin := createFileSpaceUser(t, db, "concurrent-admin")
+	group, _ := createFileSpaceGroup(t, db, admin.ID)
+	spaces := NewFileSpaceService(db)
+	base := newTestAccessor(t)
+	accessor := &deleteCountingAccessor{StorageAccessor: base}
+	spaces.SetStorageAccessor(accessor)
+
+	source := createUserFile(t, db, admin.ID, "concurrent.pdf")
+	storagePath, err := base.Put(ctx, "uploads/concurrent.pdf", bytes.NewReader([]byte("pdf")), 3, "application/pdf")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(source).Update("storage_path", storagePath).Error)
+	message := createFileMessage(t, db, group.ConversationID, admin.ID, source.ID)
+
+	createEntered := make(chan struct{})
+	continueCreate := make(chan struct{})
+	var releaseCreate sync.Once
+	release := func() { releaseCreate.Do(func() { close(continueCreate) }) }
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:block-shared-reference", func(tx *gorm.DB) {
+		file, ok := tx.Statement.Dest.(*model.File)
+		if !ok || file.Source != "shared_reference" {
+			return
+		}
+		close(createEntered)
+		<-continueCreate
+	}))
+	defer release()
+
+	type shareResult struct {
+		file *model.File
+		err  error
+	}
+	sharedResult := make(chan shareResult, 1)
+	go func() {
+		shared, shareErr := spaces.ShareMessageAttachment(ctx, admin.ID, group.ID, message.ID, source.ID, nil)
+		sharedResult <- shareResult{file: shared, err: shareErr}
+	}()
+	<-createEntered
+
+	deleteResult := make(chan error, 1)
+	go func() {
+		deleteResult <- NewFileService(db).DeleteFile(admin.ID, source.ID)
+	}()
+
+	var deleteErr error
+	deleteCompletedEarly := false
+	select {
+	case deleteErr = <-deleteResult:
+		deleteCompletedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	release()
+	shared := <-sharedResult
+	require.NoError(t, shared.err)
+	require.NotNil(t, shared.file)
+	if !deleteCompletedEarly {
+		deleteErr = <-deleteResult
+	}
+	require.False(t, deleteCompletedEarly, "delete completed while a shared reference was still being created")
+	require.NoError(t, deleteErr)
+
+	download, err := spaces.OpenDownload(ctx, admin.ID, FileSpace{Type: "group", ID: group.ID}, shared.file.ID)
+	require.NoError(t, err)
+	require.Equal(t, storagePath, download.StoragePath)
+	reader, err := accessor.GetByPath(ctx, storagePath)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Zero(t, accessor.DeleteCount())
 }

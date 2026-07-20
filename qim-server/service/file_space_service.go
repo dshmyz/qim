@@ -210,13 +210,35 @@ func (s *FileSpaceService) Delete(ctx context.Context, actorID uint, space FileS
 		}
 		return err
 	}
-	if err := s.db.WithContext(ctx).Delete(&file).Error; err != nil {
-		return err
-	}
-	if err := deleteStoragePathIfUnreferenced(ctx, s.db, s.store, file); err != nil {
-		logger.WithModule("FileSpaceService").Warn("删除物理文件失败", "file_id", file.ID, "error", err)
-	}
-	return nil
+	return withStoragePathLock(file.StoragePath, func() error {
+		var deleted model.File
+		var deleteStorage bool
+		if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ? AND scope_type = ? AND scope_id = ?", fileID, space.Type, space.ID).First(&deleted).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrFileSpaceForbidden
+				}
+				return err
+			}
+			if err := tx.Delete(&deleted).Error; err != nil {
+				return err
+			}
+			var remaining int64
+			if err := tx.Model(&model.File{}).Where("storage_path = ?", deleted.StoragePath).Count(&remaining).Error; err != nil {
+				return err
+			}
+			deleteStorage = remaining == 0
+			return nil
+		}); err != nil {
+			return err
+		}
+		if deleteStorage {
+			if err := deleteStoragePathIfUnreferenced(ctx, s.db, s.store, deleted); err != nil {
+				logger.WithModule("FileSpaceService").Warn("删除物理文件失败", "file_id", deleted.ID, "error", err)
+			}
+		}
+		return nil
+	})
 }
 
 // ShareMessageAttachment creates a group-scoped reference only for a file
@@ -257,22 +279,35 @@ func (s *FileSpaceService) ShareMessageAttachment(ctx context.Context, actorID, 
 }
 
 func (s *FileSpaceService) shareReference(ctx context.Context, actorID uint, space FileSpace, source model.File, folderID *uint) (*model.File, error) {
-	shared := &model.File{
-		UserID:       actorID,
-		ScopeType:    space.Type,
-		ScopeID:      space.ID,
-		Name:         source.Name,
-		OriginalName: source.OriginalName,
-		Size:         source.Size,
-		MimeType:     source.MimeType,
-		StoragePath:  source.StoragePath,
-		Checksum:     source.Checksum,
-		FolderID:     folderID,
-		Source:       "shared_reference",
-		SourceID:     strconv.FormatUint(uint64(source.ID), 10),
-		Tags:         source.Tags,
-	}
-	if err := s.db.WithContext(ctx).Create(shared).Error; err != nil {
+	var shared *model.File
+	err := withStoragePathLock(source.StoragePath, func() error {
+		return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var activeSource model.File
+			if err := tx.First(&activeSource, source.ID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrFileSpaceForbidden
+				}
+				return err
+			}
+			shared = &model.File{
+				UserID:       actorID,
+				ScopeType:    space.Type,
+				ScopeID:      space.ID,
+				Name:         activeSource.Name,
+				OriginalName: activeSource.OriginalName,
+				Size:         activeSource.Size,
+				MimeType:     activeSource.MimeType,
+				StoragePath:  activeSource.StoragePath,
+				Checksum:     activeSource.Checksum,
+				FolderID:     folderID,
+				Source:       "shared_reference",
+				SourceID:     strconv.FormatUint(uint64(activeSource.ID), 10),
+				Tags:         activeSource.Tags,
+			}
+			return tx.Create(shared).Error
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return shared, nil

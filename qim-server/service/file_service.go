@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -44,7 +45,9 @@ func (s *FileService) CreateFile(file *model.File) error {
 	ctx := context.Background()
 	file.ScopeType = "user"
 	file.ScopeID = file.UserID
-	return s.repo.Create(ctx, file)
+	return withStoragePathLock(file.StoragePath, func() error {
+		return s.repo.Create(ctx, file)
+	})
 }
 
 func (s *FileService) GetFile(userID, fileID uint) (*model.File, error) {
@@ -168,7 +171,6 @@ func (s *FileService) ToggleStar(userID, fileID uint) (*model.File, error) {
 
 func (s *FileService) BatchDelete(userID uint, fileIDs []uint) (int64, error) {
 	ctx := context.Background()
-	// 先查出待删文件的 StoragePath，用于清理物理文件
 	var files []model.File
 	if err := s.legacyUserFiles(ctx, userID).Where("id IN ?", fileIDs).Find(&files).Error; err != nil {
 		return 0, err
@@ -176,23 +178,25 @@ func (s *FileService) BatchDelete(userID uint, fileIDs []uint) (int64, error) {
 	if len(files) == 0 {
 		return 0, nil
 	}
-	// 删 DB 记录
-	result := s.legacyUserFiles(ctx, userID).Where("id IN ?", fileIDs).Delete(&model.File{})
-	if result.Error != nil {
-		return result.RowsAffected, result.Error
-	}
-	// Shared references reuse a storage path. A physical object is removed only when
-	// this batch leaves no active record that still points at it.
+	var deleted int64
 	for _, f := range files {
-		if err := deleteStoragePathIfUnreferenced(ctx, s.db, s.store, f); err != nil {
-			logger.WithModule("FileService").Warn("批量删除物理文件失败", "file_id", f.ID, "error", err)
+		removed, err := s.deleteLegacyFile(ctx, userID, f.ID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return deleted, err
+		}
+		if removed {
+			deleted++
 		}
 	}
-	return result.RowsAffected, nil
+	return deleted, nil
 }
 
-// deleteStoragePathIfUnreferenced performs storage cleanup only after the
-// caller has soft-deleted the current record and no active record uses its path.
+// deleteStoragePathIfUnreferenced performs storage cleanup only while the
+// caller holds the path lock and has already established that its deletion left
+// no active record using the path.
 func deleteStoragePathIfUnreferenced(ctx context.Context, db *gorm.DB, store StorageAccessor, file model.File) error {
 	if store == nil || file.StoragePath == "" {
 		return nil
@@ -206,6 +210,44 @@ func deleteStoragePathIfUnreferenced(ctx context.Context, db *gorm.DB, store Sto
 		return nil
 	}
 	return store.DeleteByPath(ctx, file.StoragePath)
+}
+
+func (s *FileService) deleteLegacyFile(ctx context.Context, userID, fileID uint) (bool, error) {
+	var candidate model.File
+	if err := s.legacyUserFiles(ctx, userID).Where("id = ?", fileID).First(&candidate).Error; err != nil {
+		return false, err
+	}
+
+	removed := false
+	err := withStoragePathLock(candidate.StoragePath, func() error {
+		var deleted model.File
+		var deleteStorage bool
+		if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ? AND user_id = ? AND scope_type = ? AND scope_id = ?", fileID, userID, "user", userID).First(&deleted).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(&deleted).Error; err != nil {
+				return err
+			}
+			removed = true
+
+			var remaining int64
+			if err := tx.Model(&model.File{}).Where("storage_path = ?", deleted.StoragePath).Count(&remaining).Error; err != nil {
+				return err
+			}
+			deleteStorage = remaining == 0
+			return nil
+		}); err != nil {
+			return err
+		}
+		if deleteStorage {
+			if err := deleteStoragePathIfUnreferenced(ctx, s.db, s.store, deleted); err != nil {
+				logger.WithModule("FileService").Warn("删除物理文件失败", "file_id", deleted.ID, "error", err)
+			}
+		}
+		return nil
+	})
+	return removed, err
 }
 
 func (s *FileService) BatchMove(userID uint, fileIDs []uint, targetFolderID uint) (int64, error) {
@@ -399,7 +441,8 @@ func (s *FileService) CreateFolder(folder *model.Folder) error {
 
 func (s *FileService) DeleteFile(userID, fileID uint) error {
 	ctx := context.Background()
-	return s.legacyUserFiles(ctx, userID).Where("id = ?", fileID).Delete(&model.File{}).Error
+	_, err := s.deleteLegacyFile(ctx, userID, fileID)
+	return err
 }
 
 func (s *FileService) IsDescendant(userID, targetID, ancestorID uint) bool {

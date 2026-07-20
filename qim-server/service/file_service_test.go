@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -11,6 +13,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
+
+type deleteCountingAccessor struct {
+	StorageAccessor
+	mu          sync.Mutex
+	deleteCalls []string
+}
+
+func (a *deleteCountingAccessor) DeleteByPath(ctx context.Context, storagePath string) error {
+	a.mu.Lock()
+	a.deleteCalls = append(a.deleteCalls, storagePath)
+	a.mu.Unlock()
+	return a.StorageAccessor.DeleteByPath(ctx, storagePath)
+}
+
+func (a *deleteCountingAccessor) DeleteCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.deleteCalls)
+}
+
+func (a *deleteCountingAccessor) GetByPath(ctx context.Context, storagePath string) (io.ReadCloser, error) {
+	return a.StorageAccessor.GetByPath(ctx, storagePath)
+}
 
 func setupFileServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -102,4 +127,26 @@ func TestFileService_BatchDelete_OnlyAffectsOwnedFiles(t *testing.T) {
 	var count int64
 	db.Model(&model.File{}).Where("id = ?", otherFile.ID).Count(&count)
 	assert.Equal(t, int64(1), count, "他人 DB 记录应保留")
+}
+
+func TestFileServiceDeleteFileDeletesUnreferencedStorage(t *testing.T) {
+	db := setupFileServiceTestDB(t)
+	user := &model.User{Username: "delete-one", PasswordHash: "h"}
+	assert.NoError(t, db.Create(user).Error)
+
+	base := newTestAccessor(t)
+	accessor := &deleteCountingAccessor{StorageAccessor: base}
+	svc := NewFileService(db)
+	svc.SetStorageAccessor(accessor)
+
+	ctx := context.Background()
+	storagePath, err := base.Put(ctx, "uploads/delete-one.txt", strings.NewReader("one"), 3, "text/plain")
+	assert.NoError(t, err)
+	file := &model.File{UserID: user.ID, ScopeType: "user", ScopeID: user.ID, Name: "delete-one.txt", OriginalName: "delete-one.txt", StoragePath: storagePath, Size: 3, MimeType: "text/plain"}
+	assert.NoError(t, db.Create(file).Error)
+
+	assert.NoError(t, svc.DeleteFile(user.ID, file.ID))
+	assert.Equal(t, 1, accessor.DeleteCount())
+	_, err = accessor.GetByPath(ctx, storagePath)
+	assert.Error(t, err)
 }
