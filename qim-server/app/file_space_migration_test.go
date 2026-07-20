@@ -33,12 +33,11 @@ func TestMigrateFileSpacesBackfillsLegacyUserRecords(t *testing.T) {
 	`).Error)
 
 	require.NoError(t, MigrateFileSpaces(db))
-	assertScopes(t, db, []uint{1, 2}, "user", []uint{7, 8})
-	assertScopes(t, db, []uint{3}, "user", []uint{0})
+	assertScopes(t, db, []uint{1, 2, 3}, "user", []uint{7, 8, 9})
 
 	// A second execution must leave the already-backfilled rows unchanged.
 	require.NoError(t, MigrateFileSpaces(db))
-	assertScopes(t, db, []uint{1, 2}, "user", []uint{7, 8})
+	assertScopes(t, db, []uint{1, 2, 3}, "user", []uint{7, 8, 9})
 }
 
 func assertScopes(t *testing.T, db *gorm.DB, ids []uint, scopeType string, scopeIDs []uint) {

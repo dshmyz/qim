@@ -426,7 +426,10 @@ func MigrateDB(db *gorm.DB) {
 // MigrateFileSpaces assigns the legacy personal scope to file and folder
 // records that predate reusable file spaces. It is safe to run repeatedly.
 func MigrateFileSpaces(db *gorm.DB) error {
-	legacyScope := "scope_type = '' OR scope_type IS NULL"
+	// SQLite adds non-null columns with their defaults to existing rows. Files
+	// created before scoped spaces therefore appear as user/0 rather than an
+	// empty scope and must be restored to their owning user's space as well.
+	legacyScope := "scope_type = '' OR scope_type IS NULL OR (scope_type = 'user' AND scope_id = 0 AND user_id <> 0)"
 	if err := db.Where(legacyScope).
 		Model(&model.File{}).
 		Updates(map[string]interface{}{
