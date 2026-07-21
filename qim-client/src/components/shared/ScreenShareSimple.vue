@@ -604,83 +604,24 @@ const toggleMinimize = () => {
   }
 }
 
-const toggleFullscreen = async () => {
-  if (!screenShareOverlayRef.value) return
-
-  try {
-    if (!isFullscreen.value) {
-      if (screenShareOverlayRef.value.requestFullscreen) {
-        await screenShareOverlayRef.value.requestFullscreen()
-      } else if ((screenShareOverlayRef.value as any).webkitRequestFullscreen) {
-        await (screenShareOverlayRef.value as any).webkitRequestFullscreen()
-      } else if ((screenShareOverlayRef.value as any).mozRequestFullScreen) {
-        await (screenShareOverlayRef.value as any).mozRequestFullScreen()
-      } else if ((screenShareOverlayRef.value as any).msRequestFullscreen) {
-        await (screenShareOverlayRef.value as any).msRequestFullscreen()
-      }
-    } else {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen()
-      } else if ((document as any).webkitExitFullscreen) {
-        await (document as any).webkitExitFullscreen()
-      } else if ((document as any).mozCancelFullScreen) {
-        await (document as any).mozCancelFullScreen()
-      } else if ((document as any).msExitFullscreen) {
-        await (document as any).msExitFullscreen()
-      }
-    }
-  } catch (error) {
-    console.error('[ScreenShareSimple] 全屏切换失败:', error)
-  }
+// 全屏采用纯 CSS 类（.fullscreen）驱动，不依赖原生 Fullscreen API。
+// 原因：Electron 无边框窗口下 Element.requestFullscreen() 不稳、常被静默拒绝，
+// 且旧实现把 isFullscreen 绑死在 fullscreenchange 事件上，API 一拒状态就不翻 = "没反应"。
+// 现直接切换 isFullscreen，由 .fullscreen 类 CSS（position:fixed/100vw/100vh/z-index:10000）接管视觉。
+const toggleFullscreen = () => {
+  isFullscreen.value = !isFullscreen.value
 }
 
-const exitFullscreen = async () => {
+const exitFullscreen = () => {
   if (isFullscreen.value) {
-    await toggleFullscreen()
+    isFullscreen.value = false
   }
 }
 
-const handleFullscreenChange = () => {
-  isFullscreen.value = !!(
-    document.fullscreenElement ||
-    (document as any).webkitFullscreenElement ||
-    (document as any).mozFullScreenElement ||
-    (document as any).msFullscreenElement
-  )
-
-  const element = screenShareOverlayRef.value
-  if (element) {
-    if (isFullscreen.value) {
-      element.style.width = '100vw'
-      element.style.height = '100vh'
-      element.style.maxWidth = 'none'
-      element.style.borderRadius = '0'
-      element.style.top = '0'
-      element.style.left = '0'
-      element.style.transform = 'none'
-      element.style.background = '#000'
-      
-      const videoContainer = element.querySelector('.video-container') as HTMLElement
-      if (videoContainer) {
-        videoContainer.style.height = '100%'
-        videoContainer.style.minHeight = '100vh'
-      }
-    } else {
-      element.style.width = ''
-      element.style.height = ''
-      element.style.maxWidth = ''
-      element.style.borderRadius = ''
-      element.style.top = ''
-      element.style.left = ''
-      element.style.transform = ''
-      element.style.background = ''
-      
-      const videoContainer = element.querySelector('.video-container') as HTMLElement
-      if (videoContainer) {
-        videoContainer.style.height = ''
-        videoContainer.style.minHeight = ''
-      }
-    }
+// Esc 退出全屏（原生 API 原本自动处理 Esc，CSS 方案需自行监听）
+const handleFullscreenEsc = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
   }
 }
 
@@ -785,17 +726,11 @@ onUnmounted(() => {
   }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('fullscreenchange', handleFullscreenChange)
-  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
-  document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
-  document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
+  document.removeEventListener('keydown', handleFullscreenEsc)
 })
 
 const initFullscreenListener = () => {
-  document.addEventListener('fullscreenchange', handleFullscreenChange)
-  document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-  document.addEventListener('mozfullscreenchange', handleFullscreenChange)
-  document.addEventListener('MSFullscreenChange', handleFullscreenChange)
+  document.addEventListener('keydown', handleFullscreenEsc)
 }
 
 initFullscreenListener()
