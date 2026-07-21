@@ -97,6 +97,17 @@
       <span class="setting-hint">你发消息后，分身暂停回复的时间</span>
     </div>
 
+    <div class="setting-item">
+      <div class="setting-row">
+        <span class="setting-label">默认在所有会话激活</span>
+        <Switch
+          :model-value="modelValue.activateByDefault"
+          @update:model-value="update('activateByDefault', $event)"
+        />
+      </div>
+      <span class="setting-hint">开启后，未单独设置的会话（含新建）自动激活分身，可逐个关闭；关闭则需逐会话手动开启</span>
+    </div>
+
     <template v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'smart'">
       <div class="setting-divider"></div>
       <div class="setting-item">

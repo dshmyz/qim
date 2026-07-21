@@ -162,3 +162,47 @@ func TestCheckAvatarTriggersDoesNotAutoSubscribe(t *testing.T) {
 	require.Len(t, sessions, 1, "全局已启用但无会话级 session 的成员不应被自动创建 session")
 	assert.Equal(t, optedIn.ID, sessions[0].UserID)
 }
+
+func TestCheckAvatarTriggersDefaultOnActivatesWithoutSession(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Conversation{},
+		&model.ConversationMember{},
+		&model.AvatarConfig{},
+		&model.AvatarSession{},
+	))
+	database.DB = db
+
+	sender := model.User{Username: "sender", PasswordHash: "hash", Nickname: "发送者"}
+	require.NoError(t, db.Create(&sender).Error)
+	conv := model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(&conv).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: sender.ID}).Error)
+
+	// 默认开成员：config 已启用 + ActivateByDefault=true，但无 session 行
+	defUser := model.User{Username: "defon", PasswordHash: "hash", Nickname: "默认开"}
+	require.NoError(t, db.Create(&defUser).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: defUser.ID}).Error)
+	require.NoError(t, db.Create(&model.AvatarConfig{
+		UserID:            defUser.ID,
+		Enabled:           true,
+		ActivateByDefault: true,
+		TriggerRulesJSON:  `{"mode":"mention"}`,
+	}).Error)
+
+	// decider 返回 false 以避免走到 worker pool（engine 未注入 pool），
+	// 但仍会被调用——被调用即证明该成员被选为候选
+	decider := &avatarTriggerDeciderStub{shouldReply: false}
+	engine := &SmartReplyEngine{avatarTriggerSvc: decider}
+	engine.checkAvatarTriggers(sender.ID, &conv, "在吗", nil)
+
+	assert.Equal(t, defUser.ID, decider.config.UserID,
+		"ActivateByDefault=true 且无 session 的成员应被选为候选并进入触发判断")
+
+	// 默认开不应写库创建 session 行
+	var sessions []model.AvatarSession
+	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Find(&sessions).Error)
+	assert.Empty(t, sessions, "默认开成员不应产生 session 行")
+}

@@ -109,6 +109,7 @@ type AvatarConfigResponse struct {
 	ModelConfigID      *uint                      `json:"modelConfigId"`
 	UseSystemConfig    bool                       `json:"useSystemConfig"`
 	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	ActivateByDefault  bool                       `json:"activateByDefault"`
 	// 审批相关（从approvals表获取）
 	ApprovalStatus         string     `json:"approvalStatus"`
 	ApprovalRejectedReason string     `json:"approvalRejectedReason"`
@@ -161,6 +162,7 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 		ModelConfigID:          config.ModelConfigID,
 		UseSystemConfig:        config.UseSystemConfig,
 		TakeoverCooldown:       config.TakeoverCooldown,
+		ActivateByDefault:      config.ActivateByDefault,
 		ApprovalStatus:         approvalStatus,
 		ApprovalRejectedReason: rejectReason,
 		ApprovalAppliedAt:      appliedAt,
@@ -178,6 +180,7 @@ type CreateAvatarConfigRequest struct {
 	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledgeScope"`
 	ReplyStrategy      model.AvatarReplyStrategy  `json:"replyStrategy"`
 	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	ActivateByDefault  bool                       `json:"activateByDefault"`
 	CustomPersonaAddon string                     `json:"customPersonaAddon"`
 }
 
@@ -270,6 +273,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		TriggerRulesJSON:   string(triggerRulesJSON),
 		ReplyStrategyJSON:  string(replyStrategyJSON),
 		TakeoverCooldown:   req.TakeoverCooldown,
+		ActivateByDefault: req.ActivateByDefault,
 		CustomPersonaAddon: req.CustomPersonaAddon,
 	}
 
@@ -309,6 +313,7 @@ type UpdateAvatarConfigRequest struct {
 	KnowledgeScope     *model.AvatarKnowledgeScope `json:"knowledgeScope"`
 	ReplyStrategy      *model.AvatarReplyStrategy  `json:"replyStrategy"`
 	TakeoverCooldown   *int                        `json:"takeoverCooldown"`
+	ActivateByDefault  *bool                       `json:"activateByDefault"`
 	CustomPersonaAddon *string                     `json:"customPersonaAddon"`
 }
 
@@ -376,6 +381,9 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	}
 	if req.TakeoverCooldown != nil {
 		updates["takeover_cooldown"] = *req.TakeoverCooldown
+	}
+	if req.ActivateByDefault != nil {
+		updates["activate_by_default"] = *req.ActivateByDefault
 	}
 	if req.CustomPersonaAddon != nil {
 		updates["custom_persona_addon"] = *req.CustomPersonaAddon

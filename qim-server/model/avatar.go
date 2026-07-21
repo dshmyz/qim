@@ -13,6 +13,10 @@ type AvatarConfig struct {
 	Name    string `json:"name" gorm:"size:100;default:'我的分身'"`
 	Enabled bool   `json:"enabled" gorm:"default:false"`
 
+	// ActivateByDefault：无显式会话级 session 时，分身是否默认在该会话激活。
+	// true=广覆盖（所有会话自动开，逐个 opt-out）；false=逐会话 opt-in。默认 false，避免升级即失控。
+	ActivateByDefault bool `json:"activate_by_default" gorm:"default:false"`
+
 	// 人设相关
 	AutoLearnedPersona string     `json:"auto_learned_persona" gorm:"type:text"`
 	CustomPersonaAddon string     `json:"custom_persona_addon" gorm:"type:text"`

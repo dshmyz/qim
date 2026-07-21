@@ -18,6 +18,9 @@ export interface AvatarConfig {
 
   takeoverCooldown: number
 
+  // 无显式会话级 session 时，分身是否默认在该会话激活（true=广覆盖，false=逐会话 opt-in）
+  activateByDefault: boolean
+
   createdAt: string
   updatedAt: string
 }
@@ -48,6 +51,7 @@ export interface AvatarReplyStrategy {
   confidenceThreshold: number
   disclaimerStyle: 'badge' | 'footer' | 'both'
   replyOutOfScope: boolean // 是否回复知识范围外的消息，false 时静默跳过
+  groupReplyTarget: 'group' | 'private' // 群聊回复落点：group=回群内，private=回触发者私聊
 }
 
 export interface AvatarSession {
@@ -73,6 +77,7 @@ export interface CreateAvatarConfigRequest {
   knowledgeScope: AvatarKnowledgeScope
   replyStrategy: AvatarReplyStrategy
   takeoverCooldown: number
+  activateByDefault: boolean
   customPersonaAddon: string
 }
 
@@ -97,9 +102,11 @@ export const DEFAULT_AVATAR_CONFIG: CreateAvatarConfigRequest = {
     replyDelay: 3,
     confidenceThreshold: 0.6,
     disclaimerStyle: 'badge',
-    replyOutOfScope: false
+    replyOutOfScope: false,
+    groupReplyTarget: 'group'
   },
   takeoverCooldown: 10,
+  activateByDefault: false,
   customPersonaAddon: ''
 }
 

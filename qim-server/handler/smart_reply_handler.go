@@ -742,14 +742,51 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, mentionUserIDs []uint) {
 	db := database.GetDB()
 
+	// 会话级覆盖：有 session 行=显式（AvatarEnabled=true→opt-in / false→opt-out），无行=跟随全局默认
 	var sessions []model.AvatarSession
-	db.Where("conversation_id = ? AND avatar_enabled = ?", conv.ID, true).Find(&sessions)
+	db.Where("conversation_id = ?", conv.ID).Find(&sessions)
+	override := make(map[uint]*model.AvatarSession, len(sessions))
+	optInCount := 0
+	for i := range sessions {
+		override[sessions[i].UserID] = &sessions[i]
+		if sessions[i].AvatarEnabled {
+			optInCount++
+		}
+	}
 
-	log.Printf("[AvatarTrigger] 查找分身会话: convID=%d senderID=%d 找到%d个激活的分身会话", conv.ID, senderID, len(sessions))
+	var convMembers []model.ConversationMember
+	db.Where("conversation_id = ? AND user_id != ?", conv.ID, senderID).Find(&convMembers)
 
-	// 不再为“全局已启用但无会话级 session”的成员自动创建并激活 session。
-	// 分身按会话级 opt-in：用户必须在某会话显式 toggleSession 才在该会话激活，
-	// 避免“全局一开，所有群都被分身代言”的失控场景。全局 config.Enabled 仅作为主开关。
+	// 候选集 = 显式 opt-in session + 无覆盖行且全局(Enabled && ActivateByDefault)的成员
+	candidates := make([]*model.AvatarSession, 0, len(sessions))
+	for i := range sessions {
+		if sessions[i].AvatarEnabled {
+			candidates = append(candidates, &sessions[i])
+		}
+	}
+
+	var noOverrideUserIDs []uint
+	for _, m := range convMembers {
+		if _, has := override[m.UserID]; !has {
+			noOverrideUserIDs = append(noOverrideUserIDs, m.UserID)
+		}
+	}
+	defaultOnCount := 0
+	if len(noOverrideUserIDs) > 0 {
+		var configs []model.AvatarConfig
+		db.Where("user_id IN ? AND enabled = ? AND activate_by_default = ?", noOverrideUserIDs, true, true).Find(&configs)
+		defaultOnCount = len(configs)
+		for i := range configs {
+			// 默认开成员无 session 行：构造合成分身会话（无 takeover 状态），供 shouldTriggerAvatar 复用
+			candidates = append(candidates, &model.AvatarSession{
+				UserID:         configs[i].UserID,
+				ConversationID: conv.ID,
+				AvatarEnabled:  true,
+			})
+		}
+	}
+
+	log.Printf("[AvatarTrigger] 候选分身: convID=%d senderID=%d opt-in=%d 默认开=%d", conv.ID, senderID, optInCount, defaultOnCount)
 
 	// 发送者信息在循环外只查一次，供触发判断（smart 模式需要 senderName）与任务构造复用
 	var sender model.User
@@ -762,16 +799,13 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 		senderName = sender.Username
 	}
 
-	for _, session := range sessions {
-		log.Printf("[AvatarTrigger] 检查分身会话: userID=%d avatarEnabled=%v", session.UserID, session.AvatarEnabled)
-
+	isGroupChat := conv.Type == "group" || conv.Type == "discussion"
+	for _, session := range candidates {
 		if session.UserID == senderID {
 			log.Printf("[AvatarTrigger] 跳过自己的分身: userID=%d == senderID=%d", session.UserID, senderID)
 			continue
 		}
-
-		isGroupChat := conv.Type == "group" || conv.Type == "discussion"
-		triggered := e.shouldTriggerAvatar(&session, content, isGroupChat, mentionUserIDs, senderName)
+		triggered := e.shouldTriggerAvatar(session, content, isGroupChat, mentionUserIDs, senderName)
 		log.Printf("[AvatarTrigger] 触发判断结果: userID=%d triggered=%v (isGroupChat=%v mentionUserIDs=%v)", session.UserID, triggered, isGroupChat, mentionUserIDs)
 
 		if triggered {

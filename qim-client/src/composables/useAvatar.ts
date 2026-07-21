@@ -75,6 +75,7 @@ export function useAvatar() {
         'knowledgeScope',
         'replyStrategy',
         'takeoverCooldown',
+        'activateByDefault',
         'customPersonaAddon'
       ]
 
