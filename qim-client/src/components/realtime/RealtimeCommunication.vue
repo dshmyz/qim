@@ -96,6 +96,18 @@ const startScreenShare = async () => {
   }
 
   const conv = props.currentConversation
+  if (conv?.type === 'group' || conv?.type === 'discussion') {
+    QMessage.warning('群聊和讨论组暂不支持屏幕共享')
+    return
+  }
+  if (conv?.type === 'bot') {
+    QMessage.warning('AI 助手不支持屏幕共享')
+    return
+  }
+  if (conv?.type !== 'single') {
+    QMessage.warning('当前会话类型不支持屏幕共享')
+    return
+  }
   if (conv?.type === 'single') {
     // 优先使用后端返回的 other_member_id 字段
     const otherMemberId = (conv as any).other_member_id
