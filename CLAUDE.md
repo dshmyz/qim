@@ -128,7 +128,7 @@ swag init                  # 重新生成 API 文档
 
 1. **数据库**：默认 SQLite（`qim.db` 在项目根目录），改用 MySQL 需修改 `qim-server/config.yaml`
 2. **前端服务器地址**：client 默认连接 `http://localhost:8080`，可在登录界面修改
-3. **Electron 版本锁定**：electronVersion 固定为 33.0.0
+3. **Electron 版本锁定**：electronVersion 固定为 42.3.3（`package.json` devDep `^42.3.3`，electron-builder 配置 `electronVersion` 同步）
 4. **Go 版本**：go.mod 声明 go 1.25.0，请使用匹配版本
 5. **AI 多模型**：后端通过 Cloudwego Eino 框架支持 OpenAI/Claude/通义千问/文心一言等多模型
 6. **WebSocket**：连接路径 `/ws?token={jwt_token}`，消息格式 `{type, data, request_id}`
