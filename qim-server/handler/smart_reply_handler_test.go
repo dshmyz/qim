@@ -1,11 +1,7 @@
 package handler
 
 import (
-	"context"
-	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -14,67 +10,26 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 type avatarTriggerDeciderStub struct {
 	shouldReply bool
-	userID      uint
+	config      model.AvatarConfig
 	convID      uint
 	message     string
 	senderName  string
+	isGroupChat bool
+	mentionIDs  []uint
 }
 
-func (s *avatarTriggerDeciderStub) ShouldReply(userID uint, conversationID uint, message string, senderName string) (bool, string, error) {
-	s.userID = userID
+func (s *avatarTriggerDeciderStub) DecideReply(config model.AvatarConfig, conversationID uint, message string, senderName string, isGroupChat bool, mentionUserIDs []uint) (bool, string, error) {
+	s.config = config
 	s.convID = conversationID
 	s.message = message
 	s.senderName = senderName
+	s.isGroupChat = isGroupChat
+	s.mentionIDs = mentionUserIDs
 	return s.shouldReply, "test decision", nil
-}
-
-type avatarConfigQueryCounter struct {
-	logger.Interface
-	mu      sync.Mutex
-	count   int
-	inQuery bool
-}
-
-func newAvatarConfigQueryCounter() *avatarConfigQueryCounter {
-	return &avatarConfigQueryCounter{Interface: logger.Default.LogMode(logger.Info)}
-}
-
-func (l *avatarConfigQueryCounter) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
-	sql, rows := fc()
-	normalized := strings.ToLower(sql)
-	if strings.Contains(normalized, "avatar_configs") && strings.Contains(normalized, "select") {
-		l.mu.Lock()
-		l.count++
-		if strings.Contains(normalized, " in ") {
-			l.inQuery = true
-		}
-		l.mu.Unlock()
-	}
-	l.Interface.Trace(ctx, begin, func() (string, int64) { return sql, rows }, err)
-}
-
-func (l *avatarConfigQueryCounter) Count() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.count
-}
-
-func (l *avatarConfigQueryCounter) SawINQuery() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.inQuery
-}
-
-func (l *avatarConfigQueryCounter) Reset() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.count = 0
-	l.inQuery = false
 }
 
 func TestAIMentionDetectsStructuredMentionTokenByAssistantName(t *testing.T) {
@@ -111,10 +66,10 @@ func TestShouldTriggerAvatar_SmartDoesNotFallbackToAllWithoutDecider(t *testing.
 	engine := &SmartReplyEngine{}
 	triggered := engine.shouldTriggerAvatar(
 		&model.AvatarSession{ConversationID: 1, UserID: avatarUserID, AvatarEnabled: true},
-		2,
 		"今天进度如何？",
 		true,
 		nil,
+		"",
 	)
 
 	assert.False(t, triggered, "smart mode must not behave as all when its intent decider is unavailable")
@@ -142,22 +97,21 @@ func TestShouldTriggerAvatar_SmartUsesIntentDecider(t *testing.T) {
 	engine := &SmartReplyEngine{avatarTriggerSvc: decider}
 	triggered := engine.shouldTriggerAvatar(
 		&model.AvatarSession{ConversationID: 9, UserID: avatarUserID, AvatarEnabled: true},
-		senderID,
 		"请帮我判断这个方案",
 		true,
 		nil,
+		"Sender",
 	)
 
 	assert.True(t, triggered)
-	assert.Equal(t, avatarUserID, decider.userID)
+	assert.Equal(t, avatarUserID, decider.config.UserID)
 	assert.Equal(t, uint(9), decider.convID)
 	assert.Equal(t, "请帮我判断这个方案", decider.message)
 	assert.Equal(t, "Sender", decider.senderName)
 }
 
-func TestCheckAvatarTriggersBatchLoadsMissingAvatarConfigs(t *testing.T) {
-	queryCounter := newAvatarConfigQueryCounter()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: queryCounter})
+func TestCheckAvatarTriggersDoesNotAutoSubscribe(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
@@ -175,30 +129,36 @@ func TestCheckAvatarTriggersBatchLoadsMissingAvatarConfigs(t *testing.T) {
 	require.NoError(t, db.Create(&conv).Error)
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: sender.ID}).Error)
 
-	enabledUserIDs := make([]uint, 0, 2)
-	for i := 0; i < 7; i++ {
-		user := model.User{Username: "member" + string(rune('a'+i)), PasswordHash: "hash", Nickname: "成员"}
-		require.NoError(t, db.Create(&user).Error)
-		require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
+	// optedIn: 在该会话显式开启过分身（有 session + 全局 config）
+	optedIn := model.User{Username: "optedin", PasswordHash: "hash", Nickname: "已开启"}
+	require.NoError(t, db.Create(&optedIn).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: optedIn.ID}).Error)
+	require.NoError(t, db.Create(&model.AvatarConfig{
+		UserID:           optedIn.ID,
+		Enabled:          true,
+		TriggerRulesJSON: `{"mode":"mention"}`,
+	}).Error)
+	require.NoError(t, db.Create(&model.AvatarSession{
+		ConversationID: conv.ID,
+		UserID:         optedIn.ID,
+		AvatarEnabled:  true,
+	}).Error)
 
-		if i == 1 || i == 4 {
-			enabledUserIDs = append(enabledUserIDs, user.ID)
-			require.NoError(t, db.Create(&model.AvatarConfig{
-				UserID:           user.ID,
-				Enabled:          true,
-				TriggerRulesJSON: `{"mode":"mention"}`,
-			}).Error)
-		}
-	}
+	// notOptedIn: 全局分身已启用，但未在该会话开启（无 session）——不应被自动订阅
+	notOptedIn := model.User{Username: "notoptedin", PasswordHash: "hash", Nickname: "未开启"}
+	require.NoError(t, db.Create(&notOptedIn).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: notOptedIn.ID}).Error)
+	require.NoError(t, db.Create(&model.AvatarConfig{
+		UserID:           notOptedIn.ID,
+		Enabled:          true,
+		TriggerRulesJSON: `{"mode":"mention"}`,
+	}).Error)
 
 	engine := &SmartReplyEngine{}
-	queryCounter.Reset()
 	engine.checkAvatarTriggers(sender.ID, &conv, "普通群聊消息", nil)
 
 	var sessions []model.AvatarSession
 	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Find(&sessions).Error)
-	require.Len(t, sessions, 2)
-	assert.ElementsMatch(t, enabledUserIDs, []uint{sessions[0].UserID, sessions[1].UserID})
-	assert.True(t, queryCounter.SawINQuery(), "缺失 session 的 AvatarConfig 应使用 IN 批量查询")
-	assert.LessOrEqual(t, queryCounter.Count(), 3, "不应按每个群成员逐个查询 avatar_configs")
+	require.Len(t, sessions, 1, "全局已启用但无会话级 session 的成员不应被自动创建 session")
+	assert.Equal(t, optedIn.ID, sessions[0].UserID)
 }

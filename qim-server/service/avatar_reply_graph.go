@@ -29,6 +29,8 @@ type AvatarReplyContext struct {
 	GroupKnowledge string
 	MemoryContext  string
 	History        string
+	// SkipReply 命中"知识范围外且配置为不回复"时置位，Execute 据此跳过 LLM 调用
+	SkipReply bool
 }
 
 type AvatarReplyGraph struct {
@@ -59,7 +61,6 @@ func NewAvatarReplyGraph(
 func (g *AvatarReplyGraph) BuildGraph() error {
 	graph := compose.NewGraph[*AvatarReplyContext, string]()
 
-	graph.AddLambdaNode("prepare", g.createPrepareNode())
 	graph.AddLambdaNode("to_template_vars", g.createTemplateVarsNode())
 
 	template := prompt.FromMessages(
@@ -72,8 +73,7 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 【回复要求】
 - 以第一人称回复，就像你就是这个人
 - 保持自然的对话风格
-- 不要暴露你是AI
-- 回复要简洁，不要过长`},
+- {LengthHint}`},
 		&schema.Message{Role: schema.User, Content: `{ContextSection}
 对方说：{Message}
 
@@ -85,8 +85,7 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 
 	graph.AddLambdaNode("format", g.createFormatReplyNode())
 
-	graph.AddEdge(compose.START, "prepare")
-	graph.AddEdge("prepare", "to_template_vars")
+	graph.AddEdge(compose.START, "to_template_vars")
 	graph.AddEdge("to_template_vars", "prompt")
 	graph.AddEdge("prompt", "model")
 	graph.AddEdge("model", "format")
@@ -135,8 +134,10 @@ func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 		}
 		contextStr := strings.Join(contextParts, "\n\n")
 
-		log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d",
-			input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message))
+		lengthHint := avatarLengthHint(input.ReplyStrategy.MaxReplyLength)
+
+		log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d LengthHint=%s",
+			input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message), lengthHint)
 
 		userName := input.User.Nickname
 		if userName == "" {
@@ -150,6 +151,7 @@ func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 			"SupplementSection": supplementSection,
 			"ContextSection":    contextStr,
 			"Message":           input.Message,
+			"LengthHint":        lengthHint,
 		}, nil
 	})
 }
@@ -172,6 +174,15 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		UserID:         userID,
 	}
 
+	// 先在图外完成上下文准备，以便在命中"不回复"时直接跳过 LLM 调用
+	if err := g.prepare(ctx, input); err != nil {
+		return "", err
+	}
+	if input.SkipReply {
+		log.Printf("[AvatarReplyGraph] 命中不回复策略，跳过 LLM: userID=%d convID=%d", userID, conversationID)
+		return "", nil
+	}
+
 	startTime := time.Now()
 	reply, err := g.runnable.Invoke(ctx, input)
 	if err != nil {
@@ -180,59 +191,55 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 
 	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
 
+	if cap := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); cap > 0 && len(reply) > cap {
+		reply = strings.TrimSpace(reply[:cap]) + "…"
+	}
+
 	return reply, nil
 }
 
-func (g *AvatarReplyGraph) createPrepareNode() *compose.Lambda {
-	return compose.InvokableLambda(func(ctx context.Context, input *AvatarReplyContext) (*AvatarReplyContext, error) {
-		var config model.AvatarConfig
-		if err := g.db.Where("user_id = ?", input.UserID).First(&config).Error; err != nil {
-			return nil, fmt.Errorf("分身配置不存在")
-		}
-		input.Config = config
+// prepare 加载分身配置、用户、知识范围与历史，并判定是否命中"不回复"策略。
+// 抽出为普通方法便于 Execute 在调用 LLM 前短路，也便于后续单测。
+func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContext) error {
+	var config model.AvatarConfig
+	if err := g.db.Where("user_id = ?", input.UserID).First(&config).Error; err != nil {
+		return fmt.Errorf("分身配置不存在")
+	}
+	input.Config = config
 
-		var user model.User
-		if err := g.db.First(&user, input.UserID).Error; err != nil {
-			return nil, fmt.Errorf("用户不存在")
-		}
-		input.User = user
+	var user model.User
+	if err := g.db.First(&user, input.UserID).Error; err != nil {
+		return fmt.Errorf("用户不存在")
+	}
+	input.User = user
 
-		if config.KnowledgeScopeJSON != "" {
-			_ = json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope)
-		}
-		if config.ReplyStrategyJSON != "" {
-			_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy)
-		}
+	if config.KnowledgeScopeJSON != "" {
+		_ = json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope)
+	}
+	if config.ReplyStrategyJSON != "" {
+		_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy)
+	}
 
-		noteCtx := ""
-		if g.noteSvc != nil {
-			noteResults, err := g.noteSvc.SearchNotes(input.UserID, input.Message, 3)
-			if err == nil && len(noteResults) > 0 {
-				var parts []string
-				for _, r := range noteResults {
-					parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
-				}
-				noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
+	noteCtx := ""
+	if g.noteSvc != nil {
+		noteResults, err := g.noteSvc.SearchNotes(input.UserID, input.Message, 3)
+		if err == nil && len(noteResults) > 0 {
+			var parts []string
+			for _, r := range noteResults {
+				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
 			}
+			noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
 		}
-		input.NoteContext = noteCtx
+	}
+	input.NoteContext = noteCtx
 
-		groupKnowledge := ""
-		if g.groupDocSvc != nil && input.KnowledgeScope.KnowledgeDocs {
-			var memberships []model.ConversationMember
-			g.db.Where("user_id = ?", input.UserID).Find(&memberships)
-			for _, m := range memberships {
-				var conv model.Conversation
-				if g.db.First(&conv, m.ConversationID).Error != nil {
-					continue
-				}
-				if conv.Type != "group" && conv.Type != "discussion" {
-					continue
-				}
-				var group model.Group
-				if g.db.Where("conversation_id = ?", m.ConversationID).First(&group).Error != nil {
-					continue
-				}
+	groupKnowledge := ""
+	// 只检索当前会话所在群的知识库，不再遍历用户全部 memberships（消除 N+1，且避免跨会话串味）
+	if g.groupDocSvc != nil && input.KnowledgeScope.KnowledgeDocs && input.ConversationID > 0 {
+		var conv model.Conversation
+		if g.db.First(&conv, input.ConversationID).Error == nil && (conv.Type == "group" || conv.Type == "discussion") {
+			var group model.Group
+			if g.db.Where("conversation_id = ?", input.ConversationID).First(&group).Error == nil {
 				results, err := g.groupDocSvc.SearchKnowledge(group.ID, input.Message, 2)
 				if err == nil && len(results) > 0 {
 					var parts []string
@@ -240,39 +247,46 @@ func (g *AvatarReplyGraph) createPrepareNode() *compose.Lambda {
 						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", r.Metadata["title"], r.Content))
 					}
 					groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
-					break
 				}
 			}
 		}
-		input.GroupKnowledge = groupKnowledge
+	}
+	input.GroupKnowledge = groupKnowledge
 
-		memoryCtx := ""
-		if g.memorySvc != nil {
-			memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
-			if err == nil && len(memoryResults) > 0 {
-				var parts []string
-				for _, r := range memoryResults {
-					parts = append(parts, r.Content)
-				}
-				memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+	memoryCtx := ""
+	if g.memorySvc != nil {
+		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
+		if err == nil && len(memoryResults) > 0 {
+			var parts []string
+			for _, r := range memoryResults {
+				parts = append(parts, r.Content)
 			}
+			memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
 		}
-		input.MemoryContext = memoryCtx
+	}
+	input.MemoryContext = memoryCtx
 
-		history := ""
-		if input.ConversationID > 0 {
-			history = g.getConversationHistory(input.ConversationID, 10)
-		}
-		input.History = history
+	history := ""
+	if input.KnowledgeScope.ConversationHistory && input.ConversationID > 0 {
+		history = g.getConversationHistory(input.ConversationID, 10, input.Message)
+	}
+	input.History = history
 
-		return input, nil
-	})
+	// 命中"不回复"策略：配置了知识来源但三处全空，且策略要求范围外静默
+	knowledgeConfigured := input.KnowledgeScope.KnowledgeDocs || input.KnowledgeScope.Notes || input.KnowledgeScope.Tasks
+	noKnowledgeFound := noteCtx == "" && groupKnowledge == "" && memoryCtx == ""
+	if knowledgeConfigured && noKnowledgeFound && !input.ReplyStrategy.ReplyOutOfScope {
+		input.SkipReply = true
+	}
+
+	return nil
 }
 
-func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int) string {
+func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string) string {
 	var messages []model.Message
 	g.db.Where("conversation_id = ?", conversationID).
 		Where("type = ?", "text").
+		Where("origin IS NULL OR origin != ?", "avatar").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&messages)
@@ -281,13 +295,64 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		return ""
 	}
 
+	// 触发消息本身已在 prompt 中以"对方说：{Message}"呈现，这里按 DESC 取到的最新一条若与之相同则剔除，避免模型重复见到
+	if triggerMessage != "" && messages[0].Content == triggerMessage {
+		messages = messages[1:]
+		if len(messages) == 0 {
+			return ""
+		}
+	}
+
+	// 批量查询发送者，避免 N+1
+	senderIDs := make(map[uint]struct{}, len(messages))
+	for _, msg := range messages {
+		senderIDs[msg.SenderID] = struct{}{}
+	}
+	ids := make([]uint, 0, len(senderIDs))
+	for id := range senderIDs {
+		ids = append(ids, id)
+	}
+	var senders []model.User
+	g.db.Where("id IN ?", ids).Find(&senders)
+	senderMap := make(map[uint]model.User, len(senders))
+	for _, s := range senders {
+		senderMap[s.ID] = s
+	}
+
 	var parts []string
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
-		var sender model.User
-		g.db.First(&sender, msg.SenderID)
+		sender := senderMap[msg.SenderID]
 		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, msg.Content))
 	}
 
 	return strings.Join(parts, "\n")
+}
+
+// avatarLengthHint 将回复长度偏好枚举映射为提示词文本
+func avatarLengthHint(maxReplyLength string) string {
+	switch strings.ToLower(strings.TrimSpace(maxReplyLength)) {
+	case "short":
+		return "回复尽量简短，以一句话为主"
+	case "medium":
+		return "回复长度适中"
+	case "long":
+		return "回复可以详细，但仍需自然"
+	default:
+		return "回复要简洁，不要过长"
+	}
+}
+
+// avatarMaxReplyChars 将回复长度偏好枚举映射为字符硬上限，0 表示不截断
+func avatarMaxReplyChars(maxReplyLength string) int {
+	switch strings.ToLower(strings.TrimSpace(maxReplyLength)) {
+	case "short":
+		return 100
+	case "medium":
+		return 300
+	case "long":
+		return 2000
+	default:
+		return 0
+	}
 }

@@ -54,13 +54,22 @@ func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *Av
 	return pool
 }
 
-// Submit 提交任务
+// Submit 提交任务。队列满时不再立即丢弃，而是阻塞等待最多 2 秒；
+// 仍失败则记 Warn 并通过 WS 通知分身主人“回复被跳过”，避免静默丢失。
 func (p *AvatarWorkerPool) Submit(task AvatarTask) error {
 	select {
 	case p.queue <- task:
 		return nil
-	default:
-		return fmt.Errorf("队列已满，请稍后重试")
+	case <-time.After(2 * time.Second):
+		logger.WithModule("AvatarWorkerPool").Warn("分身任务入队超时，回复被跳过",
+			"userID", task.UserID, "convID", task.ConversationID)
+		if p.service != nil && p.service.wsNotify != nil {
+			p.service.wsNotify(task.UserID, "avatar_reply_skipped", map[string]interface{}{
+				"conversation_id": task.ConversationID,
+				"reason":          "queue_busy",
+			})
+		}
+		return fmt.Errorf("分身任务入队超时，回复已跳过")
 	}
 }
 
@@ -119,7 +128,18 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		avatarCfgName = avatarConfig.Name
 	}
 
-	if task.IsGroupChat {
+	// 解析回复策略，应用仿真人延迟
+	var replyStrategy model.AvatarReplyStrategy
+	if avatarConfig.ReplyStrategyJSON != "" {
+		_ = json.Unmarshal([]byte(avatarConfig.ReplyStrategyJSON), &replyStrategy)
+	}
+	if replyStrategy.ReplyDelay > 0 {
+		logger.WithModule("AvatarWorkerPool").Info("分身回复延迟", "userID", task.UserID, "delaySec", replyStrategy.ReplyDelay)
+		time.Sleep(time.Duration(replyStrategy.ReplyDelay) * time.Second)
+	}
+
+	// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
+	if task.IsGroupChat && replyStrategy.GroupReplyTarget == "private" {
 		p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName)
 	} else {
 		p.sendDirectReply(task, reply, &avatarUser, avatarCfgName)

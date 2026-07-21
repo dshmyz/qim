@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -34,8 +33,10 @@ type SmartReplyEngine struct {
 
 // AvatarTriggerDecider decides whether a configured avatar should reply.
 // The interface keeps the real-time trigger path independent from a concrete AI provider.
+// DecideReply 是触发决策的唯一入口：排除列表/时间窗/模式分发全部收敛于此，
+// 实时路径 shouldTriggerAvatar 与预览接口 CheckTrigger 共用，避免双套判断。
 type AvatarTriggerDecider interface {
-	ShouldReply(userID uint, conversationID uint, message string, senderName string) (bool, string, error)
+	DecideReply(config model.AvatarConfig, conversationID uint, message string, senderName string, isGroupChat bool, mentionUserIDs []uint) (bool, string, error)
 }
 
 // NewSmartReplyEngine 创建智能回复引擎
@@ -746,47 +747,19 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 
 	log.Printf("[AvatarTrigger] 查找分身会话: convID=%d senderID=%d 找到%d个激活的分身会话", conv.ID, senderID, len(sessions))
 
-	var convMembers []model.ConversationMember
-	db.Where("conversation_id = ? AND user_id != ?", conv.ID, senderID).Find(&convMembers)
+	// 不再为“全局已启用但无会话级 session”的成员自动创建并激活 session。
+	// 分身按会话级 opt-in：用户必须在某会话显式 toggleSession 才在该会话激活，
+	// 避免“全局一开，所有群都被分身代言”的失控场景。全局 config.Enabled 仅作为主开关。
 
-	// 收集已有 session 的 userID，筛出缺失 session 的成员
-	sessionUserIDs := make(map[uint]bool, len(sessions))
-	for _, s := range sessions {
-		sessionUserIDs[s.UserID] = true
+	// 发送者信息在循环外只查一次，供触发判断（smart 模式需要 senderName）与任务构造复用
+	var sender model.User
+	if err := db.First(&sender, senderID).Error; err != nil {
+		log.Printf("[AvatarTrigger] 获取发送者失败，跳过分身触发: senderID=%d err=%v", senderID, err)
+		return
 	}
-
-	var missingUserIDs []uint
-	for _, member := range convMembers {
-		if !sessionUserIDs[member.UserID] {
-			missingUserIDs = append(missingUserIDs, member.UserID)
-		}
-	}
-
-	// 批量查询缺失 session 成员的全局分身配置，避免 N+1 查询
-	if len(missingUserIDs) > 0 {
-		var configs []model.AvatarConfig
-		db.Where("user_id IN ? AND enabled = ?", missingUserIDs, true).Find(&configs)
-
-		configMap := make(map[uint]bool, len(configs))
-		for _, c := range configs {
-			configMap[c.UserID] = true
-		}
-
-		for _, uid := range missingUserIDs {
-			if configMap[uid] {
-				log.Printf("[AvatarTrigger] 用户 %d 全局分身已启用但无会话级记录，自动创建 (convID=%d)", uid, conv.ID)
-				newSession := model.AvatarSession{
-					ConversationID: conv.ID,
-					UserID:         uid,
-					AvatarEnabled:  true,
-				}
-				if err := db.Create(&newSession).Error; err != nil {
-					log.Printf("[AvatarTrigger] 自动创建分身会话失败: userID=%d err=%v", uid, err)
-				} else {
-					sessions = append(sessions, newSession)
-				}
-			}
-		}
+	senderName := sender.Nickname
+	if senderName == "" {
+		senderName = sender.Username
 	}
 
 	for _, session := range sessions {
@@ -798,13 +771,10 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 		}
 
 		isGroupChat := conv.Type == "group" || conv.Type == "discussion"
-		triggered := e.shouldTriggerAvatar(&session, senderID, content, isGroupChat, mentionUserIDs)
+		triggered := e.shouldTriggerAvatar(&session, content, isGroupChat, mentionUserIDs, senderName)
 		log.Printf("[AvatarTrigger] 触发判断结果: userID=%d triggered=%v (isGroupChat=%v mentionUserIDs=%v)", session.UserID, triggered, isGroupChat, mentionUserIDs)
 
 		if triggered {
-			var sender model.User
-			db.First(&sender, senderID)
-
 			groupName := ""
 			if isGroupChat {
 				var group model.Group
@@ -832,8 +802,10 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 	}
 }
 
-// shouldTriggerAvatar 判断是否应该触发分身
-func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, senderID uint, content string, isGroupChat bool, mentionUserIDs []uint) bool {
+// shouldTriggerAvatar 判断是否应该触发分身。
+// 排除列表/时间窗/模式分发全部委托给 AvatarTriggerService.DecideReply 统一决策，
+// 这里只保留会话级 takeover 早退与配置加载，避免与触发服务重复判断。
+func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, content string, isGroupChat bool, mentionUserIDs []uint, senderName string) bool {
 	db := database.GetDB()
 
 	if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
@@ -847,92 +819,16 @@ func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, sen
 		return false
 	}
 
-	if !config.Enabled {
-		log.Printf("[AvatarTrigger] 分身配置未启用: userID=%d enabled=%v", session.UserID, config.Enabled)
+	if e.avatarTriggerSvc == nil {
+		log.Printf("[AvatarTrigger] 触发决策服务未初始化: userID=%d", session.UserID)
 		return false
 	}
 
-	log.Printf("[AvatarTrigger] 分身配置: userID=%d enabled=%v triggerMode=%s triggerRulesJSON=%s", session.UserID, config.Enabled, config.TriggerRulesJSON, config.TriggerRulesJSON)
-
-	var triggerRules model.AvatarTriggerRules
-	if config.TriggerRulesJSON != "" {
-		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
-			log.Printf("[AvatarTrigger] 解析触发规则失败: userID=%d err=%v", session.UserID, err)
-			return false
-		}
-	}
-
-	effectiveMode := triggerRules.Mode
-	if effectiveMode == "" {
-		effectiveMode = "mention"
-	}
-
-	log.Printf("[AvatarTrigger] 触发规则: userID=%d mode=%s effectiveMode=%s keywords=%v", session.UserID, triggerRules.Mode, effectiveMode, triggerRules.Keywords)
-
-	if !isGroupChat && effectiveMode == "mention" {
-		log.Printf("[AvatarTrigger] 私聊中 mention 模式自动触发: userID=%d", session.UserID)
-		return true
-	}
-
-	switch effectiveMode {
-	case "mention":
-		for _, uid := range mentionUserIDs {
-			if uid == session.UserID {
-				log.Printf("[AvatarTrigger] mention 触发成功: userID=%d 在 mentionUserIDs 中", session.UserID)
-				return true
-			}
-		}
-		log.Printf("[AvatarTrigger] mention 触发失败: userID=%d 不在 mentionUserIDs(%v) 中", session.UserID, mentionUserIDs)
+	shouldReply, reason, err := e.avatarTriggerSvc.DecideReply(config, session.ConversationID, content, senderName, isGroupChat, mentionUserIDs)
+	if err != nil {
+		log.Printf("[AvatarTrigger] 触发决策失败: userID=%d err=%v", session.UserID, err)
 		return false
-	case "offline":
-		var user model.User
-		if err := db.First(&user, session.UserID).Error; err != nil {
-			log.Printf("[AvatarTrigger] offline 触发失败: 查找用户失败 userID=%d err=%v", session.UserID, err)
-			return false
-		}
-		log.Printf("[AvatarTrigger] offline 触发判断: userID=%d status=%s", session.UserID, user.Status)
-		return user.Status == "offline"
-	case "keyword":
-		for _, kw := range triggerRules.Keywords {
-			if strings.Contains(content, kw) {
-				log.Printf("[AvatarTrigger] keyword 触发成功: userID=%d keyword=%s", session.UserID, kw)
-				return true
-			}
-		}
-		if len(triggerRules.Keywords) == 0 {
-			log.Printf("[AvatarTrigger] keyword 模式无关键词，默认触发: userID=%d", session.UserID)
-			return true
-		}
-		log.Printf("[AvatarTrigger] keyword 触发失败: userID=%d 消息不包含任何关键词 %v", session.UserID, triggerRules.Keywords)
-		return false
-	case "all":
-		log.Printf("[AvatarTrigger] all 模式触发: userID=%d", session.UserID)
-		return true
-	case "smart":
-		if e.avatarTriggerSvc == nil {
-			log.Printf("[AvatarTrigger] smart 模式跳过：意图判断服务未初始化 userID=%d", session.UserID)
-			return false
-		}
-
-		var sender model.User
-		if err := db.Select("nickname", "username").First(&sender, senderID).Error; err != nil {
-			log.Printf("[AvatarTrigger] smart 模式跳过：获取发送者失败 userID=%d err=%v", senderID, err)
-			return false
-		}
-		senderName := sender.Nickname
-		if senderName == "" {
-			senderName = sender.Username
-		}
-
-		shouldReply, reason, err := e.avatarTriggerSvc.ShouldReply(session.UserID, session.ConversationID, content, senderName)
-		if err != nil {
-			log.Printf("[AvatarTrigger] smart 意图判断失败，跳过回复: userID=%d err=%v", session.UserID, err)
-			return false
-		}
-		log.Printf("[AvatarTrigger] smart 意图判断: userID=%d shouldReply=%v reason=%s", session.UserID, shouldReply, reason)
-		return shouldReply
-	default:
-		log.Printf("[AvatarTrigger] 未知触发模式: userID=%d mode=%s，按 mention 处理", session.UserID, effectiveMode)
-		return isGroupChat && len(mentionUserIDs) > 0
 	}
+	log.Printf("[AvatarTrigger] 触发判断结果: userID=%d shouldReply=%v reason=%s (isGroupChat=%v mentionUserIDs=%v)", session.UserID, shouldReply, reason, isGroupChat, mentionUserIDs)
+	return shouldReply
 }

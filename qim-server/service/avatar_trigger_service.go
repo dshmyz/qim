@@ -27,114 +27,79 @@ func NewAvatarTriggerService(aiService *ai.AIService, db *gorm.DB) *AvatarTrigge
 	}
 }
 
-// ShouldReply 判断分身是否应该回复当前消息
-func (s *AvatarTriggerService) ShouldReply(userID uint, conversationID uint, message string, senderName string) (bool, string, error) {
-	// 1. 获取用户分身配置
-	var config model.AvatarConfig
-	if err := s.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		return false, "", fmt.Errorf("分身配置不存在")
-	}
-
+// DecideReply 是分身触发决策的唯一入口。
+// 排除列表 / 时间窗 在所有模式下统一生效；mode 分发（mention/offline/keyword/all/smart）
+// 全部收敛到这里，供实时路径 shouldTriggerAvatar 与预览接口 CheckTrigger 共用，
+// 避免两套判断逻辑各自为政。
+func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversationID uint, message string, senderName string, isGroupChat bool, mentionUserIDs []uint) (bool, string, error) {
 	if !config.Enabled {
-		return false, "", nil
+		return false, "分身未启用", nil
 	}
 
-	// 2. 检查是否在排除列表中
-	if s.isExcluded(config, conversationID) {
+	var rules model.AvatarTriggerRules
+	if config.TriggerRulesJSON != "" {
+		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &rules); err != nil {
+			logger.WithModule("AvatarTriggerService").Error("解析触发规则失败", "error", err)
+			return false, "解析触发规则失败", nil
+		}
+	}
+
+	if IsAvatarExcluded(rules, conversationID) {
 		return false, "在排除列表中", nil
 	}
 
-	// 3. 解析触发规则
-	var triggerRules model.AvatarTriggerRules
-	if config.TriggerRulesJSON != "" {
-		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules); err != nil {
-			logger.WithModule("AvatarTriggerService").Error("解析触发规则失败", "error", err)
-		}
-	}
-
-	// 4. 检查关键词规则
-	if s.matchKeywords(triggerRules, message) {
-		return true, "关键词触发", nil
-	}
-
-	// 5. 检查时间范围
-	if !s.inTimeRange(triggerRules) {
+	if !IsAvatarInTimeRange(rules) {
 		return false, "不在活跃时间范围内", nil
 	}
 
-	// 6. LLM 智能判断
-	if triggerRules.Mode == "smart" {
-		return s.llmShouldReply(config, message, senderName)
+	effectiveMode := rules.Mode
+	if effectiveMode == "" {
+		effectiveMode = "mention"
 	}
 
-	// 默认模式：不自动回复
-	return false, "非自动模式", nil
-}
-
-// matchKeywords 检查消息是否匹配关键词
-func (s *AvatarTriggerService) matchKeywords(rules model.AvatarTriggerRules, message string) bool {
-	if len(rules.Keywords) == 0 {
-		return false
+	// 私聊中 mention 模式自动触发
+	if !isGroupChat && effectiveMode == "mention" {
+		return true, "私聊 mention 自动触发", nil
 	}
 
-	msgLower := strings.ToLower(message)
-	for _, keyword := range rules.Keywords {
-		if strings.Contains(msgLower, strings.ToLower(keyword)) {
-			return true
-		}
-	}
-	return false
-}
-
-// inTimeRange 检查当前时间是否在活跃范围内
-func (s *AvatarTriggerService) inTimeRange(rules model.AvatarTriggerRules) bool {
-	if len(rules.TimeRanges) == 0 {
-		return true // 没有时间限制则始终允许
-	}
-
-	now := time.Now()
-	currentDay := int(now.Weekday())
-	currentHour := now.Hour()
-
-	for _, tr := range rules.TimeRanges {
-		// 检查星期几
-		dayMatch := false
-		for _, day := range tr.DayOfWeek {
-			if day == currentDay {
-				dayMatch = true
-				break
+	switch effectiveMode {
+	case "mention":
+		for _, uid := range mentionUserIDs {
+			if uid == config.UserID {
+				return true, "mention 触发", nil
 			}
 		}
-		if !dayMatch {
-			continue
+		return false, "未被 mention", nil
+	case "offline":
+		var user model.User
+		if err := s.db.First(&user, config.UserID).Error; err != nil {
+			return false, "查找用户失败", err
 		}
-
-		// 检查时间范围
-		if currentHour >= tr.StartHour && currentHour <= tr.EndHour {
-			return true
+		if user.Status == "offline" {
+			return true, "离线触发", nil
 		}
-	}
-
-	return false
-}
-
-// isExcluded 检查会话是否在排除列表中
-func (s *AvatarTriggerService) isExcluded(config model.AvatarConfig, conversationID uint) bool {
-	var rules model.AvatarTriggerRules
-	if config.TriggerRulesJSON != "" {
-		if err := json.Unmarshal([]byte(config.TriggerRulesJSON), &rules); err == nil {
-			for _, excludedID := range rules.ExcludedConversations {
-				if excludedID == conversationID {
-					return true
-				}
+		return false, "用户在线", nil
+	case "keyword":
+		if len(rules.Keywords) == 0 {
+			return true, "keyword 无关键词默认触发", nil
+		}
+		for _, kw := range rules.Keywords {
+			if strings.Contains(message, kw) {
+				return true, "关键词触发", nil
 			}
 		}
+		return false, "未命中关键词", nil
+	case "all":
+		return true, "all 模式", nil
+	case "smart":
+		return s.LLMShouldReply(config, message, senderName)
+	default:
+		return isGroupChat && len(mentionUserIDs) > 0, "未知模式按 mention 处理", nil
 	}
-	return false
 }
 
-// llmShouldReply 使用 LLM 智能判断是否应该回复
-func (s *AvatarTriggerService) llmShouldReply(config model.AvatarConfig, message, senderName string) (bool, string, error) {
+// LLMShouldReply 仅负责 smart 模式的 LLM 意图判断，由 DecideReply 内部调用。
+func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message string, senderName string) (bool, string, error) {
 	prompt := fmt.Sprintf(`你是%s的AI分身。判断以下群消息是否需要你代表%s回复。
 
 考虑因素：
@@ -155,16 +120,77 @@ func (s *AvatarTriggerService) llmShouldReply(config model.AvatarConfig, message
 		return false, "", err
 	}
 
-	// 解析 JSON 返回结果
+	// 解析 JSON 返回结果。LLM 可能用 markdown 代码块或前言包裹 JSON，先尝试原文，再尝试抽取 {...} 子串
 	var response struct {
 		ShouldReply bool   `json:"should_reply"`
 		Reason      string `json:"reason"`
 	}
 
-	if err := json.Unmarshal([]byte(result), &response); err != nil {
-		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败", "error", err, "raw", result)
-		return false, "解析失败", nil
+	raw := strings.TrimSpace(result)
+	if err := json.Unmarshal([]byte(raw), &response); err != nil {
+		if sub := extractJSONObject(raw); sub != "" {
+			if err2 := json.Unmarshal([]byte(sub), &response); err2 == nil {
+				return response.ShouldReply, response.Reason, nil
+			}
+		}
+		// 解析彻底失败：fail-open，让回复生成 LLM 兜底，而不是让分身静默消失
+		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败，默认回复", "error", err, "raw", result)
+		return true, "LLM返回解析失败，默认回复", nil
 	}
 
 	return response.ShouldReply, response.Reason, nil
+}
+
+// extractJSONObject 从可能带 markdown 围栏或前言的文本中抽取第一个 JSON 对象子串
+func extractJSONObject(s string) string {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return ""
+	}
+	end := strings.LastIndexByte(s, '}')
+	if end <= start {
+		return ""
+	}
+	return s[start : end+1]
+}
+
+// IsAvatarExcluded 判断会话是否在分身的排除列表中。
+// 由 DecideReply 在所有触发模式下统一调用。
+func IsAvatarExcluded(rules model.AvatarTriggerRules, conversationID uint) bool {
+	for _, excludedID := range rules.ExcludedConversations {
+		if excludedID == conversationID {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAvatarInTimeRange 判断当前时间是否在分身的活跃范围内。
+// 未配置任何时间范围时视为无限制（始终允许）。
+func IsAvatarInTimeRange(rules model.AvatarTriggerRules) bool {
+	if len(rules.TimeRanges) == 0 {
+		return true
+	}
+
+	now := time.Now()
+	currentDay := int(now.Weekday())
+	currentHour := now.Hour()
+
+	for _, tr := range rules.TimeRanges {
+		dayMatch := false
+		for _, day := range tr.DayOfWeek {
+			if day == currentDay {
+				dayMatch = true
+				break
+			}
+		}
+		if !dayMatch {
+			continue
+		}
+		if currentHour >= tr.StartHour && currentHour <= tr.EndHour {
+			return true
+		}
+	}
+
+	return false
 }

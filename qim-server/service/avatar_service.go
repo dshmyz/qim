@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,7 +21,7 @@ type AvatarService struct {
 	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
 	memorySvc     *AvatarMemoryService  // 长期记忆
 	groupDocSvc   *GroupDocumentService // 群文档知识检索
-	replyGraph    *AvatarReplyGraph     // Eino Graph 编排
+	replyGraph    atomic.Pointer[AvatarReplyGraph] // Eino Graph 编排，原子读写避免重建与调用竞争
 	wsNotify      func(userID uint, eventType string, data map[string]interface{})
 }
 
@@ -46,10 +47,11 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 		aiService: aiService,
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
-	service.replyGraph = NewAvatarReplyGraph(aiService, db, nil, nil, nil)
-	if err := service.replyGraph.BuildGraph(); err != nil {
+	graph := NewAvatarReplyGraph(aiService, db, nil, nil, nil)
+	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "error", err)
 	}
+	service.replyGraph.Store(graph)
 	return service
 }
 
@@ -71,10 +73,13 @@ func (s *AvatarService) SetAIService(aiService *ai.AIService) {
 }
 
 func (s *AvatarService) rebuildReplyGraph(source string) {
-	s.replyGraph = NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
-	if err := s.replyGraph.BuildGraph(); err != nil {
+	graph := NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
+	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "source", source, "error", err)
+		return
 	}
+	// 先编译成功再原子替换，调用方始终拿到完整可用的 graph
+	s.replyGraph.Store(graph)
 }
 
 // GetWorkerPool 获取 Worker Pool
@@ -187,12 +192,13 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 
 // GenerateReply 生成分身回复（使用 Eino Graph 编排）
 func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerMessage string) (string, error) {
-	if s.replyGraph == nil {
+	graph := s.replyGraph.Load()
+	if graph == nil {
 		return "", fmt.Errorf("回复 Graph 未初始化")
 	}
 
 	ctx := context.Background()
-	return s.replyGraph.Execute(ctx, userID, conversationID, triggerMessage)
+	return graph.Execute(ctx, userID, conversationID, triggerMessage)
 }
 
 // PreviewReply 预览回复
@@ -267,8 +273,15 @@ func (s *AvatarService) UpdatePersona(userID uint, data LearningData) error {
 	}).Error
 
 	if err == nil && s.wsNotify != nil {
+		// 回读自增后的版本号，避免把人设文本误塞进 persona_version 字段
+		var updated model.AvatarConfig
+		personaVersion := 0
+		if readErr := s.db.Select("persona_version").Where("user_id = ?", userID).First(&updated).Error; readErr == nil {
+			personaVersion = updated.PersonaVersion
+		}
 		s.wsNotify(userID, "avatar_learning_completed", map[string]interface{}{
-			"persona_version": persona,
+			"persona_version": personaVersion,
+			"learned_at":      now,
 		})
 	}
 

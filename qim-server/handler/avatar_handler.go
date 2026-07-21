@@ -646,9 +646,16 @@ func (h *AvatarHandler) TakeoverSession(c *gin.Context) {
 		return
 	}
 
+	// 按用户配置的接管冷却时间计算，未配置或非法时回退默认 10 分钟
+	cooldown := 10
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err == nil && config.TakeoverCooldown > 0 {
+		cooldown = config.TakeoverCooldown
+	}
+
 	now := time.Now()
-	tenMinutesLater := now.Add(10 * time.Minute)
-	session.TakeoverUntil = &tenMinutesLater
+	takeoverUntil := now.Add(time.Duration(cooldown) * time.Minute)
+	session.TakeoverUntil = &takeoverUntil
 
 	if err := h.db.Save(&session).Error; err != nil {
 		response.InternalServerError(c, "接管失败")
@@ -1048,7 +1055,7 @@ func (h *AvatarHandler) SearchNotes(c *gin.Context) {
 }
 
 func (h *AvatarHandler) CheckTrigger(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDAny, _ := c.Get("user_id")
 	var req struct {
 		ConversationID uint   `json:"conversation_id" binding:"required"`
 		Message        string `json:"message" binding:"required"`
@@ -1065,7 +1072,22 @@ func (h *AvatarHandler) CheckTrigger(c *gin.Context) {
 		return
 	}
 
-	shouldReply, reason, err := triggerSvc.ShouldReply(userID.(uint), req.ConversationID, req.Message, req.SenderName)
+	uid, _ := userIDAny.(uint)
+	var config model.AvatarConfig
+	if err := h.db.Where("user_id = ?", uid).First(&config).Error; err != nil {
+		response.Success(c, gin.H{"should_reply": false, "reason": "分身配置不存在"})
+		return
+	}
+
+	var conv model.Conversation
+	if err := h.db.First(&conv, req.ConversationID).Error; err != nil {
+		response.BadRequest(c, "会话不存在")
+		return
+	}
+	isGroupChat := conv.Type == "group" || conv.Type == "discussion"
+
+	// 预览接口无真实 @ 列表，mention 模式在群聊下会判定为未触发，符合预期
+	shouldReply, reason, err := triggerSvc.DecideReply(config, req.ConversationID, req.Message, req.SenderName, isGroupChat, nil)
 	if err != nil {
 		response.InternalServerError(c, "触发检查失败")
 		return

@@ -16,5 +16,5 @@ func TestAvatarServiceSetAIServiceRebuildsReplyGraph(t *testing.T) {
 	avatarService.SetAIService(updatedAI)
 
 	assert.Same(t, updatedAI, avatarService.aiService)
-	assert.Same(t, updatedAI, avatarService.replyGraph.aiService)
+	assert.Same(t, updatedAI, avatarService.replyGraph.Load().aiService)
 }
