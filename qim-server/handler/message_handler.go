@@ -176,6 +176,13 @@ func SetMemoryService(ms *service.AvatarMemoryService) {
 	}
 }
 
+// SetGroupMemoryService sets the group-level memory service for the smart reply engine
+func SetGroupMemoryService(gms *service.GroupMemoryService) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetGroupMemoryService(gms)
+	}
+}
+
 // InitSmartReplyGraph initializes the Eino Graph for smart reply
 func InitSmartReplyGraph() error {
 	if smartReplyEngine == nil {

@@ -55,6 +55,7 @@ type Container struct {
 	VectorService        *service.VectorService
 	NoteVectorService    *service.NoteVectorService
 	AvatarMemoryService  *service.AvatarMemoryService
+	GroupMemoryService   *service.GroupMemoryService
 	AvatarTriggerService *service.AvatarTriggerService
 	PromptManager        *service.PromptManager
 	WebSocketHub         *ws.Hub
@@ -153,6 +154,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	var vectorSvc *service.VectorService
 	var noteVectorSvc *service.NoteVectorService
 	var avatarMemorySvc *service.AvatarMemoryService
+	var groupMemorySvc *service.GroupMemoryService
 	// 智能触发只依赖 AI 与主数据库，不应受向量库是否可用影响。
 	avatarTriggerSvc := service.NewAvatarTriggerService(aiService, db)
 
@@ -168,6 +170,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		logger.WithModule("DI").Info("VectorService 初始化成功")
 		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
 		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService)
+		groupMemorySvc = service.NewGroupMemoryService(vectorSvc, aiService)
 	}
 
 	// 注入向量服务到相关服务
@@ -216,6 +219,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		VectorService:        vectorSvc,
 		NoteVectorService:    noteVectorSvc,
 		AvatarMemoryService:  avatarMemorySvc,
+		GroupMemoryService:   groupMemorySvc,
 		AvatarTriggerService: avatarTriggerSvc,
 		PromptManager:        promptManager,
 		WebSocketHub:         hub,

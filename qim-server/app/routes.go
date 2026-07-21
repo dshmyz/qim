@@ -84,6 +84,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	if avatarMemorySvc := di.GlobalContainer.AvatarMemoryService; avatarMemorySvc != nil {
 		handler.SetMemoryService(avatarMemorySvc)
 	}
+	if groupMemorySvc := di.GlobalContainer.GroupMemoryService; groupMemorySvc != nil {
+		handler.SetGroupMemoryService(groupMemorySvc)
+	}
 
 	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
 	if err := handler.InitSmartReplyGraph(); err != nil {
@@ -433,6 +436,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/groups/:id/ai-settings", handler.GetGroupAISettings)
 			// 更新群聊 AI 设置
 			authed.PUT("/groups/:id/ai-settings", handler.UpdateGroupAISettings)
+			// 群助手群级记忆管理
+			authed.GET("/groups/:id/group-memories", handler.GetGroupMemories)
+			authed.DELETE("/groups/:id/group-memories/:memory_id", handler.DeleteGroupMemory)
+			authed.DELETE("/groups/:id/group-memories", handler.ClearGroupMemories)
+			authed.POST("/groups/:id/group-memories/search", handler.SearchGroupMemories)
 			// 群知识库管理（带处理状态）
 			authed.GET("/groups/:id/ai-documents", handler.GetGroupDocumentsWithStatus)
 			authed.POST("/groups/:id/ai-documents", handler.AddGroupDocument)

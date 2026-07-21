@@ -99,3 +99,14 @@ export interface GroupDocument {
     type: string
   }
 }
+
+// 群助手群级记忆条目
+export interface GroupMemory {
+  doc_id: string
+  content: string
+  metadata?: {
+    conversation_id?: string
+    remembered_at?: string
+  }
+  score?: number
+}

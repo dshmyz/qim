@@ -24,6 +24,7 @@ type SmartReplyEngine struct {
 	knowledgeSvc     *KnowledgeService
 	unifiedKnowledge *service.UnifiedKnowledgeService
 	memorySvc        *service.AvatarMemoryService
+	groupMemorySvc   *service.GroupMemoryService
 	promptBuilder    *SmartPromptBuilder
 	messageSender    *WebSocketMessageSender
 	avatarWorkerPool *service.AvatarWorkerPool
@@ -71,6 +72,11 @@ func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
 	e.memorySvc = ms
 }
 
+// SetGroupMemoryService 注入群聊助手的群级记忆服务（与分身记忆隔离）。
+func (e *SmartReplyEngine) SetGroupMemoryService(gms *service.GroupMemoryService) {
+	e.groupMemorySvc = gms
+}
+
 func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	log.Printf("[SmartReplyGraph] 创建 SmartReplyGraph 实例...")
 	e.smartReplyGraph = service.NewSmartReplyGraph(
@@ -78,7 +84,7 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		database.GetDB(),
 		e.unifiedKnowledge,
 		e.knowledgeSvc,
-		e.memorySvc,
+		e.groupMemorySvc,
 		di.GlobalContainer.UserService,
 	)
 
@@ -167,6 +173,11 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 
 		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s",
 			aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
+
+		// 群级记忆写入：群 AI 启用时，异步把值得记的群消息择要写入本群记忆库（不阻塞主流程）。
+		if aiConfig.Enabled {
+			e.maybeRememberGroupMessage(group.ID, conversationID, content)
+		}
 
 		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
 		case GroupAIMentionReply:
@@ -257,14 +268,14 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 		}
 	}
 
-	if e.memorySvc != nil {
-		memoryResults, err := e.memorySvc.Recall(userID, userContent, 2)
+	if e.groupMemorySvc != nil && ctx.Group != nil {
+		memoryResults, err := e.groupMemorySvc.Recall(ctx.Group.ID, userContent, 2)
 		if err == nil && len(memoryResults) > 0 {
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
 			}
-			memoryCtx := "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+			memoryCtx := "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 			systemPrompt += "\n\n" + memoryCtx
 		}
 	}
@@ -805,6 +816,35 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		}
 		if err := e.memorySvc.Remember(senderID, conversationID, content); err != nil {
 			log.Printf("[AvatarMemory] 写入失败: user=%d err=%v", senderID, err)
+		}
+	}()
+}
+
+// maybeRememberGroupMessage 异步把值得记的群消息择要写入本群群级记忆库。
+// 三层门控压成本：1. 便宜规则预筛（looksMemorable，无 LLM）2. 去重（向量近邻，无 LLM）3. LLM 质量门。
+// 仅群 AI 启用时由调用方触发；不阻塞消息主流程。与分身记忆（按 userID 键）隔离。
+func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationID uint, content string) {
+	if e.groupMemorySvc == nil {
+		return
+	}
+	if !looksMemorable(content) {
+		return
+	}
+	go func() {
+		// 去重：本群已有高度相似记忆则跳过
+		if existing, err := e.groupMemorySvc.Recall(groupID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
+			return
+		}
+		should, err := e.groupMemorySvc.ShouldRemember(content)
+		if err != nil {
+			log.Printf("[GroupMemory] ShouldRemember 失败: group=%d err=%v", groupID, err)
+			return
+		}
+		if !should {
+			return
+		}
+		if err := e.groupMemorySvc.Remember(groupID, conversationID, content); err != nil {
+			log.Printf("[GroupMemory] 写入失败: group=%d err=%v", groupID, err)
 		}
 	}()
 }

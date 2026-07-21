@@ -74,7 +74,7 @@ type SmartReplyGraph struct {
 	db               *gorm.DB
 	unifiedKnowledge KnowledgeRetriever
 	legacyKnowledge  LegacyKnowledgeService
-	memorySvc        *AvatarMemoryService
+	groupMemorySvc   *GroupMemoryService
 	userSvc          *UserService
 }
 
@@ -83,7 +83,7 @@ func NewSmartReplyGraph(
 	db *gorm.DB,
 	unifiedKnowledge KnowledgeRetriever,
 	legacyKnowledge LegacyKnowledgeService,
-	memorySvc *AvatarMemoryService,
+	groupMemorySvc *GroupMemoryService,
 	userSvc *UserService,
 ) *SmartReplyGraph {
 	return &SmartReplyGraph{
@@ -91,7 +91,7 @@ func NewSmartReplyGraph(
 		db:               db,
 		unifiedKnowledge: unifiedKnowledge,
 		legacyKnowledge:  legacyKnowledge,
-		memorySvc:        memorySvc,
+		groupMemorySvc:   groupMemorySvc,
 		userSvc:          userSvc,
 	}
 }
@@ -213,14 +213,14 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	input.KnowledgeCtx = knowledgeCtx
 
 	memoryCtx := ""
-	if g.memorySvc != nil {
-		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
+	if g.groupMemorySvc != nil && input.Group != nil {
+		memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
 		if err == nil && len(memoryResults) > 0 {
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
 			}
-			memoryCtx = "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+			memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 		}
 	}
 	input.MemoryCtx = memoryCtx
@@ -415,24 +415,26 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 
 func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
-		if g.memorySvc == nil {
-			input.MemoryCtx = ""
-			return input, nil
-		}
-
-		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
-		if err != nil || len(memoryResults) == 0 {
-			input.MemoryCtx = ""
-			return input, nil
-		}
-
-		var parts []string
-		for _, r := range memoryResults {
-			parts = append(parts, r.Content)
-		}
-		input.MemoryCtx = "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+		input.MemoryCtx = g.recallGroupMemory(input)
 		return input, nil
 	})
+}
+
+// recallGroupMemory 召回本群群级记忆注入上下文。非群场景或无群记忆服务时置空。
+// 切断旧路径：不再召回发送者分身记忆（AvatarMemoryService），避免私聊->群泄露。
+func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
+	if g.groupMemorySvc == nil || input.Group == nil {
+		return ""
+	}
+	memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
+	if err != nil || len(memoryResults) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, r := range memoryResults {
+		parts = append(parts, r.Content)
+	}
+	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 
 func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
