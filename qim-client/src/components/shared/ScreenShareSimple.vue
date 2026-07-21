@@ -604,25 +604,49 @@ const toggleMinimize = () => {
   }
 }
 
-// 全屏采用纯 CSS 类（.fullscreen）驱动，不依赖原生 Fullscreen API。
-// 原因：Electron 无边框窗口下 Element.requestFullscreen() 不稳、常被静默拒绝，
-// 且旧实现把 isFullscreen 绑死在 fullscreenchange 事件上，API 一拒状态就不翻 = "没反应"。
-// 现直接切换 isFullscreen，由 .fullscreen 类 CSS（position:fixed/100vw/100vh/z-index:10000）接管视觉。
-const toggleFullscreen = () => {
-  isFullscreen.value = !isFullscreen.value
+// 全屏：原生 Fullscreen API 优先（真·OS 全屏，覆盖整个显示器），乐观翻转 isFullscreen 作 CSS 兜底。
+// 即便原生调用被拒/延迟（Electron 无边框窗口下偶发），.fullscreen 类也能立即给 app 内全屏视觉，
+// 不会静默没反应。isFullscreen 同时由 fullscreenchange 事件同步，保证原生 Esc 退出时状态一致。
+const toggleFullscreen = async () => {
+  if (!screenShareOverlayRef.value) return
+  const next = !isFullscreen.value
+  isFullscreen.value = next // 乐观：立即 app 内 CSS 全屏视觉
+  try {
+    if (next) {
+      if (screenShareOverlayRef.value.requestFullscreen) {
+        await screenShareOverlayRef.value.requestFullscreen()
+      }
+    } else {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen()
+      }
+    }
+  } catch (error) {
+    // 原生失败不致命：.fullscreen 类 CSS 已兜底
+    console.warn('[ScreenShareSimple] 原生全屏失败，已用 CSS 兜底:', error)
+  }
 }
 
 const exitFullscreen = () => {
-  if (isFullscreen.value) {
-    isFullscreen.value = false
+  if (!isFullscreen.value) return
+  isFullscreen.value = false
+  if (document.exitFullscreen) {
+    document.exitFullscreen().catch(() => {})
   }
 }
 
-// Esc 退出全屏（原生 API 原本自动处理 Esc，CSS 方案需自行监听）
+// Esc 退出全屏：原生全屏时浏览器会先拦截 Esc 退出原生全屏（由 fullscreenchange 同步状态）；
+// 原生未生效（CSS 兜底）时由本监听退出 CSS 全屏。
 const handleFullscreenEsc = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && isFullscreen.value) {
-    isFullscreen.value = false
+    exitFullscreen()
   }
+}
+
+// 原生全屏状态变化（含 Esc/F11 退出）：同步 isFullscreen，不再做内联样式操纵--
+// 视觉统一由 .fullscreen 类 + :fullscreen 伪类 CSS 接管。
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
 }
 
 const handleStop = () => {
@@ -727,10 +751,12 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('keydown', handleFullscreenEsc)
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
 })
 
 const initFullscreenListener = () => {
   document.addEventListener('keydown', handleFullscreenEsc)
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
 }
 
 initFullscreenListener()
