@@ -570,7 +570,7 @@
       @close="closeAISettings"
       @cancel="closeAISettings"
       :show-footer="false"
-      :content-style="{ width: '480px', minWidth: '480px' }"
+      :content-style="{ width: '640px', minWidth: '640px' }"
     >
       <GroupAIPanel
         :group-id="Number(selectedGroup?.id)"
