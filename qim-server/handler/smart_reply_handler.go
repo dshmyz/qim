@@ -140,69 +140,43 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		return
 	}
 
-	var group *model.Group
 	if conv.Type == "group" || conv.Type == "discussion" {
-		var g model.Group
-		if err := db.Where("conversation_id = ?", conversationID).First(&g).Error; err != nil {
+		var group model.Group
+		if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err != nil {
 			log.Printf("[SmartReply] 查找群聊失败: convID=%d err=%v", conversationID, err)
 			return
 		}
-		group = &g
-		aiConfig := group.GetAIConfig()
-		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s", aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
-		if !aiConfig.Enabled {
-			log.Printf("[SmartReply] 群聊 AI 未启用，跳过处理")
-			return
-		}
-
-		// 关键词过滤仅在自动回复模式下生效，@AI 提及不受关键词限制
-		if aiConfig.ReplyMode != "mention_only" && aiConfig.TriggerKeywords != "" {
-			keywords := strings.Split(aiConfig.TriggerKeywords, ",")
-			hasKeyword := false
-			for _, kw := range keywords {
-				kw = strings.TrimSpace(kw)
-				if kw != "" && strings.Contains(strings.ToLower(content), strings.ToLower(kw)) {
-					hasKeyword = true
-					break
-				}
-			}
-			if !hasKeyword {
-				log.Printf("[SmartReply] 消息不包含触发关键词，跳过处理")
-				return
-			}
-		}
-
-		if aiConfig.AntiSpamInterval > 0 {
-			var lastAIMsg model.Message
-			err := db.Where("conversation_id = ? AND origin = ? AND created_at > ?",
-				conversationID, "assistant", time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
-				Order("created_at DESC").First(&lastAIMsg).Error
-			if err == nil {
-				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
-				return
-			}
-		}
-	}
-
-	if group != nil {
 		aiConfig := group.GetAIConfig()
 		assistantName := "AI助手"
 		if aiConfig.AssistantName != "" {
 			assistantName = aiConfig.AssistantName
 		}
 
-		if e.isAIMention(content, assistantName) {
+		// 反刷屏依赖 DB 最近 AI 消息查询，结果作为纯决策入参传入 DecideGroupAIReply
+		antiSpamBlocked := false
+		if aiConfig.AntiSpamInterval > 0 {
+			var lastAIMsg model.Message
+			err := db.Where("conversation_id = ? AND origin = ? AND created_at > ?",
+				conversationID, "assistant", time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
+				Order("created_at DESC").First(&lastAIMsg).Error
+			if err == nil {
+				antiSpamBlocked = true
+				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
+			}
+		}
+
+		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s",
+			aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
+
+		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
+		case GroupAIMentionReply:
 			question := extractAIQuestion(content, assistantName)
 			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName)
 			return
-		}
-
-		if aiConfig.ReplyMode == "off" {
+		case GroupAISkipReply:
 			return
-		}
-
-		if aiConfig.ReplyMode == "mention_only" {
-			return
+		case GroupAIAutoReply:
+			// 落到下方意图检测自动回复
 		}
 	}
 
@@ -366,21 +340,80 @@ func (rl *RateLimiter) Stop() {
 	})
 }
 
-// isAIMention 检测是否 @AI 或 @AI助手
+// isAIMention 判断消息是否 @ 了群 AI 助手。委托纯函数 groupAIMentionsAI，
+// 以便 DecideGroupAIReply 与本方法共用同一套判定逻辑（smart_reply_handler_test.go 直接用本方法）。
 func (e *SmartReplyEngine) isAIMention(content string, assistantName string) bool {
+	return groupAIMentionsAI(content, assistantName)
+}
+
+// GroupAIReplyAction 群聊 AI 对单条消息的纯决策结果。反刷屏（AntiSpamInterval）
+// 依赖数据库最近 AI 消息查询，不在纯函数内判定，由调用方查库后以 antiSpamBlocked 入参传入。
+type GroupAIReplyAction int
+
+const (
+	GroupAISkipReply   GroupAIReplyAction = iota // 不回复
+	GroupAIMentionReply                          // @AI 提及，直接回复
+	GroupAIAutoReply                             // 走意图检测自动回复
+)
+
+// DecideGroupAIReply 是群聊 AI 触发的纯决策入口。
+//
+// 决策顺序：启用 → 反刷屏 → @AI 提及 → 关键词门控 → 模式判定。
+// @AI 提及优先于关键词门控：用户显式点名应总能触达助手，关键词门控仅对
+// 自动回复路径生效。反刷屏优先级最高——即使 @AI 提及，命中反刷屏窗口也跳过。
+// 以上行为均由表测试钉死（见 smart_reply_group_ai_test.go），调整请同步更新。
+func DecideGroupAIReply(cfg model.GroupAIConfig, content, assistantName string, antiSpamBlocked bool) GroupAIReplyAction {
+	if !cfg.Enabled {
+		return GroupAISkipReply
+	}
+	if antiSpamBlocked {
+		return GroupAISkipReply
+	}
+	if groupAIMentionsAI(content, assistantName) {
+		return GroupAIMentionReply
+	}
+	// 关键词门控仅在非 mention_only 模式下、且对自动回复路径生效
+	if cfg.ReplyMode != "mention_only" && cfg.TriggerKeywords != "" {
+		if !groupAIKeywordMatches(content, cfg.TriggerKeywords) {
+			return GroupAISkipReply
+		}
+	}
+	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
+		return GroupAISkipReply
+	}
+	return GroupAIAutoReply
+}
+
+// groupAIKeywordMatches 判断消息内容是否命中任一触发关键词（逗号分隔，大小写不敏感）。
+// keywords 为空时视为无限制（命中），调用方已保证仅在 TriggerKeywords 非空时调用。
+func groupAIKeywordMatches(content, keywords string) bool {
+	if keywords == "" {
+		return true
+	}
+	lower := strings.ToLower(content)
+	for _, kw := range strings.Split(keywords, ",") {
+		kw = strings.TrimSpace(kw)
+		if kw != "" && strings.Contains(lower, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
+}
+
+// groupAIMentionsAI 判断消息是否 @ 了群 AI 助手（mention token 或明文 @AI/@助手名）。
+// isAIMention 的纯逻辑副本，供 DecideGroupAIReply 与运行时路径共用，避免双套判断。
+func groupAIMentionsAI(content, assistantName string) bool {
 	for _, m := range mention.Parse(content) {
 		if isAIAssistantMentionName(m.Name, assistantName) {
 			return true
 		}
 	}
-
 	patterns := []string{
 		"@AI",
 		"@Ai",
 		"@ai",
 		"@" + assistantName,
 	}
-
 	for _, pattern := range patterns {
 		if strings.Contains(content, pattern) {
 			return true
