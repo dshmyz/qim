@@ -156,7 +156,7 @@
           </div>
         </template>
         <template #fallback>
-          <ContentSkeleton type="recent" :count="6" />
+          <ContentSkeleton type="chat" />
         </template>
       </Suspense>
     </template>

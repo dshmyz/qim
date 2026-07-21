@@ -13,7 +13,13 @@
   <ContentSkeleton type="org" />
 -->
 <template>
-  <div class="content-skeleton" role="status" aria-label="内容加载中" aria-busy="true">
+  <div
+    class="content-skeleton"
+    :class="{ 'content-skeleton--chat': type === 'chat' }"
+    role="status"
+    aria-label="内容加载中"
+    aria-busy="true"
+  >
     <!-- 聊天/会话列表骨架屏 -->
     <div v-if="type === 'recent'" class="skeleton-recent">
       <div v-for="i in count" :key="i" class="skeleton-conversation-item">
@@ -68,6 +74,43 @@
       </div>
     </div>
 
+    <!-- 聊天窗口骨架屏：与 ChatWindow 的头部、消息区和输入区对齐 -->
+    <div v-else-if="type === 'chat'" class="skeleton-chat">
+      <div class="skeleton-chat-header">
+        <div class="skeleton-chat-header-info">
+          <div class="skeleton-shape skeleton-chat-header-avatar"></div>
+          <div class="skeleton-shape skeleton-chat-header-title"></div>
+        </div>
+        <div class="skeleton-chat-header-actions">
+          <div class="skeleton-shape skeleton-chat-header-action"></div>
+          <div class="skeleton-shape skeleton-chat-header-action"></div>
+        </div>
+      </div>
+
+      <div class="skeleton-chat-body">
+        <div class="skeleton-shape skeleton-chat-time-divider"></div>
+        <div
+          v-for="i in count"
+          :key="i"
+          class="skeleton-chat-message"
+          :class="{ 'skeleton-chat-message--self': i % 3 === 0 }"
+        >
+          <div class="skeleton-shape skeleton-chat-message-avatar"></div>
+          <div class="skeleton-chat-message-lines">
+            <div class="skeleton-shape skeleton-chat-message-line"></div>
+            <div class="skeleton-shape skeleton-chat-message-line skeleton-chat-message-line--short"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="skeleton-chat-composer">
+        <div class="skeleton-chat-composer-tools">
+          <div v-for="i in 4" :key="i" class="skeleton-shape skeleton-chat-composer-tool"></div>
+        </div>
+        <div class="skeleton-shape skeleton-chat-composer-input"></div>
+      </div>
+    </div>
+
     <!-- 群组/设置通用列表骨架屏 -->
     <div v-else class="skeleton-generic">
       <div class="skeleton-shape skeleton-header-bar"></div>
@@ -85,7 +128,7 @@
  * @property count - 占位项数量，默认 5
  */
 interface Props {
-  type: 'recent' | 'channels' | 'org' | 'apps' | 'groups' | 'settings'
+  type: 'recent' | 'channels' | 'org' | 'apps' | 'groups' | 'settings' | 'chat'
   count?: number
 }
 
@@ -103,6 +146,12 @@ withDefaults(defineProps<Props>(), {
   --skeleton-highlight: #e0e0e0;
   --skeleton-radius: var(--radius-md, 8px);
   padding: var(--spacing-3, 12px) var(--spacing-4, 16px);
+}
+
+.content-skeleton--chat {
+  display: flex;
+  min-height: 0;
+  padding: 0;
 }
 
 /* 深色模式适配 */
@@ -351,6 +400,103 @@ withDefaults(defineProps<Props>(), {
   width: 60%;
   height: 12px;
   border-radius: 4px;
+}
+
+/* ========================================
+   chat 类型 - 聊天窗口
+   与 ChatWindow 的 56px 头部、消息区和输入区对齐
+   ======================================== */
+.skeleton-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  overflow: hidden;
+}
+
+.skeleton-chat-header {
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.skeleton-chat-header-info,
+.skeleton-chat-header-actions,
+.skeleton-chat-message,
+.skeleton-chat-composer-tools {
+  display: flex;
+  align-items: center;
+}
+
+.skeleton-chat-header-info { gap: 12px; }
+.skeleton-chat-header-actions { gap: 8px; }
+
+.skeleton-chat-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.skeleton-chat-header-title { width: 120px; height: 14px; }
+.skeleton-chat-header-action { width: 22px; height: 22px; border-radius: 50%; }
+
+.skeleton-chat-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  overflow: hidden;
+  background: var(--content-bg);
+}
+
+.skeleton-chat-time-divider {
+  width: 92px;
+  height: 12px;
+  margin: 0 auto 2px;
+}
+
+.skeleton-chat-message { gap: 10px; }
+.skeleton-chat-message--self { flex-direction: row-reverse; }
+
+.skeleton-chat-message-avatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.skeleton-chat-message-lines {
+  width: min(46%, 320px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-chat-message-line { width: 100%; height: 14px; }
+.skeleton-chat-message-line--short { width: 64%; }
+.skeleton-chat-message--self .skeleton-chat-message-line--short { margin-left: auto; }
+
+.skeleton-chat-composer {
+  flex-shrink: 0;
+  padding: 10px 16px 12px;
+  background: var(--sidebar-bg);
+}
+
+.skeleton-chat-composer-tools { gap: 12px; margin-bottom: 10px; }
+.skeleton-chat-composer-tool { width: 18px; height: 18px; border-radius: 50%; }
+
+.skeleton-chat-composer-input {
+  width: 100%;
+  height: 42px;
+  border-radius: 8px;
 }
 
 /* ========================================
