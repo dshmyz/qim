@@ -19,8 +19,8 @@ defineProps<{
   gap: 6px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: rgba(102, 126, 234, 0.08);
-  color: rgba(102, 126, 234, 0.7);
+  background: rgba(102, 126, 234, 0.05);
+  /* color: rgba(102, 126, 234, 0.7); */
   font-size: 12px;
   font-weight: 500;
 }
@@ -44,15 +44,5 @@ defineProps<{
   font-size: 10px;
   opacity: 0.7;
   font-weight: 400;
-}
-
-[data-theme="elegant-dark"] .ai-message-badge,
-[data-theme="ocean-blue"] .ai-message-badge,
-[data-theme="elegant-purple"] .ai-message-badge,
-[data-theme="warm-amber"] .ai-message-badge,
-[data-theme="crimson-red"] .ai-message-badge,
-[data-theme="emerald-green"] .ai-message-badge {
-  background: rgba(90, 103, 216, 0.12);
-  color: rgba(160, 174, 255, 0.7);
 }
 </style>
