@@ -190,20 +190,21 @@ func (s *AvatarService) LearnPersona(userID uint, taskID uint) {
 	})
 }
 
-// GenerateReply 生成分身回复（使用 Eino Graph 编排）
-func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerMessage string) (string, error) {
+// GenerateReply 生成分身回复（使用 Eino Graph 编排）。
+// config 非 nil 时复用调用方已加载的配置，避免一次回复流程内重复查 avatar_configs。
+func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (string, error) {
 	graph := s.replyGraph.Load()
 	if graph == nil {
 		return "", fmt.Errorf("回复 Graph 未初始化")
 	}
 
 	ctx := context.Background()
-	return graph.Execute(ctx, userID, conversationID, triggerMessage)
+	return graph.Execute(ctx, userID, conversationID, triggerMessage, config)
 }
 
 // PreviewReply 预览回复
 func (s *AvatarService) PreviewReply(userID uint, message string) (string, error) {
-	return s.GenerateReply(userID, 0, message)
+	return s.GenerateReply(userID, 0, message, nil)
 }
 
 // min 返回两个整数中的较小值

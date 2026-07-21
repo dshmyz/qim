@@ -167,7 +167,7 @@ func (g *AvatarReplyGraph) createFormatReplyNode() *compose.Lambda {
 	})
 }
 
-func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversationID uint, message string) (string, error) {
+func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, error) {
 	if g.runnable == nil {
 		return "", fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
 	}
@@ -179,7 +179,7 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 	}
 
 	// 先在图外完成上下文准备，以便在命中"不回复"时直接跳过 LLM 调用
-	if err := g.prepare(ctx, input); err != nil {
+	if err := g.prepare(ctx, input, preloaded); err != nil {
 		return "", err
 	}
 	if input.SkipReply {
@@ -208,12 +208,17 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 
 // prepare 加载分身配置、用户、知识范围与历史，并判定是否命中"不回复"策略。
 // 抽出为普通方法便于 Execute 在调用 LLM 前短路，也便于后续单测。
-func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContext) error {
-	var config model.AvatarConfig
-	if err := g.db.Where("user_id = ?", input.UserID).First(&config).Error; err != nil {
-		return fmt.Errorf("分身配置不存在")
+// preloaded 非 nil 时复用调用方已加载的配置，避免一次回复流程内重复查 avatar_configs。
+func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContext, preloaded *model.AvatarConfig) error {
+	if preloaded != nil {
+		input.Config = *preloaded
+	} else {
+		var config model.AvatarConfig
+		if err := g.db.Where("user_id = ?", input.UserID).First(&config).Error; err != nil {
+			return fmt.Errorf("分身配置不存在")
+		}
+		input.Config = config
 	}
-	input.Config = config
 
 	var user model.User
 	if err := g.db.First(&user, input.UserID).Error; err != nil {
@@ -221,11 +226,11 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 	input.User = user
 
-	if config.KnowledgeScopeJSON != "" {
-		_ = json.Unmarshal([]byte(config.KnowledgeScopeJSON), &input.KnowledgeScope)
+	if input.Config.KnowledgeScopeJSON != "" {
+		_ = json.Unmarshal([]byte(input.Config.KnowledgeScopeJSON), &input.KnowledgeScope)
 	}
-	if config.ReplyStrategyJSON != "" {
-		_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &input.ReplyStrategy)
+	if input.Config.ReplyStrategyJSON != "" {
+		_ = json.Unmarshal([]byte(input.Config.ReplyStrategyJSON), &input.ReplyStrategy)
 	}
 
 	noteCtx := ""
@@ -326,7 +331,7 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		Where("type = ?", "text").
 		Where("origin IS NULL OR origin != ?", "avatar").
 		Order("created_at DESC").
-		Limit(limit).
+		Limit(limit + 1). // 多取 1 条，预留触发消息被剔除后仍满 limit
 		Find(&messages)
 
 	if len(messages) == 0 {

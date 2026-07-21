@@ -135,9 +135,9 @@ func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message
 				return response.ShouldReply, response.Reason, nil
 			}
 		}
-		// 解析彻底失败：fail-open，让回复生成 LLM 兜底，而不是让分身静默消失
-		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败，默认回复", "error", err, "raw", result)
-		return true, "LLM返回解析失败，默认回复", nil
+		// 解析彻底失败：fail-closed，与 DecideReply 其余门一致（避免 LLM 降级时刷屏）
+		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败，静默跳过", "error", err, "raw", result)
+		return false, "LLM返回解析失败，静默跳过", nil
 	}
 
 	return response.ShouldReply, response.Reason, nil

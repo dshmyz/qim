@@ -104,7 +104,14 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	reply, err := p.service.GenerateReply(task.UserID, task.ConversationID, task.TriggerMessage)
+	// 加载一次配置，供生成回复（透传给 prepare 复用）与发送阶段（name/strategy）共用，避免重复查询
+	var avatarConfig model.AvatarConfig
+	if err := p.db.Where("user_id = ?", task.UserID).First(&avatarConfig).Error; err != nil {
+		logger.WithModule("AvatarWorkerPool").Error("获取分身配置失败", "user", task.UserID, "error", err)
+		return
+	}
+
+	reply, err := p.service.GenerateReply(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
 	if err != nil {
 		logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
 		return
@@ -116,15 +123,14 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	// 一次性查询分身用户信息和自定义名称，后续发送函数复用
+	// 一次性查询分身用户信息，后续发送函数复用
 	var avatarUser model.User
 	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
 		logger.WithModule("AvatarWorkerPool").Error("获取分身用户信息失败", "user", task.UserID, "error", err)
 		return
 	}
 	avatarCfgName := ""
-	var avatarConfig model.AvatarConfig
-	if p.db.Where("user_id = ?", task.UserID).First(&avatarConfig).Error == nil && avatarConfig.Name != "" {
+	if avatarConfig.Name != "" {
 		avatarCfgName = avatarConfig.Name
 	}
 
@@ -133,20 +139,29 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	if avatarConfig.ReplyStrategyJSON != "" {
 		_ = json.Unmarshal([]byte(avatarConfig.ReplyStrategyJSON), &replyStrategy)
 	}
+	// 发送逻辑抽成闭包，便于延迟发送时异步执行而不阻塞 worker
+	send := func() {
+		// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
+		if task.IsGroupChat && replyStrategy.GroupReplyTarget == "private" {
+			p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName)
+		} else {
+			p.sendDirectReply(task, reply, &avatarUser, avatarCfgName)
+		}
+		now := time.Now()
+		p.db.Model(&session).Update("last_reply_at", now)
+	}
+
+	// 仿真人延迟：异步等待后发送，避免长 ReplyDelay 占住 worker（池仅 N 个）饿死后续任务
 	if replyStrategy.ReplyDelay > 0 {
-		logger.WithModule("AvatarWorkerPool").Info("分身回复延迟", "userID", task.UserID, "delaySec", replyStrategy.ReplyDelay)
-		time.Sleep(time.Duration(replyStrategy.ReplyDelay) * time.Second)
-	}
-
-	// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
-	if task.IsGroupChat && replyStrategy.GroupReplyTarget == "private" {
-		p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName)
+		logger.WithModule("AvatarWorkerPool").Info("分身回复延迟发送（异步）", "userID", task.UserID, "delaySec", replyStrategy.ReplyDelay)
+		delay := time.Duration(replyStrategy.ReplyDelay) * time.Second
+		go func() {
+			time.Sleep(delay)
+			send()
+		}()
 	} else {
-		p.sendDirectReply(task, reply, &avatarUser, avatarCfgName)
+		send()
 	}
-
-	now := time.Now()
-	p.db.Model(&session).Update("last_reply_at", now)
 }
 
 // getUserLimiter 获取用户级别的限流器
