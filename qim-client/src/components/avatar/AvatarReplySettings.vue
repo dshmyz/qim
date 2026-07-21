@@ -27,6 +27,15 @@
       </div>
 
       <div class="setting-item">
+        <label class="setting-label">群聊回复位置</label>
+        <select :value="replyStrategy?.groupReplyTarget ?? 'group'" @change="updateStrategy('groupReplyTarget', ($event.target as HTMLSelectElement).value as 'group' | 'private')" class="form-select">
+          <option value="group">回群内（群成员可见）</option>
+          <option value="private">回触发者私聊</option>
+        </select>
+        <span class="setting-hint">群聊中被触发时，分身回复发到哪里；默认回群内</span>
+      </div>
+
+      <div class="setting-item">
         <label class="setting-label">置信度阈值</label>
         <div class="threshold-slider">
           <input type="range" :value="replyStrategy?.confidenceThreshold ?? 0.6" @input="updateStrategy('confidenceThreshold', Number(($event.target as HTMLInputElement).value))" min="0" max="1" step="0.1" class="slider-input" />
@@ -95,7 +104,8 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
     replyDelay: 3,
     confidenceThreshold: 0.6,
     disclaimerStyle: 'badge',
-    replyOutOfScope: false
+    replyOutOfScope: false,
+    groupReplyTarget: 'group'
   }
   emit('update:modelValue', {
     ...props.modelValue,
