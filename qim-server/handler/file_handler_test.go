@@ -238,6 +238,8 @@ func Test_DownloadFile_EscapesSpecialCharsInFilename(t *testing.T) {
 		Size:         5,
 		MimeType:     "text/plain",
 		UserID:       1,
+		ScopeType:    "user",
+		ScopeID:      1,
 		Source:       "upload",
 		CreatedAt:    time.Now(),
 	}
@@ -284,6 +286,8 @@ func Test_DownloadFile_EncodesChineseFilename(t *testing.T) {
 		Size:         5,
 		MimeType:     "application/pdf",
 		UserID:       1,
+		ScopeType:    "user",
+		ScopeID:      1,
 		Source:       "upload",
 		CreatedAt:    time.Now(),
 	}

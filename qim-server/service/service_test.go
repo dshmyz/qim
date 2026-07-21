@@ -98,6 +98,8 @@ func TestUserService_GetUserByUsername(t *testing.T) {
 
 func TestUserService_SearchUsers(t *testing.T) {
 	db := setupServiceTestDB(t)
+	// Search 的 SQL 含部门子查询，需确保部门相关表存在（空表即可，子查询不报错）
+	require.NoError(t, db.Migrator().CreateTable(&model.Department{}, &model.DepartmentEmployee{}))
 	svc := NewUserService(db)
 
 	users := []*model.User{
@@ -106,12 +108,12 @@ func TestUserService_SearchUsers(t *testing.T) {
 		{Username: "wangwu", Nickname: "王五", PasswordHash: "hash"},
 	}
 	for _, u := range users {
-		db.Create(u)
+		require.NoError(t, db.Create(u).Error)
 	}
 
 	results, err := svc.SearchUsers("张", 10)
-	assert.NoError(t, err)
-	assert.Len(t, results, 1)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
 	assert.Equal(t, "张三", results[0].Nickname)
 }
 
