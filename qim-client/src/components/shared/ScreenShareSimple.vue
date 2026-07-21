@@ -604,32 +604,42 @@ const toggleMinimize = () => {
   }
 }
 
-// 全屏对 <video> 元素（remoteVideoRef）发起，与旧 ScreenShare.vue 一致--
-// 视频元素的原生全屏在 Electron 下稳定可靠；对 overlay <div> 全屏会因其 transform/定位而不稳。
-// 乐观翻转 isFullscreen：原生成功 = 视频 OS 级全屏（覆盖整个显示器）；原生失败 = .fullscreen 类 CSS 兜底。
+// 全屏：Electron 下走主进程 BrowserWindow.setFullScreen（IPC），比渲染进程 Element.requestFullscreen
+// 稳定（后者在无边框窗口下常报 "Document not active"）。非 Electron（web 预览）回退原生元素全屏。
+// isFullscreen 由主进程 enter/leave-fullscreen 事件同步（用户按 Esc 退出 OS 全屏时状态一致）。
 const toggleFullscreen = async () => {
   const next = !isFullscreen.value
-  isFullscreen.value = next // 乐观：立即 app 内 CSS 全屏视觉
+  isFullscreen.value = next // 乐观：立即 app 内 CSS 全屏视觉（.fullscreen 类）
   try {
-    if (next) {
-      if (remoteVideoRef.value?.requestFullscreen) {
-        await remoteVideoRef.value.requestFullscreen()
-      }
+    const api = (window as any).electron?.ipcRenderer
+    if (api?.invoke) {
+      await api.invoke('set-fullscreen', next)
     } else {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen()
+      // 非 Electron 回退：原生元素全屏
+      const target = remoteVideoRef.value || screenShareOverlayRef.value
+      if (next) {
+        await target?.requestFullscreen?.()
+      } else {
+        await document.exitFullscreen?.()
       }
     }
   } catch (error) {
-    // 原生失败不致命：.fullscreen 类 CSS 已兜底
-    console.warn('[ScreenShareSimple] 原生全屏失败，已用 CSS 兜底:', error)
+    console.warn('[ScreenShareSimple] 全屏切换失败:', error)
   }
+}
+
+// 主进程窗口全屏状态变化（用户按 Esc 退出 OS 全屏等）同步 isFullscreen
+const handleWindowFullscreenChanged = (_e: unknown, flag: boolean) => {
+  isFullscreen.value = !!flag
 }
 
 const exitFullscreen = () => {
   if (!isFullscreen.value) return
   isFullscreen.value = false
-  if (document.exitFullscreen) {
+  const api = (window as any).electron?.ipcRenderer
+  if (api?.invoke) {
+    api.invoke('set-fullscreen', false).catch(() => {})
+  } else if (document.exitFullscreen) {
     document.exitFullscreen().catch(() => {})
   }
 }
@@ -751,11 +761,19 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('keydown', handleFullscreenEsc)
   document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  const api = (window as any).electron?.ipcRenderer
+  if (api?.removeListener) {
+    api.removeListener('fullscreen-changed', handleWindowFullscreenChanged)
+  }
 })
 
 const initFullscreenListener = () => {
   document.addEventListener('keydown', handleFullscreenEsc)
   document.addEventListener('fullscreenchange', handleFullscreenChange)
+  const api = (window as any).electron?.ipcRenderer
+  if (api?.on) {
+    api.on('fullscreen-changed', handleWindowFullscreenChanged)
+  }
 }
 
 initFullscreenListener()
