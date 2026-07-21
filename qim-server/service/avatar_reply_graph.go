@@ -28,6 +28,7 @@ type AvatarReplyContext struct {
 	NoteContext    string
 	GroupKnowledge string
 	MemoryContext  string
+	TaskContext    string
 	History        string
 	// SkipReply 命中"知识范围外且配置为不回复"时置位，Execute 据此跳过 LLM 调用
 	SkipReply bool
@@ -128,6 +129,9 @@ func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 		}
 		if input.MemoryContext != "" {
 			contextParts = append(contextParts, input.MemoryContext)
+		}
+		if input.TaskContext != "" {
+			contextParts = append(contextParts, input.TaskContext)
 		}
 		if input.History != "" {
 			contextParts = append(contextParts, "【对话历史】\n"+input.History)
@@ -269,6 +273,30 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		}
 	}
 	input.MemoryContext = memoryCtx
+
+	// 任务作为附加知识注入 prompt（不参与范围外静默门控，避免零任务分身被误静默）
+	taskCtx := ""
+	if input.KnowledgeScope.Tasks {
+		var tasks []model.Task
+		g.db.Where("user_id = ? AND (status IS NULL OR status = '' OR status NOT IN (?, ?))",
+			input.UserID, "done", "completed").
+			Order("created_at DESC").Limit(5).Find(&tasks)
+		if len(tasks) > 0 {
+			parts := make([]string, 0, len(tasks))
+			for _, t := range tasks {
+				line := t.Title
+				if t.DueDate != nil {
+					line += "（截止 " + t.DueDate.Format("01-02 15:04") + "）"
+				}
+				if t.Priority != "" && t.Priority != "medium" {
+					line += " 优先级:" + t.Priority
+				}
+				parts = append(parts, "- "+line)
+			}
+			taskCtx = "【我的任务】\n" + strings.Join(parts, "\n")
+		}
+	}
+	input.TaskContext = taskCtx
 
 	history := ""
 	// ConversationHistory nil（存量配置未显式设置）按默认 true 处理，避免升级后静默丢失历史

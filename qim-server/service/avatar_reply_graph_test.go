@@ -55,3 +55,25 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	require.NoError(t, g.prepare(context.Background(), in4))
 	assert.False(t, in4.SkipReply, "仅开 Tasks（无 docs/notes）的分身不应因 out-of-scope 静默")
 }
+
+func TestAvatarReplyGraphPrepareTaskContext(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}, &model.Task{}))
+
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	require.NoError(t, db.Create(&model.Task{UserID: 1, Title: "准备周报", Priority: "high", Status: "todo"}).Error)
+	require.NoError(t, db.Create(&model.Task{UserID: 1, Title: "已完成项", Status: "done"}).Error) // 应被排除
+	require.NoError(t, db.Create(&model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		KnowledgeScopeJSON: `{"tasks":true}`,
+	}).Error)
+
+	g := &AvatarReplyGraph{db: db}
+	in := &AvatarReplyContext{UserID: 1, ConversationID: 0, Message: "我这周有啥事"}
+	require.NoError(t, g.prepare(context.Background(), in))
+
+	assert.Contains(t, in.TaskContext, "准备周报", "Tasks 开启时应把未完成任务注入 prompt")
+	assert.NotContains(t, in.TaskContext, "已完成项", "done 状态的任务不应进入上下文")
+	assert.False(t, in.SkipReply, "Tasks 不参与静默门控，即便有任务也不应跳过")
+}
