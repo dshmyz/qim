@@ -139,6 +139,27 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	if avatarConfig.ReplyStrategyJSON != "" {
 		_ = json.Unmarshal([]byte(avatarConfig.ReplyStrategyJSON), &replyStrategy)
 	}
+	// 异步记忆：分身参与回复的对话，择要写入主人记忆库（否则 Recall 永远空）
+	if p.service.memorySvc != nil {
+		memSvc := p.service.memorySvc
+		triggerMsg := task.TriggerMessage
+		ownerID := task.UserID
+		convID := task.ConversationID
+		go func() {
+			should, err := memSvc.ShouldRemember(triggerMsg)
+			if err != nil {
+				logger.WithModule("AvatarWorkerPool").Error("ShouldRemember 判断失败", "user", ownerID, "error", err)
+				return
+			}
+			if !should {
+				return
+			}
+			if err := memSvc.Remember(ownerID, convID, triggerMsg); err != nil {
+				logger.WithModule("AvatarWorkerPool").Error("写入记忆失败", "user", ownerID, "error", err)
+			}
+		}()
+	}
+
 	// 发送逻辑抽成闭包，便于延迟发送时异步执行而不阻塞 worker
 	send := func() {
 		// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
