@@ -609,20 +609,34 @@ const toggleMinimize = () => {
 // 不做乐观翻转--避免与原生状态失步导致误走退出分支（"Document not active" 错误）。
 // fullscreenchange 监听同步 Esc 退出。
 const toggleFullscreen = async () => {
+  const video = remoteVideoRef.value
+  console.log('[ScreenShareSimple][diag] toggleFullscreen', {
+    fullscreenElement: document.fullscreenElement,
+    videoEl: video,
+    hasRequestFullscreen: !!video?.requestFullscreen,
+    srcObject: video?.srcObject ? 'set' : 'null',
+    videoDisplay: video ? getComputedStyle(video).display : 'no-video',
+    isInitiator: isInitiator.value,
+    remoteStream: !!remoteStream.value
+  })
   try {
     if (!document.fullscreenElement) {
-      if (remoteVideoRef.value?.requestFullscreen) {
-        await remoteVideoRef.value.requestFullscreen()
+      if (video?.requestFullscreen) {
+        await video.requestFullscreen()
+        console.log('[ScreenShareSimple][diag] requestFullscreen resolved OK')
+      } else {
+        console.warn('[ScreenShareSimple][diag] 跳过：video 为空或无 requestFullscreen')
       }
       isFullscreen.value = true
     } else {
       if (document.exitFullscreen) {
         await document.exitFullscreen()
+        console.log('[ScreenShareSimple][diag] exitFullscreen resolved OK')
       }
       isFullscreen.value = false
     }
   } catch (error) {
-    console.warn('[ScreenShareSimple] 全屏切换失败:', error)
+    console.warn('[ScreenShareSimple][diag] 全屏切换失败:', error)
   }
 }
 
