@@ -1176,9 +1176,15 @@ async function ensureMediaPermissions() {
 
   // 所有平台: 配置权限请求处理器，允许 media 和安全的剪贴板写入请求
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    // fullscreen 必须放行：否则 Element.requestFullscreen() 会挂起（Promise 永不 settle），
-    // 屏幕共享全屏完全不工作。
-    if (['media', 'clipboard-sanitized-write', 'fullscreen'].includes(permission)) {
+    // 白名单内的权限放行；其余拒绝。
+    // 注意：未列权限调 callback(false) 会让对应 Web API 的 Promise 挂起（不 reject、不报错），
+    // 新增用到需要权限的 Web API 时务必同步加白名单。
+    // - media: 通话/屏幕共享 getUserMedia
+    // - clipboard-sanitized-write: writeText 写剪贴板
+    // - clipboard-read: readText 读剪贴板（粘贴、小程序粘贴）
+    // - notifications: 便签/日历提醒 Web Notification
+    // - fullscreen: Element.requestFullscreen（屏幕共享全屏，缺则挂起）
+    if (['media', 'clipboard-sanitized-write', 'clipboard-read', 'notifications', 'fullscreen'].includes(permission)) {
       callback(true)
     } else {
       callback(false)
