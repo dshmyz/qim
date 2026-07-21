@@ -604,17 +604,16 @@ const toggleMinimize = () => {
   }
 }
 
-// 全屏：原生 Fullscreen API 优先（真·OS 全屏，覆盖整个显示器），乐观翻转 isFullscreen 作 CSS 兜底。
-// 即便原生调用被拒/延迟（Electron 无边框窗口下偶发），.fullscreen 类也能立即给 app 内全屏视觉，
-// 不会静默没反应。isFullscreen 同时由 fullscreenchange 事件同步，保证原生 Esc 退出时状态一致。
+// 全屏对 <video> 元素（remoteVideoRef）发起，与旧 ScreenShare.vue 一致--
+// 视频元素的原生全屏在 Electron 下稳定可靠；对 overlay <div> 全屏会因其 transform/定位而不稳。
+// 乐观翻转 isFullscreen：原生成功 = 视频 OS 级全屏（覆盖整个显示器）；原生失败 = .fullscreen 类 CSS 兜底。
 const toggleFullscreen = async () => {
-  if (!screenShareOverlayRef.value) return
   const next = !isFullscreen.value
   isFullscreen.value = next // 乐观：立即 app 内 CSS 全屏视觉
   try {
     if (next) {
-      if (screenShareOverlayRef.value.requestFullscreen) {
-        await screenShareOverlayRef.value.requestFullscreen()
+      if (remoteVideoRef.value?.requestFullscreen) {
+        await remoteVideoRef.value.requestFullscreen()
       }
     } else {
       if (document.exitFullscreen) {
