@@ -604,27 +604,26 @@ const toggleMinimize = () => {
   }
 }
 
-// 全屏：Electron 下走主进程 BrowserWindow.setFullScreen（IPC）。渲染进程 Element.requestFullscreen
-// 在当前 Electron 下不工作（不报错也不生效），只能走主进程窗口级全屏。isFullscreen 由主进程
-// enter/leave-fullscreen 事件同步（用户按 Esc 退出 OS 全屏时一致）。
+// [临时诊断] 元素全屏：对 video 调 requestFullscreen，log fullscreenElement 置位情况。
+// 最小 Electron demo 里元素全屏能工作，QIM 里不行--查 QIM 特有原因。
 const toggleFullscreen = async () => {
-  const next = !isFullscreen.value
-  isFullscreen.value = next
+  const video = remoteVideoRef.value
+  console.log('[fs-diag] click; before fullscreenElement=', document.fullscreenElement, 'video=', !!video, 'display=', video ? getComputedStyle(video).display : 'n/a', 'srcObject=', video?.srcObject ? 'set' : 'null')
   try {
-    const api = (window as any).electron?.ipcRenderer
-    if (api?.invoke) {
-      await api.invoke('set-fullscreen', next)
+    if (!document.fullscreenElement) {
+      const p = video?.requestFullscreen()
+      console.log('[fs-diag] requestFullscreen() called, returned type=', typeof p)
+      await p
+      console.log('[fs-diag] RESOLVED; fullscreenElement=', document.fullscreenElement, '===video?', document.fullscreenElement === video)
+      setTimeout(() => {
+        console.log('[fs-diag] after 1s; fullscreenElement=', document.fullscreenElement, '===video?', document.fullscreenElement === video)
+      }, 1000)
     } else {
-      // 非 Electron（web 预览）回退原生元素全屏
-      const target = remoteVideoRef.value || screenShareOverlayRef.value
-      if (next) {
-        await target?.requestFullscreen?.()
-      } else {
-        await document.exitFullscreen?.()
-      }
+      await document.exitFullscreen()
+      console.log('[fs-diag] exit resolved; fullscreenElement=', document.fullscreenElement)
     }
-  } catch (error) {
-    console.warn('[ScreenShareSimple] 全屏切换失败:', error)
+  } catch (e) {
+    console.warn('[fs-diag] ERROR:', e)
   }
 }
 
