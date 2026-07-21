@@ -87,10 +87,10 @@ type AvatarLearnTask struct {
 
 // AvatarKnowledgeScope 分身知识范围配置
 type AvatarKnowledgeScope struct {
-	ConversationHistory bool `json:"conversationHistory"`
-	KnowledgeDocs       bool `json:"knowledgeDocs"`
-	Notes               bool `json:"notes"`
-	Tasks               bool `json:"tasks"`
+	ConversationHistory *bool `json:"conversationHistory"` // nil=未设置→按默认 true（保留对话历史）；显式 false=关闭
+	KnowledgeDocs       bool  `json:"knowledgeDocs"`
+	Notes               bool  `json:"notes"`
+	Tasks               bool  `json:"tasks"`
 }
 
 // AvatarTriggerRules 分身触发规则

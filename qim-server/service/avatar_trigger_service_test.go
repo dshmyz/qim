@@ -100,6 +100,7 @@ func TestAvatarDecideReplyNonSmartModes(t *testing.T) {
 		{"mention/私聊自动触发", config(`{"mode":"mention"}`), 1, "在吗", false, nil, true, false},
 		{"keyword/命中", config(`{"mode":"keyword","keywords":["请假"]}`), 1, "我请假一天", true, nil, true, false},
 		{"keyword/未命中", config(`{"mode":"keyword","keywords":["请假"]}`), 1, "今天天气好", true, nil, false, false},
+		{"keyword/大小写不敏感", config(`{"mode":"keyword","keywords":["HELP"]}`), 1, "can anyone help me?", true, nil, true, false},
 		{"keyword/无关键词默认触发", config(`{"mode":"keyword"}`), 1, "任意", true, nil, true, false},
 		{"all 模式", config(`{"mode":"all"}`), 1, "任意", true, nil, true, false},
 		{"排除会话", config(`{"mode":"all","excludedConversations":[42]}`), 42, "任意", true, nil, false, false},

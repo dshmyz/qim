@@ -191,8 +191,12 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 
 	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
 
-	if cap := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); cap > 0 && len(reply) > cap {
-		reply = strings.TrimSpace(reply[:cap]) + "…"
+	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
+		// 按 rune 截断，避免在多字节 UTF-8（中文）rune 中间切断产生无效 UTF-8
+		runes := []rune(reply)
+		if len(runes) > maxRunes {
+			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
+		}
 	}
 
 	return reply, nil
@@ -267,13 +271,19 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	input.MemoryContext = memoryCtx
 
 	history := ""
-	if input.KnowledgeScope.ConversationHistory && input.ConversationID > 0 {
+	// ConversationHistory nil（存量配置未显式设置）按默认 true 处理，避免升级后静默丢失历史
+	historyEnabled := true
+	if input.KnowledgeScope.ConversationHistory != nil {
+		historyEnabled = *input.KnowledgeScope.ConversationHistory
+	}
+	if historyEnabled && input.ConversationID > 0 {
 		history = g.getConversationHistory(input.ConversationID, 10, input.Message)
 	}
 	input.History = history
 
-	// 命中"不回复"策略：配置了知识来源但三处全空，且策略要求范围外静默
-	knowledgeConfigured := input.KnowledgeScope.KnowledgeDocs || input.KnowledgeScope.Notes || input.KnowledgeScope.Tasks
+	// 命中"不回复"策略：配置了知识来源但三处全空，且策略要求范围外静默。
+	// 只计入 prepare 实际会检索的来源（笔记/群文档）；Tasks 暂无检索路径，计入会让仅开 Tasks 的分身永不回复。
+	knowledgeConfigured := input.KnowledgeScope.KnowledgeDocs || input.KnowledgeScope.Notes
 	noKnowledgeFound := noteCtx == "" && groupKnowledge == "" && memoryCtx == ""
 	if knowledgeConfigured && noKnowledgeFound && !input.ReplyStrategy.ReplyOutOfScope {
 		input.SkipReply = true

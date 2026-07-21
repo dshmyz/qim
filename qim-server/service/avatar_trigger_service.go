@@ -83,8 +83,10 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 		if len(rules.Keywords) == 0 {
 			return true, "keyword 无关键词默认触发", nil
 		}
+		// 大小写不敏感匹配，与旧 matchKeywords 行为一致
+		msgLower := strings.ToLower(message)
 		for _, kw := range rules.Keywords {
-			if strings.Contains(message, kw) {
+			if strings.Contains(msgLower, strings.ToLower(kw)) {
 				return true, "关键词触发", nil
 			}
 		}

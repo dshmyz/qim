@@ -44,4 +44,14 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	in3 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "在吗"}
 	require.NoError(t, g.prepare(context.Background(), in3))
 	assert.False(t, in3.SkipReply, "未配置知识来源的纯人设分身应正常回复")
+
+	// case4: 仅开 Tasks（无 docs/notes）+ out-of-scope=false → 不跳过：
+	// prepare 不检索 tasks，故 Tasks 不计入 knowledgeConfigured，避免仅开 Tasks 的分身永不回复
+	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
+		Update("knowledge_scope_json", `{"tasks":true}`).Error)
+	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
+		Update("reply_strategy_json", `{"replyOutOfScope":false}`).Error)
+	in4 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "在吗"}
+	require.NoError(t, g.prepare(context.Background(), in4))
+	assert.False(t, in4.SkipReply, "仅开 Tasks（无 docs/notes）的分身不应因 out-of-scope 静默")
 }

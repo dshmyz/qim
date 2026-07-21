@@ -127,6 +127,11 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 	if config.KnowledgeScopeJSON != "" {
 		json.Unmarshal([]byte(config.KnowledgeScopeJSON), &knowledgeScope)
 	}
+	// ConversationHistory nil（存量未设置）按默认 true 回填给前端，与服务端 prepare 行为一致
+	if knowledgeScope.ConversationHistory == nil {
+		t := true
+		knowledgeScope.ConversationHistory = &t
+	}
 	if config.TriggerRulesJSON != "" {
 		json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules)
 	}
