@@ -96,6 +96,9 @@ contextBridge.exposeInMainWorld('electron', {
   },
   windowState: {
     isActive: () => ipcRenderer.invoke('is-main-window-active')
+  },
+  notifications: {
+    show: (title, body) => ipcRenderer.invoke('notification:show', { title, body })
   }
 })
 

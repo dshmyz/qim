@@ -87,6 +87,7 @@ import ModalContainer from '../../components/shared/ModalContainer.vue'
 import AppHeader from './AppHeader.vue'
 import CalendarGrid from './calendar/CalendarGrid.vue'
 import EventPanel from './calendar/EventPanel.vue'
+import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
 
 defineEmits<{
@@ -339,19 +340,7 @@ const showReminderNotification = (event: any) => {
     const start = new Date(event.start)
     const end = new Date(event.end)
     const timeStr = event.allDay ? '全天' : `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
-    if (Notification.permission === 'granted') {
-      new Notification('日历提醒', {
-        body: `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`
-      })
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification('日历提醒', {
-            body: `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`
-          })
-        }
-      })
-    }
+    showReminder('日历提醒', `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`)
   }
   logger.log('提醒:', event.title)
 }

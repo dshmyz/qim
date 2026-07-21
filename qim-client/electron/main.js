@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -858,6 +858,27 @@ function registerIPC() {
   ipcMain.on('close-window', () => {
     if (mainWindow) {
       mainWindow.hide()
+    }
+  })
+
+  // 主进程通知：渲染进程通过 IPC 触发。用打包内 app 图标的绝对路径，
+  // Linux libnotify 能稳定渲染（Web Notification 的 data URL/相对路径 icon 在 Linux 下不工作）。
+  ipcMain.handle('notification:show', (_e, { title, body }) => {
+    try {
+      const iconPath = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
+      const icon = nativeImage.createFromPath(iconPath)
+      const n = new Notification({ title: title || 'QIM', body: body || '', icon, silent: false })
+      n.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      })
+      n.show()
+      return true
+    } catch (err) {
+      console.error('[notification] show failed:', err)
+      return false
     }
   })
 

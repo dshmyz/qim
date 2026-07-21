@@ -190,6 +190,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
+import { showReminder } from '../../utils/notify'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
@@ -682,20 +683,7 @@ const setupReminder = (note: any) => {
     
     setTimeout(() => {
       // 显示提醒通知
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('便签提醒', {
-          body: `${note.title}\n${note.content}`
-        })
-      } else if ('Notification' in window && Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            new Notification('便签提醒', {
-              body: `${note.title}\n${note.content}`,
-              icon: '/favicon.ico'
-            })
-          }
-        })
-      }
+      showReminder('便签提醒', `${note.title}\n${note.content}`)
       
       // 可以在这里添加其他提醒方式，如声音、弹窗等
     }, timeUntilReminder)
