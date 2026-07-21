@@ -604,28 +604,27 @@ const toggleMinimize = () => {
   }
 }
 
-// 全屏：Electron 下走主进程 BrowserWindow.setFullScreen（IPC）。渲染进程 Element.requestFullscreen
-// 在当前 Electron 下不工作（不报错也不生效），只能走主进程窗口级全屏。isFullscreen 由主进程
-// enter/leave-fullscreen 事件同步（用户按 Esc 退出 OS 全屏时一致）。
+// [二分诊断] 不测 video，测一个干净 div（直接挂 body，无 transform/transition/Teleport 祖先）。
+// 判别：挂起是 video/overlay 专属，还是 QIM 文档/窗口级挡了所有元素全屏。
 const toggleFullscreen = async () => {
-  const next = !isFullscreen.value
-  isFullscreen.value = next
+  console.log('[fs2] state: fullscreenEnabled=', document.fullscreenEnabled, 'hidden=', document.hidden, 'vis=', document.visibilityState, 'hasFocus=', document.hasFocus())
+  const csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]')
+  console.log('[fs2] CSP meta=', csp ? csp.content : 'none')
+  const clean = document.createElement('div')
+  clean.style.cssText = 'width:120px;height:80px;background:#c33;color:#fff;position:fixed;top:10px;left:10px;z-index:99999'
+  clean.textContent = 'clean fs target'
+  document.body.appendChild(clean)
+  let settled = 'pending'
+  console.log('[fs2] clean div appended to body, parent=', clean.parentElement?.tagName, 'ancestor transform=', getComputedStyle(clean.parentElement || document.body).transform)
   try {
-    const api = (window as any).electron?.ipcRenderer
-    if (api?.invoke) {
-      await api.invoke('set-fullscreen', next)
-    } else {
-      // 非 Electron（web 预览）回退原生元素全屏
-      const target = remoteVideoRef.value || screenShareOverlayRef.value
-      if (next) {
-        await target?.requestFullscreen?.()
-      } else {
-        await document.exitFullscreen?.()
-      }
-    }
-  } catch (error) {
-    console.warn('[ScreenShareSimple] 全屏切换失败:', error)
+    const p = clean.requestFullscreen()
+    console.log('[fs2] clean.requestFullscreen() called, type=', typeof p)
+    p.then(() => { settled = 'resolved'; console.log('[fs2] CLEAN DIV RESOLVED; fsEl===clean?', document.fullscreenElement === clean) })
+     .catch((e) => { settled = 'rejected'; console.log('[fs2] CLEAN DIV REJECTED:', e) })
+  } catch (e) {
+    settled = 'throw'; console.log('[fs2] CLEAN DIV THROW:', e)
   }
+  setTimeout(() => { console.log('[fs2] CLEAN DIV after 2s: settled=', settled, 'fsEl===clean?', document.fullscreenElement === clean) }, 2000)
 }
 
 // 主进程窗口全屏状态变化（用户按 Esc 退出 OS 全屏等）同步 isFullscreen
