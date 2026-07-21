@@ -684,8 +684,7 @@ const setupReminder = (note: any) => {
       // 显示提醒通知
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('便签提醒', {
-          body: `${note.title}\n${note.content}`,
-          icon: '/favicon.ico'
+          body: `${note.title}\n${note.content}`
         })
       } else if ('Notification' in window && Notification.permission !== 'denied') {
         Notification.requestPermission().then(permission => {
