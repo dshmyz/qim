@@ -94,14 +94,27 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 	case "all":
 		return true, "all 模式", nil
 	case "smart":
-		return s.LLMShouldReply(config, message, senderName)
+		shouldReply, confidence, reason, err := s.LLMShouldReply(config, message, senderName)
+		if err != nil {
+			return false, "", err
+		}
+		// 置信度门控：阈值 > 0 时，即使 should_reply=true，confidence 低于阈值也降级不回复（fail-closed）
+		var replyStrategy model.AvatarReplyStrategy
+		if config.ReplyStrategyJSON != "" {
+			_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
+		}
+		if shouldReply && replyStrategy.ConfidenceThreshold > 0 && confidence < replyStrategy.ConfidenceThreshold {
+			return false, fmt.Sprintf("置信度 %.2f 低于阈值 %.2f", confidence, replyStrategy.ConfidenceThreshold), nil
+		}
+		return shouldReply, reason, nil
 	default:
 		return isGroupChat && len(mentionUserIDs) > 0, "未知模式按 mention 处理", nil
 	}
 }
 
 // LLMShouldReply 仅负责 smart 模式的 LLM 意图判断，由 DecideReply 内部调用。
-func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message string, senderName string) (bool, string, error) {
+// 返回 (shouldReply, confidence 0-1, reason, err)，confidence 由 LLM 自评。
+func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message string, senderName string) (bool, float64, string, error) {
 	prompt := fmt.Sprintf(`你是%s的AI分身。判断以下群消息是否需要你代表%s回复。
 
 考虑因素：
@@ -110,7 +123,8 @@ func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message
 3. 是否是重要的讨论需要你参与？
 4. 是否只是普通闲聊不需要回复？
 
-只返回 JSON：{"should_reply": true/false, "reason": "原因"}
+只返回 JSON：{"should_reply": true/false, "confidence": 0.0-1.0, "reason": "原因"}
+confidence 为你对此判断的把握程度。
 
 消息：%s
 发送者：%s`, config.Name, config.Name, message, senderName)
@@ -119,28 +133,29 @@ func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message
 	result, err := s.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
 	if err != nil {
 		logger.WithModule("AvatarTriggerService").Error("LLM判断失败", "error", err)
-		return false, "", err
+		return false, 0, "", err
 	}
 
 	// 解析 JSON 返回结果。LLM 可能用 markdown 代码块或前言包裹 JSON，先尝试原文，再尝试抽取 {...} 子串
 	var response struct {
-		ShouldReply bool   `json:"should_reply"`
-		Reason      string `json:"reason"`
+		ShouldReply bool    `json:"should_reply"`
+		Confidence  float64 `json:"confidence"`
+		Reason      string  `json:"reason"`
 	}
 
 	raw := strings.TrimSpace(result)
 	if err := json.Unmarshal([]byte(raw), &response); err != nil {
 		if sub := extractJSONObject(raw); sub != "" {
 			if err2 := json.Unmarshal([]byte(sub), &response); err2 == nil {
-				return response.ShouldReply, response.Reason, nil
+				return response.ShouldReply, response.Confidence, response.Reason, nil
 			}
 		}
 		// 解析彻底失败：fail-closed，与 DecideReply 其余门一致（避免 LLM 降级时刷屏）
 		logger.WithModule("AvatarTriggerService").Error("解析LLM返回失败，静默跳过", "error", err, "raw", result)
-		return false, "LLM返回解析失败，静默跳过", nil
+		return false, 0, "LLM返回解析失败，静默跳过", nil
 	}
 
-	return response.ShouldReply, response.Reason, nil
+	return response.ShouldReply, response.Confidence, response.Reason, nil
 }
 
 // extractJSONObject 从可能带 markdown 围栏或前言的文本中抽取第一个 JSON 对象子串
