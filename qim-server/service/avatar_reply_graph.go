@@ -234,7 +234,8 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 
 	noteCtx := ""
-	if g.noteSvc != nil {
+	// 笔记检索受 Notes 开关门控，与其他知识来源对齐（否则 Notes 关不掉，且会破坏 docs-only 的范围控制）
+	if g.noteSvc != nil && input.KnowledgeScope.Notes {
 		noteResults, err := g.noteSvc.SearchNotes(input.UserID, input.Message, 3)
 		if err == nil && len(noteResults) > 0 {
 			var parts []string
