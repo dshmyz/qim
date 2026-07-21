@@ -511,6 +511,10 @@ function createWindow() {
     stopTrayFlash()
   })
 
+  // 窗口原生全屏状态变化（用户按 Esc 退出等）同步给渲染进程
+  mainWindow.on('enter-fullscreen', () => sendToWindow('fullscreen-changed', true))
+  mainWindow.on('leave-fullscreen', () => sendToWindow('fullscreen-changed', false))
+
   initScreenshot()
   registerGlobalShortcuts()
 }
@@ -859,6 +863,17 @@ function registerIPC() {
     if (mainWindow) {
       mainWindow.hide()
     }
+  })
+
+  // 窗口级 OS 全屏：渲染进程 Element.requestFullscreen 在当前 Electron 下不工作
+  // （不报错也不生效），改用主进程 BrowserWindow.setFullScreen 走 IPC，可靠且覆盖整个显示器。
+  ipcMain.handle('set-fullscreen', (_e, flag) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false
+    const target = !!flag
+    if (mainWindow.isFullScreen() !== target) {
+      mainWindow.setFullScreen(target)
+    }
+    return mainWindow.isFullScreen()
   })
 
   ipcMain.on('take-screenshot', () => {
