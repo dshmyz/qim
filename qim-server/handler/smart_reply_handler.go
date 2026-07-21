@@ -109,6 +109,9 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		}
 	}
 
+	// 异步把发送者本人的消息择要写入其记忆库（分身越用越懂主人）。不阻塞主流程。
+	e.maybeRememberSenderMessage(userID, conversationID, content)
+
 	log.Printf("[SmartReply] 开始处理消息: userID=%d convID=%d content=%s", userID, conversationID, content[:min(50, len(content))])
 
 	db := database.GetDB()
@@ -735,6 +738,53 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 	db.Create(&summaryMsg)
 
 	log.Printf("[GroupSummary] 群 %d (%s) 总结已生成", group.ID, groupInfo.Name)
+	return true
+}
+
+// maybeRememberSenderMessage 异步把"发送者本人发的消息"择要写入发送者记忆库。
+// 写入对象是主人自己说的话（而非触发消息/分身回复）——这是最能反映主人偏好的信号。
+// 三层门控压成本：1. 便宜规则预筛（无 LLM）2. 去重（向量近邻，无 LLM）3. LLM 质量门。
+// 仅当发送者分身已启用时才记；不阻塞消息主流程。
+func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversationID uint, content string) {
+	if e.memorySvc == nil {
+		return
+	}
+	if !looksMemorable(content) {
+		return
+	}
+	go func() {
+		db := database.GetDB()
+		var config model.AvatarConfig
+		if err := db.Select("enabled").Where("user_id = ?", senderID).First(&config).Error; err != nil || !config.Enabled {
+			return
+		}
+		// 去重：已有高度相似记忆则跳过
+		if existing, err := e.memorySvc.Recall(senderID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
+			return
+		}
+		should, err := e.memorySvc.ShouldRemember(content)
+		if err != nil {
+			log.Printf("[AvatarMemory] ShouldRemember 失败: user=%d err=%v", senderID, err)
+			return
+		}
+		if !should {
+			return
+		}
+		if err := e.memorySvc.Remember(senderID, conversationID, content); err != nil {
+			log.Printf("[AvatarMemory] 写入失败: user=%d err=%v", senderID, err)
+		}
+	}()
+}
+
+// looksMemorable 便宜预筛，过滤明显不值得记的消息（短消息、纯 @AI 指令）。
+func looksMemorable(content string) bool {
+	if len([]rune(content)) <= 15 {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(content))
+	if strings.HasPrefix(lower, "@ai") {
+		return false
+	}
 	return true
 }
 

@@ -206,3 +206,14 @@ func TestCheckAvatarTriggersDefaultOnActivatesWithoutSession(t *testing.T) {
 	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Find(&sessions).Error)
 	assert.Empty(t, sessions, "默认开成员不应产生 session 行")
 }
+
+func TestLooksMemorable(t *testing.T) {
+	// 短消息/问候不记
+	assert.False(t, looksMemorable("好的"))
+	assert.False(t, looksMemorable("在吗"))
+	// 纯 @AI 指令不记
+	assert.False(t, looksMemorable("@AI 帮我总结一下今天的会议纪要"))
+	// 主人本人的实质表达应进入后续门控
+	assert.True(t, looksMemorable("我下周三要去上海出差，项目A的评审改到周五上午"))
+	assert.True(t, looksMemorable("I prefer replies in English, thanks"))
+}
