@@ -1178,9 +1178,11 @@ async function ensureMediaPermissions() {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     // fullscreen 必须放行：否则 Element.requestFullscreen() 会挂起（Promise 永不 settle），
     // 屏幕共享全屏完全不工作。
-    const allow = ['media', 'clipboard-sanitized-write', 'fullscreen'].includes(permission)
-    console.log('[perm-diag] request:', permission, '-> allow:', allow)
-    callback(allow)
+    if (['media', 'clipboard-sanitized-write', 'fullscreen'].includes(permission)) {
+      callback(true)
+    } else {
+      callback(false)
+    }
   })
 }
 
