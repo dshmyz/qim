@@ -494,6 +494,7 @@
       :type="createConversationType"
       :title="createConversationTitle"
       :members="allEmployees"
+      :orgStructure="orgStructure"
       @close="closeCreateConversationModal"
       @created="handleConversationCreated"
     />
@@ -546,6 +547,7 @@
       :selectedGroup="selectedGroup"
       :groupMembers="groupMembers"
       :allEmployees="allEmployees"
+      :orgStructure="orgStructure"
       :addMembersSearchQuery="addMembersSearchQuery"
       :selectedAddMembers="selectedAddMembers"
       :editGroupName="editGroupName"
