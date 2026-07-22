@@ -23,6 +23,8 @@
         @prevMonth="prevMonth"
         @nextMonth="nextMonth"
         @selectDate="selectDate"
+        @createOnDate="createOnDate"
+        @contextmenu="onContextMenu"
       />
       <EventPanel
         :selectedDate="selectedDate"
@@ -30,6 +32,13 @@
         @editEvent="showEditEventModal"
         @deleteEvent="deleteEvent"
       />
+
+      <!-- 右键日期格菜单 -->
+      <div v-if="contextMenu.visible" class="calendar-context-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click.stop>
+        <div class="context-menu-item" @click="onMenuCreateEvent">新建当日事件</div>
+        <div class="context-menu-item" @click="onMenuCreateTask">新建当日任务</div>
+        <div class="context-menu-item" @click="onMenuJumpToday">跳到今天</div>
+      </div>
     </div>
 
     <ModalContainer
@@ -78,7 +87,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
+import { useTaskStore } from '../../stores/task'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { useServerUrl } from '../../composables/useServerUrl'
@@ -90,10 +100,13 @@ import EventPanel from './calendar/EventPanel.vue'
 import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
 
-defineEmits<{
+const emit = defineEmits<{
   back: []
   toggleSidebar: []
+  openTaskApp: []
 }>()
+
+const taskStore = useTaskStore()
 
 const { serverUrl } = useServerUrl()
 
@@ -260,17 +273,47 @@ const deleteEvent = async (eventId: string) => {
 }
 
 const showCreateEventModal = () => {
+  // 预填选中日期（默认 09:00-10:00），点新建按钮即建当日事件
+  const start = new Date(selectedDate.value)
+  start.setHours(9, 0, 0, 0)
+  const end = new Date(selectedDate.value)
+  end.setHours(10, 0, 0, 0)
   formData.value = {
     title: '',
     description: '',
-    start: formatDateForInput(new Date()),
-    end: formatDateForInput(new Date()),
+    start: formatDateForInput(start),
+    end: formatDateForInput(end),
     allDay: false,
     reminder: 0
   }
   selectedEvent.value = null
   showCalendarModal.value = true
 }
+
+// 双击日期格：选中该日并直接打开新建弹窗
+const createOnDate = (date: Date) => {
+  selectedDate.value = date
+  showCreateEventModal()
+}
+
+// 右键日期格菜单
+const contextMenu = reactive({ visible: false, x: 0, y: 0, date: new Date() })
+const onContextMenu = (event: MouseEvent, date: Date) => {
+  contextMenu.visible = true
+  contextMenu.x = event.clientX
+  contextMenu.y = event.clientY
+  contextMenu.date = date
+}
+const closeContextMenu = () => { contextMenu.visible = false }
+const onMenuCreateEvent = () => { const d = contextMenu.date; closeContextMenu(); createOnDate(d) }
+const onMenuCreateTask = () => {
+  const d = contextMenu.date
+  const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0')
+  taskStore.pendingCreateOnDate = `${y}-${m}-${day}`
+  closeContextMenu()
+  emit('openTaskApp')
+}
+const onMenuJumpToday = () => { closeContextMenu(); selectedDate.value = new Date() }
 
 const showEditEventModal = (event: any) => {
   selectedEvent.value = { ...event }
@@ -370,11 +413,13 @@ onMounted(async () => {
   if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission()
   }
+  document.addEventListener('click', closeContextMenu)
 })
 
 onUnmounted(() => {
   reminderTimers.value.forEach(timerId => clearTimeout(timerId))
   reminderTimers.value.clear()
+  document.removeEventListener('click', closeContextMenu)
 })
 </script>
 
@@ -492,5 +537,25 @@ onUnmounted(() => {
 .calendar-confirm-btn:hover {
   background-color: var(--active-color);
   color: white;
+}
+
+.calendar-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 140px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+}
+.context-menu-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-color, #333);
+  cursor: pointer;
+}
+.context-menu-item:hover {
+  background: var(--hover-color, #f3f4f6);
 }
 </style>

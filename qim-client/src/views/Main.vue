@@ -279,7 +279,7 @@
         <div v-else-if="selectedAppId === 'calendar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <CalendarApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <CalendarApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" @openTaskApp="selectedAppId = 'task_manager'" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -464,7 +464,7 @@
       @openFeedback="openFeedbackModal"
       @logout="logout"
       @setTheme="setTheme"
-      @showChannels="() => { handleSidebarOptionClick('channels'); closeMoreMenu() }"
+      @showChannels="() => { activeOption = 'channels'; closeMoreMenu() }"
       @closeMoreMenu="closeMoreMenu"
       @closeAllMenus="handleClickOutside"
     />

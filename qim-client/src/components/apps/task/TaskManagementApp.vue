@@ -46,6 +46,7 @@
               v-else-if="store.currentView === 'calendar'"
               @task-click="onTaskClick"
               @task-contextmenu="onTaskContextmenu"
+              @create-on-date="createTaskOnDate"
             />
             <MyWorkspace
               v-else-if="store.currentView === 'workspace'"
@@ -66,6 +67,7 @@
     <TaskCreateModal
       :visible="showCreateModal"
       :task="editingTask"
+      :defaultDueDate="defaultDueDate || undefined"
       @close="onCloseModal"
       @submit="onSubmitTask"
     />
@@ -113,6 +115,7 @@ import QMessage from '../../../utils/qmessage'
 const store = useTaskStore()
 const showCreateModal = ref(false)
 const editingTask = ref<Task | null>(null)
+const defaultDueDate = ref<string | null>(null)
 const availableTags = ref<Tag[]>([
   { id: '1', name: '设计', color: '#ec4899' },
   { id: '2', name: '后端', color: '#6366f1' },
@@ -139,6 +142,11 @@ onMounted(() => {
   loadContacts()
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onGlobalClick)
+  // 日历右键"新建任务"跨应用跳转：预填截止日打开创建弹窗
+  if (store.pendingCreateOnDate) {
+    createTaskOnDate(new Date(store.pendingCreateOnDate))
+    store.pendingCreateOnDate = null
+  }
 })
 
 onUnmounted(() => {
@@ -202,6 +210,16 @@ function onContextEdit() {
   closeContextMenu()
 }
 
+// 日历视图双击日期：新建任务并预填截止日
+function createTaskOnDate(date: Date) {
+  editingTask.value = null
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  defaultDueDate.value = `${y}-${m}-${d}`
+  showCreateModal.value = true
+}
+
 async function onContextStatusChange(status: TaskStatus) {
   await store.changeStatus(contextMenu.taskId, status)
   closeContextMenu()
@@ -257,6 +275,7 @@ function onKeydown(e: KeyboardEvent) {
 function onCloseModal() {
   showCreateModal.value = false
   editingTask.value = null
+  defaultDueDate.value = null
 }
 
 async function onSubmitTask(data: {
@@ -276,6 +295,7 @@ async function onSubmitTask(data: {
     }
     showCreateModal.value = false
     editingTask.value = null
+    defaultDueDate.value = null
     store.refreshTasks()
   } catch {
     QMessage.error('操作失败，请重试')

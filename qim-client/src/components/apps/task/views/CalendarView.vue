@@ -12,6 +12,7 @@
         :key="cell.key"
         class="cal-cell"
         :class="{ 'is-today': cell.isToday, 'is-other-month': !cell.isCurrentMonth }"
+        @dblclick="emit('createOnDate', cell.date)"
       >
         <div class="cal-date">{{ cell.day }}</div>
         <div class="cal-tasks">
@@ -51,6 +52,7 @@ const monthLabel = computed(() => {
 interface CalendarCell {
   key: string
   day: number
+  date: Date
   isCurrentMonth: boolean
   isToday: boolean
   tasks: Task[]
@@ -71,7 +73,7 @@ const calendarCells = computed(() => {
     const isCurrentMonth = date.getMonth() === month
     const isToday = date.getTime() === today.getTime()
     const tasks = store.tasksByDate.get(dateStr) || []
-    cells.push({ key: dateStr, day: date.getDate(), isCurrentMonth, isToday, tasks })
+    cells.push({ key: dateStr, day: date.getDate(), date, isCurrentMonth, isToday, tasks })
   }
   return cells
 })
@@ -87,6 +89,7 @@ function nextMonth() {
 const emit = defineEmits<{
   taskClick: [task: Task]
   taskContextmenu: [event: MouseEvent, task: Task]
+  createOnDate: [date: Date]
 }>()
 </script>
 

@@ -17,6 +17,8 @@ export const useTaskStore = defineStore('task', () => {
     due_date_range: null
   })
   const selectedTaskId = ref<string | null>(null)
+  // 跨应用：日历右键"新建任务"时预填的截止日期
+  const pendingCreateOnDate = ref<string | null>(null)
   const loading = ref(false)
 
   function enrichTask(task: Task): Task {
@@ -199,6 +201,7 @@ export const useTaskStore = defineStore('task', () => {
     filters,
     selectedTaskId,
     loading,
+    pendingCreateOnDate,
     filteredTasks,
     todoTasks,
     inProgressTasks,
