@@ -197,6 +197,7 @@ type ConversationMember struct {
 	UnreadCount          int          `json:"unread_count" gorm:"default:0"`
 	UnreadAtMentionCount int          `json:"unread_at_mention_count" gorm:"default:0"`
 	Muted                bool         `json:"muted" gorm:"default:false"`
+	MutedUntil           *time.Time   `json:"muted_until"` // 群级禁言截止时间；nil=未禁言。由 GroupManagementTool 写入，SendMessage 检查
 	LastReadAt           *time.Time   `json:"last_read_at"`
 	JoinedAt             time.Time    `json:"joined_at" gorm:"autoCreateTime"`
 	User                 User         `json:"user,omitempty" gorm:"foreignkey:UserID"`

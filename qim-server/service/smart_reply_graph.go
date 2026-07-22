@@ -146,9 +146,41 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 }
 
 func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyContext) (*schema.StreamReader[*schema.Message], error) {
+	if err := g.prepareInput(input); err != nil {
+		return nil, err
+	}
+	historyMessages := g.buildHistoryMessages(input)
+	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
+	return chatModel.Stream(ctx, historyMessages)
+}
+
+// groupAssistantToolWhitelist 群聊助手可用的工具白名单：只含群聊相关工具，
+// 排除运维工具（intelligent_troubleshooting 等）和系统级用户管理工具。
+var groupAssistantToolWhitelist = []string{
+	"group_management", "create_task", "search_messages", "group_summary", "system_notification",
+}
+
+// ExecuteWithTools 带工具的非流式回复，用于 @AI 管理操作指令（踢人/加人/禁言等）。
+// 走 GetCompletionWithToolsFiltered 注入白名单 MCP 工具（含 GroupManagementTool），
+// LLM 返回 tool call 时真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，
+// 即仅群主/管理员发起的管理指令会被工具执行，普通成员指令被工具拒绝。
+func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext) (string, error) {
+	if err := g.prepareInput(input); err != nil {
+		return "", err
+	}
+	historyMessages := g.buildHistoryMessages(input)
+	callerCtx := &ai.CallerContext{UserID: input.UserID}
+	return g.aiService.GetCompletionWithToolsFiltered(
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, groupAssistantToolWhitelist,
+	)
+}
+
+// prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，
+// 供 ExecuteStream 与 ExecuteWithTools 复用。
+func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	var conv model.Conversation
 	if err := g.db.First(&conv, input.ConversationID).Error; err != nil {
-		return nil, fmt.Errorf("会话不存在")
+		return fmt.Errorf("会话不存在")
 	}
 	if conv.Type == "group" || conv.Type == "discussion" {
 		var group model.Group
@@ -225,10 +257,7 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	}
 	input.MemoryCtx = memoryCtx
 
-	historyMessages := g.buildHistoryMessages(input)
-
-	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
-	return chatModel.Stream(ctx, historyMessages)
+	return nil
 }
 
 func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*schema.Message {
@@ -320,6 +349,10 @@ func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext)
 	if g.replyGraph == nil {
 		return nil, fmt.Errorf("回复 Graph 未编译")
 	}
+
+	// 让编译期写死 userID=0 的 model 节点拿到真实提问用户，
+	// 使工具执行时 isSystemAdmin 校验生效（堵权限绕过）。
+	ctx = UserIDToCtx(ctx, input.UserID)
 
 	startTime := time.Now()
 	result, err := g.replyGraph.Invoke(ctx, input)

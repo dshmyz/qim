@@ -26,6 +26,7 @@ var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 var ErrAtAllForbidden = errors.New("only owner or admin can @all")
+var ErrMuted = errors.New("you are muted in this conversation")
 
 type MessageService struct {
 	db  *gorm.DB
@@ -118,6 +119,11 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {
 		return nil, ErrMessageForbidden
+	}
+
+	// 群级禁言检查：被禁言且未到期则拒绝发言（群主/管理员豁免，保证管理动作不受阻）
+	if member.MutedUntil != nil && member.MutedUntil.After(time.Now()) && member.Role != "owner" && member.Role != "admin" {
+		return nil, ErrMuted
 	}
 
 	// 解析 content 中的 @ mention token（content 是唯一事实源）

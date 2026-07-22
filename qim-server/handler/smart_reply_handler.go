@@ -490,6 +490,13 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		AssistantName:   assistantName,
 	}
 
+	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 MCP 群管理工具，
+	// LLM 返回 tool call 时真实执行。仅系统管理员发起的指令会被工具执行。
+	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
+		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID)
+		return
+	}
+
 	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
 	if err != nil {
 		log.Printf("[SmartReplyGraph] @AI 流式回复失败: %v", err)
@@ -554,6 +561,56 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
+}
+
+// handleAIMentionWithTools 带工具的非流式 @AI 回复，用于管理操作指令（踢人/加人/禁言等）。
+// 走 SmartReplyGraph.ExecuteWithTools（GetCompletionWithTools 注入 MCP 群管理工具），
+// LLM 返回 tool call 时真实执行 add_member/remove_member/mute/unmute。
+func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
+	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input)
+	if err != nil {
+		log.Printf("[SmartReplyGraph] @AI 带工具回复失败: %v", err)
+		return
+	}
+	reply = mention.StripTokens(reply)
+	if reply == "" {
+		log.Printf("[SmartReplyGraph] @AI 带工具回复内容为空，跳过")
+		return
+	}
+
+	// @提问者模式：读取配置（与流式路径一致）
+	db := database.GetDB()
+	var mentionPrefix string
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
+		if group.GetAIConfig().MentionReplyMode == "mention" {
+			var mentionUser model.User
+			if err := db.First(&mentionUser, userID).Error; err == nil {
+				name := mentionUser.Nickname
+				if name == "" {
+					name = mentionUser.Username
+				}
+				mentionPrefix = mention.Encode(userID, name) + "\n\n"
+			}
+		}
+	}
+
+	content := reply
+	if mentionPrefix != "" {
+		content = mentionPrefix + content
+	}
+	if err := e.messageSender.SendAIMessage(conversationID, content, assistantName); err != nil {
+		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		return
+	}
+	log.Printf("[SmartReplyGraph] @AI 带工具回复已完成")
+}
+
+// ShouldUseToolsForMention 判断 @AI 提及是否应走带工具路径（管理操作指令）。
+// command 意图（移除/踢出/添加/邀请/禁言/解封/设置管理员/取消管理员等）走带工具，
+// 其他意图（chat/query/alert/todo）保持流式纯文本回复。
+func ShouldUseToolsForMention(intent *ai.MessageIntent) bool {
+	return intent != nil && intent.Type == "command"
 }
 
 func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
