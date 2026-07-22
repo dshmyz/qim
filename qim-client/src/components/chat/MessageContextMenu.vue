@@ -242,6 +242,8 @@ const handleAIAction = (actionId: string) => {
   padding: 6px 0;
   z-index: 3000;
   min-width: 180px;
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
 }
 
 .context-menu-item {

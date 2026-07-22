@@ -237,6 +237,7 @@ const throttledHandleScroll = () => {
   throttleTimeoutId = window.setTimeout(() => {
     throttleTimeoutId = null
     handleScroll()
+    emit('scroll')
   }, 100)
 }
 

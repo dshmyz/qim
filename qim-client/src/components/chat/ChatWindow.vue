@@ -54,6 +54,7 @@
       @message-contextmenu="showMessageContextMenu"
       @show-user-profile="showUserProfile"
       @scroll-to-quoted-message="scrollToQuotedMessage"
+      @scroll="closeMessageContextMenu"
       @download-file="downloadFile"
       @save-as="saveFileAs"
       @open-mini-app="(app) => app && openMiniApp(app as MiniAppData)"
@@ -2577,29 +2578,26 @@ const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   }
 
   messageMenuSelection.value = window.getSelection?.().toString() ?? ''
-  
-  // 计算菜单位置，确保在屏幕内显示
-  const menuWidth = 180 // 菜单宽度
-  const menuHeight = 120 // 菜单高度
-  const windowWidth = window.innerWidth
-  const windowHeight = window.innerHeight
-  
-  let x = event.clientX
-  let y = event.clientY
-  
-  // 调整x坐标，确保菜单不超出屏幕右侧
-  if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10
-  }
-  
-  // 调整y坐标，确保菜单不超出屏幕底部
-  if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10
-  }
-  
-  messageContextMenuPosition.value = { x, y }
-  showMessageContextMenuFlag.value = true
+
+  // 先显示菜单，nextTick 后读取实际 DOM 尺寸精确计算位置（避免硬编码高度估算不准导致溢出或靠上）
   selectedMessage.value = message
+  showMessageContextMenuFlag.value = true
+
+  nextTick(() => {
+    const menuEl = document.querySelector('.context-menu')
+    if (!menuEl) return
+    const actualHeight = menuEl.offsetHeight
+    const actualWidth = menuEl.offsetWidth
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+    let x = event.clientX
+    let y = event.clientY
+    if (x + actualWidth > windowWidth) x = windowWidth - actualWidth - 10
+    if (x < 0) x = 10
+    if (y + actualHeight > windowHeight) y = windowHeight - actualHeight - 10
+    if (y < 0) y = 10
+    messageContextMenuPosition.value = { x, y }
+  })
   
   // 检查消息类型
   if (message.type === 'file' || message.type === 'image') {
