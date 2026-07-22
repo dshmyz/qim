@@ -569,6 +569,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/tasks", handler.CreateTask)
 			authed.PUT("/tasks/:id", handler.UpdateTask)
 			authed.DELETE("/tasks/:id", handler.DeleteTask)
+			authed.PUT("/tasks/:id/reorder", handler.ReorderTask)
 			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
 			// 实时通信 API
 			realtime := authed.Group("/realtime")
