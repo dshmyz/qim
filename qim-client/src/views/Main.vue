@@ -700,6 +700,7 @@ import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
 const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
 import { mapNotification } from '../utils/notificationMapper'
+import { showReminder } from '../utils/notify'
 const CreateGroupModal = defineAsyncComponent(() => import('../components/modals/CreateGroupModal.vue'))
 const ChannelDetailNew = defineAsyncComponent(() => import('../components/channel/ChannelDetailNew.vue'))
 const UserDetailPanel = defineAsyncComponent(() => import('../components/user/UserDetailPanel.vue'))
@@ -1673,6 +1674,14 @@ const connectWebSocket = () => {
       } else {
         showMessage({ message: `提醒发送失败：${data.error || '未知错误'}`, type: 'error', duration: 5000 })
       }
+    },
+    // 日历事件提醒（后端 ProcessReminders 经 WS 推送，全局消费，不依赖日历应用是否打开）
+    'event_reminder': (data: any) => {
+      const start = data.start ? new Date(data.start) : null
+      const timeStr = start
+        ? `${start.getMonth() + 1}/${start.getDate()} ${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`
+        : ''
+      showReminder('日历提醒', `事件: ${data.title || ''}${timeStr ? '\n时间: ' + timeStr : ''}`)
     }
   }
   

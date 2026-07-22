@@ -222,9 +222,11 @@ const updateEvent = async () => {
       all_day: Boolean(formData.value.allDay),
       reminder: Number(formData.value.reminder)
     }
+    const token = getToken()
     const response = await axios.put(`${serverUrl.value}/api/v1/events/${selectedEvent.value.id}`, updatedEvent, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
     const index = events.value.findIndex(e => e.id === selectedEvent.value.id)
@@ -236,38 +238,24 @@ const updateEvent = async () => {
     closeEditEventModal()
   } catch (error) {
     console.error('更新事件失败:', error)
-    const updatedEvent = {
-      ...selectedEvent.value,
-      title: formData.value.title,
-      description: formData.value.description,
-      start: new Date(formData.value.start),
-      end: new Date(formData.value.end),
-      allDay: formData.value.allDay,
-      reminder: formData.value.reminder
-    }
-    const index = events.value.findIndex(e => e.id === selectedEvent.value.id)
-    if (index !== -1) {
-      events.value[index] = updatedEvent
-      clearEventReminder(selectedEvent.value.id)
-      setEventReminder(updatedEvent)
-    }
-    closeEditEventModal()
+    QMessage.error('更新事件失败，请稍后重试')
   }
 }
 
 const deleteEvent = async (eventId: string) => {
   try {
+    const token = getToken()
     await axios.delete(`${serverUrl.value}/api/v1/events/${eventId}`, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
     clearEventReminder(eventId)
     events.value = events.value.filter(e => e.id !== eventId)
   } catch (error) {
     console.error('删除事件失败:', error)
-    clearEventReminder(eventId)
-    events.value = events.value.filter(e => e.id !== eventId)
+    QMessage.error('删除事件失败，请稍后重试')
   }
 }
 
