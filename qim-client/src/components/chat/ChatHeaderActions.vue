@@ -28,7 +28,7 @@
             <i class="fas fa-edit"></i> 修改群名称
           </div>
           <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupAnnouncement">
-            <i class="fas fa-bullhorn"></i> 编辑群公告
+            <i class="fas fa-volume-high"></i> 编辑群公告
           </div>
           <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion" class="menu-item" @click="handleOpenAISettings">
             <i class="fas fa-robot"></i> AI 助手设置

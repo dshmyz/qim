@@ -25,7 +25,7 @@
             </span>
           </template>
           <span v-if="isGroupOrDiscussion && conversation?.announcement" class="header-announcement-inline">
-            <i class="fas fa-bullhorn"></i>
+            <i class="fas fa-volume-high"></i>
             {{ conversation.announcement }}
           </span>
         </div>
