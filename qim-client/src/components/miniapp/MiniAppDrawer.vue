@@ -25,7 +25,7 @@
               <span>加载中...</span>
             </div>
             <div v-if="error" class="drawer-error">
-              <div class="error-icon">⚠</div>
+              <div class="error-icon"><i class="fas fa-triangle-exclamation"></i></div>
               <p class="error-title">加载失败</p>
               <p class="error-message">{{ errorMessage }}</p>
               <button class="drawer-retry-btn" @click="loadMiniApp">重试</button>

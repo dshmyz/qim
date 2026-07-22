@@ -60,11 +60,11 @@
             <option value="chat">聊天文件</option>
           </optgroup>
           <optgroup label="快捷">
-            <option value="starred">⭐ 星标文件</option>
+            <option value="starred">★ 星标文件</option>
           </optgroup>
           <optgroup v-if="folders.length" label="文件夹">
             <option v-for="folder in folders" :key="'f-'+folder.id" :value="'folder-'+folder.id">
-              📁 {{ folder.name }}
+              {{ folder.name }}
             </option>
           </optgroup>
         </select>

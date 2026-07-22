@@ -47,7 +47,8 @@
               />
             </div>
             <div v-if="avatarApprovalStatus && avatarApprovalStatus !== 'approved'" class="avatar-toggle-hint">
-              {{ avatarApprovalStatus === 'pending' ? '⏳ 审批中...' : avatarApprovalStatus === 'rejected' ? '❌ 审批未通过' : '' }}
+              <template v-if="avatarApprovalStatus === 'pending'"><i class="fas fa-hourglass-half"></i> 审批中...</template>
+              <template v-else-if="avatarApprovalStatus === 'rejected'"><i class="fas fa-circle-xmark"></i> 审批未通过</template>
             </div>
             <div v-else class="avatar-toggle-hint">
               仅对当前会话生效
