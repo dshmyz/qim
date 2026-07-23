@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import type { Task, TaskStatus, TaskPriority, Tag, TaskUser } from '../../../types/task'
 import { useTaskStore } from '../../../stores/task'
 import { request } from '../../../composables/useRequest'
