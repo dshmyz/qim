@@ -487,6 +487,9 @@ const handleClickOutside = () => {
 }
 
 onMounted(() => {
+  // 打开通知面板时从后端加载通知
+  loadNotifications()
+
   setTimeout(() => {
     document.addEventListener('click', handleClickOutside)
   }, 0)
