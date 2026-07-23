@@ -129,13 +129,6 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	// 解析 content 中的 @ mention token（content 是唯一事实源）
 	mentions := mention.Parse(content)
 
-	// @all 权限校验：仅群主/管理员可 @all
-	if mention.IsAllMentioned(mentions) {
-		if member.Role != "owner" && member.Role != "admin" {
-			return nil, ErrAtAllForbidden
-		}
-	}
-
 	msg := model.Message{
 		ConversationID:  convID,
 		SenderID:        senderID,
