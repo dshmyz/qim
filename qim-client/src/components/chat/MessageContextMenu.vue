@@ -1,84 +1,5 @@
 <template>
-  <div v-if="visible" class="context-menu" :style="{ left: position.x + 'px', top: position.y + 'px' }" @click.stop>
-    <!-- 图片消息选项 -->
-     <div v-if="message && message.type === 'image'" class="context-menu-item" @click="handleCopyMessage">
-      <span class="context-menu-icon"><i class="fas fa-copy"></i></span>
-      <span>复制</span>
-    </div>
-    <div v-if="message && message.type === 'image'" class="context-menu-item" @click="handleSaveImage">
-      <span class="context-menu-icon"><i class="fas fa-save"></i></span>
-      <span>另存为</span>
-    </div>
-    <!-- 文件消息选项 -->
-    <div v-if="message && message.type === 'file'" class="context-menu-item" @click="handleDownloadFile">
-      <span class="context-menu-icon"><i class="fas fa-download"></i></span>
-      <span>下载</span>
-    </div>
-    <div v-if="message && message.type === 'file'" class="context-menu-item" @click="handleSaveFileAs">
-      <span class="context-menu-icon"><i class="fas fa-save"></i></span>
-      <span>另存为</span>
-    </div>
-    <div v-if="canSaveFileToGroup" class="context-menu-item" @click="handleSaveToGroupFiles">
-      <span class="context-menu-icon"><i class="fas fa-folder-plus"></i></span>
-      <span>保存到群文件</span>
-    </div>
-    <!-- 分隔线 -->
-    <div v-if="message && (message.type === 'image' || message.type === 'file')" class="context-menu-divider"></div>
-
-    <!-- AI 操作 -->
-    <div v-if="isAIMessage" class="context-menu-item" @click="handleAIAction('ai_summary')">
-      <span class="context-menu-icon"><i class="fas fa-robot"></i></span>
-      <span>AI 总结此消息</span>
-    </div>
-    <div v-if="isTextLikeMessage && aiEnabled" class="context-menu-item" @click="handleAIAction('translate')">
-      <span class="context-menu-icon"><i class="fas fa-language"></i></span>
-      <span>翻译为中文</span>
-    </div>
-    <div v-if="canSmartReply" class="context-menu-item" @click="handleAIAction('smart_reply')">
-      <span class="context-menu-icon"><i class="fas fa-reply"></i></span>
-      <span>智能回复</span>
-    </div>
-    <div v-if="isAIMessage || (isTextLikeMessage && aiEnabled)" class="context-menu-divider"></div>
-
-    <!-- 通用选项 -->
-    <div v-if="isTextLikeMessage" class="context-menu-item" @click="handleCopyMessage">
-      <span class="context-menu-icon"><i class="fas fa-copy"></i></span>
-      <span>复制</span>
-    </div>
-    <!-- markdown 专属：复制代码（仅当含代码块时） -->
-    <div v-if="hasCodeBlock" class="context-menu-item" @click="handleCopyCode">
-      <span class="context-menu-icon"><i class="fas fa-code"></i></span>
-      <span>复制代码</span>
-    </div>
-    <div class="context-menu-item" @click="handleForwardMessage">
-      <span class="context-menu-icon"><i class="fas fa-share-alt"></i></span>
-      <span>转发</span>
-    </div>
-    <div v-if="message?.type !== 'system'" class="context-menu-item" @click="handleSelectMessages">
-      <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
-      <span>多选</span>
-    </div>
-    <div class="context-menu-item" @click="handleQuoteMessage">
-      <span class="context-menu-icon"><i class="fas fa-quote-right"></i></span>
-      <span>引用</span>
-    </div>
-    <div v-if="isTextLikeMessage" class="context-menu-item" @click="handleAddToNotesApp">
-      <span class="context-menu-icon"><i class="fas fa-book"></i></span>
-      <span>保存到笔记</span>
-    </div>
-    <div v-if="isTextLikeMessage" class="context-menu-item" @click="handleCreateTask">
-      <span class="context-menu-icon"><i class="fas fa-check-square"></i></span>
-      <span>创建为任务</span>
-    </div>
-    <div v-if="message && message.isSelf && canRecall" class="context-menu-item" @click="handleRecallMessage">
-      <span class="context-menu-icon"><i class="fas fa-undo"></i></span>
-      <span>撤回</span>
-    </div>
-    <div v-if="message && message.isSelf && canSendReminder" class="context-menu-item" @click="handleSendMessageReminder">
-      <span class="context-menu-icon"><i class="fas fa-bell"></i></span>
-      <span>发送提醒</span>
-    </div>
-  </div>
+  <UniversalContextMenu menuId="message" :items="menuItems" />
 </template>
 
 <script setup lang="ts">
@@ -86,12 +7,12 @@ import { computed } from 'vue'
 import type { Message } from '../../types'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { canRemind } from '../../composables/useMessageReminder'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 
 const systemConfigStore = useSystemConfigStore()
 
 interface Props {
-  visible: boolean
-  position: { x: number; y: number }
   message: Message | null
   conversationType?: string
   canManageGroupFiles?: boolean
@@ -144,7 +65,6 @@ const hasCodeBlock = computed(() => {
   return /```[a-zA-Z0-9]*\n[\s\S]*?```/.test(props.message.content)
 })
 
-// 复用单一事实源 canRemind，与 MessageItem 铃铛显示条件同源
 const canSendReminder = computed((): boolean => canRemind(props.message, props.conversationType))
 
 const canSmartReply = computed(() => {
@@ -157,120 +77,74 @@ const canSaveFileToGroup = computed(() =>
   props.message?.type === 'file' && props.conversationType === 'group' && props.canManageGroupFiles === true
 )
 
-const handleSaveImage = () => {
-  if (props.message && props.message.content) {
-    emit('save-file-as', props.message.content)
+const menuItems = computed<ContextMenuItem[]>(() => {
+  const msg = props.message
+  if (!msg) return []
+  const items: ContextMenuItem[] = []
+
+  // 图片消息
+  if (msg.type === 'image') {
+    items.push(
+      { label: '复制', icon: 'fas fa-copy', action: () => emit('copy-message') },
+      { label: '另存为', icon: 'fas fa-save', action: () => { if (msg.content) emit('save-file-as', msg.content) } }
+    )
   }
-}
 
-const handleDownloadFile = () => {
-  if (props.message && props.message.content) {
-    emit('download-file', props.message.content)
+  // 文件消息
+  if (msg.type === 'file') {
+    items.push(
+      { label: '下载', icon: 'fas fa-download', action: () => { if (msg.content) emit('download-file', msg.content) } },
+      { label: '另存为', icon: 'fas fa-save', action: () => { if (msg.content) emit('save-file-as', msg.content) } }
+    )
+    if (canSaveFileToGroup.value) {
+      items.push({ label: '保存到群文件', icon: 'fas fa-folder-plus', action: () => emit('save-to-group-files') })
+    }
   }
-}
 
-const handleSaveFileAs = () => {
-  if (props.message && props.message.content) {
-    emit('save-file-as', props.message.content)
+  // 分隔线
+  if (msg.type === 'image' || msg.type === 'file') {
+    items.push({ divider: true })
   }
-}
 
-const handleSaveToGroupFiles = () => {
-  emit('save-to-group-files')
-}
-
-const handleCopyMessage = () => {
-  emit('copy-message')
-}
-
-const handleCopyCode = () => {
-  emit('copy-code')
-}
-
-const handleForwardMessage = () => {
-  emit('forward-message')
-}
-
-const handleSelectMessages = () => {
-  emit('select-messages')
-}
-
-const handleQuoteMessage = () => {
-  emit('quote-message')
-}
-
-const handleAddToNotesApp = () => {
-  emit('add-to-notes-app')
-}
-
-const handleCreateTask = () => {
-  emit('create-task')
-}
-
-const handleRecallMessage = () => {
-  emit('recall-message')
-}
-
-const handleSendMessageReminder = () => {
-  emit('send-message-reminder')
-}
-
-const handleAIAction = (actionId: string) => {
-  if (!props.message || !props.message.content) return
-
-  switch (actionId) {
-    case 'ai_summary':
-      emit('ai-summary')
-      break
-    case 'translate':
-      emit('translate')
-      break
-    case 'smart_reply':
-      emit('smart-reply')
-      break
+  // AI 操作
+  if (isAIMessage.value) {
+    items.push({ label: 'AI 总结此消息', icon: 'fas fa-robot', action: () => emit('ai-summary') })
   }
-}
+  if (isTextLikeMessage.value && aiEnabled.value) {
+    items.push({ label: '翻译为中文', icon: 'fas fa-language', action: () => emit('translate') })
+  }
+  if (canSmartReply.value) {
+    items.push({ label: '智能回复', icon: 'fas fa-reply', action: () => emit('smart-reply') })
+  }
+  if (isAIMessage.value || (isTextLikeMessage.value && aiEnabled.value)) {
+    items.push({ divider: true })
+  }
+
+  // 通用选项
+  if (isTextLikeMessage.value) {
+    items.push({ label: '复制', icon: 'fas fa-copy', action: () => emit('copy-message') })
+  }
+  if (hasCodeBlock.value) {
+    items.push({ label: '复制代码', icon: 'fas fa-code', action: () => emit('copy-code') })
+  }
+  items.push(
+    { label: '转发', icon: 'fas fa-share-alt', action: () => emit('forward-message') },
+    { label: '多选', icon: 'fas fa-check-square', visible: msg.type !== 'system', action: () => emit('select-messages') },
+    { label: '引用', icon: 'fas fa-quote-right', action: () => emit('quote-message') }
+  )
+  if (isTextLikeMessage.value) {
+    items.push(
+      { label: '保存到笔记', icon: 'fas fa-book', action: () => emit('add-to-notes-app') },
+      { label: '创建为任务', icon: 'fas fa-tasks', action: () => emit('create-task') }
+    )
+  }
+  if (msg.isSelf && canRecall.value) {
+    items.push({ label: '撤回', icon: 'fas fa-undo', action: () => emit('recall-message') })
+  }
+  if (msg.isSelf && canSendReminder.value) {
+    items.push({ label: '发送提醒', icon: 'fas fa-bell', action: () => emit('send-message-reminder') })
+  }
+
+  return items
+})
 </script>
-
-<style scoped>
-.context-menu {
-  position: fixed;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 6px 0;
-  z-index: 3000;
-  min-width: 180px;
-  max-height: calc(100vh - 20px);
-  overflow-y: auto;
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 12px;
-  color: var(--text-color);
-}
-
-.context-menu-item:hover {
-  background: var(--hover-color);
-}
-
-.context-menu-icon {
-  width: 16px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--primary-color);
-}
-
-.context-menu-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: 4px 0;
-}
-</style>

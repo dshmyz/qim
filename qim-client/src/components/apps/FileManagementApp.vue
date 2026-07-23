@@ -170,9 +170,7 @@
     />
 
     <!-- 右键菜单 -->
-    <Teleport to="body">
-      <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
-    </Teleport>
+    <UniversalContextMenu menuId="file-management" :items="contextMenuItems" />
 
     <!-- 上传进度条 -->
     <UploadProgressBar :visible="true" />
@@ -199,6 +197,7 @@ import { useFileDownload } from '../../composables/useFileDownload'
 import { useUploadStore } from '../../stores/upload'
 import { type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
+import { openMenu, closeMenu } from '../../composables/useUI'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
 
@@ -252,9 +251,6 @@ const previewFile = ref<FileItem | null>(null)
 const actionFile = ref<FileItem | null>(null)
 
 const contextMenu = ref({
-  visible: false,
-  x: 0,
-  y: 0,
   file: null as FileItem | null
 })
 
@@ -414,14 +410,15 @@ const triggerFileUpload = () => {
 
 const handleContextMenu = (file: FileItem, event: MouseEvent) => {
   event.preventDefault()
-  contextMenu.value = { visible: true, x: event.clientX, y: event.clientY, file }
+  contextMenu.value = { file }
+  openMenu('file-management', event.clientX, event.clientY)
 }
 
 const handleContextMenuAction = (action: string) => {
   const file = contextMenu.value.file
   if (!file) return
 
-  contextMenu.value.visible = false
+  closeMenu()
 
   switch (action) {
     case 'preview':
@@ -474,12 +471,6 @@ const navigateToPath = (index: number) => {
   console.log('Navigate to path index:', index)
 }
 
-const handleClickOutside = () => {
-  if (contextMenu.value.visible) {
-    contextMenu.value.visible = false
-  }
-}
-
 // 滚动或窗口缩放时关闭菜单，避免菜单飘在原地与内容错位
 const contextMenuItems = computed<ContextMenuItem[]>(() => [
   { label: '预览', icon: 'fas fa-eye', action: () => handleContextMenuAction('preview') },
@@ -494,22 +485,18 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => [
 ])
 
 const handleContextMenuDismiss = () => {
-  if (contextMenu.value.visible) {
-    contextMenu.value.visible = false
-  }
+  closeMenu()
 }
 
 onMounted(async () => {
   await loadFiles()
   await loadRootFolders()
-  document.addEventListener('click', handleClickOutside)
   // capture: true 以便捕获子元素（文件列表、文件夹树）内部的滚动
   window.addEventListener('scroll', handleContextMenuDismiss, true)
   window.addEventListener('resize', handleContextMenuDismiss)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', handleContextMenuDismiss, true)
   window.removeEventListener('resize', handleContextMenuDismiss)
 })

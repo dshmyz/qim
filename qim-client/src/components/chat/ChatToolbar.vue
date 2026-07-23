@@ -10,16 +10,7 @@
       <button class="call-dropdown-trigger" @click="toggleCallMenu" title="更多通话选项">
         <i class="fas fa-caret-down"></i>
       </button>
-      <div v-show="showCallMenu" class="call-menu" @click.stop>
-        <div class="call-menu-item" @click="selectCallType('voice')">
-          <i class="fas fa-phone-alt"></i>
-          <span>语音通话</span>
-        </div>
-        <div class="call-menu-item" @click="selectCallType('video')">
-          <i class="fas fa-video"></i>
-          <span>视频通话</span>
-        </div>
-      </div>
+      <UniversalContextMenu menuId="call" :items="callMenuItems" />
     </div>
     <ChatToolbarButton
       icon="fas fa-desktop"
@@ -68,16 +59,7 @@
       <button class="screenshot-dropdown-trigger" @click="toggleScreenshotMenu" title="更多截图选项">
         <i class="fas fa-caret-down"></i>
       </button>
-      <div v-show="showScreenshotMenu" class="screenshot-menu" @click.stop>
-        <div class="screenshot-menu-item" @click="selectScreenshot('region')">
-          <i class="fas fa-crop-alt"></i>
-          <span>{{ screenshotButtonTitle }}</span>
-        </div>
-        <div class="screenshot-menu-item" @click="selectScreenshot('hidden')">
-          <i class="fas fa-window-minimize"></i>
-          <span>隐藏窗口截图</span>
-        </div>
-      </div>
+      <UniversalContextMenu menuId="screenshot" :items="screenshotMenuItems" />
     </div>
     <ChatToolbarButton
       icon="fas fa-th-large"
@@ -107,11 +89,23 @@ import ChatToolbarButton from './ChatToolbarButton.vue'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { DEFAULT_SHORTCUTS, type ShortcutsConfig } from '../../composables/useShortcuts'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import { activeMenu, openMenu, closeMenu } from '../../composables/useUI'
 
 const systemConfigStore = useSystemConfigStore()
 
-const showScreenshotMenu = ref(false)
-const showCallMenu = ref(false)
+const showScreenshotMenu = computed(() => activeMenu.value === 'screenshot')
+const showCallMenu = computed(() => activeMenu.value === 'call')
+
+const screenshotMenuItems = computed(() => [
+  { label: screenshotButtonTitle.value, icon: 'fas fa-crop-alt', action: () => { emit('take-screenshot'); closeMenu() } },
+  { label: '隐藏窗口截图', icon: 'fas fa-window-minimize', action: () => { emit('take-screenshot-hidden'); closeMenu() } }
+])
+
+const callMenuItems = computed(() => [
+  { label: '语音通话', icon: 'fas fa-phone-alt', action: () => { emit('start-voice-call'); closeMenu() } },
+  { label: '视频通话', icon: 'fas fa-video', action: () => { emit('start-video-call'); closeMenu() } }
+])
 const showScreenshotShortcutTooltip = ref(false)
 const shortcuts = ref<ShortcutsConfig>(DEFAULT_SHORTCUTS)
 
@@ -166,34 +160,24 @@ const handleShortcutsUpdated = (_event: unknown, updatedShortcuts: ShortcutsConf
 }
 
 const toggleScreenshotMenu = () => {
-  showScreenshotMenu.value = !showScreenshotMenu.value
+  if (showScreenshotMenu.value) closeMenu()
+  else {
+    const btn = document.querySelector('.screenshot-dropdown-trigger')
+    if (btn) { const r = btn.getBoundingClientRect(); openMenu('screenshot', r.left, r.bottom + 4) }
+  }
+}
+
+const toggleCallMenu = () => {
+  if (showCallMenu.value) closeMenu()
+  else {
+    const btn = document.querySelector('.call-dropdown-trigger')
+    if (btn) { const r = btn.getBoundingClientRect(); openMenu('call', r.left, r.bottom + 4) }
+  }
 }
 
 const showScreenshotTooltip = () => {
   showScreenshotShortcutTooltip.value = true
   void loadScreenshotShortcut()
-}
-
-const toggleCallMenu = () => {
-  showCallMenu.value = !showCallMenu.value
-}
-
-const selectScreenshot = (type: 'region' | 'hidden') => {
-  showScreenshotMenu.value = false
-  if (type === 'region') {
-    emit('take-screenshot')
-  } else {
-    emit('take-screenshot-hidden')
-  }
-}
-
-const selectCallType = (type: 'voice' | 'video') => {
-  showCallMenu.value = false
-  if (type === 'voice') {
-    emit('start-voice-call')
-  } else {
-    emit('start-video-call')
-  }
 }
 
 interface Props {
@@ -218,25 +202,14 @@ const emit = defineEmits<{
   'toggle-ai-actions': []
 }>()
 
-// 点击外部关闭截图下拉菜单
-const onDocumentClick = (e: MouseEvent) => {
-  const target = e.target as HTMLElement
-  if (!target.closest('.screenshot-dropdown')) {
-    showScreenshotMenu.value = false
-  }
-  if (!target.closest('.call-dropdown')) {
-    showCallMenu.value = false
-  }
-}
+// 点击外部关闭由 UniversalContextMenu 内部处理
 
 onMounted(() => {
-  document.addEventListener('mousedown', onDocumentClick)
   void loadScreenshotShortcut()
   window.electron?.ipcRenderer?.on?.('shortcuts-updated', handleShortcutsUpdated)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', onDocumentClick)
   window.electron?.ipcRenderer?.removeListener?.('shortcuts-updated', handleShortcutsUpdated)
 })
 </script>

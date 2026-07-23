@@ -34,7 +34,7 @@
       />
 
       <!-- 右键日期格菜单 -->
-      <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
+      <UniversalContextMenu menuId="calendar" :items="contextMenuItems" />
     </div>
 
     <ModalContainer
@@ -97,6 +97,7 @@ import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import type { ContextMenuItem } from '../shared/context-menu-types'
+import { openMenu } from '../../composables/useUI'
 
 const emit = defineEmits<{
   back: []
@@ -295,12 +296,10 @@ const createOnDate = (date: Date) => {
 }
 
 // 右键日期格菜单
-const contextMenu = reactive({ visible: false, x: 0, y: 0, date: new Date() })
+const contextMenu = reactive({ date: new Date() })
 const onContextMenu = (event: MouseEvent, date: Date) => {
-  contextMenu.visible = true
-  contextMenu.x = event.clientX
-  contextMenu.y = event.clientY
   contextMenu.date = date
+  openMenu('calendar', event.clientX, event.clientY)
 }
 const contextMenuItems = computed<ContextMenuItem[]>(() => [
   { label: '新建当日事件', action: () => { selectedDate.value = contextMenu.date; showCreateEventModal() } },

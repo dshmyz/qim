@@ -18,36 +18,31 @@
 
   <!-- 消息右键菜单 -->
   <MessageContextMenu
-    :visible="showMessageContextMenu"
-    :position="messageContextMenuPosition"
     :message="selectedMessage"
     :conversation-type="conversation?.type"
     :can-manage-group-files="canManageGroupFiles"
-    @save-file-as="emit('save-file-as', $event); closeMessageMenu()"
-    @download-file="emit('download-file', $event); closeMessageMenu()"
-    @copy-message="emit('copy-message'); closeMessageMenu()"
-    @copy-code="emit('copy-code'); closeMessageMenu()"
-    @forward-message="emit('forward-message'); closeMessageMenu()"
-    @select-messages="emit('select-messages'); closeMessageMenu()"
-    @quote-message="emit('quote-message'); closeMessageMenu()"
-    @add-to-notes-app="emit('add-to-notes-app'); closeMessageMenu()"
-    @create-task="emit('create-task'); closeMessageMenu()"
-    @recall-message="emit('recall-message'); closeMessageMenu()"
-    @send-message-reminder="emit('send-message-reminder'); closeMessageMenu()"
-    @ai-summary="emit('ai-summary'); closeMessageMenu()"
-    @translate="emit('translate'); closeMessageMenu()"
-    @smart-reply="emit('smart-reply'); closeMessageMenu()"
-    @save-to-group-files="emit('save-to-group-files'); closeMessageMenu()"
+    @save-file-as="emit('save-file-as', $event)"
+    @download-file="emit('download-file', $event)"
+    @copy-message="emit('copy-message')"
+    @copy-code="emit('copy-code')"
+    @forward-message="emit('forward-message')"
+    @select-messages="emit('select-messages')"
+    @quote-message="emit('quote-message')"
+    @add-to-notes-app="emit('add-to-notes-app')"
+    @create-task="emit('create-task')"
+    @recall-message="emit('recall-message')"
+    @send-message-reminder="emit('send-message-reminder')"
+    @ai-summary="emit('ai-summary')"
+    @translate="emit('translate')"
+    @smart-reply="emit('smart-reply')"
+    @save-to-group-files="emit('save-to-group-files')"
   />
 
   <!-- 成员右键菜单 -->
   <MemberContextMenu
-    :visible="showMemberContextMenu"
-    :position="memberContextMenuPosition"
     :member="selectedMember"
     :current-user-id="currentUserId ?? ''"
     :conversation="conversation ?? undefined"
-    @close="emit('close-member-context-menu')"
     @remove-member="(memberId, _memberName) => emit('remove-member', String(memberId))"
     @set-admin="(_memberId, _memberName, _isAdmin) => emit('set-admin', String(_memberId))"
     @transfer-owner="(memberId, _memberName) => emit('transfer-owner', String(memberId))"
@@ -115,12 +110,8 @@ interface Props {
   selectedUser: User | null
   showReadUsersModal: boolean
   currentReadUsers: { read_users: User[]; total_members: number }
-  showMessageContextMenu: boolean
-  messageContextMenuPosition: { x: number; y: number }
   selectedMessage: Message | null
   canManageGroupFiles?: boolean
-  showMemberContextMenu: boolean
-  memberContextMenuPosition: { x: number; y: number }
   selectedMember: User | null
   showMessageManager: boolean
   showConfirmDialog: boolean

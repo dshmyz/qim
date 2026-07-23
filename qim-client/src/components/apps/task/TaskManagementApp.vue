@@ -72,7 +72,7 @@
       @submit="onSubmitTask"
     />
 
-    <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
+    <UniversalContextMenu menuId="task" :items="contextMenuItems" />
   </div>
 </template>
 
@@ -92,6 +92,7 @@ import type { ContextMenuItem } from '../../shared/context-menu-types'
 import TaskCreateModal from './components/TaskCreateModal.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import QMessage from '../../../utils/qmessage'
+import { openMenu, closeMenu } from '../../../composables/useUI'
 
 const store = useTaskStore()
 const showCreateModal = ref(false)
@@ -174,14 +175,12 @@ function onSearch(event: Event) {
 }
 
 function onTaskContextmenu(event: MouseEvent, task: Task) {
-  contextMenu.visible = true
-  contextMenu.x = event.clientX
-  contextMenu.y = event.clientY
   contextMenu.taskId = task.id
+  openMenu('task', event.clientX, event.clientY)
 }
 
 function closeContextMenu() {
-  contextMenu.visible = false
+  closeMenu()
 }
 
 const contextMenuItems = computed<ContextMenuItem[]>(() => [
@@ -222,7 +221,7 @@ async function onContextDelete() {
 }
 
 function onGlobalClick() {
-  if (contextMenu.visible) closeContextMenu()
+  closeContextMenu()
 }
 
 function onKeydown(e: KeyboardEvent) {

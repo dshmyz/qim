@@ -20,47 +20,27 @@
     </div>
 
     <!-- 头部下拉菜单 -->
-    <Teleport to="body">
-      <Transition name="dropdown">
-        <div v-if="showHeaderMenu" class="header-menu-teleport" :style="headerMenuPosition" @click.stop>
-          <!-- 群聊相关菜单项 -->
-          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupInfo">
-            <i class="fas fa-edit"></i> 修改群名称
-          </div>
-          <div v-if="isGroupOrDiscussion" class="menu-item" @click="handleEditGroupAnnouncement">
-            <i class="fas fa-volume-high"></i> 编辑群公告
-          </div>
-          <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion" class="menu-item" @click="handleOpenAISettings">
-            <i class="fas fa-robot"></i> AI 助手设置
-          </div>
-          <!-- 私聊相关菜单项 -->
-          <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item">
-            <div class="avatar-toggle-header">
-              <i class="fas fa-user-circle"></i>
-              <span class="avatar-toggle-title">对其启用AI分身</span>
-              <Switch
-                :model-value="avatarEnabled ?? false"
-                :size="'small'"
-                :disabled="avatarApprovalStatus !== 'approved'"
-                title="开启后，AI分身将在当前会话中代替你回复消息"
-                @change="(value) => handleToggleAvatar(value)"
-              />
-            </div>
-            <div v-if="avatarApprovalStatus && avatarApprovalStatus !== 'approved'" class="avatar-toggle-hint">
-              <template v-if="avatarApprovalStatus === 'pending'"><i class="fas fa-hourglass-half"></i> 审批中...</template>
-              <template v-else-if="avatarApprovalStatus === 'rejected'"><i class="fas fa-circle-xmark"></i> 审批未通过</template>
-            </div>
-            <div v-else class="avatar-toggle-hint">
-              仅对当前会话生效
-            </div>
-          </div>
-          <!-- 群聊解散 -->
-          <div v-if="isGroupOrDiscussion && isOwner" class="menu-item" @click="handleConfirmDeleteGroup">
-            <i class="fas fa-trash"></i> 解散群聊
-          </div>
+    <UniversalContextMenu menuId="header" :items="headerMenuItems">
+      <!-- AI 分身开关（自定义内容） -->
+      <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="ucm-divider"></div>
+      <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item">
+        <div class="avatar-toggle-header">
+          <span class="ucm-icon"><i class="fas fa-user-circle" style="color: #3b82f6"></i></span>
+          <span class="avatar-toggle-title">AI 分身</span>
+          <Switch
+            :model-value="avatarEnabled ?? false"
+            :size="'small'"
+            :disabled="avatarApprovalStatus !== 'approved'"
+            @change="(value) => handleToggleAvatar(value)"
+          />
         </div>
-      </Transition>
-    </Teleport>
+        <div class="avatar-toggle-hint">
+          <template v-if="avatarApprovalStatus === 'pending'"><i class="fas fa-hourglass-half"></i> 审批中</template>
+          <template v-else-if="avatarApprovalStatus === 'rejected'"><i class="fas fa-circle-xmark"></i> 审批未通过</template>
+          <template v-else>代替你回复消息</template>
+        </div>
+      </div>
+    </UniversalContextMenu>
 
     <!-- 确认对话框 -->
     <ConfirmDialog
@@ -110,11 +90,13 @@ import { getCurrentUser } from '../../utils/user'
 import { useRequest } from '../../composables/useRequest'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import MemberSidebar from './MemberSidebar.vue'
-import MemberContextMenu from './MemberContextMenu.vue'
 import GroupAIPanel from '../ai/GroupAIPanel.vue'
 import Switch from '../common/Switch.vue'
 import ModalContainer from '../shared/ModalContainer.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
+import { activeMenu, openMenu, closeMenu } from '../../composables/useUI'
 
 const systemConfigStore = useSystemConfigStore()
 
@@ -137,7 +119,6 @@ interface Props {
   conversation: Conversation | null
   currentUser: any
   serverUrl: string
-  showHeaderMenu: boolean
   aiEnabled?: boolean
   aiAssistantName?: string
   aiReplyMode?: string
@@ -171,15 +152,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 // Emits 定义
 const emit = defineEmits<{
-  'update:showHeaderMenu': [value: boolean]
   'invite-members': []
   'delete-group': []
-  'switch-conversation': [conversationId: string]
-  'show-user-profile': [user: any]
-  'remove-member': [memberId: string, memberName: string]
-  'set-admin': [memberId: string, memberName: string, isAdmin: boolean]
-  'transfer-owner': [memberId: string, memberName: string]
-  'start-private-chat': [memberId: string]
+  'open-group-files': []
+  'update-avatar-enabled': [enabled: boolean]
   'update-ai-settings': [settings: {
     aiEnabled: boolean;
     aiAssistantName: string;
@@ -205,7 +181,6 @@ const groupActions = inject('groupActions', null) as {
 
 // Refs
 const moreButtonRef = ref<HTMLElement | null>(null)
-const headerMenuPosition = ref<Record<string, string>>({})
 
 // 使用 request composable
 const { request } = useRequest()
@@ -215,14 +190,6 @@ const localShowConfirmDialog = ref(false)
 const localConfirmDialogTitle = ref('确认操作')
 const localConfirmDialogMessage = ref('')
 const localConfirmDialogCallback = ref<(() => void) | null>(null)
-
-// 成员管理状态
-const showMemberContextMenuFlag = ref(false)
-const memberContextMenuPosition = ref({ x: 0, y: 0 })
-const selectedMember = ref<GroupMember | null>(null)
-const isMembersSidebarExpanded = ref(true)
-const showMemberSearch = ref(false)
-const memberSearchQuery = ref(false)
 
 // AI 设置状态
 const showAISettingsModal = ref(false)
@@ -281,52 +248,41 @@ function isGroupOwner(conversation: Conversation | null): boolean {
   return owner ? (owner.role as string) === 'owner' : false
 }
 
-// 切换头部下拉菜单
-function handleToggleHeaderMenu() {
-  const newValue = !props.showHeaderMenu
-  emit('update:showHeaderMenu', newValue)
-  if (newValue) {
-    nextTick(() => {
-      if (moreButtonRef.value) {
-        const rect = moreButtonRef.value.getBoundingClientRect()
-        const menuWidth = 180
-        const menuHeight = 150
-        const viewportWidth = window.innerWidth
-        const viewportHeight = window.innerHeight
+// 头部下拉菜单（使用全局 activeMenu 协调）
+const showHeaderMenu = computed(() => activeMenu.value === 'header')
 
-        let right = viewportWidth - rect.right
-        if (right + menuWidth > viewportWidth) {
-          right = 16
-        }
-
-        let top = rect.bottom + 8
-        if (top + menuHeight > viewportHeight) {
-          top = rect.top - menuHeight - 8
-        }
-
-        headerMenuPosition.value = {
-          position: 'fixed',
-          top: `${top}px`,
-          right: `${right}px`
-        }
-      }
-      document.addEventListener('click', closeHeaderMenu)
-    })
-  } else {
-    document.removeEventListener('click', closeHeaderMenu)
+const headerMenuItems = computed(() => {
+  const items: ContextMenuItem[] = []
+  if (isGroupOrDiscussion.value) {
+    items.push(
+      { label: '修改群名称', icon: 'fas fa-edit', action: handleEditGroupInfo },
+      { label: '编辑群公告', icon: 'fas fa-volume-high', action: handleEditGroupAnnouncement }
+    )
   }
-}
+  if (systemConfigStore.enableAI && isGroupOrDiscussion.value) {
+    items.push({ label: 'AI 助手设置', icon: 'fas fa-robot', action: handleOpenAISettings })
+  }
+  if (isGroupOrDiscussion.value && isOwner.value) {
+    items.push({ label: '解散群聊', icon: 'fas fa-trash', danger: true, action: handleConfirmDeleteGroup })
+  }
+  return items
+})
 
-function closeHeaderMenu() {
-  emit('update:showHeaderMenu', false)
-  document.removeEventListener('click', closeHeaderMenu)
+function handleToggleHeaderMenu() {
+  if (showHeaderMenu.value) {
+    closeMenu()
+  } else {
+    if (moreButtonRef.value) {
+      const rect = moreButtonRef.value.getBoundingClientRect()
+      openMenu('header', rect.right - 180, rect.bottom + 4)
+    }
+  }
 }
 
 // 邀请成员
 function handleInviteMembers() {
   emit('invite-members')
-  emit('update:showHeaderMenu', false)
-  document.removeEventListener('click', closeHeaderMenu)
+  closeMenu()
 }
 
 // 编辑群信息
@@ -334,8 +290,7 @@ function handleEditGroupInfo() {
   if (props.conversation && groupActions) {
     groupActions.openEditGroupName(props.conversation)
   }
-  emit('update:showHeaderMenu', false)
-  document.removeEventListener('click', closeHeaderMenu)
+  closeMenu()
 }
 
 // 编辑群公告
@@ -343,15 +298,14 @@ function handleEditGroupAnnouncement() {
   if (props.conversation && groupActions) {
     groupActions.openEditAnnouncement(props.conversation)
   }
-  emit('update:showHeaderMenu', false)
-  document.removeEventListener('click', closeHeaderMenu)
+  closeMenu()
 }
 
 // 确认解散群聊
 function handleConfirmDeleteGroup() {
   if (!props.conversation) return
 
-  closeHeaderMenu()
+  closeMenu()
 
   openLocalConfirmDialog(
     '确认解散群聊',
@@ -390,23 +344,10 @@ function executeConfirmCallback() {
   closeLocalConfirmDialog()
 }
 
-// 成员侧边栏操作
-function toggleMembersSidebar() {
-  isMembersSidebarExpanded.value = !isMembersSidebarExpanded.value
-}
-
-function toggleMemberSearch() {
-  showMemberSearch.value = !showMemberSearch.value
-  if (showMemberSearch.value) {
-    memberSearchQuery.value = false
-  }
-}
-
 // AI 设置相关方法
 function handleOpenAISettings() {
   showAISettingsModal.value = true
-  emit('update:showHeaderMenu', false)
-  document.removeEventListener('click', closeHeaderMenu)
+  closeMenu()
 }
 
 function handleCloseAISettingsModal() {
@@ -418,98 +359,6 @@ function handleUpdateAISettings(settings: any) {
   showAISettingsModal.value = false
 }
 
-// 成员右键菜单
-function computeMenuPosition(clientX: number, clientY: number, menuWidth: number = 160, menuHeight: number = 160) {
-  const windowWidth = window.innerWidth
-  const windowHeight = window.innerHeight
-
-  let x = clientX
-  let y = clientY
-
-  if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10
-  }
-  if (x < 0) {
-    x = 10
-  }
-
-  if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10
-  }
-  if (y < 0) {
-    y = 10
-  }
-
-  return { x, y }
-}
-
-function handleShowMemberContextMenu(event: MouseEvent, member: GroupMember) {
-  event.stopPropagation()
-
-  const { x, y } = computeMenuPosition(event.clientX, event.clientY)
-
-  memberContextMenuPosition.value = { x, y }
-  selectedMember.value = member
-  showMemberContextMenuFlag.value = true
-
-  setTimeout(() => {
-    document.addEventListener('click', closeMemberContextMenu)
-  }, 0)
-}
-
-function closeMemberContextMenu() {
-  showMemberContextMenuFlag.value = false
-  selectedMember.value = null
-  document.removeEventListener('click', closeMemberContextMenu)
-}
-
-function handleStartPrivateChat(member: GroupMember) {
-  emit('start-private-chat', member.id)
-  closeMemberContextMenu()
-}
-
-// 成员操作 - 转发给父组件处理
-function handleViewMemberInfo() {
-  if (selectedMember.value) {
-    emit('show-user-profile', selectedMember.value)
-  }
-  closeMemberContextMenu()
-}
-
-function handleRemoveMember() {
-  if (selectedMember.value) {
-    emit('remove-member', selectedMember.value.id, selectedMember.value.name)
-  }
-  closeMemberContextMenu()
-}
-
-function handleSetAdmin() {
-  if (selectedMember.value) {
-    const isAdmin = selectedMember.value.role === 'admin'
-    emit('set-admin', selectedMember.value.id, selectedMember.value.name, !isAdmin)
-  }
-  closeMemberContextMenu()
-}
-
-function handleTransferOwner() {
-  if (selectedMember.value) {
-    emit('transfer-owner', selectedMember.value.id, selectedMember.value.name)
-  }
-  closeMemberContextMenu()
-}
-
-function handleSendPrivateMessage() {
-  if (selectedMember.value) {
-    emit('start-private-chat', selectedMember.value.id)
-  }
-  closeMemberContextMenu()
-}
-
-// 清理
-onUnmounted(() => {
-  document.removeEventListener('click', closeHeaderMenu)
-  document.removeEventListener('click', closeMemberContextMenu)
-})
 </script>
 
 <style scoped>
@@ -579,35 +428,29 @@ onUnmounted(() => {
 
 /* AI 分身开关菜单项 */
 .avatar-toggle-menu-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
+  padding: 8px 16px;
 }
 
 .avatar-toggle-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.avatar-toggle-header i {
-  color: #3b82f6;
-  font-size: 14px;
-  margin-right: 8px;
+  gap: 8px;
 }
 
 .avatar-toggle-title {
-  flex: 1;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-color);
 }
 
 .avatar-toggle-hint {
-  margin-top: 6px;
-  padding-left: 22px;
+  margin-top: 4px;
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.avatar-toggle-hint i {
+  margin-right: 4px;
 }
 
 /* 下拉动画 */

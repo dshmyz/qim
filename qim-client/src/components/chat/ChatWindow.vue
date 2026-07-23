@@ -152,12 +152,8 @@
       :selected-user="selectedUser"
       :show-read-users-modal="showReadUsersModal"
       :current-read-users="currentReadUsers"
-      :show-message-context-menu="showMessageContextMenuFlag"
-      :message-context-menu-position="messageContextMenuPosition"
       :selected-message="selectedMessage"
       :can-manage-group-files="canManageGroupFiles"
-      :show-member-context-menu="showMemberContextMenuFlag"
-      :member-context-menu-position="memberContextMenuPosition"
       :selected-member="selectedMember"
       :show-message-manager="showMessageManager"
       :show-confirm-dialog="showConfirmDialog"
@@ -189,8 +185,6 @@
       @translate="handleAITranslate"
       @smart-reply="handleSmartReply"
       @save-to-group-files="saveMessageToGroupFiles"
-      @close-message-menu="closeMessageContextMenu"
-      @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
       @transfer-owner="handleTransferOwnerFromOverlay"
@@ -283,6 +277,7 @@ import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
 import { isMessageSelectionEligible } from '../../utils/messageSelection'
 import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
+import { activeMenu, activeMenuPosition, openMenu, closeMenu } from '../../composables/useUI'
 
 // 服务器地址
 const { serverUrl } = useServerUrl()
@@ -604,8 +599,6 @@ interface PendingFile {
 const pendingFiles = ref<PendingFile[]>([])
 
 // 成员上下文菜单
-const showMemberContextMenuFlag = ref(false)
-const memberContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMember = ref<any>(null)
 
 // 用户资料弹窗
@@ -613,8 +606,6 @@ const showUserProfileFlag = ref(false)
 const selectedUser = ref<any>(null)
 
 // 消息上下文菜单
-const showMessageContextMenuFlag = ref(false)
-const messageContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMessage = ref<any>(null)
 const messageMenuSelection = ref('')
 const isMessageSelectionMode = ref(false)
@@ -624,9 +615,6 @@ const selectedMessages = computed(() =>
     selectedMessageIds.value.has(String(message.id)) && isMessageSelectionEligible(message)
   )
 )
-
-// 头部下拉菜单状态
-const showHeaderMenu = ref(false)
 
 // 消息管理器
 const showMessageManager = ref(false)
@@ -1521,28 +1509,17 @@ const computeMenuPosition = (clientX: number, clientY: number, menuWidth: number
 
 const handleShowMemberContextMenu = (event: MouseEvent, member: any) => {
   event.stopPropagation()
-
   const { x, y } = computeMenuPosition(event.clientX, event.clientY)
-
-  memberContextMenuPosition.value = { x, y }
   selectedMember.value = {
     ...member,
     name: member.name || member.nickname || member.username || '未知用户'
   }
-  showMemberContextMenuFlag.value = true
-  
-  document.removeEventListener('click', closeMemberContextMenu)
-  memberContextMenuTimeoutId = window.setTimeout(() => {
-    if (isMounted.value) {
-      document.addEventListener('click', closeMemberContextMenu)
-    }
-  }, 0)
+  openMenu('member', x, y)
 }
 
 const closeMemberContextMenu = () => {
-  showMemberContextMenuFlag.value = false
+  closeMenu()
   selectedMember.value = null
-  document.removeEventListener('click', closeMemberContextMenu)
 }
 
 // 计算当前用户在群中的角色
@@ -1792,10 +1769,9 @@ const handleRecallMessage = async () => {
 }
 
 const closeMessageContextMenu = () => {
-  showMessageContextMenuFlag.value = false
+  closeMenu()
   selectedMessage.value = null
   messageMenuSelection.value = ''
-  document.removeEventListener('click', closeMessageContextMenu)
 }
 
 const getForwardRecordTitle = (): string => {
@@ -1907,50 +1883,6 @@ const quoteMessage = () => {
     const input = document.querySelector('.message-input') as HTMLTextAreaElement
     if (input) {
       input.focus()
-    }
-  }
-  closeMessageContextMenu()
-}
-
-// 将消息添加到便签
-const addToNote = async () => {
-  if (selectedMessage.value) {
-    const message = selectedMessage.value
-
-    // 检查消息类型，仅支持文本类型
-    if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
-      $message.warning('仅支持文本类型的消息添加到便签')
-      closeMessageContextMenu()
-      return
-    }
-
-    const rawContent = message.content || ''
-    const maxNoteLength = 2000
-    const truncatedContent = rawContent.length > maxNoteLength
-      ? rawContent.slice(0, maxNoteLength) + `\n...(原文共 ${rawContent.length} 字，已截断)`
-      : rawContent
-
-    const noteContent = `【聊天记录】
-发送者：${message.sender.name}
-时间：${formatTime(message.timestamp)}
-内容：${truncatedContent}`
-
-    try {
-      const { useNotes } = await import('../../composables/useNotes')
-      const { createNote } = useNotes()
-      const result = await createNote({
-        title: `聊天记录 ${formatTime(message.timestamp)}`,
-        content: noteContent,
-        type: 'sticky',
-        tags: ['聊天记录']
-      })
-      if (result) {
-        $message.success('消息已添加到便签')
-      } else {
-        $message.error('添加到便签失败')
-      }
-    } catch {
-      $message.error('添加到便签失败')
     }
   }
   closeMessageContextMenu()
@@ -2323,8 +2255,6 @@ const retakeScreenshot = () => {
   takeScreenshot()
 }
 
-// 通话相关状态
-const isScreenSharing = ref(false) // 是否正在共享屏幕
 
 // 小程序列表
 const showMiniAppList = ref(false)
@@ -2546,59 +2476,24 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
   }
 }
 
-// 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示
-const convertUrlsToLinks = (text: string): string => {
-  // 正则表达式匹配URL
-  const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
-  const atRegex = /@([\u4e00-\u9fa5\w]+)/g
-  
-  let result = text
-  
-  // 先处理URL
-  result = result.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
-  
-  // 再处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
-  })
-  
-  return result
-}
 
 // 消息右键菜单添加文件相关选项
 const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   event.stopPropagation()
-  
+
   // 已撤回的消息不显示右键菜单
   if (message.isRecalled) {
     return
   }
 
+  // 关闭其他菜单系统
+  window.dispatchEvent(new CustomEvent('qim:close-all-menus'))
+
   messageMenuSelection.value = window.getSelection?.().toString() ?? ''
 
-  // 先显示菜单，nextTick 后读取实际 DOM 尺寸精确计算位置（避免硬编码高度估算不准导致溢出或靠上）
   selectedMessage.value = message
-  showMessageContextMenuFlag.value = true
+  openMenu('message', event.clientX, event.clientY)
 
-  nextTick(() => {
-    const menuEl = document.querySelector('.context-menu')
-    if (!menuEl) return
-    const actualHeight = menuEl.offsetHeight
-    const actualWidth = menuEl.offsetWidth
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-    let x = event.clientX
-    let y = event.clientY
-    if (x + actualWidth > windowWidth) x = windowWidth - actualWidth - 10
-    if (x < 0) x = 10
-    if (y + actualHeight > windowHeight) y = windowHeight - actualHeight - 10
-    if (y < 0) y = 10
-    messageContextMenuPosition.value = { x, y }
-  })
-  
   // 检查消息类型
   if (message.type === 'file' || message.type === 'image') {
     // 可以在这里添加文件或图片特定的菜单选项
@@ -2681,51 +2576,6 @@ const handleUpdateAISettings = async (settings: any) => {
     }
   }
 }
-
-// 切换头部下拉菜单
-const toggleHeaderMenu = () => {
-  showHeaderMenu.value = !showHeaderMenu.value
-  // 点击其他地方关闭菜单
-  if (showHeaderMenu.value) {
-    setTimeout(() => {
-      document.addEventListener('click', closeHeaderMenu)
-    }, 0)
-  }
-}
-
-// 关闭头部下拉菜单
-const closeHeaderMenu = () => {
-  showHeaderMenu.value = false
-  document.removeEventListener('click', closeHeaderMenu)
-}
-
-// 检查当前用户是否是群主
-const isGroupOwner = (conversation: Conversation | null): boolean => {
-  if (!conversation || !conversation.members) return false
-  const currentUser = getCurrentUser()
-  if (!currentUser) return false
-  const currentUserId = currentUser.id?.toString() || ''
-  const owner = conversation.members.find((member: any) => String(member.id) === currentUserId)
-  return owner ? owner.role === 'owner' : false
-}
-
-// 检查是否有权限修改群名称
-const canEditGroupName = computed(() => {
-  if (!props.conversation) return false
-  
-  // 讨论组全员可修改
-  if (props.conversation.type === 'discussion') {
-    return true
-  }
-  
-  // 群只有管理员和群主能修改
-  if (props.conversation.type === 'group') {
-    const userRole = currentUserRole.value
-    return userRole === 'owner' || userRole === 'admin'
-  }
-  
-  return false
-})
 
 defineExpose({
   startScreenShare,

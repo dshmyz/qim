@@ -1,35 +1,14 @@
 <template>
-  <div v-if="visible" class="context-menu" :style="{ left: position.x + 'px', top: position.y + 'px' }">
-    <div v-if="canRemoveMember" class="context-menu-item" @click.stop="handleRemoveMember">
-      <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
-      <span>移除群聊</span>
-    </div>
-    <div class="context-menu-item" @click.stop="handleViewMemberInfo">
-      <span class="context-menu-icon"><i class="fas fa-user"></i></span>
-      <span>查看资料</span>
-    </div>
-    <div v-if="canSetAdmin && !isBotMember" class="context-menu-item" @click.stop="handleSetAdmin">
-      <span class="context-menu-icon"><i class="fas fa-star"></i></span>
-      <span>{{ isSelectedMemberAdmin ? '取消管理员' : '设为管理员' }}</span>
-    </div>
-    <div v-if="canTransferOwner && !isBotMember" class="context-menu-item" @click.stop="handleTransferOwner">
-      <span class="context-menu-icon"><i class="fas fa-crown"></i></span>
-      <span>转让群主</span>
-    </div>
-    <div v-if="member?.type !== 'bot'" class="context-menu-item" @click.stop="handleSendPrivateMessage">
-      <span class="context-menu-icon"><i class="fas fa-comment"></i></span>
-      <span>发起私聊</span>
-    </div>
-  </div>
+  <UniversalContextMenu menuId="member" :items="menuItems" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Conversation, User } from '../../types'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 
 interface Props {
-  visible: boolean
-  position: { x: number; y: number }
   member: User | null
   currentUserId: string | number
   conversation: Conversation | undefined
@@ -83,26 +62,43 @@ const canTransferOwner = computed((): boolean => {
   return true
 })
 
-const handleRemoveMember = () => {
-  if (!props.member) return
-  emit('remove-member', props.member.id, props.member.name || '未知用户')
-}
-
-const handleViewMemberInfo = () => {
-  emit('view-member-info', props.member)
-}
-
-const handleSetAdmin = () => {
-  if (!props.member) return
-  emit('set-admin', props.member.id, props.member.name || '未知用户', isSelectedMemberAdmin.value)
-}
-
-const handleTransferOwner = () => {
-  if (!props.member) return
-  emit('transfer-owner', props.member.id, props.member.name || '未知用户')
-}
-
-const handleSendPrivateMessage = () => {
-  emit('send-private-message')
-}
+const menuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '查看资料',
+    icon: 'fas fa-user',
+    action: () => emit('view-member-info', props.member)
+  },
+  {
+    label: isSelectedMemberAdmin.value ? '取消管理员' : '设为管理员',
+    icon: 'fas fa-star',
+    visible: canSetAdmin.value && !isBotMember.value,
+    action: () => {
+      if (props.member) emit('set-admin', props.member.id, props.member.name || '未知用户', isSelectedMemberAdmin.value)
+    }
+  },
+  {
+    label: '转让群主',
+    icon: 'fas fa-crown',
+    visible: canTransferOwner.value && !isBotMember.value,
+    action: () => {
+      if (props.member) emit('transfer-owner', props.member.id, props.member.name || '未知用户')
+    }
+  },
+  {
+    label: '发起私聊',
+    icon: 'fas fa-comment',
+    visible: props.member?.type !== 'bot',
+    action: () => emit('send-private-message')
+  },
+  { divider: true, visible: canRemoveMember.value },
+  {
+    label: '移除群聊',
+    icon: 'fas fa-trash',
+    danger: true,
+    visible: canRemoveMember.value,
+    action: () => {
+      if (props.member) emit('remove-member', props.member.id, props.member.name || '未知用户')
+    }
+  }
+])
 </script>

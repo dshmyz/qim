@@ -3,7 +3,6 @@
     class="message-item"
     :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.origin === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
     :data-message-id="message.id"
-    @contextmenu.prevent="handleContextMenu"
   >
     <!-- 系统消息 -->
     <SystemMessage v-if="message.type === 'system'" :content="message.content" />
@@ -40,6 +39,7 @@
         </div>
 
         <template v-else>
+          <div class="message-bubble-area" @contextmenu.prevent="handleContextMenu">
           <!-- 引用消息 -->
           <div v-if="message.quotedMessage" class="quoted-message-preview" @click="$emit('scrollToQuotedMessage', message.quotedMessage.id)">
             <div class="quoted-message-preview-header">
@@ -123,6 +123,7 @@
             :is-self="isSelf"
             :is-streaming="message.isStreaming || false"
           />
+          </div>
         </template>
 
         <div class="message-meta">

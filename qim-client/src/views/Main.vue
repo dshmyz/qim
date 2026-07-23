@@ -386,7 +386,7 @@
                 @editAnnouncement="editAnnouncement"
                 @editGroupName="editGroupNameAction"
                 @openAISettings="showAISettingsModal = true"
-                @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
+                @showMemberContextMenu="(event, member) => showSidebarMemberContextMenu(event, member)"
                 @startPrivateChat="startPrivateChat"
               />
             </div>
@@ -420,26 +420,10 @@
   
     <!-- 右键菜单 -->
     <MainContextMenus
-      :showMenu="showMenu"
       :selectedConversation="selectedConversation"
-      :menuPosition="menuPosition"
-      :showActionMenuFlag="showActionMenuFlag"
-      :actionMenuPosition="actionMenuPosition"
-      :showUserContextMenuFlag="showUserContextMenuFlag"
-      :userContextMenuPosition="userContextMenuPosition"
       :selectedEmployee="selectedEmployee"
-      :showMemberContextMenuFlag="showMemberContextMenuFlag"
-      :memberContextMenuPosition="memberContextMenuPosition"
-      :showGroupContextMenuFlag="showGroupContextMenuFlag"
-      :groupContextMenuPosition="groupContextMenuPosition"
       :selectedGroupForContextMenu="selectedGroupForContextMenu"
       :isGroupOwner="isGroupOwner(selectedGroupForContextMenu)"
-      :showSettingsMenuFlag="showSettingsMenuFlag"
-      :settingsMenuPosition="settingsMenuPosition"
-      :showThemeMenuFlag="showThemeMenuFlag"
-      :themeMenuPosition="themeMenuPosition"
-      :showMoreMenuFlag="showMoreMenuFlag"
-      :moreMenuPosition="moreMenuPosition"
       :currentUser="currentUser"
       @pin="handlePin"
       @mute="handleMute"
@@ -731,7 +715,7 @@ import { getProductName, APP_CONFIG } from '../config/appConfig'
 import { versionsApi } from '../api'
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
-import { useUI } from '../composables/useUI'
+import { useUI, closeMenu, openMenu } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
 import { useOrganizationLogic } from '../composables/useOrganizationLogic'
 import { useMainWebSocketHandlers } from '../composables/useMainWebSocketHandlers'
@@ -919,48 +903,26 @@ const ui = useUI()
 
 // 解构 UI 状态
 const {
-  // 右键菜单
-  showMenu,
-  menuPosition,
+  // 右键菜单数据
   selectedConversation,
   showContextMenu,
   hideContextMenu,
-  // 动作菜单
-  showActionMenuFlag,
-  actionMenuPosition,
   showActionMenu,
   hideActionMenu,
-  // 用户右键菜单
-  showUserContextMenuFlag,
-  userContextMenuPosition,
   selectedEmployee,
   showUserContextMenu,
   hideUserContextMenu,
-  // 群聊右键菜单
-  showGroupContextMenuFlag,
-  groupContextMenuPosition,
   selectedGroupForContextMenu,
   showGroupContextMenu,
   closeGroupContextMenu,
-  // 成员右键菜单
-  showMemberContextMenuFlag,
-  memberContextMenuPosition,
   selectedMember,
   showMemberContextMenu,
   hideMemberContextMenu,
-  // 设置菜单
-  showSettingsMenuFlag,
-  settingsMenuPosition,
+  showSidebarMemberContextMenu,
   showSettingsMenu,
   hideSettingsMenu,
-  // 主题菜单
-  showThemeMenuFlag,
-  themeMenuPosition,
   showThemeMenu,
   hideThemeMenu,
-  // 更多菜单
-  showMoreMenuFlag,
-  moreMenuPosition,
   showMoreMenu,
   closeMoreMenu,
   // 分享模态框
@@ -1188,9 +1150,8 @@ const handleShowGroupContextMenu = async (event: MouseEvent, group: any) => {
   event.preventDefault()
   const groupId = String(group.id)
   
-  // 先显示菜单（使用基本信息）
-  showGroupContextMenuFlag.value = true
-  groupContextMenuPosition.value = ui.computeMenuPosition(event.clientX, event.clientY, 160, 200)
+  // 先显示菜单
+  openMenu('group', ...Object.values(ui.computeMenuPosition(event.clientX, event.clientY, 160, 200)) as [number, number])
   selectedGroupForContextMenu.value = group
   
   // 如果已有该群的完整数据且包含 members，直接使用
@@ -1788,8 +1749,8 @@ const handleNotification = (data: any) => {
 
   if (data.type && data.type.includes('_approval')) {
     const entityType = data.type.replace('_approval', '')
-    if (entityType === 'avatar' && chatWindowRefs[currentConversationId.value]) {
-      chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
+    if (entityType === 'avatar') {
+      chatWindowRef.value?.fetchConfig?.()
     }
   }
 
@@ -2748,7 +2709,7 @@ const saveGroupName = async (newName: string) => {
 }
 
 const closeMemberContextMenu = () => {
-  showMemberContextMenuFlag.value = false
+  closeMenu()
   selectedMember.value = null
   document.removeEventListener('click', closeMemberContextMenu)
 }
@@ -3122,8 +3083,7 @@ const confirmAddMembers = async (members: any[]) => {
 // 点击其他地方关闭菜单由showContextMenu和showGroupContextMenu函数内部处理
 
 const closeSettingsMenu = () => {
-  showSettingsMenuFlag.value = false
-  document.removeEventListener('click', closeSettingsMenu)
+  closeMenu()
 }
 
 const canUseElectronUpdater = () => {
