@@ -171,8 +171,7 @@
 
     <!-- 右键菜单 -->
     <Teleport to="body">
-      <div
-        <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
+      <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
     </Teleport>
 
     <!-- 上传进度条 -->

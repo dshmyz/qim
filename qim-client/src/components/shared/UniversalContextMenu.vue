@@ -29,7 +29,6 @@ export interface ContextMenuItem {
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import type { ContextMenuItem } from './UniversalContextMenu.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -75,7 +74,10 @@ const handleClick = (item: ContextMenuItem) => {
 const close = () => emit('update:visible', false)
 
 onMounted(() => {
-  document.addEventListener('click', close)
+  // 延迟注册，避免右键事件触发的 click 立即关闭菜单
+  setTimeout(() => {
+    document.addEventListener('click', close)
+  }, 0)
 })
 
 onUnmounted(() => {
