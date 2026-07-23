@@ -72,28 +72,7 @@
       @submit="onSubmitTask"
     />
 
-    <div
-      v-if="contextMenu.visible"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-    >
-      <button class="context-item" @click="onContextEdit">
-        <i class="fas fa-edit"></i> 编辑
-      </button>
-      <button class="context-item" @click="onContextStatusChange('todo')">
-        <i class="fas fa-circle" style="color:#fbbf24;font-size:8px;"></i> 移到待办
-      </button>
-      <button class="context-item" @click="onContextStatusChange('in_progress')">
-        <i class="fas fa-circle" style="color:#a78bfa;font-size:8px;"></i> 移到进行中
-      </button>
-      <button class="context-item" @click="onContextStatusChange('completed')">
-        <i class="fas fa-circle" style="color:#34d399;font-size:8px;"></i> 移到已完成
-      </button>
-      <div class="context-divider"></div>
-      <button class="context-item danger" @click="onContextDelete">
-        <i class="fas fa-trash"></i> 删除
-      </button>
-    </div>
+    <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
   </div>
 </template>
 
@@ -108,6 +87,7 @@ import KanbanView from './views/KanbanView.vue'
 import ListView from './views/ListView.vue'
 import CalendarView from './views/CalendarView.vue'
 import MyWorkspace from './views/MyWorkspace.vue'
+import UniversalContextMenu, { type ContextMenuItem } from '../../shared/UniversalContextMenu.vue'
 import TaskCreateModal from './components/TaskCreateModal.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import QMessage from '../../../utils/qmessage'
@@ -202,6 +182,15 @@ function onTaskContextmenu(event: MouseEvent, task: Task) {
 function closeContextMenu() {
   contextMenu.visible = false
 }
+
+const contextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: '编辑', icon: 'fas fa-edit', action: onContextEdit },
+  { label: '移到待办', icon: 'fas fa-circle', iconColor: '#fbbf24', action: () => onContextStatusChange('todo') },
+  { label: '移到进行中', icon: 'fas fa-circle', iconColor: '#a78bfa', action: () => onContextStatusChange('in_progress') },
+  { label: '移到已完成', icon: 'fas fa-circle', iconColor: '#34d399', action: () => onContextStatusChange('completed') },
+  { divider: true },
+  { label: '删除', icon: 'fas fa-trash', danger: true, action: onContextDelete }
+])
 
 function onContextEdit() {
   const task = store.tasks.find(t => t.id === contextMenu.taskId)
@@ -399,37 +388,5 @@ async function onSubmitTask(data: {
 }
 .icon-btn:hover {
   background: var(--hover-bg);
-}
-.context-menu {
-  position: fixed;
-  z-index: var(--z-dropdown, 1000);
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  padding: var(--spacing-1);
-  min-width: 160px;
-}
-.context-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  width: 100%;
-  padding: var(--spacing-2) var(--spacing-3);
-  border: none;
-  background: none;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-}
-.context-item:hover { background: var(--hover-bg); }
-.context-item.danger { color: #ef4444; }
-.context-item.danger:hover { background: #fef2f2; }
-.context-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: var(--spacing-1) 0;
 }
 </style>

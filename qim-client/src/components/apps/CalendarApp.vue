@@ -34,11 +34,7 @@
       />
 
       <!-- 右键日期格菜单 -->
-      <div v-if="contextMenu.visible" class="calendar-context-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click.stop>
-        <div class="context-menu-item" @click="onMenuCreateEvent">新建当日事件</div>
-        <div class="context-menu-item" @click="onMenuCreateTask">新建当日任务</div>
-        <div class="context-menu-item" @click="onMenuJumpToday">跳到今天</div>
-      </div>
+      <UniversalContextMenu :visible="contextMenu.visible" :x="contextMenu.x" :y="contextMenu.y" :items="contextMenuItems" @update:visible="contextMenu.visible = $event" />
     </div>
 
     <ModalContainer
@@ -99,6 +95,7 @@ import CalendarGrid from './calendar/CalendarGrid.vue'
 import EventPanel from './calendar/EventPanel.vue'
 import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
+import UniversalContextMenu, { type ContextMenuItem } from '../shared/UniversalContextMenu.vue'
 
 const emit = defineEmits<{
   back: []
@@ -304,16 +301,16 @@ const onContextMenu = (event: MouseEvent, date: Date) => {
   contextMenu.y = event.clientY
   contextMenu.date = date
 }
-const closeContextMenu = () => { contextMenu.visible = false }
-const onMenuCreateEvent = () => { const d = contextMenu.date; closeContextMenu(); createOnDate(d) }
-const onMenuCreateTask = () => {
-  const d = contextMenu.date
-  const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0')
-  taskStore.pendingCreateOnDate = `${y}-${m}-${day}`
-  closeContextMenu()
-  emit('openTaskApp')
-}
-const onMenuJumpToday = () => { closeContextMenu(); selectedDate.value = new Date() }
+const contextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: '新建当日事件', action: () => { selectedDate.value = contextMenu.date; showCreateEventModal() } },
+  { label: '新建当日任务', action: () => {
+    const d = contextMenu.date
+    const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0')
+    taskStore.pendingCreateOnDate = `${y}-${m}-${day}`
+    emit('openTaskApp')
+  }},
+  { label: '跳到今天', action: () => { selectedDate.value = new Date() } }
+])
 
 const showEditEventModal = (event: any) => {
   selectedEvent.value = { ...event }
@@ -413,13 +410,11 @@ onMounted(async () => {
   if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission()
   }
-  document.addEventListener('click', closeContextMenu)
 })
 
 onUnmounted(() => {
   reminderTimers.value.forEach(timerId => clearTimeout(timerId))
   reminderTimers.value.clear()
-  document.removeEventListener('click', closeContextMenu)
 })
 </script>
 
@@ -537,25 +532,5 @@ onUnmounted(() => {
 .calendar-confirm-btn:hover {
   background-color: var(--active-color);
   color: white;
-}
-
-.calendar-context-menu {
-  position: fixed;
-  z-index: 2000;
-  min-width: 140px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 4px 0;
-}
-.context-menu-item {
-  padding: 8px 16px;
-  font-size: 13px;
-  color: var(--text-color, #333);
-  cursor: pointer;
-}
-.context-menu-item:hover {
-  background: var(--hover-color, #f3f4f6);
 }
 </style>
