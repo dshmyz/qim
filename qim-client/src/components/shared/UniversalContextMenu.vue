@@ -15,9 +15,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-
+<script lang="ts">
 export interface ContextMenuItem {
   label?: string
   icon?: string
@@ -27,6 +25,11 @@ export interface ContextMenuItem {
   divider?: boolean
   danger?: boolean
 }
+</script>
+
+<script setup lang="ts">
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import type { ContextMenuItem } from './UniversalContextMenu.vue'
 
 const props = defineProps<{
   visible: boolean
