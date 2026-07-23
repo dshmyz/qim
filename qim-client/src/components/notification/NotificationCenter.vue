@@ -79,6 +79,17 @@
             :class="getItemClasses(notification)"
           >
             <div class="notification-body" @click="handleClick(notification)">
+              <div class="notification-tools">
+                <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
+                  <i class="fas fa-thumbtack"></i>
+                </button>
+                <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
+                  <i class="fas fa-star"></i>
+                </button>
+                <button class="tool-btn" @click.stop="deleteNotification(notification)" title="删除">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
               <div class="notification-icon">
                 <i :class="getIconClass(notification)"></i>
               </div>
@@ -89,15 +100,17 @@
                     <span v-if="notification.important" class="badge-important" title="重要">
                       <i class="fas fa-star"></i>
                     </span>
-                    <span v-if="notification.handled" class="badge-handled">已处理</span>
                   </div>
                 </div>
                 <div class="notification-text">{{ notification.content }}</div>
-                <div class="notification-time">{{ formatTime(notification.timestamp) }}</div>
+                <div class="notification-time-row">
+                  <span class="notification-time">{{ formatTime(notification.timestamp) }}</span>
+                  <span v-if="notification.handled" class="badge-handled">已处理</span>
+                </div>
               </div>
             </div>
-            <div class="notification-footer">
-              <div v-if="!notification.handled" class="notification-actions">
+            <div v-if="!notification.handled && getActionButtons(notification).length" class="notification-footer">
+              <div class="notification-actions">
                 <button
                   v-for="btn in getActionButtons(notification)"
                   :key="btn.value"
@@ -106,14 +119,6 @@
                   @click.stop="handleAction(notification, btn.value)"
                 >
                   {{ btn.label }}
-                </button>
-              </div>
-              <div class="notification-tools">
-                <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
-                  <i class="fas fa-thumbtack"></i>
-                </button>
-                <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
-                  <i class="fas fa-star"></i>
                 </button>
               </div>
             </div>
@@ -129,6 +134,17 @@
           :class="getItemClasses(notification)"
         >
           <div class="notification-body" @click="handleClick(notification)">
+            <div class="notification-tools">
+              <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
+                <i class="fas fa-thumbtack"></i>
+              </button>
+              <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
+                <i class="fas fa-star"></i>
+              </button>
+              <button class="tool-btn" @click.stop="deleteNotification(notification)" title="删除">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
             <div class="notification-icon">
               <i :class="getIconClass(notification)"></i>
             </div>
@@ -139,15 +155,17 @@
                   <span v-if="notification.important" class="badge-important" title="重要">
                     <i class="fas fa-star"></i>
                   </span>
-                  <span v-if="notification.handled" class="badge-handled">已处理</span>
                 </div>
               </div>
               <div class="notification-text">{{ notification.content }}</div>
-              <div class="notification-time">{{ formatTime(notification.timestamp) }}</div>
+              <div class="notification-time-row">
+                <span class="notification-time">{{ formatTime(notification.timestamp) }}</span>
+                <span v-if="notification.handled" class="badge-handled">已处理</span>
+              </div>
             </div>
           </div>
-          <div class="notification-footer">
-            <div v-if="!notification.handled" class="notification-actions">
+          <div v-if="!notification.handled && getActionButtons(notification).length" class="notification-footer">
+            <div class="notification-actions">
               <button
                 v-for="btn in getActionButtons(notification)"
                 :key="btn.value"
@@ -156,14 +174,6 @@
                 @click.stop="handleAction(notification, btn.value)"
               >
                 {{ btn.label }}
-              </button>
-            </div>
-            <div class="notification-tools">
-              <button class="tool-btn" :class="{ active: notification.pinned }" @click.stop="togglePin(notification)" title="置顶">
-                <i class="fas fa-thumbtack"></i>
-              </button>
-              <button class="tool-btn" :class="{ active: notification.important }" @click.stop="toggleImportant(notification)" title="标记重要">
-                <i class="fas fa-star"></i>
               </button>
             </div>
           </div>
@@ -281,7 +291,8 @@ const loadNotifications = async (isLoadMore = false) => {
       params: { page: currentPage, page_size: pageSize }
     })
     if (response.data.code === 0) {
-      const mapped = mapNotifications(response.data.data)
+      const rawList = response.data.data?.list ?? []
+      const mapped = mapNotifications(rawList)
       if (isLoadMore) {
         notifications.value = [...notifications.value, ...mapped]
       } else {
@@ -437,6 +448,19 @@ const toggleImportant = async (notification: Notification) => {
   } catch (error) {
     notification.important = !notification.important
     console.error('切换重要状态失败:', error)
+  }
+}
+
+const deleteNotification = async (notification: Notification) => {
+  try {
+    const token = getToken()
+    await axios.delete(
+      `${serverUrl.value}/api/v1/notifications/${notification.id}`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    )
+    notifications.value = notifications.value.filter(n => n.id !== notification.id)
+  } catch (error) {
+    console.error('删除通知失败:', error)
   }
 }
 
@@ -766,6 +790,7 @@ defineExpose({
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  position: relative;
 }
 
 .notification-icon {
@@ -791,6 +816,7 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   margin-bottom: 3px;
+  padding-right: 70px;
 }
 
 .notification-title {
@@ -841,6 +867,12 @@ defineExpose({
   opacity: 0.7;
 }
 
+.notification-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .notification-footer {
   display: flex;
   justify-content: space-between;
@@ -885,8 +917,17 @@ defineExpose({
 }
 
 .notification-tools {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.notification-item:hover .notification-tools {
+  opacity: 1;
 }
 
 .tool-btn {

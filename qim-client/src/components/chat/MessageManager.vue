@@ -1069,6 +1069,13 @@ onMounted(() => {
   user-select: text;
 }
 
+.message-content-file {
+  display: block;
+  overflow: visible;
+  text-overflow: unset;
+  -webkit-line-clamp: unset;
+}
+
 .message-manager-item-content.is-recalled {
   font-style: italic;
   color: #9ca3af;

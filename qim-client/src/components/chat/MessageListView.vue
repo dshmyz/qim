@@ -104,6 +104,7 @@ interface Emits {
   'load-more': []
   'mark-read': []
   'toggle-message-selection': [messageId: string]
+  'scroll': []
 }
 
 const props = defineProps<Props>()

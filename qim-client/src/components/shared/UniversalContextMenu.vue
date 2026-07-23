@@ -1,34 +1,25 @@
 <template>
-  <div v-if="visible" ref="menuRef" class="universal-context-menu" :style="{ left: pos.x + 'px', top: pos.y + 'px' }" @click.stop>
-    <template v-for="(item, i) in items" :key="i">
-      <div v-if="item.visible !== false && item.divider" class="ucm-divider"></div>
-      <div
-        v-else-if="item.visible !== false"
-        class="ucm-item"
-        :class="{ danger: item.danger }"
-        @click="handleClick(item)"
-      >
-        <span v-if="item.icon" class="ucm-icon"><i :class="item.icon" :style="item.iconColor ? { color: item.iconColor, fontSize: item.iconColor ? '8px' : '' } : {}"></i></span>
-        <span class="ucm-label">{{ item.label }}</span>
-      </div>
-    </template>
-  </div>
+  <Teleport to="body">
+    <div v-if="visible" ref="menuRef" class="universal-context-menu" :style="menuStyle" @click.stop>
+      <template v-for="(item, i) in items" :key="i">
+        <div v-if="item.visible !== false && item.divider" class="ucm-divider"></div>
+        <div
+          v-else-if="item.visible !== false"
+          class="ucm-item"
+          :class="{ danger: item.danger }"
+          @click="handleClick(item)"
+        >
+          <span v-if="item.icon" class="ucm-icon"><i :class="item.icon" :style="item.iconColor ? { color: item.iconColor, fontSize: item.iconColor ? '8px' : '' } : {}"></i></span>
+          <span class="ucm-label">{{ item.label }}</span>
+        </div>
+      </template>
+    </div>
+  </Teleport>
 </template>
 
-<script lang="ts">
-export interface ContextMenuItem {
-  label?: string
-  icon?: string
-  iconColor?: string
-  action?: () => void
-  visible?: boolean
-  divider?: boolean
-  danger?: boolean
-}
-</script>
-
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import type { ContextMenuItem } from './context-menu-types'
 
 const props = defineProps<{
   visible: boolean
@@ -41,30 +32,30 @@ const emit = defineEmits<{
   'update:visible': [val: boolean]
 }>()
 
-const menuRef = ref<HTMLElement>()
-const pos = ref({ x: props.x, y: props.y })
+const menuRef = ref<HTMLElement | null>(null)
+const adjustedX = ref(props.x)
+const adjustedY = ref(props.y)
 
-// 菜单显示时，nextTick 读 DOM 实际尺寸修正位置（不溢出屏幕）
-watch(() => props.visible, (val) => {
-  if (val) {
-    pos.value = { x: props.x, y: props.y }
-    nextTick(() => {
-      const el = menuRef.value
-      if (!el) return
-      const w = el.offsetWidth
-      const h = el.offsetHeight
-      const ww = window.innerWidth
-      const wh = window.innerHeight
-      let x = props.x
-      let y = props.y
-      if (x + w > ww) x = ww - w - 10
-      if (x < 0) x = 10
-      if (y + h > wh) y = wh - h - 10
-      if (y < 0) y = 10
-      pos.value = { x, y }
-    })
-  }
-})
+watch(() => [props.visible, props.x, props.y], () => {
+  if (!props.visible) return
+  adjustedX.value = props.x
+  adjustedY.value = props.y
+  nextTick(() => {
+    if (!menuRef.value) return
+    const rect = menuRef.value.getBoundingClientRect()
+    let x = props.x
+    let y = props.y
+    if (x + rect.width > window.innerWidth) x = Math.max(0, window.innerWidth - rect.width - 4)
+    if (y + rect.height > window.innerHeight) y = Math.max(0, window.innerHeight - rect.height - 4)
+    adjustedX.value = x
+    adjustedY.value = y
+  })
+}, { immediate: true })
+
+const menuStyle = computed(() => ({
+  left: adjustedX.value + 'px',
+  top: adjustedY.value + 'px',
+}))
 
 const handleClick = (item: ContextMenuItem) => {
   item.action?.()

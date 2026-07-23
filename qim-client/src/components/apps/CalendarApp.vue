@@ -95,7 +95,8 @@ import CalendarGrid from './calendar/CalendarGrid.vue'
 import EventPanel from './calendar/EventPanel.vue'
 import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
-import UniversalContextMenu, { type ContextMenuItem } from '../shared/UniversalContextMenu.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 
 const emit = defineEmits<{
   back: []

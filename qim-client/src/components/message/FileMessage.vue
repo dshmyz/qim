@@ -4,30 +4,34 @@
       <i :class="fileIcon"></i>
     </div>
     <div class="attachment-card__content">
-      <div class="attachment-card__title">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
-      <div class="attachment-card__meta">
-        <span v-if="fileTypeLabel">{{ fileTypeLabel }}</span>
-        <span v-if="fileTypeLabel && fileSize"> · </span>
-        <span v-if="fileSize">{{ formatFileSize(fileSize) }}</span>
+      <Tooltip :text="fileName || fileUrl.split('/').pop() || fileUrl">
+        <div class="attachment-card__title">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
+      </Tooltip>
+      <div class="attachment-card__bottom">
+        <div class="attachment-card__meta">
+          <span v-if="fileTypeLabel">{{ fileTypeLabel }}</span>
+          <span v-if="fileTypeLabel && fileSize"> · </span>
+          <span v-if="fileSize">{{ formatFileSize(fileSize) }}</span>
+        </div>
+        <div class="attachment-card__actions">
+          <template v-if="isDownloaded">
+            <button class="file-action-btn attachment-card__action" @click.stop="openFile" title="打开文件">
+              <i class="fas fa-external-link-alt"></i>
+            </button>
+            <button class="file-action-btn attachment-card__action" @click.stop="showInFolder" title="在文件夹中显示">
+              <i class="fas fa-folder-open"></i>
+            </button>
+          </template>
+          <template v-else>
+            <button class="file-action-btn attachment-card__action" @click.stop="downloadFile" title="下载文件">
+              <i class="fas fa-download"></i>
+            </button>
+            <button class="file-action-btn attachment-card__action" @click.stop="saveFileAs" title="另存为">
+              <i class="fas fa-save"></i>
+            </button>
+          </template>
+        </div>
       </div>
-    </div>
-    <div class="attachment-card__actions">
-      <template v-if="isDownloaded">
-        <button class="file-action-btn attachment-card__action" @click.stop="openFile" title="打开文件">
-          <i class="fas fa-external-link-alt"></i>
-        </button>
-        <button class="file-action-btn attachment-card__action" @click.stop="showInFolder" title="在文件夹中显示">
-          <i class="fas fa-folder-open"></i>
-        </button>
-      </template>
-      <template v-else>
-        <button class="file-action-btn attachment-card__action" @click.stop="downloadFile" title="下载文件">
-          <i class="fas fa-download"></i>
-        </button>
-        <button class="file-action-btn attachment-card__action" @click.stop="saveFileAs" title="另存为">
-          <i class="fas fa-save"></i>
-        </button>
-      </template>
     </div>
     <div v-if="isDownloading" class="attachment-card__progress">
       <div class="attachment-card__progress-bar" :style="{ width: progressPercent + '%' }"></div>
@@ -39,6 +43,7 @@
 import { computed, inject, type Ref } from 'vue'
 import { getFileIcon, getFileIconColor, getFileTypeLabel } from '../../utils/fileType'
 import { getFileExtension } from '../../utils/fileType'
+import Tooltip from '../shared/Tooltip.vue'
 
 const props = defineProps<{
   content: string
@@ -403,11 +408,11 @@ const saveFileAs = () => {
 <style scoped>
 .attachment-card {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 64px;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  width: 280px;
-  max-width: min(100%, 320px);
+  width: 300px;
+  max-width: min(100%, 340px);
   padding: 12px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
@@ -442,13 +447,15 @@ const saveFileAs = () => {
 }
 
 .attachment-card__title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   letter-spacing: -0.01em;
 }
 
@@ -462,11 +469,18 @@ const saveFileAs = () => {
   text-overflow: ellipsis;
 }
 
+.attachment-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .attachment-card__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .attachment-card__progress {
