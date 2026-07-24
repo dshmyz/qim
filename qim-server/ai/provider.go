@@ -96,6 +96,12 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 			"status", statusCode,
 		)
 
+		// 不可重试的错误立即放弃：4xx 客户端错误（除 408/429）重试无意义，
+		// 例如 embedding 端点不存在（404）或鉴权失败（401），重试只会徒增延迟与日志。
+		if !isRetryable(err, statusCode) {
+			break
+		}
+
 		if attempt < bp.MaxRetries {
 			sleepDuration := time.Duration(attempt) * time.Second
 			logger.WithModule("AI").Info("Retrying", "sleepDuration", sleepDuration)
@@ -115,6 +121,22 @@ func (bp *BaseProvider) ExecuteWithRetry(createRequest func() (*http.Request, er
 	}
 
 	return nil, fmt.Errorf("request failed after %d retries, last status: %d", bp.MaxRetries, lastStatusCode)
+}
+
+// isRetryable 判断是否值得重试。网络层错误通常是暂时的；HTTP 408（超时）、
+// 429（限流）和 5xx（服务端错误）可重试；其余 4xx（400/401/403/404 等）
+// 属客户端永久错误，重试不会改变结果，应快速失败。
+func isRetryable(err error, statusCode int) bool {
+	if err != nil {
+		return true
+	}
+	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if statusCode >= 500 {
+		return true
+	}
+	return false
 }
 
 // ReadSSEStream 读取 SSE 格式的流并解析数据
