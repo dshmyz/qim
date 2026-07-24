@@ -134,8 +134,8 @@ function showConfigBot(bot: any) {
   showBotConfigModal.value = true
 }
 
-function onConfigSaved() {
-  // bot 列表刷新由 useBots 调用方处理；这里仅关闭弹窗已由 @close 接管
+async function onConfigSaved() {
+  bots.value = (await fetchMyBots()) || []
 }
 
 async function onBotCreated() {

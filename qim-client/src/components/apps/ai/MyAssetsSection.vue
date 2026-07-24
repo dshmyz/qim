@@ -35,11 +35,13 @@
           <div class="bot-info">
             <h4>{{ bot.name }}</h4>
             <p>{{ bot.description || '暂无描述' }}</p>
+            <span v-if="bot.approval_status === 'pending'" class="status-tag pending">待审批</span>
+            <span v-else-if="bot.approval_status === 'rejected'" class="status-tag rejected">已拒绝</span>
           </div>
           <button v-if="bot.approval_status === 'approved'" class="config-btn" @click.stop="$emit('config-bot', bot)" title="配置令牌/Webhook">
             <i class="fas fa-cog"></i>
           </button>
-          <button class="use-btn" @click.stop="$emit('use-bot', bot)">
+          <button class="use-btn" @click.stop="$emit('use-bot', bot)" :disabled="bot.approval_status !== 'approved'">
             <i class="fas fa-comment"></i> 使用
           </button>
         </div>
@@ -376,6 +378,16 @@ defineEmits([
   width: 100%;
 }
 
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.status-tag.pending { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
+.status-tag.rejected { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
+
 .use-btn {
   width: 100%;
   padding: 8px;
@@ -395,6 +407,10 @@ defineEmits([
 
 .use-btn:hover {
   opacity: 0.9;
+}
+.use-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .config-btn {

@@ -5,6 +5,10 @@
     </div>
 
     <template v-else>
+      <div v-if="isPending" class="pending-banner">
+        <i class="fas fa-clock"></i>
+        <span>机器人当前为「{{ bot.approval_status === 'rejected' ? '已拒绝' : '待审批' }}」状态，配置和令牌签发功能暂不可用，需管理员审批通过后方可操作。</span>
+      </div>
       <!-- 模式切换 -->
       <section class="config-section">
         <h4>回复模式</h4>
@@ -59,7 +63,7 @@
         <p class="field-hint">agent 经 qim CLI / Bot API 调用时用此令牌鉴权（Authorization: Bearer）</p>
         <div class="issue-token-row">
           <input v-model="tokenName" class="token-name-input" placeholder="令牌名称（可选）" />
-          <button class="action-btn primary" @click="onIssueToken" :disabled="issuing">
+          <button class="action-btn primary" @click="onIssueToken" :disabled="issuing || isPending">
             <i class="fas fa-plus"></i> 签发
           </button>
         </div>
@@ -128,7 +132,7 @@
 
       <div class="dialog-footer">
         <button class="action-btn" @click="$emit('close')">取消</button>
-        <button class="action-btn primary" @click="onSave" :disabled="saving">
+        <button class="action-btn primary" @click="onSave" :disabled="saving || isPending">
           <i class="fas fa-save"></i> 保存配置
         </button>
       </div>
@@ -156,6 +160,11 @@ const newToken = ref<{ token: string; id: number } | null>(null)
 const issuing = ref(false)
 const saving = ref(false)
 const tokenName = ref('claude-code')
+
+const isPending = computed(() => {
+  const s = props.bot.approval_status
+  return s === 'pending' || s === 'rejected'
+})
 
 // MCP 接入引导
 const showMcpConfig = ref(false)
@@ -336,6 +345,7 @@ const formatTime = (s: string) => {
 .mode-tab { flex: 1; padding: 7px 12px; border: none; background: #fff; cursor: pointer; font-size: 13px; color: #666; transition: all 0.15s; }
 .mode-tab:not(:last-child) { border-right: 1px solid #ddd; }
 .mode-tab.active { background: var(--primary-color, #4f7cff); color: #fff; }
+.pending-banner { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 16px; border-radius: 6px; background: #fff7e6; border: 1px solid #ffd591; color: #ad6800; font-size: 13px; }
 .mcp-box { margin-top: 10px; padding: 12px; background: #f9fafc; border: 1px solid #e8ecf3; border-radius: 8px; }
 .mcp-config-pre { background: #1e1e2e; color: #cdd6f4; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 6px 0 8px; white-space: pre-wrap; word-break: break-all; }
 .mcp-config-pre code, .mcp-box code { background: #eef1f6; color: #333; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
