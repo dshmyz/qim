@@ -87,6 +87,35 @@
         </table>
       </section>
 
+      <!-- MCP 接入引导 -->
+      <section class="config-section">
+        <div class="section-header">
+          <h4>MCP 接入（推荐）</h4>
+          <button type="button" class="mini-btn" @click="showMcpConfig = !showMcpConfig">
+            {{ showMcpConfig ? '收起' : '展开' }}
+          </button>
+        </div>
+        <p class="field-hint">支持 MCP 的 agent（Claude Code / Cursor / Claude Desktop）可免脚本接入，注册后直接调用 QIM 消息工具。</p>
+        <div v-if="showMcpConfig" class="mcp-box">
+          <div class="form-field">
+            <label>QIM 服务端地址</label>
+            <input v-model="mcpServerUrl" placeholder="http://localhost:8080" />
+          </div>
+          <div class="form-field">
+            <label>Bot 令牌</label>
+            <input v-model="mcpToken" placeholder="qbot_...（粘贴上方刚签发的令牌）" />
+          </div>
+          <div class="form-field">
+            <label>MCP 配置（复制到 agent 的 .mcp.json）</label>
+            <pre class="mcp-config-pre">{{ mcpConfigJson }}</pre>
+            <button type="button" class="action-btn primary mini" @click="copyMcpConfig">
+              <i class="fas fa-copy"></i> 复制配置
+            </button>
+          </div>
+          <p class="field-hint">需先安装 <code>qim-mcp</code> 二进制并加入 PATH（由服务端 <code>cmd/qim-mcp</code> 构建）。</p>
+        </div>
+      </section>
+
       <div class="dialog-footer">
         <button class="action-btn" @click="$emit('close')">取消</button>
         <button class="action-btn primary" @click="onSave" :disabled="saving">
@@ -98,8 +127,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useBotConfig } from '../../../composables/useBotConfig'
+import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import type { BotTokenInfo, BotWebhookConfig } from '../../../types/bot'
 
 const QMessage = (window as any).$QMessage
@@ -115,6 +145,30 @@ const tokens = ref<BotTokenInfo[]>([])
 const newToken = ref<{ token: string; id: number } | null>(null)
 const issuing = ref(false)
 const saving = ref(false)
+
+// MCP 接入引导
+const showMcpConfig = ref(false)
+const mcpServerUrl = ref(getStoredServerUrl() || 'http://localhost:8080')
+const mcpToken = ref('')
+const mcpConfigJson = computed(() => {
+  const token = mcpToken.value || 'qbot_REPLACE_ME'
+  return JSON.stringify({
+    mcpServers: {
+      qim: {
+        command: 'qim-mcp',
+        args: ['--server', mcpServerUrl.value || 'http://localhost:8080', '--token', token],
+      },
+    },
+  }, null, 2)
+})
+const copyMcpConfig = async () => {
+  try {
+    await navigator.clipboard.writeText(mcpConfigJson.value)
+    QMessage.success('已复制 MCP 配置')
+  } catch {
+    QMessage.warning('复制失败，请手动选择复制')
+  }
+}
 
 // 从 bot.config（JSON 字符串）解析当前 webhook 配置
 const parseCurrentConfig = () => {
@@ -251,4 +305,7 @@ const formatTime = (s: string) => {
 .action-btn.danger { color: #e74c3c; border-color: #f5b8b0; }
 .action-btn.danger:hover { background: #fdeae7; }
 .action-btn.mini { padding: 4px 10px; font-size: 12px; }
+.mcp-box { margin-top: 10px; padding: 12px; background: #f9fafc; border: 1px solid #e8ecf3; border-radius: 8px; }
+.mcp-config-pre { background: #1e1e2e; color: #cdd6f4; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 6px 0 8px; white-space: pre-wrap; word-break: break-all; }
+.mcp-config-pre code, .mcp-box code { background: #eef1f6; color: #333; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
 </style>

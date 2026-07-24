@@ -1,6 +1,7 @@
 qim-server
 main
 /qim
+/qim-mcp
 dist/
 *.db
 *.db.*

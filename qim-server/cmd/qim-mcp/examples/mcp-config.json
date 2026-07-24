@@ -1,0 +1,9 @@
+{
+  "_comment": "把此对象整体合并进你的 MCP 客户端配置。Claude Code 放 .mcp.json；Claude Desktop 放其 mcp 配置文件。token 在 QIM 客户端「我的机器人 - 配置 - 签发令牌」获取（仅显示一次）。",
+  "mcpServers": {
+    "qim": {
+      "command": "qim-mcp",
+      "args": ["--server", "http://localhost:8080", "--token", "qbot_REPLACE_ME"]
+    }
+  }
+}
