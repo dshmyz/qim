@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -36,7 +37,7 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 
 	var req struct {
 		ToUserID uint   `json:"to_user_id" binding:"required"`
-		Content  string `json:"content" binding:"required"`
+		Content  string `json:"content"` // streaming 消息初始为空，允许空内容
 		MsgType  string `json:"msg_type"`
 		ThreadID *uint  `json:"thread_id"`
 	}
@@ -60,6 +61,67 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 		"conversation_id": msg.ConversationID,
 		"created_at":      msg.CreatedAt,
 	})
+}
+
+// GetBotMessages 外部 agent pull 读取自己会话的消息（增量轮询）。
+// GET /api/v1/bot/messages?thread_id=X&after_id=Y&limit=N  (BotAuthMiddleware)
+func (h *BotAPIHandler) GetBotMessages(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+
+	threadID, err := strconv.ParseUint(c.Query("thread_id"), 10, 32)
+	if err != nil || threadID == 0 {
+		response.BadRequest(c, "缺少有效的 thread_id")
+		return
+	}
+	var afterID uint64
+	if s := c.Query("after_id"); s != "" {
+		afterID, _ = strconv.ParseUint(s, 10, 32)
+	}
+	limit := 50
+	if s := c.Query("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			limit = n
+		}
+	}
+
+	msgs, err := h.botMessaging.ListBotMessages(bot, uint(threadID), uint(afterID), limit)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// 精简为 agent 关心字段：sender_type 用于跳过自己发的回复
+	type botMsg struct {
+		ID             uint       `json:"id"`
+		ConversationID uint       `json:"conversation_id"`
+		SenderID       uint       `json:"sender_id"`
+		SenderType     string     `json:"sender_type"`
+		SenderNickname string     `json:"sender_nickname"`
+		Content        string     `json:"content"`
+		Type           string     `json:"type"`
+		Origin         string     `json:"origin"`
+		CreatedAt      time.Time  `json:"created_at"`
+	}
+	out := make([]botMsg, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, botMsg{
+			ID:             m.ID,
+			ConversationID: m.ConversationID,
+			SenderID:       m.SenderID,
+			SenderType:     m.Sender.Type,
+			SenderNickname: m.Sender.Nickname,
+			Content:        m.Content,
+			Type:           m.Type,
+			Origin:         m.Origin,
+			CreatedAt:      m.CreatedAt,
+		})
+	}
+	response.Success(c, gin.H{"messages": out})
 }
 
 // StreamChunk 外部 agent 追加流式消息分段（delta / finish）。
@@ -140,6 +202,45 @@ func generateBotToken() (string, error) {
 		return "", err
 	}
 	return "qbot_" + hex.EncodeToString(b), nil
+}
+
+// ListBotTokens 列出 bot 的访问令牌（创建者或管理员）。不返回明文/hash。
+// GET /api/v1/bots/:id/tokens  (authed)
+func (h *BotAPIHandler) ListBotTokens(c *gin.Context) {
+	botID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 Bot ID")
+		return
+	}
+
+	db := database.GetDB()
+	var bot model.Bot
+	if err := db.First(&bot, botID).Error; err != nil {
+		response.NotFound(c, "机器人不存在")
+		return
+	}
+	if !h.canManageBot(c, bot.CreatorID) {
+		response.Forbidden(c, "无权操作此 Bot")
+		return
+	}
+
+	var tokens []model.BotToken
+	if err := db.Where("bot_id = ?", botID).Order("created_at DESC").Find(&tokens).Error; err != nil {
+		response.InternalServerError(c, "查询令牌失败")
+		return
+	}
+
+	type tokenInfo struct {
+		ID         uint       `json:"id"`
+		Name       string     `json:"name"`
+		CreatedAt  time.Time  `json:"created_at"`
+		LastUsedAt *time.Time `json:"last_used_at"`
+	}
+	out := make([]tokenInfo, 0, len(tokens))
+	for _, t := range tokens {
+		out = append(out, tokenInfo{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt})
+	}
+	response.Success(c, gin.H{"tokens": out})
 }
 
 // IssueToken 为 bot 签发访问令牌（创建者或管理员）

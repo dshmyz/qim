@@ -341,6 +341,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
 		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(60, time.Minute)))
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
+		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 
 		// 需要认证的认证相关路由
@@ -512,6 +513,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/bots/:id", handler.UpdateMyBot)
 			authed.DELETE("/bots/:id", handler.DeleteMyBot)
 			// Bot 令牌与配置管理（创建者或 system_admin）
+			authed.GET("/bots/:id/tokens", botAPIHandler.ListBotTokens)
 			authed.POST("/bots/:id/token", botAPIHandler.IssueToken)
 			authed.DELETE("/bots/:id/token/:tid", botAPIHandler.RevokeToken)
 			authed.PUT("/bots/:id/config", botAPIHandler.UpdateBotConfig)

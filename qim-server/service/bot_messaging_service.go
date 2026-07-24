@@ -369,3 +369,30 @@ func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, conten
 
 	return nil
 }
+
+// ListBotMessages 供外部 agent pull 读取自己会话的消息（增量）。
+// 归属校验仿 StreamChunk：BotConversation{conversation_id=threadID, bot_id=bot.ID} 必须存在。
+// afterID=0 返回该会话全部（受 limit），agent 据此轮询新消息。按 id 升序，preload Sender。
+func (s *BotMessagingService) ListBotMessages(bot *model.Bot, threadID uint, afterID uint, limit int) ([]model.Message, error) {
+	if bot == nil {
+		return nil, errors.New("bot 无效")
+	}
+	// 归属校验：只允许该 bot 读自己的会话
+	var botConv model.BotConversation
+	if err := s.db.Where("conversation_id = ? AND bot_id = ?", threadID, bot.ID).
+		First(&botConv).Error; err != nil {
+		return nil, errors.New("会话不属于该 bot")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	q := s.db.Where("conversation_id = ?", threadID)
+	if afterID > 0 {
+		q = q.Where("id > ?", afterID)
+	}
+	var msgs []model.Message
+	if err := q.Order("id ASC").Limit(limit).Preload("Sender").Find(&msgs).Error; err != nil {
+		return nil, err
+	}
+	return msgs, nil
+}

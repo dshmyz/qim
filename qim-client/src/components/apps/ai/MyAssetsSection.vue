@@ -36,6 +36,9 @@
             <h4>{{ bot.name }}</h4>
             <p>{{ bot.description || '暂无描述' }}</p>
           </div>
+          <button v-if="bot.approval_status === 'approved'" class="config-btn" @click.stop="$emit('config-bot', bot)" title="配置令牌/Webhook">
+            <i class="fas fa-cog"></i>
+          </button>
           <button class="use-btn" @click.stop="$emit('use-bot', bot)">
             <i class="fas fa-comment"></i> 使用
           </button>
@@ -194,6 +197,7 @@ const props = defineProps<{
 defineEmits([
   'create-bot',
   'use-bot',
+  'config-bot',
   'add-config',
   'edit-config',
   'test-config',
@@ -316,6 +320,7 @@ defineEmits([
 }
 
 .bot-card {
+  position: relative;
   background: var(--hover-color);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -390,6 +395,30 @@ defineEmits([
 
 .use-btn:hover {
   opacity: 0.9;
+}
+
+.config-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.85);
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.config-btn:hover {
+  background: #fff;
+  color: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 .config-list {

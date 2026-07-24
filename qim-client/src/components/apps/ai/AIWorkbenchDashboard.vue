@@ -12,6 +12,7 @@
         :learning-status="learningStatus"
         @create-bot="showCreateBot"
         @use-bot="handleUseBot"
+        @config-bot="showConfigBot"
         @add-config="showAddConfig"
         @edit-config="handleEditConfig"
         @test-config="handleTestConfig"
@@ -38,6 +39,10 @@
       <CreateBotWizard @close="showCreateModal = false" />
     </QDialog>
 
+    <QDialog v-model:visible="showBotConfigModal" :title="`配置 - ${configBot?.name || ''}`" width="620px">
+      <BotConfigDialog v-if="configBot" :bot="configBot" @close="showBotConfigModal = false" @saved="onConfigSaved" />
+    </QDialog>
+
     <ModelConfigFormModal
       v-model="showConfigModal"
       :config="editingConfig"
@@ -52,6 +57,7 @@ import { ref, onMounted, computed } from 'vue'
 import QuickStartCards from './QuickStartCards.vue'
 import MyAssetsSection from './MyAssetsSection.vue'
 import CreateBotWizard from './CreateBotWizard.vue'
+import BotConfigDialog from './BotConfigDialog.vue'
 import ModelConfigFormModal from './ModelConfigFormModal.vue'
 import AvatarSettingsPanel from '../../avatar/AvatarSettingsPanel.vue'
 import QDialog from '../../shared/QDialog.vue'
@@ -91,6 +97,8 @@ const personaState = useAvatarPersona()
 const viewMode = ref<'dashboard' | 'chat' | 'avatar-settings'>('dashboard')
 const showCreateModal = ref(false)
 const showConfigModal = ref(false)
+const showBotConfigModal = ref(false)
+const configBot = ref<any>(null)
 const editingConfig = ref<UserAIConfig | null>(null)
 
 const avatarConfig = computed(() => avatar.config.value)
@@ -119,6 +127,15 @@ function handleUseBot(bot: any) {
 
 function showCreateBot() {
   showCreateModal.value = true
+}
+
+function showConfigBot(bot: any) {
+  configBot.value = bot
+  showBotConfigModal.value = true
+}
+
+function onConfigSaved() {
+  // bot 列表刷新由 useBots 调用方处理；这里仅关闭弹窗已由 @close 接管
 }
 
 function showAddConfig() {

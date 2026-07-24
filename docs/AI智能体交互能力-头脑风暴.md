@@ -186,7 +186,8 @@ agent ──POST 消息──> QIM ──推用户──> 用户在 QIM 看到
 1. 纯文本往返：bot 身份 + 出站 + webhook 回调 + 基础治理（2-3 周）— ✅ **已落地（2026-07-23）**，方案见 [落地MVP第一步](./AI智能体交互能力-落地MVP第一步.md)
 2. 加卡片按钮：结构化回复（+1 周）- ✅ **已落地（2026-07-23）**，方案见 [.claude/plans/bot-interactive-cards-step2.md](../.claude/plans/bot-interactive-cards-step2.md)
 3. 加 WS 实时通道：低延迟在线往返（+1 周）- ✅ **已落地（2026-07-24）**：流式回复给用户（agent `SendOutbound(msg_type:"streaming")` 建流式消息 + 多次 `POST /bot/messages/:id/stream` 累加 content_delta + `finish:true` 收尾转 markdown，经 `message_updated` WS 推送，客户端气泡由 StreamingMessage 转 markdown），方案见 [.claude/plans/bot-streaming-step3.md](../.claude/plans/bot-streaming-step3.md)
-4. 加后台注册/管理
+4. 端到端打通 agent 闭环（CLI pull 底座）- ✅ **已落地（2026-07-24）**：`qim` CLI（`messages list/poll`、`send`、`stream-stdin`）+ `GET /bot/messages` pull 端点 + 客户端 token/webhook 配置 UI（BotConfigDialog）+ agent-loop.sh 示例，真 server 实测 messages/send/stream 全通，方案见 [.claude/plans/qim-cli-agent-loop-step4.md](../.claude/plans/qim-cli-agent-loop-step4.md)
+5. 加后台注册/管理
 
 ### 复用盘点
 messages `origin`、avatar sessions + private reply、WS `{type,data}`、ApprovalService、operation_log_handler、middleware 限流。**真正新写的核心只有 bot 身份 + 入站回复路由**，其余拼现有零件。

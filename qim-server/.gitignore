@@ -1,5 +1,6 @@
 qim-server
 main
+/qim
 dist/
 *.db
 *.db.*

@@ -41,6 +41,9 @@
             <button v-if="bot.approval_status === 'approved'" class="action-btn primary" @click="$emit('use-bot', bot)">
               <i class="fas fa-comment"></i> 使用
             </button>
+            <button v-if="bot.approval_status === 'approved'" class="action-btn" @click="$emit('config-bot', bot)">
+              <i class="fas fa-cog"></i> 配置
+            </button>
             <button v-if="['pending', 'rejected'].includes(bot.approval_status)" class="action-btn" @click="$emit('edit-bot', bot)">
               <i class="fas fa-edit"></i> 编辑
             </button>
@@ -59,7 +62,7 @@ import { ref, onMounted } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import { useBots } from '../../composables/useBots'
 
-const emit = defineEmits(['create', 'edit-bot', 'use-bot'])
+const emit = defineEmits(['create', 'edit-bot', 'use-bot', 'config-bot'])
 
 const { loading, fetchMyBots, deleteBot } = useBots()
 const myBots = ref<any[]>([])
