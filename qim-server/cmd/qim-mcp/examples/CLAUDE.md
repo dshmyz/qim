@@ -1,7 +1,10 @@
 # QIM MCP Server 使用说明（给 Claude Code / Cursor 等支持 MCP 的 agent）
 
 你（agent）可以通过 MCP（Model Context Protocol）直接调用 QIM 的消息工具，无需手搓 Bash 轮询脚本。
-本 MCP server 经 stdio 与你交换 JSON-RPC，底层调用 QIM Bot API（Bearer token 鉴权）。
+本 MCP server 支持两种传输模式，底层均调用 QIM Bot API（Bearer token 鉴权）：
+
+- **stdio**（默认）：本地子进程，经 stdin/stdout 交换 JSON-RPC，适合本地 Claude Code / Cursor。
+- **StreamableHTTP**：部署为独立 HTTP 服务，agent 经 HTTP 调用，适合远程部署、多客户端共享。
 
 ## 注册（一次性）
 
@@ -20,6 +23,29 @@
 
 令牌由 QIM 用户在客户端「我的机器人 - 配置 - 签发令牌」获取（仅显示一次）。
 `--server` 指向 QIM 服务端地址。配置后重启客户端，工具即出现在你的工具列表里。
+
+### 远程部署（StreamableHTTP）
+
+将 qim-mcp 部署为 HTTP 服务后，agent 无需本地安装二进制，经 HTTP 连接：
+
+```bash
+# 启动（token 由请求 Authorization 头传入，不在命令行暴露）
+qim-mcp --transport http --addr :8082 --server http://localhost:8080
+```
+
+```json
+{
+  "mcpServers": {
+    "qim": {
+      "type": "url",
+      "url": "http://your-server:8082/mcp",
+      "headers": { "Authorization": "Bearer qbot_<你的bot令牌>" }
+    }
+  }
+}
+```
+
+HTTP 模式为 stateless（无会话持久化），适合部署在服务器上供多个 agent 共享。
 
 ## 工具清单
 

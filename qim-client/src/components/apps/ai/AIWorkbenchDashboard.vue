@@ -36,7 +36,7 @@
     </template>
 
     <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
-      <CreateBotWizard @close="showCreateModal = false" />
+      <CreateBotWizard @close="showCreateModal = false" @created="onBotCreated" />
     </QDialog>
 
     <QDialog v-model:visible="showBotConfigModal" :title="`配置 - ${configBot?.name || ''}`" width="620px">
@@ -136,6 +136,10 @@ function showConfigBot(bot: any) {
 
 function onConfigSaved() {
   // bot 列表刷新由 useBots 调用方处理；这里仅关闭弹窗已由 @close 接管
+}
+
+async function onBotCreated() {
+  bots.value = (await fetchMyBots()) || []
 }
 
 function showAddConfig() {

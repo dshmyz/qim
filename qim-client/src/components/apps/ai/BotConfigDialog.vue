@@ -55,11 +55,14 @@
       <section class="config-section">
         <div class="section-header">
           <h4>访问令牌</h4>
-          <button class="action-btn primary" @click="onIssueToken" :disabled="issuing">
-            <i class="fas fa-plus"></i> 签发新令牌
-          </button>
         </div>
         <p class="field-hint">agent 经 qim CLI / Bot API 调用时用此令牌鉴权（Authorization: Bearer）</p>
+        <div class="issue-token-row">
+          <input v-model="tokenName" class="token-name-input" placeholder="令牌名称（可选）" />
+          <button class="action-btn primary" @click="onIssueToken" :disabled="issuing">
+            <i class="fas fa-plus"></i> 签发
+          </button>
+        </div>
 
         <!-- 新签发明文（仅本次显示） -->
         <div v-if="newToken" class="new-token-box">
@@ -97,9 +100,15 @@
         </div>
         <p class="field-hint">支持 MCP 的 agent（Claude Code / Cursor / Claude Desktop）可免脚本接入，注册后直接调用 QIM 消息工具。</p>
         <div v-if="showMcpConfig" class="mcp-box">
+          <div class="mcp-mode-tabs">
+            <button :class="['mode-tab', { active: mcpMode === 'stdio' }]" @click="mcpMode = 'stdio'">本地 (stdio)</button>
+            <button :class="['mode-tab', { active: mcpMode === 'http' }]" @click="mcpMode = 'http'">远程 (HTTP)</button>
+          </div>
           <div class="form-field">
-            <label>QIM 服务端地址</label>
-            <input v-model="mcpServerUrl" placeholder="http://localhost:8080" />
+            <label v-if="mcpMode === 'stdio'">QIM 服务端地址</label>
+            <label v-else>MCP HTTP 端点</label>
+            <input v-if="mcpMode === 'stdio'" v-model="mcpServerUrl" placeholder="http://localhost:8080" />
+            <input v-else v-model="mcpHttpUrl" placeholder="http://your-server:8082/mcp" />
           </div>
           <div class="form-field">
             <label>Bot 令牌</label>
@@ -112,7 +121,8 @@
               <i class="fas fa-copy"></i> 复制配置
             </button>
           </div>
-          <p class="field-hint">需先安装 <code>qim-mcp</code> 二进制并加入 PATH（由服务端 <code>cmd/qim-mcp</code> 构建）。</p>
+          <p class="field-hint" v-if="mcpMode === 'stdio'">需先安装 <code>qim-mcp</code> 二进制并加入 PATH（由服务端 <code>cmd/qim-mcp</code> 构建）。</p>
+          <p class="field-hint" v-else>远程模式：先在服务器启动 <code>qim-mcp --transport http --addr :8082 --server http://localhost:8080</code>，token 经请求头传入，无需在启动命令中暴露。</p>
         </div>
       </section>
 
@@ -145,18 +155,33 @@ const tokens = ref<BotTokenInfo[]>([])
 const newToken = ref<{ token: string; id: number } | null>(null)
 const issuing = ref(false)
 const saving = ref(false)
+const tokenName = ref('claude-code')
 
 // MCP 接入引导
 const showMcpConfig = ref(false)
 const mcpServerUrl = ref(getStoredServerUrl() || 'http://localhost:8080')
+const mcpHttpUrl = ref('http://localhost:8082/mcp')
 const mcpToken = ref('')
+const mcpMode = ref<'stdio' | 'http'>('stdio')
 const mcpConfigJson = computed(() => {
   const token = mcpToken.value || 'qbot_REPLACE_ME'
+  const server = mcpServerUrl.value || 'http://localhost:8080'
+  if (mcpMode.value === 'http') {
+    return JSON.stringify({
+      mcpServers: {
+        qim: {
+          type: 'url',
+          url: mcpHttpUrl.value || 'http://localhost:8082/mcp',
+          headers: { Authorization: 'Bearer ' + token },
+        },
+      },
+    }, null, 2)
+  }
   return JSON.stringify({
     mcpServers: {
       qim: {
         command: 'qim-mcp',
-        args: ['--server', mcpServerUrl.value || 'http://localhost:8080', '--token', token],
+        args: ['--server', server, '--token', token],
       },
     },
   }, null, 2)
@@ -214,7 +239,7 @@ const copyToken = async (token: string) => {
 const onIssueToken = async () => {
   issuing.value = true
   try {
-    const name = window.prompt('令牌名称（可选，如 claude-code）', 'claude-code') || ''
+    const name = tokenName.value.trim() || 'claude-code'
     const resp = await issueToken(props.bot.id, name)
     if (resp) {
       newToken.value = { token: resp.token, id: resp.token_id }
@@ -305,6 +330,12 @@ const formatTime = (s: string) => {
 .action-btn.danger { color: #e74c3c; border-color: #f5b8b0; }
 .action-btn.danger:hover { background: #fdeae7; }
 .action-btn.mini { padding: 4px 10px; font-size: 12px; }
+.issue-token-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.token-name-input { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; }
+.mcp-mode-tabs { display: flex; gap: 0; margin-bottom: 14px; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
+.mode-tab { flex: 1; padding: 7px 12px; border: none; background: #fff; cursor: pointer; font-size: 13px; color: #666; transition: all 0.15s; }
+.mode-tab:not(:last-child) { border-right: 1px solid #ddd; }
+.mode-tab.active { background: var(--primary-color, #4f7cff); color: #fff; }
 .mcp-box { margin-top: 10px; padding: 12px; background: #f9fafc; border: 1px solid #e8ecf3; border-radius: 8px; }
 .mcp-config-pre { background: #1e1e2e; color: #cdd6f4; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 6px 0 8px; white-space: pre-wrap; word-break: break-all; }
 .mcp-config-pre code, .mcp-box code { background: #eef1f6; color: #333; padding: 1px 5px; border-radius: 3px; font-size: 11px; }

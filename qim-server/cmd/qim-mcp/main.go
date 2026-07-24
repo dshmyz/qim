@@ -1,30 +1,27 @@
 // Command qim-mcp 是 QIM Bot 的标准 MCP（Model Context Protocol）server。
 //
-// 让 Claude Code / Cursor 等支持 MCP 的 agent 即插即用 QIM 消息闭环：
+// 支持两种 transport：
 //
-//	qim-mcp --server http://localhost:8080 --token qbot_...
+//	stdio（默认，本地 Claude Code / Cursor）：
+//	  qim-mcp --token qbot_...
 //
-// 在 agent 的 MCP 配置（如 Claude Code 的 .mcp.json）中注册：
+//	streamable HTTP（远程部署，任意 MCP 客户端）：
+//	  qim-mcp --transport http --addr :8082 --server http://localhost:8080
 //
-//	{
-//	  "mcpServers": {
-//	    "qim": {
-//	      "command": "qim-mcp",
-//	      "args": ["--server", "http://localhost:8080", "--token", "qbot_..."]
-//	    }
-//	  }
-//	}
-//
-// 经 stdio 与 agent 交换 JSON-RPC。底层调用 QIM Bot API（Bearer token 鉴权），
-// 与 cmd/qim CLI 同源，不耦合 server 内部。
+// HTTP 模式为 stateless（无会话持久化），token 经 Authorization: Bearer 头逐请求传入。
+// 不耦合 server 内部，与 cmd/qim CLI 同源。
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/dshmyz/qim/qim-server/cmd/qim-mcp/internal/client"
@@ -33,27 +30,83 @@ import (
 )
 
 func main() {
-	server := flag.String("server", "http://localhost:8080", "QIM server URL")
-	token := flag.String("token", "", "Bot 访问令牌（qbot_ 开头，见客户端 BotConfigDialog 签发）")
+	serverURL := flag.String("server", "http://localhost:8080", "QIM server URL")
+	token := flag.String("token", "", "Bot 访问令牌（qbot_ 开头）。stdio 模式必填，http 模式由请求 Authorization 头传入")
+	transport := flag.String("transport", "stdio", "传输模式：stdio（本地）或 http（远程 StreamableHTTP）")
+	addr := flag.String("addr", ":8082", "HTTP 监听地址（仅 --transport http 有效）")
 	flag.Parse()
 
-	if *token == "" {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	switch *transport {
+	case "stdio":
+		runStdio(ctx, *serverURL, *token)
+	case "http":
+		runHTTP(ctx, *serverURL, *addr)
+	default:
+		fmt.Fprintf(os.Stderr, "未知 transport: %s（支持 stdio / http）\n", *transport)
+		os.Exit(2)
+	}
+}
+
+func runStdio(ctx context.Context, serverURL, token string) {
+	if token == "" {
 		fmt.Fprintln(os.Stderr, "--token 必填：在 QIM 客户端 BotConfigDialog 中签发 Bot 令牌后填入")
 		os.Exit(2)
 	}
 
-	api := client.New(*server, *token)
+	api := client.New(serverURL, token)
 	adapter := tools.New(api)
 
 	s := mcp.NewServer(&mcp.Implementation{Name: "qim-bot", Version: "1.0.0"}, nil)
 	tools.Register(s, adapter)
 
-	// Ctrl-C 优雅退出
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
 	if err := s.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		fmt.Fprintf(os.Stderr, "qim-mcp 退出: %v\n", err)
+		fmt.Fprintf(os.Stderr, "qim-mcp stdio 退出: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runHTTP(ctx context.Context, serverURL, addr string) {
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server {
+			token := extractBearerToken(r)
+			if token == "" {
+				return nil // 400 Bad Request
+			}
+			api := client.New(serverURL, token)
+			adapter := tools.New(api)
+			s := mcp.NewServer(&mcp.Implementation{Name: "qim-bot", Version: "1.0.0"}, nil)
+			tools.Register(s, adapter)
+			return s
+		},
+		&mcp.StreamableHTTPOptions{Stateless: true},
+	)
+
+	srv := &http.Server{Addr: addr, Handler: handler}
+
+	go func() {
+		<-ctx.Done()
+		srv.Close()
+	}()
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "监听失败: %v\n", err)
+		os.Exit(1)
+	}
+	slog.Info("qim-mcp HTTP 启动", "addr", ln.Addr().String())
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		fmt.Fprintf(os.Stderr, "qim-mcp HTTP 退出: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func extractBearerToken(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	return ""
 }

@@ -41,6 +41,50 @@
         </div>
       </div>
 
+      <div v-else-if="step === 'connect'" class="connect-step">
+        <div class="connect-header">
+          <i class="fas fa-check-circle"></i>
+          <h3>{{ createdBotName }} 创建成功</h3>
+          <p v-if="createdApprovalStatus === 'pending'" class="approval-hint">
+            <i class="fas fa-clock"></i>
+            当前审批状态为待审核，请联系管理员审批后方可签发 Token
+          </p>
+          <p v-else class="ready-hint">机器人已就绪，下面开始接入</p>
+        </div>
+
+        <div class="connect-section">
+          <h4><i class="fas fa-terminal"></i> 安装 CLI 工具</h4>
+          <div class="code-block" @click="copyText('go install github.com/user/qim-server/cmd/qim-mcp@latest', 'go')">
+            <code>go install github.com/user/qim-server/cmd/qim-mcp@latest</code>
+            <span class="copy-hint">{{ copiedField === 'go' ? '已复制' : '点击复制' }}</span>
+          </div>
+        </div>
+
+        <div class="connect-section">
+          <h4><i class="fas fa-key"></i> 签发 Bot Token</h4>
+          <div class="token-input-row">
+            <input
+              v-model="mcpToken"
+              type="text"
+              placeholder="粘贴已签发的 Token（qbot_xxx）"
+              class="token-input"
+            >
+          </div>
+          <p class="section-hint">
+            在 Bot 配置面板的「Token 管理」中签发，签发后会显示在此处
+          </p>
+        </div>
+
+        <div class="connect-section">
+          <h4><i class="fas fa-plug"></i> MCP Server 配置</h4>
+          <p class="section-desc">将以下内容加入 Claude Code / Cursor 的 MCP 配置：</p>
+          <div class="code-block" @click="copyText(mcpConfigJson, 'mcp')">
+            <pre><code>{{ mcpConfigJson }}</code></pre>
+            <span class="copy-hint">{{ copiedField === 'mcp' ? '已复制' : '点击复制' }}</span>
+          </div>
+        </div>
+      </div>
+
       <div v-else class="custom-form">
         <div class="form-group">
           <label>名称</label>
@@ -82,19 +126,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
 import { useBots } from '../../../composables/useBots'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
+import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import type { UserAIConfig } from '../../../types/ai'
 
 const QMessage = (window as any).$QMessage
 
 const emit = defineEmits<{
   close: []
+  created: [botId: number]
 }>()
 
-const step = ref<'template' | 'custom' | null>(null)
+const step = ref<'template' | 'custom' | 'connect' | null>(null)
 const templates = ref<any[]>([])
 const creating = ref(false)
 
@@ -108,6 +154,40 @@ const form = ref({
   configId: null as number | null,
   system_prompt: '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。'
 })
+
+// Connect step state
+const createdBotId = ref<number | null>(null)
+const createdBotName = ref('')
+const createdApprovalStatus = ref('')
+const mcpToken = ref('')
+const copiedField = ref<string | null>(null)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+const serverUrl = computed(() => getStoredServerUrl())
+
+const mcpConfigJson = computed(() => {
+  const url = serverUrl.value
+  return JSON.stringify({
+    mcpServers: {
+      'qim-bot': {
+        type: 'stdio',
+        command: 'qim-mcp',
+        args: ['--server', url, '--token', mcpToken.value || '<YOUR_TOKEN>']
+      }
+    }
+  }, null, 2)
+})
+
+async function copyText(text: string, field: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    if (copyTimer) clearTimeout(copyTimer)
+    copiedField.value = field
+    copyTimer = setTimeout(() => { copiedField.value = null }, 2000)
+  } catch {
+    QMessage.warning('复制失败，请手动复制')
+  }
+}
 
 onMounted(async () => {
   templates.value = await fetchTemplates()
@@ -158,8 +238,13 @@ async function handleSubmit() {
     })
 
     if (response.code === 0) {
-      QMessage.info('已提交审批，等待管理员审核')
-      emit('close')
+      const bot = response.data || {}
+      createdBotId.value = bot.id
+      createdBotName.value = form.value.name
+      createdApprovalStatus.value = bot.approval_status || 'pending'
+      mcpToken.value = ''
+      step.value = 'connect'
+      emit('created', bot.id)
     } else {
       QMessage.error(response.message || '创建失败')
     }
@@ -398,5 +483,130 @@ async function handleSubmit() {
 .submit-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.connect-step {
+  max-width: 600px;
+}
+
+.connect-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.connect-header > i {
+  font-size: 40px;
+  color: #52c41a;
+  margin-bottom: 8px;
+}
+
+.connect-header h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.approval-hint {
+  color: #faad14;
+  font-size: 13px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ready-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.connect-section {
+  margin-bottom: 24px;
+}
+
+.connect-section h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.connect-section h4 i {
+  color: var(--primary-color);
+  font-size: 13px;
+}
+
+.code-block {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.2s;
+  word-break: break-all;
+}
+
+.code-block:hover {
+  border-color: var(--primary-color);
+}
+
+.code-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.code-block code {
+  font-family: inherit;
+}
+
+.copy-hint {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: inherit;
+}
+
+.token-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.token-input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color);
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+}
+
+.section-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 6px 0 0;
 }
 </style>

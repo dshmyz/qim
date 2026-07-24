@@ -14,12 +14,8 @@ export function useBotConfig() {
    * 签发新的 bot 访问令牌。明文 token 仅本次返回，需提示用户保存。
    */
   const issueToken = async (botId: number, name: string) => {
-    const response = await post<{
-      token: string
-      token_id: number
-      name: string
-    }>(`/api/v1/bots/${botId}/token`, { name })
-    return response
+    const response = await post<any>(`/api/v1/bots/${botId}/token`, { name })
+    return response?.data ?? null
   }
 
   /**

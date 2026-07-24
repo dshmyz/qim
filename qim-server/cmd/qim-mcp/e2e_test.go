@@ -8,10 +8,13 @@
 package main_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
+	"net/http"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,4 +140,112 @@ func TestE2E_Streaming(t *testing.T) {
 	txt := toolText(t, res2)
 	t.Logf("streaming final => %s", txt)
 	assert.Contains(t, txt, "流式 测试", "流式分段应合并为最终 markdown")
+}
+
+// --- HTTP (StreamableHTTP) e2e ---
+
+// dialHTTP starts qim-mcp in HTTP mode and returns a connected ClientSession.
+func dialHTTP(t *testing.T) *mcp.ClientSession {
+	t.Helper()
+	cmd := exec.Command(*binary, "--transport", "http", "--addr", ":0", "--server", *serverURL)
+	stderr, err := cmd.StderrPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+
+	// Read stderr until we find the startup log line with the assigned port.
+	scanner := bufio.NewScanner(stderr)
+	var addr string
+	for scanner.Scan() {
+		line := scanner.Text()
+		t.Logf("stderr: %s", line)
+		if strings.Contains(line, "qim-mcp HTTP") && strings.Contains(line, "addr=") {
+			// slog default format: ... addr=:PORTN ...
+			for _, part := range strings.Fields(line) {
+				if strings.HasPrefix(part, "addr=") {
+					addr = strings.TrimPrefix(part, "addr=")
+					break
+				}
+			}
+			break
+		}
+	}
+	require.NotEmpty(t, addr, "未捕获到 HTTP 启动地址")
+
+	// HTTP client that injects Authorization: Bearer <token>
+	httpClient := &http.Client{
+		Transport: &authTransport{
+			base:  http.DefaultTransport,
+			token: *token,
+		},
+	}
+
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:   "http://" + addr + "/mcp",
+		HTTPClient: httpClient,
+	}
+	c := mcp.NewClient(&mcp.Implementation{Name: "e2e-http-test"}, nil)
+	cs, err := c.Connect(context.Background(), transport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cs.Close()
+		cmd.Process.Kill()
+	})
+	return cs
+}
+
+type authTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (a *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	return a.base.RoundTrip(req)
+}
+
+func TestE2E_HTTP_ToolsList(t *testing.T) {
+	cs := dialHTTP(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_messages",
+		Arguments: map[string]any{"thread_id": 1, "limit": 3},
+	})
+	require.NoError(t, err)
+	t.Logf("HTTP list_messages => %v", res)
+}
+
+func TestE2E_HTTP_AuthReject(t *testing.T) {
+	// Start binary in HTTP mode, connect WITHOUT auth token → should fail.
+	cmd := exec.Command(*binary, "--transport", "http", "--addr", ":0", "--server", *serverURL)
+	stderr, err := cmd.StderrPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	defer cmd.Process.Kill()
+
+	scanner := bufio.NewScanner(stderr)
+	var addr string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "addr=") {
+			for _, part := range strings.Fields(line) {
+				if strings.HasPrefix(part, "addr=") {
+					addr = strings.TrimPrefix(part, "addr=")
+					break
+				}
+			}
+			break
+		}
+	}
+	require.NotEmpty(t, addr)
+
+	// Connect without Authorization header
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:   "http://" + addr + "/mcp",
+		HTTPClient: http.DefaultClient,
+	}
+	c := mcp.NewClient(&mcp.Implementation{Name: "e2e-noauth"}, nil)
+	_, err = c.Connect(context.Background(), transport, nil)
+	assert.Error(t, err, "无 token 连接应失败")
 }
