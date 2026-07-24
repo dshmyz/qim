@@ -474,6 +474,21 @@ func migrateCompatibilityColumns(db *gorm.DB) error {
 		}
 	}
 
+	if tableExists(db, "conversation_members") {
+		hasMutedUntil, err := migrationColumnExists(db, &model.ConversationMember{}, "muted_until")
+		if err != nil {
+			return fmt.Errorf("检查 conversation_members.muted_until 字段: %w", err)
+		}
+		if !hasMutedUntil {
+			if err := db.Migrator().AddColumn(&model.ConversationMember{}, "MutedUntil"); err != nil {
+				logger.WithModule("Migrate").Error("添加 conversation_members.muted_until 字段失败", "error", err)
+				return fmt.Errorf("添加 conversation_members.muted_until 字段: %w", err)
+			} else {
+				logger.WithModule("Migrate").Info("添加 conversation_members.muted_until 字段")
+			}
+		}
+	}
+
 	if err := migrateFileSpaceColumns(db, "files", &model.File{}); err != nil {
 		return err
 	}
@@ -525,6 +540,41 @@ func migrationColumnExists(db *gorm.DB, entity interface{}, column string) (bool
 	return false, nil
 }
 
+// addMissingColumns 补齐历史库中缺失的列。AutoMigrate 在遇到 "already exists"
+// （通常来自既有索引/约束）时会跳过整张表，导致后续新增字段不会回填到旧表，
+// 运行时报 "no such column"。这里按模型字段逐个显式 ALTER TABLE ADD COLUMN，
+// 等价于补做 AutoMigrate 被中断的列添加部分。
+func addMissingColumns(db *gorm.DB, model interface{}) error {
+	stmt := &gorm.Statement{DB: db.Session(&gorm.Session{})}
+	if err := stmt.Parse(model); err != nil {
+		return err
+	}
+
+	existing := make(map[string]bool)
+	columnTypes, err := db.Migrator().ColumnTypes(model)
+	if err != nil {
+		return err
+	}
+	for _, ct := range columnTypes {
+		existing[strings.ToLower(ct.Name())] = true
+	}
+
+	for _, field := range stmt.Schema.Fields {
+		if field.DBName == "" {
+			continue // 非列字段（关系对象等）
+		}
+		if existing[strings.ToLower(field.DBName)] {
+			continue
+		}
+		if err := db.Migrator().AddColumn(model, field.Name); err != nil {
+			logger.WithModule("Migrate").Error("补齐缺失字段失败", "table", stmt.Table, "column", field.DBName, "error", err)
+			return fmt.Errorf("添加 %s.%s 字段: %w", stmt.Table, field.DBName, err)
+		}
+		logger.WithModule("Migrate").Info("补齐缺失字段", "table", stmt.Table, "column", field.DBName)
+	}
+	return nil
+}
+
 // migrateModels 迁移一组模型
 func migrateModels(db *gorm.DB, models []interface{}, stage string) error {
 	logger.WithModule("Migrate").Info(fmt.Sprintf("开始迁移 %s", stage))
@@ -565,7 +615,14 @@ func migrateModels(db *gorm.DB, models []interface{}, stage string) error {
 					}
 				} else {
 					skipped++
-					logger.WithModule("Migrate").Info("表已存在，跳过", "model", modelName)
+					logger.WithModule("Migrate").Info("表已存在，补齐缺失字段", "model", modelName)
+					if colErr := addMissingColumns(migrationDB, m); colErr != nil {
+						failed++
+						logger.WithModule("Migrate").Error("补齐缺失字段失败", "model", modelName, "error", colErr)
+						if migrationErr == nil {
+							migrationErr = fmt.Errorf("补齐 %s 字段: %w", modelName, colErr)
+						}
+					}
 				}
 			} else {
 				failed++
