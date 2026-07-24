@@ -301,6 +301,21 @@ defineExpose({})
   font-size: 14px;
 }
 
+.user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-bio {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;

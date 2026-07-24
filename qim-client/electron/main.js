@@ -623,24 +623,18 @@ function shouldHideMainWindowForScreenshot() {
 
 function waitForWindowHiddenBeforeScreenshot(win) {
   if (!win || win.isDestroyed()) return Promise.resolve()
-  const settleDelayMs = process.platform === 'win32' ? 180 : 80
+
+  // 窗口已隐藏，等合成器稳定
+  if (!win.isVisible()) {
+    return new Promise(resolve => setTimeout(resolve, 100))
+  }
 
   return new Promise((resolve) => {
-    if (!win.isVisible()) {
-      setTimeout(resolve, settleDelayMs)
-      return
-    }
-
-    let settled = false
-    const done = () => {
-      if (settled) return
-      settled = true
-      setTimeout(resolve, settleDelayMs)
-    }
-
-    win.once('hide', done)
+    win.once('hide', () => {
+      // hide 事件触发后再等一帧，确保合成器完成渲染
+      setTimeout(resolve, 100)
+    })
     win.hide()
-    setTimeout(done, settleDelayMs)
   })
 }
 

@@ -454,10 +454,11 @@
     />
     
     <!-- 用户信息弹窗 -->
-    <UserProfile 
+    <UserProfile
       v-if="selectedUser"
-      :visible="showUserProfile" 
-      :user="selectedUser" 
+      :visible="showUserProfile"
+      :user="selectedUser"
+      :show-action="selectedUser.type !== 'bot'"
       @close="closeUserProfile"
       @send-private-message="startPrivateChat"
     />

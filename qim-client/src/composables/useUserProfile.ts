@@ -105,9 +105,11 @@ export function useUserProfile(
       if (response.code === 0) {
         if (currentUser.value) {
           currentUser.value.nickname = profile.nickname
+          currentUser.value.signature = profile.signature
           if (updateData.avatar) {
             currentUser.value.avatar = updateData.avatar
           }
+          localStorage.setItem('user', JSON.stringify(currentUser.value))
         }
         showMessage({ message: '保存成功', type: 'success' })
         closeUserProfile()

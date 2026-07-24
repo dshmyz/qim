@@ -1,5 +1,5 @@
 <template>
-  <div class="tooltip-wrap" @mouseenter="onEnter" @mouseleave="onLeave" ref="wrapRef">
+  <div class="tooltip-wrap" :class="{ 'tooltip-wrap--overflow': overflowOnly }" @mouseenter="onEnter" @mouseleave="onLeave" ref="wrapRef">
     <slot />
     <Teleport to="body">
       <div v-if="show" class="tooltip-popup" :style="popupStyle" ref="popupRef">
@@ -16,6 +16,8 @@ const props = defineProps<{
   text: string
   delay?: number
   maxWidth?: number
+  /** 仅在插槽内容被截断（scrollWidth > clientWidth）时才弹出，适合省略号文本。 */
+  overflowOnly?: boolean
 }>()
 
 const show = ref(false)
@@ -24,8 +26,17 @@ const popupRef = ref<HTMLElement | null>(null)
 const popupStyle = ref<Record<string, string>>({})
 let timer: ReturnType<typeof setTimeout> | null = null
 
+// 检查插槽的首个元素是否发生省略截断
+function isTruncated(): boolean {
+  const el = wrapRef.value?.firstElementChild as HTMLElement | null
+  return !!el && el.scrollWidth > el.clientWidth
+}
+
 function onEnter() {
   timer = setTimeout(() => {
+    if (props.overflowOnly && !isTruncated()) {
+      return
+    }
     show.value = true
     nextTick(() => updatePosition())
   }, props.delay ?? 0)
@@ -53,6 +64,12 @@ function updatePosition() {
 .tooltip-wrap {
   display: inline;
   position: relative;
+}
+
+/* overflowOnly 模式：作为 flex 子项时可收缩，让内部省略号文本正常截断 */
+.tooltip-wrap--overflow {
+  min-width: 0;
+  overflow: hidden;
 }
 </style>
 

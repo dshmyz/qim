@@ -175,6 +175,11 @@ const initImageViewer = () => {
       rotateLeft: 1,
       rotateRight: 1,
     },
+    shown() {
+      // 修复 aria-hidden 与焦点冲突的无障碍警告
+      const container = document.querySelector('.viewer-container')
+      if (container) container.removeAttribute('aria-hidden')
+    },
   })
 }
 

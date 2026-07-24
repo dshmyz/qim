@@ -40,26 +40,65 @@
             <h3>选择共享来源</h3>
             <button class="close-btn" @click="cancelShare"><i class="fas fa-times"></i></button>
           </div>
-          <div class="source-grid">
-            <div
-              v-for="source in screenSources"
-              :key="source.id"
-              class="source-item"
-              :class="{ selected: selectedSource?.id === source.id }"
-              @click="selectedSource = source"
-            >
-              <div class="source-thumbnail">
-                <img v-if="source.thumbnail" :src="source.thumbnail" :alt="source.name" />
-                <div v-else class="source-placeholder">
-                  <i class="fas fa-desktop"></i>
+
+          <div class="source-picker-body">
+            <template v-if="screenSourceList.length > 0">
+              <div class="source-group-title"><i class="fas fa-desktop"></i> 整个屏幕</div>
+              <div class="source-grid">
+                <div
+                  v-for="source in screenSourceList"
+                  :key="source.id"
+                  class="source-item"
+                  :class="{ selected: selectedSource?.id === source.id }"
+                  @click="selectedSource = source"
+                  @dblclick="selectedSource = source; confirmShare()"
+                >
+                  <div class="source-thumbnail">
+                    <img v-if="source.thumbnail" :src="source.thumbnail" :alt="source.name" />
+                    <div v-else class="source-placeholder"><i class="fas fa-desktop"></i></div>
+                  </div>
+                  <div class="source-name">{{ source.name }}</div>
                 </div>
               </div>
-              <div class="source-name">{{ source.name }}</div>
+            </template>
+
+            <template v-if="windowSourceList.length > 0">
+              <div class="source-group-title"><i class="far fa-window-restore"></i> 应用窗口</div>
+              <div class="source-grid">
+                <div
+                  v-for="source in windowSourceList"
+                  :key="source.id"
+                  class="source-item"
+                  :class="{ selected: selectedSource?.id === source.id }"
+                  @click="selectedSource = source"
+                  @dblclick="selectedSource = source; confirmShare()"
+                >
+                  <div class="source-thumbnail">
+                    <img v-if="source.thumbnail" :src="source.thumbnail" :alt="source.name" />
+                    <div v-else class="source-placeholder"><i class="far fa-window-restore"></i></div>
+                  </div>
+                  <div class="source-name">{{ source.name }}</div>
+                </div>
+              </div>
+            </template>
+
+            <div v-if="screenSourceList.length === 0 && windowSourceList.length === 0" class="source-empty">
+              <i class="fas fa-desktop"></i>
+              <span>未检测到可共享的来源</span>
             </div>
           </div>
+
           <div class="source-picker-footer">
-            <button class="btn-secondary" @click="cancelShare">取消</button>
-            <button class="btn-primary" @click="confirmShare" :disabled="!selectedSource">开始共享</button>
+            <span class="source-hint" v-if="selectedSource">
+              <i class="fas fa-check-circle"></i> 已选择：{{ selectedSource.name }}
+            </span>
+            <span class="source-hint" v-else>选择要共享的屏幕或窗口</span>
+            <div class="source-picker-actions">
+              <button class="btn-secondary" @click="cancelShare">取消</button>
+              <button class="btn-primary" @click="confirmShare" :disabled="!selectedSource">
+                <i class="fas fa-share"></i> 开始共享
+              </button>
+            </div>
           </div>
         </div>
 
@@ -78,12 +117,17 @@
 
         <div v-else-if="showWaitingAccept" class="waiting-accept">
           <div class="waiting-icon">
-            <i class="fas fa-clock fa-spin"></i>
+            <i class="fas fa-clock"></i>
           </div>
           <div class="waiting-text">
-            <span>正在等待对方接受屏幕共享...</span>
+            <div class="waiting-title">正在等待 <strong>{{ props.senderName || '对方' }}</strong> 接受</div>
+            <div class="waiting-sub">对方将收到屏幕共享邀请</div>
           </div>
-          <button class="btn-secondary" @click="handleStop">取消</button>
+          <div class="waiting-countdown" :class="{ urgent: waitingCountdown <= 10 }">
+            <i class="fas fa-hourglass-half"></i>
+            <span>{{ waitingCountdown }}s 后自动取消</span>
+          </div>
+          <button class="btn-secondary" @click="handleStop">取消共享</button>
         </div>
 
         <div v-else class="video-container" :class="{ 'fullscreen-mode': isFullscreen }">
@@ -105,6 +149,15 @@
           <div v-if="!localStream && !remoteStream && !showSourcePicker && !showWaitingAccept" class="video-placeholder">
             <i class="fas fa-spinner fa-spin"></i>
             <span>连接中...</span>
+          </div>
+
+          <!-- 暂停提示（发起方暂停时，接收方看到冻结画面） -->
+          <div v-if="isInitiator && isPaused && localStream" class="pause-overlay">
+            <div class="pause-overlay__inner">
+              <i class="fas fa-pause-circle"></i>
+              <span class="pause-overlay__title">共享已暂停</span>
+              <span class="pause-overlay__desc">对方当前看到的是冻结画面</span>
+            </div>
           </div>
           
           <div v-if="isFullscreen" class="fullscreen-header">
@@ -190,12 +243,15 @@
             playsinline
             muted
           ></video>
+          <div v-if="isInitiator && isPaused" class="minimized-paused-badge">
+            <i class="fas fa-pause"></i> 已暂停
+          </div>
         </div>
         <div class="minimized-info">
           <div class="info-top">
-            <div class="minimized-status">
-              <span class="pulse-dot" :class="{ active: sessionState === 'active' }"></span>
-              <span>{{ isInitiator ? '共享中' : '观看中' }}</span>
+            <div class="minimized-status" :class="{ paused: isInitiator && isPaused }">
+              <span class="pulse-dot" :class="{ active: sessionState === 'active' && !(isInitiator && isPaused) }"></span>
+              <span>{{ isInitiator ? (isPaused ? '已暂停' : '共享中') : '观看中' }}</span>
             </div>
             <div class="minimized-duration">{{ formattedDuration }}</div>
             <div class="minimized-name">{{ screenShareName || '屏幕共享' }}</div>
@@ -271,6 +327,19 @@ const incomingRequestInfo = ref<{ fromUserId: number; conversationId: number; fr
 const requestAccepted = ref(false)
 const savedStream = ref<MediaStream | null>(null)
 
+/* ---- 等待接受倒计时 ---- */
+const WAITING_TIMEOUT = 60 // 秒
+const waitingCountdown = ref(WAITING_TIMEOUT)
+let waitingTimer: number | null = null
+
+/* ---- 选源分组 ---- */
+const screenSourceList = computed(() =>
+  screenSources.value.filter(s => String(s.id).startsWith('screen:'))
+)
+const windowSourceList = computed(() =>
+  screenSources.value.filter(s => String(s.id).startsWith('window:'))
+)
+
 const sessionState = computed(() => screenShare.sessionState.value)
 const localStream = computed(() => screenShare.localStream.value)
 const remoteStream = computed(() => screenShare.remoteStream.value)
@@ -302,7 +371,7 @@ const title = computed(() => {
     return '等待对方接受...'
   }
   if (isInitiator.value) {
-    return '正在共享屏幕'
+    return isPaused.value ? '共享已暂停' : '正在共享屏幕'
   }
   return `${props.senderName || '对方'}的屏幕共享`
 })
@@ -653,6 +722,7 @@ const handleStop = () => {
   showSourcePicker.value = false
   showIncomingRequest.value = false
   showWaitingAccept.value = false
+  stopWaitingTimer()
   pendingOffer.value = null
   incomingRequestInfo.value = null
   requestAccepted.value = false
@@ -666,9 +736,8 @@ const handleStop = () => {
 }
 
 const startDurationTimer = () => {
-  if (durationTimer) {
-    clearInterval(durationTimer)
-  }
+  // 幂等：已运行则不重启，避免重复调用导致计时丢失
+  if (durationTimer) return
   durationTimer = window.setInterval(() => {
     duration.value++
   }, 1000)
@@ -680,6 +749,28 @@ const stopDurationTimer = () => {
     durationTimer = null
   }
   duration.value = 0
+}
+
+/* ---- 等待接受倒计时管理 ---- */
+const startWaitingTimer = () => {
+  stopWaitingTimer()
+  waitingCountdown.value = WAITING_TIMEOUT
+  waitingTimer = window.setInterval(() => {
+    waitingCountdown.value--
+    if (waitingCountdown.value <= 0) {
+      stopWaitingTimer()
+      QMessage.warning('对方未响应，屏幕共享已取消')
+      handleStop()
+    }
+  }, 1000)
+}
+
+const stopWaitingTimer = () => {
+  if (waitingTimer) {
+    clearInterval(waitingTimer)
+    waitingTimer = null
+  }
+  waitingCountdown.value = WAITING_TIMEOUT
 }
 
 watch([localStream, isInitiator], ([stream, initiator]) => {
@@ -708,12 +799,17 @@ watch([remoteStream, isInitiator], ([stream, initiator]) => {
 }, { immediate: true })
 
 watch(showWaitingAccept, (waiting) => {
-  if (!waiting && localStream.value && isInitiator.value) {
-    nextTick(() => {
-      if (localVideoRef.value) {
-        localVideoRef.value.srcObject = localStream.value
-      }
-    })
+  if (waiting) {
+    startWaitingTimer()
+  } else {
+    stopWaitingTimer()
+    if (localStream.value && isInitiator.value) {
+      nextTick(() => {
+        if (localVideoRef.value) {
+          localVideoRef.value.srcObject = localStream.value
+        }
+      })
+    }
   }
 })
 
@@ -744,6 +840,7 @@ watch(isDragging, (dragging) => {
 
 onUnmounted(() => {
   stopDurationTimer()
+  stopWaitingTimer()
   if (rafId) {
     cancelAnimationFrame(rafId)
   }
@@ -785,6 +882,8 @@ const stopWaitingAccept = async () => {
         await screenShare.startConnectionWithStream(props.receiverId, savedStream.value)
       }
       console.log('[ScreenShareSimple] Connection started successfully')
+      // 发起方：连接已开始即启动计时（sessionState→active 的回调时序不可靠，作为兜底触发）
+      startDurationTimer()
     } catch (error: any) {
       console.error('[ScreenShareSimple] 建立连接失败:', error)
       if (error.message) {
@@ -953,12 +1052,34 @@ defineExpose({
   color: #fff;
 }
 
+.source-picker-body {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.source-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0 10px;
+}
+
+.source-group-title:first-child {
+  margin-top: 0;
+}
+
+.source-group-title + .source-grid + .source-group-title {
+  margin-top: 18px;
+}
+
 .source-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  max-height: 300px;
-  overflow-y: auto;
 }
 
 .source-item {
@@ -966,20 +1087,23 @@ defineExpose({
   overflow: hidden;
   cursor: pointer;
   border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
   transition: all 0.2s;
 }
 
 .source-item:hover {
   border-color: rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
 }
 
 .source-item.selected {
   border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
 .source-thumbnail {
   width: 100%;
-  height: 120px;
+  height: 110px;
   background: #000;
   display: flex;
   align-items: center;
@@ -1007,11 +1131,50 @@ defineExpose({
   text-overflow: ellipsis;
 }
 
+.source-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 0;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.source-empty i {
+  font-size: 28px;
+}
+
 .source-picker-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.source-hint {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-hint i {
+  color: #3b82f6;
+}
+
+.source-picker-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .btn-secondary {
@@ -1117,8 +1280,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 40px 24px;
-  gap: 16px;
+  padding: 32px 24px 28px;
+  gap: 14px;
 }
 
 .waiting-icon {
@@ -1131,11 +1294,52 @@ defineExpose({
   justify-content: center;
   font-size: 28px;
   color: #fff;
+  animation: pulse 2s infinite;
 }
 
 .waiting-text {
-  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.waiting-title {
+  color: #fff;
   font-size: 15px;
+  font-weight: 500;
+}
+
+.waiting-title strong {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.waiting-sub {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.waiting-countdown {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.waiting-countdown i {
+  font-size: 11px;
+}
+
+.waiting-countdown.urgent {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  animation: pulse 1s infinite;
 }
 
 .video-container {
@@ -1166,6 +1370,40 @@ defineExpose({
 
 .video-placeholder i {
   font-size: 32px;
+}
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.pause-overlay__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+}
+
+.pause-overlay__inner i {
+  font-size: 40px;
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+
+.pause-overlay__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pause-overlay__desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .screen-share-controls {
@@ -1232,12 +1470,26 @@ defineExpose({
   overflow: hidden;
   background: rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  position: relative;
 }
 
 .minimized-preview video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.minimized-paused-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .minimized-info {
@@ -1261,6 +1513,10 @@ defineExpose({
   color: #fff;
   font-size: 13px;
   font-weight: 500;
+}
+
+.minimized-status.paused {
+  color: #f59e0b;
 }
 
 .pulse-dot {

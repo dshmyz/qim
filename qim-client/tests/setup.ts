@@ -103,4 +103,6 @@ config.global.stubs = {
   TransitionGroup: {
     template: '<div><slot /></div>',
   },
+  // Pulls in Pinia stores; stubbed so component tests don't need an active Pinia.
+  UploadProgressBar: true,
 }

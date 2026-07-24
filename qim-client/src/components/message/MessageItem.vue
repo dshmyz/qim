@@ -378,7 +378,7 @@ const convertUrlsToLinks = (text: string): string => {
   cursor: pointer;
   transition: all 0.2s;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.6;
 }
 
 .quoted-message-preview:hover {
@@ -535,7 +535,7 @@ const convertUrlsToLinks = (text: string): string => {
   background: var(--message-bubble-bg);
   color: var(--text-color);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
 }

@@ -4,6 +4,7 @@
     v-if="selectedUser"
     :visible="showUserProfile"
     :user="selectedUser"
+    :show-action="selectedUser.type !== 'bot'"
     @close="emit('close-user-profile')"
     @send-private-message="emit('send-private-message', selectedUser.id)"
   />
