@@ -145,6 +145,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useBotConfig } from '../../../composables/useBotConfig'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import type { BotTokenInfo, BotWebhookConfig } from '../../../types/bot'
+import QMessageBox from '../../../utils/qmessagebox'
 
 const QMessage = (window as any).$QMessage
 const props = defineProps<{ bot: any }>()
@@ -260,7 +261,12 @@ const onIssueToken = async () => {
 }
 
 const onRevoke = async (t: BotTokenInfo) => {
-  if (!confirm(`确定撤销令牌「${t.name || '未命名'}」？撤销后立即失效。`)) return
+  const result = await QMessageBox.confirm(
+    `确定撤销令牌「${t.name || '未命名'}」？撤销后立即失效。`,
+    '撤销令牌',
+    { confirmButtonText: '撤销', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
   try {
     await revokeToken(props.bot.id, t.id)
     await loadTokens()

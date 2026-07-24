@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/test"
+	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"golang.org/x/crypto/bcrypt"
@@ -285,6 +286,9 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
 	cfg := config.Load()
+
+	// 初始化加密密钥（AI Config 等功能依赖）
+	utils.InitEncryptionKey()
 
 	// 初始化数据库
 	db := database.Init(cfg)

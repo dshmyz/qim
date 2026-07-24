@@ -1782,18 +1782,23 @@ const handleNotification = (data: any) => {
 // 处理会话更新
 const handleConversationUpdated = (data: any) => {
   logger.log('会话更新:', data)
-  
+
   if (!data || !data.id) {
     logger.warn('会话更新数据无效:', data)
     return
   }
-  
+
   try {
     const normalizedData = {
       ...data,
       id: data.id.toString()
     }
     chatStore.patchConversation(normalizedData.id, normalizedData)
+
+    // 同步 selectedGroup，让右侧面板实时感知 AI 设置等变更
+    if (selectedGroup.value && sameConversationId(selectedGroup.value.id, normalizedData.id)) {
+      selectedGroup.value = { ...selectedGroup.value, ...normalizedData }
+    }
   } catch (error) {
     logger.error('处理会话更新失败:', error)
     QMessage.error('处理会话更新失败')

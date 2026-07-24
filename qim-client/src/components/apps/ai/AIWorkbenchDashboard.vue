@@ -63,6 +63,7 @@ import ModelConfigFormModal from './ModelConfigFormModal.vue'
 import AvatarSettingsPanel from '../../avatar/AvatarSettingsPanel.vue'
 import QDialog from '../../shared/QDialog.vue'
 import { useBots } from '../../../composables/useBots'
+import QMessageBox from '../../../utils/qmessagebox'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import { useAvatar } from '../../../composables/useAvatar'
 import { useAvatarPersona } from '../../../composables/useAvatarPersona'
@@ -144,7 +145,12 @@ async function onBotCreated() {
 }
 
 async function handleDeleteBot(bot: Bot) {
-  if (!confirm(`确定要删除机器人「${bot.name}」吗？`)) return
+  const result = await QMessageBox.confirm(
+    `确定要删除机器人「${bot.name}」吗？删除后不可恢复。`,
+    '删除机器人',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
   try {
     const resp = await deleteBot(bot.id)
     if (!resp) {
@@ -199,9 +205,13 @@ async function handleTestConfig(id: number) {
 }
 
 async function handleDeleteConfig(config: UserAIConfig) {
-  if (confirm(`确定要删除配置 "${config.config_name}" 吗？`)) {
-    await deleteConfig(config.id)
-  }
+  const result = await QMessageBox.confirm(
+    `确定要删除配置 "${config.config_name}" 吗？`,
+    '删除配置',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  await deleteConfig(config.id)
 }
 
 async function handleToggleAvatar() {

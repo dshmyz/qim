@@ -733,6 +733,52 @@ func UpdateGroupAISettings(c *gin.Context) {
 	groupSvc.UpdateGroup(group)
 	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
 
+	// 同步 AI 助手账号昵称（分身名变更时）
+	if req.AIAssistantName != nil && aiConfig.Enabled {
+		newName := aiConfig.AssistantName
+		if newName == "" {
+			newName = "AI助手"
+		}
+		db := database.GetDB()
+		var existingBot model.Bot
+		if err := db.Where("group_id = ? AND type = ?", group.ID, model.BotTypeGroupAssistant).First(&existingBot).Error; err == nil {
+			// 更新 Bot.Name
+			db.Model(&model.Bot{}).Where("id = ?", existingBot.ID).Update("name", newName)
+			// 更新关联 User.Nickname
+			if existingBot.VirtualUserID != nil {
+				db.Model(&model.User{}).Where("id = ?", *existingBot.VirtualUserID).Update("nickname", newName)
+			}
+		}
+	}
+
+	// 广播给群成员，让其他客户端实时感知 AI 设置变更
+	if ws.GlobalHub != nil {
+		updateMsg := ws.WSMessage{
+			Type: "conversation_updated",
+			Data: gin.H{
+				"id":   convID,
+				"type": "group",
+				"name": group.Name,
+				"ai_config": gin.H{
+					"ai_enabled":            aiConfig.Enabled,
+					"ai_assistant_name":     aiConfig.AssistantName,
+					"ai_reply_mode":         aiConfig.ReplyMode,
+					"ai_personality":        aiConfig.Personality,
+					"ai_custom_prompt":      aiConfig.CustomPrompt,
+					"ai_language":           aiConfig.Language,
+					"ai_max_length":         aiConfig.MaxLength,
+					"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+					"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+					"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+					"ai_learn_enabled":      aiConfig.LearnEnabled,
+					"ai_extract_todos":      aiConfig.ExtractTodos,
+				},
+			},
+		}
+		jsonMsg, _ := json.Marshal(updateMsg)
+		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
+	}
+
 	// 开启AI助手时，确保助手账号已创建并加入群
 	if aiConfig.Enabled && !oldEnabled {
 		userSvc := service.NewUserService(database.GetDB())

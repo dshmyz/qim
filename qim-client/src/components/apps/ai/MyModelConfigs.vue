@@ -50,6 +50,7 @@ import { useModelConfigs } from '../../../composables/useModelConfigs'
 import ModelConfigCard from './ModelConfigCard.vue'
 import ModelConfigFormModal from './ModelConfigFormModal.vue'
 import type { UserAIConfig, CreateConfigRequest } from '../../../types/ai'
+import QMessageBox from '../../../utils/qmessagebox'
 
 const QMessage = (window as any).$QMessage
 
@@ -98,10 +99,14 @@ async function testConfigItem(id: number) {
   }
 }
 
-function confirmDelete(config: UserAIConfig) {
-  if (confirm(`确定要删除配置 "${config.config_name}" 吗？`)) {
-    deleteConfig(config.id)
-  }
+async function confirmDelete(config: UserAIConfig) {
+  const result = await QMessageBox.confirm(
+    `确定要删除配置 "${config.config_name}" 吗？`,
+    '删除配置',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  deleteConfig(config.id)
 }
 </script>
 

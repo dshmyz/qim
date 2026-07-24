@@ -95,6 +95,7 @@ import Avatar from '../../shared/Avatar.vue'
 import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import type { BotMessage } from '../../../types/bot'
+import QMessageBox from '../../../utils/qmessagebox'
 
 interface Bot {
   id: number
@@ -142,10 +143,14 @@ async function sendMessage() {
 /**
  * 清空对话
  */
-function handleClearMessages() {
-  if (confirm('确定要清空对话记录吗？')) {
-    emit('clearMessages')
-  }
+async function handleClearMessages() {
+  const result = await QMessageBox.confirm(
+    '确定要清空对话记录吗？',
+    '清空对话',
+    { confirmButtonText: '清空', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  emit('clearMessages')
 }
 
 /**
