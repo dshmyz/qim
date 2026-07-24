@@ -19,6 +19,7 @@
         @delete-config="handleDeleteConfig"
         @open-avatar="viewMode = 'avatar-settings'"
         @toggle-avatar="handleToggleAvatar"
+        @delete-bot="handleDeleteBot"
       />
     </template>
 
@@ -80,7 +81,7 @@ interface Bot {
 const emit = defineEmits(['use-bot', 'back'])
 
 const bots = ref<Bot[]>([])
-const { fetchMyBots } = useBots()
+const { fetchMyBots, deleteBot } = useBots()
 const {
   configs,
   loading: configsLoading,
@@ -140,6 +141,21 @@ async function onConfigSaved() {
 
 async function onBotCreated() {
   bots.value = (await fetchMyBots()) || []
+}
+
+async function handleDeleteBot(bot: Bot) {
+  if (!confirm(`确定要删除机器人「${bot.name}」吗？`)) return
+  try {
+    const resp = await deleteBot(bot.id)
+    if (!resp) {
+      QMessage.error('删除失败')
+      return
+    }
+    bots.value = (await fetchMyBots()) || []
+    QMessage.success('已删除')
+  } catch (e: any) {
+    QMessage.error(e?.response?.data?.message || e?.message || '删除失败')
+  }
 }
 
 function showAddConfig() {

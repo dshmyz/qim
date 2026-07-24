@@ -38,8 +38,16 @@
             <span v-if="bot.approval_status === 'pending'" class="status-tag pending">待审批</span>
             <span v-else-if="bot.approval_status === 'rejected'" class="status-tag rejected">已拒绝</span>
           </div>
-          <button v-if="bot.approval_status === 'approved'" class="config-btn" @click.stop="$emit('config-bot', bot)" title="配置令牌/Webhook">
-            <i class="fas fa-cog"></i>
+          <div class="bot-actions" v-if="bot.approval_status === 'approved'">
+            <button class="config-btn" @click.stop="$emit('config-bot', bot)" title="配置令牌/Webhook">
+              <i class="fas fa-cog"></i>
+            </button>
+            <button class="config-btn delete-btn" @click.stop="$emit('delete-bot', bot)" title="删除">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          <button v-else class="config-btn delete-btn" @click.stop="$emit('delete-bot', bot)" title="删除">
+            <i class="fas fa-trash"></i>
           </button>
           <button class="use-btn" @click.stop="$emit('use-bot', bot)" :disabled="bot.approval_status !== 'approved'">
             <i class="fas fa-comment"></i> 使用
@@ -205,7 +213,8 @@ defineEmits([
   'test-config',
   'delete-config',
   'open-avatar',
-  'toggle-avatar'
+  'toggle-avatar',
+  'delete-bot'
 ])
 </script>
 
@@ -412,6 +421,10 @@ defineEmits([
   opacity: 0.4;
   cursor: not-allowed;
 }
+.delete-btn { color: #999; }
+.delete-btn:hover { color: #e74c3c; }
+.bot-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.bot-actions .config-btn { position: static; }
 
 .config-btn {
   position: absolute;
