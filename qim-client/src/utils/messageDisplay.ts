@@ -13,6 +13,7 @@ export type MessageDisplayKind =
   | 'system'
   | 'streaming'
   | 'mergedForward'
+  | 'card'
   | 'unknown'
 
 export type MessageDisplayInput = {
@@ -157,6 +158,10 @@ export const resolveMessageDisplay = (input: MessageDisplayInput): MessageDispla
   if (type === 'system') {
     const text = decodeToPlainText(content) || '系统消息'
     return display('system', text, text, text)
+  }
+  if (type === 'card') {
+    const title = getString(parsed, 'title') || getString(parsed, 'text') || '交互卡片'
+    return display('card', `卡片：${title}`, `[卡片] ${title}`, title, '', parsed || undefined)
   }
   if (parsed) return display('unknown', '未知消息', '[未知消息]', '未知消息')
 

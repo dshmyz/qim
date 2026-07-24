@@ -235,6 +235,12 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		return
 	}
 
+	// 外部 agent 模式：转发用户消息到 webhook，不再走内部 AI
+	if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
+		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, userID, convID, content)
+		return
+	}
+
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
@@ -321,6 +327,44 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		s.hub.SendToUser(userID, jsonMsg)
+	}
+}
+
+// forwardBotMessageToWebhook 将用户在 bot 会话中的回复转发到外部 agent webhook。
+// 由 handleBotMessage 在 external_webhook 模式下异步调用（handleBotMessage 本身已 SafeGo）。
+// MVP：失败仅记录日志（含 delivery_id 由 SendBotWebhook 内部生成），不重试、不阻塞。
+func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, webhookSecret string, userID, convID uint, content string) {
+	var user model.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		logger.WithModule("handleBotMessage").Error("查询用户失败", "userID", userID, "error", err)
+		return
+	}
+
+	// 取刚发送的用户消息（用于 message_id / msg_type）
+	var lastMsg model.Message
+	msgType := "text"
+	if err := s.db.Where("conversation_id = ? AND sender_id = ?", convID, userID).
+		Order("created_at DESC").First(&lastMsg).Error; err == nil {
+		msgType = lastMsg.Type
+	}
+
+	payload := BotWebhookPayload{
+		BotID:        bot.ID,
+		ThreadID:     convID,
+		MessageID:    lastMsg.ID,
+		UserID:       userID,
+		UserNickname: user.Nickname,
+		UserAvatar:   user.Avatar,
+		Content:      content,
+		MsgType:      msgType,
+	}
+
+	if err := SendBotWebhook(webhookURL, webhookSecret, payload); err != nil {
+		logger.WithModule("handleBotMessage").Error("转发 webhook 失败",
+			"botID", bot.ID, "convID", convID, "error", err)
+	} else {
+		logger.WithModule("handleBotMessage").Info("webhook 已转发",
+			"botID", bot.ID, "convID", convID, "messageID", lastMsg.ID)
 	}
 }
 

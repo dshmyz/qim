@@ -390,6 +390,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.ConversationSession{},   // 依赖 User, Conversation
 		&model.MessageReadReceipt{},    // 依赖 User, Message
 		&model.BotConversation{},       // 依赖 Bot, User, Conversation
+		&model.BotToken{},              // 依赖 Bot，外部 agent 访问令牌
 		&model.SystemMessage{},         // 依赖 User
 		&model.App{},                   // 依赖 User
 		&model.Notification{},          // 依赖 User

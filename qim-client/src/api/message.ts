@@ -10,7 +10,7 @@ export interface Message {
     name: string
     avatar: string
   }
-  type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'markdown' | 'miniApp' | 'news'
+  type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'markdown' | 'miniApp' | 'news' | 'card'
   content: string
   file_name?: string
   file_size?: number
@@ -60,7 +60,7 @@ export interface MessageFilterResponse {
 }
 
 export interface SendMessageRequest {
-  type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'markdown' | 'miniApp' | 'news'
+  type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'markdown' | 'miniApp' | 'news' | 'card'
   content: string
   quoted_message_id?: number
   file_size?: number

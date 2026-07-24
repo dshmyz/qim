@@ -53,6 +53,15 @@
           <!-- 文本消息 -->
           <TextMessage v-if="message.type === 'text' && !isAIMessage" :content="message.content" :is-self="isSelf" />
 
+          <!-- 卡片消息（bot 发出的可操作卡片，须先于 isAIMessage 的 markdown 分支命中） -->
+          <CardMessage
+            v-else-if="message.type === 'card'"
+            :content="message.content"
+            :message-id="String(message.id)"
+            :is-self="isSelf"
+            :server-url="serverUrl"
+          />
+
           <!-- AI 消息 (使用 Markdown 渲染，与其他 Markdown 消息统一) -->
           <MarkdownMessage v-else-if="isAIMessage" :content="message.content" :is-self="isSelf" />
 
@@ -163,6 +172,7 @@ import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import MergedForwardMessage from './MergedForwardMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
+import CardMessage from './CardMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'

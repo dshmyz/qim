@@ -337,6 +337,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		// 客户端版本查询（公开，无需认证）
 		api.GET("/client/versions", handler.GetVersions)
 
+		// Bot API：外部 agent 出站消息（Bot 令牌鉴权，非 JWT）
+		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
+		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(60, time.Minute)))
+		botAPI.POST("/messages", botAPIHandler.SendMessage)
+
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")
 		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
@@ -505,6 +510,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/bots", handler.CreateBot)
 			authed.PUT("/bots/:id", handler.UpdateMyBot)
 			authed.DELETE("/bots/:id", handler.DeleteMyBot)
+			// Bot 令牌与配置管理（创建者或 system_admin）
+			authed.POST("/bots/:id/token", botAPIHandler.IssueToken)
+			authed.DELETE("/bots/:id/token/:tid", botAPIHandler.RevokeToken)
+			authed.PUT("/bots/:id/config", botAPIHandler.UpdateBotConfig)
+			// Bot 卡片按钮回调（JWT 用户鉴权：点击按钮的人类用户，非 bot 令牌）
+			authed.POST("/messages/:id/card-action", botAPIHandler.SubmitCardAction)
 
 			// 日历事件
 			authed.GET("/events", handler.GetEvents)
