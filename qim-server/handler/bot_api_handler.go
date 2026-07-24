@@ -62,6 +62,40 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 	})
 }
 
+// StreamChunk 外部 agent 追加流式消息分段（delta / finish）。
+// POST /api/v1/bot/messages/:id/stream  (BotAuthMiddleware)
+func (h *BotAPIHandler) StreamChunk(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+
+	messageID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息 ID")
+		return
+	}
+
+	var req struct {
+		ContentDelta string `json:"content_delta"`
+		Finish       bool   `json:"finish"`
+	}
+	_ = c.ShouldBindJSON(&req) // 允许空 body（仅 finish）
+
+	if err := h.botMessaging.StreamChunk(bot, uint(messageID), req.ContentDelta, req.Finish); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if svc := di.GlobalContainer.OperationLogService; svc != nil {
+		svc.LogUserOperation(c, "bot", "stream_chunk")
+	}
+
+	response.SuccessWithMessage(c, "流式分段已处理", nil)
+}
+
 // SubmitCardAction 用户点击 bot 卡片按钮 -> 转发 action 到外部 agent webhook。
 // POST /api/v1/messages/:id/card-action  (JWT 用户鉴权，即点击的人类用户)
 func (h *BotAPIHandler) SubmitCardAction(c *gin.Context) {

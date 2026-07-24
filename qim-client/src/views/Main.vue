@@ -1696,17 +1696,23 @@ const handleMessageDeleted = (data: any) => {
   }
 }
 
-// 处理消息更新（流式消息完成后 content 变更，如 mention token 拼接）
+// 处理消息更新（流式消息分段追加 / 完成后 content、type、is_streaming 变更）
 const handleMessageUpdated = (data: any) => {
   logger.log('消息更新:', data)
   const convId = data.conversation_id?.toString()
   const msgId = data.id?.toString()
   if (!convId || !msgId || !data.content) return
 
+  // 流式分段推送携带 type + is_streaming：流式中保持 streaming 气泡，
+  // finish 时 type=markdown、is_streaming=false，气泡转为最终渲染
+  const updates: Partial<Message> = { content: data.content }
+  if (data.type) updates.type = data.type
+  if (data.is_streaming !== undefined) updates.isStreaming = data.is_streaming
+
   // 优先用数据库 ID 更新
   const msgs = chatStore.messages.get(convId)
   if (msgs && msgs.some(m => m.id === msgId)) {
-    chatStore.updateMessage(convId, msgId, { content: data.content })
+    chatStore.updateMessage(convId, msgId, updates)
   } else if (msgs) {
     // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
     // 增加时间窗：只匹配 60 秒内的流式消息，避免误匹配旧消息
@@ -1716,7 +1722,7 @@ const handleMessageUpdated = (data: any) => {
       (now - m.timestamp < 60000)
     )
     if (streamMsg) {
-      chatStore.updateMessage(convId, streamMsg.id, { content: data.content })
+      chatStore.updateMessage(convId, streamMsg.id, updates)
     }
   }
 

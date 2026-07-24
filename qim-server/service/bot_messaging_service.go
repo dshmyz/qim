@@ -279,6 +279,7 @@ func buildBotMessageResponse(msg model.Message) map[string]interface{} {
 		"is_read":           msg.IsRead,
 		"is_avatar_reply":   msg.Origin == "avatar",
 		"is_ai_message":     isAIMessage,
+		"is_streaming":      msg.Type == "streaming",
 		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
@@ -286,4 +287,85 @@ func buildBotMessageResponse(msg model.Message) map[string]interface{} {
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  []uint{},
 	}
+}
+
+// StreamChunk 处理外部 agent 对流式消息的分段追加：
+// 校验消息为 streaming 类型且归属该 bot，累加 contentDelta，推 message_updated 到用户。
+// finish=true 时把 Type 改为 markdown（最终渲染）并更新会话最后消息。
+// 客户端 handleMessageUpdated 是替换语义，故每次推送全量 Content。
+func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, contentDelta string, finish bool) error {
+	if bot == nil || bot.VirtualUserID == nil {
+		return errors.New("bot 未配置虚拟用户")
+	}
+
+	var msg model.Message
+	if err := s.db.First(&msg, messageID).Error; err != nil {
+		return errors.New("消息不存在")
+	}
+	if msg.Type != "streaming" {
+		return errors.New("非流式消息，不支持分段追加")
+	}
+
+	// 归属校验：只允许发起该流的 bot 追加（仿 SendOutbound thread_id 校验）
+	var botConv model.BotConversation
+	if err := s.db.Where("conversation_id = ? AND bot_id = ?", msg.ConversationID, bot.ID).
+		First(&botConv).Error; err != nil {
+		return errors.New("会话不属于该 bot")
+	}
+
+	// 事务内读-改-写，防并发 delta 互相覆盖
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var cur model.Message
+		if err := tx.First(&cur, messageID).Error; err != nil {
+			return err
+		}
+		updates := map[string]interface{}{}
+		if contentDelta != "" {
+			updates["content"] = cur.Content + contentDelta
+		}
+		if finish {
+			updates["type"] = "markdown"
+		}
+		if len(updates) > 0 {
+			if err := tx.Model(&model.Message{}).Where("id = ?", messageID).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// 重新读取最新内容用于推送
+	if err := s.db.First(&msg, messageID).Error; err != nil {
+		return err
+	}
+
+	// finish 时更新会话最后消息
+	if finish {
+		now := time.Now()
+		if err := s.db.Model(&model.Conversation{}).Where("id = ?", msg.ConversationID).Updates(map[string]interface{}{
+			"last_message_id": msg.ID,
+			"last_message_at": now,
+		}).Error; err != nil {
+			logger.WithModule("BotMessaging").Error("流式完成更新会话最后消息失败", "conv", msg.ConversationID, "error", err)
+		}
+	}
+
+	// 推 message_updated（全量 content + is_streaming + type），排除 bot 虚拟用户
+	if s.hub != nil {
+		updateData := map[string]interface{}{
+			"id":            msg.ID,
+			"conversation_id": msg.ConversationID,
+			"content":       msg.Content,
+			"type":          msg.Type,
+			"is_streaming":  msg.Type == "streaming", // finish 后 Type=markdown -> false
+		}
+		wsMsg := ws.WSMessage{Type: "message_updated", Data: updateData}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		s.hub.SendToConversation(msg.ConversationID, *bot.VirtualUserID, jsonMsg)
+	}
+
+	return nil
 }

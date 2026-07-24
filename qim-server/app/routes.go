@@ -341,6 +341,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
 		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(60, time.Minute)))
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
+		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")
