@@ -38,10 +38,12 @@ const (
 // FileSpaceQuery restricts a listing to a folder and optionally filters its files.
 // Files and folders are always selected from the same scoped tree.
 type FileSpaceQuery struct {
-	FolderID *uint
-	Search   string
-	Page     int
-	PageSize int
+	FolderID  *uint
+	Search    string
+	Page      int
+	PageSize  int
+	SortBy    string // name | size | created_at (default created_at)
+	SortOrder string // asc | desc (default desc)
 }
 
 type FileSpaceList struct {
@@ -63,6 +65,25 @@ func NewFileSpaceService(db *gorm.DB) *FileSpaceService {
 
 func (s *FileSpaceService) SetStorageAccessor(store StorageAccessor) {
 	s.store = store
+}
+
+// fileSortClause maps a client-provided sort field/order to a safe SQL ORDER BY
+// clause. Unknown fields fall back to created_at; unknown orders fall back to desc.
+// The whitelist prevents SQL injection via raw column names.
+func fileSortClause(sortBy, sortOrder string) string {
+	column := "created_at"
+	switch strings.ToLower(strings.TrimSpace(sortBy)) {
+	case "name":
+		column = "name"
+	case "size":
+		column = "size"
+	case "created_at":
+		column = "created_at"
+	}
+	if strings.ToLower(strings.TrimSpace(sortOrder)) == "asc" {
+		return column + " ASC"
+	}
+	return column + " DESC"
 }
 
 func (s *FileSpaceService) authorize(ctx context.Context, actorID uint, space FileSpace, action FileSpaceAction) error {
@@ -147,7 +168,7 @@ func (s *FileSpaceService) List(ctx context.Context, actorID uint, space FileSpa
 	if page < 1 {
 		page = 1
 	}
-	if err := fileQuery.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&result.Files).Error; err != nil {
+	if err := fileQuery.Order(fileSortClause(query.SortBy, query.SortOrder)).Offset((page - 1) * pageSize).Limit(pageSize).Find(&result.Files).Error; err != nil {
 		return nil, err
 	}
 	return result, nil

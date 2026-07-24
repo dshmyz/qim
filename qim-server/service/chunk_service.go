@@ -283,8 +283,13 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	}
 
 	// 7. 创建文件记录
+	// 与 FileService.CreateFile 保持一致：分片上传的文件同样落入上传者的个人文件空间
+	// （scope_type="user", scope_id=userID），否则 FileSpaceService.AttachUpload 在
+	// 用户空间内查不到该文件，会以 ErrFileSpaceForbidden（403 无权访问群文件）拒绝挂载到群。
 	file := &model.File{
 		UserID:       task.UserID,
+		ScopeType:    "user",
+		ScopeID:      task.UserID,
 		Name:         task.Filename,
 		OriginalName: task.Filename,
 		Size:         task.FileSize,

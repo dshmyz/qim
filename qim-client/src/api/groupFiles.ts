@@ -28,6 +28,8 @@ export interface GroupFileFilters {
   page_size?: number
   folder_id?: number | null
   search?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
 }
 
 export interface GroupFileList {
