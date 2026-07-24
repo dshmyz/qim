@@ -332,7 +332,8 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 
 // forwardBotMessageToWebhook 将用户在 bot 会话中的回复转发到外部 agent webhook。
 // 由 handleBotMessage 在 external_webhook 模式下异步调用（handleBotMessage 本身已 SafeGo）。
-// MVP：失败仅记录日志（含 delivery_id 由 SendBotWebhook 内部生成），不重试、不阻塞。
+// 经 outbox：先落表再立即 best-effort 投递一次，失败由调度器指数退避重试，超阈值死信。
+// 成功路径与原直发等价（无额外延迟），失败路径由静默丢变为有兜底。
 func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, webhookSecret string, userID, convID uint, content string) {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
@@ -358,13 +359,18 @@ func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, w
 		Content:      content,
 		MsgType:      msgType,
 	}
+	payloadJSON, _ := json.Marshal(payload)
 
-	if err := SendBotWebhook(webhookURL, webhookSecret, payload); err != nil {
-		logger.WithModule("handleBotMessage").Error("转发 webhook 失败",
+	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.message", string(payloadJSON), webhookURL, webhookSecret)
+	if err != nil {
+		logger.WithModule("handleBotMessage").Error("webhook outbox 入队失败",
 			"botID", bot.ID, "convID", convID, "error", err)
-	} else {
-		logger.WithModule("handleBotMessage").Info("webhook 已转发",
-			"botID", bot.ID, "convID", convID, "messageID", lastMsg.ID)
+		return
+	}
+	// 立即 best-effort 投递一次：成功等价于原直发，失败落 pending 待重试
+	if err := DeliverOnce(s.db, deliveryID); err != nil {
+		logger.WithModule("handleBotMessage").Warn("webhook 立即投递失败，已入重试队列",
+			"deliveryID", deliveryID, "botID", bot.ID, "convID", convID, "error", err)
 	}
 }
 

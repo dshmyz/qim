@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"time"
 
@@ -184,6 +185,14 @@ func (h *BotAPIHandler) SubmitCardAction(c *gin.Context) {
 	}
 
 	if err := h.botMessaging.ForwardCardAction(uint(messageID), userID, req.ActionID, req.Value); err != nil {
+		// 已入重试队列：不阻塞用户，返回"已受理将重试"（HTTP 200）
+		if errors.Is(err, service.ErrCardActionPendingRetry) {
+			if svc := di.GlobalContainer.OperationLogService; svc != nil {
+				svc.LogUserOperation(c, "bot", "card_action_pending_retry")
+			}
+			response.SuccessWithMessage(c, "卡片动作已受理，agent 暂不可用，正在重试投递", nil)
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}

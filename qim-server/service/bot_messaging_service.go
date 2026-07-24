@@ -21,6 +21,10 @@ type BotMessagingService struct {
 	hub *ws.Hub
 }
 
+// ErrCardActionPendingRetry 卡片 action 已入 webhook 重试队列（立即投递失败，非鉴权错误）。
+// 调用方据此返回"已受理将重试"而非 400，避免因 agent 暂时不可用阻塞用户。
+var ErrCardActionPendingRetry = errors.New("卡片动作已受理，正在重试投递")
+
 func NewBotMessagingService(db *gorm.DB, hub *ws.Hub) *BotMessagingService {
 	return &BotMessagingService{db: db, hub: hub}
 }
@@ -254,10 +258,30 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 		ActionID:     actionID,
 		ActionValue:  value,
 	}
-	if err := SendBotWebhook(cfg.WebhookURL, cfg.WebhookSecret, payload); err != nil {
-		logger.WithModule("BotMessaging").Error("转发卡片 action webhook 失败",
+	payloadJSON, _ := json.Marshal(payload)
+
+	// 经 outbox：先落表再立即 best-effort 投递一次。
+	// 鉴权/校验已在上面同步完成（返回 error 给前端）；此处只兜底"投递失败"。
+	// 投递失败不再阻塞用户（原返回 400），改为入重试队列，调用方据返回值提示"已受理将重试"。
+	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.card_action", string(payloadJSON), cfg.WebhookURL, cfg.WebhookSecret)
+	if err != nil {
+		logger.WithModule("BotMessaging").Error("卡片 action outbox 入队失败",
 			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
 		return errors.New("转发卡片动作失败")
+	}
+	if err := DeliverOnce(s.db, deliveryID); err != nil {
+		// 本地错误（落表/乐观锁等）罕见，按"已入重试队列"兜底
+		logger.WithModule("BotMessaging").Warn("卡片 action 立即投递异常，已入重试队列",
+			"deliveryID", deliveryID, "botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
+		return ErrCardActionPendingRetry
+	}
+	// DeliverOnce 返回 nil 不代表投递成功（best-effort：失败也返回 nil）。
+	// 据落表状态区分：done=已送达；否则=立即投递失败，已入重试队列。
+	var delivery model.BotWebhookDelivery
+	if err := s.db.First(&delivery, deliveryID).Error; err == nil && delivery.Status != "done" {
+		logger.WithModule("BotMessaging").Warn("卡片 action 立即投递失败，已入重试队列",
+			"deliveryID", deliveryID, "botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "status", delivery.Status)
+		return ErrCardActionPendingRetry
 	}
 	logger.WithModule("BotMessaging").Info("卡片 action webhook 已转发",
 		"botID", bot.ID, "messageID", msg.ID, "actionID", actionID)

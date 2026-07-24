@@ -162,3 +162,33 @@ func TestForwardCardAction_RejectsMissingMessage(t *testing.T) {
 	err := svc.ForwardCardAction(999999, human.ID, "confirm", "confirm")
 	assert.Error(t, err)
 }
+
+// TestForwardCardAction_WebhookFailEnqueuesRetry 验证：webhook 立即投递失败时，
+// ForwardCardAction 不阻塞用户，返回 ErrCardActionPendingRetry 并把投递落表为 pending 等待重试。
+func TestForwardCardAction_WebhookFailEnqueuesRetry(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	// webhook 始终返回 500
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
+
+	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	assert.NoError(t, err)
+
+	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
+	assert.ErrorIs(t, err, ErrCardActionPendingRetry)
+
+	// 投递记录应处于 pending，且已计入一次失败尝试、安排了重试时间
+	var delivery model.BotWebhookDelivery
+	assert.NoError(t, db.First(&delivery, "bot_id = ? AND event = ?", bot.ID, "bot.card_action").Error)
+	assert.Equal(t, "pending", delivery.Status)
+	assert.Equal(t, 1, delivery.Attempts)
+	assert.NotNil(t, delivery.NextRetryAt, "失败后应安排下次重试时间")
+	assert.NotEmpty(t, delivery.LastError, "应记录失败原因")
+}

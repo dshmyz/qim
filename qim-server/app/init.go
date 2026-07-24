@@ -391,6 +391,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.MessageReadReceipt{},    // 依赖 User, Message
 		&model.BotConversation{},       // 依赖 Bot, User, Conversation
 		&model.BotToken{},              // 依赖 Bot，外部 agent 访问令牌
+		&model.BotWebhookDelivery{},    // 依赖 Bot，webhook outbox 重试/死信
 		&model.SystemMessage{},         // 依赖 User
 		&model.App{},                   // 依赖 User
 		&model.Notification{},          // 依赖 User
