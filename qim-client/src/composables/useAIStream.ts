@@ -53,6 +53,10 @@ export function useAIStream() {
 
             try {
               const chunk = JSON.parse(data)
+              if (chunk.error) {
+                options.onError(new Error(chunk.error))
+                return
+              }
               if (chunk.content) {
                 options.onChunk(chunk.content)
               }

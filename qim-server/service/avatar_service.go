@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/cloudwego/eino/schema"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -205,6 +206,18 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 // PreviewReply 预览回复
 func (s *AvatarService) PreviewReply(userID uint, message string) (string, error) {
 	return s.GenerateReply(userID, 0, message, nil)
+}
+
+// GenerateReplyStream 流式生成分身回复（供"帮我回复"草稿模式：复用分身全套上下文，
+// 但把流式输出交给调用方，不落库不发送）。config 非 nil 时复用调用方已加载的配置。
+// ctx 透传自 HTTP 请求，客户端断开时取消上游 AI 请求，避免空跑浪费 token。
+func (s *AvatarService) GenerateReplyStream(ctx context.Context, userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+	graph := s.replyGraph.Load()
+	if graph == nil {
+		return nil, fmt.Errorf("回复 Graph 未初始化")
+	}
+
+	return graph.ExecuteStream(ctx, userID, conversationID, triggerMessage, config)
 }
 
 // min 返回两个整数中的较小值

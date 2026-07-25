@@ -140,6 +140,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}
 
 	avatarService := di.GlobalContainer.AvatarService
+	aiHandler.SetAvatarService(avatarService) // 帮我回复草稿模式复用分身生成
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 	if avatarTriggerSvc := di.GlobalContainer.AvatarTriggerService; avatarTriggerSvc != nil {
 		handler.GetSmartReplyEngine().SetAvatarTriggerService(avatarTriggerSvc)

@@ -73,6 +73,7 @@ type StreamChunk struct {
 	Content string       `json:"content"`
 	Finish  *string      `json:"finish,omitempty"`
 	Usage   *StreamUsage `json:"usage,omitempty"`
+	Error   *string      `json:"error,omitempty"`
 }
 
 type StreamUsage struct {

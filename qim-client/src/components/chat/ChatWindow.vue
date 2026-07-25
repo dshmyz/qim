@@ -100,8 +100,11 @@
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
       :is-processing="aiIsProcessing"
+      :draft-streaming="isDraftStreaming"
+      :has-draft-reply="hasDraftReply"
       :show-search="showSearch"
       v-model:search-query="searchQuery"
+      @regenerate-draft="regenerateDraftReply"
       @send="handleSend"
       @input="handleInput"
       @cursor-change="handleInput"
@@ -320,8 +323,16 @@ const {
   translateText,
   rewriteText,
   polishText,
-  generateSmartReply,
+  draftReply,
+  draftReplyStream,
+  abortDraftReply,
 } = useAIActions()
+
+// 帮我回复草稿状态
+const isDraftStreaming = ref(false)      // 正在流式生成
+const hasDraftReply = ref(false)          // 已生成草稿、可换一个
+const draftReplyTarget = ref<any>(null)   // 当前草稿回复的目标消息
+const isAppendingDraft = ref(false)       // 流式追加中（用于区分用户输入与 AI 填充）
 
 // 分身 composable
 const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, fetchConfig, fetchSessions, toggleSession, isAvatarActive } = useAvatar()
@@ -355,10 +366,66 @@ const handleUpdateAvatarEnabled = async (enabled: boolean) => {
 }
 
 // AI 快捷操作处理
+// 启动流式帮我回复：清空输入框并逐字填充
+const startDraftReply = (conversationId: number, messageId: number, target: any) => {
+  if (isDraftStreaming.value) abortDraftReply()
+  draftReplyTarget.value = target
+  inputMessage.value = ''
+  autoResizeTextarea()
+  isDraftStreaming.value = true
+  hasDraftReply.value = false
+  draftReplyStream(conversationId, messageId, {
+    onChunk: (content: string) => {
+      isAppendingDraft.value = true
+      inputMessage.value += content
+      isAppendingDraft.value = false
+      autoResizeTextarea()
+    },
+    onComplete: () => {
+      isDraftStreaming.value = false
+      hasDraftReply.value = !!inputMessage.value
+      autoResizeTextarea()
+      if (inputMessage.value) {
+        $message.success('回复草稿已生成')
+      } else {
+        $message.warning('未生成内容，请重试')
+      }
+    },
+    onError: () => {
+      isDraftStreaming.value = false
+      hasDraftReply.value = false
+      $message.error('生成回复失败')
+    },
+  })
+}
+
+// 换一个：基于同一目标消息重新生成草稿
+const regenerateDraftReply = () => {
+  const conversationId = props.conversation?.id
+  const target = draftReplyTarget.value
+  if (!conversationId || !target) return
+  startDraftReply(Number(conversationId), Number(target.id), target)
+}
+
 const handleAIAction = async (actionId: string) => {
   const text = inputMessage.value.trim()
 
   switch (actionId) {
+    case 'draft-reply': {
+      const conversationId = props.conversation?.id
+      if (!conversationId) return
+      // 找最后一条对方发来的文本消息
+      const uid = String(currentUserId.value)
+      const target = [...props.messages].reverse().find(
+        (m: any) => String(m.sender_id) !== uid && m.type === 'text' && !m.isRecalled
+      )
+      if (!target) {
+        $message.warning('没有可回复的消息')
+        return
+      }
+      startDraftReply(Number(conversationId), Number(target.id), target)
+      break
+    }
     case 'summary':
       if (props.conversation?.id) {
         showSummaryPanel.value = true
@@ -636,6 +703,13 @@ watch(inputMessage, (nextText) => {
   mentionSpans.value = reconcileMentionSpans(mentionSpans.value, trackedInputMessage.value, nextText)
   trackedInputMessage.value = nextText
 })
+
+// 用户手动编辑输入框（非 AI 流式追加）时，撤销“换一个”可用态
+watch(inputMessage, () => {
+  if (!isAppendingDraft.value && !isDraftStreaming.value && hasDraftReply.value) {
+    hasDraftReply.value = false
+  }
+}, { flush: 'sync' })
 
 // 打开消息管理器
 const openMessageManager = () => {
@@ -1843,24 +1917,26 @@ const handleAITranslate = () => {
   closeMessageContextMenu()
 }
 
-// 智能回复
+// 智能回复（右键菜单：带上下文起草）
 const handleSmartReply = async () => {
-  if (!selectedMessage.value || !selectedMessage.value.content) {
+  if (!selectedMessage.value || !selectedMessage.value.id) {
     closeMessageContextMenu()
     return
   }
-  const messageContent = selectedMessage.value.content
+  const msg = selectedMessage.value
+  const conversationId = props.conversation?.id
   closeMessageContextMenu()
+  if (!conversationId) return
 
   try {
-    const reply = await generateSmartReply(messageContent)
+    const reply = await draftReply(Number(conversationId), Number(msg.id))
     if (reply) {
       inputMessage.value = reply
       autoResizeTextarea()
-      $message.success('智能回复已生成')
+      $message.success('回复草稿已生成')
     }
   } catch {
-    $message.error('智能回复生成失败')
+    $message.error('生成回复失败')
   }
 }
 
