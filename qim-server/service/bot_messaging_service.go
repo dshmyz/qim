@@ -377,20 +377,83 @@ func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, conten
 		}
 	}
 
-	// 推 message_updated（全量 content + is_streaming + type），排除 bot 虚拟用户
-	if s.hub != nil {
-		updateData := map[string]interface{}{
-			"id":            msg.ID,
-			"conversation_id": msg.ConversationID,
-			"content":       msg.Content,
-			"type":          msg.Type,
-			"is_streaming":  msg.Type == "streaming", // finish 后 Type=markdown -> false
-		}
-		wsMsg := ws.WSMessage{Type: "message_updated", Data: updateData}
-		jsonMsg, _ := json.Marshal(wsMsg)
-		s.hub.SendToConversation(msg.ConversationID, *bot.VirtualUserID, jsonMsg)
+	s.pushMessageUpdated(msg, *bot.VirtualUserID, msg.Type == "streaming")
+
+	return nil
+}
+
+// pushMessageUpdated 推 message_updated 事件到会话（排除 excludeUserID，即发送方 bot 的虚拟用户）。
+// 供流式分段（StreamChunk）与卡片更新（UpdateMessageContent）共用，避免重复拼装。
+// isStreaming 透传给前端用于区分流式中气泡与最终渲染。
+func (s *BotMessagingService) pushMessageUpdated(msg model.Message, excludeUserID uint, isStreaming bool) {
+	if s.hub == nil {
+		return
+	}
+	updateData := map[string]interface{}{
+		"id":              msg.ID,
+		"conversation_id": msg.ConversationID,
+		"content":         msg.Content,
+		"type":            msg.Type,
+		"is_streaming":    isStreaming,
+	}
+	wsMsg := ws.WSMessage{Type: "message_updated", Data: updateData}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(msg.ConversationID, excludeUserID, jsonMsg)
+}
+
+
+// UpdateMessageContent 全量更新一条 bot 消息的 content（供 agent 回写卡片状态用）。
+// 归属校验：消息 Origin=="bot" 且 SenderID 为该 bot 虚拟用户；会话归属该 bot。
+// msgType=="card" 走 validateCardContent 保持出站契约一致；msgType 空则保持原 type。
+// 推 message_updated，客户端 CardMessage 据 content 变化重置交互态。
+func (s *BotMessagingService) UpdateMessageContent(bot *model.Bot, messageID uint, content string, msgType string) error {
+	if bot == nil || bot.VirtualUserID == nil {
+		return errors.New("bot 未配置虚拟用户")
+	}
+	if content == "" {
+		return errors.New("content 不能为空")
 	}
 
+	var msg model.Message
+	if err := s.db.First(&msg, messageID).Error; err != nil {
+		return errors.New("消息不存在")
+	}
+	if msg.Origin != "bot" || msg.SenderID != *bot.VirtualUserID {
+		return errors.New("无权更新该消息")
+	}
+
+	// 归属校验：会话属于该 bot（与 StreamChunk 一致）
+	var botConv model.BotConversation
+	if err := s.db.Where("conversation_id = ? AND bot_id = ?", msg.ConversationID, bot.ID).
+		First(&botConv).Error; err != nil {
+		return errors.New("会话不属于该 bot")
+	}
+
+	finalType := msg.Type
+	if msgType != "" {
+		if msgType == "card" {
+			if err := validateCardContent(content); err != nil {
+				return err
+			}
+		}
+		finalType = msgType
+	} else if msg.Type == "card" {
+		// 类型不变但仍是卡片，校验新 content 合法
+		if err := validateCardContent(content); err != nil {
+			return err
+		}
+	}
+
+	if err := s.db.Model(&model.Message{}).Where("id = ?", messageID).
+		Updates(map[string]interface{}{"content": content, "type": finalType}).Error; err != nil {
+		return err
+	}
+
+	// 重新读出最新消息用于推送
+	if err := s.db.First(&msg, messageID).Error; err != nil {
+		return err
+	}
+	s.pushMessageUpdated(msg, *bot.VirtualUserID, false)
 	return nil
 }
 

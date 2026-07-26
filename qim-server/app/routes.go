@@ -344,6 +344,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
 		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
+		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
 
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")

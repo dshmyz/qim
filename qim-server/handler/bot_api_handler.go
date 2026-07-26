@@ -159,6 +159,43 @@ func (h *BotAPIHandler) StreamChunk(c *gin.Context) {
 	response.SuccessWithMessage(c, "流式分段已处理", nil)
 }
 
+// UpdateMessage 外部 agent 全量更新一条已存在的 bot 消息（用于回写卡片状态）。
+// PUT /api/v1/bot/messages/:id  (BotAuthMiddleware)
+func (h *BotAPIHandler) UpdateMessage(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+
+	messageID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的消息 ID")
+		return
+	}
+
+	var req struct {
+		Content string `json:"content" binding:"required"`
+		MsgType string `json:"msg_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请求参数错误")
+		return
+	}
+
+	if err := h.botMessaging.UpdateMessageContent(bot, uint(messageID), req.Content, req.MsgType); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if svc := di.GlobalContainer.OperationLogService; svc != nil {
+		svc.LogUserOperation(c, "bot", "update_message")
+	}
+
+	response.SuccessWithMessage(c, "消息已更新", nil)
+}
+
 // SubmitCardAction 用户点击 bot 卡片按钮 -> 转发 action 到外部 agent webhook。
 // POST /api/v1/messages/:id/card-action  (JWT 用户鉴权，即点击的人类用户)
 func (h *BotAPIHandler) SubmitCardAction(c *gin.Context) {

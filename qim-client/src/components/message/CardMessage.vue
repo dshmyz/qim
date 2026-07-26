@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useBotCardAction } from '../../composables/useBotCardAction'
 
 interface CardButton {
@@ -75,6 +75,14 @@ const handleClick = async (btn: CardButton) => {
     selectedId.value = ''
   }
 }
+
+// agent 回写更新卡片 content 时，重置交互态，让新按钮恢复可点
+// （卡片不走流式，content 变化只来自 agent 显式更新，安全）
+watch(() => props.content, () => {
+  submitted.value = false
+  submitting.value = false
+  selectedId.value = ''
+})
 </script>
 
 <style scoped>
