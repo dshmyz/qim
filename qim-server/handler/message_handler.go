@@ -543,10 +543,6 @@ func SendMessage(c *gin.Context) {
 			response.Forbidden(c, "无权限发送消息")
 			return
 		}
-		if err == service.ErrAtAllForbidden {
-			response.Forbidden(c, "仅群主或管理员可 @所有人")
-			return
-		}
 		response.InternalServerError(c, "消息发送失败")
 		return
 	}

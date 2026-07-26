@@ -25,7 +25,6 @@ var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
-var ErrAtAllForbidden = errors.New("only owner or admin can @all")
 var ErrMuted = errors.New("you are muted in this conversation")
 
 type MessageService struct {
