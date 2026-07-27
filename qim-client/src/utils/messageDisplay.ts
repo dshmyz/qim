@@ -163,6 +163,11 @@ export const resolveMessageDisplay = (input: MessageDisplayInput): MessageDispla
     const title = getString(parsed, 'title') || getString(parsed, 'text') || '交互卡片'
     return display('card', `卡片：${title}`, `[卡片] ${title}`, title, '', parsed || undefined)
   }
+  if (type === 'card_action') {
+    const actionText = getString(parsed, 'action_text') || getString(parsed, 'action_id') || '操作'
+    const summary = `已选择：${actionText}`
+    return display('system', summary, summary, actionText, '', parsed || undefined)
+  }
   if (parsed) return display('unknown', '未知消息', '[未知消息]', '未知消息')
 
   const text = decodeToPlainText(content) || '无内容'

@@ -10,6 +10,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -91,6 +92,52 @@ func TestForwardCardAction_ForwardsWebhook(t *testing.T) {
 	assert.Equal(t, "card_action", p.MsgType)
 	assert.Equal(t, "Frank", p.UserNickname)
 	assert.True(t, cap.hasSignature(), "webhook 应携带 HMAC 签名")
+}
+
+// TestForwardCardAction_CreatesPullableActionMessage 验证点击卡片后：
+//  1. 会话内多了一条 type=card_action 的 Message（之前是黑洞，pull-mode agent 拉不到）。
+//  2. content 含从原卡片反查的 button text（用户端显示「✓ 已选择:xxx」）。
+//  3. ListBotMessages（pull）能拉到这条 card_action。
+func TestForwardCardAction_CreatesPullableActionMessage(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+	srv, _ := newCaptureServer(t)
+
+	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
+
+	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","value":"confirm"},{"id":"cancel","text":"取消","value":"cancel"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	require.NoError(t, err)
+
+	// 点击前：会话只有 1 条卡片消息
+	before, err := svc.ListBotMessages(bot, msg.ConversationID, 0, 100)
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+
+	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
+	require.NoError(t, err)
+
+	// 点击后：pull 流多了一条 card_action，agent 现在能拉到点击事件
+	after, err := svc.ListBotMessages(bot, msg.ConversationID, 0, 100)
+	require.NoError(t, err)
+	require.Len(t, after, 2, "点击后应多一条 card_action 消息")
+
+	var actionMsg *model.Message
+	for i := range after {
+		if after[i].Type == "card_action" {
+			actionMsg = &after[i]
+			break
+		}
+	}
+	require.NotNil(t, actionMsg, "应存在 card_action 消息")
+	assert.Equal(t, human.ID, actionMsg.SenderID, "sender 应为点击的人类用户")
+
+	// content 含反查的 button text，供用户端气泡显示
+	var content map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(actionMsg.Content), &content))
+	assert.Equal(t, "confirm", content["action_id"])
+	assert.Equal(t, "确认回滚", content["action_text"], "应从原卡片反查 button text")
+	assert.EqualValues(t, msg.ID, content["card_message_id"])
 }
 
 func TestForwardCardAction_RejectsNonCardMessage(t *testing.T) {

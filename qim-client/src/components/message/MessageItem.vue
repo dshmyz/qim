@@ -62,6 +62,12 @@
             :server-url="serverUrl"
           />
 
+          <!-- 卡片动作记录：用户点击 bot 卡片按钮后的「✓ 已选择:xxx」气泡 -->
+          <div v-else-if="message.type === 'card_action' && cardActionData" class="card-action-record">
+            <i class="fas fa-check"></i>
+            <span>已选择：{{ cardActionData.action_text || cardActionData.action_id }}</span>
+          </div>
+
           <!-- AI 消息 (使用 Markdown 渲染，与其他 Markdown 消息统一) -->
           <MarkdownMessage v-else-if="isAIMessage" :content="message.content" :is-self="isSelf" />
 
@@ -211,6 +217,17 @@ const isAIMessage = computed(() => {
 })
 
 const messageDisplay = computed(() => resolveMessageDisplay(props.message))
+
+// card_action：用户点击 bot 卡片按钮后落库的操作记录气泡，显示「✓ 已选择:xxx」。
+// content 为 JSON {action_id, action_text, value, card_message_id}。
+const cardActionData = computed(() => {
+  if (props.message.type !== 'card_action') return null
+  try {
+    return JSON.parse(props.message.content)
+  } catch {
+    return null
+  }
+})
 
 const quotedMessageSummary = computed(() => props.message.quotedMessage
   ? resolveMessageDisplay(props.message.quotedMessage).summary
@@ -796,5 +813,23 @@ const convertUrlsToLinks = (text: string): string => {
   border: 1px solid rgba(59, 130, 246, 0.14);
   border-left: 3px solid var(--primary-color, #3b82f6);
   box-shadow: none;
+}
+
+/* 卡片动作记录气泡：用户点击 bot 卡片按钮后留痕，轻量系统态样式 */
+.card-action-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-color-secondary, #6b7280);
+  background: var(--bg-color-page, #f5f5f5);
+  border-radius: 12px;
+  border: 1px solid var(--border-color-light, #e5e7eb);
+  max-width: 320px;
+}
+.card-action-record i {
+  color: var(--success-color, #10b981);
+  font-size: 12px;
 }
 </style>

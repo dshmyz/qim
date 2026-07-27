@@ -214,7 +214,12 @@ func validateCardContent(content string) error {
 
 // ForwardCardAction 处理用户对 bot 卡片按钮的点击：
 // 校验消息为卡片、归属 bot 会话、调用方为该会话人类成员、bot 启用外部 webhook，
-// 随后以 event="bot.card_action" 转发到 agent webhook。不创建聊天消息。
+// 然后做两件事：
+//  1. 在会话内建一条 type=card_action 的消息（用户端显示「✓ 已选择:xxx」气泡，
+//     同时让 pull-mode agent 经 GetBotMessages 能拉到点击事件）。
+//  2. 以 event="bot.card_action" 转发到 agent webhook（webhook-mode agent）。
+//
+// card_action 之前只走 webhook，pull-mode agent（CLI/MCP）是黑洞--两条路现在都通。
 func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID, value string) error {
 	var msg model.Message
 	if err := s.db.First(&msg, messageID).Error; err != nil {
@@ -274,6 +279,61 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 		logger.WithModule("BotMessaging").Error("卡片 action 幂等记录插入失败",
 			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
 		return errors.New("卡片动作处理失败")
+	}
+
+	// 从原卡片 content 反查所选按钮的 text，用于用户端气泡显示「✓ 已选择:xxx」。
+	actionText := actionID
+	var card cardPayload
+	if json.Unmarshal([]byte(msg.Content), &card) == nil {
+		for _, b := range card.Buttons {
+			if b.ID == actionID {
+				actionText = b.Text
+				break
+			}
+		}
+	}
+
+	// ① 在会话内建一条 card_action 消息：用户端显示气泡 + pull-mode agent 可拉到。
+	// sender=人类用户（点击动作由用户发起）。content 为 JSON，客户端按 type=card_action 渲染。
+	actionContent, _ := json.Marshal(map[string]interface{}{
+		"action_id":       actionID,
+		"action_text":     actionText,
+		"value":           value,
+		"card_message_id": msg.ID,
+	})
+	actionMsg := model.Message{
+		ConversationID: msg.ConversationID,
+		SenderID:       userID,
+		Type:           "card_action",
+		Content:        string(actionContent),
+		Origin:         "user",
+	}
+	if err := s.db.Create(&actionMsg).Error; err != nil {
+		logger.WithModule("BotMessaging").Error("卡片 action 消息创建失败",
+			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
+		// 不 return：消息气泡失败不阻断 webhook 转发，agent 仍能收事件
+	} else {
+		if err := s.db.Preload("Sender").First(&actionMsg, actionMsg.ID).Error; err != nil {
+			logger.WithModule("BotMessaging").Error("卡片 action 消息预加载失败", "error", err)
+		}
+		// 更新会话最后消息 + 未读（bot 虚拟用户未读 +1）
+		now := time.Now()
+		if bot.VirtualUserID != nil {
+			s.db.Model(&model.Conversation{}).Where("id = ?", msg.ConversationID).Updates(map[string]interface{}{
+				"last_message_id": actionMsg.ID,
+				"last_message_at": now,
+			})
+			s.db.Model(&model.ConversationMember{}).
+				Where("conversation_id = ? AND user_id = ?", msg.ConversationID, *bot.VirtualUserID).
+				UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
+		}
+		// 广播新消息气泡到会话（排除点击者，客户端已乐观渲染）
+		if s.hub != nil {
+			resp := buildBotMessageResponse(actionMsg)
+			wsMsg := ws.WSMessage{Type: "new_message", Data: resp}
+			jsonMsg, _ := json.Marshal(wsMsg)
+			s.hub.SendToConversation(msg.ConversationID, userID, jsonMsg)
+		}
 	}
 
 	payload := BotWebhookPayload{
