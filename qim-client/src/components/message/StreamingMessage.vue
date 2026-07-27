@@ -1,6 +1,6 @@
 <template>
   <div class="streaming-message" :class="{ 'self': isSelf }" @click="handleLinkClick">
-    <div class="message-content">
+    <div class="message-content" :class="{ 'is-thinking': !content && isStreaming }">
       <div ref="containerRef" v-html="renderedContent" class="markdown-content"></div>
       <div v-if="isStreaming" class="typing-indicator">
         <span class="typing-dot"></span>
@@ -174,9 +174,24 @@ useCodeHighlight(containerRef, renderedContent)
   gap: 3px;
 }
 
+/* 思考中态：content 空 + 仍在流。让「思考中」占位与 typing dots 同行排列，
+   而非各自独占一行（markdown-content 与 typing-indicator 默认是两个并列块）。
+   有内容后 is-thinking 不生效，typing-indicator 回到下方 margin-top。 */
+.message-content.is-thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.message-content.is-thinking .markdown-content {
+  min-height: 0;
+}
+.message-content.is-thinking .typing-indicator {
+  margin-top: 0;
+}
+
 /* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
    v-html 注入的内容不带 scoped 的 data-v 属性，须用 :deep() 穿透。
-   不用斜体（中文斜体观感差）、不用省略号（下方已有 typing dots 表示进行中），
+   不用斜体（中文斜体观感差）、不用省略号（右侧已有 typing dots 表示进行中），
    改用次级色 + 略小字号，与气泡正文协调。 */
 .streaming-message :deep(.thinking-placeholder) {
   color: color-mix(in srgb, var(--text-color), transparent 45%);
