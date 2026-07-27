@@ -19,7 +19,7 @@ import (
 // 无需迁移：Config 已是 text 列，未识别字段忽略。
 type BotConfig struct {
 	Mode          string `json:"mode"`            // "internal_ai"(默认, 既有行为) | "external_webhook"
-	WebhookURL    string `json:"webhook_url"`     // external_webhook 模式下的回调地址
+	WebhookURL    string `json:"webhook_url"`     // external_webhook 模式下的回调地址（空=纯 pull 模式，不投 webhook）
 	WebhookSecret string `json:"webhook_secret"`  // HMAC-SHA256 签名密钥，与 bot 访问令牌分离
 }
 
@@ -32,8 +32,17 @@ func ParseBotConfig(configJSON string) BotConfig {
 	return cfg
 }
 
-// IsExternalWebhook 是否走外部 agent webhook 路由。
+// IsExternalWebhook 是否为外部 agent bot（mode=external_webhook）。
+// 仅判身份，不判 webhook_url：url 空也是外部 bot，只是走纯 pull 模式（不投 webhook）。
+// 路由判断（用户回复转发、卡片交互允许）用此方法。
 func (c BotConfig) IsExternalWebhook() bool {
+	return c.Mode == "external_webhook"
+}
+
+// HasWebhook 是否配置了 webhook 回调地址（即需要经 outbox 投递 webhook）。
+// pull-mode agent（url 空）不投 webhook，靠 GET /bot/messages 拉消息；
+// webhook-mode agent（url 非空）既可 pull 也被 outbox 推。
+func (c BotConfig) HasWebhook() bool {
 	return c.Mode == "external_webhook" && c.WebhookURL != ""
 }
 

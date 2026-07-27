@@ -360,6 +360,13 @@ func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, w
 	}
 	payloadJSON, _ := json.Marshal(payload)
 
+	// 纯 pull 模式（webhook_url 空）：不投 webhook，用户消息已在会话内，agent 靠 GET /bot/messages 拉取。
+	if webhookURL == "" {
+		logger.WithModule("handleBotMessage").Info("外部 bot 未配 webhook_url，走纯 pull 模式（不投递）",
+			"botID", bot.ID, "convID", convID)
+		return
+	}
+
 	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.message", string(payloadJSON), webhookURL, webhookSecret)
 	if err != nil {
 		logger.WithModule("handleBotMessage").Error("webhook outbox 入队失败",

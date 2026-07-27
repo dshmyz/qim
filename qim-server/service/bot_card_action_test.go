@@ -140,6 +140,46 @@ func TestForwardCardAction_CreatesPullableActionMessage(t *testing.T) {
 	assert.EqualValues(t, msg.ID, content["card_message_id"])
 }
 
+// TestForwardCardAction_PullModeSkipsOutbox 验证纯 pull 模式（mode=external_webhook 但 webhook_url 空）：
+//  1. card_action Message 仍创建（agent 能拉到点击事件）。
+//  2. 不入 outbox（不产生死信垃圾）。
+//  3. ForwardCardAction 返回 nil（成功），而非 ErrCardActionPendingRetry。
+func TestForwardCardAction_PullModeSkipsOutbox(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+	_, cap := newCaptureServer(t) // 占位 webhook server，pull 模式不应被调用
+
+	// webhook_url 空 = 纯 pull 模式
+	bot, _, human := setupCardBot(t, db, "", "testsecret")
+
+	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","value":"confirm"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	require.NoError(t, err)
+
+	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
+	require.NoError(t, err, "pull 模式应直接成功，不报 pending-retry")
+
+	// webhook server 不应被调用
+	assert.False(t, cap.got, "纯 pull 模式不应投递 webhook")
+
+	// 不应产生 outbox 记录
+	var count int64
+	db.Model(&model.BotWebhookDelivery{}).Where("bot_id = ?", bot.ID).Count(&count)
+	assert.EqualValues(t, 0, count, "pull 模式不应入 outbox")
+
+	// card_action 消息仍存在且可拉取
+	after, err := svc.ListBotMessages(bot, msg.ConversationID, 0, 100)
+	require.NoError(t, err)
+	found := false
+	for _, m := range after {
+		if m.Type == "card_action" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "card_action 消息应已创建并可拉取")
+}
+
 func TestForwardCardAction_RejectsNonCardMessage(t *testing.T) {
 	db := setupBotMessagingTestDB(t)
 	svc := NewBotMessagingService(db, nil)

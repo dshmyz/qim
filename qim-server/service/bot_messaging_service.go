@@ -350,6 +350,14 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	}
 	payloadJSON, _ := json.Marshal(payload)
 
+	// 纯 pull 模式（webhook_url 空）：不投 webhook。card_action 消息已在会话内（①），
+	// pull-mode agent 靠 GET /bot/messages 拉到点击事件，无需 outbox 投递，也不产生死信。
+	if !cfg.HasWebhook() {
+		logger.WithModule("BotMessaging").Info("外部 bot 未配 webhook_url，card_action 走纯 pull 模式（不投递）",
+			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID)
+		return nil
+	}
+
 	// 经 outbox：先落表再立即 best-effort 投递一次。
 	// 鉴权/校验已在上面同步完成（返回 error 给前端）；此处只兜底"投递失败"。
 	// 投递失败不再阻塞用户（原返回 400），改为入重试队列，调用方据返回值提示"已受理将重试"。

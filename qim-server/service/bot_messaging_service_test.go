@@ -118,10 +118,16 @@ func TestSendOutbound_RejectsBotToBot(t *testing.T) {
 }
 
 func TestParseBotConfig_IsExternalWebhook(t *testing.T) {
+	// IsExternalWebhook 只判身份（mode）：url 空也是外部 bot，走纯 pull 模式。
 	assert.False(t, ParseBotConfig("").IsExternalWebhook())
 	assert.False(t, ParseBotConfig(`{"mode":"internal_ai"}`).IsExternalWebhook())
-	assert.False(t, ParseBotConfig(`{"mode":"external_webhook"}`).IsExternalWebhook()) // 缺 url
+	assert.True(t, ParseBotConfig(`{"mode":"external_webhook"}`).IsExternalWebhook())           // 缺 url = 纯 pull，仍是外部 bot
 	assert.True(t, ParseBotConfig(`{"mode":"external_webhook","webhook_url":"http://x"}`).IsExternalWebhook())
+
+	// HasWebhook 判是否需要投 webhook：url 空就不投（纯 pull），url 非空才投。
+	assert.False(t, ParseBotConfig(`{"mode":"external_webhook"}`).HasWebhook())
+	assert.True(t, ParseBotConfig(`{"mode":"external_webhook","webhook_url":"http://x"}`).HasWebhook())
+	assert.False(t, ParseBotConfig(`{"mode":"internal_ai"}`).HasWebhook())
 }
 
 func TestValidateCardContent(t *testing.T) {
