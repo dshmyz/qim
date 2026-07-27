@@ -130,6 +130,34 @@ func TestBotStreaming_HappyPath(t *testing.T) {
 	require.NotNil(t, conv.LastMessageAt)
 }
 
+// TestStreamChunk_RefreshesUpdatedAt 回归：StreamChunk 的 map Updates 必须刷新 updated_at。
+// 僵尸流式清理（CleanupStaleStreamingMessages）按 updated_at < now-10min 判定僵尸，
+// 若活跃流每段不刷 updated_at，活跃流超 10min 就被误杀收尾。此测试锁住该安全前提。
+func TestStreamChunk_RefreshesUpdatedAt(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	bot, user, _ := setupStreamingBot(t, db)
+	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil)
+	require.NoError(t, err)
+
+	var before model.Message
+	require.NoError(t, db.First(&before, msg.ID).Error)
+
+	// 等 >1s 超过任何亚秒精度，确保时间戳确有推进空间
+	time.Sleep(1100 * time.Millisecond)
+
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, "delta", false))
+
+	var after model.Message
+	require.NoError(t, db.First(&after, msg.ID).Error)
+	assert.True(t, after.UpdatedAt.After(before.UpdatedAt),
+		"StreamChunk 应刷新 updated_at，否则活跃流会被僵尸清理误杀。before=%s after=%s",
+		before.UpdatedAt.Format(time.RFC3339Nano), after.UpdatedAt.Format(time.RFC3339Nano))
+	assert.Equal(t, "delta", after.Content, "delta 应已累加")
+	assert.Equal(t, "streaming", after.Type, "未 finish 时保持 streaming")
+}
+
 // TestStreamChunk_RejectsNonStreaming 非流式消息拒绝分段追加。
 func TestStreamChunk_RejectsNonStreaming(t *testing.T) {
 	db := setupServiceTestDB(t)
