@@ -67,6 +67,7 @@ useCodeHighlight(containerRef, renderedContent)
 .streaming-message {
   padding: 10px 14px;
   border-radius: 12px;
+  font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -213,8 +214,7 @@ useCodeHighlight(containerRef, renderedContent)
 }
 .message-content.is-thinking .markdown-content {
   min-height: 0;
-  flex: 1 1 auto;
-  min-width: 0;
+  /* min-width: auto (flex 默认) 保护内容不被压缩，不用 min-width:0 */
 }
 .message-content.is-thinking .typing-indicator {
   margin-top: 0;
