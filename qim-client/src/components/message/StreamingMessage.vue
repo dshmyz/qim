@@ -200,17 +200,25 @@ useCodeHighlight(containerRef, renderedContent)
 
 /* 思考中态：content 空 + 仍在流。让「思考中」占位与 typing dots 同行排列，
    而非各自独占一行（markdown-content 与 typing-indicator 默认是两个并列块）。
-   有内容后 is-thinking 不生效，typing-indicator 回到下方 margin-top。 */
-.message-content.is-thinking {
+   有内容后 is-thinking 不生效，typing-indicator 回到下方 margin-top。
+   注意：MessageItem 的 scoped 规则 .message-content[data-v-xxx]{min-width:0}
+   特异性 (0,1,1,0) 高于普通 .message-content.is-thinking (0,0,2,0)，
+   会把 display:flex 等覆盖掉导致容器被压至极窄 → CJK 逐字竖排。
+   用 .message-content.message-content.is-thinking 双类名提权。 */
+.message-content.message-content.is-thinking {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: min-content;
 }
 .message-content.is-thinking .markdown-content {
   min-height: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .message-content.is-thinking .typing-indicator {
   margin-top: 0;
+  flex-shrink: 0;
 }
 
 /* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
