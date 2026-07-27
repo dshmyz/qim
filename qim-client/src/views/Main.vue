@@ -279,7 +279,7 @@
         <div v-else-if="selectedAppId === 'calendar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <CalendarApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" @openTaskApp="selectedAppId = 'task_manager'" />
+              <CalendarApp :focus-event-id="focusEventId" @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" @openTaskApp="selectedAppId = 'task_manager'" @consumed-focus="focusEventId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -1236,6 +1236,14 @@ const handleNotificationClick = (notification: any) => {
     loadMessages(conversationId)
   } else if (notification.category === 'group' && notification.data?.groupId) {
     activeOption.value = 'groups'
+  } else if (notification.type === 'event_reminder') {
+    // 日历提醒：打开日历应用并定位到该事件
+    const eventId = notification.actionPayload?.event_id || notification.data?.event_id
+    if (eventId !== undefined) {
+      focusEventId.value = eventId
+      selectedAppId.value = 'calendar'
+      activeOption.value = 'apps'
+    }
   }
 }
 
@@ -2401,6 +2409,9 @@ const currentUserApp = ref<any>(null)
 
 // 小程序面板状态
 const showMiniAppList = ref(false)
+
+// 从通知中心跳转日历时，要聚焦的事件 id（消费后清空，避免重复打开）
+const focusEventId = ref<number | string>('')
 
 // 笔记数据
 

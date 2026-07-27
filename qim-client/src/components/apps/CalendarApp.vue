@@ -99,10 +99,17 @@ import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import type { ContextMenuItem } from '../shared/context-menu-types'
 import { openMenu } from '../../composables/useUI'
 
+const props = defineProps<{
+  /** 从通知中心点击提醒跳转时传入：定位到该事件并打开编辑窗 */
+  focusEventId?: number | string
+}>()
+
 const emit = defineEmits<{
   back: []
   toggleSidebar: []
   openTaskApp: []
+  /** focusEventId 消费后通知父组件清空，避免下次手动进入日历误弹 */
+  consumedFocus: []
 }>()
 
 const taskStore = useTaskStore()
@@ -409,6 +416,18 @@ onMounted(async () => {
   setupAllReminders()
   if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission()
+  }
+
+  // 从通知中心跳转过来：定位到指定事件并打开编辑窗
+  if (props.focusEventId !== undefined && props.focusEventId !== '') {
+    const target = events.value.find(e => String(e.id) === String(props.focusEventId))
+    if (target) {
+      selectedDate.value = new Date(target.start)
+      showEditEventModal(target)
+    } else {
+      QMessage.warning('该事件已不存在')
+    }
+    emit('consumedFocus')
   }
 })
 

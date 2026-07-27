@@ -319,9 +319,14 @@ const markAsRead = async (notificationId: string) => {
     })
     const notification = notifications.value.find(n => n.id === notificationId)
     if (notification) notification.read = true
-  } catch (error) {
-    const notification = notifications.value.find(n => n.id === notificationId)
-    if (notification) notification.read = true
+  } catch (error: any) {
+    // 404 = 通知在库里已不存在（如服务端清理/过期）。前端列表也应移除，否则刷新后会"复活"
+    if (error?.response?.status === 404) {
+      notifications.value = notifications.value.filter(n => n.id !== notificationId)
+    } else {
+      const notification = notifications.value.find(n => n.id === notificationId)
+      if (notification) notification.read = true
+    }
   }
 }
 
