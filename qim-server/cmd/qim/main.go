@@ -153,14 +153,9 @@ func cmdMessages(args []string) {
 			os.Exit(2)
 		}
 		var afterID uint64
-		// 首次先拉全量建立水位线，之后只输出新增
-		first, err := fetchMessages(*thread, 0, 1)
-		if err != nil {
-			die("%v", err)
-		}
-		if len(first) > 0 {
-			afterID = first[0].ID
-		}
+		// 首次建立水位线：拉到最新消息的 id（分页向前推进），不输出任何历史。
+		// 之前用 limit=1 取首条（ASC 即最老），导致每次启动回放几乎全部历史。
+		afterID = latestMessageID(*thread)
 		for {
 			msgs, err := fetchMessages(*thread, afterID, 100)
 			if err != nil {
@@ -197,6 +192,30 @@ func fetchMessages(thread, afterID uint64, limit int) ([]message, error) {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 	return resp.Data.Messages, nil
+}
+
+// latestMessageID 分页拉到会话最新消息的 id，作为 poll 水位线（不输出历史）。
+// 列表接口按 id ASC 返回，故持续用上一批最大 id 作 after_id 向前推进，直到不足一页。
+func latestMessageID(thread uint64) uint64 {
+	var after, max uint64
+	for {
+		msgs, err := fetchMessages(thread, after, 100)
+		if err != nil {
+			return max
+		}
+		if len(msgs) == 0 {
+			return max
+		}
+		for _, m := range msgs {
+			if m.ID > max {
+				max = m.ID
+			}
+			after = m.ID
+		}
+		if len(msgs) < 100 {
+			return max
+		}
+	}
 }
 
 func emitMessages(msgs []message) {
