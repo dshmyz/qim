@@ -1440,6 +1440,40 @@ const fetchMissedMessages = async () => {
   } catch (error) {
     logger.error('[离线补偿] 拉取离线消息失败:', error)
   }
+
+  // 流式收尾补偿：断线期间流式消息可能已 finish（type: streaming->markdown），
+  // 但 finish 是 UPDATE 既有消息（同 id），after_id 只拉新消息拉不到 -> 本地卡 typing 气泡。
+  // 重新拉取本地仍 isStreaming 的消息的最新状态并 reconcile。
+  await reconcileStreamingMessages(currentConvId)
+}
+
+// reconcileStreamingMessages 对当前会话内本地仍 isStreaming 的消息，
+// 从服务端拉最新状态回填（type/content/isStreaming）。仅覆盖流式消息，不动其他。
+const reconcileStreamingMessages = async (convId: string) => {
+  const chatStore = useChatStore()
+  const msgs = chatStore.messages.get(convId) || []
+  const streamingIds = new Set(msgs.filter((m: Message) => m.isStreaming).map((m: Message) => m.id))
+  if (streamingIds.size === 0) return
+  try {
+    // page=1 返回最新一页（DESC），流式消息是近期的，必在其中
+    const response = await request(`/api/v1/conversations/${convId}/messages?page=1&page_size=50`)
+    if (response.code === 0 && response.data?.messages) {
+      for (const raw of response.data.messages) {
+        const id = raw.id != null ? String(raw.id) : ''
+        if (streamingIds.has(id)) {
+          // 仅回填流式收尾相关字段（type/content/isStreaming），避免整体替换引入类型不一致
+          chatStore.updateMessage(convId, id, {
+            type: raw.type || 'text',
+            content: raw.content || '',
+            isStreaming: raw.is_streaming || false,
+          })
+        }
+      }
+      logger.log(`[流式补偿] 会话 ${convId} reconcile ${streamingIds.size} 条流式消息`)
+    }
+  } catch (error) {
+    logger.error('[流式补偿] reconcile 失败:', error)
+  }
 }
 
 
