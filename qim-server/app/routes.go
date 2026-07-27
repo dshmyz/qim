@@ -718,6 +718,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				approvalHandler := service.NewApprovalHandler(di.GlobalContainer.ApprovalService)
 				approvalHandler.RegisterRoutes(admin)
 
+				// 外部 Bot 运维：外部 agent bot 列表 + webhook 投递监控/重投
+				admin.GET("/bots/external", handler.AdminGetExternalBots)
+				admin.GET("/webhook-deliveries", handler.AdminGetWebhookDeliveries)
+				admin.GET("/webhook-deliveries/:id", handler.AdminGetWebhookDelivery)
+				admin.POST("/webhook-deliveries/:id/redeliver", handler.AdminRedeliverWebhook)
+
 				// 监控相关 API
 				monitorHandler := handler.NewMonitorHandler()
 				alertHandler := handler.NewAlertHandler(GetDB())

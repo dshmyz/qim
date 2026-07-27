@@ -157,6 +157,36 @@ func DeliverOnce(db *gorm.DB, deliveryID uint) error {
 	return err
 }
 
+// Redeliver 手动重投：把 dead（或 pending 跳过退避等待）重置为 pending 后立即投递一次。
+// 供管理后台"手动重投"调用。dead 是终态，deliverOnce 不处理，须先重置：
+// 归零 attempts、清 next_retry_at/last_error，让 deliverOnce 从头跑。
+// 终态 done 不可重投（避免重复投递已成功消息）。
+func Redeliver(db *gorm.DB, deliveryID uint) error {
+	var d model.BotWebhookDelivery
+	if err := db.First(&d, deliveryID).Error; err != nil {
+		return err
+	}
+	if d.Status == "done" {
+		return errors.New("已投递成功的记录不可重投")
+	}
+	// 重置为 pending：dead/pending 均可。乐观条件防与调度器竞态。
+	if err := db.Model(&model.BotWebhookDelivery{}).Where("id = ?", d.ID).Updates(map[string]any{
+		"status":        "pending",
+		"attempts":      0,
+		"next_retry_at": nil,
+		"last_error":    "",
+	}).Error; err != nil {
+		return err
+	}
+	// 重新加载拿归零后的 attempts，再立即投一次
+	d = model.BotWebhookDelivery{}
+	if err := db.First(&d, deliveryID).Error; err != nil {
+		return err
+	}
+	_, err := deliverOnce(db, &d)
+	return err
+}
+
 func truncateErr(s string) string {
 	if len(s) > 500 {
 		return s[:500] + "..."
