@@ -66,6 +66,8 @@ export interface Message {
   }
   shareData?: any
   isStreaming?: boolean
+  // 卡片已点击的 action_id（服务端从 CardActionRecord 派生，跨设备一致）
+  cardActionId?: string
   originalData?: any
 }
 

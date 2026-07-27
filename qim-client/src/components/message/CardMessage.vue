@@ -43,6 +43,9 @@ const props = defineProps<{
   content: string
   messageId: string
   isSelf?: boolean
+  // 服务端从 CardActionRecord 派生的已点击 action_id（跨设备一致）。
+  // 空串表示服务端无记录：回退 localStorage（同设备刷新仍能恢复，跨设备则视为未点）。
+  actionTaken?: string
   serverUrl: string
 }>()
 
@@ -71,11 +74,15 @@ const writePersistedAction = (actionId: string) => {
 }
 
 // submitted：已成功提交，禁用全部按钮并高亮已选；submitting：当前请求中
-// 初始化时读 localStorage 恢复已选态（切走再进仍标记已处理）
+// 已点击态优先取服务端派生（跨设备一致），其次回退 localStorage（同设备恢复）。
+const serverAction = props.actionTaken || ''
+const persistedAction = readPersistedAction()
+const selectedId = ref<string>(serverAction || persistedAction)
 const submitted = ref(false)
 const submitting = ref(false)
-const selectedId = ref<string>(readPersistedAction())
 if (selectedId.value) submitted.value = true
+// 服务端有记录但 localStorage 没有时，补写本地缓存，保持两边一致
+if (serverAction && !persistedAction) writePersistedAction(serverAction)
 
 const card = computed<CardPayload>(() => {
   try {

@@ -57,6 +57,18 @@ func main() {
 	}); err != nil {
 		logger.L().Error("注册 bot webhook 重试 cron job 失败", "error", err)
 	}
+	// 僵尸流式消息清理：agent 崩溃/断网后 type=streaming 永久残留，收尾为 markdown。
+	// 10 分钟无更新视为已断（活跃流每段都刷 updated_at，不会误杀）。每 2 分钟扫一次 + 启动即扫。
+	if n, err := service.CleanupStaleStreamingMessages(db, 10*time.Minute); err != nil {
+		logger.L().Error("启动清理僵尸流式消息失败", "error", err)
+	} else if n > 0 {
+		logger.L().Info("启动清理僵尸流式消息", "count", n)
+	}
+	if err := sched.AddIntervalJob("streaming-cleanup", 2*time.Minute, func(ctx context.Context) {
+		service.CleanupStaleStreamingMessages(db, 10*time.Minute)
+	}); err != nil {
+		logger.L().Error("注册僵尸流式清理 cron job 失败", "error", err)
+	}
 	// 组织架构同步：从 DB 加载 OrgSyncConfig 并注册为 cron job
 	syncEngine := syncpkg.NewEngine()
 	syncpkg.SharedEngine = syncEngine

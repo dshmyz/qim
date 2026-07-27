@@ -501,6 +501,31 @@ func (s *BotMessagingService) pushMessageUpdated(msg model.Message, excludeUserI
 	s.hub.SendToConversation(msg.ConversationID, excludeUserID, jsonMsg)
 }
 
+// CleanupStaleStreamingMessages 把超时仍处 streaming 状态的消息收尾为 markdown。
+//
+// 背景：外部 agent（CLI/MCP）用 start_streaming_message 建一条 type=streaming 消息，
+// 仅在调 finish 时转 markdown。若 agent 崩溃/断网/漏调 finish，消息永久卡在 streaming，
+// 刷新后客户端渲染成无 typing 动画的空/半截气泡（REST 历史拉取 is_streaming=true 但无人再推分段）。
+//
+// 以 updated_at 判活：流式每段都更新 content（GORM 自动刷 updated_at），活跃流不会被误杀；
+// updated_at 早于 maxAge 的视为已断，转 markdown（保留已累积 content）。空 content 转后为空 markdown 气泡，
+// 罕见（agent 在首段前就崩），可接受。由 main.go 注册的 cron 每 2 分钟 + 启动时各扫一次。
+func CleanupStaleStreamingMessages(db *gorm.DB, maxAge time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-maxAge)
+	res := db.Model(&model.Message{}).
+		Where("type = ? AND updated_at < ?", "streaming", cutoff).
+		Updates(map[string]interface{}{"type": "markdown"})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	if res.RowsAffected > 0 {
+		logger.WithModule("BotMessaging").Info("清理僵尸流式消息",
+			"count", res.RowsAffected, "cutoff", cutoff.Format(time.RFC3339))
+	}
+	return res.RowsAffected, nil
+}
+
+
 
 // UpdateMessageContent 全量更新一条 bot 消息的 content（供 agent 回写卡片状态用）。
 // 归属校验：消息 Origin=="bot" 且 SenderID 为该 bot 虚拟用户；会话归属该 bot。

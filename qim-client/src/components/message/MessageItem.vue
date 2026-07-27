@@ -59,6 +59,7 @@
             :content="message.content"
             :message-id="String(message.id)"
             :is-self="isSelf"
+            :action-taken="message.cardActionId || ''"
             :server-url="serverUrl"
           />
 
