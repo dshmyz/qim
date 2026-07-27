@@ -1,8 +1,8 @@
 <template>
   <div class="streaming-message" :class="{ 'self': isSelf }" @click="handleLinkClick">
-    <div class="message-content" :class="{ 'is-thinking': !content && isStreaming }">
+    <div class="message-content">
       <div ref="containerRef" v-html="renderedContent" class="markdown-content"></div>
-      <div v-if="isStreaming" class="typing-indicator">
+      <div v-if="isStreaming && content" class="typing-indicator">
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
@@ -39,9 +39,11 @@ const handleLinkClick = (event: MouseEvent) => {
 
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
-  // AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」占位，首段到达后自然替换
+  // AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」+ dots 同行占位，首段到达后自然替换
   if (!props.content) {
-    return props.isStreaming ? '<span class="thinking-placeholder">思考中</span>' : ''
+    return props.isStreaming
+      ? '<span class="thinking-placeholder">思考中</span><span class="typing-indicator-inline"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>'
+      : ''
   }
   try {
     const result = marked(props.content)
@@ -199,27 +201,25 @@ useCodeHighlight(containerRef, renderedContent)
   gap: 3px;
 }
 
-/* 思考中态：content 空 + 仍在流。让「思考中」占位与 typing dots 同行排列，
-   而非各自独占一行（markdown-content 与 typing-indicator 默认是两个并列块）。
-   有内容后 is-thinking 不生效，typing-indicator 回到下方 margin-top。
-   注意：MessageItem 的 scoped 规则 .message-content[data-v-xxx]{min-width:0}
-   特异性 (0,1,1,0) 高于普通 .message-content.is-thinking (0,0,2,0)，
-   会把 display:flex 等覆盖掉导致容器被压至极窄 → CJK 逐字竖排。
-   用 .message-content.message-content.is-thinking 双类名提权。 */
-.message-content.message-content.is-thinking {
-  display: flex;
+/* 思考中 + dots 同行：全部通过 v-html 内联渲染，不依赖 flex 布局，
+   彻底避免父级 scoped min-width:0 压缩容器导致 CJK 竖排。 */
+.typing-indicator-inline {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-width: min-content;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: baseline;
 }
-.message-content.is-thinking .markdown-content {
-  min-height: 0;
-  /* min-width: auto (flex 默认) 保护内容不被压缩，不用 min-width:0 */
+.typing-indicator-inline .typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.5;
+  animation: typing 1.4s infinite ease-in-out both;
 }
-.message-content.is-thinking .typing-indicator {
-  margin-top: 0;
-  flex-shrink: 0;
-}
+.typing-indicator-inline .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator-inline .typing-dot:nth-child(2) { animation-delay: -0.16s; }
 
 /* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
    不用斜体（中文斜体观感差）、不用省略号（右侧已有 typing dots 表示进行中），
