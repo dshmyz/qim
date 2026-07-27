@@ -18,8 +18,8 @@ type IPRateLimiter struct {
 }
 
 type Visitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time // 当前固定窗口起点；窗口过期后重置
 }
 
 func NewIPRateLimiter(rate int, window time.Duration) *IPRateLimiter {
@@ -45,19 +45,26 @@ func (l *IPRateLimiter) Allow(ip string) bool {
 	defer l.mu.Unlock()
 
 	window := time.Duration(l.window.Load())
-
-	visitor, exists := l.visitors[ip]
+	rate := int(l.rate.Load())
 	now := time.Now()
 
-	if !exists || now.Sub(visitor.lastSeen) > window {
-		l.visitors[ip] = &Visitor{count: 1, lastSeen: now}
+	visitor, exists := l.visitors[ip]
+
+	// 新访客或上一窗口已过期：开新窗口，计数从 1 起。
+	if !exists || now.Sub(visitor.windowStart) > window {
+		l.visitors[ip] = &Visitor{count: 1, windowStart: now}
 		return true
 	}
 
-	visitor.count++
-	visitor.lastSeen = now
+	// 窗口内已达上限：拒绝，且不刷新 windowStart、不增计数。
+	// 否则持续流量会让窗口永不重置（死亡螺旋：拒绝也刷新 lastSeen -> 窗口永不过期 -> 永久黑名单）。
+	// 窗口从 windowStart 起算，到期后上面分支自然重置，无需流量停歇。
+	if visitor.count >= rate {
+		return false
+	}
 
-	return visitor.count <= int(l.rate.Load())
+	visitor.count++
+	return true
 }
 
 func (l *IPRateLimiter) cleanupVisitors() {
@@ -67,7 +74,7 @@ func (l *IPRateLimiter) cleanupVisitors() {
 		l.mu.Lock()
 		window := time.Duration(l.window.Load())
 		for ip, visitor := range l.visitors {
-			if time.Since(visitor.lastSeen) > window {
+			if time.Since(visitor.windowStart) > window {
 				delete(l.visitors, ip)
 			}
 		}

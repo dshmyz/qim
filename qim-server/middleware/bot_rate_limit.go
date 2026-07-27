@@ -19,8 +19,8 @@ type BotRateLimiter struct {
 }
 
 type botVisitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time // 当前固定窗口起点；窗口过期后重置
 }
 
 // NewBotRateLimiter rate=窗口内允许的请求数，window=窗口时长。
@@ -39,13 +39,18 @@ func (l *BotRateLimiter) Allow(botID uint) bool {
 	defer l.mu.Unlock()
 	now := time.Now()
 	v, exists := l.visitors[botID]
-	if !exists || now.Sub(v.lastSeen) > l.window {
-		l.visitors[botID] = &botVisitor{count: 1, lastSeen: now}
+	// 新 bot 或上一窗口已过期：开新窗口，计数从 1 起。
+	if !exists || now.Sub(v.windowStart) > l.window {
+		l.visitors[botID] = &botVisitor{count: 1, windowStart: now}
 		return true
 	}
+	// 窗口内已达上限：拒绝，不刷新 windowStart、不增计数，窗口到期自然重置。
+	// （若拒绝也刷新 lastSeen，持续轮询会让窗口永不重置 -> 死亡螺旋永久黑名单。）
+	if v.count >= l.rate {
+		return false
+	}
 	v.count++
-	v.lastSeen = now
-	return v.count <= l.rate
+	return true
 }
 
 func (l *BotRateLimiter) cleanup() {
@@ -53,7 +58,7 @@ func (l *BotRateLimiter) cleanup() {
 		time.Sleep(time.Minute)
 		l.mu.Lock()
 		for id, v := range l.visitors {
-			if time.Since(v.lastSeen) > l.window {
+			if time.Since(v.windowStart) > l.window {
 				delete(l.visitors, id)
 			}
 		}

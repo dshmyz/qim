@@ -340,7 +340,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 		// Bot API：外部 agent 出站消息（Bot 令牌鉴权，非 JWT）
 		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
-		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(60, time.Minute)))
+		// 600/min：agent 典型 1~3s 轮询 + 流式分段（stream-stdin 每行一次 POST），60/min 会被打满。
+		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(600, time.Minute)))
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
 		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
