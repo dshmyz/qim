@@ -70,7 +70,8 @@
           </div>
 
           <!-- AI 消息 (使用 Markdown 渲染，与其他 Markdown 消息统一) -->
-          <MarkdownMessage v-else-if="isAIMessage" :content="message.content" :is-self="isSelf" />
+          <!-- type=streaming 的 AI 消息留给下方 StreamingMessage（typing 动画 + 思考中占位），故排除 -->
+          <MarkdownMessage v-else-if="isAIMessage && message.type !== 'streaming'" :content="message.content" :is-self="isSelf" />
 
           <!-- 图片消息 -->
           <ImageMessage

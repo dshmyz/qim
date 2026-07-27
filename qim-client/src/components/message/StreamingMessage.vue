@@ -39,8 +39,9 @@ const handleLinkClick = (event: MouseEvent) => {
 
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
+  // AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」占位，首段到达后自然替换
   if (!props.content) {
-    return ''
+    return props.isStreaming ? '<span class="thinking-placeholder">思考中...</span>' : ''
   }
   try {
     const result = marked(props.content)
@@ -171,6 +172,13 @@ useCodeHighlight(containerRef, renderedContent)
   align-items: center;
   margin-top: 5px;
   gap: 3px;
+}
+
+/* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
+   v-html 注入的内容不带 scoped 的 data-v 属性，须用 :deep() 穿透。 */
+.streaming-message :deep(.thinking-placeholder) {
+  opacity: 0.55;
+  font-style: italic;
 }
 
 .typing-dot {
