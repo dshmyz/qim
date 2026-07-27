@@ -58,7 +58,12 @@ const containerRef = ref<HTMLElement | null>(null)
 useCodeHighlight(containerRef, renderedContent)
 </script>
 
-<style scoped>
+<style>
+/* 非 scoped：v-html 注入的 markdown 元素（h1/pre/code…）不带 scoped 的 data-v 属性，
+   scoped 下这些选择器匹配不上 -> 标题等回退到浏览器默认（h1=2em=28px），流式中文字
+   异常偏大，收尾切到 MarkdownMessage 才正常。改非 scoped 与 MarkdownMessage 对齐，
+   让 .markdown-content 下的 markdown 元素样式真正生效。
+   注：MarkdownMessage 同为非 scoped 且工作正常，两组件渲染同一份 markdown。 */
 .streaming-message {
   padding: 10px 14px;
   border-radius: 12px;
@@ -96,24 +101,24 @@ useCodeHighlight(containerRef, renderedContent)
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
-  margin: 10px 0 5px 0;
-  font-weight: 600;
+  margin: 8px 0 4px 0;
+  font-weight: 700;
+  color: var(--text-color);
 }
 
-.markdown-content h1 {
-  font-size: 18px;
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child {
+  margin-top: 0;
 }
 
-.markdown-content h2 {
-  font-size: 16px;
-}
-
-.markdown-content h3 {
-  font-size: 14px;
-}
+.markdown-content h1 { font-size: 1.4em; }
+.markdown-content h2 { font-size: 1.2em; }
+.markdown-content h3 { font-size: 1.05em; }
 
 .markdown-content strong {
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text-color);
 }
 
 .markdown-content em {
@@ -121,25 +126,32 @@ useCodeHighlight(containerRef, renderedContent)
 }
 
 .markdown-content pre {
-  background: rgba(0, 0, 0, 0.1);
-  padding: 8px;
-  border-radius: 4px;
+  background: var(--hover-color);
+  padding: 8px 10px;
+  border-radius: 6px;
   overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-color);
   margin: 8px 0;
 }
 
 .markdown-content code {
-  background: rgba(0, 0, 0, 0.1);
-  padding: 2px 4px;
+  background: var(--hover-color);
+  padding: 2px 5px;
   border-radius: 3px;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9em;
+  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.88em;
+  color: var(--primary-color);
 }
 
 .markdown-content pre code {
   background: transparent;
   padding: 0;
   border-radius: 0;
+  color: var(--text-color);
+  font-size: 13px;
 }
 
 .markdown-content a {
@@ -155,16 +167,28 @@ useCodeHighlight(containerRef, renderedContent)
 
 .markdown-content ul,
 .markdown-content ol {
-  margin: 8px 0;
+  margin: 6px 0;
   padding-left: 20px;
 }
 
 .markdown-content li {
-  margin: 4px 0;
+  margin: 2px 0;
+  line-height: 1.6;
+  color: var(--text-color);
 }
 
 .markdown-content p {
-  margin: 6px 0;
+  margin: 4px 0;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
 }
 
 .typing-indicator {
@@ -190,10 +214,9 @@ useCodeHighlight(containerRef, renderedContent)
 }
 
 /* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
-   v-html 注入的内容不带 scoped 的 data-v 属性，须用 :deep() 穿透。
    不用斜体（中文斜体观感差）、不用省略号（右侧已有 typing dots 表示进行中），
    改用次级色 + 略小字号，与气泡正文协调。 */
-.streaming-message :deep(.thinking-placeholder) {
+.streaming-message .thinking-placeholder {
   color: color-mix(in srgb, var(--text-color), transparent 45%);
   font-size: 0.92em;
   letter-spacing: 0.5px;
