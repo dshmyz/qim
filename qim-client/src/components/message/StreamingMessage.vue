@@ -41,7 +41,7 @@ const handleLinkClick = (event: MouseEvent) => {
 const renderedContent = computed(() => {
   // AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」占位，首段到达后自然替换
   if (!props.content) {
-    return props.isStreaming ? '<span class="thinking-placeholder">思考中...</span>' : ''
+    return props.isStreaming ? '<span class="thinking-placeholder">思考中</span>' : ''
   }
   try {
     const result = marked(props.content)
@@ -175,10 +175,13 @@ useCodeHighlight(containerRef, renderedContent)
 }
 
 /* AI 尚未吐第一个字时的「思考中」占位，弱化呈现，首段到达后由正文替换。
-   v-html 注入的内容不带 scoped 的 data-v 属性，须用 :deep() 穿透。 */
+   v-html 注入的内容不带 scoped 的 data-v 属性，须用 :deep() 穿透。
+   不用斜体（中文斜体观感差）、不用省略号（下方已有 typing dots 表示进行中），
+   改用次级色 + 略小字号，与气泡正文协调。 */
 .streaming-message :deep(.thinking-placeholder) {
-  opacity: 0.55;
-  font-style: italic;
+  color: color-mix(in srgb, var(--text-color), transparent 45%);
+  font-size: 0.92em;
+  letter-spacing: 0.5px;
 }
 
 .typing-dot {
