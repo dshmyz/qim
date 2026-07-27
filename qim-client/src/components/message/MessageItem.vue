@@ -144,7 +144,7 @@
 
         <div class="message-meta">
           <span class="message-meta-badge">
-            <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant'" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
+            <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant' && !message.isStreaming" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
             <AvatarReplyBadge v-if="message.origin === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
           </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
