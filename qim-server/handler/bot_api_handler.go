@@ -222,6 +222,14 @@ func (h *BotAPIHandler) SubmitCardAction(c *gin.Context) {
 	}
 
 	if err := h.botMessaging.ForwardCardAction(uint(messageID), userID, req.ActionID, req.Value); err != nil {
+		// 幂等命中：该用户已处理过此卡片，不重复触发 webhook，返回 200"已处理"
+		if errors.Is(err, service.ErrCardActionAlreadyHandled) {
+			if svc := di.GlobalContainer.OperationLogService; svc != nil {
+				svc.LogUserOperation(c, "bot", "card_action_already_handled")
+			}
+			response.SuccessWithMessage(c, "该卡片已处理", gin.H{"already_handled": true})
+			return
+		}
 		// 已入重试队列：不阻塞用户，返回"已受理将重试"（HTTP 200）
 		if errors.Is(err, service.ErrCardActionPendingRetry) {
 			if svc := di.GlobalContainer.OperationLogService; svc != nil {

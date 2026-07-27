@@ -18,7 +18,7 @@ func setupBotMessagingTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Conversation{}, &model.ConversationMember{},
 		&model.Message{}, &model.Bot{}, &model.BotConversation{},
-		&model.BotWebhookDelivery{},
+		&model.BotWebhookDelivery{}, &model.CardActionRecord{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}

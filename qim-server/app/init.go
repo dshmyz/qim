@@ -396,6 +396,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.BotConversation{},       // 依赖 Bot, User, Conversation
 		&model.BotToken{},              // 依赖 Bot，外部 agent 访问令牌
 		&model.BotWebhookDelivery{},    // 依赖 Bot，webhook outbox 重试/死信
+		&model.CardActionRecord{},      // 卡片点击幂等，依赖 Bot/Message/User
 		&model.SystemMessage{},         // 依赖 User
 		&model.App{},                   // 依赖 User
 		&model.Notification{},          // 依赖 User

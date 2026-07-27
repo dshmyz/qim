@@ -192,3 +192,65 @@ func TestForwardCardAction_WebhookFailEnqueuesRetry(t *testing.T) {
 	assert.NotNil(t, delivery.NextRetryAt, "失败后应安排下次重试时间")
 	assert.NotEmpty(t, delivery.LastError, "应记录失败原因")
 }
+
+// TestForwardCardAction_IdempotentSecondCall 验证：同一卡片+同一用户第二次点击被幂等拦截，
+// 返回 ErrCardActionAlreadyHandled 且不重复触发 webhook。
+func TestForwardCardAction_IdempotentSecondCall(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+	srv, cap := newCaptureServer(t)
+
+	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
+
+	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	assert.NoError(t, err)
+
+	// 第一次：成功转发
+	assert.NoError(t, svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm"))
+	assert.True(t, cap.got)
+
+	// 第二次：幂等命中，不重复触发
+	cap.got = false
+	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
+	assert.ErrorIs(t, err, ErrCardActionAlreadyHandled)
+	assert.False(t, cap.got, "幂等命中不应再次触发 webhook")
+
+	// 幂等记录已落表
+	var rec model.CardActionRecord
+	assert.NoError(t, db.Where("message_id = ? AND user_id = ?", msg.ID, human.ID).First(&rec).Error)
+	assert.Equal(t, "confirm", rec.ActionID)
+}
+
+// TestForwardCardAction_UpdateMessageReleasesLock 验证：agent 改写卡片（UpdateMessageContent）
+// 会删除幂等记录，释放锁定，允许用户再次点击。
+func TestForwardCardAction_UpdateMessageReleasesLock(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+	srv, cap := newCaptureServer(t)
+
+	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
+
+	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	assert.NoError(t, err)
+
+	// 第一次点击锁定
+	assert.NoError(t, svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm"))
+	assert.ErrorIs(t, svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm"), ErrCardActionAlreadyHandled)
+
+	// agent 改写卡片（新按钮），应解除锁定
+	newCard := `{"buttons":[{"id":"done","text":"完成"}]}`
+	assert.NoError(t, svc.UpdateMessageContent(bot, msg.ID, newCard, "card"))
+
+	// 改写后可再次点击（新 action），并落新记录
+	cap.got = false
+	assert.NoError(t, svc.ForwardCardAction(msg.ID, human.ID, "done", "done"))
+	assert.True(t, cap.got, "卡片改写后应允许新一轮点击")
+	assert.ErrorIs(t, svc.ForwardCardAction(msg.ID, human.ID, "done", "done"), ErrCardActionAlreadyHandled)
+
+	// 仅留一条记录（改写删除旧的，新点击写新的）
+	var count int64
+	db.Model(&model.CardActionRecord{}).Where("message_id = ?", msg.ID).Count(&count)
+	assert.Equal(t, int64(1), count)
+}

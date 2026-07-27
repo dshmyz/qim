@@ -25,6 +25,10 @@ type BotMessagingService struct {
 // 调用方据此返回"已受理将重试"而非 400，避免因 agent 暂时不可用阻塞用户。
 var ErrCardActionPendingRetry = errors.New("卡片动作已受理，正在重试投递")
 
+// ErrCardActionAlreadyHandled 该卡片已被该用户处理过（幂等拦截，防重复触发 webhook）。
+// 调用方应返回 200 + "已处理"，而非 4xx，因为这是正常幂等响应而非错误。
+var ErrCardActionAlreadyHandled = errors.New("该卡片已处理")
+
 func NewBotMessagingService(db *gorm.DB, hub *ws.Hub) *BotMessagingService {
 	return &BotMessagingService{db: db, hub: hub}
 }
@@ -246,6 +250,32 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 		return errors.New("用户不存在")
 	}
 
+	// 幂等：同一卡片(message_id)+同一用户(user_id)只处理一次。
+	// agent 调用 UpdateMessageContent 改写卡片时会删除该记录，从而允许新一轮点击。
+	var existing model.CardActionRecord
+	if err := s.db.Where("message_id = ? AND user_id = ?", msg.ID, userID).First(&existing).Error; err == nil {
+		return ErrCardActionAlreadyHandled
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.WithModule("BotMessaging").Error("卡片 action 幂等查询失败",
+			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
+		return errors.New("卡片动作处理失败")
+	}
+	// 插入；并发下另一请求可能抢先插入 -> 唯一索引冲突，复查确认后视为已处理
+	if err := s.db.Create(&model.CardActionRecord{
+		MessageID: msg.ID,
+		UserID:    userID,
+		ActionID:  actionID,
+		BotID:     bot.ID,
+	}).Error; err != nil {
+		var race model.CardActionRecord
+		if err := s.db.Where("message_id = ? AND user_id = ?", msg.ID, userID).First(&race).Error; err == nil {
+			return ErrCardActionAlreadyHandled
+		}
+		logger.WithModule("BotMessaging").Error("卡片 action 幂等记录插入失败",
+			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
+		return errors.New("卡片动作处理失败")
+	}
+
 	payload := BotWebhookPayload{
 		Event:        "bot.card_action",
 		BotID:        bot.ID,
@@ -265,6 +295,8 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	// 投递失败不再阻塞用户（原返回 400），改为入重试队列，调用方据返回值提示"已受理将重试"。
 	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.card_action", string(payloadJSON), cfg.WebhookURL, cfg.WebhookSecret)
 	if err != nil {
+		// 入队失败须回滚幂等记录，否则会锁死该用户后续重试（点击永远返回"已处理"）
+		s.db.Where("message_id = ? AND user_id = ?", msg.ID, userID).Delete(&model.CardActionRecord{})
 		logger.WithModule("BotMessaging").Error("卡片 action outbox 入队失败",
 			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
 		return errors.New("转发卡片动作失败")
@@ -447,6 +479,15 @@ func (s *BotMessagingService) UpdateMessageContent(bot *model.Bot, messageID uin
 	if err := s.db.Model(&model.Message{}).Where("id = ?", messageID).
 		Updates(map[string]interface{}{"content": content, "type": finalType}).Error; err != nil {
 		return err
+	}
+
+	// 卡片改写即"新一轮"：删除该消息的点击幂等记录，释放锁定，允许用户再次点击。
+	// agent 改写通常代表新状态/新按钮，旧 action 不应再阻塞交互。
+	if err := s.db.Where("message_id = ?", messageID).
+		Delete(&model.CardActionRecord{}).Error; err != nil {
+		logger.WithModule("BotMessaging").Warn("删除卡片 action 幂等记录失败",
+			"messageID", messageID, "error", err)
+		// 非致命：仅影响新一轮点击的幂等，不阻塞改写本身
 	}
 
 	// 重新读出最新消息用于推送

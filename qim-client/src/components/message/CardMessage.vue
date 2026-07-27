@@ -48,10 +48,34 @@ const props = defineProps<{
 
 const { submitCardAction } = useBotCardAction(props.serverUrl)
 
+// 卡片点击持久化（localStorage）：按 messageId 记录已选 actionId，
+// 防止组件重建/切走再进后重复点击。仅本设备生效；agent 回写新 content 时清除。
+const CARD_ACTION_STORAGE_KEY = 'qim:card_actions'
+const storageKey = () => `${CARD_ACTION_STORAGE_KEY}:${props.messageId}`
+
+const readPersistedAction = (): string => {
+  try {
+    const v = localStorage.getItem(storageKey())
+    return v || ''
+  } catch {
+    return ''
+  }
+}
+const writePersistedAction = (actionId: string) => {
+  try {
+    if (actionId) localStorage.setItem(storageKey(), actionId)
+    else localStorage.removeItem(storageKey())
+  } catch {
+    /* 忽略隐私模式/配额，不影响交互主流程 */
+  }
+}
+
 // submitted：已成功提交，禁用全部按钮并高亮已选；submitting：当前请求中
+// 初始化时读 localStorage 恢复已选态（切走再进仍标记已处理）
 const submitted = ref(false)
 const submitting = ref(false)
-const selectedId = ref<string>('')
+const selectedId = ref<string>(readPersistedAction())
+if (selectedId.value) submitted.value = true
 
 const card = computed<CardPayload>(() => {
   try {
@@ -66,22 +90,25 @@ const handleClick = async (btn: CardButton) => {
   if (submitted.value || submitting.value) return
   submitting.value = true
   selectedId.value = btn.id
-  const ok = await submitCardAction(props.messageId, btn.id, btn.value)
+  const result = await submitCardAction(props.messageId, btn.id, btn.value)
   submitting.value = false
-  if (ok) {
+  if (result.ok) {
+    // 成功（含幂等命中）：标记已处理，禁用按钮。后端幂等保证不会重复触发 webhook。
     submitted.value = true
+    writePersistedAction(btn.id)
   } else {
     // 失败重置，允许用户重试
     selectedId.value = ''
   }
 }
 
-// agent 回写更新卡片 content 时，重置交互态，让新按钮恢复可点
+// agent 回写更新卡片 content 时，重置交互态并清除旧持久标记，让新按钮恢复可点
 // （卡片不走流式，content 变化只来自 agent 显式更新，安全）
 watch(() => props.content, () => {
   submitted.value = false
   submitting.value = false
   selectedId.value = ''
+  writePersistedAction('')
 })
 </script>
 

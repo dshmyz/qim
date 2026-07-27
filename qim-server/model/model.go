@@ -351,6 +351,17 @@ type BotConversation struct {
 	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
 
+// CardActionRecord 卡片点击幂等记录：同一用户对同一卡片提交一次按钮即锁定，
+// 防止重复触发 webhook / agent 逻辑。agent 回写新卡片 content 时清除（重新可点）。
+type CardActionRecord struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	MessageID uint      `json:"message_id" gorm:"not null;uniqueIndex:idx_card_action_unique"`
+	UserID    uint      `json:"user_id" gorm:"not null;uniqueIndex:idx_card_action_unique"`
+	ActionID  string    `json:"action_id" gorm:"size:64;not null"`
+	BotID     uint      `json:"bot_id" gorm:"not null;index"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // 日历事件
 type Event struct {
 	ID           uint           `json:"id" gorm:"primarykey"`
