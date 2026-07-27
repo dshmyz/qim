@@ -73,6 +73,7 @@ useCodeHighlight(containerRef, renderedContent)
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  width: 100%;
   max-width: 80%;
   position: relative;
 }
