@@ -37,6 +37,25 @@ const handleLinkClick = (event: MouseEvent) => {
   }
 }
 
+// 流式过程中 markdown 不完整（代码块/行内代码未闭合），marked 解析结果
+// 与最终全文不一致。预处理：自动闭合未关闭的代码块和行内反引号。
+// 段落分隔不在此处理——GFM 模式下 marked 自身会正确处理换行。
+function normalizePartialMarkdown(md: string): string {
+  // 闭合未关闭的 ``` 代码块
+  const fenceCount = (md.match(/^```/gm) || []).length
+  if (fenceCount % 2 !== 0) {
+    md += '\n```'
+  }
+
+  // 闭合未关闭的行内 ` 反引号
+  const backtickSegments = md.split('`')
+  if (backtickSegments.length % 2 === 0) {
+    md += '`'
+  }
+
+  return md
+}
+
 // 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
 const renderedContent = computed(() => {
   // AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」+ dots 同行占位，首段到达后自然替换
@@ -46,7 +65,8 @@ const renderedContent = computed(() => {
       : ''
   }
   try {
-    const result = marked(props.content)
+    const md = props.isStreaming ? normalizePartialMarkdown(props.content) : props.content
+    const result = marked(md)
     const html = typeof result === 'string' ? result : String(result)
     // 使用 DOMPurify 进行消毒，防止 XSS 攻击，再把表情字符/经典标记替换为 <img>
     return classicToHtml(emojiToHtml(sanitizeMarkdown(html)))
