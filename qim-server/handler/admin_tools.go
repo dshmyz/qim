@@ -566,11 +566,11 @@ func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerCo
 	}
 	task := model.Task{UserID: assigneeID, Title: title, Status: "todo", ConversationID: convID}
 	if dueStr, _ := params["due_date"].(string); dueStr != "" {
-		if due, err := time.Parse("2006-01-02", dueStr); err == nil {
+		if due, err := time.ParseInLocation("2006-01-02", dueStr, time.Local); err == nil {
 			task.DueDate = &due
 		}
 	}
-	if remindMin, ok := params["remind_minutes"].(float64); ok && remindMin > 0 {
+	if remindMin, ok := params["remind_minutes"].(float64); ok && remindMin > 0 && task.DueDate != nil {
 		task.Reminder = int(remindMin)
 	}
 	if err := db.Create(&task).Error; err != nil {

@@ -118,17 +118,20 @@ func (s *TaskService) ProcessTaskReminders() {
 
 	var tasks []model.Task
 	if err := s.db.Where(
-		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL",
-		false,
+		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ?",
+		false, "done",
 	).Find(&tasks).Error; err != nil {
 		return
 	}
 
 	for _, task := range tasks {
-		reminderTime := task.DueDate.Add(-time.Duration(task.Reminder) * time.Minute)
+		// 统一转本地时间比较，避免 UTC/本地时间偏差
+		dueLocal := task.DueDate.Local()
+		reminderTime := dueLocal.Add(-time.Duration(task.Reminder) * time.Minute)
 		if now.After(reminderTime) || now.Equal(reminderTime) {
-			s.sendTaskReminder(&task)
+			// 先标记再发送，防止调度器重复触发
 			s.db.Model(&task).Update("reminder_sent", true)
+			s.sendTaskReminder(&task)
 		}
 	}
 }
