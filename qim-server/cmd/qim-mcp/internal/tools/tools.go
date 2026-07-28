@@ -35,7 +35,7 @@ func Register(s *mcp.Server, a *Adapter) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "send_message",
-		Description: "向指定用户发送一条消息（thread_id 省略时自动建/复用会话）。msg_type 可选 text|markdown|card（默认 text）；card 时 content 为按钮卡片 JSON。返回 {message_id, conversation_id}。后续 list/poll 用 conversation_id 作 thread_id。",
+		Description: "向指定用户发送一条消息（thread_id 省略时自动建/复用会话）。msg_type 可选 text|markdown|card（默认 text）；card 时 content 为按钮卡片 JSON。返回 {message_id, conversation_id}。后续 list/poll 用 conversation_id 作 thread_id。\n\n何时用 card：当需要用户在几个明确选项中做决策（确认/取消、批准/拒绝、选择方案）时，优先用 card 而非让用户用文字回复。card 的 content 形如 {\"title\":\"标题\",\"text\":\"说明\",\"buttons\":[{\"id\":\"confirm\",\"text\":\"确认\"},{\"id\":\"cancel\",\"text\":\"取消\"}]}，每个 button 需 id 和 text，可选 style(value=\"primary\")。用户点击后你会通过 poll/list 收到 type=card_action 的消息，含 action_id 字段标识点了哪个按钮。",
 	}, a.sendMessage)
 
 	mcp.AddTool(s, &mcp.Tool{
