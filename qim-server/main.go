@@ -51,6 +51,12 @@ func main() {
 	}); err != nil {
 		logger.L().Error("注册事件提醒 cron job 失败", "error", err)
 	}
+	// 待办提醒：每 30 秒扫描需要提醒的待办任务
+	if err := sched.AddIntervalJob("task-reminder", 30*time.Second, func(ctx context.Context) {
+		di.GlobalContainer.TaskService.ProcessTaskReminders()
+	}); err != nil {
+		logger.L().Error("注册待办提醒 cron job 失败", "error", err)
+	}
 	// Bot webhook 重试：每 15 秒扫描 outbox 待投递记录，指数退避重试，超阈值死信
 	if err := sched.AddIntervalJob("bot-webhook-retry", 15*time.Second, func(ctx context.Context) {
 		service.ProcessPendingDeliveries(db)

@@ -538,6 +538,7 @@ func (t *CreateTaskTool) Parameters() map[string]interface{} {
 			"title":                map[string]interface{}{"type": "string", "description": "待办标题"},
 			"assignee_identifier":  map[string]interface{}{"type": "string", "description": "指派给谁：用户名/昵称/用户ID，可选"},
 			"due_date":             map[string]interface{}{"type": "string", "description": "截止日期，可选，格式 2026-07-22"},
+			"remind_minutes":       map[string]interface{}{"type": "integer", "description": "提前提醒分钟数，可选，如 30 表示到期前30分钟提醒"},
 		},
 		"required": []string{"group_identifier", "title"},
 	}
@@ -563,15 +564,38 @@ func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerCo
 			assigneeID = u.ID
 		}
 	}
-	task := model.Task{UserID: assigneeID, Title: title, Status: "todo"}
+	task := model.Task{UserID: assigneeID, Title: title, Status: "todo", ConversationID: convID}
 	if dueStr, _ := params["due_date"].(string); dueStr != "" {
 		if due, err := time.Parse("2006-01-02", dueStr); err == nil {
 			task.DueDate = &due
 		}
 	}
+	if remindMin, ok := params["remind_minutes"].(float64); ok && remindMin > 0 {
+		task.Reminder = int(remindMin)
+	}
 	if err := db.Create(&task).Error; err != nil {
 		return nil, err
 	}
+
+	// 通知被指派人
+	if assigneeID != ctx.UserID {
+		notification := model.Notification{
+			UserID:        assigneeID,
+			Type:          "todo_assigned",
+			Title:         "新的待办事项",
+			Content:       title,
+			Read:          false,
+			Priority:      "important",
+			ActionType:    "confirm_reschedule",
+			ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
+		}
+		db.Create(&notification)
+		if ws.GlobalHub != nil {
+			notifMsg, _ := json.Marshal(ws.WSMessage{Type: "new_notification", Data: notification})
+			ws.GlobalHub.SendToUser(assigneeID, notifMsg)
+		}
+	}
+
 	return map[string]interface{}{
 		"result":  "success",
 		"action":  "create_task",
