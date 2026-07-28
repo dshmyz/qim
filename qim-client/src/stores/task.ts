@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { Task, TaskFilters, TaskView, TaskStatus, TaskUser } from '../types/task'
 import { fetchTasks, createTask as apiCreateTask, updateTask as apiUpdateTask, deleteTask as apiDeleteTask, updateTaskStatus as apiUpdateStatus, reorderTask as apiReorderTask } from '../api/task'
 import type { CreateTaskData, UpdateTaskData } from '../types/task'
+import { getCurrentUser } from '../utils/user'
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([])
@@ -16,6 +17,8 @@ export const useTaskStore = defineStore('task', () => {
     due_date_range: null
   })
   const selectedTaskId = ref<string | null>(null)
+  // 跨应用：日历右键"新建任务"时预填的截止日期
+  const pendingCreateOnDate = ref<string | null>(null)
   const loading = ref(false)
 
   function enrichTask(task: Task): Task {
@@ -78,9 +81,10 @@ export const useTaskStore = defineStore('task', () => {
     return map
   })
 
-  const myTasks = computed(() =>
-    filteredTasks.value.filter(t => t.assignee?.id === 'me')
-  )
+  const myTasks = computed(() => {
+    const uid = String(getCurrentUser()?.id ?? '')
+    return filteredTasks.value.filter(t => String(t.assignee?.id ?? '') === uid && uid !== '')
+  })
 
   const selectedTask = computed(() =>
     tasks.value.find(t => t.id === selectedTaskId.value) || null
@@ -197,6 +201,7 @@ export const useTaskStore = defineStore('task', () => {
     filters,
     selectedTaskId,
     loading,
+    pendingCreateOnDate,
     filteredTasks,
     todoTasks,
     inProgressTasks,

@@ -8,7 +8,7 @@
     </div>
 
     <div v-if="events.length === 0" class="event-empty">
-      <div class="empty-icon">📅</div>
+      <div class="empty-icon"><i class="fas fa-calendar"></i></div>
       <div class="empty-text">没有事件</div>
     </div>
 

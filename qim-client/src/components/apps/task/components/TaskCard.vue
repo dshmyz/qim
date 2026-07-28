@@ -39,8 +39,8 @@
         <span v-else-if="task.due_date" class="task-due">{{ dueDateLabel }}</span>
       </div>
       <div class="task-card-right">
-        <span v-if="task.sub_tasks.length" class="task-meta-item">📋 {{ completedSubTasks }}/{{ task.sub_tasks.length }}</span>
-        <span v-if="task.comment_count" class="task-meta-item">💬 {{ task.comment_count }}</span>
+        <span v-if="task.sub_tasks.length" class="task-meta-item"><i class="fas fa-list-check"></i> {{ completedSubTasks }}/{{ task.sub_tasks.length }}</span>
+        <span v-if="task.comment_count" class="task-meta-item"><i class="fas fa-comment"></i> {{ task.comment_count }}</span>
       </div>
     </div>
   </div>

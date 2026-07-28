@@ -31,42 +31,42 @@ export const AI_PROVIDERS: AIProvider[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    icon: '\ud83e\udd16',
+    icon: 'fab fa-openai',
     defaultModel: 'gpt-4o',
     defaultBaseURL: 'https://api.openai.com/v1'
   },
   {
     id: 'alibaba',
     name: '\u963f\u91cc\u901a\u4e49\u5343\u95ee',
-    icon: '\ud83d\udd2e',
+    icon: 'fas fa-wand-magic-sparkles',
     defaultModel: 'qwen-turbo',
     defaultBaseURL: 'https://dashscope.aliyuncs.com/api/v1'
   },
   {
     id: 'tencent',
     name: '\u817e\u8baf\u6df7\u5143',
-    icon: '\ud83d\udcab',
+    icon: 'fab fa-tencent',
     defaultModel: 'hunyuan-lite',
     defaultBaseURL: 'https://hunyuan.tencentcloudapi.com'
   },
   {
     id: 'bytedance',
     name: '\u5b57\u8282\u8c46\u5305',
-    icon: '\ud83c\udfaf',
+    icon: 'fas fa-bullseye',
     defaultModel: 'doubao-pro-32k',
     defaultBaseURL: 'https://ark.cn-beijing.volces.com/api/v3'
   },
   {
     id: 'anthropic',
     name: 'Anthropic Claude',
-    icon: '\ud83e\udde0',
+    icon: 'fas fa-brain',
     defaultModel: 'claude-3-5-sonnet-20241022',
     defaultBaseURL: 'https://api.anthropic.com/v1'
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
-    icon: '\ud83d\udd0d',
+    icon: 'fas fa-magnifying-glass',
     defaultModel: 'deepseek-chat',
     defaultBaseURL: 'https://api.deepseek.com/v1'
   }
@@ -98,4 +98,15 @@ export interface GroupDocument {
     size: number
     type: string
   }
+}
+
+// 群助手群级记忆条目
+export interface GroupMemory {
+  doc_id: string
+  content: string
+  metadata?: {
+    conversation_id?: string
+    remembered_at?: string
+  }
+  score?: number
 }

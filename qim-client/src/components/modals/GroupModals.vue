@@ -107,7 +107,7 @@
         
         <div class="search-section">
           <div class="search-box">
-            <input type="text" v-model="localSearchQuery" placeholder="搜索成员..." class="search-input" @input="handleSearchInput" />
+            <input type="text" v-model="localSearchQuery" placeholder="搜索成员..." class="search-input" />
           </div>
         </div>
         
@@ -116,24 +116,10 @@
             <span>选择成员</span>
             <span class="selected-count">{{ localSelectedMembers.length }} 已选择</span>
           </div>
-          <div v-if="isSearching" class="search-loading">搜索中...</div>
-          <div class="members-list">
-            <div v-for="employee in filteredEmployees" :key="employee.id" class="member-item" :class="{ selected: localSelectedMembers.some(m => m.id === employee.id) }" @click="toggleMember(employee)">
-              <div class="member-avatar">
-                <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" />
-              </div>
-              <div class="member-info">
-                <div class="member-name">{{ employee.name }}</div>
-                <div class="member-position">{{ employee.position || '无职位信息' }}</div>
-              </div>
-              <div class="member-checkbox">
-                <input type="checkbox" v-model="localSelectedMembers" :value="employee" class="checkbox" />
-              </div>
-            </div>
-            <div v-if="filteredEmployees.length === 0 && !isSearching" class="empty-state">
-              <p v-if="localSearchQuery">没有找到匹配的成员</p>
-              <p v-else>暂无成员</p>
-            </div>
+          <SelectedMembersBar :members="localSelectedMembers" @remove="removeSelected" />
+          <!-- 组织树按部门选人（搜索时本地过滤树，保留部门上下文） -->
+          <div class="members-list org-tree-list">
+            <OrgTreePicker :org-structure="orgStructure" :search-query="localSearchQuery" :selected-members="localSelectedMembers" @update:selected-members="localSelectedMembers = $event" />
           </div>
         </div>
       </div>
@@ -206,10 +192,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import OrgTreePicker from '../shared/OrgTreePicker.vue'
+import SelectedMembersBar from '../shared/SelectedMembersBar.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
+import type { Department } from '../../composables/useOrganizationLogic'
 
 const { serverUrl } = useServerUrl()
 
@@ -241,6 +230,7 @@ interface Props {
   selectedGroup: Group | null
   groupMembers: Member[]
   allEmployees: Employee[]
+  orgStructure: Department[]
   addMembersSearchQuery: string
   selectedAddMembers: Employee[]
   editGroupName: string
@@ -267,73 +257,14 @@ const localSearchQuery = ref(props.addMembersSearchQuery)
 const localSelectedMembers = ref([...props.selectedAddMembers])
 const localGroupName = ref(props.editGroupName)
 const localAnnouncement = ref(props.editAnnouncementContent)
-const isSearching = ref(false)
-const searchResults = ref<Employee[]>([])
-const searchTimeout = ref<number | null>(null)
 
 watch(() => props.addMembersSearchQuery, (val) => { localSearchQuery.value = val })
 watch(() => props.selectedAddMembers, (val) => { localSelectedMembers.value = [...val] })
 watch(() => props.editGroupName, (val) => { localGroupName.value = val })
 watch(() => props.editAnnouncementContent, (val) => { localAnnouncement.value = val })
 
-const filteredEmployees = computed(() => {
-  if (!localSearchQuery.value.trim()) return props.allEmployees
-  return searchResults.value
-})
-
-const handleSearchInput = () => {
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value)
-  }
-  searchTimeout.value = window.setTimeout(async () => {
-    const query = localSearchQuery.value.trim()
-    if (!query) {
-      searchResults.value = []
-      return
-    }
-
-    isSearching.value = true
-    try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(
-        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}`,
-        {
-          headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          }
-        }
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.code === 0) {
-          searchResults.value = (data.data || []).map((u: any) => ({
-            id: u.id,
-            name: u.name || u.username || '',
-            avatar: u.avatar || ''
-          }))
-        } else {
-          searchResults.value = []
-        }
-      } else {
-        searchResults.value = []
-      }
-    } catch (error) {
-      console.error('搜索成员失败:', error)
-      searchResults.value = []
-    } finally {
-      isSearching.value = false
-    }
-  }, 300)
-}
-
-const toggleMember = (employee: Employee) => {
-  const index = localSelectedMembers.value.findIndex(m => m.id === employee.id)
-  if (index === -1) {
-    localSelectedMembers.value.push(employee)
-  } else {
-    localSelectedMembers.value.splice(index, 1)
-  }
+const removeSelected = (member: Employee) => {
+  localSelectedMembers.value = localSelectedMembers.value.filter(m => String(m.id) !== String(member.id))
 }
 </script>
 

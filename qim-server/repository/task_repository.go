@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/model"
 
@@ -22,7 +23,8 @@ func NewTaskRepository(db *gorm.DB) TaskRepository {
 
 func (r *taskRepository) FindByUserID(ctx context.Context, userID uint) ([]*model.Task, error) {
 	var tasks []*model.Task
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at DESC").Find(&tasks).Error
+	// 返回自己创建的 + 被指派给自己的任务（assignee_id 存用户 ID 字符串）
+	err := r.db.WithContext(ctx).Where("user_id = ? OR assignee_id = ?", userID, strconv.FormatUint(uint64(userID), 10)).Order("created_at DESC").Find(&tasks).Error
 	return tasks, err
 }
 

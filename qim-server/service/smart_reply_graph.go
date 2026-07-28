@@ -74,7 +74,7 @@ type SmartReplyGraph struct {
 	db               *gorm.DB
 	unifiedKnowledge KnowledgeRetriever
 	legacyKnowledge  LegacyKnowledgeService
-	memorySvc        *AvatarMemoryService
+	groupMemorySvc   *GroupMemoryService
 	userSvc          *UserService
 }
 
@@ -83,7 +83,7 @@ func NewSmartReplyGraph(
 	db *gorm.DB,
 	unifiedKnowledge KnowledgeRetriever,
 	legacyKnowledge LegacyKnowledgeService,
-	memorySvc *AvatarMemoryService,
+	groupMemorySvc *GroupMemoryService,
 	userSvc *UserService,
 ) *SmartReplyGraph {
 	return &SmartReplyGraph{
@@ -91,7 +91,7 @@ func NewSmartReplyGraph(
 		db:               db,
 		unifiedKnowledge: unifiedKnowledge,
 		legacyKnowledge:  legacyKnowledge,
-		memorySvc:        memorySvc,
+		groupMemorySvc:   groupMemorySvc,
 		userSvc:          userSvc,
 	}
 }
@@ -146,9 +146,41 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 }
 
 func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyContext) (*schema.StreamReader[*schema.Message], error) {
+	if err := g.prepareInput(input); err != nil {
+		return nil, err
+	}
+	historyMessages := g.buildHistoryMessages(input)
+	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
+	return chatModel.Stream(ctx, historyMessages)
+}
+
+// groupAssistantToolWhitelist 群聊助手可用的工具白名单：只含群聊相关工具，
+// 排除运维工具（intelligent_troubleshooting 等）和系统级用户管理工具。
+var groupAssistantToolWhitelist = []string{
+	"group_management", "create_task", "search_messages", "group_summary", "system_notification",
+}
+
+// ExecuteWithTools 带工具的非流式回复，用于 @AI 管理操作指令（踢人/加人/禁言等）。
+// 走 GetCompletionWithToolsFiltered 注入白名单 MCP 工具（含 GroupManagementTool），
+// LLM 返回 tool call 时真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，
+// 即仅群主/管理员发起的管理指令会被工具执行，普通成员指令被工具拒绝。
+func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext) (string, error) {
+	if err := g.prepareInput(input); err != nil {
+		return "", err
+	}
+	historyMessages := g.buildHistoryMessages(input)
+	callerCtx := &ai.CallerContext{UserID: input.UserID}
+	return g.aiService.GetCompletionWithToolsFiltered(
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, groupAssistantToolWhitelist,
+	)
+}
+
+// prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，
+// 供 ExecuteStream 与 ExecuteWithTools 复用。
+func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	var conv model.Conversation
 	if err := g.db.First(&conv, input.ConversationID).Error; err != nil {
-		return nil, fmt.Errorf("会话不存在")
+		return fmt.Errorf("会话不存在")
 	}
 	if conv.Type == "group" || conv.Type == "discussion" {
 		var group model.Group
@@ -213,22 +245,19 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	input.KnowledgeCtx = knowledgeCtx
 
 	memoryCtx := ""
-	if g.memorySvc != nil {
-		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
+	if g.groupMemorySvc != nil && input.Group != nil {
+		memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
 		if err == nil && len(memoryResults) > 0 {
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
 			}
-			memoryCtx = "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+			memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 		}
 	}
 	input.MemoryCtx = memoryCtx
 
-	historyMessages := g.buildHistoryMessages(input)
-
-	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
-	return chatModel.Stream(ctx, historyMessages)
+	return nil
 }
 
 func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*schema.Message {
@@ -261,7 +290,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 
 	db := database.GetDB()
 	var messages []model.Message
-	db.Where("conversation_id = ?", input.ConversationID).
+	db.Where("conversation_id = ? AND type IN ?", input.ConversationID, []string{"text", "markdown"}).
 		Preload("Sender").
 		Order("created_at DESC").
 		Limit(20).
@@ -288,6 +317,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		filteredMessages = append(filteredMessages, msg)
 	}
 
+	hasRecentAI := false
 	for _, msg := range filteredMessages {
 		senderName := msg.Sender.Nickname
 		if senderName == "" {
@@ -295,9 +325,19 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		}
 
 		if msg.Origin == "assistant" {
+			// 检测最近 10 分钟内的 AI 回复，用于多轮上下文感知
+			if time.Since(msg.CreatedAt) <= 10*time.Minute {
+				hasRecentAI = true
+			}
 			result = append(result, &schema.Message{
 				Role:    schema.Assistant,
 				Content: msg.Content,
+			})
+		} else if msg.SenderID == input.UserID {
+			// 当前用户自己的消息，标为"我"
+			result = append(result, &schema.Message{
+				Role:    schema.User,
+				Content: fmt.Sprintf("[我]: %s", msg.Content),
 			})
 		} else {
 			result = append(result, &schema.Message{
@@ -305,6 +345,12 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 				Content: fmt.Sprintf("[%s]: %s", senderName, msg.Content),
 			})
 		}
+	}
+
+	// 多轮上下文：检测到最近 10 分钟内有 AI 回复，在 system prompt 追加提示
+	if hasRecentAI && len(result) > 0 {
+		hint := "\n- 注意：上方对话中包含你最近的回答。用户可能在追问或引用之前的回答，请结合上下文理解，不要重复已经说过的内容"
+		result[0].Content += hint
 	}
 
 	currentQuestion := input.Message
@@ -320,6 +366,10 @@ func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext)
 	if g.replyGraph == nil {
 		return nil, fmt.Errorf("回复 Graph 未编译")
 	}
+
+	// 让编译期写死 userID=0 的 model 节点拿到真实提问用户，
+	// 使工具执行时 isSystemAdmin 校验生效（堵权限绕过）。
+	ctx = UserIDToCtx(ctx, input.UserID)
 
 	startTime := time.Now()
 	result, err := g.replyGraph.Invoke(ctx, input)
@@ -415,24 +465,26 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 
 func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
-		if g.memorySvc == nil {
-			input.MemoryCtx = ""
-			return input, nil
-		}
-
-		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
-		if err != nil || len(memoryResults) == 0 {
-			input.MemoryCtx = ""
-			return input, nil
-		}
-
-		var parts []string
-		for _, r := range memoryResults {
-			parts = append(parts, r.Content)
-		}
-		input.MemoryCtx = "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+		input.MemoryCtx = g.recallGroupMemory(input)
 		return input, nil
 	})
+}
+
+// recallGroupMemory 召回本群群级记忆注入上下文。非群场景或无群记忆服务时置空。
+// 切断旧路径：不再召回发送者分身记忆（AvatarMemoryService），避免私聊->群泄露。
+func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
+	if g.groupMemorySvc == nil || input.Group == nil {
+		return ""
+	}
+	memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
+	if err != nil || len(memoryResults) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, r := range memoryResults {
+		parts = append(parts, r.Content)
+	}
+	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 
 func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
@@ -654,6 +706,7 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 
 	sb.WriteString("- 优先使用知识库中的内容回答\n")
 	sb.WriteString("- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"\n")
+	sb.WriteString("- 严禁在回复中使用 @用户名 或 @任何人 的格式。不要 @ 提及任何群成员，系统会自动处理提及。直接称呼对方名字即可，不要加 @ 前缀\n")
 
 	return sb.String()
 }

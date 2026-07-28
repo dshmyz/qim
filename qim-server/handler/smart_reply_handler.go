@@ -24,6 +24,7 @@ type SmartReplyEngine struct {
 	knowledgeSvc     *KnowledgeService
 	unifiedKnowledge *service.UnifiedKnowledgeService
 	memorySvc        *service.AvatarMemoryService
+	groupMemorySvc   *service.GroupMemoryService
 	promptBuilder    *SmartPromptBuilder
 	messageSender    *WebSocketMessageSender
 	avatarWorkerPool *service.AvatarWorkerPool
@@ -71,6 +72,11 @@ func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
 	e.memorySvc = ms
 }
 
+// SetGroupMemoryService 注入群聊助手的群级记忆服务（与分身记忆隔离）。
+func (e *SmartReplyEngine) SetGroupMemoryService(gms *service.GroupMemoryService) {
+	e.groupMemorySvc = gms
+}
+
 func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	log.Printf("[SmartReplyGraph] 创建 SmartReplyGraph 实例...")
 	e.smartReplyGraph = service.NewSmartReplyGraph(
@@ -78,7 +84,7 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		database.GetDB(),
 		e.unifiedKnowledge,
 		e.knowledgeSvc,
-		e.memorySvc,
+		e.groupMemorySvc,
 		di.GlobalContainer.UserService,
 	)
 
@@ -140,69 +146,48 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		return
 	}
 
-	var group *model.Group
 	if conv.Type == "group" || conv.Type == "discussion" {
-		var g model.Group
-		if err := db.Where("conversation_id = ?", conversationID).First(&g).Error; err != nil {
+		var group model.Group
+		if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err != nil {
 			log.Printf("[SmartReply] 查找群聊失败: convID=%d err=%v", conversationID, err)
 			return
 		}
-		group = &g
-		aiConfig := group.GetAIConfig()
-		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s", aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
-		if !aiConfig.Enabled {
-			log.Printf("[SmartReply] 群聊 AI 未启用，跳过处理")
-			return
-		}
-
-		// 关键词过滤仅在自动回复模式下生效，@AI 提及不受关键词限制
-		if aiConfig.ReplyMode != "mention_only" && aiConfig.TriggerKeywords != "" {
-			keywords := strings.Split(aiConfig.TriggerKeywords, ",")
-			hasKeyword := false
-			for _, kw := range keywords {
-				kw = strings.TrimSpace(kw)
-				if kw != "" && strings.Contains(strings.ToLower(content), strings.ToLower(kw)) {
-					hasKeyword = true
-					break
-				}
-			}
-			if !hasKeyword {
-				log.Printf("[SmartReply] 消息不包含触发关键词，跳过处理")
-				return
-			}
-		}
-
-		if aiConfig.AntiSpamInterval > 0 {
-			var lastAIMsg model.Message
-			err := db.Where("conversation_id = ? AND origin = ? AND created_at > ?",
-				conversationID, "assistant", time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
-				Order("created_at DESC").First(&lastAIMsg).Error
-			if err == nil {
-				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
-				return
-			}
-		}
-	}
-
-	if group != nil {
 		aiConfig := group.GetAIConfig()
 		assistantName := "AI助手"
 		if aiConfig.AssistantName != "" {
 			assistantName = aiConfig.AssistantName
 		}
 
-		if e.isAIMention(content, assistantName) {
+		// 反刷屏依赖 DB 最近 AI 消息查询，结果作为纯决策入参传入 DecideGroupAIReply
+		antiSpamBlocked := false
+		if aiConfig.AntiSpamInterval > 0 {
+			var lastAIMsg model.Message
+			err := db.Where("conversation_id = ? AND origin = ? AND created_at > ?",
+				conversationID, "assistant", time.Now().Add(-time.Duration(aiConfig.AntiSpamInterval)*time.Minute)).
+				Order("created_at DESC").First(&lastAIMsg).Error
+			if err == nil {
+				antiSpamBlocked = true
+				log.Printf("[SmartReply] 反垃圾策略：AI 最近已回复，跳过 (interval=%dmin)", aiConfig.AntiSpamInterval)
+			}
+		}
+
+		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s",
+			aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
+
+		// 群级记忆写入：群 AI 启用时，异步把值得记的群消息择要写入本群记忆库（不阻塞主流程）。
+		if aiConfig.Enabled {
+			e.maybeRememberGroupMessage(group.ID, conversationID, content)
+		}
+
+		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
+		case GroupAIMentionReply:
 			question := extractAIQuestion(content, assistantName)
 			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName)
 			return
-		}
-
-		if aiConfig.ReplyMode == "off" {
+		case GroupAISkipReply:
 			return
-		}
-
-		if aiConfig.ReplyMode == "mention_only" {
-			return
+		case GroupAIAutoReply:
+			// 落到下方意图检测自动回复
 		}
 	}
 
@@ -283,14 +268,14 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 		}
 	}
 
-	if e.memorySvc != nil {
-		memoryResults, err := e.memorySvc.Recall(userID, userContent, 2)
+	if e.groupMemorySvc != nil && ctx.Group != nil {
+		memoryResults, err := e.groupMemorySvc.Recall(ctx.Group.ID, userContent, 2)
 		if err == nil && len(memoryResults) > 0 {
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
 			}
-			memoryCtx := "💡 用户历史记忆：\n" + strings.Join(parts, "\n")
+			memoryCtx := "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 			systemPrompt += "\n\n" + memoryCtx
 		}
 	}
@@ -366,21 +351,80 @@ func (rl *RateLimiter) Stop() {
 	})
 }
 
-// isAIMention 检测是否 @AI 或 @AI助手
+// isAIMention 判断消息是否 @ 了群 AI 助手。委托纯函数 groupAIMentionsAI，
+// 以便 DecideGroupAIReply 与本方法共用同一套判定逻辑（smart_reply_handler_test.go 直接用本方法）。
 func (e *SmartReplyEngine) isAIMention(content string, assistantName string) bool {
+	return groupAIMentionsAI(content, assistantName)
+}
+
+// GroupAIReplyAction 群聊 AI 对单条消息的纯决策结果。反刷屏（AntiSpamInterval）
+// 依赖数据库最近 AI 消息查询，不在纯函数内判定，由调用方查库后以 antiSpamBlocked 入参传入。
+type GroupAIReplyAction int
+
+const (
+	GroupAISkipReply   GroupAIReplyAction = iota // 不回复
+	GroupAIMentionReply                          // @AI 提及，直接回复
+	GroupAIAutoReply                             // 走意图检测自动回复
+)
+
+// DecideGroupAIReply 是群聊 AI 触发的纯决策入口。
+//
+// 决策顺序：启用 → 反刷屏 → @AI 提及 → 关键词门控 → 模式判定。
+// @AI 提及优先于关键词门控：用户显式点名应总能触达助手，关键词门控仅对
+// 自动回复路径生效。反刷屏优先级最高——即使 @AI 提及，命中反刷屏窗口也跳过。
+// 以上行为均由表测试钉死（见 smart_reply_group_ai_test.go），调整请同步更新。
+func DecideGroupAIReply(cfg model.GroupAIConfig, content, assistantName string, antiSpamBlocked bool) GroupAIReplyAction {
+	if !cfg.Enabled {
+		return GroupAISkipReply
+	}
+	if antiSpamBlocked {
+		return GroupAISkipReply
+	}
+	if groupAIMentionsAI(content, assistantName) {
+		return GroupAIMentionReply
+	}
+	// 关键词门控仅在非 mention_only 模式下、且对自动回复路径生效
+	if cfg.ReplyMode != "mention_only" && cfg.TriggerKeywords != "" {
+		if !groupAIKeywordMatches(content, cfg.TriggerKeywords) {
+			return GroupAISkipReply
+		}
+	}
+	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
+		return GroupAISkipReply
+	}
+	return GroupAIAutoReply
+}
+
+// groupAIKeywordMatches 判断消息内容是否命中任一触发关键词（逗号分隔，大小写不敏感）。
+// keywords 为空时视为无限制（命中），调用方已保证仅在 TriggerKeywords 非空时调用。
+func groupAIKeywordMatches(content, keywords string) bool {
+	if keywords == "" {
+		return true
+	}
+	lower := strings.ToLower(content)
+	for _, kw := range strings.Split(keywords, ",") {
+		kw = strings.TrimSpace(kw)
+		if kw != "" && strings.Contains(lower, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
+}
+
+// groupAIMentionsAI 判断消息是否 @ 了群 AI 助手（mention token 或明文 @AI/@助手名）。
+// isAIMention 的纯逻辑副本，供 DecideGroupAIReply 与运行时路径共用，避免双套判断。
+func groupAIMentionsAI(content, assistantName string) bool {
 	for _, m := range mention.Parse(content) {
 		if isAIAssistantMentionName(m.Name, assistantName) {
 			return true
 		}
 	}
-
 	patterns := []string{
 		"@AI",
 		"@Ai",
 		"@ai",
 		"@" + assistantName,
 	}
-
 	for _, pattern := range patterns {
 		if strings.Contains(content, pattern) {
 			return true
@@ -444,6 +488,13 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		ConversationID:  conversationID,
 		IsAIMention:     true,
 		AssistantName:   assistantName,
+	}
+
+	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 MCP 群管理工具，
+	// LLM 返回 tool call 时真实执行。仅系统管理员发起的指令会被工具执行。
+	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
+		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID)
+		return
 	}
 
 	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
@@ -510,6 +561,56 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
+}
+
+// handleAIMentionWithTools 带工具的非流式 @AI 回复，用于管理操作指令（踢人/加人/禁言等）。
+// 走 SmartReplyGraph.ExecuteWithTools（GetCompletionWithTools 注入 MCP 群管理工具），
+// LLM 返回 tool call 时真实执行 add_member/remove_member/mute/unmute。
+func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
+	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input)
+	if err != nil {
+		log.Printf("[SmartReplyGraph] @AI 带工具回复失败: %v", err)
+		return
+	}
+	reply = mention.StripTokens(reply)
+	if reply == "" {
+		log.Printf("[SmartReplyGraph] @AI 带工具回复内容为空，跳过")
+		return
+	}
+
+	// @提问者模式：读取配置（与流式路径一致）
+	db := database.GetDB()
+	var mentionPrefix string
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
+		if group.GetAIConfig().MentionReplyMode == "mention" {
+			var mentionUser model.User
+			if err := db.First(&mentionUser, userID).Error; err == nil {
+				name := mentionUser.Nickname
+				if name == "" {
+					name = mentionUser.Username
+				}
+				mentionPrefix = mention.Encode(userID, name) + "\n\n"
+			}
+		}
+	}
+
+	content := reply
+	if mentionPrefix != "" {
+		content = mentionPrefix + content
+	}
+	if err := e.messageSender.SendAIMessage(conversationID, content, assistantName); err != nil {
+		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		return
+	}
+	log.Printf("[SmartReplyGraph] @AI 带工具回复已完成")
+}
+
+// ShouldUseToolsForMention 判断 @AI 提及是否应走带工具路径（管理操作指令）。
+// command 意图（移除/踢出/添加/邀请/禁言/解封/设置管理员/取消管理员等）走带工具，
+// 其他意图（chat/query/alert/todo）保持流式纯文本回复。
+func ShouldUseToolsForMention(intent *ai.MessageIntent) bool {
+	return intent != nil && intent.Type == "command"
 }
 
 func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
@@ -772,6 +873,35 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		}
 		if err := e.memorySvc.Remember(senderID, conversationID, content); err != nil {
 			log.Printf("[AvatarMemory] 写入失败: user=%d err=%v", senderID, err)
+		}
+	}()
+}
+
+// maybeRememberGroupMessage 异步把值得记的群消息择要写入本群群级记忆库。
+// 三层门控压成本：1. 便宜规则预筛（looksMemorable，无 LLM）2. 去重（向量近邻，无 LLM）3. LLM 质量门。
+// 仅群 AI 启用时由调用方触发；不阻塞消息主流程。与分身记忆（按 userID 键）隔离。
+func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationID uint, content string) {
+	if e.groupMemorySvc == nil {
+		return
+	}
+	if !looksMemorable(content) {
+		return
+	}
+	go func() {
+		// 去重：本群已有高度相似记忆则跳过
+		if existing, err := e.groupMemorySvc.Recall(groupID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
+			return
+		}
+		should, err := e.groupMemorySvc.ShouldRemember(content)
+		if err != nil {
+			log.Printf("[GroupMemory] ShouldRemember 失败: group=%d err=%v", groupID, err)
+			return
+		}
+		if !should {
+			return
+		}
+		if err := e.groupMemorySvc.Remember(groupID, conversationID, content); err != nil {
+			log.Printf("[GroupMemory] 写入失败: group=%d err=%v", groupID, err)
 		}
 	}()
 }

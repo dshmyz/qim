@@ -1,152 +1,27 @@
 <template>
-  <!-- 右键菜单 -->
-  <div v-if="showMenu && selectedConversation" class="context-menu" :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }" @click.stop>
-    <div class="context-menu-item" @click="handleContextMenuAction('pin', selectedConversation)">
-      {{ selectedConversation.is_pinned ? '取消置顶' : '置顶' }}
-    </div>
-    <div class="context-menu-item" @click="handleContextMenuAction('mute', selectedConversation)">
-      {{ selectedConversation.muted ? '取消免打扰' : '免打扰' }}
-    </div>
-    <div v-if="selectedConversation.type === 'group' || selectedConversation.type === 'discussion'" class="context-menu-item" @click="handleContextMenuAction('exitGroup', selectedConversation)">
-      退出群聊
-    </div>
-    <div class="context-menu-item divider"></div>
-    <div class="context-menu-item" @click="handleContextMenuAction('remove', selectedConversation)">
-      移除会话
-    </div>
-  </div>
-
-  <!-- 动作菜单 -->
-  <div v-if="showActionMenuFlag" class="action-menu" :style="{ left: actionMenuPosition.x + 'px', top: actionMenuPosition.y + 'px' }">
-    <div class="action-menu-item" @click="$emit('createGroup')">
-      <span class="action-menu-icon"><i class="fas fa-user-friends"></i></span>
-      <span>创建群聊</span>
-    </div>
-    <div class="action-menu-item" @click="$emit('createDiscussion')">
-      <span class="action-menu-icon"><i class="fas fa-comments"></i></span>
-      <span>创建讨论组</span>
-    </div>
-    <div v-if="canCreateChannel" class="action-menu-item" @click="$emit('createChannel')">
-      <span class="action-menu-icon"><i class="fas fa-bullhorn"></i></span>
-      <span>创建频道</span>
-    </div>
-    <div v-if="canPublishSystemMessage" class="action-menu-item" @click="$emit('systemMessage')">
-      <span class="action-menu-icon"><i class="fas fa-broadcast-tower"></i></span>
-      <span>发布系统消息</span>
-    </div>
-  </div>
-
-  <!-- 用户右键菜单 -->
-  <div v-if="showUserContextMenuFlag" class="user-context-menu" :style="{ left: userContextMenuPosition.x + 'px', top: userContextMenuPosition.y + 'px' }" @click.stop>
-    <div class="user-context-menu-item" @click="$emit('viewUserProfile')">
-      <span class="user-context-menu-icon"><i class="fas fa-user"></i></span>
-      <span>查看资料</span>
-    </div>
-    <div class="user-context-menu-item" @click="$emit('privateChat', selectedEmployee)">
-      <span class="user-context-menu-icon"><i class="fas fa-comment"></i></span>
-      <span>发起私聊</span>
-    </div>
-  </div>
-
-  <!-- 成员上下文菜单 -->
-  <div v-if="showMemberContextMenuFlag" class="context-menu" :style="{ left: memberContextMenuPosition.x + 'px', top: memberContextMenuPosition.y + 'px' }">
-    <div class="context-menu-item" @click="$emit('removeMember')">
-      <span class="context-menu-icon"><i class="fas fa-trash"></i></span>
-      <span>移除群聊</span>
-    </div>
-    <div class="context-menu-item" @click="$emit('viewMemberInfo')">
-      <span class="context-menu-icon"><i class="fas fa-user"></i></span>
-      <span>查看资料</span>
-    </div>
-    <div class="context-menu-item" @click="$emit('setAdmin')">
-      <span class="context-menu-icon"><i class="fas fa-star"></i></span>
-      <span>设为管理员</span>
-    </div>
-  </div>
-
-  <!-- 群聊上下文菜单 -->
-  <div v-if="showGroupContextMenuFlag" class="context-menu" :style="{ left: groupContextMenuPosition.x + 'px', top: groupContextMenuPosition.y + 'px' }">
-    <div class="context-menu-item" @click="$emit('viewGroupMembers', selectedGroupForContextMenu)">
-      <span class="context-menu-icon"><i class="fas fa-user-friends"></i></span>
-      <span>查看群成员</span>
-    </div>
-    <div class="context-menu-item" @click="$emit('addMembers', selectedGroupForContextMenu)">
-      <span class="context-menu-icon"><i class="fas fa-plus"></i></span>
-      <span>添加成员</span>
-    </div>
-    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('editAnnouncement', selectedGroupForContextMenu)">
-      <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
-      <span>编辑群公告</span>
-    </div>
-    <div v-if="isGroupOwner" class="context-menu-item" @click="$emit('dissolveGroup', selectedGroupForContextMenu)">
-      <span class="context-menu-icon"><i class="fas fa-trash-alt"></i></span>
-      <span>解散群聊</span>
-    </div>
-    <template v-if="!isGroupOwner">
-      <div class="context-menu-divider"></div>
-      <div class="context-menu-item" @click="$emit('exitGroup', selectedGroupForContextMenu)">
-        <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-        <span>退出群聊</span>
-      </div>
-    </template>
-  </div>
-
-  <!-- 设置菜单 -->
-  <div v-if="showSettingsMenuFlag" class="context-menu" :style="{ left: settingsMenuPosition.x + 'px', top: settingsMenuPosition.y + 'px' }">
-    <div class="context-menu-item" @click="$emit('about')">
-      <span class="context-menu-icon"><i class="fas fa-info-circle"></i></span>
-      <span>关于</span>
-    </div>
-    <div class="context-menu-item" @click="handleContextMenuAction('openFeedback')">
-      <span class="context-menu-icon"><i class="fas fa-comment-dots"></i></span>
-      <span>问题反馈</span>
-    </div>
-    <div class="context-menu-item" @click="$emit('checkUpdate')">
-      <span class="context-menu-icon"><i class="fas fa-sync"></i></span>
-      <span>检查更新</span>
-    </div>
-    <div class="context-menu-item" @click="$emit('settings')">
-      <span class="context-menu-icon"><i class="fas fa-sliders"></i></span>
-      <span>设置</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" @click="$emit('logout')">
-      <span class="context-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
-      <span>退出登录</span>
-    </div>
-  </div>
-
-  <!-- 主题菜单 -->
-  <div v-if="showThemeMenuFlag" class="context-menu theme-menu" :style="{ left: themeMenuPosition.x + 'px', top: themeMenuPosition.y + 'px' }">
-    <div v-for="theme in themes" :key="theme.id" class="context-menu-item" @click="$emit('setTheme', theme.id)">
-      <span :class="['context-menu-icon', 'theme-icon', theme.themeClass]"></span>
-      <span>{{ theme.name }}</span>
-    </div>
-  </div>
-
-  <!-- 更多菜单 -->
-  <div v-if="showMoreMenuFlag" class="context-menu" :style="{ left: moreMenuPosition.x + 'px', top: moreMenuPosition.y + 'px' }">
-    <div class="context-menu-item" @click="$emit('showChannels'); $emit('closeMoreMenu')">
-      <span class="context-menu-icon"><i class="fas fa-bullhorn"></i></span>
-      <span>频道</span>
-    </div>
-  </div>
+  <!-- 会话右键菜单 -->
+  <UniversalContextMenu menuId="context" :items="conversationMenuItems" />
+  <UniversalContextMenu menuId="action" :items="actionMenuItems" />
+  <UniversalContextMenu menuId="user" :items="userMenuItems" />
+  <UniversalContextMenu menuId="sidebar-member" :items="memberMenuItems" />
+  <UniversalContextMenu menuId="group" :items="groupMenuItems" />
+  <UniversalContextMenu menuId="settings" :items="settingsMenuItems" />
+  <UniversalContextMenu menuId="theme" :items="themeMenuItems" />
+  <UniversalContextMenu menuId="more" :items="moreMenuItems" />
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 
 interface Conversation {
   id: string | number
   name: string
   type: string
+  is_pinned?: boolean
   pinned?: boolean
   muted?: boolean
-}
-
-interface Position {
-  x: number
-  y: number
 }
 
 interface Theme {
@@ -169,40 +44,14 @@ const themes: Theme[] = [
 ]
 
 interface Props {
-  showMenu: boolean
   selectedConversation: Conversation | null
-  menuPosition: Position
-  showActionMenuFlag: boolean
-  actionMenuPosition: Position
-  showUserContextMenuFlag: boolean
-  userContextMenuPosition: Position
   selectedEmployee: any
-  showMemberContextMenuFlag: boolean
-  memberContextMenuPosition: Position
-  showGroupContextMenuFlag: boolean
-  groupContextMenuPosition: Position
   selectedGroupForContextMenu: Conversation | null
   isGroupOwner: boolean
-  showSettingsMenuFlag: boolean
-  settingsMenuPosition: Position
-  showThemeMenuFlag: boolean
-  themeMenuPosition: Position
-  showMoreMenuFlag: boolean
-  moreMenuPosition: Position
   currentUser?: { isAdmin?: boolean; roles?: string[] }
 }
 
 const props = defineProps<Props>()
-
-const canCreateChannel = computed(() => {
-  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
-})
-
-const canPublishSystemMessage = computed(() => {
-  return props.currentUser?.isAdmin ||
-    props.currentUser?.roles?.includes('system_admin') ||
-    props.currentUser?.roles?.includes('system_publisher')
-})
 
 const emit = defineEmits<{
   'pin': [conversation: Conversation]
@@ -233,98 +82,206 @@ const emit = defineEmits<{
   'closeAllMenus': []
 }>()
 
-const handleContextMenuAction = (event: string, payload?: any) => {
-  emit(event as any, payload)
-  emit('closeAllMenus')
-}
-
-const handleClickOutside = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  if (target.closest('.context-menu') || target.closest('.action-menu') || target.closest('.theme-menu')) {
-    return
-  }
-  if (
-    props.showMenu ||
-    props.showActionMenuFlag ||
-    props.showUserContextMenuFlag ||
-    props.showMemberContextMenuFlag ||
-    props.showGroupContextMenuFlag ||
-    props.showSettingsMenuFlag ||
-    props.showThemeMenuFlag ||
-    props.showMoreMenuFlag
-  ) {
-    emit('closeAllMenus')
-  }
-}
-
-watch(() => [
-  props.showMenu,
-  props.showActionMenuFlag,
-  props.showUserContextMenuFlag,
-  props.showMemberContextMenuFlag,
-  props.showGroupContextMenuFlag,
-  props.showSettingsMenuFlag,
-  props.showThemeMenuFlag,
-  props.showMoreMenuFlag
-], (vals) => {
-  const anyVisible = vals.some(v => v)
-  if (anyVisible) {
-    setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-    }, 0)
-  } else {
-    document.removeEventListener('click', handleClickOutside)
-  }
+const canCreateChannel = computed(() => {
+  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
 })
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+const canPublishSystemMessage = computed(() => {
+  return props.currentUser?.isAdmin ||
+    props.currentUser?.roles?.includes('system_admin') ||
+    props.currentUser?.roles?.includes('system_publisher')
 })
+
+// 会话右键菜单
+const conversationMenuItems = computed<ContextMenuItem[]>(() => {
+  const conv = props.selectedConversation
+  if (!conv) return []
+  return [
+    {
+      label: conv.is_pinned || conv.pinned ? '取消置顶' : '置顶',
+      icon: 'fas fa-thumbtack',
+      action: () => { emit('pin', conv); emit('closeAllMenus') }
+    },
+    {
+      label: conv.muted ? '取消免打扰' : '免打扰',
+      icon: 'fas fa-bell-slash',
+      action: () => { emit('mute', conv); emit('closeAllMenus') }
+    },
+    {
+      label: '退出群聊',
+      icon: 'fas fa-sign-out-alt',
+      visible: conv.type === 'group' || conv.type === 'discussion',
+      action: () => { emit('exitGroup', conv); emit('closeAllMenus') }
+    },
+    { divider: true },
+    {
+      label: '移除会话',
+      icon: 'fas fa-trash',
+      danger: true,
+      action: () => { emit('remove', conv); emit('closeAllMenus') }
+    }
+  ]
+})
+
+// 动作菜单
+const actionMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '创建群聊',
+    icon: 'fas fa-user-friends',
+    action: () => emit('createGroup')
+  },
+  {
+    label: '创建讨论组',
+    icon: 'fas fa-comments',
+    action: () => emit('createDiscussion')
+  },
+  {
+    label: '创建频道',
+    icon: 'fas fa-bullhorn',
+    visible: canCreateChannel.value,
+    action: () => emit('createChannel')
+  },
+  {
+    label: '发布系统消息',
+    icon: 'fas fa-broadcast-tower',
+    visible: canPublishSystemMessage.value,
+    action: () => emit('systemMessage')
+  }
+])
+
+// 用户右键菜单
+const userMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '查看资料',
+    icon: 'fas fa-user',
+    action: () => emit('viewUserProfile')
+  },
+  {
+    label: '发起私聊',
+    icon: 'fas fa-comment',
+    action: () => emit('privateChat', props.selectedEmployee)
+  }
+])
+
+// 成员上下文菜单
+const memberMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '移除群聊',
+    icon: 'fas fa-trash',
+    danger: true,
+    action: () => emit('removeMember')
+  },
+  {
+    label: '查看资料',
+    icon: 'fas fa-user',
+    action: () => emit('viewMemberInfo')
+  },
+  {
+    label: '设为管理员',
+    icon: 'fas fa-star',
+    action: () => emit('setAdmin')
+  }
+])
+
+// 群聊上下文菜单
+const groupMenuItems = computed<ContextMenuItem[]>(() => {
+  const group = props.selectedGroupForContextMenu
+  if (!group) return []
+  const items: ContextMenuItem[] = [
+    {
+      label: '查看群成员',
+      icon: 'fas fa-user-friends',
+      action: () => emit('viewGroupMembers', group)
+    },
+    {
+      label: '添加成员',
+      icon: 'fas fa-plus',
+      action: () => emit('addMembers', group)
+    },
+    {
+      label: '编辑群公告',
+      icon: 'fas fa-bullhorn',
+      visible: props.isGroupOwner,
+      action: () => emit('editAnnouncement', group)
+    },
+    {
+      label: '解散群聊',
+      icon: 'fas fa-trash-alt',
+      danger: true,
+      visible: props.isGroupOwner,
+      action: () => emit('dissolveGroup', group)
+    }
+  ]
+  if (!props.isGroupOwner) {
+    items.push(
+      { divider: true },
+      {
+        label: '退出群聊',
+        icon: 'fas fa-sign-out-alt',
+        action: () => emit('exitGroup', group)
+      }
+    )
+  }
+  return items
+})
+
+// 设置菜单
+const settingsMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '关于',
+    icon: 'fas fa-info-circle',
+    action: () => emit('about')
+  },
+  {
+    label: '问题反馈',
+    icon: 'fas fa-comment-dots',
+    action: () => { emit('openFeedback'); emit('closeAllMenus') }
+  },
+  {
+    label: '检查更新',
+    icon: 'fas fa-sync',
+    action: () => emit('checkUpdate')
+  },
+  {
+    label: '设置',
+    icon: 'fas fa-sliders',
+    action: () => emit('settings')
+  },
+  { divider: true },
+  {
+    label: '退出登录',
+    icon: 'fas fa-sign-out-alt',
+    danger: true,
+    action: () => emit('logout')
+  }
+])
+
+// 主题菜单
+const themeMenuItems = computed<ContextMenuItem[]>(() =>
+  themes.map(t => ({
+    label: t.name,
+    icon: `theme-icon ${t.themeClass}`,
+    action: () => emit('setTheme', t.id)
+  }))
+)
+
+// 更多菜单
+const moreMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: '频道',
+    icon: 'fas fa-bullhorn',
+    action: () => { emit('showChannels'); emit('closeMoreMenu') }
+  }
+])
 </script>
 
-<style scoped>
-.context-menu {
-  position: fixed;
-  background: var(--context-menu-bg);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 8px 0;
-  z-index: 1000;
-  min-width: 160px;
-}
-
-.context-menu-item {
-  padding: 8px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-color);
-  font-size: 12px;
-}
-
-.context-menu-item:hover {
-  background: var(--context-menu-hover);
-}
-
-.context-menu-item.divider,
-.context-menu-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: 4px 0;
-  padding: 0;
-}
-
-.context-menu-icon {
-  width: 16px;
-  text-align: center;
-}
-
+<style>
 .theme-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   display: inline-block;
+  vertical-align: middle;
 }
 
 .light-theme { background: #fff; border: 1px solid #ddd; }
@@ -337,66 +294,4 @@ onUnmounted(() => {
 .mediterranean-dream-theme { background: #4a8aad; }
 .monochrome-elegance-theme { background: #777; }
 .spring-blossom-theme { background: #f0a1b9; }
-
-.theme-menu {
-  min-width: 140px;
-}
-
-.action-menu {
-  position: fixed;
-  background: var(--context-menu-bg);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 8px 0;
-  z-index: 1000;
-  min-width: 180px;
-}
-
-.action-menu-item {
-  padding: 10px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-color);
-}
-
-.action-menu-item:hover {
-  background: var(--context-menu-hover);
-}
-
-.action-menu-icon {
-  width: 20px;
-  text-align: center;
-  color: var(--primary-color);
-}
-
-.user-context-menu {
-  position: fixed;
-  background: var(--context-menu-bg);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 8px 0;
-  z-index: 1000;
-  min-width: 140px;
-}
-
-.user-context-menu-item {
-  padding: 8px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-color);
-  font-size: 13px;
-}
-
-.user-context-menu-item:hover {
-  background: var(--context-menu-hover);
-}
-
-.user-context-menu-icon {
-  width: 16px;
-  text-align: center;
-}
 </style>

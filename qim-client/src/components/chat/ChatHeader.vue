@@ -25,7 +25,7 @@
             </span>
           </template>
           <span v-if="isGroupOrDiscussion && conversation?.announcement" class="header-announcement-inline">
-            <i class="fas fa-bullhorn"></i>
+            <i class="fas fa-volume-high"></i>
             {{ conversation.announcement }}
           </span>
         </div>
@@ -36,7 +36,6 @@
       :conversation="conversation"
       :current-user="currentUser"
       :server-url="serverUrl"
-      v-model:showHeaderMenu="showHeaderMenu"
       :ai-enabled="aiEnabled"
       :ai-assistant-name="aiAssistantName"
       :ai-reply-mode="aiReplyMode"
@@ -89,7 +88,6 @@ interface Emits {
   (e: 'set-admin', id: string, name: string, isAdmin: boolean): void
   (e: 'transfer-owner', id: string, name: string): void
   (e: 'start-private-chat', id: string): void
-  (e: 'update:showHeaderMenu', value: boolean): void
   (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
   (e: 'update-avatar-enabled', value: boolean): void
   (e: 'open-group-files'): void
@@ -97,8 +95,6 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-
-const showHeaderMenu = ref(false)
 
 const aiEnabled = computed(() => props.conversation?.ai_config?.ai_enabled ?? false)
 const aiAssistantName = computed(() => props.conversation?.ai_config?.ai_assistant_name ?? 'AI助手')
@@ -146,7 +142,6 @@ const otherUserType = computed(() => {
 const displayName = computed(() => props.conversation?.name || '未知会话')
 
 defineExpose({
-  showHeaderMenu,
   aiEnabled,
   aiAssistantName,
   aiReplyMode,

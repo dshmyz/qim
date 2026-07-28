@@ -62,8 +62,15 @@ const emit = defineEmits<{
   taskDragend: []
 }>()
 
-async function onColumnDrop(taskId: string, status: TaskStatus) {
-  await store.changeStatus(taskId, status)
+async function onColumnDrop(taskId: string, status: TaskStatus, index: number) {
+  const task = store.tasks.find(t => t.id === taskId)
+  if (!task) return
+  if (task.status !== status) {
+    // 跨列：先改状态再排到目标位置
+    await store.changeStatus(taskId, status)
+  }
+  // 同列/跨列都调整 position（后端 reorder 已就绪）
+  await store.reorderTaskItem(taskId, index, status)
 }
 </script>
 

@@ -54,6 +54,7 @@
       @message-contextmenu="showMessageContextMenu"
       @show-user-profile="showUserProfile"
       @scroll-to-quoted-message="scrollToQuotedMessage"
+      @scroll="closeMessageContextMenu"
       @download-file="downloadFile"
       @save-as="saveFileAs"
       @open-mini-app="(app) => app && openMiniApp(app as MiniAppData)"
@@ -99,8 +100,11 @@
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
       :is-processing="aiIsProcessing"
+      :draft-streaming="isDraftStreaming"
+      :has-draft-reply="hasDraftReply"
       :show-search="showSearch"
       v-model:search-query="searchQuery"
+      @regenerate-draft="regenerateDraftReply"
       @send="handleSend"
       @input="handleInput"
       @cursor-change="handleInput"
@@ -151,12 +155,8 @@
       :selected-user="selectedUser"
       :show-read-users-modal="showReadUsersModal"
       :current-read-users="currentReadUsers"
-      :show-message-context-menu="showMessageContextMenuFlag"
-      :message-context-menu-position="messageContextMenuPosition"
       :selected-message="selectedMessage"
       :can-manage-group-files="canManageGroupFiles"
-      :show-member-context-menu="showMemberContextMenuFlag"
-      :member-context-menu-position="memberContextMenuPosition"
       :selected-member="selectedMember"
       :show-message-manager="showMessageManager"
       :show-confirm-dialog="showConfirmDialog"
@@ -188,8 +188,6 @@
       @translate="handleAITranslate"
       @smart-reply="handleSmartReply"
       @save-to-group-files="saveMessageToGroupFiles"
-      @close-message-menu="closeMessageContextMenu"
-      @close-member-context-menu="closeMemberContextMenu"
       @remove-member="handleRemoveMemberFromOverlay"
       @set-admin="handleSetAdminFromOverlay"
       @transfer-owner="handleTransferOwnerFromOverlay"
@@ -282,6 +280,7 @@ import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
 import { isMessageSelectionEligible } from '../../utils/messageSelection'
 import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
+import { activeMenu, activeMenuPosition, openMenu, closeMenu } from '../../composables/useUI'
 
 // 服务器地址
 const { serverUrl } = useServerUrl()
@@ -324,8 +323,16 @@ const {
   translateText,
   rewriteText,
   polishText,
-  generateSmartReply,
+  draftReply,
+  draftReplyStream,
+  abortDraftReply,
 } = useAIActions()
+
+// 帮我回复草稿状态
+const isDraftStreaming = ref(false)      // 正在流式生成
+const hasDraftReply = ref(false)          // 已生成草稿、可换一个
+const draftReplyTarget = ref<any>(null)   // 当前草稿回复的目标消息
+const isAppendingDraft = ref(false)       // 流式追加中（用于区分用户输入与 AI 填充）
 
 // 分身 composable
 const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, fetchConfig, fetchSessions, toggleSession, isAvatarActive } = useAvatar()
@@ -359,10 +366,66 @@ const handleUpdateAvatarEnabled = async (enabled: boolean) => {
 }
 
 // AI 快捷操作处理
+// 启动流式帮我回复：清空输入框并逐字填充
+const startDraftReply = (conversationId: number, messageId: number, target: any) => {
+  if (isDraftStreaming.value) abortDraftReply()
+  draftReplyTarget.value = target
+  inputMessage.value = ''
+  autoResizeTextarea()
+  isDraftStreaming.value = true
+  hasDraftReply.value = false
+  draftReplyStream(conversationId, messageId, {
+    onChunk: (content: string) => {
+      isAppendingDraft.value = true
+      inputMessage.value += content
+      isAppendingDraft.value = false
+      autoResizeTextarea()
+    },
+    onComplete: () => {
+      isDraftStreaming.value = false
+      hasDraftReply.value = !!inputMessage.value
+      autoResizeTextarea()
+      if (inputMessage.value) {
+        $message.success('回复草稿已生成')
+      } else {
+        $message.warning('未生成内容，请重试')
+      }
+    },
+    onError: () => {
+      isDraftStreaming.value = false
+      hasDraftReply.value = false
+      $message.error('生成回复失败')
+    },
+  })
+}
+
+// 换一个：基于同一目标消息重新生成草稿
+const regenerateDraftReply = () => {
+  const conversationId = props.conversation?.id
+  const target = draftReplyTarget.value
+  if (!conversationId || !target) return
+  startDraftReply(Number(conversationId), Number(target.id), target)
+}
+
 const handleAIAction = async (actionId: string) => {
   const text = inputMessage.value.trim()
 
   switch (actionId) {
+    case 'draft-reply': {
+      const conversationId = props.conversation?.id
+      if (!conversationId) return
+      // 找最后一条对方发来的文本消息
+      const uid = String(currentUserId.value)
+      const target = [...props.messages].reverse().find(
+        (m: any) => String(m.sender_id) !== uid && (m.type === 'text' || m.type === 'markdown') && !m.isRecalled
+      )
+      if (!target) {
+        $message.warning('没有可回复的消息')
+        return
+      }
+      startDraftReply(Number(conversationId), Number(target.id), target)
+      break
+    }
     case 'summary':
       if (props.conversation?.id) {
         showSummaryPanel.value = true
@@ -603,8 +666,6 @@ interface PendingFile {
 const pendingFiles = ref<PendingFile[]>([])
 
 // 成员上下文菜单
-const showMemberContextMenuFlag = ref(false)
-const memberContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMember = ref<any>(null)
 
 // 用户资料弹窗
@@ -612,8 +673,6 @@ const showUserProfileFlag = ref(false)
 const selectedUser = ref<any>(null)
 
 // 消息上下文菜单
-const showMessageContextMenuFlag = ref(false)
-const messageContextMenuPosition = ref({ x: 0, y: 0 })
 const selectedMessage = ref<any>(null)
 const messageMenuSelection = ref('')
 const isMessageSelectionMode = ref(false)
@@ -623,9 +682,6 @@ const selectedMessages = computed(() =>
     selectedMessageIds.value.has(String(message.id)) && isMessageSelectionEligible(message)
   )
 )
-
-// 头部下拉菜单状态
-const showHeaderMenu = ref(false)
 
 // 消息管理器
 const showMessageManager = ref(false)
@@ -647,6 +703,13 @@ watch(inputMessage, (nextText) => {
   mentionSpans.value = reconcileMentionSpans(mentionSpans.value, trackedInputMessage.value, nextText)
   trackedInputMessage.value = nextText
 })
+
+// 用户手动编辑输入框（非 AI 流式追加）时，撤销“换一个”可用态
+watch(inputMessage, () => {
+  if (!isAppendingDraft.value && !isDraftStreaming.value && hasDraftReply.value) {
+    hasDraftReply.value = false
+  }
+}, { flush: 'sync' })
 
 // 打开消息管理器
 const openMessageManager = () => {
@@ -1520,28 +1583,17 @@ const computeMenuPosition = (clientX: number, clientY: number, menuWidth: number
 
 const handleShowMemberContextMenu = (event: MouseEvent, member: any) => {
   event.stopPropagation()
-
   const { x, y } = computeMenuPosition(event.clientX, event.clientY)
-
-  memberContextMenuPosition.value = { x, y }
   selectedMember.value = {
     ...member,
     name: member.name || member.nickname || member.username || '未知用户'
   }
-  showMemberContextMenuFlag.value = true
-  
-  document.removeEventListener('click', closeMemberContextMenu)
-  memberContextMenuTimeoutId = window.setTimeout(() => {
-    if (isMounted.value) {
-      document.addEventListener('click', closeMemberContextMenu)
-    }
-  }, 0)
+  openMenu('member', x, y)
 }
 
 const closeMemberContextMenu = () => {
-  showMemberContextMenuFlag.value = false
+  closeMenu()
   selectedMember.value = null
-  document.removeEventListener('click', closeMemberContextMenu)
 }
 
 // 计算当前用户在群中的角色
@@ -1791,10 +1843,9 @@ const handleRecallMessage = async () => {
 }
 
 const closeMessageContextMenu = () => {
-  showMessageContextMenuFlag.value = false
+  closeMenu()
   selectedMessage.value = null
   messageMenuSelection.value = ''
-  document.removeEventListener('click', closeMessageContextMenu)
 }
 
 const getForwardRecordTitle = (): string => {
@@ -1866,24 +1917,26 @@ const handleAITranslate = () => {
   closeMessageContextMenu()
 }
 
-// 智能回复
+// 智能回复（右键菜单：带上下文起草）
 const handleSmartReply = async () => {
-  if (!selectedMessage.value || !selectedMessage.value.content) {
+  if (!selectedMessage.value || !selectedMessage.value.id) {
     closeMessageContextMenu()
     return
   }
-  const messageContent = selectedMessage.value.content
+  const msg = selectedMessage.value
+  const conversationId = props.conversation?.id
   closeMessageContextMenu()
+  if (!conversationId) return
 
   try {
-    const reply = await generateSmartReply(messageContent)
+    const reply = await draftReply(Number(conversationId), Number(msg.id))
     if (reply) {
       inputMessage.value = reply
       autoResizeTextarea()
-      $message.success('智能回复已生成')
+      $message.success('回复草稿已生成')
     }
   } catch {
-    $message.error('智能回复生成失败')
+    $message.error('生成回复失败')
   }
 }
 
@@ -1906,50 +1959,6 @@ const quoteMessage = () => {
     const input = document.querySelector('.message-input') as HTMLTextAreaElement
     if (input) {
       input.focus()
-    }
-  }
-  closeMessageContextMenu()
-}
-
-// 将消息添加到便签
-const addToNote = async () => {
-  if (selectedMessage.value) {
-    const message = selectedMessage.value
-
-    // 检查消息类型，仅支持文本类型
-    if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
-      $message.warning('仅支持文本类型的消息添加到便签')
-      closeMessageContextMenu()
-      return
-    }
-
-    const rawContent = message.content || ''
-    const maxNoteLength = 2000
-    const truncatedContent = rawContent.length > maxNoteLength
-      ? rawContent.slice(0, maxNoteLength) + `\n...(原文共 ${rawContent.length} 字，已截断)`
-      : rawContent
-
-    const noteContent = `【聊天记录】
-发送者：${message.sender.name}
-时间：${formatTime(message.timestamp)}
-内容：${truncatedContent}`
-
-    try {
-      const { useNotes } = await import('../../composables/useNotes')
-      const { createNote } = useNotes()
-      const result = await createNote({
-        title: `聊天记录 ${formatTime(message.timestamp)}`,
-        content: noteContent,
-        type: 'sticky',
-        tags: ['聊天记录']
-      })
-      if (result) {
-        $message.success('消息已添加到便签')
-      } else {
-        $message.error('添加到便签失败')
-      }
-    } catch {
-      $message.error('添加到便签失败')
     }
   }
   closeMessageContextMenu()
@@ -2322,8 +2331,6 @@ const retakeScreenshot = () => {
   takeScreenshot()
 }
 
-// 通话相关状态
-const isScreenSharing = ref(false) // 是否正在共享屏幕
 
 // 小程序列表
 const showMiniAppList = ref(false)
@@ -2545,62 +2552,24 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
   }
 }
 
-// 将文本中的URL转换为可点击的超链接，并为@提到的用户添加高亮显示
-const convertUrlsToLinks = (text: string): string => {
-  // 正则表达式匹配URL
-  const urlRegex = /(https?:\/\/[\w\-._~:/?#[\]@!$&'()*+,;=.]+)/g
-  // 正则表达式匹配@用户
-  const atRegex = /@([\u4e00-\u9fa5\w]+)/g
-  
-  let result = text
-  
-  // 先处理URL
-  result = result.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`
-  })
-  
-  // 再处理@用户
-  result = result.replace(atRegex, (match, username) => {
-    return `<span class="at-user">@${username}</span>`
-  })
-  
-  return result
-}
 
 // 消息右键菜单添加文件相关选项
 const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   event.stopPropagation()
-  
+
   // 已撤回的消息不显示右键菜单
   if (message.isRecalled) {
     return
   }
 
+  // 关闭其他菜单系统
+  window.dispatchEvent(new CustomEvent('qim:close-all-menus'))
+
   messageMenuSelection.value = window.getSelection?.().toString() ?? ''
-  
-  // 计算菜单位置，确保在屏幕内显示
-  const menuWidth = 180 // 菜单宽度
-  const menuHeight = 120 // 菜单高度
-  const windowWidth = window.innerWidth
-  const windowHeight = window.innerHeight
-  
-  let x = event.clientX
-  let y = event.clientY
-  
-  // 调整x坐标，确保菜单不超出屏幕右侧
-  if (x + menuWidth > windowWidth) {
-    x = windowWidth - menuWidth - 10
-  }
-  
-  // 调整y坐标，确保菜单不超出屏幕底部
-  if (y + menuHeight > windowHeight) {
-    y = windowHeight - menuHeight - 10
-  }
-  
-  messageContextMenuPosition.value = { x, y }
-  showMessageContextMenuFlag.value = true
+
   selectedMessage.value = message
-  
+  openMenu('message', event.clientX, event.clientY)
+
   // 检查消息类型
   if (message.type === 'file' || message.type === 'image') {
     // 可以在这里添加文件或图片特定的菜单选项
@@ -2683,51 +2652,6 @@ const handleUpdateAISettings = async (settings: any) => {
     }
   }
 }
-
-// 切换头部下拉菜单
-const toggleHeaderMenu = () => {
-  showHeaderMenu.value = !showHeaderMenu.value
-  // 点击其他地方关闭菜单
-  if (showHeaderMenu.value) {
-    setTimeout(() => {
-      document.addEventListener('click', closeHeaderMenu)
-    }, 0)
-  }
-}
-
-// 关闭头部下拉菜单
-const closeHeaderMenu = () => {
-  showHeaderMenu.value = false
-  document.removeEventListener('click', closeHeaderMenu)
-}
-
-// 检查当前用户是否是群主
-const isGroupOwner = (conversation: Conversation | null): boolean => {
-  if (!conversation || !conversation.members) return false
-  const currentUser = getCurrentUser()
-  if (!currentUser) return false
-  const currentUserId = currentUser.id?.toString() || ''
-  const owner = conversation.members.find((member: any) => String(member.id) === currentUserId)
-  return owner ? owner.role === 'owner' : false
-}
-
-// 检查是否有权限修改群名称
-const canEditGroupName = computed(() => {
-  if (!props.conversation) return false
-  
-  // 讨论组全员可修改
-  if (props.conversation.type === 'discussion') {
-    return true
-  }
-  
-  // 群只有管理员和群主能修改
-  if (props.conversation.type === 'group') {
-    const userRole = currentUserRole.value
-    return userRole === 'owner' || userRole === 'admin'
-  }
-  
-  return false
-})
 
 defineExpose({
   startScreenShare,

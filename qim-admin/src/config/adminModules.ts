@@ -218,6 +218,15 @@ export const adminModuleGroups: AdminModuleGroup[] = [
         roles: ['system_admin'],
         permission: 'ai:read',
       },
+      {
+        path: 'bot-ops',
+        name: 'BotOps',
+        title: 'Bot 运维',
+        icon: Monitor,
+        component: () => import('@/views/BotOps.vue'),
+        roles: ['system_admin'],
+        permission: 'bot:read',
+      },
     ],
   },
   {

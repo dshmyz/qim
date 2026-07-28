@@ -20,6 +20,8 @@ export interface Message {
   isFailed?: boolean
   isStreaming?: boolean
   isAtMention?: boolean
+  // 卡片已点击的 action_id（服务端从 CardActionRecord 派生，跨设备一致）
+  cardActionId?: string
   isAvatarReply?: boolean
   is_avatar_reply?: boolean
   origin?: string
@@ -62,6 +64,8 @@ export function useMainMessageHandlers() {
       isRecalled: msg.is_recalled || false,
       isFailed: msg.is_failed || false,
       isStreaming: msg.is_streaming || false,
+      // 卡片已点击态（服务端从 CardActionRecord 派生，跨设备一致）；空则回退 localStorage
+      cardActionId: msg.card_action_id || '',
       isAtMention: Array.isArray(msg.mention_user_ids)
         ? msg.mention_user_ids.some((uid: number) => uid.toString() === currentUser.value?.id?.toString())
           && msg.sender_id?.toString() !== currentUser.value?.id?.toString()

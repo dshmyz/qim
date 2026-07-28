@@ -40,51 +40,19 @@
             <div class="member-search-box">
               <div class="search-input-wrapper">
                 <i class="fas fa-search search-icon"></i>
-                <input 
-                  type="text" 
-                  v-model="searchQuery" 
-                  placeholder="搜索成员..." 
-                  class="member-search-input" 
-                  @input="handleSearchInput"
+                <input
+                  type="text"
+                  v-model="searchQuery"
+                  placeholder="搜索成员..."
+                  class="member-search-input"
                 />
                 <button v-if="searchQuery" class="clear-search-btn" @click="clearSearch">×</button>
               </div>
             </div>
+            <SelectedMembersBar :members="selectedMembers" @remove="removeSelected" />
             <div class="member-selector" ref="memberSelectorRef">
-              <div v-if="isSearching" class="loading-state">
-                <div class="loading-spinner"></div>
-                <p>加载中...</p>
-              </div>
-              <div v-else-if="filteredMembers.length === 0" class="empty-state">
-                <p v-if="searchQuery">没有找到匹配的成员</p>
-                <p v-else>暂无成员</p>
-              </div>
-              <div v-else class="member-list">
-                <div 
-                  v-for="employee in displayedMembers" 
-                  :key="employee.id" 
-                  class="member-item"
-                  @click="toggleMember(employee)"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="isMemberSelected(employee)"
-                    tabindex="-1"
-                  />
-                  <div class="member-info">
-                    <div class="member-avatar">
-                    <Avatar :src="employee.avatar" :name="employee.name" :server-url="serverUrl" :alt="employee.name" size="sm" />
-                  </div>
-                    <div class="member-details">
-                      <span class="member-name">{{ employee.name }}</span>
-                      <span class="member-position" v-if="employee.position">{{ employee.position }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="hasMoreMembers" class="load-more" @click="loadMoreMembers">
-                  <button class="load-more-btn">加载更多</button>
-                </div>
-              </div>
+              <!-- 组织树按部门选人（搜索时本地过滤树，保留部门上下文） -->
+              <OrgTreePicker :org-structure="orgStructure" :search-query="searchQuery" :selected-members="selectedMembers" @update:selected-members="selectedMembers = $event" />
             </div>
           </div>
         </div>
@@ -103,8 +71,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, type PropType } from 'vue'
+import type { Department } from '../../composables/useOrganizationLogic'
 import Avatar from '../shared/Avatar.vue'
+import OrgTreePicker from '../shared/OrgTreePicker.vue'
+import SelectedMembersBar from '../shared/SelectedMembersBar.vue'
 import QMessage from '../../utils/qmessage'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
@@ -127,6 +98,10 @@ const props = defineProps({
   members: {
     type: Array,
     default: () => []
+  },
+  orgStructure: {
+    type: Array as PropType<Department[]>,
+    default: () => []
   }
 })
 
@@ -143,31 +118,6 @@ const selectedMembers = ref<any[]>([])
 const searchQuery = ref('')
 const avatarInput = ref<HTMLInputElement | null>(null)
 const memberSelectorRef = ref<HTMLElement | null>(null)
-
-// 分页相关
-const pageSize = 20
-const currentPage = ref(1)
-const isLoading = ref(false)
-const isSearching = ref(false)
-const searchResults = ref<any[]>([])
-const searchTimeout = ref<number | null>(null)
-
-const filteredMembers = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return props.members
-  }
-  return searchResults.value
-})
-
-// 显示的成员（分页）
-const displayedMembers = computed(() => {
-  return filteredMembers.value.slice(0, currentPage.value * pageSize)
-})
-
-// 是否有更多成员
-const hasMoreMembers = computed(() => {
-  return displayedMembers.value.length < filteredMembers.value.length
-})
 
 // 头像显示地址：dataURL 或绝对地址直接用，相对路径拼接服务器地址
 const avatarDisplayUrl = computed(() => {
@@ -189,83 +139,14 @@ const resetForm = () => {
   avatar.value = ''
   selectedMembers.value = []
   searchQuery.value = ''
-  searchResults.value = []
-  currentPage.value = 1
-  isLoading.value = false
-  isSearching.value = false
-}
-
-const handleSearchInput = () => {
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value)
-  }
-  searchTimeout.value = window.setTimeout(async () => {
-    const query = searchQuery.value.trim()
-    if (!query) {
-      searchResults.value = []
-      currentPage.value = 1
-      return
-    }
-
-    isSearching.value = true
-    try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(
-        `${serverUrl.value}/api/v1/users/search?q=${encodeURIComponent(query)}&scope=users`,
-        {
-          headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          }
-        }
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.code === 0) {
-          searchResults.value = data.data || []
-        } else {
-          searchResults.value = []
-        }
-      } else {
-        searchResults.value = []
-      }
-    } catch (error) {
-      console.error('搜索成员失败:', error)
-      searchResults.value = []
-    } finally {
-      isSearching.value = false
-    }
-
-    currentPage.value = 1
-  }, 300)
 }
 
 const clearSearch = () => {
   searchQuery.value = ''
-  searchResults.value = []
-  currentPage.value = 1
 }
 
-// 加载更多成员
-const loadMoreMembers = () => {
-  if (hasMoreMembers.value) {
-    currentPage.value++
-  }
-}
-
-// 检查成员是否被选择
-const isMemberSelected = (member: any) => {
-  return selectedMembers.value.some(m => m.id === member.id)
-}
-
-// 切换成员选择状态
-const toggleMember = (member: any) => {
-  const index = selectedMembers.value.findIndex(m => m.id === member.id)
-  if (index === -1) {
-    selectedMembers.value.push(member)
-  } else {
-    selectedMembers.value.splice(index, 1)
-  }
+const removeSelected = (member: any) => {
+  selectedMembers.value = selectedMembers.value.filter((m: any) => String(m.id) !== String(member.id))
 }
 
 // 清空已选择的成员

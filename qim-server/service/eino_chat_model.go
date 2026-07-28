@@ -42,7 +42,11 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 	var reply string
 	var err error
 
-	callerCtx := &ai.CallerContext{UserID: m.userID}
+	uid := m.userID
+	if v, ok := UserIDFromCtx(ctx); ok {
+		uid = v
+	}
+	callerCtx := &ai.CallerContext{UserID: uid}
 	if m.useTools {
 		reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
 	} else {
@@ -60,11 +64,6 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 
 func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	aiMessages := einoMessagesToAIMessages(input)
-
-	// 打印发送给模型的 Prompt，方便排查拦截原因
-	for _, msg := range aiMessages {
-		log.Printf("[EinoChatModel] [%s]: %s", msg.Role, msg.Content)
-	}
 
 	sr, sw := schema.Pipe[*schema.Message](0)
 
@@ -106,3 +105,20 @@ func einoMessagesToAIMessages(messages []*schema.Message) []ai.Message {
 }
 
 var _ model.ToolCallingChatModel = (*EinoChatModel)(nil)
+
+// userIDCtxKey 用于通过 context.Context 把当前提问用户的 ID 传给
+// 编译期写死 userID=0 的 graph model 节点（见 SmartReplyGraph.Execute），
+// 使 GroupManagementTool 等工具执行时 callerCtx.UserID 为真实用户、
+// isSystemAdmin 校验生效，避免 userID=0 绕过权限。
+type userIDCtxKey struct{}
+
+// UserIDToCtx 把 userID 注入 ctx。
+func UserIDToCtx(ctx context.Context, userID uint) context.Context {
+	return context.WithValue(ctx, userIDCtxKey{}, userID)
+}
+
+// UserIDFromCtx 从 ctx 取出 userID。
+func UserIDFromCtx(ctx context.Context) (uint, bool) {
+	uid, ok := ctx.Value(userIDCtxKey{}).(uint)
+	return uid, ok
+}

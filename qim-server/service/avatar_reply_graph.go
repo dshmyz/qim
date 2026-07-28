@@ -36,6 +36,7 @@ type AvatarReplyContext struct {
 
 type AvatarReplyGraph struct {
 	runnable    compose.Runnable[*AvatarReplyContext, string]
+	template    prompt.ChatTemplate // 供 ExecuteStream 在图外渲染消息后直接流式
 	aiService   *ai.AIService
 	db          *gorm.DB
 	noteSvc     *NoteVectorService
@@ -81,6 +82,7 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 请以{UserName}的身份回复：`},
 	)
 	graph.AddChatTemplateNode("prompt", template)
+	g.template = template
 
 	graph.AddChatModelNode("model", NewEinoChatModelNoTools(g.aiService, ai.TaskTypeChat, 0))
 
@@ -104,60 +106,65 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 
 func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *AvatarReplyContext) (map[string]any, error) {
-		config := input.Config
-
-		now := time.Now()
-		weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
-		timeInfo := fmt.Sprintf("【当前时间】\n%s (%s)", now.Format("2006-01-02 15:04"), weekdays[now.Weekday()])
-
-		personaSection := ""
-		if config.AutoLearnedPersona != "" {
-			personaSection = "【你的说话风格】\n" + config.AutoLearnedPersona + "\n\n"
-		}
-
-		supplementSection := ""
-		if config.CustomPersonaAddon != "" {
-			supplementSection = "【补充说明】\n" + config.CustomPersonaAddon + "\n\n"
-		}
-
-		contextParts := []string{}
-		if input.NoteContext != "" {
-			contextParts = append(contextParts, input.NoteContext)
-		}
-		if input.GroupKnowledge != "" {
-			contextParts = append(contextParts, input.GroupKnowledge)
-		}
-		if input.MemoryContext != "" {
-			contextParts = append(contextParts, input.MemoryContext)
-		}
-		if input.TaskContext != "" {
-			contextParts = append(contextParts, input.TaskContext)
-		}
-		if input.History != "" {
-			contextParts = append(contextParts, "【对话历史】\n"+input.History)
-		}
-		contextStr := strings.Join(contextParts, "\n\n")
-
-		lengthHint := avatarLengthHint(input.ReplyStrategy.MaxReplyLength)
-
-		log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d LengthHint=%s",
-			input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message), lengthHint)
-
-		userName := input.User.Nickname
-		if userName == "" {
-			userName = input.User.Username
-		}
-
-		return map[string]any{
-			"UserName":          userName,
-			"TimeInfo":          timeInfo,
-			"PersonaSection":    personaSection,
-			"SupplementSection": supplementSection,
-			"ContextSection":    contextStr,
-			"Message":           input.Message,
-			"LengthHint":        lengthHint,
-		}, nil
+		return g.buildTemplateVars(input), nil
 	})
+}
+
+// buildTemplateVars 构造模板变量（图内节点与 ExecuteStream 图外渲染共用，避免双套拼装逻辑）
+func (g *AvatarReplyGraph) buildTemplateVars(input *AvatarReplyContext) map[string]any {
+	config := input.Config
+
+	now := time.Now()
+	weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
+	timeInfo := fmt.Sprintf("【当前时间】\n%s (%s)", now.Format("2006-01-02 15:04"), weekdays[now.Weekday()])
+
+	personaSection := ""
+	if config.AutoLearnedPersona != "" {
+		personaSection = "【你的说话风格】\n" + config.AutoLearnedPersona + "\n\n"
+	}
+
+	supplementSection := ""
+	if config.CustomPersonaAddon != "" {
+		supplementSection = "【补充说明】\n" + config.CustomPersonaAddon + "\n\n"
+	}
+
+	contextParts := []string{}
+	if input.NoteContext != "" {
+		contextParts = append(contextParts, input.NoteContext)
+	}
+	if input.GroupKnowledge != "" {
+		contextParts = append(contextParts, input.GroupKnowledge)
+	}
+	if input.MemoryContext != "" {
+		contextParts = append(contextParts, input.MemoryContext)
+	}
+	if input.TaskContext != "" {
+		contextParts = append(contextParts, input.TaskContext)
+	}
+	if input.History != "" {
+		contextParts = append(contextParts, "【对话历史】\n"+input.History)
+	}
+	contextStr := strings.Join(contextParts, "\n\n")
+
+	lengthHint := avatarLengthHint(input.ReplyStrategy.MaxReplyLength)
+
+	log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d LengthHint=%s",
+		input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message), lengthHint)
+
+	userName := input.User.Nickname
+	if userName == "" {
+		userName = input.User.Username
+	}
+
+	return map[string]any{
+		"UserName":          userName,
+		"TimeInfo":          timeInfo,
+		"PersonaSection":    personaSection,
+		"SupplementSection": supplementSection,
+		"ContextSection":    contextStr,
+		"Message":           input.Message,
+		"LengthHint":        lengthHint,
+	}
 }
 
 func (g *AvatarReplyGraph) createFormatReplyNode() *compose.Lambda {
@@ -204,6 +211,36 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 	}
 
 	return reply, nil
+}
+
+// ExecuteStream 以流式生成分身回复（供"帮我回复"草稿模式使用）。
+// 与 Execute 的差异：1) 不走编译图，渲染模板后直接调 chatModel.Stream；2) 忽略 SkipReply
+// （用户主动要草稿，即使命中"知识范围外静默"也照常生成）；3) 不做 MaxReplyLength 截断
+// （草稿进输入框由用户自行编辑，截断无意义）。
+func (g *AvatarReplyGraph) ExecuteStream(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+	if g.template == nil {
+		return nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+	}
+
+	input := &AvatarReplyContext{
+		Message:        message,
+		ConversationID: conversationID,
+		UserID:         userID,
+	}
+
+	if err := g.prepare(ctx, input, preloaded); err != nil {
+		return nil, err
+	}
+	// 草稿模式：忽略 SkipReply（用户主动要草稿，不该因"超知识范围"静默）
+
+	vars := g.buildTemplateVars(input)
+	messages, err := g.template.Format(ctx, vars)
+	if err != nil {
+		return nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+	}
+
+	chatModel := NewEinoChatModelNoTools(g.aiService, ai.TaskTypeChat, input.UserID)
+	return chatModel.Stream(ctx, messages)
 }
 
 // prepare 加载分身配置、用户、知识范围与历史，并判定是否命中"不回复"策略。

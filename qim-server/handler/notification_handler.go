@@ -483,15 +483,15 @@ func UpdateTask(c *gin.Context) {
 	}
 
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		DueDate     string `json:"due_date"`
-		Priority    string `json:"priority"`
-		Status      string `json:"status"`
-		AssigneeID  string `json:"assignee_id"`
-		Tags        string `json:"tags"`
-		SubTasks    string `json:"sub_tasks"`
-		Position    *int   `json:"position"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		DueDate     *string `json:"due_date"`
+		Priority    string  `json:"priority"`
+		Status      string  `json:"status"`
+		AssigneeID  *string `json:"assignee_id"`
+		Tags        string  `json:"tags"`
+		SubTasks    string  `json:"sub_tasks"`
+		Position    *int    `json:"position"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -506,10 +506,14 @@ func UpdateTask(c *gin.Context) {
 	if req.Description != "" {
 		updates["description"] = req.Description
 	}
-	if req.DueDate != "" {
-		parsedDate, err := time.Parse("2006-01-02", req.DueDate)
-		if err == nil {
-			updates["due_date"] = &parsedDate
+	if req.DueDate != nil {
+		if *req.DueDate == "" {
+			updates["due_date"] = (*time.Time)(nil) // 清空截止日期
+		} else {
+			parsedDate, err := time.Parse("2006-01-02", *req.DueDate)
+			if err == nil {
+				updates["due_date"] = &parsedDate
+			}
 		}
 	}
 	if req.Priority != "" {
@@ -518,8 +522,8 @@ func UpdateTask(c *gin.Context) {
 	if req.Status != "" {
 		updates["status"] = req.Status
 	}
-	if req.AssigneeID != "" {
-		updates["assignee_id"] = req.AssigneeID
+	if req.AssigneeID != nil {
+		updates["assignee_id"] = *req.AssigneeID // "" 表示清空指派
 	}
 	if req.Tags != "" {
 		updates["tags"] = req.Tags
@@ -538,6 +542,37 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
+	response.Success(c, task)
+}
+
+// ReorderTask 调整任务排序（看板列内/跨列拖拽）
+func ReorderTask(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的任务ID")
+		return
+	}
+	var req struct {
+		Position int    `json:"position"`
+		Status   string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	updates := map[string]interface{}{
+		"position": req.Position,
+	}
+	if req.Status != "" {
+		updates["status"] = req.Status
+	}
+	svc := di.GlobalContainer.TaskService
+	task, err := svc.UpdateTask(userID.(uint), uint(taskID), updates)
+	if err != nil {
+		response.NotFound(c, "任务不存在")
+		return
+	}
 	response.Success(c, task)
 }
 

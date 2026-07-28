@@ -197,6 +197,7 @@ type ConversationMember struct {
 	UnreadCount          int          `json:"unread_count" gorm:"default:0"`
 	UnreadAtMentionCount int          `json:"unread_at_mention_count" gorm:"default:0"`
 	Muted                bool         `json:"muted" gorm:"default:false"`
+	MutedUntil           *time.Time   `json:"muted_until"` // 群级禁言截止时间；nil=未禁言。由 GroupManagementTool 写入，SendMessage 检查
 	LastReadAt           *time.Time   `json:"last_read_at"`
 	JoinedAt             time.Time    `json:"joined_at" gorm:"autoCreateTime"`
 	User                 User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
@@ -350,6 +351,17 @@ type BotConversation struct {
 	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
 
+// CardActionRecord 卡片点击幂等记录：同一用户对同一卡片提交一次按钮即锁定，
+// 防止重复触发 webhook / agent 逻辑。agent 回写新卡片 content 时清除（重新可点）。
+type CardActionRecord struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	MessageID uint      `json:"message_id" gorm:"not null;uniqueIndex:idx_card_action_unique"`
+	UserID    uint      `json:"user_id" gorm:"not null;uniqueIndex:idx_card_action_unique"`
+	ActionID  string    `json:"action_id" gorm:"size:64;not null"`
+	BotID     uint      `json:"bot_id" gorm:"not null;index"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // 日历事件
 type Event struct {
 	ID           uint           `json:"id" gorm:"primarykey"`
@@ -391,21 +403,24 @@ type SystemMessage struct {
 
 // 任务
 type Task struct {
-	ID          uint           `json:"id" gorm:"primarykey"`
-	UserID      uint           `json:"user_id" gorm:"not null;index"`
-	Title       string         `json:"title" gorm:"size:500;not null"`
-	Description string         `json:"description" gorm:"type:text"`
-	DueDate     *time.Time     `json:"due_date"`
-	Priority    string         `json:"priority" gorm:"size:20;default:'medium'"`
-	Status      string         `json:"status" gorm:"size:20;default:'todo'"`
-	AssigneeID  string         `json:"assignee_id" gorm:"size:100"`
-	Tags        string         `json:"tags" gorm:"type:text"`
-	SubTasks    string         `json:"sub_tasks" gorm:"type:text"`
-	Position    int            `json:"position" gorm:"default:0"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
-	User        User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
+	ID             uint           `json:"id" gorm:"primarykey"`
+	UserID         uint           `json:"user_id" gorm:"not null;index"`
+	ConversationID uint           `json:"conversation_id" gorm:"index"`
+	Title          string         `json:"title" gorm:"size:500;not null"`
+	Description    string         `json:"description" gorm:"type:text"`
+	DueDate        *time.Time     `json:"due_date"`
+	Priority       string         `json:"priority" gorm:"size:20;default:'medium'"`
+	Status         string         `json:"status" gorm:"size:20;default:'todo'"`
+	AssigneeID     string         `json:"assignee_id" gorm:"size:100"`
+	Tags           string         `json:"tags" gorm:"type:text"`
+	SubTasks       string         `json:"sub_tasks" gorm:"type:text"`
+	Position       int            `json:"position" gorm:"default:0"`
+	Reminder       int            `json:"reminder" gorm:"default:0"`        // 提前提醒分钟数，0=不提醒
+	ReminderSent   bool           `json:"reminder_sent" gorm:"default:false"` // 已发送提醒
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	User           User           `json:"user,omitempty" gorm:"foreignkey:UserID"`
 }
 
 // 小程序

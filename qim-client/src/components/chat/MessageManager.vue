@@ -254,24 +254,7 @@
     </div>
 
     <!-- 媒体操作菜单 -->
-    <Teleport to="body">
-      <div v-if="mediaMenuVisible" class="media-action-overlay" @click="closeMediaMenu">
-        <div
-          class="media-action-menu"
-          :style="{ left: mediaMenuPosition.x + 'px', top: mediaMenuPosition.y + 'px' }"
-          @click.stop
-        >
-          <div class="media-menu-item" @click="handleJumpFromMenu">
-            <i class="fas fa-chevron-right"></i>
-            <span>跳转</span>
-          </div>
-          <div class="media-menu-item" @click="handleDownloadFromMenu">
-            <i class="fas fa-download"></i>
-            <span>下载</span>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <UniversalContextMenu menuId="media" :items="mediaMenuItems" />
   </div>
 </template>
 
@@ -287,6 +270,8 @@ import { downloadUrl } from '../../utils/download'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import MarkdownMessage from '../message/MarkdownMessage.vue'
 import MergedForwardMessage from '../message/MergedForwardMessage.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import { openMenu, closeMenu } from '../../composables/useUI'
 
 const props = defineProps<{
   visible: boolean
@@ -535,51 +520,17 @@ const closeImagePreview = () => {
 }
 
 // 处理媒体文件点击
-const mediaMenuVisible = ref(false)
-const mediaMenuPosition = ref({ x: 0, y: 0 })
 const currentMediaMessage = ref<any>(null)
+
+const mediaMenuItems = computed(() => [
+  { label: '跳转', icon: 'fas fa-chevron-right', action: () => { emit('scrollToMessage', currentMediaMessage.value?.id); closeMenu() } },
+  { label: '下载', icon: 'fas fa-download', action: () => { if (currentMediaMessage.value) downloadMedia(currentMediaMessage.value.content, currentMediaMessage.value.id); closeMenu() } }
+])
 
 const handleMediaClick = (message: any, event: MouseEvent) => {
   event.stopPropagation()
   currentMediaMessage.value = message
-  const menuWidth = 140
-  const menuHeight = 80
-  const padding = 8
-  let x = event.clientX
-  let y = event.clientY
-  if (x + menuWidth + padding > window.innerWidth) {
-    x = window.innerWidth - menuWidth - padding
-  }
-  if (y + menuHeight + padding > window.innerHeight) {
-    y = window.innerHeight - menuHeight - padding
-  }
-  if (x < padding) x = padding
-  if (y < padding) y = padding
-  mediaMenuPosition.value = { x, y }
-  mediaMenuVisible.value = true
-}
-
-const closeMediaMenu = () => {
-  mediaMenuVisible.value = false
-  currentMediaMessage.value = null
-}
-
-const handleJumpFromMenu = () => {
-  if (currentMediaMessage.value) {
-    emit('scrollToMessage', currentMediaMessage.value.id)
-  }
-  closeMediaMenu()
-}
-
-const handleDownloadFromMenu = async () => {
-  if (currentMediaMessage.value) {
-    if (currentMediaMessage.value.type === 'image') {
-      previewImage(currentMediaMessage.value)
-    } else {
-      downloadFile(currentMediaMessage.value)
-    }
-  }
-  closeMediaMenu()
+  openMenu('media', event.clientX, event.clientY)
 }
 
 // 下载图片
@@ -691,41 +642,6 @@ onMounted(() => {
 </script>
 
 <style>
-/* 媒体操作菜单 — 全局样式（Teleport 到 body） */
-.media-action-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
-.media-action-menu {
-  position: fixed;
-  z-index: 10000;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  padding: 6px;
-  min-width: 140px;
-}
-.media-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #1a1a2e;
-  transition: background 0.1s;
-}
-.media-menu-item:hover {
-  background: #f3f4f6;
-}
-.media-menu-item i {
-  width: 16px;
-  text-align: center;
-  color: #9ca3af;
-}
 </style>
 <style scoped>
 .message-manager-modal {
@@ -1067,6 +983,13 @@ onMounted(() => {
   -webkit-box-orient: vertical;
   padding-left: 0;
   user-select: text;
+}
+
+.message-content-file {
+  display: block;
+  overflow: visible;
+  text-overflow: unset;
+  -webkit-line-clamp: unset;
 }
 
 .message-manager-item-content.is-recalled {

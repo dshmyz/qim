@@ -3,12 +3,19 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -42,6 +49,7 @@ func checkAIEnabledMiddleware() gin.HandlerFunc {
 // AIHandler AI处理器
 type AIHandler struct {
 	aiService          *ai.AIService
+	avatarService      *service.AvatarService // 帮我回复草稿模式：复用分身生成
 	mcpServer          *ai.MCPServer
 	summaryGraph       *service.SummaryGraph
 	textProcessGraph   *service.TextProcessGraph
@@ -55,6 +63,11 @@ func NewAIHandler(aiService *ai.AIService, mcpServer *ai.MCPServer) *AIHandler {
 		aiService: aiService,
 		mcpServer: mcpServer,
 	}
+}
+
+// SetAvatarService 注入分身服务（帮我回复草稿模式复用分身生成）
+func (h *AIHandler) SetAvatarService(avatarService *service.AvatarService) {
+	h.avatarService = avatarService
 }
 
 func (h *AIHandler) SetSummaryGraph(graph *service.SummaryGraph) {
@@ -80,6 +93,8 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		aiGroup.POST("/completion", h.GetCompletion)
 		aiGroup.POST("/completion/stream", h.GetCompletionStream)
+		aiGroup.POST("/draft-reply", h.DraftReply)
+		aiGroup.POST("/draft-reply/stream", h.DraftReplyStream)
 		aiGroup.GET("/tools", h.ListTools)
 		aiGroup.POST("/tools/execute", h.ExecuteTool)
 
@@ -150,6 +165,292 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 		"code":    0,
 		"message": "success",
 		"data":    result,
+	})
+}
+
+// DraftReplyRequest 帮我回复请求
+type DraftReplyRequest struct {
+	ConversationID uint `json:"conversation_id" binding:"required"`
+	MessageID      uint `json:"message_id" binding:"required"`
+}
+
+// DraftReply 根据对话上下文起草回复
+// @Summary 帮我回复
+// @Description 根据目标消息及上下文生成回复草稿
+// @Tags AI
+// @Accept json
+// @Produce json
+// @Param request body DraftReplyRequest true "起草请求"
+// @Success 200 {object} AIResponse "成功响应"
+// @Router /api/ai/draft-reply [post]
+func (h *AIHandler) DraftReply(c *gin.Context) {
+	var req DraftReplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if !h.aiService.IsConfigured() {
+		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	// 1) 优先复用分身生成（与流式路径一致：以用户身份 + persona/笔记/群知识/记忆/待办/历史，忽略 SkipReply）
+	if h.avatarService != nil {
+		userIDAny, _ := c.Get("user_id")
+		userID, _ := userIDAny.(uint)
+		var avatarCfg model.AvatarConfig
+		if userID > 0 && database.GetDB().Where("user_id = ?", userID).First(&avatarCfg).Error == nil {
+			target, err := loadDraftTarget(req)
+			if err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成回复失败: " + err.Error()})
+				return
+			}
+			defer stream.Close()
+			var reply strings.Builder
+			for {
+				msg, recvErr := stream.Recv()
+				if recvErr != nil {
+					if !errors.Is(recvErr, io.EOF) {
+						c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成回复失败: " + recvErr.Error()})
+						return
+					}
+					break
+				}
+				if msg != nil {
+					reply.WriteString(msg.Content)
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": gin.H{"reply": reply.String()}})
+			return
+		}
+		// 无分身配置 -> 回退简单起草
+	}
+
+	// 2) 回退：中立起草 prompt + 10 条上下文
+	userIDAny, _ := c.Get("user_id")
+	currentUserID, _ := userIDAny.(uint)
+	messages, err := buildDraftReplyMessages(req, currentUserID)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI请求失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    gin.H{"reply": result},
+	})
+}
+
+// buildDraftReplyMessages 构造帮我回复的上下文消息（供同步/流式复用）
+// loadDraftTarget 查询目标消息并校验其属于指定会话（同步/流式起草共用，
+// 避免分身路径漏校验导致跨会话越权读取）。
+func loadDraftTarget(req DraftReplyRequest) (*model.Message, error) {
+	var target model.Message
+	if err := database.GetDB().Preload("Sender").First(&target, req.MessageID).Error; err != nil {
+		return nil, fmt.Errorf("消息不存在")
+	}
+	if target.ConversationID != req.ConversationID {
+		return nil, fmt.Errorf("消息与会话不匹配")
+	}
+	return &target, nil
+}
+
+func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Message, error) {
+	db := database.GetDB()
+
+	target, err := loadDraftTarget(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 取目标消息之前的 10 条作为上下文（含发送者昵称）
+	var contextMsgs []model.Message
+	db.Preload("Sender").
+		Where("conversation_id = ? AND created_at < ? AND type != ? AND is_recalled = ?",
+			req.ConversationID, target.CreatedAt, "system", false).
+		Order("created_at DESC").
+		Limit(10).
+		Find(&contextMsgs)
+
+	// 按时间正序拼装上下文文本，区分"我"和"对方"
+	var myName string
+	contextLines := []string{}
+	for i := len(contextMsgs) - 1; i >= 0; i-- {
+		m := contextMsgs[i]
+		name := m.Sender.Nickname
+		if name == "" {
+			name = m.Sender.Username
+		}
+		if m.SenderID == currentUserID {
+			contextLines = append(contextLines, fmt.Sprintf("我: %s", m.Content))
+			if myName == "" {
+				myName = name
+			}
+		} else {
+			contextLines = append(contextLines, fmt.Sprintf("%s: %s", name, m.Content))
+		}
+	}
+	contextText := ""
+	if len(contextLines) > 0 {
+		contextText = "对话上下文：\n" + fmt.Sprintf("%s\n\n", strings.Join(contextLines, "\n"))
+	}
+
+	targetName := target.Sender.Nickname
+	if targetName == "" {
+		targetName = "对方"
+	}
+
+	if myName == "" {
+		// 目标消息前没有我的消息，从当前用户查昵称
+		var me model.User
+		if db.First(&me, currentUserID).Error == nil {
+			myName = me.Nickname
+			if myName == "" {
+				myName = me.Username
+			}
+		}
+	}
+
+	userPrompt := fmt.Sprintf("%s需要回复的消息（来自 %s）：\n%s",
+		contextText, targetName, target.Content)
+
+	return []ai.Message{
+		{Role: "system", Content: fmt.Sprintf("你是%s，需要以第一人称回复对方的消息。根据下面的对话上下文，起草一条回复。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。", myName)},
+		{Role: "user", Content: userPrompt},
+	}, nil
+}
+
+// DraftReplyStream 流式起草回复
+// @Summary 流式帮我回复
+// @Description 根据目标消息及上下文流式生成回复草稿，使用 SSE 返回
+// @Tags AI
+// @Accept json
+// @Produce text/event-stream
+// @Param request body DraftReplyRequest true "起草请求"
+// @Success 200 {string} string "流式输出"
+// @Router /api/ai/draft-reply/stream [post]
+func (h *AIHandler) DraftReplyStream(c *gin.Context) {
+	var req DraftReplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if !h.aiService.IsConfigured() {
+		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	// 1) 草稿模式优先复用分身生成：以用户身份 + persona/笔记/群知识/记忆/待办/历史
+	if h.avatarService != nil {
+		userIDAny, _ := c.Get("user_id")
+		userID, _ := userIDAny.(uint)
+		var avatarCfg model.AvatarConfig
+		if userID > 0 && database.GetDB().Where("user_id = ?", userID).First(&avatarCfg).Error == nil {
+			target, err := loadDraftTarget(req)
+			if err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
+			if err != nil {
+				log.Printf("[DraftReplyStream] 分身流式生成失败，回退简单起草: %v", err)
+				// 回退到简单起草路径
+			} else {
+				streamCompletionFromReader(c, stream)
+				return
+			}
+		}
+		// 无分身配置或分身失败 -> 回退简单起草
+	}
+
+	// 2) 回退：中立起草 prompt + 10 条上下文
+	userIDAny, _ := c.Get("user_id")
+	currentUserID, _ := userIDAny.(uint)
+	messages, err := buildDraftReplyMessages(req, currentUserID)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	h.streamCompletion(c, messages)
+}
+
+// streamCompletion 将一组消息以 SSE 流式推给前端（GetCompletionStream / DraftReplyStream 共用）
+// streamSSE 设置 SSE 响应头，pump 通过 writeChunk 推送内容块；结束后发 finish 事件。
+// pump 返回非 nil error 时改为推送错误事件。供 streamCompletion / streamCompletionFromReader 共用，
+// 避免 SSE 响应头与结束事件逻辑重复。
+func streamSSE(c *gin.Context, pump func(writeChunk func(content string)) error) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	writeChunk := func(content string) {
+		data, _ := json.Marshal(ai.StreamChunk{Content: content})
+		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+		c.Writer.Flush()
+	}
+
+	if err := pump(writeChunk); err != nil {
+		errStr := "AI请求失败: " + err.Error()
+		errData, _ := json.Marshal(ai.StreamChunk{Error: &errStr})
+		c.Writer.Write([]byte("data: " + string(errData) + "\n\n"))
+		c.Writer.Flush()
+		return
+	}
+
+	// 发送结束事件
+	finish := "stop"
+	doneData, _ := json.Marshal(ai.StreamChunk{Finish: &finish})
+	c.Writer.Write([]byte("data: " + string(doneData) + "\n\n"))
+	c.Writer.Flush()
+}
+
+// streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream）
+func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
+	streamSSE(c, func(writeChunk func(string)) error {
+		return h.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
+			if chunk.Content != "" {
+				writeChunk(chunk.Content)
+			}
+			return nil
+		})
+	})
+}
+
+// streamCompletionFromReader 把 Eino StreamReader 逐块以 SSE 推给前端（分身草稿流式路径）
+// streamCompletionFromReader 把 Eino StreamReader 逐块以 SSE 推给前端（分身草稿流式路径）。
+// Recv 返回 io.EOF 表示正常结束；其他 err 为上游真实错误，交 streamSSE 推送错误事件。
+// defer Close 确保客户端断开或出错时释放 reader 端资源。
+func streamCompletionFromReader(c *gin.Context, stream *schema.StreamReader[*schema.Message]) {
+	defer stream.Close()
+	streamSSE(c, func(writeChunk func(string)) error {
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+			if msg != nil && msg.Content != "" {
+				writeChunk(msg.Content)
+			}
+		}
 	})
 }
 
@@ -416,38 +717,7 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 		return
 	}
 
-	// 设置 SSE 响应头
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
-	// 定义onChunk函数，将 StreamChunk JSON 编码后通过 SSE 发送
-	onChunk := func(chunk ai.StreamChunk) error {
-		data, err := json.Marshal(chunk)
-		if err != nil {
-			return err
-		}
-		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
-		c.Writer.Flush()
-		return nil
-	}
-
-	// 执行流式请求
-	err := h.aiService.GetCompletionStream(ai.TaskTypeChat, req.Messages, onChunk)
-	if err != nil {
-		// 发送错误事件
-		errData, _ := json.Marshal(ai.StreamChunk{Content: err.Error()})
-		c.Writer.Write([]byte("data: " + string(errData) + "\n\n"))
-		c.Writer.Flush()
-		return
-	}
-
-	// 发送结束事件
-	finish := "stop"
-	doneData, _ := json.Marshal(ai.StreamChunk{Finish: &finish})
-	c.Writer.Write([]byte("data: " + string(doneData) + "\n\n"))
-	c.Writer.Flush()
+	h.streamCompletion(c, req.Messages)
 }
 
 // ListTools 列出所有MCP工具

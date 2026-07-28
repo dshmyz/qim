@@ -64,6 +64,12 @@ func (r *notificationRepository) CountUnread(ctx context.Context, userID uint) (
 	return count, err
 }
 
+func (r *notificationRepository) ClearAllByUserID(ctx context.Context, userID uint) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&model.Notification{}).Error
+}
+
 func (r *notificationRepository) WithTx(tx *gorm.DB) BaseRepository[model.Notification] {
 	return &notificationRepository{
 		baseRepository: &baseRepository[model.Notification]{db: tx},

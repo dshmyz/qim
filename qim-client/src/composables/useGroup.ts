@@ -3,7 +3,7 @@ import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import { request, useRequest } from './useRequest'
 import { isAbsoluteUrl } from '../utils/avatar'
-import { useUI } from './useUI'
+import { useUI, openMenu, closeMenu, activeMenu, activeMenuPosition } from './useUI'
 
 export const isVisibleGroupMember = (member: any): boolean => {
   const user = member?.user || member?.User || {}
@@ -83,9 +83,9 @@ export function useGroup() {
   // 选中的群组
   const selectedGroup = ref<GroupInfo | null>(null)
 
-  // 群组右键菜单状态
-  const showGroupContextMenuFlag = ref(false)
-  const groupContextMenuPosition = ref({ x: 0, y: 0 })
+  // 群组右键菜单状态（使用全局 activeMenu 共享状态）
+  const showGroupContextMenuFlag = computed(() => activeMenu.value === 'group')
+  const groupContextMenuPosition = computed(() => activeMenu.value === 'group' ? activeMenuPosition.value : { x: 0, y: 0 })
   const selectedGroupForContextMenu = ref<GroupInfo | null>(null)
 
   // 群组成员列表
@@ -109,18 +109,14 @@ export function useGroup() {
    */
   const showGroupContextMenu = (event: MouseEvent, group: GroupInfo) => {
     event.preventDefault()
-    showGroupContextMenuFlag.value = true
-    groupContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 200)
     selectedGroupForContextMenu.value = group
-    // 同时设置 selectedGroup
     selectedGroup.value = group
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 200)
+    openMenu('group', pos.x, pos.y)
   }
 
-  /**
-   * 关闭群组右键菜单
-   */
   const closeGroupContextMenu = () => {
-    showGroupContextMenuFlag.value = false
+    closeMenu()
     selectedGroupForContextMenu.value = null
   }
 

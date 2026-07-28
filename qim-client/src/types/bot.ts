@@ -23,6 +23,22 @@ export interface BotConfig {
   model?: string
 }
 
+// Bot 的 webhook 路由配置（存于 model.Bot.Config JSON，与 AI BotConfig 共列）。
+// mode 决定用户回复走内部 AI 还是转发外部 agent webhook。
+export interface BotWebhookConfig {
+  mode?: 'internal_ai' | 'external_webhook'
+  webhook_url?: string
+  webhook_secret?: string // 仅写入，服务端不回显
+}
+
+// Bot 访问令牌信息（列表用，不含明文/hash）。
+export interface BotTokenInfo {
+  id: number
+  name: string
+  created_at: string
+  last_used_at: string | null
+}
+
 export interface BotMessage {
   id: number
   conversationId: number | null

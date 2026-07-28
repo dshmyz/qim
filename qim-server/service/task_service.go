@@ -2,10 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/repository"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
 )
@@ -104,4 +109,60 @@ func (s *TaskService) UpdateTaskStatus(userID, taskID uint, status string) (*mod
 func (s *TaskService) DeleteTask(userID, taskID uint) error {
 	ctx := context.Background()
 	return s.repo.DeleteByUserIDAndID(ctx, userID, taskID)
+}
+
+// ProcessTaskReminders 扫描所有需要提醒的待办并发送通知。
+// 由统一调度器（pkg/scheduler）每 30 秒调用一次。
+func (s *TaskService) ProcessTaskReminders() {
+	now := time.Now()
+
+	var tasks []model.Task
+	if err := s.db.Where(
+		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ?",
+		false, "done",
+	).Find(&tasks).Error; err != nil {
+		return
+	}
+
+	for _, task := range tasks {
+		// 统一转本地时间比较，避免 UTC/本地时间偏差
+		dueLocal := task.DueDate.Local()
+		reminderTime := dueLocal.Add(-time.Duration(task.Reminder) * time.Minute)
+		if now.After(reminderTime) || now.Equal(reminderTime) {
+			// 先标记再发送，防止调度器重复触发
+			s.db.Model(&task).Update("reminder_sent", true)
+			s.sendTaskReminder(&task)
+		}
+	}
+}
+
+func (s *TaskService) sendTaskReminder(task *model.Task) {
+	if ws.GlobalHub == nil {
+		return
+	}
+
+	db := database.GetDB()
+	dueStr := task.DueDate.Local().Format("01/02 15:04")
+
+	// 应用内通知
+	notification := model.Notification{
+		UserID:        task.UserID,
+		Type:          "task_reminder",
+		Title:         "待办提醒",
+		Content:       fmt.Sprintf("「%s」将在 %s 到期", task.Title, dueStr),
+		Priority:      "important",
+		ActionType:    "confirm_reschedule",
+		ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
+	}
+	if err := db.Create(&notification).Error; err != nil {
+		logger.WithModule("TaskService").Warn("待办提醒通知落库失败",
+			"taskID", task.ID, "userID", task.UserID, "error", err)
+	}
+
+	// WS 推送
+	msg, _ := json.Marshal(ws.WSMessage{
+		Type: "new_notification",
+		Data: notification,
+	})
+	ws.GlobalHub.SendToUser(task.UserID, msg)
 }

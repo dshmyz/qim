@@ -60,11 +60,11 @@
             <option value="chat">聊天文件</option>
           </optgroup>
           <optgroup label="快捷">
-            <option value="starred">⭐ 星标文件</option>
+            <option value="starred">★ 星标文件</option>
           </optgroup>
           <optgroup v-if="folders.length" label="文件夹">
             <option v-for="folder in folders" :key="'f-'+folder.id" :value="'folder-'+folder.id">
-              📁 {{ folder.name }}
+              {{ folder.name }}
             </option>
           </optgroup>
         </select>
@@ -170,45 +170,7 @@
     />
 
     <!-- 右键菜单 -->
-    <Teleport to="body">
-      <div
-        v-if="contextMenu.visible"
-        ref="contextMenuRef"
-        class="context-menu"
-        :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
-      >
-        <div class="context-menu-item" @click="handleContextMenuAction('preview')">
-          <i class="fas fa-eye"></i>
-          <span>预览</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('download')">
-          <i class="fas fa-download"></i>
-          <span>下载</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('rename')">
-          <i class="fas fa-edit"></i>
-          <span>重命名</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('move')">
-          <i class="fas fa-arrows-alt"></i>
-          <span>移动</span>
-        </div>
-        <div class="context-menu-divider"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('star')">
-          <i :class="contextMenu.file?.is_starred ? 'fas fa-star' : 'far fa-star'"></i>
-          <span>{{ contextMenu.file?.is_starred ? '取消星标' : '添加星标' }}</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('share')">
-          <i class="fas fa-share-alt"></i>
-          <span>分享</span>
-        </div>
-        <div class="context-menu-divider"></div>
-        <div class="context-menu-item danger" @click="handleContextMenuAction('delete')">
-          <i class="fas fa-trash"></i>
-          <span>删除</span>
-        </div>
-      </div>
-    </Teleport>
+    <UniversalContextMenu menuId="file-management" :items="contextMenuItems" />
 
     <!-- 上传进度条 -->
     <UploadProgressBar :visible="true" />
@@ -228,11 +190,14 @@ import FilePreviewModal from './file/FilePreviewModal.vue'
 const FileActionsModal = defineAsyncComponent(() => import('./file/FileActionsModal.vue'))
 import { useFilePagination } from '../../composables/useFilePagination'
 import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 import { useFileUpload, uploadFile as uploadFileChunked } from '../../composables/useFileUpload'
 import { useFileDownload } from '../../composables/useFileDownload'
 import { useUploadStore } from '../../stores/upload'
 import { type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
+import { openMenu, closeMenu } from '../../composables/useUI'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
 
@@ -286,14 +251,8 @@ const previewFile = ref<FileItem | null>(null)
 const actionFile = ref<FileItem | null>(null)
 
 const contextMenu = ref({
-  visible: false,
-  x: 0,
-  y: 0,
   file: null as FileItem | null
 })
-
-// 右键菜单 DOM 引用，用于渲染后取真实尺寸做二次校正
-const contextMenuRef = ref<HTMLElement | null>(null)
 
 const folders = ref<FolderItem[]>([])
 const filterValue = ref('all')
@@ -451,63 +410,15 @@ const triggerFileUpload = () => {
 
 const handleContextMenu = (file: FileItem, event: MouseEvent) => {
   event.preventDefault()
-  // 视口尺寸与安全边距
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-  const padding = 8
-  // 菜单预估尺寸（min-width: 180px，7 个菜单项 + 2 个分隔线，估算高度 300px）
-  const estimatedWidth = 180
-  const estimatedHeight = 300
-
-  let x = event.clientX
-  let y = event.clientY
-
-  // 预夹取：右边界
-  if (x + estimatedWidth + padding > viewportWidth) {
-    x = viewportWidth - estimatedWidth - padding
-  }
-  // 预夹取：下边界
-  if (y + estimatedHeight + padding > viewportHeight) {
-    y = viewportHeight - estimatedHeight - padding
-  }
-  // 不允许负值
-  if (x < padding) x = padding
-  if (y < padding) y = padding
-
-  contextMenu.value = {
-    visible: true,
-    x,
-    y,
-    file
-  }
-
-  // 渲染后用真实尺寸二次校正，避免预估误差导致仍越界
-  nextTick(() => {
-    const el = contextMenuRef.value
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    let nx = x
-    let ny = y
-    if (rect.right > viewportWidth - padding) {
-      nx = viewportWidth - rect.width - padding
-    }
-    if (rect.bottom > viewportHeight - padding) {
-      ny = viewportHeight - rect.height - padding
-    }
-    if (nx < padding) nx = padding
-    if (ny < padding) ny = padding
-    if (nx !== x || ny !== y) {
-      contextMenu.value.x = nx
-      contextMenu.value.y = ny
-    }
-  })
+  contextMenu.value = { file }
+  openMenu('file-management', event.clientX, event.clientY)
 }
 
 const handleContextMenuAction = (action: string) => {
   const file = contextMenu.value.file
   if (!file) return
 
-  contextMenu.value.visible = false
+  closeMenu()
 
   switch (action) {
     case 'preview':
@@ -560,30 +471,32 @@ const navigateToPath = (index: number) => {
   console.log('Navigate to path index:', index)
 }
 
-const handleClickOutside = () => {
-  if (contextMenu.value.visible) {
-    contextMenu.value.visible = false
-  }
-}
-
 // 滚动或窗口缩放时关闭菜单，避免菜单飘在原地与内容错位
+const contextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: '预览', icon: 'fas fa-eye', action: () => handleContextMenuAction('preview') },
+  { label: '下载', icon: 'fas fa-download', action: () => handleContextMenuAction('download') },
+  { label: '重命名', icon: 'fas fa-edit', action: () => handleContextMenuAction('rename') },
+  { label: '移动', icon: 'fas fa-arrows-alt', action: () => handleContextMenuAction('move') },
+  { divider: true },
+  { label: contextMenu.value.file?.is_starred ? '取消星标' : '添加星标', icon: contextMenu.value.file?.is_starred ? 'fas fa-star' : 'far fa-star', action: () => handleContextMenuAction('star') },
+  { label: '分享', icon: 'fas fa-share-alt', action: () => handleContextMenuAction('share') },
+  { divider: true },
+  { label: '删除', icon: 'fas fa-trash', danger: true, action: () => handleContextMenuAction('delete') }
+])
+
 const handleContextMenuDismiss = () => {
-  if (contextMenu.value.visible) {
-    contextMenu.value.visible = false
-  }
+  closeMenu()
 }
 
 onMounted(async () => {
   await loadFiles()
   await loadRootFolders()
-  document.addEventListener('click', handleClickOutside)
   // capture: true 以便捕获子元素（文件列表、文件夹树）内部的滚动
   window.addEventListener('scroll', handleContextMenuDismiss, true)
   window.addEventListener('resize', handleContextMenuDismiss)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', handleContextMenuDismiss, true)
   window.removeEventListener('resize', handleContextMenuDismiss)
 })
@@ -767,68 +680,6 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
   background: var(--card-bg, #fff);
-}
-
-/* ===== 右键菜单 ===== */
-.context-menu {
-  position: fixed;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e8ecf0);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
-  padding: 6px;
-  min-width: 180px;
-  z-index: 10000;
-  animation: menuIn 0.15s ease;
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  cursor: pointer;
-  color: var(--text-color, #4a5568);
-  font-size: 12px;
-  border-radius: 8px;
-  transition: all 0.15s ease;
-}
-
-.context-menu-item:hover {
-  background: var(--hover-color, #f0f2f5);
-  color: var(--primary-color, #4f6ef7);
-}
-
-.context-menu-item.danger {
-  color: var(--error-color, #e53e3e);
-}
-
-.context-menu-item.danger:hover {
-  background: rgba(229, 62, 62, 0.06);
-  color: var(--error-color, #e53e3e);
-}
-
-.context-menu-item i {
-  width: 16px;
-  text-align: center;
-  font-size: 14px;
-}
-
-.context-menu-divider {
-  height: 1px;
-  background: var(--border-color, #e8ecf0);
-  margin: 4px 8px;
-}
-
-@keyframes menuIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 
 /* ===== 响应式 ===== */

@@ -58,7 +58,7 @@ func (s *NotificationService) MarkAllAsRead(userID uint) error {
 
 func (s *NotificationService) ClearAll(userID uint) error {
 	ctx := context.Background()
-	return s.repo.Delete(ctx, userID)
+	return s.repo.ClearAllByUserID(ctx, userID)
 }
 
 // Delete 删除单条通知

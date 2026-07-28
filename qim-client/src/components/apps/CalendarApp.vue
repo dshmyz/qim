@@ -23,6 +23,8 @@
         @prevMonth="prevMonth"
         @nextMonth="nextMonth"
         @selectDate="selectDate"
+        @createOnDate="createOnDate"
+        @contextmenu="onContextMenu"
       />
       <EventPanel
         :selectedDate="selectedDate"
@@ -30,6 +32,9 @@
         @editEvent="showEditEventModal"
         @deleteEvent="deleteEvent"
       />
+
+      <!-- 右键日期格菜单 -->
+      <UniversalContextMenu menuId="calendar" :items="contextMenuItems" />
     </div>
 
     <ModalContainer
@@ -78,7 +83,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
+import { useTaskStore } from '../../stores/task'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
 import { useServerUrl } from '../../composables/useServerUrl'
@@ -87,13 +93,26 @@ import ModalContainer from '../../components/shared/ModalContainer.vue'
 import AppHeader from './AppHeader.vue'
 import CalendarGrid from './calendar/CalendarGrid.vue'
 import EventPanel from './calendar/EventPanel.vue'
-import { generateAvatar } from '../../utils/avatar'
+import { showReminder } from '../../utils/notify'
 import { getLunarDayInfo } from '../../utils/lunar'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../shared/context-menu-types'
+import { openMenu } from '../../composables/useUI'
 
-defineEmits<{
+const props = defineProps<{
+  /** 从通知中心点击提醒跳转时传入：定位到该事件并打开编辑窗 */
+  focusEventId?: number | string
+}>()
+
+const emit = defineEmits<{
   back: []
   toggleSidebar: []
+  openTaskApp: []
+  /** focusEventId 消费后通知父组件清空，避免下次手动进入日历误弹 */
+  consumedFocus: []
 }>()
+
+const taskStore = useTaskStore()
 
 const { serverUrl } = useServerUrl()
 
@@ -222,9 +241,11 @@ const updateEvent = async () => {
       all_day: Boolean(formData.value.allDay),
       reminder: Number(formData.value.reminder)
     }
+    const token = getToken()
     const response = await axios.put(`${serverUrl.value}/api/v1/events/${selectedEvent.value.id}`, updatedEvent, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
     const index = events.value.findIndex(e => e.id === selectedEvent.value.id)
@@ -236,53 +257,67 @@ const updateEvent = async () => {
     closeEditEventModal()
   } catch (error) {
     console.error('更新事件失败:', error)
-    const updatedEvent = {
-      ...selectedEvent.value,
-      title: formData.value.title,
-      description: formData.value.description,
-      start: new Date(formData.value.start),
-      end: new Date(formData.value.end),
-      allDay: formData.value.allDay,
-      reminder: formData.value.reminder
-    }
-    const index = events.value.findIndex(e => e.id === selectedEvent.value.id)
-    if (index !== -1) {
-      events.value[index] = updatedEvent
-      clearEventReminder(selectedEvent.value.id)
-      setEventReminder(updatedEvent)
-    }
-    closeEditEventModal()
+    QMessage.error('更新事件失败，请稍后重试')
   }
 }
 
 const deleteEvent = async (eventId: string) => {
   try {
+    const token = getToken()
     await axios.delete(`${serverUrl.value}/api/v1/events/${eventId}`, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
     clearEventReminder(eventId)
     events.value = events.value.filter(e => e.id !== eventId)
   } catch (error) {
     console.error('删除事件失败:', error)
-    clearEventReminder(eventId)
-    events.value = events.value.filter(e => e.id !== eventId)
+    QMessage.error('删除事件失败，请稍后重试')
   }
 }
 
 const showCreateEventModal = () => {
+  // 预填选中日期（默认 09:00-10:00），点新建按钮即建当日事件
+  const start = new Date(selectedDate.value)
+  start.setHours(9, 0, 0, 0)
+  const end = new Date(selectedDate.value)
+  end.setHours(10, 0, 0, 0)
   formData.value = {
     title: '',
     description: '',
-    start: formatDateForInput(new Date()),
-    end: formatDateForInput(new Date()),
+    start: formatDateForInput(start),
+    end: formatDateForInput(end),
     allDay: false,
     reminder: 0
   }
   selectedEvent.value = null
   showCalendarModal.value = true
 }
+
+// 双击日期格：选中该日并直接打开新建弹窗
+const createOnDate = (date: Date) => {
+  selectedDate.value = date
+  showCreateEventModal()
+}
+
+// 右键日期格菜单
+const contextMenu = reactive({ date: new Date() })
+const onContextMenu = (event: MouseEvent, date: Date) => {
+  contextMenu.date = date
+  openMenu('calendar', event.clientX, event.clientY)
+}
+const contextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: '新建当日事件', action: () => { selectedDate.value = contextMenu.date; showCreateEventModal() } },
+  { label: '新建当日任务', action: () => {
+    const d = contextMenu.date
+    const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0')
+    taskStore.pendingCreateOnDate = `${y}-${m}-${day}`
+    emit('openTaskApp')
+  }},
+  { label: '跳到今天', action: () => { selectedDate.value = new Date() } }
+])
 
 const showEditEventModal = (event: any) => {
   selectedEvent.value = { ...event }
@@ -340,21 +375,7 @@ const showReminderNotification = (event: any) => {
     const start = new Date(event.start)
     const end = new Date(event.end)
     const timeStr = event.allDay ? '全天' : `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
-    if (Notification.permission === 'granted') {
-      new Notification('日历提醒', {
-        body: `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`,
-        icon: generateAvatar('日历')
-      })
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification('日历提醒', {
-            body: `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`,
-            icon: generateAvatar('日历')
-          })
-        }
-      })
-    }
+    showReminder('日历提醒', `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`)
   }
   logger.log('提醒:', event.title)
 }
@@ -395,6 +416,18 @@ onMounted(async () => {
   setupAllReminders()
   if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission()
+  }
+
+  // 从通知中心跳转过来：定位到指定事件并打开编辑窗
+  if (props.focusEventId !== undefined && props.focusEventId !== '') {
+    const target = events.value.find(e => String(e.id) === String(props.focusEventId))
+    if (target) {
+      selectedDate.value = new Date(target.start)
+      showEditEventModal(target)
+    } else {
+      QMessage.warning('该事件已不存在')
+    }
+    emit('consumedFocus')
   }
 })
 

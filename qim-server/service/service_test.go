@@ -44,6 +44,7 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&model.Notification{},
 		&model.Bot{},
 		&model.BotConversation{},
+		&model.BotWebhookDelivery{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
@@ -642,7 +643,7 @@ func TestMessageService_SendMessage_UsesOnlyStructuredMentionTokens(t *testing.T
 	assert.NoError(t, err)
 
 	_, err = svc.SendMessage(conv.ID, sender.ID, "text", "@{mention:all}", nil)
-	assert.ErrorIs(t, err, ErrAtAllForbidden)
+	assert.NoError(t, err, "@all 不再受权限拦截，直接展开为全体成员")
 }
 
 func TestMessageService_GetMessages(t *testing.T) {

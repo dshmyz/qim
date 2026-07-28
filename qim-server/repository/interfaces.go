@@ -76,6 +76,7 @@ type NotificationRepository interface {
 	MarkAsRead(ctx context.Context, id uint) error
 	MarkAllAsRead(ctx context.Context, userID uint) error
 	CountUnread(ctx context.Context, userID uint) (int64, error)
+	ClearAllByUserID(ctx context.Context, userID uint) error
 }
 
 type EventRepository interface {

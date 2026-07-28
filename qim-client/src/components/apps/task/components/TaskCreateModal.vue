@@ -51,6 +51,7 @@ import ModalContainer from '../../../shared/ModalContainer.vue'
 const props = defineProps<{
   visible: boolean
   task?: Task | null
+  defaultDueDate?: string
 }>()
 
 const emit = defineEmits<{
@@ -83,7 +84,7 @@ watch(() => props.visible, (val) => {
     } else {
       form.title = ''
       form.description = ''
-      form.due_date = null
+      form.due_date = props.defaultDueDate || null
       form.priority = 'medium'
       form.status = 'todo'
     }

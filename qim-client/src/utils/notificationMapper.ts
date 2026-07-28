@@ -68,5 +68,6 @@ export function mapNotification(raw: any): Notification {
 }
 
 export function mapNotifications(raws: any[]): Notification[] {
+  if (!Array.isArray(raws)) return []
   return raws.map(mapNotification)
 }

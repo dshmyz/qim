@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -623,24 +623,18 @@ function shouldHideMainWindowForScreenshot() {
 
 function waitForWindowHiddenBeforeScreenshot(win) {
   if (!win || win.isDestroyed()) return Promise.resolve()
-  const settleDelayMs = process.platform === 'win32' ? 180 : 80
+
+  // 窗口已隐藏，等合成器稳定
+  if (!win.isVisible()) {
+    return new Promise(resolve => setTimeout(resolve, 100))
+  }
 
   return new Promise((resolve) => {
-    if (!win.isVisible()) {
-      setTimeout(resolve, settleDelayMs)
-      return
-    }
-
-    let settled = false
-    const done = () => {
-      if (settled) return
-      settled = true
-      setTimeout(resolve, settleDelayMs)
-    }
-
-    win.once('hide', done)
+    win.once('hide', () => {
+      // hide 事件触发后再等一帧，确保合成器完成渲染
+      setTimeout(resolve, 100)
+    })
     win.hide()
-    setTimeout(done, settleDelayMs)
   })
 }
 
@@ -858,6 +852,27 @@ function registerIPC() {
   ipcMain.on('close-window', () => {
     if (mainWindow) {
       mainWindow.hide()
+    }
+  })
+
+  // 主进程通知：渲染进程通过 IPC 触发。用打包内 app 图标的绝对路径，
+  // Linux libnotify 能稳定渲染（Web Notification 的 data URL/相对路径 icon 在 Linux 下不工作）。
+  ipcMain.handle('notification:show', (_e, { title, body }) => {
+    try {
+      const iconPath = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
+      const icon = nativeImage.createFromPath(iconPath)
+      const n = new Notification({ title: title || 'QIM', body: body || '', icon, silent: false })
+      n.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      })
+      n.show()
+      return true
+    } catch (err) {
+      console.error('[notification] show failed:', err)
+      return false
     }
   })
 
@@ -1176,7 +1191,15 @@ async function ensureMediaPermissions() {
 
   // 所有平台: 配置权限请求处理器，允许 media 和安全的剪贴板写入请求
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    if (['media', 'clipboard-sanitized-write'].includes(permission)) {
+    // 白名单内的权限放行；其余拒绝。
+    // 注意：未列权限调 callback(false) 会让对应 Web API 的 Promise 挂起（不 reject、不报错），
+    // 新增用到需要权限的 Web API 时务必同步加白名单。
+    // - media: 通话/屏幕共享 getUserMedia
+    // - clipboard-sanitized-write: writeText 写剪贴板
+    // - clipboard-read: readText 读剪贴板（粘贴、小程序粘贴）
+    // - notifications: 便签/日历提醒 Web Notification
+    // - fullscreen: Element.requestFullscreen（屏幕共享全屏，缺则挂起）
+    if (['media', 'clipboard-sanitized-write', 'clipboard-read', 'notifications', 'fullscreen'].includes(permission)) {
       callback(true)
     } else {
       callback(false)

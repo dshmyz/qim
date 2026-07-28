@@ -15,6 +15,9 @@
     :show-search="showSearch"
     v-model:search-query="searchQueryLocal"
     :is-processing="props.isProcessing ?? false"
+    :draft-streaming="props.draftStreaming ?? false"
+    :has-draft-reply="props.hasDraftReply ?? false"
+    @regenerate-draft="emit('regenerate-draft')"
     @send="emit('send')"
     @input="emit('input', $event)"
     @cursor-change="emit('cursor-change', $event)"
@@ -72,10 +75,14 @@ interface Props {
   isElectron: boolean
   isProcessing?: boolean
   getFileIcon: (fileName: string) => string
+  draftStreaming?: boolean
+  hasDraftReply?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isProcessing: false
+  isProcessing: false,
+  draftStreaming: false,
+  hasDraftReply: false
 })
 
 const emit = defineEmits<{
@@ -108,6 +115,7 @@ const emit = defineEmits<{
   'handle-drop': [event: DragEvent]
   'perform-search': []
   'close-search': []
+  'regenerate-draft': []
   'update:inputMessage': [value: string]
   'update:showMiniAppList': [value: boolean]
   'update:searchQuery': [value: string]

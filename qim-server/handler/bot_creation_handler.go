@@ -180,7 +180,7 @@ func CreateBot(c *gin.Context) {
 		Type:        req.Type,
 		Avatar:      req.Avatar,
 		Config:      string(configJSON),
-		IsActive:    !needsApproval, // 需要审批时默认禁用，否则直接启用
+		IsActive:    true, // 临时占位，下面根据审批状态显式更新
 		CreatorID:   userID,
 		CreatorName: creatorName,
 		IsTemplate:  false,
@@ -209,8 +209,9 @@ func CreateBot(c *gin.Context) {
 		return
 	}
 
-	// 更新 Bot 的 VirtualUserID
+	// 更新 Bot 的 VirtualUserID + IsActive（审批时禁用，避免 GORM 零值跳过）
 	bot.VirtualUserID = &virtualUser.ID
+	bot.IsActive = !needsApproval
 	if err := tx.Save(&bot).Error; err != nil {
 		tx.Rollback()
 		response.InternalServerError(c, "更新 Bot 失败")

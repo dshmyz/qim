@@ -12,12 +12,14 @@
         :learning-status="learningStatus"
         @create-bot="showCreateBot"
         @use-bot="handleUseBot"
+        @config-bot="showConfigBot"
         @add-config="showAddConfig"
         @edit-config="handleEditConfig"
         @test-config="handleTestConfig"
         @delete-config="handleDeleteConfig"
         @open-avatar="viewMode = 'avatar-settings'"
         @toggle-avatar="handleToggleAvatar"
+        @delete-bot="handleDeleteBot"
       />
     </template>
 
@@ -35,7 +37,11 @@
     </template>
 
     <QDialog v-model:visible="showCreateModal" title="创建机器人" width="600px">
-      <CreateBotWizard @close="showCreateModal = false" />
+      <CreateBotWizard @close="showCreateModal = false" @created="onBotCreated" />
+    </QDialog>
+
+    <QDialog v-model:visible="showBotConfigModal" :title="`配置 - ${configBot?.name || ''}`" width="620px">
+      <BotConfigDialog v-if="configBot" :bot="configBot" @close="showBotConfigModal = false" @saved="onConfigSaved" />
     </QDialog>
 
     <ModelConfigFormModal
@@ -52,10 +58,12 @@ import { ref, onMounted, computed } from 'vue'
 import QuickStartCards from './QuickStartCards.vue'
 import MyAssetsSection from './MyAssetsSection.vue'
 import CreateBotWizard from './CreateBotWizard.vue'
+import BotConfigDialog from './BotConfigDialog.vue'
 import ModelConfigFormModal from './ModelConfigFormModal.vue'
 import AvatarSettingsPanel from '../../avatar/AvatarSettingsPanel.vue'
 import QDialog from '../../shared/QDialog.vue'
 import { useBots } from '../../../composables/useBots'
+import QMessageBox from '../../../utils/qmessagebox'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import { useAvatar } from '../../../composables/useAvatar'
 import { useAvatarPersona } from '../../../composables/useAvatarPersona'
@@ -74,7 +82,7 @@ interface Bot {
 const emit = defineEmits(['use-bot', 'back'])
 
 const bots = ref<Bot[]>([])
-const { fetchMyBots } = useBots()
+const { fetchMyBots, deleteBot } = useBots()
 const {
   configs,
   loading: configsLoading,
@@ -91,6 +99,8 @@ const personaState = useAvatarPersona()
 const viewMode = ref<'dashboard' | 'chat' | 'avatar-settings'>('dashboard')
 const showCreateModal = ref(false)
 const showConfigModal = ref(false)
+const showBotConfigModal = ref(false)
+const configBot = ref<any>(null)
 const editingConfig = ref<UserAIConfig | null>(null)
 
 const avatarConfig = computed(() => avatar.config.value)
@@ -119,6 +129,39 @@ function handleUseBot(bot: any) {
 
 function showCreateBot() {
   showCreateModal.value = true
+}
+
+function showConfigBot(bot: any) {
+  configBot.value = bot
+  showBotConfigModal.value = true
+}
+
+async function onConfigSaved() {
+  bots.value = (await fetchMyBots()) || []
+}
+
+async function onBotCreated() {
+  bots.value = (await fetchMyBots()) || []
+}
+
+async function handleDeleteBot(bot: Bot) {
+  const result = await QMessageBox.confirm(
+    `确定要删除机器人「${bot.name}」吗？删除后不可恢复。`,
+    '删除机器人',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  try {
+    const resp = await deleteBot(bot.id)
+    if (!resp) {
+      QMessage.error('删除失败')
+      return
+    }
+    bots.value = (await fetchMyBots()) || []
+    QMessage.success('已删除')
+  } catch (e: any) {
+    QMessage.error(e?.response?.data?.message || e?.message || '删除失败')
+  }
 }
 
 function showAddConfig() {
@@ -162,9 +205,13 @@ async function handleTestConfig(id: number) {
 }
 
 async function handleDeleteConfig(config: UserAIConfig) {
-  if (confirm(`确定要删除配置 "${config.config_name}" 吗？`)) {
-    await deleteConfig(config.id)
-  }
+  const result = await QMessageBox.confirm(
+    `确定要删除配置 "${config.config_name}" 吗？`,
+    '删除配置',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  await deleteConfig(config.id)
 }
 
 async function handleToggleAvatar() {

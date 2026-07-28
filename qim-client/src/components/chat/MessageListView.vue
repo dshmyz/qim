@@ -104,6 +104,7 @@ interface Emits {
   'load-more': []
   'mark-read': []
   'toggle-message-selection': [messageId: string]
+  'scroll': []
 }
 
 const props = defineProps<Props>()
@@ -174,6 +175,11 @@ const initImageViewer = () => {
       rotateLeft: 1,
       rotateRight: 1,
     },
+    shown() {
+      // 修复 aria-hidden 与焦点冲突的无障碍警告
+      const container = document.querySelector('.viewer-container')
+      if (container) container.removeAttribute('aria-hidden')
+    },
   })
 }
 
@@ -237,6 +243,7 @@ const throttledHandleScroll = () => {
   throttleTimeoutId = window.setTimeout(() => {
     throttleTimeoutId = null
     handleScroll()
+    emit('scroll')
   }, 100)
 }
 

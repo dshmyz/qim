@@ -279,7 +279,7 @@
         <div v-else-if="selectedAppId === 'calendar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <CalendarApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <CalendarApp :focus-event-id="focusEventId" @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" @openTaskApp="selectedAppId = 'task_manager'" @consumed-focus="focusEventId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -386,7 +386,7 @@
                 @editAnnouncement="editAnnouncement"
                 @editGroupName="editGroupNameAction"
                 @openAISettings="showAISettingsModal = true"
-                @showMemberContextMenu="(event, member) => showMemberContextMenu(event, member)"
+                @showMemberContextMenu="(event, member) => showSidebarMemberContextMenu(event, member)"
                 @startPrivateChat="startPrivateChat"
               />
             </div>
@@ -420,26 +420,10 @@
   
     <!-- 右键菜单 -->
     <MainContextMenus
-      :showMenu="showMenu"
       :selectedConversation="selectedConversation"
-      :menuPosition="menuPosition"
-      :showActionMenuFlag="showActionMenuFlag"
-      :actionMenuPosition="actionMenuPosition"
-      :showUserContextMenuFlag="showUserContextMenuFlag"
-      :userContextMenuPosition="userContextMenuPosition"
       :selectedEmployee="selectedEmployee"
-      :showMemberContextMenuFlag="showMemberContextMenuFlag"
-      :memberContextMenuPosition="memberContextMenuPosition"
-      :showGroupContextMenuFlag="showGroupContextMenuFlag"
-      :groupContextMenuPosition="groupContextMenuPosition"
       :selectedGroupForContextMenu="selectedGroupForContextMenu"
       :isGroupOwner="isGroupOwner(selectedGroupForContextMenu)"
-      :showSettingsMenuFlag="showSettingsMenuFlag"
-      :settingsMenuPosition="settingsMenuPosition"
-      :showThemeMenuFlag="showThemeMenuFlag"
-      :themeMenuPosition="themeMenuPosition"
-      :showMoreMenuFlag="showMoreMenuFlag"
-      :moreMenuPosition="moreMenuPosition"
       :currentUser="currentUser"
       @pin="handlePin"
       @mute="handleMute"
@@ -464,16 +448,17 @@
       @openFeedback="openFeedbackModal"
       @logout="logout"
       @setTheme="setTheme"
-      @showChannels="() => { handleSidebarOptionClick('channels'); closeMoreMenu() }"
+      @showChannels="() => { activeOption = 'channels'; closeMoreMenu() }"
       @closeMoreMenu="closeMoreMenu"
       @closeAllMenus="handleClickOutside"
     />
     
     <!-- 用户信息弹窗 -->
-    <UserProfile 
+    <UserProfile
       v-if="selectedUser"
-      :visible="showUserProfile" 
-      :user="selectedUser" 
+      :visible="showUserProfile"
+      :user="selectedUser"
+      :show-action="selectedUser.type !== 'bot'"
       @close="closeUserProfile"
       @send-private-message="startPrivateChat"
     />
@@ -494,6 +479,7 @@
       :type="createConversationType"
       :title="createConversationTitle"
       :members="allEmployees"
+      :orgStructure="orgStructure"
       @close="closeCreateConversationModal"
       @created="handleConversationCreated"
     />
@@ -546,6 +532,7 @@
       :selectedGroup="selectedGroup"
       :groupMembers="groupMembers"
       :allEmployees="allEmployees"
+      :orgStructure="orgStructure"
       :addMembersSearchQuery="addMembersSearchQuery"
       :selectedAddMembers="selectedAddMembers"
       :editGroupName="editGroupName"
@@ -570,7 +557,7 @@
       @close="closeAISettings"
       @cancel="closeAISettings"
       :show-footer="false"
-      :content-style="{ width: '480px', minWidth: '480px' }"
+      :content-style="{ width: '640px', minWidth: '640px' }"
     >
       <GroupAIPanel
         :group-id="Number(selectedGroup?.id)"
@@ -698,6 +685,7 @@ import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
 const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
 import { mapNotification } from '../utils/notificationMapper'
+import { showReminder } from '../utils/notify'
 const CreateGroupModal = defineAsyncComponent(() => import('../components/modals/CreateGroupModal.vue'))
 const ChannelDetailNew = defineAsyncComponent(() => import('../components/channel/ChannelDetailNew.vue'))
 const UserDetailPanel = defineAsyncComponent(() => import('../components/user/UserDetailPanel.vue'))
@@ -728,7 +716,7 @@ import { getProductName, APP_CONFIG } from '../config/appConfig'
 import { versionsApi } from '../api'
 import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
-import { useUI } from '../composables/useUI'
+import { useUI, closeMenu, openMenu } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
 import { useOrganizationLogic } from '../composables/useOrganizationLogic'
 import { useMainWebSocketHandlers } from '../composables/useMainWebSocketHandlers'
@@ -916,48 +904,26 @@ const ui = useUI()
 
 // 解构 UI 状态
 const {
-  // 右键菜单
-  showMenu,
-  menuPosition,
+  // 右键菜单数据
   selectedConversation,
   showContextMenu,
   hideContextMenu,
-  // 动作菜单
-  showActionMenuFlag,
-  actionMenuPosition,
   showActionMenu,
   hideActionMenu,
-  // 用户右键菜单
-  showUserContextMenuFlag,
-  userContextMenuPosition,
   selectedEmployee,
   showUserContextMenu,
   hideUserContextMenu,
-  // 群聊右键菜单
-  showGroupContextMenuFlag,
-  groupContextMenuPosition,
   selectedGroupForContextMenu,
   showGroupContextMenu,
   closeGroupContextMenu,
-  // 成员右键菜单
-  showMemberContextMenuFlag,
-  memberContextMenuPosition,
   selectedMember,
   showMemberContextMenu,
   hideMemberContextMenu,
-  // 设置菜单
-  showSettingsMenuFlag,
-  settingsMenuPosition,
+  showSidebarMemberContextMenu,
   showSettingsMenu,
   hideSettingsMenu,
-  // 主题菜单
-  showThemeMenuFlag,
-  themeMenuPosition,
   showThemeMenu,
   hideThemeMenu,
-  // 更多菜单
-  showMoreMenuFlag,
-  moreMenuPosition,
   showMoreMenu,
   closeMoreMenu,
   // 分享模态框
@@ -1185,9 +1151,8 @@ const handleShowGroupContextMenu = async (event: MouseEvent, group: any) => {
   event.preventDefault()
   const groupId = String(group.id)
   
-  // 先显示菜单（使用基本信息）
-  showGroupContextMenuFlag.value = true
-  groupContextMenuPosition.value = ui.computeMenuPosition(event.clientX, event.clientY, 160, 200)
+  // 先显示菜单
+  openMenu('group', ...Object.values(ui.computeMenuPosition(event.clientX, event.clientY, 160, 200)) as [number, number])
   selectedGroupForContextMenu.value = group
   
   // 如果已有该群的完整数据且包含 members，直接使用
@@ -1271,6 +1236,14 @@ const handleNotificationClick = (notification: any) => {
     loadMessages(conversationId)
   } else if (notification.category === 'group' && notification.data?.groupId) {
     activeOption.value = 'groups'
+  } else if (notification.type === 'event_reminder') {
+    // 日历提醒：打开日历应用并定位到该事件
+    const eventId = notification.actionPayload?.event_id || notification.data?.event_id
+    if (eventId !== undefined) {
+      focusEventId.value = eventId
+      selectedAppId.value = 'calendar'
+      activeOption.value = 'apps'
+    }
   }
 }
 
@@ -1466,6 +1439,40 @@ const fetchMissedMessages = async () => {
     }
   } catch (error) {
     logger.error('[离线补偿] 拉取离线消息失败:', error)
+  }
+
+  // 流式收尾补偿：断线期间流式消息可能已 finish（type: streaming->markdown），
+  // 但 finish 是 UPDATE 既有消息（同 id），after_id 只拉新消息拉不到 -> 本地卡 typing 气泡。
+  // 重新拉取本地仍 isStreaming 的消息的最新状态并 reconcile。
+  await reconcileStreamingMessages(currentConvId)
+}
+
+// reconcileStreamingMessages 对当前会话内本地仍 isStreaming 的消息，
+// 从服务端拉最新状态回填（type/content/isStreaming）。仅覆盖流式消息，不动其他。
+const reconcileStreamingMessages = async (convId: string) => {
+  const chatStore = useChatStore()
+  const msgs = chatStore.messages.get(convId) || []
+  const streamingIds = new Set(msgs.filter((m: Message) => m.isStreaming).map((m: Message) => m.id))
+  if (streamingIds.size === 0) return
+  try {
+    // page=1 返回最新一页（DESC），流式消息是近期的，必在其中
+    const response = await request(`/api/v1/conversations/${convId}/messages?page=1&page_size=50`)
+    if (response.code === 0 && response.data?.messages) {
+      for (const raw of response.data.messages) {
+        const id = raw.id != null ? String(raw.id) : ''
+        if (streamingIds.has(id)) {
+          // 仅回填流式收尾相关字段（type/content/isStreaming），避免整体替换引入类型不一致
+          chatStore.updateMessage(convId, id, {
+            type: raw.type || 'text',
+            content: raw.content || '',
+            isStreaming: raw.is_streaming || false,
+          })
+        }
+      }
+      logger.log(`[流式补偿] 会话 ${convId} reconcile ${streamingIds.size} 条流式消息`)
+    }
+  } catch (error) {
+    logger.error('[流式补偿] reconcile 失败:', error)
   }
 }
 
@@ -1671,6 +1678,14 @@ const connectWebSocket = () => {
       } else {
         showMessage({ message: `提醒发送失败：${data.error || '未知错误'}`, type: 'error', duration: 5000 })
       }
+    },
+    // 日历事件提醒（后端 ProcessReminders 经 WS 推送，全局消费，不依赖日历应用是否打开）
+    'event_reminder': (data: any) => {
+      const start = data.start ? new Date(data.start) : null
+      const timeStr = start
+        ? `${start.getMonth() + 1}/${start.getDate()} ${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`
+        : ''
+      showReminder('日历提醒', `事件: ${data.title || ''}${timeStr ? '\n时间: ' + timeStr : ''}`)
     }
   }
   
@@ -1723,17 +1738,23 @@ const handleMessageDeleted = (data: any) => {
   }
 }
 
-// 处理消息更新（流式消息完成后 content 变更，如 mention token 拼接）
+// 处理消息更新（流式消息分段追加 / 完成后 content、type、is_streaming 变更）
 const handleMessageUpdated = (data: any) => {
   logger.log('消息更新:', data)
   const convId = data.conversation_id?.toString()
   const msgId = data.id?.toString()
   if (!convId || !msgId || !data.content) return
 
+  // 流式分段推送携带 type + is_streaming：流式中保持 streaming 气泡，
+  // finish 时 type=markdown、is_streaming=false，气泡转为最终渲染
+  const updates: Partial<Message> = { content: data.content }
+  if (data.type) updates.type = data.type
+  if (data.is_streaming !== undefined) updates.isStreaming = data.is_streaming
+
   // 优先用数据库 ID 更新
   const msgs = chatStore.messages.get(convId)
   if (msgs && msgs.some(m => m.id === msgId)) {
-    chatStore.updateMessage(convId, msgId, { content: data.content })
+    chatStore.updateMessage(convId, msgId, updates)
   } else if (msgs) {
     // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
     // 增加时间窗：只匹配 60 秒内的流式消息，避免误匹配旧消息
@@ -1743,7 +1764,7 @@ const handleMessageUpdated = (data: any) => {
       (now - m.timestamp < 60000)
     )
     if (streamMsg) {
-      chatStore.updateMessage(convId, streamMsg.id, { content: data.content })
+      chatStore.updateMessage(convId, streamMsg.id, updates)
     }
   }
 
@@ -1777,8 +1798,8 @@ const handleNotification = (data: any) => {
 
   if (data.type && data.type.includes('_approval')) {
     const entityType = data.type.replace('_approval', '')
-    if (entityType === 'avatar' && chatWindowRefs[currentConversationId.value]) {
-      chatWindowRefs[currentConversationId.value]?.fetchConfig?.()
+    if (entityType === 'avatar') {
+      chatWindowRef.value?.fetchConfig?.()
     }
   }
 
@@ -1803,18 +1824,23 @@ const handleNotification = (data: any) => {
 // 处理会话更新
 const handleConversationUpdated = (data: any) => {
   logger.log('会话更新:', data)
-  
+
   if (!data || !data.id) {
     logger.warn('会话更新数据无效:', data)
     return
   }
-  
+
   try {
     const normalizedData = {
       ...data,
       id: data.id.toString()
     }
     chatStore.patchConversation(normalizedData.id, normalizedData)
+
+    // 同步 selectedGroup，让右侧面板实时感知 AI 设置等变更
+    if (selectedGroup.value && sameConversationId(selectedGroup.value.id, normalizedData.id)) {
+      selectedGroup.value = { ...selectedGroup.value, ...normalizedData }
+    }
   } catch (error) {
     logger.error('处理会话更新失败:', error)
     QMessage.error('处理会话更新失败')
@@ -2418,6 +2444,9 @@ const currentUserApp = ref<any>(null)
 // 小程序面板状态
 const showMiniAppList = ref(false)
 
+// 从通知中心跳转日历时，要聚焦的事件 id（消费后清空，避免重复打开）
+const focusEventId = ref<number | string>('')
+
 // 笔记数据
 
 
@@ -2737,7 +2766,7 @@ const saveGroupName = async (newName: string) => {
 }
 
 const closeMemberContextMenu = () => {
-  showMemberContextMenuFlag.value = false
+  closeMenu()
   selectedMember.value = null
   document.removeEventListener('click', closeMemberContextMenu)
 }
@@ -3111,8 +3140,7 @@ const confirmAddMembers = async (members: any[]) => {
 // 点击其他地方关闭菜单由showContextMenu和showGroupContextMenu函数内部处理
 
 const closeSettingsMenu = () => {
-  showSettingsMenuFlag.value = false
-  document.removeEventListener('click', closeSettingsMenu)
+  closeMenu()
 }
 
 const canUseElectronUpdater = () => {

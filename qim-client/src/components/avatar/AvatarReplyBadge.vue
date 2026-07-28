@@ -2,12 +2,14 @@
   <span :class="['avatar-reply-badge', `avatar-reply-badge--${variant}`]">
     <i class="fas fa-robot"></i>
     <span v-if="variant === 'badge'" class="badge-text">{{ userName }}的分身{{ avatarName }}</span>
-    <span v-else-if="variant === 'footer'" class="badge-text">由 {{ isOwn ? '您的' : (userName + ' 的') }} 分身{{ avatarName }} 回复</span>
+    <span v-else-if="variant === 'footer'" class="badge-text">{{ footerText }}</span>
   </span>
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { computed } from 'vue'
+
+const props = withDefaults(defineProps<{
   variant?: 'badge' | 'footer' | 'both'
   userName?: string
   avatarName?: string
@@ -17,6 +19,13 @@ withDefaults(defineProps<{
   userName: '',
   avatarName: '',
   isOwn: false
+})
+
+// footer 文案：用空格把分身名字单独隔出，便于区分；无分身名时不留多余空格
+const footerText = computed(() => {
+  const owner = props.isOwn ? '您的' : `${props.userName}的`
+  const avatar = props.avatarName ? ` ${props.avatarName} ` : ''
+  return `由${owner}分身${avatar}回复`
 })
 </script>
 

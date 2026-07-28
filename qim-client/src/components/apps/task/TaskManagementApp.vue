@@ -46,6 +46,7 @@
               v-else-if="store.currentView === 'calendar'"
               @task-click="onTaskClick"
               @task-contextmenu="onTaskContextmenu"
+              @create-on-date="createTaskOnDate"
             />
             <MyWorkspace
               v-else-if="store.currentView === 'workspace'"
@@ -66,37 +67,17 @@
     <TaskCreateModal
       :visible="showCreateModal"
       :task="editingTask"
+      :defaultDueDate="defaultDueDate || undefined"
       @close="onCloseModal"
       @submit="onSubmitTask"
     />
 
-    <div
-      v-if="contextMenu.visible"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-    >
-      <button class="context-item" @click="onContextEdit">
-        <i class="fas fa-edit"></i> 编辑
-      </button>
-      <button class="context-item" @click="onContextStatusChange('todo')">
-        <i class="fas fa-circle" style="color:#fbbf24;font-size:8px;"></i> 移到待办
-      </button>
-      <button class="context-item" @click="onContextStatusChange('in_progress')">
-        <i class="fas fa-circle" style="color:#a78bfa;font-size:8px;"></i> 移到进行中
-      </button>
-      <button class="context-item" @click="onContextStatusChange('completed')">
-        <i class="fas fa-circle" style="color:#34d399;font-size:8px;"></i> 移到已完成
-      </button>
-      <div class="context-divider"></div>
-      <button class="context-item danger" @click="onContextDelete">
-        <i class="fas fa-trash"></i> 删除
-      </button>
-    </div>
+    <UniversalContextMenu menuId="task" :items="contextMenuItems" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import type { Task, TaskStatus, TaskPriority, Tag, TaskUser } from '../../../types/task'
 import { useTaskStore } from '../../../stores/task'
 import { request } from '../../../composables/useRequest'
@@ -106,13 +87,17 @@ import KanbanView from './views/KanbanView.vue'
 import ListView from './views/ListView.vue'
 import CalendarView from './views/CalendarView.vue'
 import MyWorkspace from './views/MyWorkspace.vue'
+import UniversalContextMenu from '../../shared/UniversalContextMenu.vue'
+import type { ContextMenuItem } from '../../shared/context-menu-types'
 import TaskCreateModal from './components/TaskCreateModal.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import QMessage from '../../../utils/qmessage'
+import { openMenu, closeMenu } from '../../../composables/useUI'
 
 const store = useTaskStore()
 const showCreateModal = ref(false)
 const editingTask = ref<Task | null>(null)
+const defaultDueDate = ref<string | null>(null)
 const availableTags = ref<Tag[]>([
   { id: '1', name: '设计', color: '#ec4899' },
   { id: '2', name: '后端', color: '#6366f1' },
@@ -139,6 +124,11 @@ onMounted(() => {
   loadContacts()
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onGlobalClick)
+  // 日历右键"新建任务"跨应用跳转：预填截止日打开创建弹窗
+  if (store.pendingCreateOnDate) {
+    createTaskOnDate(new Date(store.pendingCreateOnDate))
+    store.pendingCreateOnDate = null
+  }
 })
 
 onUnmounted(() => {
@@ -185,21 +175,38 @@ function onSearch(event: Event) {
 }
 
 function onTaskContextmenu(event: MouseEvent, task: Task) {
-  contextMenu.visible = true
-  contextMenu.x = event.clientX
-  contextMenu.y = event.clientY
   contextMenu.taskId = task.id
+  openMenu('task', event.clientX, event.clientY)
 }
 
 function closeContextMenu() {
-  contextMenu.visible = false
+  closeMenu()
 }
+
+const contextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: '编辑', icon: 'fas fa-edit', action: onContextEdit },
+  { label: '移到待办', icon: 'fas fa-circle', iconColor: '#fbbf24', action: () => onContextStatusChange('todo') },
+  { label: '移到进行中', icon: 'fas fa-circle', iconColor: '#a78bfa', action: () => onContextStatusChange('in_progress') },
+  { label: '移到已完成', icon: 'fas fa-circle', iconColor: '#34d399', action: () => onContextStatusChange('completed') },
+  { divider: true },
+  { label: '删除', icon: 'fas fa-trash', danger: true, action: onContextDelete }
+])
 
 function onContextEdit() {
   const task = store.tasks.find(t => t.id === contextMenu.taskId)
   if (task) editingTask.value = task
   showCreateModal.value = true
   closeContextMenu()
+}
+
+// 日历视图双击日期：新建任务并预填截止日
+function createTaskOnDate(date: Date) {
+  editingTask.value = null
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  defaultDueDate.value = `${y}-${m}-${d}`
+  showCreateModal.value = true
 }
 
 async function onContextStatusChange(status: TaskStatus) {
@@ -214,7 +221,7 @@ async function onContextDelete() {
 }
 
 function onGlobalClick() {
-  if (contextMenu.visible) closeContextMenu()
+  closeContextMenu()
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -257,6 +264,7 @@ function onKeydown(e: KeyboardEvent) {
 function onCloseModal() {
   showCreateModal.value = false
   editingTask.value = null
+  defaultDueDate.value = null
 }
 
 async function onSubmitTask(data: {
@@ -276,6 +284,7 @@ async function onSubmitTask(data: {
     }
     showCreateModal.value = false
     editingTask.value = null
+    defaultDueDate.value = null
     store.refreshTasks()
   } catch {
     QMessage.error('操作失败，请重试')
@@ -379,37 +388,5 @@ async function onSubmitTask(data: {
 }
 .icon-btn:hover {
   background: var(--hover-bg);
-}
-.context-menu {
-  position: fixed;
-  z-index: var(--z-dropdown, 1000);
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  padding: var(--spacing-1);
-  min-width: 160px;
-}
-.context-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  width: 100%;
-  padding: var(--spacing-2) var(--spacing-3);
-  border: none;
-  background: none;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-}
-.context-item:hover { background: var(--hover-bg); }
-.context-item.danger { color: #ef4444; }
-.context-item.danger:hover { background: #fef2f2; }
-.context-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: var(--spacing-1) 0;
 }
 </style>

@@ -35,8 +35,21 @@
           <div class="bot-info">
             <h4>{{ bot.name }}</h4>
             <p>{{ bot.description || '暂无描述' }}</p>
+            <span v-if="bot.approval_status === 'pending'" class="status-tag pending">待审批</span>
+            <span v-else-if="bot.approval_status === 'rejected'" class="status-tag rejected">已拒绝</span>
           </div>
-          <button class="use-btn" @click.stop="$emit('use-bot', bot)">
+          <div class="bot-actions" v-if="bot.approval_status === 'approved'">
+            <button class="config-btn" @click.stop="$emit('config-bot', bot)" title="配置令牌/Webhook">
+              <i class="fas fa-cog"></i>
+            </button>
+            <button class="config-btn delete-btn" @click.stop="$emit('delete-bot', bot)" title="删除">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          <button v-else class="config-btn delete-btn" @click.stop="$emit('delete-bot', bot)" title="删除">
+            <i class="fas fa-trash"></i>
+          </button>
+          <button class="use-btn" @click.stop="$emit('use-bot', bot)" :disabled="bot.approval_status !== 'approved'">
             <i class="fas fa-comment"></i> 使用
           </button>
         </div>
@@ -194,12 +207,14 @@ const props = defineProps<{
 defineEmits([
   'create-bot',
   'use-bot',
+  'config-bot',
   'add-config',
   'edit-config',
   'test-config',
   'delete-config',
   'open-avatar',
-  'toggle-avatar'
+  'toggle-avatar',
+  'delete-bot'
 ])
 </script>
 
@@ -316,6 +331,7 @@ defineEmits([
 }
 
 .bot-card {
+  position: relative;
   background: var(--hover-color);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -371,6 +387,16 @@ defineEmits([
   width: 100%;
 }
 
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.status-tag.pending { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
+.status-tag.rejected { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
+
 .use-btn {
   width: 100%;
   padding: 8px;
@@ -390,6 +416,38 @@ defineEmits([
 
 .use-btn:hover {
   opacity: 0.9;
+}
+.use-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.delete-btn { color: #999; }
+.delete-btn:hover { color: #e74c3c; }
+.bot-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.bot-actions .config-btn { position: static; }
+
+.config-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.85);
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.config-btn:hover {
+  background: #fff;
+  color: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 .config-list {

@@ -55,6 +55,21 @@ func (s *AIService) SetMCPServer(mcpServer *MCPServer) {
 	s.mcpServer = mcpServer
 }
 
+// SetProviderForTesting 仅供测试：绕过 factory 直接注入 provider（如 mock）到 pool，
+// 用于在不依赖真实 LLM API 的情况下验证 tool calling 链路。
+func (s *AIService) SetProviderForTesting(name string, p Provider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pool == nil {
+		s.pool = make(map[string]Provider)
+	}
+	s.pool[name] = p
+	if s.configPool == nil {
+		s.configPool = make(map[string]Provider)
+	}
+	s.configPool[name] = p
+}
+
 func (s *AIService) GetMCPServer() *MCPServer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -121,7 +136,7 @@ func (s *AIService) GetCompletionStreamWithContext(ctx context.Context, taskType
 	return err
 }
 
-func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message, callerCtx *CallerContext, overrides ...Override) (string, error) {
+func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
 	s.mu.RLock()
 	mcpServer := s.mcpServer
 	s.mu.RUnlock()
@@ -136,9 +151,17 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 	}
 
 	tools := mcpServer.ListTools()
+	// allowed 非空时只注入白名单内的工具（群聊助手过滤掉运维工具）
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
+	}
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
+		if len(allowedSet) > 0 && !allowedSet[name] {
+			continue
+		}
 		desc := tool["description"].(string)
 		params := tool["parameters"].(map[string]interface{})
 		toolDefs = append(toolDefs, ToolDef{
@@ -205,6 +228,17 @@ func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message
 	}
 
 	return finalResp.Content, nil
+}
+
+// GetCompletionWithTools 注入全部 MCP 工具进行 function calling（管理后台 AI 等用）。
+func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message, callerCtx *CallerContext, overrides ...Override) (string, error) {
+	return s.getCompletionWithToolsCore(taskType, messages, callerCtx, nil, overrides...)
+}
+
+// GetCompletionWithToolsFiltered 只注入白名单工具进行 function calling（群聊助手用，
+// 避免注入运维工具造成误调用）。
+func (s *AIService) GetCompletionWithToolsFiltered(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
+	return s.getCompletionWithToolsCore(taskType, messages, callerCtx, allowed, overrides...)
 }
 
 func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext) (string, error) {

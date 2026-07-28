@@ -1,7 +1,7 @@
 <template>
   <div class="config-card">
     <div class="card-header">
-      <div class="provider-icon">{{ providerInfo.icon }}</div>
+      <div class="provider-icon"><i :class="providerInfo.icon"></i></div>
       <div class="card-info">
         <h4>{{ config.config_name }}</h4>
         <p>{{ providerInfo.name }} - {{ config.model_name }}</p>
@@ -39,7 +39,7 @@ const props = defineProps<{
 defineEmits(['edit', 'test', 'delete'])
 
 const providerInfo = computed(() => {
-  return AI_PROVIDERS.find(p => p.id === props.config.provider) || { icon: '⚙️', name: '自定义', defaultModel: '', defaultBaseURL: '' }
+  return AI_PROVIDERS.find(p => p.id === props.config.provider) || { icon: 'fas fa-gear', name: '自定义', defaultModel: '', defaultBaseURL: '' }
 })
 
 function formatDate(dateStr: string) {

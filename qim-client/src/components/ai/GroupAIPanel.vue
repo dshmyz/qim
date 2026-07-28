@@ -49,6 +49,32 @@
         @remove="handleRemoveDocument"
         @retry="handleRetryDocument"
       />
+      <!-- 群记忆管理 -->
+      <div v-if="activeTab === 'memory'" class="memory-tab">
+        <div class="memory-toolbar">
+          <input
+            v-model="searchQuery"
+            class="memory-search-input"
+            placeholder="搜索群记忆..."
+            @keyup.enter="searchMemories"
+          />
+          <button class="btn btn-sm" @click="searchMemories">搜索</button>
+          <button class="btn btn-sm" @click="loadMemories">刷新</button>
+          <button class="btn btn-sm btn-danger" @click="clearMemories">清空全部</button>
+        </div>
+        <div v-if="memories.length === 0" class="memory-empty">
+          暂无群记忆。群助手在群聊中遇到值得记的内容（群决定、约定、项目关键信息等）会自动沉淀到这里。
+        </div>
+        <div v-else class="memory-list">
+          <div v-for="m in memories" :key="m.doc_id" class="memory-item">
+            <div class="memory-content">{{ m.content }}</div>
+            <div class="memory-meta">
+              <span v-if="m.metadata?.remembered_at" class="memory-time">{{ formatMemoryTime(m.metadata.remembered_at) }}</span>
+              <button class="btn-link" @click="deleteMemory(m.doc_id)">删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="tab-footer">
@@ -65,7 +91,7 @@ import AIBaseSettings from './ai-settings/AIBaseSettings.vue'
 import AIPersonaSettings from './ai-settings/AIPersonaSettings.vue'
 import AITriggerSettings from './ai-settings/AITriggerSettings.vue'
 import AIKnowledgeSettings from './ai-settings/AIKnowledgeSettings.vue'
-import type { GroupAISettings, GroupDocument } from '../../types/ai'
+import type { GroupAISettings, GroupDocument, GroupMemory } from '../../types/ai'
 import { request } from '../../composables/useRequest'
 
 interface Props {
@@ -114,7 +140,8 @@ const tabs = [
   { key: 'base', label: '基础设置', icon: 'fas fa-cog' },
   { key: 'persona', label: '人设风格', icon: 'fas fa-palette' },
   { key: 'trigger', label: '触发规则', icon: 'fas fa-bolt' },
-  { key: 'knowledge', label: '知识库', icon: 'fas fa-book' }
+  { key: 'knowledge', label: '知识库', icon: 'fas fa-book' },
+  { key: 'memory', label: '群记忆', icon: 'fas fa-brain' }
 ]
 
 const settings = ref<GroupAISettings>({
@@ -270,6 +297,68 @@ async function handleRetryDocument(doc: any) {
   }
 }
 
+// ===== 群记忆 =====
+const memories = ref<GroupMemory[]>([])
+const searchQuery = ref('')
+
+function formatMemoryTime(ts: string): string {
+  const n = Number(ts)
+  if (!n) return ''
+  return new Date(n * 1000).toLocaleString('zh-CN', { hour12: false })
+}
+
+async function loadMemories() {
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories`)
+    if (res.code === 0) {
+      memories.value = res.data || []
+    }
+  } catch (e) {
+    console.error('加载群记忆失败', e)
+  }
+}
+
+async function deleteMemory(docId: string) {
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories/${docId}`, { method: 'DELETE' })
+    if (res.code === 0) {
+      memories.value = memories.value.filter(m => m.doc_id !== docId)
+    }
+  } catch (e) {
+    console.error('删除群记忆失败', e)
+  }
+}
+
+async function clearMemories() {
+  if (!confirm('确定清空本群全部群记忆？此操作不可恢复。')) return
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories`, { method: 'DELETE' })
+    if (res.code === 0) {
+      memories.value = []
+    }
+  } catch (e) {
+    console.error('清空群记忆失败', e)
+  }
+}
+
+async function searchMemories() {
+  if (!searchQuery.value.trim()) {
+    await loadMemories()
+    return
+  }
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories/search`, {
+      method: 'POST',
+      body: JSON.stringify({ query: searchQuery.value.trim(), top_k: 10 })
+    })
+    if (res.code === 0) {
+      memories.value = res.data || []
+    }
+  } catch (e) {
+    console.error('搜索群记忆失败', e)
+  }
+}
+
 onMounted(() => {
   loadAISettings()
   loadDocuments()
@@ -295,4 +384,18 @@ onMounted(() => {
 .btn-primary { background: var(--primary-color); color: white; }
 .btn-primary:hover { opacity: 0.9; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { padding: 4px 12px; font-size: 13px; background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); }
+.btn-sm:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
+.btn-danger { color: #e5484d; border-color: #e5484d; background: transparent; }
+.btn-danger:hover { background: rgba(229, 72, 77, 0.08); }
+.memory-tab { padding: 16px 20px; }
+.memory-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.memory-search-input { flex: 1; min-width: 200px; padding: 6px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; font-size: 14px; }
+.memory-empty { color: var(--text-secondary, #999); padding: 24px 0; text-align: center; font-size: 14px; }
+.memory-list { display: flex; flex-direction: column; gap: 10px; }
+.memory-item { padding: 12px; border: 1px solid var(--border-color, #eee); border-radius: 8px; background: var(--card-bg, #fafafa); }
+.memory-content { font-size: 14px; line-height: 1.6; color: var(--text-color, #333); white-space: pre-wrap; word-break: break-word; }
+.memory-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary, #999); }
+.btn-link { background: none; border: none; color: #e5484d; cursor: pointer; font-size: 12px; padding: 0; }
+.btn-link:hover { text-decoration: underline; }
 </style>

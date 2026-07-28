@@ -24,6 +24,7 @@
       @mark-read="emit('mark-read')"
       @toggle-message-selection="emit('toggle-message-selection', $event)"
       @load-more="emit('load-more')"
+      @scroll="handleMessageListScroll"
     />
 
     <!-- 群成员侧边栏 -->
@@ -83,6 +84,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
+  'scroll': []
   'scroll-to-quoted-message': [id: string]
   'download-file': [data: string, id?: string]
   'save-as': [data: string, id?: string]
@@ -127,6 +129,7 @@ defineExpose({
   scrollToBottom: (instant: boolean = false) => messageListViewRef.value?.scrollToBottom(instant),
   scrollToBottomWithDelay: (delay: number = 100) => messageListViewRef.value?.scrollToBottomWithDelay(delay)
 })
+const handleMessageListScroll = () => emit('scroll')
 </script>
 
 <style scoped>

@@ -827,11 +827,15 @@ func (s *AdminService) GetStatistics() (*AdminStatistics, error) {
 	s.db.WithContext(ctx).Model(&model.Conversation{}).Where("type = ? AND is_deleted = ?", "group", false).Count(&stats.TotalGroups)
 	s.db.WithContext(ctx).Model(&model.Message{}).Count(&stats.TotalMessages)
 	s.db.WithContext(ctx).Model(&model.Channel{}).Where("status = ?", "active").Count(&stats.TotalChannels)
-	s.db.WithContext(ctx).Model(&model.Message{}).Where("created_at >= CURRENT_DATE").Count(&stats.MessagesToday)
-	s.db.WithContext(ctx).Model(&model.Message{}).Distinct("sender_id").Where("created_at >= CURRENT_DATE").Count(&stats.ActiveUsers)
+
+	// 今日消息/活跃用户：用本地午夜边界作参数，避免 SQLite CURRENT_DATE 返回 UTC 日期
+	// （本地凌晨 00:00-08:00 时段 CURRENT_DATE 仍是前一天，会把昨天数据算进今日）
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	s.db.WithContext(ctx).Model(&model.Message{}).Where("created_at >= ?", todayStart).Count(&stats.MessagesToday)
+	s.db.WithContext(ctx).Model(&model.Message{}).Distinct("sender_id").Where("created_at >= ?", todayStart).Count(&stats.ActiveUsers)
 
 	// 计算增长率：对比最近 7 天与前 7 天
-	now := time.Now()
 	weekAgo := now.AddDate(0, 0, -7)
 	twoWeeksAgo := now.AddDate(0, 0, -14)
 

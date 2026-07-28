@@ -6,6 +6,19 @@ export interface UpdateInfo {
   releaseNotes?: string
 }
 
+// 全局菜单状态：同一时间只有一个菜单可见
+export const activeMenu = ref<string>('')
+export const activeMenuPosition = ref({ x: 0, y: 0 })
+
+export function openMenu(id: string, x: number, y: number) {
+  activeMenu.value = id
+  activeMenuPosition.value = { x, y }
+}
+
+export function closeMenu() {
+  activeMenu.value = ''
+}
+
 const formatDownloadProgress = (percent: unknown): number => {
   const value = typeof percent === 'number' ? percent : Number(percent)
   if (!Number.isFinite(value)) return 0
@@ -61,40 +74,20 @@ export function useUI() {
   }
 
   // 会话右键菜单
-  const showMenu = ref(false)
-  const menuPosition = ref({ x: 0, y: 0 })
   const selectedConversation = ref<any>(null)
 
-  // 操作菜单
-  const showActionMenuFlag = ref(false)
-  const actionMenuPosition = ref({ x: 0, y: 0 })
-
   // 用户右键菜单
-  const showUserContextMenuFlag = ref(false)
-  const userContextMenuPosition = ref({ x: 0, y: 0 })
   const selectedEmployee = ref<any>(null)
 
   // 群聊右键菜单
-  const showGroupContextMenuFlag = ref(false)
-  const groupContextMenuPosition = ref({ x: 0, y: 0 })
   const selectedGroupForContextMenu = ref<any>(null)
 
   // 成员右键菜单
-  const showMemberContextMenuFlag = ref(false)
-  const memberContextMenuPosition = ref({ x: 0, y: 0 })
   const selectedMember = ref<any>(null)
 
-  // 设置菜单
-  const showSettingsMenuFlag = ref(false)
-  const settingsMenuPosition = ref({ x: 0, y: 0 })
-
-  // 主题菜单
-  const showThemeMenuFlag = ref(false)
-  const themeMenuPosition = ref({ x: 0, y: 0 })
-
   // 更多菜单
-  const showMoreMenuFlag = ref(false)
-  const moreMenuPosition = ref({ x: 0, y: 0 })
+  const showMoreMenuFlag = computed(() => activeMenu.value === 'more')
+  const moreMenuPosition = computed(() => activeMenu.value === 'more' ? activeMenuPosition.value : { x: 0, y: 0 })
 
   // 分享模态框
   const showShareModal = ref(false)
@@ -173,80 +166,77 @@ export function useUI() {
 
   // ========== 会话右键菜单操作 ==========
 
-  // 显示会话右键菜单
   const showContextMenu = (event: MouseEvent, conversation: any) => {
     event.preventDefault()
-    showMenu.value = true
-    menuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 150)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 150)
     selectedConversation.value = conversation
+    openMenu('context', pos.x, pos.y)
   }
 
-  // 隐藏会话右键菜单
   const hideContextMenu = () => {
-    showMenu.value = false
+    closeMenu()
     selectedConversation.value = null
   }
 
   // ========== 操作菜单操作 ==========
 
-  // 显示操作菜单
   const showActionMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    showActionMenuFlag.value = true
-    actionMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 180, 180)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 180, 180)
+    openMenu('action', pos.x, pos.y)
   }
 
-  // 隐藏操作菜单
-  const hideActionMenu = () => {
-    showActionMenuFlag.value = false
-  }
+  const hideActionMenu = () => closeMenu()
 
   // ========== 用户右键菜单操作 ==========
 
-  // 显示用户右键菜单
   const showUserContextMenu = (event: MouseEvent, user: any) => {
     event.preventDefault()
-    showUserContextMenuFlag.value = true
-    userContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 140, 80)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 140, 80)
     selectedEmployee.value = user
+    openMenu('user', pos.x, pos.y)
   }
 
-  // 隐藏用户右键菜单
   const hideUserContextMenu = () => {
-    showUserContextMenuFlag.value = false
+    closeMenu()
     selectedEmployee.value = null
   }
 
   // ========== 群聊右键菜单操作 ==========
 
-  // 显示群聊右键菜单
   const showGroupContextMenu = (event: MouseEvent, group: any) => {
     event.preventDefault()
-    showGroupContextMenuFlag.value = true
-    groupContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 200)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 200)
     selectedGroupForContextMenu.value = group
+    openMenu('group', pos.x, pos.y)
   }
 
-  // 隐藏群聊右键菜单
   const closeGroupContextMenu = () => {
-    showGroupContextMenuFlag.value = false
+    closeMenu()
     selectedGroupForContextMenu.value = null
   }
 
   // ========== 成员右键菜单操作 ==========
 
-  // 显示成员右键菜单
+  // 聊天区成员右键菜单
   const showMemberContextMenu = (event: MouseEvent, member: any) => {
     event.preventDefault()
-    showMemberContextMenuFlag.value = true
-    memberContextMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 110)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 110)
     selectedMember.value = member
+    openMenu('member', pos.x, pos.y)
   }
 
-  // 隐藏成员右键菜单
   const hideMemberContextMenu = () => {
-    showMemberContextMenuFlag.value = false
+    closeMenu()
     selectedMember.value = null
+  }
+
+  // 侧边栏成员右键菜单
+  const showSidebarMemberContextMenu = (event: MouseEvent, member: any) => {
+    event.preventDefault()
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 110)
+    selectedMember.value = member
+    openMenu('sidebar-member', pos.x, pos.y)
   }
 
   // ========== 设置菜单操作 ==========
@@ -254,126 +244,51 @@ export function useUI() {
   // 显示设置菜单
   const showSettingsMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    
-    // 关闭主题菜单和更多菜单
-    hideThemeMenu()
-    closeMoreMenu()
-    
-    // 获取设置按钮的DOM元素
     const settingsButton = event.currentTarget as HTMLElement
     if (settingsButton) {
-      // 计算按钮的位置
       const rect = settingsButton.getBoundingClientRect()
-      
-      // 菜单宽度和高度
-      const menuWidth = 180
-      const menuHeight = 200
-      const windowWidth = window.innerWidth
-      const windowHeight = window.innerHeight
-      
-      // 计算菜单位置：按钮右侧2px，底部与鼠标点击位置对齐
       let x = rect.right + 2
-      let y = event.clientY - menuHeight
-      
-      // 调整x坐标，确保菜单不超出屏幕右侧
-      if (x + menuWidth > windowWidth) {
-        x = rect.left - menuWidth - 10
-      }
-      
-      // 调整y坐标，确保菜单不超出屏幕底部
-      if (y + menuHeight > windowHeight) {
-        y = windowHeight - menuHeight - 10
-      }
-      
-      // 确保y坐标不小于0
-      if (y < 0) {
-        y = 10
-      }
-      
-      settingsMenuPosition.value = {
-        x,
-        y
-      }
-      showSettingsMenuFlag.value = true
-      
-      // 点击其他地方关闭菜单
-      setTimeout(() => {
-        document.addEventListener('click', hideSettingsMenu)
-      }, 0)
+      let y = event.clientY - 200
+      if (x + 180 > window.innerWidth) x = rect.left - 190
+      if (y + 200 > window.innerHeight) y = window.innerHeight - 210
+      if (y < 0) y = 10
+      openMenu('settings', x, y)
     }
   }
 
   // 隐藏设置菜单
-  const hideSettingsMenu = () => {
-    showSettingsMenuFlag.value = false
-    document.removeEventListener('click', hideSettingsMenu)
-  }
+  const hideSettingsMenu = () => closeMenu()
 
   // ========== 主题菜单操作 ==========
 
   // 显示主题菜单
   const showThemeMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    
-    // 获取皮肤按钮的DOM元素
     const themeButton = event.currentTarget as HTMLElement
     if (themeButton) {
-      // 计算按钮的位置
       const rect = themeButton.getBoundingClientRect()
-      
-      // 菜单宽度和高度
-      const menuWidth = 180
-      const menuHeight = 400
-      const windowWidth = window.innerWidth
-      const windowHeight = window.innerHeight
-      
-      // 计算菜单位置：按钮右侧显示
       let x = rect.right + 2
       let y = rect.top
-      
-      // 调整x坐标，确保菜单不超出屏幕右侧
-      if (x + menuWidth > windowWidth) {
-        x = rect.left - menuWidth - 10
-      }
-      
-      // 调整y坐标，确保菜单不超出屏幕底部
-      if (y + menuHeight > windowHeight - 10) {
-        y = windowHeight - menuHeight - 10
-      }
-      
-      // 确保y坐标不小于0
-      if (y < 10) {
-        y = 10
-      }
-      
-      themeMenuPosition.value = { x, y }
-      showThemeMenuFlag.value = true
-      
-      // 点击其他地方关闭菜单
-      setTimeout(() => {
-        document.addEventListener('click', hideThemeMenu)
-      }, 0)
+      if (x + 180 > window.innerWidth) x = rect.left - 190
+      if (y + 400 > window.innerHeight - 10) y = window.innerHeight - 410
+      if (y < 10) y = 10
+      openMenu('theme', x, y)
     }
   }
 
-  // 隐藏主题菜单
-  const hideThemeMenu = () => {
-    showThemeMenuFlag.value = false
-  }
+  const hideThemeMenu = () => closeMenu()
 
   // ========== 更多菜单操作 ==========
 
   // 显示更多菜单
   const showMoreMenu = (event: MouseEvent) => {
     event.stopPropagation()
-    showMoreMenuFlag.value = true
-    moreMenuPosition.value = computeMenuPosition(event.clientX, event.clientY, 160, 50)
+    const pos = computeMenuPosition(event.clientX, event.clientY, 160, 50)
+    openMenu('more', pos.x, pos.y)
   }
 
   // 隐藏更多菜单
-  const closeMoreMenu = () => {
-    showMoreMenuFlag.value = false
-  }
+  const closeMoreMenu = () => closeMenu()
 
   // ========== 分享模态框操作 ==========
 
@@ -744,38 +659,37 @@ export function useUI() {
 
   // 点击外部区域关闭所有菜单
   const handleClickOutside = () => {
-    hideContextMenu()
-    hideActionMenu()
-    hideUserContextMenu()
-    closeGroupContextMenu()
-    hideMemberContextMenu()
-    hideSettingsMenu()
-    hideThemeMenu()
-    closeMoreMenu()
+    closeMenu()
+    selectedConversation.value = null
+    selectedEmployee.value = null
+    selectedGroupForContextMenu.value = null
+    selectedMember.value = null
   }
 
   return {
-    // 状态
-    showMenu,
-    menuPosition,
+    // 右键菜单数据
     selectedConversation,
-    showActionMenuFlag,
-    actionMenuPosition,
-    showUserContextMenuFlag,
-    userContextMenuPosition,
     selectedEmployee,
-    showGroupContextMenuFlag,
-    groupContextMenuPosition,
     selectedGroupForContextMenu,
-    showMemberContextMenuFlag,
-    memberContextMenuPosition,
     selectedMember,
-    showSettingsMenuFlag,
-    settingsMenuPosition,
-    showThemeMenuFlag,
-    themeMenuPosition,
-    showMoreMenuFlag,
-    moreMenuPosition,
+    // 右键菜单操作
+    showContextMenu,
+    hideContextMenu,
+    showActionMenu,
+    hideActionMenu,
+    showUserContextMenu,
+    hideUserContextMenu,
+    showGroupContextMenu,
+    closeGroupContextMenu,
+    showMemberContextMenu,
+    hideMemberContextMenu,
+    showSidebarMemberContextMenu,
+    showSettingsMenu,
+    hideSettingsMenu,
+    showThemeMenu,
+    hideThemeMenu,
+    showMoreMenu,
+    closeMoreMenu,
     showShareModal,
     shareType,
     shareData,
@@ -818,22 +732,6 @@ export function useUI() {
 
     // 操作方法
     computeMenuPosition,
-    showContextMenu,
-    hideContextMenu,
-    showActionMenu,
-    hideActionMenu,
-    showUserContextMenu,
-    hideUserContextMenu,
-    showGroupContextMenu,
-    closeGroupContextMenu,
-    showMemberContextMenu,
-    hideMemberContextMenu,
-    showSettingsMenu,
-    hideSettingsMenu,
-    showThemeMenu,
-    hideThemeMenu,
-    showMoreMenu,
-    closeMoreMenu,
     openShareModal,
     closeShareModal,
     openUserProfile,

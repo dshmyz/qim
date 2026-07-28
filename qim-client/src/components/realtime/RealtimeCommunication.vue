@@ -96,6 +96,18 @@ const startScreenShare = async () => {
   }
 
   const conv = props.currentConversation
+  if (conv?.type === 'group' || conv?.type === 'discussion') {
+    QMessage.warning('群聊和讨论组暂不支持屏幕共享')
+    return
+  }
+  if (conv?.type === 'bot') {
+    QMessage.warning('AI 助手不支持屏幕共享')
+    return
+  }
+  if (conv?.type !== 'single') {
+    QMessage.warning('当前会话类型不支持屏幕共享')
+    return
+  }
   if (conv?.type === 'single') {
     // 优先使用后端返回的 other_member_id 字段
     const otherMemberId = (conv as any).other_member_id
@@ -245,13 +257,19 @@ const handleCallStop = () => {
   emit('call-state-change', 'idle')
 }
 
-const getMemberInfo = (fromUserId: number) => {
-  const conv = props.conversations.find(c => {
-    const members = c.members as any[]
-    return members?.some(m => m.id == fromUserId) && c.type !== 'group'
-  })
-  if (conv) {
-    const member = (conv.members as any[])?.find(m => m.id == fromUserId)
+const getMemberInfo = (fromUserId: number, fallbackName?: string) => {
+  // 1. Try direct (non-group) conversations: check other_member_id first, then members
+  for (const c of props.conversations) {
+    if (c.type === 'group' || c.type === 'discussion') continue
+    // Single chats store the counterpart in other_member_id/other_member_name
+    if (String((c as any).other_member_id) === String(fromUserId)) {
+      return {
+        name: (c as any).other_member_name || c.name || '未知用户',
+        avatar: (c as any).other_member_avatar || c.avatar || ''
+      }
+    }
+    // Fallback: check members array
+    const member = (c.members as any[])?.find(m => m.id == fromUserId)
     if (member) {
       return {
         name: member.name || member.nickname || '未知用户',
@@ -259,6 +277,24 @@ const getMemberInfo = (fromUserId: number) => {
       }
     }
   }
+
+  // 2. Fallback: search group conversation members
+  for (const c of props.conversations) {
+    if (c.type !== 'group' && c.type !== 'discussion') continue
+    const member = (c.members as any[])?.find(m => m.id == fromUserId)
+    if (member) {
+      return {
+        name: member.name || member.nickname || '未知用户',
+        avatar: member.avatar || ''
+      }
+    }
+  }
+
+  // 3. Fallback: use name from WebSocket payload
+  if (fallbackName) {
+    return { name: fallbackName, avatar: '' }
+  }
+
   return { name: '未知用户', avatar: '' }
 }
 
@@ -280,7 +316,7 @@ const handleWebRTCOffer = async (data: any) => {
   if (mediaType === 'screen') {
     console.log('[RealtimeCommunication] 屏幕共享 offer - 转发给 ScreenShareSimple 处理')
 
-    const memberInfo = getMemberInfo(fromUserId)
+    const memberInfo = getMemberInfo(fromUserId, data.from_user_name)
     remoteScreenUserName.value = memberInfo.name
 
     showScreenShare.value = true
@@ -293,7 +329,7 @@ const handleWebRTCOffer = async (data: any) => {
   } else if (mediaType === 'video' || mediaType === 'audio') {
     console.log('[RealtimeCommunication] 处理视频/语音通话 offer')
 
-    const memberInfo = getMemberInfo(fromUserId)
+    const memberInfo = getMemberInfo(fromUserId, data.from_user_name)
     remoteCallUserName.value = memberInfo.name
 
     showCallOverlay.value = true
@@ -322,7 +358,7 @@ const handleScreenShareRequest = (data: any) => {
   console.log('[RealtimeCommunication] 收到屏幕共享请求', data)
 
   const fromUserId = data.from_user_id || data.user_id
-  const memberInfo = getMemberInfo(fromUserId)
+  const memberInfo = getMemberInfo(fromUserId, data.from_user_name)
   remoteScreenUserName.value = memberInfo.name
 
   incomingRequestData.value = data

@@ -17,6 +17,8 @@
         class="calendar-cell"
         :class="cellClasses(day)"
         @click="$emit('selectDate', day.date)"
+        @dblclick="$emit('createOnDate', day.date)"
+        @contextmenu.prevent="$emit('contextmenu', $event, day.date)"
       >
         <div class="cell-date" :class="{ 'today-circle': day.isToday }">
           {{ day.date.getDate() }}
@@ -72,6 +74,8 @@ defineEmits<{
   prevMonth: []
   nextMonth: []
   selectDate: [date: Date]
+  createOnDate: [date: Date]
+  contextmenu: [event: MouseEvent, date: Date]
 }>()
 
 const weekDays = ['日', '一', '二', '三', '四', '五', '六']

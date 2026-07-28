@@ -3,7 +3,6 @@
     class="message-item"
     :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.origin === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
     :data-message-id="message.id"
-    @contextmenu.prevent="handleContextMenu"
   >
     <!-- 系统消息 -->
     <SystemMessage v-if="message.type === 'system'" :content="message.content" />
@@ -40,6 +39,7 @@
         </div>
 
         <template v-else>
+          <div class="message-bubble-area" @contextmenu.prevent="handleContextMenu">
           <!-- 引用消息 -->
           <div v-if="message.quotedMessage" class="quoted-message-preview" @click="$emit('scrollToQuotedMessage', message.quotedMessage.id)">
             <div class="quoted-message-preview-header">
@@ -53,8 +53,25 @@
           <!-- 文本消息 -->
           <TextMessage v-if="message.type === 'text' && !isAIMessage" :content="message.content" :is-self="isSelf" />
 
+          <!-- 卡片消息（bot 发出的可操作卡片，须先于 isAIMessage 的 markdown 分支命中） -->
+          <CardMessage
+            v-else-if="message.type === 'card'"
+            :content="message.content"
+            :message-id="String(message.id)"
+            :is-self="isSelf"
+            :action-taken="message.cardActionId || ''"
+            :server-url="serverUrl"
+          />
+
+          <!-- 卡片动作记录：用户点击 bot 卡片按钮后的「✓ 已选择:xxx」气泡 -->
+          <div v-else-if="message.type === 'card_action' && cardActionData" class="card-action-record">
+            <i class="fas fa-check"></i>
+            <span>已选择：{{ cardActionData.action_text || cardActionData.action_id }}</span>
+          </div>
+
           <!-- AI 消息 (使用 Markdown 渲染，与其他 Markdown 消息统一) -->
-          <MarkdownMessage v-else-if="isAIMessage" :content="message.content" :is-self="isSelf" />
+          <!-- type=streaming 的 AI 消息留给下方 StreamingMessage（typing 动画 + 思考中占位），故排除 -->
+          <MarkdownMessage v-else-if="isAIMessage && message.type !== 'streaming'" :content="message.content" :is-self="isSelf" />
 
           <!-- 图片消息 -->
           <ImageMessage
@@ -123,11 +140,12 @@
             :is-self="isSelf"
             :is-streaming="message.isStreaming || false"
           />
+          </div>
         </template>
 
         <div class="message-meta">
           <span class="message-meta-badge">
-            <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant'" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
+            <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant' && !message.isStreaming" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
             <AvatarReplyBadge v-if="message.origin === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
           </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
@@ -162,6 +180,7 @@ import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import MergedForwardMessage from './MergedForwardMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
+import CardMessage from './CardMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
@@ -200,6 +219,17 @@ const isAIMessage = computed(() => {
 })
 
 const messageDisplay = computed(() => resolveMessageDisplay(props.message))
+
+// card_action：用户点击 bot 卡片按钮后落库的操作记录气泡，显示「✓ 已选择:xxx」。
+// content 为 JSON {action_id, action_text, value, card_message_id}。
+const cardActionData = computed(() => {
+  if (props.message.type !== 'card_action') return null
+  try {
+    return JSON.parse(props.message.content)
+  } catch {
+    return null
+  }
+})
 
 const quotedMessageSummary = computed(() => props.message.quotedMessage
   ? resolveMessageDisplay(props.message.quotedMessage).summary
@@ -367,7 +397,7 @@ const convertUrlsToLinks = (text: string): string => {
   cursor: pointer;
   transition: all 0.2s;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.6;
 }
 
 .quoted-message-preview:hover {
@@ -524,7 +554,7 @@ const convertUrlsToLinks = (text: string): string => {
   background: var(--message-bubble-bg);
   color: var(--text-color);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
 }
@@ -785,5 +815,23 @@ const convertUrlsToLinks = (text: string): string => {
   border: 1px solid rgba(59, 130, 246, 0.14);
   border-left: 3px solid var(--primary-color, #3b82f6);
   box-shadow: none;
+}
+
+/* 卡片动作记录气泡：用户点击 bot 卡片按钮后留痕，轻量系统态样式 */
+.card-action-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-color-secondary, #6b7280);
+  background: var(--bg-color-page, #f5f5f5);
+  border-radius: 12px;
+  border: 1px solid var(--border-color-light, #e5e7eb);
+  max-width: 320px;
+}
+.card-action-record i {
+  color: var(--success-color, #10b981);
+  font-size: 12px;
 }
 </style>

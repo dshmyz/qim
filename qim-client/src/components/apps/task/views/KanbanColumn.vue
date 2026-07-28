@@ -47,7 +47,7 @@ const emit = defineEmits<{
   taskContextmenu: [event: MouseEvent, task: Task]
   taskDragstart: [event: DragEvent, task: Task]
   taskDragend: []
-  drop: [taskId: string, status: TaskStatus]
+  drop: [taskId: string, status: TaskStatus, index: number]
 }>()
 
 const isDragOver = ref(false)
@@ -64,9 +64,21 @@ function onDragLeave() {
 function onDrop(event: DragEvent) {
   isDragOver.value = false
   const taskId = event.dataTransfer!.getData('text/plain')
-  if (taskId) {
-    emit('drop', taskId, props.status)
+  if (!taskId) return
+  // 计算 drop 插入位置（基于鼠标 Y 相对各卡片中点）
+  const list = (event.currentTarget as HTMLElement).querySelector('.kanban-column-list')
+  const cards = list
+    ? (Array.from(list.children) as HTMLElement[]).filter(c => !c.classList.contains('kanban-column-empty'))
+    : []
+  let index = cards.length
+  for (let i = 0; i < cards.length; i++) {
+    const rect = cards[i].getBoundingClientRect()
+    if (event.clientY < rect.top + rect.height / 2) {
+      index = i
+      break
+    }
   }
+  emit('drop', taskId, props.status, index)
 }
 </script>
 

@@ -25,7 +25,7 @@ var ErrMessageForbidden = errors.New("access forbidden")
 var ErrMessageAlreadyRecalled = errors.New("message already recalled")
 var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
-var ErrAtAllForbidden = errors.New("only owner or admin can @all")
+var ErrMuted = errors.New("you are muted in this conversation")
 
 type MessageService struct {
 	db  *gorm.DB
@@ -120,15 +120,13 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		return nil, ErrMessageForbidden
 	}
 
+	// 群级禁言检查：被禁言且未到期则拒绝发言（群主/管理员豁免，保证管理动作不受阻）
+	if member.MutedUntil != nil && member.MutedUntil.After(time.Now()) && member.Role != "owner" && member.Role != "admin" {
+		return nil, ErrMuted
+	}
+
 	// 解析 content 中的 @ mention token（content 是唯一事实源）
 	mentions := mention.Parse(content)
-
-	// @all 权限校验：仅群主/管理员可 @all
-	if mention.IsAllMentioned(mentions) {
-		if member.Role != "owner" && member.Role != "admin" {
-			return nil, ErrAtAllForbidden
-		}
-	}
 
 	msg := model.Message{
 		ConversationID:  convID,
@@ -236,6 +234,12 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		return
 	}
 
+	// 外部 agent 模式：转发用户消息到 webhook，不再走内部 AI
+	if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
+		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, userID, convID, content)
+		return
+	}
+
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
@@ -322,6 +326,57 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		s.hub.SendToUser(userID, jsonMsg)
+	}
+}
+
+// forwardBotMessageToWebhook 将用户在 bot 会话中的回复转发到外部 agent webhook。
+// 由 handleBotMessage 在 external_webhook 模式下异步调用（handleBotMessage 本身已 SafeGo）。
+// 经 outbox：先落表再立即 best-effort 投递一次，失败由调度器指数退避重试，超阈值死信。
+// 成功路径与原直发等价（无额外延迟），失败路径由静默丢变为有兜底。
+func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, webhookSecret string, userID, convID uint, content string) {
+	var user model.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		logger.WithModule("handleBotMessage").Error("查询用户失败", "userID", userID, "error", err)
+		return
+	}
+
+	// 取刚发送的用户消息（用于 message_id / msg_type）
+	var lastMsg model.Message
+	msgType := "text"
+	if err := s.db.Where("conversation_id = ? AND sender_id = ?", convID, userID).
+		Order("created_at DESC").First(&lastMsg).Error; err == nil {
+		msgType = lastMsg.Type
+	}
+
+	payload := BotWebhookPayload{
+		BotID:        bot.ID,
+		ThreadID:     convID,
+		MessageID:    lastMsg.ID,
+		UserID:       userID,
+		UserNickname: user.Nickname,
+		UserAvatar:   user.Avatar,
+		Content:      content,
+		MsgType:      msgType,
+	}
+	payloadJSON, _ := json.Marshal(payload)
+
+	// 纯 pull 模式（webhook_url 空）：不投 webhook，用户消息已在会话内，agent 靠 GET /bot/messages 拉取。
+	if webhookURL == "" {
+		logger.WithModule("handleBotMessage").Info("外部 bot 未配 webhook_url，走纯 pull 模式（不投递）",
+			"botID", bot.ID, "convID", convID)
+		return
+	}
+
+	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.message", string(payloadJSON), webhookURL, webhookSecret)
+	if err != nil {
+		logger.WithModule("handleBotMessage").Error("webhook outbox 入队失败",
+			"botID", bot.ID, "convID", convID, "error", err)
+		return
+	}
+	// 立即 best-effort 投递一次：成功等价于原直发，失败落 pending 待重试
+	if err := DeliverOnce(s.db, deliveryID); err != nil {
+		logger.WithModule("handleBotMessage").Warn("webhook 立即投递失败，已入重试队列",
+			"deliveryID", deliveryID, "botID", bot.ID, "convID", convID, "error", err)
 	}
 }
 

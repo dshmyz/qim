@@ -27,11 +27,12 @@ func NewTodoExtractor(aiService *ai.AIService) *TodoExtractor {
 
 // ExtractedTodo 提取的待办结构
 type ExtractedTodo struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Assignee    string `json:"assignee,omitempty"`
-	DueDate     string `json:"due_date,omitempty"`
-	Priority    string `json:"priority,omitempty"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	Assignee     string `json:"assignee,omitempty"`
+	DueDate      string `json:"due_date,omitempty"`
+	Priority     string `json:"priority,omitempty"`
+	RemindMinutes int   `json:"remind_minutes,omitempty"` // 提前提醒分钟数
 }
 
 // ExtractAndCreateTodos 从消息中提取待办并创建
@@ -102,10 +103,11 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 - 如果只提到时间没提到日期（如"下午两点"），默认为今天；如果今天该时间已过，则为明天
 - 如果只提到日期没提到时间，使用 23:59 作为截止时间
 - 如果提到"所有人"、"大家"、"@all"等，assignee 填 "all"
+- 如果消息提到"提醒"、"记得"、"别忘了"等，设置 remind_minutes（默认 30 分钟）；如果有明确的提前时间（如"提前1小时"），按实际设置
 - 如果没有明确的待办，返回空数组
 
 只返回 JSON 数组格式：
-[{"title": "任务标题", "description": "任务描述", "assignee": "负责人名称", "due_date": "YYYY-MM-DD HH:mm", "priority": "low|medium|high"}]
+[{"title": "任务标题", "description": "任务描述", "assignee": "负责人名称", "due_date": "YYYY-MM-DD HH:mm", "priority": "low|medium|high", "remind_minutes": 30}]
 
 如果没有待办，返回 []。`
 
@@ -208,12 +210,14 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	// 为每个负责人创建待办
 	for _, assigneeID := range assigneeIDs {
 		task := model.Task{
-			UserID:      assigneeID,
-			Title:       todo.Title,
-			Description: todo.Description,
-			DueDate:     dueDate,
-			Priority:    priority,
-			Status:      "todo",
+			UserID:         assigneeID,
+			ConversationID: conversationID,
+			Title:          todo.Title,
+			Description:    todo.Description,
+			DueDate:        dueDate,
+			Priority:       priority,
+			Status:         "todo",
+			Reminder:       todo.RemindMinutes,
 		}
 		db.Create(&task)
 

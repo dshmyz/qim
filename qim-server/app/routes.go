@@ -84,6 +84,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	if avatarMemorySvc := di.GlobalContainer.AvatarMemoryService; avatarMemorySvc != nil {
 		handler.SetMemoryService(avatarMemorySvc)
 	}
+	if groupMemorySvc := di.GlobalContainer.GroupMemoryService; groupMemorySvc != nil {
+		handler.SetGroupMemoryService(groupMemorySvc)
+	}
 
 	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
 	if err := handler.InitSmartReplyGraph(); err != nil {
@@ -137,6 +140,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}
 
 	avatarService := di.GlobalContainer.AvatarService
+	aiHandler.SetAvatarService(avatarService) // 帮我回复草稿模式复用分身生成
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 	if avatarTriggerSvc := di.GlobalContainer.AvatarTriggerService; avatarTriggerSvc != nil {
 		handler.GetSmartReplyEngine().SetAvatarTriggerService(avatarTriggerSvc)
@@ -334,6 +338,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		// 客户端版本查询（公开，无需认证）
 		api.GET("/client/versions", handler.GetVersions)
 
+		// Bot API：外部 agent 出站消息（Bot 令牌鉴权，非 JWT）
+		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
+		// 600/min：agent 典型 1~3s 轮询 + 流式分段（stream-stdin 每行一次 POST），60/min 会被打满。
+		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(600, time.Minute)))
+		botAPI.POST("/messages", botAPIHandler.SendMessage)
+		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
+		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
+		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
+
 		// 需要认证的认证相关路由
 		authAuthed := api.Group("/auth")
 		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
@@ -433,6 +446,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/groups/:id/ai-settings", handler.GetGroupAISettings)
 			// 更新群聊 AI 设置
 			authed.PUT("/groups/:id/ai-settings", handler.UpdateGroupAISettings)
+			// 群助手群级记忆管理
+			authed.GET("/groups/:id/group-memories", handler.GetGroupMemories)
+			authed.DELETE("/groups/:id/group-memories/:memory_id", handler.DeleteGroupMemory)
+			authed.DELETE("/groups/:id/group-memories", handler.ClearGroupMemories)
+			authed.POST("/groups/:id/group-memories/search", handler.SearchGroupMemories)
 			// 群知识库管理（带处理状态）
 			authed.GET("/groups/:id/ai-documents", handler.GetGroupDocumentsWithStatus)
 			authed.POST("/groups/:id/ai-documents", handler.AddGroupDocument)
@@ -497,6 +515,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/bots", handler.CreateBot)
 			authed.PUT("/bots/:id", handler.UpdateMyBot)
 			authed.DELETE("/bots/:id", handler.DeleteMyBot)
+			// Bot 令牌与配置管理（创建者或 system_admin）
+			authed.GET("/bots/:id/tokens", botAPIHandler.ListBotTokens)
+			authed.POST("/bots/:id/token", botAPIHandler.IssueToken)
+			authed.DELETE("/bots/:id/token/:tid", botAPIHandler.RevokeToken)
+			authed.PUT("/bots/:id/config", botAPIHandler.UpdateBotConfig)
+			// Bot 卡片按钮回调（JWT 用户鉴权：点击按钮的人类用户，非 bot 令牌）
+			authed.POST("/messages/:id/card-action", botAPIHandler.SubmitCardAction)
 
 			// 日历事件
 			authed.GET("/events", handler.GetEvents)
@@ -561,6 +586,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/tasks", handler.CreateTask)
 			authed.PUT("/tasks/:id", handler.UpdateTask)
 			authed.DELETE("/tasks/:id", handler.DeleteTask)
+			authed.PUT("/tasks/:id/reorder", handler.ReorderTask)
 			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
 			// 实时通信 API
 			realtime := authed.Group("/realtime")
@@ -692,6 +718,12 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				// 统一审批 API
 				approvalHandler := service.NewApprovalHandler(di.GlobalContainer.ApprovalService)
 				approvalHandler.RegisterRoutes(admin)
+
+				// 外部 Bot 运维：外部 agent bot 列表 + webhook 投递监控/重投
+				admin.GET("/bots/external", handler.AdminGetExternalBots)
+				admin.GET("/webhook-deliveries", handler.AdminGetWebhookDeliveries)
+				admin.GET("/webhook-deliveries/:id", handler.AdminGetWebhookDelivery)
+				admin.POST("/webhook-deliveries/:id/redeliver", handler.AdminRedeliverWebhook)
 
 				// 监控相关 API
 				monitorHandler := handler.NewMonitorHandler()

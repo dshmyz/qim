@@ -24,6 +24,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/handler"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/scheduler"
+	"github.com/dshmyz/qim/qim-server/service"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
 
 	"github.com/gin-gonic/gin"
@@ -44,11 +45,30 @@ func main() {
 	}); err != nil {
 		logger.L().Error("注册群聊总结 cron job 失败", "error", err)
 	}
-	// 事件提醒：每 30 秒扫描需要提醒的事件
-	if err := sched.AddIntervalJob("event-reminder", 30*time.Second, func(ctx context.Context) {
+	// 提醒调度：每 30 秒扫描日历事件 + 待办任务的到期提醒
+	if err := sched.AddIntervalJob("reminders", 30*time.Second, func(ctx context.Context) {
 		di.GlobalContainer.EventService.ProcessReminders()
+		di.GlobalContainer.TaskService.ProcessTaskReminders()
 	}); err != nil {
-		logger.L().Error("注册事件提醒 cron job 失败", "error", err)
+		logger.L().Error("注册提醒 cron job 失败", "error", err)
+	}
+	// Bot webhook 重试：每 15 秒扫描 outbox 待投递记录，指数退避重试，超阈值死信
+	if err := sched.AddIntervalJob("bot-webhook-retry", 15*time.Second, func(ctx context.Context) {
+		service.ProcessPendingDeliveries(db)
+	}); err != nil {
+		logger.L().Error("注册 bot webhook 重试 cron job 失败", "error", err)
+	}
+	// 僵尸流式消息清理：agent 崩溃/断网后 type=streaming 永久残留，收尾为 markdown。
+	// 10 分钟无更新视为已断（活跃流每段都刷 updated_at，不会误杀）。每 2 分钟扫一次 + 启动即扫。
+	if n, err := service.CleanupStaleStreamingMessages(db, 10*time.Minute); err != nil {
+		logger.L().Error("启动清理僵尸流式消息失败", "error", err)
+	} else if n > 0 {
+		logger.L().Info("启动清理僵尸流式消息", "count", n)
+	}
+	if err := sched.AddIntervalJob("streaming-cleanup", 2*time.Minute, func(ctx context.Context) {
+		service.CleanupStaleStreamingMessages(db, 10*time.Minute)
+	}); err != nil {
+		logger.L().Error("注册僵尸流式清理 cron job 失败", "error", err)
 	}
 	// 组织架构同步：从 DB 加载 OrgSyncConfig 并注册为 cron job
 	syncEngine := syncpkg.NewEngine()

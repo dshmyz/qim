@@ -105,10 +105,12 @@ func GetGroupFiles(c *gin.Context) {
 	pageSize := groupFilePage(c.Query("page_size"), 20)
 
 	items, err := di.GlobalContainer.FileSpaceService.List(c.Request.Context(), actorID, space, service.FileSpaceQuery{
-		FolderID: folderID,
-		Search:   c.Query("search"),
-		Page:     page,
-		PageSize: pageSize,
+		FolderID:  folderID,
+		Search:    c.Query("search"),
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.Query("sort_by"),
+		SortOrder: c.Query("sort_order"),
 	})
 	if !respondGroupFileError(c, err) {
 		return

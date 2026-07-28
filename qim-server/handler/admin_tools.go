@@ -1,14 +1,17 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -107,7 +110,7 @@ func (t *GroupManagementTool) Name() string {
 }
 
 func (t *GroupManagementTool) Description() string {
-	return "群组管理工具，用于管理群组：添加/移除成员、禁言/解除禁言"
+	return "群组管理工具，用于管理群组：添加/移除成员、禁言/解除禁言、设置/取消管理员、转让群主、修改群公告、查看群成员"
 }
 
 func (t *GroupManagementTool) Parameters() map[string]interface{} {
@@ -116,8 +119,8 @@ func (t *GroupManagementTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"action": map[string]interface{}{
 				"type":        "string",
-				"description": "操作类型: add_member(添加成员), remove_member(移除成员), mute(禁言), unmute(解除禁言)",
-				"enum":        []string{"add_member", "remove_member", "mute", "unmute"},
+				"description": "操作类型: add_member(添加成员), remove_member(移除成员), mute(禁言), unmute(解除禁言), set_role(设置/取消管理员), transfer_owner(转让群主), update_announcement(修改群公告), list_members(查看群成员)",
+				"enum":        []string{"add_member", "remove_member", "mute", "unmute", "set_role", "transfer_owner", "update_announcement", "list_members"},
 			},
 			"group_identifier": map[string]interface{}{
 				"type":        "string",
@@ -125,10 +128,19 @@ func (t *GroupManagementTool) Parameters() map[string]interface{} {
 			},
 			"user_identifier": map[string]interface{}{
 				"type":        "string",
-				"description": "用户标识：用户名、昵称或用户ID",
+				"description": "用户标识：用户名、昵称或用户ID。add_member/remove_member/mute/unmute/set_role/transfer_owner 必填，update_announcement/list_members 不需要",
+			},
+			"role": map[string]interface{}{
+				"type":        "string",
+				"description": "目标角色，仅 set_role 必填：admin(设为管理员) 或 member(取消管理员)",
+				"enum":        []string{"admin", "member"},
+			},
+			"announcement": map[string]interface{}{
+				"type":        "string",
+				"description": "群公告内容，仅 update_announcement 必填",
 			},
 		},
-		"required": []string{"action", "group_identifier", "user_identifier"},
+		"required": []string{"action", "group_identifier"},
 	}
 }
 
@@ -146,10 +158,7 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		return nil, fmt.Errorf("group_identifier parameter is required")
 	}
 
-	userIDStr, ok := params["user_identifier"].(string)
-	if !ok {
-		return nil, fmt.Errorf("user_identifier parameter is required")
-	}
+	userIDStr, _ := params["user_identifier"].(string)
 
 	// 查找群组
 	var conversation model.Conversation
@@ -181,11 +190,16 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		}
 	}
 
-	// 查找要操作的用户
+	// 查找要操作的用户（list_members / update_announcement 不需要用户）
 	var user model.User
-	err = db.Where("id = ? OR username = ? OR nickname = ?", userIDStr, userIDStr, userIDStr).First(&user).Error
-	if err != nil {
-		return nil, fmt.Errorf("用户不存在: %s", userIDStr)
+	if action != "list_members" && action != "update_announcement" {
+		if userIDStr == "" {
+			return nil, fmt.Errorf("user_identifier parameter is required for action: %s", action)
+		}
+		err = db.Where("id = ? OR username = ? OR nickname = ?", userIDStr, userIDStr, userIDStr).First(&user).Error
+		if err != nil {
+			return nil, fmt.Errorf("用户不存在: %s", userIDStr)
+		}
 	}
 
 	// 执行操作
@@ -281,6 +295,96 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 			"result": "success",
 			"action": "unmute",
 			"detail": fmt.Sprintf("已解除 %s 的禁言（群组 %s）", user.Username, group.Name),
+		}, nil
+
+	case "set_role":
+		role, ok := params["role"].(string)
+		if !ok || (role != "admin" && role != "member") {
+			return nil, fmt.Errorf("role parameter required (admin or member)")
+		}
+		if ctx != nil && ctx.UserID > 0 && user.ID == ctx.UserID {
+			return nil, fmt.Errorf("不能修改自己的角色")
+		}
+		if err := db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id = ?", conversation.ID, user.ID).
+			Update("role", role).Error; err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"result": "success",
+			"action": "set_role",
+			"detail": fmt.Sprintf("已将 %s 的角色设为 %s（群组 %s）", user.Username, role, group.Name),
+		}, nil
+
+	case "transfer_owner":
+		// 转让群主仅群主可操作（权限校验已确保 owner/admin，这里再收紧到 owner）
+		if ctx != nil && ctx.UserID > 0 {
+			var caller model.ConversationMember
+			if err := db.Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).First(&caller).Error; err == nil {
+				if caller.Role != "owner" {
+					return nil, fmt.Errorf("权限不足：只有群主才能转让群主")
+				}
+			}
+		}
+		if ctx != nil && ctx.UserID > 0 && user.ID == ctx.UserID {
+			return nil, fmt.Errorf("不能把群主转让给自己")
+		}
+		// 原群主降为成员，新群主升为 owner，更新 group.CreatorID
+		if err := db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).
+			Update("role", "member").Error; err != nil {
+			return nil, err
+		}
+		if err := db.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id = ?", conversation.ID, user.ID).
+			Update("role", "owner").Error; err != nil {
+			return nil, err
+		}
+		db.Model(&model.Group{}).Where("conversation_id = ?", conversation.ID).Update("creator_id", user.ID)
+		return map[string]interface{}{
+			"result": "success",
+			"action": "transfer_owner",
+			"detail": fmt.Sprintf("已将群主转让给 %s（群组 %s）", user.Username, group.Name),
+		}, nil
+
+	case "update_announcement":
+		announcement, ok := params["announcement"].(string)
+		if !ok {
+			return nil, fmt.Errorf("announcement parameter required")
+		}
+		if err := db.Model(&model.Group{}).
+			Where("conversation_id = ?", conversation.ID).
+			Update("announcement", announcement).Error; err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"result": "success",
+			"action": "update_announcement",
+			"detail": fmt.Sprintf("已更新群公告（群组 %s）", group.Name),
+		}, nil
+
+	case "list_members":
+		var members []model.ConversationMember
+		if err := db.Preload("User").Where("conversation_id = ?", conversation.ID).Find(&members).Error; err != nil {
+			return nil, err
+		}
+		list := make([]map[string]interface{}, 0, len(members))
+		for _, m := range members {
+			name := m.User.Nickname
+			if name == "" {
+				name = m.User.Username
+			}
+			list = append(list, map[string]interface{}{
+				"user_id": m.UserID,
+				"name":    name,
+				"role":    m.Role,
+			})
+		}
+		return map[string]interface{}{
+			"result":  "success",
+			"action":  "list_members",
+			"members": list,
+			"count":   len(list),
 		}, nil
 
 	default:
@@ -388,9 +492,253 @@ func isSystemAdmin(userID uint) bool {
 }
 
 // RegisterAdminTools 注册管理操作工具到 MCP 服务器
+// resolveConversationID 把群标识（群组ID 或 群名）解析为 conversation_id。
+func resolveConversationID(groupIDStr string) (uint, error) {
+	db := database.GetDB()
+	var conversation model.Conversation
+	if err := db.Where("id = ?", groupIDStr).First(&conversation).Error; err == nil {
+		return conversation.ID, nil
+	}
+	var groupByName model.Group
+	if err := db.Where("name = ?", groupIDStr).First(&groupByName).Error; err == nil {
+		return groupByName.ConversationID, nil
+	}
+	return 0, fmt.Errorf("群组不存在: %s", groupIDStr)
+}
+
+// callerIsGroupMember 校验调用者是否为群成员，返回 (是否群主/管理员, error)。
+func callerIsGroupMember(convID uint, ctx *ai.CallerContext) (bool, error) {
+	if ctx == nil || ctx.UserID == 0 {
+		return false, nil // 无 userID 不校验（保持与 GroupManagementTool 一致的绕过语义）
+	}
+	db := database.GetDB()
+	var member model.ConversationMember
+	if err := db.Where("conversation_id = ? AND user_id = ?", convID, ctx.UserID).First(&member).Error; err != nil {
+		return false, fmt.Errorf("您不是群组成员，无法执行操作")
+	}
+	return member.Role == "owner" || member.Role == "admin", nil
+}
+
+// ==========================================
+// 群待办工具
+// ==========================================
+
+// CreateTaskTool 群待办工具，在群里创建一条待办任务。
+type CreateTaskTool struct{}
+
+func (t *CreateTaskTool) Name() string { return "create_task" }
+func (t *CreateTaskTool) Description() string {
+	return "群待办工具，在群里创建一条待办任务，可指派给群成员"
+}
+func (t *CreateTaskTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"group_identifier":     map[string]interface{}{"type": "string", "description": "群组标识：群名或群组ID"},
+			"title":                map[string]interface{}{"type": "string", "description": "待办标题"},
+			"assignee_identifier":  map[string]interface{}{"type": "string", "description": "指派给谁：用户名/昵称/用户ID，可选"},
+			"due_date":             map[string]interface{}{"type": "string", "description": "截止日期，可选，格式 2026-07-22"},
+			"remind_minutes":       map[string]interface{}{"type": "integer", "description": "提前提醒分钟数，可选，如 30 表示到期前30分钟提醒"},
+		},
+		"required": []string{"group_identifier", "title"},
+	}
+}
+func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	db := database.GetDB()
+	title, _ := params["title"].(string)
+	if title == "" {
+		return nil, fmt.Errorf("title parameter required")
+	}
+	groupIDStr, _ := params["group_identifier"].(string)
+	convID, err := resolveConversationID(groupIDStr)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := callerIsGroupMember(convID, ctx); err != nil {
+		return nil, err
+	}
+	assigneeID := ctx.UserID
+	if assigneeStr, _ := params["assignee_identifier"].(string); assigneeStr != "" {
+		var u model.User
+		if err := db.Where("id = ? OR username = ? OR nickname = ?", assigneeStr, assigneeStr, assigneeStr).First(&u).Error; err == nil {
+			assigneeID = u.ID
+		}
+	}
+	task := model.Task{UserID: assigneeID, Title: title, Status: "todo", ConversationID: convID}
+	if dueStr, _ := params["due_date"].(string); dueStr != "" {
+		if due, err := time.ParseInLocation("2006-01-02", dueStr, time.Local); err == nil {
+			task.DueDate = &due
+		}
+	}
+	if remindMin, ok := params["remind_minutes"].(float64); ok && remindMin > 0 && task.DueDate != nil {
+		task.Reminder = int(remindMin)
+	}
+	if err := db.Create(&task).Error; err != nil {
+		return nil, err
+	}
+
+	// 通知被指派人
+	if assigneeID != ctx.UserID {
+		notification := model.Notification{
+			UserID:        assigneeID,
+			Type:          "todo_assigned",
+			Title:         "新的待办事项",
+			Content:       title,
+			Read:          false,
+			Priority:      "important",
+			ActionType:    "confirm_reschedule",
+			ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
+		}
+		db.Create(&notification)
+		if ws.GlobalHub != nil {
+			notifMsg, _ := json.Marshal(ws.WSMessage{Type: "new_notification", Data: notification})
+			ws.GlobalHub.SendToUser(assigneeID, notifMsg)
+		}
+	}
+
+	return map[string]interface{}{
+		"result":  "success",
+		"action":  "create_task",
+		"detail":  fmt.Sprintf("已创建待办「%s」", title),
+		"task_id": task.ID,
+	}, nil
+}
+
+// ==========================================
+// 群消息搜索工具
+// ==========================================
+
+// SearchMessagesTool 群消息搜索工具，按关键词搜索群历史消息。
+type SearchMessagesTool struct{}
+
+func (t *SearchMessagesTool) Name() string { return "search_messages" }
+func (t *SearchMessagesTool) Description() string {
+	return "群消息搜索工具，在群里按关键词搜索历史消息"
+}
+func (t *SearchMessagesTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"group_identifier": map[string]interface{}{"type": "string", "description": "群组标识：群名或群组ID"},
+			"keyword":          map[string]interface{}{"type": "string", "description": "搜索关键词"},
+			"limit":            map[string]interface{}{"type": "integer", "description": "返回条数上限，默认 10，最大 50"},
+		},
+		"required": []string{"group_identifier", "keyword"},
+	}
+}
+func (t *SearchMessagesTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	db := database.GetDB()
+	keyword, _ := params["keyword"].(string)
+	if keyword == "" {
+		return nil, fmt.Errorf("keyword parameter required")
+	}
+	groupIDStr, _ := params["group_identifier"].(string)
+	convID, err := resolveConversationID(groupIDStr)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := callerIsGroupMember(convID, ctx); err != nil {
+		return nil, err
+	}
+	limit := 10
+	if l, ok := params["limit"].(float64); ok && l > 0 {
+		limit = int(l)
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	var messages []model.Message
+	if err := db.Where("conversation_id = ? AND content LIKE ?", convID, "%"+keyword+"%").
+		Order("created_at DESC").Limit(limit).Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	results := make([]map[string]interface{}, 0, len(messages))
+	for _, m := range messages {
+		results = append(results, map[string]interface{}{
+			"message_id": m.ID,
+			"sender_id":  m.SenderID,
+			"content":    m.Content,
+			"created_at": m.CreatedAt,
+		})
+	}
+	return map[string]interface{}{
+		"result":   "success",
+		"action":   "search_messages",
+		"keyword":  keyword,
+		"count":    len(results),
+		"messages": results,
+	}, nil
+}
+
+// ==========================================
+// 群聊总结工具
+// ==========================================
+
+// GroupSummaryTool 群聊总结工具，总结指定时间范围的群聊消息。
+type GroupSummaryTool struct{}
+
+func (t *GroupSummaryTool) Name() string { return "group_summary" }
+func (t *GroupSummaryTool) Description() string {
+	return "群聊总结工具，总结指定时间范围的群聊消息（如\"总结今天聊天\"）"
+}
+func (t *GroupSummaryTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"group_identifier": map[string]interface{}{"type": "string", "description": "群组标识：群名或群组ID"},
+			"time_range":       map[string]interface{}{"type": "string", "description": "时间范围：today(今天) 或 week(本周)，默认 today", "enum": []string{"today", "week"}},
+		},
+		"required": []string{"group_identifier"},
+	}
+}
+func (t *GroupSummaryTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	groupIDStr, _ := params["group_identifier"].(string)
+	convID, err := resolveConversationID(groupIDStr)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := callerIsGroupMember(convID, ctx); err != nil {
+		return nil, err
+	}
+	timeRange, _ := params["time_range"].(string)
+	if timeRange == "" {
+		timeRange = "today"
+	}
+	if di.GlobalContainer == nil || di.GlobalContainer.AIService == nil {
+		return nil, fmt.Errorf("AI 服务不可用")
+	}
+	aiSvc := di.GlobalContainer.AIService
+	sg := service.NewSummaryGraph(aiSvc, service.NewAICache())
+	if err := sg.Build(); err != nil {
+		return nil, fmt.Errorf("构建总结 Graph 失败: %v", err)
+	}
+	userID := uint(0)
+	if ctx != nil {
+		userID = ctx.UserID
+	}
+	out, err := sg.Execute(context.Background(), &service.SummaryInput{
+		ConversationID: convID,
+		TimeRange:      timeRange,
+		UserID:         userID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"result":      "success",
+		"action":      "group_summary",
+		"summary":     out.Summary,
+		"messages_count": out.MessagesCount,
+		"time_range":  out.TimeRange,
+	}, nil
+}
+
 func RegisterAdminTools(mcpServer *ai.MCPServer) {
 	mcpServer.RegisterTool(&UserManagementTool{})
 	mcpServer.RegisterTool(&GroupManagementTool{})
 	mcpServer.RegisterTool(&SystemNotificationTool{})
-	logger.WithModule("AdminTools").Info("已注册管理工具", "tools", "user_management, group_management, system_notification")
+	mcpServer.RegisterTool(&CreateTaskTool{})
+	mcpServer.RegisterTool(&SearchMessagesTool{})
+	mcpServer.RegisterTool(&GroupSummaryTool{})
+	logger.WithModule("AdminTools").Info("已注册管理工具", "tools", "user_management, group_management, system_notification, create_task, search_messages, group_summary")
 }

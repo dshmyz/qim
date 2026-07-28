@@ -42,11 +42,16 @@
           </div>
         </div>
       </div>
-      <div class="user-profile-footer">
+      <div v-if="showAction" class="user-profile-footer">
         <button class="action-btn primary" @click="handleSendPrivateMessage">
           <i class="fas fa-comment"></i>
           <span>{{ isBot ? '开始对话' : '发起私聊' }}</span>
         </button>
+        <button class="action-btn" @click="close">
+          <span>关闭</span>
+        </button>
+      </div>
+      <div v-else class="user-profile-footer">
         <button class="action-btn" @click="close">
           <span>关闭</span>
         </button>
@@ -76,9 +81,10 @@ interface User {
 interface Props {
   visible: boolean
   user: User
+  showAction?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { showAction: true })
 const emit = defineEmits<{
   close: []
   sendPrivateMessage: [user: User]

@@ -55,7 +55,8 @@ export async function fetchUserProfile(userId: string | number, fallbackUser?: a
           mobile: userData.phone,
           department: userData.department,
           ip: userData.ip,
-          avatar: userData.avatar || fallbackUser?.avatar
+          avatar: userData.avatar || fallbackUser?.avatar,
+          type: userData.type
         }
       }
     }

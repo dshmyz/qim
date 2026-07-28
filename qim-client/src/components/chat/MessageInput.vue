@@ -112,13 +112,25 @@
         @keyup="$emit('cursor-change', $event)"
         @click="$emit('cursor-change', $event)"
         @paste="$emit('handle-paste', $event)"
+        @contextmenu.prevent="openInputContextMenu"
       />
     </div>
     
     <div class="input-actions">
-      <span class="input-tip">按 Enter 发送，Shift+Enter 换行</span>
+      <div class="input-actions__left">
+        <span v-if="draftStreaming" class="input-tip draft-status draft-status--streaming">
+          <span class="draft-spinner"></span>正在生成回复草稿…
+        </span>
+        <template v-else-if="hasDraftReply">
+          <span class="input-tip draft-status">✓ 已生成草稿</span>
+          <button class="draft-regen-btn" type="button" @click="$emit('regenerate-draft')">换一个</button>
+        </template>
+        <span v-else class="input-tip">按 Enter 发送，Shift+Enter 换行</span>
+      </div>
       <button class="send-btn" :disabled="!inputMessageLocal.trim() && pendingFiles.length === 0" @click="$emit('send')">发送</button>
     </div>
+
+    <UniversalContextMenu menuId="input-textarea" :items="inputContextMenuItems" />
   </div>
 </template>
 
@@ -129,6 +141,8 @@ import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
 import ChatToolbar from './ChatToolbar.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import { openMenu } from '../../composables/useUI'
 import PendingFilesPreview from './PendingFilesPreview.vue'
 import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
@@ -149,10 +163,14 @@ interface Props {
   quotedMessage: any
   isElectron: boolean
   getFileIcon: (fileUrl: string) => string
+  draftStreaming?: boolean
+  hasDraftReply?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isProcessing: false
+  isProcessing: false,
+  draftStreaming: false,
+  hasDraftReply: false
 })
 
 const emit = defineEmits<{
@@ -182,6 +200,7 @@ const emit = defineEmits<{
   (e: 'remove-quoted-message'): void
   (e: 'send-mini-app-message', miniApp: any): void
   (e: 'ai-action', actionId: string): void
+  (e: 'regenerate-draft'): void
   (e: 'update:showMiniAppList', value: boolean): void
   (e: 'input', event: Event): void
   (e: 'cursor-change', event: Event): void
@@ -297,6 +316,60 @@ const handleSelectFile = () => {
 const toggleAI = () => {
   localShowAIActions.value = !localShowAIActions.value
 }
+
+// ---- 输入框右键菜单 ----
+const hasSelection = ref(false)
+
+const updateSelectionState = () => {
+  const ta = messageInputRef.value
+  if (!ta) return
+  hasSelection.value = ta.selectionStart !== ta.selectionEnd
+}
+
+const openInputContextMenu = (e: MouseEvent) => {
+  updateSelectionState()
+  openMenu('input-textarea', e.clientX, e.clientY)
+}
+
+const doCopy = () => {
+  const ta = messageInputRef.value
+  if (!ta || ta.selectionStart === ta.selectionEnd) return
+  const text = ta.value.slice(ta.selectionStart, ta.selectionEnd)
+  navigator.clipboard.writeText(text).catch(() => {})
+}
+
+const doCut = () => {
+  const ta = messageInputRef.value
+  if (!ta || ta.selectionStart === ta.selectionEnd) return
+  const text = ta.value.slice(ta.selectionStart, ta.selectionEnd)
+  navigator.clipboard.writeText(text).catch(() => {})
+  ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end')
+  inputMessageLocal.value = ta.value
+}
+
+const doPaste = async () => {
+  const ta = messageInputRef.value
+  if (!ta) return
+  try {
+    const text = await navigator.clipboard.readText()
+    if (!text) return
+    ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end')
+    inputMessageLocal.value = ta.value
+  } catch {
+    // clipboard read denied (no focus / permission)
+  }
+}
+
+const doSelectAll = () => {
+  messageInputRef.value?.select()
+}
+
+const inputContextMenuItems = computed(() => [
+  { label: '复制', icon: 'fas fa-copy', visible: hasSelection.value, action: doCopy },
+  { label: '剪切', icon: 'fas fa-cut', visible: hasSelection.value, action: doCut },
+  { label: '粘贴', icon: 'fas fa-paste', action: doPaste },
+  { label: '全选', icon: 'fas fa-check-double', action: doSelectAll },
+])
 
 const handleDragOver = (event: DragEvent) => {
   if (event.dataTransfer?.types.includes('Files')) {
@@ -622,7 +695,7 @@ defineExpose({ messageInputRef })
   font-size: 14px;
   resize: none;
   outline: none;
-  font-family: inherit;
+  font-family: var(--font-family-base);
   min-height: 120px;
   max-height: 200px;
   overflow-y: hidden;
@@ -672,6 +745,49 @@ defineExpose({ messageInputRef })
   font-size: 12px;
   color: var(--text-color);
   opacity: 0.6;
+}
+
+.input-actions__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.draft-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary-color);
+  opacity: 0.9;
+}
+
+.draft-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in srgb, var(--primary-color), transparent 70%);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: draft-spin 0.8s linear infinite;
+}
+
+@keyframes draft-spin {
+  to { transform: rotate(360deg); }
+}
+
+.draft-regen-btn {
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary-color), transparent 60%);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary-color);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.draft-regen-btn:hover {
+  background: color-mix(in srgb, var(--primary-color), transparent 88%);
 }
 
 .send-btn {

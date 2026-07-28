@@ -176,6 +176,13 @@ func SetMemoryService(ms *service.AvatarMemoryService) {
 	}
 }
 
+// SetGroupMemoryService sets the group-level memory service for the smart reply engine
+func SetGroupMemoryService(gms *service.GroupMemoryService) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetGroupMemoryService(gms)
+	}
+}
+
 // InitSmartReplyGraph initializes the Eino Graph for smart reply
 func InitSmartReplyGraph() error {
 	if smartReplyEngine == nil {
@@ -300,6 +307,9 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		"is_read":           msg.IsRead,
 		"is_avatar_reply":   msg.Origin == "avatar",
 		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
+		// 流式消息标记：type=streaming 即进行中。客户端据此显示 typing 动画；
+		// 历史/已 finish 的消息 type 已是 markdown，is_streaming=false。刷新后不再卡空气泡。
+		"is_streaming":      msg.Type == "streaming",
 		"ai_assistant_name": aiName,
 		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
@@ -338,6 +348,28 @@ func getAllMemberIDs(convID uint) []uint {
 		ids = append(ids, m.UserID)
 	}
 	return ids
+}
+
+// buildCardActionMap 批量查当前用户对给定消息中卡片消息的点击记录，返回 message_id -> action_id。
+// 单次查询避免 N+1；CardActionRecord 的 message_id+user_id 唯一索引保证每卡至多一条。
+// 用于让客户端跨设备一致地恢复卡片"已点击"态（替代仅本设备的 localStorage）。
+func buildCardActionMap(msgs []model.Message, userID uint) map[uint]string {
+	cardIDs := make([]uint, 0)
+	for _, m := range msgs {
+		if m.Type == "card" {
+			cardIDs = append(cardIDs, m.ID)
+		}
+	}
+	if len(cardIDs) == 0 {
+		return map[uint]string{}
+	}
+	var records []model.CardActionRecord
+	database.GetDB().Where("user_id = ? AND message_id IN ?", userID, cardIDs).Find(&records)
+	m := make(map[uint]string, len(records))
+	for _, r := range records {
+		m[r.MessageID] = r.ActionID
+	}
+	return m
 }
 
 func GetMessages(c *gin.Context) {
@@ -423,8 +455,18 @@ func GetMessages(c *gin.Context) {
 
 	var responseMessages []gin.H
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
+	// 卡片点击态（跨设备一致）：批量查当前用户对本页卡片消息的 CardActionRecord，
+	// 附 card_action_id 到 card 消息响应。CardActionRecord 是幂等表（message_id+user_id 唯一），权威。
+	// 之前客户端仅靠 localStorage，换设备/清缓存后卡片视觉重置可点击（后端幂等保底不重复触发，但视觉不一致）。
+	cardActionMap := buildCardActionMap(result.Messages, userID.(uint))
 	for _, msg := range result.Messages {
-		responseMessages = append(responseMessages, buildMessageResponse(msg, userID.(uint), allMemberIDs))
+		resp := buildMessageResponse(msg, userID.(uint), allMemberIDs)
+		if msg.Type == "card" {
+			if actionID, ok := cardActionMap[msg.ID]; ok {
+				resp["card_action_id"] = actionID
+			}
+		}
+		responseMessages = append(responseMessages, resp)
 	}
 
 	totalPages := int(result.Total) / pageSize
@@ -534,10 +576,6 @@ func SendMessage(c *gin.Context) {
 	if err != nil {
 		if err == service.ErrMessageForbidden {
 			response.Forbidden(c, "无权限发送消息")
-			return
-		}
-		if err == service.ErrAtAllForbidden {
-			response.Forbidden(c, "仅群主或管理员可 @所有人")
 			return
 		}
 		response.InternalServerError(c, "消息发送失败")
