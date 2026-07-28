@@ -53,6 +53,23 @@
 @import url('./modules/channel.css');
 
 /* ========================================
+   Noto Color Emoji - 跨平台 Emoji 回退字体
+   ========================================
+   Linux 无原生彩色 emoji 字体，会话列表预览 / 输入框 / 引用预览等
+   非 v-html 图片化位置会回退为黑白缺字或系统劣质 emoji。
+   --font-family-base 已在 Apple/Segoe emoji 之后声明 'Noto Color Emoji'，
+   macOS/Windows 命中原生 emoji 字体不会用到此处；Linux 命中此 @font-face。
+   聊天消息走 Twemoji PNG（emojiToHtml），不受影响。
+   字体来源：fontsource noto-color-emoji v5.3.0（emoji subset，CC-BY 4.0） */
+@font-face {
+  font-family: 'Noto Color Emoji';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/NotoColorEmoji.woff2') format('woff2');
+}
+
+/* ========================================
    基础重置 - Base Reset
    ======================================== */
 * {
