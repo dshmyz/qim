@@ -290,7 +290,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 
 	db := database.GetDB()
 	var messages []model.Message
-	db.Where("conversation_id = ?", input.ConversationID).
+	db.Where("conversation_id = ? AND type IN ?", input.ConversationID, []string{"text", "markdown"}).
 		Preload("Sender").
 		Order("created_at DESC").
 		Limit(20).
@@ -317,6 +317,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		filteredMessages = append(filteredMessages, msg)
 	}
 
+	hasRecentAI := false
 	for _, msg := range filteredMessages {
 		senderName := msg.Sender.Nickname
 		if senderName == "" {
@@ -324,9 +325,19 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		}
 
 		if msg.Origin == "assistant" {
+			// 检测最近 10 分钟内的 AI 回复，用于多轮上下文感知
+			if time.Since(msg.CreatedAt) <= 10*time.Minute {
+				hasRecentAI = true
+			}
 			result = append(result, &schema.Message{
 				Role:    schema.Assistant,
 				Content: msg.Content,
+			})
+		} else if msg.SenderID == input.UserID {
+			// 当前用户自己的消息，标为"我"
+			result = append(result, &schema.Message{
+				Role:    schema.User,
+				Content: fmt.Sprintf("[我]: %s", msg.Content),
 			})
 		} else {
 			result = append(result, &schema.Message{
@@ -334,6 +345,12 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 				Content: fmt.Sprintf("[%s]: %s", senderName, msg.Content),
 			})
 		}
+	}
+
+	// 多轮上下文：检测到最近 10 分钟内有 AI 回复，在 system prompt 追加提示
+	if hasRecentAI && len(result) > 0 {
+		hint := "\n- 注意：上方对话中包含你最近的回答。用户可能在追问或引用之前的回答，请结合上下文理解，不要重复已经说过的内容"
+		result[0].Content += hint
 	}
 
 	currentQuestion := input.Message
@@ -689,6 +706,7 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 
 	sb.WriteString("- 优先使用知识库中的内容回答\n")
 	sb.WriteString("- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"\n")
+	sb.WriteString("- 严禁在回复中使用 @用户名 或 @任何人 的格式。不要 @ 提及任何群成员，系统会自动处理提及。直接称呼对方名字即可，不要加 @ 前缀\n")
 
 	return sb.String()
 }

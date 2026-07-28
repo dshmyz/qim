@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -232,7 +233,9 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 	}
 
 	// 2) 回退：中立起草 prompt + 10 条上下文
-	messages, err := buildDraftReplyMessages(req)
+	userIDAny, _ := c.Get("user_id")
+	currentUserID, _ := userIDAny.(uint)
+	messages, err := buildDraftReplyMessages(req, currentUserID)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -256,7 +259,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 // 避免分身路径漏校验导致跨会话越权读取）。
 func loadDraftTarget(req DraftReplyRequest) (*model.Message, error) {
 	var target model.Message
-	if err := database.GetDB().First(&target, req.MessageID).Error; err != nil {
+	if err := database.GetDB().Preload("Sender").First(&target, req.MessageID).Error; err != nil {
 		return nil, fmt.Errorf("消息不存在")
 	}
 	if target.ConversationID != req.ConversationID {
@@ -265,7 +268,7 @@ func loadDraftTarget(req DraftReplyRequest) (*model.Message, error) {
 	return &target, nil
 }
 
-func buildDraftReplyMessages(req DraftReplyRequest) ([]ai.Message, error) {
+func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Message, error) {
 	db := database.GetDB()
 
 	target, err := loadDraftTarget(req)
@@ -282,7 +285,8 @@ func buildDraftReplyMessages(req DraftReplyRequest) ([]ai.Message, error) {
 		Limit(10).
 		Find(&contextMsgs)
 
-	// 按时间正序拼装上下文文本
+	// 按时间正序拼装上下文文本，区分"我"和"对方"
+	var myName string
 	contextLines := []string{}
 	for i := len(contextMsgs) - 1; i >= 0; i-- {
 		m := contextMsgs[i]
@@ -290,7 +294,14 @@ func buildDraftReplyMessages(req DraftReplyRequest) ([]ai.Message, error) {
 		if name == "" {
 			name = m.Sender.Username
 		}
-		contextLines = append(contextLines, fmt.Sprintf("%s: %s", name, m.Content))
+		if m.SenderID == currentUserID {
+			contextLines = append(contextLines, fmt.Sprintf("我: %s", m.Content))
+			if myName == "" {
+				myName = name
+			}
+		} else {
+			contextLines = append(contextLines, fmt.Sprintf("%s: %s", name, m.Content))
+		}
 	}
 	contextText := ""
 	if len(contextLines) > 0 {
@@ -302,11 +313,22 @@ func buildDraftReplyMessages(req DraftReplyRequest) ([]ai.Message, error) {
 		targetName = "对方"
 	}
 
+	if myName == "" {
+		// 目标消息前没有我的消息，从当前用户查昵称
+		var me model.User
+		if db.First(&me, currentUserID).Error == nil {
+			myName = me.Nickname
+			if myName == "" {
+				myName = me.Username
+			}
+		}
+	}
+
 	userPrompt := fmt.Sprintf("%s需要回复的消息（来自 %s）：\n%s",
 		contextText, targetName, target.Content)
 
 	return []ai.Message{
-		{Role: "system", Content: "你是用户的起草助手。根据下面的对话上下文，帮用户起草一条回复最后一条消息的内容。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。"},
+		{Role: "system", Content: fmt.Sprintf("你是%s，需要以第一人称回复对方的消息。根据下面的对话上下文，起草一条回复。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。", myName)},
 		{Role: "user", Content: userPrompt},
 	}, nil
 }
@@ -345,17 +367,20 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 			}
 			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
 			if err != nil {
-				response.InternalServerError(c, "生成回复失败: "+err.Error())
+				log.Printf("[DraftReplyStream] 分身流式生成失败，回退简单起草: %v", err)
+				// 回退到简单起草路径
+			} else {
+				streamCompletionFromReader(c, stream)
 				return
 			}
-			streamCompletionFromReader(c, stream)
-			return
 		}
-		// 无分身配置 -> 回退简单起草
+		// 无分身配置或分身失败 -> 回退简单起草
 	}
 
 	// 2) 回退：中立起草 prompt + 10 条上下文
-	messages, err := buildDraftReplyMessages(req)
+	userIDAny, _ := c.Get("user_id")
+	currentUserID, _ := userIDAny.(uint)
+	messages, err := buildDraftReplyMessages(req, currentUserID)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return

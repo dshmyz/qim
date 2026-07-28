@@ -417,7 +417,7 @@ const handleAIAction = async (actionId: string) => {
       // 找最后一条对方发来的文本消息
       const uid = String(currentUserId.value)
       const target = [...props.messages].reverse().find(
-        (m: any) => String(m.sender_id) !== uid && m.type === 'text' && !m.isRecalled
+        (m: any) => String(m.sender_id) !== uid && (m.type === 'text' || m.type === 'markdown') && !m.isRecalled
       )
       if (!target) {
         $message.warning('没有可回复的消息')

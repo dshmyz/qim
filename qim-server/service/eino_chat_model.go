@@ -65,11 +65,6 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	aiMessages := einoMessagesToAIMessages(input)
 
-	// 打印发送给模型的 Prompt，方便排查拦截原因
-	for _, msg := range aiMessages {
-		log.Printf("[EinoChatModel] [%s]: %s", msg.Role, msg.Content)
-	}
-
 	sr, sw := schema.Pipe[*schema.Message](0)
 
 	go func() {

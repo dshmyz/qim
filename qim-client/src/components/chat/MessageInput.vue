@@ -112,6 +112,7 @@
         @keyup="$emit('cursor-change', $event)"
         @click="$emit('cursor-change', $event)"
         @paste="$emit('handle-paste', $event)"
+        @contextmenu.prevent="openInputContextMenu"
       />
     </div>
     
@@ -128,6 +129,8 @@
       </div>
       <button class="send-btn" :disabled="!inputMessageLocal.trim() && pendingFiles.length === 0" @click="$emit('send')">发送</button>
     </div>
+
+    <UniversalContextMenu menuId="input-textarea" :items="inputContextMenuItems" />
   </div>
 </template>
 
@@ -138,6 +141,8 @@ import MiniAppManager from '../apps/MiniAppManager.vue'
 import QuotedMessageInput from '../message/QuotedMessageInput.vue'
 import AIQuickActions from '../ai/AIQuickActions.vue'
 import ChatToolbar from './ChatToolbar.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
+import { openMenu } from '../../composables/useUI'
 import PendingFilesPreview from './PendingFilesPreview.vue'
 import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
@@ -311,6 +316,60 @@ const handleSelectFile = () => {
 const toggleAI = () => {
   localShowAIActions.value = !localShowAIActions.value
 }
+
+// ---- 输入框右键菜单 ----
+const hasSelection = ref(false)
+
+const updateSelectionState = () => {
+  const ta = messageInputRef.value
+  if (!ta) return
+  hasSelection.value = ta.selectionStart !== ta.selectionEnd
+}
+
+const openInputContextMenu = (e: MouseEvent) => {
+  updateSelectionState()
+  openMenu('input-textarea', e.clientX, e.clientY)
+}
+
+const doCopy = () => {
+  const ta = messageInputRef.value
+  if (!ta || ta.selectionStart === ta.selectionEnd) return
+  const text = ta.value.slice(ta.selectionStart, ta.selectionEnd)
+  navigator.clipboard.writeText(text).catch(() => {})
+}
+
+const doCut = () => {
+  const ta = messageInputRef.value
+  if (!ta || ta.selectionStart === ta.selectionEnd) return
+  const text = ta.value.slice(ta.selectionStart, ta.selectionEnd)
+  navigator.clipboard.writeText(text).catch(() => {})
+  ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end')
+  inputMessageLocal.value = ta.value
+}
+
+const doPaste = async () => {
+  const ta = messageInputRef.value
+  if (!ta) return
+  try {
+    const text = await navigator.clipboard.readText()
+    if (!text) return
+    ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end')
+    inputMessageLocal.value = ta.value
+  } catch {
+    // clipboard read denied (no focus / permission)
+  }
+}
+
+const doSelectAll = () => {
+  messageInputRef.value?.select()
+}
+
+const inputContextMenuItems = computed(() => [
+  { label: '复制', icon: 'fas fa-copy', visible: hasSelection.value, action: doCopy },
+  { label: '剪切', icon: 'fas fa-cut', visible: hasSelection.value, action: doCut },
+  { label: '粘贴', icon: 'fas fa-paste', action: doPaste },
+  { label: '全选', icon: 'fas fa-check-double', action: doSelectAll },
+])
 
 const handleDragOver = (event: DragEvent) => {
   if (event.dataTransfer?.types.includes('Files')) {
@@ -636,7 +695,7 @@ defineExpose({ messageInputRef })
   font-size: 14px;
   resize: none;
   outline: none;
-  font-family: inherit;
+  font-family: var(--font-family-base);
   min-height: 120px;
   max-height: 200px;
   overflow-y: hidden;

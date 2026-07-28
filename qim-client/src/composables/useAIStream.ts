@@ -71,6 +71,26 @@ export function useAIStream() {
         }
       }
 
+      // 流结束后处理 buffer 中残留的最后一行
+      if (buffer.startsWith('data: ')) {
+        try {
+          const chunk = JSON.parse(buffer.slice(6))
+          if (chunk.error) {
+            options.onError(new Error(chunk.error))
+            return
+          }
+          if (chunk.content) {
+            options.onChunk(chunk.content)
+          }
+          if (chunk.finish === 'stop') {
+            options.onComplete()
+            return
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+
       options.onComplete()
     } catch (e: any) {
       if (e.name === 'AbortError') {
