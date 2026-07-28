@@ -116,6 +116,9 @@ func (s *TaskService) DeleteTask(userID, taskID uint) error {
 func (s *TaskService) ProcessTaskReminders() {
 	now := time.Now()
 
+	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateTaskTool）统一用
+	// time.Parse（UTC）落库，读出即为 UTC time.Time，与 EventService 一致：
+	// 用 now 的绝对时刻比较，不受时区影响。
 	var tasks []model.Task
 	if err := s.db.Where(
 		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ?",
@@ -125,9 +128,7 @@ func (s *TaskService) ProcessTaskReminders() {
 	}
 
 	for _, task := range tasks {
-		// 统一转本地时间比较，避免 UTC/本地时间偏差
-		dueLocal := task.DueDate.Local()
-		reminderTime := dueLocal.Add(-time.Duration(task.Reminder) * time.Minute)
+		reminderTime := task.DueDate.Add(-time.Duration(task.Reminder) * time.Minute)
 		if now.After(reminderTime) || now.Equal(reminderTime) {
 			// 先标记再发送，防止调度器重复触发
 			s.db.Model(&task).Update("reminder_sent", true)
