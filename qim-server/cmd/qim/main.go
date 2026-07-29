@@ -13,6 +13,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,14 +23,17 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const configDir = ".qim"
 
 type config struct {
-	ServerURL string `json:"server_url"`
-	BotToken  string `json:"bot_token"`
-	UserToken string `json:"user_token"` // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
+	ServerURL    string `json:"server_url"`
+	BotToken     string `json:"bot_token"`
+	UserToken    string `json:"user_token"`     // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
+	RefreshToken string `json:"refresh_token"`  // 用于自动续期 user_token
 }
 
 func main() {
@@ -40,6 +44,8 @@ func main() {
 	switch os.Args[1] {
 	case "config":
 		cmdConfig(os.Args[2:])
+	case "login":
+		cmdLogin(os.Args[2:])
 	case "messages":
 		cmdMessages(os.Args[2:])
 	case "send":
@@ -67,6 +73,7 @@ func usage() {
 命令:
   config set --server URL --token T   写配置（~/.qim/config.json）
   config show                          显示配置（token 脱敏）
+  login [-u username]                  交互式登录获取 user_token（自动续期，无需手动管理 token）
   messages list --thread ID [--after-id N] [--limit 50]   拉会话消息（JSON lines）
   messages poll --thread ID [--interval 2s]               轮询新消息（JSON lines）
   send --to USER --thread ID --type text|markdown|card --content ...   发消息，输出 message_id
@@ -136,6 +143,168 @@ func cmdConfig(args []string) {
 		fmt.Fprintln(os.Stderr, "未知子命令: config "+args[0])
 		os.Exit(2)
 	}
+}
+
+// ---------- login ----------
+
+func cmdLogin(args []string) {
+	fs := flag.NewFlagSet("login", flag.ExitOnError)
+	username := fs.String("u", "", "用户名（可选，不填会交互提示）")
+	_ = fs.Parse(args)
+
+	// 需要先有 server 配置
+	cfg, err := loadConfig()
+	if err != nil || cfg.ServerURL == "" {
+		die("请先执行: qim config set --server URL --token BOT_TOKEN")
+	}
+
+	if *username == "" {
+		fmt.Print("用户名: ")
+		*username, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		*username = strings.TrimSpace(*username)
+	}
+	if *username == "" {
+		die("用户名不能为空")
+	}
+
+	fmt.Print("密码: ")
+	password, err := readPassword()
+	fmt.Println()
+	if err != nil {
+		die("读取密码失败: %v", err)
+	}
+
+	// 调登录接口
+	body, _ := json.Marshal(map[string]string{
+		"username": *username,
+		"password": password,
+	})
+	req, _ := http.NewRequest(http.MethodPost, cfg.ServerURL+"/api/v1/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	respBody, err := do(req)
+	if err != nil {
+		die("登录失败: %v", err)
+	}
+
+	var loginResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Token        string `json:"token"`
+			RefreshToken string `json:"refresh_token"`
+			User         struct {
+				Nickname string `json:"nickname"`
+				Username string `json:"username"`
+			} `json:"user"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &loginResp); err != nil || loginResp.Code != 0 {
+		die("登录失败: %s", loginResp.Message)
+	}
+
+	cfg.UserToken = loginResp.Data.Token
+	cfg.RefreshToken = loginResp.Data.RefreshToken
+	if err := saveConfig(cfg); err != nil {
+		die("保存配置失败: %v", err)
+	}
+	nick := loginResp.Data.User.Nickname
+	if nick == "" {
+		nick = loginResp.Data.User.Username
+	}
+	fmt.Printf("✅ 登录成功：%s（token 7 天有效，自动续期）\n", nick)
+}
+
+// readPassword 从 stdin 读取密码（关闭终端回显）。
+func readPassword() (string, error) {
+	fd := int(os.Stdin.Fd())
+	termios, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	if err != nil {
+		// 非终端回退为普通读取
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			return strings.TrimSpace(scanner.Text()), nil
+		}
+		return "", scanner.Err()
+	}
+	old := *termios
+	newState := old
+	newState.Lflag &^= unix.ECHO
+	if err := unix.IoctlSetTermios(fd, unix.TIOCSETA, &newState); err != nil {
+		return "", err
+	}
+	defer unix.IoctlSetTermios(fd, unix.TIOCSETA, &old)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		return strings.TrimSpace(scanner.Text()), nil
+	}
+	return "", scanner.Err()
+}
+
+// jwtExpired 解析 JWT payload 检查是否过期（预留 60s 余量）。
+func jwtExpired(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return true // 格式错误视为过期
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return true
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+		return true
+	}
+	return time.Now().Unix() >= claims.Exp-60
+}
+
+// ensureUserToken 确保 user_token 有效：过期则自动用 refresh_token 续期。
+// 失败返回 error（需要重新 qim login）。
+func ensureUserToken(cfg *config) error {
+	if cfg.UserToken == "" {
+		return fmt.Errorf("未登录，请先执行: qim login")
+	}
+	if !jwtExpired(cfg.UserToken) {
+		return nil // 还没过期
+	}
+	if cfg.RefreshToken == "" {
+		return fmt.Errorf("token 已过期且无 refresh_token，请重新登录: qim login")
+	}
+	if jwtExpired(cfg.RefreshToken) {
+		return fmt.Errorf("refresh_token 也已过期，请重新登录: qim login")
+	}
+
+	// 自动续期
+	body, _ := json.Marshal(map[string]string{"refresh_token": cfg.RefreshToken})
+	req, _ := http.NewRequest(http.MethodPost, cfg.ServerURL+"/api/v1/auth/refresh", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+cfg.RefreshToken)
+
+	respBody, err := do(req)
+	if err != nil {
+		return fmt.Errorf("刷新 token 失败: %w（请重新登录: qim login）", err)
+	}
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Token        string `json:"token"`
+			RefreshToken string `json:"refresh_token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil || resp.Code != 0 {
+		return fmt.Errorf("刷新 token 失败，请重新登录: qim login")
+	}
+
+	cfg.UserToken = resp.Data.Token
+	cfg.RefreshToken = resp.Data.RefreshToken
+	if err := saveConfig(*cfg); err != nil {
+		return fmt.Errorf("保存新 token 失败: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "🔄 token 已自动续期")
+	return nil
 }
 
 // ---------- messages ----------
@@ -523,8 +692,8 @@ func userPost(path string, body map[string]any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取配置失败（先 qim config set）: %w", err)
 	}
-	if cfg.UserToken == "" {
-		return nil, fmt.Errorf("未配置 user_token，先 qim config set --user-token JWT")
+	if err := ensureUserToken(&cfg); err != nil {
+		return nil, err
 	}
 	jsonBody, _ := json.Marshal(body)
 	req, err := http.NewRequest(http.MethodPost, cfg.ServerURL+path, bytes.NewReader(jsonBody))
