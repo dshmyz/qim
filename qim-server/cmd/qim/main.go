@@ -29,6 +29,7 @@ const configDir = ".qim"
 type config struct {
 	ServerURL string `json:"server_url"`
 	BotToken  string `json:"bot_token"`
+	UserToken string `json:"user_token"` // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
 }
 
 func main() {
@@ -47,6 +48,10 @@ func main() {
 		cmdStream(os.Args[2:])
 	case "stream-stdin":
 		cmdStreamStdin(os.Args[2:])
+	case "task":
+		cmdTask(os.Args[2:])
+	case "event":
+		cmdEvent(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -67,6 +72,8 @@ func usage() {
   send --to USER --thread ID --type text|markdown|card --content ...   发消息，输出 message_id
   stream --message-id ID --delta "..." [--finish]         追加流式分段
   stream-stdin --to USER --thread ID                       stdin 逐行喂 delta，EOF finish
+  task create --title "..." [--due 2026-08-01] [--priority low|medium|high] [--desc "..."]   以用户身份建待办
+  event create --title "..." --start "2026-08-01 14:00" --end "2026-08-01 15:00" [--reminder 15] [--desc "..."]   以用户身份建日历事件
 `)
 }
 
@@ -82,12 +89,31 @@ func cmdConfig(args []string) {
 		fs := flag.NewFlagSet("config set", flag.ExitOnError)
 		server := fs.String("server", "", "QIM 服务器地址，如 http://localhost:8080")
 		token := fs.String("token", "", "bot 访问令牌 qbot_...")
+		userToken := fs.String("user-token", "", "用户 JWT，用于以用户身份建任务/日历（可选）")
 		_ = fs.Parse(args[1:])
+		// --user-token 单独 set 时复用已有 server/bot_token
 		if *server == "" || *token == "" {
-			fmt.Fprintln(os.Stderr, "--server 与 --token 必填")
-			os.Exit(2)
+			if *userToken == "" {
+				fmt.Fprintln(os.Stderr, "--server 与 --token 必填（或先配置后再用 --user-token 追加）")
+				os.Exit(2)
+			}
+			// 只追加 user-token：读取现有配置补充
+			old, err := loadConfig()
+			if err != nil {
+				die("读取旧配置失败: %v", err)
+			}
+			old.UserToken = *userToken
+			if err := saveConfig(old); err != nil {
+				die("保存配置失败: %v", err)
+			}
+			fmt.Println("user_token 已保存到", configPath())
+			return
 		}
-		cfg := config{ServerURL: strings.TrimRight(*server, "/"), BotToken: *token}
+		cfg := config{
+			ServerURL: strings.TrimRight(*server, "/"),
+			BotToken:  *token,
+			UserToken: *userToken,
+		}
 		if err := saveConfig(cfg); err != nil {
 			die("保存配置失败: %v", err)
 		}
@@ -101,7 +127,11 @@ func cmdConfig(args []string) {
 		if len(mask) > 12 {
 			mask = mask[:8] + "..." + mask[len(mask)-4:]
 		}
-		fmt.Printf("server_url: %s\nbot_token:  %s\n", cfg.ServerURL, mask)
+		utMask := cfg.UserToken
+		if len(utMask) > 20 {
+			utMask = utMask[:8] + "..." + utMask[len(utMask)-4:]
+		}
+		fmt.Printf("server_url:  %s\nbot_token:   %s\nuser_token:  %s\n", cfg.ServerURL, mask, utMask)
 	default:
 		fmt.Fprintln(os.Stderr, "未知子命令: config "+args[0])
 		os.Exit(2)
@@ -276,6 +306,133 @@ func sendMessage(to, thread uint64, content, msgType string) (uint64, error) {
 	return resp.Data.MessageID, nil
 }
 
+// ---------- task ----------
+
+func cmdTask(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: qim task create")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "create":
+		createTaskCmd(args[1:])
+	default:
+		fmt.Fprintln(os.Stderr, "未知子命令: task "+args[0])
+		os.Exit(2)
+	}
+}
+
+func createTaskCmd(args []string) {
+	fs := flag.NewFlagSet("task create", flag.ExitOnError)
+	title := fs.String("title", "", "待办标题（必填）")
+	due := fs.String("due", "", "截止日期 YYYY-MM-DD（可选）")
+	priority := fs.String("priority", "medium", "优先级: low|medium|high")
+	desc := fs.String("desc", "", "描述（可选）")
+	_ = fs.Parse(args)
+	if *title == "" {
+		fmt.Fprintln(os.Stderr, "--title 必填")
+		os.Exit(2)
+	}
+
+	body := map[string]any{"title": *title, "priority": *priority}
+	if *due != "" {
+		body["due_date"] = *due
+	}
+	if *desc != "" {
+		body["description"] = *desc
+	}
+	respBody, err := userPost("/api/v1/tasks", body)
+	if err != nil {
+		die("%v", err)
+	}
+	var resp struct {
+		Data struct {
+			ID uint64 `json:"id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(respBody, &resp)
+	if resp.Data.ID == 0 {
+		fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
+		os.Exit(1)
+	}
+	fmt.Printf("✅ 待办已创建 (ID: %d)\n", resp.Data.ID)
+}
+
+// ---------- event ----------
+
+func cmdEvent(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: qim event create")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "create":
+		createEventCmd(args[1:])
+	default:
+		fmt.Fprintln(os.Stderr, "未知子命令: event "+args[0])
+		os.Exit(2)
+	}
+}
+
+func createEventCmd(args []string) {
+	fs := flag.NewFlagSet("event create", flag.ExitOnError)
+	title := fs.String("title", "", "事件标题（必填）")
+	start := fs.String("start", "", "开始时间，如 \"2026-08-01 14:00\"（必填，本地时间）")
+	end := fs.String("end", "", "结束时间，如 \"2026-08-01 15:00\"（必填，本地时间）")
+	reminder := fs.Int("reminder", 0, "提前提醒分钟数（0=不提醒）")
+	desc := fs.String("desc", "", "描述（可选）")
+	_ = fs.Parse(args)
+	if *title == "" || *start == "" || *end == "" {
+		fmt.Fprintln(os.Stderr, "--title/--start/--end 必填")
+		os.Exit(2)
+	}
+	// API 要求 RFC3339 time.Time，本地时间字符串转 RFC3339（带本地时区偏移）
+	startRFC, err := localToRFC3339(*start)
+	if err != nil {
+		die("--start 格式错误: %v（示例: \"2026-08-01 14:00\"）", err)
+	}
+	endRFC, err := localToRFC3339(*end)
+	if err != nil {
+		die("--end 格式错误: %v", err)
+	}
+
+	body := map[string]any{
+		"title":    *title,
+		"start":    startRFC,
+		"end":      endRFC,
+		"reminder": *reminder,
+	}
+	if *desc != "" {
+		body["description"] = *desc
+	}
+	respBody, err := userPost("/api/v1/events", body)
+	if err != nil {
+		die("%v", err)
+	}
+	var resp struct {
+		Data struct {
+			ID uint64 `json:"id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(respBody, &resp)
+	if resp.Data.ID == 0 {
+		fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
+		os.Exit(1)
+	}
+	fmt.Printf("✅ 事件已创建 (ID: %d)\n", resp.Data.ID)
+}
+
+// localToRFC3339 把 "2006-01-02 15:04" 本地时间字符串转为 RFC3339（带本地时区偏移）。
+func localToRFC3339(s string) (string, error) {
+	layouts := []string{"2006-01-02 15:04", "2006-01-02 15:04:05", "2006-01-02T15:04", time.RFC3339}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t.Format(time.RFC3339), nil
+		}
+	}
+	return "", fmt.Errorf("无法解析 %q", s)
+}
+
 // ---------- stream ----------
 
 func cmdStream(args []string) {
@@ -357,6 +514,26 @@ func setAuth(req *http.Request, cfg config) {
 	if cfg.BotToken != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.BotToken)
 	}
+}
+
+// userPost 以用户 JWT 身份 POST /api/v1/*（任务/日历等）。
+// 与 bot token 不同：任务/日历归用户所有，用用户 token 创建语义正确。
+func userPost(path string, body map[string]any) ([]byte, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("读取配置失败（先 qim config set）: %w", err)
+	}
+	if cfg.UserToken == "" {
+		return nil, fmt.Errorf("未配置 user_token，先 qim config set --user-token JWT")
+	}
+	jsonBody, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, cfg.ServerURL+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+cfg.UserToken)
+	return do(req)
 }
 
 func do(req *http.Request) ([]byte, error) {
