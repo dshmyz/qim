@@ -87,7 +87,7 @@ func usage() {
   conversations list [--limit 50]      列出最近会话
   messages list --thread ID [--after-id N] [--limit 50]   拉会话消息（JSON lines）
   messages poll --thread ID [--interval 2s]               轮询新消息（JSON lines）
-  send --to USER --thread ID [--reply-to MSG_ID] --type text|markdown|card --content ...   发消息
+  send --to USER [--thread CONV] [--reply-to MSG_ID] --type text|markdown|card --content ...   发消息（--thread 可选，自动创建会话）
   stream --message-id ID --delta "..." [--finish]         追加流式分段
   stream-stdin --to USER --thread ID                       stdin 逐行喂 delta，EOF finish
   task list [--status todo|doing|done] [--limit 50]        列出待办
@@ -526,24 +526,32 @@ func emitMessage(m message) {
 
 func cmdSend(args []string) {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
-	to := fs.String("to", "", "目标用户名或用户 ID")
-	thread := fs.String("thread", "", "会话名或会话 ID")
+	to := fs.String("to", "", "目标用户名或用户 ID（必填）")
+	thread := fs.String("thread", "", "会话名或会话 ID（可选，不填自动创建/查找）")
+	fs.String("conversation", "", "（--thread 别名）")
 	replyTo := fs.Uint64("reply-to", 0, "回复的消息 ID（可选）")
 	msgType := fs.String("type", "text", "消息类型: text|markdown|card")
 	content := fs.String("content", "", "消息内容（card 时为 JSON）")
 	fs.StringVar(content, "c", "", "（--content 简写）")
 	_ = fs.Parse(args)
-	if *to == "" || *thread == "" || *content == "" {
-		fmt.Fprintln(os.Stderr, "--to/--thread/--content 必填（支持用户名/会话名或 ID）")
+	if *to == "" || *content == "" {
+		fmt.Fprintln(os.Stderr, "--to/--content 必填")
 		os.Exit(2)
+	}
+	// --conversation 是 --thread 的别名
+	if conv := fs.Lookup("conversation"); conv != nil && conv.Value.String() != "" && *thread == "" {
+		*thread = conv.Value.String()
 	}
 	toID, err := resolveUser(*to)
 	if err != nil {
 		die("解析 --to 失败: %v", err)
 	}
-	threadID, err := resolveConversation(*thread)
-	if err != nil {
-		die("解析 --thread 失败: %v", err)
+	var threadID uint64
+	if *thread != "" {
+		threadID, err = resolveConversation(*thread)
+		if err != nil {
+			die("解析 --thread 失败: %v", err)
+		}
 	}
 	id, err := sendMessage(toID, threadID, *content, *msgType, *replyTo)
 	if err != nil {
@@ -957,20 +965,23 @@ func cmdStream(args []string) {
 // 配合 `claude -p ... | qim stream-stdin ...` 实现流式回复。
 func cmdStreamStdin(args []string) {
 	fs := flag.NewFlagSet("stream-stdin", flag.ExitOnError)
-	to := fs.String("to", "", "目标用户名或用户 ID")
-	thread := fs.String("thread", "", "会话名或会话 ID")
+	to := fs.String("to", "", "目标用户名或用户 ID（必填）")
+	thread := fs.String("thread", "", "会话名或会话 ID（可选）")
 	_ = fs.Parse(args)
-	if *to == "" || *thread == "" {
-		fmt.Fprintln(os.Stderr, "--to/--thread 必填（支持用户名/会话名或 ID）")
+	if *to == "" {
+		fmt.Fprintln(os.Stderr, "--to 必填")
 		os.Exit(2)
 	}
 	toID, err := resolveUser(*to)
 	if err != nil {
 		die("解析 --to 失败: %v", err)
 	}
-	threadID, err := resolveConversation(*thread)
-	if err != nil {
-		die("解析 --thread 失败: %v", err)
+	var threadID uint64
+	if *thread != "" {
+		threadID, err = resolveConversation(*thread)
+		if err != nil {
+			die("解析 --thread 失败: %v", err)
+		}
 	}
 	msgID, err := sendMessage(toID, threadID, "", "streaming", 0)
 	if err != nil {
