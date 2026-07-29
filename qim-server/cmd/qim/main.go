@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,6 +30,9 @@ import (
 
 const configDir = ".qim"
 
+// version 通过 -ldflags 注入，未注入时显示 dev。
+var version = "dev"
+
 // outputFmt 控制输出格式："" (默认人类可读) 或 "json" (原始 JSON)。
 var outputFmt string
 
@@ -37,6 +41,7 @@ type config struct {
 	BotToken     string `json:"bot_token"`
 	UserToken    string `json:"user_token"`     // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
 	RefreshToken string `json:"refresh_token"`  // 用于自动续期 user_token
+	SourcePath   string `json:"source_path"`    // qim-server 源码路径，qim update 时使用
 }
 
 func main() {
@@ -65,6 +70,10 @@ func main() {
 		cmdTask(args[1:])
 	case "event":
 		cmdEvent(args[1:])
+	case "version":
+		cmdVersion(args[1:])
+	case "update":
+		cmdUpdate(args[1:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -81,9 +90,11 @@ func usage() {
   --output json   输出原始 JSON（默认人类可读）
 
 命令:
-  config set --server URL --token T   写配置（~/.qim/config.json）
+  config set --server URL --token T [--source-path /path/to/qim-server]   写配置
   config show                          显示配置（token 脱敏）
   login [-u username]                  交互式登录获取 user_token（自动续期）
+  version                              显示版本号
+  update                               自动更新到最新版（需要 --source-path 或 Go 环境）
   conversations list [--limit 50]      列出最近会话
   messages list --thread ID [--after-id N] [--limit 50]   拉会话消息（JSON lines）
   messages poll --thread ID [--interval 2s]               轮询新消息（JSON lines）
@@ -112,29 +123,35 @@ func cmdConfig(args []string) {
 		server := fs.String("server", "", "QIM 服务器地址，如 http://localhost:8080")
 		token := fs.String("token", "", "bot 访问令牌 qbot_...")
 		userToken := fs.String("user-token", "", "用户 JWT，用于以用户身份建任务/日历（可选）")
+		sourcePath := fs.String("source-path", "", "qim-server 源码路径，用于 qim update（可选）")
 		_ = fs.Parse(args[1:])
-		// --user-token 单独 set 时复用已有 server/bot_token
+		// 单独追加某个字段时复用已有配置
 		if *server == "" || *token == "" {
-			if *userToken == "" {
-				fmt.Fprintln(os.Stderr, "--server 与 --token 必填（或先配置后再用 --user-token 追加）")
+			if *userToken == "" && *sourcePath == "" {
+				fmt.Fprintln(os.Stderr, "--server 与 --token 必填（或先配置后再用 --user-token / --source-path 追加）")
 				os.Exit(2)
 			}
-			// 只追加 user-token：读取现有配置补充
 			old, err := loadConfig()
 			if err != nil {
 				die("读取旧配置失败: %v", err)
 			}
-			old.UserToken = *userToken
+			if *userToken != "" {
+				old.UserToken = *userToken
+			}
+			if *sourcePath != "" {
+				old.SourcePath = *sourcePath
+			}
 			if err := saveConfig(old); err != nil {
 				die("保存配置失败: %v", err)
 			}
-			fmt.Println("user_token 已保存到", configPath())
+			fmt.Println("配置已保存到", configPath())
 			return
 		}
 		cfg := config{
-			ServerURL: strings.TrimRight(*server, "/"),
-			BotToken:  *token,
-			UserToken: *userToken,
+			ServerURL:  strings.TrimRight(*server, "/"),
+			BotToken:   *token,
+			UserToken:  *userToken,
+			SourcePath: *sourcePath,
 		}
 		if err := saveConfig(cfg); err != nil {
 			die("保存配置失败: %v", err)
@@ -153,7 +170,7 @@ func cmdConfig(args []string) {
 		if len(utMask) > 20 {
 			utMask = utMask[:8] + "..." + utMask[len(utMask)-4:]
 		}
-		fmt.Printf("server_url:  %s\nbot_token:   %s\nuser_token:  %s\n", cfg.ServerURL, mask, utMask)
+		fmt.Printf("server_url:  %s\nbot_token:   %s\nuser_token:  %s\nsource_path: %s\n", cfg.ServerURL, mask, utMask, cfg.SourcePath)
 	default:
 		fmt.Fprintln(os.Stderr, "未知子命令: config "+args[0])
 		os.Exit(2)
@@ -320,6 +337,75 @@ func ensureUserToken(cfg *config) error {
 	}
 	fmt.Fprintln(os.Stderr, "🔄 token 已自动续期")
 	return nil
+}
+
+// ---------- version / update ----------
+
+func cmdVersion(_ []string) {
+	fmt.Println("qim", version)
+}
+
+func cmdUpdate(_ []string) {
+	src := findSourcePath()
+	if src == "" {
+		die("未找到源码路径。请先执行:\n  qim config set --source-path /path/to/qim-server")
+	}
+	fmt.Printf("源码路径: %s\n", src)
+	fmt.Println("正在编译最新版...")
+
+	cmd := exec.Command("go", "install", "./cmd/qim/")
+	cmd.Dir = src
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		die("编译失败: %v\n请确认 Go 环境可用且源码路径正确", err)
+	}
+
+	// 输出新版本
+	bin := findInstalledBinary()
+	if bin != "" {
+		out, _ := exec.Command(bin, "version").Output()
+		if v := strings.TrimSpace(string(out)); v != "" {
+			fmt.Printf("✅ 已更新: %s\n", v)
+			return
+		}
+	}
+	fmt.Println("✅ 已更新，请重新打开终端或运行 qim version 确认")
+}
+
+// findSourcePath 从配置中读取 source_path，未配置时尝试自动检测。
+func findSourcePath() string {
+	cfg, err := loadConfig()
+	if err == nil && cfg.SourcePath != "" {
+		return cfg.SourcePath
+	}
+	// 自动检测：当前目录或父目录有 go.mod 且 module 包含 qim
+	for _, dir := range []string{".", "..", "../.."} {
+		modFile := filepath.Join(dir, "go.mod")
+		b, err := os.ReadFile(modFile)
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(b), "qim") {
+			abs, _ := filepath.Abs(dir)
+			return abs
+		}
+	}
+	return ""
+}
+
+// findInstalledBinary 查找 go install 安装的 qim 二进制。
+func findInstalledBinary() string {
+	gopath, _ := exec.Command("go", "env", "GOPATH").Output()
+	gp := strings.TrimSpace(string(gopath))
+	if gp == "" {
+		gp = filepath.Join(os.Getenv("HOME"), "go")
+	}
+	bin := filepath.Join(gp, "bin", "qim")
+	if _, err := os.Stat(bin); err == nil {
+		return bin
+	}
+	return ""
 }
 
 // ---------- conversations ----------
