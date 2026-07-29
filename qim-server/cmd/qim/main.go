@@ -526,18 +526,26 @@ func emitMessage(m message) {
 
 func cmdSend(args []string) {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
-	to := fs.Uint64("to", 0, "目标用户 ID")
-	thread := fs.Uint64("thread", 0, "会话 ID（thread_id）")
+	to := fs.String("to", "", "目标用户名或用户 ID")
+	thread := fs.String("thread", "", "会话名或会话 ID")
 	replyTo := fs.Uint64("reply-to", 0, "回复的消息 ID（可选）")
 	msgType := fs.String("type", "text", "消息类型: text|markdown|card")
 	content := fs.String("content", "", "消息内容（card 时为 JSON）")
 	fs.StringVar(content, "c", "", "（--content 简写）")
 	_ = fs.Parse(args)
-	if *to == 0 || *thread == 0 || *content == "" {
-		fmt.Fprintln(os.Stderr, "--to/--thread/--content 必填")
+	if *to == "" || *thread == "" || *content == "" {
+		fmt.Fprintln(os.Stderr, "--to/--thread/--content 必填（支持用户名/会话名或 ID）")
 		os.Exit(2)
 	}
-	id, err := sendMessage(*to, *thread, *content, *msgType, *replyTo)
+	toID, err := resolveUser(*to)
+	if err != nil {
+		die("解析 --to 失败: %v", err)
+	}
+	threadID, err := resolveConversation(*thread)
+	if err != nil {
+		die("解析 --thread 失败: %v", err)
+	}
+	id, err := sendMessage(toID, threadID, *content, *msgType, *replyTo)
 	if err != nil {
 		die("%v", err)
 	}
@@ -949,14 +957,22 @@ func cmdStream(args []string) {
 // 配合 `claude -p ... | qim stream-stdin ...` 实现流式回复。
 func cmdStreamStdin(args []string) {
 	fs := flag.NewFlagSet("stream-stdin", flag.ExitOnError)
-	to := fs.Uint64("to", 0, "目标用户 ID")
-	thread := fs.Uint64("thread", 0, "会话 ID（thread_id）")
+	to := fs.String("to", "", "目标用户名或用户 ID")
+	thread := fs.String("thread", "", "会话名或会话 ID")
 	_ = fs.Parse(args)
-	if *to == 0 || *thread == 0 {
-		fmt.Fprintln(os.Stderr, "--to/--thread 必填")
+	if *to == "" || *thread == "" {
+		fmt.Fprintln(os.Stderr, "--to/--thread 必填（支持用户名/会话名或 ID）")
 		os.Exit(2)
 	}
-	msgID, err := sendMessage(*to, *thread, "", "streaming", 0)
+	toID, err := resolveUser(*to)
+	if err != nil {
+		die("解析 --to 失败: %v", err)
+	}
+	threadID, err := resolveConversation(*thread)
+	if err != nil {
+		die("解析 --thread 失败: %v", err)
+	}
+	msgID, err := sendMessage(toID, threadID, "", "streaming", 0)
 	if err != nil {
 		die("建流式消息失败: %v", err)
 	}
@@ -982,6 +998,90 @@ func streamChunk(msgID uint64, delta string, finish bool) error {
 	})
 	_, err := httpPost(cfg, fmt.Sprintf("%s/api/v1/bot/messages/%d/stream", cfg.ServerURL, msgID), body)
 	return err
+}
+
+// ---------- resolve ----------
+
+// resolveUser 把用户名或数字 ID 解析为用户 ID。
+// 数字直接返回，否则调 users/search?q= 按昵称/用户名搜索。
+func resolveUser(nameOrID string) (uint64, error) {
+	var id uint64
+	if _, err := fmt.Sscanf(nameOrID, "%d", &id); err == nil && id > 0 {
+		return id, nil
+	}
+	respBody, err := userGet("/api/v1/users/search?q=" + nameOrID)
+	if err != nil {
+		return 0, fmt.Errorf("搜索用户 %q 失败: %w", nameOrID, err)
+	}
+	var resp struct {
+		Data []struct {
+			ID   uint64 `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, fmt.Errorf("解析搜索结果失败: %w", err)
+	}
+	// 精确匹配优先
+	for _, u := range resp.Data {
+		if u.Name == nameOrID {
+			return u.ID, nil
+		}
+	}
+	// 模糊匹配第一个
+	if len(resp.Data) > 0 {
+		return resp.Data[0].ID, nil
+	}
+	// 搜索结果为空：可能是搜索自己（API 排除当前用户）
+	me, err := userGet("/api/v1/users/me")
+	if err == nil {
+		var meResp struct {
+			Data struct {
+				ID       uint64 `json:"id"`
+				Username string `json:"username"`
+				Nickname string `json:"nickname"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(me, &meResp) == nil {
+			if meResp.Data.Username == nameOrID || meResp.Data.Nickname == nameOrID {
+				return meResp.Data.ID, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("未找到用户 %q", nameOrID)
+}
+
+// resolveConversation 把会话名或数字 ID 解析为会话 ID。
+// 数字直接返回，否则调 conversations/search?query= 按名字搜索。
+func resolveConversation(nameOrID string) (uint64, error) {
+	var id uint64
+	if _, err := fmt.Sscanf(nameOrID, "%d", &id); err == nil && id > 0 {
+		return id, nil
+	}
+	respBody, err := userGet("/api/v1/conversations/search?query=" + nameOrID)
+	if err != nil {
+		return 0, fmt.Errorf("搜索会话 %q 失败: %w", nameOrID, err)
+	}
+	var resp struct {
+		Data []struct {
+			ID              uint64 `json:"id"`
+			Name            string `json:"name"`
+			OtherMemberName string `json:"other_member_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, fmt.Errorf("解析搜索结果失败: %w", err)
+	}
+	// 精确匹配
+	for _, c := range resp.Data {
+		if c.Name == nameOrID || c.OtherMemberName == nameOrID {
+			return c.ID, nil
+		}
+	}
+	if len(resp.Data) > 0 {
+		return resp.Data[0].ID, nil
+	}
+	return 0, fmt.Errorf("未找到会话 %q", nameOrID)
 }
 
 // ---------- HTTP ----------
