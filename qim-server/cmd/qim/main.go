@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -39,9 +40,8 @@ var outputFmt string
 type config struct {
 	ServerURL    string `json:"server_url"`
 	BotToken     string `json:"bot_token"`
-	UserToken    string `json:"user_token"`     // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
-	RefreshToken string `json:"refresh_token"`  // 用于自动续期 user_token
-	SourcePath   string `json:"source_path"`    // qim-server 源码路径，qim update 时使用
+	UserToken    string `json:"user_token"`    // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
+	RefreshToken string `json:"refresh_token"` // 用于自动续期 user_token
 }
 
 func main() {
@@ -90,11 +90,11 @@ func usage() {
   --output json   输出原始 JSON（默认人类可读）
 
 命令:
-  config set --server URL --token T [--source-path /path/to/qim-server]   写配置
+  config set --server URL --token T   写配置（~/.qim/config.json）
   config show                          显示配置（token 脱敏）
   login [-u username]                  交互式登录获取 user_token（自动续期）
   version                              显示版本号
-  update                               自动更新到最新版（需要 --source-path 或 Go 环境）
+  update                               从服务器下载最新版 CLI 并替换
   conversations list [--limit 50]      列出最近会话
   messages list --thread ID [--after-id N] [--limit 50]   拉会话消息（JSON lines）
   messages poll --thread ID [--interval 2s]               轮询新消息（JSON lines）
@@ -123,24 +123,18 @@ func cmdConfig(args []string) {
 		server := fs.String("server", "", "QIM 服务器地址，如 http://localhost:8080")
 		token := fs.String("token", "", "bot 访问令牌 qbot_...")
 		userToken := fs.String("user-token", "", "用户 JWT，用于以用户身份建任务/日历（可选）")
-		sourcePath := fs.String("source-path", "", "qim-server 源码路径，用于 qim update（可选）")
 		_ = fs.Parse(args[1:])
-		// 单独追加某个字段时复用已有配置
+		// 单独追加 user-token 时复用已有配置
 		if *server == "" || *token == "" {
-			if *userToken == "" && *sourcePath == "" {
-				fmt.Fprintln(os.Stderr, "--server 与 --token 必填（或先配置后再用 --user-token / --source-path 追加）")
+			if *userToken == "" {
+				fmt.Fprintln(os.Stderr, "--server 与 --token 必填（或先配置后再用 --user-token 追加）")
 				os.Exit(2)
 			}
 			old, err := loadConfig()
 			if err != nil {
 				die("读取旧配置失败: %v", err)
 			}
-			if *userToken != "" {
-				old.UserToken = *userToken
-			}
-			if *sourcePath != "" {
-				old.SourcePath = *sourcePath
-			}
+			old.UserToken = *userToken
 			if err := saveConfig(old); err != nil {
 				die("保存配置失败: %v", err)
 			}
@@ -148,10 +142,9 @@ func cmdConfig(args []string) {
 			return
 		}
 		cfg := config{
-			ServerURL:  strings.TrimRight(*server, "/"),
-			BotToken:   *token,
-			UserToken:  *userToken,
-			SourcePath: *sourcePath,
+			ServerURL: strings.TrimRight(*server, "/"),
+			BotToken:  *token,
+			UserToken: *userToken,
 		}
 		if err := saveConfig(cfg); err != nil {
 			die("保存配置失败: %v", err)
@@ -170,7 +163,7 @@ func cmdConfig(args []string) {
 		if len(utMask) > 20 {
 			utMask = utMask[:8] + "..." + utMask[len(utMask)-4:]
 		}
-		fmt.Printf("server_url:  %s\nbot_token:   %s\nuser_token:  %s\nsource_path: %s\n", cfg.ServerURL, mask, utMask, cfg.SourcePath)
+		fmt.Printf("server_url:  %s\nbot_token:   %s\nuser_token:  %s\n", cfg.ServerURL, mask, utMask)
 	default:
 		fmt.Fprintln(os.Stderr, "未知子命令: config "+args[0])
 		os.Exit(2)
@@ -346,66 +339,74 @@ func cmdVersion(_ []string) {
 }
 
 func cmdUpdate(_ []string) {
-	src := findSourcePath()
-	if src == "" {
-		die("未找到源码路径。请先执行:\n  qim config set --source-path /path/to/qim-server")
-	}
-	fmt.Printf("源码路径: %s\n", src)
-	fmt.Println("正在编译最新版...")
-
-	cmd := exec.Command("go", "install", "./cmd/qim/")
-	cmd.Dir = src
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		die("编译失败: %v\n请确认 Go 环境可用且源码路径正确", err)
-	}
-
-	// 输出新版本
-	bin := findInstalledBinary()
-	if bin != "" {
-		out, _ := exec.Command(bin, "version").Output()
-		if v := strings.TrimSpace(string(out)); v != "" {
-			fmt.Printf("✅ 已更新: %s\n", v)
-			return
-		}
-	}
-	fmt.Println("✅ 已更新，请重新打开终端或运行 qim version 确认")
-}
-
-// findSourcePath 从配置中读取 source_path，未配置时尝试自动检测。
-func findSourcePath() string {
 	cfg, err := loadConfig()
-	if err == nil && cfg.SourcePath != "" {
-		return cfg.SourcePath
+	if err != nil || cfg.ServerURL == "" {
+		die("请先配置: qim config set --server URL --token T")
 	}
-	// 自动检测：当前目录或父目录有 go.mod 且 module 包含 qim
-	for _, dir := range []string{".", "..", "../.."} {
-		modFile := filepath.Join(dir, "go.mod")
-		b, err := os.ReadFile(modFile)
-		if err != nil {
-			continue
-		}
-		if strings.Contains(string(b), "qim") {
-			abs, _ := filepath.Abs(dir)
-			return abs
-		}
+
+	// 1. 查询最新版本
+	verBody, err := httpGetRaw(cfg.ServerURL + "/api/v1/cli/version")
+	if err != nil {
+		die("查询版本失败: %v", err)
 	}
-	return ""
+	var verResp struct {
+		Data struct {
+			Version string `json:"version"`
+		} `json:"data"`
+	}
+	json.Unmarshal(verBody, &verResp)
+	latest := verResp.Data.Version
+
+	if latest == version && version != "dev" {
+		fmt.Printf("已是最新版: %s\n", version)
+		return
+	}
+	if latest == "unknown" {
+		die("服务端未配置 CLI 二进制，请联系管理员上传到 data/cli/ 目录")
+	}
+
+	// 2. 下载新二进制
+	fmt.Printf("当前: %s → 最新: %s\n正在下载...\n", version, latest)
+	dlURL := fmt.Sprintf("%s/api/v1/cli/download?os=%s&arch=%s", cfg.ServerURL, runtime.GOOS, runtime.GOARCH)
+	binary, err := httpGetRaw(dlURL)
+	if err != nil {
+		die("下载失败: %v", err)
+	}
+
+	// 3. 找到当前可执行文件路径
+	selfPath, err := os.Executable()
+	if err != nil {
+		die("获取当前程序路径失败: %v", err)
+	}
+	selfPath, _ = filepath.EvalSymlinks(selfPath)
+
+	// 4. 写入临时文件后替换
+	tmpPath := selfPath + ".tmp"
+	if err := os.WriteFile(tmpPath, binary, 0o755); err != nil {
+		die("写入临时文件失败: %v", err)
+	}
+	if err := os.Rename(tmpPath, selfPath); err != nil {
+		os.Remove(tmpPath)
+		die("替换二进制失败: %v（Windows 需关闭所有 qim 进程后重试）", err)
+	}
+
+	// 5. 验证
+	newVer, _ := exec.Command(selfPath, "version").Output()
+	fmt.Printf("✅ 已更新: %s\n", strings.TrimSpace(string(newVer)))
 }
 
-// findInstalledBinary 查找 go install 安装的 qim 二进制。
-func findInstalledBinary() string {
-	gopath, _ := exec.Command("go", "env", "GOPATH").Output()
-	gp := strings.TrimSpace(string(gopath))
-	if gp == "" {
-		gp = filepath.Join(os.Getenv("HOME"), "go")
+// httpGetRaw 发送 GET 请求返回原始 body（不带 auth header）。
+func httpGetRaw(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
 	}
-	bin := filepath.Join(gp, "bin", "qim")
-	if _, err := os.Stat(bin); err == nil {
-		return bin
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
-	return ""
+	return body, nil
 }
 
 // ---------- conversations ----------

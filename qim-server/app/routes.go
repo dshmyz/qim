@@ -283,6 +283,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		c.File(cleanPath)
 	})
 
+	// CLI 自动更新（无需认证）
+	r.GET("/api/v1/cli/version", handler.CLIVersion)
+	r.GET("/api/v1/cli/download", handler.CLIDownload)
+
 	// 客户端更新检查（无需认证）
 	// electron-updater 会请求 latest.yml 或 latest-{platform}.yml
 	r.GET("/api/v1/updates/:platform/*action", handler.HandleUpdateRequest)
