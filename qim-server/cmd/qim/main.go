@@ -29,6 +29,9 @@ import (
 
 const configDir = ".qim"
 
+// outputFmt 控制输出格式："" (默认人类可读) 或 "json" (原始 JSON)。
+var outputFmt string
+
 type config struct {
 	ServerURL    string `json:"server_url"`
 	BotToken     string `json:"bot_token"`
@@ -37,31 +40,35 @@ type config struct {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	args := os.Args[1:]
+	args, outputFmt = extractOutputFlag(args)
+	if len(args) == 0 {
 		usage()
 		os.Exit(2)
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "config":
-		cmdConfig(os.Args[2:])
+		cmdConfig(args[1:])
 	case "login":
-		cmdLogin(os.Args[2:])
+		cmdLogin(args[1:])
+	case "conversations":
+		cmdConversations(args[1:])
 	case "messages":
-		cmdMessages(os.Args[2:])
+		cmdMessages(args[1:])
 	case "send":
-		cmdSend(os.Args[2:])
+		cmdSend(args[1:])
 	case "stream":
-		cmdStream(os.Args[2:])
+		cmdStream(args[1:])
 	case "stream-stdin":
-		cmdStreamStdin(os.Args[2:])
+		cmdStreamStdin(args[1:])
 	case "task":
-		cmdTask(os.Args[2:])
+		cmdTask(args[1:])
 	case "event":
-		cmdEvent(os.Args[2:])
+		cmdEvent(args[1:])
 	case "-h", "--help", "help":
 		usage()
 	default:
-		fmt.Fprintf(os.Stderr, "未知命令: %s\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "未知命令: %s\n", args[0])
 		usage()
 		os.Exit(2)
 	}
@@ -70,17 +77,25 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `qim - QIM agent CLI
 
+全局选项:
+  --output json   输出原始 JSON（默认人类可读）
+
 命令:
   config set --server URL --token T   写配置（~/.qim/config.json）
   config show                          显示配置（token 脱敏）
-  login [-u username]                  交互式登录获取 user_token（自动续期，无需手动管理 token）
+  login [-u username]                  交互式登录获取 user_token（自动续期）
+  conversations list [--limit 50]      列出最近会话
   messages list --thread ID [--after-id N] [--limit 50]   拉会话消息（JSON lines）
   messages poll --thread ID [--interval 2s]               轮询新消息（JSON lines）
-  send --to USER --thread ID --type text|markdown|card --content ...   发消息，输出 message_id
+  send --to USER --thread ID [--reply-to MSG_ID] --type text|markdown|card --content ...   发消息
   stream --message-id ID --delta "..." [--finish]         追加流式分段
   stream-stdin --to USER --thread ID                       stdin 逐行喂 delta，EOF finish
-  task create --title "..." [--due 2026-08-01] [--priority low|medium|high] [--desc "..."]   以用户身份建待办
-  event create --title "..." --start "2026-08-01 14:00" --end "2026-08-01 15:00" [--reminder 15] [--desc "..."]   以用户身份建日历事件
+  task list [--status todo|doing|done] [--limit 50]        列出待办
+  task create --title "..." [--due 2026-08-01] [--priority low|medium|high] [--desc "..."]   建待办
+  task update ID [--status done] [--priority high] [--title "..."] [--due 2026-08-01]        改待办
+  event list [--limit 50]                                   列出日历事件
+  event create --title "..." --start "2026-08-01 14:00" --end "2026-08-01 15:00" [--reminder 15] [--desc "..."]
+  event update ID [--title "..."] [--reminder 30]           改事件
 `)
 }
 
@@ -307,6 +322,85 @@ func ensureUserToken(cfg *config) error {
 	return nil
 }
 
+// ---------- conversations ----------
+
+func cmdConversations(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: qim conversations list")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "list":
+		listConversationsCmd(args[1:])
+	default:
+		fmt.Fprintln(os.Stderr, "未知子命令: conversations "+args[0])
+		os.Exit(2)
+	}
+}
+
+func listConversationsCmd(args []string) {
+	fs := flag.NewFlagSet("conversations list", flag.ExitOnError)
+	limit := fs.Int("limit", 50, "最多返回条数")
+	_ = fs.Parse(args)
+
+	respBody, err := userGet("/api/v1/conversations?limit=" + fmt.Sprint(*limit))
+	if err != nil {
+		die("%v", err)
+	}
+	if outputFmt == "json" {
+		fmt.Println(string(respBody))
+		return
+	}
+	// API 返回 {data: {has_more: bool, list: [...]}}
+	var resp struct {
+		Data struct {
+			List json.RawMessage `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		die("解析失败: %v", err)
+	}
+	var convs []struct {
+		ID              uint64 `json:"id"`
+		Name            string `json:"name"`
+		Type            string `json:"type"`
+		UnreadCount     int    `json:"unread_count"`
+		OtherMemberName string `json:"other_member_name"`
+		LastMessage     *struct {
+			Content string `json:"content"`
+		} `json:"last_message"`
+	}
+	if err := json.Unmarshal(resp.Data.List, &convs); err != nil {
+		die("解析会话列表失败: %v", err)
+	}
+	if len(convs) == 0 {
+		fmt.Println("（无会话）")
+		return
+	}
+	if len(convs) > *limit {
+		convs = convs[:*limit]
+	}
+	for _, c := range convs {
+		name := c.Name
+		if name == "" {
+			name = c.OtherMemberName
+		}
+		unread := ""
+		if c.UnreadCount > 0 {
+			unread = fmt.Sprintf(" [%d未读]", c.UnreadCount)
+		}
+		lastMsg := ""
+		if c.LastMessage != nil && c.LastMessage.Content != "" {
+			content := c.LastMessage.Content
+			if len([]rune(content)) > 40 {
+				content = string([]rune(content)[:40]) + "..."
+			}
+			lastMsg = " — " + content
+		}
+		fmt.Printf("#%-6d (%s) %s%s%s\n", c.ID, c.Type, name, unread, lastMsg)
+	}
+}
+
 // ---------- messages ----------
 
 type message struct {
@@ -434,6 +528,7 @@ func cmdSend(args []string) {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
 	to := fs.Uint64("to", 0, "目标用户 ID")
 	thread := fs.Uint64("thread", 0, "会话 ID（thread_id）")
+	replyTo := fs.Uint64("reply-to", 0, "回复的消息 ID（可选）")
 	msgType := fs.String("type", "text", "消息类型: text|markdown|card")
 	content := fs.String("content", "", "消息内容（card 时为 JSON）")
 	fs.StringVar(content, "c", "", "（--content 简写）")
@@ -442,21 +537,25 @@ func cmdSend(args []string) {
 		fmt.Fprintln(os.Stderr, "--to/--thread/--content 必填")
 		os.Exit(2)
 	}
-	id, err := sendMessage(*to, *thread, *content, *msgType)
+	id, err := sendMessage(*to, *thread, *content, *msgType, *replyTo)
 	if err != nil {
 		die("%v", err)
 	}
-	fmt.Println(id)
+	out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
 }
 
-func sendMessage(to, thread uint64, content, msgType string) (uint64, error) {
+func sendMessage(to, thread uint64, content, msgType string, replyTo uint64) (uint64, error) {
 	cfg := mustConfig()
-	body, _ := json.Marshal(map[string]any{
+	m := map[string]any{
 		"to_user_id": to,
 		"content":    content,
 		"msg_type":   msgType,
 		"thread_id":  thread,
-	})
+	}
+	if replyTo > 0 {
+		m["reply_to_id"] = replyTo
+	}
+	body, _ := json.Marshal(m)
 	respBody, err := httpPost(cfg, cfg.ServerURL+"/api/v1/bot/messages", body)
 	if err != nil {
 		return 0, err
@@ -479,15 +578,79 @@ func sendMessage(to, thread uint64, content, msgType string) (uint64, error) {
 
 func cmdTask(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "用法: qim task create")
+		fmt.Fprintln(os.Stderr, "用法: qim task list|create|update")
 		os.Exit(2)
 	}
 	switch args[0] {
+	case "list":
+		listTaskCmd(args[1:])
 	case "create":
 		createTaskCmd(args[1:])
+	case "update":
+		updateTaskCmd(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, "未知子命令: task "+args[0])
 		os.Exit(2)
+	}
+}
+
+func listTaskCmd(args []string) {
+	fs := flag.NewFlagSet("task list", flag.ExitOnError)
+	status := fs.String("status", "", "筛选状态: todo|doing|done")
+	limit := fs.Int("limit", 50, "最多返回条数")
+	_ = fs.Parse(args)
+
+	respBody, err := userGet("/api/v1/tasks")
+	if err != nil {
+		die("%v", err)
+	}
+	if outputFmt == "json" {
+		fmt.Println(string(respBody))
+		return
+	}
+	// API 返回 {data: [...]}
+	var resp struct {
+		Data []struct {
+			ID       uint64  `json:"id"`
+			Title    string  `json:"title"`
+			Status   string  `json:"status"`
+			Priority string  `json:"priority"`
+			DueDate  *string `json:"due_date"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		die("解析失败: %v", err)
+	}
+	tasks := resp.Data
+	// 客户端按 status 过滤（服务端不支持 query param）
+	if *status != "" {
+		var filtered []struct {
+			ID       uint64  `json:"id"`
+			Title    string  `json:"title"`
+			Status   string  `json:"status"`
+			Priority string  `json:"priority"`
+			DueDate  *string `json:"due_date"`
+		}
+		for _, t := range tasks {
+			if t.Status == *status {
+				filtered = append(filtered, t)
+			}
+		}
+		tasks = filtered
+	}
+	if len(tasks) > *limit {
+		tasks = tasks[:*limit]
+	}
+	if len(tasks) == 0 {
+		fmt.Println("（无待办）")
+		return
+	}
+	for _, t := range tasks {
+		due := "-"
+		if t.DueDate != nil && *t.DueDate != "" {
+			due = (*t.DueDate)[:10]
+		}
+		fmt.Printf("#%-4d [%s] %s  (priority=%s, due=%s)\n", t.ID, t.Status, t.Title, t.Priority, due)
 	}
 }
 
@@ -524,22 +687,112 @@ func createTaskCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
 		os.Exit(1)
 	}
-	fmt.Printf("✅ 待办已创建 (ID: %d)\n", resp.Data.ID)
+	outRaw(respBody, "✅ 待办已创建 (ID: %d)\n", resp.Data.ID)
+}
+
+func updateTaskCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: qim task update ID [--status done] [--priority high] [--title ...] [--due ...]")
+		os.Exit(2)
+	}
+	id := args[0]
+	fs := flag.NewFlagSet("task update", flag.ExitOnError)
+	status := fs.String("status", "", "新状态: todo|doing|done")
+	priority := fs.String("priority", "", "新优先级: low|medium|high")
+	title := fs.String("title", "", "新标题")
+	due := fs.String("due", "", "新截止日期 YYYY-MM-DD")
+	_ = fs.Parse(args[1:])
+
+	body := map[string]any{}
+	if *status != "" {
+		body["status"] = *status
+	}
+	if *priority != "" {
+		body["priority"] = *priority
+	}
+	if *title != "" {
+		body["title"] = *title
+	}
+	if *due != "" {
+		body["due_date"] = *due
+	}
+	if len(body) == 0 {
+		die("至少指定一个要修改的字段")
+	}
+	respBody, err := userPut("/api/v1/tasks/"+id, body)
+	if err != nil {
+		die("%v", err)
+	}
+	outRaw(respBody, "✅ 待办 #%s 已更新\n", id)
 }
 
 // ---------- event ----------
 
 func cmdEvent(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "用法: qim event create")
+		fmt.Fprintln(os.Stderr, "用法: qim event list|create|update")
 		os.Exit(2)
 	}
 	switch args[0] {
+	case "list":
+		listEventCmd(args[1:])
 	case "create":
 		createEventCmd(args[1:])
+	case "update":
+		updateEventCmd(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, "未知子命令: event "+args[0])
 		os.Exit(2)
+	}
+}
+
+func listEventCmd(args []string) {
+	fs := flag.NewFlagSet("event list", flag.ExitOnError)
+	limit := fs.Int("limit", 50, "最多返回条数")
+	_ = fs.Parse(args)
+
+	respBody, err := userGet("/api/v1/events")
+	if err != nil {
+		die("%v", err)
+	}
+	if outputFmt == "json" {
+		fmt.Println(string(respBody))
+		return
+	}
+	var resp struct {
+		Data []struct {
+			ID       uint64 `json:"id"`
+			Title    string `json:"title"`
+			Start    string `json:"start"`
+			End      string `json:"end"`
+			Reminder int    `json:"reminder"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		die("解析失败: %v", err)
+	}
+	events := resp.Data
+	if len(events) > *limit {
+		events = events[:*limit]
+	}
+	if len(events) == 0 {
+		fmt.Println("（无事件）")
+		return
+	}
+	for _, e := range events {
+		remind := ""
+		if e.Reminder > 0 {
+			remind = fmt.Sprintf(" (提醒提前%d分钟)", e.Reminder)
+		}
+		start := e.Start
+		if len(start) > 16 {
+			start = start[:16]
+		}
+		end := e.End
+		if len(end) > 16 {
+			end = end[:16]
+		}
+		fmt.Printf("#%-4d %s  %s ~ %s%s\n", e.ID, e.Title, start, end, remind)
 	}
 }
 
@@ -588,7 +841,80 @@ func createEventCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
 		os.Exit(1)
 	}
-	fmt.Printf("✅ 事件已创建 (ID: %d)\n", resp.Data.ID)
+	outRaw(respBody, "✅ 事件已创建 (ID: %d)\n", resp.Data.ID)
+}
+
+func updateEventCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: qim event update ID [--title ...] [--reminder 30]")
+		os.Exit(2)
+	}
+	id := args[0]
+	fs := flag.NewFlagSet("event update", flag.ExitOnError)
+	title := fs.String("title", "", "新标题")
+	start := fs.String("start", "", "新开始时间")
+	end := fs.String("end", "", "新结束时间")
+	reminder := fs.Int("reminder", -1, "新提醒分钟数（-1=不改）")
+	desc := fs.String("desc", "", "新描述")
+	_ = fs.Parse(args[1:])
+
+	// API 要求 title/start/end 全部必填，先拉取现有事件合并
+	currentBody, err := userGet("/api/v1/events/" + id)
+	if err != nil {
+		die("获取事件失败: %v", err)
+	}
+	var curResp struct {
+		Data struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			Start       string `json:"start"`
+			End         string `json:"end"`
+			Reminder    int    `json:"reminder"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(currentBody, &curResp); err != nil {
+		die("解析事件失败: %v", err)
+	}
+
+	ev := curResp.Data
+	body := map[string]any{
+		"title":    ev.Title,
+		"start":    ev.Start,
+		"end":      ev.End,
+		"reminder": ev.Reminder,
+	}
+	if ev.Description != "" {
+		body["description"] = ev.Description
+	}
+	// 覆盖用户指定的字段
+	if *title != "" {
+		body["title"] = *title
+	}
+	if *start != "" {
+		s, err := localToRFC3339(*start)
+		if err != nil {
+			die("--start 格式错误: %v", err)
+		}
+		body["start"] = s
+	}
+	if *end != "" {
+		e, err := localToRFC3339(*end)
+		if err != nil {
+			die("--end 格式错误: %v", err)
+		}
+		body["end"] = e
+	}
+	if *reminder >= 0 {
+		body["reminder"] = *reminder
+	}
+	if *desc != "" {
+		body["description"] = *desc
+	}
+	respBody, err := userPut("/api/v1/events/"+id, body)
+	if err != nil {
+		die("%v", err)
+	}
+	outRaw(respBody, "✅ 事件 #%s 已更新\n", id)
 }
 
 // localToRFC3339 把 "2006-01-02 15:04" 本地时间字符串转为 RFC3339（带本地时区偏移）。
@@ -630,7 +956,7 @@ func cmdStreamStdin(args []string) {
 		fmt.Fprintln(os.Stderr, "--to/--thread 必填")
 		os.Exit(2)
 	}
-	msgID, err := sendMessage(*to, *thread, "", "streaming")
+	msgID, err := sendMessage(*to, *thread, "", "streaming", 0)
 	if err != nil {
 		die("建流式消息失败: %v", err)
 	}
@@ -705,6 +1031,42 @@ func userPost(path string, body map[string]any) ([]byte, error) {
 	return do(req)
 }
 
+// userGet 以用户 JWT 身份 GET /api/v1/*。
+func userGet(path string) ([]byte, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("读取配置失败: %w", err)
+	}
+	if err := ensureUserToken(&cfg); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, cfg.ServerURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.UserToken)
+	return do(req)
+}
+
+// userPut 以用户 JWT 身份 PUT /api/v1/*。
+func userPut(path string, body map[string]any) ([]byte, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("读取配置失败: %w", err)
+	}
+	if err := ensureUserToken(&cfg); err != nil {
+		return nil, err
+	}
+	jsonBody, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPut, cfg.ServerURL+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+cfg.UserToken)
+	return do(req)
+}
+
 func do(req *http.Request) ([]byte, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -760,6 +1122,45 @@ func configPath() string {
 }
 
 // ---------- utils ----------
+
+// extractOutputFlag 从 args 中提取 --output json 并返回剩余 args。
+func extractOutputFlag(args []string) ([]string, string) {
+	out := ""
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--output" && i+1 < len(args) {
+			out = args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(args[i], "--output=") {
+			out = strings.TrimPrefix(args[i], "--output=")
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return rest, out
+}
+
+// out 在 --output json 时输出 JSON，否则输出人类可读文本。
+// jsonVal 应为可被 json.Marshal 的值（如 map[string]any）。
+func out(jsonVal any, humanFmt string, humanArgs ...any) {
+	if outputFmt == "json" {
+		b, _ := json.Marshal(jsonVal)
+		fmt.Println(string(b))
+		return
+	}
+	fmt.Printf(humanFmt, humanArgs...)
+}
+
+// outRaw 在 --output json 时输出原始 JSON body，否则输出人类可读文本。
+func outRaw(rawJSON []byte, humanFmt string, humanArgs ...any) {
+	if outputFmt == "json" {
+		fmt.Println(string(rawJSON))
+		return
+	}
+	fmt.Printf(humanFmt, humanArgs...)
+}
 
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", a...)

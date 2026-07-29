@@ -109,7 +109,7 @@ func TestSend_ReturnsMessageID(t *testing.T) {
 	srv, m := newMockBotServer(t)
 	writeTestConfig(t, srv.URL, "qbot_test_token")
 
-	id, err := sendMessage(2, 1, "hello", "markdown")
+	id, err := sendMessage(2, 1, "hello", "markdown", 0)
 	require_NoErr(t, err)
 	if id != 42 {
 		t.Fatalf("want message_id 42, got %d", id)
@@ -147,7 +147,7 @@ func TestStreamStdin_PipesDeltasThenFinish(t *testing.T) {
 	// 验证 stream-stdin 的核心契约：建流式消息（POST /messages），
 	// 随后每个 delta 一次 stream 调用，EOF 一次 finish。
 	// stdin 的逐行读取由 bufio.Scanner 承担（标准库），此处直接验证 streamChunk 计数。
-	msgID, err := sendMessage(2, 1, "", "streaming")
+	msgID, err := sendMessage(2, 1, "", "streaming", 0)
 	require_NoErr(t, err)
 	if msgID != 42 {
 		t.Fatalf("want 42, got %d", msgID)
