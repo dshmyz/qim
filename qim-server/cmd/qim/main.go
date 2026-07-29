@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
 
 const configDir = ".qim"
@@ -243,7 +243,7 @@ func cmdLogin(args []string) {
 // readPassword 从 stdin 读取密码（关闭终端回显）。
 func readPassword() (string, error) {
 	fd := int(os.Stdin.Fd())
-	termios, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	b, err := term.ReadPassword(fd)
 	if err != nil {
 		// 非终端回退为普通读取
 		scanner := bufio.NewScanner(os.Stdin)
@@ -252,19 +252,8 @@ func readPassword() (string, error) {
 		}
 		return "", scanner.Err()
 	}
-	old := *termios
-	newState := old
-	newState.Lflag &^= unix.ECHO
-	if err := unix.IoctlSetTermios(fd, unix.TIOCSETA, &newState); err != nil {
-		return "", err
-	}
-	defer unix.IoctlSetTermios(fd, unix.TIOCSETA, &old)
-
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		return strings.TrimSpace(scanner.Text()), nil
-	}
-	return "", scanner.Err()
+	fmt.Println() // 用户按回车后换行
+	return strings.TrimSpace(string(b)), nil
 }
 
 // jwtExpired 解析 JWT payload 检查是否过期（预留 60s 余量）。
