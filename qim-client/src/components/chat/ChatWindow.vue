@@ -99,7 +99,7 @@
       :quoted-message="quotedMessage"
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
-      :is-processing="aiIsProcessing"
+      :processing-action="currentProcessingAction"
       :draft-streaming="isDraftStreaming"
       :has-draft-reply="hasDraftReply"
       :show-search="showSearch"
@@ -231,6 +231,17 @@
       :reference-file-id="referenceFileId"
       @close="closeGroupFiles"
     />
+
+    <!-- AI 文本预览弹窗（改写/润色/翻译） -->
+    <AITextPreview
+      :visible="previewVisible"
+      :original-text="previewOriginal"
+      :result-text="previewResult"
+      :action-type="previewType"
+      @replace="handlePreviewReplace"
+      @cancel="previewVisible = false"
+    />
+
   </div>
 </template>
 
@@ -255,7 +266,10 @@ import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
-import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
+// AI 快捷键已移至 Main.vue（全局生效）
+// summary / quickPanel 通过事件触发
+// useAISidebar 已移至 Main.vue
+import AITextPreview from '../ai/AITextPreview.vue'
 import { logger } from '../../utils/logger'
 import { saveDraft } from '../../utils/drafts'
 import {
@@ -328,6 +342,27 @@ const {
   abortDraftReply,
 } = useAIActions()
 
+// AI 文本预览状态（改写/润色/翻译结果）
+const previewVisible = ref(false)
+const previewOriginal = ref('')
+const previewResult = ref('')
+const previewType = ref<'rewrite' | 'polish' | 'translate'>('rewrite')
+
+// 当前处理中的按钮 ID（用于按钮级 loading）
+const currentProcessingAction = computed(() => {
+  if (isDraftStreaming.value) return 'draft-reply'
+  if (aiIsProcessing.value) return currentAIAction.value
+  return null
+})
+const currentAIAction = ref<string | null>(null)
+
+const handlePreviewReplace = () => {
+  inputMessage.value = previewResult.value
+  autoResizeTextarea()
+  previewVisible.value = false
+  $message.success('已替换原文')
+}
+
 // 帮我回复草稿状态
 const isDraftStreaming = ref(false)      // 正在流式生成
 const hasDraftReply = ref(false)          // 已生成草稿、可换一个
@@ -340,6 +375,9 @@ const avatarEnabled = computed(() => props.conversation?.id ? isAvatarActive(pro
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
+
+// AI 侧边栏状态（使用全局状态）
+// useAISidebar 已移至 Main.vue（全局状态）
 
 // AI 翻译面板状态
 const showTranslatePanel = ref(false)
@@ -431,76 +469,77 @@ const handleAIAction = async (actionId: string) => {
         showSummaryPanel.value = true
       }
       break
-    case 'translate':
+    case 'translate': {
       if (!text) {
         $message.warning('请先输入需要翻译的文本')
         return
       }
+      currentAIAction.value = 'translate'
       try {
         const result = await translateText(text, 'zh')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('翻译完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'translate'
+        previewVisible.value = true
       } catch {
         $message.error('翻译失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
-    case 'rewrite':
+    }
+    case 'rewrite': {
       if (!text) {
         $message.warning('请先输入需要改写的文本')
         return
       }
+      currentAIAction.value = 'rewrite'
       try {
         const result = await rewriteText(text, 'concise', 'professional')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('改写完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'rewrite'
+        previewVisible.value = true
       } catch {
         $message.error('改写失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
-    case 'polish':
+    }
+    case 'polish': {
       if (!text) {
         $message.warning('请先输入需要润色的文本')
         return
       }
+      currentAIAction.value = 'polish'
       try {
         const result = await polishText(text, 'zh')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('润色完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'polish'
+        previewVisible.value = true
       } catch {
         $message.error('润色失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
+    }
     default:
       break
   }
 }
 
-// AI 键盘快捷键
-useAIKeyboardShortcuts([
-  {
-    key: 'k',
-    ctrlKey: true,
-    shiftKey: false,
-    action: () => {
-      $message.info('AI 快捷面板')
-    },
-    description: '打开 AI 快捷面板'
-  },
-  {
-    key: 's',
-    ctrlKey: true,
-    shiftKey: true,
-    action: () => {
-      if (props.conversation?.id) {
-        showSummaryPanel.value = true
-      }
-    },
-    description: '快速生成会话摘要'
+// 监听来自 Main.vue 的 AI 快捷键事件（summary / quickPanel）
+const handleAISummaryAction = () => {
+  if (props.conversation?.id) {
+    showSummaryPanel.value = true
   }
-])
+}
+const handleAIQuickPanelAction = () => {
+  $message.info('AI 快捷面板')
+}
 
 interface Props {
   conversation: Conversation
@@ -1318,6 +1357,10 @@ onMounted(() => {
     fetchSessions(),
     loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
   ])
+
+  // 监听来自 Main.vue 的 AI 快捷键事件
+  window.addEventListener('ai-action-summary', handleAISummaryAction)
+  window.addEventListener('ai-action-quickpanel', handleAIQuickPanelAction)
 })
 
 // 初始化 WebSocket 消息处理
@@ -1490,6 +1533,10 @@ onUnmounted(() => {
     wsHandlersCleanup()
     wsHandlersCleanup = null
   }
+
+  // 移除 AI 快捷键事件监听
+  window.removeEventListener('ai-action-summary', handleAISummaryAction)
+  window.removeEventListener('ai-action-quickpanel', handleAIQuickPanelAction)
   
   // 清理 context menu 监听器和定时器
   if (memberContextMenuTimeoutId !== null) {

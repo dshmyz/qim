@@ -35,7 +35,7 @@
     <transition name="ai-actions-slide">
       <div v-if="localShowAIActions" class="ai-actions-bar">
         <AIQuickActions
-          :is-processing="isProcessing"
+          :processing-action="processingAction"
           @action="$emit('ai-action', $event)"
         />
       </div>
@@ -159,7 +159,7 @@ interface Props {
   showAtMembersPanel: boolean
   atMembersQuery: string
   showMiniAppList: boolean
-  isProcessing?: boolean
+  processingAction?: string | null
   quotedMessage: any
   isElectron: boolean
   getFileIcon: (fileUrl: string) => string
@@ -168,7 +168,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isProcessing: false,
+  processingAction: null,
   draftStreaming: false,
   hasDraftReply: false
 })

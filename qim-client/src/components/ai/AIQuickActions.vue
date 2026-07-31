@@ -6,12 +6,10 @@
       :icon="action.icon"
       :label="action.label"
       :tooltip="action.tooltip"
+      :loading="processingAction === action.id"
+      :disabled="!!processingAction"
       @click="handleAction(action.id)"
     />
-    <div v-if="isProcessing" class="ai-processing">
-      <span class="processing-spinner"></span>
-      <span>处理中...</span>
-    </div>
   </div>
 </template>
 
@@ -28,7 +26,7 @@ interface AIAction {
 
 interface Props {
   actions?: AIAction[]
-  isProcessing: boolean
+  processingAction?: string | null
 }
 
 interface Emits {
@@ -36,7 +34,8 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  actions: undefined
+  actions: undefined,
+  processingAction: null
 })
 
 const emit = defineEmits<Emits>()
@@ -63,27 +62,5 @@ const handleAction = (actionId: string) => {
   gap: 8px;
   overflow-x: auto;
   scrollbar-width: thin;
-}
-
-.ai-processing {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.processing-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 </style>

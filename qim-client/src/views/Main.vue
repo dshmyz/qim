@@ -641,6 +641,17 @@
     @close="closeFeedbackModal"
     @success="handleFeedbackSuccess"
   />
+
+  <!-- AI 悬浮球 -->
+  <FloatingAIBall />
+
+  <!-- AI 侧边栏面板（全局） -->
+  <AISidebarPanel
+    :visible="aiSidebar.showAISidebar.value"
+    :conversation-id="aiSidebar.currentConversationId.value"
+    :conversation-name="currentConversation?.name"
+    @close="aiSidebar.closeSidebar()"
+  />
 </template>
 
 <script setup lang="ts">
@@ -680,6 +691,11 @@ import ChatWindow from '../components/chat/ChatWindow.vue'
 import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
 const GroupDetail = defineAsyncComponent(() => import('../components/shared/GroupDetail.vue'))
 import ModalContainer from '../components/shared/ModalContainer.vue'
+import FloatingAIBall from '../components/ai/FloatingAIBall.vue'
+const AISidebarPanel = defineAsyncComponent(() => import('../components/ai/AISidebarPanel.vue'))
+import { useAISidebar } from '../composables/useAISidebar'
+import { useAIKeyboardShortcuts, parseAccelerator, type ShortcutConfig } from '../composables/useAIKeyboardShortcuts'
+import { useShortcuts } from '../composables/useShortcuts'
 import ToggleSidebarBtn from '../components/shared/ToggleSidebarBtn.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
@@ -1075,6 +1091,74 @@ const mainConvLogic = useMainConversationLogic(updateConversations, mergeConvers
 
 // Main.vue 专用的群组 handlers
 const mainGroupHandlers = useMainGroupHandlers(conversations, currentConversationId, messages)
+
+// AI 侧边栏全局状态
+const aiSidebar = useAISidebar()
+
+// 同步当前会话 ID 到 AI 侧边栏
+watch(currentConversationId, (val) => {
+  aiSidebar.setConversationId(val)
+}, { immediate: true })
+
+// ── AI 快捷键（全局生效）──
+const aiShortcutConfigs = ref<ShortcutConfig[]>([
+  {
+    key: 'k',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { window.dispatchEvent(new CustomEvent('ai-action-quickpanel')) },
+    description: '打开 AI 快捷面板'
+  },
+  {
+    key: 's',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { window.dispatchEvent(new CustomEvent('ai-action-summary')) },
+    description: '快速生成会话摘要'
+  },
+  {
+    key: 'l',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { aiSidebar.toggleSidebar() },
+    description: '打开/关闭 AI 侧边栏'
+  }
+])
+
+useAIKeyboardShortcuts(aiShortcutConfigs)
+
+const aiActions: Record<string, () => void> = {
+  sidebar: () => { aiSidebar.toggleSidebar() },
+  summary: () => { window.dispatchEvent(new CustomEvent('ai-action-summary')) },
+  quickPanel: () => { window.dispatchEvent(new CustomEvent('ai-action-quickpanel')) }
+}
+
+const loadAIShortcuts = async () => {
+  try {
+    const { loadShortcuts } = useShortcuts()
+    const config = await loadShortcuts()
+    const aiConfig = config.ai || {}
+    const built: ShortcutConfig[] = []
+    for (const [name, item] of Object.entries(aiConfig)) {
+      if (!item.enabled || !item.accelerator) continue
+      const parsed = parseAccelerator(item.accelerator)
+      if (!parsed.key) continue
+      built.push({
+        key: parsed.key,
+        ctrlKey: parsed.ctrlKey || false,
+        shiftKey: parsed.shiftKey || false,
+        altKey: parsed.altKey || false,
+        action: aiActions[name] || (() => {}),
+        description: ''
+      })
+    }
+    aiShortcutConfigs.value = built
+  } catch {
+    // 加载失败保持默认
+  }
+}
+
+const handleShortcutsUpdated = () => { loadAIShortcuts() }
 
 // Main.vue 专用的消息 handlers
 const mainMessageHandlers = useMainMessageHandlers()
@@ -2028,6 +2112,8 @@ onUnmounted(() => {
     clearTimeout(userGroupsRefreshTimer)
     userGroupsRefreshTimer = null
   }
+  // 移除 AI 快捷键更新监听
+  window.removeEventListener('shortcuts-updated', handleShortcutsUpdated)
 })
 
 const sortedConversations = computed(() => {
@@ -3306,7 +3392,7 @@ const handleCacheCleared = () => {
   loadSettings()
 }
 
-const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any }) => {
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any; showFloatingBall?: boolean }) => {
   try {
     if (data.avatarFile) {
       const formData = new FormData()
@@ -3351,10 +3437,19 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
     if (data.appearanceSettings.fontSize) {
       applyFontSize(data.appearanceSettings.fontSize)
     }
+    if (typeof data.showFloatingBall === 'boolean') {
+      aiSidebar.toggleFloatingBall(data.showFloatingBall)
+    }
 
     // 保存快捷键配置
     if (data.shortcuts) {
-      await window.electron.ipcRenderer.invoke('set-shortcuts', data.shortcuts)
+      if (window.electron?.ipcRenderer?.invoke) {
+        await window.electron.ipcRenderer.invoke('set-shortcuts', data.shortcuts)
+      }
+      // localStorage 备存（浏览器环境或 Electron 不可用时）
+      localStorage.setItem('qim_shortcuts', JSON.stringify(data.shortcuts))
+      // 通知组件快捷键已更新
+      window.dispatchEvent(new CustomEvent('shortcuts-updated', { detail: data.shortcuts }))
     }
 
     await saveSettings()
@@ -3369,6 +3464,10 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
 
 // 初始化主题
 initTheme()
+
+// 加载 AI 快捷键配置 + 监听更新
+loadAIShortcuts()
+window.addEventListener('shortcuts-updated', handleShortcutsUpdated)
 </script>
 
 <style scoped>

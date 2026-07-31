@@ -28,6 +28,18 @@
           @update:modelValue="updateItem('editor', key, $event)"
         />
       </div>
+
+      <div class="shortcut-group">
+        <h4 class="shortcut-group-title">AI 快捷键</h4>
+        <ShortcutInput
+          v-for="key in aiKeys"
+          :key="key"
+          :label="SHORTCUT_LABELS.ai[key]"
+          :modelValue="localShortcuts.ai[key]"
+          scope="global"
+          @update:modelValue="updateItem('ai', key, $event)"
+        />
+      </div>
     </template>
   </div>
 </template>
@@ -55,6 +67,7 @@ const localShortcuts = ref<ShortcutsConfig>(JSON.parse(JSON.stringify(DEFAULT_SH
 
 const globalKeys = Object.keys(SHORTCUT_LABELS.global)
 const editorKeys = Object.keys(SHORTCUT_LABELS.editor)
+const aiKeys = Object.keys(SHORTCUT_LABELS.ai || {})
 
 onMounted(async () => {
   try {
@@ -67,7 +80,7 @@ onMounted(async () => {
   }
 })
 
-function updateItem(scope: 'global' | 'editor', name: string, value: ShortcutItem) {
+function updateItem(scope: 'global' | 'editor' | 'ai', name: string, value: ShortcutItem) {
   localShortcuts.value[scope][name] = value
   emitChange()
 }

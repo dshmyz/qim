@@ -6,6 +6,7 @@ export interface ShortcutItem {
 export interface ShortcutsConfig {
   global: Record<string, ShortcutItem>
   editor: Record<string, ShortcutItem>
+  ai: Record<string, ShortcutItem>
 }
 
 export interface ShortcutConflict {
@@ -27,6 +28,11 @@ export const SHORTCUT_LABELS: Record<string, Record<string, string>> = {
     italic: '斜体',
     link: '插入链接',
     save: '保存'
+  },
+  ai: {
+    sidebar: '打开/关闭 AI 侧边栏',
+    summary: '快速生成会话摘要',
+    quickPanel: '打开 AI 快捷面板'
   }
 }
 
@@ -44,6 +50,11 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
     italic: { accelerator: 'Mod-i', enabled: true },
     link:   { accelerator: 'Mod-k', enabled: true },
     save:   { accelerator: 'Mod-s', enabled: true }
+  },
+  ai: {
+    sidebar:    { accelerator: 'CommandOrControl+Shift+L', enabled: true },
+    summary:    { accelerator: 'CommandOrControl+Shift+S', enabled: true },
+    quickPanel: { accelerator: 'CommandOrControl+Shift+K', enabled: true }
   }
 }
 
@@ -101,6 +112,14 @@ export function checkConflicts(shortcuts: ShortcutsConfig): ShortcutConflict[] {
       })
     }
   }
+  for (const [name, conf] of Object.entries(shortcuts.ai || {})) {
+    if (conf.enabled && conf.accelerator) {
+      items.push({
+        scope: 'global', name, label: SHORTCUT_LABELS.ai?.[name] || name,
+        normalized: normalizeAccelerator(conf.accelerator)
+      })
+    }
+  }
 
   // 两两比较
   for (let i = 0; i < items.length; i++) {
@@ -120,8 +139,8 @@ export function checkConflicts(shortcuts: ShortcutsConfig): ShortcutConflict[] {
  * 合并默认值，补全缺失的项（兼容旧配置或不完整写入）
  */
 function mergeDefaults(config: ShortcutsConfig): ShortcutsConfig {
-  const result: ShortcutsConfig = { global: {}, editor: {} }
-  for (const scope of ['global', 'editor'] as const) {
+  const result: ShortcutsConfig = { global: {}, editor: {}, ai: {} }
+  for (const scope of ['global', 'editor', 'ai'] as const) {
     for (const [name, def] of Object.entries(DEFAULT_SHORTCUTS[scope])) {
       const saved = config?.[scope]?.[name]
       result[scope][name] = {
@@ -138,6 +157,12 @@ export function useShortcuts() {
     let config: ShortcutsConfig = DEFAULT_SHORTCUTS
     if (window.electron?.ipcRenderer?.invoke) {
       config = await window.electron.ipcRenderer.invoke('get-shortcuts')
+    } else {
+      // localStorage 备用（浏览器环境）
+      const stored = localStorage.getItem('qim_shortcuts')
+      if (stored) {
+        try { config = JSON.parse(stored) } catch { /* ignore */ }
+      }
     }
     // 合并默认值，补全缺失的项（兼容旧配置或不完整写入）
     return mergeDefaults(config)
