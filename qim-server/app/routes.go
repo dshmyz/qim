@@ -19,7 +19,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
-	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/web"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -53,18 +52,22 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// 公开文档接口（无需登录）
+	r.GET("/api/v1/public/docs", handler.ListDocs)
+	r.GET("/api/v1/public/docs/:slug", handler.GetDocContent)
+
 	aiSvc := di.GlobalContainer.AIService
 
-	mcpServer := ai.NewMCPServer(false, aiSvc)
+	toolRegistry := ai.NewToolRegistry(aiSvc)
 
-	aiSvc.SetMCPServer(mcpServer)
+	aiSvc.SetToolRegistry(toolRegistry)
 
-	handler.RegisterAdminTools(mcpServer)
+	handler.RegisterAdminTools(toolRegistry)
 
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
 	var uk *service.UnifiedKnowledgeService
 	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
-		service.NewUnifiedMCPBridge(mcpServer, vectorSvc.GetDB())
+		service.NewUnifiedToolBridge(toolRegistry, vectorSvc.GetDB())
 
 		fallback := &service.LegacyKnowledgeFallback{
 			SearchFunc: func(query string, groupID uint, limit int) []service.KnowledgeSnippet {
@@ -93,15 +96,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		logger.WithModule("Routes").Warn("初始化 SmartReplyGraph 失败，将使用旧方法", "error", err)
 	}
 
-	// 暂停异常检测功能：当前实现不完整（只告警不处理），且 UpdateBaseline 每分钟大量SQL查询有性能问题
-	// handler.InitAnomalyDetector()
-
-	utils.SafeGoWithLabel("mcp-server", func() {
-		if err := mcpServer.Start(":8081"); err != nil {
-		}
-	})
-
-	aiHandler := handler.NewAIHandler(aiSvc, mcpServer)
+	aiHandler := handler.NewAIHandler(aiSvc, toolRegistry)
 
 	aiCache := service.NewAICache()
 
@@ -130,6 +125,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		aiHandler.SetUnifiedSearchGraph(unifiedSearchGraph)
 		logger.WithModule("Routes").Info("UnifiedSearchGraph 初始化成功")
 	}
+
+	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph）
+	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph)
 
 	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
 	if err := smartDigestGraph.Build(); err != nil {
@@ -645,6 +643,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 					handler.GetVersionDistribution(c)
 				})
 
+				// CLI 版本管理（复用 VersionService，app_type="cli"）
+				adminRoutes.GET("/cli/versions", handler.GetCLIVersions)
+				adminRoutes.POST("/cli/versions", handler.CreateCLIVersion)
+				adminRoutes.PUT("/cli/versions/:id", handler.UpdateCLIVersion)
+				adminRoutes.DELETE("/cli/versions/:id", handler.DeleteCLIVersion)
+				adminRoutes.PATCH("/cli/versions/:id/toggle", handler.ToggleCLIVersionStatus)
+
 				// 黑名单管理
 				adminRoutes.GET("/users/blacklist", handler.GetBlacklist)
 				adminRoutes.POST("/users/blacklist", handler.AddToBlacklist)
@@ -793,7 +798,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			}
 
 			// 分身服务路由
-			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, mcpServer, di.GlobalContainer.ApprovalService)
+			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, toolRegistry, di.GlobalContainer.ApprovalService)
 			avatarHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）
@@ -801,9 +806,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				aiHandler.OpsDashboard(c)
 			})
 
-			// MCP 工具管理（管理员）
-			admin.GET("/mcp/tools", aiHandler.ListMCPTools)
-			admin.PUT("/mcp/tools/:tool_name", aiHandler.UpdateMCPToolConfig)
+			// AI 工具注册表管理（管理员）
+			admin.GET("/tool-registry/tools", aiHandler.ListToolRegistryTools)
+			admin.PUT("/tool-registry/tools/:tool_name", aiHandler.UpdateToolRegistryConfig)
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)

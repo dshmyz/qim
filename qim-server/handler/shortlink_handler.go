@@ -1,7 +1,8 @@
 package handler
 
 import (
-	"math/rand"
+	crand "crypto/rand"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -314,7 +315,7 @@ func BatchCreateShortLinks(c *gin.Context) {
 			continue
 		}
 
-		result.ShortURL = "http://" + c.Request.Host + "/" + code
+		result.ShortURL = "http://" + c.Request.Host + "/s/" + code
 		result.Code = code
 		result.CustomCode = shortLink.CustomCode
 		result.ExpiresAt = shortLink.ExpiresAt
@@ -389,7 +390,13 @@ func generateShortCode() string {
 
 	code := make([]byte, codeLength)
 	for i := range code {
-		code[i] = charset[rand.Intn(len(charset))]
+		idx, err := crand.Int(crand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			// 极端情况（如熵不足）回退到首字符，避免返回空串
+			code[i] = charset[0]
+			continue
+		}
+		code[i] = charset[idx.Int64()]
 	}
 
 	return string(code)

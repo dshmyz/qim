@@ -10,39 +10,41 @@ import (
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
-type UnifiedMCPBridge struct {
-	qimMCPSrv *ai.MCPServer
-	cortexDB  *cortexdb.DB
+type UnifiedToolBridge struct {
+	registry *ai.ToolRegistry
+	cortexDB *cortexdb.DB
 }
 
-func NewUnifiedMCPBridge(qimMCPSrv *ai.MCPServer, cortexDB *cortexdb.DB) *UnifiedMCPBridge {
-	bridge := &UnifiedMCPBridge{
-		qimMCPSrv: qimMCPSrv,
-		cortexDB:  cortexDB,
+func NewUnifiedToolBridge(registry *ai.ToolRegistry, cortexDB *cortexdb.DB) *UnifiedToolBridge {
+	bridge := &UnifiedToolBridge{
+		registry: registry,
+		cortexDB: cortexDB,
 	}
 
 	bridge.registerKnowledgeTools()
-	logger.WithModule("UnifiedMCPBridge").Info("桥接完成",
-		"toolCount", len(qimMCPSrv.ListTools()))
+	logger.WithModule("UnifiedToolBridge").Info("工具注册完成",
+		"toolCount", len(registry.ListTools()))
 	return bridge
 }
 
-func (b *UnifiedMCPBridge) GetQIMServer() *ai.MCPServer {
-	return b.qimMCPSrv
+func (b *UnifiedToolBridge) GetRegistry() *ai.ToolRegistry {
+	return b.registry
 }
 
-func (b *UnifiedMCPBridge) registerKnowledgeTools() {
-	b.qimMCPSrv.RegisterTool(&KnowledgeSearchTool{bridge: b})
-	b.qimMCPSrv.RegisterTool(&KnowledgeSaveTool{bridge: b})
-	b.qimMCPSrv.RegisterTool(&MemorySearchTool{bridge: b})
+func (b *UnifiedToolBridge) registerKnowledgeTools() {
+	b.registry.RegisterTool(&KnowledgeSearchTool{bridge: b})
+	b.registry.RegisterTool(&KnowledgeSaveTool{bridge: b})
+	b.registry.RegisterTool(&MemorySearchTool{bridge: b})
 }
 
 // ── knowledge_search ──
 
-type KnowledgeSearchTool struct{ bridge *UnifiedMCPBridge }
+type KnowledgeSearchTool struct{ bridge *UnifiedToolBridge }
 
-func (t *KnowledgeSearchTool) Name() string        { return "knowledge_search" }
-func (t *KnowledgeSearchTool) Description() string  { return "在群知识库中语义搜索文档内容，仅在群聊中使用。如果不在群聊中，请使用自身知识直接回答用户" }
+func (t *KnowledgeSearchTool) Name() string { return "knowledge_search" }
+func (t *KnowledgeSearchTool) Description() string {
+	return "在群知识库中语义搜索文档内容，仅在群聊中使用。如果不在群聊中，请使用自身知识直接回答用户"
+}
 func (t *KnowledgeSearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -114,10 +116,12 @@ func (t *KnowledgeSearchTool) Execute(params map[string]interface{}, ctx *ai.Cal
 	return map[string]interface{}{"results": hits, "total": len(hits)}, nil
 }
 
-type KnowledgeSaveTool struct{ bridge *UnifiedMCPBridge }
+type KnowledgeSaveTool struct{ bridge *UnifiedToolBridge }
 
-func (t *KnowledgeSaveTool) Name() string        { return "knowledge_save" }
-func (t *KnowledgeSaveTool) Description() string  { return "将文档内容存入知识库并自动向量化+切片，可选实体关系抽取" }
+func (t *KnowledgeSaveTool) Name() string { return "knowledge_save" }
+func (t *KnowledgeSaveTool) Description() string {
+	return "将文档内容存入知识库并自动向量化+切片，可选实体关系抽取"
+}
 func (t *KnowledgeSaveTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"knowledge_id": map[string]interface{}{"type": "string", "description": "知识ID（唯一标识）", "required": true},
@@ -162,10 +166,12 @@ func (t *KnowledgeSaveTool) Execute(params map[string]interface{}, ctx *ai.Calle
 
 // ── memory_search ──
 
-type MemorySearchTool struct{ bridge *UnifiedMCPBridge }
+type MemorySearchTool struct{ bridge *UnifiedToolBridge }
 
-func (t *MemorySearchTool) Name() string        { return "memory_search" }
-func (t *MemorySearchTool) Description() string  { return "在用户长期记忆中语义搜索，用于分身回忆之前的对话和偏好" }
+func (t *MemorySearchTool) Name() string { return "memory_search" }
+func (t *MemorySearchTool) Description() string {
+	return "在用户长期记忆中语义搜索，用于分身回忆之前的对话和偏好"
+}
 func (t *MemorySearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",

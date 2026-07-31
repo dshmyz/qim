@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,10 +15,12 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // AIResponse 标准AI响应结构体
@@ -27,6 +28,24 @@ type AIResponse struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data"`
+}
+
+var errConversationAccessDenied = errors.New("conversation access denied")
+
+func ensureConversationAccess(db *gorm.DB, conversationID, userID uint) error {
+	if conversationID == 0 || userID == 0 {
+		return errConversationAccessDenied
+	}
+	var count int64
+	if err := db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return errConversationAccessDenied
+	}
+	return nil
 }
 
 func checkAIEnabledMiddleware() gin.HandlerFunc {
@@ -50,7 +69,7 @@ func checkAIEnabledMiddleware() gin.HandlerFunc {
 type AIHandler struct {
 	aiService          *ai.AIService
 	avatarService      *service.AvatarService // 帮我回复草稿模式：复用分身生成
-	mcpServer          *ai.MCPServer
+	toolRegistry       *ai.ToolRegistry
 	summaryGraph       *service.SummaryGraph
 	textProcessGraph   *service.TextProcessGraph
 	unifiedSearchGraph *service.UnifiedSearchGraph
@@ -58,10 +77,10 @@ type AIHandler struct {
 }
 
 // NewAIHandler 创建AI处理器
-func NewAIHandler(aiService *ai.AIService, mcpServer *ai.MCPServer) *AIHandler {
+func NewAIHandler(aiService *ai.AIService, toolRegistry *ai.ToolRegistry) *AIHandler {
 	return &AIHandler{
-		aiService: aiService,
-		mcpServer: mcpServer,
+		aiService:    aiService,
+		toolRegistry: toolRegistry,
 	}
 }
 
@@ -96,10 +115,11 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		aiGroup.POST("/draft-reply", h.DraftReply)
 		aiGroup.POST("/draft-reply/stream", h.DraftReplyStream)
 		aiGroup.GET("/tools", h.ListTools)
-		aiGroup.POST("/tools/execute", h.ExecuteTool)
 
 		// 新增: 会话摘要
 		aiGroup.POST("/summary", h.GenerateSummary)
+		aiGroup.POST("/summary/stream", h.GenerateSummaryStream)
+		aiGroup.POST("/summary/meta", h.GenerateSummaryMeta)
 
 		// 新增: 语义搜索
 		aiGroup.POST("/search", h.AISearch)
@@ -108,6 +128,7 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		aiGroup.POST("/translate", h.TranslateText)
 		aiGroup.POST("/rewrite", h.RewriteText)
 		aiGroup.POST("/polish", h.PolishText)
+		aiGroup.POST("/text-process", h.TextProcess)
 
 		// 新增: 图片翻译
 		aiGroup.POST("/translate/image", h.TranslateImage)
@@ -115,13 +136,11 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// 新增: 智能消息速览
 		aiGroup.GET("/digest", h.GetDigest)
 
-		// 运维相关路由(已有)
-		aiGroup.POST("/ops/troubleshooting", h.IntelligentTroubleshooting)
-		aiGroup.POST("/ops/command", h.CommandGeneration)
-		aiGroup.POST("/ops/logs", h.LogAnalysis)
-		aiGroup.POST("/ops/alert", h.IntelligentAlert)
-		aiGroup.POST("/ops/knowledge", h.OpsKnowledge)
-		aiGroup.GET("/ops/dashboard", h.OpsDashboard)
+		// 新增: 侧边栏元对话（随时问 AI，不改变会话本身）
+		aiGroup.POST("/sidebar/stream", h.SidebarStream)
+
+		// 运维相关路由已移除（5 个 ops handler 为死代码，前端未接入）
+		// OpsDashboard 保留，通过 /admin/ai/dashboard 暴露（见 app/routes.go）
 	}
 }
 
@@ -140,7 +159,7 @@ type GetCompletionRequest struct {
 // @Success 200 {object} AIResponse "成功响应"
 // @Failure 400 {object} AIResponse "参数错误"
 // @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/completion [post]
+// @Router /api/v1/ai/completion [post]
 func (h *AIHandler) GetCompletion(c *gin.Context) {
 	var req GetCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -182,7 +201,7 @@ type DraftReplyRequest struct {
 // @Produce json
 // @Param request body DraftReplyRequest true "起草请求"
 // @Success 200 {object} AIResponse "成功响应"
-// @Router /api/ai/draft-reply [post]
+// @Router /api/v1/ai/draft-reply [post]
 func (h *AIHandler) DraftReply(c *gin.Context) {
 	var req DraftReplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -341,7 +360,7 @@ func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Me
 // @Produce text/event-stream
 // @Param request body DraftReplyRequest true "起草请求"
 // @Success 200 {string} string "流式输出"
-// @Router /api/ai/draft-reply/stream [post]
+// @Router /api/v1/ai/draft-reply/stream [post]
 func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 	var req DraftReplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -367,7 +386,7 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 			}
 			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
 			if err != nil {
-				log.Printf("[DraftReplyStream] 分身流式生成失败，回退简单起草: %v", err)
+				logger.WithModule("AIHandler").Warn("分身流式生成失败，回退简单起草", "error", err)
 				// 回退到简单起草路径
 			} else {
 				streamCompletionFromReader(c, stream)
@@ -429,6 +448,76 @@ func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
 			}
 			return nil
 		})
+	})
+}
+
+// toolDisplayName 将工具名映射为用户友好的中文提示
+func toolDisplayName(toolName string) string {
+	switch toolName {
+	case "create_user_task":
+		return "创建任务"
+	case "list_tasks":
+		return "查询任务"
+	case "send_message":
+		return "发送消息"
+	case "search_knowledge":
+		return "搜索知识库"
+	case "summarize_conversation":
+		return "总结会话"
+	default:
+		return toolName
+	}
+}
+
+// streamCompletionWithTools 执行 ReAct 工具调用，实时推送执行进度，最后流式输出最终答案。
+func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Message, userID uint, conversationID uint) {
+	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: conversationID}
+
+	streamSSE(c, func(writeChunk func(string)) error {
+		writeChunk("🤔 正在思考...\n\n")
+
+		// 每步工具执行后实时推送进度
+		onStep := func(step int, toolName string, args map[string]interface{}, result interface{}, err error) {
+			display := toolDisplayName(toolName)
+			if err != nil {
+				writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
+			} else {
+				writeChunk(fmt.Sprintf("⚙️ 正在%s...\n\n", display))
+			}
+		}
+
+		finalContent, err := h.aiService.GetCompletionWithToolsMultiStep(
+			ai.TaskTypeChat,
+			messages,
+			callerCtx,
+			[]string{
+				"create_user_task",
+				"list_tasks",
+				"send_message",
+				"search_knowledge",
+				"summarize_conversation",
+			},
+			0,
+			onStep,
+		)
+
+		if err != nil {
+			writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
+			return nil
+		}
+
+		// 流式输出最终答案
+		writeChunk("\n")
+		runes := []rune(finalContent)
+		chunkSize := 4
+		for i := 0; i < len(runes); i += chunkSize {
+			end := i + chunkSize
+			if end > len(runes) {
+				end = len(runes)
+			}
+			writeChunk(string(runes[i:end]))
+		}
+		return nil
 	})
 }
 
@@ -503,7 +592,7 @@ type KnowledgeGraphQueryRequest struct {
 // @Success 200 {object} AIResponse "成功响应"
 // @Failure 400 {object} AIResponse "参数错误"
 // @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/admin/knowledge-graph [get]
+// @Router /api/v1/admin/knowledge-graph [get]
 func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 	collection := c.Query("collection")
 	if collection == "" {
@@ -585,51 +674,51 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 	})
 }
 
-// MCPToolConfigRequest MCP工具配置请求
-type MCPToolConfigRequest struct {
+// ToolRegistryConfigRequest 工具注册表配置请求
+type ToolRegistryConfigRequest struct {
 	Enabled *bool `json:"enabled" binding:"required"`
 }
 
-// ListMCPTools 列出所有MCP工具（包含启用状态）
-// @Summary 列出所有MCP工具（管理后台）
-// @Description 列出所有MCP工具及其启用状态，用于管理后台配置
-// @Tags MCP工具管理
+// ListToolRegistryTools 列出所有 AI 工具（包含启用状态）
+// @Summary 列出所有 AI 工具（管理后台）
+// @Description 列出所有 AI 工具及其启用状态，用于管理后台配置
+// @Tags AI工具管理
 // @Produce json
 // @Success 200 {object} AIResponse "成功响应"
-// @Router /api/admin/mcp/tools [get]
-func (h *AIHandler) ListMCPTools(c *gin.Context) {
-	if h.mcpServer == nil {
-		response.InternalServerError(c, "MCP服务器未初始化")
+// @Router /api/v1/admin/tool-registry/tools [get]
+func (h *AIHandler) ListToolRegistryTools(c *gin.Context) {
+	if h.toolRegistry == nil {
+		response.InternalServerError(c, "AI工具注册表未初始化")
 		return
 	}
 
-	tools := h.mcpServer.ListTools()
+	tools := h.toolRegistry.ListTools()
 	response.Success(c, gin.H{
 		"tools": tools,
 		"total": len(tools),
 	})
 }
 
-// UpdateMCPToolConfig 更新MCP工具配置
-// @Summary 更新MCP工具配置
-// @Description 启用或禁用指定的MCP工具
-// @Tags MCP工具管理
+// UpdateToolRegistryConfig 更新 AI 工具配置
+// @Summary 更新 AI 工具配置
+// @Description 启用或禁用指定的 AI 工具
+// @Tags AI工具管理
 // @Accept json
 // @Produce json
 // @Param tool_name path string true "工具名称"
-// @Param request body MCPToolConfigRequest true "工具配置请求"
+// @Param request body ToolRegistryConfigRequest true "工具配置请求"
 // @Success 200 {object} AIResponse "成功响应"
 // @Failure 400 {object} AIResponse "参数错误"
 // @Failure 404 {object} AIResponse "工具不存在"
-// @Router /api/admin/mcp/tools/{tool_name} [put]
-func (h *AIHandler) UpdateMCPToolConfig(c *gin.Context) {
-	if h.mcpServer == nil {
-		response.InternalServerError(c, "MCP服务器未初始化")
+// @Router /api/v1/admin/tool-registry/tools/{tool_name} [put]
+func (h *AIHandler) UpdateToolRegistryConfig(c *gin.Context) {
+	if h.toolRegistry == nil {
+		response.InternalServerError(c, "AI工具注册表未初始化")
 		return
 	}
 
 	toolName := c.Param("tool_name")
-	var req MCPToolConfigRequest
+	var req ToolRegistryConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
@@ -637,9 +726,9 @@ func (h *AIHandler) UpdateMCPToolConfig(c *gin.Context) {
 
 	var err error
 	if req.Enabled != nil && *req.Enabled {
-		err = h.mcpServer.EnableTool(toolName)
+		err = h.toolRegistry.EnableTool(toolName)
 	} else {
-		err = h.mcpServer.DisableTool(toolName)
+		err = h.toolRegistry.DisableTool(toolName)
 	}
 
 	if err != nil {
@@ -659,7 +748,7 @@ func (h *AIHandler) UpdateMCPToolConfig(c *gin.Context) {
 // @Tags AI
 // @Produce json
 // @Success 200 {object} AIResponse "成功响应"
-// @Router /api/ai/ops/dashboard [get]
+// @Router /api/v1/admin/ai/dashboard [get]
 func (h *AIHandler) OpsDashboard(c *gin.Context) {
 	aiConfigured := h.aiService.IsConfigured()
 
@@ -681,8 +770,8 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 		dashboard["providers_configured"] = len(cfg.AllProviders())
 	}
 
-	if h.mcpServer != nil {
-		tools := h.mcpServer.ListTools()
+	if h.toolRegistry != nil {
+		tools := h.toolRegistry.ListTools()
 		dashboard["tools"] = tools
 	}
 
@@ -703,7 +792,7 @@ func (h *AIHandler) OpsDashboard(c *gin.Context) {
 // @Success 200 {string} string "流式输出"
 // @Failure 400 {object} AIResponse "参数错误"
 // @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/completion/stream [post]
+// @Router /api/v1/ai/completion/stream [post]
 func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 	var req GetCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -720,20 +809,20 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 	h.streamCompletion(c, req.Messages)
 }
 
-// ListTools 列出所有MCP工具
-// @Summary 列出所有MCP工具
-// @Description 列出所有可用的MCP工具
+// ListTools 列出所有 AI 工具
+// @Summary 列出所有 AI 工具
+// @Description 列出所有可用的 AI 工具
 // @Tags AI
 // @Produce json
 // @Success 200 {object} AIResponse "成功响应"
-// @Router /api/ai/tools [get]
+// @Router /api/v1/ai/tools [get]
 func (h *AIHandler) ListTools(c *gin.Context) {
-	if h.mcpServer == nil {
-		response.InternalServerError(c, "MCP服务器未初始化")
+	if h.toolRegistry == nil {
+		response.InternalServerError(c, "AI工具注册表未初始化")
 		return
 	}
 
-	tools := h.mcpServer.ListTools()
+	tools := h.toolRegistry.ListTools()
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -741,268 +830,196 @@ func (h *AIHandler) ListTools(c *gin.Context) {
 	})
 }
 
-// ExecuteToolRequest 执行工具请求
-type ExecuteToolRequest struct {
-	ToolName   string                 `json:"tool_name" binding:"required"`
-	Parameters map[string]interface{} `json:"parameters"`
+// ─────────────────────────────────────────────────────────────────────────────
+// 侧边栏元对话
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SidebarStreamRequest 侧边栏元对话请求
+type SidebarStreamRequest struct {
+	Message        string `json:"message" binding:"required"` // 用户问题
+	ConversationID uint   `json:"conversation_id"`            // 可选：当前会话 ID，传入则注入该会话上下文
+	Scope          string `json:"scope"`                      // "current"(默认) 或 "cross"(跨会话检索)
 }
 
-// ExecuteTool 执行MCP工具
-// @Summary 执行MCP工具
-// @Description 执行指定的MCP工具
+// SidebarStream 侧边栏元对话（SSE 流式）
+// @Summary 侧边栏 AI 元对话
+// @Description 在任意会话旁边随时问 AI，不改变对话本身的社交动态。
+// @Description scope=current: 注入当前会话最近消息作为上下文；
+// @Description scope=cross: 跨会话检索用户全部消息/笔记/知识库后综合回答。
 // @Tags AI
 // @Accept json
-// @Produce json
-// @Param request body ExecuteToolRequest true "执行工具请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/tools/execute [post]
-func (h *AIHandler) ExecuteTool(c *gin.Context) {
-	var req ExecuteToolRequest
+// @Produce text/event-stream
+// @Param request body SidebarStreamRequest true "侧边栏请求"
+// @Success 200 {string} string "流式输出"
+// @Router /api/v1/ai/sidebar/stream [post]
+func (h *AIHandler) SidebarStream(c *gin.Context) {
+	var req SidebarStreamRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
 	}
 
-	if h.mcpServer == nil {
-		response.InternalServerError(c, "MCP服务器未初始化")
+	if !h.aiService.IsConfigured() {
+		response.InternalServerError(c, "AI服务未配置")
 		return
 	}
 
-	// 执行工具
-	result, err := h.mcpServer.ExecuteTool(req.ToolName, req.Parameters, nil)
+	userIDAny, _ := c.Get("user_id")
+	userID, _ := userIDAny.(uint)
+	if userID == 0 {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	scope := req.Scope
+	if scope == "" {
+		scope = "current"
+	}
+
+	switch scope {
+	case "cross":
+		h.sidebarCrossConversation(c, req, userID)
+	default:
+		h.sidebarCurrentConversation(c, req, userID)
+	}
+}
+
+// sidebarCurrentConversation 当前会话上下文模式：
+// 注入最近 20 条消息 + 会话元信息，让 AI 基于“刚才讨论的内容”回答。
+func (h *AIHandler) sidebarCurrentConversation(c *gin.Context, req SidebarStreamRequest, userID uint) {
+	db := database.GetDB()
+
+	systemPrompt := buildSidebarSystemPrompt()
+
+	var contextText string
+	if req.ConversationID > 0 {
+		if err := ensureConversationAccess(db, req.ConversationID, userID); err != nil {
+			response.Forbidden(c, "无权访问该会话")
+			return
+		}
+
+		// 加载会话元信息（群名）
+		var group model.Group
+		if db.Where("conversation_id = ?", req.ConversationID).First(&group).Error == nil {
+			contextText += fmt.Sprintf("【当前会话】%s\n", group.Name)
+		}
+
+		// 加载最近 20 条消息
+		var messages []model.Message
+		db.Where("conversation_id = ? AND type IN ?", req.ConversationID, []string{"text", "markdown"}).
+			Preload("Sender").
+			Order("created_at DESC").
+			Limit(20).
+			Find(&messages)
+
+		if len(messages) > 0 {
+			// 反转为时间正序
+			for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
+			var lines []string
+			for _, msg := range messages {
+				name := msg.Sender.Nickname
+				if name == "" {
+					name = msg.Sender.Username
+				}
+				lines = append(lines, fmt.Sprintf("%s: %s", name, msg.Content))
+			}
+			contextText += "【最近对话记录】\n" + strings.Join(lines, "\n") + "\n"
+		}
+	}
+
+	aiMessages := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+	}
+	if contextText != "" {
+		aiMessages = append(aiMessages, ai.Message{Role: "user", Content: contextText})
+		aiMessages = append(aiMessages, ai.Message{Role: "assistant", Content: "已了解当前会话上下文，请提问。"})
+	}
+	aiMessages = append(aiMessages, ai.Message{Role: "user", Content: req.Message})
+
+	h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
+}
+
+// sidebarCrossConversation 跨会话检索模式：
+// 调用 UnifiedSearchGraph 检索用户全部消息/笔记/知识库/记忆，综合回答。
+func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRequest, userID uint) {
+	if req.ConversationID > 0 {
+		if err := ensureConversationAccess(database.GetDB(), req.ConversationID, userID); err != nil {
+			response.Forbidden(c, "无权访问该会话")
+			return
+		}
+	}
+
+	if h.unifiedSearchGraph == nil {
+		// 降级：无搜索图时用纯 LLM 回答
+		aiMessages := []ai.Message{
+			{Role: "system", Content: buildSidebarSystemPrompt()},
+			{Role: "user", Content: req.Message},
+		}
+		h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
+		return
+	}
+
+	// 同步执行搜索图（内部已并行检索 4 路源），拿到结果后流式输出
+	input := &service.UnifiedSearchInput{
+		Query:          req.Message,
+		UserID:         userID,
+		ConversationID: req.ConversationID, // 可为 0，表示不限定会话
+	}
+
+	result, err := h.unifiedSearchGraph.Execute(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "工具执行失败: " + err.Error()})
+		logger.WithModule("SidebarStream").Error("跨会话检索失败", "error", err)
+		// 降级：纯 LLM
+		aiMessages := []ai.Message{
+			{Role: "system", Content: buildSidebarSystemPrompt()},
+			{Role: "user", Content: req.Message},
+		}
+		h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
+	// 将搜索结果作为上下文，流式生成最终回答
+	var contextParts []string
+	for _, src := range result.Sources {
+		label := src.Type
+		if src.Title != "" {
+			label += ": " + src.Title
+		}
+		contextParts = append(contextParts, fmt.Sprintf("[%s] %s", label, src.Content))
+	}
+
+	aiMessages := []ai.Message{
+		{Role: "system", Content: buildSidebarSystemPrompt()},
+	}
+	if len(contextParts) > 0 {
+		aiMessages = append(aiMessages, ai.Message{
+			Role:    "user",
+			Content: "【跨会话检索结果】\n" + strings.Join(contextParts, "\n\n"),
+		})
+		aiMessages = append(aiMessages, ai.Message{Role: "assistant", Content: "已检索到相关信息，请提问。"})
+	}
+	aiMessages = append(aiMessages, ai.Message{Role: "user", Content: req.Message})
+
+	h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
 }
 
-// IntelligentTroubleshootingRequest 智能故障排查请求
-type IntelligentTroubleshootingRequest struct {
-	Symptom string `json:"symptom" binding:"required"`
-	Server  string `json:"server"`
-	Logs    string `json:"logs"`
-}
+// buildSidebarSystemPrompt 侧边栏元对话的 system prompt
+func buildSidebarSystemPrompt() string {
+	return `你是 QIM 企业即时通讯系统中的 AI 助手，正在通过侧边栏与用户进行元对话。
 
-// IntelligentTroubleshooting 智能故障排查
-// @Summary 智能故障排查
-// @Description 分析服务器故障并提供解决方案
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param request body IntelligentTroubleshootingRequest true "智能故障排查请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/ops/troubleshooting [post]
-func (h *AIHandler) IntelligentTroubleshooting(c *gin.Context) {
-	var req IntelligentTroubleshootingRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
+【你的角色】
+- 你是用户的私人智能助理，帮助用户理解、总结、分析当前或历史对话内容
+- 你的回复只有用户自己能看到，不会发送到群聊中
+- 你可以自由地给出建议、评价、整理待办、提炼结论
+- 当用户要求创建任务、设置提醒、记录待办时，你可以调用 create_user_task 工具直接帮用户创建
 
-	tool := ai.NewIntelligentTroubleshootingTool(h.aiService)
-	params := map[string]interface{}{
-		"symptom": req.Symptom,
-		"server":  req.Server,
-		"logs":    req.Logs,
-	}
-
-	result, err := tool.Execute(params, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "故障排查失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
-}
-
-// CommandGenerationRequest 命令生成请求
-type CommandGenerationRequest struct {
-	Description string `json:"description" binding:"required"`
-	Platform    string `json:"platform"`
-	Format      string `json:"format"`
-}
-
-// CommandGeneration 命令生成
-// @Summary 命令生成
-// @Description 根据描述生成运维命令
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param request body CommandGenerationRequest true "命令生成请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/ops/command [post]
-func (h *AIHandler) CommandGeneration(c *gin.Context) {
-	var req CommandGenerationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	tool := ai.NewCommandGenerationTool(h.aiService)
-	params := map[string]interface{}{
-		"description": req.Description,
-		"platform":    req.Platform,
-		"format":      req.Format,
-	}
-
-	result, err := tool.Execute(params, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "命令生成失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
-}
-
-// LogAnalysisRequest 日志分析请求
-type LogAnalysisRequest struct {
-	LogContent string `json:"log_content" binding:"required"`
-	Service    string `json:"service"`
-	Severity   string `json:"severity"`
-}
-
-// LogAnalysis 日志分析
-// @Summary 日志分析
-// @Description 分析服务器日志并提供建议
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param request body LogAnalysisRequest true "日志分析请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/ops/logs [post]
-func (h *AIHandler) LogAnalysis(c *gin.Context) {
-	var req LogAnalysisRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	tool := ai.NewLogAnalysisTool(h.aiService)
-	params := map[string]interface{}{
-		"log_content": req.LogContent,
-		"service":     req.Service,
-		"severity":    req.Severity,
-	}
-
-	result, err := tool.Execute(params, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "日志分析失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
-}
-
-// IntelligentAlertRequest 智能告警处理请求
-type IntelligentAlertRequest struct {
-	AlertContent string `json:"alert_content" binding:"required"`
-	Severity     string `json:"severity"`
-	Service      string `json:"service"`
-}
-
-// IntelligentAlert 智能告警处理
-// @Summary 智能告警处理
-// @Description 分析和处理告警
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param request body IntelligentAlertRequest true "智能告警处理请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/ops/alert [post]
-func (h *AIHandler) IntelligentAlert(c *gin.Context) {
-	var req IntelligentAlertRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	tool := ai.NewIntelligentAlertTool(h.aiService)
-	params := map[string]interface{}{
-		"alert_content": req.AlertContent,
-		"severity":      req.Severity,
-		"service":       req.Service,
-	}
-
-	result, err := tool.Execute(params, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "告警处理失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
-}
-
-// OpsKnowledgeRequest 运维知识问答请求
-type OpsKnowledgeRequest struct {
-	Question string `json:"question" binding:"required"`
-	Category string `json:"category"`
-}
-
-// OpsKnowledge 运维知识问答
-// @Summary 运维知识问答
-// @Description 回答运维相关问题
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param request body OpsKnowledgeRequest true "运维知识问答请求"
-// @Success 200 {object} AIResponse "成功响应"
-// @Failure 400 {object} AIResponse "参数错误"
-// @Failure 500 {object} AIResponse "服务器错误"
-// @Router /api/ai/ops/knowledge [post]
-func (h *AIHandler) OpsKnowledge(c *gin.Context) {
-	var req OpsKnowledgeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-
-	tool := ai.NewOpsKnowledgeTool(h.aiService)
-	params := map[string]interface{}{
-		"question": req.Question,
-		"category": req.Category,
-	}
-
-	result, err := tool.Execute(params, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "知识问答失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    result,
-	})
+【回复规则】
+- 使用中文回答
+- 简洁、结构化，善用列表和标题
+- 如果用户问“刚才讨论的结论是什么”，从对话记录中提炼
+- 如果用户问“帮我整理待办”，抽取行动项并以 checkbox 格式输出
+- 如果用户说“帮我创建任务”或“设置提醒”，使用 create_user_task 工具创建，并告诉用户已创建成功
+- 如果信息不足，诚实告知并建议用户提供更多上下文`
 }
