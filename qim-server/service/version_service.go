@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"gorm.io/gorm"
@@ -13,6 +14,7 @@ var (
 	ErrVersionExists            = errors.New("该版本已存在")
 	ErrVersionNotFound          = errors.New("版本不存在")
 	ErrMissingDownloadURL       = errors.New("下载链接不能为空")
+	ErrMissingSha256            = errors.New("SHA256 不能为空")
 	ErrHashComputeFailed        = errors.New("SHA512 和文件大小计算失败")
 	ErrInvalidRolloutPercentage = errors.New("灰度百分比必须在 0 到 100 之间")
 )
@@ -27,7 +29,12 @@ type CreateVersionInput struct {
 	RolloutPercentage *int
 	MinVersion        string
 	Sha512            string
+	Sha256            string // CLI 专用
 	FileSize          int64
+	// CLI 专用字段
+	AppType string // "client" | "cli"，空值默认 "client"
+	Os      string // CLI: darwin/linux/windows
+	Arch    string // CLI: amd64/arm64
 }
 
 // UpdateVersionInput 更新版本的入参（所有字段可选）
@@ -37,6 +44,9 @@ type UpdateVersionInput struct {
 	Status            *string // "active" / "inactive"
 	RolloutPercentage *int
 	MinVersion        *string
+	DownloadURL       *string
+	Sha256            *string
+	FileSize          *int64
 }
 
 type VersionService struct {
@@ -55,13 +65,23 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		return nil, err
 	}
 
-	// 平台标准化
-	platform := NormalizePlatform(input.Platform)
+	appType := input.AppType
+	if appType == "" {
+		appType = "client"
+	}
 
-	// 唯一性校验
+	// 平台标准化。CLI 可由 os/arch 派生，避免调用方漏填 platform 后创建出的版本无法查询。
+	platform := input.Platform
+	if appType == "client" {
+		platform = NormalizePlatform(platform)
+	} else if appType == "cli" && platform == "" && input.Os != "" && input.Arch != "" {
+		platform = input.Os + "-" + input.Arch
+	}
+
+	// 唯一性校验（app_type + version + platform）
 	var existing model.ClientVersion
-	if err := s.db.Where("version = ? AND platform = ? AND deleted_at IS NULL",
-		input.Version, platform).First(&existing).Error; err == nil {
+	if err := s.db.Where("app_type = ? AND version = ? AND platform = ? AND deleted_at IS NULL",
+		appType, input.Version, platform).First(&existing).Error; err == nil {
 		return nil, ErrVersionExists
 	}
 
@@ -71,6 +91,7 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 	}
 
 	version := model.ClientVersion{
+		AppType:           appType,
 		Version:           input.Version,
 		Platform:          platform,
 		Type:              "full",
@@ -80,21 +101,37 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		RolloutPercentage: rolloutPercentage,
 		MinVersion:        input.MinVersion,
 		Enabled:           true,
+		Os:                input.Os,
+		Arch:              input.Arch,
 	}
 
-	// SHA512 和文件大小处理
-	if input.Sha512 != "" && input.FileSize > 0 {
-		version.Sha512 = input.Sha512
-		version.FileSize = input.FileSize
-	} else if input.DownloadURL != "" {
-		hash, size, err := MustComputeFileHash(s.db, s.storage, input.DownloadURL, platform)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrHashComputeFailed, err)
+	if appType == "cli" {
+		if input.DownloadURL == "" {
+			return nil, ErrMissingDownloadURL
 		}
-		version.Sha512 = hash
-		version.FileSize = size
+		if input.Sha256 == "" {
+			return nil, ErrMissingSha256
+		}
+		// CLI 版本：使用 SHA256
+		version.Sha256 = input.Sha256
+		if input.FileSize > 0 {
+			version.FileSize = input.FileSize
+		}
 	} else {
-		return nil, ErrMissingDownloadURL
+		// Client 版本：使用 SHA512，自动计算
+		if input.Sha512 != "" && input.FileSize > 0 {
+			version.Sha512 = input.Sha512
+			version.FileSize = input.FileSize
+		} else if input.DownloadURL != "" {
+			hash, size, err := MustComputeFileHash(s.db, s.storage, input.DownloadURL, platform)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %v", ErrHashComputeFailed, err)
+			}
+			version.Sha512 = hash
+			version.FileSize = size
+		} else {
+			return nil, ErrMissingDownloadURL
+		}
 	}
 
 	if err := s.db.Create(&version).Error; err != nil {
@@ -103,8 +140,8 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 	return &version, nil
 }
 
-// List 分页查询版本列表
-func (s *VersionService) List(page, pageSize int, platform string) ([]model.ClientVersion, int64, error) {
+// List 分页查询版本列表（可按 appType 和 platform 过滤）
+func (s *VersionService) List(page, pageSize int, platform string, appType ...string) ([]model.ClientVersion, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -113,6 +150,9 @@ func (s *VersionService) List(page, pageSize int, platform string) ([]model.Clie
 	}
 
 	query := s.db.Model(&model.ClientVersion{})
+	if len(appType) > 0 && appType[0] != "" {
+		query = query.Where("app_type = ?", appType[0])
+	}
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
 	}
@@ -157,6 +197,15 @@ func (s *VersionService) Update(id uint, input UpdateVersionInput) (*model.Clien
 	if input.MinVersion != nil {
 		version.MinVersion = *input.MinVersion
 	}
+	if input.DownloadURL != nil {
+		version.DownloadURL = *input.DownloadURL
+	}
+	if input.Sha256 != nil {
+		version.Sha256 = *input.Sha256
+	}
+	if input.FileSize != nil {
+		version.FileSize = *input.FileSize
+	}
 
 	if err := s.db.Save(version).Error; err != nil {
 		return nil, err
@@ -192,12 +241,53 @@ func (s *VersionService) ToggleStatus(id uint, enabled bool) (*model.ClientVersi
 func (s *VersionService) GetLatestEnabled(platform, clientID string) (*model.ClientVersion, error) {
 	platform = NormalizePlatform(platform)
 	var versions []model.ClientVersion
-	if err := s.db.Where("platform = ? AND enabled = ?", platform, true).Find(&versions).Error; err != nil {
+	if err := s.db.Where("app_type = ? AND platform = ? AND enabled = ?", "client", platform, true).Find(&versions).Error; err != nil {
 		return nil, err
 	}
 	// 灰度过滤
 	versions = FilterByRollout(versions, clientID)
 	return LatestVersion(versions)
+}
+
+// GetLatestCLI 获取指定 os/arch 的最新已启用 CLI 版本
+func (s *VersionService) GetLatestCLI(os, arch string) (*model.ClientVersion, error) {
+	platform := os + "-" + arch
+	var versions []model.ClientVersion
+	if err := s.db.Where("app_type = ? AND platform = ? AND enabled = ?", "cli", platform, true).Find(&versions).Error; err != nil {
+		return nil, err
+	}
+	return LatestVersion(versions)
+}
+
+// GetLatestCLIVersion 获取最新 CLI 版本号（跨所有平台，用于版本查询端点）
+func (s *VersionService) GetLatestCLIVersion() (string, map[string]string, error) {
+	var versions []model.ClientVersion
+	if err := s.db.Where("app_type = ? AND enabled = ?", "cli", true).Find(&versions).Error; err != nil {
+		return "", nil, err
+	}
+	if len(versions) == 0 {
+		return "", nil, nil
+	}
+
+	latest, err := LatestVersion(versions)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 构建 sha256 map: {"qim-darwin-arm64": "abc...", ...}
+	sha256Map := make(map[string]string)
+	for _, v := range versions {
+		if v.Sha256 == "" {
+			continue
+		}
+		binaryName := fmt.Sprintf("qim-%s", v.Platform)
+		if v.Os == "windows" || strings.HasPrefix(v.Platform, "windows-") {
+			binaryName += ".exe"
+		}
+		sha256Map[binaryName] = v.Sha256
+	}
+
+	return latest.Version, sha256Map, nil
 }
 
 // Rollback 回滚到指定版本：禁用同平台比它新的所有已启用版本，启用目标版本
@@ -207,9 +297,10 @@ func (s *VersionService) Rollback(id uint) error {
 		return err
 	}
 
-	// 查询同平台所有已启用版本
+	// 查询同 app_type + 平台所有已启用版本
 	var newer []model.ClientVersion
-	s.db.Where("platform = ? AND enabled = ? AND id != ?", target.Platform, true, id).Find(&newer)
+	s.db.Where("app_type = ? AND platform = ? AND enabled = ? AND id != ?",
+		target.AppType, target.Platform, true, id).Find(&newer)
 
 	for _, v := range newer {
 		if CompareVersions(v.Version, target.Version) > 0 {

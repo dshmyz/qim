@@ -102,3 +102,111 @@ func TestToggleStatus_MissingVersionReturnsNotFound(t *testing.T) {
 		t.Fatalf("期望 ErrVersionNotFound，实际 %v", err)
 	}
 }
+
+func TestCreateCLI_RequiresSha256(t *testing.T) {
+	db := newVersionServiceTestDB(t)
+	svc := NewVersionService(db, nil)
+
+	_, err := svc.Create(CreateVersionInput{
+		Version:     "1.2.0",
+		Platform:    "darwin-arm64",
+		AppType:     "cli",
+		Os:          "darwin",
+		Arch:        "arm64",
+		DownloadURL: "/api/v1/public/files/1/download",
+	})
+	if !errors.Is(err, ErrMissingSha256) {
+		t.Fatalf("期望 ErrMissingSha256，实际 %v", err)
+	}
+}
+
+func TestCreateCLI_DerivesPlatformFromOSAndArch(t *testing.T) {
+	db := newVersionServiceTestDB(t)
+	svc := NewVersionService(db, nil)
+
+	_, err := svc.Create(CreateVersionInput{
+		Version:     "1.2.0",
+		AppType:     "cli",
+		Os:          "darwin",
+		Arch:        "arm64",
+		DownloadURL: "/api/v1/public/files/1/download",
+		Sha256:      "darwin-sha",
+		FileSize:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create 失败: %v", err)
+	}
+
+	latest, err := svc.GetLatestCLI("darwin", "arm64")
+	if err != nil {
+		t.Fatalf("GetLatestCLI 失败: %v", err)
+	}
+	if latest == nil {
+		t.Fatal("期望通过 os/arch 查到刚创建的 CLI 版本，实际为 nil")
+	}
+	if latest.Platform != "darwin-arm64" {
+		t.Fatalf("期望 platform=darwin-arm64，实际 %q", latest.Platform)
+	}
+}
+
+func TestUpdateCLI_UpdatesDownloadURLAndSha256(t *testing.T) {
+	db := newVersionServiceTestDB(t)
+	svc := NewVersionService(db, nil)
+
+	created, err := svc.Create(CreateVersionInput{
+		Version:     "1.2.0",
+		Platform:    "darwin-arm64",
+		AppType:     "cli",
+		Os:          "darwin",
+		Arch:        "arm64",
+		DownloadURL: "/api/v1/public/files/1/download",
+		Sha256:      "old-sha",
+		FileSize:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create 失败: %v", err)
+	}
+
+	newURL := "/api/v1/public/files/2/download"
+	newSha := "new-sha"
+	updated, err := svc.Update(created.ID, UpdateVersionInput{
+		DownloadURL: &newURL,
+		Sha256:      &newSha,
+	})
+	if err != nil {
+		t.Fatalf("Update 失败: %v", err)
+	}
+	if updated.DownloadURL != newURL {
+		t.Fatalf("期望 download_url=%q，实际 %q", newURL, updated.DownloadURL)
+	}
+	if updated.Sha256 != newSha {
+		t.Fatalf("期望 sha256=%q，实际 %q", newSha, updated.Sha256)
+	}
+}
+
+func TestGetLatestCLIVersion_WindowsSha256KeyIncludesExe(t *testing.T) {
+	db := newVersionServiceTestDB(t)
+	svc := NewVersionService(db, nil)
+
+	_, err := svc.Create(CreateVersionInput{
+		Version:     "1.2.0",
+		Platform:    "windows-amd64",
+		AppType:     "cli",
+		Os:          "windows",
+		Arch:        "amd64",
+		DownloadURL: "/api/v1/public/files/1/download",
+		Sha256:      "win-sha",
+		FileSize:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create 失败: %v", err)
+	}
+
+	_, shaMap, err := svc.GetLatestCLIVersion()
+	if err != nil {
+		t.Fatalf("GetLatestCLIVersion 失败: %v", err)
+	}
+	if shaMap["qim-windows-amd64.exe"] != "win-sha" {
+		t.Fatalf("期望 Windows hash key 包含 .exe，实际 map=%v", shaMap)
+	}
+}
