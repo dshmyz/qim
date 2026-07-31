@@ -107,7 +107,4 @@ type ChunkRepository interface {
 	GetUploadedChunkIndexes(ctx context.Context, uploadID string) ([]int, error)
 	UpdateChunkStatus(ctx context.Context, uploadID string, chunkIndex int, status string) error
 	DeleteChunksByUploadID(ctx context.Context, uploadID string) error
-
-	// File 相关操作
-	GetFileByHash(ctx context.Context, fileHash string) (*model.File, error)
 }

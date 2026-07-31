@@ -5,53 +5,12 @@ import SparkMD5 from 'spark-md5'
 
 /**
  * 文件上传 Composable
- * 整合 MD5 计算、分片上传、进度管理等功能
+ * 整合分片上传、进度管理等功能
+ *
+ * 秒传功能已移除（存在越权风险且前端算 MD5 性能开销大、命中率低）。
+ * 不再计算文件级 MD5，init 时不再传 file_hash。
+ * 分片级 MD5 仍保留用于分片完整性校验。
  */
-
-// MD5 Worker 实例
-let md5Worker: Worker | null = null
-
-// 获取或创建 MD5 Worker
-function getMD5Worker(): Worker {
-  if (!md5Worker) {
-    md5Worker = new Worker(new URL('../workers/md5.worker.ts', import.meta.url), {
-      type: 'module'
-    })
-  }
-  return md5Worker
-}
-
-// 分片策略配置
-interface ChunkStrategy {
-  chunkSize: number
-  description: string
-}
-
-/**
- * 智能分片策略
- * 根据文件大小自动选择合适的分片大小
- */
-export function getChunkStrategy(fileSize: number): ChunkStrategy {
-  const MB = 1024 * 1024
-  const GB = 1024 * MB
-
-  if (fileSize < 10 * MB) {
-    // 小于 10MB：不分片
-    return { chunkSize: fileSize, description: '小文件不分片' }
-  } else if (fileSize < 100 * MB) {
-    // 10MB - 100MB：2MB 分片
-    return { chunkSize: 2 * MB, description: '2MB 分片' }
-  } else if (fileSize < 500 * MB) {
-    // 100MB - 500MB：5MB 分片
-    return { chunkSize: 5 * MB, description: '5MB 分片' }
-  } else if (fileSize < GB) {
-    // 500MB - 1GB：10MB 分片
-    return { chunkSize: 10 * MB, description: '10MB 分片' }
-  } else {
-    // 大于 1GB：20MB 分片
-    return { chunkSize: 20 * MB, description: '20MB 分片' }
-  }
-}
 
 /**
  * 文件分片
@@ -100,41 +59,12 @@ export async function calculateChunkMD5(chunk: Blob): Promise<string> {
 }
 
 /**
- * 计算文件 MD5
- * 使用 Web Worker 在后台线程计算，避免阻塞主线程
- * @param file 要计算的文件
- * @returns MD5 哈希值
- */
-export async function calculateMD5(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const worker = getMD5Worker()
-
-    const handleMessage = (e: MessageEvent) => {
-      const data = e.data
-
-      if (data.error) {
-        worker.removeEventListener('message', handleMessage)
-        reject(new Error(data.error))
-      } else if (data.hash) {
-        worker.removeEventListener('message', handleMessage)
-        resolve(data.hash)
-      }
-      // 进度消息可以忽略，或者通过回调通知
-    }
-
-    worker.addEventListener('message', handleMessage)
-    worker.postMessage({ file })
-  })
-}
-
-/**
  * 上传任务管理器
  */
 interface UploadManager {
   uploadId: string
   file: File
   folderId: number | null
-  fileHash: string
   chunks: Blob[]
   uploadedChunks: Set<number>
   retryCount: Map<number, number>
@@ -170,19 +100,13 @@ const MAX_RETRY_COUNT = 3
  */
 export async function initUpload(
   file: File,
-  folderId?: number,
-  fileHash?: string
+  folderId?: number
 ): Promise<InitUploadResponse> {
-  // 如果外部已提供 MD5 则直接使用，避免重复计算
-  const hash = fileHash || await calculateMD5(file)
-
-  // 调用初始化 API
+  // 调用初始化 API（秒传已移除，不再传 file_hash）
   const response = await fileApi.initUpload({
     filename: file.name,
     file_size: file.size,
-    file_hash: hash,
-    folder_id: folderId ?? null,
-    mime_type: file.type || 'application/octet-stream'
+    folder_id: folderId ?? null
   })
 
   if (response.data.code !== 0) {
@@ -320,7 +244,7 @@ class UploadQueueManager {
     while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
       const chunkIndex = this.queue.shift()!
       this.activeCount++
-      
+
       this.uploadChunk(chunkIndex)
         .then(() => {
           this.activeCount--
@@ -373,19 +297,13 @@ async function uploadChunksConcurrently(
 /**
  * 完成上传
  * @param uploadId 上传 ID
- * @param fileHash 文件 MD5
- * @param totalChunks 总分片数
  * @returns 文件信息
  */
 export async function completeUpload(
-  uploadId: string,
-  fileHash: string,
-  totalChunks: number
+  uploadId: string
 ) {
   const response = await fileApi.completeUpload({
-    upload_id: uploadId,
-    file_hash: fileHash,
-    total_chunks: totalChunks
+    upload_id: uploadId
   })
 
   if (response.data.code !== 0) {
@@ -437,20 +355,10 @@ export async function uploadFile(
     // 更新状态为上传中
     uploadStore.updateTask(uploadId, { status: 'uploading' })
 
-    // 1. 计算文件 MD5
-    const fileHash = await calculateMD5(file)
+    // 1. 初始化上传（秒传已移除，不再计算文件级 MD5）
+    const initResponse = await initUpload(file, folderId)
 
-    // 2. 初始化上传（传入 fileHash 避免重复计算）
-    const initResponse = await initUpload(file, folderId, fileHash)
-
-    // 检查是否秒传
-    if (initResponse.is_quick_upload && initResponse.file_id) {
-      // 秒传成功
-      uploadStore.markCompleted(uploadId, initResponse.file_id)
-      return { uploadId, fileId: initResponse.file_id, isQuickUpload: true }
-    }
-
-    // 3. 分片上传
+    // 2. 分片上传
     const { chunk_size, total_chunks, uploaded_chunks } = initResponse
 
     // 使用后端返回的分片大小进行分片，确保前后端分片策略一致
@@ -461,7 +369,6 @@ export async function uploadFile(
       uploadId: initResponse.upload_id,
       file,
       folderId: folderId ?? null,
-      fileHash,
       chunks,
       uploadedChunks: new Set(uploaded_chunks),
       retryCount: new Map(),
@@ -487,12 +394,8 @@ export async function uploadFile(
       })
     })
 
-    // 4. 完成上传
-    const fileInfo = await completeUpload(
-      initResponse.upload_id,
-      fileHash,
-      total_chunks
-    )
+    // 3. 完成上传
+    const fileInfo = await completeUpload(initResponse.upload_id)
 
     // 标记完成
     uploadStore.markCompleted(uploadId, fileInfo.id)
@@ -500,7 +403,7 @@ export async function uploadFile(
     // 清理
     activeUploads.delete(uploadId)
 
-    return { uploadId, fileId: fileInfo.id, isQuickUpload: false }
+    return { uploadId, fileId: fileInfo.id }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
     uploadStore.markFailed(uploadId, errorMessage)
@@ -528,8 +431,6 @@ export function useFileUpload() {
     isExpanded: uploadStore.isExpanded,
 
     // 方法
-    calculateMD5,
-    getChunkStrategy,
     splitFile,
     calculateChunkMD5,
     initUpload,

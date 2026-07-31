@@ -308,37 +308,3 @@ func TestChunkRepository_DeleteChunksByUploadID(t *testing.T) {
 	chunks, _ := repo.GetChunksByUploadID(ctx, "test-upload-id-delete-chunks")
 	assert.Len(t, chunks, 0)
 }
-
-func TestChunkRepository_GetFileByHash(t *testing.T) {
-	db := setupChunkTestDB(t)
-	repo := NewChunkRepository(db)
-	ctx := context.Background()
-
-	// 创建测试用户
-	user := &model.User{
-		Username:     "testuser",
-		PasswordHash: "hash",
-	}
-	db.Create(user)
-
-	// 创建测试文件
-	file := &model.File{
-		UserID:       user.ID,
-		Name:         "test.txt",
-		OriginalName: "test.txt",
-		Size:         1024,
-		MimeType:     "text/plain",
-		StoragePath:  "/tmp/files/test.txt",
-		Checksum:     "file-hash-123",
-	}
-	db.Create(file)
-
-	// 测试获取
-	found, err := repo.GetFileByHash(ctx, "file-hash-123")
-	assert.NoError(t, err)
-	assert.Equal(t, file.Checksum, found.Checksum)
-
-	// 测试不存在的文件
-	_, err = repo.GetFileByHash(ctx, "not-exist")
-	assert.Error(t, err)
-}

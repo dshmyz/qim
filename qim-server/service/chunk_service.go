@@ -9,10 +9,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/repository"
 	"github.com/dshmyz/qim/qim-server/utils"
 
@@ -38,49 +38,30 @@ func NewChunkService(db *gorm.DB, storage string, store StorageAccessor) *ChunkS
 }
 
 // InitUpload 初始化上传
-// 返回值：上传任务、已上传分片索引列表、是否秒传、秒传时已有文件ID、错误
-func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, fileHash string, folderID *uint) (*model.UploadTask, []int, bool, *uint, error) {
+// 秒传功能已移除（存在越权风险且前端算 MD5 性能开销大、命中率低）。
+// 返回值：上传任务、已上传分片索引列表、错误
+// 断点续传：通过 user_id + filename + file_size 匹配未完成任务（不再依赖 file_hash）
+func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, folderID *uint) (*model.UploadTask, []int, error) {
 	ctx := context.Background()
 
-	// 1. 检查秒传：文件哈希是否已存在
-	existingFile, err := s.repo.GetFileByHash(ctx, fileHash)
-	if err == nil && existingFile != nil {
-		// 秒传：创建一个已完成的任务记录
-		task := &model.UploadTask{
-			UploadID:       generateUploadID(),
-			UserID:         userID,
-			Filename:       filename,
-			FileSize:       fileSize,
-			FileHash:       fileHash,
-			ChunkSize:      0,
-			TotalChunks:    0,
-			UploadedChunks: 0,
-			FolderID:       folderID,
-			Status:         "completed",
-		}
-		if err := s.repo.CreateUploadTask(ctx, task); err != nil {
-			return nil, nil, false, nil, err
-		}
-		fileID := existingFile.ID
-		return task, []int{}, true, &fileID, nil
-	}
-
-	// 2. 检查断点续传：是否有未完成的上传任务
+	// 1. 检查断点续传：是否有未完成的上传任务
+	// 不再依赖 file_hash 匹配（前端不再算 MD5），改用 user_id + filename + file_size 三元组定位
 	var existingTask model.UploadTask
-	err = s.db.WithContext(ctx).
-		Where("user_id = ? AND file_hash = ? AND status IN ?", userID, fileHash, []string{"pending", "uploading"}).
+	err := s.db.WithContext(ctx).
+		Where("user_id = ? AND filename = ? AND file_size = ? AND status IN ?",
+			userID, filename, fileSize, []string{"pending", "uploading"}).
 		First(&existingTask).Error
 
 	if err == nil {
 		// 断点续传：返回已有任务和已上传分片列表
 		uploadedIndexes, err := s.repo.GetUploadedChunkIndexes(ctx, existingTask.UploadID)
 		if err != nil {
-			return nil, nil, false, nil, err
+			return nil, nil, err
 		}
-		return &existingTask, uploadedIndexes, false, nil, nil
+		return &existingTask, uploadedIndexes, nil
 	}
 
-	// 3. 新上传：创建新的上传任务
+	// 2. 新上传：创建新的上传任务
 	chunkSize := s.calculateChunkSize(fileSize)
 	totalChunks := int((fileSize + chunkSize - 1) / chunkSize)
 	if totalChunks == 0 {
@@ -92,7 +73,6 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 		UserID:         userID,
 		Filename:       filename,
 		FileSize:       fileSize,
-		FileHash:       fileHash,
 		ChunkSize:      chunkSize,
 		TotalChunks:    totalChunks,
 		UploadedChunks: 0,
@@ -117,7 +97,6 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 
 			chunk := &model.FileChunk{
 				UploadID:    task.UploadID,
-				FileHash:    fileHash,
 				ChunkIndex:  i,
 				ChunkHash:   "",
 				ChunkSize:   end - start,
@@ -134,10 +113,10 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 	})
 
 	if err != nil {
-		return nil, nil, false, nil, fmt.Errorf("创建上传任务失败: %w", err)
+		return nil, nil, fmt.Errorf("创建上传任务失败: %w", err)
 	}
 
-	return task, []int{}, false, nil, nil
+	return task, []int{}, nil
 }
 
 // UploadChunk 上传分片
@@ -233,7 +212,9 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	}
 
 	// 4. 合并分片到本地临时文件
-	finalPath := filepath.Join(s.storage, "files", uploadID, task.Filename)
+	// task.Filename 来自客户端，必须清洗防止路径遍历（如 ../逃逸 files/<uploadID>/ 子目录）
+	safeFilename := upload.SanitizeFilename(task.Filename)
+	finalPath := filepath.Join(s.storage, "files", uploadID, safeFilename)
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
 		return nil, fmt.Errorf("创建文件目录失败: %w", err)
 	}
@@ -265,8 +246,9 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	checksum := hex.EncodeToString(hash.Sum(nil))
 
 	// 6. 上传合并文件到存储后端（local/S3），key 与普通上传一致
+	// 统一使用 safeFilename 提取扩展名，避免与上面清洗逻辑不一致
 	now := time.Now()
-	ext := filepath.Ext(task.Filename)
+	ext := filepath.Ext(safeFilename)
 	keyFilename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, task.UserID, ext)
 	key := fmt.Sprintf("uploads/%s/%s", now.Format("2006/01"), keyFilename)
 
@@ -275,7 +257,19 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 		os.Remove(finalPath)
 		return nil, fmt.Errorf("打开合并文件失败: %w", err)
 	}
-	storagePath, err := s.store.Put(ctx, key, mergedFile, task.FileSize, getMimeType(task.Filename))
+
+	// 读前 512 字节检测真实 MIME（不信任客户端声明的扩展名）
+	headBytes := make([]byte, 512)
+	n, _ := mergedFile.Read(headBytes)
+	headBytes = headBytes[:n]
+	detectedMime := upload.DetectMimeType(headBytes)
+	if _, err := mergedFile.Seek(0, io.SeekStart); err != nil {
+		mergedFile.Close()
+		os.Remove(finalPath)
+		return nil, fmt.Errorf("重置文件指针失败: %w", err)
+	}
+
+	storagePath, err := s.store.Put(ctx, key, mergedFile, task.FileSize, detectedMime)
 	mergedFile.Close()
 	os.Remove(finalPath) // 清理本地合并临时文件
 	if err != nil {
@@ -286,14 +280,16 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 	// 与 FileService.CreateFile 保持一致：分片上传的文件同样落入上传者的个人文件空间
 	// （scope_type="user", scope_id=userID），否则 FileSpaceService.AttachUpload 在
 	// 用户空间内查不到该文件，会以 ErrFileSpaceForbidden（403 无权访问群文件）拒绝挂载到群。
+	// file 记录的 Name/OriginalName 使用清洗后的 safeFilename，与普通上传入口保持一致，
+	// 避免用户提交的原始文件名（可能含特殊字符或路径分隔符）落库后被前端/存储层误用。
 	file := &model.File{
 		UserID:       task.UserID,
 		ScopeType:    "user",
 		ScopeID:      task.UserID,
-		Name:         task.Filename,
-		OriginalName: task.Filename,
+		Name:         safeFilename,
+		OriginalName: safeFilename,
 		Size:         task.FileSize,
-		MimeType:     getMimeType(task.Filename),
+		MimeType:     detectedMime,
 		StoragePath:  storagePath,
 		Checksum:     checksum,
 		FolderID:     task.FolderID,
@@ -383,48 +379,6 @@ func generateUploadID() string {
 	data := fmt.Sprintf("%d-%d", timestamp, time.Now().Nanosecond())
 	hash := md5.Sum([]byte(data))
 	return hex.EncodeToString(hash[:])
-}
-
-// getMimeType 获取文件MIME类型
-func getMimeType(filename string) string {
-	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == "" {
-		return "application/octet-stream"
-	}
-
-	// 常见文件类型的MIME映射
-	mimeTypes := map[string]string{
-		".txt":  "text/plain",
-		".pdf":  "application/pdf",
-		".doc":  "application/msword",
-		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		".xls":  "application/vnd.ms-excel",
-		".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		".ppt":  "application/vnd.ms-powerpoint",
-		".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".bmp":  "image/bmp",
-		".svg":  "image/svg+xml",
-		".mp4":  "video/mp4",
-		".avi":  "video/x-msvideo",
-		".mov":  "video/quicktime",
-		".mp3":  "audio/mpeg",
-		".wav":  "audio/wav",
-		".zip":  "application/zip",
-		".rar":  "application/x-rar-compressed",
-		".tar":  "application/x-tar",
-		".gz":   "application/gzip",
-	}
-
-	if mimeType, ok := mimeTypes[ext]; ok {
-		return mimeType
-	}
-
-	// 对于未知扩展名，返回默认类型
-	return "application/octet-stream"
 }
 
 // cleanupChunks 清理临时分片文件

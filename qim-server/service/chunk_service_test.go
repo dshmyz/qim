@@ -90,7 +90,8 @@ func TestChunkService_InitUpload_NewUpload(t *testing.T) {
 
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
-	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-123", nil)
+	// InitUpload 不再接收 fileHash 参数（秒传已移除）
+	task, uploadedIndexes, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, task)
@@ -98,14 +99,14 @@ func TestChunkService_InitUpload_NewUpload(t *testing.T) {
 	assert.Equal(t, user.ID, task.UserID)
 	assert.Equal(t, "test.txt", task.Filename)
 	assert.Equal(t, int64(15*1024*1024), task.FileSize)
-	assert.Equal(t, "file-hash-123", task.FileHash)
 	assert.Equal(t, 3, task.TotalChunks) // 15MB / 5MB = 3 chunks
 	assert.Equal(t, "pending", task.Status)
-	assert.False(t, isInstant)
 	assert.Empty(t, uploadedIndexes)
 }
 
-func TestChunkService_InitUpload_InstantUpload(t *testing.T) {
+// TestChunkService_InitUpload_NoInstantUpload 验证即使存在相同 checksum 的文件也不会触发秒传
+// （秒传功能已移除：存在越权风险且前端算 MD5 性能开销大、命中率低）
+func TestChunkService_InitUpload_NoInstantUpload(t *testing.T) {
 	db := setupChunkServiceTestDB(t)
 	user := createTestUser(t, db)
 
@@ -124,14 +125,14 @@ func TestChunkService_InitUpload_InstantUpload(t *testing.T) {
 	tempDir := t.TempDir()
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
-	// 尝试上传相同哈希的文件
-	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "new.txt", 1024, "same-hash-123", nil)
+	// 即使存在相同 checksum 的文件，也走正常分片流程，不返回秒传
+	task, uploadedIndexes, err := service.InitUpload(user.ID, "new.txt", 1024, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, task)
-	assert.True(t, isInstant)
+	assert.NotEqual(t, "completed", task.Status) // 不再是 completed
+	assert.Equal(t, "pending", task.Status)
 	assert.Empty(t, uploadedIndexes)
-	assert.Equal(t, "completed", task.Status)
 }
 
 func TestChunkService_InitUpload_ResumeUpload(t *testing.T) {
@@ -166,12 +167,11 @@ func TestChunkService_InitUpload_ResumeUpload(t *testing.T) {
 	tempDir := t.TempDir()
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
-	// 尝试继续上传
-	task, uploadedIndexes, isInstant, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-456", nil)
+	// 断点续传：通过 filename + user_id + fileSize 匹配未完成任务
+	task, uploadedIndexes, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, task)
-	assert.False(t, isInstant)
 	assert.Equal(t, "existing-upload-id", task.UploadID)
 	assert.Equal(t, []int{0}, uploadedIndexes)
 }
@@ -184,7 +184,7 @@ func TestChunkService_UploadChunk(t *testing.T) {
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-789", nil)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 准备分片数据
@@ -220,7 +220,7 @@ func TestChunkService_UploadChunk_InvalidHash(t *testing.T) {
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-invalid", nil)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 准备分片数据
@@ -240,7 +240,7 @@ func TestChunkService_CompleteUpload(t *testing.T) {
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-complete", nil)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 上传所有分片
@@ -284,7 +284,7 @@ func TestChunkService_CancelUpload(t *testing.T) {
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-cancel", nil)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 上传一个分片
@@ -365,29 +365,6 @@ func TestChunkService_GenerateUploadID(t *testing.T) {
 	assert.Len(t, id1, 32) // MD5哈希长度
 }
 
-func TestChunkService_GetMimeType(t *testing.T) {
-	tests := []struct {
-		filename string
-		expected string
-	}{
-		{"test.txt", "text/plain"},
-		{"document.pdf", "application/pdf"},
-		{"image.jpg", "image/jpeg"},
-		{"image.jpeg", "image/jpeg"},
-		{"image.png", "image/png"},
-		{"video.mp4", "video/mp4"},
-		{"audio.mp3", "audio/mpeg"},
-		{"unknown.xyz", "application/octet-stream"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.filename, func(t *testing.T) {
-			result := getMimeType(tt.filename)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestChunkService_InitUpload_WithFolder(t *testing.T) {
 	db := setupChunkServiceTestDB(t)
 	user := createTestUser(t, db)
@@ -402,7 +379,7 @@ func TestChunkService_InitUpload_WithFolder(t *testing.T) {
 	tempDir := t.TempDir()
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 10*1024*1024, "file-hash-folder", &folder.ID)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 10*1024*1024, &folder.ID)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, task)
@@ -419,7 +396,7 @@ func TestChunkService_CompleteUpload_VerifyFileIntegrity(t *testing.T) {
 
 	// 创建一个小文件用于测试
 	fileSize := int64(3 * 1024 * 1024) // 3MB
-	task, _, _, _, err := service.InitUpload(user.ID, "integrity.txt", fileSize, "file-hash-integrity", nil)
+	task, _, err := service.InitUpload(user.ID, "integrity.txt", fileSize, nil)
 	assert.NoError(t, err)
 
 	// 创建完整的文件数据
@@ -472,7 +449,7 @@ func TestChunkService_UploadChunk_OutOfOrder(t *testing.T) {
 	service := NewChunkService(db, tempDir, newTestAccessor(t))
 
 	// 创建上传任务
-	task, _, _, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, "file-hash-order", nil)
+	task, _, err := service.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 乱序上传分片

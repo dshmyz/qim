@@ -121,7 +121,6 @@ func TestInitUpload_Success(t *testing.T) {
 	body := map[string]interface{}{
 		"filename":  "test.txt",
 		"file_size": 15 * 1024 * 1024,
-		"file_hash": "test-hash-123",
 	}
 	jsonBody, _ := json.Marshal(body)
 
@@ -141,6 +140,11 @@ func TestInitUpload_Success(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, data["upload_id"])
 	assert.Equal(t, float64(3), data["total_chunks"]) // 15MB / 5MB = 3 chunks
+	// 秒传已移除：响应不应包含 is_quick_upload / file_id 字段
+	_, exists := data["is_quick_upload"]
+	assert.False(t, exists, "响应不应包含 is_quick_upload 字段")
+	_, exists = data["file_id"]
+	assert.False(t, exists, "响应不应包含 file_id 字段")
 }
 
 func TestInitUpload_MissingFields(t *testing.T) {
@@ -174,7 +178,6 @@ func TestInitUpload_WithFolder(t *testing.T) {
 	body := map[string]interface{}{
 		"filename":  "test.txt",
 		"file_size": 10 * 1024 * 1024,
-		"file_hash": "test-hash-folder",
 		"folder_id": folder.ID,
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -198,7 +201,7 @@ func TestUploadChunk_Success(t *testing.T) {
 
 	// 先初始化上传
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-upload", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 准备分片数据
@@ -277,7 +280,7 @@ func TestCompleteUpload_Success(t *testing.T) {
 
 	// 初始化并上传所有分片
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-complete", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 上传所有分片
@@ -322,7 +325,7 @@ func TestCompleteUpload_IncompleteChunks(t *testing.T) {
 
 	// 初始化但不上传所有分片
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-incomplete", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 只上传一个分片
@@ -353,7 +356,7 @@ func TestCancelUpload_Success(t *testing.T) {
 
 	// 初始化上传
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-cancel", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 取消上传

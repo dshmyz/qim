@@ -90,16 +90,3 @@ func (r *chunkRepository) DeleteChunksByUploadID(ctx context.Context, uploadID s
 		Where("upload_id = ?", uploadID).
 		Delete(&model.FileChunk{}).Error
 }
-
-// File 相关操作
-
-func (r *chunkRepository) GetFileByHash(ctx context.Context, fileHash string) (*model.File, error) {
-	var file model.File
-	err := r.db.WithContext(ctx).
-		Where("checksum = ?", fileHash).
-		First(&file).Error
-	if err != nil {
-		return nil, err
-	}
-	return &file, nil
-}
