@@ -226,7 +226,14 @@ const saveApp = async () => {
     await loadApps()
     window.dispatchEvent(new CustomEvent('refresh-user-apps'))
     logger.log('应用保存成功')
-  } catch (error) {
+    QMessage.success(selectedApp.value ? '应用已更新' : '应用已创建')
+  } catch (error: any) {
+    const msg = error?.message || ''
+    if (msg.includes('权限')) {
+      QMessage.error('权限不足，无法执行此操作')
+    } else {
+      QMessage.error('保存应用失败，请稍后重试')
+    }
     console.error('应用保存异常:', error)
   }
 }
@@ -241,7 +248,14 @@ const deleteApp = async (appId: number) => {
       // 通知父组件重新加载用户应用
       window.dispatchEvent(new CustomEvent('refresh-user-apps'))
       logger.log('应用删除成功')
-    } catch (error) {
+      QMessage.success('应用已删除')
+    } catch (error: any) {
+      const msg = error?.message || ''
+      if (msg.includes('权限')) {
+        QMessage.error('权限不足，无法执行此操作')
+      } else {
+        QMessage.error('删除应用失败，请稍后重试')
+      }
       console.error('应用删除异常:', error)
     }
   }

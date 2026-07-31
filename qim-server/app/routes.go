@@ -552,6 +552,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/apps", handler.GetApps)
 			authed.GET("/apps/all", handler.GetAllApps)
 			authed.GET("/apps/built-in", handler.GetBuiltInApps)
+			authed.POST("/apps", handler.CreateApp)
+			authed.PUT("/apps/:id", handler.UpdateApp)
+			authed.DELETE("/apps/:id", handler.DeleteApp)
+			authed.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
 
 			// 统计报表
 			authed.GET("/statistics", handler.GetStatistics)
@@ -618,11 +622,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				adminRoutes.POST("/mini-apps", handler.CreateMiniApp)
 				adminRoutes.PUT("/mini-apps/:id", handler.UpdateMiniApp)
 				adminRoutes.DELETE("/mini-apps/:id", handler.DeleteMiniApp)
-				// 应用管理（仅管理员）
-				adminRoutes.POST("/apps", handler.CreateApp)
-				adminRoutes.PUT("/apps/:id", handler.UpdateApp)
-				adminRoutes.DELETE("/apps/:id", handler.DeleteApp)
-				adminRoutes.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
 
 				// 系统配置
 				adminRoutes.GET("/system/config", handler.GetSystemConfig)
