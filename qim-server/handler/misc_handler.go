@@ -141,22 +141,34 @@ func CreateSystemMessage(c *gin.Context) {
 		usersToNotify = append(usersToNotify, userID.(uint))
 	}
 
+	// 批量创建通知用事务包裹，避免部分失败导致某些用户收不到通知。
+	// WS 推送放事务外：事务回滚时不推送；事务成功后统一推送，保证不推"已回滚的通知"。
+	notifications := make([]model.Notification, 0, len(usersToNotify))
 	for _, notifyUserID := range usersToNotify {
-		notification := model.Notification{
+		notifications = append(notifications, model.Notification{
 			UserID:  notifyUserID,
 			Type:    "system_message",
 			Title:   req.Title,
 			Content: req.Content,
-		}
-		db.Create(&notification)
+		})
+	}
 
-		if ws.GlobalHub != nil {
+	if len(notifications) > 0 {
+		if err := db.CreateInBatches(notifications, 100).Error; err != nil {
+			response.InternalServerError(c, "创建通知失败")
+			return
+		}
+	}
+
+	// 事务成功后再推送 WS
+	if ws.GlobalHub != nil {
+		for _, n := range notifications {
 			notificationMsg := ws.WSMessage{
 				Type: "notification",
-				Data: notification,
+				Data: n,
 			}
 			jsonMsg, _ := json.Marshal(notificationMsg)
-			ws.GlobalHub.SendToUser(notifyUserID, jsonMsg)
+			ws.GlobalHub.SendToUser(n.UserID, jsonMsg)
 		}
 	}
 
