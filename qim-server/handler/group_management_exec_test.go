@@ -40,13 +40,13 @@ func (m *mockToolProvider) ChatWithTools(messages []ai.Message, tools []ai.ToolD
 	}
 	return &ai.ChatResponse{Content: "已将 victim 移出群聊"}, nil
 }
-func (m *mockToolProvider) IsConfigured() bool            { return true }
+func (m *mockToolProvider) IsConfigured() bool                 { return true }
 func (m *mockToolProvider) WithModel(model string) ai.Provider { return m }
 
 // TestExecuteWithToolsMockLLM_KicksMember 用 mock provider 验证完整代管链路：
 // SmartReplyGraph.ExecuteWithTools -> EinoChatModel.Generate ->
-// AIService.GetCompletionWithTools（注入 MCP group_management 工具）->
-// LLM 返回 tool call -> mcpServer.ExecuteTool -> GroupManagementTool 真实移除成员。
+// AIService.GetCompletionWithTools（注入 AI group_management 工具）->
+// LLM 返回 tool call -> toolRegistry.ExecuteTool -> GroupManagementTool 真实移除成员。
 // 不依赖真实 LLM API。这条测试保护 @AI 代管成员的核心代码路径。
 func TestExecuteWithToolsMockLLM_KicksMember(t *testing.T) {
 	// 空 config 建 aiService（pool 空），注入 mock provider
@@ -62,9 +62,9 @@ func TestExecuteWithToolsMockLLM_KicksMember(t *testing.T) {
 			},
 		}},
 	})
-	mcpServer := ai.NewMCPServer(false, aiSvc)
-	RegisterAdminTools(mcpServer)
-	aiSvc.SetMCPServer(mcpServer)
+	toolRegistry := ai.NewToolRegistry(aiSvc)
+	RegisterAdminTools(toolRegistry)
+	aiSvc.SetToolRegistry(toolRegistry)
 
 	// 内存 DB + 种子
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -118,9 +118,9 @@ func TestExecuteWithToolsMockLLM_RejectsPlainMember(t *testing.T) {
 			},
 		}},
 	})
-	mcpServer := ai.NewMCPServer(false, aiSvc)
-	RegisterAdminTools(mcpServer)
-	aiSvc.SetMCPServer(mcpServer)
+	toolRegistry := ai.NewToolRegistry(aiSvc)
+	RegisterAdminTools(toolRegistry)
+	aiSvc.SetToolRegistry(toolRegistry)
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)

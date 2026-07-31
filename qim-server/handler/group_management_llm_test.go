@@ -38,9 +38,9 @@ func TestExecuteWithToolsRealLLM_KicksMember(t *testing.T) {
 	if !aiSvc.IsConfigured() {
 		t.Skip("AI 服务未配置，跳过真实 LLM 端到端测试")
 	}
-	mcpServer := ai.NewMCPServer(false, aiSvc)
-	RegisterAdminTools(mcpServer)
-	aiSvc.SetMCPServer(mcpServer)
+	toolRegistry := ai.NewToolRegistry(aiSvc)
+	RegisterAdminTools(toolRegistry)
+	aiSvc.SetToolRegistry(toolRegistry)
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
