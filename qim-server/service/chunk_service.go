@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/md5"
+	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/repository"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -25,6 +27,7 @@ type ChunkService struct {
 	db      *gorm.DB
 	storage string // 分片存储目录
 	store   StorageAccessor
+	fileSvc *FileService
 }
 
 // NewChunkService 创建分片服务实例
@@ -34,6 +37,7 @@ func NewChunkService(db *gorm.DB, storage string, store StorageAccessor) *ChunkS
 		db:      db,
 		storage: storage,
 		store:   store,
+		fileSvc: NewFileService(db),
 	}
 }
 
@@ -119,14 +123,24 @@ func (s *ChunkService) InitUpload(userID uint, filename string, fileSize int64, 
 	return task, []int{}, nil
 }
 
+// ErrUploadForbidden 表示用户无权操作该上传任务（uploadID 不属于该用户）
+var ErrUploadForbidden = errors.New("无权操作该上传任务")
+
 // UploadChunk 上传分片
-func (s *ChunkService) UploadChunk(uploadID string, chunkIndex int, chunkData []byte, chunkHash string) error {
+// userID 为当前请求用户 ID，必须与任务所属用户一致，否则返回 ErrUploadForbidden
+// 并发安全：使用条件更新确保同一分片不会被重复计数，使用原子 SQL 自增计数器防止竞态
+func (s *ChunkService) UploadChunk(userID uint, uploadID string, chunkIndex int, chunkData []byte, chunkHash string) error {
 	ctx := context.Background()
 
 	// 1. 验证上传任务
 	task, err := s.repo.GetUploadTask(ctx, uploadID)
 	if err != nil {
 		return fmt.Errorf("上传任务不存在: %w", err)
+	}
+
+	// 权限校验：只能操作自己的上传任务，防止 IDOR
+	if task.UserID != userID {
+		return ErrUploadForbidden
 	}
 
 	if task.Status == "completed" {
@@ -141,6 +155,11 @@ func (s *ChunkService) UploadChunk(uploadID string, chunkIndex int, chunkData []
 	chunk, err := s.repo.GetChunk(ctx, uploadID, chunkIndex)
 	if err != nil {
 		return fmt.Errorf("分片记录不存在: %w", err)
+	}
+
+	// 幂等检查：已上传的分片直接返回，不重复写盘、不重复计数
+	if chunk.Status == "uploaded" {
+		return nil
 	}
 
 	// 3. 验证分片哈希
@@ -160,27 +179,50 @@ func (s *ChunkService) UploadChunk(uploadID string, chunkIndex int, chunkData []
 		return fmt.Errorf("保存分片文件失败: %w", err)
 	}
 
-	// 5. 更新分片状态
-	chunk.ChunkHash = chunkHash
-	chunk.ChunkSize = int64(len(chunkData))
-	chunk.Status = "uploaded"
-	if err := s.db.WithContext(ctx).Save(chunk).Error; err != nil {
-		return fmt.Errorf("更新分片状态失败: %w", err)
+	// 5. 更新分片 hash 和 size（非条件更新，同一分片的 hash 总是一致的）
+	// 先更新这些字段，再用条件更新 status 来控制计数
+	if err := s.db.WithContext(ctx).Model(&model.FileChunk{}).
+		Where("upload_id = ? AND chunk_index = ?", uploadID, chunkIndex).
+		Updates(map[string]interface{}{
+			"chunk_hash": chunkHash,
+			"chunk_size": int64(len(chunkData)),
+		}).Error; err != nil {
+		os.Remove(chunk.StoragePath)
+		return fmt.Errorf("更新分片哈希失败: %w", err)
 	}
 
-	// 6. 更新上传任务进度
-	task.UploadedChunks++
-	task.Status = "uploading"
+	// 6. 条件更新分片状态：仅 pending → uploaded 才计数（防止并发重复计数）
+	updated, err := s.repo.ConditionalUpdateChunkStatus(ctx, uploadID, chunkIndex, "pending", "uploaded")
+	if err != nil {
+		// DB 更新失败，回滚已写入的磁盘文件，避免孤儿分片
+		os.Remove(chunk.StoragePath)
+		return fmt.Errorf("更新分片状态失败: %w", err)
+	}
+	if !updated {
+		// 已被其他并发请求更新为 uploaded，本次写入是冗余的，幂等返回。
+		// 注意：不能删除磁盘文件！两个并发请求写的是同一条 chunk 记录的同一个 StoragePath，
+		// 删除会影响成功方的文件，导致 CompleteUpload 时打开分片文件失败。
+		// 文件内容相同（hash 一致），留着无害。
+		return nil
+	}
 
-	if err := s.repo.UpdateUploadTask(ctx, task); err != nil {
-		return fmt.Errorf("更新上传任务失败: %w", err)
+	// 6. 原子自增已上传分片计数 + 标记任务为 uploading
+	// 使用原子 SQL 防止 read-modify-write 竞态（UploadedChunks++ 在并发下会丢失更新）
+	if err := s.repo.AtomicIncrementUploadedChunks(ctx, uploadID); err != nil {
+		// 计数失败不影响分片已上传的事实，CompleteUpload 会通过实际查询 chunk 状态来校验
+		logger.WithModule("ChunkService").Error("原子自增已上传分片数失败", "upload_id", uploadID, "error", err)
+	}
+	if err := s.repo.MarkTaskUploading(ctx, uploadID); err != nil {
+		// 非关键错误，任务可能已经是 uploading 状态
+		logger.WithModule("ChunkService").Error("标记任务为 uploading 失败", "upload_id", uploadID, "error", err)
 	}
 
 	return nil
 }
 
 // CompleteUpload 完成上传
-func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
+// userID 为当前请求用户 ID，必须与任务所属用户一致，否则返回 ErrUploadForbidden
+func (s *ChunkService) CompleteUpload(userID uint, uploadID string) (*model.File, error) {
 	ctx := context.Background()
 
 	// 1. 获取上传任务
@@ -189,8 +231,17 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 		return nil, fmt.Errorf("上传任务不存在: %w", err)
 	}
 
+	// 权限校验：只能操作自己的上传任务，防止 IDOR
+	if task.UserID != userID {
+		return nil, ErrUploadForbidden
+	}
+
 	if task.Status == "completed" {
 		return nil, errors.New("上传任务已完成")
+	}
+
+	if task.Status == "cancelled" {
+		return nil, errors.New("上传任务已取消")
 	}
 
 	// 2. 获取所有分片
@@ -276,16 +327,11 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 		return nil, fmt.Errorf("上传合并文件失败: %w", err)
 	}
 
-	// 7. 创建文件记录
-	// 与 FileService.CreateFile 保持一致：分片上传的文件同样落入上传者的个人文件空间
-	// （scope_type="user", scope_id=userID），否则 FileSpaceService.AttachUpload 在
-	// 用户空间内查不到该文件，会以 ErrFileSpaceForbidden（403 无权访问群文件）拒绝挂载到群。
-	// file 记录的 Name/OriginalName 使用清洗后的 safeFilename，与普通上传入口保持一致，
-	// 避免用户提交的原始文件名（可能含特殊字符或路径分隔符）落库后被前端/存储层误用。
+	// 7. 在事务中创建文件记录 + 更新任务状态，防止中间不一致
+	// 事务失败时回滚已上传的存储文件，避免孤儿文件（与普通上传 file_handler.go 的 saved.Cleanup 对齐）
+	// file 记录的 scope 由 FileService.CreateFileInTx 统一设置（"user" + UserID）
 	file := &model.File{
 		UserID:       task.UserID,
-		ScopeType:    "user",
-		ScopeID:      task.UserID,
 		Name:         safeFilename,
 		OriginalName: safeFilename,
 		Size:         task.FileSize,
@@ -297,14 +343,24 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 		SourceID:     uploadID,
 	}
 
-	if err := s.db.WithContext(ctx).Create(file).Error; err != nil {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 走 FileService.CreateFileInTx 统一入口，确保 scope 设置和存储路径锁一致
+		if err := s.fileSvc.CreateFileInTx(tx, file); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.UploadTask{}).
+			Where("upload_id = ?", uploadID).
+			Update("status", "completed").Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		// 事务失败：DB 记录未创建，回滚已上传的存储文件，避免孤儿文件
+		if delErr := s.store.DeleteByPath(ctx, storagePath); delErr != nil {
+			logger.WithModule("ChunkService").Error("回滚存储文件失败", "path", storagePath, "error", delErr)
+		}
 		return nil, fmt.Errorf("创建文件记录失败: %w", err)
-	}
-
-	// 7. 更新上传任务状态
-	task.Status = "completed"
-	if err := s.repo.UpdateUploadTask(ctx, task); err != nil {
-		return nil, fmt.Errorf("更新上传任务状态失败: %w", err)
 	}
 
 	// 8. 清理临时分片文件
@@ -314,7 +370,9 @@ func (s *ChunkService) CompleteUpload(uploadID string) (*model.File, error) {
 }
 
 // CancelUpload 取消上传
-func (s *ChunkService) CancelUpload(uploadID string) error {
+// userID 为当前请求用户 ID，必须与任务所属用户一致，否则返回 ErrUploadForbidden
+// 并发安全：先抢占式标记 cancelled，再删 DB 记录，最后删物理文件
+func (s *ChunkService) CancelUpload(userID uint, uploadID string) error {
 	ctx := context.Background()
 
 	// 1. 获取上传任务
@@ -323,32 +381,57 @@ func (s *ChunkService) CancelUpload(uploadID string) error {
 		return fmt.Errorf("上传任务不存在: %w", err)
 	}
 
+	// 权限校验：只能操作自己的上传任务，防止 IDOR
+	if task.UserID != userID {
+		return ErrUploadForbidden
+	}
+
 	if task.Status == "completed" {
 		return errors.New("上传任务已完成，无法取消")
 	}
+	if task.Status == "cancelled" {
+		return nil // 幂等：已取消的任务再次取消返回成功
+	}
 
-	// 2. 删除分片文件
+	// 2. 抢占式标记任务为 cancelled，防止与正在进行的 UploadChunk 冲突
+	// 抢占成功后，UploadChunk 入口检查 task.Status == "cancelled" 会拒绝新分片上传
+	grabbed, err := s.repo.MarkTaskCancelled(ctx, uploadID)
+	if err != nil {
+		return fmt.Errorf("取消任务失败: %w", err)
+	}
+	if !grabbed {
+		return errors.New("任务状态已变更，无法取消")
+	}
+
+	// 3. 获取分片列表（用于后续删除物理文件）
 	chunks, err := s.repo.GetChunksByUploadID(ctx, uploadID)
 	if err != nil {
 		return fmt.Errorf("获取分片列表失败: %w", err)
 	}
 
+	// 4. 在事务中删除分片记录和任务记录，确保原子性
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("upload_id = ?", uploadID).Delete(&model.FileChunk{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("upload_id = ?", uploadID).Delete(&model.UploadTask{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("删除上传记录失败: %w", err)
+	}
+
+	// 5. 删除物理分片文件（DB 删除成功后，物理文件删除失败只是孤儿文件，可由后台 GC 兜底）
 	for _, chunk := range chunks {
-		os.Remove(chunk.StoragePath)
+		if err := os.Remove(chunk.StoragePath); err != nil && !os.IsNotExist(err) {
+			logger.WithModule("ChunkService").Error("删除分片文件失败", "path", chunk.StoragePath, "error", err)
+		}
 	}
-
-	// 3. 删除分片目录
 	chunkDir := filepath.Join(s.storage, uploadID)
-	os.RemoveAll(chunkDir)
-
-	// 4. 删除分片记录
-	if err := s.repo.DeleteChunksByUploadID(ctx, uploadID); err != nil {
-		return fmt.Errorf("删除分片记录失败: %w", err)
-	}
-
-	// 5. 删除上传任务
-	if err := s.repo.DeleteUploadTask(ctx, uploadID); err != nil {
-		return fmt.Errorf("删除上传任务失败: %w", err)
+	if err := os.RemoveAll(chunkDir); err != nil {
+		logger.WithModule("ChunkService").Error("删除分片目录失败", "path", chunkDir, "error", err)
 	}
 
 	return nil
@@ -374,11 +457,17 @@ func (s *ChunkService) calculateChunkSize(fileSize int64) int64 {
 }
 
 // generateUploadID 生成唯一上传ID
+// 使用 crypto/rand 提供 128 位随机熵，防止攻击者预测 uploadID 后利用 IDOR 接管他人上传任务
 func generateUploadID() string {
-	timestamp := time.Now().UnixNano()
-	data := fmt.Sprintf("%d-%d", timestamp, time.Now().Nanosecond())
-	hash := md5.Sum([]byte(data))
-	return hex.EncodeToString(hash[:])
+	b := make([]byte, 16)
+	if _, err := crand.Read(b); err != nil {
+		// 极端情况下 crypto/rand 失败，回退到时间戳+随机数（不应发生）
+		timestamp := time.Now().UnixNano()
+		data := fmt.Sprintf("%d-%d", timestamp, time.Now().Nanosecond())
+		hash := md5.Sum([]byte(data))
+		return hex.EncodeToString(hash[:])
+	}
+	return hex.EncodeToString(b)
 }
 
 // cleanupChunks 清理临时分片文件
@@ -387,18 +476,25 @@ func (s *ChunkService) cleanupChunks(uploadID string) {
 
 	chunks, err := s.repo.GetChunksByUploadID(ctx, uploadID)
 	if err != nil {
+		logger.WithModule("ChunkService").Error("清理分片：获取分片列表失败", "upload_id", uploadID, "error", err)
 		return
 	}
 
 	// 删除分片文件
 	for _, chunk := range chunks {
-		os.Remove(chunk.StoragePath)
+		if err := os.Remove(chunk.StoragePath); err != nil && !os.IsNotExist(err) {
+			logger.WithModule("ChunkService").Error("清理分片：删除分片文件失败", "path", chunk.StoragePath, "error", err)
+		}
 	}
 
 	// 删除分片目录
 	chunkDir := filepath.Join(s.storage, uploadID)
-	os.RemoveAll(chunkDir)
+	if err := os.RemoveAll(chunkDir); err != nil {
+		logger.WithModule("ChunkService").Error("清理分片：删除分片目录失败", "path", chunkDir, "error", err)
+	}
 
 	// 删除分片记录
-	s.repo.DeleteChunksByUploadID(ctx, uploadID)
+	if err := s.repo.DeleteChunksByUploadID(ctx, uploadID); err != nil {
+		logger.WithModule("ChunkService").Error("清理分片：删除分片记录失败", "upload_id", uploadID, "error", err)
+	}
 }

@@ -17,7 +17,9 @@ import (
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
 	"github.com/dshmyz/qim/qim-server/web"
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -214,30 +216,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	})
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
 
-	// 静态文件服务（带缓存头 + 路径遍历防护）
-	r.GET("/uploads/*filepath", func(c *gin.Context) {
+	// 静态资源服务（统一入口，走 StorageManager，自动适配 local/s3 后端）
+	// 路径格式：/static/<key>，如 /static/uploads/2026/01/xxx.png
+	r.GET("/static/*filepath", func(c *gin.Context) {
 		fp := c.Param("filepath")
 		if strings.Contains(fp, "..") {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := cfg.Static.UploadsDir
-		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
-		if !strings.HasPrefix(cleanPath, baseDir) {
-			c.AbortWithStatus(http.StatusForbidden)
-			return
-		}
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.File(cleanPath)
-	})
-	// S3 存储代理：/s3/uploads/... 即 StoragePath，走存储抽象读取（S3 模式下文件不在本地）
-	r.GET("/s3/*filepath", func(c *gin.Context) {
-		fp := c.Param("filepath")
-		if strings.Contains(fp, "..") {
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		storagePath := "/s3" + fp
+		storagePath := storage.StaticPrefix + strings.TrimPrefix(fp, "/")
 		mgr := di.GlobalContainer.StorageManager
 		st, key, ok := mgr.ByPath(storagePath)
 		if !ok || st == nil {
@@ -253,8 +240,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		}
 		defer reader.Close()
 		c.Header("Cache-Control", "public, max-age=86400")
+		c.Header("X-Content-Type-Options", "nosniff")
 		if ct := mime.TypeByExtension(filepath.Ext(storagePath)); ct != "" {
 			c.Header("Content-Type", ct)
+		}
+		// 危险类型（html/svg/js等）强制下载，防止存储型 XSS
+		if upload.ShouldForceDownload(storagePath) {
+			c.Header("Content-Disposition", "attachment")
 		}
 		if _, err := io.Copy(c.Writer, reader); err != nil {
 			return
@@ -471,7 +463,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/files/:id", handler.UpdateFile)
 			authed.PUT("/files/:id/star", handler.ToggleStar)
 			authed.GET("/files/:id/download", handler.DownloadFile)
-			authed.GET("/files/:id/preview", handler.PreviewFile)
 			authed.DELETE("/files/:id", handler.DeleteFile)
 
 			// 分片上传

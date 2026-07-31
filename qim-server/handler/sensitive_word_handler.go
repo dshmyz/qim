@@ -3,12 +3,15 @@ package handler
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
@@ -202,15 +205,51 @@ func BatchCreateSensitiveWords(c *gin.Context) {
 	response.Success(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
 }
 
+// importPolicy 是 CSV 导入专用的上传策略：仅允许 .csv，大小限制 10MB。
+// 复用 upload.Policy 统一校验逻辑，避免散落的自定义校验。
+var importPolicy = upload.NewPolicy(
+	upload.DefaultImportMaxSize,
+	map[string]bool{".csv": true},
+	true, // 启用白名单校验
+)
+
 func ImportSensitiveWords(c *gin.Context) {
-	file, _, err := c.Request.FormFile("file")
+	// MaxBytesReader 保护：防止超大 multipart 请求在解析阶段就耗尽内存
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, importPolicy.MaxSize+64*1024)
+	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		response.BadRequest(c, "上传文件失败")
 		return
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	// 统一走 upload.Policy 校验：大小 + 类型（黑名单 + 白名单）
+	if err := importPolicy.ValidateSize(header.Size); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := importPolicy.ValidateType(header.Filename, ""); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// 读取文件头检测真实 MIME，防止伪装扩展名（.csv 实为 .exe）
+	headBuf := make([]byte, 512)
+	n, _ := file.Read(headBuf)
+	headBuf = headBuf[:n]
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		response.BadRequest(c, "读取文件失败")
+		return
+	}
+	detectedMime := upload.DetectMimeType(headBuf)
+	if err := importPolicy.ValidateType(header.Filename, detectedMime); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// 限制读取字节数，防止实际内容超过 header 声称的大小
+	limitedReader := io.LimitReader(file, importPolicy.MaxSize+1)
+	reader := csv.NewReader(limitedReader)
 	records, err := reader.ReadAll()
 	if err != nil {
 		response.BadRequest(c, "CSV文件解析失败")

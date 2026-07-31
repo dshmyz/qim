@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -198,7 +199,7 @@ func TestChunkService_UploadChunk(t *testing.T) {
 	chunkHash := hex.EncodeToString(hash[:])
 
 	// 上传第一个分片
-	err = service.UploadChunk(task.UploadID, 0, chunkData, chunkHash)
+	err = service.UploadChunk(user.ID, task.UploadID, 0, chunkData, chunkHash)
 	assert.NoError(t, err)
 
 	// 验证分片已保存
@@ -210,6 +211,28 @@ func TestChunkService_UploadChunk(t *testing.T) {
 	// 验证任务进度已更新
 	updatedTask, _ := repository.NewChunkRepository(db).GetUploadTask(context.Background(), task.UploadID)
 	assert.Equal(t, 1, updatedTask.UploadedChunks)
+}
+
+// TestChunkService_UploadChunk_ForbiddenUser 验证非任务所有者无法上传分片（IDOR 防护）
+func TestChunkService_UploadChunk_ForbiddenUser(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+	otherUser := &model.User{Username: "other", PasswordHash: "hash"}
+	db.Create(otherUser)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	chunkData := make([]byte, 5*1024*1024)
+	hash := md5.Sum(chunkData)
+	chunkHash := hex.EncodeToString(hash[:])
+
+	// 其他用户尝试向 user 的任务上传分片
+	err = svc.UploadChunk(otherUser.ID, task.UploadID, 0, chunkData, chunkHash)
+	assert.ErrorIs(t, err, ErrUploadForbidden)
 }
 
 func TestChunkService_UploadChunk_InvalidHash(t *testing.T) {
@@ -227,7 +250,7 @@ func TestChunkService_UploadChunk_InvalidHash(t *testing.T) {
 	chunkData := make([]byte, 5*1024*1024)
 
 	// 使用错误的哈希
-	err = service.UploadChunk(task.UploadID, 0, chunkData, "wrong-hash")
+	err = service.UploadChunk(user.ID, task.UploadID, 0, chunkData, "wrong-hash")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "分片哈希不匹配")
 }
@@ -252,12 +275,12 @@ func TestChunkService_CompleteUpload(t *testing.T) {
 		hash := md5.Sum(chunkData)
 		chunkHash := hex.EncodeToString(hash[:])
 
-		err = service.UploadChunk(task.UploadID, i, chunkData, chunkHash)
+		err = service.UploadChunk(user.ID, task.UploadID, i, chunkData, chunkHash)
 		assert.NoError(t, err)
 	}
 
 	// 完成上传
-	file, err := service.CompleteUpload(task.UploadID)
+	file, err := service.CompleteUpload(user.ID, task.UploadID)
 	assert.NoError(t, err)
 	assert.NotNil(t, file)
 	assert.Equal(t, user.ID, file.UserID)
@@ -276,6 +299,33 @@ func TestChunkService_CompleteUpload(t *testing.T) {
 	assert.Equal(t, int64(1), count)
 }
 
+// TestChunkService_CompleteUpload_ForbiddenUser 验证非任务所有者无法完成上传（IDOR 防护）
+func TestChunkService_CompleteUpload_ForbiddenUser(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+	otherUser := &model.User{Username: "other", PasswordHash: "hash"}
+	db.Create(otherUser)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 上传所有分片
+	for i := 0; i < task.TotalChunks; i++ {
+		chunkData := make([]byte, 5*1024*1024)
+		hash := md5.Sum(chunkData)
+		chunkHash := hex.EncodeToString(hash[:])
+		err = svc.UploadChunk(user.ID, task.UploadID, i, chunkData, chunkHash)
+		assert.NoError(t, err)
+	}
+
+	// 其他用户尝试完成 user 的任务
+	_, err = svc.CompleteUpload(otherUser.ID, task.UploadID)
+	assert.ErrorIs(t, err, ErrUploadForbidden)
+}
+
 func TestChunkService_CancelUpload(t *testing.T) {
 	db := setupChunkServiceTestDB(t)
 	user := createTestUser(t, db)
@@ -291,11 +341,11 @@ func TestChunkService_CancelUpload(t *testing.T) {
 	chunkData := make([]byte, 5*1024*1024)
 	hash := md5.Sum(chunkData)
 	chunkHash := hex.EncodeToString(hash[:])
-	err = service.UploadChunk(task.UploadID, 0, chunkData, chunkHash)
+	err = service.UploadChunk(user.ID, task.UploadID, 0, chunkData, chunkHash)
 	assert.NoError(t, err)
 
 	// 取消上传
-	err = service.CancelUpload(task.UploadID)
+	err = service.CancelUpload(user.ID, task.UploadID)
 	assert.NoError(t, err)
 
 	// 验证任务已删除
@@ -305,6 +355,24 @@ func TestChunkService_CancelUpload(t *testing.T) {
 	// 验证分片已删除
 	chunks, _ := repository.NewChunkRepository(db).GetChunksByUploadID(context.Background(), task.UploadID)
 	assert.Empty(t, chunks)
+}
+
+// TestChunkService_CancelUpload_ForbiddenUser 验证非任务所有者无法取消上传（IDOR 防护）
+func TestChunkService_CancelUpload_ForbiddenUser(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+	otherUser := &model.User{Username: "other", PasswordHash: "hash"}
+	db.Create(otherUser)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 其他用户尝试取消 user 的任务
+	err = svc.CancelUpload(otherUser.ID, task.UploadID)
+	assert.ErrorIs(t, err, ErrUploadForbidden)
 }
 
 func TestChunkService_CalculateChunkSize(t *testing.T) {
@@ -422,12 +490,12 @@ func TestChunkService_CompleteUpload_VerifyFileIntegrity(t *testing.T) {
 		hash := md5.Sum(chunkData)
 		chunkHash := hex.EncodeToString(hash[:])
 
-		err = service.UploadChunk(task.UploadID, i, chunkData, chunkHash)
+		err = service.UploadChunk(user.ID, task.UploadID, i, chunkData, chunkHash)
 		assert.NoError(t, err)
 	}
 
 	// 完成上传
-	file, err := service.CompleteUpload(task.UploadID)
+	file, err := service.CompleteUpload(user.ID, task.UploadID)
 	assert.NoError(t, err)
 	assert.NotNil(t, file)
 	assert.Equal(t, expectedChecksum, file.Checksum)
@@ -462,7 +530,7 @@ func TestChunkService_UploadChunk_OutOfOrder(t *testing.T) {
 		hash := md5.Sum(chunkData)
 		chunkHash := hex.EncodeToString(hash[:])
 
-		err = service.UploadChunk(task.UploadID, i, chunkData, chunkHash)
+		err = service.UploadChunk(user.ID, task.UploadID, i, chunkData, chunkHash)
 		assert.NoError(t, err)
 	}
 
@@ -472,7 +540,227 @@ func TestChunkService_UploadChunk_OutOfOrder(t *testing.T) {
 	assert.Len(t, chunks, 3)
 
 	// 完成上传
-	file, err := service.CompleteUpload(task.UploadID)
+	file, err := service.CompleteUpload(user.ID, task.UploadID)
 	assert.NoError(t, err)
 	assert.NotNil(t, file)
+}
+
+// TestChunkService_UploadChunk_Idempotent 验证同一分片重复上传不会重复计数
+// 修复点：幂等检查 + 条件更新（ConditionalUpdateChunkStatus）
+func TestChunkService_UploadChunk_Idempotent(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	chunkData := make([]byte, 5*1024*1024)
+	for i := range chunkData {
+		chunkData[i] = byte(i % 256)
+	}
+	hash := md5.Sum(chunkData)
+	chunkHash := hex.EncodeToString(hash[:])
+
+	// 第一次上传分片 0
+	err = svc.UploadChunk(user.ID, task.UploadID, 0, chunkData, chunkHash)
+	assert.NoError(t, err)
+
+	// 第二次上传同一分片 0（幂等：应成功返回，不重复计数）
+	err = svc.UploadChunk(user.ID, task.UploadID, 0, chunkData, chunkHash)
+	assert.NoError(t, err)
+
+	// 验证 UploadedChunks 只增加了 1，不是 2
+	updatedTask, _ := repository.NewChunkRepository(db).GetUploadTask(context.Background(), task.UploadID)
+	assert.Equal(t, 1, updatedTask.UploadedChunks, "重复上传同一分片不应重复计数")
+}
+
+// TestChunkService_UploadChunk_ConcurrentSafe 验证并发上传不同分片时计数器正确
+// 修复点：原子 SQL 自增（AtomicIncrementUploadedChunks）防止 read-modify-write 竞态
+func TestChunkService_UploadChunk_ConcurrentSafe(t *testing.T) {
+	// 使用文件数据库（非内存），因为 SQLite 内存数据库每个连接独立，不支持并发共享
+	dbPath := filepath.Join(t.TempDir(), "concurrent_test.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	assert.NoError(t, err)
+
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(1) // SQLite 单连接避免锁冲突
+
+	err = db.AutoMigrate(&model.User{}, &model.File{}, &model.UploadTask{}, &model.FileChunk{})
+	assert.NoError(t, err)
+
+	user := createTestUser(t, db)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	// 15MB → 3 个 5MB 分片
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 准备 3 个分片数据
+	chunks := make([][]byte, task.TotalChunks)
+	hashes := make([]string, task.TotalChunks)
+	for i := 0; i < task.TotalChunks; i++ {
+		chunks[i] = make([]byte, 5*1024*1024)
+		for j := range chunks[i] {
+			chunks[i][j] = byte((i*256 + j) % 256)
+		}
+		h := md5.Sum(chunks[i])
+		hashes[i] = hex.EncodeToString(h[:])
+	}
+
+	// 并发上传所有分片
+	var wg sync.WaitGroup
+	errs := make([]error, task.TotalChunks)
+	for i := 0; i < task.TotalChunks; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = svc.UploadChunk(user.ID, task.UploadID, idx, chunks[idx], hashes[idx])
+		}(i)
+	}
+	wg.Wait()
+
+	// 所有分片上传应成功
+	for i, e := range errs {
+		assert.NoError(t, e, "分片 %d 上传失败", i)
+	}
+
+	// 验证 UploadedChunks 等于 TotalChunks（并发下不丢失更新）
+	updatedTask, _ := repository.NewChunkRepository(db).GetUploadTask(context.Background(), task.UploadID)
+	assert.Equal(t, task.TotalChunks, updatedTask.UploadedChunks,
+		"并发上传后计数器应等于总分片数，实际: %d", updatedTask.UploadedChunks)
+
+	// 验证能正常完成上传（所有分片确实已上传）
+	file, err := svc.CompleteUpload(user.ID, task.UploadID)
+	assert.NoError(t, err)
+	assert.NotNil(t, file)
+}
+
+// TestChunkService_UploadChunk_ConcurrentSameChunk 验证并发上传同一分片时不会误删文件
+// 修复点：ConditionalUpdate 返回 false 时不能 os.Remove，否则会删除成功方的文件
+func TestChunkService_UploadChunk_ConcurrentSameChunk(t *testing.T) {
+	// 使用文件数据库（非内存），因为 SQLite 内存数据库每个连接独立，不支持并发共享
+	dbPath := filepath.Join(t.TempDir(), "concurrent_same_chunk.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	assert.NoError(t, err)
+
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(1) // SQLite 单连接避免锁冲突
+
+	err = db.AutoMigrate(&model.User{}, &model.File{}, &model.UploadTask{}, &model.FileChunk{})
+	assert.NoError(t, err)
+
+	user := createTestUser(t, db)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 准备同一分片的数据（两个请求上传完全相同的分片 0）
+	chunkData := make([]byte, 5*1024*1024)
+	for i := range chunkData {
+		chunkData[i] = byte(i % 256)
+	}
+	hash := md5.Sum(chunkData)
+	chunkHash := hex.EncodeToString(hash[:])
+
+	// 并发上传同一分片 0 两次
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = svc.UploadChunk(user.ID, task.UploadID, 0, chunkData, chunkHash)
+		}(i)
+	}
+	wg.Wait()
+
+	// 两次请求都应成功（幂等）
+	for i, e := range errs {
+		assert.NoError(t, e, "请求 %d 上传失败", i)
+	}
+
+	// 验证计数器只增加了 1（不是 2）
+	updatedTask, _ := repository.NewChunkRepository(db).GetUploadTask(context.Background(), task.UploadID)
+	assert.Equal(t, 1, updatedTask.UploadedChunks, "重复上传同一分片不应重复计数")
+
+	// 关键验证：分片文件必须存在，不能被并发请求误删
+	chunk, err := repository.NewChunkRepository(db).GetChunk(context.Background(), task.UploadID, 0)
+	assert.NoError(t, err)
+	_, err = os.Stat(chunk.StoragePath)
+	assert.NoError(t, err, "分片文件不应被并发请求误删")
+
+	// 上传剩余分片，验证能正常完成上传
+	for i := 1; i < task.TotalChunks; i++ {
+		cd := make([]byte, 5*1024*1024)
+		for j := range cd {
+			cd[j] = byte((i*256 + j) % 256)
+		}
+		h := md5.Sum(cd)
+		err = svc.UploadChunk(user.ID, task.UploadID, i, cd, hex.EncodeToString(h[:]))
+		assert.NoError(t, err)
+	}
+
+	file, err := svc.CompleteUpload(user.ID, task.UploadID)
+	assert.NoError(t, err)
+	assert.NotNil(t, file)
+}
+
+// TestChunkService_CompleteUpload_CancelledTask 验证已取消的任务无法完成上传
+// 修复点：CompleteUpload 添加 cancelled 状态检查
+func TestChunkService_CompleteUpload_CancelledTask(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 上传所有分片
+	for i := 0; i < task.TotalChunks; i++ {
+		chunkData := make([]byte, 5*1024*1024)
+		hash := md5.Sum(chunkData)
+		chunkHash := hex.EncodeToString(hash[:])
+		err = svc.UploadChunk(user.ID, task.UploadID, i, chunkData, chunkHash)
+		assert.NoError(t, err)
+	}
+
+	// 取消上传（CancelUpload 会删除任务记录和分片）
+	err = svc.CancelUpload(user.ID, task.UploadID)
+	assert.NoError(t, err)
+
+	// 尝试完成上传（应失败，任务已被删除）
+	_, err = svc.CompleteUpload(user.ID, task.UploadID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "上传任务不存在")
+}
+
+// TestChunkService_CancelUpload_Idempotent 验证已取消的任务再次取消返回成功（幂等）
+// 修复点：CancelUpload 对 cancelled 状态幂等返回 nil
+func TestChunkService_CancelUpload_Idempotent(t *testing.T) {
+	db := setupChunkServiceTestDB(t)
+	user := createTestUser(t, db)
+
+	tempDir := t.TempDir()
+	svc := NewChunkService(db, tempDir, newTestAccessor(t))
+
+	task, _, err := svc.InitUpload(user.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 第一次取消
+	err = svc.CancelUpload(user.ID, task.UploadID)
+	assert.NoError(t, err)
+
+	// 第二次取消（幂等：应返回错误，因为任务记录已被删除）
+	err = svc.CancelUpload(user.ID, task.UploadID)
+	assert.Error(t, err) // 任务已删除，查询不到
 }

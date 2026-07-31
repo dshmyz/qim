@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/middleware"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/scheduler"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -42,6 +43,7 @@ type Container struct {
 	AvatarService        *service.AvatarService
 	ApprovalService      *service.ApprovalService
 	VersionService       *service.VersionService
+	CLIVersionService    *service.CLIVersionService    // Deprecated: CLI 版本已迁移到 VersionService (app_type="cli")，保留用于向后兼容
 	BlacklistService     *service.BlacklistService
 	OperationLogService  *service.OperationLogService
 	SystemConfigService  *service.SystemConfigService
@@ -80,6 +82,25 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		if _, err := aiProviderService.ReloadEnabledProviders(aiService); err != nil {
 			logger.WithModule("DI").Warn("从数据库加载 AI Provider 失败", "error", err)
 		}
+
+		// Token 用量异步落库：每次 LLM 调用完成后写入 ai_usage_logs 表
+		aiService.SetUsageSink(func(taskType ai.TaskType, providerName, modelName string, usage *ai.TokenUsage, durationMs int64) {
+			go func() {
+				log := model.AIUsageLog{
+					Provider:  providerName,
+					Model:     modelName,
+					TaskType:  string(taskType),
+					CallType:  "chat",
+					TokensIn:  usage.PromptTokens,
+					TokensOut: usage.CompletionTokens,
+					Duration:  durationMs,
+					Status:    "success",
+				}
+				if err := db.Create(&log).Error; err != nil {
+					logger.WithModule("AIUsage").Warn("token 用量落库失败", "error", err)
+				}
+			}()
+		})
 	}
 
 	userService := service.NewUserService(db)
@@ -132,6 +153,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
 	versionService := service.NewVersionService(db, storageAccessor)
+	cliVersionService := service.NewCLIVersionService("data/cli")
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
@@ -206,6 +228,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		AvatarService:        avatarService,
 		ApprovalService:      approvalService,
 		VersionService:       versionService,
+		CLIVersionService:    cliVersionService,
 		BlacklistService:     blacklistService,
 		OperationLogService:  operationLogService,
 		SystemConfigService:  systemConfigService,

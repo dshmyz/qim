@@ -50,6 +50,18 @@ func (s *FileService) CreateFile(file *model.File) error {
 	})
 }
 
+// CreateFileInTx 在指定事务内创建文件记录。
+// 用于分片上传 CompleteUpload 等需要在同一事务内更新其他记录的场景，
+// 确保走统一的 file 记录创建逻辑（scope 设置、存储路径锁），避免绕过 FileService。
+// 注意：调用方负责事务的提交/回滚。
+func (s *FileService) CreateFileInTx(tx *gorm.DB, file *model.File) error {
+	file.ScopeType = "user"
+	file.ScopeID = file.UserID
+	return withStoragePathLock(file.StoragePath, func() error {
+		return tx.Create(file).Error
+	})
+}
+
 func (s *FileService) GetFile(userID, fileID uint) (*model.File, error) {
 	ctx := context.Background()
 	var file model.File

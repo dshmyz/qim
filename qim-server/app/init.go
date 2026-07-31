@@ -12,6 +12,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 	"github.com/dshmyz/qim/qim-server/test"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -436,6 +437,63 @@ func MigrateDB(db *gorm.DB) error {
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+
+	if err := migrateStoragePaths(db); err != nil {
+		return fmt.Errorf("迁移存储路径失败: %w", err)
+	}
+
+	return nil
+}
+
+// migrateStoragePaths 将历史 storage_path 从旧格式迁移到 /static/ 统一前缀。
+// 旧格式：/uploads/xxx 或 /s3/uploads/xxx
+// 新格式：/static/uploads/xxx
+// 幂等：已经是 /static/ 开头的不动。
+func migrateStoragePaths(db *gorm.DB) error {
+	tables := []struct {
+		name   string
+		column string
+	}{
+		{"files", "storage_path"},
+		{"user_feedbacks", "screenshot"},
+	}
+
+	for _, t := range tables {
+		if !tableExists(db, t.name) {
+			continue
+		}
+
+		// SQLite 不支持在 UPDATE 中用复杂字符串函数，这里先查出再逐条更新
+		type legacyRow struct {
+			ID    uint
+			Value string
+		}
+		var rows []legacyRow
+		if err := db.Table(t.name).
+			Select("id, " + t.column + " AS value").
+			Where(t.column + " LIKE '/uploads/%' OR " + t.column + " LIKE '/s3/%'").
+			Find(&rows).Error; err != nil {
+			return fmt.Errorf("查询 %s.%s 旧格式数据失败: %w", t.name, t.column, err)
+		}
+
+		if len(rows) == 0 {
+			continue
+		}
+
+		logger.WithModule("Migrate").Info("迁移存储路径", "table", t.name, "column", t.column, "count", len(rows))
+
+		for _, row := range rows {
+			newPath := storage.MigratePath(row.Value)
+			if newPath == row.Value {
+				continue
+			}
+			if err := db.Table(t.name).Where("id = ?", row.ID).
+				Update(t.column, newPath).Error; err != nil {
+				return fmt.Errorf("更新 %s.%s (id=%d) 失败: %w", t.name, t.column, row.ID, err)
+			}
+		}
+	}
+
 	return nil
 }
 

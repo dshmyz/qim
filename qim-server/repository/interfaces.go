@@ -99,6 +99,15 @@ type ChunkRepository interface {
 	GetUploadTask(ctx context.Context, uploadID string) (*model.UploadTask, error)
 	UpdateUploadTask(ctx context.Context, task *model.UploadTask) error
 	DeleteUploadTask(ctx context.Context, uploadID string) error
+	// AtomicIncrementUploadedChunks 原子自增已上传分片数，防止并发 read-modify-write 竞态
+	AtomicIncrementUploadedChunks(ctx context.Context, uploadID string) error
+	// MarkTaskUploading 将任务从 pending 标记为 uploading（非关键，已 uploading 时无操作）
+	MarkTaskUploading(ctx context.Context, uploadID string) error
+	// MarkTaskCancelled 抢占式将任务标记为 cancelled，仅在 pending/uploading 时成功
+	// 返回是否抢占成功（RowsAffected > 0）
+	MarkTaskCancelled(ctx context.Context, uploadID string) (bool, error)
+	// MarkTaskCompleted 抢占式将任务标记为 completed，仅在非 completed/cancelled 时成功
+	MarkTaskCompleted(ctx context.Context, uploadID string) error
 
 	// FileChunk 相关操作
 	CreateChunk(ctx context.Context, chunk *model.FileChunk) error
@@ -106,5 +115,8 @@ type ChunkRepository interface {
 	GetChunksByUploadID(ctx context.Context, uploadID string) ([]model.FileChunk, error)
 	GetUploadedChunkIndexes(ctx context.Context, uploadID string) ([]int, error)
 	UpdateChunkStatus(ctx context.Context, uploadID string, chunkIndex int, status string) error
+	// ConditionalUpdateChunkStatus 条件更新分片状态：仅当当前状态等于 expectFrom 时更新为 newStatus
+	// 返回是否实际更新了（RowsAffected > 0），用于幂等控制和并发安全计数
+	ConditionalUpdateChunkStatus(ctx context.Context, uploadID string, chunkIndex int, expectFrom, newStatus string) (bool, error)
 	DeleteChunksByUploadID(ctx context.Context, uploadID string) error
 }

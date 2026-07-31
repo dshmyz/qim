@@ -86,7 +86,7 @@ func Test_PublicDownloadFile_BlocksPrivateFile(t *testing.T) {
 	privateFile := model.File{
 		Name:         "private.txt",
 		OriginalName: "private.txt",
-		StoragePath:  "/uploads/private.txt",
+		StoragePath:  "/static/uploads/private.txt",
 		Size:         100,
 		MimeType:     "text/plain",
 		UserID:       1,
