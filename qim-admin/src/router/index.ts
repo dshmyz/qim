@@ -14,6 +14,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false },
   },
   {
+    path: '/docs/:slug',
+    name: 'PublicDocs',
+    component: () => import('@/views/PublicDocs.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/',
     component: () => import('@/layouts/AdminLayout.vue'),
     meta: { requiresAuth: true },

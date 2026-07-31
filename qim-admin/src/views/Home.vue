@@ -94,6 +94,35 @@
       </div>
     </section>
 
+    <!-- Developer Docs Section -->
+    <section class="dev-docs" id="dev-docs">
+      <h2 class="section-title">开发者文档</h2>
+      <p class="dev-docs-desc">通过 CLI 命令行工具或标准 MCP 协议接入 QIM，让 AI Agent 在平台内收发消息</p>
+      <div class="dev-docs-grid">
+        <a href="/admin/docs/cli" class="doc-card" @click.prevent="navigateDoc('/admin/docs/cli')">
+          <div class="doc-icon" style="background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)">
+            <svg class="doc-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+          </div>
+          <h3>CLI 使用指南</h3>
+          <p>命令行工具安装、配置与消息收发，适用于 Bash 脚本和 AI Agent 集成</p>
+          <span class="doc-link">查看文档 →</span>
+        </a>
+        <a href="/admin/docs/mcp" class="doc-card" @click.prevent="navigateDoc('/admin/docs/mcp')">
+          <div class="doc-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)">
+            <svg class="doc-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <h3>MCP 接入指南</h3>
+          <p>标准 MCP 协议接入 Claude Code、Cursor 等 AI Agent，6 个工具开箱即用</p>
+          <span class="doc-link">查看文档 →</span>
+        </a>
+      </div>
+    </section>
+
     <!-- Footer -->
     <footer class="footer">
       <div class="footer-content">
@@ -250,6 +279,10 @@ const apps = [
 
 const scrollToFeatures = () => {
   document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
+}
+
+const navigateDoc = (path: string) => {
+  window.location.href = path
 }
 
 const downloadClient = () => {
@@ -630,6 +663,84 @@ onMounted(async () => {
   max-width: 100%;
 }
 
+.dev-docs {
+  padding: 80px 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.dev-docs-desc {
+  text-align: center;
+  font-size: 16px;
+  color: #666;
+  margin: -32px 0 48px;
+}
+
+.dev-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.doc-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 36px 32px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+  transition: transform 0.3s, box-shadow 0.3s;
+  text-decoration: none;
+  display: block;
+}
+
+.doc-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.doc-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.doc-svg {
+  width: 36px;
+  height: 36px;
+  color: #fff;
+}
+
+.doc-card h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 12px;
+}
+
+.doc-card p {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.doc-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.doc-card:hover .doc-link {
+  color: #764ba2;
+}
+
 .about .section-title {
   margin-bottom: 32px;
 }
@@ -732,6 +843,10 @@ onMounted(async () => {
   .features-grid,
   .apps-grid,
   .platforms-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dev-docs-grid {
     grid-template-columns: 1fr;
   }
 

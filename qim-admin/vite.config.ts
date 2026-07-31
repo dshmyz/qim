@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     define: {
-      __APP_NAME__: JSON.stringify(pkg.name),
+      __APP_PRODUCT_NAME__: JSON.stringify(extra.productName || pkg.name),
       __APP_VERSION__: JSON.stringify(pkg.version),
       __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN || '青雀'),
       __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear || '2026'),
