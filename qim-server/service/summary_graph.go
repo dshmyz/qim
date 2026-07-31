@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,8 @@ type SummaryOutput struct {
 	Summary       string
 	MessagesCount int
 	TimeRange     string
+	GroupName     string
+	ActiveMembers []string
 }
 
 type SummaryGraph struct {
@@ -76,11 +79,19 @@ func (g *SummaryGraph) Build() error {
 }
 
 func (g *SummaryGraph) Execute(ctx context.Context, input *SummaryInput) (*SummaryOutput, error) {
-	cacheKey := g.cache.GenerateKey("summary", fmt.Sprintf("%d", input.ConversationID), input.TimeRange)
+	// 先查询一次元信息，用于构建与消息状态相关的缓存 key
+	sc, err := g.prepareData(input)
+	if err != nil {
+		return nil, err
+	}
+
+	cacheKey := g.buildCacheKey(input, sc)
 	if cached, ok := g.cache.Get(cacheKey); ok {
 		return &SummaryOutput{
-			Summary:   cached,
-			TimeRange: input.TimeRange,
+			Summary:       cached,
+			TimeRange:     input.TimeRange,
+			GroupName:     sc.groupName,
+			ActiveMembers: sc.activeMembers,
 		}, nil
 	}
 
@@ -97,59 +108,128 @@ func (g *SummaryGraph) Execute(ctx context.Context, input *SummaryInput) (*Summa
 	return result, nil
 }
 
+func (g *SummaryGraph) buildCacheKey(input *SummaryInput, sc *summaryContext) string {
+	parts := []string{
+		"summary",
+		fmt.Sprintf("%d", input.ConversationID),
+		input.TimeRange,
+	}
+	if input.StartTime != nil {
+		parts = append(parts, fmt.Sprintf("%d", input.StartTime.Unix()))
+	}
+	if input.EndTime != nil {
+		parts = append(parts, fmt.Sprintf("%d", input.EndTime.Unix()))
+	}
+	parts = append(parts, fmt.Sprintf("%d", sc.messagesCount))
+	if sc.latestMessageAt != nil {
+		parts = append(parts, fmt.Sprintf("%d", sc.latestMessageAt.Unix()))
+	}
+	return g.cache.GenerateKey(parts...)
+}
+
+func (g *SummaryGraph) prepareData(input *SummaryInput) (*summaryContext, error) {
+	sc := &summaryContext{
+		input: input,
+	}
+
+	now := time.Now()
+	switch input.TimeRange {
+	case "1h":
+		sc.timeRangeStart = now.Add(-time.Hour)
+		sc.timeRangeEnd = now
+	case "today":
+		sc.timeRangeStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		sc.timeRangeEnd = now
+	case "7d":
+		sc.timeRangeStart = now.AddDate(0, 0, -7)
+		sc.timeRangeEnd = now
+	default:
+		if input.StartTime != nil {
+			sc.timeRangeStart = *input.StartTime
+		} else {
+			sc.timeRangeStart = now.AddDate(0, 0, -7)
+		}
+		if input.EndTime != nil {
+			sc.timeRangeEnd = *input.EndTime
+		} else {
+			sc.timeRangeEnd = now
+		}
+	}
+
+	db := database.GetDB()
+
+	// 加载会话元信息
+	var group model.Group
+	if err := db.Where("conversation_id = ?", input.ConversationID).First(&group).Error; err == nil {
+		sc.groupName = group.Name
+	}
+
+	var messages []model.Message
+	result := db.Where("conversation_id = ? AND created_at >= ? AND created_at <= ?",
+		input.ConversationID, sc.timeRangeStart, sc.timeRangeEnd).
+		Preload("Sender").
+		Order("created_at ASC").
+		Find(&messages)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	// 过滤：只保留文本和 Markdown 消息，排除撤回、空内容
+	filtered := make([]model.Message, 0, len(messages))
+	activeMap := make(map[string]bool)
+	for _, msg := range messages {
+		if msg.Type != "text" && msg.Type != "markdown" {
+			continue
+		}
+		if msg.IsRecalled || strings.TrimSpace(msg.Content) == "" {
+			continue
+		}
+		filtered = append(filtered, msg)
+
+		name := msg.Sender.Nickname
+		if name == "" {
+			name = msg.Sender.Username
+		}
+		if name != "" {
+			activeMap[name] = true
+		}
+	}
+
+	// 限制消息数量，保留最新的 100 条
+	const maxMessages = 100
+	if len(filtered) > maxMessages {
+		filtered = filtered[len(filtered)-maxMessages:]
+	}
+
+	for name := range activeMap {
+		sc.activeMembers = append(sc.activeMembers, name)
+	}
+	sc.messages = filtered
+	sc.messagesCount = len(filtered)
+	sc.latestMessageAt = nil
+	if len(filtered) > 0 {
+		sc.latestMessageAt = &filtered[len(filtered)-1].CreatedAt
+	}
+
+	sort.Strings(sc.activeMembers)
+
+	return sc, nil
+}
+
 type summaryContext struct {
-	input          *SummaryInput
-	messages       []model.Message
-	messagesCount  int
-	timeRangeStart time.Time
-	timeRangeEnd   time.Time
+	input           *SummaryInput
+	messages        []model.Message
+	messagesCount   int
+	timeRangeStart  time.Time
+	timeRangeEnd    time.Time
+	latestMessageAt *time.Time
+	groupName       string
+	activeMembers   []string
 }
 
 func (g *SummaryGraph) createPrepareNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SummaryInput) (*summaryContext, error) {
-		sc := &summaryContext{
-			input: input,
-		}
-
-		now := time.Now()
-		switch input.TimeRange {
-		case "1h":
-			sc.timeRangeStart = now.Add(-time.Hour)
-			sc.timeRangeEnd = now
-		case "today":
-			sc.timeRangeStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			sc.timeRangeEnd = now
-		case "7d":
-			sc.timeRangeStart = now.AddDate(0, 0, -7)
-			sc.timeRangeEnd = now
-		default:
-			if input.StartTime != nil {
-				sc.timeRangeStart = *input.StartTime
-			} else {
-				sc.timeRangeStart = now.AddDate(0, 0, -7)
-			}
-			if input.EndTime != nil {
-				sc.timeRangeEnd = *input.EndTime
-			} else {
-				sc.timeRangeEnd = now
-			}
-		}
-
-		db := database.GetDB()
-		var messages []model.Message
-		result := db.Where("conversation_id = ? AND created_at >= ? AND created_at <= ?",
-			input.ConversationID, sc.timeRangeStart, sc.timeRangeEnd).
-			Preload("Sender").
-			Order("created_at ASC").
-			Find(&messages)
-		if result.Error != nil {
-			return nil, result.Error
-		}
-
-		sc.messages = messages
-		sc.messagesCount = len(messages)
-
-		return sc, nil
+		return g.prepareData(input)
 	})
 }
 
@@ -180,7 +260,7 @@ func (g *SummaryGraph) createBuildMessagesNode() *compose.Lambda {
 			conversationText.WriteString(fmt.Sprintf("[%s] %s: %s\n", timestamp, senderName, msg.Content))
 		}
 
-		conversationText.WriteString("\n请为以上对话生成一份简洁的摘要。")
+		conversationText.WriteString("\n请严格按照上方结构化输出格式生成摘要。")
 		result = append(result, &schema.Message{
 			Role:    schema.User,
 			Content: conversationText.String(),
@@ -204,8 +284,8 @@ func (g *SummaryGraph) createValidateNode() *compose.Lambda {
 			}, nil
 		}
 
-		if len(content) > 2000 {
-			content = content[:2000] + "..."
+		if len(content) > 3000 {
+			content = content[:3000] + "..."
 		}
 
 		return &schema.Message{
@@ -227,21 +307,43 @@ func (g *SummaryGraph) createFormatNode() *compose.Lambda {
 func (g *SummaryGraph) buildSummarySystemPrompt(sc *summaryContext) string {
 	var sb strings.Builder
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的对话摘要助手。你的任务是为对话记录生成简洁、准确的摘要。\n\n")
+	sb.WriteString("你是 QIM 企业即时通讯系统的对话摘要助手。请根据对话记录生成一份结构化摘要。\n\n")
+
+	sb.WriteString("【输出格式】\n")
+	sb.WriteString("请严格按以下四个部分输出（每个部分如果无内容可写“无”）：\n\n")
+
+	sb.WriteString("### 一、讨论要点\n")
+	sb.WriteString("- 列出对话中讨论过的核心议题（不超过 5 条）\n")
+	sb.WriteString("- 每条用 1-2 句话概括\n\n")
+
+	sb.WriteString("### 二、决策结论\n")
+	sb.WriteString("- 列出已达成共识或已作出的决策\n")
+	sb.WriteString("- 标注作出该结论的主要依据\n\n")
+
+	sb.WriteString("### 三、待办事项\n")
+	sb.WriteString("- 列出明确的行动项，每条包含：事项描述、负责人、建议截止时间（如有）\n")
+	sb.WriteString("- 如果负责人不明确，写“待确认”\n\n")
+
+	sb.WriteString("### 四、参与者\n")
+	sb.WriteString("- 列出活跃参与讨论的人员及各自主要观点\n\n")
 
 	sb.WriteString("【摘要规则】\n")
-	sb.WriteString("1. 提取对话中的关键信息和决策\n")
-	sb.WriteString("2. 识别讨论的主要话题\n")
-	sb.WriteString("3. 记录重要的结论或待办事项\n")
-	sb.WriteString("4. 使用简洁的语言，避免冗余\n")
-	sb.WriteString("5. 如果对话涉及多个话题，使用列表形式组织\n")
-	sb.WriteString("6. 保持客观，不要添加主观评价\n\n")
+	sb.WriteString("1. 提取关键信息、决策和待办事项\n")
+	sb.WriteString("2. 识别主要讨论话题\n")
+	sb.WriteString("3. 使用简洁、客观的语言，避免冗余\n")
+	sb.WriteString("4. 保持事实准确，不要添加主观评价\n")
+	sb.WriteString("5. 输出使用 Markdown 格式\n\n")
 
+	if sc.groupName != "" {
+		sb.WriteString(fmt.Sprintf("【会话名称】%s\n", sc.groupName))
+	}
 	sb.WriteString(fmt.Sprintf("【时间范围】%s 至 %s\n",
 		sc.timeRangeStart.Format("2006-01-02 15:04"),
 		sc.timeRangeEnd.Format("2006-01-02 15:04")))
-
 	sb.WriteString(fmt.Sprintf("【消息数量】%d 条\n", sc.messagesCount))
+	if len(sc.activeMembers) > 0 {
+		sb.WriteString(fmt.Sprintf("【活跃参与者】%s\n", strings.Join(sc.activeMembers, ", ")))
+	}
 
 	return sb.String()
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -46,6 +47,17 @@ type PolishTextRequest struct {
 type TranslateImageRequest struct {
 	ImageURL   string `json:"image_url" binding:"required"`
 	TargetLang string `json:"target_lang"` // 默认 zh
+}
+
+// TextProcessRequest 统一文本处理请求
+type TextProcessRequest struct {
+	Action     string `json:"action" binding:"required"` // translate/rewrite/polish
+	Text       string `json:"text" binding:"required"`
+	TargetLang string `json:"target_lang"`
+	SourceLang string `json:"source_lang"`
+	Style      string `json:"style"`
+	Tone       string `json:"tone"`
+	Language   string `json:"language"`
 }
 
 // extractImageURL 从消息内容中提取图片 URL
@@ -95,9 +107,9 @@ func imageToDataURL(imageURL string) string {
 }
 
 // extractStoragePath 从 imageURL 中提取 StoragePath：
-// "/uploads/xxx" / "/s3/xxx" → 原样；"http://host/uploads/xxx" → "/uploads/xxx"
+// "/static/xxx" / "/uploads/xxx" / "/s3/xxx" → 原样；"http://host/static/xxx" → "/static/xxx"
 func extractStoragePath(imageURL string) string {
-	for _, prefix := range []string{"/s3/", "/uploads/"} {
+	for _, prefix := range []string{storage.StaticPrefix, "/s3/", "/uploads/"} {
 		if idx := strings.Index(imageURL, prefix); idx != -1 {
 			return imageURL[idx:]
 		}
@@ -123,8 +135,8 @@ func storageReadAsDataURL(storagePath string) string {
 	}
 	defer reader.Close()
 
-	data, err := io.ReadAll(io.LimitReader(reader, maxImageTranslateSize))
-	if err != nil {
+	data, tooLarge, err := readImageWithLimit(reader)
+	if err != nil || tooLarge {
 		return ""
 	}
 	contentType := mime.TypeByExtension(filepath.Ext(storagePath))
@@ -136,7 +148,7 @@ func storageReadAsDataURL(storagePath string) string {
 
 // downloadAsDataURL 从 HTTP URL 下载图片转为 data URL（最大 5MB）
 func downloadAsDataURL(url string) string {
-	client := &http.Client{Timeout: http.DefaultClient.Timeout}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return ""
@@ -147,8 +159,8 @@ func downloadAsDataURL(url string) string {
 		return ""
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageTranslateSize))
-	if err != nil {
+	data, tooLarge, err := readImageWithLimit(resp.Body)
+	if err != nil || tooLarge {
 		return ""
 	}
 
@@ -157,6 +169,36 @@ func downloadAsDataURL(url string) string {
 		contentType = http.DetectContentType(data)
 	}
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func readImageWithLimit(reader io.Reader) ([]byte, bool, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, int64(maxImageTranslateSize)+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(data) > maxImageTranslateSize {
+		return nil, true, nil
+	}
+	return data, false, nil
+}
+
+func dataURLTooLarge(dataURL string) bool {
+	comma := strings.Index(dataURL, ",")
+	if comma == -1 {
+		return len(dataURL) > maxImageTranslateSize
+	}
+	header := dataURL[:comma]
+	payload := strings.TrimSpace(dataURL[comma+1:])
+	if strings.Contains(strings.ToLower(header), ";base64") {
+		decodedLen := base64.StdEncoding.DecodedLen(len(payload))
+		if strings.HasSuffix(payload, "==") {
+			decodedLen -= 2
+		} else if strings.HasSuffix(payload, "=") {
+			decodedLen--
+		}
+		return decodedLen > maxImageTranslateSize
+	}
+	return len(payload) > maxImageTranslateSize
 }
 
 // TranslateImage 图片翻译（AI 视觉识别 + 翻译）
@@ -192,7 +234,7 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		response.BadRequest(c, fmt.Sprintf("不支持的图片地址格式: %s", imageURL))
 		return
 	}
-	if len(dataURL) > maxImageTranslateSize {
+	if strings.HasPrefix(dataURL, "data:") && dataURLTooLarge(dataURL) {
 		response.BadRequest(c, fmt.Sprintf("图片过大，最大支持%dMB", maxImageTranslateSize/(1024*1024)))
 		return
 	}
@@ -361,8 +403,8 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 	}
 
 	promptCtx := &service.PromptContext{
-		SourceLang:   sourceLang,
-		TargetLang:   req.TargetLang,
+		SourceLang: sourceLang,
+		TargetLang: req.TargetLang,
 	}
 	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneTranslate, promptCtx)
 
@@ -537,6 +579,200 @@ func (h *AIHandler) PolishText(c *gin.Context) {
 		return
 	}
 
+	result = h.aiService.FilterOutput(result, "ai_polish")
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "success",
+		"data": gin.H{
+			"polished_text": result,
+		},
+	})
+}
+
+// TextProcess 统一文本处理入口（翻译/改写/润色）
+func (h *AIHandler) TextProcess(c *gin.Context) {
+	var req TextProcessRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if !h.aiService.IsConfigured() {
+		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	switch req.Action {
+	case "translate":
+		h.textProcessTranslate(c, req.Text, req.TargetLang, req.SourceLang)
+	case "rewrite":
+		h.textProcessRewrite(c, req.Text, req.Style, req.Tone)
+	case "polish":
+		h.textProcessPolish(c, req.Text, req.Language)
+	default:
+		response.BadRequest(c, "不支持的 action")
+	}
+}
+
+func (h *AIHandler) textProcessTranslate(c *gin.Context, text, targetLang, sourceLang string) {
+	if targetLang == "" {
+		response.BadRequest(c, "翻译需要 target_lang")
+		return
+	}
+
+	if sourceLang == "" || sourceLang == "auto" {
+		sourceLang = "自动检测"
+	}
+
+	if h.textProcessGraph != nil {
+		input := &service.TextProcessInput{
+			Intent:     service.TextProcessTranslate,
+			Text:       text,
+			TargetLang: targetLang,
+			SourceLang: sourceLang,
+		}
+		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"translated_text": result.Result,
+				"source_lang":     sourceLang,
+				"target_lang":     targetLang,
+			},
+		})
+		return
+	}
+
+	promptCtx := &service.PromptContext{
+		SourceLang: sourceLang,
+		TargetLang: targetLang,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneTranslate, promptCtx)
+	messages_input := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: text},
+	}
+
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
+		return
+	}
+	result = h.aiService.FilterOutput(result, "ai_translate")
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "success",
+		"data": gin.H{
+			"translated_text": result,
+			"source_lang":     sourceLang,
+			"target_lang":     targetLang,
+		},
+	})
+}
+
+func (h *AIHandler) textProcessRewrite(c *gin.Context, text, style, tone string) {
+	if style == "" {
+		style = "简洁"
+	}
+	if tone == "" {
+		tone = "专业"
+	}
+
+	if h.textProcessGraph != nil {
+		input := &service.TextProcessInput{
+			Intent: service.TextProcessRewrite,
+			Text:   text,
+			Style:  style,
+			Tone:   tone,
+		}
+		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"rewritten_text": result.Result,
+			},
+		})
+		return
+	}
+
+	promptCtx := &service.PromptContext{
+		Style: style,
+		Tone:  tone,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneRewrite, promptCtx)
+	messages_input := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: text},
+	}
+
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
+		return
+	}
+	result = h.aiService.FilterOutput(result, "ai_rewrite")
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "success",
+		"data": gin.H{
+			"rewritten_text": result,
+		},
+	})
+}
+
+func (h *AIHandler) textProcessPolish(c *gin.Context, text, language string) {
+	if language == "" {
+		language = "中文"
+	}
+
+	if h.textProcessGraph != nil {
+		input := &service.TextProcessInput{
+			Intent:   service.TextProcessPolish,
+			Text:     text,
+			Language: language,
+		}
+		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data": gin.H{
+				"polished_text": result.Result,
+			},
+		})
+		return
+	}
+
+	promptCtx := &service.PromptContext{
+		Language: language,
+	}
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.ScenePolish, promptCtx)
+	messages_input := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: text},
+	}
+
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
+		return
+	}
 	result = h.aiService.FilterOutput(result, "ai_polish")
 
 	c.JSON(http.StatusOK, gin.H{

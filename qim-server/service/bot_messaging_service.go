@@ -94,8 +94,9 @@ func (s *BotMessagingService) ensureMember(convID, userID uint) {
 
 // SendOutbound 以 bot 身份向用户发送一条消息。
 // threadID 非空时校验其归属该 bot+用户，否则取/建 bot↔用户会话。
+// replyToID 非空时要求引用消息存在且属于当前会话。
 // 返回创建的消息（已预加载 Sender）。
-func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, content, msgType string, threadID *uint) (*model.Message, error) {
+func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, content, msgType string, threadID *uint, replyToID *uint) (*model.Message, error) {
 	if bot == nil || bot.VirtualUserID == nil {
 		return nil, errors.New("bot 未配置虚拟用户")
 	}
@@ -135,14 +136,28 @@ func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, conten
 		convID = conv.ID
 	}
 
+	if replyToID != nil {
+		if *replyToID == 0 {
+			return nil, errors.New("引用消息 ID 无效")
+		}
+		var quoted model.Message
+		if err := s.db.First(&quoted, *replyToID).Error; err != nil {
+			return nil, errors.New("引用消息不存在")
+		}
+		if quoted.ConversationID != convID {
+			return nil, errors.New("引用消息不属于当前会话")
+		}
+	}
+
 	// 创建消息（bot 自身已读）
 	msg := model.Message{
-		ConversationID: convID,
-		SenderID:       *bot.VirtualUserID,
-		Type:           msgType,
-		Content:        content,
-		IsRead:         true,
-		Origin:         "bot",
+		ConversationID:  convID,
+		SenderID:        *bot.VirtualUserID,
+		QuotedMessageID: replyToID,
+		Type:            msgType,
+		Content:         content,
+		IsRead:          true,
+		Origin:          "bot",
 	}
 	if err := s.db.Create(&msg).Error; err != nil {
 		return nil, err
@@ -188,8 +203,8 @@ type cardButton struct {
 
 // cardPayload 卡片消息 content JSON 的最小契约。
 type cardPayload struct {
-	Title   string      `json:"title,omitempty"`
-	Text    string      `json:"text,omitempty"`
+	Title   string       `json:"title,omitempty"`
+	Text    string       `json:"text,omitempty"`
 	Buttons []cardButton `json:"buttons"`
 }
 
@@ -249,6 +264,10 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	if !cfg.IsExternalWebhook() {
 		return errors.New("该 bot 未启用外部 webhook，不支持卡片交互")
 	}
+	actionText, err := cardActionText(msg.Content, actionID)
+	if err != nil {
+		return err
+	}
 
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
@@ -279,18 +298,6 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 		logger.WithModule("BotMessaging").Error("卡片 action 幂等记录插入失败",
 			"botID", bot.ID, "messageID", msg.ID, "actionID", actionID, "error", err)
 		return errors.New("卡片动作处理失败")
-	}
-
-	// 从原卡片 content 反查所选按钮的 text，用于用户端气泡显示「✓ 已选择:xxx」。
-	actionText := actionID
-	var card cardPayload
-	if json.Unmarshal([]byte(msg.Content), &card) == nil {
-		for _, b := range card.Buttons {
-			if b.ID == actionID {
-				actionText = b.Text
-				break
-			}
-		}
 	}
 
 	// ① 在会话内建一条 card_action 消息：用户端显示气泡 + pull-mode agent 可拉到。
@@ -386,6 +393,22 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	logger.WithModule("BotMessaging").Info("卡片 action webhook 已转发",
 		"botID", bot.ID, "messageID", msg.ID, "actionID", actionID)
 	return nil
+}
+
+func cardActionText(content, actionID string) (string, error) {
+	if actionID == "" {
+		return "", errors.New("卡片动作无效")
+	}
+	var card cardPayload
+	if err := json.Unmarshal([]byte(content), &card); err != nil {
+		return "", errors.New("卡片内容不是合法 JSON")
+	}
+	for _, b := range card.Buttons {
+		if b.ID == actionID {
+			return b.Text, nil
+		}
+	}
+	return "", errors.New("无效的卡片动作")
 }
 
 // buildBotMessageResponse 组装 WS 推送的消息响应，字段对齐 MessageService.buildMessageResponse。
@@ -525,8 +548,6 @@ func CleanupStaleStreamingMessages(db *gorm.DB, maxAge time.Duration) (int64, er
 	return res.RowsAffected, nil
 }
 
-
-
 // UpdateMessageContent 全量更新一条 bot 消息的 content（供 agent 回写卡片状态用）。
 // 归属校验：消息 Origin=="bot" 且 SenderID 为该 bot 虚拟用户；会话归属该 bot。
 // msgType=="card" 走 validateCardContent 保持出站契约一致；msgType 空则保持原 type。
@@ -616,4 +637,65 @@ func (s *BotMessagingService) ListBotMessages(bot *model.Bot, threadID uint, aft
 		return nil, err
 	}
 	return msgs, nil
+}
+
+// ResolveBotThread 按用户名/昵称解析 bot 会话 ID。
+// 用 bot_conversations 表查找 bot 与目标用户的会话。
+func (s *BotMessagingService) ResolveBotThread(bot *model.Bot, nameOrID string) (uint, error) {
+	if bot == nil {
+		return 0, errors.New("bot 无效")
+	}
+
+	// 先试数字 ID
+	if n, err := strconv.ParseUint(nameOrID, 10, 64); err == nil {
+		// 是数字，直接走归属校验
+		var bc model.BotConversation
+		if err := s.db.Where("conversation_id = ? AND bot_id = ?", uint(n), bot.ID).First(&bc).Error; err != nil {
+			return 0, errors.New("会话不属于该 bot")
+		}
+		return uint(n), nil
+	}
+
+	user, err := s.resolveUniqueUser(nameOrID)
+	if err != nil {
+		return 0, err
+	}
+
+	// 查 bot_conversations 找 bot 与该用户的会话
+	var bc model.BotConversation
+	if err := s.db.Where("bot_id = ? AND user_id = ?", bot.ID, user.ID).First(&bc).Error; err != nil {
+		return 0, errors.New("未找到与 " + nameOrID + " 的会话（可能尚未对话）")
+	}
+	return bc.ConversationID, nil
+}
+
+// ResolveUserID 按用户名或昵称查找用户 ID。
+func (s *BotMessagingService) ResolveUserID(name string) (uint, error) {
+	user, err := s.resolveUniqueUser(name)
+	if err != nil {
+		return 0, err
+	}
+	return user.ID, nil
+}
+
+func (s *BotMessagingService) resolveUniqueUser(name string) (*model.User, error) {
+	var user model.User
+	if err := s.db.Where("username = ?", name).First(&user).Error; err == nil {
+		return &user, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.New("查询用户失败")
+	}
+
+	var users []model.User
+	if err := s.db.Where("nickname = ?", name).Find(&users).Error; err != nil {
+		return nil, errors.New("查询用户失败")
+	}
+	switch len(users) {
+	case 0:
+		return nil, errors.New("未找到用户: " + name)
+	case 1:
+		return &users[0], nil
+	default:
+		return nil, errors.New("昵称不唯一，请使用用户名或 ID: " + name)
+	}
 }

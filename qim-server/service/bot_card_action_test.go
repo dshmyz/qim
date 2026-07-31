@@ -74,7 +74,7 @@ func TestForwardCardAction_ForwardsWebhook(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","value":"confirm"},{"id":"cancel","text":"取消","value":"cancel"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
@@ -106,7 +106,7 @@ func TestForwardCardAction_CreatesPullableActionMessage(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","value":"confirm"},{"id":"cancel","text":"取消","value":"cancel"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	require.NoError(t, err)
 
 	// 点击前：会话只有 1 条卡片消息
@@ -153,7 +153,7 @@ func TestForwardCardAction_PullModeSkipsOutbox(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, "", "testsecret")
 
 	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","value":"confirm"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	require.NoError(t, err)
 
 	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
@@ -188,7 +188,7 @@ func TestForwardCardAction_RejectsNonCardMessage(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	// 发一条文本消息（非卡片）
-	msg, err := svc.SendOutbound(bot, human.ID, "plain text", "text", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, "plain text", "text", nil, nil)
 	assert.NoError(t, err)
 
 	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
@@ -210,7 +210,7 @@ func TestForwardCardAction_RejectsNonWebhookBot(t *testing.T) {
 	db.Create(bot)
 
 	card := `{"buttons":[{"id":"ok","text":"OK"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	err = svc.ForwardCardAction(msg.ID, human.ID, "ok", "ok")
@@ -227,7 +227,7 @@ func TestForwardCardAction_RejectsNonMember(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	// 另一个用户尝试操作他人的卡片
@@ -238,6 +238,27 @@ func TestForwardCardAction_RejectsNonMember(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "无权")
 	assert.False(t, cap.got, "非会话成员不应触发 webhook")
+}
+
+func TestForwardCardAction_RejectsUnknownActionID(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+	srv, cap := newCaptureServer(t)
+
+	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
+
+	card := `{"buttons":[{"id":"confirm","text":"确认"},{"id":"cancel","text":"取消"}]}`
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
+	require.NoError(t, err)
+
+	err = svc.ForwardCardAction(msg.ID, human.ID, "approve-admin", "approve-admin")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "无效")
+	assert.False(t, cap.got, "未展示的按钮 action 不应触发 webhook")
+
+	var count int64
+	db.Model(&model.CardActionRecord{}).Where("message_id = ?", msg.ID).Count(&count)
+	assert.EqualValues(t, 0, count, "无效 action 不应写入幂等记录")
 }
 
 func TestForwardCardAction_RejectsMissingMessage(t *testing.T) {
@@ -265,7 +286,7 @@ func TestForwardCardAction_WebhookFailEnqueuesRetry(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	err = svc.ForwardCardAction(msg.ID, human.ID, "confirm", "confirm")
@@ -290,7 +311,7 @@ func TestForwardCardAction_IdempotentSecondCall(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	// 第一次：成功转发
@@ -319,7 +340,7 @@ func TestForwardCardAction_UpdateMessageReleasesLock(t *testing.T) {
 	bot, _, human := setupCardBot(t, db, srv.URL, "testsecret")
 
 	card := `{"buttons":[{"id":"confirm","text":"确认"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 
 	// 第一次点击锁定

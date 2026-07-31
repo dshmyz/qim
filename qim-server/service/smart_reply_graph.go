@@ -103,9 +103,13 @@ func (g *SmartReplyGraph) BuildGraph() error {
 	return nil
 }
 
+var registerReplyMergeOnce sync.Once
+
 func (g *SmartReplyGraph) buildReplyGraph() error {
-	compose.RegisterValuesMergeFunc(func(vs []*SmartReplyContext) (*SmartReplyContext, error) {
-		return vs[0], nil
+	registerReplyMergeOnce.Do(func() {
+		compose.RegisterValuesMergeFunc(func(vs []*SmartReplyContext) (*SmartReplyContext, error) {
+			return vs[0], nil
+		})
 	})
 
 	graph := compose.NewGraph[*SmartReplyContext, *SmartReplyResult]()
@@ -161,7 +165,7 @@ var groupAssistantToolWhitelist = []string{
 }
 
 // ExecuteWithTools 带工具的非流式回复，用于 @AI 管理操作指令（踢人/加人/禁言等）。
-// 走 GetCompletionWithToolsFiltered 注入白名单 MCP 工具（含 GroupManagementTool），
+// 走 GetCompletionWithToolsFiltered 注入白名单 AI 工具（含 GroupManagementTool），
 // LLM 返回 tool call 时真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，
 // 即仅群主/管理员发起的管理指令会被工具执行，普通成员指令被工具拒绝。
 func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext) (string, error) {

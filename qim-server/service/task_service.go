@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/repository"
@@ -119,10 +118,11 @@ func (s *TaskService) ProcessTaskReminders() {
 	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateTaskTool）统一用
 	// time.Parse（UTC）落库，读出即为 UTC time.Time，与 EventService 一致：
 	// 用 now 的绝对时刻比较，不受时区影响。
+	// 只扫描未来 24h 内到期的任务，避免全表扫描。
 	var tasks []model.Task
 	if err := s.db.Where(
-		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ?",
-		false, "done",
+		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ? AND due_date > ?",
+		false, "done", now.Add(-24*time.Hour),
 	).Find(&tasks).Error; err != nil {
 		return
 	}
@@ -130,19 +130,22 @@ func (s *TaskService) ProcessTaskReminders() {
 	for _, task := range tasks {
 		reminderTime := task.DueDate.Add(-time.Duration(task.Reminder) * time.Minute)
 		if now.After(reminderTime) || now.Equal(reminderTime) {
-			// 先标记再发送，防止调度器重复触发
+			// 先发送再标记，发送失败时下次调度仍会重试
+			if err := s.sendTaskReminder(&task); err != nil {
+				logger.WithModule("TaskService").Warn("待办提醒发送失败，下次重试",
+					"taskID", task.ID, "userID", task.UserID, "error", err)
+				continue
+			}
 			s.db.Model(&task).Update("reminder_sent", true)
-			s.sendTaskReminder(&task)
 		}
 	}
 }
 
-func (s *TaskService) sendTaskReminder(task *model.Task) {
+func (s *TaskService) sendTaskReminder(task *model.Task) error {
 	if ws.GlobalHub == nil {
-		return
+		return fmt.Errorf("WebSocket hub 未初始化")
 	}
 
-	db := database.GetDB()
 	dueStr := task.DueDate.Local().Format("01/02 15:04")
 
 	// 应用内通知
@@ -155,9 +158,8 @@ func (s *TaskService) sendTaskReminder(task *model.Task) {
 		ActionType:    "confirm_reschedule",
 		ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
 	}
-	if err := db.Create(&notification).Error; err != nil {
-		logger.WithModule("TaskService").Warn("待办提醒通知落库失败",
-			"taskID", task.ID, "userID", task.UserID, "error", err)
+	if err := s.db.Create(&notification).Error; err != nil {
+		return fmt.Errorf("通知落库失败: %w", err)
 	}
 
 	// WS 推送
@@ -166,4 +168,5 @@ func (s *TaskService) sendTaskReminder(task *model.Task) {
 		Data: notification,
 	})
 	ws.GlobalHub.SendToUser(task.UserID, msg)
+	return nil
 }

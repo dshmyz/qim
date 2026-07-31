@@ -121,7 +121,7 @@ func (s *VectorService) GetByCollection(ctx context.Context, collection string, 
 	return results, nil
 }
 
-// DeleteByFilter 按 metadata 过滤条件删除向量
+// DeleteByFilter 按 metadata 过滤条件删除向量（循环分页删，每批 500，直到清完）
 func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, filter map[string]string) (int, error) {
 	if collection == "" {
 		return 0, fmt.Errorf("collection 名称不能为空")
@@ -132,25 +132,36 @@ func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, f
 		return 0, nil
 	}
 
+	const batchSize = 500
 	zeroVector := make([]float32, col.Dimensions)
-	opts := core.SearchOptions{
-		Collection: collection,
-		TopK:       10000,
-		Filter:     filter,
-	}
-
-	results, err := s.db.Vector().Search(ctx, zeroVector, opts)
-	if err != nil {
-		return 0, fmt.Errorf("按过滤条件搜索失败: %w", err)
-	}
-
 	deletedCount := 0
-	for _, result := range results {
-		if err := s.db.Vector().DeleteByDocID(ctx, result.DocID); err != nil {
-			logger.WithModule("VectorService").Error("删除向量失败", "docID", result.DocID, "error", err)
-			continue
+
+	for {
+		opts := core.SearchOptions{
+			Collection: collection,
+			TopK:       batchSize,
+			Filter:     filter,
 		}
-		deletedCount++
+		results, err := s.db.Vector().Search(ctx, zeroVector, opts)
+		if err != nil {
+			return deletedCount, fmt.Errorf("按过滤条件搜索失败: %w", err)
+		}
+		if len(results) == 0 {
+			break
+		}
+
+		for _, result := range results {
+			if err := s.db.Vector().DeleteByDocID(ctx, result.DocID); err != nil {
+				logger.WithModule("VectorService").Error("删除向量失败", "docID", result.DocID, "error", err)
+				continue
+			}
+			deletedCount++
+		}
+
+		// 本批不足 batchSize，说明已删完
+		if len(results) < batchSize {
+			break
+		}
 	}
 
 	return deletedCount, nil

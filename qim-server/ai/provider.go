@@ -50,7 +50,7 @@ type BaseProvider struct {
 func NewBaseProvider() *BaseProvider {
 	return &BaseProvider{
 		Client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // 非流式 Chat 可能生成长回复，30s 会截断
 		},
 		MaxRetries: 2,
 	}

@@ -24,6 +24,13 @@ import (
 // UserManagementTool 用户管理工具
 type UserManagementTool struct{}
 
+func requireAuthenticatedCaller(ctx *ai.CallerContext) error {
+	if ctx == nil || ctx.UserID == 0 {
+		return fmt.Errorf("需要登录后才能执行管理工具")
+	}
+	return nil
+}
+
 func (t *UserManagementTool) Name() string {
 	return "user_management"
 }
@@ -51,11 +58,12 @@ func (t *UserManagementTool) Parameters() map[string]interface{} {
 }
 
 func (t *UserManagementTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	// 权限检查：需要是系统管理员
-	if ctx != nil && ctx.UserID > 0 {
-		if !isSystemAdmin(ctx.UserID) {
-			return nil, fmt.Errorf("权限不足：只有系统管理员才能管理用户账号")
-		}
+	if !isSystemAdmin(ctx.UserID) {
+		return nil, fmt.Errorf("权限不足：只有系统管理员才能管理用户账号")
 	}
 
 	action, ok := params["action"].(string)
@@ -145,6 +153,9 @@ func (t *GroupManagementTool) Parameters() map[string]interface{} {
 }
 
 func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	db := database.GetDB()
 
 	// 解析参数
@@ -179,15 +190,13 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 	}
 
 	// 权限检查：检查调用者是否是群主或管理员
-	if ctx != nil && ctx.UserID > 0 {
-		var member model.ConversationMember
-		err := db.Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).First(&member).Error
-		if err != nil {
-			return nil, fmt.Errorf("您不是群组成员，无法执行操作")
-		}
-		if member.Role != "owner" && member.Role != "admin" {
-			return nil, fmt.Errorf("权限不足：只有群主或管理员才能执行此操作")
-		}
+	var member model.ConversationMember
+	err = db.Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).First(&member).Error
+	if err != nil {
+		return nil, fmt.Errorf("您不是群组成员，无法执行操作")
+	}
+	if member.Role != "owner" && member.Role != "admin" {
+		return nil, fmt.Errorf("权限不足：只有群主或管理员才能执行此操作")
 	}
 
 	// 查找要操作的用户（list_members / update_announcement 不需要用户）
@@ -302,7 +311,7 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		if !ok || (role != "admin" && role != "member") {
 			return nil, fmt.Errorf("role parameter required (admin or member)")
 		}
-		if ctx != nil && ctx.UserID > 0 && user.ID == ctx.UserID {
+		if user.ID == ctx.UserID {
 			return nil, fmt.Errorf("不能修改自己的角色")
 		}
 		if err := db.Model(&model.ConversationMember{}).
@@ -318,15 +327,14 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 
 	case "transfer_owner":
 		// 转让群主仅群主可操作（权限校验已确保 owner/admin，这里再收紧到 owner）
-		if ctx != nil && ctx.UserID > 0 {
-			var caller model.ConversationMember
-			if err := db.Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).First(&caller).Error; err == nil {
-				if caller.Role != "owner" {
-					return nil, fmt.Errorf("权限不足：只有群主才能转让群主")
-				}
-			}
+		var caller model.ConversationMember
+		if err := db.Where("conversation_id = ? AND user_id = ?", conversation.ID, ctx.UserID).First(&caller).Error; err != nil {
+			return nil, fmt.Errorf("您不是群组成员，无法执行操作")
 		}
-		if ctx != nil && ctx.UserID > 0 && user.ID == ctx.UserID {
+		if caller.Role != "owner" {
+			return nil, fmt.Errorf("权限不足：只有群主才能转让群主")
+		}
+		if user.ID == ctx.UserID {
 			return nil, fmt.Errorf("不能把群主转让给自己")
 		}
 		// 原群主降为成员，新群主升为 owner，更新 group.CreatorID
@@ -434,11 +442,12 @@ func (t *SystemNotificationTool) Parameters() map[string]interface{} {
 }
 
 func (t *SystemNotificationTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	// 权限检查：需要是系统管理员
-	if ctx != nil && ctx.UserID > 0 {
-		if !isSystemAdmin(ctx.UserID) {
-			return nil, fmt.Errorf("权限不足：只有系统管理员才能发送系统通知")
-		}
+	if !isSystemAdmin(ctx.UserID) {
+		return nil, fmt.Errorf("权限不足：只有系统管理员才能发送系统通知")
 	}
 
 	title, ok := params["title"].(string)
@@ -491,7 +500,7 @@ func isSystemAdmin(userID uint) bool {
 	return count > 0
 }
 
-// RegisterAdminTools 注册管理操作工具到 MCP 服务器
+// RegisterAdminTools 注册管理操作工具到 AI 工具注册表（ai.ToolRegistry）
 // resolveConversationID 把群标识（群组ID 或 群名）解析为 conversation_id。
 func resolveConversationID(groupIDStr string) (uint, error) {
 	db := database.GetDB()
@@ -509,7 +518,7 @@ func resolveConversationID(groupIDStr string) (uint, error) {
 // callerIsGroupMember 校验调用者是否为群成员，返回 (是否群主/管理员, error)。
 func callerIsGroupMember(convID uint, ctx *ai.CallerContext) (bool, error) {
 	if ctx == nil || ctx.UserID == 0 {
-		return false, nil // 无 userID 不校验（保持与 GroupManagementTool 一致的绕过语义）
+		return false, fmt.Errorf("需要登录后才能执行群组工具")
 	}
 	db := database.GetDB()
 	var member model.ConversationMember
@@ -534,16 +543,19 @@ func (t *CreateTaskTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"group_identifier":     map[string]interface{}{"type": "string", "description": "群组标识：群名或群组ID"},
-			"title":                map[string]interface{}{"type": "string", "description": "待办标题"},
-			"assignee_identifier":  map[string]interface{}{"type": "string", "description": "指派给谁：用户名/昵称/用户ID，可选"},
-			"due_date":             map[string]interface{}{"type": "string", "description": "截止日期，可选，格式 2026-07-22"},
-			"remind_minutes":       map[string]interface{}{"type": "integer", "description": "提前提醒分钟数，可选，如 30 表示到期前30分钟提醒"},
+			"group_identifier":    map[string]interface{}{"type": "string", "description": "群组标识：群名或群组ID"},
+			"title":               map[string]interface{}{"type": "string", "description": "待办标题"},
+			"assignee_identifier": map[string]interface{}{"type": "string", "description": "指派给谁：用户名/昵称/用户ID，可选"},
+			"due_date":            map[string]interface{}{"type": "string", "description": "截止日期，可选，格式 2026-07-22"},
+			"remind_minutes":      map[string]interface{}{"type": "integer", "description": "提前提醒分钟数，可选，如 30 表示到期前30分钟提醒"},
 		},
 		"required": []string{"group_identifier", "title"},
 	}
 }
 func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	db := database.GetDB()
 	title, _ := params["title"].(string)
 	if title == "" {
@@ -589,7 +601,10 @@ func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerCo
 			ActionType:    "confirm_reschedule",
 			ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
 		}
-		db.Create(&notification)
+		if err := db.Create(&notification).Error; err != nil {
+			logger.WithModule("AdminTools").Warn("待办指派通知落库失败",
+				"taskID", task.ID, "assigneeID", assigneeID, "error", err)
+		}
 		if ws.GlobalHub != nil {
 			notifMsg, _ := json.Marshal(ws.WSMessage{Type: "new_notification", Data: notification})
 			ws.GlobalHub.SendToUser(assigneeID, notifMsg)
@@ -627,6 +642,9 @@ func (t *SearchMessagesTool) Parameters() map[string]interface{} {
 	}
 }
 func (t *SearchMessagesTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	db := database.GetDB()
 	keyword, _ := params["keyword"].(string)
 	if keyword == "" {
@@ -692,6 +710,9 @@ func (t *GroupSummaryTool) Parameters() map[string]interface{} {
 	}
 }
 func (t *GroupSummaryTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+	if err := requireAuthenticatedCaller(ctx); err != nil {
+		return nil, err
+	}
 	groupIDStr, _ := params["group_identifier"].(string)
 	convID, err := resolveConversationID(groupIDStr)
 	if err != nil {
@@ -725,20 +746,20 @@ func (t *GroupSummaryTool) Execute(params map[string]interface{}, ctx *ai.Caller
 		return nil, err
 	}
 	return map[string]interface{}{
-		"result":      "success",
-		"action":      "group_summary",
-		"summary":     out.Summary,
+		"result":         "success",
+		"action":         "group_summary",
+		"summary":        out.Summary,
 		"messages_count": out.MessagesCount,
-		"time_range":  out.TimeRange,
+		"time_range":     out.TimeRange,
 	}, nil
 }
 
-func RegisterAdminTools(mcpServer *ai.MCPServer) {
-	mcpServer.RegisterTool(&UserManagementTool{})
-	mcpServer.RegisterTool(&GroupManagementTool{})
-	mcpServer.RegisterTool(&SystemNotificationTool{})
-	mcpServer.RegisterTool(&CreateTaskTool{})
-	mcpServer.RegisterTool(&SearchMessagesTool{})
-	mcpServer.RegisterTool(&GroupSummaryTool{})
+func RegisterAdminTools(toolRegistry *ai.ToolRegistry) {
+	toolRegistry.RegisterTool(&UserManagementTool{})
+	toolRegistry.RegisterTool(&GroupManagementTool{})
+	toolRegistry.RegisterTool(&SystemNotificationTool{})
+	toolRegistry.RegisterTool(&CreateTaskTool{})
+	toolRegistry.RegisterTool(&SearchMessagesTool{})
+	toolRegistry.RegisterTool(&GroupSummaryTool{})
 	logger.WithModule("AdminTools").Info("已注册管理工具", "tools", "user_management, group_management, system_notification, create_task, search_messages, group_summary")
 }

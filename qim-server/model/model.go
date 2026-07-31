@@ -810,14 +810,18 @@ type OperationLog struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// 客户端版本
+// 客户端/CLI 版本（client 和 CLI 共用一张表，用 AppType 区分）
 type ClientVersion struct {
 	ID                uint           `json:"id" gorm:"primarykey"`
+	AppType           string         `json:"app_type" gorm:"size:20;default:'client';uniqueIndex:idx_version_platform;not null"` // "client" | "cli"
 	Version           string         `json:"version" gorm:"size:50;uniqueIndex:idx_version_platform;not null"`
-	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // windows, macos, linux
-	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                // full, patch
+	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // client: windows/macos/linux; cli: darwin-arm64 等
+	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                 // full, patch
 	DownloadURL       string         `json:"download_url" gorm:"size:500"`
-	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（缓存）
+	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（client 用）
+	Sha256            string         `json:"sha256" gorm:"size:200"`       // 文件 SHA256 哈希（CLI 用）
+	Os                string         `json:"os" gorm:"size:20"`            // CLI 专用: darwin/linux/windows
+	Arch              string         `json:"arch" gorm:"size:20"`          // CLI 专用: amd64/arm64
 	BlockmapURL       string         `json:"blockmap_url" gorm:"size:500"` // 增量更新 blockmap 文件 URL（预留）
 	FileSize          int64          `json:"file_size" gorm:"default:0"`   // 文件大小（缓存）
 	Changelog         string         `json:"changelog" gorm:"type:text"`

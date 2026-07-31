@@ -37,17 +37,49 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 	}
 
 	var req struct {
-		ToUserID uint   `json:"to_user_id" binding:"required"`
-		Content  string `json:"content"` // streaming 消息初始为空，允许空内容
-		MsgType  string `json:"msg_type"`
-		ThreadID *uint  `json:"thread_id"`
+		ToUserID   uint   `json:"to_user_id"`
+		ToUserName string `json:"to_user_name"` // 可选：按用户名/昵称解析
+		Content    string `json:"content"`
+		MsgType    string `json:"msg_type"`
+		ReplyToID  *uint  `json:"reply_to_id"`
+		ThreadID   *uint  `json:"thread_id"`
+		ThreadName string `json:"thread_name"` // 可选：按名称解析已有会话
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
 		return
 	}
 
-	msg, err := h.botMessaging.SendOutbound(bot, req.ToUserID, req.Content, req.MsgType, req.ThreadID)
+	// to_user_id 或 to_user_name 二选一
+	if req.ToUserID == 0 && req.ToUserName != "" {
+		uid, err := h.botMessaging.ResolveUserID(req.ToUserName)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		req.ToUserID = uid
+	}
+	if req.ToUserID == 0 {
+		response.BadRequest(c, "缺少 to_user_id 或 to_user_name")
+		return
+	}
+
+	// thread_name 优先：按名称解析已有会话
+	if req.ThreadID == nil && req.ThreadName != "" {
+		tid, err := h.botMessaging.ResolveBotThread(bot, req.ThreadName)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		req.ThreadID = &tid
+	}
+
+	if req.ReplyToID != nil && *req.ReplyToID == 0 {
+		response.BadRequest(c, "reply_to_id 无效")
+		return
+	}
+
+	msg, err := h.botMessaging.SendOutbound(bot, req.ToUserID, req.Content, req.MsgType, req.ThreadID, req.ReplyToID)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -66,6 +98,7 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 
 // GetBotMessages 外部 agent pull 读取自己会话的消息（增量轮询）。
 // GET /api/v1/bot/messages?thread_id=X&after_id=Y&limit=N  (BotAuthMiddleware)
+// 也可用 thread_name 代替 thread_id，按用户名/昵称自动解析会话。
 func (h *BotAPIHandler) GetBotMessages(c *gin.Context) {
 	botVal, _ := c.Get("bot")
 	bot, ok := botVal.(*model.Bot)
@@ -74,10 +107,22 @@ func (h *BotAPIHandler) GetBotMessages(c *gin.Context) {
 		return
 	}
 
-	threadID, err := strconv.ParseUint(c.Query("thread_id"), 10, 32)
-	if err != nil || threadID == 0 {
-		response.BadRequest(c, "缺少有效的 thread_id")
-		return
+	// 支持 thread_id 或 thread_name（二选一）
+	var threadID uint64
+	if name := c.Query("thread_name"); name != "" {
+		tid, err := h.botMessaging.ResolveBotThread(bot, name)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		threadID = uint64(tid)
+	} else {
+		var err error
+		threadID, err = strconv.ParseUint(c.Query("thread_id"), 10, 32)
+		if err != nil || threadID == 0 {
+			response.BadRequest(c, "缺少 thread_id 或 thread_name")
+			return
+		}
 	}
 	var afterID uint64
 	if s := c.Query("after_id"); s != "" {
@@ -98,15 +143,15 @@ func (h *BotAPIHandler) GetBotMessages(c *gin.Context) {
 
 	// 精简为 agent 关心字段：sender_type 用于跳过自己发的回复
 	type botMsg struct {
-		ID             uint       `json:"id"`
-		ConversationID uint       `json:"conversation_id"`
-		SenderID       uint       `json:"sender_id"`
-		SenderType     string     `json:"sender_type"`
-		SenderNickname string     `json:"sender_nickname"`
-		Content        string     `json:"content"`
-		Type           string     `json:"type"`
-		Origin         string     `json:"origin"`
-		CreatedAt      time.Time  `json:"created_at"`
+		ID             uint      `json:"id"`
+		ConversationID uint      `json:"conversation_id"`
+		SenderID       uint      `json:"sender_id"`
+		SenderType     string    `json:"sender_type"`
+		SenderNickname string    `json:"sender_nickname"`
+		Content        string    `json:"content"`
+		Type           string    `json:"type"`
+		Origin         string    `json:"origin"`
+		CreatedAt      time.Time `json:"created_at"`
 	}
 	out := make([]botMsg, 0, len(msgs))
 	for _, m := range msgs {
