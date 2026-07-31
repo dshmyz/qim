@@ -34,9 +34,16 @@ const (
 
 var GlobalHub *Hub
 
-var wsAllowedOrigins map[string]bool
+// wsAllowedOrigins 及其锁：CheckOrigin 在每个 WS 连接时并发读，
+// SetAllowedOrigins 在配置重载时写。用 RWMutex 保护防止并发 map 读写 panic。
+var (
+	wsAllowedOrigins   map[string]bool
+	wsAllowedOriginsMu sync.RWMutex
+)
 
 func SetAllowedOrigins(origins []string) {
+	wsAllowedOriginsMu.Lock()
+	defer wsAllowedOriginsMu.Unlock()
 	if len(origins) == 0 {
 		wsAllowedOrigins = nil
 		return
@@ -51,14 +58,17 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		if wsAllowedOrigins == nil {
+		wsAllowedOriginsMu.RLock()
+		origins := wsAllowedOrigins
+		wsAllowedOriginsMu.RUnlock()
+		if origins == nil {
 			return true
 		}
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			return true
 		}
-		return wsAllowedOrigins[origin]
+		return origins[origin]
 	},
 }
 

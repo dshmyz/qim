@@ -1395,6 +1395,14 @@ func DeleteConversation(c *gin.Context) {
 		return
 	}
 
+	// 校验当前用户是会话成员，防止对未参与的会话写入 session 记录或探测会话是否存在
+	var memberCount int64
+	db.Model(&model.ConversationMember{}).Where("conversation_id = ? AND user_id = ?", uint(convIDUint), userID).Count(&memberCount)
+	if memberCount == 0 {
+		response.Forbidden(c, "您不是该会话的成员")
+		return
+	}
+
 	var session model.ConversationSession
 	result := db.Where("user_id = ? AND conversation_id = ?", userID, uint(convIDUint)).First(&session)
 	if result.Error != nil {

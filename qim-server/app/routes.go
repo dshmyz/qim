@@ -377,20 +377,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 组织架构
 			authed.GET("/organization/tree", handler.GetOrganizationTree)
-			// 创建部门
-			authed.POST("/departments", handler.CreateDepartment)
-			// 更新部门
-			authed.PUT("/departments/:id", handler.UpdateDepartment)
-			// 上移/下移部门
-			authed.PUT("/departments/:id/move", handler.MoveDepartment)
-			// 删除部门
-			authed.DELETE("/departments/:id", handler.DeleteDepartment)
 			// 获取部门员工
 			authed.GET("/departments/:id/employees", handler.GetDepartmentEmployees)
-			// 从部门移除员工
-			authed.DELETE("/department-employees/:id/:user_id", handler.RemoveEmployeeFromDepartment)
-			// 创建用户
-			authed.POST("/users", handler.CreateUser)
+			// 创建用户（管理员）
+			authed.POST("/users", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateUser)
 			// 关联用户和部门
 			authed.POST("/department-employees", handler.AddUserToDepartment)
 
@@ -557,18 +547,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 小程序管理
 			authed.GET("/mini-apps", handler.GetMiniApps)
 			authed.GET("/mini-apps/:id", handler.GetMiniApp)
-			authed.POST("/mini-apps", handler.CreateMiniApp)
-			authed.PUT("/mini-apps/:id", handler.UpdateMiniApp)
-			authed.DELETE("/mini-apps/:id", handler.DeleteMiniApp)
 
 			// 应用管理
 			authed.GET("/apps", handler.GetApps)
 			authed.GET("/apps/all", handler.GetAllApps)
 			authed.GET("/apps/built-in", handler.GetBuiltInApps)
-			authed.POST("/apps", handler.CreateApp)
-			authed.PUT("/apps/:id", handler.UpdateApp)
-			authed.DELETE("/apps/:id", handler.DeleteApp)
-			authed.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
 
 			// 统计报表
 			authed.GET("/statistics", handler.GetStatistics)
@@ -614,14 +597,33 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 用户搜索
 			authed.GET("/users/search", handler.SearchUsers)
-			// 敏感词管理
-			handler.RegisterSensitiveWordRoutes(authed)
+			// 敏感词检查（普通用户可用，用于前端预览）
+			authed.POST("/sensitive-words/check", handler.CheckSensitiveWords)
 
 			// 管理后台路由（需要 system_admin 角色，自动记录操作日志）
 			adminRoutes := authed.Group("")
 			adminRoutes.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
 			adminRoutes.Use(middleware.OperationLogMiddleware())
 			{
+				// 敏感词管理（仅管理员）
+				handler.RegisterSensitiveWordRoutes(adminRoutes)
+				// 部门管理（仅管理员）
+				adminRoutes.POST("/departments", handler.CreateDepartment)
+				adminRoutes.PUT("/departments/:id", handler.UpdateDepartment)
+				adminRoutes.PUT("/departments/:id/move", handler.MoveDepartment)
+				adminRoutes.DELETE("/departments/:id", handler.DeleteDepartment)
+				// 从部门移除员工（仅管理员）
+				adminRoutes.DELETE("/department-employees/:id/:user_id", handler.RemoveEmployeeFromDepartment)
+				// 小程序管理（仅管理员）
+				adminRoutes.POST("/mini-apps", handler.CreateMiniApp)
+				adminRoutes.PUT("/mini-apps/:id", handler.UpdateMiniApp)
+				adminRoutes.DELETE("/mini-apps/:id", handler.DeleteMiniApp)
+				// 应用管理（仅管理员）
+				adminRoutes.POST("/apps", handler.CreateApp)
+				adminRoutes.PUT("/apps/:id", handler.UpdateApp)
+				adminRoutes.DELETE("/apps/:id", handler.DeleteApp)
+				adminRoutes.PATCH("/apps/:id/toggle", handler.ToggleAppStatus)
+
 				// 系统配置
 				adminRoutes.GET("/system/config", handler.GetSystemConfig)
 				adminRoutes.PUT("/system/config", handler.UpdateSystemConfig)

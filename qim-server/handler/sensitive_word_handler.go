@@ -312,5 +312,4 @@ func RegisterSensitiveWordRoutes(r *gin.RouterGroup) {
 	r.POST("/sensitive-words/batch", BatchCreateSensitiveWords)
 	r.POST("/sensitive-words/import", ImportSensitiveWords)
 	r.GET("/sensitive-words/export", ExportSensitiveWords)
-	r.POST("/sensitive-words/check", CheckSensitiveWords)
 }

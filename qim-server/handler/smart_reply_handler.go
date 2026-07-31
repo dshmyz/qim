@@ -490,7 +490,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		AssistantName:   assistantName,
 	}
 
-	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 MCP 群管理工具，
+	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 AI 群管理工具，
 	// LLM 返回 tool call 时真实执行。仅系统管理员发起的指令会被工具执行。
 	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
 		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID)
@@ -564,7 +564,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 }
 
 // handleAIMentionWithTools 带工具的非流式 @AI 回复，用于管理操作指令（踢人/加人/禁言等）。
-// 走 SmartReplyGraph.ExecuteWithTools（GetCompletionWithTools 注入 MCP 群管理工具），
+// 走 SmartReplyGraph.ExecuteWithTools（GetCompletionWithTools 注入 AI 群管理工具），
 // LLM 返回 tool call 时真实执行 add_member/remove_member/mute/unmute。
 func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
 	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input)
@@ -730,6 +730,8 @@ func (j *GroupSummaryJob) GenerateDailySummaries() {
 	sem := make(chan struct{}, workerCount)
 	// 共享令牌桶：每秒 2 次 AI 调用，突发上限 1
 	rl := NewRateLimiter(500*time.Millisecond, 1)
+	// 函数结束后停止限流器，释放 ticker 和 goroutine，避免每日执行累积泄露
+	defer rl.Stop()
 	var wg sync.WaitGroup
 	successCount := 0
 	failCount := 0

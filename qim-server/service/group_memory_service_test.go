@@ -31,7 +31,7 @@ func TestGroupMemoryService_NilDBSafeNoOp(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), count)
 
-	assert.NoError(t, s.DeleteMemory("any"), "DeleteMemory 在 db=nil 时应 no-op")
+	assert.NoError(t, s.DeleteMemory(1, "any"), "DeleteMemory 在 db=nil 时应 no-op")
 
 	deleted, err := s.ForgetAll(1)
 	assert.NoError(t, err)

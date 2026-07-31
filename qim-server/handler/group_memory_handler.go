@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -77,7 +79,8 @@ func DeleteGroupMemory(c *gin.Context) {
 		response.BadRequest(c, "群记忆服务未启用")
 		return
 	}
-	if _, ok := resolveGroupForMemory(c); !ok {
+	group, ok := resolveGroupForMemory(c)
+	if !ok {
 		return
 	}
 	memoryID := c.Param("memory_id")
@@ -85,7 +88,11 @@ func DeleteGroupMemory(c *gin.Context) {
 		response.BadRequest(c, "缺少记忆ID")
 		return
 	}
-	if err := memorySvc.DeleteMemory(memoryID); err != nil {
+	if err := memorySvc.DeleteMemory(group.ID, memoryID); err != nil {
+		if errors.Is(err, service.ErrMemoryNotFound) {
+			response.NotFound(c, "记忆不存在")
+			return
+		}
 		response.InternalServerError(c, "删除群记忆失败")
 		return
 	}
