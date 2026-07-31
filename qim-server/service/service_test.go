@@ -497,7 +497,7 @@ func TestMessageService_SendMessage(t *testing.T) {
 
 func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 	db := setupServiceTestDB(t)
-	hub := ws.NewHub(db, "test-secret")
+	hub := ws.NewHub(db, "test-secret", "http")
 	callbackCalls := make(chan []uint, 2)
 	hub.OnMessageSent = func(_ uint, _ uint, _ string, mentionUserIDs []uint) {
 		callbackCalls <- mentionUserIDs
@@ -531,7 +531,7 @@ func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 func TestMessageService_SendMessageToBotPublishesReplyAndUpdatesConversation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupServiceTestDB(t)
-	hub := ws.NewHub(db, "test-secret")
+	hub := ws.NewHub(db, "test-secret", "http")
 	go hub.Run()
 	svc := NewMessageService(db, hub, ai.NewAIService(&ai.AIConfig{}))
 

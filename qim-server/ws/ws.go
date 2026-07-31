@@ -78,6 +78,7 @@ type Hub struct {
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
+	nodeScheme          string // 节点间通信协议：http 或 https
 	db                  *gorm.DB
 	jwtSecret           string
 
@@ -121,17 +122,22 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
-func NewHub(db *gorm.DB, jwtSecret string) *Hub {
+func NewHub(db *gorm.DB, jwtSecret string, nodeScheme string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
 	// 初始化节点列表（这里可以从配置文件或环境变量中读取）
 	nodes := []string{}
 
+	// 节点间通信协议默认 http
+	if nodeScheme != "https" {
+		nodeScheme = "http"
+	}
+
 	// 初始化广播通道
 	broadcastChan := make(chan []byte)
 
-	logger.WithModule("WS").Info("节点初始化完成", "nodeID", nodeID)
+	logger.WithModule("WS").Info("节点初始化完成", "nodeID", nodeID, "scheme", nodeScheme)
 
 	return &Hub{
 		clients:             sync.Map{},
@@ -143,6 +149,7 @@ func NewHub(db *gorm.DB, jwtSecret string) *Hub {
 		conversationMembers: make(map[uint]cachedMembers),
 		nodes:               nodes,
 		nodeID:              nodeID,
+		nodeScheme:          nodeScheme,
 		db:                  db,
 		jwtSecret:           jwtSecret,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
@@ -310,7 +317,7 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 		}
 
 		// 构建其他节点的 URL
-		nodeURL := "http://" + node + "/api/v1/node/broadcast"
+		nodeURL := h.nodeScheme + "://" + node + "/api/v1/node/broadcast"
 
 		// 发送 HTTP 请求
 		url := nodeURL
@@ -417,7 +424,7 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 		}
 
 		// 构建其他节点的 URL
-		nodeURL := "http://" + node + "/api/v1/node/send-to-user"
+		nodeURL := h.nodeScheme + "://" + node + "/api/v1/node/send-to-user"
 
 		// 构建请求体
 		reqBody := map[string]interface{}{

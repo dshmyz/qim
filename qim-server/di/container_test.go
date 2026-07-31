@@ -22,7 +22,7 @@ func TestInitContainer(t *testing.T) {
 	}
 	database.Init(cfg)
 
-	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret)
+	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret, "http")
 	go hub.Run()
 
 	container, err := InitContainer(cfg, hub)

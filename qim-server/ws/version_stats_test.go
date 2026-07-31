@@ -22,7 +22,7 @@ func versionStatCount(h *Hub, version, platform string) int64 {
 func TestAsyncBroadcast_DecrementsVersionStatsOnFailedClient(t *testing.T) {
 	// db 传 nil：asyncBroadcast 与本场景的清理路径不触达 DB；
 	// 故意不把 client 写入 userClients，避免清理时 UpdateUserStatus 访问 nil db
-	h := NewHub(nil, "")
+	h := NewHub(nil, "", "http")
 
 	client := &Client{
 		hub:      h,

@@ -329,7 +329,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	}
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret)
+	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret, cfg.Cluster.Scheme)
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -883,6 +883,24 @@ func addIndexes(db *gorm.DB) {
 			} else {
 				logger.WithModule("Index").Warn("创建 FTS5 虚拟表失败，将使用 LIKE 搜索", "error", err)
 			}
+		}
+	}
+
+	// 5. client_versions 索引迁移：旧 (version, platform, deleted_at) → 新 (app_type, version, platform, deleted_at)
+	// GORM AutoMigrate 不会修改已有索引，需手动重建
+	if tableExists(db, "client_versions") {
+		migrateColumnExists, _ := migrationColumnExists(db, &model.ClientVersion{}, "app_type")
+		if migrateColumnExists {
+			// 新字段已存在，重建索引以包含 app_type
+			if db.Migrator().HasIndex(&model.ClientVersion{}, "idx_version_platform") {
+				if err := db.Exec(database.D.DropIndexSQL("idx_version_platform", "client_versions")).Error; err != nil {
+					logger.WithModule("Index").Warn("删除 client_versions 旧索引失败", "error", err)
+				}
+			}
+			if err := db.Exec(database.D.CreateUniqueIndexSQL("idx_version_platform", "client_versions", []string{"app_type", "version", "platform", "deleted_at"})).Error; err != nil {
+				logger.WithModule("Index").Warn("重建 client_versions 唯一索引失败", "error", err)
+			}
+			logger.WithModule("Index").Info("重建 client_versions 索引 (app_type, version, platform, deleted_at)")
 		}
 	}
 }
