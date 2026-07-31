@@ -118,12 +118,14 @@ export async function initUpload(
 
 /**
  * 上传单个分片
+ * signal 用于支持取消：调用 abortController.abort() 后正在进行的 HTTP 请求会被中止
  */
 async function uploadSingleChunk(
   uploadId: string,
   chunk: Blob,
   chunkIndex: number,
-  chunkHash: string
+  chunkHash: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const formData = new FormData()
   formData.append('upload_id', uploadId)
@@ -131,7 +133,7 @@ async function uploadSingleChunk(
   formData.append('chunk_hash', chunkHash)
   formData.append('chunk', chunk)
 
-  const response = await fileApi.uploadChunk(formData)
+  const response = await fileApi.uploadChunk(formData, signal)
 
   if (response.data.code !== 0) {
     throw new Error(`分片 ${chunkIndex} 上传失败`)
@@ -140,6 +142,7 @@ async function uploadSingleChunk(
 
 /**
  * 上传分片（带重试）
+ * 支持 abort 取消：signal.aborted 后立即 reject 不再重试
  */
 async function uploadChunkWithRetry(
   manager: UploadManager,
@@ -148,16 +151,28 @@ async function uploadChunkWithRetry(
 ): Promise<void> {
   const chunk = manager.chunks[chunkIndex]
   const chunkHash = await calculateChunkMD5(chunk)
+  const signal = manager.abortController.signal
+
+  // 进入前先检查是否已取消
+  if (signal.aborted) {
+    throw new Error('上传已取消')
+  }
 
   let retryCount = manager.retryCount.get(chunkIndex) || 0
 
   while (retryCount < MAX_RETRY_COUNT) {
+    // 每次重试前检查取消状态
+    if (signal.aborted) {
+      throw new Error('上传已取消')
+    }
+
     try {
       await uploadSingleChunk(
         manager.uploadId,
         chunk,
         chunkIndex,
-        chunkHash
+        chunkHash,
+        signal
       )
 
       // 上传成功
@@ -170,6 +185,11 @@ async function uploadChunkWithRetry(
 
       return
     } catch (error) {
+      // 如果是取消导致的错误，直接抛出不再重试
+      if (signal.aborted || (error instanceof Error && error.name === 'CanceledError')) {
+        throw new Error('上传已取消')
+      }
+
       retryCount++
       manager.retryCount.set(chunkIndex, retryCount)
 
@@ -177,8 +197,20 @@ async function uploadChunkWithRetry(
         throw new Error(`分片 ${chunkIndex} 上传失败，已重试 ${MAX_RETRY_COUNT} 次`)
       }
 
-      // 等待一段时间后重试
-      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+      // 等待一段时间后重试，等待期间也要支持取消
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 1000 * retryCount)
+        // abort 时清除定时器并 reject
+        if (signal.aborted) {
+          clearTimeout(timer)
+          reject(new Error('上传已取消'))
+          return
+        }
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new Error('上传已取消'))
+        }, { once: true })
+      })
     }
   }
 }
@@ -186,6 +218,7 @@ async function uploadChunkWithRetry(
 /**
  * 上传队列管理器
  * 使用队列管理并发上传，优化内存使用
+ * 支持 abort 取消：检测到 signal.aborted 后立即停止队列并 resolve
  */
 class UploadQueueManager {
   private queue: number[] = []
@@ -234,6 +267,12 @@ class UploadQueueManager {
       return
     }
 
+    // 取消检查：如果已 abort，立即停止队列
+    if (this.manager.abortController.signal.aborted) {
+      this.resolve?.()
+      return
+    }
+
     // 如果队列为空且没有活跃的上传，完成
     if (this.queue.length === 0 && this.activeCount === 0) {
       this.resolve?.()
@@ -242,6 +281,11 @@ class UploadQueueManager {
 
     // 启动新的上传任务，直到达到最大并发数
     while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
+      // 再次检查取消状态，避免 abort 后继续 shift 新分片
+      if (this.manager.abortController.signal.aborted) {
+        this.resolve?.()
+        return
+      }
       const chunkIndex = this.queue.shift()!
       this.activeCount++
 
@@ -254,6 +298,12 @@ class UploadQueueManager {
           this.processQueue()
         })
         .catch((error) => {
+          this.activeCount--
+          // 取消导致的错误不算失败，直接 resolve 停止队列
+          if (this.manager.abortController.signal.aborted) {
+            this.resolve?.()
+            return
+          }
           this.hasError = true
           this.reject?.(error)
         })
@@ -407,6 +457,13 @@ export async function uploadFile(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
     uploadStore.markFailed(uploadId, errorMessage)
+    // 释放内存：清空 manager 持有的 chunks Blob 数组和 file 引用
+    const manager = activeUploads.get(uploadId)
+    if (manager) {
+      manager.chunks = []
+      // file 引用清空需谨慎，File 对象无法直接置 null（类型为 File）
+      // 但 chunks 已清空，主要内存占用已释放
+    }
     activeUploads.delete(uploadId)
     throw error
   }
@@ -440,4 +497,63 @@ export function useFileUpload() {
     clearCompleted: uploadStore.clearCompleted,
     toggleExpanded: uploadStore.toggleExpanded
   }
+}
+
+/**
+ * 文件级并发上传限制器
+ * 限制同时上传的文件数量，避免浏览器并发连接数限制（HTTP/1.1 通常 6 个/域名）
+ * 和过多并发导致的内存压力。
+ */
+const DEFAULT_MAX_CONCURRENT_FILES = 3
+
+/**
+ * 批量上传文件，限制并发数
+ * @param files 要上传的文件列表
+ * @param folderId 目标文件夹 ID
+ * @param options 可选配置：maxConcurrent 最大并发数；onFileUploaded 单个文件上传成功后的回调（回调内抛错会记为失败）
+ * @returns 每个文件的上传结果（成功返回 fileId，失败返回 null）
+ */
+export async function uploadFilesWithLimit(
+  files: File[] | FileList,
+  folderId?: number,
+  options?: {
+    maxConcurrent?: number
+    onFileUploaded?: (file: File, fileId: number) => Promise<void>
+  }
+): Promise<Array<{ file: File; success: boolean; fileId?: number }>> {
+  const list = Array.from(files)
+  if (list.length === 0) return []
+
+  const maxConcurrent = options?.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_FILES
+  const onFileUploaded = options?.onFileUploaded
+  const results: Array<{ file: File; success: boolean; fileId?: number }> = []
+  let currentIndex = 0
+
+  // 工作函数：从队列中取下一个文件上传
+  async function worker() {
+    while (currentIndex < list.length) {
+      const index = currentIndex++
+      const file = list[index]
+      try {
+        const result = await uploadFile(file, folderId)
+        // 上传成功后执行回调（如挂载到群文件），回调失败也算整体失败
+        if (onFileUploaded && result.fileId) {
+          await onFileUploaded(file, result.fileId)
+        }
+        results.push({ file, success: true, fileId: result.fileId })
+      } catch (error) {
+        console.error(`上传文件 ${file.name} 失败:`, error)
+        results.push({ file, success: false })
+      }
+    }
+  }
+
+  // 启动 maxConcurrent 个 worker
+  const workers: Promise<void>[] = []
+  for (let i = 0; i < Math.min(maxConcurrent, list.length); i++) {
+    workers.push(worker())
+  }
+
+  await Promise.all(workers)
+  return results
 }

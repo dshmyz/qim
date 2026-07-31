@@ -154,9 +154,10 @@ export const fileApi = {
   },
 
   // 上传分片
-  uploadChunk(formData: FormData) {
+  uploadChunk(formData: FormData, signal?: AbortSignal) {
     return api.post<{ code: number; data: UploadChunkResponse }>('/api/v1/files/upload/chunk', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal
     })
   },
 

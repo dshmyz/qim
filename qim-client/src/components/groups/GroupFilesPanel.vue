@@ -289,7 +289,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { groupFiles, type GroupFile, type GroupFolder } from '../../api/groupFiles'
-import { uploadFile as uploadFileChunked } from '../../composables/useFileUpload'
+import { uploadFilesWithLimit } from '../../composables/useFileUpload'
 import UploadProgressBar from '../common/UploadProgressBar.vue'
 import Tooltip from '../shared/Tooltip.vue'
 
@@ -630,19 +630,15 @@ const uploadFiles = async (fileList: File[] | FileList) => {
   const list = Array.from(fileList)
   if (list.length === 0) return
   uploading.value = true
-  let success = 0
-  let failed = 0
   try {
-    await Promise.all(list.map(async (file) => {
-      try {
-        const result = await uploadFileChunked(file)
-        await groupFiles.attach(props.groupId, result.fileId, currentFolderId.value)
-        success++
-      } catch (error) {
-        console.error(`上传文件 ${file.name} 失败:`, error)
-        failed++
+    // 使用并发限制上传（最多同时 3 个文件），上传成功后挂载到群文件
+    const results = await uploadFilesWithLimit(list, undefined, {
+      onFileUploaded: async (_file, fileId) => {
+        await groupFiles.attach(props.groupId, fileId, currentFolderId.value)
       }
-    }))
+    })
+    const success = results.filter(r => r.success).length
+    const failed = results.length - success
     await loadFiles(1)
     if (failed === 0) QMessage.success(`已上传 ${success} 个文件到群文件`)
     else if (success === 0) QMessage.error('上传群文件失败')
