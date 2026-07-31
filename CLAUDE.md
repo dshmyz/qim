@@ -56,9 +56,11 @@ qim/
 │   └── vite.config.ts       # 含 /api 代理到 localhost:8080
 │
 ├── qim-server/              # Go 后端
-│   ├── ai/                  # AI 服务（MCP、output filter）
+│   ├── ai/                  # AI 服务（工具注册表、output filter）
 │   ├── app/                 # 应用初始化（路由、DI 容器）
 │   ├── cache/               # 本地缓存
+│   ├── cmd/                 # 命令行工具
+│   │   └── qim-mcp/         # 标准 MCP Server（对外暴露 IM 工具给 Claude/Cursor）
 │   ├── config/              # 配置管理
 │   ├── database/            # 数据库连接
 │   ├── di/                  # 依赖注入容器

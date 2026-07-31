@@ -116,10 +116,10 @@
 
 ## 六、对外交互方式（与 Claude Code / OpenCode 等编码智能体）
 
-### MCP 现状（已调查）
-- `ai/mcp.go` 的 `MCPServer` 是**自定义 HTTP**（`GET /tools`、`POST /execute`），不是标准 MCP 协议（JSON-RPC over stdio / Streamable HTTP），Claude Code/OpenCode 不能直接消费
-- 但 `MCPTool` 接口（Name/Description/Parameters/Execute）形状对得上，`CallerContext` 提供权限模型，**registry 可复用**
-- 已注册工具：运维 + 知识（KnowledgeSearch/Save/MemorySearch via `UnifiedMCPBridge`）+ 群管理；**缺 IM 类工具**（send/get/search messages、create_task、request_approval）
+### 进程内工具注册表现状（已调查）
+- `ai/tool_registry.go` 的 `ToolRegistry` 是**进程内工具注册表**（对外 HTTP 端点 `/api/ai/tools` 由 handler 层暴露），不是标准 MCP 协议（JSON-RPC over stdio / Streamable HTTP），Claude Code/OpenCode 不能直接消费
+- 但 `Tool` 接口（Name/Description/Parameters/Execute）形状对得上 MCP，`CallerContext` 提供权限模型，**registry 可复用**
+- 已注册工具：运维 + 知识（KnowledgeSearch/Save/MemorySearch via `UnifiedToolBridge`）+ 群管理；**缺 IM 类工具**（send/get/search messages、create_task、request_approval）
 - `handleExecuteTool` 传 `nil` ctx，对外暴露需接 token -> CallerContext 鉴权
 - 附带发现：`pkg/scheduler`（robfig/cron/v3）已有统一调度器，#5 proactive 不缺定时框架，难度可降回中等
 
