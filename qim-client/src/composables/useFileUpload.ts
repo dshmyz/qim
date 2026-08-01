@@ -67,6 +67,7 @@ interface UploadManager {
   folderId: number | null
   chunks: Blob[]
   uploadedChunks: Set<number>
+  uploadedSize: number
   retryCount: Map<number, number>
   abortController: AbortController
 }
@@ -100,13 +101,15 @@ const MAX_RETRY_COUNT = 3
  */
 export async function initUpload(
   file: File,
-  folderId?: number
+  folderId?: number,
+  resumeUploadId?: string
 ): Promise<InitUploadResponse> {
   // 调用初始化 API（秒传已移除，不再传 file_hash）
   const response = await fileApi.initUpload({
     filename: file.name,
     file_size: file.size,
-    folder_id: folderId ?? null
+    folder_id: folderId ?? null,
+    ...(resumeUploadId ? { upload_id: resumeUploadId } : {})
   })
 
   if (response.data.code !== 0) {
@@ -177,6 +180,7 @@ async function uploadChunkWithRetry(
 
       // 上传成功
       manager.uploadedChunks.add(chunkIndex)
+      manager.uploadedSize += chunk.size
       manager.retryCount.delete(chunkIndex)
 
       if (onProgress) {
@@ -414,6 +418,14 @@ export async function uploadFile(
     // 使用后端返回的分片大小进行分片，确保前后端分片策略一致
     const chunks = splitFile(file, chunk_size)
 
+    // 计算断点续传场景下已上传的字节数（按各分片实际大小累加，最后一片通常小于 chunk_size）
+    let initialUploadedSize = 0
+    uploaded_chunks.forEach((idx: number) => {
+      if (idx >= 0 && idx < chunks.length) {
+        initialUploadedSize += chunks[idx].size
+      }
+    })
+
     // 创建上传管理器
     const manager: UploadManager = {
       uploadId: initResponse.upload_id,
@@ -421,6 +433,7 @@ export async function uploadFile(
       folderId: folderId ?? null,
       chunks,
       uploadedChunks: new Set(uploaded_chunks),
+      uploadedSize: initialUploadedSize,
       retryCount: new Map(),
       abortController: new AbortController()
     }
@@ -435,10 +448,10 @@ export async function uploadFile(
 
     // 上传分片
     await uploadChunksConcurrently(manager, (uploadedCount) => {
-      // 更新进度
+      // 更新进度：progress 基于分片数（单文件进度上限 100%），
+      // uploadedSize 基于各分片实际字节数累加（避免最后一片非整片导致总进度超过 100%）
       const progress = Math.round((uploadedCount / total_chunks) * 100)
-      const uploadedSize = uploadedCount * chunk_size
-      uploadStore.updateProgress(uploadId, progress, uploadedSize)
+      uploadStore.updateProgress(uploadId, progress, manager.uploadedSize)
       uploadStore.updateTask(uploadId, {
         uploadedChunks: Array.from(manager.uploadedChunks)
       })

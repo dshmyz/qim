@@ -95,6 +95,22 @@ func TestGroupManagementTool_RemoveMemberByAdmin(t *testing.T) {
 	assert.False(t, memberExists(db, convID, victim.ID))
 }
 
+func TestGroupManagementTool_AdminCannotModifyOwner(t *testing.T) {
+	db, owner, admin, _, _, convID := setupGroupManagementDB(t)
+	srv := newTestToolRegistry()
+
+	for _, action := range []string{"remove_member", "mute"} {
+		_, err := srv.ExecuteTool("group_management", map[string]interface{}{
+			"action":           action,
+			"group_identifier": fmt.Sprintf("%d", convID),
+			"user_identifier":  owner.Username,
+		}, &ai.CallerContext{UserID: admin.ID})
+		require.Error(t, err, "管理员不应能对群主执行 %s", action)
+	}
+
+	assert.True(t, memberExists(db, convID, owner.ID), "群主成员关系不应被删除")
+}
+
 // TestGroupManagementTool_RejectByPlainMember 普通成员让 AI 踢人被拒，被踢者仍在群。
 func TestGroupManagementTool_RejectByPlainMember(t *testing.T) {
 	db, _, _, member, victim, convID := setupGroupManagementDB(t)
@@ -221,6 +237,29 @@ func TestGroupManagementTool_TransferOwner(t *testing.T) {
 	assert.Equal(t, admin.ID, g.CreatorID)
 }
 
+// TestGroupManagementTool_TransferOwner_NonMemberRollback 转让给非群成员时事务回滚，原群主保持 owner。
+func TestGroupManagementTool_TransferOwner_NonMemberRollback(t *testing.T) {
+	db, owner, _, _, _, convID := setupGroupManagementDB(t)
+	srv := newTestToolRegistry()
+
+	outsider := model.User{Username: "outsider", Nickname: "局外人"}
+	require.NoError(t, db.Create(&outsider).Error)
+
+	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
+		"action": "transfer_owner", "group_identifier": fmt.Sprintf("%d", convID),
+		"user_identifier": outsider.Username,
+	}, &ai.CallerContext{UserID: owner.ID})
+	require.Error(t, err)
+
+	var oldOwner model.ConversationMember
+	require.NoError(t, db.Where("conversation_id = ? AND user_id = ?", convID, owner.ID).First(&oldOwner).Error)
+	assert.Equal(t, "owner", oldOwner.Role, "转让失败时原群主应保持 owner")
+
+	var g model.Group
+	require.NoError(t, db.Where("conversation_id = ?", convID).First(&g).Error)
+	assert.Equal(t, owner.ID, g.CreatorID, "转让失败时 CreatorID 不应变")
+}
+
 // TestGroupManagementTool_UpdateAnnouncement 群主修改群公告。
 func TestGroupManagementTool_UpdateAnnouncement(t *testing.T) {
 	db, owner, _, _, _, convID := setupGroupManagementDB(t)
@@ -272,9 +311,9 @@ func setupToolsTestDB(t *testing.T) (*gorm.DB, *model.User, uint) {
 func TestCreateTaskTool(t *testing.T) {
 	db, owner, convID := setupToolsTestDB(t)
 	srv := ai.NewToolRegistry(nil)
-	srv.RegisterTool(&CreateTaskTool{})
+	srv.RegisterTool(&CreateGroupTaskTool{})
 
-	result, err := srv.ExecuteTool("create_task", map[string]interface{}{
+	result, err := srv.ExecuteTool("create_group_task", map[string]interface{}{
 		"group_identifier":    fmt.Sprintf("%d", convID),
 		"title":               "明天开会",
 		"assignee_identifier": owner.Username,

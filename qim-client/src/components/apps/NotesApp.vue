@@ -107,6 +107,7 @@ import NoteTagFilter from './notes/NoteTagFilter.vue'
 import AIAnalysisModal from './notes/AIAnalysisModal.vue'
 import { useNotes } from '../../composables/useNotes'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import type { Note, AIAnalyzeResult } from '../../types/note'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
@@ -262,7 +263,8 @@ function handleShare() {
 }
 
 async function handleDelete(id: number) {
-  if (!confirm('确定要删除这个笔记吗？')) return
+  const result = await QMessageBox.confirm('确定要删除这个笔记吗？', '删除笔记', { confirmButtonText: '删除', type: 'warning' })
+  if (result.action !== 'confirm') return
   const ok = await deleteNote(id)
   if (ok) {
     notes.value = notes.value.filter(n => n.id !== id)

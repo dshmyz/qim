@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import { logger } from '../../utils/logger';
 import { escapeHTML } from '../../utils/sanitize';
 // 小程序处理组件，用于处理小程序相关的逻辑
@@ -352,13 +353,13 @@ export const showMiniAppModal = (miniApp: any) => {
     
     // 清空笔记
     if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        if (confirm('确定要清空笔记吗？')) {
-          if (titleInput) titleInput.value = ''
-          if (contentInput) contentInput.value = ''
-          localStorage.removeItem('notepad-note')
-          QMessage.success('笔记已清空')
-        }
+      clearBtn.addEventListener('click', async () => {
+        const result = await QMessageBox.confirm('确定要清空笔记吗？', '清空笔记', { confirmButtonText: '清空', type: 'warning' })
+        if (result.action !== 'confirm') return
+        if (titleInput) titleInput.value = ''
+        if (contentInput) contentInput.value = ''
+        localStorage.removeItem('notepad-note')
+        QMessage.success('笔记已清空')
       })
     }
   } else if (miniApp.id === 'password-generator') {

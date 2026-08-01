@@ -441,10 +441,17 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 			return
 		}
 
+		// 接收前端生成的 state 并存入 store，回调时校验（防 OAuth 登录 CSRF）
 		state := c.Query("state")
 		if state == "" {
-			state = "auth"
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    1,
+				"message": "缺少 state 参数",
+				"data":    nil,
+			})
+			return
 		}
+		storeOAuthState(state, authProvider.Name)
 
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,

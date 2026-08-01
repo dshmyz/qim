@@ -9,24 +9,24 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
-// CreateTaskTool 允许 AI 根据用户意图创建任务提醒。
-type CreateTaskTool struct {
+// CreateUserTaskTool 允许 AI 根据用户意图创建任务提醒。
+type CreateUserTaskTool struct {
 	taskService *TaskService
 }
 
-func NewCreateTaskTool(taskService *TaskService) *CreateTaskTool {
-	return &CreateTaskTool{taskService: taskService}
+func NewCreateUserTaskTool(taskService *TaskService) *CreateUserTaskTool {
+	return &CreateUserTaskTool{taskService: taskService}
 }
 
-func (t *CreateTaskTool) Name() string {
+func (t *CreateUserTaskTool) Name() string {
 	return "create_user_task"
 }
 
-func (t *CreateTaskTool) Description() string {
-	return "为用户创建任务/待办提醒。当用户要求设置提醒、记录待办、创建任务时使用。会返回创建结果。"
+func (t *CreateUserTaskTool) Description() string {
+	return "在【私聊/个人】场景下为当前用户创建个人待办，不绑定任何群组（仅自己可见）。无 group_identifier 参数。若用户提到群组或想指派给群成员，请改用 create_group_task。"
 }
 
-func (t *CreateTaskTool) Parameters() map[string]interface{} {
+func (t *CreateUserTaskTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"title": map[string]interface{}{
 			"type":        "string",
@@ -51,7 +51,7 @@ func (t *CreateTaskTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
+func (t *CreateUserTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerContext) (interface{}, error) {
 	if t.taskService == nil {
 		return nil, fmt.Errorf("task service not available")
 	}
@@ -99,7 +99,7 @@ func (t *CreateTaskTool) Execute(params map[string]interface{}, ctx *ai.CallerCo
 	}
 
 	if err := t.taskService.CreateTask(task); err != nil {
-		logger.WithModule("CreateTaskTool").Error("create task failed", "error", err)
+		logger.WithModule("CreateUserTaskTool").Error("create task failed", "error", err)
 		return nil, fmt.Errorf("创建任务失败: %w", err)
 	}
 

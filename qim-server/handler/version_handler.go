@@ -103,13 +103,11 @@ func CreateVersion(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrVersionExists):
 			response.BadRequest(c, "该版本已存在")
-		case errors.Is(err, service.ErrMissingDownloadURL):
-			response.BadRequest(c, "下载链接不能为空")
+		case errors.Is(err, service.ErrMissingDownloadURL), errors.Is(err, service.ErrMissingSha256):
+			response.BadRequest(c, err.Error())
 		case errors.Is(err, service.ErrHashComputeFailed):
 			response.BadRequest(c, err.Error())
 		case errors.Is(err, service.ErrInvalidRolloutPercentage):
-			response.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrMissingDownloadURL), errors.Is(err, service.ErrMissingSha256):
 			response.BadRequest(c, err.Error())
 		default:
 			response.InternalServerError(c, "创建失败")

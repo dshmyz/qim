@@ -13,6 +13,14 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
+// maxDocumentSize 文档解析的单文件大小上限（20MB）
+// 防止 zip bomb / 超大文件导致 OOM
+const maxDocumentSize = 20 * 1024 * 1024
+
+// maxZipEntrySize ZIP 内单个成员的解压读取上限（20MB）
+// 防止压缩比极高的恶意 zip bomb 解压后撑爆内存
+const maxZipEntrySize = 20 * 1024 * 1024
+
 // DocumentParser 文档内容解析器
 type DocumentParser struct{}
 
@@ -42,7 +50,15 @@ func (p *DocumentParser) Parse(filePath string) (string, error) {
 }
 
 // parseText 解析纯文本文件
+// 先 stat 检查文件大小，防止超大文件一次性读入内存
 func (p *DocumentParser) parseText(filePath string) (string, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return "", fmt.Errorf("获取文本文件信息 %s 失败: %w", filePath, err)
+	}
+	if info.Size() > maxDocumentSize {
+		return "", fmt.Errorf("文本文件 %s 过大（%d 字节，上限 %d 字节）", filePath, info.Size(), maxDocumentSize)
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("读取文本文件 %s 失败: %w", filePath, err)
@@ -96,9 +112,13 @@ func (p *DocumentParser) parseDocx(filePath string) (string, error) {
 				return "", fmt.Errorf("读取 document.xml 失败: %w", err)
 			}
 			defer rc.Close()
-			data, err := io.ReadAll(rc)
+			// 限制解压读取大小，防止 zip bomb
+			data, err := io.ReadAll(io.LimitReader(rc, maxZipEntrySize+1))
 			if err != nil {
 				return "", fmt.Errorf("读取 document.xml 内容失败: %w", err)
+			}
+			if len(data) > maxZipEntrySize {
+				return "", fmt.Errorf("document.xml 解压后过大（超过 %d 字节，疑似 zip bomb）", maxZipEntrySize)
 			}
 			return extractDocxText(data), nil
 		}
@@ -211,10 +231,14 @@ func (p *DocumentParser) parsePptx(filePath string) (string, error) {
 		if f == nil {
 			continue
 		}
-		data, err := io.ReadAll(f)
+		// 限制解压读取大小，防止 zip bomb
+		data, err := io.ReadAll(io.LimitReader(f, maxZipEntrySize+1))
 		f.Close()
 		if err != nil {
 			continue
+		}
+		if len(data) > maxZipEntrySize {
+			return "", fmt.Errorf("幻灯片 %d 解压后过大（超过 %d 字节，疑似 zip bomb）", sf.num, maxZipEntrySize)
 		}
 		text := extractPptxText(data)
 		if text != "" {
@@ -300,10 +324,14 @@ func (p *DocumentParser) parseXlsx(filePath string) (string, error) {
 		if err != nil {
 			continue
 		}
-		data, err := io.ReadAll(f)
+		// 限制解压读取大小，防止 zip bomb
+		data, err := io.ReadAll(io.LimitReader(f, maxZipEntrySize+1))
 		f.Close()
 		if err != nil {
 			continue
+		}
+		if len(data) > maxZipEntrySize {
+			return "", fmt.Errorf("工作表 %d 解压后过大（超过 %d 字节，疑似 zip bomb）", idx+1, maxZipEntrySize)
 		}
 		text := parseXlsxSheet(data, sharedStrings)
 		if text != "" {
@@ -349,9 +377,13 @@ func readXlsxSharedStrings(zr *zip.Reader) ([]string, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(rc)
+	// 限制解压读取大小，防止 zip bomb
+	data, err := io.ReadAll(io.LimitReader(rc, maxZipEntrySize+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) > maxZipEntrySize {
+		return nil, fmt.Errorf("sharedStrings.xml 解压后过大（超过 %d 字节，疑似 zip bomb）", maxZipEntrySize)
 	}
 
 	var sst xlsxSST

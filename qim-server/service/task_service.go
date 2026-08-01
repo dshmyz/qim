@@ -115,7 +115,7 @@ func (s *TaskService) DeleteTask(userID, taskID uint) error {
 func (s *TaskService) ProcessTaskReminders() {
 	now := time.Now()
 
-	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateTaskTool）统一用
+	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateUserTaskTool/CreateGroupTaskTool）统一用
 	// time.Parse（UTC）落库，读出即为 UTC time.Time，与 EventService 一致：
 	// 用 now 的绝对时刻比较，不受时区影响。
 	// 只扫描未来 24h 内到期的任务，避免全表扫描。

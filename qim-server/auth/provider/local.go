@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -59,6 +60,14 @@ func (p *LocalProvider) Authenticate(ctx context.Context, creds *Credentials) (*
 			}, nil
 		}
 		return nil, err
+	}
+
+	// 外部认证用户的 PasswordHash 为占位符（非 bcrypt 格式），直接拒绝本地登录
+	if !strings.HasPrefix(user.PasswordHash, "$2") {
+		return &AuthResult{
+			Success: false,
+			Message: "该账户未设置本地密码，请使用第三方登录",
+		}, nil
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(creds.Password)); err != nil {

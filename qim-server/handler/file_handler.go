@@ -879,6 +879,10 @@ func PublicDownloadFile(c *gin.Context) {
 // timeout 为0时默认60秒。
 func streamFileFromStorage(c *gin.Context, storagePath string, size int64, timeout time.Duration) {
 	mgr := di.GlobalContainer.StorageManager
+	if mgr == nil {
+		response.InternalServerError(c, "存储服务未初始化")
+		return
+	}
 	st, key, ok := mgr.ByPath(storagePath)
 	if !ok || st == nil {
 		response.InternalServerError(c, "存储类型不支持")

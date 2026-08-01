@@ -341,13 +341,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
 
-		// 需要认证的认证相关路由
+		// 需要认证的认证相关路由（access token）
 		authAuthed := api.Group("/auth")
 		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
 		{
 			authAuthed.POST("/logout", handler.Logout)
-			authAuthed.POST("/refresh", handler.RefreshToken)
+			// refresh-token 用于刷新第三方 OAuth provider 的 access_token，请求体携带的是
+			// 第三方 refresh_token，与 QIM JWT 无关，需要 access token 认证用户身份，故留在 authAuthed 组
 			authAuthed.POST("/refresh-token", handler.RefreshOAuthToken)
+		}
+
+		// refresh token 端点：仅允许 refresh token，access token 不可用。
+		// 修复破坏性问题：原先 /refresh 在 authAuthed 组下用 AuthMiddleware，
+		// AuthMiddleware 拒绝 refresh token（TokenType="refresh" != "access"），
+		// 导致 token 刷新完全断裂，用户 access token 过期后必须重新登录。
+		refreshAuthed := api.Group("/auth")
+		refreshAuthed.Use(middleware.RefreshAuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
+		{
+			refreshAuthed.POST("/refresh", handler.RefreshToken)
 		}
 
 		// 需要认证的路由

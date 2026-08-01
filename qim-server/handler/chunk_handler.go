@@ -19,6 +19,7 @@ type InitUploadRequest struct {
 	Filename string `json:"filename" binding:"required"`
 	FileSize int64  `json:"file_size" binding:"required"`
 	FolderID *uint  `json:"folder_id"`
+	UploadID string `json:"upload_id,omitempty"` // 显式断点续传时传入原任务 ID
 }
 
 // InitUploadResponse 初始化上传响应
@@ -100,8 +101,13 @@ func InitUpload(c *gin.Context) {
 		req.Filename,
 		req.FileSize,
 		req.FolderID,
+		req.UploadID,
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrUploadForbidden) {
+			response.Forbidden(c, err.Error())
+			return
+		}
 		response.InternalServerError(c, "初始化上传失败: "+err.Error())
 		return
 	}

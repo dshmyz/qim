@@ -196,6 +196,7 @@ import { useFileDownload } from '../../composables/useFileDownload'
 import { useUploadStore } from '../../stores/upload'
 import { type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import { openMenu, closeMenu } from '../../composables/useUI'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
@@ -354,9 +355,13 @@ const handleFileStar = async (file: FileItem) => {
 }
 
 const handleFileDelete = async (file: FileItem) => {
-  if (confirm(`确定要删除文件 "${file.name}" 吗？`)) {
-    await deleteFile(file.id)
-  }
+  const result = await QMessageBox.confirm(
+    `确定要删除文件 "${file.name}" 吗？`,
+    '删除文件',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  await deleteFile(file.id)
 }
 
 const handleFileUpload = async (event: Event | FileList) => {

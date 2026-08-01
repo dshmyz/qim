@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import QMessageBox from '../../utils/qmessagebox'
 import { useBots } from '../../composables/useBots'
 
 const emit = defineEmits(['create', 'edit-bot', 'use-bot', 'config-bot'])
@@ -77,10 +78,10 @@ const statusLabel = (status: string) => {
 }
 
 const confirmDelete = async (bot: any) => {
-  if (confirm(`确定删除「${bot.name}」吗？删除后将释放一个创建配额。`)) {
-    await deleteBot(bot.id)
-    await loadMyBots()
-  }
+  const result = await QMessageBox.confirm(`确定删除「${bot.name}」吗？删除后将释放一个创建配额。`, '删除机器人', { confirmButtonText: '删除', type: 'warning' })
+  if (result.action !== 'confirm') return
+  await deleteBot(bot.id)
+  await loadMyBots()
 }
 
 onMounted(loadMyBots)

@@ -75,6 +75,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
@@ -252,7 +253,8 @@ const handleCopy = async (url: string) => {
 
 // 删除短链接
 const handleDelete = async (id: number) => {
-  if (!confirm('确定要删除这个短链接吗？')) return
+  const result = await QMessageBox.confirm('确定要删除这个短链接吗？', '删除短链接', { confirmButtonText: '删除', type: 'warning' })
+  if (result.action !== 'confirm') return
 
   try {
     const token = localStorage.getItem('token')

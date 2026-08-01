@@ -39,6 +39,12 @@ func GetDocContent(c *gin.Context) {
 		docsDir = "docs"
 	}
 
+	// 只允许 .md 文件（防御性校验：白名单已保证，但显式检查防止后续扩展白名单时遗漏）
+	if !strings.HasSuffix(filename, ".md") {
+		response.Error(c, http.StatusForbidden, 403, "不允许的文件类型")
+		return
+	}
+
 	path := filepath.Join(docsDir, filename)
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -49,12 +55,6 @@ func GetDocContent(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, 404, "文档文件未找到: "+filename)
 			return
 		}
-	}
-
-	// 只允许 .md 文件
-	if !strings.HasSuffix(filename, ".md") {
-		response.Error(c, http.StatusForbidden, 403, "不允许的文件类型")
-		return
 	}
 
 	response.Success(c, gin.H{

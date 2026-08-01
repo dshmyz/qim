@@ -43,7 +43,6 @@ type Container struct {
 	AvatarService        *service.AvatarService
 	ApprovalService      *service.ApprovalService
 	VersionService       *service.VersionService
-	CLIVersionService    *service.CLIVersionService    // Deprecated: CLI 版本已迁移到 VersionService (app_type="cli")，保留用于向后兼容
 	BlacklistService     *service.BlacklistService
 	OperationLogService  *service.OperationLogService
 	SystemConfigService  *service.SystemConfigService
@@ -153,7 +152,6 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	avatarService := service.NewAvatarService(db, aiService)
 	approvalService := service.NewApprovalService(db)
 	versionService := service.NewVersionService(db, storageAccessor)
-	cliVersionService := service.NewCLIVersionService("data/cli")
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
@@ -228,7 +226,6 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		AvatarService:        avatarService,
 		ApprovalService:      approvalService,
 		VersionService:       versionService,
-		CLIVersionService:    cliVersionService,
 		BlacklistService:     blacklistService,
 		OperationLogService:  operationLogService,
 		SystemConfigService:  systemConfigService,

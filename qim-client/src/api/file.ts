@@ -60,6 +60,7 @@ export interface InitUploadRequest {
   filename: string
   file_size: number
   folder_id?: number | null
+  upload_id?: string
 }
 
 export interface InitUploadResponse {

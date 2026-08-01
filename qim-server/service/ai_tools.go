@@ -313,7 +313,7 @@ func requireConversationMember(userID, convID uint) error {
 // RegisterUserTools 把用户侧 AI 工具注册到进程内工具注册表。
 func RegisterUserTools(registry *ai.ToolRegistry, taskSvc *TaskService, msgSvc *MessageService, searchGraph *UnifiedSearchGraph, summaryGraph *SummaryGraph) {
 	if taskSvc != nil {
-		registry.RegisterTool(NewCreateTaskTool(taskSvc))
+		registry.RegisterTool(NewCreateUserTaskTool(taskSvc))
 		registry.RegisterTool(NewListTasksTool(taskSvc))
 	}
 	if msgSvc != nil {

@@ -4,14 +4,74 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/auth/provider"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
+
+// externalUserPasswordPlaceholder 外部认证（OAuth/CAS）用户不设置本地密码。
+// 使用 "!" 作为占位符：它不是有效的 bcrypt hash 格式，
+// bcrypt.CompareHashAndPassword 会因格式不匹配直接返回错误，从根本上杜绝本地密码登录。
+const externalUserPasswordPlaceholder = "!"
+
+// --- OAuth state CSRF 防护 ---
+// state 用于绑定授权请求与回调，防止登录 CSRF（攻击者用自己的 code 让受害者登录攻击者账号）。
+// state 在 GetProviderLoginURL 时生成并存入内存 store，回调时校验并一次性消费。
+
+const oauthStateTTL = 10 * time.Minute
+
+type oauthStateEntry struct {
+	provider  string
+	createdAt time.Time
+}
+
+var (
+	oauthStateStore   = make(map[string]oauthStateEntry)
+	oauthStateStoreMu sync.RWMutex
+)
+
+// storeOAuthState 将前端生成的 state 存入 store，供回调时校验
+func storeOAuthState(state, providerName string) {
+	oauthStateStoreMu.Lock()
+	// 顺带清理过期 state，避免内存泄漏
+	now := time.Now()
+	for s, e := range oauthStateStore {
+		if now.Sub(e.createdAt) > oauthStateTTL {
+			delete(oauthStateStore, s)
+		}
+	}
+	oauthStateStore[state] = oauthStateEntry{provider: providerName, createdAt: now}
+	oauthStateStoreMu.Unlock()
+}
+
+// validateAndConsumeOAuthState 校验 state 是否有效且属于指定 provider，校验后一次性删除
+func validateAndConsumeOAuthState(state, providerName string) bool {
+	if state == "" {
+		return false
+	}
+
+	oauthStateStoreMu.Lock()
+	defer oauthStateStoreMu.Unlock()
+
+	entry, exists := oauthStateStore[state]
+	if !exists {
+		return false
+	}
+	delete(oauthStateStore, state) // 一次性消费
+
+	// 过期检查
+	if time.Since(entry.createdAt) > oauthStateTTL {
+		return false
+	}
+	// provider 必须匹配
+	return entry.provider == providerName
+}
 
 // findAuthProvider 查找并验证认证提供者
 func findAuthProvider(c *gin.Context, providerName string) (*model.AuthProvider, bool) {
@@ -110,14 +170,13 @@ func authenticateOAuth(c *gin.Context, authProvider *model.AuthProvider, code st
 	}
 
 	if err != nil {
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("oauth_default_pass"), bcrypt.DefaultCost)
 		user = model.User{
 			Username:     username,
 			Email:        email,
 			Nickname:     nickname,
 			Phone:        phone,
 			Avatar:       avatar,
-			PasswordHash: string(hashedPassword),
+			PasswordHash: externalUserPasswordPlaceholder,
 			Status:       "online",
 		}
 		if user.Nickname == "" {
@@ -179,14 +238,13 @@ func authenticateCAS(c *gin.Context, authProvider *model.AuthProvider, ticket st
 	var user model.User
 	err = db.Where("username = ?", username).First(&user).Error
 	if err != nil {
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("cas_default_pass"), bcrypt.DefaultCost)
 		user = model.User{
 			Username:     username,
 			Nickname:     nickname,
 			Email:        email,
 			Phone:        phone,
 			Avatar:       avatar,
-			PasswordHash: string(hashedPassword),
+			PasswordHash: externalUserPasswordPlaceholder,
 			Status:       "online",
 		}
 		if user.Nickname == "" {
@@ -291,6 +349,11 @@ func UnifiedAuthCallback(c *gin.Context) {
 	case "oauth":
 		if req.Code == "" {
 			response.BadRequest(c, "缺少授权码")
+			return
+		}
+		// state 校验：防止 OAuth 登录 CSRF（攻击者用自己的 code 让受害者登录攻击者账号）
+		if !validateAndConsumeOAuthState(req.State, req.Provider) {
+			response.BadRequest(c, "state 校验失败，请重新发起登录")
 			return
 		}
 		user, ok = authenticateOAuth(c, authProvider, req.Code)

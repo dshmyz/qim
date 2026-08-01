@@ -135,6 +135,14 @@ func (p *OpenAIProvider) ChatWithUsage(messages []Message) (string, *TokenUsage,
 	}
 	defer resp.Body.Close()
 
+	// 校验 HTTP 状态码：未校验时 401/429/500 会被当作 decode 失败，丢失真实错误信息
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.WithModule("OpenAI").Error("ChatWithUsage non-200 response",
+			"status", resp.Status, "body", string(bodyBytes))
+		return "", nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
 	var response ChatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return "", nil, fmt.Errorf("failed to decode OpenAI response: %w", err)

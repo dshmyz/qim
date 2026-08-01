@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"runtime"
@@ -39,7 +40,12 @@ func CLIVersion(c *gin.Context) {
 		}
 		v, err := svc.GetLatestCLI(goos, goarch)
 		if err != nil {
-			response.Success(c, gin.H{"version": "unknown", "sha256": nil})
+			// 区分"无可用版本"（业务正常，返回 unknown）和 DB 异常（500）
+			if errors.Is(err, service.ErrNoVersionAvailable) {
+				response.Success(c, gin.H{"version": "unknown", "sha256": nil})
+			} else {
+				response.InternalServerError(c, "查询版本失败")
+			}
 			return
 		}
 		response.Success(c, gin.H{"version": v.Version, "sha256": map[string]string{cliBinaryName(goos, goarch): v.Sha256}})
@@ -97,6 +103,11 @@ func CLIDownload(c *gin.Context) {
 	v, err := svc.GetLatestCLI(goos, goarch)
 	if err != nil {
 		response.NotFound(c, "当前平台无可用二进制")
+		return
+	}
+
+	if v.DownloadURL == "" {
+		response.NotFound(c, "当前平台版本未配置下载链接")
 		return
 	}
 

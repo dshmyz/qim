@@ -158,7 +158,9 @@ func (s *VersionService) List(page, pageSize int, platform string, appType ...st
 	}
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	var versions []model.ClientVersion
 	offset := (page - 1) * pageSize
@@ -275,11 +277,21 @@ func (s *VersionService) GetLatestCLIVersion() (string, map[string]string, error
 	}
 
 	// 构建 sha256 map: {"qim-darwin-arm64": "abc...", ...}
+	// 每个平台只取最新版本的 sha256，避免同平台多版本启用时因 map 迭代顺序不确定导致
+	// 返回的哈希与 CLIDownload（返回最新版本二进制）不匹配，客户端校验失败。
 	sha256Map := make(map[string]string)
-	for _, v := range versions {
+	latestByPlatform := make(map[string]*model.ClientVersion) // platform → 该平台最新版本
+	for i := range versions {
+		v := &versions[i]
 		if v.Sha256 == "" {
 			continue
 		}
+		cur, ok := latestByPlatform[v.Platform]
+		if !ok || CompareVersions(v.Version, cur.Version) > 0 {
+			latestByPlatform[v.Platform] = v
+		}
+	}
+	for _, v := range latestByPlatform {
 		binaryName := fmt.Sprintf("qim-%s", v.Platform)
 		if v.Os == "windows" || strings.HasPrefix(v.Platform, "windows-") {
 			binaryName += ".exe"

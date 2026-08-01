@@ -37,7 +37,12 @@ func GetGroupDocuments(c *gin.Context) {
 		response.Unauthorized(c, "未授权")
 		return
 	}
-	if !isGroupMember(db, group.ConversationID, userID) {
+	isMember, err := isGroupMember(db, group.ConversationID, userID)
+	if err != nil {
+		response.InternalServerError(c, "校验群成员失败")
+		return
+	}
+	if !isMember {
 		response.Forbidden(c, "您不是该群成员")
 		return
 	}
@@ -52,10 +57,18 @@ func GetGroupDocuments(c *gin.Context) {
 }
 
 // isGroupMember 校验用户是否为指定会话的成员（用于群文档读接口的权限校验）
-func isGroupMember(db *gorm.DB, conversationID uint, userID interface{}) bool {
+// 返回 (是否成员, 错误)：DB 异常时返回错误，调用方可决定返回 500 而非误判为非成员
+func isGroupMember(db *gorm.DB, conversationID uint, userID interface{}) (bool, error) {
 	var member model.ConversationMember
 	err := db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).First(&member).Error
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	// DB 异常（连接断开、超时等），不应误判为非成员
+	return false, err
 }
 
 // requireGroupAdmin 校验当前用户是群成员且具有管理员权限（群主/管理员）。
@@ -211,7 +224,12 @@ func GetGroupDocumentsWithStatus(c *gin.Context) {
 		response.Unauthorized(c, "未授权")
 		return
 	}
-	if !isGroupMember(db, group.ConversationID, userID) {
+	isMember, err := isGroupMember(db, group.ConversationID, userID)
+	if err != nil {
+		response.InternalServerError(c, "校验群成员失败")
+		return
+	}
+	if !isMember {
 		response.Forbidden(c, "您不是该群成员")
 		return
 	}
@@ -305,7 +323,12 @@ func GetDocumentProcessStatus(c *gin.Context) {
 		response.Unauthorized(c, "未授权")
 		return
 	}
-	if !isGroupMember(db, group.ConversationID, userID) {
+	isMember, err := isGroupMember(db, group.ConversationID, userID)
+	if err != nil {
+		response.InternalServerError(c, "校验群成员失败")
+		return
+	}
+	if !isMember {
 		response.Forbidden(c, "您不是该群成员")
 		return
 	}

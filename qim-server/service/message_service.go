@@ -49,18 +49,24 @@ func (s *MessageService) SetAIService(aiService *ai.AIService) {
 	s.aiService = aiService
 }
 
-func (s *MessageService) loadSensitiveWords() {
+// loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
+// 历史问题：原先用 if err == nil 静默吞掉错误，导致 CRUD 成功但缓存刷新失败时
+// 管理员看到"成功"，实际新词未被过滤。现返回 error 由调用方处理并记录日志。
+func (s *MessageService) loadSensitiveWords() error {
 	var words []model.SensitiveWord
-	if err := s.db.Where("enabled = ?", true).Find(&words).Error; err == nil {
-		s.sensitiveWordCacheMu.Lock()
-		s.sensitiveWordCache = words
-		s.sensitiveWordLoaded = true
-		s.sensitiveWordCacheMu.Unlock()
+	if err := s.db.Where("enabled = ?", true).Find(&words).Error; err != nil {
+		return err
 	}
+	s.sensitiveWordCacheMu.Lock()
+	s.sensitiveWordCache = words
+	s.sensitiveWordLoaded = true
+	s.sensitiveWordCacheMu.Unlock()
+	return nil
 }
 
-func (s *MessageService) RefreshSensitiveWordCache() {
-	s.loadSensitiveWords()
+// RefreshSensitiveWordCache 刷新敏感词缓存，返回 DB 错误以便调用方感知失败。
+func (s *MessageService) RefreshSensitiveWordCache() error {
+	return s.loadSensitiveWords()
 }
 
 func (s *MessageService) CheckSensitiveContent(content string) (bool, []string) {
@@ -70,7 +76,11 @@ func (s *MessageService) CheckSensitiveContent(content string) (bool, []string) 
 	s.sensitiveWordCacheMu.RUnlock()
 
 	if !loaded {
-		s.loadSensitiveWords()
+		// 加载失败时记录日志（fail-open：不阻断消息发送，但需让运维感知过滤已降级）。
+		// 历史问题：原先静默吞掉错误，DB 异常时敏感词过滤悄悄失效却无人知晓。
+		if err := s.loadSensitiveWords(); err != nil {
+			logger.WithModule("SensitiveWord").Error("加载敏感词缓存失败，敏感词过滤暂时降级", "error", err)
+		}
 		s.sensitiveWordCacheMu.RLock()
 		cache = s.sensitiveWordCache
 		s.sensitiveWordCacheMu.RUnlock()
@@ -395,11 +405,7 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", query.ConvID, query.UserID).First(&member).Error; err != nil {
-		var count int64
-		db.Model(&model.Message{}).Where("conversation_id = ? AND sender_id = ?", query.ConvID, query.UserID).Count(&count)
-		if count == 0 {
-			return nil, ErrMessageForbidden
-		}
+		return nil, ErrMessageForbidden
 	}
 
 	var total int64
@@ -848,22 +854,49 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 
 	db := s.db
 
-	// 优化：一次性查询所有消息的已读回执
+	// 优化：一次性查询所有消息
+	var messages []model.Message
+	db.Where("id IN ?", msgIDs).Find(&messages)
+
+	// 权限校验：请求用户必须是每条消息所在会话的成员，否则跳过该消息（防越权）
+	var convIDs []uint
+	convIDByMsg := make(map[uint]uint)
+	for _, m := range messages {
+		convIDByMsg[m.ID] = m.ConversationID
+		convIDs = append(convIDs, m.ConversationID)
+	}
+
+	// 一次性查询用户在这些会话中的成员身份
+	allowedConvs := make(map[uint]bool)
+	if len(convIDs) > 0 {
+		var memberConvs []uint
+		db.Model(&model.ConversationMember{}).
+			Where("conversation_id IN ? AND user_id = ?", convIDs, userID).
+			Distinct("conversation_id").
+			Pluck("conversation_id", &memberConvs)
+		for _, cid := range memberConvs {
+			allowedConvs[cid] = true
+		}
+	}
+
+	// 仅保留用户有权访问的消息 ID
+	var accessibleMsgIDs []uint
+	for _, msgID := range msgIDs {
+		if convID, ok := convIDByMsg[msgID]; ok && allowedConvs[convID] {
+			accessibleMsgIDs = append(accessibleMsgIDs, msgID)
+		}
+	}
+
+	// 优化：一次性查询所有（有权访问的）消息的已读回执
 	var readReceipts []model.MessageReadReceipt
-	db.Where("message_id IN ?", msgIDs).Preload("User").Find(&readReceipts)
+	if len(accessibleMsgIDs) > 0 {
+		db.Where("message_id IN ?", accessibleMsgIDs).Preload("User").Find(&readReceipts)
+	}
 
 	// 按消息 ID 分组
 	receiptsByMsg := make(map[uint][]model.MessageReadReceipt)
 	for _, r := range readReceipts {
 		receiptsByMsg[r.MessageID] = append(receiptsByMsg[r.MessageID], r)
-	}
-
-	// 优化：一次性查询所有会话的成员数
-	var convIDs []uint
-	var messages []model.Message
-	db.Where("id IN ?", msgIDs).Find(&messages)
-	for _, m := range messages {
-		convIDs = append(convIDs, m.ConversationID)
 	}
 
 	type convCount struct {
@@ -880,12 +913,6 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	memberCountByConv := make(map[uint]int64)
 	for _, cc := range convCounts {
 		memberCountByConv[cc.ConversationID] = cc.Count
-	}
-
-	// 构建结果
-	convIDByMsg := make(map[uint]uint)
-	for _, m := range messages {
-		convIDByMsg[m.ID] = m.ConversationID
 	}
 
 	result := make(map[uint]struct {

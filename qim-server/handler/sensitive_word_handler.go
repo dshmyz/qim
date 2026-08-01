@@ -10,6 +10,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -48,10 +49,30 @@ func GetSensitiveWords(c *gin.Context) {
 	})
 }
 
-func refreshSensitiveWordCache() {
-	if di.GlobalContainer.MessageService != nil {
-		di.GlobalContainer.MessageService.RefreshSensitiveWordCache()
+// refreshSensitiveWordCache 刷新敏感词缓存，失败时记录日志并返回 error。
+// 历史问题：原先静默调用且不返回错误，CRUD 成功但缓存刷新失败时管理员无感知，
+// 新增/修改的敏感词不会生效，造成缓存与 DB 不一致。
+func refreshSensitiveWordCache() error {
+	if di.GlobalContainer.MessageService == nil {
+		return nil
 	}
+	if err := di.GlobalContainer.MessageService.RefreshSensitiveWordCache(); err != nil {
+		logger.WithModule("SensitiveWord").Error("刷新敏感词缓存失败，CRUD 已成功但缓存可能不一致", "error", err)
+		return err
+	}
+	return nil
+}
+
+// respondWithCacheRefresh 在敏感词 CRUD 成功后刷新缓存并返回响应。
+// 缓存刷新失败时不改变成功状态（数据已落库），但通过 message 透出告警，
+// 让管理员感知过滤可能暂时不一致，便于重试或排查。
+// 统一封装避免 6 个 handler 重复处理。
+func respondWithCacheRefresh(c *gin.Context, data interface{}) {
+	if err := refreshSensitiveWordCache(); err != nil {
+		response.SuccessWithMessage(c, "操作已保存，但缓存刷新失败，敏感词过滤可能暂时不一致，请稍后重试", data)
+		return
+	}
+	response.Success(c, data)
 }
 
 func CreateSensitiveWord(c *gin.Context) {
@@ -87,8 +108,7 @@ func CreateSensitiveWord(c *gin.Context) {
 		return
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, sensitiveWordToFrontend(word))
+	respondWithCacheRefresh(c, sensitiveWordToFrontend(word))
 }
 
 func UpdateSensitiveWord(c *gin.Context) {
@@ -128,8 +148,7 @@ func UpdateSensitiveWord(c *gin.Context) {
 		return
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, sensitiveWordToFrontend(*word))
+	respondWithCacheRefresh(c, sensitiveWordToFrontend(*word))
 }
 
 func DeleteSensitiveWord(c *gin.Context) {
@@ -147,8 +166,7 @@ func DeleteSensitiveWord(c *gin.Context) {
 		return
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, gin.H{"message": "删除成功"})
+	respondWithCacheRefresh(c, gin.H{"message": "删除成功"})
 }
 
 func ToggleSensitiveWordStatus(c *gin.Context) {
@@ -168,8 +186,7 @@ func ToggleSensitiveWordStatus(c *gin.Context) {
 		return
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, sensitiveWordToFrontend(*word))
+	respondWithCacheRefresh(c, sensitiveWordToFrontend(*word))
 }
 
 func BatchCreateSensitiveWords(c *gin.Context) {
@@ -201,8 +218,7 @@ func BatchCreateSensitiveWords(c *gin.Context) {
 		}
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
+	respondWithCacheRefresh(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
 }
 
 // importPolicy 是 CSV 导入专用的上传策略：仅允许 .csv，大小限制 10MB。
@@ -282,8 +298,7 @@ func ImportSensitiveWords(c *gin.Context) {
 		}
 	}
 
-	refreshSensitiveWordCache()
-	response.Success(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
+	respondWithCacheRefresh(c, gin.H{"message": fmt.Sprintf("成功导入%d个敏感词", count), "count": count})
 }
 
 func ExportSensitiveWords(c *gin.Context) {
@@ -321,24 +336,13 @@ func CheckSensitiveWords(c *gin.Context) {
 		return
 	}
 
-	swSvc := di.GlobalContainer.SensitiveWordService
+	// 走 MessageService 的缓存路径，避免每次直接查库
+	msgSvc := di.GlobalContainer.MessageService
+	contains, _ := msgSvc.CheckSensitiveContent(req.Text)
 
-	words, err := swSvc.GetAllEnabled()
-	if err != nil {
-		response.InternalServerError(c, "查询失败")
-		return
-	}
-
-	found := []string{}
-	for _, word := range words {
-		if strings.Contains(req.Text, word.Word) {
-			found = append(found, word.Word)
-		}
-	}
-
+	// 普通用户接口仅返回是否包含敏感词，不返回命中词列表（防止词库被枚举还原）
 	response.Success(c, gin.H{
-		"contains_sensitive": len(found) > 0,
-		"words":              found,
+		"contains_sensitive": contains,
 	})
 }
 
