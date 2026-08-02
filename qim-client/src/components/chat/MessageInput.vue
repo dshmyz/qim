@@ -87,11 +87,32 @@
       </div>
     </div>
 
+    <!-- 斜杠命令补全面板 -->
+    <div v-if="showSlashPanel" class="task-mention-panel-container">
+      <div class="task-mention-panel-backdrop" @click="$emit('close-slash-panel')"></div>
+      <SlashCommandPanel
+        ref="slashPanelRef"
+        :title="slashTitle || ''"
+        :items="slashItems"
+        :visible="true"
+        :search-query="slashQuery"
+        :item-component="slashItemComponent!"
+        :footer-label="slashFooterLabel"
+        :footer-icon="slashFooterIcon"
+        @select="$emit('select-slash-item', $event)"
+        @close="$emit('close-slash-panel')"
+        @footer-action="$emit('slash-footer-action')"
+      />
+    </div>
+
     <MiniAppManager v-model:showMiniAppList="showMiniAppListLocal" @send-mini-app-message="$emit('send-mini-app-message', $event)" />
 
     <input type="file" ref="fileInputRef" style="display: none" @change="$emit('handle-file-select', $event)" multiple />
 
     <QuotedMessageInput v-if="quotedMessage" :quoted-message="quotedMessage" @remove="$emit('remove-quoted-message')" />
+
+    <!-- 斜杠命令首次引导：自包含 localStorage 记忆，关闭后不再出现 -->
+    <SlashCommandHint @try="handleSlashHintTry" />
 
     <!-- 统一的 composer 容器：预览区 + textarea 融合在一个容器内 -->
     <div ref="composerRef" class="composer">
@@ -146,9 +167,12 @@ import { openMenu } from '../../composables/useUI'
 import PendingFilesPreview from './PendingFilesPreview.vue'
 import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
+import SlashCommandPanel from './SlashCommandPanel.vue'
+import SlashCommandHint from './SlashCommandHint.vue'
+import type { SlashCommandItem } from '../../utils/slashCommand'
 
 interface PendingFile { file: File; name: string }
-interface Member { id: string; name: string; username?: string; avatar: string }
+interface Member { id: string; name: string; username?: string; avatar: string; type?: 'bot' | 'user' }
 interface Conversation { id: string; type: 'single' | 'group' | 'discussion'; members?: Member[] }
 
 interface Props {
@@ -165,6 +189,16 @@ interface Props {
   getFileIcon: (fileUrl: string) => string
   draftStreaming?: boolean
   hasDraftReply?: boolean
+  // 斜杠命令补全
+  showSlashPanel: boolean
+  slashQuery: string
+  slashItems: SlashCommandItem[]
+  slashTitle?: string
+  slashItemComponent?: import('vue').Component
+  /** 斜杠面板底部操作按钮文本（如"管理快速回复"）。可选 */
+  slashFooterLabel?: string
+  /** 斜杠面板底部操作按钮图标 class。可选 */
+  slashFooterIcon?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -193,6 +227,9 @@ const emit = defineEmits<{
   (e: 'close-at-members-panel'): void
   (e: 'select-at-member', member: Member): void
   (e: 'select-at-all'): void
+  (e: 'select-slash-item', item: SlashCommandItem): void
+  (e: 'close-slash-panel'): void
+  (e: 'slash-footer-action'): void
   (e: 'handle-file-select', event: Event): void
   (e: 'handle-paste', event: ClipboardEvent): void
   (e: 'handle-keydown', event: KeyboardEvent): void
@@ -213,6 +250,7 @@ const inputAreaRef = ref<HTMLElement | null>(null)
 const composerRef = ref<HTMLElement | null>(null)
 const atMembersListRef = ref<HTMLDivElement | null>(null)
 const atMemberActiveIndex = ref(-1)
+const slashPanelRef = ref<InstanceType<typeof SlashCommandPanel> | null>(null)
 const localShowAIActions = ref(false)
 const isDragOver = ref(false)
 const isResizing = ref(false)
@@ -446,6 +484,15 @@ const handleTextareaKeydown = (event: KeyboardEvent) => {
     return
   }
 
+  // 斜杠命令补全面板：转发方向/回车/ESC 给面板处理
+  if (props.showSlashPanel && slashPanelRef.value) {
+    const handled = slashPanelRef.value.handleKeyDown(event)
+    if (handled) {
+      event.preventDefault()
+      return
+    }
+  }
+
   emit('handle-keydown', event)
 }
 
@@ -486,6 +533,31 @@ watch(
 onBeforeUnmount(() => {
   stopResize()
 })
+
+/**
+ * 斜杠命令引导"试一下"：在输入框末尾插入 / 并触发 input，
+ * 让 ChatWindow 的 handleInput 自然检测到斜杠 token 并弹出命令列表。
+ * 不直接操作 slash 面板状态，复用现有输入→检测链路。
+ */
+const handleSlashHintTry = () => {
+  const textarea = messageInputRef.value
+  if (!textarea) return
+  // 在光标处插入 /（默认末尾）
+  const start = textarea.selectionStart ?? inputMessageLocal.value.length
+  const end = textarea.selectionEnd ?? inputMessageLocal.value.length
+  const before = inputMessageLocal.value.slice(0, start)
+  const after = inputMessageLocal.value.slice(end)
+  // / 必须位于文本开头或空白后才能触发命令列表，前面补一个空格（非开头时）
+  const prefix = before.length > 0 && !/\s$/.test(before) ? ' ' : ''
+  inputMessageLocal.value = before + prefix + '/' + after
+  nextTick(() => {
+    const pos = (before + prefix + '/').length
+    textarea.focus()
+    textarea.selectionStart = textarea.selectionEnd = pos
+    // 派发 input 事件，触发 ChatWindow 的 handleInput → 斜杠检测
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
 
 defineExpose({ messageInputRef })
 </script>
@@ -818,6 +890,23 @@ defineExpose({ messageInputRef })
 }
 
 .at-members-panel-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: -1;
+}
+
+/* /task 任务补全面板（复用 @ 成员面板的定位结构） */
+.task-mention-panel-container {
+  position: relative;
+  z-index: 1000;
+  margin-top: 8px;
+}
+
+.task-mention-panel-backdrop {
   position: fixed;
   top: 0;
   left: 0;

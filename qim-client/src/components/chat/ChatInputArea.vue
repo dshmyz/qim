@@ -17,6 +17,11 @@
     :is-processing="props.isProcessing ?? false"
     :draft-streaming="props.draftStreaming ?? false"
     :has-draft-reply="props.hasDraftReply ?? false"
+    :show-slash-panel="props.showSlashPanel"
+    :slash-query="props.slashQuery"
+    :slash-items="props.slashItems"
+    :slash-title="props.slashTitle"
+    :slash-item-component="props.slashItemComponent"
     @regenerate-draft="emit('regenerate-draft')"
     @send="emit('send')"
     @input="emit('input', $event)"
@@ -37,6 +42,8 @@
     @close-at-members-panel="emit('close-at-members-panel')"
     @select-at-member="emit('select-at-member', $event)"
     @select-at-all="emit('select-at-all')"
+    @select-slash-item="emit('select-slash-item', $event)"
+    @close-slash-panel="emit('close-slash-panel')"
     @handle-file-select="emit('handle-file-select', $event)"
     @handle-paste="emit('handle-paste', $event)"
     @handle-keydown="emit('handle-keydown', $event)"
@@ -51,8 +58,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, type Component } from 'vue'
 import type { Message } from '../../types'
+import type { SlashCommandItem } from '../../utils/slashCommand'
 import MessageInput from './MessageInput.vue'
 
 interface InputConversation {
@@ -77,6 +85,12 @@ interface Props {
   getFileIcon: (fileName: string) => string
   draftStreaming?: boolean
   hasDraftReply?: boolean
+  // 斜杠命令补全
+  showSlashPanel: boolean
+  slashQuery: string
+  slashItems: SlashCommandItem[]
+  slashTitle?: string
+  slashItemComponent?: Component
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -105,6 +119,8 @@ const emit = defineEmits<{
   'close-at-members-panel': []
   'select-at-member': [member: { id: string; name: string; username?: string; avatar: string }]
   'select-at-all': []
+  'select-slash-item': [item: SlashCommandItem]
+  'close-slash-panel': []
   'handle-file-select': [event: Event]
   'handle-paste': [event: ClipboardEvent]
   'handle-keydown': [event: KeyboardEvent]
