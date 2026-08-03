@@ -38,15 +38,22 @@ func serveSPA(prefix string, useParam bool) gin.HandlerFunc {
 
 		fullPath := filepath.Join(prefix, path)
 
-		var file fs.File
-		var err error
-
-		if devMode {
-			file, err = os.Open(filepath.Join("web", fullPath))
-		} else {
-			file, err = staticFS.Open(fullPath)
+		openFile := func(p string) (fs.File, error) {
+			if devMode {
+				return os.Open(filepath.Join("web", p))
+			}
+			return staticFS.Open(p)
 		}
 
+		servedPath := fullPath
+		file, err := openFile(fullPath)
+		if err != nil {
+			// cleanUrls 支持：无扩展名路径追加 .html（VitePress cleanUrls 产物，如 /docs/cli → cli.html）
+			if filepath.Ext(path) == "" {
+				servedPath = fullPath + ".html"
+				file, err = openFile(servedPath)
+			}
+		}
 		if err != nil {
 			serveIndex(c, prefix)
 			return
@@ -64,7 +71,7 @@ func serveSPA(prefix string, useParam bool) gin.HandlerFunc {
 			return
 		}
 
-		content, err := readFile(devMode, fullPath)
+		content, err := readFile(devMode, servedPath)
 		if err != nil {
 			serveIndex(c, prefix)
 			return
@@ -75,7 +82,7 @@ func serveSPA(prefix string, useParam bool) gin.HandlerFunc {
 			cacheControl = "no-cache"
 		}
 		c.Header("Cache-Control", cacheControl)
-		c.Data(http.StatusOK, getContentType(fullPath), content)
+		c.Data(http.StatusOK, getContentType(servedPath), content)
 	}
 }
 
@@ -129,6 +136,12 @@ func ServeLanding() gin.HandlerFunc {
 
 func ServeAdmin() gin.HandlerFunc {
 	return serveSPA("webroot/admin", true)
+}
+
+// ServeDocs 提供 VitePress 静态文档站点（/docs/*filepath）
+// useParam=true：/docs/cli → filepath="cli" → webroot/docs/cli.html（配合 cleanUrls）
+func ServeDocs() gin.HandlerFunc {
+	return serveSPA("webroot/docs", true)
 }
 
 var _ fs.FS = staticFS

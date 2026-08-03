@@ -227,20 +227,6 @@ export const adminModuleGroups: AdminModuleGroup[] = [
         roles: ['system_admin'],
         permission: 'bot:read',
       },
-      {
-        path: 'docs/cli',
-        name: 'DocsCLI',
-        title: 'CLI 使用指南',
-        icon: Document,
-        component: () => import('@/views/Docs.vue'),
-      },
-      {
-        path: 'docs/mcp',
-        name: 'DocsMCP',
-        title: 'MCP 接入指南',
-        icon: Connection,
-        component: () => import('@/views/Docs.vue'),
-      },
     ],
   },
   {
