@@ -105,7 +105,7 @@ export function useGroupLogic() {
         
         groupMembers.value = selectedGroup.value.members || []
         
-        newMembers.forEach(member => {
+        newMembers.forEach((member: any) => {
           chatStore.addGroupMember(selectedGroup.value!.id, member)
         })
         
@@ -122,7 +122,8 @@ export function useGroupLogic() {
     if (!selectedGroup.value) return
     
     await groupState.setAsAdmin(selectedGroup.value.id, member.id)
-    const foundMember = selectedGroup.value.members.find(m => m.id === member.id)
+    // await 后 selectedGroup.value 可能被清空，TS 无法跨 await 窄化，需再次校验
+    const foundMember = selectedGroup.value?.members?.find(m => m.id === member.id)
     if (foundMember) {
       foundMember.role = 'admin'
     }

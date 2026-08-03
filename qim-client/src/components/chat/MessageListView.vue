@@ -59,7 +59,7 @@
     </div>
 
     <!-- 跳转到最新消息按钮 -->
-    <div v-if="showScrollToBottomBtn" class="scroll-to-bottom-btn" @click="scrollToBottom">
+    <div v-if="showScrollToBottomBtn" class="scroll-to-bottom-btn" @click="() => scrollToBottom()">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
       </svg>

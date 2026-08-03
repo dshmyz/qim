@@ -2,41 +2,7 @@ import { Ref } from 'vue'
 import { useCurrentUser } from './useCurrentUser'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
-
-export interface Message {
-  id: string
-  content: string
-  sender: {
-    id: string
-    name: string
-    avatar: string
-    user?: any
-  }
-  timestamp: number
-  type: string
-  isSelf: boolean
-  isRead: boolean
-  isRecalled?: boolean
-  isFailed?: boolean
-  isStreaming?: boolean
-  isAtMention?: boolean
-  // 卡片已点击的 action_id（服务端从 CardActionRecord 派生，跨设备一致）
-  cardActionId?: string
-  isAvatarReply?: boolean
-  is_avatar_reply?: boolean
-  origin?: string
-  isAIMessage?: boolean
-  is_ai_message?: boolean
-  ai_assistant_name?: string
-  avatar_name?: string
-  conversationId: string
-  file_name?: string
-  file_size?: number
-  shareData?: any
-  miniAppData?: any
-  newsData?: any
-  quotedMessage?: any
-}
+import type { Message } from '../types'
 
 export function useMainMessageHandlers() {
   const { currentUser } = useCurrentUser()

@@ -47,4 +47,8 @@ interface QMessageAPI {
 interface Window {
   $QMessageBox: QMessageBoxAPI
   $QMessage: QMessageAPI
+  // WebSocket 单例（useSignaling 等模块直接复用全局 ws 连接）
+  ws?: WebSocket
+  // 全局搜索防抖计时器（Main.vue 联系人搜索）
+  searchTimeout?: ReturnType<typeof setTimeout>
 }

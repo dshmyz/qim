@@ -10,6 +10,34 @@ export interface UpdateInfo {
 export const activeMenu = ref<string>('')
 export const activeMenuPosition = ref({ x: 0, y: 0 })
 
+/**
+ * 纯函数：计算上下文菜单位置，防止菜单超出视口边界。
+ * 不依赖 DOM，便于单元测试断言。
+ *
+ * @param clientX       鼠标或触发点的视口 X 坐标
+ * @param clientY       鼠标或触发点的视口 Y 坐标
+ * @param menuWidth     菜单实际宽度（由调用方通过 getBoundingClientRect 获取）
+ * @param menuHeight    菜单实际高度
+ * @param viewportWidth 视口宽度（默认 window.innerWidth）
+ * @param viewportHeight视口高度（默认 window.innerHeight）
+ * @param margin        距离视口边缘的安全间距（默认 4px）
+ */
+export function computeContextMenuPosition(
+  clientX: number,
+  clientY: number,
+  menuWidth: number,
+  menuHeight: number,
+  viewportWidth: number = typeof window !== 'undefined' ? window.innerWidth : 1024,
+  viewportHeight: number = typeof window !== 'undefined' ? window.innerHeight : 768,
+  margin: number = 4,
+): { x: number; y: number } {
+  let x = clientX
+  let y = clientY
+  if (x + menuWidth > viewportWidth) x = Math.max(0, viewportWidth - menuWidth - margin)
+  if (y + menuHeight > viewportHeight) y = Math.max(0, viewportHeight - menuHeight - margin)
+  return { x, y }
+}
+
 export function openMenu(id: string, x: number, y: number) {
   activeMenu.value = id
   activeMenuPosition.value = { x, y }

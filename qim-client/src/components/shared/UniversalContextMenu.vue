@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import type { ContextMenuItem } from './context-menu-types'
-import { activeMenu, activeMenuPosition, openMenu, closeMenu } from '../../composables/useUI'
+import { activeMenu, activeMenuPosition, openMenu, closeMenu, computeContextMenuPosition } from '../../composables/useUI'
 
 const props = withDefaults(defineProps<{
   visible?: boolean
@@ -65,12 +65,14 @@ watch(() => [isVisible.value, posX.value, posY.value], () => {
   nextTick(() => {
     if (!menuRef.value) return
     const rect = menuRef.value.getBoundingClientRect()
-    let x = posX.value
-    let y = posY.value
-    if (x + rect.width > window.innerWidth) x = Math.max(0, window.innerWidth - rect.width - 4)
-    if (y + rect.height > window.innerHeight) y = Math.max(0, window.innerHeight - rect.height - 4)
-    adjustedX.value = x
-    adjustedY.value = y
+    const pos = computeContextMenuPosition(
+      posX.value,
+      posY.value,
+      rect.width,
+      rect.height,
+    )
+    adjustedX.value = pos.x
+    adjustedY.value = pos.y
   })
 }, { immediate: true })
 

@@ -111,7 +111,7 @@
                   </svg>
                 </button>
                 <button
-                  v-if="task.kind === 'download' && task.status === 'completed'"
+                  v-if="task.kind === 'download' && task.status === 'completed' && task.filePath"
                   class="task-action-btn folder-btn"
                   @click="handleOpenFolder(task.filePath)"
                   title="在文件夹中显示"
@@ -211,7 +211,7 @@ const totalProgress = computed(() => {
   return Math.round((transferred / total) * 100)
 })
 
-const isExpanded = computed(() => uploadStore.isExpanded.value)
+const isExpanded = computed(() => uploadStore.isExpanded)
 
 const transferText = computed(() => {
   const activeUploads = uploadStore.activeTasks.length
