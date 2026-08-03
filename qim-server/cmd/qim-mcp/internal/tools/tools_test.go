@@ -71,6 +71,17 @@ func setupMCP(t *testing.T, api *client.BotAPIClient) *mcp.ClientSession {
 	return cs
 }
 
+func listToolNames(t *testing.T, cs *mcp.ClientSession) map[string]bool {
+	t.Helper()
+	res, err := cs.ListTools(context.Background(), &mcp.ListToolsParams{})
+	require.NoError(t, err)
+	names := make(map[string]bool)
+	for _, tool := range res.Tools {
+		names[tool.Name] = true
+	}
+	return names
+}
+
 func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) string {
 	t.Helper()
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
@@ -101,6 +112,19 @@ func TestSendMessage(t *testing.T) {
 	assert.Equal(t, "markdown", r.body["msg_type"])
 	assert.EqualValues(t, 13, r.body["to_user_id"])
 	assert.EqualValues(t, 7, r.body["thread_id"])
+}
+
+func TestOpsBridgeToolsAreNotRegistered(t *testing.T) {
+	srv, _ := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
+	})
+	api := client.New(srv.URL, "qbot_test")
+	cs := setupMCP(t, api)
+
+	names := listToolNames(t, cs)
+	if names["ops_list_tools"] || names["ops_execute"] {
+		t.Fatalf("qim-mcp should not expose legacy ops bridge tools: %v", names)
+	}
 }
 
 func TestSendMessage_NoThreadAutoCreate(t *testing.T) {

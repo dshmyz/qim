@@ -40,3 +40,53 @@ func TestSendMessage_SensitiveCheck_MarkdownType(t *testing.T) {
 	assert.Equal(t, "markdown", msg.Type)
 	assert.Equal(t, "```go\nfmt.Println(1)\n```", msg.Content)
 }
+
+// TestRefreshSensitiveWordCache_Success 验证正常情况下 RefreshSensitiveWordCache 返回 nil，
+// 且仅将 enabled=true 的敏感词载入缓存。
+// 对应修复 S2：缓存刷新失败不能再被静默吞掉，函数必须返回 error。
+func TestRefreshSensitiveWordCache_Success(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SensitiveWord{}))
+
+	// 启用的敏感词应进入缓存
+	require.NoError(t, db.Create(&model.SensitiveWord{Word: "敏感1", Level: "medium", Enabled: true}).Error)
+	// 停用的敏感词不应进入缓存。
+	// 注意：model.SensitiveWord 的 Enabled 字段带 gorm:"default:true"，
+	// 用结构体 Create 时 false 是零值会被 GORM 替换为默认值 true，故用 map 显式写入 false。
+	require.NoError(t, db.Model(&model.SensitiveWord{}).Create(map[string]interface{}{
+		"word": "停用词", "level": "medium", "enabled": false,
+	}).Error)
+	require.NoError(t, db.Create(&model.SensitiveWord{Word: "敏感2", Level: "high", Enabled: true}).Error)
+
+	svc := &MessageService{db: db}
+	err := svc.RefreshSensitiveWordCache()
+	require.NoError(t, err)
+
+	svc.sensitiveWordCacheMu.RLock()
+	loaded := svc.sensitiveWordLoaded
+	cache := svc.sensitiveWordCache
+	svc.sensitiveWordCacheMu.RUnlock()
+
+	assert.True(t, loaded, "缓存应标记为已加载")
+	assert.Len(t, cache, 2, "仅启用的敏感词进入缓存")
+
+	// 验证 CheckSensitiveContent 能命中新刷新的缓存
+	contains, words := svc.CheckSensitiveContent("包含敏感1的内容")
+	assert.True(t, contains)
+	assert.Contains(t, words, "敏感1")
+}
+
+// TestRefreshSensitiveWordCache_DBError 验证 DB 查询失败时 RefreshSensitiveWordCache 返回 error，
+// 而不是静默吞掉（历史 bug：CRUD 成功但缓存不一致，管理员却看到成功）。
+func TestRefreshSensitiveWordCache_DBError(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SensitiveWord{}))
+
+	svc := &MessageService{db: db}
+
+	// 删除表使后续查询失败，模拟 DB 异常
+	require.NoError(t, db.Migrator().DropTable(&model.SensitiveWord{}))
+
+	err := svc.RefreshSensitiveWordCache()
+	assert.Error(t, err, "DB 查询失败时应返回 error，不能静默吞掉")
+}

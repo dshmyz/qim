@@ -110,6 +110,17 @@
                 </select>
               </div>
             </div>
+            <!-- 斜杠命令面板开关 -->
+            <div class="settings-item">
+              <label>斜杠命令面板</label>
+              <div class="settings-item-content">
+                <label class="switch">
+                  <input type="checkbox" v-model="localSlashCommandPanelEnabled" />
+                  <span class="slider round"></span>
+                </label>
+                <div class="settings-hint">关闭后输入 / 不再弹出命令列表（含 /task、/note、/quick 等）</div>
+              </div>
+            </div>
             <!-- C2: @提及强提醒 -->
             <div class="settings-item">
               <label>@提及强提醒</label>
@@ -195,6 +206,15 @@
             </div>
           </div>
           
+          <div v-if="localTab === 'appearance'" class="settings-section" style="margin-top: 20px;">
+            <div class="settings-section-header"><h4>AI 助手</h4></div>
+            <div class="settings-item">
+              <label>显示 AI 悬浮球</label>
+              <label class="switch"><input type="checkbox" v-model="showFloatingBall" /><span class="slider round"></span></label>
+            </div>
+            <div class="settings-item-hint" style="font-size: 12px; color: var(--text-color-secondary, #999); margin-left: 0;">关闭后可通过快捷键 Ctrl+Shift+L 打开 AI 侧边栏</div>
+          </div>
+
           <div v-if="localTab === 'data-storage'" class="settings-section">
             <DataStorageSettings
               :defaultSaveDirectory="localMessageSettings.defaultSaveDirectory || ''"
@@ -228,6 +248,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import { useAISidebar } from '../../composables/useAISidebar'
+import { useSlashCommandPanelEnabled } from '../../composables/useSlashCommandPanelEnabled'
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import DataStorageSettings from './DataStorageSettings.vue'
@@ -266,7 +288,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'close': []
-  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig }]
+  'save': [data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: ShortcutsConfig; showFloatingBall?: boolean; slashCommandPanelEnabled?: boolean }]
   'cacheCleared': []
   'browseDirectory': [callback: (path: string) => void]
 }>()
@@ -277,6 +299,14 @@ const localMessageSettings = ref({ ...props.messageSettings })
 const localAppearanceSettings = ref({ ...props.appearanceSettings })
 const localShortcuts = ref<ShortcutsConfig>()
 const shortcutSettingsRef = ref<InstanceType<typeof ShortcutSettings> | null>(null)
+
+// AI 悬浮球开关
+const { showFloatingAIBall } = useAISidebar()
+const showFloatingBall = ref(showFloatingAIBall.value)
+
+// 斜杠命令面板开关
+const { slashCommandPanelEnabled } = useSlashCommandPanelEnabled()
+const localSlashCommandPanelEnabled = ref(slashCommandPanelEnabled.value)
 
 // 勿扰例外名单输入值
 const dndExceptionInput = ref('')
@@ -306,6 +336,8 @@ watch(() => props.visible, (val) => {
     localProfile.value = { ...props.profile }
     localMessageSettings.value = { ...props.messageSettings }
     localAppearanceSettings.value = { ...props.appearanceSettings }
+    showFloatingBall.value = showFloatingAIBall.value
+    localSlashCommandPanelEnabled.value = slashCommandPanelEnabled.value
   }
 })
 
@@ -368,7 +400,9 @@ const save = () => {
     messageSettings: { ...localMessageSettings.value },
     appearanceSettings: { ...localAppearanceSettings.value },
     avatarFile: pendingAvatarFile.value || undefined,
-    shortcuts: localShortcuts.value ? JSON.parse(JSON.stringify(localShortcuts.value)) : undefined
+    shortcuts: localShortcuts.value ? JSON.parse(JSON.stringify(localShortcuts.value)) : undefined,
+    showFloatingBall: showFloatingBall.value,
+    slashCommandPanelEnabled: localSlashCommandPanelEnabled.value
   })
   pendingAvatarFile.value = null
 }

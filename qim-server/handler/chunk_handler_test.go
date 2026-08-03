@@ -121,7 +121,6 @@ func TestInitUpload_Success(t *testing.T) {
 	body := map[string]interface{}{
 		"filename":  "test.txt",
 		"file_size": 15 * 1024 * 1024,
-		"file_hash": "test-hash-123",
 	}
 	jsonBody, _ := json.Marshal(body)
 
@@ -141,6 +140,11 @@ func TestInitUpload_Success(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, data["upload_id"])
 	assert.Equal(t, float64(3), data["total_chunks"]) // 15MB / 5MB = 3 chunks
+	// 秒传已移除：响应不应包含 is_quick_upload / file_id 字段
+	_, exists := data["is_quick_upload"]
+	assert.False(t, exists, "响应不应包含 is_quick_upload 字段")
+	_, exists = data["file_id"]
+	assert.False(t, exists, "响应不应包含 file_id 字段")
 }
 
 func TestInitUpload_MissingFields(t *testing.T) {
@@ -174,7 +178,6 @@ func TestInitUpload_WithFolder(t *testing.T) {
 	body := map[string]interface{}{
 		"filename":  "test.txt",
 		"file_size": 10 * 1024 * 1024,
-		"file_hash": "test-hash-folder",
 		"folder_id": folder.ID,
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -196,9 +199,9 @@ func TestUploadChunk_Success(t *testing.T) {
 	r, db, tempDir := setupChunkHandlerTestRouter(t)
 	createChunkTestUser(t, db)
 
-	// 先初始化上传
+	// 先初始化上传（user_id=1）
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-upload", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 准备分片数据
@@ -240,6 +243,43 @@ func TestUploadChunk_Success(t *testing.T) {
 	assert.Equal(t, 0, resp.Code)
 }
 
+// TestUploadChunk_ForbiddenUser 验证非任务所有者无法上传分片（IDOR 防护）
+// 中间件设置 user_id=1，任务属于 user_id=2，应返回 403
+func TestUploadChunk_ForbiddenUser(t *testing.T) {
+	r, db, tempDir := setupChunkHandlerTestRouter(t)
+	createChunkTestUser(t, db) // user_id=1
+
+	// 创建另一个用户（user_id=2）的上传任务
+	otherUser := &model.User{Username: "other", PasswordHash: "hash"}
+	db.Create(otherUser)
+
+	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
+	task, _, err := chunkService.InitUpload(otherUser.ID, "test.txt", 15*1024*1024, nil)
+	assert.NoError(t, err)
+
+	// 准备分片数据
+	chunkData := make([]byte, 5*1024*1024)
+	hash := md5.Sum(chunkData)
+	chunkHash := hex.EncodeToString(hash[:])
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("upload_id", task.UploadID)
+	_ = writer.WriteField("chunk_index", "0")
+	_ = writer.WriteField("chunk_hash", chunkHash)
+	part, _ := writer.CreateFormFile("chunk", "chunk-0")
+	io.Copy(part, bytes.NewReader(chunkData))
+	writer.Close()
+
+	// 中间件 user_id=1 尝试上传 user_id=2 的任务分片
+	req := httptest.NewRequest("POST", "/api/v1/files/upload/chunk", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestUploadChunk_InvalidUploadID(t *testing.T) {
 	r, db, _ := setupChunkHandlerTestRouter(t)
 	createChunkTestUser(t, db)
@@ -277,7 +317,7 @@ func TestCompleteUpload_Success(t *testing.T) {
 
 	// 初始化并上传所有分片
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-complete", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 上传所有分片
@@ -288,7 +328,7 @@ func TestCompleteUpload_Success(t *testing.T) {
 		}
 		hash := md5.Sum(chunkData)
 		chunkHash := hex.EncodeToString(hash[:])
-		err = chunkService.UploadChunk(task.UploadID, i, chunkData, chunkHash)
+		err = chunkService.UploadChunk(1, task.UploadID, i, chunkData, chunkHash)
 		assert.NoError(t, err)
 	}
 
@@ -322,14 +362,14 @@ func TestCompleteUpload_IncompleteChunks(t *testing.T) {
 
 	// 初始化但不上传所有分片
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-incomplete", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 只上传一个分片
 	chunkData := make([]byte, 5*1024*1024)
 	hash := md5.Sum(chunkData)
 	chunkHash := hex.EncodeToString(hash[:])
-	err = chunkService.UploadChunk(task.UploadID, 0, chunkData, chunkHash)
+	err = chunkService.UploadChunk(1, task.UploadID, 0, chunkData, chunkHash)
 	assert.NoError(t, err)
 
 	// 尝试完成上传
@@ -353,7 +393,7 @@ func TestCancelUpload_Success(t *testing.T) {
 
 	// 初始化上传
 	chunkService := service.NewChunkService(db, tempDir, di.NewStorageAccessor(di.GlobalContainer.StorageManager))
-	task, _, _, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, "test-hash-cancel", nil)
+	task, _, err := chunkService.InitUpload(1, "test.txt", 15*1024*1024, nil)
 	assert.NoError(t, err)
 
 	// 取消上传

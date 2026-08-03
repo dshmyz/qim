@@ -216,6 +216,10 @@ type Message struct {
 	IsRead          bool           `json:"is_read" gorm:"default:false;index:idx_msg_conv_read_sender,priority:2"`
 	Origin          string         `json:"origin" gorm:"size:30;default:''"` // '' | 'user' | 'assistant' | 'avatar'
 	RecalledAt      *time.Time     `json:"recalled_at"`
+	// Extra 存放可选的结构化附加信息（JSON 字符串）。
+	// 当前用途：Bot 回复命中创建者笔记时，记录 knowledge_sources=[{title,score}] 供前端折叠展示。
+	// 用 text 存 JSON 避免 MySQL JSON 类型在旧版本的兼容问题；空字符串表示无附加信息。
+	Extra           string         `json:"extra" gorm:"type:text;default:''"`
 	CreatedAt       time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
@@ -497,6 +501,13 @@ type Channel struct {
 	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
 	Creator           User           `json:"creator,omitempty" gorm:"foreignkey:CreatorID"`
 }
+
+// 频道状态
+const (
+	ChannelStatusPending  = "pending"  // 审批中：用户已提交，等待管理员审批
+	ChannelStatusActive   = "active"   // 已激活：审批通过或无需审批
+	ChannelStatusRejected = "rejected" // 已拒绝：管理员拒绝，创建者可修改后重新申请
+)
 
 // 频道订阅者
 type ChannelSubscriber struct {
@@ -810,14 +821,18 @@ type OperationLog struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// 客户端版本
+// 客户端/CLI 版本（client 和 CLI 共用一张表，用 AppType 区分）
 type ClientVersion struct {
 	ID                uint           `json:"id" gorm:"primarykey"`
+	AppType           string         `json:"app_type" gorm:"size:20;default:'client';uniqueIndex:idx_version_platform;not null"` // "client" | "cli"
 	Version           string         `json:"version" gorm:"size:50;uniqueIndex:idx_version_platform;not null"`
-	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // windows, macos, linux
-	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                // full, patch
+	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // client: windows/macos/linux; cli: darwin-arm64 等
+	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                 // full, patch
 	DownloadURL       string         `json:"download_url" gorm:"size:500"`
-	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（缓存）
+	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（client 用）
+	Sha256            string         `json:"sha256" gorm:"size:200"`       // 文件 SHA256 哈希（CLI 用）
+	Os                string         `json:"os" gorm:"size:20"`            // CLI 专用: darwin/linux/windows
+	Arch              string         `json:"arch" gorm:"size:20"`          // CLI 专用: amd64/arm64
 	BlockmapURL       string         `json:"blockmap_url" gorm:"size:500"` // 增量更新 blockmap 文件 URL（预留）
 	FileSize          int64          `json:"file_size" gorm:"default:0"`   // 文件大小（缓存）
 	Changelog         string         `json:"changelog" gorm:"type:text"`

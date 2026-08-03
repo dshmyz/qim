@@ -49,10 +49,15 @@ func (m *Manager) ByKind(kind string) (Storage, bool) {
 	return s, ok
 }
 
+// ByPath 从 storagePath 解析出 key，返回默认存储实现。
+// 不再通过路径前缀区分存储类型——系统只有一种默认存储，
+// 这样切换存储后端（local↔s3）无需迁移数据。
 func (m *Manager) ByPath(storagePath string) (Storage, string, bool) {
-	kind, key := ParsePath(storagePath)
-	s, ok := m.implementations[kind]
-	return s, key, ok
+	_, key := ParsePath(storagePath)
+	if m.defaultStorage == nil {
+		return nil, "", false
+	}
+	return m.defaultStorage, key, true
 }
 
 func NewFromConfig(cfg config.StorageConfig) (Storage, error) {

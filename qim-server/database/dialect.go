@@ -20,6 +20,12 @@ type Dialect interface {
 	// CreateIndexSQL 生成创建索引的 SQL（MySQL 不使用 IF NOT EXISTS，SQLite 使用）
 	CreateIndexSQL(indexName, table string, columns []string) string
 
+	// CreateUniqueIndexSQL 生成创建唯一索引的 SQL
+	CreateUniqueIndexSQL(indexName, table string, columns []string) string
+
+	// DropIndexSQL 生成删除索引的 SQL
+	DropIndexSQL(indexName, table string) string
+
 	// SupportsFulltext 返回运行时探测到的全文索引能力
 	SupportsFulltext() bool
 
@@ -64,11 +70,23 @@ func (d *mysqlDialect) TableExists(db *gorm.DB, tableName string) bool {
 }
 
 func (d *mysqlDialect) CreateIndexSQL(indexName, table string, columns []string) string {
+	return d.createIndexSQL("", indexName, table, columns)
+}
+
+func (d *mysqlDialect) CreateUniqueIndexSQL(indexName, table string, columns []string) string {
+	return d.createIndexSQL("UNIQUE ", indexName, table, columns)
+}
+
+func (d *mysqlDialect) createIndexSQL(prefix, indexName, table string, columns []string) string {
 	cols := make([]string, len(columns))
 	for i, c := range columns {
 		cols[i] = "`" + c + "`"
 	}
-	return fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, table, strings.Join(cols, ", "))
+	return fmt.Sprintf("CREATE %sINDEX `%s` ON `%s`(%s)", prefix, indexName, table, strings.Join(cols, ", "))
+}
+
+func (d *mysqlDialect) DropIndexSQL(indexName, table string) string {
+	return fmt.Sprintf("DROP INDEX `%s` ON `%s`", indexName, table)
 }
 
 func (d *mysqlDialect) SupportsFulltext() bool { return d.supportsFulltext }
@@ -125,11 +143,23 @@ func (d *sqliteDialect) TableExists(db *gorm.DB, tableName string) bool {
 }
 
 func (d *sqliteDialect) CreateIndexSQL(indexName, table string, columns []string) string {
+	return d.createIndexSQL("", indexName, table, columns)
+}
+
+func (d *sqliteDialect) CreateUniqueIndexSQL(indexName, table string, columns []string) string {
+	return d.createIndexSQL("UNIQUE ", indexName, table, columns)
+}
+
+func (d *sqliteDialect) createIndexSQL(prefix, indexName, table string, columns []string) string {
 	cols := make([]string, len(columns))
 	for i, c := range columns {
 		cols[i] = "`" + c + "`"
 	}
-	return fmt.Sprintf("CREATE INDEX IF NOT EXISTS `%s` ON `%s`(%s)", indexName, table, strings.Join(cols, ", "))
+	return fmt.Sprintf("CREATE %sINDEX IF NOT EXISTS `%s` ON `%s`(%s)", prefix, indexName, table, strings.Join(cols, ", "))
+}
+
+func (d *sqliteDialect) DropIndexSQL(indexName, _ string) string {
+	return fmt.Sprintf("DROP INDEX IF EXISTS `%s`", indexName)
 }
 
 func (d *sqliteDialect) SupportsFulltext() bool { return false }

@@ -167,8 +167,9 @@ class Screenshots extends node_events_1.default {
             yield new Promise((resolve) => setTimeout(resolve, this._overlayOptions.paintDelayMs));
             yield this.showCaptureWindow(display);
             }
-            finally {
+            catch (err) {
                 this._capturing = false;
+                throw err;
             }
         });
     }
@@ -190,21 +191,26 @@ class Screenshots extends node_events_1.default {
     endCapture() {
         return __awaiter(this, void 0, void 0, function* () {
             this.logger('endCapture');
-            yield this.reset();
-            if (!this.$win) {
-                return;
+            try {
+                yield this.reset();
+                if (!this.$win) {
+                    return;
+                }
+                // 先清除 Kiosk 模式，然后取消全屏才有效
+                this.$win.setKiosk(false);
+                this.$win.blur();
+                this.$win.blurWebView();
+                this.$win.unmaximize();
+                this.$win.removeBrowserView(this.$view);
+                if (this.singleWindow) {
+                    this.$win.hide();
+                }
+                else {
+                    this.$win.destroy();
+                }
             }
-            // 先清除 Kiosk 模式，然后取消全屏才有效
-            this.$win.setKiosk(false);
-            this.$win.blur();
-            this.$win.blurWebView();
-            this.$win.unmaximize();
-            this.$win.removeBrowserView(this.$view);
-            if (this.singleWindow) {
-                this.$win.hide();
-            }
-            else {
-                this.$win.destroy();
+            finally {
+                this._capturing = false;
             }
         });
     }
@@ -384,6 +390,9 @@ class Screenshots extends node_events_1.default {
             }
             catch (err) {
                 this.logger('SCREENSHOTS:capture Monitor capture() error %o', err);
+                // 回退路径：node-screenshots 不可用时用 Electron desktopCapturer。
+                // 注意：desktopCapturer 在某些 Electron 版本会缓存缩略图，可能返回上一次截屏画面。
+                // 仅作为回退方案，主路径 node-screenshots 实时截屏无此问题。
                 const sources = yield electron_1.desktopCapturer.getSources({
                     types: ['screen'],
                     thumbnailSize: {

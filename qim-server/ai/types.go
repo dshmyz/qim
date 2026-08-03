@@ -76,6 +76,19 @@ type StreamChunk struct {
 	Error   *string      `json:"error,omitempty"`
 }
 
+// TokenUsage Token 用量统计
+type TokenUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// UsageProvider 可选接口：Provider 若实现此接口，Chat 时可返回 token 用量。
+// 未实现的 Provider 仍走原 Chat() 路径，usage 为 nil。
+type UsageProvider interface {
+	ChatWithUsage(messages []Message) (string, *TokenUsage, error)
+}
+
 type StreamUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`

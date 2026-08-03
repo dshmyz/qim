@@ -3,6 +3,7 @@ import type { Conversation, Message } from '../types'
 import { request } from './useRequest'
 import { useChatStore } from '../stores/chat'
 import { sameConversationId } from '../utils/conversationId'
+import QMessage from '../utils/qmessage'
 
 /**
  * 会话管理 composable
@@ -84,7 +85,13 @@ export function useConversation() {
         method: 'DELETE'
       })
       chatStore.removeConversation(conversation.id)
-    } catch (error) {
+    } catch (error: any) {
+      const msg = error?.message || ''
+      if (msg.includes('权限') || msg.includes('成员')) {
+        QMessage.error('您不是该会话的成员，无法移除')
+      } else {
+        QMessage.error('移除会话失败，请稍后重试')
+      }
       console.error('移除会话失败:', error)
     }
   }

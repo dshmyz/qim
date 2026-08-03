@@ -87,6 +87,7 @@ export interface RealtimeSession {
     id: number
     name: string
     avatar: string
+    nickname?: string
   }
   status: 'active' | 'ended' | 'pending' | 'paused'
   participants: RealtimeParticipant[]
@@ -99,12 +100,14 @@ export interface RealtimeParticipant {
   session_id: string
   role: 'initiator' | 'receiver' | 'viewer'
   state: 'joining' | 'active' | 'leaving'
-  status?: 'active' | 'inactive'
+  // 兼容历史代码：部分场景使用 'joined' 表示已加入（待统一为 'active'）
+  status?: 'active' | 'inactive' | 'joined'
   joined_at: string
   user?: {
     id: number
     name: string
     avatar: string
+    nickname?: string
   }
 }
 

@@ -55,12 +55,12 @@ export interface FileListResponse {
 }
 
 // 分片上传相关类型
+// 秒传功能已移除：InitUploadRequest 不再包含 file_hash，InitUploadResponse 不再包含 is_quick_upload/file_id
 export interface InitUploadRequest {
   filename: string
   file_size: number
-  file_hash: string
   folder_id?: number | null
-  mime_type: string
+  upload_id?: string
 }
 
 export interface InitUploadResponse {
@@ -68,8 +68,6 @@ export interface InitUploadResponse {
   chunk_size: number
   total_chunks: number
   uploaded_chunks: number[]
-  is_quick_upload: boolean
-  file_id?: number
 }
 
 export interface UploadChunkResponse {
@@ -79,8 +77,6 @@ export interface UploadChunkResponse {
 
 export interface CompleteUploadRequest {
   upload_id: string
-  file_hash: string
-  total_chunks: number
 }
 
 export interface CancelUploadRequest {
@@ -109,11 +105,11 @@ export const fileApi = {
     return api.get(`/api/v1/files/${fileId}/download`, { responseType: 'blob' })
   },
 
-  // 预览文件（返回 blob，接口需 JWT 认证，故不能用裸 URL）
+  // 预览文件（inline 模式，复用 download 接口）
   previewFile(fileId: number, thumbnail = false) {
-    return api.get(`/api/v1/files/${fileId}/preview`, {
+    return api.get(`/api/v1/files/${fileId}/download`, {
       responseType: 'blob',
-      params: thumbnail ? { thumbnail: 'true' } : undefined
+      params: { inline: 'true', ...(thumbnail ? { thumbnail: 'true' } : {}) }
     })
   },
 
@@ -159,9 +155,10 @@ export const fileApi = {
   },
 
   // 上传分片
-  uploadChunk(formData: FormData) {
+  uploadChunk(formData: FormData, signal?: AbortSignal) {
     return api.post<{ code: number; data: UploadChunkResponse }>('/api/v1/files/upload/chunk', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal
     })
   },
 

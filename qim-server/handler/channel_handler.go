@@ -17,7 +17,16 @@ import (
 )
 
 func CreateChannel(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		response.InternalServerError(c, "用户信息错误")
+		return
+	}
 
 	var req struct {
 		Name              string `json:"name" binding:"required"`
@@ -52,18 +61,64 @@ func CreateChannel(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// 查询创建者信息用于审批记录快照
+	var creator model.User
+	db.Select("nickname", "avatar", "username").First(&creator, "id = ?", userID)
+	creatorName := creator.Nickname
+	if creatorName == "" {
+		creatorName = creator.Username
+	}
+
+	needsApproval := di.GlobalContainer.ApprovalService.IsApprovalEnabled(model.ApprovalTypeChannel)
+
+	// 需要审批时频道状态为 pending，否则直接 active
+	channelStatus := model.ChannelStatusActive
+	if needsApproval {
+		channelStatus = model.ChannelStatusPending
+	}
+
 	channel := model.Channel{
 		Name:              req.Name,
 		Description:       req.Description,
 		Avatar:            req.Avatar,
-		CreatorID:         userID.(uint),
-		Status:            "active",
+		CreatorID:         userID,
+		Status:            channelStatus,
 		PublishPermission: publishPermission,
 		CommentPermission: commentPermission,
 	}
 
-	if err := db.Create(&channel).Error; err != nil {
+	tx := db.Begin()
+
+	if err := tx.Create(&channel).Error; err != nil {
+		tx.Rollback()
 		response.InternalServerError(c, "创建频道失败")
+		return
+	}
+
+	// 需要审批时创建审批记录
+	approvalStatus := model.ApprovalStatusApproved
+	if needsApproval {
+		approval := model.Approval{
+			TargetType:        model.ApprovalTypeChannel,
+			TargetID:          channel.ID,
+			Status:            model.ApprovalStatusPending,
+			AppliedAt:         time.Now(),
+			AppliedBy:         userID,
+			TargetName:        channel.Name,
+			TargetDescription: channel.Description,
+			CreatorName:       creatorName,
+			CreatorAvatar:     creator.Avatar,
+		}
+		if err := tx.Create(&approval).Error; err != nil {
+			tx.Rollback()
+			response.InternalServerError(c, "创建审批记录失败")
+			return
+		}
+		approvalStatus = model.ApprovalStatusPending
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		response.InternalServerError(c, "提交事务失败")
 		return
 	}
 
@@ -71,16 +126,29 @@ func CreateChannel(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
-		"data": channel,
+		"data": gin.H{
+			"id":              channel.ID,
+			"name":            channel.Name,
+			"description":     channel.Description,
+			"avatar":          channel.Avatar,
+			"creator_id":      channel.CreatorID,
+			"status":          channel.Status,
+			"approval_status": approvalStatus,
+			"creator":         channel.Creator,
+		},
 	})
 }
 
 func GetChannels(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
 	db := database.GetDB()
 
+	// pending/rejected 频道仅创建者可见，active 频道所有人可见
 	var channels []model.Channel
-	db.Preload("Creator").Find(&channels)
+	db.Preload("Creator").
+		Where("status = ? OR creator_id = ?", model.ChannelStatusActive, uid).
+		Find(&channels)
 
 	var subscriptions []model.ChannelSubscriber
 	db.Where("user_id = ?", userID).Find(&subscriptions)
@@ -224,6 +292,12 @@ func CreateChannelMessage(c *gin.Context) {
 	var channel model.Channel
 	if err := db.First(&channel, uint(channelID)).Error; err != nil {
 		response.NotFound(c, "频道不存在")
+		return
+	}
+
+	// 频道状态校验：仅 active 频道可发布消息（审批流程的关键保护层）
+	if err := di.GlobalContainer.ChannelService.EnsureChannelUsable(&channel); err != nil {
+		response.Forbidden(c, err.Error())
 		return
 	}
 
@@ -489,6 +563,123 @@ func GetChannelMessageLikes(c *gin.Context) {
 		"data": gin.H{
 			"like_count": count,
 			"is_liked":   isLiked,
+		},
+	})
+}
+
+// UpdateMyChannel 更新我的频道（仅允许 pending/rejected 状态）。
+// rejected 频道修改后自动重新提交审批。
+func UpdateMyChannel(c *gin.Context) {
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		response.InternalServerError(c, "用户信息错误")
+		return
+	}
+
+	channelID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的频道ID")
+		return
+	}
+
+	db := database.GetDB()
+
+	var channel model.Channel
+	if err := db.Where("id = ? AND creator_id = ?", uint(channelID), userID).First(&channel).Error; err != nil {
+		response.NotFound(c, "频道不存在或无权操作")
+		return
+	}
+
+	// 仅允许 pending/rejected 状态的频道编辑
+	if channel.Status != model.ChannelStatusPending && channel.Status != model.ChannelStatusRejected {
+		response.BadRequest(c, "仅可编辑审批中或已拒绝的频道")
+		return
+	}
+
+	var req struct {
+		Name              *string `json:"name"`
+		Description       *string `json:"description"`
+		Avatar            *string `json:"avatar"`
+		PublishPermission *string `json:"publish_permission"`
+		CommentPermission *string `json:"comment_permission"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	updates := make(map[string]interface{})
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = *req.Avatar
+	}
+	if req.PublishPermission != nil {
+		if *req.PublishPermission != "creator_only" && *req.PublishPermission != "all_subscribers" {
+			response.BadRequest(c, "无效的发布权限")
+			return
+		}
+		updates["publish_permission"] = *req.PublishPermission
+	}
+	if req.CommentPermission != nil {
+		if *req.CommentPermission != "all_subscribers" && *req.CommentPermission != "disabled" {
+			response.BadRequest(c, "无效的评论权限")
+			return
+		}
+		updates["comment_permission"] = *req.CommentPermission
+	}
+
+	// rejected 频道修改后重新提交审批：状态改回 pending + 重置审批记录
+	approvalStatus := channel.Status
+	if channel.Status == model.ChannelStatusRejected {
+		updates["status"] = model.ChannelStatusPending
+		approvalStatus = model.ApprovalStatusPending
+	}
+
+	if err := db.Model(&channel).Updates(updates).Error; err != nil {
+		response.InternalServerError(c, "更新频道失败")
+		return
+	}
+
+	// rejected → 重新申请：重置审批记录为 pending
+	if channel.Status == model.ChannelStatusRejected {
+		var approval model.Approval
+		if err := db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeChannel, channel.ID).
+			First(&approval).Error; err == nil {
+			// 更新审批记录的快照字段
+			db.Model(&approval).Updates(map[string]interface{}{
+				"status":            model.ApprovalStatusPending,
+				"target_name":       updates["name"],
+				"target_description": updates["description"],
+				"reject_reason":     "",
+				"approved_at":       nil,
+				"approved_by":       nil,
+			})
+		}
+	}
+
+	// 重新加载
+	db.Preload("Creator").First(&channel, channel.ID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"id":              channel.ID,
+			"name":            channel.Name,
+			"description":     channel.Description,
+			"avatar":          channel.Avatar,
+			"status":          channel.Status,
+			"approval_status": approvalStatus,
 		},
 	})
 }

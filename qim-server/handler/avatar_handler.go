@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -47,15 +48,15 @@ func checkAIEnabledForAvatar() gin.HandlerFunc {
 type AvatarHandler struct {
 	db              *gorm.DB
 	avatarService   *service.AvatarService
-	mcpServer       *ai.MCPServer
+	toolRegistry    *ai.ToolRegistry
 	approvalService *service.ApprovalService
 }
 
-func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService, mcpServer *ai.MCPServer, approvalService *service.ApprovalService) *AvatarHandler {
+func NewAvatarHandler(db *gorm.DB, avatarService *service.AvatarService, toolRegistry *ai.ToolRegistry, approvalService *service.ApprovalService) *AvatarHandler {
 	return &AvatarHandler{
 		db:              db,
 		avatarService:   avatarService,
-		mcpServer:       mcpServer,
+		toolRegistry:    toolRegistry,
 		approvalService: approvalService,
 	}
 }
@@ -278,7 +279,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		TriggerRulesJSON:   string(triggerRulesJSON),
 		ReplyStrategyJSON:  string(replyStrategyJSON),
 		TakeoverCooldown:   req.TakeoverCooldown,
-		ActivateByDefault: req.ActivateByDefault,
+		ActivateByDefault:  req.ActivateByDefault,
 		CustomPersonaAddon: req.CustomPersonaAddon,
 	}
 
@@ -992,6 +993,7 @@ func (h *AvatarHandler) GetMemories(c *gin.Context) {
 }
 
 func (h *AvatarHandler) DeleteMemory(c *gin.Context) {
+	userID, _ := c.Get("user_id")
 	memoryID := c.Param("id")
 	memorySvc := di.GlobalContainer.AvatarMemoryService
 	if memorySvc == nil {
@@ -999,7 +1001,11 @@ func (h *AvatarHandler) DeleteMemory(c *gin.Context) {
 		return
 	}
 
-	if err := memorySvc.DeleteMemory(memoryID); err != nil {
+	if err := memorySvc.DeleteMemory(userID.(uint), memoryID); err != nil {
+		if errors.Is(err, service.ErrMemoryNotFound) {
+			response.NotFound(c, "记忆不存在")
+			return
+		}
 		response.InternalServerError(c, "删除记忆失败")
 		return
 	}

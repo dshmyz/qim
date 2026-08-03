@@ -70,14 +70,6 @@
     @cancel="emit('cancel-confirm-action')"
   />
 
-  <!-- 截图预览对话框 -->
-  <ScreenshotPreviewDialog
-    :visible="showScreenshotPreview"
-    :image-data="screenshotImageData"
-    @cancel="emit('cancel-screenshot')"
-    @retake="emit('retake-screenshot')"
-    @send="emit('send-screenshot')"
-  />
 
   <!-- 小程序加载器 -->
   <div style="display: contents">
@@ -97,7 +89,6 @@ import MessageContextMenu from './MessageContextMenu.vue'
 import MemberContextMenu from './MemberContextMenu.vue'
 import MessageManager from './MessageManager.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
-import ScreenshotPreviewDialog from './ScreenshotPreviewDialog.vue'
 import MiniAppLoader from '../miniapp/MiniAppLoader.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 
@@ -118,8 +109,6 @@ interface Props {
   showConfirmDialog: boolean
   confirmDialogTitle: string
   confirmDialogMessage: string
-  showScreenshotPreview: boolean
-  screenshotImageData: string
   otherUserId: string | number | null
   activeMiniApp: MiniAppData | null
   getFileIcon: (fileName: string) => string
@@ -156,9 +145,6 @@ const emit = defineEmits<{
   'update-confirm-dialog': [visible: boolean]
   'confirm-action': []
   'cancel-confirm-action': []
-  'cancel-screenshot': []
-  'retake-screenshot': []
-  'send-screenshot': []
   'close-mini-app': []
   'mini-app-toast': [message: string]
   'ai-summary': []

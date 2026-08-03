@@ -35,7 +35,7 @@
             <span v-else-if="bot.approval_status === 'rejected'" class="status-badge rejected">已拒绝</span>
             <span v-else-if="bot.approval_status === 'approved'" class="status-badge approved">已启用</span>
           </div>
-          <p>{{ bot.description }}</p>
+          <p v-if="bot.description">{{ bot.description }}</p>
         </div>
       </div>
     </div>
@@ -48,7 +48,7 @@ import Avatar from '../../shared/Avatar.vue'
 interface Bot {
   id: number
   name: string
-  description: string
+  description?: string
   avatar?: string
   type?: string
   status?: string

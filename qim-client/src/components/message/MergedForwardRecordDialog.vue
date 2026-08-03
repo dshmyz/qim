@@ -124,7 +124,7 @@ const { serverUrl } = useServerUrl()
 
 const MAX_RECORD_DEPTH = 5
 const payloadTrail = ref<MergedForwardPayload[]>([])
-const currentPayload = computed(() => payloadTrail.value.at(-1) || null)
+const currentPayload = computed(() => payloadTrail.value[payloadTrail.value.length - 1] || null)
 const breadcrumb = computed(() => payloadTrail.value.map(payload => payload.title).join(' / '))
 const canEnterNestedRecord = computed(() => payloadTrail.value.length < MAX_RECORD_DEPTH)
 

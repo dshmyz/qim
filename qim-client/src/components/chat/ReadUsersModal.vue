@@ -28,6 +28,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
+import { isAbsoluteUrl, generateAvatar } from '../../utils/avatar'
 
 interface ReadUser {
   id: string | number

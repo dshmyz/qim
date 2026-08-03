@@ -5,53 +5,12 @@ import SparkMD5 from 'spark-md5'
 
 /**
  * 文件上传 Composable
- * 整合 MD5 计算、分片上传、进度管理等功能
+ * 整合分片上传、进度管理等功能
+ *
+ * 秒传功能已移除（存在越权风险且前端算 MD5 性能开销大、命中率低）。
+ * 不再计算文件级 MD5，init 时不再传 file_hash。
+ * 分片级 MD5 仍保留用于分片完整性校验。
  */
-
-// MD5 Worker 实例
-let md5Worker: Worker | null = null
-
-// 获取或创建 MD5 Worker
-function getMD5Worker(): Worker {
-  if (!md5Worker) {
-    md5Worker = new Worker(new URL('../workers/md5.worker.ts', import.meta.url), {
-      type: 'module'
-    })
-  }
-  return md5Worker
-}
-
-// 分片策略配置
-interface ChunkStrategy {
-  chunkSize: number
-  description: string
-}
-
-/**
- * 智能分片策略
- * 根据文件大小自动选择合适的分片大小
- */
-export function getChunkStrategy(fileSize: number): ChunkStrategy {
-  const MB = 1024 * 1024
-  const GB = 1024 * MB
-
-  if (fileSize < 10 * MB) {
-    // 小于 10MB：不分片
-    return { chunkSize: fileSize, description: '小文件不分片' }
-  } else if (fileSize < 100 * MB) {
-    // 10MB - 100MB：2MB 分片
-    return { chunkSize: 2 * MB, description: '2MB 分片' }
-  } else if (fileSize < 500 * MB) {
-    // 100MB - 500MB：5MB 分片
-    return { chunkSize: 5 * MB, description: '5MB 分片' }
-  } else if (fileSize < GB) {
-    // 500MB - 1GB：10MB 分片
-    return { chunkSize: 10 * MB, description: '10MB 分片' }
-  } else {
-    // 大于 1GB：20MB 分片
-    return { chunkSize: 20 * MB, description: '20MB 分片' }
-  }
-}
 
 /**
  * 文件分片
@@ -100,43 +59,15 @@ export async function calculateChunkMD5(chunk: Blob): Promise<string> {
 }
 
 /**
- * 计算文件 MD5
- * 使用 Web Worker 在后台线程计算，避免阻塞主线程
- * @param file 要计算的文件
- * @returns MD5 哈希值
- */
-export async function calculateMD5(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const worker = getMD5Worker()
-
-    const handleMessage = (e: MessageEvent) => {
-      const data = e.data
-
-      if (data.error) {
-        worker.removeEventListener('message', handleMessage)
-        reject(new Error(data.error))
-      } else if (data.hash) {
-        worker.removeEventListener('message', handleMessage)
-        resolve(data.hash)
-      }
-      // 进度消息可以忽略，或者通过回调通知
-    }
-
-    worker.addEventListener('message', handleMessage)
-    worker.postMessage({ file })
-  })
-}
-
-/**
  * 上传任务管理器
  */
 interface UploadManager {
   uploadId: string
   file: File
   folderId: number | null
-  fileHash: string
   chunks: Blob[]
   uploadedChunks: Set<number>
+  uploadedSize: number
   retryCount: Map<number, number>
   abortController: AbortController
 }
@@ -171,18 +102,14 @@ const MAX_RETRY_COUNT = 3
 export async function initUpload(
   file: File,
   folderId?: number,
-  fileHash?: string
+  resumeUploadId?: string
 ): Promise<InitUploadResponse> {
-  // 如果外部已提供 MD5 则直接使用，避免重复计算
-  const hash = fileHash || await calculateMD5(file)
-
-  // 调用初始化 API
+  // 调用初始化 API（秒传已移除，不再传 file_hash）
   const response = await fileApi.initUpload({
     filename: file.name,
     file_size: file.size,
-    file_hash: hash,
     folder_id: folderId ?? null,
-    mime_type: file.type || 'application/octet-stream'
+    ...(resumeUploadId ? { upload_id: resumeUploadId } : {})
   })
 
   if (response.data.code !== 0) {
@@ -194,12 +121,14 @@ export async function initUpload(
 
 /**
  * 上传单个分片
+ * signal 用于支持取消：调用 abortController.abort() 后正在进行的 HTTP 请求会被中止
  */
 async function uploadSingleChunk(
   uploadId: string,
   chunk: Blob,
   chunkIndex: number,
-  chunkHash: string
+  chunkHash: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const formData = new FormData()
   formData.append('upload_id', uploadId)
@@ -207,7 +136,7 @@ async function uploadSingleChunk(
   formData.append('chunk_hash', chunkHash)
   formData.append('chunk', chunk)
 
-  const response = await fileApi.uploadChunk(formData)
+  const response = await fileApi.uploadChunk(formData, signal)
 
   if (response.data.code !== 0) {
     throw new Error(`分片 ${chunkIndex} 上传失败`)
@@ -216,6 +145,7 @@ async function uploadSingleChunk(
 
 /**
  * 上传分片（带重试）
+ * 支持 abort 取消：signal.aborted 后立即 reject 不再重试
  */
 async function uploadChunkWithRetry(
   manager: UploadManager,
@@ -224,20 +154,33 @@ async function uploadChunkWithRetry(
 ): Promise<void> {
   const chunk = manager.chunks[chunkIndex]
   const chunkHash = await calculateChunkMD5(chunk)
+  const signal = manager.abortController.signal
+
+  // 进入前先检查是否已取消
+  if (signal.aborted) {
+    throw new Error('上传已取消')
+  }
 
   let retryCount = manager.retryCount.get(chunkIndex) || 0
 
   while (retryCount < MAX_RETRY_COUNT) {
+    // 每次重试前检查取消状态
+    if (signal.aborted) {
+      throw new Error('上传已取消')
+    }
+
     try {
       await uploadSingleChunk(
         manager.uploadId,
         chunk,
         chunkIndex,
-        chunkHash
+        chunkHash,
+        signal
       )
 
       // 上传成功
       manager.uploadedChunks.add(chunkIndex)
+      manager.uploadedSize += chunk.size
       manager.retryCount.delete(chunkIndex)
 
       if (onProgress) {
@@ -246,6 +189,11 @@ async function uploadChunkWithRetry(
 
       return
     } catch (error) {
+      // 如果是取消导致的错误，直接抛出不再重试
+      if (signal.aborted || (error instanceof Error && error.name === 'CanceledError')) {
+        throw new Error('上传已取消')
+      }
+
       retryCount++
       manager.retryCount.set(chunkIndex, retryCount)
 
@@ -253,8 +201,20 @@ async function uploadChunkWithRetry(
         throw new Error(`分片 ${chunkIndex} 上传失败，已重试 ${MAX_RETRY_COUNT} 次`)
       }
 
-      // 等待一段时间后重试
-      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+      // 等待一段时间后重试，等待期间也要支持取消
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 1000 * retryCount)
+        // abort 时清除定时器并 reject
+        if (signal.aborted) {
+          clearTimeout(timer)
+          reject(new Error('上传已取消'))
+          return
+        }
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new Error('上传已取消'))
+        }, { once: true })
+      })
     }
   }
 }
@@ -262,6 +222,7 @@ async function uploadChunkWithRetry(
 /**
  * 上传队列管理器
  * 使用队列管理并发上传，优化内存使用
+ * 支持 abort 取消：检测到 signal.aborted 后立即停止队列并 resolve
  */
 class UploadQueueManager {
   private queue: number[] = []
@@ -310,6 +271,12 @@ class UploadQueueManager {
       return
     }
 
+    // 取消检查：如果已 abort，立即停止队列
+    if (this.manager.abortController.signal.aborted) {
+      this.resolve?.()
+      return
+    }
+
     // 如果队列为空且没有活跃的上传，完成
     if (this.queue.length === 0 && this.activeCount === 0) {
       this.resolve?.()
@@ -318,9 +285,14 @@ class UploadQueueManager {
 
     // 启动新的上传任务，直到达到最大并发数
     while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
+      // 再次检查取消状态，避免 abort 后继续 shift 新分片
+      if (this.manager.abortController.signal.aborted) {
+        this.resolve?.()
+        return
+      }
       const chunkIndex = this.queue.shift()!
       this.activeCount++
-      
+
       this.uploadChunk(chunkIndex)
         .then(() => {
           this.activeCount--
@@ -330,6 +302,12 @@ class UploadQueueManager {
           this.processQueue()
         })
         .catch((error) => {
+          this.activeCount--
+          // 取消导致的错误不算失败，直接 resolve 停止队列
+          if (this.manager.abortController.signal.aborted) {
+            this.resolve?.()
+            return
+          }
           this.hasError = true
           this.reject?.(error)
         })
@@ -373,19 +351,13 @@ async function uploadChunksConcurrently(
 /**
  * 完成上传
  * @param uploadId 上传 ID
- * @param fileHash 文件 MD5
- * @param totalChunks 总分片数
  * @returns 文件信息
  */
 export async function completeUpload(
-  uploadId: string,
-  fileHash: string,
-  totalChunks: number
+  uploadId: string
 ) {
   const response = await fileApi.completeUpload({
-    upload_id: uploadId,
-    file_hash: fileHash,
-    total_chunks: totalChunks
+    upload_id: uploadId
   })
 
   if (response.data.code !== 0) {
@@ -437,33 +409,31 @@ export async function uploadFile(
     // 更新状态为上传中
     uploadStore.updateTask(uploadId, { status: 'uploading' })
 
-    // 1. 计算文件 MD5
-    const fileHash = await calculateMD5(file)
+    // 1. 初始化上传（秒传已移除，不再计算文件级 MD5）
+    const initResponse = await initUpload(file, folderId)
 
-    // 2. 初始化上传（传入 fileHash 避免重复计算）
-    const initResponse = await initUpload(file, folderId, fileHash)
-
-    // 检查是否秒传
-    if (initResponse.is_quick_upload && initResponse.file_id) {
-      // 秒传成功
-      uploadStore.markCompleted(uploadId, initResponse.file_id)
-      return { uploadId, fileId: initResponse.file_id, isQuickUpload: true }
-    }
-
-    // 3. 分片上传
+    // 2. 分片上传
     const { chunk_size, total_chunks, uploaded_chunks } = initResponse
 
     // 使用后端返回的分片大小进行分片，确保前后端分片策略一致
     const chunks = splitFile(file, chunk_size)
+
+    // 计算断点续传场景下已上传的字节数（按各分片实际大小累加，最后一片通常小于 chunk_size）
+    let initialUploadedSize = 0
+    uploaded_chunks.forEach((idx: number) => {
+      if (idx >= 0 && idx < chunks.length) {
+        initialUploadedSize += chunks[idx].size
+      }
+    })
 
     // 创建上传管理器
     const manager: UploadManager = {
       uploadId: initResponse.upload_id,
       file,
       folderId: folderId ?? null,
-      fileHash,
       chunks,
       uploadedChunks: new Set(uploaded_chunks),
+      uploadedSize: initialUploadedSize,
       retryCount: new Map(),
       abortController: new AbortController()
     }
@@ -478,21 +448,17 @@ export async function uploadFile(
 
     // 上传分片
     await uploadChunksConcurrently(manager, (uploadedCount) => {
-      // 更新进度
+      // 更新进度：progress 基于分片数（单文件进度上限 100%），
+      // uploadedSize 基于各分片实际字节数累加（避免最后一片非整片导致总进度超过 100%）
       const progress = Math.round((uploadedCount / total_chunks) * 100)
-      const uploadedSize = uploadedCount * chunk_size
-      uploadStore.updateProgress(uploadId, progress, uploadedSize)
+      uploadStore.updateProgress(uploadId, progress, manager.uploadedSize)
       uploadStore.updateTask(uploadId, {
         uploadedChunks: Array.from(manager.uploadedChunks)
       })
     })
 
-    // 4. 完成上传
-    const fileInfo = await completeUpload(
-      initResponse.upload_id,
-      fileHash,
-      total_chunks
-    )
+    // 3. 完成上传
+    const fileInfo = await completeUpload(initResponse.upload_id)
 
     // 标记完成
     uploadStore.markCompleted(uploadId, fileInfo.id)
@@ -500,10 +466,17 @@ export async function uploadFile(
     // 清理
     activeUploads.delete(uploadId)
 
-    return { uploadId, fileId: fileInfo.id, isQuickUpload: false }
+    return { uploadId, fileId: fileInfo.id }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
     uploadStore.markFailed(uploadId, errorMessage)
+    // 释放内存：清空 manager 持有的 chunks Blob 数组和 file 引用
+    const manager = activeUploads.get(uploadId)
+    if (manager) {
+      manager.chunks = []
+      // file 引用清空需谨慎，File 对象无法直接置 null（类型为 File）
+      // 但 chunks 已清空，主要内存占用已释放
+    }
     activeUploads.delete(uploadId)
     throw error
   }
@@ -528,8 +501,6 @@ export function useFileUpload() {
     isExpanded: uploadStore.isExpanded,
 
     // 方法
-    calculateMD5,
-    getChunkStrategy,
     splitFile,
     calculateChunkMD5,
     initUpload,
@@ -539,4 +510,63 @@ export function useFileUpload() {
     clearCompleted: uploadStore.clearCompleted,
     toggleExpanded: uploadStore.toggleExpanded
   }
+}
+
+/**
+ * 文件级并发上传限制器
+ * 限制同时上传的文件数量，避免浏览器并发连接数限制（HTTP/1.1 通常 6 个/域名）
+ * 和过多并发导致的内存压力。
+ */
+const DEFAULT_MAX_CONCURRENT_FILES = 3
+
+/**
+ * 批量上传文件，限制并发数
+ * @param files 要上传的文件列表
+ * @param folderId 目标文件夹 ID
+ * @param options 可选配置：maxConcurrent 最大并发数；onFileUploaded 单个文件上传成功后的回调（回调内抛错会记为失败）
+ * @returns 每个文件的上传结果（成功返回 fileId，失败返回 null）
+ */
+export async function uploadFilesWithLimit(
+  files: File[] | FileList,
+  folderId?: number,
+  options?: {
+    maxConcurrent?: number
+    onFileUploaded?: (file: File, fileId: number) => Promise<void>
+  }
+): Promise<Array<{ file: File; success: boolean; fileId?: number }>> {
+  const list = Array.from(files)
+  if (list.length === 0) return []
+
+  const maxConcurrent = options?.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_FILES
+  const onFileUploaded = options?.onFileUploaded
+  const results: Array<{ file: File; success: boolean; fileId?: number }> = []
+  let currentIndex = 0
+
+  // 工作函数：从队列中取下一个文件上传
+  async function worker() {
+    while (currentIndex < list.length) {
+      const index = currentIndex++
+      const file = list[index]
+      try {
+        const result = await uploadFile(file, folderId)
+        // 上传成功后执行回调（如挂载到群文件），回调失败也算整体失败
+        if (onFileUploaded && result.fileId) {
+          await onFileUploaded(file, result.fileId)
+        }
+        results.push({ file, success: true, fileId: result.fileId })
+      } catch (error) {
+        console.error(`上传文件 ${file.name} 失败:`, error)
+        results.push({ file, success: false })
+      }
+    }
+  }
+
+  // 启动 maxConcurrent 个 worker
+  const workers: Promise<void>[] = []
+  for (let i = 0; i < Math.min(maxConcurrent, list.length); i++) {
+    workers.push(worker())
+  }
+
+  await Promise.all(workers)
+  return results
 }

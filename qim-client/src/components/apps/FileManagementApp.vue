@@ -179,7 +179,6 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
-import FolderTree from './file/FolderTree.vue'
 import FileList from './file/FileList.vue'
 import CreateFolderModal from './file/CreateFolderModal.vue'
 import FileDateFilter from './file/FileDateFilter.vue'
@@ -189,14 +188,15 @@ import FilePreviewModal from './file/FilePreviewModal.vue'
 // 大组件懒加载
 const FileActionsModal = defineAsyncComponent(() => import('./file/FileActionsModal.vue'))
 import { useFilePagination } from '../../composables/useFilePagination'
-import { useFolderTree, type FolderNode } from '../../composables/useFolderTree'
+import { useFolderTree } from '../../composables/useFolderTree'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import type { ContextMenuItem } from '../shared/context-menu-types'
-import { useFileUpload, uploadFile as uploadFileChunked } from '../../composables/useFileUpload'
+import { useFileUpload, uploadFilesWithLimit } from '../../composables/useFileUpload'
 import { useFileDownload } from '../../composables/useFileDownload'
 import { useUploadStore } from '../../stores/upload'
 import { type FileItem, type FolderItem } from '../../api/file'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import { openMenu, closeMenu } from '../../composables/useUI'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
@@ -217,6 +217,7 @@ const {
   sortOrder,
   dateFrom,
   dateTo,
+  currentFolderId,
   loadFiles,
   refresh,
   changePage,
@@ -232,7 +233,7 @@ const {
 } = useFilePagination()
 
 const {
-  selectedFolder,
+  treeData,
   loadRootFolders
 } = useFolderTree()
 
@@ -240,7 +241,6 @@ const uploadStore = useUploadStore()
 const { tasks } = useFileUpload()
 const { downloadFile } = useFileDownload()
 
-const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
 const fileListRef = ref<InstanceType<typeof FileList> | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -254,18 +254,11 @@ const contextMenu = ref({
   file: null as FileItem | null
 })
 
-const folders = ref<FolderItem[]>([])
+// folders 从 useFolderTree 的 treeData 派生（顶层文件夹列表）
+// treeData 由 /api/v1/folders/tree 返回，结构与 FolderItem 兼容
+const folders = computed<FolderItem[]>(() => treeData.value as unknown as FolderItem[])
 const filterValue = ref('all')
 const viewMode = ref<'grid' | 'list'>('list')
-
-const currentFolderPath = computed(() => {
-  if (!selectedFolder.value) return ''
-  return selectedFolder.value.path || selectedFolder.value.name
-})
-
-const handleFolderSelect = (folder: FolderNode) => {
-  changeFolder(folder.id)
-}
 
 const handleFilterValueChange = () => {
   const val = filterValue.value
@@ -310,10 +303,6 @@ const handleSearchClear = () => {
 
 const handleFilterChange = (type: string) => {
   changeFilterType(type)
-}
-
-const handleSourceChange = (source: string | null) => {
-  changeSource(source)
 }
 
 const sortValue = ref('created_at_desc')
@@ -366,38 +355,25 @@ const handleFileStar = async (file: FileItem) => {
 }
 
 const handleFileDelete = async (file: FileItem) => {
-  if (confirm(`确定要删除文件 "${file.name}" 吗？`)) {
-    await deleteFile(file.id)
-  }
+  const result = await QMessageBox.confirm(
+    `确定要删除文件 "${file.name}" 吗？`,
+    '删除文件',
+    { confirmButtonText: '删除', type: 'warning' }
+  )
+  if (result.action !== 'confirm') return
+  await deleteFile(file.id)
 }
 
 const handleFileUpload = async (event: Event | FileList) => {
   const files = event instanceof Event ? (event.target as HTMLInputElement).files : event
   if (!files || files.length === 0) return
 
-  // 并发上传所有文件
-  const uploadPromises: Promise<void>[] = []
-  
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]
-    const uploadPromise = uploadFileChunked(file, selectedFolder.value?.id)
-      .then(() => {
-        // 上传成功，进度条会自动显示
-      })
-      .catch(error => {
-        console.error(`上传文件 ${file.name} 失败:`, error)
-        // 错误已经在 uploadStore 中处理
-      })
-    
-    uploadPromises.push(uploadPromise)
-  }
+  // 使用并发限制上传（最多同时 3 个文件），避免浏览器并发连接数限制和内存压力
+  await uploadFilesWithLimit(files, currentFolderId.value ?? undefined)
 
-  // 等待所有上传完成
-  await Promise.all(uploadPromises)
-  
   // 刷新文件列表
   await refresh()
-  
+
   // 清空文件输入
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
@@ -461,14 +437,6 @@ const handleFolderCreated = () => {
 
 const handleActionSuccess = () => {
   refresh()
-}
-
-const navigateToRoot = () => {
-  changeFolder(null)
-}
-
-const navigateToPath = (index: number) => {
-  console.log('Navigate to path index:', index)
 }
 
 // 滚动或窗口缩放时关闭菜单，避免菜单飘在原地与内容错位

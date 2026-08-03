@@ -74,7 +74,7 @@ func readWS(t *testing.T, conn *websocket.Conn) (string, map[string]interface{})
 func TestBotStreaming_HappyPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupServiceTestDB(t)
-	hub := ws.NewHub(db, "test-secret")
+	hub := ws.NewHub(db, "test-secret", "http")
 	go hub.Run()
 	svc := NewBotMessagingService(db, hub)
 
@@ -82,7 +82,7 @@ func TestBotStreaming_HappyPath(t *testing.T) {
 	conn := dialUserWS(t, hub, user.ID)
 
 	// 1. 建流式消息
-	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil)
+	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -138,7 +138,7 @@ func TestStreamChunk_RefreshesUpdatedAt(t *testing.T) {
 	svc := NewBotMessagingService(db, nil)
 
 	bot, user, _ := setupStreamingBot(t, db)
-	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil)
+	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil, nil)
 	require.NoError(t, err)
 
 	var before model.Message
@@ -165,7 +165,7 @@ func TestStreamChunk_RejectsNonStreaming(t *testing.T) {
 
 	bot, user, _ := setupStreamingBot(t, db)
 	// 建一条普通 markdown 消息
-	msg, err := svc.SendOutbound(bot, user.ID, "hi", "markdown", nil)
+	msg, err := svc.SendOutbound(bot, user.ID, "hi", "markdown", nil, nil)
 	require.NoError(t, err)
 
 	err = svc.StreamChunk(bot, msg.ID, " more", false)
@@ -180,7 +180,7 @@ func TestStreamChunk_RejectsNonOwningBot(t *testing.T) {
 
 	botA, user, _ := setupStreamingBot(t, db)
 	// bot A 建流式消息
-	msg, err := svc.SendOutbound(botA, user.ID, "", "streaming", nil)
+	msg, err := svc.SendOutbound(botA, user.ID, "", "streaming", nil, nil)
 	require.NoError(t, err)
 
 	// bot B：独立的虚拟用户，但在该会话上无 BotConversation

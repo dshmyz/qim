@@ -123,12 +123,12 @@ export function useMainGroupHandlers(
     logger.log('群成员角色更新:', data)
     const { group_id, user_id, user_name, new_role } = data
     
-    const roleNames = {
+    const roleNames: Record<string, string> = {
       'admin': '管理员',
       'member': '普通成员',
       'owner': '群主'
     }
-    
+
     showMessage({
       message: `${user_name} 已成为${roleNames[new_role] || new_role}`,
       type: 'info',

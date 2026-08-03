@@ -97,6 +97,70 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 	return response.Choices[0].Message.Content, nil
 }
 
+// ChatWithUsage 实现 UsageProvider 接口，返回回复内容 + token 用量。
+func (p *OpenAIProvider) ChatWithUsage(messages []Message) (string, *TokenUsage, error) {
+	if !p.IsConfigured() {
+		return "", nil, fmt.Errorf("OpenAI API key is not configured")
+	}
+
+	reqBody := ChatCompletionRequest{
+		Model:    p.config.Model,
+		Messages: messages,
+		MaxTokens: func() int {
+			if v, ok := p.config.ExtraParams["max_tokens"].(int); ok {
+				return v
+			}
+			return 4096
+		}(),
+		Temperature: func() float64 {
+			if v, ok := p.config.ExtraParams["temperature"].(float64); ok {
+				return v
+			}
+			return 0.7
+		}(),
+	}
+
+	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
+		req, _, err := CreateJSONRequest(
+			"POST",
+			p.config.BaseURL+"/chat/completions",
+			p.config.APIKey,
+			reqBody,
+			nil,
+		)
+		return req, err
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+
+	// 校验 HTTP 状态码：未校验时 401/429/500 会被当作 decode 失败，丢失真实错误信息
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.WithModule("OpenAI").Error("ChatWithUsage non-200 response",
+			"status", resp.Status, "body", string(bodyBytes))
+		return "", nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response ChatCompletionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", nil, fmt.Errorf("failed to decode OpenAI response: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return "", nil, fmt.Errorf("no choices in OpenAI response")
+	}
+
+	usage := &TokenUsage{
+		PromptTokens:     response.Usage.PromptTokens,
+		CompletionTokens: response.Usage.CompletionTokens,
+		TotalTokens:      response.Usage.TotalTokens,
+	}
+
+	return response.Choices[0].Message.Content, usage, nil
+}
+
 func (p *OpenAIProvider) ChatStream(messages []Message, onChunk func(chunk StreamChunk) error) error {
 	return p.ChatStreamWithContext(context.Background(), messages, onChunk)
 }

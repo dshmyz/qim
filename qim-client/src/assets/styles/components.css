@@ -785,3 +785,50 @@
 
 .transition { transition: all var(--transition-base); }
 .transition-slow { transition: all var(--transition-slow); }
+
+/* ========================================
+   渲染增强规则样式 - Render Rules
+   ======================================= */
+
+/* link_card 类型：内联卡片 */
+.render-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin: 0 2px;
+  border-radius: 6px;
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.4;
+  transition: background 0.15s;
+  vertical-align: baseline;
+}
+.render-card:hover {
+  background: rgba(64, 158, 255, 0.2);
+}
+.render-card__icon i {
+  font-size: 12px;
+}
+
+/* text_chip 类型：高亮标识 */
+.render-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: #f0f0f0;
+  color: #666;
+  font-size: 12px;
+}
+
+/* Jira 工单卡片专用样式（示例，可扩展） */
+.jira-ticket-card {
+  background: rgba(0, 82, 204, 0.1);
+  color: #0052cc;
+}
+.jira-ticket-card:hover {
+  background: rgba(0, 82, 204, 0.2);
+}

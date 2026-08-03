@@ -1,5 +1,5 @@
 import { http } from './core'
-import type { ApiResponse } from './core'
+import type { ApiResponse } from '../composables/useRequest'
 
 export interface Message {
   id: string

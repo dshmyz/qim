@@ -36,7 +36,7 @@ func TestSendOutbound_CreatesBotMessageAndUnread(t *testing.T) {
 	bot := &model.Bot{Name: "AgentBot", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
 	db.Create(bot)
 
-	msg, err := svc.SendOutbound(bot, human.ID, "构建失败，请确认", "text", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, "构建失败，请确认", "text", nil, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, "bot", msg.Origin)
@@ -75,12 +75,12 @@ func TestSendOutbound_ReusesThreadID(t *testing.T) {
 	db.Create(bot)
 
 	// 第一条：建会话
-	msg1, err := svc.SendOutbound(bot, human.ID, "first", "text", nil)
+	msg1, err := svc.SendOutbound(bot, human.ID, "first", "text", nil, nil)
 	assert.NoError(t, err)
 
 	// 第二条：带 thread_id 复用同一会话
 	threadID := msg1.ConversationID
-	msg2, err := svc.SendOutbound(bot, human.ID, "second", "text", &threadID)
+	msg2, err := svc.SendOutbound(bot, human.ID, "second", "text", &threadID, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, threadID, msg2.ConversationID)
 }
@@ -97,7 +97,7 @@ func TestSendOutbound_RejectsWrongThreadID(t *testing.T) {
 	db.Create(bot)
 
 	wrongID := uint(9999)
-	_, err := svc.SendOutbound(bot, human.ID, "x", "text", &wrongID)
+	_, err := svc.SendOutbound(bot, human.ID, "x", "text", &wrongID, nil)
 	assert.Error(t, err)
 }
 
@@ -113,15 +113,101 @@ func TestSendOutbound_RejectsBotToBot(t *testing.T) {
 	db.Create(bot)
 
 	// 不允许 bot 给 bot 类型用户发消息
-	_, err := svc.SendOutbound(bot, otherBot.ID, "hi", "text", nil)
+	_, err := svc.SendOutbound(bot, otherBot.ID, "hi", "text", nil, nil)
 	assert.Error(t, err)
+}
+
+func TestSendOutbound_SetsQuotedMessageIDForReply(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "bot_reply_1", Nickname: "ReplyBot", Type: "bot"}
+	db.Create(vUser)
+	human := &model.User{Username: "reply_user", Nickname: "Reply User", Type: "user"}
+	db.Create(human)
+	bot := &model.Bot{Name: "ReplyBot", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	quoted, err := svc.SendOutbound(bot, human.ID, "first", "text", nil, nil)
+	assert.NoError(t, err)
+
+	threadID := quoted.ConversationID
+	replyToID := quoted.ID
+	reply, err := svc.SendOutbound(bot, human.ID, "second", "text", &threadID, &replyToID)
+	assert.NoError(t, err)
+	if assert.NotNil(t, reply.QuotedMessageID) {
+		assert.Equal(t, quoted.ID, *reply.QuotedMessageID)
+	}
+}
+
+func TestSendOutbound_RejectsReplyToMessageFromAnotherConversation(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "bot_reply_2", Nickname: "ReplyBot2", Type: "bot"}
+	db.Create(vUser)
+	humanA := &model.User{Username: "reply_user_a", Nickname: "Reply User A", Type: "user"}
+	humanB := &model.User{Username: "reply_user_b", Nickname: "Reply User B", Type: "user"}
+	db.Create(humanA)
+	db.Create(humanB)
+	bot := &model.Bot{Name: "ReplyBot2", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	msgA, err := svc.SendOutbound(bot, humanA.ID, "conv-a", "text", nil, nil)
+	assert.NoError(t, err)
+	msgB, err := svc.SendOutbound(bot, humanB.ID, "conv-b", "text", nil, nil)
+	assert.NoError(t, err)
+
+	threadID := msgB.ConversationID
+	replyToID := msgA.ID
+	_, err = svc.SendOutbound(bot, humanB.ID, "reply", "text", &threadID, &replyToID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "引用消息不属于当前会话")
+}
+
+func TestResolveUserID_RejectsAmbiguousNickname(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	db.Create(&model.User{Username: "dup_1", Nickname: "同名", Type: "user"})
+	db.Create(&model.User{Username: "dup_2", Nickname: "同名", Type: "user"})
+
+	_, err := svc.ResolveUserID("同名")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "昵称不唯一")
+}
+
+func TestResolveBotThread_RejectsAmbiguousNickname(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "bot_resolve_1", Nickname: "ResolveBot", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "ResolveBot", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	userA := &model.User{Username: "resolve_a", Nickname: "同名会话", Type: "user"}
+	userB := &model.User{Username: "resolve_b", Nickname: "同名会话", Type: "user"}
+	db.Create(userA)
+	db.Create(userB)
+
+	convA := &model.Conversation{Type: "bot"}
+	convB := &model.Conversation{Type: "bot"}
+	db.Create(convA)
+	db.Create(convB)
+	db.Create(&model.BotConversation{BotID: bot.ID, UserID: userA.ID, ConversationID: convA.ID})
+	db.Create(&model.BotConversation{BotID: bot.ID, UserID: userB.ID, ConversationID: convB.ID})
+
+	_, err := svc.ResolveBotThread(bot, "同名会话")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "昵称不唯一")
 }
 
 func TestParseBotConfig_IsExternalWebhook(t *testing.T) {
 	// IsExternalWebhook 只判身份（mode）：url 空也是外部 bot，走纯 pull 模式。
 	assert.False(t, ParseBotConfig("").IsExternalWebhook())
 	assert.False(t, ParseBotConfig(`{"mode":"internal_ai"}`).IsExternalWebhook())
-	assert.True(t, ParseBotConfig(`{"mode":"external_webhook"}`).IsExternalWebhook())           // 缺 url = 纯 pull，仍是外部 bot
+	assert.True(t, ParseBotConfig(`{"mode":"external_webhook"}`).IsExternalWebhook()) // 缺 url = 纯 pull，仍是外部 bot
 	assert.True(t, ParseBotConfig(`{"mode":"external_webhook","webhook_url":"http://x"}`).IsExternalWebhook())
 
 	// HasWebhook 判是否需要投 webhook：url 空就不投（纯 pull），url 非空才投。
@@ -168,7 +254,7 @@ func TestSendOutbound_AcceptsValidCard(t *testing.T) {
 	db.Create(bot)
 
 	card := `{"title":"确认回滚?","buttons":[{"id":"confirm","text":"确认回滚","style":"primary","value":"confirm"},{"id":"cancel","text":"取消","value":"cancel"}]}`
-	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil)
+	msg, err := svc.SendOutbound(bot, human.ID, card, "card", nil, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, "card", msg.Type)
@@ -189,11 +275,11 @@ func TestSendOutbound_RejectsInvalidCard(t *testing.T) {
 
 	cases := []string{
 		`not-json`,
-		`{"title":"x"}`,                 // 无按钮
-		`{"buttons":[{"text":"x"}]}`,    // 按钮缺 id
+		`{"title":"x"}`,              // 无按钮
+		`{"buttons":[{"text":"x"}]}`, // 按钮缺 id
 	}
 	for i, content := range cases {
-		_, err := svc.SendOutbound(bot, human.ID, content, "card", nil)
+		_, err := svc.SendOutbound(bot, human.ID, content, "card", nil, nil)
 		assert.Error(t, err, "case %d 应被拒绝", i)
 	}
 }

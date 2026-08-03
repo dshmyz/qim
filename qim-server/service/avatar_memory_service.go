@@ -91,10 +91,10 @@ func (s *AvatarMemoryService) ShouldRemember(message string) (bool, error) {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(result)), "true"), nil
 }
 
+// ForgetMemory 删除单条用户记忆（带归属校验）。
+// 保留旧方法名兼容内部调用，实际委托给 DeleteMemory 统一走归属校验。
 func (s *AvatarMemoryService) ForgetMemory(userID uint, memoryDocID string) error {
-	ctx := context.Background()
-	_, err := s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
-	return err
+	return s.DeleteMemory(userID, memoryDocID)
 }
 
 func (s *AvatarMemoryService) GetMemoryCount(userID uint) (int64, error) {
@@ -113,40 +113,74 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 
 	ctx := context.Background()
 
-	// 使用通用查询词获取所有相关记忆
-	resp, err := s.db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
-		Query:     "all memories",
-		UserID:    fmt.Sprintf("%d", userID),
-		Scope:     cortexdb.MemoryScopeUser,
-		Namespace: "avatar",
-		TopK:      limit,
-	})
-	if err != nil {
-		logger.WithModule("AvatarMemoryService").Error("获取用户记忆失败", "userID", userID, "error", err)
-		return nil, err
+	// 注意：CortexDB 无 ListMemories API，只能通过 SearchMemory 近似枚举。
+	// 使用多组查询词并去重，降低单一语义偏向导致的结果缺失。
+	queries := []string{" ", "工作 生活 学习", "决定 偏好 约定"}
+	seen := make(map[string]bool)
+	var records []MemoryRecord
+
+	for _, q := range queries {
+		if len(records) >= limit {
+			break
+		}
+		remaining := limit - len(records)
+		resp, err := s.db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
+			Query:     q,
+			UserID:    fmt.Sprintf("%d", userID),
+			Scope:     cortexdb.MemoryScopeUser,
+			Namespace: "avatar",
+			TopK:      remaining,
+		})
+		if err != nil {
+			logger.WithModule("AvatarMemoryService").Error("获取用户记忆失败", "userID", userID, "query", q, "error", err)
+			continue
+		}
+		for _, hit := range resp.Results {
+			if seen[hit.Memory.ID] {
+				continue
+			}
+			seen[hit.Memory.ID] = true
+			metadataStr := make(map[string]string)
+			for k, v := range hit.Memory.Metadata {
+				if s, ok := v.(string); ok {
+					metadataStr[k] = s
+				}
+			}
+			records = append(records, MemoryRecord{
+				DocID:    hit.Memory.ID,
+				Content:  hit.Memory.Content,
+				Metadata: metadataStr,
+			})
+		}
 	}
 
-	var records []MemoryRecord
-	for _, hit := range resp.Results {
-		metadataStr := make(map[string]string)
-		for k, v := range hit.Memory.Metadata {
-			if s, ok := v.(string); ok {
-				metadataStr[k] = s
-			}
-		}
-		records = append(records, MemoryRecord{
-			DocID:    hit.Memory.ID,
-			Content:  hit.Memory.Content,
-			Metadata: metadataStr,
-		})
-	}
 	logger.WithModule("AvatarMemoryService").Info("获取用户记忆成功", "userID", userID, "count", len(records))
 	return records, nil
 }
 
-func (s *AvatarMemoryService) DeleteMemory(memoryDocID string) error {
+// DeleteMemory 删除单条用户记忆。
+// 安全校验：先确认 memoryDocID 属于 userID 对应的用户，防止 IDOR 越权删除他人记忆。
+func (s *AvatarMemoryService) DeleteMemory(userID uint, memoryDocID string) error {
+	if s.db == nil {
+		return nil
+	}
+	// 先列出该用户的全部记忆，确认 memoryDocID 在其中，防止越权删除
+	memories, err := s.GetUserMemories(userID, 10000)
+	if err != nil {
+		return err
+	}
+	owned := false
+	for _, m := range memories {
+		if m.DocID == memoryDocID {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return ErrMemoryNotFound
+	}
 	ctx := context.Background()
-	_, err := s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
+	_, err = s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
 	return err
 }
 

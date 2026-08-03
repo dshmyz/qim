@@ -70,6 +70,7 @@
       @show-member-context-menu="handleShowMemberContextMenu"
       @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
       @update:member-search-query="(val) => memberSearchQuery = val"
+      @recall-edit="handleRecallEdit"
     />
 
     <div v-if="isMessageSelectionMode" class="message-selection-actions" aria-label="多选消息操作" role="toolbar">
@@ -95,11 +96,18 @@
       :show-emoji-panel="showEmojiPanel"
       :show-at-members-panel="showAtMembersPanel"
       :at-members-query="atMembersQuery"
+      :show-slash-panel="showSlashPanel"
+      :slash-query="slashQuery"
+      :slash-items="slashItems"
+      :slash-title="slashMode === 'command' ? '命令' : (activeSlashCommand?.title || '')"
+      :slash-item-component="slashMode === 'command' ? CommandListItemRaw : (activeSlashCommand?.itemComponent as any)"
+      :slash-footer-label="slashFooterLabel"
+      :slash-footer-icon="slashFooterIcon"
       v-model:show-mini-app-list="showMiniAppList"
       :quoted-message="quotedMessage"
       :is-electron="isElectron"
       :get-file-icon="getFileIcon"
-      :is-processing="aiIsProcessing"
+      :processing-action="currentProcessingAction"
       :draft-streaming="isDraftStreaming"
       :has-draft-reply="hasDraftReply"
       :show-search="showSearch"
@@ -124,6 +132,9 @@
       @close-at-members-panel="closeAtMembersPanel"
       @select-at-member="selectAtMember"
       @select-at-all="selectAtAll"
+      @select-slash-item="selectSlashItem"
+      @close-slash-panel="closeSlashPanel"
+      @slash-footer-action="openQuickReplyManager"
       @handle-file-select="handleFileSelect"
       @handle-paste="handlePaste"
       @handle-drop="handleDrop"
@@ -162,8 +173,6 @@
       :show-confirm-dialog="showConfirmDialog"
       :confirm-dialog-title="confirmDialogTitle"
       :confirm-dialog-message="confirmDialogMessage"
-      :show-screenshot-preview="showScreenshotPreview"
-      :screenshot-image-data="screenshotImageData"
       :other-user-id="otherUserId"
       :active-mini-app="activeMiniApp"
       :get-file-icon="getFileIcon"
@@ -197,14 +206,14 @@
       @update-confirm-dialog="(v) => showConfirmDialog = v"
       @confirm-action="handleConfirmAction"
       @cancel-confirm-action="closeConfirmDialog"
-      @cancel-screenshot="cancelScreenshot"
-      @retake-screenshot="retakeScreenshot"
-      @send-screenshot="uploadScreenshot"
       @close-mini-app="activeMiniApp = null"
       @mini-app-toast="handleMiniAppToast"
     />
 
     <!-- 群名称编辑弹窗和群公告编辑弹窗已移至 Main.vue 中的 GroupModals 组件 -->
+
+    <!-- 快速回复管理弹窗 -->
+    <QuickReplyManager v-model:visible="showQuickReplyManager" />
 
     <!-- AI 摘要面板 -->
     <AISummaryPanel
@@ -231,11 +240,22 @@
       :reference-file-id="referenceFileId"
       @close="closeGroupFiles"
     />
+
+    <!-- AI 文本预览弹窗（改写/润色/翻译） -->
+    <AITextPreview
+      :visible="previewVisible"
+      :original-text="previewOriginal"
+      :result-text="previewResult"
+      :action-type="previewType"
+      @replace="handlePreviewReplace"
+      @cancel="previewVisible = false"
+    />
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent, provide, reactive } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent, provide, reactive, shallowRef, markRaw } from 'vue'
 import type { Conversation, Message } from '../../types'
 import QMessage from '../../utils/qmessage'
 import ChatBody from './ChatBody.vue'
@@ -254,8 +274,12 @@ import { useChatUtils } from '../../composables/useChatUtils'
 import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
+import { useSlashCommandPanelEnabled } from '../../composables/useSlashCommandPanelEnabled'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
-import { useAIKeyboardShortcuts } from '../../composables/useAIKeyboardShortcuts'
+// AI 快捷键已移至 Main.vue（全局生效）
+// summary / quickPanel 通过事件触发
+// useAISidebar 已移至 Main.vue
+import AITextPreview from '../ai/AITextPreview.vue'
 import { logger } from '../../utils/logger'
 import { saveDraft } from '../../utils/drafts'
 import {
@@ -278,9 +302,16 @@ import { useSystemConfigStore } from '../../stores/systemConfig'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
+import { replaceSlashToken, findCommandList, type SlashCommand, type SlashCommandItem, type ActiveSlashToken } from '../../utils/slashCommand'
+import { getSlashCommandRegistry } from '../../utils/slashCommands'
+import CommandListItem from './CommandListItem.vue'
 import { isMessageSelectionEligible } from '../../utils/messageSelection'
 import GroupFilesPanel from '../groups/GroupFilesPanel.vue'
 import { activeMenu, activeMenuPosition, openMenu, closeMenu } from '../../composables/useUI'
+import QuickReplyManager from './QuickReplyManager.vue'
+
+// 命令列表模式下用于 <component :is>，markRaw 避免被 Vue 当作响应式对象
+const CommandListItemRaw = markRaw(CommandListItem)
 
 // 服务器地址
 const { serverUrl } = useServerUrl()
@@ -328,6 +359,27 @@ const {
   abortDraftReply,
 } = useAIActions()
 
+// AI 文本预览状态（改写/润色/翻译结果）
+const previewVisible = ref(false)
+const previewOriginal = ref('')
+const previewResult = ref('')
+const previewType = ref<'rewrite' | 'polish' | 'translate'>('rewrite')
+
+// 当前处理中的按钮 ID（用于按钮级 loading）
+const currentProcessingAction = computed(() => {
+  if (isDraftStreaming.value) return 'draft-reply'
+  if (aiIsProcessing.value) return currentAIAction.value
+  return null
+})
+const currentAIAction = ref<string | null>(null)
+
+const handlePreviewReplace = () => {
+  inputMessage.value = previewResult.value
+  autoResizeTextarea()
+  previewVisible.value = false
+  $message.success('已替换原文')
+}
+
 // 帮我回复草稿状态
 const isDraftStreaming = ref(false)      // 正在流式生成
 const hasDraftReply = ref(false)          // 已生成草稿、可换一个
@@ -340,6 +392,9 @@ const avatarEnabled = computed(() => props.conversation?.id ? isAvatarActive(pro
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
+
+// AI 侧边栏状态（使用全局状态）
+// useAISidebar 已移至 Main.vue（全局状态）
 
 // AI 翻译面板状态
 const showTranslatePanel = ref(false)
@@ -431,76 +486,77 @@ const handleAIAction = async (actionId: string) => {
         showSummaryPanel.value = true
       }
       break
-    case 'translate':
+    case 'translate': {
       if (!text) {
         $message.warning('请先输入需要翻译的文本')
         return
       }
+      currentAIAction.value = 'translate'
       try {
         const result = await translateText(text, 'zh')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('翻译完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'translate'
+        previewVisible.value = true
       } catch {
         $message.error('翻译失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
-    case 'rewrite':
+    }
+    case 'rewrite': {
       if (!text) {
         $message.warning('请先输入需要改写的文本')
         return
       }
+      currentAIAction.value = 'rewrite'
       try {
         const result = await rewriteText(text, 'concise', 'professional')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('改写完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'rewrite'
+        previewVisible.value = true
       } catch {
         $message.error('改写失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
-    case 'polish':
+    }
+    case 'polish': {
       if (!text) {
         $message.warning('请先输入需要润色的文本')
         return
       }
+      currentAIAction.value = 'polish'
       try {
         const result = await polishText(text, 'zh')
-        inputMessage.value = result
-        autoResizeTextarea()
-        $message.success('润色完成')
+        previewOriginal.value = text
+        previewResult.value = result
+        previewType.value = 'polish'
+        previewVisible.value = true
       } catch {
         $message.error('润色失败')
+      } finally {
+        currentAIAction.value = null
       }
       break
+    }
     default:
       break
   }
 }
 
-// AI 键盘快捷键
-useAIKeyboardShortcuts([
-  {
-    key: 'k',
-    ctrlKey: true,
-    shiftKey: false,
-    action: () => {
-      $message.info('AI 快捷面板')
-    },
-    description: '打开 AI 快捷面板'
-  },
-  {
-    key: 's',
-    ctrlKey: true,
-    shiftKey: true,
-    action: () => {
-      if (props.conversation?.id) {
-        showSummaryPanel.value = true
-      }
-    },
-    description: '快速生成会话摘要'
+// 监听来自 Main.vue 的 AI 快捷键事件（summary / quickPanel）
+const handleAISummaryAction = () => {
+  if (props.conversation?.id) {
+    showSummaryPanel.value = true
   }
-])
+}
+const handleAIQuickPanelAction = () => {
+  $message.info('AI 快捷面板')
+}
 
 interface Props {
   conversation: Conversation
@@ -641,6 +697,8 @@ watch(() => props.conversation?.id, (newId, oldId) => {
     pendingAtEnd.value = -1
     atMembersQuery.value = ''
     showAtMembersPanel.value = false
+    // 切换会话时清空斜杠命令面板
+    clearSlashPanel()
 
     scrollToBottom()
 
@@ -697,6 +755,68 @@ const trackedInputMessage = ref('')
 const pendingAtPosition = ref(-1)
 const pendingAtEnd = ref(-1)
 const atMembersQuery = ref('')
+
+// 斜杠命令补全相关（统一框架，支持 /task 等命令）
+const slashCommandRegistry = getSlashCommandRegistry()
+// 整个斜杠命令面板的开关：关闭后输入 / 不弹出任何命令面板
+const { slashCommandPanelEnabled } = useSlashCommandPanelEnabled()
+const showSlashPanel = ref(false)
+// 'command' = 命令列表模式（输入 / 弹出所有命令）；'search' = 具体命令搜索模式（输入 /task 后）
+const slashMode = ref<'command' | 'search'>('command')
+const slashQuery = ref('')
+const slashToken = ref<ActiveSlashToken | null>(null)
+const slashItems = ref<SlashCommandItem[]>([])
+// 当前活跃命令（search 模式下设置），用于面板标题/组件/getInsertText
+// 用 shallowRef：命令对象本身不会变，避免对内含的 itemComponent 组件对象做深度响应式代理
+const activeSlashCommand = shallowRef<{
+  title: string
+  itemComponent: import('vue').Component
+  getInsertText: (item: SlashCommandItem) => string
+  onSelect?: (item: SlashCommandItem, ctx: { conversationId: string; conversationType: string }) => import('../../utils/slashCommand').SlashCommandSelectResult
+} | null>(null)
+
+// backendSearch 命令（如 /file）的 debounce 控制状态
+// - timer：debounce 定时器，每次输入变化都重置
+// - seq：请求序列号，防止旧请求结果覆盖新请求结果（切换命令/关闭面板时递增使在途请求失效）
+let backendSearchTimer: ReturnType<typeof setTimeout> | null = null
+let backendSearchSeq = 0
+const BACKEND_SEARCH_DEBOUNCE_MS = 250
+
+/** 取消正在进行的 backendSearch：清理 timer 并让在途请求结果失效 */
+const cancelBackendSearch = () => {
+  if (backendSearchTimer) {
+    clearTimeout(backendSearchTimer)
+    backendSearchTimer = null
+  }
+  backendSearchSeq++
+}
+
+// 清空斜杠命令补全状态
+const clearSlashPanel = () => {
+  showSlashPanel.value = false
+  slashMode.value = 'command'
+  slashToken.value = null
+  slashQuery.value = ''
+  slashItems.value = []
+  activeSlashCommand.value = null
+  cancelBackendSearch()
+}
+
+// 快速回复管理弹窗
+const showQuickReplyManager = ref(false)
+
+// 仅当 /quick 命令激活时显示底部"管理"入口
+const slashFooterLabel = computed(() =>
+  slashMode.value === 'search' && activeSlashCommand.value?.title === '快速回复'
+    ? '管理快速回复' : ''
+)
+const slashFooterIcon = computed(() => slashFooterLabel.value ? 'fas fa-cog' : '')
+
+const openQuickReplyManager = () => {
+  // 关闭补全面板，避免弹窗叠层
+  clearSlashPanel()
+  showQuickReplyManager.value = true
+}
 
 // 输入文本变化时同步 mention span（编辑后维持 span 与文本一致性）
 watch(inputMessage, (nextText) => {
@@ -783,30 +903,97 @@ const clearActiveMention = () => {
   showAtMembersPanel.value = false
 }
 
-// 处理输入事件，处理 @ 功能
+// 处理输入事件，处理 @ 和斜杠命令补全
 const handleInput = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
   const value = textarea.value
   const cursorPos = textarea.selectionStart
   inputCursorPosition.value = cursorPos
 
-  // 仅群聊/讨论组启用 @ 功能
   const convType = props.conversation?.type
-  if (convType !== 'group' && convType !== 'discussion') {
-    clearActiveMention()
+
+  // @ 成员补全：仅群聊/讨论组启用
+  if (convType === 'group' || convType === 'discussion') {
+    const mentionToken = findActiveMentionToken(value, cursorPos)
+    if (mentionToken) {
+      pendingAtPosition.value = mentionToken.start
+      pendingAtEnd.value = mentionToken.end
+      atMembersQuery.value = mentionToken.query
+      showAtMembersPanel.value = true
+      clearSlashPanel()
+      return
+    }
+  }
+  clearActiveMention()
+
+  // 斜杠命令补全：用户可在「设置 → 消息设置」里关闭整个斜杠命令面板
+  if (!slashCommandPanelEnabled.value) {
+    clearSlashPanel()
     return
   }
 
-  const token = findActiveMentionToken(value, cursorPos)
-  if (!token) {
-    clearActiveMention()
+  const ctx = {
+    conversationId: String(props.conversation?.id ?? ''),
+    conversationType: String(convType ?? ''),
+  }
+  // 优先匹配具体命令（如 /task），命中则进入搜索模式
+  const active = slashCommandRegistry.findActive(value, cursorPos, ctx)
+  if (active) {
+    slashToken.value = active.token
+    slashQuery.value = active.token.query
+    slashMode.value = 'search'
+    activeSlashCommand.value = {
+      title: active.command.title,
+      itemComponent: active.command.itemComponent,
+      getInsertText: active.command.getInsertText,
+      onSelect: active.command.onSelect,
+    }
+    showSlashPanel.value = true
+    // 切换命令或继续输入时，取消上一次 backendSearch（清理 timer + 在途请求失效）
+    cancelBackendSearch()
+
+    if (active.command.backendSearch) {
+      // 后端搜索：debounce 后请求，query 变化时重新搜索
+      const currentQuery = active.token.query
+      const seq = backendSearchSeq
+      backendSearchTimer = setTimeout(() => {
+        backendSearchTimer = null
+        // 取消竞态：若期间面板已关闭/命令已切换（seq 已变），不再请求
+        if (seq !== backendSearchSeq) return
+        void active.command.fetchItems(ctx, currentQuery).then(items => {
+          // 只接受最新一次请求的结果，避免旧请求覆盖新结果
+          if (seq !== backendSearchSeq) return
+          slashItems.value = items
+        })
+      }, BACKEND_SEARCH_DEBOUNCE_MS)
+      return
+    }
+
+    // 前端过滤：fetchItems 通常有缓存（只请求一次），之后用 filter 同步过滤
+    void active.command.fetchItems(ctx).then(items => {
+      slashItems.value = active.command.filter(items, active.token.query)
+    })
     return
   }
-
-  pendingAtPosition.value = token.start
-  pendingAtEnd.value = token.end
-  atMembersQuery.value = token.query
-  showAtMembersPanel.value = true
+  // 具体命令未命中，尝试命令列表模式（输入 / 弹出所有可用命令）
+  const cmdList = findCommandList(value, cursorPos, ctx, slashCommandRegistry)
+  if (cmdList) {
+    // 从 search 模式切到 command 模式时，取消进行中的 backendSearch
+    cancelBackendSearch()
+    slashToken.value = cmdList.token
+    slashQuery.value = cmdList.token.query
+    slashMode.value = 'command'
+    activeSlashCommand.value = null
+    // 按 query 过滤命令列表（trigger 包含 query）
+    const q = cmdList.token.query.trim().toLowerCase()
+    const filtered = q
+      ? cmdList.commands.filter(c => c.trigger.toLowerCase().includes(q))
+      : cmdList.commands
+    slashItems.value = filtered.map(c => ({ id: c.trigger, command: c }))
+    showSlashPanel.value = filtered.length > 0
+    return
+  }
+  clearSlashPanel()
 }
 
 // 处理粘贴事件
@@ -1014,6 +1201,95 @@ const selectAtAll = () => {
 // 关闭 @ 成员面板
 const closeAtMembersPanel = () => {
   clearActiveMention()
+}
+
+// 选中斜杠命令候选项
+// - search 模式：把 token 替换为命令的插入文本（如 #T-123 ）
+// - command 模式：把 / token 替换为该命令的 trigger+空格（如 /task ），自然进入 search 模式
+const selectSlashItem = (item: SlashCommandItem) => {
+  const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
+  if (!textarea) return
+
+  const token = slashToken.value
+  if (!token) return
+
+  // command 模式：item 是 CommandListEntry，取 command.trigger 进入搜索
+  if (slashMode.value === 'command') {
+    const entry = item as { id: string; command: SlashCommand }
+    const insertText = `${entry.command.trigger} `
+    const newText = replaceSlashToken(inputMessage.value, token, insertText)
+    inputMessage.value = newText
+    trackedInputMessage.value = newText
+    clearSlashPanel()
+    autoResizeTextarea()
+    nextTick(() => {
+      const newPos = token.start + insertText.length
+      textarea.selectionStart = textarea.selectionEnd = newPos
+      textarea.focus()
+      const event = new Event('input', { bubbles: true })
+      textarea.dispatchEvent(event)
+    })
+    return
+  }
+
+  // search 模式：优先走 onSelect 自定义处理（如 /note 直接发分享消息）
+  const cmd = activeSlashCommand.value
+  if (!cmd) return
+
+  const ctx = {
+    conversationId: props.conversation?.id ?? '',
+    conversationType: props.conversation?.type ?? '',
+  }
+
+  if (cmd.onSelect) {
+    const result = cmd.onSelect(item, ctx)
+    if (result.action === 'send' && result.messageContent !== undefined && result.messageType) {
+      // 走主发送路径（emit('send') → handleSendMessage），
+      // 复用乐观追加 / 错误提示 / 断网兜底，避免自己这边不显示。
+      clearSlashPanel()
+      const newText = replaceSlashToken(inputMessage.value, token, '')
+      inputMessage.value = newText
+      trackedInputMessage.value = newText
+      autoResizeTextarea()
+      const messageData = {
+        content: result.messageContent,
+        type: result.messageType,
+        quotedMessage: quotedMessage.value
+      }
+      emit('send', messageData)
+      quotedMessage.value = null
+      return
+    }
+    // action === 'insert' 或字段缺失，回退到 insertText
+    if (result.insertText !== undefined) {
+      doInsertSlashText(token, result.insertText, textarea)
+      return
+    }
+  }
+
+  // 默认：getInsertText 插入文本
+  const insertText = cmd.getInsertText(item)
+  if (!insertText) return
+  doInsertSlashText(token, insertText, textarea)
+}
+
+/** 把斜杠 token 替换为 insertText，更新输入框并恢复焦点。 */
+const doInsertSlashText = (token: { start: number; end: number }, insertText: string, textarea: HTMLTextAreaElement) => {
+  const newText = replaceSlashToken(inputMessage.value, token, insertText)
+  inputMessage.value = newText
+  trackedInputMessage.value = newText
+  clearSlashPanel()
+  autoResizeTextarea()
+  nextTick(() => {
+    const newPos = token.start + insertText.length
+    textarea.selectionStart = textarea.selectionEnd = newPos
+    textarea.focus()
+  })
+}
+
+// 关闭斜杠命令面板
+const closeSlashPanel = () => {
+  clearSlashPanel()
 }
 
 // 群成员搜索
@@ -1318,6 +1594,10 @@ onMounted(() => {
     fetchSessions(),
     loadReadUsersForMessages(props.messages, props.conversation?.type || 'single')
   ])
+
+  // 监听来自 Main.vue 的 AI 快捷键事件
+  window.addEventListener('ai-action-summary', handleAISummaryAction)
+  window.addEventListener('ai-action-quickpanel', handleAIQuickPanelAction)
 })
 
 // 初始化 WebSocket 消息处理
@@ -1475,6 +1755,9 @@ onUnmounted(() => {
   isMounted.value = false
   
   cleanupMessageActions()
+
+  // 清理 backendSearch 的 debounce timer，避免卸载后回调执行
+  cancelBackendSearch()
   
   // 移除滚动事件监听器
   if (messageListRef.value) {
@@ -1490,6 +1773,10 @@ onUnmounted(() => {
     wsHandlersCleanup()
     wsHandlersCleanup = null
   }
+
+  // 移除 AI 快捷键事件监听
+  window.removeEventListener('ai-action-summary', handleAISummaryAction)
+  window.removeEventListener('ai-action-quickpanel', handleAIQuickPanelAction)
   
   // 清理 context menu 监听器和定时器
   if (memberContextMenuTimeoutId !== null) {
@@ -1842,6 +2129,18 @@ const handleRecallMessage = async () => {
   }
 }
 
+// 处理撤回消息的重新编辑
+const handleRecallEdit = (originalContent: string) => {
+  inputMessage.value = originalContent
+  // 聚焦到输入框
+  nextTick(() => {
+    const input = document.querySelector('.message-input') as HTMLTextAreaElement
+    if (input) {
+      input.focus()
+    }
+  })
+}
+
 const closeMessageContextMenu = () => {
   closeMenu()
   selectedMessage.value = null
@@ -2098,7 +2397,21 @@ const takeScreenshot = () => {
       return
     }
     screenshotStatus.value = 'preparing'
-    
+
+    // 超时保护：截图 overlay 若异常（崩溃/被强制关闭/权限问题）可能既不触发 ok 也不触发 cancel/error，
+    // 导致 screenshotStatus 永远卡在 preparing/capturing，用户无法再次截图，必须重启应用。
+    // 60 秒后强制恢复 idle（用户在 overlay 框选的时间不受限，但 60 秒足够覆盖异常卡死场景）。
+    const screenshotTimeout = setTimeout(() => {
+      if (screenshotStatus.value !== 'idle') {
+        logger.warn('[Screenshot] Timeout, forcing status reset to idle')
+        screenshotStatus.value = 'idle'
+        window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
+        window.electron.ipcRenderer.removeAllListeners('screenshot-error')
+        $message.warning('截图超时，请重试')
+      }
+    }, 60000)
+
     // 移除所有之前的监听器，确保不会有重复监听
     logger.log('[Screenshot] Removing all previous listeners')
     window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
@@ -2109,6 +2422,7 @@ const takeScreenshot = () => {
       // 定义处理函数
       const screenshotHandler = async (_event: any, imageData: string | ArrayBuffer | Uint8Array) => {
         logger.log('[Screenshot] screenshotHandler triggered, imageData exists:', !!imageData)
+        clearTimeout(screenshotTimeout)
         screenshotStatus.value = 'processing'
         
         // 监听器触发后立即移除所有监听器，避免重复触发
@@ -2156,6 +2470,7 @@ const takeScreenshot = () => {
 
       const errorHandler = (_event: any, payload?: string | ScreenshotErrorPayload) => {
         logger.error('[Screenshot] screenshot-error received:', payload)
+        clearTimeout(screenshotTimeout)
         screenshotStatus.value = 'failed'
         window.electron.ipcRenderer.removeAllListeners('screenshot-taken')
         window.electron.ipcRenderer.removeAllListeners('screenshot-loading')
@@ -2249,88 +2564,6 @@ const screenshotPayloadToFile = async (
   return new File([data], filename, { type: 'image/png' })
 }
 
-// 上传截图到服务器
-const uploadScreenshot = async () => {
-  if (!screenshotImageData.value) return
-
-  try {
-    // 将base64转换为Blob
-    const response = await fetch(screenshotImageData.value)
-    const blob = await response.blob()
-
-    // 创建FormData
-    const formData = new FormData()
-    formData.append('file', blob, 'screenshot.png')
-    formData.append('source', 'chat')
-
-    const token = getToken()
-    uploadProgress.value = 0
-
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${serverUrl.value}/api/v1/upload`)
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.floor((e.loaded / e.total) * 100)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText)
-            if (data.code === 0) {
-              const fileUrl = data.data.url
-              emit('send', { content: fileUrl, type: 'image' })
-              showScreenshotPreview.value = false
-              screenshotImageData.value = ''
-              $message.success('截图发送成功')
-              resolve(data)
-            } else {
-              $message.error('截图上传失败: ' + data.message)
-              reject(new Error(data.message))
-            }
-          } catch (e) {
-            reject(e)
-          }
-        } else {
-          $message.error('截图上传失败: 服务器错误')
-          reject(new Error(`HTTP ${xhr.status}`))
-        }
-      }
-
-      xhr.onerror = () => {
-        $message.error('截图上传失败: 网络错误')
-        reject(new Error('Network error'))
-      }
-
-      xhr.onloadend = () => {
-        uploadProgress.value = 0
-      }
-
-      xhr.send(formData)
-    })
-  } catch (error) {
-    uploadProgress.value = 0
-    logger.error('截图上传失败:', error)
-  }
-}
-
-// 取消截图
-const cancelScreenshot = () => {
-  showScreenshotPreview.value = false
-  screenshotImageData.value = ''
-}
-
-// 重新截图
-const retakeScreenshot = () => {
-  showScreenshotPreview.value = false
-  screenshotImageData.value = ''
-  takeScreenshot()
-}
-
 
 // 小程序列表
 const showMiniAppList = ref(false)
@@ -2343,7 +2576,7 @@ const openMiniApp = (miniApp: MiniAppData) => {
 
 // 处理小程序 Toast 消息
 const handleMiniAppToast = (message: string) => {
-  window.$message?.info(message)
+  $message.info(message)
 }
 
 // 开始语音通话 - 由 RealtimeCommunication 组件统一处理
@@ -2565,7 +2798,7 @@ const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   // 关闭其他菜单系统
   window.dispatchEvent(new CustomEvent('qim:close-all-menus'))
 
-  messageMenuSelection.value = window.getSelection?.().toString() ?? ''
+  messageMenuSelection.value = window.getSelection?.()?.toString() ?? ''
 
   selectedMessage.value = message
   openMenu('message', event.clientX, event.clientY)

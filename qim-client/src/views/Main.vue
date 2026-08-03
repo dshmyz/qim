@@ -327,6 +327,18 @@
           </Suspense>
         </div>
 
+        <!-- 渲染规则管理 -->
+        <div v-else-if="selectedAppId === 'render_rules'" class="right-content">
+          <Suspense timeout="0">
+            <template #default>
+              <RenderRulesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+            </template>
+            <template #fallback>
+              <ContentSkeleton type="settings" />
+            </template>
+          </Suspense>
+        </div>
+
         <!-- AI 助手 -->
         <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai_assistant'" class="right-content">
           <Suspense timeout="0">
@@ -641,6 +653,17 @@
     @close="closeFeedbackModal"
     @success="handleFeedbackSuccess"
   />
+
+  <!-- AI 悬浮球 -->
+  <FloatingAIBall />
+
+  <!-- AI 侧边栏面板（全局） -->
+  <AISidebarPanel
+    :visible="aiSidebar.showAISidebar.value"
+    :conversation-id="aiSidebar.currentConversationId.value"
+    :conversation-name="currentConversation?.name"
+    @close="aiSidebar.closeSidebar()"
+  />
 </template>
 
 <script setup lang="ts">
@@ -656,6 +679,7 @@ const NotesApp = defineAsyncComponent(() => import('../components/apps/NotesApp.
 const TaskManagementApp = defineAsyncComponent(() => import('../components/apps/task/TaskManagementApp.vue'))
 const FileManagementApp = defineAsyncComponent(() => import('../components/apps/FileManagementApp.vue'))
 const AppManagementApp = defineAsyncComponent(() => import('../components/apps/AppManagementApp.vue'))
+const RenderRulesApp = defineAsyncComponent(() => import('../components/apps/RenderRulesApp.vue'))
 const AIAssistantApp = defineAsyncComponent(() => import('../components/apps/AIAssistantApp.vue'))
 const ShortLinkManager = defineAsyncComponent(() => import('../components/apps/ShortLinkManager.vue'))
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
@@ -663,16 +687,7 @@ const UserAppContainer = defineAsyncComponent(() => import('../components/apps/U
 const AvatarSettingsPanel = defineAsyncComponent(() => import('../components/avatar/AvatarSettingsPanel.vue'))
 import * as storage from '../utils/storage'
 
-// 声明 window.electron 变量
-declare global {
-  interface Window {
-    electron: {
-      ipcRenderer: {
-        send: (channel: string, data?: any) => void
-      }
-    } | undefined
-  }
-}
+// window.electron 类型声明见 src/types/electron.d.ts（ElectronAPI 完整定义）
 import Sidebar from '../components/layout/Sidebar.vue'
 import SideOptions from '../components/layout/SideOptions.vue'
 import WindowControls from '../components/layout/WindowControls.vue'
@@ -680,6 +695,11 @@ import ChatWindow from '../components/chat/ChatWindow.vue'
 import RealtimeCommunication from '../components/realtime/RealtimeCommunication.vue'
 const GroupDetail = defineAsyncComponent(() => import('../components/shared/GroupDetail.vue'))
 import ModalContainer from '../components/shared/ModalContainer.vue'
+import FloatingAIBall from '../components/ai/FloatingAIBall.vue'
+const AISidebarPanel = defineAsyncComponent(() => import('../components/ai/AISidebarPanel.vue'))
+import { useAISidebar } from '../composables/useAISidebar'
+import { useAIKeyboardShortcuts, parseAccelerator, type ShortcutConfig } from '../composables/useAIKeyboardShortcuts'
+import { useShortcuts } from '../composables/useShortcuts'
 import ToggleSidebarBtn from '../components/shared/ToggleSidebarBtn.vue'
 import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
@@ -707,6 +727,7 @@ import { useSystemConfigStore } from '../stores/systemConfig'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
 import { useSettings } from '../composables/useSettings'
+import { useSlashCommandPanelEnabled } from '../composables/useSlashCommandPanelEnabled'
 import { fetchUserProfile } from '../composables/useUserProfileInfo'
 import { useNetwork } from '../composables/useNetwork'
 import { useWebSocketManager } from '../composables/useWebSocketManager'
@@ -1076,6 +1097,77 @@ const mainConvLogic = useMainConversationLogic(updateConversations, mergeConvers
 // Main.vue 专用的群组 handlers
 const mainGroupHandlers = useMainGroupHandlers(conversations, currentConversationId, messages)
 
+// AI 侧边栏全局状态
+const aiSidebar = useAISidebar()
+
+// 斜杠命令面板开关
+const { loadSlashCommandPanelEnabled, setSlashCommandPanelEnabled } = useSlashCommandPanelEnabled()
+
+// 同步当前会话 ID 到 AI 侧边栏
+watch(currentConversationId, (val) => {
+  aiSidebar.setConversationId(val)
+}, { immediate: true })
+
+// ── AI 快捷键（全局生效）──
+const aiShortcutConfigs = ref<ShortcutConfig[]>([
+  {
+    key: 'k',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { window.dispatchEvent(new CustomEvent('ai-action-quickpanel')) },
+    description: '打开 AI 快捷面板'
+  },
+  {
+    key: 's',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { window.dispatchEvent(new CustomEvent('ai-action-summary')) },
+    description: '快速生成会话摘要'
+  },
+  {
+    key: 'l',
+    ctrlKey: true,
+    shiftKey: true,
+    action: () => { aiSidebar.toggleSidebar() },
+    description: '打开/关闭 AI 侧边栏'
+  }
+])
+
+useAIKeyboardShortcuts(aiShortcutConfigs)
+
+const aiActions: Record<string, () => void> = {
+  sidebar: () => { aiSidebar.toggleSidebar() },
+  summary: () => { window.dispatchEvent(new CustomEvent('ai-action-summary')) },
+  quickPanel: () => { window.dispatchEvent(new CustomEvent('ai-action-quickpanel')) }
+}
+
+const loadAIShortcuts = async () => {
+  try {
+    const { loadShortcuts } = useShortcuts()
+    const config = await loadShortcuts()
+    const aiConfig = config.ai || {}
+    const built: ShortcutConfig[] = []
+    for (const [name, item] of Object.entries(aiConfig)) {
+      if (!item.enabled || !item.accelerator) continue
+      const parsed = parseAccelerator(item.accelerator)
+      if (!parsed.key) continue
+      built.push({
+        key: parsed.key,
+        ctrlKey: parsed.ctrlKey || false,
+        shiftKey: parsed.shiftKey || false,
+        altKey: parsed.altKey || false,
+        action: aiActions[name] || (() => {}),
+        description: ''
+      })
+    }
+    aiShortcutConfigs.value = built
+  } catch {
+    // 加载失败保持默认
+  }
+}
+
+const handleShortcutsUpdated = () => { loadAIShortcuts() }
+
 // Main.vue 专用的消息 handlers
 const mainMessageHandlers = useMainMessageHandlers()
 const { processMessage } = mainMessageHandlers
@@ -1363,6 +1455,8 @@ onMounted(async () => {
     await refreshUser()
     await loadConversations()
     loadSettings()
+    // 加载斜杠命令面板开关（非阻塞，失败兜底默认开启）
+    loadSlashCommandPanelEnabled()
     
     // 核心数据加载完成，立即展示主界面
     isLoading.value = false
@@ -2028,6 +2122,8 @@ onUnmounted(() => {
     clearTimeout(userGroupsRefreshTimer)
     userGroupsRefreshTimer = null
   }
+  // 移除 AI 快捷键更新监听
+  window.removeEventListener('shortcuts-updated', handleShortcutsUpdated)
 })
 
 const sortedConversations = computed(() => {
@@ -2361,7 +2457,8 @@ const mainApps = computed(() => {
 // 系统应用列表
 const systemApps = computed(() => {
   const apps = [
-    { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
+    { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' },
+    { id: 'render_rules', name: '渲染规则管理', icon: 'fas fa-magic' }
   ]
   return apps
 })
@@ -2605,7 +2702,13 @@ const handleCreateChannelSubmit = async () => {
       showCreateChannelModal.value = false
       createChannelForm.value = { name: '', description: '', avatar: '' }
       await channelStore.fetchChannels()
-      QMessage.success('频道创建成功')
+      // 根据审批状态区分提示
+      const approvalStatus = response.data?.approval_status
+      if (approvalStatus === 'pending') {
+        QMessage.success('频道申请已提交，等待管理员审批')
+      } else {
+        QMessage.success('频道创建成功')
+      }
     } else {
       QMessage.error(response.message || '创建频道失败')
     }
@@ -3306,7 +3409,7 @@ const handleCacheCleared = () => {
   loadSettings()
 }
 
-const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any }) => {
+const handleSaveSettings = async (data: { profile: any; messageSettings: any; appearanceSettings: any; avatarFile?: File; shortcuts?: any; showFloatingBall?: boolean; slashCommandPanelEnabled?: boolean }) => {
   try {
     if (data.avatarFile) {
       const formData = new FormData()
@@ -3351,10 +3454,28 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
     if (data.appearanceSettings.fontSize) {
       applyFontSize(data.appearanceSettings.fontSize)
     }
+    if (typeof data.showFloatingBall === 'boolean') {
+      aiSidebar.toggleFloatingBall(data.showFloatingBall)
+    }
+
+    // 保存斜杠命令面板开关到后端
+    if (typeof data.slashCommandPanelEnabled === 'boolean') {
+      try {
+        await setSlashCommandPanelEnabled(data.slashCommandPanelEnabled)
+      } catch (e: any) {
+        showMessage({ message: e?.message || '斜杠命令面板开关保存失败', type: 'error' })
+      }
+    }
 
     // 保存快捷键配置
     if (data.shortcuts) {
-      await window.electron.ipcRenderer.invoke('set-shortcuts', data.shortcuts)
+      if (window.electron?.ipcRenderer?.invoke) {
+        await window.electron.ipcRenderer.invoke('set-shortcuts', data.shortcuts)
+      }
+      // localStorage 备存（浏览器环境或 Electron 不可用时）
+      localStorage.setItem('qim_shortcuts', JSON.stringify(data.shortcuts))
+      // 通知组件快捷键已更新
+      window.dispatchEvent(new CustomEvent('shortcuts-updated', { detail: data.shortcuts }))
     }
 
     await saveSettings()
@@ -3369,6 +3490,10 @@ const handleSaveSettings = async (data: { profile: any; messageSettings: any; ap
 
 // 初始化主题
 initTheme()
+
+// 加载 AI 快捷键配置 + 监听更新
+loadAIShortcuts()
+window.addEventListener('shortcuts-updated', handleShortcutsUpdated)
 </script>
 
 <style scoped>

@@ -52,6 +52,7 @@
           <NoteToolbar
             v-model:mode="editorMode"
             :saving="saving"
+            :save-status="saveStatus"
             :analyzing="analyzing"
             :fullscreen="isFullscreen"
             @format="handleFormat"
@@ -97,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import AppHeader from './AppHeader.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import NoteCard from './notes/NoteCard.vue'
@@ -106,7 +107,9 @@ import NoteEditor from './notes/NoteEditor.vue'
 import NoteTagFilter from './notes/NoteTagFilter.vue'
 import AIAnalysisModal from './notes/AIAnalysisModal.vue'
 import { useNotes } from '../../composables/useNotes'
+import { useAutoSave } from '../../composables/useAutoSave'
 import QMessage from '../../utils/qmessage'
+import QMessageBox from '../../utils/qmessagebox'
 import type { Note, AIAnalyzeResult } from '../../types/note'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
@@ -129,13 +132,24 @@ const selectedNote = ref<Note | null>(null)
 const searchQuery = ref('')
 const selectedTag = ref<string | null>(null)
 const editorMode = ref<'edit' | 'split' | 'preview'>('edit')
-const saving = ref(false)
 const analyzing = ref(false)
 const showAnalysisModal = ref(false)
 const analysisResult = ref<AIAnalyzeResult | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isFullscreen = ref(false)
 const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+
+// 自动保存：监听 title/content 变化，防抖 2 秒后调用 updateNote
+const autoSave = useAutoSave(
+  (id: number, data) => updateNote(id, data),
+  { delay: 2000 }
+)
+// 手动保存进行中标志，与自动保存状态合并后用于禁用保存按钮
+const manualSaving = ref(false)
+const saving = computed(() => manualSaving.value || autoSave.status.value === 'saving')
+const saveStatus = computed(() => autoSave.status.value)
+// 切换笔记时跳过一次自动保存 watch，避免把"载入新笔记内容"误判为用户编辑
+let skipNextAutoSave = false
 
 const allTags = computed(() => {
   const tags = new Set<string>()
@@ -158,13 +172,16 @@ const filteredNotes = computed(() => {
   return result
 })
 
-function selectNote(id: number) {
+async function selectNote(id: number) {
+  // 切换前先把当前笔记的待保存内容落库，避免把 A 笔记的内容写到 B 笔记
+  await autoSave.flush()
+  skipNextAutoSave = true
   selectedNoteId.value = id
   selectedNote.value = notes.value.find(n => n.id === id) || null
 }
 
 function editNote(note: Note) {
-  selectNote(note.id)
+  void selectNote(note.id)
 }
 
 function toggleFullscreen() {
@@ -214,15 +231,21 @@ async function handleFileSelect(event: Event) {
 
 async function handleSave() {
   if (!selectedNote.value) return
-  saving.value = true
+  // 取消可能正在 pending 的自动保存，避免与手动保存重复请求
+  autoSave.cancel()
+  manualSaving.value = true
   const ok = await updateNote(selectedNote.value.id, {
     title: selectedNote.value.title,
     content: selectedNote.value.content,
     tags: selectedNote.value.tags
   })
-  saving.value = false
+  manualSaving.value = false
   if (ok) {
+    // 同步状态：保存期间若有新编辑则保持 pending，否则置 saved
+    autoSave.markManuallySaved()
     QMessage.success('保存成功')
+  } else {
+    QMessage.error(notesError.value || '保存失败')
   }
 }
 
@@ -262,9 +285,14 @@ function handleShare() {
 }
 
 async function handleDelete(id: number) {
-  if (!confirm('确定要删除这个笔记吗？')) return
+  const result = await QMessageBox.confirm('确定要删除这个笔记吗？', '删除笔记', { confirmButtonText: '删除', type: 'warning' })
+  if (result.action !== 'confirm') return
   const ok = await deleteNote(id)
   if (ok) {
+    // 若删除的是当前笔记，丢弃其待保存内容
+    if (selectedNoteId.value === id) {
+      autoSave.cancel()
+    }
     notes.value = notes.value.filter(n => n.id !== id)
     if (selectedNoteId.value === id) {
       selectedNoteId.value = null
@@ -276,12 +304,31 @@ async function handleDelete(id: number) {
 
 onMounted(async () => {
   notes.value = await fetchNotes()
-  
+
   document.addEventListener('keydown', handleKeydown)
 })
 
+// 监听标题/正文变化触发自动保存；tags/summary 走独立接口，不纳入防抖源
+watch(
+  () => selectedNote.value ? [selectedNote.value.title, selectedNote.value.content] : null,
+  (val) => {
+    if (skipNextAutoSave) {
+      skipNextAutoSave = false
+      return
+    }
+    if (!val || !selectedNote.value) return
+    autoSave.schedule(selectedNote.value.id, {
+      title: val[0],
+      content: val[1],
+      tags: selectedNote.value.tags || []
+    })
+  }
+)
+
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  // 尝试保存未提交的改动；fire-and-forget，组件卸载不等候
+  void autoSave.flush()
 })
 
 function handleKeydown(e: KeyboardEvent) {

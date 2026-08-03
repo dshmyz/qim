@@ -18,9 +18,10 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"github.com/dshmyz/qim/qim-server/service/storage"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/golang-lru/v2"
 )
 
 const defaultMaxUploadSize = 500 * 1024 * 1024 // 500MB default
@@ -162,13 +163,12 @@ type fileStatsCacheEntry struct {
 	expiredAt time.Time
 }
 
-var fileStatsCache = make(map[uint]fileStatsCacheEntry)
-var fileStatsCacheMu sync.RWMutex
+// fileStatsCache 使用 LRU 缓存避免用户量大时内存无限增长。
+// 容量 1000 足够覆盖活跃用户，超出后自动淘汰最久未访问的条目。
+var fileStatsCache, _ = lru.New[uint, fileStatsCacheEntry](1000)
 
 func invalidateFileStatsCache(userID uint) {
-	fileStatsCacheMu.Lock()
-	delete(fileStatsCache, userID)
-	fileStatsCacheMu.Unlock()
+	fileStatsCache.Remove(userID)
 }
 
 // sanitizeFilename 生成安全的 Content-Disposition 头值，使用 RFC 5987 编码文件名。
@@ -202,8 +202,14 @@ func sanitizeFallbackName(filename string) string {
 }
 
 func UploadFile(c *gin.Context) {
-	// 检查文件上传开关
-	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload"); err == nil && cfg.Value == "false" {
+	// 统一上传开关检查
+	if !upload.IsUploadEnabled(func() (string, error) {
+		cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload")
+		if err != nil {
+			return "", err
+		}
+		return cfg.Value, nil
+	}) {
 		response.Forbidden(c, "文件上传功能已关闭")
 		return
 	}
@@ -211,9 +217,17 @@ func UploadFile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	ucfg := getUploadConfig()
+	policy := upload.NewPolicy(ucfg.MaxSize, ucfg.AllowedExtensions, ucfg.EnableTypeCheck)
 	maxMB := ucfg.MaxSize / (1024 * 1024)
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, ucfg.MaxSize)
+
+	// source 权限检查提前到文件读取之前，避免无权用户浪费 IO
+	source := c.DefaultPostForm("source", "upload")
+	if protectedUploadSources[source] && !hasRole(c, "system_admin") {
+		response.Forbidden(c, "无权使用该文件来源")
+		return
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -225,30 +239,11 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	if file.Size > ucfg.MaxSize {
+	// 统一大小校验
+	if err := policy.ValidateSize(file.Size); err != nil {
 		response.BadRequest(c, fmt.Sprintf("文件过大，最大支持%dMB", maxMB))
 		return
 	}
-
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ucfg.EnableTypeCheck && !ucfg.AllowedExtensions[ext] {
-		response.BadRequest(c, "不支持的文件类型")
-		return
-	}
-
-	source := c.DefaultPostForm("source", "upload")
-
-	// client_update / version 等公开可下载来源仅允许管理员设置，
-	// 否则普通用户可借此让任意上传文件绕过鉴权被公开下载（见 PublicDownloadFile）。
-	if protectedUploadSources[source] && !hasRole(c, "system_admin") {
-		response.Forbidden(c, "无权使用该文件来源")
-		return
-	}
-
-	now := time.Now()
-	filename := fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, userID.(uint), ext)
-	key := fmt.Sprintf("uploads/%s/%s", now.Format("2006/01"), filename)
-	mimeType := file.Header.Get("Content-Type")
 
 	st := di.GlobalContainer.DefaultStorage
 	if st == nil {
@@ -256,38 +251,55 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	fileData, err := file.Open()
+	// 生成存储文件名（时间戳+userID+扩展名）
+	uid, _ := userID.(uint)
+	now := time.Now()
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+
+	// 复用公共"读取+校验+存储"函数
+	saved, err := upload.SaveMultipartFile(file, upload.SaveConfig{
+		Policy:    policy,
+		Storage:   st,
+		KeyPrefix: fmt.Sprintf("uploads/%s", now.Format("2006/01")),
+		FilenameFn: func() string {
+			return fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, uid, ext)
+		},
+		ContextFn: func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(c.Request.Context(), 30*time.Second)
+		},
+	})
 	if err != nil {
-		response.InternalServerError(c, "打开文件失败")
-		return
-	}
-	defer fileData.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := st.Put(ctx, key, fileData, file.Size, mimeType); err != nil {
-		response.InternalServerError(c, "存储文件失败")
+		if ve, ok := err.(*upload.ValidateError); ok {
+			if ve.Field == "size" {
+				response.BadRequest(c, fmt.Sprintf("文件过大，最大支持%dMB", maxMB))
+				return
+			}
+			response.BadRequest(c, ve.Error())
+			return
+		}
+		response.InternalServerError(c, "保存文件失败: "+err.Error())
 		return
 	}
 
 	svc := di.GlobalContainer.FileService
 	fileRecord := model.File{
-		Name:         file.Filename,
-		OriginalName: file.Filename,
-		StoragePath:  storage.BuildPath(st.Kind(), key),
-		Size:         file.Size,
-		MimeType:     mimeType,
-		UserID:       userID.(uint),
+		Name:         saved.SafeName,
+		OriginalName: saved.SafeName,
+		StoragePath:  saved.StoragePath,
+		Size:         saved.Size, // 用实际读取大小，不信任客户端 file.Size
+		MimeType:     saved.MimeType,
+		UserID:       uid,
 		Source:       source,
 		CreatedAt:    time.Now(),
 	}
 	if err := svc.CreateFile(&fileRecord); err != nil {
+		// 存储成功但建记录失败，回滚已上传文件，避免孤儿文件
+		saved.Cleanup(st)
 		response.InternalServerError(c, "创建文件记录失败")
 		return
 	}
 
-	invalidateFileStatsCache(userID.(uint))
+	invalidateFileStatsCache(uid)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -561,9 +573,7 @@ func GetFileStats(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	uid := userID.(uint)
 
-	fileStatsCacheMu.RLock()
-	cached, found := fileStatsCache[uid]
-	fileStatsCacheMu.RUnlock()
+	cached, found := fileStatsCache.Get(uid)
 
 	if found && time.Now().Before(cached.expiredAt) {
 		c.JSON(http.StatusOK, gin.H{
@@ -588,12 +598,10 @@ func GetFileStats(c *gin.Context) {
 		"type_stats":    stats.TypeStats,
 	}
 
-	fileStatsCacheMu.Lock()
-	fileStatsCache[uid] = fileStatsCacheEntry{
+	fileStatsCache.Add(uid, fileStatsCacheEntry{
 		data:      resultData,
 		expiredAt: time.Now().Add(5 * time.Minute),
-	}
-	fileStatsCacheMu.Unlock()
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
@@ -836,31 +844,7 @@ func DownloadFile(c *gin.Context) {
 		return
 	}
 
-	mgr := di.GlobalContainer.StorageManager
-	st, key, ok := mgr.ByPath(file.StoragePath)
-	if !ok || st == nil {
-		response.InternalServerError(c, "存储类型不支持")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	reader, err := st.Get(ctx, key)
-	if err != nil {
-		response.InternalServerError(c, "读取文件失败")
-		return
-	}
-	defer reader.Close()
-
-	c.Header("Content-Disposition", sanitizeFilename(file.Name))
-	c.Header("Content-Type", file.MimeType)
-	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
-
-	if _, err := io.Copy(c.Writer, reader); err != nil {
-		logger.WithModule("FileHandler").Error("下载文件失败", "error", err)
-		return
-	}
+	streamFileResponse(c, file, file.Name)
 }
 
 // PublicDownloadFile 公开下载文件（无需认证，用于客户端安装包等）
@@ -887,14 +871,29 @@ func PublicDownloadFile(c *gin.Context) {
 		return
 	}
 
+	streamFileResponse(c, &file, file.OriginalName)
+}
+
+// streamFileFromStorage 从存储层读取文件并流式写入响应。
+// 调用方应在调用前设置 Content-Type 和 Content-Disposition。
+// timeout 为0时默认60秒。
+func streamFileFromStorage(c *gin.Context, storagePath string, size int64, timeout time.Duration) {
 	mgr := di.GlobalContainer.StorageManager
-	st, key, ok := mgr.ByPath(file.StoragePath)
+	if mgr == nil {
+		response.InternalServerError(c, "存储服务未初始化")
+		return
+	}
+	st, key, ok := mgr.ByPath(storagePath)
 	if !ok || st == nil {
 		response.InternalServerError(c, "存储类型不支持")
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
+	// 用请求 context：客户端断开后存储层读取也会中止，避免 goroutine 泄漏
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
 	reader, err := st.Get(ctx, key)
@@ -904,63 +903,36 @@ func PublicDownloadFile(c *gin.Context) {
 	}
 	defer reader.Close()
 
-	c.Header("Content-Disposition", sanitizeFilename(file.OriginalName))
-	c.Header("Content-Type", file.MimeType)
-	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
+	c.Header("Content-Length", fmt.Sprintf("%d", size))
+	c.Header("X-Content-Type-Options", "nosniff")
 
 	if _, err := io.Copy(c.Writer, reader); err != nil {
 		logger.WithModule("FileHandler").Error("下载文件失败", "error", err)
-		return
 	}
 }
 
-func PreviewFile(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	fileIDStr := c.Param("id")
+// streamFileResponse 统一处理文件流响应。
+// filename 用于 Content-Disposition（会被 sanitize）。
+// 通过 query 参数控制行为：
+//   - inline=true: 预览模式（inline disposition），危险类型仍强制下载
+//   - thumbnail=true: 缩略图模式（仅在 inline 模式下不设置 Content-Disposition）
+func streamFileResponse(c *gin.Context, file *model.File, filename string) {
+	c.Header("Content-Type", file.MimeType)
 
-	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
-	if err != nil {
-		response.BadRequest(c, "无效的文件ID")
-		return
-	}
-
-	svc := di.GlobalContainer.FileService
-	file, err := svc.GetFile(userID.(uint), uint(fileID))
-	if err != nil {
-		response.NotFound(c, "文件不存在")
-		return
-	}
-
+	inline := c.Query("inline") == "true"
 	thumbnail := c.Query("thumbnail") == "true"
 
-	c.Header("Cache-Control", "public, max-age=86400")
-
-	mgr := di.GlobalContainer.StorageManager
-	st, key, ok := mgr.ByPath(file.StoragePath)
-	if !ok || st == nil {
-		response.InternalServerError(c, "存储类型不支持")
-		return
+	if inline && !upload.ShouldForceDownload(filename) {
+		// 预览模式：inline（缩略图模式不设 disposition）
+		if !thumbnail {
+			c.Header("Content-Disposition", sanitizeInlineFilename(filename))
+		}
+	} else {
+		// 下载模式：attachment（危险类型也强制 attachment）
+		c.Header("Content-Disposition", sanitizeFilename(filename))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	reader, err := st.Get(ctx, key)
-	if err != nil {
-		response.InternalServerError(c, "读取文件失败")
-		return
-	}
-	defer reader.Close()
-
-	c.Header("Content-Type", file.MimeType)
-	if !thumbnail {
-		c.Header("Content-Disposition", sanitizeInlineFilename(file.Name))
-	}
-
-	if _, err := io.Copy(c.Writer, reader); err != nil {
-		logger.WithModule("FileHandler").Error("预览文件失败", "error", err)
-		return
-	}
+	streamFileFromStorage(c, file.StoragePath, file.Size, 60*time.Second)
 }
 
 func DeleteFile(c *gin.Context) {

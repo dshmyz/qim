@@ -17,9 +17,10 @@ import (
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 	syncpkg "github.com/dshmyz/qim/qim-server/sync"
-	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/web"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -53,18 +54,20 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// 公开文档接口已迁至 VitePress 静态站点（/docs/*），不再提供 API
+
 	aiSvc := di.GlobalContainer.AIService
 
-	mcpServer := ai.NewMCPServer(false, aiSvc)
+	toolRegistry := ai.NewToolRegistry(aiSvc)
 
-	aiSvc.SetMCPServer(mcpServer)
+	aiSvc.SetToolRegistry(toolRegistry)
 
-	handler.RegisterAdminTools(mcpServer)
+	handler.RegisterAdminTools(toolRegistry)
 
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
 	var uk *service.UnifiedKnowledgeService
 	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
-		service.NewUnifiedMCPBridge(mcpServer, vectorSvc.GetDB())
+		service.NewUnifiedToolBridge(toolRegistry, vectorSvc.GetDB())
 
 		fallback := &service.LegacyKnowledgeFallback{
 			SearchFunc: func(query string, groupID uint, limit int) []service.KnowledgeSnippet {
@@ -93,15 +96,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		logger.WithModule("Routes").Warn("初始化 SmartReplyGraph 失败，将使用旧方法", "error", err)
 	}
 
-	// 暂停异常检测功能：当前实现不完整（只告警不处理），且 UpdateBaseline 每分钟大量SQL查询有性能问题
-	// handler.InitAnomalyDetector()
-
-	utils.SafeGoWithLabel("mcp-server", func() {
-		if err := mcpServer.Start(":8081"); err != nil {
-		}
-	})
-
-	aiHandler := handler.NewAIHandler(aiSvc, mcpServer)
+	aiHandler := handler.NewAIHandler(aiSvc, toolRegistry)
 
 	aiCache := service.NewAICache()
 
@@ -130,6 +125,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		aiHandler.SetUnifiedSearchGraph(unifiedSearchGraph)
 		logger.WithModule("Routes").Info("UnifiedSearchGraph 初始化成功")
 	}
+
+	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph）
+	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph)
 
 	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
 	if err := smartDigestGraph.Build(); err != nil {
@@ -216,30 +214,15 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	})
 	r.Use(middleware.RateLimitMiddleware(rateLimiter))
 
-	// 静态文件服务（带缓存头 + 路径遍历防护）
-	r.GET("/uploads/*filepath", func(c *gin.Context) {
+	// 静态资源服务（统一入口，走 StorageManager，自动适配 local/s3 后端）
+	// 路径格式：/static/<key>，如 /static/uploads/2026/01/xxx.png
+	r.GET("/static/*filepath", func(c *gin.Context) {
 		fp := c.Param("filepath")
 		if strings.Contains(fp, "..") {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		baseDir := cfg.Static.UploadsDir
-		cleanPath := filepath.Clean(filepath.Join(baseDir, fp))
-		if !strings.HasPrefix(cleanPath, baseDir) {
-			c.AbortWithStatus(http.StatusForbidden)
-			return
-		}
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.File(cleanPath)
-	})
-	// S3 存储代理：/s3/uploads/... 即 StoragePath，走存储抽象读取（S3 模式下文件不在本地）
-	r.GET("/s3/*filepath", func(c *gin.Context) {
-		fp := c.Param("filepath")
-		if strings.Contains(fp, "..") {
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		storagePath := "/s3" + fp
+		storagePath := storage.StaticPrefix + strings.TrimPrefix(fp, "/")
 		mgr := di.GlobalContainer.StorageManager
 		st, key, ok := mgr.ByPath(storagePath)
 		if !ok || st == nil {
@@ -255,8 +238,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		}
 		defer reader.Close()
 		c.Header("Cache-Control", "public, max-age=86400")
+		c.Header("X-Content-Type-Options", "nosniff")
 		if ct := mime.TypeByExtension(filepath.Ext(storagePath)); ct != "" {
 			c.Header("Content-Type", ct)
+		}
+		// 危险类型（html/svg/js等）强制下载，防止存储型 XSS
+		if upload.ShouldForceDownload(storagePath) {
+			c.Header("Content-Disposition", "attachment")
 		}
 		if _, err := io.Copy(c.Writer, reader); err != nil {
 			return
@@ -282,6 +270,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 		c.File(cleanPath)
 	})
+
+	// CLI 自动更新（无需认证）
+	r.GET("/api/v1/cli/version", handler.CLIVersion)
+	r.GET("/api/v1/cli/download", handler.CLIDownload)
 
 	// 客户端更新检查（无需认证）
 	// electron-updater 会请求 latest.yml 或 latest-{platform}.yml
@@ -347,13 +339,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
 
-		// 需要认证的认证相关路由
+		// 需要认证的认证相关路由（access token）
 		authAuthed := api.Group("/auth")
 		authAuthed.Use(middleware.AuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
 		{
 			authAuthed.POST("/logout", handler.Logout)
-			authAuthed.POST("/refresh", handler.RefreshToken)
+			// refresh-token 用于刷新第三方 OAuth provider 的 access_token，请求体携带的是
+			// 第三方 refresh_token，与 QIM JWT 无关，需要 access token 认证用户身份，故留在 authAuthed 组
 			authAuthed.POST("/refresh-token", handler.RefreshOAuthToken)
+		}
+
+		// refresh token 端点：仅允许 refresh token，access token 不可用。
+		// 修复破坏性问题：原先 /refresh 在 authAuthed 组下用 AuthMiddleware，
+		// AuthMiddleware 拒绝 refresh token（TokenType="refresh" != "access"），
+		// 导致 token 刷新完全断裂，用户 access token 过期后必须重新登录。
+		refreshAuthed := api.Group("/auth")
+		refreshAuthed.Use(middleware.RefreshAuthMiddleware(cfg.JWT.Secret, di.GlobalContainer.UserService))
+		{
+			refreshAuthed.POST("/refresh", handler.RefreshToken)
 		}
 
 		// 需要认证的路由
@@ -375,20 +378,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 组织架构
 			authed.GET("/organization/tree", handler.GetOrganizationTree)
-			// 创建部门
-			authed.POST("/departments", handler.CreateDepartment)
-			// 更新部门
-			authed.PUT("/departments/:id", handler.UpdateDepartment)
-			// 上移/下移部门
-			authed.PUT("/departments/:id/move", handler.MoveDepartment)
-			// 删除部门
-			authed.DELETE("/departments/:id", handler.DeleteDepartment)
 			// 获取部门员工
 			authed.GET("/departments/:id/employees", handler.GetDepartmentEmployees)
-			// 从部门移除员工
-			authed.DELETE("/department-employees/:id/:user_id", handler.RemoveEmployeeFromDepartment)
-			// 创建用户
-			authed.POST("/users", handler.CreateUser)
+			// 创建用户（管理员）
+			authed.POST("/users", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.CreateUser)
 			// 关联用户和部门
 			authed.POST("/department-employees", handler.AddUserToDepartment)
 
@@ -479,7 +472,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/files/:id", handler.UpdateFile)
 			authed.PUT("/files/:id/star", handler.ToggleStar)
 			authed.GET("/files/:id/download", handler.DownloadFile)
-			authed.GET("/files/:id/preview", handler.PreviewFile)
 			authed.DELETE("/files/:id", handler.DeleteFile)
 
 			// 分片上传
@@ -537,7 +529,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
 
 			// 频道
-			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin", "channel_manager"), handler.CreateChannel)
+			authed.POST("/channels", handler.CreateChannel)
 			authed.GET("/channels", handler.GetChannels)
 			authed.POST("/channels/:id/subscribe", handler.SubscribeChannel)
 			authed.DELETE("/channels/:id/subscribe", handler.UnsubscribeChannel)
@@ -555,9 +547,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 小程序管理
 			authed.GET("/mini-apps", handler.GetMiniApps)
 			authed.GET("/mini-apps/:id", handler.GetMiniApp)
-			authed.POST("/mini-apps", handler.CreateMiniApp)
-			authed.PUT("/mini-apps/:id", handler.UpdateMiniApp)
-			authed.DELETE("/mini-apps/:id", handler.DeleteMiniApp)
 
 			// 应用管理
 			authed.GET("/apps", handler.GetApps)
@@ -583,11 +572,16 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 任务管理
 			authed.GET("/tasks", handler.GetTasks)
+			authed.GET("/tasks/:id", handler.GetTaskByID)
 			authed.POST("/tasks", handler.CreateTask)
 			authed.PUT("/tasks/:id", handler.UpdateTask)
 			authed.DELETE("/tasks/:id", handler.DeleteTask)
 			authed.PUT("/tasks/:id/reorder", handler.ReorderTask)
 			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
+
+			// 消息渲染增强规则（登录用户可拉取，管理后台维护）
+			authed.GET("/render-rules", handler.GetRenderRules)
+
 			// 实时通信 API
 			realtime := authed.Group("/realtime")
 			{
@@ -612,14 +606,28 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 用户搜索
 			authed.GET("/users/search", handler.SearchUsers)
-			// 敏感词管理
-			handler.RegisterSensitiveWordRoutes(authed)
+			// 敏感词检查（普通用户可用，用于前端预览）
+			authed.POST("/sensitive-words/check", handler.CheckSensitiveWords)
 
 			// 管理后台路由（需要 system_admin 角色，自动记录操作日志）
 			adminRoutes := authed.Group("")
 			adminRoutes.Use(middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"))
 			adminRoutes.Use(middleware.OperationLogMiddleware())
 			{
+				// 敏感词管理（仅管理员）
+				handler.RegisterSensitiveWordRoutes(adminRoutes)
+				// 部门管理（仅管理员）
+				adminRoutes.POST("/departments", handler.CreateDepartment)
+				adminRoutes.PUT("/departments/:id", handler.UpdateDepartment)
+				adminRoutes.PUT("/departments/:id/move", handler.MoveDepartment)
+				adminRoutes.DELETE("/departments/:id", handler.DeleteDepartment)
+				// 从部门移除员工（仅管理员）
+				adminRoutes.DELETE("/department-employees/:id/:user_id", handler.RemoveEmployeeFromDepartment)
+				// 小程序管理（仅管理员）
+				adminRoutes.POST("/mini-apps", handler.CreateMiniApp)
+				adminRoutes.PUT("/mini-apps/:id", handler.UpdateMiniApp)
+				adminRoutes.DELETE("/mini-apps/:id", handler.DeleteMiniApp)
+
 				// 系统配置
 				adminRoutes.GET("/system/config", handler.GetSystemConfig)
 				adminRoutes.PUT("/system/config", handler.UpdateSystemConfig)
@@ -640,6 +648,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 					c.Set("hub", hub)
 					handler.GetVersionDistribution(c)
 				})
+
+				// CLI 版本管理（复用 VersionService，app_type="cli"）
+				adminRoutes.GET("/cli/versions", handler.GetCLIVersions)
+				adminRoutes.POST("/cli/versions", handler.CreateCLIVersion)
+				adminRoutes.PUT("/cli/versions/:id", handler.UpdateCLIVersion)
+				adminRoutes.DELETE("/cli/versions/:id", handler.DeleteCLIVersion)
+				adminRoutes.PATCH("/cli/versions/:id/toggle", handler.ToggleCLIVersionStatus)
 
 				// 黑名单管理
 				adminRoutes.GET("/users/blacklist", handler.GetBlacklist)
@@ -749,6 +764,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/feedbacks", feedbackHandler.GetFeedbacks)
 				admin.PUT("/feedbacks/:id", feedbackHandler.UpdateFeedback)
 				authed.POST("/feedbacks", feedbackHandler.CreateFeedback)
+				authed.GET("/my-feedbacks", feedbackHandler.GetMyFeedbacks)
 			}
 
 			// 频道管理后台接口（system_admin 或 channel_manager）
@@ -777,6 +793,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
 
+			// 用户个人设置（通用 key-value，如 quick_replies、quick_command_panel_enabled）
+			userSettingHandler := handler.NewUserSettingHandler()
+			userSettingHandler.RegisterRoutes(authed)
+
 			// AI 机器人管理
 			aiBotHandler := handler.NewAIBotHandler(GetDB())
 			aiBots := authed.Group("/ai-bots")
@@ -789,7 +809,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			}
 
 			// 分身服务路由
-			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, mcpServer, di.GlobalContainer.ApprovalService)
+			avatarHandler := handler.NewAvatarHandler(GetDB(), avatarService, toolRegistry, di.GlobalContainer.ApprovalService)
 			avatarHandler.RegisterRoutes(authed)
 
 			// AI 运维面板（管理员）
@@ -797,9 +817,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				aiHandler.OpsDashboard(c)
 			})
 
-			// MCP 工具管理（管理员）
-			admin.GET("/mcp/tools", aiHandler.ListMCPTools)
-			admin.PUT("/mcp/tools/:tool_name", aiHandler.UpdateMCPToolConfig)
+			// AI 工具注册表管理（管理员）
+			admin.GET("/tool-registry/tools", aiHandler.ListToolRegistryTools)
+			admin.PUT("/tool-registry/tools/:tool_name", aiHandler.UpdateToolRegistryConfig)
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)
@@ -811,6 +831,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 向量数据库管理（管理员）
 			admin.GET("/vector/collections", handler.AdminListVectorCollections)
 			admin.GET("/vector/collections/:name", handler.AdminGetVectorCollectionData)
+
+			// 消息渲染增强规则管理（管理员）
+			admin.GET("/render-rules", handler.AdminGetRenderRules)
+			admin.PUT("/render-rules", handler.AdminSaveRenderRules)
+			admin.POST("/render-rules/test", handler.AdminTestRenderRule)
 		}
 	}
 
@@ -818,7 +843,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	r.GET("/s/:code", handler.RedirectShortLink)
 
 	// 管理后台 SPA（必须放在 API 路由之后，NoRoute 之前）
-	r.GET("/admin/*filepath", web.ServeAdmin())
+	// 老链接 /admin/docs/cli、/admin/docs/mcp 重定向到新 /docs/*
+	// 注意：gin 不允许 catch-all /admin/*filepath 与同层级静态路由 /admin/docs/* 共存，
+	// 故把重定向逻辑合并进 catch-all handler，避免路由树 panic。
+	r.GET("/admin/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if fp == "/docs/cli" {
+			c.Redirect(http.StatusMovedPermanently, "/docs/cli")
+			return
+		}
+		if fp == "/docs/mcp" {
+			c.Redirect(http.StatusMovedPermanently, "/docs/mcp")
+			return
+		}
+		web.ServeAdmin()(c)
+	})
+
+	// VitePress 静态文档站点（/docs/cli、/docs/mcp 等）
+	r.GET("/docs/*filepath", web.ServeDocs())
 
 	// Landing 首页 SPA（只处理非 API 请求，避免覆盖 API 的 404 响应）
 	r.NoRoute(func(c *gin.Context) {

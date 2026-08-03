@@ -48,6 +48,64 @@ func AuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc
 			return
 		}
 
+		// 仅允许 access token 访问受保护资源，refresh token 仅用于 /refresh 端点
+		if claims.TokenType != "access" {
+			response.Unauthorized(c, "认证令牌类型无效")
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("token_type", claims.TokenType)
+
+		roleNames, err := userSvc.GetUserRoles(claims.UserID)
+		if err != nil {
+			roleNames = []string{}
+		}
+		c.Set("roles", roleNames)
+		c.Next()
+	}
+}
+
+// RefreshAuthMiddleware 专门用于 refresh token 端点，仅允许 refresh token
+func RefreshAuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var tokenString string
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		if tokenString == "" {
+			response.Unauthorized(c, "未提供认证令牌")
+			c.Abort()
+			return
+		}
+
+		claims := &Claims{}
+
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(secret), nil
+		})
+
+		if err != nil || !token.Valid {
+			response.Unauthorized(c, "认证令牌无效")
+			c.Abort()
+			return
+		}
+
+		// 仅允许 refresh token
+		if claims.TokenType != "refresh" {
+			response.Unauthorized(c, "请使用 refresh_token 刷新令牌")
+			c.Abort()
+			return
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("token_type", claims.TokenType)

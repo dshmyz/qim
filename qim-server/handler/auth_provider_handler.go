@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -12,6 +13,70 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// sensitiveConfigKeys 是 AuthProvider.Config 中需要脱敏的密钥字段名。
+// 对应 LDAP 的 bind_password、OAuth 的 client_secret 等，防止通过接口回显泄露。
+var sensitiveConfigKeys = map[string]bool{
+	"bind_password": true,
+	"client_secret": true,
+	"secret_key":    true,
+	"api_key":       true,
+}
+
+// maskProviderConfig 将 provider.Config 中的敏感字段替换为 ***，返回脱敏后的副本。
+// Config 为空或解析失败时原样返回，不影响非敏感字段（便于管理员查看连接地址等配置）。
+func maskProviderConfig(p model.AuthProvider) model.AuthProvider {
+	if p.Config == "" {
+		return p
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(p.Config), &cfg); err != nil {
+		// Config 不是合法 JSON，原样返回（不泄露但也不破坏）
+		return p
+	}
+	for k := range cfg {
+		if sensitiveConfigKeys[k] {
+			cfg[k] = "***"
+		}
+	}
+	masked, err := json.Marshal(cfg)
+	if err != nil {
+		return p
+	}
+	p.Config = string(masked)
+	return p
+}
+
+// preserveSecretFields 在更新时保护敏感字段：如果新 Config 中敏感字段值为 "***"
+// （脱敏占位符，说明前端未修改密钥），则从原 Config 保留原值，避免把真实密钥覆盖成 "***"。
+func preserveSecretFields(originalConfig, newConfig string) string {
+	if newConfig == "" {
+		return originalConfig
+	}
+	if originalConfig == "" {
+		return newConfig
+	}
+	var origCfg, newCfg map[string]interface{}
+	if err := json.Unmarshal([]byte(originalConfig), &origCfg); err != nil {
+		return newConfig
+	}
+	if err := json.Unmarshal([]byte(newConfig), &newCfg); err != nil {
+		return newConfig
+	}
+	for k, newVal := range newCfg {
+		if sensitiveConfigKeys[k] {
+			if s, ok := newVal.(string); ok && s == "***" {
+				// 前端未修改密钥，保留原值
+				newCfg[k] = origCfg[k]
+			}
+		}
+	}
+	result, err := json.Marshal(newCfg)
+	if err != nil {
+		return newConfig
+	}
+	return string(result)
+}
 
 type AuthProviderHandler struct {
 	db *gorm.DB
@@ -28,15 +93,20 @@ func (h *AuthProviderHandler) GetProviders(c *gin.Context) {
 	if err := h.db.Order("priority ASC").Find(&providers).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
-			"message": err.Error(),
+			"message": "查询认证提供者失败",
 			"data":    nil,
 		})
 		return
 	}
+	// 脱敏：Config 中含 LDAP bind_password / OAuth client_secret 等密钥，不可回显
+	masked := make([]model.AuthProvider, len(providers))
+	for i, p := range providers {
+		masked[i] = maskProviderConfig(p)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    providers,
+		"data":    masked,
 	})
 }
 
@@ -72,7 +142,7 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 	if err := h.db.Create(&provider).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
-			"message": err.Error(),
+			"message": "创建认证提供者失败",
 			"data":    nil,
 		})
 		return
@@ -84,7 +154,7 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    provider,
+		"data":    maskProviderConfig(provider),
 	})
 }
 
@@ -113,7 +183,7 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 	if err := c.ShouldBindJSON(&updateData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    1,
-			"message": err.Error(),
+			"message": "参数错误",
 			"data":    nil,
 		})
 		return
@@ -128,10 +198,14 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 		return
 	}
 
+	// 保护敏感字段：如果前端提交的 Config 中密钥是 "***"（脱敏占位符），
+	// 说明未修改密钥，从原 Config 保留原值，避免覆盖成 "***"
+	updateData.Config = preserveSecretFields(provider.Config, updateData.Config)
+
 	if err := h.db.Model(&provider).Updates(updateData).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
-			"message": err.Error(),
+			"message": "更新认证提供者失败",
 			"data":    nil,
 		})
 		return
@@ -145,7 +219,7 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    provider,
+		"data":    maskProviderConfig(provider),
 	})
 }
 
@@ -163,7 +237,7 @@ func (h *AuthProviderHandler) DeleteProvider(c *gin.Context) {
 	if err := h.db.Delete(&model.AuthProvider{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    1,
-			"message": err.Error(),
+			"message": "删除认证提供者失败",
 			"data":    nil,
 		})
 		return
@@ -367,10 +441,17 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 			return
 		}
 
+		// 接收前端生成的 state 并存入 store，回调时校验（防 OAuth 登录 CSRF）
 		state := c.Query("state")
 		if state == "" {
-			state = "auth"
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    1,
+				"message": "缺少 state 参数",
+				"data":    nil,
+			})
+			return
 		}
+		storeOAuthState(state, authProvider.Name)
 
 		c.JSON(http.StatusOK, gin.H{
 			"code":    0,

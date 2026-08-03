@@ -27,11 +27,18 @@ var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 var ErrMuted = errors.New("you are muted in this conversation")
 
+// NoteSearcher 笔记检索接口（用于 bot 回复时按创建者 scope 检索笔记作为知识库）。
+// *NoteVectorService 天然实现此接口；测试时可注入 mock。
+type NoteSearcher interface {
+	SearchNotes(userID uint, query string, topK int) ([]SearchResult, error)
+}
+
 type MessageService struct {
 	db  *gorm.DB
 	hub *ws.Hub
 
 	aiService            *ai.AIService
+	noteSearcher         NoteSearcher // bot 回复时按创建者 scope 检索笔记；nil=降级（不检索）
 	sensitiveWordCache   []model.SensitiveWord
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
@@ -49,18 +56,30 @@ func (s *MessageService) SetAIService(aiService *ai.AIService) {
 	s.aiService = aiService
 }
 
-func (s *MessageService) loadSensitiveWords() {
-	var words []model.SensitiveWord
-	if err := s.db.Where("enabled = ?", true).Find(&words).Error; err == nil {
-		s.sensitiveWordCacheMu.Lock()
-		s.sensitiveWordCache = words
-		s.sensitiveWordLoaded = true
-		s.sensitiveWordCacheMu.Unlock()
-	}
+// SetNoteSearcher 注入笔记检索服务（用于 bot internal_ai 模式下读取创建者笔记）。
+// 传 nil 即可关闭该能力（向量库未配置时安全降级）。
+func (s *MessageService) SetNoteSearcher(searcher NoteSearcher) {
+	s.noteSearcher = searcher
 }
 
-func (s *MessageService) RefreshSensitiveWordCache() {
-	s.loadSensitiveWords()
+// loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
+// 历史问题：原先用 if err == nil 静默吞掉错误，导致 CRUD 成功但缓存刷新失败时
+// 管理员看到"成功"，实际新词未被过滤。现返回 error 由调用方处理并记录日志。
+func (s *MessageService) loadSensitiveWords() error {
+	var words []model.SensitiveWord
+	if err := s.db.Where("enabled = ?", true).Find(&words).Error; err != nil {
+		return err
+	}
+	s.sensitiveWordCacheMu.Lock()
+	s.sensitiveWordCache = words
+	s.sensitiveWordLoaded = true
+	s.sensitiveWordCacheMu.Unlock()
+	return nil
+}
+
+// RefreshSensitiveWordCache 刷新敏感词缓存，返回 DB 错误以便调用方感知失败。
+func (s *MessageService) RefreshSensitiveWordCache() error {
+	return s.loadSensitiveWords()
 }
 
 func (s *MessageService) CheckSensitiveContent(content string) (bool, []string) {
@@ -70,7 +89,11 @@ func (s *MessageService) CheckSensitiveContent(content string) (bool, []string) 
 	s.sensitiveWordCacheMu.RUnlock()
 
 	if !loaded {
-		s.loadSensitiveWords()
+		// 加载失败时记录日志（fail-open：不阻断消息发送，但需让运维感知过滤已降级）。
+		// 历史问题：原先静默吞掉错误，DB 异常时敏感词过滤悄悄失效却无人知晓。
+		if err := s.loadSensitiveWords(); err != nil {
+			logger.WithModule("SensitiveWord").Error("加载敏感词缓存失败，敏感词过滤暂时降级", "error", err)
+		}
 		s.sensitiveWordCacheMu.RLock()
 		cache = s.sensitiveWordCache
 		s.sensitiveWordCacheMu.RUnlock()
@@ -243,7 +266,47 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
-	aiMessages := make([]ai.Message, 0, len(messages))
+	aiMessages := make([]ai.Message, 0, len(messages)+1)
+
+	// 创建者笔记作为知识库：开关开启 + noteSearcher 可用时，按 bot.CreatorID scope 检索
+	// scope 隔离：SearchNotes 内部按 user_notes_<userID> 分集合，只能读到创建者自己的笔记
+	// 降级策略：noteSearcher==nil（向量库未配）或检索出错时静默跳过，不影响主流程
+	// 命中笔记的标题/分数会写入 message.Extra（JSON），前端据此渲染折叠「知识来源」标签
+	botCfg := ParseBotConfig(bot.Config)
+	var knowledgeSources []map[string]interface{}
+	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 {
+		noteResults, err := s.noteSearcher.SearchNotes(bot.CreatorID, content, 3)
+		if err == nil && len(noteResults) > 0 {
+			parts := make([]string, 0, len(noteResults))
+			// 记录命中笔记的 ID / 标题 / 分数，便于审计与排查检索质量
+			hitLogs := make([]string, 0, len(noteResults))
+			knowledgeSources = make([]map[string]interface{}, 0, len(noteResults))
+			for _, r := range noteResults {
+				title := r.Metadata["title"]
+				if title == "" {
+					title = "未命名"
+				}
+				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", title, r.Content))
+				hitLogs = append(hitLogs, fmt.Sprintf("docID=%s title=%s score=%.4f", r.DocID, title, r.Score))
+				// 收集前端展示所需的最小结构（不暴露笔记正文，避免 message 响应体过大/泄漏）
+				knowledgeSources = append(knowledgeSources, map[string]interface{}{
+					"title": title,
+					"score": r.Score,
+				})
+			}
+			logger.WithModule("handleBotMessage").Info("命中创建者笔记",
+				"botID", bot.ID, "creatorID", bot.CreatorID, "hits", len(noteResults), "notes", strings.Join(hitLogs, " | "))
+			aiMessages = append(aiMessages, ai.Message{
+				Role: "system",
+				Content: "以下是创建者的相关笔记，可作为回答参考（请基于笔记内容作答，" +
+					"笔记未覆盖的问题按你的通用能力回答）：\n\n" +
+					strings.Join(parts, "\n\n"),
+			})
+		} else if err != nil {
+			logger.WithModule("handleBotMessage").Warn("笔记检索失败，降级为不注入", "botID", bot.ID, "error", err)
+		}
+	}
+
 	for _, msg := range messages {
 		role := "user"
 		if msg.SenderID == *bot.VirtualUserID {
@@ -297,6 +360,17 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		Content:        response,
 		Origin:         "assistant",
 		IsRead:         true, // Bot 回复默认已读
+	}
+	// 命中笔记时把 knowledge_sources 写入 Extra，供前端折叠展示
+	// 无命中时留空（默认值），前端按空字符串判断不展示
+	if len(knowledgeSources) > 0 {
+		if extraBytes, err := json.Marshal(map[string]interface{}{
+			"knowledge_sources": knowledgeSources,
+		}); err == nil {
+			botReply.Extra = string(extraBytes)
+		} else {
+			logger.WithModule("handleBotMessage").Warn("序列化 knowledge_sources 失败", "botID", bot.ID, "error", err)
+		}
 	}
 	if err := db.Create(&botReply).Error; err != nil {
 		logger.WithModule("handleBotMessage").Error("创建 Bot 回复失败", "error", err)
@@ -395,11 +469,7 @@ func (s *MessageService) GetMessages(query MessageQuery) (*MessageResult, error)
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", query.ConvID, query.UserID).First(&member).Error; err != nil {
-		var count int64
-		db.Model(&model.Message{}).Where("conversation_id = ? AND sender_id = ?", query.ConvID, query.UserID).Count(&count)
-		if count == 0 {
-			return nil, ErrMessageForbidden
-		}
+		return nil, ErrMessageForbidden
 	}
 
 	var total int64
@@ -589,6 +659,21 @@ func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, erro
 		if time.Since(msg.CreatedAt) > time.Duration(recallTimeLimit)*time.Second {
 			return nil, ErrMessageRecallTimeout
 		}
+	}
+
+	// 保留原始内容到 Extra 字段，供「撤回后重新编辑」使用
+	originalContent := msg.Content
+	extraData := make(map[string]interface{})
+	if msg.Extra != "" {
+		// 如果 Extra 已有内容，解析并合并
+		if err := json.Unmarshal([]byte(msg.Extra), &extraData); err != nil {
+			// 解析失败则使用空 map
+			extraData = make(map[string]interface{})
+		}
+	}
+	extraData["original_content"] = originalContent
+	if extraBytes, err := json.Marshal(extraData); err == nil {
+		msg.Extra = string(extraBytes)
 	}
 
 	msg.IsRecalled = true
@@ -848,22 +933,49 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 
 	db := s.db
 
-	// 优化：一次性查询所有消息的已读回执
+	// 优化：一次性查询所有消息
+	var messages []model.Message
+	db.Where("id IN ?", msgIDs).Find(&messages)
+
+	// 权限校验：请求用户必须是每条消息所在会话的成员，否则跳过该消息（防越权）
+	var convIDs []uint
+	convIDByMsg := make(map[uint]uint)
+	for _, m := range messages {
+		convIDByMsg[m.ID] = m.ConversationID
+		convIDs = append(convIDs, m.ConversationID)
+	}
+
+	// 一次性查询用户在这些会话中的成员身份
+	allowedConvs := make(map[uint]bool)
+	if len(convIDs) > 0 {
+		var memberConvs []uint
+		db.Model(&model.ConversationMember{}).
+			Where("conversation_id IN ? AND user_id = ?", convIDs, userID).
+			Distinct("conversation_id").
+			Pluck("conversation_id", &memberConvs)
+		for _, cid := range memberConvs {
+			allowedConvs[cid] = true
+		}
+	}
+
+	// 仅保留用户有权访问的消息 ID
+	var accessibleMsgIDs []uint
+	for _, msgID := range msgIDs {
+		if convID, ok := convIDByMsg[msgID]; ok && allowedConvs[convID] {
+			accessibleMsgIDs = append(accessibleMsgIDs, msgID)
+		}
+	}
+
+	// 优化：一次性查询所有（有权访问的）消息的已读回执
 	var readReceipts []model.MessageReadReceipt
-	db.Where("message_id IN ?", msgIDs).Preload("User").Find(&readReceipts)
+	if len(accessibleMsgIDs) > 0 {
+		db.Where("message_id IN ?", accessibleMsgIDs).Preload("User").Find(&readReceipts)
+	}
 
 	// 按消息 ID 分组
 	receiptsByMsg := make(map[uint][]model.MessageReadReceipt)
 	for _, r := range readReceipts {
 		receiptsByMsg[r.MessageID] = append(receiptsByMsg[r.MessageID], r)
-	}
-
-	// 优化：一次性查询所有会话的成员数
-	var convIDs []uint
-	var messages []model.Message
-	db.Where("id IN ?", msgIDs).Find(&messages)
-	for _, m := range messages {
-		convIDs = append(convIDs, m.ConversationID)
 	}
 
 	type convCount struct {
@@ -880,12 +992,6 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	memberCountByConv := make(map[uint]int64)
 	for _, cc := range convCounts {
 		memberCountByConv[cc.ConversationID] = cc.Count
-	}
-
-	// 构建结果
-	convIDByMsg := make(map[uint]uint)
-	for _, m := range messages {
-		convIDByMsg[m.ID] = m.ConversationID
 	}
 
 	result := make(map[uint]struct {
@@ -1016,7 +1122,7 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 	isAvatarReply := msg.Origin == "avatar"
 	isAIMessage := msg.Origin == "assistant" || msg.Origin == "avatar" ||
 		msg.Sender.Type == "bot" || msg.Sender.Type == "system"
-	return map[string]interface{}{
+	resp := map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
 		"sender_id":         msg.SenderID,
@@ -1034,6 +1140,17 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 	}
+	// 解析 Extra：当前只承载 knowledge_sources（Bot 回复命中笔记时的标题/分数）
+	// 解析失败或为空时，前端约定 knowledge_sources 不存在或为空数组
+	if msg.Extra != "" {
+		var extra map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
+			if ks, ok := extra["knowledge_sources"]; ok {
+				resp["knowledge_sources"] = ks
+			}
+		}
+	}
+	return resp
 }
 
 // broadcastMessage 广播消息到会话所有成员（排除发送者）。

@@ -58,8 +58,8 @@ func memberExists(db *gorm.DB, convID, userID uint) bool {
 	return count > 0
 }
 
-func newTestMCPServer() *ai.MCPServer {
-	srv := ai.NewMCPServer(false, nil)
+func newTestToolRegistry() *ai.ToolRegistry {
+	srv := ai.NewToolRegistry(nil)
 	srv.RegisterTool(&GroupManagementTool{})
 	return srv
 }
@@ -67,7 +67,7 @@ func newTestMCPServer() *ai.MCPServer {
 // TestGroupManagementTool_RemoveMemberByOwner 群主经 AI 工具踢人，被踢者真实从 DB 移除。
 func TestGroupManagementTool_RemoveMemberByOwner(t *testing.T) {
 	db, owner, _, _, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	result, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action":           "remove_member",
@@ -83,7 +83,7 @@ func TestGroupManagementTool_RemoveMemberByOwner(t *testing.T) {
 // TestGroupManagementTool_RemoveMemberByAdmin 管理员也能踢。
 func TestGroupManagementTool_RemoveMemberByAdmin(t *testing.T) {
 	db, _, admin, _, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action":           "remove_member",
@@ -95,10 +95,26 @@ func TestGroupManagementTool_RemoveMemberByAdmin(t *testing.T) {
 	assert.False(t, memberExists(db, convID, victim.ID))
 }
 
+func TestGroupManagementTool_AdminCannotModifyOwner(t *testing.T) {
+	db, owner, admin, _, _, convID := setupGroupManagementDB(t)
+	srv := newTestToolRegistry()
+
+	for _, action := range []string{"remove_member", "mute"} {
+		_, err := srv.ExecuteTool("group_management", map[string]interface{}{
+			"action":           action,
+			"group_identifier": fmt.Sprintf("%d", convID),
+			"user_identifier":  owner.Username,
+		}, &ai.CallerContext{UserID: admin.ID})
+		require.Error(t, err, "管理员不应能对群主执行 %s", action)
+	}
+
+	assert.True(t, memberExists(db, convID, owner.ID), "群主成员关系不应被删除")
+}
+
 // TestGroupManagementTool_RejectByPlainMember 普通成员让 AI 踢人被拒，被踢者仍在群。
 func TestGroupManagementTool_RejectByPlainMember(t *testing.T) {
 	db, _, _, member, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action":           "remove_member",
@@ -111,12 +127,9 @@ func TestGroupManagementTool_RejectByPlainMember(t *testing.T) {
 	assert.True(t, memberExists(db, convID, victim.ID), "权限不足时被踢者不应被移除")
 }
 
-// TestGroupManagementTool_UserIDZeroBypassesPermission UserID=0 跳过权限校验直接执行移除，
-// 演示修复前 smart_reply_graph.go:122 写死 userID=0 的权限绕过隐患。
-// 修复后 @AI 走 ExecuteWithTools 用真实 input.UserID，不会出现 UserID=0。
-func TestGroupManagementTool_UserIDZeroBypassesPermission(t *testing.T) {
+func TestGroupManagementTool_UserIDZeroRejectsPermission(t *testing.T) {
 	db, _, _, _, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action":           "remove_member",
@@ -124,15 +137,15 @@ func TestGroupManagementTool_UserIDZeroBypassesPermission(t *testing.T) {
 		"user_identifier":  victim.Username,
 	}, &ai.CallerContext{UserID: 0})
 
-	require.NoError(t, err)
-	assert.False(t, memberExists(db, convID, victim.ID),
-		"UserID=0 绕过权限执行了移除——这正是修复要堵的隐患；修复后 @AI 链路用真实 userID，此路径不再可达")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "需要登录")
+	assert.True(t, memberExists(db, convID, victim.ID), "匿名上下文不应移除群成员")
 }
 
 // TestGroupManagementTool_AddMemberByOwner 群主经 AI 工具加人，新成员真实入群。
 func TestGroupManagementTool_AddMemberByOwner(t *testing.T) {
 	db, owner, _, _, _, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	newUser := model.User{Username: "newbie", Nickname: "新人"}
 	require.NoError(t, db.Create(&newUser).Error)
@@ -150,7 +163,7 @@ func TestGroupManagementTool_AddMemberByOwner(t *testing.T) {
 // TestGroupManagementTool_MuteByOwner 群主禁言成员，MutedUntil 字段写入；解除后清除。
 func TestGroupManagementTool_MuteByOwner(t *testing.T) {
 	db, owner, _, _, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action":           "mute",
@@ -180,7 +193,7 @@ func TestGroupManagementTool_MuteByOwner(t *testing.T) {
 // TestGroupManagementTool_SetRoleByOwner 群主设置/取消管理员。
 func TestGroupManagementTool_SetRoleByOwner(t *testing.T) {
 	db, owner, _, _, victim, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action": "set_role", "group_identifier": fmt.Sprintf("%d", convID),
@@ -205,7 +218,7 @@ func TestGroupManagementTool_SetRoleByOwner(t *testing.T) {
 // TestGroupManagementTool_TransferOwner 群主转让群主。
 func TestGroupManagementTool_TransferOwner(t *testing.T) {
 	db, owner, admin, _, _, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action": "transfer_owner", "group_identifier": fmt.Sprintf("%d", convID),
@@ -224,10 +237,33 @@ func TestGroupManagementTool_TransferOwner(t *testing.T) {
 	assert.Equal(t, admin.ID, g.CreatorID)
 }
 
+// TestGroupManagementTool_TransferOwner_NonMemberRollback 转让给非群成员时事务回滚，原群主保持 owner。
+func TestGroupManagementTool_TransferOwner_NonMemberRollback(t *testing.T) {
+	db, owner, _, _, _, convID := setupGroupManagementDB(t)
+	srv := newTestToolRegistry()
+
+	outsider := model.User{Username: "outsider", Nickname: "局外人"}
+	require.NoError(t, db.Create(&outsider).Error)
+
+	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
+		"action": "transfer_owner", "group_identifier": fmt.Sprintf("%d", convID),
+		"user_identifier": outsider.Username,
+	}, &ai.CallerContext{UserID: owner.ID})
+	require.Error(t, err)
+
+	var oldOwner model.ConversationMember
+	require.NoError(t, db.Where("conversation_id = ? AND user_id = ?", convID, owner.ID).First(&oldOwner).Error)
+	assert.Equal(t, "owner", oldOwner.Role, "转让失败时原群主应保持 owner")
+
+	var g model.Group
+	require.NoError(t, db.Where("conversation_id = ?", convID).First(&g).Error)
+	assert.Equal(t, owner.ID, g.CreatorID, "转让失败时 CreatorID 不应变")
+}
+
 // TestGroupManagementTool_UpdateAnnouncement 群主修改群公告。
 func TestGroupManagementTool_UpdateAnnouncement(t *testing.T) {
 	db, owner, _, _, _, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	srv := newTestToolRegistry()
 
 	_, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action": "update_announcement", "group_identifier": fmt.Sprintf("%d", convID),
@@ -241,12 +277,12 @@ func TestGroupManagementTool_UpdateAnnouncement(t *testing.T) {
 
 // TestGroupManagementTool_ListMembers 查询群成员列表（4 人）。
 func TestGroupManagementTool_ListMembers(t *testing.T) {
-	_, _, _, _, _, convID := setupGroupManagementDB(t)
-	srv := newTestMCPServer()
+	_, owner, _, _, _, convID := setupGroupManagementDB(t)
+	srv := newTestToolRegistry()
 
 	result, err := srv.ExecuteTool("group_management", map[string]interface{}{
 		"action": "list_members", "group_identifier": fmt.Sprintf("%d", convID),
-	}, &ai.CallerContext{UserID: 0})
+	}, &ai.CallerContext{UserID: owner.ID})
 	require.NoError(t, err)
 	m := result.(map[string]interface{})
 	assert.Equal(t, 4, m["count"])
@@ -274,10 +310,10 @@ func setupToolsTestDB(t *testing.T) (*gorm.DB, *model.User, uint) {
 
 func TestCreateTaskTool(t *testing.T) {
 	db, owner, convID := setupToolsTestDB(t)
-	srv := ai.NewMCPServer(false, nil)
-	srv.RegisterTool(&CreateTaskTool{})
+	srv := ai.NewToolRegistry(nil)
+	srv.RegisterTool(&CreateGroupTaskTool{})
 
-	result, err := srv.ExecuteTool("create_task", map[string]interface{}{
+	result, err := srv.ExecuteTool("create_group_task", map[string]interface{}{
 		"group_identifier":    fmt.Sprintf("%d", convID),
 		"title":               "明天开会",
 		"assignee_identifier": owner.Username,
@@ -297,7 +333,7 @@ func TestSearchMessagesTool(t *testing.T) {
 	require.NoError(t, db.Create(&model.Message{ConversationID: convID, SenderID: owner.ID, Content: "今天天气不错"}).Error)
 	require.NoError(t, db.Create(&model.Message{ConversationID: convID, SenderID: owner.ID, Content: "明天开会讨论"}).Error)
 
-	srv := ai.NewMCPServer(false, nil)
+	srv := ai.NewToolRegistry(nil)
 	srv.RegisterTool(&SearchMessagesTool{})
 	result, err := srv.ExecuteTool("search_messages", map[string]interface{}{
 		"group_identifier": fmt.Sprintf("%d", convID),
@@ -310,7 +346,7 @@ func TestSearchMessagesTool(t *testing.T) {
 
 // TestGroupSummaryTool_MissingGroupIdentifier 缺少 group_identifier 返回错误（不依赖 di 全局状态，避免与其他测试的 di 初始化竞争）。
 func TestGroupSummaryTool_MissingGroupIdentifier(t *testing.T) {
-	srv := ai.NewMCPServer(false, nil)
+	srv := ai.NewToolRegistry(nil)
 	srv.RegisterTool(&GroupSummaryTool{})
 
 	_, err := srv.ExecuteTool("group_summary", map[string]interface{}{}, &ai.CallerContext{UserID: 1})

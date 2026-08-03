@@ -57,6 +57,11 @@
             <span v-else>{{ msg.content }}</span>
             <span v-if="msg.isStreaming" class="streaming-cursor"></span>
           </div>
+          <!-- Bot 回复命中笔记时的知识来源折叠标签 -->
+          <KnowledgeSources
+            v-if="msg.senderType === 'bot' && msg.knowledge_sources && msg.knowledge_sources.length > 0"
+            :sources="msg.knowledge_sources"
+          />
           <div class="time">{{ formatTime(msg.timestamp) }}</div>
         </div>
       </div>
@@ -94,6 +99,7 @@ import { ref, computed, nextTick, watch } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
 import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
+import KnowledgeSources from '../../message/KnowledgeSources.vue'
 import type { BotMessage } from '../../../types/bot'
 import QMessageBox from '../../../utils/qmessagebox'
 

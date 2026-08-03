@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import type { Message } from '../types'
 import { useChatStore } from '../stores/chat'
 
@@ -12,7 +13,8 @@ export function useChat() {
   // 分页状态
   const messagePage = ref(1)
   const messagePageSize = ref(20)
-  const isLoadingMessages = chatStore.isLoadingMessages
+  // 用 storeToRefs 保持响应式：直接 chatStore.isLoadingMessages 拿到的是 unwrapped boolean，会丢失 .value
+  const { isLoadingMessages } = storeToRefs(chatStore)
 
   /**
    * 处理消息数据
@@ -201,7 +203,7 @@ export function useChat() {
     
     try {
       let requestData: any = {}
-      let messageType = 'text'
+      let messageType: Message['type'] = 'text'
       let messageContent = ''
       let miniAppData = null
       let newsData = null
@@ -252,6 +254,7 @@ export function useChat() {
         const failedMessage = {
           id: Date.now().toString(),
           content: messageContent,
+          conversationId,
           file_name: messageData.fileName,
           file_size: messageData.fileSize,
           sender: {
@@ -313,7 +316,8 @@ export function useChat() {
         if (response.code === 0) {
           const newMessage = {
             id: response.data.id?.toString() || Date.now().toString(),
-            content: response.data.content,
+            content: messageContent,
+            conversationId,
             file_name: response.data.file_name || messageData.fileName,
             file_size: response.data.file_size || messageData.fileSize,
             sender: {
@@ -346,6 +350,7 @@ export function useChat() {
           const failedMessage = {
             id: Date.now().toString(),
             content: messageContent,
+            conversationId,
             sender: {
               id: currentUser.value?.id?.toString() || '',
               name: currentUser.value?.nickname || currentUser.value?.username || '',
@@ -387,9 +392,10 @@ export function useChat() {
     try {
       const streamMessageId = `stream_${Date.now()}`
       
-      const streamMessage = {
+      const streamMessage: Message = {
         id: streamMessageId,
         content: '',
+        conversationId,
         sender: {
           id: '0',
           name: 'AI助手',

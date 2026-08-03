@@ -11,13 +11,14 @@ import (
 )
 
 type AIService struct {
-	config     *AIConfig
-	factory    *ProviderFactory
-	pool       map[string]Provider
-	configPool map[string]Provider // config.yaml 初始化的 pool 副本，DB 为空时兜底
-	router     *ModelRouter
-	mu         sync.RWMutex
-	mcpServer  *MCPServer
+	config       *AIConfig
+	factory      *ProviderFactory
+	pool         map[string]Provider
+	configPool   map[string]Provider // config.yaml 初始化的 pool 副本，DB 为空时兜底
+	router       *ModelRouter
+	mu           sync.RWMutex
+	toolRegistry *ToolRegistry
+	usageSink    func(taskType TaskType, provider, model string, usage *TokenUsage, durationMs int64) // 异步落库回调
 }
 
 func NewAIService(cfg *AIConfig) *AIService {
@@ -49,10 +50,17 @@ func NewAIService(cfg *AIConfig) *AIService {
 	return svc
 }
 
-func (s *AIService) SetMCPServer(mcpServer *MCPServer) {
+func (s *AIService) SetToolRegistry(toolRegistry *ToolRegistry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.mcpServer = mcpServer
+	s.toolRegistry = toolRegistry
+}
+
+// SetUsageSink 设置 token 用量异步落库回调。传 nil 则禁用落库。
+func (s *AIService) SetUsageSink(fn func(taskType TaskType, provider, model string, usage *TokenUsage, durationMs int64)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.usageSink = fn
 }
 
 // SetProviderForTesting 仅供测试：绕过 factory 直接注入 provider（如 mock）到 pool，
@@ -70,10 +78,10 @@ func (s *AIService) SetProviderForTesting(name string, p Provider) {
 	s.configPool[name] = p
 }
 
-func (s *AIService) GetMCPServer() *MCPServer {
+func (s *AIService) GetToolRegistry() *ToolRegistry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.mcpServer
+	return s.toolRegistry
 }
 
 // selectProvider 在读锁保护下快照 router 与 pool 再做路由选择，
@@ -94,11 +102,29 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
 	var result string
-	if modelName != "" {
-		result, err = provider.WithModel(modelName).Chat(filteredMessages)
+	var usage *TokenUsage
+
+	// 优先走 UsageProvider 接口获取 token 用量
+	if up, ok := provider.(UsageProvider); ok {
+		var u *TokenUsage
+		if modelName != "" {
+			if upm, ok2 := provider.WithModel(modelName).(UsageProvider); ok2 {
+				result, u, err = upm.ChatWithUsage(filteredMessages)
+			} else {
+				result, err = provider.WithModel(modelName).Chat(filteredMessages)
+			}
+		} else {
+			result, u, err = up.ChatWithUsage(filteredMessages)
+		}
+		usage = u
 	} else {
-		result, err = provider.Chat(filteredMessages)
+		if modelName != "" {
+			result, err = provider.WithModel(modelName).Chat(filteredMessages)
+		} else {
+			result, err = provider.Chat(filteredMessages)
+		}
 	}
+
 	duration := time.Since(start).Milliseconds()
 	status := "success"
 	if err != nil {
@@ -106,6 +132,12 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 	}
 	log.Printf("[AI Usage] task=%s provider=%s model=%s duration=%dms status=%s",
 		taskType, provider.Name(), modelName, duration, status)
+
+	// 异步落库
+	if usage != nil && s.usageSink != nil {
+		s.usageSink(taskType, provider.Name(), modelName, usage, duration)
+	}
+
 	return result, err
 }
 
@@ -138,10 +170,10 @@ func (s *AIService) GetCompletionStreamWithContext(ctx context.Context, taskType
 
 func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
 	s.mu.RLock()
-	mcpServer := s.mcpServer
+	toolRegistry := s.toolRegistry
 	s.mu.RUnlock()
 
-	if mcpServer == nil {
+	if toolRegistry == nil {
 		return s.GetCompletion(taskType, messages, overrides...)
 	}
 
@@ -150,7 +182,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		return "", err
 	}
 
-	tools := mcpServer.ListTools()
+	tools := toolRegistry.ListTools()
 	// allowed 非空时只注入白名单内的工具（群聊助手过滤掉运维工具）
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
@@ -180,7 +212,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 	}
 	if err != nil {
 		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
-		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx)
+		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 	}
 
 	if len(resp.ToolCalls) == 0 {
@@ -200,8 +232,11 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 	})
 
 	for _, tc := range resp.ToolCalls {
+		if len(allowedSet) > 0 && !allowedSet[tc.Name] {
+			return "", fmt.Errorf("tool %s is not allowed", tc.Name)
+		}
 		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
-		result, execErr := mcpServer.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
+		result, execErr := toolRegistry.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
 		if execErr != nil {
 			log.Printf("[AI Service] 工具执行失败: %v", execErr)
 			return "", execErr
@@ -230,7 +265,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 	return finalResp.Content, nil
 }
 
-// GetCompletionWithTools 注入全部 MCP 工具进行 function calling（管理后台 AI 等用）。
+// GetCompletionWithTools 注入全部 AI 工具进行 function calling（管理后台 AI 等用）。
 func (s *AIService) GetCompletionWithTools(taskType TaskType, messages []Message, callerCtx *CallerContext, overrides ...Override) (string, error) {
 	return s.getCompletionWithToolsCore(taskType, messages, callerCtx, nil, overrides...)
 }
@@ -241,18 +276,162 @@ func (s *AIService) GetCompletionWithToolsFiltered(taskType TaskType, messages [
 	return s.getCompletionWithToolsCore(taskType, messages, callerCtx, allowed, overrides...)
 }
 
-func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext) (string, error) {
+// MaxReActSteps 多步推理最大循环轮数（防无限循环）。
+const MaxReActSteps = 8
+
+// ReActStepCallback 每步工具执行后的回调（可选），用于向调用方通报进度。
+type ReActStepCallback func(step int, toolName string, args map[string]interface{}, result interface{}, err error)
+
+// GetCompletionWithToolsMultiStep 多步 ReAct 循环：LLM 可连续调用工具直到不再发出 tool call
+// 或达到 maxSteps 上限。每轮：LLM → tool calls → execute → 结果追加到 messages → 下一轮 LLM。
+// 当 LLM 返回纯文本（无 tool call）时视为最终回答，循环结束。
+// allowed 为空时注入全部工具；onStep 可为 nil。
+func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, maxSteps int, onStep ReActStepCallback, overrides ...Override) (string, error) {
 	s.mu.RLock()
-	mcpServer := s.mcpServer
+	toolRegistry := s.toolRegistry
 	s.mu.RUnlock()
 
-	if mcpServer == nil {
-		return s.GetCompletion(taskType, messages)
+	if toolRegistry == nil {
+		return s.GetCompletion(taskType, messages, overrides...)
 	}
 
-	tools := mcpServer.ListTools()
-	toolsDesc := "你可以使用以下工具（如果用户请求涉及管理操作，请使用工具）：\n\n"
+	provider, modelName, err := s.selectProvider(taskType, overrides...)
+	if err != nil {
+		return "", err
+	}
+
+	// 构建工具定义
+	tools := toolRegistry.ListTools()
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
+	}
+	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
+		name := tool["name"].(string)
+		if len(allowedSet) > 0 && !allowedSet[name] {
+			continue
+		}
+		desc := tool["description"].(string)
+		params := tool["parameters"].(map[string]interface{})
+		toolDefs = append(toolDefs, ToolDef{Name: name, Description: desc, Parameters: params})
+	}
+
+	if maxSteps <= 0 {
+		maxSteps = MaxReActSteps
+	}
+
+	// 工作副本，避免修改调用方原始 slice
+	workMsgs := make([]Message, len(messages))
+	copy(workMsgs, messages)
+
+	callProvider := func(msgs []Message) (*ChatResponse, error) {
+		if modelName != "" {
+			return provider.WithModel(modelName).ChatWithTools(msgs, toolDefs)
+		}
+		return provider.ChatWithTools(msgs, toolDefs)
+	}
+
+	for step := 1; step <= maxSteps; step++ {
+		resp, err := callProvider(workMsgs)
+		if err != nil {
+			// 首轮即失败时降级到 prompt engineering（与单轮行为一致）
+			if step == 1 {
+				log.Printf("[AI ReAct] Native function calling not supported, falling back: %v", err)
+				return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
+			}
+			return "", fmt.Errorf("react step %d provider error: %w", step, err)
+		}
+
+		// 无工具调用 → 最终回答
+		if len(resp.ToolCalls) == 0 {
+			log.Printf("[AI ReAct] 完成，共 %d 步", step-1)
+			return resp.Content, nil
+		}
+
+		log.Printf("[AI ReAct] step=%d tool_calls=%d", step, len(resp.ToolCalls))
+
+		// 追加 assistant 消息（含 tool_calls）
+		workMsgs = append(workMsgs, Message{
+			Role:      "assistant",
+			Content:   resp.Content,
+			ToolCalls: resp.ToolCalls,
+		})
+
+		// 逐个执行工具
+		for _, tc := range resp.ToolCalls {
+			if len(allowedSet) > 0 && !allowedSet[tc.Name] {
+				execErr := fmt.Errorf("tool %s is not allowed", tc.Name)
+				if onStep != nil {
+					onStep(step, tc.Name, tc.Arguments, nil, execErr)
+				}
+				log.Printf("[AI ReAct] 工具执行失败: name=%s err=%v", tc.Name, execErr)
+				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
+				workMsgs = append(workMsgs, Message{
+					Role:       "tool",
+					Content:    string(errJSON),
+					ToolCallID: tc.ID,
+				})
+				continue
+			}
+			result, execErr := toolRegistry.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
+			if onStep != nil {
+				onStep(step, tc.Name, tc.Arguments, result, execErr)
+			}
+			if execErr != nil {
+				log.Printf("[AI ReAct] 工具执行失败: name=%s err=%v", tc.Name, execErr)
+				// 将错误作为 tool 结果返回给 LLM，让它决定如何处理（而非直接中断）
+				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
+				workMsgs = append(workMsgs, Message{
+					Role:       "tool",
+					Content:    string(errJSON),
+					ToolCallID: tc.ID,
+				})
+				continue
+			}
+			resultJSON, _ := json.Marshal(result)
+			workMsgs = append(workMsgs, Message{
+				Role:       "tool",
+				Content:    string(resultJSON),
+				ToolCallID: tc.ID,
+			})
+		}
+	}
+
+	// 达到最大步数仍未结束，做最后一次无工具调用获取总结
+	log.Printf("[AI ReAct] 达到最大步数 %d，请求最终总结", maxSteps)
+	finalResp, err := callProvider(workMsgs)
+	if err != nil {
+		return "", fmt.Errorf("react final summary error: %w", err)
+	}
+	return finalResp.Content, nil
+}
+
+func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
+	s.mu.RLock()
+	toolRegistry := s.toolRegistry
+	s.mu.RUnlock()
+
+	if toolRegistry == nil {
+		return s.GetCompletion(taskType, messages, overrides...)
+	}
+
+	tools := toolRegistry.ListTools()
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
+	}
+	filteredTools := make([]map[string]interface{}, 0, len(tools))
+	for _, tool := range tools {
+		name := tool["name"].(string)
+		if len(allowedSet) > 0 && !allowedSet[name] {
+			continue
+		}
+		filteredTools = append(filteredTools, tool)
+	}
+
+	toolsDesc := "你可以使用以下工具（如果用户请求涉及管理操作，请使用工具）：\n\n"
+	for _, tool := range filteredTools {
 		name := tool["name"].(string)
 		desc := tool["description"].(string)
 		params := tool["parameters"].(map[string]interface{})
@@ -285,8 +464,8 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 		}
 	}
 
-	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(tools))
-	reply, err := s.GetCompletion(taskType, newMessages)
+	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(filteredTools))
+	reply, err := s.GetCompletion(taskType, newMessages, overrides...)
 	if err != nil {
 		log.Printf("[AI Service] 工具调用 - AI 请求失败: %v", err)
 		return "", err
@@ -300,7 +479,10 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 	}
 
 	log.Printf("[AI Service] 工具调用 - 检测到工具调用: name=%s, args=%v", toolCall.Name, toolCall.Arguments)
-	result, err := mcpServer.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
+	if len(allowedSet) > 0 && !allowedSet[toolCall.Name] {
+		return "", fmt.Errorf("tool %s is not allowed", toolCall.Name)
+	}
+	result, err := toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
 	if err != nil {
 		log.Printf("[AI Service] 工具执行失败: %v", err)
 		return "", err
@@ -310,7 +492,7 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 	resultJSON, _ := json.Marshal(result)
 	newMessages = append(newMessages, Message{Role: "user", Content: fmt.Sprintf("工具 %s 执行结果: %s\n请根据这个结果生成给用户的回复。", toolCall.Name, string(resultJSON))})
 
-	finalReply, err := s.GetCompletion(taskType, newMessages)
+	finalReply, err := s.GetCompletion(taskType, newMessages, overrides...)
 	if err != nil {
 		return "", err
 	}
@@ -441,10 +623,24 @@ func (s *AIService) filterMessages(messages []Message) []Message {
 }
 
 func (s *AIService) filterContent(content string) string {
-	if len(content) > 10000 {
-		content = content[:10000] + "..."
+	const maxRunes = 10000
+	runes := []rune(content)
+	if len(runes) <= maxRunes {
+		return content
 	}
-	return content
+	// 尝试在 maxRunes 范围内的最后一个句子边界处截断
+	cutAt := maxRunes
+	for i := maxRunes - 1; i >= 0; i-- {
+		switch runes[i] {
+		case '。', '.', '!', '！', '？', '?', '\n':
+			cutAt = i + 1
+			break
+		}
+		if cutAt != maxRunes {
+			break
+		}
+	}
+	return string(runes[:cutAt]) + "\n...(内容已截断)"
 }
 
 func (s *AIService) IsConfigured() bool {

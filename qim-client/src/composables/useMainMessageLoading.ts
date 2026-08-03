@@ -2,21 +2,7 @@ import { Ref, ref } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
-
-export interface Message {
-  id: string
-  content: string
-  sender: {
-    id: string
-    name: string
-    avatar: string
-  }
-  timestamp: number
-  type: string
-  isSelf: boolean
-  isRead: boolean
-  conversationId: string
-}
+import type { Message } from '../types'
 
 export function useMainMessageLoading(
   conversations: Ref<any[]>,

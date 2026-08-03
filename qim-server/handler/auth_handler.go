@@ -6,9 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	mrand "math/rand"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -62,7 +60,12 @@ func init() {
 
 func generateTwoFASession(username string, code string) string {
 	b := make([]byte, 16)
-	cr.Read(b)
+	if _, err := cr.Read(b); err != nil {
+		// 极端情况（如熵不足）回退到时间戳种子，避免返回可预测的零值 session ID
+		for i := range b {
+			b[i] = byte(time.Now().UnixNano() >> (i % 8 * 8))
+		}
+	}
 	sessionID := hex.EncodeToString(b)
 
 	twoFASessionsMu.Lock()
@@ -253,28 +256,6 @@ func Login(c *gin.Context) {
 			"roles":              roleNames,
 		},
 	})
-}
-
-func parseOS(userAgent string) string {
-	if strings.Contains(userAgent, "Windows") {
-		return "Windows"
-	} else if strings.Contains(userAgent, "Macintosh") {
-		return "macOS"
-	} else if strings.Contains(userAgent, "Linux") {
-		return "Linux"
-	} else if strings.Contains(userAgent, "Android") {
-		return "Android"
-	} else if strings.Contains(userAgent, "iPhone") || strings.Contains(userAgent, "iPad") {
-		return "iOS"
-	} else {
-		return "Unknown"
-	}
-}
-
-func generateSessionID() string {
-	timestamp := time.Now().UnixNano()
-	random := mrand.Intn(10000)
-	return fmt.Sprintf("%d%d", timestamp, random)
 }
 
 func getStringFromUserInfo(userInfo map[string]interface{}, keys ...string) string {

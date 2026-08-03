@@ -36,7 +36,7 @@
             :class="['result-item', result.success ? 'success' : 'error']"
           >
             <div class="result-original">{{ result.originalUrl }}</div>
-            <div v-if="result.success" class="result-short">
+            <div v-if="result.success && result.shortUrl" class="result-short">
               <a :href="result.shortUrl" target="_blank">{{ result.shortUrl }}</a>
               <button class="copy-link-btn" @click="copyResult(result.shortUrl)">
                 <i class="fas fa-copy"></i>

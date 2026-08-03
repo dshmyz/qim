@@ -223,7 +223,10 @@ const updatePreviews = () => {
     ctx.translate(size / 2, size / 2)
     ctx.rotate((rotation.value * Math.PI) / 180)
     ctx.scale(drawZoom, drawZoom)
-    ctx.drawImage(image, -image.width / 2, -image.height / 2)
+    // image 在 line 200 已做非空判断，但 forEach 回调跨函数边界 TS 无法窄化，用局部变量固定
+    const img = image
+    if (!img) return
+    ctx.drawImage(img, -img.width / 2, -img.height / 2)
     ctx.restore()
   })
 }

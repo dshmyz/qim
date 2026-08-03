@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,9 @@ import (
 
 	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
+
+// ErrMemoryNotFound 表示记忆不存在或不属于当前作用域（防止 IDOR 越权删除）。
+var ErrMemoryNotFound = errors.New("memory not found")
 
 // GroupMemoryService 群聊助手的群级长期记忆。
 //
@@ -157,12 +161,28 @@ func (s *GroupMemoryService) GetMemoryCount(groupID uint) (int64, error) {
 }
 
 // DeleteMemory 删除单条群记忆。
-func (s *GroupMemoryService) DeleteMemory(memoryDocID string) error {
+// 安全校验：先确认 memoryDocID 属于 groupID 对应的群，防止跨群 IDOR 删除。
+func (s *GroupMemoryService) DeleteMemory(groupID uint, memoryDocID string) error {
 	if s.db == nil {
 		return nil
 	}
+	// 先列出该群的全部记忆，确认 memoryDocID 在其中，防止跨群删除
+	memories, err := s.GetGroupMemories(groupID, 10000)
+	if err != nil {
+		return err
+	}
+	owned := false
+	for _, m := range memories {
+		if m.DocID == memoryDocID {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return ErrMemoryNotFound
+	}
 	ctx := context.Background()
-	_, err := s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
+	_, err = s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
 	return err
 }
 
@@ -174,7 +194,7 @@ func (s *GroupMemoryService) ForgetAll(groupID uint) (int, error) {
 	}
 	deleted := 0
 	for _, m := range memories {
-		if err := s.DeleteMemory(m.DocID); err == nil {
+		if err := s.DeleteMemory(groupID, m.DocID); err == nil {
 			deleted++
 		}
 	}

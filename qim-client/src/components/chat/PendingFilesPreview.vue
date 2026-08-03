@@ -38,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 
 interface PendingFile {
   file: File
@@ -63,14 +63,40 @@ const emit = defineEmits<{
   (e: 'remove', index: number): void
 }>()
 
-const objectUrls = new Map<number, string>()
+// blob URL 缓存：以文件唯一标识为键，而非数组下标。
+// 历史问题：原先以 index 为键，handleSend 用 pendingFiles.value = [] 清空数组时
+// 绕过了 handleRemove，缓存残留；下次截图复用 index 0，命中旧 blob URL，预览显示上一次的图。
+// 改用 fileKey 后，新截图的 File 对象不同，key 不同，不会命中旧缓存。
+const objectUrls = new Map<string, string>()
 
-const createThumbnailUrl = (file: File, index: number): string => {
-  if (!objectUrls.has(index)) {
-    objectUrls.set(index, URL.createObjectURL(file))
-  }
-  return objectUrls.get(index)!
+const fileKey = (file: File): string => {
+  return `${file.name}|${file.size}|${file.lastModified}`
 }
+
+const createThumbnailUrl = (file: File): string => {
+  const key = fileKey(file)
+  let url = objectUrls.get(key)
+  if (!url) {
+    url = URL.createObjectURL(file)
+    objectUrls.set(key, url)
+  }
+  return url
+}
+
+// pendingFiles 变化时清理不再被引用的 blob URL，避免内存泄漏。
+// 覆盖发送清空、splice 移除等所有路径，无需依赖父组件调用 handleRemove。
+watch(() => props.pendingFiles, (files) => {
+  const aliveKeys = new Set<string>()
+  for (const f of files) {
+    aliveKeys.add(fileKey(f.file))
+  }
+  for (const [key, url] of objectUrls) {
+    if (!aliveKeys.has(key)) {
+      URL.revokeObjectURL(url)
+      objectUrls.delete(key)
+    }
+  }
+}, { deep: true })
 
 const isImageFile = (file: File): boolean => {
   return file.type.startsWith('image/')
@@ -82,7 +108,7 @@ const imageItems = computed<PreviewItem[]>(() => {
       file: f.file,
       name: f.name,
       originalIndex: i,
-      thumbnailUrl: createThumbnailUrl(f.file, i)
+      thumbnailUrl: createThumbnailUrl(f.file)
     }))
     .filter(item => isImageFile(item.file))
 })
@@ -98,11 +124,8 @@ const hasContent = computed(() => {
 })
 
 const handleRemove = (index: number) => {
-  const url = objectUrls.get(index)
-  if (url) {
-    URL.revokeObjectURL(url)
-    objectUrls.delete(index)
-  }
+  // index 仍用于通知父组件按位置 splice（父组件 removePendingFile 用 splice(index, 1)）
+  // blob URL 的清理统一由 watch 负责，此处无需手动 revoke
   emit('remove', index)
 }
 

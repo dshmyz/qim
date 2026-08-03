@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/repository"
@@ -48,6 +47,41 @@ func (s *TaskService) CreateTask(task *model.Task) error {
 func (s *TaskService) GetTask(userID, taskID uint) (*model.Task, error) {
 	ctx := context.Background()
 	return s.repo.FindByUserIDAndID(ctx, userID, taskID)
+}
+
+// GetTaskForConversation 按会话维度查任务（用于消息里任务引用卡片的渲染）
+// 可见性规则：
+//   - 会话任务（conversation_id=指定值）：对会话成员共见（权限校验由 handler 层 IsConversationMember 完成）
+//   - 私人任务（conversation_id=0）：A 主动引用到会话即视为分享，会话成员可见
+//
+// 枚举风险：会话成员仅能查"知道 task_id 的"任务，/task 自动补全不列出别人的私人任务（见 FindByConversationID）
+// conversationID=0 直接拒绝（防越权查未关联会话的私人任务）
+func (s *TaskService) GetTaskForConversation(userID, conversationID, taskID uint) (*model.Task, error) {
+	if conversationID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	ctx := context.Background()
+	return s.repo.FindByConversationAndID(ctx, conversationID, taskID)
+}
+
+// ListByConversation 列出该会话可引用的全部任务（用于输入框 /task 自动补全）
+// 含：该会话关联的任务（不限创建者，会话成员共见）+ 自己的私人任务
+// 仅做数据查询；会话成员身份校验由 handler 层调用 ConversationService.IsConversationMember 完成
+// conversationID=0 直接拒绝（防越权枚举所有未关联会话的私人任务）
+func (s *TaskService) ListByConversation(userID, conversationID uint) ([]model.Task, error) {
+	if conversationID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	ctx := context.Background()
+	tasks, err := s.repo.FindByConversationID(ctx, userID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.Task, len(tasks))
+	for i, t := range tasks {
+		result[i] = *t
+	}
+	return result, nil
 }
 
 func (s *TaskService) UpdateTask(userID, taskID uint, updates map[string]interface{}) (*model.Task, error) {
@@ -116,13 +150,14 @@ func (s *TaskService) DeleteTask(userID, taskID uint) error {
 func (s *TaskService) ProcessTaskReminders() {
 	now := time.Now()
 
-	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateTaskTool）统一用
+	// SQLite 下 due_date 以 TEXT 存储。写入端（TodoExtractor/CreateUserTaskTool/CreateGroupTaskTool）统一用
 	// time.Parse（UTC）落库，读出即为 UTC time.Time，与 EventService 一致：
 	// 用 now 的绝对时刻比较，不受时区影响。
+	// 只扫描未来 24h 内到期的任务，避免全表扫描。
 	var tasks []model.Task
 	if err := s.db.Where(
-		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ?",
-		false, "done",
+		"reminder > 0 AND reminder_sent = ? AND due_date IS NOT NULL AND status != ? AND due_date > ?",
+		false, "done", now.Add(-24*time.Hour),
 	).Find(&tasks).Error; err != nil {
 		return
 	}
@@ -130,19 +165,22 @@ func (s *TaskService) ProcessTaskReminders() {
 	for _, task := range tasks {
 		reminderTime := task.DueDate.Add(-time.Duration(task.Reminder) * time.Minute)
 		if now.After(reminderTime) || now.Equal(reminderTime) {
-			// 先标记再发送，防止调度器重复触发
+			// 先发送再标记，发送失败时下次调度仍会重试
+			if err := s.sendTaskReminder(&task); err != nil {
+				logger.WithModule("TaskService").Warn("待办提醒发送失败，下次重试",
+					"taskID", task.ID, "userID", task.UserID, "error", err)
+				continue
+			}
 			s.db.Model(&task).Update("reminder_sent", true)
-			s.sendTaskReminder(&task)
 		}
 	}
 }
 
-func (s *TaskService) sendTaskReminder(task *model.Task) {
+func (s *TaskService) sendTaskReminder(task *model.Task) error {
 	if ws.GlobalHub == nil {
-		return
+		return fmt.Errorf("WebSocket hub 未初始化")
 	}
 
-	db := database.GetDB()
 	dueStr := task.DueDate.Local().Format("01/02 15:04")
 
 	// 应用内通知
@@ -155,9 +193,8 @@ func (s *TaskService) sendTaskReminder(task *model.Task) {
 		ActionType:    "confirm_reschedule",
 		ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
 	}
-	if err := db.Create(&notification).Error; err != nil {
-		logger.WithModule("TaskService").Warn("待办提醒通知落库失败",
-			"taskID", task.ID, "userID", task.UserID, "error", err)
+	if err := s.db.Create(&notification).Error; err != nil {
+		return fmt.Errorf("通知落库失败: %w", err)
 	}
 
 	// WS 推送
@@ -166,4 +203,5 @@ func (s *TaskService) sendTaskReminder(task *model.Task) {
 		Data: notification,
 	})
 	ws.GlobalHub.SendToUser(task.UserID, msg)
+	return nil
 }

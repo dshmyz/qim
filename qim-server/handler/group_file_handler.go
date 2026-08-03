@@ -1,13 +1,9 @@
 package handler
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"io"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
@@ -62,33 +58,13 @@ func DownloadGroupFile(c *gin.Context) {
 	if !respondGroupFileError(c, err) {
 		return
 	}
-	if di.GlobalContainer.StorageManager == nil {
-		response.InternalServerError(c, "存储服务未初始化")
-		return
-	}
-	st, key, supported := di.GlobalContainer.StorageManager.ByPath(file.StoragePath)
-	if !supported || st == nil {
-		response.InternalServerError(c, "存储类型不支持")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-	defer cancel()
-	reader, err := st.Get(ctx, key)
-	if err != nil {
-		response.InternalServerError(c, "读取文件失败")
-		return
-	}
-	defer reader.Close()
 
 	name := file.OriginalName
 	if name == "" {
 		name = file.Name
 	}
-	c.Header("Content-Disposition", sanitizeFilename(name))
-	c.Header("Content-Type", file.MimeType)
-	c.Header("Content-Length", fmt.Sprintf("%d", file.Size))
-	_, _ = io.Copy(c.Writer, reader)
+	// 复用统一的流式响应：自动处理 nosniff、危险类型强制下载、inline 预览
+	streamFileResponse(c, file, name)
 }
 
 func GetGroupFiles(c *gin.Context) {

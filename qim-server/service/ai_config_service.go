@@ -196,12 +196,20 @@ func (s *AIConfigService) UpdateConfig(userID uint, configID uint, configName st
 		return nil, err
 	}
 
+	// apiKey 为空时保留原密钥，测试连接也用原密钥（避免空 key 导致 openai 测试必然失败）
+	keyForTest := apiKey
 	if apiKey != "" {
 		encryptedKey, err := utils.EncryptAPIKey(apiKey)
 		if err != nil {
 			return nil, err
 		}
 		config.APIKeyEncrypted = encryptedKey
+	} else {
+		// 解密原密钥用于测试连接
+		decrypted, err := utils.DecryptAPIKey(config.APIKeyEncrypted)
+		if err == nil {
+			keyForTest = decrypted
+		}
 	}
 
 	config.ConfigName = configName
@@ -209,7 +217,7 @@ func (s *AIConfigService) UpdateConfig(userID uint, configID uint, configName st
 	config.ModelName = modelName
 	config.BaseURL = baseURL
 
-	verified := s.TestConnection(provider, apiKey, modelName, baseURL)
+	verified := s.TestConnection(provider, keyForTest, modelName, baseURL)
 	config.IsVerified = verified
 	now := time.Now()
 	config.LastTestedAt = &now

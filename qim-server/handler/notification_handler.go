@@ -397,6 +397,30 @@ func DeleteEvent(c *gin.Context) {
 func GetTasks(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
+	// 会话维度查询：?conversation_id=xxx（用于输入框 /task 自动补全）
+	// 仅会话成员可查；不传则保持原行为（返回当前用户的全部任务）
+	if conversationIDStr := c.Query("conversation_id"); conversationIDStr != "" {
+		conversationID, err := strconv.ParseUint(conversationIDStr, 10, 32)
+		if err != nil || conversationID == 0 {
+			response.BadRequest(c, "conversation_id 无效")
+			return
+		}
+		convSvc := di.GlobalContainer.ConversationService
+		isMember, err := convSvc.IsConversationMember(uint(conversationID), userID.(uint))
+		if err != nil || !isMember {
+			response.Forbidden(c, "无权访问该会话")
+			return
+		}
+		taskSvc := di.GlobalContainer.TaskService
+		tasks, err := taskSvc.ListByConversation(userID.(uint), uint(conversationID))
+		if err != nil {
+			response.InternalServerError(c, "获取会话任务失败")
+			return
+		}
+		response.Success(c, tasks)
+		return
+	}
+
 	svc := di.GlobalContainer.TaskService
 	tasks, err := svc.GetTasks(userID.(uint))
 	if err != nil {
@@ -405,6 +429,43 @@ func GetTasks(c *gin.Context) {
 	}
 
 	response.Success(c, tasks)
+}
+
+// GetTaskByID 按会话维度查单条任务详情（用于消息里任务引用卡片）
+// GET /api/v1/tasks/:id?conversation_id=xxx
+// 仅会话成员能查看：会话任务对成员共见，私人任务仅创建者可见（service 层特判）
+func GetTaskByID(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	taskIDStr := c.Param("id")
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "任务 ID 无效")
+		return
+	}
+
+	conversationIDStr := c.Query("conversation_id")
+	conversationID, err := strconv.ParseUint(conversationIDStr, 10, 32)
+	if err != nil || conversationID == 0 {
+		response.BadRequest(c, "conversation_id 无效")
+		return
+	}
+
+	// 会话成员校验（与 GetTasks 的 /task 自动补全一致：非成员拒绝，防越权）
+	convSvc := di.GlobalContainer.ConversationService
+	isMember, err := convSvc.IsConversationMember(uint(conversationID), userID.(uint))
+	if err != nil || !isMember {
+		response.Forbidden(c, "无权访问该会话")
+		return
+	}
+
+	svc := di.GlobalContainer.TaskService
+	task, err := svc.GetTaskForConversation(userID.(uint), uint(conversationID), uint(taskID))
+	if err != nil {
+		response.NotFound(c, "任务不存在或无权访问")
+		return
+	}
+
+	response.Success(c, task)
 }
 
 func CreateTask(c *gin.Context) {

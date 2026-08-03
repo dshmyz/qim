@@ -13,7 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"github.com/dshmyz/qim/qim-server/service/storage"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -388,19 +388,16 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 	}
 
 	var screenshotPath string
+	// MaxBytesReader 保护：防止超大 multipart 请求在解析阶段就耗尽内存
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, upload.DefaultScreenshotMaxSize+64*1024)
 	file, err := c.FormFile("screenshot")
 	if err == nil {
-		ext := strings.ToLower(filepath.Ext(file.Filename))
-		allowedExts := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true}
-		if !allowedExts[ext] {
-			response.BadRequest(c, "不支持的图片格式，仅支持 PNG、JPG、GIF、WebP")
-			return
-		}
-
-		if file.Size > 5*1024*1024 {
-			response.BadRequest(c, "截图大小不能超过 5MB")
-			return
-		}
+		// 统一上传策略：截图仅允许图片类型，强制白名单校验
+		screenshotPolicy := upload.NewPolicy(
+			upload.DefaultScreenshotMaxSize,
+			map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true},
+			true,
+		)
 
 		st := di.GlobalContainer.DefaultStorage
 		if st == nil {
@@ -412,29 +409,37 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 		if userID != nil {
 			uidVal = *userID
 		}
+
 		now := time.Now()
-		filename := fmt.Sprintf("feedback_%s_%d%s", now.Format("20060102150405"), uidVal, ext)
-		key := fmt.Sprintf("uploads/feedbacks/%s/%s", now.Format("2006/01"), filename)
+		safeExt := strings.ToLower(filepath.Ext(upload.SanitizeFilename(file.Filename)))
 
-		fileData, err := file.Open()
-		if err != nil {
-			logger.WithModule("feedback").Error("打开截图失败", "error", err)
+		// 复用公共"读取+校验+存储"函数
+		saved, saveErr := upload.SaveMultipartFile(file, upload.SaveConfig{
+			Policy:    screenshotPolicy,
+			Storage:   st,
+			KeyPrefix: fmt.Sprintf("uploads/feedbacks/%s", now.Format("2006/01")),
+			FilenameFn: func() string {
+				return fmt.Sprintf("feedback_%s_%d%s", now.Format("20060102150405"), uidVal, safeExt)
+			},
+			ContextFn: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(c.Request.Context(), 30*time.Second)
+			},
+		})
+		if saveErr != nil {
+			logger.WithModule("feedback").Error("保存截图失败", "error", saveErr)
+			if ve, ok := saveErr.(*upload.ValidateError); ok {
+				if ve.Field == "size" {
+					response.BadRequest(c, "截图大小不能超过 5MB")
+					return
+				}
+				response.BadRequest(c, "不支持的图片格式，仅支持 PNG、JPG、GIF、WebP")
+				return
+			}
 			response.InternalServerError(c, "保存截图失败")
 			return
 		}
-		defer fileData.Close()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		mimeType := file.Header.Get("Content-Type")
-		if err := st.Put(ctx, key, fileData, file.Size, mimeType); err != nil {
-			logger.WithModule("feedback").Error("保存截图失败", "error", err)
-			response.InternalServerError(c, "保存截图失败")
-			return
-		}
-
-		screenshotPath = storage.BuildPath(st.Kind(), key)
+		screenshotPath = saved.StoragePath
 	}
 
 	feedback := model.UserFeedback{
@@ -461,5 +466,49 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 		"code":    0,
 		"message": "提交成功",
 		"data":    feedback,
+	})
+}
+
+// GetMyFeedbacks 查询当前用户提交的反馈列表
+func (h *FeedbackHandler) GetMyFeedbacks(c *gin.Context) {
+	userIDAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "未登录",
+		})
+		return
+	}
+	userID := userIDAny.(uint)
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+
+	var feedbacks []model.UserFeedback
+	var total int64
+
+	query := h.db.Model(&model.UserFeedback{}).Where("user_id = ?", userID)
+	query.Count(&total)
+
+	offset := (page - 1) * pageSize
+	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&feedbacks).Error; err != nil {
+		logger.WithModule("feedback").Error("获取我的反馈失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取反馈列表失败",
+		})
+		return
+	}
+
+	h.fillUserNames(feedbacks)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"list":     feedbacks,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
 	})
 }

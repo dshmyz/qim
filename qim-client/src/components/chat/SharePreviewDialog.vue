@@ -11,7 +11,7 @@
         <!-- 文件类型 -->
         <div v-if="previewData.type === 'file'" class="share-file-content">
           <div class="share-file-icon">
-            <i :class="getFileIcon(previewData.url || previewData.path)"></i>
+            <i :class="getFileIcon(previewData.url || previewData.path || '')"></i>
           </div>
           <div class="share-file-info">
             <div class="share-preview-title">{{ previewData.name }}</div>
@@ -35,8 +35,8 @@
       </div>
       <!-- 文件操作按钮 -->
       <div v-if="previewData.type === 'file'" class="share-preview-footer">
-        <button class="share-file-action-btn" @click="handleDownloadFile(previewData.url || previewData.path, previewData.name)">下载</button>
-        <button class="share-file-action-btn" @click="handleSaveFileAs(previewData.url || previewData.path, previewData.name)">另存为</button>
+        <button class="share-file-action-btn" @click="handleDownloadFile(previewData.url || previewData.path || '', previewData.name || '')">下载</button>
+        <button class="share-file-action-btn" @click="handleSaveFileAs(previewData.url || previewData.path || '', previewData.name || '')">另存为</button>
       </div>
     </div>
   </div>

@@ -1,0 +1,15 @@
+/* 增大布局最大宽度，减少宽屏下的两侧留白 */
+:root {
+  --vp-layout-max-width: 1440px;
+}
+
+/* 让 sidebar 贴左边，不随布局居中 */
+@media (min-width: 1440px) {
+  .VPSidebar {
+    padding-left: 32px !important;
+    width: calc(var(--vp-sidebar-width) - 32px) !important;
+  }
+  .VPContent.has-sidebar {
+    padding-left: var(--vp-sidebar-width) !important;
+  }
+}

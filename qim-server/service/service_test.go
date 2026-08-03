@@ -497,7 +497,7 @@ func TestMessageService_SendMessage(t *testing.T) {
 
 func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 	db := setupServiceTestDB(t)
-	hub := ws.NewHub(db, "test-secret")
+	hub := ws.NewHub(db, "test-secret", "http")
 	callbackCalls := make(chan []uint, 2)
 	hub.OnMessageSent = func(_ uint, _ uint, _ string, mentionUserIDs []uint) {
 		callbackCalls <- mentionUserIDs
@@ -531,7 +531,7 @@ func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 func TestMessageService_SendMessageToBotPublishesReplyAndUpdatesConversation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupServiceTestDB(t)
-	hub := ws.NewHub(db, "test-secret")
+	hub := ws.NewHub(db, "test-secret", "http")
 	go hub.Run()
 	svc := NewMessageService(db, hub, ai.NewAIService(&ai.AIConfig{}))
 
@@ -690,6 +690,34 @@ func TestMessageService_RecallMessage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, recalled.IsRecalled)
 	assert.Equal(t, "[消息已撤回]", recalled.Content)
+}
+
+func TestMessageService_RecallMessage_PreservesOriginalContent(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := NewMessageService(db, nil, nil)
+
+	user1 := &model.User{Username: "user1", PasswordHash: "hash", Nickname: "User 1"}
+	user2 := &model.User{Username: "user2", PasswordHash: "hash", Nickname: "User 2"}
+	db.Create(user1)
+	db.Create(user2)
+
+	convSvc := NewConversationService(db)
+	conv, _ := convSvc.CreateSingleConversation(user1.ID, user2.ID)
+
+	originalContent := "这是原始消息内容"
+	msg, _ := svc.SendMessage(conv.ID, user1.ID, "text", originalContent, nil)
+
+	recalled, err := svc.RecallMessage(msg.ID, user1.ID)
+	assert.NoError(t, err)
+	assert.True(t, recalled.IsRecalled)
+	assert.Equal(t, "[消息已撤回]", recalled.Content)
+	
+	// 验证 Extra 字段包含原始内容
+	assert.NotEmpty(t, recalled.Extra)
+	var extraData map[string]interface{}
+	err = json.Unmarshal([]byte(recalled.Extra), &extraData)
+	assert.NoError(t, err)
+	assert.Equal(t, originalContent, extraData["original_content"])
 }
 
 func TestMessageService_RecallMessage_NotOwner(t *testing.T) {

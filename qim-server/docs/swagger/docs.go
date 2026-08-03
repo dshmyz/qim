@@ -109,98 +109,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/ai/ops/alert": {
-            "post": {
-                "description": "分析和处理告警",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "智能告警处理",
-                "parameters": [
-                    {
-                        "description": "智能告警处理请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.IntelligentAlertRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ai/ops/command": {
-            "post": {
-                "description": "根据描述生成运维命令",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "命令生成",
-                "parameters": [
-                    {
-                        "description": "命令生成请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.CommandGenerationRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/ai/ops/dashboard": {
             "get": {
                 "description": "获取AI运维面板的统计数据",
@@ -220,204 +128,19 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/api/ai/ops/knowledge": {
-            "post": {
-                "description": "回答运维相关问题",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "运维知识问答",
-                "parameters": [
-                    {
-                        "description": "运维知识问答请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.OpsKnowledgeRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ai/ops/logs": {
-            "post": {
-                "description": "分析服务器日志并提供建议",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "日志分析",
-                "parameters": [
-                    {
-                        "description": "日志分析请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.LogAnalysisRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ai/ops/troubleshooting": {
-            "post": {
-                "description": "分析服务器故障并提供解决方案",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "智能故障排查",
-                "parameters": [
-                    {
-                        "description": "智能故障排查请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.IntelligentTroubleshootingRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/ai/tools": {
             "get": {
-                "description": "列出所有可用的MCP工具",
+                "description": "列出所有可用的AI工具",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "AI"
                 ],
-                "summary": "列出所有MCP工具",
+                "summary": "列出所有AI工具",
                 "responses": {
                     "200": {
                         "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ai/tools/execute": {
-            "post": {
-                "description": "执行指定的MCP工具",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "执行MCP工具",
-                "parameters": [
-                    {
-                        "description": "执行工具请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.ExecuteToolRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功响应",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/handler.AIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
                         "schema": {
                             "$ref": "#/definitions/handler.AIResponse"
                         }
@@ -463,21 +186,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "platform": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.ExecuteToolRequest": {
-            "type": "object",
-            "required": [
-                "tool_name"
-            ],
-            "properties": {
-                "parameters": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "tool_name": {
                     "type": "string"
                 }
             }

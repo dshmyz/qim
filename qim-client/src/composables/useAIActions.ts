@@ -14,8 +14,13 @@ export function useAIActions() {
 
     try {
       const response = await post<any>(
-        '/api/v1/ai/translate',
-        { text, target_lang: targetLang },
+        '/api/v1/ai/text-process',
+        {
+          action: 'translate',
+          text,
+          target_lang: targetLang,
+          source_lang: 'auto',
+        },
         { baseUrl: serverUrl.value }
       )
       if (!response) {
@@ -67,8 +72,8 @@ export function useAIActions() {
 
     try {
       const response = await post<any>(
-        '/api/v1/ai/rewrite',
-        { text, style, tone },
+        '/api/v1/ai/text-process',
+        { action: 'rewrite', text, style, tone },
         { baseUrl: serverUrl.value }
       )
       if (!response) {
@@ -90,8 +95,8 @@ export function useAIActions() {
 
     try {
       const response = await post<any>(
-        '/api/v1/ai/polish',
-        { text, language },
+        '/api/v1/ai/text-process',
+        { action: 'polish', text, language },
         { baseUrl: serverUrl.value }
       )
       if (!response) {
@@ -131,6 +136,58 @@ export function useAIActions() {
     } finally {
       isProcessing.value = false
     }
+  }
+
+  const generateSummaryMeta = async (
+    conversationId: number,
+    timeRange: string = 'today'
+  ) => {
+    try {
+      const response = await post<any>(
+        '/api/v1/ai/summary/meta',
+        { conversation_id: conversationId, time_range: timeRange },
+        { baseUrl: serverUrl.value }
+      )
+      if (!response) {
+        throw new Error('获取摘要元数据失败')
+      }
+      return response.data as {
+        messages_count: number
+        time_range: string
+        group_name: string
+        active_members: string[]
+      }
+    } catch (error: any) {
+      errorMessage.value = error.message || '获取摘要元数据失败'
+      throw error
+    }
+  }
+
+  const generateSummaryStream = (
+    conversationId: number,
+    timeRange: string = 'today',
+    handlers: {
+      onChunk: (content: string) => void
+      onComplete: () => void
+      onError: (error: Error) => void
+    }
+  ) => {
+    isProcessing.value = true
+    errorMessage.value = null
+    stream({
+      url: `${serverUrl.value}/api/v1/ai/summary/stream`,
+      body: { conversation_id: conversationId, time_range: timeRange },
+      onChunk: handlers.onChunk,
+      onComplete: () => {
+        isProcessing.value = false
+        handlers.onComplete()
+      },
+      onError: (e: Error) => {
+        isProcessing.value = false
+        errorMessage.value = e.message || '摘要生成失败'
+        handlers.onError(e)
+      },
+    })
   }
 
   const searchMessages = async (
@@ -242,9 +299,12 @@ export function useAIActions() {
     rewriteText,
     polishText,
     generateSummary,
+    generateSummaryMeta,
+    generateSummaryStream,
     searchMessages,
     draftReply,
     draftReplyStream,
     abortDraftReply,
+    abort: abortStream,
   }
 }

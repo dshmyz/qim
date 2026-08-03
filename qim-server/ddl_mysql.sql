@@ -591,6 +591,18 @@ CREATE TABLE IF NOT EXISTS `system_configs` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- User settings table（用户个人设置：quick_replies 等轻量偏好）
+CREATE TABLE IF NOT EXISTS `user_settings` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT UNSIGNED NOT NULL,
+  `setting_key` VARCHAR(100) NOT NULL,
+  `setting_value` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_user_setting_key` (`user_id`, `setting_key`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Operation logs table
 CREATE TABLE IF NOT EXISTS `operation_logs` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

@@ -97,7 +97,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	user, err := h.userService.UpdateUser(uid, updates)
 	if err != nil {
-		response.InternalServerError(c, err.Error())
+		response.InternalServerError(c, "更新用户失败")
 		return
 	}
 

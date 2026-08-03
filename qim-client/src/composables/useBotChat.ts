@@ -36,7 +36,9 @@ export function processBotMessage(msg: any): BotMessage {
     type: msg.type || 'text',
     content: msg.content,
     timestamp: new Date(msg.created_at || msg.timestamp || Date.now()),
-    isStreaming: false
+    isStreaming: false,
+    // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）
+    knowledge_sources: Array.isArray(msg.knowledge_sources) ? msg.knowledge_sources : undefined,
   }
 }
 

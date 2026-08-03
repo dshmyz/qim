@@ -34,9 +34,16 @@ const (
 
 var GlobalHub *Hub
 
-var wsAllowedOrigins map[string]bool
+// wsAllowedOrigins 及其锁：CheckOrigin 在每个 WS 连接时并发读，
+// SetAllowedOrigins 在配置重载时写。用 RWMutex 保护防止并发 map 读写 panic。
+var (
+	wsAllowedOrigins   map[string]bool
+	wsAllowedOriginsMu sync.RWMutex
+)
 
 func SetAllowedOrigins(origins []string) {
+	wsAllowedOriginsMu.Lock()
+	defer wsAllowedOriginsMu.Unlock()
 	if len(origins) == 0 {
 		wsAllowedOrigins = nil
 		return
@@ -51,14 +58,17 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		if wsAllowedOrigins == nil {
+		wsAllowedOriginsMu.RLock()
+		origins := wsAllowedOrigins
+		wsAllowedOriginsMu.RUnlock()
+		if origins == nil {
 			return true
 		}
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			return true
 		}
-		return wsAllowedOrigins[origin]
+		return origins[origin]
 	},
 }
 
@@ -78,6 +88,7 @@ type Hub struct {
 	mu                  sync.RWMutex
 	nodes               []string
 	nodeID              string
+	nodeScheme          string // 节点间通信协议：http 或 https
 	db                  *gorm.DB
 	jwtSecret           string
 
@@ -121,17 +132,22 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
-func NewHub(db *gorm.DB, jwtSecret string) *Hub {
+func NewHub(db *gorm.DB, jwtSecret string, nodeScheme string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
 
 	// 初始化节点列表（这里可以从配置文件或环境变量中读取）
 	nodes := []string{}
 
+	// 节点间通信协议默认 http
+	if nodeScheme != "https" {
+		nodeScheme = "http"
+	}
+
 	// 初始化广播通道
 	broadcastChan := make(chan []byte)
 
-	logger.WithModule("WS").Info("节点初始化完成", "nodeID", nodeID)
+	logger.WithModule("WS").Info("节点初始化完成", "nodeID", nodeID, "scheme", nodeScheme)
 
 	return &Hub{
 		clients:             sync.Map{},
@@ -143,6 +159,7 @@ func NewHub(db *gorm.DB, jwtSecret string) *Hub {
 		conversationMembers: make(map[uint]cachedMembers),
 		nodes:               nodes,
 		nodeID:              nodeID,
+		nodeScheme:          nodeScheme,
 		db:                  db,
 		jwtSecret:           jwtSecret,
 		statusDebouncer:     NewStatusDebouncer(StatusDebounceDelay),
@@ -310,7 +327,7 @@ func (h *Hub) broadcastToOtherNodes(message []byte) {
 		}
 
 		// 构建其他节点的 URL
-		nodeURL := "http://" + node + "/api/v1/node/broadcast"
+		nodeURL := h.nodeScheme + "://" + node + "/api/v1/node/broadcast"
 
 		// 发送 HTTP 请求
 		url := nodeURL
@@ -417,7 +434,7 @@ func (h *Hub) sendToUserToOtherNodes(userID uint, message []byte) {
 		}
 
 		// 构建其他节点的 URL
-		nodeURL := "http://" + node + "/api/v1/node/send-to-user"
+		nodeURL := h.nodeScheme + "://" + node + "/api/v1/node/send-to-user"
 
 		// 构建请求体
 		reqBody := map[string]interface{}{

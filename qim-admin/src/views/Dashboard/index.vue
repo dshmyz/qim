@@ -14,6 +14,8 @@
 
     <ChartPlaceholders />
 
+    <QuickLinks />
+
     <RecentActivityTable
       :registrations="recentRegistrations"
       :loading="registrationsLoading"
@@ -28,6 +30,7 @@ import { useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import StatCards from '@/components/dashboard/StatCards.vue'
+import QuickLinks from '@/components/dashboard/QuickLinks.vue'
 import RecentActivityTable from '@/components/dashboard/RecentActivityTable.vue'
 import ChartPlaceholders from '@/components/dashboard/ChartPlaceholders.vue'
 import { getDashboardStats, getRecentRegistrations } from '@/api/statistics'

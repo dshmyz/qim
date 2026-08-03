@@ -40,6 +40,7 @@
           @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
           @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           @image-loaded="handleImageLoaded"
+          @recall-edit="(originalContent: string) => emit('recall-edit', originalContent)"
         >
           <template #selection-control>
             <label v-if="selectionMode && isMessageSelectionEligible(message)" class="message-selection-control">
@@ -59,7 +60,7 @@
     </div>
 
     <!-- 跳转到最新消息按钮 -->
-    <div v-if="showScrollToBottomBtn" class="scroll-to-bottom-btn" @click="scrollToBottom">
+    <div v-if="showScrollToBottomBtn" class="scroll-to-bottom-btn" @click="() => scrollToBottom()">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
       </svg>
@@ -105,6 +106,7 @@ interface Emits {
   'mark-read': []
   'toggle-message-selection': [messageId: string]
   'scroll': []
+  'recall-edit': [originalContent: string]
 }
 
 const props = defineProps<Props>()

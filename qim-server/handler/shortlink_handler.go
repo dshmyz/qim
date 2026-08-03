@@ -1,7 +1,8 @@
 package handler
 
 import (
-	"math/rand"
+	crand "crypto/rand"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// buildShortURL 根据请求上下文构造完整短链接 URL。
+// 协议优先取 X-Forwarded-Proto（反向代理场景），否则按 TLS 判断 https/http。
+// 避免 HTTPS 部署下生成 http:// 短链接被浏览器拦截混合内容。
+func buildShortURL(c *gin.Context, code string) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + c.Request.Host + "/s/" + code
+}
 
 func CreateShortLink(c *gin.Context) {
 	userID, _ := c.Get("user_id")
@@ -78,7 +93,7 @@ func CreateShortLink(c *gin.Context) {
 		return
 	}
 
-	shortURL := "http://" + c.Request.Host + "/s/" + code
+	shortURL := buildShortURL(c, code)
 
 	response := gin.H{
 		"id":           shortLink.ID,
@@ -113,7 +128,7 @@ func GetShortLinks(c *gin.Context) {
 
 	response := make([]gin.H, len(shortLinks))
 	for i, link := range shortLinks {
-		shortURL := "http://" + c.Request.Host + "/s/" + link.Code
+		shortURL := buildShortURL(c, link.Code)
 		item := gin.H{
 			"id":           link.ID,
 			"original_url": link.OriginalURL,
@@ -314,7 +329,7 @@ func BatchCreateShortLinks(c *gin.Context) {
 			continue
 		}
 
-		result.ShortURL = "http://" + c.Request.Host + "/" + code
+		result.ShortURL = buildShortURL(c, code)
 		result.Code = code
 		result.CustomCode = shortLink.CustomCode
 		result.ExpiresAt = shortLink.ExpiresAt
@@ -389,7 +404,13 @@ func generateShortCode() string {
 
 	code := make([]byte, codeLength)
 	for i := range code {
-		code[i] = charset[rand.Intn(len(charset))]
+		idx, err := crand.Int(crand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			// 极端情况（如熵不足）回退到首字符，避免返回空串
+			code[i] = charset[0]
+			continue
+		}
+		code[i] = charset[idx.Int64()]
 	}
 
 	return string(code)

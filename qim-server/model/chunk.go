@@ -15,7 +15,7 @@ type FileChunk struct {
 	ChunkHash   string         `json:"chunk_hash" gorm:"size:64;not null"`                       // 分片 MD5
 	ChunkSize   int64          `json:"chunk_size" gorm:"not null"`                               // 分片大小（字节）
 	StoragePath string         `json:"storage_path" gorm:"size:500;not null"`                    // 分片存储路径
-	Status      string         `json:"status" gorm:"size:20;not null;default:'pending'"`        // pending/uploaded/merged
+	Status      string         `json:"status" gorm:"size:20;not null;default:'pending'"`        // pending/uploaded
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
@@ -33,7 +33,7 @@ type UploadTask struct {
 	TotalChunks     int            `json:"total_chunks" gorm:"not null"`                  // 总分片数
 	UploadedChunks  int            `json:"uploaded_chunks" gorm:"default:0"`              // 已上传分片数
 	FolderID        *uint          `json:"folder_id" gorm:"index"`                        // 文件夹ID，可为空
-	Status          string         `json:"status" gorm:"size:20;not null;default:'pending'"` // pending/uploading/completed/failed/cancelled
+	Status          string         `json:"status" gorm:"size:20;not null;default:'pending'"` // pending/uploading/completed/cancelled
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`

@@ -35,14 +35,16 @@ type AvatarWorkerPool struct {
 	userLimiters sync.Map
 	service      *AvatarService
 	db           *gorm.DB
+	delaySem     chan struct{} // 限制延迟发送 goroutine 并发上限
 }
 
 // NewAvatarWorkerPool 创建分身工作池
 func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *AvatarWorkerPool {
 	pool := &AvatarWorkerPool{
-		queue:   make(chan AvatarTask, 100),
-		workers: workers,
-		limiter: rate.NewLimiter(rate.Every(time.Minute/time.Duration(globalRPM)), globalRPM),
+		queue:    make(chan AvatarTask, 100),
+		workers:  workers,
+		limiter:  rate.NewLimiter(rate.Every(time.Minute/time.Duration(globalRPM)), globalRPM),
+		delaySem: make(chan struct{}, 100), // 最多 100 个延迟 goroutine 驻留
 		service: service,
 		db:      service.db,
 	}
@@ -155,10 +157,18 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	if replyStrategy.ReplyDelay > 0 {
 		logger.WithModule("AvatarWorkerPool").Info("分身回复延迟发送（异步）", "userID", task.UserID, "delaySec", replyStrategy.ReplyDelay)
 		delay := time.Duration(replyStrategy.ReplyDelay) * time.Second
-		go func() {
-			time.Sleep(delay)
+		select {
+		case p.delaySem <- struct{}{}:
+			go func() {
+				defer func() { <-p.delaySem }()
+				time.Sleep(delay)
+				send()
+			}()
+		default:
+			// 信号量满，降级为同步发送（避免 goroutine 无限堆积）
+			logger.WithModule("AvatarWorkerPool").Warn("延迟 goroutine 达上限，降级同步发送", "userID", task.UserID)
 			send()
-		}()
+		}
 	} else {
 		send()
 	}

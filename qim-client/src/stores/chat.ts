@@ -227,10 +227,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function recallMessage(conversationId: string, messageId: string) {
+  function recallMessage(conversationId: string, messageId: string, extra?: string) {
     updateMessage(conversationId, messageId, {
       content: '[消息已撤回]',
-      isRecalled: true
+      isRecalled: true,
+      extra: extra || ''
     })
 
     const convIndex = conversations.value.findIndex(c => sameConversationId(c.id, conversationId))

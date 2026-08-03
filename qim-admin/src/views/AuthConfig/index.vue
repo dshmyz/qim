@@ -84,6 +84,9 @@
 
         <el-form-item label="配置JSON" required>
           <el-input v-model="form.config" type="textarea" :rows="12" />
+          <div class="form-tip" v-if="hasMaskedSecrets" style="color: #e6a23c; margin-top: 4px;">
+            <strong>密钥字段已脱敏：</strong>配置中的 <code>***</code> 表示该密钥已保存。如不需修改请保持 <code>***</code> 不变，后端会自动保留原值；如需更新密钥，请将 <code>***</code> 替换为新值。
+          </div>
           <div class="form-tip">根据认证类型填写相应的配置信息，必须是有效的JSON格式</div>
           <div class="form-tip" v-if="form.type === 'direct'" style="color: #409eff; margin-top: 4px;">
             <strong>LDAP 配置字段说明：</strong><br/>
@@ -149,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAuthProviders, createAuthProvider, updateAuthProvider, testAuthProvider, deleteAuthProvider } from '@/api/authProvider'
 import type { AuthProvider } from '@/types/auth'
@@ -186,6 +189,17 @@ const form = ref<AuthProviderForm>({
 const testForm = ref({
   test_username: '',
   test_password: ''
+})
+
+// 检测 config 中是否含 *** 脱敏占位符，用于提示管理员密钥已保存
+const hasMaskedSecrets = computed(() => {
+  try {
+    const cfg = JSON.parse(form.value.config)
+    const secretKeys = ['bind_password', 'client_secret', 'secret_key', 'api_key']
+    return secretKeys.some(k => cfg[k] === '***')
+  } catch {
+    return false
+  }
 })
 
 const configTemplates: Record<string, Omit<AuthProviderForm, 'priority' | 'enabled'>> = {

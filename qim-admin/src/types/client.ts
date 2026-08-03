@@ -14,6 +14,26 @@ export interface ClientVersion {
   updatedAt?: string
 }
 
+// CLI version management types
+export interface CLIVersion {
+  id: number
+  version: string
+  platform: string   // "darwin-arm64" 等
+  os: string          // darwin/linux/windows
+  arch: string        // amd64/arm64
+  downloadUrl: string
+  sha256: string
+  fileSize: number
+  updateNotes: string
+  forceUpdate: boolean
+  rolloutPercentage?: number
+  minVersion: string
+  status: 'active' | 'inactive'
+  releaseDate: string
+  createdAt: string
+  updatedAt?: string
+}
+
 export interface VersionDistribution {
   version: string
   count: number

@@ -1,31 +1,34 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/pkg/upload"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 // InitUploadRequest 初始化上传请求
+// 秒传功能已移除：不再接收 file_hash（前端不再算 MD5）
 type InitUploadRequest struct {
 	Filename string `json:"filename" binding:"required"`
 	FileSize int64  `json:"file_size" binding:"required"`
-	FileHash string `json:"file_hash" binding:"required"`
 	FolderID *uint  `json:"folder_id"`
+	UploadID string `json:"upload_id,omitempty"` // 显式断点续传时传入原任务 ID
 }
 
 // InitUploadResponse 初始化上传响应
+// 秒传字段（is_quick_upload / file_id）已移除
 type InitUploadResponse struct {
-	UploadID        string `json:"upload_id"`
-	ChunkSize       int64  `json:"chunk_size"`
-	TotalChunks     int    `json:"total_chunks"`
-	UploadedChunks  []int  `json:"uploaded_chunks"`
-	IsInstantUpload bool   `json:"is_quick_upload"`
-	FileID          *uint  `json:"file_id,omitempty"`
+	UploadID       string `json:"upload_id"`
+	ChunkSize      int64  `json:"chunk_size"`
+	TotalChunks    int    `json:"total_chunks"`
+	UploadedChunks []int  `json:"uploaded_chunks"`
 }
 
 // UploadChunkRequest 上传分片请求（multipart form）
@@ -47,8 +50,14 @@ type CancelUploadRequest struct {
 
 // InitUpload 初始化上传
 func InitUpload(c *gin.Context) {
-	// 检查文件上传开关
-	if cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload"); err == nil && cfg.Value == "false" {
+	// 统一上传开关检查
+	if !upload.IsUploadEnabled(func() (string, error) {
+		cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload")
+		if err != nil {
+			return "", err
+		}
+		return cfg.Value, nil
+	}) {
 		response.Forbidden(c, "文件上传功能已关闭")
 		return
 	}
@@ -65,36 +74,61 @@ func InitUpload(c *gin.Context) {
 		return
 	}
 
+	// 统一大小校验：用 DB 配置的 max_size 限制总分片文件大小
+	ucfg := getUploadConfig()
+	policy := upload.NewPolicy(ucfg.MaxSize, ucfg.AllowedExtensions, ucfg.EnableTypeCheck)
+	if err := policy.ValidateSize(req.FileSize); err != nil {
+		maxMB := ucfg.MaxSize / (1024 * 1024)
+		response.BadRequest(c, "文件过大，最大支持"+strconv.FormatInt(maxMB, 10)+"MB")
+		return
+	}
+
+	// 统一类型校验（黑名单始终生效，防止 .html/.exe 等危险文件）
+	// 分片上传在 init 阶段无法读取实际内容，仅按扩展名校验；MIME 在 complete 时由合并文件检测
+	if err := policy.ValidateType(req.Filename, "application/octet-stream"); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	chunkService := di.GlobalContainer.ChunkService
 	if chunkService == nil {
 		response.InternalServerError(c, "分片服务未初始化")
 		return
 	}
 
-	task, uploadedIndexes, isInstant, quickFileID, err := chunkService.InitUpload(
+	task, uploadedIndexes, err := chunkService.InitUpload(
 		userID.(uint),
 		req.Filename,
 		req.FileSize,
-		req.FileHash,
 		req.FolderID,
+		req.UploadID,
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrUploadForbidden) {
+			response.Forbidden(c, err.Error())
+			return
+		}
 		response.InternalServerError(c, "初始化上传失败: "+err.Error())
 		return
 	}
 
 	response.Success(c, InitUploadResponse{
-		UploadID:        task.UploadID,
-		ChunkSize:       task.ChunkSize,
-		TotalChunks:     task.TotalChunks,
-		UploadedChunks:  uploadedIndexes,
-		IsInstantUpload: isInstant,
-		FileID:          quickFileID,
+		UploadID:       task.UploadID,
+		ChunkSize:      task.ChunkSize,
+		TotalChunks:    task.TotalChunks,
+		UploadedChunks: uploadedIndexes,
 	})
 }
 
 // UploadChunk 上传分片
 func UploadChunk(c *gin.Context) {
+	// 权限校验：获取当前用户 ID，service 层校验 uploadID 归属
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+
 	// 从 multipart form 获取参数
 	uploadID := c.PostForm("upload_id")
 	if uploadID == "" {
@@ -107,7 +141,11 @@ func UploadChunk(c *gin.Context) {
 		response.BadRequest(c, "chunk_index 参数缺失")
 		return
 	}
-	chunkIndex := parseInt(chunkIndexStr)
+	chunkIndex, err := strconv.Atoi(chunkIndexStr)
+	if err != nil || chunkIndex < 0 {
+		response.BadRequest(c, "chunk_index 参数无效")
+		return
+	}
 
 	chunkHash := c.PostForm("chunk_hash")
 	if chunkHash == "" {
@@ -119,6 +157,13 @@ func UploadChunk(c *gin.Context) {
 	file, err := c.FormFile("chunk")
 	if err != nil {
 		response.BadRequest(c, "分片文件不存在")
+		return
+	}
+
+	// 单分片大小限制，防止恶意大分片打爆内存
+	if file.Size > upload.DefaultChunkMaxSize {
+		maxMB := upload.DefaultChunkMaxSize / (1024 * 1024)
+		response.BadRequest(c, "分片过大，最大支持"+strconv.FormatInt(int64(maxMB), 10)+"MB")
 		return
 	}
 
@@ -143,8 +188,12 @@ func UploadChunk(c *gin.Context) {
 		return
 	}
 
-	err = chunkService.UploadChunk(uploadID, chunkIndex, chunkData, chunkHash)
+	err = chunkService.UploadChunk(userID.(uint), uploadID, chunkIndex, chunkData, chunkHash)
 	if err != nil {
+		if errors.Is(err, service.ErrUploadForbidden) {
+			response.Forbidden(c, err.Error())
+			return
+		}
 		response.InternalServerError(c, "上传分片失败: "+err.Error())
 		return
 	}
@@ -157,6 +206,25 @@ func UploadChunk(c *gin.Context) {
 
 // CompleteUpload 完成上传
 func CompleteUpload(c *gin.Context) {
+	// 权限校验：获取当前用户 ID，service 层校验 uploadID 归属
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+
+	// 统一上传开关检查：防止关闭上传后已 init 的分片继续传完
+	if !upload.IsUploadEnabled(func() (string, error) {
+		cfg, err := di.GlobalContainer.SystemConfigService.GetConfig("enableFileUpload")
+		if err != nil {
+			return "", err
+		}
+		return cfg.Value, nil
+	}) {
+		response.Forbidden(c, "文件上传功能已关闭")
+		return
+	}
+
 	var req CompleteUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误: "+err.Error())
@@ -169,8 +237,12 @@ func CompleteUpload(c *gin.Context) {
 		return
 	}
 
-	file, err := chunkService.CompleteUpload(req.UploadID)
+	file, err := chunkService.CompleteUpload(userID.(uint), req.UploadID)
 	if err != nil {
+		if errors.Is(err, service.ErrUploadForbidden) {
+			response.Forbidden(c, err.Error())
+			return
+		}
 		response.InternalServerError(c, "完成上传失败: "+err.Error())
 		return
 	}
@@ -188,6 +260,13 @@ func CompleteUpload(c *gin.Context) {
 
 // CancelUpload 取消上传
 func CancelUpload(c *gin.Context) {
+	// 权限校验：获取当前用户 ID，service 层校验 uploadID 归属
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+
 	var req CancelUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误: "+err.Error())
@@ -200,8 +279,12 @@ func CancelUpload(c *gin.Context) {
 		return
 	}
 
-	err := chunkService.CancelUpload(req.UploadID)
+	err := chunkService.CancelUpload(userID.(uint), req.UploadID)
 	if err != nil {
+		if errors.Is(err, service.ErrUploadForbidden) {
+			response.Forbidden(c, err.Error())
+			return
+		}
 		response.InternalServerError(c, "取消上传失败: "+err.Error())
 		return
 	}
@@ -209,10 +292,4 @@ func CancelUpload(c *gin.Context) {
 	response.Success(c, gin.H{
 		"message": "上传已取消",
 	})
-}
-
-// 辅助函数：字符串转整数
-func parseInt(s string) int {
-	val, _ := strconv.Atoi(s)
-	return val
 }

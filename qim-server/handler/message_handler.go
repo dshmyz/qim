@@ -23,6 +23,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// getUserIDFromContext 从 gin.Context 安全提取 user_id，避免类型断言 panic。
+// 调用方应检查 ok 返回值，失败时通常返回 401。
+func getUserIDFromContext(c *gin.Context) (uint, bool) {
+	v, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+	uid, ok := v.(uint)
+	return uid, ok
+}
+
 // Global smart reply engine instance
 var smartReplyEngine *SmartReplyEngine
 
@@ -145,8 +156,6 @@ type TodoExtractorInterface interface {
 // Global todo extractor instance
 var todoExtractor TodoExtractorInterface
 
-// Global anomaly detector instance
-var anomalyDetector *AnomalyDetector
 
 // InitSmartReplyEngine initializes the smart reply engine with the given AI service
 func InitSmartReplyEngine(aiService *ai.AIService) {
@@ -204,11 +213,6 @@ func InitSmartReplyGraph() error {
 	return nil
 }
 
-// InitAnomalyDetector initializes the anomaly detector
-func InitAnomalyDetector() {
-	anomalyDetector = NewAnomalyDetector()
-	StartAnomalyDetection(anomalyDetector)
-}
 
 // GetSmartReplyEngine returns the smart reply engine instance
 func GetSmartReplyEngine() *SmartReplyEngine {
@@ -373,7 +377,11 @@ func buildCardActionMap(msgs []model.Message, userID uint) map[uint]string {
 }
 
 func GetMessages(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	convID := c.Param("id")
 
 	if strings.HasPrefix(convID, "conv_") {
@@ -421,11 +429,11 @@ func GetMessages(c *gin.Context) {
 	convSvc := di.GlobalContainer.ConversationService
 	msgSvc := di.GlobalContainer.MessageService
 
-	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), uid)
 	if !isMember {
 		query := service.MessageQuery{
 			ConvID: uint(convIDUint),
-			UserID: userID.(uint),
+			UserID: uid,
 			Limit:  1,
 		}
 		result, _ := msgSvc.GetMessages(query)
@@ -437,7 +445,7 @@ func GetMessages(c *gin.Context) {
 
 	query := service.MessageQuery{
 		ConvID: uint(convIDUint),
-		UserID: userID.(uint),
+		UserID: uid,
 		Limit:  pageSize,
 		Offset: offset,
 	}
@@ -458,9 +466,9 @@ func GetMessages(c *gin.Context) {
 	// 卡片点击态（跨设备一致）：批量查当前用户对本页卡片消息的 CardActionRecord，
 	// 附 card_action_id 到 card 消息响应。CardActionRecord 是幂等表（message_id+user_id 唯一），权威。
 	// 之前客户端仅靠 localStorage，换设备/清缓存后卡片视觉重置可点击（后端幂等保底不重复触发，但视觉不一致）。
-	cardActionMap := buildCardActionMap(result.Messages, userID.(uint))
+	cardActionMap := buildCardActionMap(result.Messages, uid)
 	for _, msg := range result.Messages {
-		resp := buildMessageResponse(msg, userID.(uint), allMemberIDs)
+		resp := buildMessageResponse(msg, uid, allMemberIDs)
 		if msg.Type == "card" {
 			if actionID, ok := cardActionMap[msg.ID]; ok {
 				resp["card_action_id"] = actionID
@@ -486,7 +494,11 @@ func GetMessages(c *gin.Context) {
 }
 
 func GetMessagesByFilter(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	convID := c.Query("conversation_id")
 	messageType := c.Query("type")
 	pageStr := c.Query("page")
@@ -504,7 +516,7 @@ func GetMessagesByFilter(c *gin.Context) {
 	msgSvc := di.GlobalContainer.MessageService
 
 	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
-	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), uid)
 	if !isMember {
 		response.Forbidden(c, "无权限访问")
 		return
@@ -526,7 +538,7 @@ func GetMessagesByFilter(c *gin.Context) {
 
 	query := service.MessageQuery{
 		ConvID:      uint(convIDUint),
-		UserID:      userID.(uint),
+		UserID:      uid,
 		Limit:       pageSize,
 		Offset:      offset,
 		MessageType: messageType,
@@ -547,7 +559,11 @@ func GetMessagesByFilter(c *gin.Context) {
 }
 
 func SendMessage(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	convID := c.Param("id")
 
 	if strings.HasPrefix(convID, "conv_") {
@@ -567,12 +583,11 @@ func SendMessage(c *gin.Context) {
 	}
 
 	msgSvc := di.GlobalContainer.MessageService
-	convSvc := di.GlobalContainer.ConversationService
 	fileSvc := di.GlobalContainer.FileService
 
 	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
-	msg, err := msgSvc.SendMessage(uint(convIDUint), userID.(uint), req.Type, req.Content, req.QuotedMessageID)
+	msg, err := msgSvc.SendMessage(uint(convIDUint), uid, req.Type, req.Content, req.QuotedMessageID)
 	if err != nil {
 		if err == service.ErrMessageForbidden {
 			response.Forbidden(c, "无权限发送消息")
@@ -588,31 +603,12 @@ func SendMessage(c *gin.Context) {
 			ID  uint   `json:"id"`
 		}
 		if err := json.Unmarshal([]byte(req.Content), &fileData); err == nil && fileData.ID > 0 {
-			fileSvc.UpdateFileSource(fileData.ID, userID.(uint), "chat")
+			fileSvc.UpdateFileSource(fileData.ID, uid, "chat")
 		}
 	}
 
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
-	responseData := buildMessageResponse(*msg, userID.(uint), allMemberIDs)
-
-	conv, _ := convSvc.GetConversation(uint(convIDUint))
-	if conv != nil && conv.Type != "bot" {
-		// smartReply 已由 service.SendMessage 内部通过 OnMessageSent 触发，此处不再重复调用
-
-		if anomalyDetector != nil {
-			utils.SafeGo(func() {
-				anomalyDetector.RecordMessage(uint(convIDUint))
-
-				if alert := anomalyDetector.CheckSensitiveContent(req.Content); alert != nil {
-					anomalyDetector.SendAlert(userID.(uint), alert)
-				}
-
-				if alert := anomalyDetector.CheckMessageFrequency(userID.(uint), uint(convIDUint)); alert != nil {
-					anomalyDetector.SendAlert(userID.(uint), alert)
-				}
-			})
-		}
-	}
+	responseData := buildMessageResponse(*msg, uid, allMemberIDs)
 
 	response.Success(c, responseData)
 }
@@ -683,7 +679,11 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 }
 
 func StreamMessage(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	convID := c.Param("id")
 
 	if strings.HasPrefix(convID, "conv_") {
@@ -707,7 +707,7 @@ func StreamMessage(c *gin.Context) {
 
 	convIDUint, _ := strconv.ParseUint(convID, 10, 32)
 
-	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), userID.(uint))
+	isMember, _ := convSvc.IsConversationMember(uint(convIDUint), uid)
 	if !isMember {
 		response.Forbidden(c, "无权限发送消息")
 		return
@@ -728,7 +728,7 @@ func StreamMessage(c *gin.Context) {
 
 	msg := model.Message{
 		ConversationID:  uint(convIDUint),
-		SenderID:        userID.(uint),
+		SenderID:        uid,
 		Type:            req.Type,
 		Content:         content,
 		QuotedMessageID: req.QuotedMessageID,
@@ -907,7 +907,11 @@ func StreamMessage(c *gin.Context) {
 }
 
 func RecallMessage(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	msgIDStr := c.Param("id")
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
@@ -918,7 +922,7 @@ func RecallMessage(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	msg, err := msgSvc.RecallMessage(uint(msgID), userID.(uint))
+	msg, err := msgSvc.RecallMessage(uint(msgID), uid)
 	if err != nil {
 		if err == service.ErrMessageNotFound {
 			response.NotFound(c, "消息不存在")
@@ -944,7 +948,11 @@ func RecallMessage(c *gin.Context) {
 }
 
 func RemindMessage(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	msgIDStr := c.Param("id")
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
@@ -963,7 +971,7 @@ func RemindMessage(c *gin.Context) {
 	}
 
 	// 校验：是发送者本人
-	if msg.SenderID != userID.(uint) {
+	if msg.SenderID != uid {
 		response.Forbidden(c, "无权限发送提醒")
 		return
 	}
@@ -1013,7 +1021,7 @@ func RemindMessage(c *gin.Context) {
 	var recipient model.User
 	if err := db.Where("id IN (?) AND id != ?",
 		db.Model(&model.ConversationMember{}).Select("user_id").Where("conversation_id = ?", msg.ConversationID),
-		userID.(uint),
+		uid,
 	).First(&recipient).Error; err != nil {
 		response.InternalServerError(c, "接收者不存在")
 		return
@@ -1055,7 +1063,7 @@ func RemindMessage(c *gin.Context) {
 	response.Success(c, gin.H{"message": "提醒发送中"})
 
 	// 异步调用 webhook，结果通过 WebSocket 回执给发送方
-	senderID := userID.(uint)
+	senderID := uid
 	utils.SafeGoWithLabel("webhook-remind", func() {
 		success := false
 		defer finishReminderAttempt(remindRateLimiter, msg.ID, &success)
@@ -1076,7 +1084,11 @@ func RemindMessage(c *gin.Context) {
 }
 
 func DeleteMessage(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	msgIDStr := c.Param("id")
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
@@ -1087,7 +1099,7 @@ func DeleteMessage(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	err = msgSvc.DeleteMessage(uint(msgID), userID.(uint))
+	err = msgSvc.DeleteMessage(uint(msgID), uid)
 	if err != nil {
 		if err == service.ErrMessageNotFound {
 			response.NotFound(c, "消息不存在")
@@ -1120,7 +1132,11 @@ func GetMessageReadUsers(c *gin.Context) {
 		}
 	}
 
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	msgIDStr := c.Param("id")
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
@@ -1131,7 +1147,7 @@ func GetMessageReadUsers(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	readUsers, totalMembers, err := msgSvc.GetMessageReadUsers(uint(msgID), userID.(uint))
+	readUsers, totalMembers, err := msgSvc.GetMessageReadUsers(uint(msgID), uid)
 	if err != nil {
 		if err == service.ErrMessageNotFound {
 			response.NotFound(c, "消息不存在")
@@ -1162,7 +1178,11 @@ func BatchGetMessageReadUsers(c *gin.Context) {
 		}
 	}
 
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 
 	var req struct {
 		MessageIDs []uint `json:"message_ids" binding:"required"`
@@ -1185,7 +1205,7 @@ func BatchGetMessageReadUsers(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	result, err := msgSvc.BatchGetMessageReadUsers(req.MessageIDs, userID.(uint))
+	result, err := msgSvc.BatchGetMessageReadUsers(req.MessageIDs, uid)
 	if err != nil {
 		response.InternalServerError(c, "批量获取已读用户失败")
 		return
@@ -1195,7 +1215,11 @@ func BatchGetMessageReadUsers(c *gin.Context) {
 }
 
 func MarkConversationAsRead(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	convIDStr := c.Param("id")
 
 	if strings.HasPrefix(convIDStr, "conv_") {
@@ -1210,7 +1234,7 @@ func MarkConversationAsRead(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	err = msgSvc.MarkAsRead(uint(convID), userID.(uint))
+	err = msgSvc.MarkAsRead(uint(convID), uid)
 	if err != nil {
 		if err == service.ErrMessageForbidden {
 			response.Forbidden(c, "无权限访问")
@@ -1226,7 +1250,11 @@ func MarkConversationAsRead(c *gin.Context) {
 }
 
 func SearchMessages(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 
 	keyword := c.Query("keyword")
 	convID := c.Query("conv_id")
@@ -1258,7 +1286,7 @@ func SearchMessages(c *gin.Context) {
 		convIDPtr = &cid
 	}
 
-	messages, err := msgSvc.SearchMessages(userID.(uint), keyword, convIDPtr, pageSize, offset)
+	messages, err := msgSvc.SearchMessages(uid, keyword, convIDPtr, pageSize, offset)
 	if err != nil {
 		response.InternalServerError(c, "搜索消息失败")
 		return
@@ -1272,7 +1300,11 @@ func SearchMessages(c *gin.Context) {
 }
 
 func GetMessageQuoteChain(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
 	msgIDStr := c.Param("id")
 
 	msgID, err := strconv.ParseUint(msgIDStr, 10, 32)
@@ -1283,7 +1315,7 @@ func GetMessageQuoteChain(c *gin.Context) {
 
 	msgSvc := di.GlobalContainer.MessageService
 
-	quoteChain, err := msgSvc.GetMessageQuoteChain(uint(msgID), userID.(uint))
+	quoteChain, err := msgSvc.GetMessageQuoteChain(uint(msgID), uid)
 	if err != nil {
 		if err == service.ErrMessageNotFound {
 			response.NotFound(c, "消息不存在")

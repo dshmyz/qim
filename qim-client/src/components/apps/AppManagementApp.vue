@@ -115,6 +115,7 @@
 import { ref, onMounted } from 'vue'
 import { appsApi } from '../../api'
 import { logger } from '../../utils/logger';
+import QMessageBox from '../../utils/qmessagebox'
 import AppHeader from './AppHeader.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
@@ -226,24 +227,38 @@ const saveApp = async () => {
     await loadApps()
     window.dispatchEvent(new CustomEvent('refresh-user-apps'))
     logger.log('应用保存成功')
-  } catch (error) {
+    QMessage.success(selectedApp.value ? '应用已更新' : '应用已创建')
+  } catch (error: any) {
+    const msg = error?.message || ''
+    if (msg.includes('权限')) {
+      QMessage.error('权限不足，无法执行此操作')
+    } else {
+      QMessage.error('保存应用失败，请稍后重试')
+    }
     console.error('应用保存异常:', error)
   }
 }
 
 // 删除应用
 const deleteApp = async (appId: number) => {
-  if (confirm('确定要删除这个应用吗？')) {
-    try {
-      logger.log('删除应用:', appId)
-      await appsApi.remove(appId)
-      await loadApps()
-      // 通知父组件重新加载用户应用
-      window.dispatchEvent(new CustomEvent('refresh-user-apps'))
-      logger.log('应用删除成功')
-    } catch (error) {
-      console.error('应用删除异常:', error)
+  const result = await QMessageBox.confirm('确定要删除这个应用吗？', '删除应用', { confirmButtonText: '删除', type: 'warning' })
+  if (result.action !== 'confirm') return
+  try {
+    logger.log('删除应用:', appId)
+    await appsApi.remove(appId)
+    await loadApps()
+    // 通知父组件重新加载用户应用
+    window.dispatchEvent(new CustomEvent('refresh-user-apps'))
+    logger.log('应用删除成功')
+    QMessage.success('应用已删除')
+  } catch (error: any) {
+    const msg = error?.message || ''
+    if (msg.includes('权限')) {
+      QMessage.error('权限不足，无法执行此操作')
+    } else {
+      QMessage.error('删除应用失败，请稍后重试')
     }
+    console.error('应用删除异常:', error)
   }
 }
 

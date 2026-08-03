@@ -25,6 +25,7 @@
       @toggle-message-selection="emit('toggle-message-selection', $event)"
       @load-more="emit('load-more')"
       @scroll="handleMessageListScroll"
+      @recall-edit="(originalContent: string) => emit('recall-edit', originalContent)"
     />
 
     <!-- 群成员侧边栏 -->
@@ -101,6 +102,7 @@ const emit = defineEmits<{
   'show-member-context-menu': [event: MouseEvent, member: Member]
   'start-private-chat': [member: Member]
   'update:member-search-query': [value: string]
+  'recall-edit': [originalContent: string]
 }>()
 
 const messageListViewRef = ref<InstanceType<typeof MessageListView>>()

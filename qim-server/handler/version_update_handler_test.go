@@ -104,7 +104,7 @@ func TestGetLatestYML_UsesAbsoluteURLAndFilenamePathForPublicFileDownload(t *tes
 		ID:           1,
 		Name:         "QIM-2.0.0.dmg",
 		OriginalName: "QIM-2.0.0.dmg",
-		StoragePath:  "/uploads/updates/QIM-2.0.0.dmg",
+		StoragePath:  "/static/uploads/updates/QIM-2.0.0.dmg",
 		Size:         123456,
 	}
 	err := db.Create(&file).Error
@@ -144,7 +144,7 @@ func TestHandleUpdateRequest_RedirectsInstallerFilenameToDownloadURL(t *testing.
 		ID:           1,
 		Name:         "QIM-2.0.0.dmg",
 		OriginalName: "QIM-2.0.0.dmg",
-		StoragePath:  "/uploads/updates/QIM-2.0.0.dmg",
+		StoragePath:  "/static/uploads/updates/QIM-2.0.0.dmg",
 		Size:         123456,
 	}
 	assert.NoError(t, db.Create(&file).Error)

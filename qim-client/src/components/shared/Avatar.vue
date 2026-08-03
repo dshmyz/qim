@@ -43,7 +43,7 @@ import { getAvatarColor, getInitial, isAbsoluteUrl } from '../../utils/avatar'
 interface Props {
   src?: string | null
   name?: string
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   shape?: 'circle' | 'rounded'
   serverUrl?: string
   alt?: string
@@ -199,6 +199,12 @@ watch(() => props.src, () => {
   text-transform: uppercase;
   user-select: none;
   border-radius: inherit;
+}
+
+.avatar-xs {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
 }
 
 .avatar-sm {

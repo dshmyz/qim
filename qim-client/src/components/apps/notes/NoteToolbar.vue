@@ -2,8 +2,13 @@
   <div class="note-toolbar">
     <div class="toolbar-row">
       <div class="toolbar-section">
-        <button class="tb-btn labeled save" @click="$emit('save')" :disabled="saving" title="保存 (Ctrl+S)">
-          <i class="fas fa-save"></i><span>保存</span>
+        <button
+          :class="['tb-btn', 'labeled', 'save', { 'is-saved': saveStatusLabel === '已保存', 'is-error': saveStatusLabel === '保存失败' }]"
+          @click="$emit('save')"
+          :disabled="saving"
+          :title="saveStatusTitle"
+        >
+          <i :class="saveStatusIcon"></i><span>{{ saveStatusLabel }}</span>
         </button>
         <button class="tb-btn labeled delete" @click="$emit('delete')" title="删除">
           <i class="fas fa-trash"></i><span>删除</span>
@@ -111,9 +116,13 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import type { AutoSaveStatus } from '../../../composables/useAutoSave'
+
+const props = defineProps<{
   mode: 'edit' | 'split' | 'preview'
   saving?: boolean
+  saveStatus?: AutoSaveStatus
   analyzing?: boolean
   fullscreen?: boolean
 }>()
@@ -130,6 +139,45 @@ defineEmits<{
   delete: []
   'toggle-fullscreen': []
 }>()
+
+const saveStatusLabel = computed(() => {
+  switch (props.saveStatus) {
+    case 'saving':
+      return '保存中…'
+    case 'saved':
+      return '已保存'
+    case 'error':
+      return '保存失败'
+    default:
+      return '保存'
+  }
+})
+
+const saveStatusIcon = computed(() => {
+  switch (props.saveStatus) {
+    case 'saving':
+      return 'fas fa-spinner fa-spin'
+    case 'saved':
+      return 'fas fa-check'
+    case 'error':
+      return 'fas fa-exclamation-circle'
+    default:
+      return 'fas fa-save'
+  }
+})
+
+const saveStatusTitle = computed(() => {
+  switch (props.saveStatus) {
+    case 'saving':
+      return '正在保存…'
+    case 'saved':
+      return '所有改动已保存'
+    case 'error':
+      return '自动保存失败，点击此处手动重试 (Ctrl+S)'
+    default:
+      return '保存 (Ctrl+S)'
+  }
+})
 </script>
 
 <style scoped>
@@ -222,6 +270,16 @@ defineEmits<{
 
 .tb-btn.save:hover:not(:disabled) span {
   color: white;
+}
+
+.tb-btn.save.is-saved {
+  color: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.tb-btn.save.is-error {
+  color: var(--danger-color);
+  border-color: var(--danger-color);
 }
 
 .tb-btn.delete:hover:not(:disabled) {

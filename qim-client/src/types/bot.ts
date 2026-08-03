@@ -1,5 +1,7 @@
 // src/types/bot.ts
 
+import type { KnowledgeSource } from './index'
+
 export interface Bot {
   id: number
   name: string
@@ -29,6 +31,7 @@ export interface BotWebhookConfig {
   mode?: 'internal_ai' | 'external_webhook'
   webhook_url?: string
   webhook_secret?: string // 仅写入，服务端不回显
+  use_creator_notes?: boolean // internal_ai 模式下是否读取创建者笔记作为知识库
 }
 
 // Bot 访问令牌信息（列表用，不含明文/hash）。
@@ -54,6 +57,8 @@ export interface BotMessage {
   content: string
   timestamp: Date
   isStreaming?: boolean
+  // Bot 回复命中笔记时的知识来源（标题/分数）
+  knowledge_sources?: KnowledgeSource[]
 }
 
 export interface BotConversation {

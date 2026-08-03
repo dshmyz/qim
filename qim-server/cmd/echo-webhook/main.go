@@ -56,7 +56,7 @@ func main() {
 		fmt.Printf("sig:      %s\n", sig)
 		fmt.Printf("ts:       %s\n", ts)
 		fmt.Printf("payload:\n%s\n", string(pretty))
-		fmt.Println("======================================\n")
+		fmt.Println("======================================")
 
 		// 返回 200，让 qim-server 标记投递成功；否则会走重试/死信
 		w.WriteHeader(http.StatusOK)

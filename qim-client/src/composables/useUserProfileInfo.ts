@@ -10,6 +10,8 @@ export interface UserProfileInfo {
   department?: string
   ip?: string
   avatar?: string
+  // 用户类型（user/bot/system 等），由后端返回，部分场景需要区分
+  type?: string
 }
 
 export interface FetchUserProfileResult {

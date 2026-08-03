@@ -87,6 +87,7 @@ type ServerConfig struct {
 type ClusterConfig struct {
 	Enabled bool     `yaml:"enabled"`
 	Nodes   []string `yaml:"nodes"`
+	Scheme  string   `yaml:"scheme"` // 节点间通信协议：http 或 https，默认 http
 }
 
 type NodeConfig struct {
@@ -380,6 +381,7 @@ func getDefaultConfig() yamlConfig {
 		Cluster: ClusterConfig{
 			Enabled: false,
 			Nodes:   []string{},
+			Scheme:  "http",
 		},
 		Storage: StorageConfig{
 			Type: "local",

@@ -97,7 +97,23 @@ func GetPublicSystemConfig(c *gin.Context) {
 		return
 	}
 
+	// vector_enabled 不存数据库（基础设施状态，不是用户配置），
+	// 由 handler 运行时注入：VectorService 非 nil 即视为可用。
+	// 前端据此显示「知识库开关无效」等提示，避免用户开了开关但实际没生效。
+	vectorEnabled := di.GlobalContainer.VectorService != nil
+	result = mergeRuntimeFlags(result, vectorEnabled)
+
 	response.Success(c, result)
+}
+
+// mergeRuntimeFlags 把运行时基础设施状态合并进配置结果。
+// 抽成函数便于单元测试（handler 直接依赖 di.GlobalContainer 不易测）。
+func mergeRuntimeFlags(result map[string]interface{}, vectorEnabled bool) map[string]interface{} {
+	if result == nil {
+		result = map[string]interface{}{}
+	}
+	result["vector_enabled"] = vectorEnabled
+	return result
 }
 
 func UpdateSystemConfig(c *gin.Context) {

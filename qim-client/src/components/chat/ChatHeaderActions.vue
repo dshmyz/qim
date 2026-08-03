@@ -169,8 +169,6 @@ const emit = defineEmits<{
     aiTriggerKeywords: string[];
     aiLearnEnabled: boolean;
   }]
-  'update-avatar-enabled': [value: boolean]
-  'open-group-files': []
 }>()
 
 // 注入群管理操作（来自 Main.vue）

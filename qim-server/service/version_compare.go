@@ -12,6 +12,9 @@ import (
 // versionFormatRegex 与前端 \d+\.\d+\.\d+ 校验保持一致，要求三段数字
 var versionFormatRegex = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
+// ErrNoVersionAvailable 表示无可用版本（业务层面的"未配置"，非 DB 异常）
+var ErrNoVersionAvailable = errors.New("无可用版本")
+
 // IsValidVersion 校验版本号格式
 // 与前端 \d+\.\d+\.\d+ 校验一致，要求三段数字（如 2.1.0），不接受 2.1 或 2.1.0-beta
 func IsValidVersion(v string) bool {
@@ -28,7 +31,7 @@ func CompareVersions(a, b string) int {
 // 修复原先按 created_at DESC 排序导致的补录旧版本误判问题
 func LatestVersion(versions []model.ClientVersion) (*model.ClientVersion, error) {
 	if len(versions) == 0 {
-		return nil, errors.New("无可用版本")
+		return nil, ErrNoVersionAvailable
 	}
 	latest := &versions[0]
 	for i := 1; i < len(versions); i++ {

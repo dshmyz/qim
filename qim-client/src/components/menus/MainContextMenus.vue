@@ -82,9 +82,8 @@ const emit = defineEmits<{
   'closeAllMenus': []
 }>()
 
-const canCreateChannel = computed(() => {
-  return props.currentUser?.isAdmin || props.currentUser?.roles?.includes('system_admin')
-})
+// 所有用户均可创建频道，后台审批即可
+const canCreateChannel = computed(() => true)
 
 const canPublishSystemMessage = computed(() => {
   return props.currentUser?.isAdmin ||

@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/middleware"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/scheduler"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -47,9 +48,11 @@ type Container struct {
 	SystemConfigService  *service.SystemConfigService
 	ShortLinkService     *service.ShortLinkService
 	ChannelService       *service.ChannelService
+	RenderRuleService    *service.RenderRuleService
 	BotService           *service.BotService
 	AIProviderService    *service.AIProviderService
 	GroupDocumentService *service.GroupDocumentService
+	UserSettingService   *service.UserSettingService
 	AIConfigService      *service.AIConfigService
 	ChunkService         *service.ChunkService
 	VectorService        *service.VectorService
@@ -80,6 +83,25 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		if _, err := aiProviderService.ReloadEnabledProviders(aiService); err != nil {
 			logger.WithModule("DI").Warn("从数据库加载 AI Provider 失败", "error", err)
 		}
+
+		// Token 用量异步落库：每次 LLM 调用完成后写入 ai_usage_logs 表
+		aiService.SetUsageSink(func(taskType ai.TaskType, providerName, modelName string, usage *ai.TokenUsage, durationMs int64) {
+			go func() {
+				log := model.AIUsageLog{
+					Provider:  providerName,
+					Model:     modelName,
+					TaskType:  string(taskType),
+					CallType:  "chat",
+					TokensIn:  usage.PromptTokens,
+					TokensOut: usage.CompletionTokens,
+					Duration:  durationMs,
+					Status:    "success",
+				}
+				if err := db.Create(&log).Error; err != nil {
+					logger.WithModule("AIUsage").Warn("token 用量落库失败", "error", err)
+				}
+			}()
+		})
 	}
 
 	userService := service.NewUserService(db)
@@ -137,8 +159,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	systemConfigService := service.NewSystemConfigService(db)
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
+	renderRuleService := service.NewRenderRuleService(db)
 	botService := service.NewBotService(db)
 	groupDocumentService := service.NewGroupDocumentService(db, storageAccessor)
+	userSettingService := service.NewUserSettingService(db)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 
 	// 初始化 ChunkService
@@ -178,6 +202,9 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		noteService.SetVectorService(noteVectorSvc)
 		groupDocumentService.SetVectorServices(vectorSvc)
 		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc)
+		// 用户自建 bot（internal_ai 模式）读取创建者笔记作为知识库：
+		// SearchNotes 内部按 user_notes_<userID> 分集合，scope 天然隔离，只能读创建者自己的笔记
+		messageService.SetNoteSearcher(noteVectorSvc)
 	}
 
 	promptManager := service.NewPromptManager()
@@ -211,9 +238,11 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		SystemConfigService:  systemConfigService,
 		ShortLinkService:     shortLinkService,
 		ChannelService:       channelService,
+		RenderRuleService:    renderRuleService,
 		BotService:           botService,
 		AIProviderService:    aiProviderService,
 		GroupDocumentService: groupDocumentService,
+		UserSettingService:   userSettingService,
 		AIConfigService:      aiConfigService,
 		ChunkService:         chunkService,
 		VectorService:        vectorSvc,

@@ -23,6 +23,10 @@ export interface User {
   type?: 'user' | 'bot' | 'system' | 'api'
   isBot?: boolean
   tags?: string[]
+  // 后端 /api/v1/users/me 实际返回，部分模块依赖
+  isAdmin?: boolean
+  roles?: string[]
+  signature?: string
   preferences?: {
     theme?: 'light' | 'dark' | 'system'
     language?: string
@@ -69,6 +73,21 @@ export interface Message {
   // 卡片已点击的 action_id（服务端从 CardActionRecord 派生，跨设备一致）
   cardActionId?: string
   originalData?: any
+  // 文件类消息附件信息（后端实际返回，部分模块依赖）
+  file_name?: string
+  file_size?: number
+  file_url?: string
+  avatar_name?: string
+  // Bot 回复命中创建者笔记时的知识来源（标题/分数），用于折叠「知识来源」标签
+  knowledge_sources?: KnowledgeSource[]
+  // 消息附加信息（JSON 字符串），撤回时保存原始内容用于重新编辑
+  extra?: string
+}
+
+// KnowledgeSource Bot 回复命中笔记的最小展示结构
+export interface KnowledgeSource {
+  title: string
+  score: number
 }
 
 export interface Conversation {
@@ -107,6 +126,7 @@ export interface Conversation {
     ai_anti_spam_interval?: number
     ai_trigger_keywords?: string
     ai_learn_enabled?: boolean
+    ai_extract_todos?: boolean
   }
   approval_status?: 'pending' | 'approved' | 'rejected'
   applied_at?: string

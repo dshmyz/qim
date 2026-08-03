@@ -115,7 +115,7 @@ import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { request } from '../../composables/useRequest'
-import type { ChannelMessage } from '../../types'
+import type { ChannelMessage, Channel } from '../../types'
 
 const { serverUrl } = useServerUrl()
 

@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 
 /**
  * 快捷键配置接口
@@ -7,67 +7,75 @@ export interface ShortcutConfig {
   key: string
   ctrlKey?: boolean
   shiftKey?: boolean
+  altKey?: boolean
   metaKey?: boolean
   action: () => void
   description: string
 }
 
 /**
+ * 将 accelerator 字符串（如 'CommandOrControl+Shift+L'）解析为 ShortcutConfig 片段
+ * 返回 { key, ctrlKey, shiftKey, metaKey }（不含 action/description）
+ */
+export function parseAccelerator(accel: string): { key: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean } {
+  const parts = accel.split('+').map(p => p.trim())
+  const result: { key: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean } = { key: '' }
+  for (const part of parts) {
+    if (part === 'CommandOrControl' || part === 'Mod') {
+      result.ctrlKey = true // ctrlKey 同时匹配 Ctrl 和 Meta（见匹配逻辑）
+    } else if (part === 'Shift') {
+      result.shiftKey = true
+    } else if (part === 'Alt' || part === 'Option') {
+      result.altKey = true
+    } else if (part === 'Control') {
+      result.ctrlKey = true
+    } else if (part === 'Meta') {
+      result.metaKey = true
+    } else {
+      result.key = part.toLowerCase()
+    }
+  }
+  return result
+}
+
+/**
  * AI 快捷键管理 composable
- * 提供全局快捷键注册、启用/禁用、事件监听等功能
- * 
- * @param shortcuts 快捷键配置列表
- * @param enabled 是否启用，默认为 true
- * 
- * @example
- * ```ts
- * const shortcuts: ShortcutConfig[] = [
- *   {
- *     key: 'k',
- *     ctrlKey: true,
- *     action: () => openAIQuickPanel(),
- *     description: '打开 AI 快捷面板'
- *   },
- *   {
- *     key: 'S',
- *     ctrlKey: true,
- *     shiftKey: true,
- *     action: () => generateSummary(),
- *     description: '快速生成会话摘要'
- *   }
- * ]
- * 
- * useAIKeyboardShortcuts(shortcuts, true)
- * ```
+ * 支持静态数组或 Ref<ShortcutConfig[]>，后者可在运行时更新快捷键配置
  */
 export function useAIKeyboardShortcuts(
-  shortcuts: ShortcutConfig[],
+  shortcuts: ShortcutConfig[] | Ref<ShortcutConfig[]>,
   enabled: boolean = true
 ) {
   const isEnabled = ref(enabled)
 
+  // 始终从 ref 读取，兼容静态数组和 Ref
+  const shortcutsRef = ref(
+    Array.isArray(shortcuts) ? shortcuts : shortcuts.value
+  )
+  if (!Array.isArray(shortcuts)) {
+    watch(shortcuts, (val: ShortcutConfig[]) => { shortcutsRef.value = val })
+  }
+
   const handleKeydown = (event: KeyboardEvent) => {
-    // 如果快捷键被禁用，不处理
     if (!isEnabled.value) return
 
-    // 如果用户在输入框中，不触发全局快捷键（除非是明确需要在全局触发的）
     const target = event.target as HTMLElement
     if (
       target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||
       target.isContentEditable
     ) {
-      // 允许 Ctrl+Shift 组合快捷键即使在输入框中也触发
       const hasCtrlShift = event.ctrlKey || event.metaKey
       if (!hasCtrlShift) return
     }
 
-    for (const shortcut of shortcuts) {
+    for (const shortcut of shortcutsRef.value) {
       const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase()
       const ctrlMatch = shortcut.ctrlKey ? (event.ctrlKey || event.metaKey) : true
       const shiftMatch = shortcut.shiftKey ? event.shiftKey : !event.shiftKey
+      const altMatch = shortcut.altKey ? event.altKey : !event.altKey
 
-      if (keyMatch && ctrlMatch && shiftMatch) {
+      if (keyMatch && ctrlMatch && shiftMatch && altMatch) {
         event.preventDefault()
         shortcut.action()
         break

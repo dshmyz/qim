@@ -164,11 +164,14 @@ func TestAdminRoutes_WithoutRequireRole_AllowsNormalUser(t *testing.T) {
 
 // --- S4: 移除 URL Query 传 Token ---
 
-// generateTestToken 生成一个有效的 JWT token 用于测试
+// generateTestToken 生成一个有效的 JWT access token 用于测试。
+// TokenType 必须设为 "access"，与 AuthMiddleware 的 token_type 校验一致，
+// 否则 AuthMiddleware 会以"认证令牌类型无效"拒绝。
 func generateTestToken(secret string, userID uint, username string) string {
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:    userID,
+		Username:  username,
+		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

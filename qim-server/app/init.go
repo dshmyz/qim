@@ -12,6 +12,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/service/storage"
 	"github.com/dshmyz/qim/qim-server/test"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -329,7 +330,7 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	}
 
 	// 初始化WebSocket Hub
-	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret)
+	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret, cfg.Cluster.Scheme)
 	ws.GlobalHub = hub
 	go hub.Run()
 
@@ -383,6 +384,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.CrashLog{},
 		&model.Approval{},
 		&model.ApprovalConfig{},
+		&model.UserSetting{},
 	}
 
 	// ========== 第二阶段：关联表（有外键依赖） ==========
@@ -436,6 +438,64 @@ func MigrateDB(db *gorm.DB) error {
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+	seedRenderRules(db)
+
+	if err := migrateStoragePaths(db); err != nil {
+		return fmt.Errorf("迁移存储路径失败: %w", err)
+	}
+
+	return nil
+}
+
+// migrateStoragePaths 将历史 storage_path 从旧格式迁移到 /static/ 统一前缀。
+// 旧格式：/uploads/xxx 或 /s3/uploads/xxx
+// 新格式：/static/uploads/xxx
+// 幂等：已经是 /static/ 开头的不动。
+func migrateStoragePaths(db *gorm.DB) error {
+	tables := []struct {
+		name   string
+		column string
+	}{
+		{"files", "storage_path"},
+		{"user_feedbacks", "screenshot"},
+	}
+
+	for _, t := range tables {
+		if !tableExists(db, t.name) {
+			continue
+		}
+
+		// SQLite 不支持在 UPDATE 中用复杂字符串函数，这里先查出再逐条更新
+		type legacyRow struct {
+			ID    uint
+			Value string
+		}
+		var rows []legacyRow
+		if err := db.Table(t.name).
+			Select("id, " + t.column + " AS value").
+			Where(t.column + " LIKE '/uploads/%' OR " + t.column + " LIKE '/s3/%'").
+			Find(&rows).Error; err != nil {
+			return fmt.Errorf("查询 %s.%s 旧格式数据失败: %w", t.name, t.column, err)
+		}
+
+		if len(rows) == 0 {
+			continue
+		}
+
+		logger.WithModule("Migrate").Info("迁移存储路径", "table", t.name, "column", t.column, "count", len(rows))
+
+		for _, row := range rows {
+			newPath := storage.MigratePath(row.Value)
+			if newPath == row.Value {
+				continue
+			}
+			if err := db.Table(t.name).Where("id = ?", row.ID).
+				Update(t.column, newPath).Error; err != nil {
+				return fmt.Errorf("更新 %s.%s (id=%d) 失败: %w", t.name, t.column, row.ID, err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -812,6 +872,24 @@ func seedMessageRemindWebhook(db *gorm.DB) {
 	logger.WithModule("Migrate").Info("消息提醒 webhook 配置初始化完成")
 }
 
+// seedRenderRules 初始化消息渲染增强规则默认配置
+// 默认关闭，管理员在后台审核正则后启用
+func seedRenderRules(db *gorm.DB) {
+	defaultRules := `[
+{"id":"jira_ticket","name":"Jira 工单卡片化","enabled":false,"priority":10,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"\\b([A-Z]{2,6})-(\\d{1,6})\\b","flags":"g","capture_groups":{"project":1,"number":2}},"render":{"type":"link_card","url_template":"http://jira.xxx.com/{{project}}/{{project}}-{{number}}","label_template":"{{project}}-{{number}}","title_template":"查看 Jira 工单 {{project}}-{{number}}","icon":"fab fa-jira","target":"_blank","class":"jira-ticket-card"}},
+{"id":"github_pr_link","name":"GitHub PR 链接化","enabled":false,"priority":20,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"#PR(\\d+)","flags":"g","capture_groups":{"number":1}},"render":{"type":"link","url_template":"https://github.com/org/repo/pull/{{number}}","label_template":"#PR{{number}}","title_template":"查看 GitHub PR #{{number}}","target":"_blank","class":"github-pr-link"}},
+{"id":"mention_highlight","name":"@提及高亮标签","enabled":false,"priority":30,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"@([一-鿿A-Za-z0-9_]+)","flags":"g","capture_groups":{"name":1}},"render":{"type":"text_chip","label_template":"@{{name}}","class":"mention-chip"}}
+]`
+	defaultCfg := model.SystemConfig{
+		ConfigKey: "render_rules",
+		Value:     defaultRules,
+		Type:      "json",
+		Desc:      "消息渲染增强规则",
+	}
+	db.Where("config_key = ?", defaultCfg.ConfigKey).FirstOrCreate(&defaultCfg)
+	logger.WithModule("Migrate").Info("渲染增强规则配置初始化完成")
+}
+
 // seedApprovalConfigs 初始化审批配置
 func seedApprovalConfigs(db *gorm.DB) {
 	if isMigrationCompleted(db, "seed_approval_configs") {
@@ -883,6 +961,24 @@ func addIndexes(db *gorm.DB) {
 			} else {
 				logger.WithModule("Index").Warn("创建 FTS5 虚拟表失败，将使用 LIKE 搜索", "error", err)
 			}
+		}
+	}
+
+	// 5. client_versions 索引迁移：旧 (version, platform, deleted_at) → 新 (app_type, version, platform, deleted_at)
+	// GORM AutoMigrate 不会修改已有索引，需手动重建
+	if tableExists(db, "client_versions") {
+		migrateColumnExists, _ := migrationColumnExists(db, &model.ClientVersion{}, "app_type")
+		if migrateColumnExists {
+			// 新字段已存在，重建索引以包含 app_type
+			if db.Migrator().HasIndex(&model.ClientVersion{}, "idx_version_platform") {
+				if err := db.Exec(database.D.DropIndexSQL("idx_version_platform", "client_versions")).Error; err != nil {
+					logger.WithModule("Index").Warn("删除 client_versions 旧索引失败", "error", err)
+				}
+			}
+			if err := db.Exec(database.D.CreateUniqueIndexSQL("idx_version_platform", "client_versions", []string{"app_type", "version", "platform", "deleted_at"})).Error; err != nil {
+				logger.WithModule("Index").Warn("重建 client_versions 唯一索引失败", "error", err)
+			}
+			logger.WithModule("Index").Info("重建 client_versions 索引 (app_type, version, platform, deleted_at)")
 		}
 	}
 }
