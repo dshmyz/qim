@@ -6,6 +6,8 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
   const enableAI = ref(true)
   const enableReadReceipt = ref(true)
   const messageRecallTime = ref(120)
+  // 向量库是否可用（服务端运行时注入，决定机器人知识库开关是否生效）
+  const vectorEnabled = ref(false)
   const loaded = ref(false)
 
   async function fetchPublicConfig() {
@@ -15,6 +17,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
       if (data.enableAI !== undefined) enableAI.value = data.enableAI
       if (data.enableReadReceipt !== undefined) enableReadReceipt.value = data.enableReadReceipt
       if (data.messageRecallTime !== undefined) messageRecallTime.value = data.messageRecallTime
+      if (data.vector_enabled !== undefined) vectorEnabled.value = data.vector_enabled === true
       loaded.value = true
     } catch (e) {
       console.warn('获取公开系统配置失败:', e)
@@ -25,6 +28,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
     if (data?.enableAI !== undefined) enableAI.value = data.enableAI
     if (data?.enableReadReceipt !== undefined) enableReadReceipt.value = data.enableReadReceipt
     if (data?.messageRecallTime !== undefined) messageRecallTime.value = data.messageRecallTime
+    if (data?.vector_enabled !== undefined) vectorEnabled.value = data.vector_enabled === true
   }
 
   function canRecall(messageCreatedAt: number | string | Date): boolean {
@@ -38,6 +42,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
     enableAI,
     enableReadReceipt,
     messageRecallTime,
+    vectorEnabled,
     loaded,
     fetchPublicConfig,
     updateFromServer,

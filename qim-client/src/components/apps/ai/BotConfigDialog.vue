@@ -9,51 +9,16 @@
         <i class="fas fa-clock"></i>
         <span>机器人当前为「{{ bot.approval_status === 'rejected' ? '已拒绝' : '待审批' }}」状态，配置和令牌签发功能暂不可用，需管理员审批通过后方可操作。</span>
       </div>
-      <!-- 模式切换 -->
-      <section class="config-section">
-        <h4>回复模式</h4>
-        <div class="mode-options">
-          <label class="mode-option" :class="{ active: form.mode === 'internal_ai' }">
-            <input type="radio" v-model="form.mode" value="internal_ai" />
-            <div class="mode-text">
-              <span class="mode-title">内置 AI</span>
-              <span class="mode-desc">用户回复走 QIM 内置大模型，无需额外配置</span>
-            </div>
-          </label>
-          <label class="mode-option" :class="{ active: form.mode === 'external_webhook' }">
-            <input type="radio" v-model="form.mode" value="external_webhook" />
-            <div class="mode-text">
-              <span class="mode-title">外部 Agent（Webhook）</span>
-              <span class="mode-desc">用户回复转发到外部 agent（如 Claude Code），agent 经 Bot API 回复</span>
-            </div>
-          </label>
-        </div>
-      </section>
-
-      <!-- Webhook 配置（仅 external 模式） -->
-      <section v-if="form.mode === 'external_webhook'" class="config-section">
-        <h4>Webhook 配置</h4>
-        <div class="form-field">
-          <label>回调地址</label>
-          <input v-model="form.webhook_url" placeholder="https://your-agent.example/qim-webhook" />
-          <p class="field-hint">QIM 把用户回复 POST 到此地址（HMAC-SHA256 签名）</p>
-        </div>
-        <div class="form-field">
-          <label>签名密钥</label>
-          <div class="secret-field">
-            <input
-              :type="showSecret ? 'text' : 'password'"
-              v-model="form.webhook_secret"
-              :placeholder="secretPlaceholder"
-            />
-            <button type="button" class="mini-btn" @click="generateSecret">生成随机</button>
-            <button type="button" class="mini-btn" @click="showSecret = !showSecret">
-              {{ showSecret ? '隐藏' : '显示' }}
-            </button>
-          </div>
-          <p class="field-hint">留空则不修改既有密钥（仅写入，服务端不回显）</p>
-        </div>
-      </section>
+      <!-- 回复模式 + Webhook 配置 + 知识库（统一子组件） -->
+      <BotReplyConfigFields
+        v-model:mode="form.mode"
+        v-model:use-creator-notes="form.use_creator_notes"
+        v-model:webhook-url="form.webhook_url"
+        v-model:webhook-secret="form.webhook_secret"
+        secret-placeholder="••••••（留空不修改）"
+        secret-hint="留空则不修改既有密钥（仅写入，服务端不回显）"
+        :vector-enabled="vectorEnabled"
+      />
 
       <!-- Token 管理 -->
       <section class="config-section">
@@ -144,18 +109,20 @@
 import { ref, computed, onMounted } from 'vue'
 import { useBotConfig } from '../../../composables/useBotConfig'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
+import { useSystemConfigStore } from '../../../stores/systemConfig'
 import type { BotTokenInfo, BotWebhookConfig } from '../../../types/bot'
 import QMessageBox from '../../../utils/qmessagebox'
+import BotReplyConfigFields from './BotReplyConfigFields.vue'
 
 const QMessage = (window as any).$QMessage
 const props = defineProps<{ bot: any }>()
 const emit = defineEmits(['close', 'saved'])
 
 const { loading, issueToken, listTokens, revokeToken, updateConfig } = useBotConfig()
+const systemConfigStore = useSystemConfigStore()
+const vectorEnabled = computed(() => systemConfigStore.vectorEnabled)
 
-const form = ref<BotWebhookConfig>({ mode: 'internal_ai', webhook_url: '', webhook_secret: '' })
-const secretPlaceholder = ref('••••••（留空不修改）')
-const showSecret = ref(false)
+const form = ref<BotWebhookConfig>({ mode: 'internal_ai', webhook_url: '', webhook_secret: '', use_creator_notes: false })
 const tokens = ref<BotTokenInfo[]>([])
 const newToken = ref<{ token: string; id: number } | null>(null)
 const issuing = ref(false)
@@ -217,6 +184,7 @@ const parseCurrentConfig = () => {
     mode: cfg.mode === 'external_webhook' ? 'external_webhook' : 'internal_ai',
     webhook_url: cfg.webhook_url || '',
     webhook_secret: '', // 不回显，留空表示不修改
+    use_creator_notes: cfg.use_creator_notes === true,
   }
 }
 
@@ -227,15 +195,11 @@ const loadTokens = async () => {
 onMounted(async () => {
   parseCurrentConfig()
   await loadTokens()
+  // 触发公开配置加载（若其他组件已加载过，store 内 loaded 标志会避免重复请求语义，此处仍保证最新）
+  if (!systemConfigStore.loaded) {
+    systemConfigStore.fetchPublicConfig()
+  }
 })
-
-const generateSecret = () => {
-  const arr = new Uint8Array(32)
-  crypto.getRandomValues(arr)
-  const hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
-  form.value.webhook_secret = hex
-  showSecret.value = true
-}
 
 const copyToken = async (token: string) => {
   try {
@@ -284,6 +248,8 @@ const onSave = async () => {
       payload.webhook_url = form.value.webhook_url
       if (form.value.webhook_secret) payload.webhook_secret = form.value.webhook_secret
     }
+    // internal_ai 模式下送 use_creator_notes；external_webhook 模式下也送（保留 false，避免模式切换后状态遗留）
+    payload.use_creator_notes = form.value.mode === 'internal_ai' && form.value.use_creator_notes === true
     await updateConfig(props.bot.id, payload)
     QMessage.success('配置已保存')
     emit('saved')

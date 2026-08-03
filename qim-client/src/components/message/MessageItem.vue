@@ -36,6 +36,14 @@
         <!-- 撤回消息 -->
         <div v-if="isRecalled" class="message-bubble recalled-message">
           <span>{{ isSelf ? '你' : (message.sender.name || '未知用户') }} 撤回了一条消息</span>
+          <button
+            v-if="isSelf"
+            class="recall-edit-btn"
+            @click="handleRecallEdit"
+            title="重新编辑"
+          >
+            <i class="fas fa-edit"></i> 重新编辑
+          </button>
         </div>
 
         <template v-else>
@@ -143,6 +151,12 @@
           </div>
         </template>
 
+        <!-- Bot 回复命中笔记时的知识来源折叠标签（仅 markdown/streaming 类型且有数据时展示） -->
+        <KnowledgeSources
+          v-if="(message.type === 'markdown' || message.type === 'streaming') && message.knowledge_sources && message.knowledge_sources.length > 0"
+          :sources="message.knowledge_sources"
+        />
+
         <div class="message-meta">
           <span class="message-meta-badge">
             <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant' && !message.isStreaming" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
@@ -181,6 +195,7 @@ import MarkdownMessage from './MarkdownMessage.vue'
 import MergedForwardMessage from './MergedForwardMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
 import CardMessage from './CardMessage.vue'
+import KnowledgeSources from './KnowledgeSources.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
@@ -259,11 +274,26 @@ const emit = defineEmits<{
   retrySendMessage: [message: any]
   showReadUsers: [message: any]
   imageLoaded: []
+  recallEdit: [originalContent: string]
 }>()
 
 // 处理消息右键菜单（统一触发 contextmenu 事件）
 const handleContextMenu = (event: MouseEvent) => {
   emit('contextmenu', event, props.message)
+}
+
+// 处理撤回消息的重新编辑
+const handleRecallEdit = () => {
+  let originalContent = ''
+  if (props.message.extra) {
+    try {
+      const extraData = JSON.parse(props.message.extra)
+      originalContent = extraData.original_content || ''
+    } catch (e) {
+      console.error('解析 extra 失败:', e)
+    }
+  }
+  emit('recallEdit', originalContent)
 }
 
 // 格式化时间函数
@@ -446,6 +476,31 @@ const convertUrlsToLinks = (text: string): string => {
   font-size: 12px;
   padding: 8px 12px;
   border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recall-edit-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color, #3b82f6);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recall-edit-btn:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.recall-edit-btn i {
+  font-size: 11px;
 }
 
 .message-meta {

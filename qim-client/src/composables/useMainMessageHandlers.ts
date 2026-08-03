@@ -43,7 +43,11 @@ export function useMainMessageHandlers() {
       is_ai_message: msg.is_ai_message || false,
       ai_assistant_name: msg.ai_assistant_name || '',
       avatar_name: msg.avatar_name || '',
+      // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）
+      knowledge_sources: Array.isArray(msg.knowledge_sources) ? msg.knowledge_sources : undefined,
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
+      // 消息附加信息（撤回时保存原始内容用于重新编辑）
+      extra: msg.extra || '',
       quotedMessage: msg.quoted_message ? {
         id: msg.quoted_message.id?.toString() || '',
         content: msg.quoted_message.content || '',

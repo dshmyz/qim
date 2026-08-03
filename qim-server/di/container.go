@@ -202,6 +202,9 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		noteService.SetVectorService(noteVectorSvc)
 		groupDocumentService.SetVectorServices(vectorSvc)
 		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc)
+		// 用户自建 bot（internal_ai 模式）读取创建者笔记作为知识库：
+		// SearchNotes 内部按 user_notes_<userID> 分集合，scope 天然隔离，只能读创建者自己的笔记
+		messageService.SetNoteSearcher(noteVectorSvc)
 	}
 
 	promptManager := service.NewPromptManager()

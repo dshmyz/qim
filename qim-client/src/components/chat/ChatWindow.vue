@@ -70,6 +70,7 @@
       @show-member-context-menu="handleShowMemberContextMenu"
       @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
       @update:member-search-query="(val) => memberSearchQuery = val"
+      @recall-edit="handleRecallEdit"
     />
 
     <div v-if="isMessageSelectionMode" class="message-selection-actions" aria-label="多选消息操作" role="toolbar">
@@ -2126,6 +2127,18 @@ const handleRecallMessage = async () => {
   if (!result.success) {
     $message.error(result.message || '撤回失败')
   }
+}
+
+// 处理撤回消息的重新编辑
+const handleRecallEdit = (originalContent: string) => {
+  inputMessage.value = originalContent
+  // 聚焦到输入框
+  nextTick(() => {
+    const input = document.querySelector('.message-input') as HTMLTextAreaElement
+    if (input) {
+      input.focus()
+    }
+  })
 }
 
 const closeMessageContextMenu = () => {

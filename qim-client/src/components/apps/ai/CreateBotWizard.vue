@@ -117,6 +117,18 @@
           <label>系统提示词</label>
           <textarea v-model="form.system_prompt" rows="5" placeholder="定义机器人的行为和角色..."></textarea>
         </div>
+
+        <!-- 回复模式 + Webhook 配置 + 知识库（统一子组件） -->
+        <BotReplyConfigFields
+          v-model:mode="form.mode"
+          v-model:use-creator-notes="form.use_creator_notes"
+          v-model:webhook-url="form.webhook_url"
+          v-model:webhook-secret="form.webhook_secret"
+          secret-placeholder="••••••（留空不设置）"
+          secret-hint="留空则不设置密钥；建议生成随机值保存到 agent 配置中"
+          :vector-enabled="vectorEnabled"
+        />
+
         <button class="submit-btn" @click="handleSubmit" :disabled="creating">
           {{ creating ? '创建中...' : '创建' }}
         </button>
@@ -131,7 +143,9 @@ import Avatar from '../../shared/Avatar.vue'
 import { useBots } from '../../../composables/useBots'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
+import { useSystemConfigStore } from '../../../stores/systemConfig'
 import type { UserAIConfig } from '../../../types/ai'
+import BotReplyConfigFields from './BotReplyConfigFields.vue'
 
 const QMessage = (window as any).$QMessage
 
@@ -146,13 +160,20 @@ const creating = ref(false)
 
 const { fetchTemplates, createBot } = useBots()
 const { configs: myConfigs, fetchConfigs } = useModelConfigs()
+const systemConfigStore = useSystemConfigStore()
+const vectorEnabled = computed(() => systemConfigStore.vectorEnabled)
 
 const form = ref({
   name: '',
   description: '',
   useSystemConfig: true,
   configId: null as number | null,
-  system_prompt: '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。'
+  system_prompt: '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。',
+  // 回复路由配置（与 BotConfigDialog 同字段，创建时一并提交）
+  mode: 'internal_ai' as 'internal_ai' | 'external_webhook',
+  use_creator_notes: false,
+  webhook_url: '',
+  webhook_secret: '',
 })
 
 // Connect step state
@@ -192,6 +213,10 @@ async function copyText(text: string, field: string) {
 onMounted(async () => {
   templates.value = await fetchTemplates()
   await fetchConfigs()
+  // 加载公开配置以获取向量库状态（决定知识库开关是否可用）
+  if (!systemConfigStore.loaded) {
+    systemConfigStore.fetchPublicConfig()
+  }
 })
 
 function selectTemplate(tpl: any) {
@@ -199,17 +224,36 @@ function selectTemplate(tpl: any) {
   form.value.description = tpl.description
   form.value.useSystemConfig = true
   form.value.configId = null
-  
+
+  // 默认值，模板未提供时回退到这些值
   let systemPrompt = ''
+  let mode: 'internal_ai' | 'external_webhook' = 'internal_ai'
+  let useCreatorNotes = false
+  let webhookUrl = ''
+
   if (tpl.config) {
     try {
       const config = typeof tpl.config === 'string' ? JSON.parse(tpl.config) : tpl.config
       systemPrompt = config.system_prompt || ''
+      if (config.mode === 'external_webhook') {
+        mode = 'external_webhook'
+        webhookUrl = config.webhook_url || ''
+      } else {
+        mode = 'internal_ai'
+        // 仅 internal_ai 模式下读取知识库开关
+        useCreatorNotes = config.use_creator_notes === true
+      }
     } catch (e) {
       console.error('解析模板配置失败', e)
     }
   }
+
   form.value.system_prompt = systemPrompt || '你是一个友好的AI助手，能够帮助用户回答问题、完成任务。请用简洁清晰的语言回复。'
+  form.value.mode = mode
+  form.value.use_creator_notes = useCreatorNotes
+  form.value.webhook_url = webhookUrl
+  // webhook_secret 不从模板预填：模板是共享配置，不应携带密钥；用户需自己生成或留空
+  form.value.webhook_secret = ''
   step.value = 'custom'
 }
 
@@ -226,15 +270,24 @@ async function handleSubmit() {
 
   creating.value = true
   try {
+    // 拼装 config：基础 AI 配置 + 回复路由配置（mode/webhook/知识库）
+    const config: Record<string, any> = {
+      system_prompt: form.value.system_prompt,
+      use_system_config: form.value.useSystemConfig,
+      user_config_id: form.value.configId,
+      mode: form.value.mode,
+      use_creator_notes: form.value.mode === 'internal_ai' && form.value.use_creator_notes === true,
+    }
+    if (form.value.mode === 'external_webhook') {
+      config.webhook_url = form.value.webhook_url
+      if (form.value.webhook_secret) config.webhook_secret = form.value.webhook_secret
+    }
+
     const response = await createBot({
       name: form.value.name,
       description: form.value.description,
       type: 'assistant',
-      config: {
-        system_prompt: form.value.system_prompt,
-        use_system_config: form.value.useSystemConfig,
-        user_config_id: form.value.configId
-      }
+      config,
     })
 
     if (response.code === 0) {

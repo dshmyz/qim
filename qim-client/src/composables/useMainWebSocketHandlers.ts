@@ -72,10 +72,11 @@ export function useMainWebSocketHandlers(
   const handleMessageRecalled = (data: any) => {
     const messageId = data.id.toString()
     const conversationId = data.conversation_id.toString()
+    const extra = data.extra || ''
     
     logger.log('收到消息撤回通知:', data)
     
-    chatStore.recallMessage(conversationId, messageId)
+    chatStore.recallMessage(conversationId, messageId, extra)
   }
 
   return {

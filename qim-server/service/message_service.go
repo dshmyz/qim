@@ -27,11 +27,18 @@ var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 var ErrMuted = errors.New("you are muted in this conversation")
 
+// NoteSearcher 笔记检索接口（用于 bot 回复时按创建者 scope 检索笔记作为知识库）。
+// *NoteVectorService 天然实现此接口；测试时可注入 mock。
+type NoteSearcher interface {
+	SearchNotes(userID uint, query string, topK int) ([]SearchResult, error)
+}
+
 type MessageService struct {
 	db  *gorm.DB
 	hub *ws.Hub
 
 	aiService            *ai.AIService
+	noteSearcher         NoteSearcher // bot 回复时按创建者 scope 检索笔记；nil=降级（不检索）
 	sensitiveWordCache   []model.SensitiveWord
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
@@ -47,6 +54,12 @@ func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *Messa
 
 func (s *MessageService) SetAIService(aiService *ai.AIService) {
 	s.aiService = aiService
+}
+
+// SetNoteSearcher 注入笔记检索服务（用于 bot internal_ai 模式下读取创建者笔记）。
+// 传 nil 即可关闭该能力（向量库未配置时安全降级）。
+func (s *MessageService) SetNoteSearcher(searcher NoteSearcher) {
+	s.noteSearcher = searcher
 }
 
 // loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
@@ -253,7 +266,47 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
-	aiMessages := make([]ai.Message, 0, len(messages))
+	aiMessages := make([]ai.Message, 0, len(messages)+1)
+
+	// 创建者笔记作为知识库：开关开启 + noteSearcher 可用时，按 bot.CreatorID scope 检索
+	// scope 隔离：SearchNotes 内部按 user_notes_<userID> 分集合，只能读到创建者自己的笔记
+	// 降级策略：noteSearcher==nil（向量库未配）或检索出错时静默跳过，不影响主流程
+	// 命中笔记的标题/分数会写入 message.Extra（JSON），前端据此渲染折叠「知识来源」标签
+	botCfg := ParseBotConfig(bot.Config)
+	var knowledgeSources []map[string]interface{}
+	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 {
+		noteResults, err := s.noteSearcher.SearchNotes(bot.CreatorID, content, 3)
+		if err == nil && len(noteResults) > 0 {
+			parts := make([]string, 0, len(noteResults))
+			// 记录命中笔记的 ID / 标题 / 分数，便于审计与排查检索质量
+			hitLogs := make([]string, 0, len(noteResults))
+			knowledgeSources = make([]map[string]interface{}, 0, len(noteResults))
+			for _, r := range noteResults {
+				title := r.Metadata["title"]
+				if title == "" {
+					title = "未命名"
+				}
+				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", title, r.Content))
+				hitLogs = append(hitLogs, fmt.Sprintf("docID=%s title=%s score=%.4f", r.DocID, title, r.Score))
+				// 收集前端展示所需的最小结构（不暴露笔记正文，避免 message 响应体过大/泄漏）
+				knowledgeSources = append(knowledgeSources, map[string]interface{}{
+					"title": title,
+					"score": r.Score,
+				})
+			}
+			logger.WithModule("handleBotMessage").Info("命中创建者笔记",
+				"botID", bot.ID, "creatorID", bot.CreatorID, "hits", len(noteResults), "notes", strings.Join(hitLogs, " | "))
+			aiMessages = append(aiMessages, ai.Message{
+				Role: "system",
+				Content: "以下是创建者的相关笔记，可作为回答参考（请基于笔记内容作答，" +
+					"笔记未覆盖的问题按你的通用能力回答）：\n\n" +
+					strings.Join(parts, "\n\n"),
+			})
+		} else if err != nil {
+			logger.WithModule("handleBotMessage").Warn("笔记检索失败，降级为不注入", "botID", bot.ID, "error", err)
+		}
+	}
+
 	for _, msg := range messages {
 		role := "user"
 		if msg.SenderID == *bot.VirtualUserID {
@@ -307,6 +360,17 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		Content:        response,
 		Origin:         "assistant",
 		IsRead:         true, // Bot 回复默认已读
+	}
+	// 命中笔记时把 knowledge_sources 写入 Extra，供前端折叠展示
+	// 无命中时留空（默认值），前端按空字符串判断不展示
+	if len(knowledgeSources) > 0 {
+		if extraBytes, err := json.Marshal(map[string]interface{}{
+			"knowledge_sources": knowledgeSources,
+		}); err == nil {
+			botReply.Extra = string(extraBytes)
+		} else {
+			logger.WithModule("handleBotMessage").Warn("序列化 knowledge_sources 失败", "botID", bot.ID, "error", err)
+		}
 	}
 	if err := db.Create(&botReply).Error; err != nil {
 		logger.WithModule("handleBotMessage").Error("创建 Bot 回复失败", "error", err)
@@ -595,6 +659,21 @@ func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, erro
 		if time.Since(msg.CreatedAt) > time.Duration(recallTimeLimit)*time.Second {
 			return nil, ErrMessageRecallTimeout
 		}
+	}
+
+	// 保留原始内容到 Extra 字段，供「撤回后重新编辑」使用
+	originalContent := msg.Content
+	extraData := make(map[string]interface{})
+	if msg.Extra != "" {
+		// 如果 Extra 已有内容，解析并合并
+		if err := json.Unmarshal([]byte(msg.Extra), &extraData); err != nil {
+			// 解析失败则使用空 map
+			extraData = make(map[string]interface{})
+		}
+	}
+	extraData["original_content"] = originalContent
+	if extraBytes, err := json.Marshal(extraData); err == nil {
+		msg.Extra = string(extraBytes)
 	}
 
 	msg.IsRecalled = true
@@ -1043,7 +1122,7 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 	isAvatarReply := msg.Origin == "avatar"
 	isAIMessage := msg.Origin == "assistant" || msg.Origin == "avatar" ||
 		msg.Sender.Type == "bot" || msg.Sender.Type == "system"
-	return map[string]interface{}{
+	resp := map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
 		"sender_id":         msg.SenderID,
@@ -1061,6 +1140,17 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 	}
+	// 解析 Extra：当前只承载 knowledge_sources（Bot 回复命中笔记时的标题/分数）
+	// 解析失败或为空时，前端约定 knowledge_sources 不存在或为空数组
+	if msg.Extra != "" {
+		var extra map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
+			if ks, ok := extra["knowledge_sources"]; ok {
+				resp["knowledge_sources"] = ks
+			}
+		}
+	}
+	return resp
 }
 
 // broadcastMessage 广播消息到会话所有成员（排除发送者）。

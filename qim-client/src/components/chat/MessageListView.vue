@@ -40,6 +40,7 @@
           @retry-send-message="(msg: any) => emit('retry-send-message', msg)"
           @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           @image-loaded="handleImageLoaded"
+          @recall-edit="(originalContent: string) => emit('recall-edit', originalContent)"
         >
           <template #selection-control>
             <label v-if="selectionMode && isMessageSelectionEligible(message)" class="message-selection-control">
@@ -105,6 +106,7 @@ interface Emits {
   'mark-read': []
   'toggle-message-selection': [messageId: string]
   'scroll': []
+  'recall-edit': [originalContent: string]
 }
 
 const props = defineProps<Props>()
