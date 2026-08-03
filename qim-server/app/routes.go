@@ -531,7 +531,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
 
 			// 频道
-			authed.POST("/channels", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin", "channel_manager"), handler.CreateChannel)
+			authed.POST("/channels", handler.CreateChannel)
 			authed.GET("/channels", handler.GetChannels)
 			authed.POST("/channels/:id/subscribe", handler.SubscribeChannel)
 			authed.DELETE("/channels/:id/subscribe", handler.UnsubscribeChannel)
@@ -574,11 +574,16 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 			// 任务管理
 			authed.GET("/tasks", handler.GetTasks)
+			authed.GET("/tasks/:id", handler.GetTaskByID)
 			authed.POST("/tasks", handler.CreateTask)
 			authed.PUT("/tasks/:id", handler.UpdateTask)
 			authed.DELETE("/tasks/:id", handler.DeleteTask)
 			authed.PUT("/tasks/:id/reorder", handler.ReorderTask)
 			authed.PATCH("/tasks/:id/status", handler.UpdateTaskStatus)
+
+			// 消息渲染增强规则（登录用户可拉取，管理后台维护）
+			authed.GET("/render-rules", handler.GetRenderRules)
+
 			// 实时通信 API
 			realtime := authed.Group("/realtime")
 			{
@@ -789,6 +794,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			userAIConfigHandler.RegisterRoutes(authed)
 			aiHandler.RegisterRoutes(authed)
 
+			// 用户个人设置（通用 key-value，如 quick_replies、quick_command_panel_enabled）
+			userSettingHandler := handler.NewUserSettingHandler()
+			userSettingHandler.RegisterRoutes(authed)
+
 			// AI 机器人管理
 			aiBotHandler := handler.NewAIBotHandler(GetDB())
 			aiBots := authed.Group("/ai-bots")
@@ -823,6 +832,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 向量数据库管理（管理员）
 			admin.GET("/vector/collections", handler.AdminListVectorCollections)
 			admin.GET("/vector/collections/:name", handler.AdminGetVectorCollectionData)
+
+			// 消息渲染增强规则管理（管理员）
+			admin.GET("/render-rules", handler.AdminGetRenderRules)
+			admin.PUT("/render-rules", handler.AdminSaveRenderRules)
+			admin.POST("/render-rules/test", handler.AdminTestRenderRule)
 		}
 	}
 

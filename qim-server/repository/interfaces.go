@@ -90,6 +90,14 @@ type TaskRepository interface {
 	BaseRepository[model.Task]
 	FindByUserID(ctx context.Context, userID uint) ([]*model.Task, error)
 	FindByUserIDAndID(ctx context.Context, userID, id uint) (*model.Task, error)
+	// FindByConversationAndID 按会话 + 任务 ID 查询单条任务（用于消息里任务引用卡片的渲染）
+	// repo 仅做数据查询：会话任务（conversation_id=指定值）+ 私人任务（conversation_id=0）都能查到
+	// 不再按 user_id 过滤——会话任务对会话成员共见；私人任务的越权防护由 service 层特判完成
+	FindByConversationAndID(ctx context.Context, conversationID, id uint) (*model.Task, error)
+	// FindByConversationID 列出该会话可引用的全部任务（用于输入框 /task 自动补全）
+	// 含：该会话关联的任务（不限创建者，会话任务对会话成员共见）+ 自己的私人任务（conversation_id=0）
+	// 别人的私人任务由 user_id 过滤防越权；conversationID=0 直接返回错误，防枚举所有私人任务
+	FindByConversationID(ctx context.Context, userID, conversationID uint) ([]*model.Task, error)
 	DeleteByUserIDAndID(ctx context.Context, userID, id uint) error
 }
 

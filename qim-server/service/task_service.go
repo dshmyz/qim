@@ -49,6 +49,41 @@ func (s *TaskService) GetTask(userID, taskID uint) (*model.Task, error) {
 	return s.repo.FindByUserIDAndID(ctx, userID, taskID)
 }
 
+// GetTaskForConversation 按会话维度查任务（用于消息里任务引用卡片的渲染）
+// 可见性规则：
+//   - 会话任务（conversation_id=指定值）：对会话成员共见（权限校验由 handler 层 IsConversationMember 完成）
+//   - 私人任务（conversation_id=0）：A 主动引用到会话即视为分享，会话成员可见
+//
+// 枚举风险：会话成员仅能查"知道 task_id 的"任务，/task 自动补全不列出别人的私人任务（见 FindByConversationID）
+// conversationID=0 直接拒绝（防越权查未关联会话的私人任务）
+func (s *TaskService) GetTaskForConversation(userID, conversationID, taskID uint) (*model.Task, error) {
+	if conversationID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	ctx := context.Background()
+	return s.repo.FindByConversationAndID(ctx, conversationID, taskID)
+}
+
+// ListByConversation 列出该会话可引用的全部任务（用于输入框 /task 自动补全）
+// 含：该会话关联的任务（不限创建者，会话成员共见）+ 自己的私人任务
+// 仅做数据查询；会话成员身份校验由 handler 层调用 ConversationService.IsConversationMember 完成
+// conversationID=0 直接拒绝（防越权枚举所有未关联会话的私人任务）
+func (s *TaskService) ListByConversation(userID, conversationID uint) ([]model.Task, error) {
+	if conversationID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	ctx := context.Background()
+	tasks, err := s.repo.FindByConversationID(ctx, userID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.Task, len(tasks))
+	for i, t := range tasks {
+		result[i] = *t
+	}
+	return result, nil
+}
+
 func (s *TaskService) UpdateTask(userID, taskID uint, updates map[string]interface{}) (*model.Task, error) {
 	ctx := context.Background()
 	task, err := s.repo.FindByUserIDAndID(ctx, userID, taskID)
