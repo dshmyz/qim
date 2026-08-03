@@ -48,9 +48,11 @@ type Container struct {
 	SystemConfigService  *service.SystemConfigService
 	ShortLinkService     *service.ShortLinkService
 	ChannelService       *service.ChannelService
+	RenderRuleService    *service.RenderRuleService
 	BotService           *service.BotService
 	AIProviderService    *service.AIProviderService
 	GroupDocumentService *service.GroupDocumentService
+	UserSettingService   *service.UserSettingService
 	AIConfigService      *service.AIConfigService
 	ChunkService         *service.ChunkService
 	VectorService        *service.VectorService
@@ -157,8 +159,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	systemConfigService := service.NewSystemConfigService(db)
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
+	renderRuleService := service.NewRenderRuleService(db)
 	botService := service.NewBotService(db)
 	groupDocumentService := service.NewGroupDocumentService(db, storageAccessor)
+	userSettingService := service.NewUserSettingService(db)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
 
 	// 初始化 ChunkService
@@ -231,9 +235,11 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		SystemConfigService:  systemConfigService,
 		ShortLinkService:     shortLinkService,
 		ChannelService:       channelService,
+		RenderRuleService:    renderRuleService,
 		BotService:           botService,
 		AIProviderService:    aiProviderService,
 		GroupDocumentService: groupDocumentService,
+		UserSettingService:   userSettingService,
 		AIConfigService:      aiConfigService,
 		ChunkService:         chunkService,
 		VectorService:        vectorSvc,

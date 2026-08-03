@@ -590,6 +590,18 @@ CREATE TABLE IF NOT EXISTS `system_configs` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- User settings table（用户个人设置：quick_replies 等轻量偏好）
+CREATE TABLE IF NOT EXISTS `user_settings` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `user_id` INTEGER NOT NULL,
+  `setting_key` VARCHAR(100) NOT NULL,
+  `setting_value` TEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (`user_id`, `setting_key`)
+);
+CREATE INDEX IF NOT EXISTS `idx_user_settings_user_id` ON `user_settings`(`user_id`);
+
 -- Operation logs table
 CREATE TABLE IF NOT EXISTS `operation_logs` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,

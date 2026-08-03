@@ -397,6 +397,14 @@ export const adminModuleGroups: AdminModuleGroup[] = [
         roles: ['system_admin'],
         permission: 'monitor:read',
       },
+      {
+        path: 'render-rules',
+        name: 'RenderRules',
+        title: '渲染规则',
+        icon: Connection,
+        component: () => import('@/views/RenderRules.vue'),
+        roles: ['system_admin'],
+      },
     ],
   },
 ]

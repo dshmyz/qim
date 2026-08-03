@@ -384,6 +384,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.CrashLog{},
 		&model.Approval{},
 		&model.ApprovalConfig{},
+		&model.UserSetting{},
 	}
 
 	// ========== 第二阶段：关联表（有外键依赖） ==========
@@ -437,6 +438,7 @@ func MigrateDB(db *gorm.DB) error {
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
+	seedRenderRules(db)
 
 	if err := migrateStoragePaths(db); err != nil {
 		return fmt.Errorf("迁移存储路径失败: %w", err)
@@ -868,6 +870,24 @@ func seedMessageRemindWebhook(db *gorm.DB) {
 	}
 	db.Where("config_key = ?", defaultCfg.ConfigKey).FirstOrCreate(&defaultCfg)
 	logger.WithModule("Migrate").Info("消息提醒 webhook 配置初始化完成")
+}
+
+// seedRenderRules 初始化消息渲染增强规则默认配置
+// 默认关闭，管理员在后台审核正则后启用
+func seedRenderRules(db *gorm.DB) {
+	defaultRules := `[
+{"id":"jira_ticket","name":"Jira 工单卡片化","enabled":false,"priority":10,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"\\b([A-Z]{2,6})-(\\d{1,6})\\b","flags":"g","capture_groups":{"project":1,"number":2}},"render":{"type":"link_card","url_template":"http://jira.xxx.com/{{project}}/{{project}}-{{number}}","label_template":"{{project}}-{{number}}","title_template":"查看 Jira 工单 {{project}}-{{number}}","icon":"fab fa-jira","target":"_blank","class":"jira-ticket-card"}},
+{"id":"github_pr_link","name":"GitHub PR 链接化","enabled":false,"priority":20,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"#PR(\\d+)","flags":"g","capture_groups":{"number":1}},"render":{"type":"link","url_template":"https://github.com/org/repo/pull/{{number}}","label_template":"#PR{{number}}","title_template":"查看 GitHub PR #{{number}}","target":"_blank","class":"github-pr-link"}},
+{"id":"mention_highlight","name":"@提及高亮标签","enabled":false,"priority":30,"scope":{"groups":["*"],"exclude_groups":[],"conversation_types":["single","group","discussion"]},"match":{"pattern":"@([一-鿿A-Za-z0-9_]+)","flags":"g","capture_groups":{"name":1}},"render":{"type":"text_chip","label_template":"@{{name}}","class":"mention-chip"}}
+]`
+	defaultCfg := model.SystemConfig{
+		ConfigKey: "render_rules",
+		Value:     defaultRules,
+		Type:      "json",
+		Desc:      "消息渲染增强规则",
+	}
+	db.Where("config_key = ?", defaultCfg.ConfigKey).FirstOrCreate(&defaultCfg)
+	logger.WithModule("Migrate").Info("渲染增强规则配置初始化完成")
 }
 
 // seedApprovalConfigs 初始化审批配置
