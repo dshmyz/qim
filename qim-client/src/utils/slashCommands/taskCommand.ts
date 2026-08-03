@@ -48,13 +48,12 @@ export function clearTaskCache(conversationId?: string): void {
   }
 }
 
-/** /task 命令：仅群聊/讨论组可用（任务按会话关联）。 */
+/** /task 命令：所有会话类型可用（私人任务可在任意会话引用，会话任务按会话隔离）。 */
 export const taskCommand: SlashCommand<Task> = {
   trigger: '/task',
   title: '选择任务',
   icon: 'fas fa-tasks',
-  description: '引用会话关联的任务',
-  available: (ctx) => ctx.conversationType === 'group' || ctx.conversationType === 'discussion',
+  description: '引用任务',
   fetchItems,
   filter,
   getInsertText,

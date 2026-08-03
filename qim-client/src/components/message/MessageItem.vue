@@ -51,7 +51,7 @@
           </div>
 
           <!-- 文本消息 -->
-          <TextMessage v-if="message.type === 'text' && !isAIMessage" :content="message.content" :is-self="isSelf" />
+          <TextMessage v-if="message.type === 'text' && !isAIMessage" :content="message.content" :is-self="isSelf" :conversation-type="conversationType" :conversation-id="message.conversationId" />
 
           <!-- 卡片消息（bot 发出的可操作卡片，须先于 isAIMessage 的 markdown 分支命中） -->
           <CardMessage

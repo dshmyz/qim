@@ -86,6 +86,15 @@ export async function fetchTasks(): Promise<Task[]> {
   return (response.data ?? []).map(normalizeTask)
 }
 
+// 按会话维度拉取任务列表（用于输入框 /task 自动补全）
+// 仅会话成员可查；后端会校验成员身份
+export async function fetchTasksByConversation(conversationId: string | number): Promise<Task[]> {
+  const response = await request<ApiResponse<RawTask[]>>('/api/v1/tasks', {
+    params: { conversation_id: conversationId }
+  })
+  return (response.data ?? []).map(normalizeTask)
+}
+
 export async function fetchTaskById(id: string): Promise<Task> {
   const response = await request<ApiResponse<RawTask>>(`/api/v1/tasks/${id}`)
   return normalizeTask(response.data)

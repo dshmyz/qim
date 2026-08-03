@@ -5,6 +5,7 @@ import MessageManager from '@/components/chat/MessageManager.vue'
 import { messageApi } from '@/api/message'
 import QMessage from '@/utils/qmessage'
 import { downloadUrl } from '@/utils/download'
+import { closeMenu, computeContextMenuPosition } from '@/composables/useUI'
 
 vi.mock('@/api/message', () => ({
   messageApi: {
@@ -44,6 +45,8 @@ vi.mock('@/utils/mentions', async (importOriginal) => {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  // 重置全局菜单状态，避免用例间 activeMenu 残留互相干扰
+  closeMenu()
 })
 
 const mockMessages = (messages: any[], total = messages.length) => {
@@ -710,7 +713,7 @@ describe('MessageManager', () => {
       })
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.media-action-menu').exists()).toBe(true)
+      expect(wrapper.find('.universal-context-menu').exists()).toBe(true)
 
       wrapper.unmount()
     })
@@ -750,8 +753,6 @@ describe('MessageManager', () => {
         clientX: 100,
         clientY: 100,
       })
-      await wrapper.vm.$nextTick()
-      await wrapper.findAll('.media-menu-item')[1].trigger('click')
       await wrapper.vm.$nextTick()
 
       await wrapper.find('.image-preview-download').trigger('click')
@@ -802,7 +803,7 @@ describe('MessageManager', () => {
       })
       await wrapper.vm.$nextTick()
 
-      await wrapper.findAll('.media-menu-item')[1].trigger('click')
+      await wrapper.findAll('.ucm-item')[1].trigger('click')
 
       expect(downloadUrl).toHaveBeenCalledWith({
         url: 'http://localhost:3000/uploads/report.pdf',
@@ -813,106 +814,27 @@ describe('MessageManager', () => {
       wrapper.unmount()
     })
 
-    it('菜单靠近右边缘时应向左偏移避免溢出', async () => {
-      mockMessages([
-        {
-          id: 1,
-          type: 'image',
-          content: JSON.stringify({ url: '/test.jpg', name: 'test.jpg' }),
-          created_at: '2024-01-01T00:00:00Z',
-          is_recalled: false,
-          sender: { id: 1, name: 'Alice', avatar: '' },
-        },
-      ])
-
-      const wrapper = mount(MessageManager, {
-        props: {
-          visible: true,
-          conversationId: '1',
-        },
-        global: {
-          stubs: {
-            Teleport: { template: '<div><slot /></div>' },
-          },
-        },
-        attachTo: document.body,
-      })
-
-      await vi.waitFor(() => {
-        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
-      })
-      await wrapper.vm.$nextTick()
-
-      const fileLink = wrapper.find('.message-file-link')
-      expect(fileLink.exists()).toBe(true)
-
-      Object.defineProperty(window, 'innerWidth', { value: 800, writable: true })
-      Object.defineProperty(window, 'innerHeight', { value: 600, writable: true })
-
-      await fileLink.trigger('click', {
-        clientX: 780,
-        clientY: 300,
-      })
-      await wrapper.vm.$nextTick()
-
-      const menu = wrapper.find('.media-action-menu')
-      expect(menu.exists()).toBe(true)
-      const left = parseInt(menu.attributes('style')?.match(/left:\s*(\d+)px/)?.[1] || '0')
-      expect(left).toBeLessThanOrEqual(652)
-      expect(left).toBeGreaterThan(0)
-
-      wrapper.unmount()
+    it('菜单靠近右边缘时应向左偏移避免溢出', () => {
+      // 视口宽 800，菜单宽 160，点击 X=780：780+160=940 超出 800
+      // 期望 x = 800 - 160 - 4 = 636
+      const pos = computeContextMenuPosition(780, 300, 160, 80, 800, 600)
+      expect(pos.x).toBe(636)
+      expect(pos.x).toBeGreaterThan(0)
+      expect(pos.y).toBe(300)
     })
 
-    it('菜单靠近下边缘时应向上偏移避免溢出', async () => {
-      mockMessages([
-        {
-          id: 1,
-          type: 'file',
-          content: JSON.stringify({ url: '/test.pdf', name: 'test.pdf' }),
-          created_at: '2024-01-01T00:00:00Z',
-          is_recalled: false,
-          sender: { id: 1, name: 'Alice', avatar: '' },
-        },
-      ])
+    it('菜单靠近下边缘时应向上偏移避免溢出', () => {
+      // 视口高 600，菜单高 80，点击 Y=580：580+80=660 超出 600
+      // 期望 y = 600 - 80 - 4 = 516
+      const pos = computeContextMenuPosition(100, 580, 160, 80, 800, 600)
+      expect(pos.y).toBe(516)
+      expect(pos.y).toBeGreaterThan(0)
+      expect(pos.x).toBe(100)
+    })
 
-      const wrapper = mount(MessageManager, {
-        props: {
-          visible: true,
-          conversationId: '1',
-        },
-        global: {
-          stubs: {
-            Teleport: { template: '<div><slot /></div>' },
-          },
-        },
-        attachTo: document.body,
-      })
-
-      await vi.waitFor(() => {
-        expect(messageApi.getMessagesByFilter).toHaveBeenCalled()
-      })
-      await wrapper.vm.$nextTick()
-
-      const fileLink = wrapper.find('.message-file-link')
-      expect(fileLink.exists()).toBe(true)
-
-      Object.defineProperty(window, 'innerWidth', { value: 800, writable: true })
-      Object.defineProperty(window, 'innerHeight', { value: 600, writable: true })
-
-      await fileLink.trigger('click', {
-        clientX: 100,
-        clientY: 580,
-      })
-      await wrapper.vm.$nextTick()
-
-      const menu = wrapper.find('.media-action-menu')
-      expect(menu.exists()).toBe(true)
-      const top = parseInt(menu.attributes('style')?.match(/top:\s*(\d+)px/)?.[1] || '0')
-      expect(top).toBeLessThanOrEqual(512)
-      expect(top).toBeGreaterThan(0)
-
-      wrapper.unmount()
+    it('菜单不靠近边缘时应保持原始坐标', () => {
+      const pos = computeContextMenuPosition(100, 100, 160, 80, 800, 600)
+      expect(pos).toEqual({ x: 100, y: 100 })
     })
   })
 })

@@ -128,6 +128,11 @@
                     class="at-mention-chip"
                     :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
                   >{{ seg.text }}</span>
+                  <TaskRefCard
+                    v-else-if="seg.type === 'task_ref'"
+                    :task-id="seg.taskId"
+                    :conversation-id="seg.conversationId"
+                  />
                   <template v-else>
                     <template v-for="(part, partIndex) in splitHighlightParts(seg.text)" :key="partIndex">
                       <mark v-if="part.highlight" class="search-highlight">{{ part.text }}</mark>
@@ -139,7 +144,7 @@
               <template v-else-if="message.type === 'image'">
                 <div
                   class="message-file-link"
-                  @click.stop="handleMediaClick(message, $event)"
+                  @click.stop="previewImage(message)"
                   @contextmenu.prevent.stop="handleMediaClick(message, $event)"
                 >
                   <i class="fas fa-image"></i>
@@ -270,6 +275,7 @@ import { downloadUrl } from '../../utils/download'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import MarkdownMessage from '../message/MarkdownMessage.vue'
 import MergedForwardMessage from '../message/MergedForwardMessage.vue'
+import TaskRefCard from '../message/TaskRefCard.vue'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import { openMenu, closeMenu } from '../../composables/useUI'
 
@@ -524,7 +530,7 @@ const currentMediaMessage = ref<any>(null)
 
 const mediaMenuItems = computed(() => [
   { label: '跳转', icon: 'fas fa-chevron-right', action: () => { emit('scrollToMessage', currentMediaMessage.value?.id); closeMenu() } },
-  { label: '下载', icon: 'fas fa-download', action: () => { if (currentMediaMessage.value) downloadMedia(currentMediaMessage.value.content, currentMediaMessage.value.id); closeMenu() } }
+  { label: '下载', icon: 'fas fa-download', action: () => { if (currentMediaMessage.value) downloadFile(currentMediaMessage.value); closeMenu() } }
 ])
 
 const handleMediaClick = (message: any, event: MouseEvent) => {
@@ -555,10 +561,22 @@ const getFileName = (message: any): string => {
   return message.content.split('/').pop() || '文件'
 }
 
-// 解析文本消息 content 为片段（文本 + mention），用于正确渲染 @ 提及
+// 解析文本消息 content 为片段（文本 + mention + task_ref），用于正确渲染 @ 提及和任务卡片
 type TextSegment =
   | { type: 'text'; text: string }
   | { type: 'mention'; text: string; userId: number | 'all' }
+  | { type: 'task_ref'; taskId: number; conversationId: number }
+
+// 任务引用正则：#T-123（与 TextMessage.vue 保持一致）
+const taskRefRegex = /#T-(\d+)\b/g
+
+// 数值化 conversationId（无效时返回 0，0 表示不渲染任务卡片，降级为纯文本）
+const numericConvId = computed((): number => {
+  const v = props.conversationId
+  if (!v) return 0
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : 0
+})
 
 type HighlightPart = {
   text: string
@@ -567,20 +585,49 @@ type HighlightPart = {
 
 const parseTextSegments = (content: string): TextSegment[] => {
   const { text, mentions } = parseContent(content)
+  // 先按 mention 拆分，得到 text 段和 mention 段
+  const rawSegments: Array<{ type: 'text'; text: string } | { type: 'mention'; text: string; userId: number | 'all' }> = []
   if (mentions.length === 0) {
-    return [{ type: 'text', text }]
-  }
-  const result: TextSegment[] = []
-  let lastEnd = 0
-  for (const m of mentions) {
-    if (m.start > lastEnd) {
-      result.push({ type: 'text', text: text.slice(lastEnd, m.start) })
+    rawSegments.push({ type: 'text', text })
+  } else {
+    let lastEnd = 0
+    for (const m of mentions) {
+      if (m.start > lastEnd) {
+        rawSegments.push({ type: 'text', text: text.slice(lastEnd, m.start) })
+      }
+      rawSegments.push({ type: 'mention', text: m.text, userId: m.userId })
+      lastEnd = m.end
     }
-    result.push({ type: 'mention', text: m.text, userId: m.userId })
-    lastEnd = m.end
+    if (lastEnd < text.length) {
+      rawSegments.push({ type: 'text', text: text.slice(lastEnd) })
+    }
   }
-  if (lastEnd < text.length) {
-    result.push({ type: 'text', text: text.slice(lastEnd) })
+
+  // 对 text 段再拆 task_ref（conversationId 无效时降级为纯文本，后端无法校验权限）
+  const convId = numericConvId.value
+  const result: TextSegment[] = []
+  for (const seg of rawSegments) {
+    if (seg.type !== 'text') {
+      result.push(seg)
+      continue
+    }
+    if (convId === 0) {
+      result.push({ type: 'text', text: seg.text })
+      continue
+    }
+    taskRefRegex.lastIndex = 0
+    let lastIdx = 0
+    let m: RegExpExecArray | null
+    while ((m = taskRefRegex.exec(seg.text)) !== null) {
+      if (m.index > lastIdx) {
+        result.push({ type: 'text', text: seg.text.slice(lastIdx, m.index) })
+      }
+      result.push({ type: 'task_ref', taskId: Number(m[1]), conversationId: convId })
+      lastIdx = m.index + m[0].length
+    }
+    if (lastIdx < seg.text.length) {
+      result.push({ type: 'text', text: seg.text.slice(lastIdx) })
+    }
   }
   return result
 }

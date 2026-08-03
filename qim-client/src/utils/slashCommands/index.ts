@@ -15,10 +15,10 @@ const registry = new SlashCommandRegistry()
 
 /** 注册内置命令。幂等，重复注册同 trigger 会覆盖。 */
 export function registerBuiltinCommands(): void {
+  registry.register(quickCommand)
   registry.register(taskCommand)
   registry.register(noteCommand)
   registry.register(fileCommand)
-  registry.register(quickCommand)
 }
 
 /** 获取全局注册中心单例。 */
