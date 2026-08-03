@@ -40,7 +40,6 @@
           <i class="fas fa-th-large"></i>
         </button>
         <button
-          v-if="isAdmin"
           class="create-btn"
           @click="handleCreateChannel"
           aria-label="创建频道"

@@ -498,6 +498,13 @@ type Channel struct {
 	Creator           User           `json:"creator,omitempty" gorm:"foreignkey:CreatorID"`
 }
 
+// 频道状态
+const (
+	ChannelStatusPending  = "pending"  // 审批中：用户已提交，等待管理员审批
+	ChannelStatusActive   = "active"   // 已激活：审批通过或无需审批
+	ChannelStatusRejected = "rejected" // 已拒绝：管理员拒绝，创建者可修改后重新申请
+)
+
 // 频道订阅者
 type ChannelSubscriber struct {
 	ID        uint      `json:"id" gorm:"primarykey"`

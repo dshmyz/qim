@@ -430,13 +430,25 @@ func (s *ApprovalService) approveChannel(id uint, adminID uint, now *time.Time) 
 		return err
 	}
 
-	if err := s.db.Model(&approval).Updates(map[string]interface{}{
+	tx := s.db.Begin()
+
+	if err := tx.Model(&approval).Updates(map[string]interface{}{
 		"status":      model.ApprovalStatusApproved,
 		"approved_at": now,
 		"approved_by": adminID,
 	}).Error; err != nil {
+		tx.Rollback()
 		return err
 	}
+
+	// 激活频道：pending → active
+	if err := tx.Model(&model.Channel{}).Where("id = ?", approval.TargetID).
+		Update("status", model.ChannelStatusActive).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tx.Commit()
 
 	var channel model.Channel
 	if err := s.db.Where("id = ?", approval.TargetID).First(&channel).Error; err != nil {
@@ -625,14 +637,26 @@ func (s *ApprovalService) rejectChannel(id uint, adminID uint, now *time.Time, r
 		return err
 	}
 
-	if err := s.db.Model(&approval).Updates(map[string]interface{}{
+	tx := s.db.Begin()
+
+	if err := tx.Model(&approval).Updates(map[string]interface{}{
 		"status":        model.ApprovalStatusRejected,
 		"reject_reason": reason,
 		"approved_at":   now,
 		"approved_by":   adminID,
 	}).Error; err != nil {
+		tx.Rollback()
 		return err
 	}
+
+	// 标记频道为 rejected：pending → rejected（保留记录，创建者可修改后重新申请）
+	if err := tx.Model(&model.Channel{}).Where("id = ?", approval.TargetID).
+		Update("status", model.ChannelStatusRejected).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tx.Commit()
 
 	var channel model.Channel
 	if err := s.db.Where("id = ?", approval.TargetID).First(&channel).Error; err != nil {

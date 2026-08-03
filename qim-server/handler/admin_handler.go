@@ -376,7 +376,14 @@ func AdminUpdateChannel(c *gin.Context) {
 		updates["avatar"] = *req.Avatar
 	}
 	if req.Status != nil {
-		if *req.Status != "active" && *req.Status != "inactive" {
+		// 允许管理员手动设置频道状态（含 pending/rejected，用于审批流程外的手动调整）
+		validStatuses := map[string]bool{
+			model.ChannelStatusActive:   true,
+			model.ChannelStatusPending:  true,
+			model.ChannelStatusRejected: true,
+			"inactive":                  true,
+		}
+		if !validStatuses[*req.Status] {
 			response.BadRequest(c, "无效的状态值")
 			return
 		}
