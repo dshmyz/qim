@@ -54,9 +54,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 公开文档接口（无需登录）
-	r.GET("/api/v1/public/docs", handler.ListDocs)
-	r.GET("/api/v1/public/docs/:slug", handler.GetDocContent)
+	// 公开文档接口已迁至 VitePress 静态站点（/docs/*），不再提供 API
 
 	aiSvc := di.GlobalContainer.AIService
 
@@ -766,6 +764,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/feedbacks", feedbackHandler.GetFeedbacks)
 				admin.PUT("/feedbacks/:id", feedbackHandler.UpdateFeedback)
 				authed.POST("/feedbacks", feedbackHandler.CreateFeedback)
+				authed.GET("/my-feedbacks", feedbackHandler.GetMyFeedbacks)
 			}
 
 			// 频道管理后台接口（system_admin 或 channel_manager）
@@ -844,7 +843,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	r.GET("/s/:code", handler.RedirectShortLink)
 
 	// 管理后台 SPA（必须放在 API 路由之后，NoRoute 之前）
-	r.GET("/admin/*filepath", web.ServeAdmin())
+	// 老链接 /admin/docs/cli、/admin/docs/mcp 重定向到新 /docs/*
+	// 注意：gin 不允许 catch-all /admin/*filepath 与同层级静态路由 /admin/docs/* 共存，
+	// 故把重定向逻辑合并进 catch-all handler，避免路由树 panic。
+	r.GET("/admin/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if fp == "/docs/cli" {
+			c.Redirect(http.StatusMovedPermanently, "/docs/cli")
+			return
+		}
+		if fp == "/docs/mcp" {
+			c.Redirect(http.StatusMovedPermanently, "/docs/mcp")
+			return
+		}
+		web.ServeAdmin()(c)
+	})
+
+	// VitePress 静态文档站点（/docs/cli、/docs/mcp 等）
+	r.GET("/docs/*filepath", web.ServeDocs())
 
 	// Landing 首页 SPA（只处理非 API 请求，避免覆盖 API 的 404 响应）
 	r.NoRoute(func(c *gin.Context) {

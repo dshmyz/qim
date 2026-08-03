@@ -468,3 +468,47 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 		"data":    feedback,
 	})
 }
+
+// GetMyFeedbacks 查询当前用户提交的反馈列表
+func (h *FeedbackHandler) GetMyFeedbacks(c *gin.Context) {
+	userIDAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "未登录",
+		})
+		return
+	}
+	userID := userIDAny.(uint)
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+
+	var feedbacks []model.UserFeedback
+	var total int64
+
+	query := h.db.Model(&model.UserFeedback{}).Where("user_id = ?", userID)
+	query.Count(&total)
+
+	offset := (page - 1) * pageSize
+	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&feedbacks).Error; err != nil {
+		logger.WithModule("feedback").Error("获取我的反馈失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取反馈列表失败",
+		})
+		return
+	}
+
+	h.fillUserNames(feedbacks)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"list":     feedbacks,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
+	})
+}
