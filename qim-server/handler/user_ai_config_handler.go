@@ -107,6 +107,15 @@ type CreateConfigRequest struct {
 	Overrides  []ai.Override `json:"overrides,omitempty"`
 }
 
+// UpdateConfigRequest：编辑配置时 api_key 可选（为空则保留原密钥）
+type UpdateConfigRequest struct {
+	ConfigName string `json:"config_name" binding:"required"`
+	Provider   string `json:"provider" binding:"required"`
+	APIKey     string `json:"api_key"`
+	ModelName  string `json:"model_name" binding:"required"`
+	BaseURL    string `json:"base_url"`
+}
+
 func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 	userIDAny, _ := c.Get("user_id")
 	userID := userIDAny.(uint)
@@ -146,7 +155,7 @@ func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
-	var req CreateConfigRequest
+	var req UpdateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
