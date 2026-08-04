@@ -29,6 +29,8 @@ let externalShowNetworkError: typeof showNetworkError | null = null
 let externalNetworkErrorMsg: typeof networkErrorMsg | null = null
 let onConnectedCallback: (() => void) | null = null
 let reconnectAttempts = 0
+let manualDisconnect = false
+let sessionExpired = false
 
 /**
  * 设置网络错误状态
@@ -188,6 +190,7 @@ export function useWebSocket(wsUrl: string) {
           }
         }
         // refresh 失败或无 refresh_token，触发会话过期
+        sessionExpired = true
         if (onSessionExpiredCallback) {
           onSessionExpiredCallback()
         }
@@ -269,6 +272,9 @@ export function useWebSocket(wsUrl: string) {
   const connect = () => {
     if (ws && ws.readyState === WebSocket.OPEN) return
 
+    // 重置会话过期标志，允许重新连接
+    sessionExpired = false
+
     const token = localStorage.getItem('token')
     if (!token) {
       setNetworkError(true, '未登录，请先登录')
@@ -310,9 +316,17 @@ export function useWebSocket(wsUrl: string) {
       ws.onclose = (event: CloseEvent) => {
         isConnected.value = false
         stopHeartbeat()
+
+        // 主动断开或会话过期时不重连
+        if (manualDisconnect || sessionExpired) {
+          manualDisconnect = false
+          return
+        }
+
         setNetworkError(true, '网络连接已断开，正在尝试重新连接...')
 
         if (event.code === 4401 || (event.reason && event.reason.includes('401'))) {
+          sessionExpired = true
           if (onSessionExpiredCallback) {
             onSessionExpiredCallback()
           }
@@ -366,6 +380,7 @@ export function useWebSocket(wsUrl: string) {
    * 断开连接
    */
   const disconnect = () => {
+    manualDisconnect = true
     stopHeartbeat()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
