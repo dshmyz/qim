@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import TextMessage from '@/components/message/TextMessage.vue'
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 describe('TextMessage', () => {
   describe('基本渲染', () => {
