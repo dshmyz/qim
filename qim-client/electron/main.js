@@ -856,7 +856,8 @@ function registerIPC() {
 
   // 主进程通知：渲染进程通过 IPC 触发。用打包内 app 图标的绝对路径，
   // Linux libnotify 能稳定渲染（Web Notification 的 data URL/相对路径 icon 在 Linux 下不工作）。
-  ipcMain.handle('notification:show', (_e, { title, body }) => {
+  // payload（可选）携带深链目标；桌面通知被点击时回传渲染进程做页面跳转。
+  ipcMain.handle('notification:show', (_e, { title, body, payload }) => {
     try {
       const iconPath = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
       const icon = nativeImage.createFromPath(iconPath)
@@ -865,6 +866,9 @@ function registerIPC() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show()
           mainWindow.focus()
+          if (payload) {
+            mainWindow.webContents.send('notification-click', payload)
+          }
         }
       })
       n.show()

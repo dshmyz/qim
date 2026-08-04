@@ -22,6 +22,11 @@ interface ElectronAPI {
     flash: () => void
     stopFlash: () => void
   }
+  notifications: {
+    show: (title: string, body: string, payload?: any) => Promise<boolean>
+    onNotificationClick: (callback: (data: any) => void) => void
+    removeOnNotificationClick: (callback: (data: any) => void) => void
+  }
   windowState: {
     isActive: () => Promise<boolean>
   }

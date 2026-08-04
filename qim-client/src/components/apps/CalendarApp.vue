@@ -375,7 +375,10 @@ const showReminderNotification = (event: any) => {
     const start = new Date(event.start)
     const end = new Date(event.end)
     const timeStr = event.allDay ? '全天' : `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
-    showReminder('日历提醒', `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`)
+    showReminder('日历提醒', `事件: ${event.title}\n时间: ${timeStr}\n描述: ${event.description || '无'}`, {
+      type: 'event_reminder',
+      event_id: event.id,
+    })
   }
   logger.log('提醒:', event.title)
 }

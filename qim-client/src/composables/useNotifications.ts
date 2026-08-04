@@ -71,15 +71,6 @@ export function useNotifications() {
     showNotificationCenter.value = false
   }
 
-  // 处理通知点击 - 根据类型路由到不同页面
-  const handleNotificationClick = (notification: any) => {
-    if (notification.category === 'message' && notification.data?.conversationId) {
-      console.log('Navigate to conversation:', notification.data.conversationId)
-    } else if (notification.category === 'group' && notification.data?.groupId) {
-      console.log('Navigate to group:', notification.data.groupId)
-    }
-  }
-
   // 处理新通知 - 创建完整通知对象并添加到列表
   const handleNewNotification = (notification: any) => {
     const mapped = mapNotification(notification)
@@ -101,7 +92,6 @@ export function useNotifications() {
     filteredNotifications,
     handleNotificationCenter,
     closeNotificationCenter,
-    handleNotificationClick,
     handleNewNotification,
     markAllNotificationsAsRead
   }

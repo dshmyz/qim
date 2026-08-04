@@ -119,8 +119,9 @@ defineEmits<{
   toggleSidebar: []
 }>()
 
-onMounted(() => {
-  store.loadTasks()
+onMounted(async () => {
+  // 先等任务加载完成，保证待办深链/聚焦时 store.tasks 已就绪（否则 find 落空导致深链静默失效）
+  await store.loadTasks()
   loadContacts()
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onGlobalClick)
@@ -128,6 +129,15 @@ onMounted(() => {
   if (store.pendingCreateOnDate) {
     createTaskOnDate(new Date(store.pendingCreateOnDate))
     store.pendingCreateOnDate = null
+  }
+  // 通知中心"待办指派"点击后：聚焦打开对应任务详情
+  if (store.pendingFocusTaskId) {
+    const taskId = store.pendingFocusTaskId
+    store.pendingFocusTaskId = null
+    const task = store.tasks.find(t => t.id === taskId)
+    if (task) {
+      store.selectTask(taskId)
+    }
   }
 })
 

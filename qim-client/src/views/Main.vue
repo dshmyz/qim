@@ -720,9 +720,11 @@ const SettingsPanel = defineAsyncComponent(() => import('../components/settings/
 import ContentSkeleton from '../components/skeleton/ContentSkeleton.vue'
 import { useServerUrl } from '../composables/useServerUrl'
 import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
+import { resolveNotificationNav } from '../utils/notificationNavigation'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
 import { useChatStore } from '../stores/chat'
+import { useTaskStore } from '../stores/task'
 import { useSystemConfigStore } from '../stores/systemConfig'
 import { useCurrentUser } from '../composables/useCurrentUser'
 import { useProcessConversation } from '../composables/useProcessConversation'
@@ -782,6 +784,9 @@ const { markMessagesAsRead } = messageActions
 const channelStore = useChannelStore()
 const { isChannelCreator, sendChannelMessage } = channelStore
 
+// 使用任务 store（通知中心"待办指派"深链聚焦用）
+const taskStore = useTaskStore()
+
 // 使用聊天 store（镜像同步）
 const chatStore = useChatStore()
 
@@ -804,7 +809,6 @@ const {
   notificationCenterPosition,
   handleNotificationCenter,
   closeNotificationCenter,
-  handleNotificationClick: _handleNotificationClick,
   handleNewNotification: _handleNewNotification,
 } = useNotifications()
 
@@ -1318,25 +1322,59 @@ const handleConversationSelect = async (conversation: Conversation) => {
   }
 }
 
-// 重写通知点击处理，包含 Main.vue 的特定逻辑
-const handleNotificationClick = (notification: any) => {
-  _handleNotificationClick(notification)
-  if (notification.category === 'message' && notification.data?.conversationId) {
-    activeOption.value = 'recent'
-    const conversationId = String(notification.data.conversationId)
-    setCurrentConversationId(conversationId)
-    loadMessages(conversationId)
-  } else if (notification.category === 'group' && notification.data?.groupId) {
-    activeOption.value = 'groups'
-  } else if (notification.type === 'event_reminder') {
+// 重写通知点击处理，包含 Main.vue 的特定逻辑。
+// 深链决策抽离为纯函数 resolveNotificationNav（utils/notificationNavigation.ts，可单测），
+// 这里只负责把"导航意图"落地到实际 UI 跳转。
+const handleNotificationClick = async (notification: any) => {
+  const nav = resolveNotificationNav(notification)
+
+  switch (nav.kind) {
+    // 频道消息：打开对应频道
+    case 'channel':
+      activeOption.value = 'channels'
+      channelStore.selectChannel(nav.channelId)
+      break
+
+    // 群聊邀请 / 入群申请：直接进入对应会话
+    case 'conversation':
+      await handleConversationSelect({ id: nav.conversationId } as any)
+      break
+
+    // 新成员加入：切到群组面板
+    case 'groups':
+      activeOption.value = 'groups'
+      break
+
+    // 待办指派：打开任务应用并聚焦该任务
+    case 'task':
+      taskStore.setFocusTaskId(nav.taskId)
+      selectedAppId.value = 'task_manager'
+      activeOption.value = 'apps'
+      break
+
     // 日历提醒：打开日历应用并定位到该事件
-    const eventId = notification.actionPayload?.event_id || notification.data?.event_id
-    if (eventId !== undefined) {
-      focusEventId.value = eventId
+    case 'calendar':
+      focusEventId.value = nav.eventId
       selectedAppId.value = 'calendar'
       activeOption.value = 'apps'
-    }
+      break
+
+    // 其余类型无明确目标，不做跳转
+    case 'none':
+    default:
+      break
   }
+}
+
+// 桌面系统通知深链：主进程把 payload 回传，转成通知形态后走同一套点击路由
+const handleDesktopNotificationClick = (payload: any) => {
+  if (!payload || typeof payload !== 'object') return
+  // 兼容两种形态：{ type, actionPayload:{...} } 或 { type, event_id, ... }
+  const notification = {
+    type: payload.type || '',
+    actionPayload: payload.actionPayload || payload,
+  }
+  handleNotificationClick(notification)
 }
 
 // 重写新通知处理，包含 Main.vue 的特定逻辑
@@ -1448,7 +1486,11 @@ const unregisterCustomEventListeners = () => {
 let isFirstConnect = true
 onMounted(async () => {
   isLoading.value = true
-  
+  // 桌面系统通知深链：主进程点击通知后回传 payload，走同一套点击路由
+  if (window.electron?.notifications?.onNotificationClick) {
+    window.electron.notifications.onNotificationClick(handleDesktopNotificationClick)
+  }
+
   try {
     // ========== 阶段1：核心数据（必须等待，阻塞渲染）==========
     logger.log('[Main] 阶段1: 加载核心数据...')
@@ -1779,7 +1821,10 @@ const connectWebSocket = () => {
       const timeStr = start
         ? `${start.getMonth() + 1}/${start.getDate()} ${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`
         : ''
-      showReminder('日历提醒', `事件: ${data.title || ''}${timeStr ? '\n时间: ' + timeStr : ''}`)
+      showReminder('日历提醒', `事件: ${data.title || ''}${timeStr ? '\n时间: ' + timeStr : ''}`, {
+        type: 'event_reminder',
+        event_id: data.event_id,
+      })
     }
   }
   
@@ -2105,6 +2150,10 @@ const playMessageSound = () => {
 
 // 组件销毁时关闭WebSocket连接
 onUnmounted(() => {
+  // 移除桌面系统通知深链监听
+  if (window.electron?.notifications?.removeOnNotificationClick) {
+    window.electron.notifications.removeOnNotificationClick(handleDesktopNotificationClick)
+  }
   // 关闭WebSocket连接
   disconnectWebSocket()
   // 清除重连定时器

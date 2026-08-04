@@ -98,7 +98,25 @@ contextBridge.exposeInMainWorld('electron', {
     isActive: () => ipcRenderer.invoke('is-main-window-active')
   },
   notifications: {
-    show: (title, body) => ipcRenderer.invoke('notification:show', { title, body })
+    show: (title, body, payload) => ipcRenderer.invoke('notification:show', { title, body, payload }),
+    onNotificationClick: (callback) => {
+      const listener = (event, data) => callback(data)
+      if (!listenerMap.has('notification-click')) {
+        listenerMap.set('notification-click', new Set())
+      }
+      listenerMap.get('notification-click').add({ callback, listener })
+      ipcRenderer.on('notification-click', listener)
+    },
+    removeOnNotificationClick: (callback) => {
+      const listeners = listenerMap.get('notification-click')
+      if (listeners) {
+        const entry = [...listeners].find(e => e.callback === callback)
+        if (entry) {
+          listeners.delete(entry)
+          ipcRenderer.removeListener('notification-click', entry.listener)
+        }
+      }
+    }
   }
 })
 

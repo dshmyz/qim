@@ -19,6 +19,8 @@ export const useTaskStore = defineStore('task', () => {
   const selectedTaskId = ref<string | null>(null)
   // 跨应用：日历右键"新建任务"时预填的截止日期
   const pendingCreateOnDate = ref<string | null>(null)
+  // 跨应用：通知中心"待办指派"点击后待聚焦打开的任务 ID
+  const pendingFocusTaskId = ref<string | null>(null)
   const loading = ref(false)
 
   function enrichTask(task: Task): Task {
@@ -175,6 +177,11 @@ export const useTaskStore = defineStore('task', () => {
     selectedTaskId.value = id
   }
 
+  // 跨应用：记录待聚焦打开的任务（通知中心"待办指派"点击后由 TaskManagementApp 消费）
+  function setFocusTaskId(id: string | null) {
+    pendingFocusTaskId.value = id
+  }
+
   function setFilters(newFilters: Partial<TaskFilters>) {
     filters.value = { ...filters.value, ...newFilters }
   }
@@ -202,6 +209,8 @@ export const useTaskStore = defineStore('task', () => {
     selectedTaskId,
     loading,
     pendingCreateOnDate,
+    pendingFocusTaskId,
+    setFocusTaskId,
     filteredTasks,
     todoTasks,
     inProgressTasks,
