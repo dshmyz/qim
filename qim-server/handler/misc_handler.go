@@ -5,7 +5,9 @@ import (
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -267,4 +269,85 @@ func SendToUserMessage(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "消息发送成功", nil)
+}
+
+// BroadcastChatMessage 以系统账号(type='system')为发送方，向用户(默认全员，可指定)的单聊会话
+// 发送一条普通私聊消息。与 CreateSystemMessage(通知红点，进通知中心) 不同，这里写入真实的
+// conversations + messages，消息会出现在目标用户的「最近会话」列表中，带未读计数与 WS 推送。
+//
+// 复用 ConversationService.CreateSingleConversation(幂等：已有会话则复用) 与
+// MessageService.SendMessage(内部处理敏感词、未读、WS 广播、会话显示恢复)。
+// 单聊触发 SmartReplyEngine 时会在 conv.Type=="single" 处提前返回，不会产生 AI 自动回复。
+//
+// 角色门槛：system_admin（与系统消息更新/删除一致）。
+func BroadcastChatMessage(c *gin.Context) {
+	var req struct {
+		Content        string `json:"content" binding:"required"`
+		TargetUserIDs  []uint `json:"target_user_ids"` // 为空表示全员；非空则仅发给这些用户
+		ExcludeUserIDs []uint `json:"exclude_user_ids"` // 可选：从目标中排除（如排除系统/机器人）
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil || req.Content == "" {
+		response.BadRequest(c, "参数错误：content 必填")
+		return
+	}
+
+	app := di.GlobalContainer
+	msgSvc := app.MessageService
+	convSvc := app.ConversationService
+	db := database.GetDB()
+
+	systemUserID := msgSvc.GetSystemUserID()
+	if systemUserID == 0 {
+		response.InternalServerError(c, "系统账号(type=system)不存在")
+		return
+	}
+
+	exclude := make(map[uint]bool, len(req.ExcludeUserIDs))
+	for _, id := range req.ExcludeUserIDs {
+		exclude[id] = true
+	}
+
+	// 收集目标用户
+	var targetUsers []model.User
+	if len(req.TargetUserIDs) > 0 {
+		db.Where("id IN ?", req.TargetUserIDs).Find(&targetUsers)
+	} else {
+		// 全员：默认排除系统账号本身，避免给自己发消息
+		db.Where("type != ?", "system").Find(&targetUsers)
+	}
+
+	var sent, failed, skipped int
+	for _, u := range targetUsers {
+		if exclude[u.ID] {
+			skipped++
+			continue
+		}
+
+		conv, err := convSvc.CreateSingleConversation(systemUserID, u.ID)
+		if err != nil {
+			failed++
+			logger.WithModule("BroadcastChatMessage").Warn("获取/创建单聊会话失败",
+				"user_id", u.ID, "error", err)
+			continue
+		}
+
+		if _, err := msgSvc.SendMessage(conv.ID, systemUserID, "text", req.Content, nil); err != nil {
+			failed++
+			logger.WithModule("BroadcastChatMessage").Warn("发送私聊消息失败",
+				"user_id", u.ID, "conv_id", conv.ID, "error", err)
+			continue
+		}
+		sent++
+	}
+
+	logger.WithModule("BroadcastChatMessage").Info("全员私聊发送完成",
+		"total", len(targetUsers), "sent", sent, "failed", failed, "skipped", skipped)
+
+	response.Success(c, gin.H{
+		"total":   len(targetUsers),
+		"sent":    sent,
+		"failed":  failed,
+		"skipped": skipped,
+	})
 }

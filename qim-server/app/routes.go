@@ -514,6 +514,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/system-messages", middleware.RequireRole(di.GlobalContainer.UserService, "system_publisher", "system_admin"), handler.CreateSystemMessage)
 			authed.PUT("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.UpdateSystemMessage)
 			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
+			// 全员私聊：以系统账号向用户单聊会话发送普通私聊消息（进最近会话），仅 system_admin
+			authed.POST("/system-messages/broadcast-chat", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BroadcastChatMessage)
 
 			// 频道
 			authed.POST("/channels", handler.CreateChannel)
