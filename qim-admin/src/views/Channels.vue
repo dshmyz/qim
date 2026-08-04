@@ -127,12 +127,22 @@
         label-width="80px"
       >
         <el-form-item label="内容" prop="content">
+          <el-radio-group v-model="publishMode" size="small" class="publish-mode-toggle">
+            <el-radio-button value="edit">编辑</el-radio-button>
+            <el-radio-button value="preview">预览</el-radio-button>
+          </el-radio-group>
           <el-input
+            v-if="publishMode === 'edit'"
             v-model="publishForm.content"
             type="textarea"
-            :rows="5"
-            placeholder="请输入要发布的消息内容"
+            :rows="8"
+            placeholder="支持 Markdown 语法（# 标题、**粗体**、[链接](url)、代码块等）"
           />
+          <div
+            v-else
+            class="md-preview"
+            v-html="previewContent"
+          ></div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -144,9 +154,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import { marked } from 'marked'
+import { sanitizeMarkdown } from '@/utils/sanitize'
 import { getChannels, createChannel, updateChannel, deleteChannel, createChannelMessage } from '@/api/channels'
 import type { ChannelInfo } from '@/api/channels'
 
@@ -180,6 +192,14 @@ const publishing = ref(false)
 const publishChannelId = ref<number | null>(null)
 const publishChannelName = ref('')
 const publishForm = reactive({ content: '' })
+const publishMode = ref<'edit' | 'preview'>('edit')
+
+// 发布内容 Markdown 预览（复用 Docs.vue 同款 marked + sanitizeMarkdown 链路）
+const previewContent = computed(() => {
+  if (!publishForm.content) return '<p class="md-preview-empty">暂无内容</p>'
+  const html = marked.parse(publishForm.content, { async: false }) as string
+  return sanitizeMarkdown(html)
+})
 
 const publishRules: FormRules = {
   content: [{ required: true, message: '请输入消息内容', trigger: 'blur' }],
@@ -276,6 +296,7 @@ const handlePublish = (row: ChannelInfo) => {
   publishChannelId.value = row.id
   publishChannelName.value = row.name
   publishForm.content = ''
+  publishMode.value = 'edit'
   publishDialogVisible.value = true
 }
 
@@ -345,4 +366,79 @@ onMounted(fetchChannels)
   justify-content: flex-end;
   padding-top: var(--space-4);
 }
+
+.publish-mode-toggle {
+  margin-bottom: 8px;
+}
+
+.md-preview {
+  width: 100%;
+  min-height: 180px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--el-text-color-primary);
+  word-break: break-word;
+}
+
+.md-preview-empty {
+  color: var(--el-text-color-placeholder);
+  margin: 0;
+}
+
+.md-preview :deep(h1),
+.md-preview :deep(h2),
+.md-preview :deep(h3),
+.md-preview :deep(h4) {
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+  line-height: 1.3;
+}
+.md-preview :deep(h1) { font-size: 1.5em; }
+.md-preview :deep(h2) { font-size: 1.3em; }
+.md-preview :deep(h3) { font-size: 1.15em; }
+.md-preview :deep(p) { margin: 0.5em 0; }
+.md-preview :deep(strong) { font-weight: 600; }
+.md-preview :deep(em) { font-style: italic; }
+.md-preview :deep(a) { color: var(--el-color-primary); text-decoration: none; }
+.md-preview :deep(a:hover) { text-decoration: underline; }
+.md-preview :deep(ul),
+.md-preview :deep(ol) { padding-left: 1.6em; margin: 0.5em 0; }
+.md-preview :deep(li) { margin: 0.25em 0; }
+.md-preview :deep(blockquote) {
+  margin: 0.5em 0;
+  padding: 0.25em 1em;
+  border-left: 3px solid var(--el-color-primary);
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  border-radius: 0 4px 4px 0;
+}
+.md-preview :deep(pre) {
+  background: var(--el-fill-color-darker, #f0f2f5);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0.5em 0;
+}
+.md-preview :deep(code) {
+  background: var(--el-fill-color-darker, #f0f2f5);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.92em;
+}
+.md-preview :deep(pre code) { background: transparent; padding: 0; border-radius: 0; }
+.md-preview :deep(hr) { border: none; border-top: 1px solid var(--el-border-color); margin: 1em 0; }
+.md-preview :deep(img) { max-width: 100%; border-radius: 6px; }
+.md-preview :deep(table) { border-collapse: collapse; margin: 0.5em 0; }
+.md-preview :deep(th),
+.md-preview :deep(td) { border: 1px solid var(--el-border-color); padding: 6px 12px; text-align: left; }
+.md-preview :deep(th) { background: var(--el-fill-color-light); font-weight: 600; }
 </style>
