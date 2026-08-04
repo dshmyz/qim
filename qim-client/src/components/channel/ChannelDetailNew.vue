@@ -32,7 +32,7 @@
       @copy-link="handleCopyLink"
     />
 
-    <div v-if="isCreator" class="message-input-area">
+    <div v-if="channelUsable && isCreator" class="message-input-area">
       <div class="composer-toolbar">
         <div class="mode-toggle">
           <button
@@ -71,7 +71,7 @@
       </div>
     </div>
 
-    <div v-else-if="channel.publish_permission === 'all_subscribers' && channel.is_subscribed" class="message-input-area">
+    <div v-else-if="channelUsable && channel.publish_permission === 'all_subscribers' && channel.is_subscribed" class="message-input-area">
       <div class="composer-toolbar">
         <div class="mode-toggle">
           <button
@@ -110,16 +110,21 @@
       </div>
     </div>
 
-    <div v-else-if="channel.is_subscribed && channel.publish_permission === 'creator_only'" class="message-readonly-hint">
+    <div v-else-if="channelUsable && channel.is_subscribed && channel.publish_permission === 'creator_only'" class="message-readonly-hint">
       <i class="fas fa-bullhorn"></i>
       <span>广播频道，仅创建者可发布消息</span>
     </div>
 
-    <div v-else-if="!channel.is_subscribed && !isCreator" class="message-subscribe-bottom">
+    <div v-else-if="channelUsable && !channel.is_subscribed && !isCreator" class="message-subscribe-bottom">
       <button class="bottom-subscribe-btn" @click="$emit('subscribe', channel)">
         <i class="fas fa-plus"></i>
         订阅频道参与互动
       </button>
+    </div>
+
+    <div v-else class="message-readonly-hint">
+      <i :class="channelStatusIcon"></i>
+      <span>{{ channelStatusText }}</span>
     </div>
   </div>
 </template>
@@ -164,6 +169,25 @@ const emit = defineEmits<{
 }>()
 
 const localMessage = ref(props.initialMessage)
+
+// 频道是否可发布：仅 active 频道允许发布，审批中/已拒绝/停用则展示禁用提示（服务层同样拦截）
+const channelUsable = computed(() => props.channel.status === 'active')
+const channelStatusText = computed(() => {
+  switch (props.channel.status) {
+    case 'pending': return '频道正在审批中，暂不可发布消息'
+    case 'rejected': return '频道已被拒绝，暂不可发布消息'
+    case 'inactive': return '频道已停用，暂不可发布消息'
+    default: return '频道暂不可用，暂不可发布消息'
+  }
+})
+const channelStatusIcon = computed(() => {
+  switch (props.channel.status) {
+    case 'pending': return 'fas fa-hourglass-half'
+    case 'rejected': return 'fas fa-times-circle'
+    case 'inactive': return 'fas fa-ban'
+    default: return 'fas fa-ban'
+  }
+})
 
 // 发布侧编辑/预览切换：预览与正文渲染同链路（含 emoji），保持所见即所得
 const publishMode = ref<'edit' | 'preview'>('edit')

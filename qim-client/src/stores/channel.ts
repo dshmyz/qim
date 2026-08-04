@@ -193,7 +193,9 @@ export const useChannelStore = defineStore('channel', () => {
       }
     } catch (error) {
       console.error('发送频道消息失败:', error)
-      QMessage.error('发送失败')
+      // 透传服务器真实原因（如「频道正在审批中」），避免仅给出泛化的「发送失败」
+      const reason = error instanceof Error ? error.message : ''
+      QMessage.error(reason || '发送失败')
     }
   }
 
