@@ -4,7 +4,6 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, d
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
-import crypto from 'crypto'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
 import { DownloadRegistry } from './download-registry.js'
@@ -1041,17 +1040,6 @@ function registerIPC() {
     }
   })
 
-  ipcMain.on('cache-avatar', async (event, avatarUrl) => {
-    console.log('Received cache-avatar event for:', avatarUrl)
-    try {
-      const cachedUrl = await cacheAvatar(avatarUrl)
-      event.sender.send('avatar-cached', cachedUrl || avatarUrl)
-    } catch (error) {
-      console.error('Error caching avatar:', error)
-      event.sender.send('avatar-cached', avatarUrl)
-    }
-  })
-
   ipcMain.on('download-file', (event, { url, token, fileName, saveDir, downloadId }) => {
     triggerDownload({ url, token, fileName, saveDir, downloadId, completeChannel: 'download-complete' })
   })
@@ -1104,77 +1092,6 @@ function registerIPC() {
   })
 }
 
-// ==================== Avatar Cache ====================
-
-function getCacheDir() {
-  const appDataPath = app.getPath('userData')
-  const cacheDir = path.join(appDataPath, 'avatar-cache')
-
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true })
-  }
-
-  return cacheDir
-}
-
-function generateCacheFileName(avatarUrl) {
-  const hash = crypto.createHash('md5').update(avatarUrl).digest('hex')
-  let ext = 'png'
-
-  const extMatch = avatarUrl.match(/\.([^.]+)(?:\?|$)/)
-  if (extMatch && extMatch[1]) {
-    ext = extMatch[1].split('?')[0].split('/')[0]
-    if (ext.length > 10) {
-      ext = 'png'
-    }
-  }
-
-  return `${hash}.${ext}`
-}
-
-async function cacheAvatar(avatarUrl) {
-  try {
-    const cacheDir = getCacheDir()
-    const cacheFileName = generateCacheFileName(avatarUrl)
-    const cacheFilePath = path.join(cacheDir, cacheFileName)
-
-    if (fs.existsSync(cacheFilePath)) {
-      return `file://${cacheFilePath}`
-    }
-
-    const response = await fetch(avatarUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch avatar: ${response.status}`)
-    }
-
-    const buffer = await response.arrayBuffer()
-    fs.writeFileSync(cacheFilePath, Buffer.from(buffer))
-
-    return `file://${cacheFilePath}`
-  } catch (error) {
-    console.error('Error caching avatar:', error)
-    return null
-  }
-}
-
-function cleanupAvatarCache(maxAge = 7 * 24 * 60 * 60 * 1000) {
-  try {
-    const cacheDir = getCacheDir()
-    const now = Date.now()
-
-    fs.readdirSync(cacheDir).forEach(file => {
-      const filePath = path.join(cacheDir, file)
-      const stats = fs.statSync(filePath)
-
-      if (now - stats.mtime.getTime() > maxAge) {
-        fs.unlinkSync(filePath)
-      }
-    })
-  } catch (error) {
-    console.error('Error cleaning up avatar cache:', error)
-  }
-}
-
 // ==================== App Lifecycle ====================
 
 // 请求麦克风/摄像头系统权限（macOS），确保 getUserMedia 能正常触发授权
@@ -1221,11 +1138,6 @@ app.whenReady().then(async () => {
       app.dock.setIcon(image)
     }
   }
-
-  cleanupAvatarCache()
-  setInterval(() => {
-    cleanupAvatarCache()
-  }, 24 * 60 * 60 * 1000)
 })
 
 app.on('open-url', (event, url) => {
