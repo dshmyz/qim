@@ -53,7 +53,7 @@ export const getVersionDistribution = (): Promise<AxiosResponse<ApiResponse<Vers
 
 export const getCLIVersions = (params?: PaginationParams): Promise<AxiosResponse<ApiResponse<PaginatedResponse<Version>>>> => {
   return request({
-    url: '/v1/admin/cli/versions',
+    url: '/v1/cli/versions',
     method: 'get',
     params,
   })
@@ -61,7 +61,7 @@ export const getCLIVersions = (params?: PaginationParams): Promise<AxiosResponse
 
 export const createCLIVersion = (data: { version: string; os: string; arch: string; downloadUrl: string; sha256?: string; fileSize?: number; updateNotes?: string; forceUpdate?: boolean; rolloutPercentage?: number; minVersion?: string }): Promise<AxiosResponse<ApiResponse<Version>>> => {
   return request({
-    url: '/v1/admin/cli/versions',
+    url: '/v1/cli/versions',
     method: 'post',
     data,
   })
@@ -69,7 +69,7 @@ export const createCLIVersion = (data: { version: string; os: string; arch: stri
 
 export const updateCLIVersion = (id: number, data: { updateNotes?: string; forceUpdate?: boolean; status?: 'active' | 'inactive'; downloadUrl?: string; sha256?: string; fileSize?: number }): Promise<AxiosResponse<ApiResponse<Version>>> => {
   return request({
-    url: `/v1/admin/cli/versions/${id}`,
+    url: `/v1/cli/versions/${id}`,
     method: 'put',
     data,
   })
@@ -77,14 +77,14 @@ export const updateCLIVersion = (id: number, data: { updateNotes?: string; force
 
 export const deleteCLIVersion = (id: number): Promise<AxiosResponse<ApiResponse<void>>> => {
   return request({
-    url: `/v1/admin/cli/versions/${id}`,
+    url: `/v1/cli/versions/${id}`,
     method: 'delete',
   })
 }
 
 export const toggleCLIVersionStatus = (id: number, status: 'active' | 'inactive'): Promise<AxiosResponse<ApiResponse<Version>>> => {
   return request({
-    url: `/v1/admin/cli/versions/${id}/toggle`,
+    url: `/v1/cli/versions/${id}/toggle`,
     method: 'patch',
     data: { status },
   })
