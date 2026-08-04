@@ -121,11 +121,6 @@ import type { ChannelMessage, Channel } from '../../types'
 
 const { serverUrl } = useServerUrl()
 
-// 频道正文：声明式 Markdown（方案 A）
-const contentRef = ref<HTMLElement | null>(null)
-const renderedContent = computed(() => renderChannelMarkdown(props.message.content))
-useCodeHighlight(contentRef, renderedContent)
-
 interface Comment {
   id: number
   message_id: number
@@ -152,6 +147,12 @@ const props = withDefaults(defineProps<Props>(), {
   isCreator: false,
   interactive: true
 })
+
+// 频道正文：声明式 Markdown（方案 A）。contentRef/renderedContent 必须在 props 声明之后，
+// 否则 useCodeHighlight 的 immediate watcher 会在 setup 期同步求值，触发 props 未初始化 TDZ 错误。
+const contentRef = ref<HTMLElement | null>(null)
+const renderedContent = computed(() => renderChannelMarkdown(props.message.content))
+useCodeHighlight(contentRef, renderedContent)
 
 const emit = defineEmits<{
   like: [message: ChannelMessage]
