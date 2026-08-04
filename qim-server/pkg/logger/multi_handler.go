@@ -16,6 +16,9 @@ type outputTarget struct {
 
 type multiHandler struct {
 	targets []outputTarget
+	// module 记录通过 WithAttrs 附加的 module 属性（如 WithModule("auth")）。
+	// slog 里 handler 级 attr 不会出现在 Record.Attrs 中，需在此保存才能做模块路由。
+	module string
 }
 
 func newMultiHandler(targets []outputTarget) *multiHandler {
@@ -40,6 +43,10 @@ func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 		return true
 	})
+	// 记录级没有 module attr 时，回退到 handler 级（WithModule 附加的）
+	if module == "" {
+		module = h.module
+	}
 
 	for _, t := range h.targets {
 		if r.Level < t.level {
@@ -56,6 +63,12 @@ func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	module := h.module
+	for _, a := range attrs {
+		if a.Key == "module" {
+			module = a.Value.String()
+		}
+	}
 	targets := make([]outputTarget, len(h.targets))
 	for i, t := range h.targets {
 		targets[i] = outputTarget{
@@ -64,7 +77,7 @@ func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 			module:  t.module,
 		}
 	}
-	return &multiHandler{targets: targets}
+	return &multiHandler{targets: targets, module: module}
 }
 
 func (h *multiHandler) WithGroup(name string) slog.Handler {
@@ -76,7 +89,7 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 			module:  t.module,
 		}
 	}
-	return &multiHandler{targets: targets}
+	return &multiHandler{targets: targets, module: h.module}
 }
 
 func createHandler(w io.Writer, level slog.Level) slog.Handler {

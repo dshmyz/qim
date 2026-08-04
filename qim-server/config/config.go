@@ -36,7 +36,8 @@ type StaticConfig struct {
 }
 
 type LogConfig struct {
-	Dir string `yaml:"dir"`
+	Dir   string `yaml:"dir"`
+	Level string `yaml:"level"` // debug / info / warn / error，默认 info
 }
 
 type DataInitConfig struct {
@@ -299,10 +300,17 @@ func Load() *Config {
 		cfg.DataInit = getDefaultDataInitConfig(cfg.Server.Mode)
 	}
 
-	// 日志目录
+	// 日志目录（环境变量优先，其次 config.yaml 的 log.dir）
 	logDir := os.Getenv("LOG_DIR")
 	if logDir != "" {
 		cfg.Log.Dir = logDir
+	}
+	// 日志级别（环境变量优先，其次 config.yaml 的 log.level，默认 info）
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		cfg.Log.Level = level
+	}
+	if cfg.Log.Level == "" {
+		cfg.Log.Level = "info"
 	}
 
 	// 静态资源路径：未配置时使用与 routes.go 既有硬编码等价的默认值
@@ -376,7 +384,8 @@ func getDefaultConfig() yamlConfig {
 			Path: "./qim.db",
 		},
 		Log: LogConfig{
-			Dir: "./logs",
+			Dir:   "./logs",
+			Level: "info",
 		},
 		Cluster: ClusterConfig{
 			Enabled: false,

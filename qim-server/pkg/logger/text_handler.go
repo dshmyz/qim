@@ -32,7 +32,8 @@ func (h *TextHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	timeStr := r.Time.Format("15:04:05.000")
+	// 带日期 + 毫秒，避免跨天/跨时区排查时分不清是哪一天
+	timeStr := r.Time.Format("2006-01-02 15:04:05.000")
 
 	levelStr := levelToString(r.Level)
 

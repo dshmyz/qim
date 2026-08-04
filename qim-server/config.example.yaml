@@ -44,6 +44,12 @@ database:
   # password: "your-password"
   # database: "qim_server"
 
+# 日志：设置 dir 后输出拆分到 stdout + qim.log/error.log/auth.log；
+# 环境变量 LOG_DIR / LOG_LEVEL 始终优先于此配置。
+log:
+  dir: "./logs"
+  level: "info"   # debug / info / warn / error
+
 # 多节点配置
 cluster:
   enabled: false
