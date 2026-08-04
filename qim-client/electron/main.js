@@ -15,7 +15,6 @@ const screenshots = require('./screenshots/lib/index.cjs').default
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const UPDATE_SERVER_URL = process.env.QIM_UPDATE_URL || 'http://localhost:8080'
 const SCREENSHOT_CAPTURE_TIMEOUT_MS = 12000
 
 // ==================== Single Instance & Protocol ====================
