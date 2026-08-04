@@ -327,18 +327,6 @@
           </Suspense>
         </div>
 
-        <!-- 渲染规则管理 -->
-        <div v-else-if="selectedAppId === 'render_rules'" class="right-content">
-          <Suspense timeout="0">
-            <template #default>
-              <RenderRulesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
-            </template>
-            <template #fallback>
-              <ContentSkeleton type="settings" />
-            </template>
-          </Suspense>
-        </div>
-
         <!-- AI 助手 -->
         <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai_assistant'" class="right-content">
           <Suspense timeout="0">
@@ -679,7 +667,6 @@ const NotesApp = defineAsyncComponent(() => import('../components/apps/NotesApp.
 const TaskManagementApp = defineAsyncComponent(() => import('../components/apps/task/TaskManagementApp.vue'))
 const FileManagementApp = defineAsyncComponent(() => import('../components/apps/FileManagementApp.vue'))
 const AppManagementApp = defineAsyncComponent(() => import('../components/apps/AppManagementApp.vue'))
-const RenderRulesApp = defineAsyncComponent(() => import('../components/apps/RenderRulesApp.vue'))
 const AIAssistantApp = defineAsyncComponent(() => import('../components/apps/AIAssistantApp.vue'))
 const ShortLinkManager = defineAsyncComponent(() => import('../components/apps/ShortLinkManager.vue'))
 import MiniAppManager from '../components/apps/MiniAppManager.vue'
@@ -2506,8 +2493,7 @@ const mainApps = computed(() => {
 // 系统应用列表
 const systemApps = computed(() => {
   const apps = [
-    { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' },
-    { id: 'render_rules', name: '渲染规则管理', icon: 'fas fa-magic' }
+    { id: 'app-management', name: '应用管理', icon: 'fas fa-cog' }
   ]
   return apps
 })
