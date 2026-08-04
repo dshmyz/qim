@@ -20,23 +20,23 @@ const SCREENSHOT_CAPTURE_TIMEOUT_MS = 12000
 
 // ==================== Single Instance & Protocol ====================
 
-// 获取更新服务器地址（优先级：环境变量 > 配置文件 > 根据 isPackaged 判断）
+// 获取更新服务器地址（唯一事实源：env QIM_UPDATE_URL > config.json 的 serverUrl）
+// 去掉硬编码的官方域名兜底——未配置时返回空串，由上层明确报错“未配置更新服务器”，
+// 避免把更新请求发往与渲染进程实际使用地址不同的域名，导致 nginx 收不到流量且难以排查。
 function getUpdateServerUrl() {
-  // 优先使用环境变量
+  // 优先使用环境变量（仅打包时由部署方显式注入，开发环境无需）
   if (process.env.QIM_UPDATE_URL) {
     return process.env.QIM_UPDATE_URL
   }
-  
-  // 尝试从配置文件加载
+
+  // 其次使用配置文件持久化的 serverUrl（登录成功时由渲染进程经 IPC 同步写入）
   const savedUrl = loadServerConfig()
   if (savedUrl) {
     return savedUrl
   }
-  
-  // 根据是否打包判断环境
-  return app.isPackaged 
-    ? 'https://api.qim.work' 
-    : 'http://localhost:8080'
+
+  // 未配置：返回空串（开发环境调用方会回退到 localhost）
+  return ''
 }
 
 if (app.isPackaged) {
@@ -224,7 +224,8 @@ function getWindowsVersion() {
 }
 
 const savedUrl = loadServerConfig()
-let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl()
+// 未配置时：开发环境回退 localhost 便于本地联调；打包环境保持空，由 checkForUpdates 明确报错“未配置更新服务器”
+let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl() || (!app.isPackaged ? 'http://localhost:8080' : '')
 
 // ==================== Global State ====================
 

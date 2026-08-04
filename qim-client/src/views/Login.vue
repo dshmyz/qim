@@ -352,7 +352,11 @@ const login = async () => {
         localStorage.removeItem('password')
         localStorage.removeItem('remember')
       }
-      
+
+      // 登录成功即同步服务器地址到主进程，保证更新检查与 API 使用同一地址（单一事实源）
+      const { setServerUrl } = useServerUrl()
+      setServerUrl(serverSettings.url)
+
       emit('login-success', data.data.user)
     } else if (data.code === 1002 && data.detail?.two_factor_required) {
       loginSession.value = data.detail.session

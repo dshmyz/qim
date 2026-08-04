@@ -90,7 +90,9 @@ export function createUpdateService({
   }
 
   function resolveUpdateFeedUrl() {
-    const baseUrl = getUpdateBaseUrl()
+    const baseUrl = (getUpdateBaseUrl() || '').replace(/\/+$/, '')
+    if (!baseUrl) return null // 未配置服务器地址，交给调用方明确报错
+
     if (process.platform === 'win32') {
       const electronMajor = parseInt(process.versions.electron.split('.')[0], 10)
       return withRolloutClientQuery(`${baseUrl}/api/v1/updates/${electronMajor <= 22 ? 'win7' : 'win10'}/`)
@@ -154,8 +156,11 @@ export function createUpdateService({
     console.log('收到检查更新请求, currentUpdateBaseUrl:', getUpdateBaseUrl(), 'platform:', process.platform)
     const feedUrl = resolveUpdateFeedUrl()
     if (!feedUrl) {
-      const error = `无法检查更新: 当前平台 ${process.platform} 不支持或服务器地址未配置 (currentUpdateBaseUrl: ${getUpdateBaseUrl()})`
+      const error = !getUpdateBaseUrl()
+        ? '无法检查更新: 未配置更新服务器地址，请先在登录页「服务器设置」中填写服务器地址'
+        : `无法检查更新: 当前平台 ${process.platform} 不支持或服务器地址未配置 (currentUpdateBaseUrl: ${getUpdateBaseUrl()})`
       console.error(error)
+      appendUpdateLog(app, error)
       sendToWindow('update-error', error)
       return
     }
