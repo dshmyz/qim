@@ -31,6 +31,9 @@ let onConnectedCallback: (() => void) | null = null
 let reconnectAttempts = 0
 let manualDisconnect = false
 let sessionExpired = false
+// 一次连接周期内是否已尝试过 refresh_token 自动刷新。防止刷新后仍被拒时
+// 无限次 POST /auth/refresh 刷日志；每次建立新连接重置。
+let refreshAttempted = false
 
 /**
  * 设置网络错误状态
@@ -161,6 +164,17 @@ export function useWebSocket(wsUrl: string) {
 
       if (message.type === 'auth_error') {
         console.error('[WS] 认证失败:', message.data?.message)
+        // 每次连接最多自动尝试一次 refresh_token 刷新；若刷新后仍被拒，直接进入
+        // 会话过期，避免无限次 POST /auth/refresh 造成日志刷屏。
+        if (refreshAttempted) {
+          sessionExpired = true
+          if (onSessionExpiredCallback) {
+            onSessionExpiredCallback()
+          }
+          disconnect()
+          return
+        }
+        refreshAttempted = true
         // 尝试用 refresh_token 刷新后重新认证
         const refreshToken = localStorage.getItem('refresh_token')
         if (refreshToken) {
@@ -272,8 +286,16 @@ export function useWebSocket(wsUrl: string) {
   const connect = () => {
     if (ws && ws.readyState === WebSocket.OPEN) return
 
-    // 重置会话过期标志，允许重新连接
-    sessionExpired = false
+    // 会话过期是终结态：只有重新登录（通常伴随页面刷新）才会重新进入 connect，
+    // 这里不能重置该标志，否则自动重连会清掉它会话过期保护，导致
+    // connect → auth_error → /auth/refresh → sessionExpired → 重连 → connect 的无限循环刷日志。
+    if (sessionExpired) {
+      setNetworkError(true, '会话已过期，请重新登录')
+      return
+    }
+
+    // 新连接开启一次新的刷新尝试机会
+    refreshAttempted = false
 
     const token = localStorage.getItem('token')
     if (!token) {

@@ -44,6 +44,10 @@ export const useRenderRulesStore = defineStore('renderRules', () => {
   const version = ref<number>(0)
   const loaded = ref(false)
 
+  // 单飞守卫：同一时间只允许一个拉取请求，避免多条消息渲染时并发触发
+  // /render-rules 造成请求/日志洪泛。拉取完成后清空，下一次需要时再拉。
+  let fetchPromise: Promise<void> | null = null
+
   // 按优先级排序的启用规则
   const activeRules = computed(() =>
     rules.value
@@ -51,8 +55,14 @@ export const useRenderRulesStore = defineStore('renderRules', () => {
       .sort((a, b) => a.priority - b.priority)
   )
 
-  // 拉取规则（带版本号增量同步）
-  async function fetchRules(): Promise<void> {
+  // 拉取规则（带版本号增量同步，单飞并发去重）
+  function fetchRules(): Promise<void> {
+    if (fetchPromise) return fetchPromise
+    fetchPromise = doFetchRules().finally(() => { fetchPromise = null })
+    return fetchPromise
+  }
+
+  async function doFetchRules(): Promise<void> {
     try {
       const res = await request<{ rules: RenderRule[]; version: number }>(
         `/api/v1/render-rules`,
@@ -68,8 +78,12 @@ export const useRenderRulesStore = defineStore('renderRules', () => {
         loaded.value = true
       }
     } catch (e) {
-      // 304 表示版本未变化，无需更新，静默处理
-      if (e instanceof Error && e.message.includes('304')) return
+      // 304 表示版本未变化，说明本地已是最新规则，视为已加载。
+      // 只有置 loaded 才不会再被 TextMessage 每次渲染触发重复拉取。
+      if (e instanceof Error && e.message.includes('304')) {
+        loaded.value = true
+        return
+      }
       // 其他错误静默失败，不影响消息渲染
       console.warn('[renderRules] 拉取失败', e)
     }
