@@ -25,7 +25,7 @@
       </div>
 
       <div class="card-content">
-        <p class="content-text" v-html="previewTextToHtml(message.content)"></p>
+        <div ref="contentRef" class="content-text" v-html="renderedContent"></div>
       </div>
 
       <div v-if="interactive" class="card-actions">
@@ -76,7 +76,7 @@
             />
             <div class="comment-content">
               <span class="comment-author">{{ getDisplayName(comment.user) }}</span>
-              <span class="comment-text" v-html="previewTextToHtml(comment.content)"></span>
+              <span class="comment-text" v-html="renderComment(comment.content)"></span>
               <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
             </div>
           </div>
@@ -114,11 +114,17 @@ import Avatar from '../shared/Avatar.vue'
 import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { useCodeHighlight } from '../../composables/useCodeHighlight'
 import { request } from '../../composables/useRequest'
-import { previewTextToHtml } from '../../utils/emoji'
+import { renderChannelMarkdown } from '../../utils/channelMarkdown'
 import type { ChannelMessage, Channel } from '../../types'
 
 const { serverUrl } = useServerUrl()
+
+// 频道正文：声明式 Markdown（方案 A）
+const contentRef = ref<HTMLElement | null>(null)
+const renderedContent = computed(() => renderChannelMarkdown(props.message.content))
+useCodeHighlight(contentRef, renderedContent)
 
 interface Comment {
   id: number
@@ -170,6 +176,9 @@ const canComment = computed(() => {
   if (!props.channel) return true
   return props.channel.comment_permission !== 'disabled'
 })
+
+// 评论渲染：与正文一致走声明式 Markdown（短文本同样受益于链接/Markdown 解析）
+const renderComment = (content: string): string => renderChannelMarkdown(content)
 
 onMounted(async () => {
   await Promise.all([
@@ -388,6 +397,91 @@ const submitComment = async () => {
   margin: 0 1px;
 }
 
+/* Markdown 声明的排版 */
+.content-text :deep(h1),
+.content-text :deep(h2),
+.content-text :deep(h3) {
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 1em 0 0.5em 0;
+  line-height: 1.3;
+}
+.content-text :deep(h1) { font-size: 1.45em; }
+.content-text :deep(h2) { font-size: 1.25em; }
+.content-text :deep(h3) { font-size: 1.1em; }
+.content-text :deep(strong) { font-weight: 600; }
+.content-text :deep(em) { font-style: italic; }
+.content-text :deep(a) {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+.content-text :deep(a:hover) {
+  text-decoration: underline;
+}
+.content-text :deep(p) { margin: 0.5em 0; }
+.content-text :deep(ul),
+.content-text :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.6em;
+}
+.content-text :deep(li) { margin: 0.25em 0; }
+.content-text :deep(blockquote) {
+  margin: 0.5em 0;
+  padding: 0.25em 1em;
+  border-left: 3px solid var(--primary-color);
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  border-radius: 0 4px 4px 0;
+}
+.content-text :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1em 0;
+}
+.content-text :deep(pre) {
+  background: var(--hover-color);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0.5em 0;
+}
+.content-text :deep(code) {
+  background: var(--hover-color);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.92em;
+}
+.content-text :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.content-text :deep(.hljs) {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.content-text :deep(table) {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.content-text :deep(th),
+.content-text :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  text-align: left;
+}
+.content-text :deep(th) {
+  background: var(--hover-color);
+  font-weight: 600;
+}
+.content-text :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
 .card-actions {
   display: flex;
   gap: 4px;
@@ -509,6 +603,20 @@ const submitComment = async () => {
   height: 16px;
   vertical-align: middle;
   margin: 0 1px;
+}
+
+/* 评论 Markdown 轻量排版 */
+.comment-text :deep(p) { margin: 0.3em 0; }
+.comment-text :deep(a) { color: var(--primary-color); text-decoration: none; }
+.comment-text :deep(a:hover) { text-decoration: underline; }
+.comment-text :deep(strong) { font-weight: 600; }
+.comment-text :deep(em) { font-style: italic; }
+.comment-text :deep(code) {
+  background: var(--hover-color);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9em;
 }
 
 .comment-time {

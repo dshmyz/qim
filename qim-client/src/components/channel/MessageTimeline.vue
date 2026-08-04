@@ -31,7 +31,7 @@
           </div>
         </div>
         <div class="timeline-body">
-          <p class="timeline-text" v-html="previewTextToHtml(message.content)"></p>
+          <div ref="contentRef" class="timeline-text" v-html="renderedContent(message)"></div>
         </div>
         <div v-if="!interactive" class="timeline-interact-hint">
           订阅后可互动
@@ -46,7 +46,7 @@ import { ref } from 'vue'
 import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
-import { previewTextToHtml } from '../../utils/emoji'
+import { renderChannelMarkdown } from '../../utils/channelMarkdown'
 import Avatar from '../shared/Avatar.vue'
 import type { ChannelMessage } from '../../types'
 
@@ -64,6 +64,9 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const { formatTime } = useChatUtils()
+
+// 频道正文：声明式 Markdown（方案 A）；时序为 v-for，逐条渲染
+const renderedContent = (message: ChannelMessage) => renderChannelMarkdown(message.content)
 
 const getSenderName = (message: ChannelMessage): string => {
   return getDisplayName(message.sender)
@@ -200,6 +203,53 @@ const isCreator = (message: ChannelMessage): boolean => {
   vertical-align: middle;
   margin: 0 1px;
 }
+
+/* Markdown 声明的排版 */
+.timeline-text :deep(h1),
+.timeline-text :deep(h2),
+.timeline-text :deep(h3) {
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0.8em 0 0.4em 0;
+  line-height: 1.3;
+}
+.timeline-text :deep(h1) { font-size: 1.4em; }
+.timeline-text :deep(h2) { font-size: 1.2em; }
+.timeline-text :deep(h3) { font-size: 1.1em; }
+.timeline-text :deep(strong) { font-weight: 600; }
+.timeline-text :deep(em) { font-style: italic; }
+.timeline-text :deep(a) { color: var(--primary-color); text-decoration: none; }
+.timeline-text :deep(a:hover) { text-decoration: underline; }
+.timeline-text :deep(p) { margin: 0.4em 0; }
+.timeline-text :deep(ul),
+.timeline-text :deep(ol) { margin: 0.4em 0; padding-left: 1.6em; }
+.timeline-text :deep(li) { margin: 0.2em 0; }
+.timeline-text :deep(blockquote) {
+  margin: 0.4em 0;
+  padding: 0.25em 1em;
+  border-left: 3px solid var(--primary-color);
+  color: var(--text-secondary);
+  background: var(--hover-color);
+  border-radius: 0 4px 4px 0;
+}
+.timeline-text :deep(pre) {
+  background: var(--hover-color);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0.4em 0;
+}
+.timeline-text :deep(code) {
+  background: var(--hover-color);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.92em;
+}
+.timeline-text :deep(pre code) { background: transparent; padding: 0; border-radius: 0; }
+.timeline-text :deep(img) { max-width: 100%; border-radius: 6px; }
 
 .timeline-interact-hint {
   margin-top: var(--spacing-2);
