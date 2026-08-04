@@ -184,12 +184,18 @@ export ELECTRON_MIRROR="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electro
 export ELECTRON_BUILDER_BINARIES_MIRROR="${ELECTRON_BUILDER_BINARIES_MIRROR:-https://npmmirror.com/mirrors/electron-builder-binaries/}"
 echo -e "${GREEN}✅ 镜像配置完成${NC}"
 
-# 设置更新服务器地址（可通过环境变量覆盖）
-echo ""
-echo "🔧 设置更新服务器地址..."
-export QIM_UPDATE_URL="${QIM_UPDATE_URL:-http://localhost:8080}"
-echo "   更新服务器: $QIM_UPDATE_URL"
-echo -e "${GREEN}✅ 更新服务器配置完成${NC}"
+# 设置更新服务器地址（可通过环境变量 QIM_UPDATE_URL 覆盖）
+#    默认从 .env.production 解析 VITE_API_URL，与渲染进程默认同源（只改一处）；
+#    仍未取到时才回退 localhost 并告警。
+if [ -z "$QIM_UPDATE_URL" ]; then
+  QIM_UPDATE_URL="$(grep -E '^VITE_API_URL=' "$PROJECT_DIR/.env.production" 2>/dev/null | head -n1 | cut -d'=' -f2- | tr -d '\r')"
+  if [ -z "$QIM_UPDATE_URL" ]; then
+    QIM_UPDATE_URL="http://localhost:8080"
+    echo -e "${YELLOW}⚠️  .env.production 未配置 VITE_API_URL，更新地址回退到 $QIM_UPDATE_URL（仅开发）${NC}"
+  fi
+fi
+export QIM_UPDATE_URL
+echo -e "${GREEN}✅ 更新服务器地址: $QIM_UPDATE_URL${NC}"
 
 # 检查 Wine（仅 Linux 且需要构建 Windows 时）
 if [[ "$OSTYPE" == "linux-gnu"* ]] && ([ "$BUILD_WIN7" = true ] || [ "$BUILD_WIN10" = true ]); then

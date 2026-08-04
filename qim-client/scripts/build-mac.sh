@@ -69,9 +69,16 @@ fi
 
 # 6. 设置更新服务器地址（可通过环境变量覆盖）
 echo ""
-echo "🔧 设置更新服务器地址..."
-export QIM_UPDATE_URL="${QIM_UPDATE_URL:-http://localhost:8080}"
-echo "   更新服务器: $QIM_UPDATE_URL"
+# 默认从 .env.production 解析 VITE_API_URL（与渲染进程默认同源，只改一处）；仍未取到才回退 localhost 并告警
+if [ -z "$QIM_UPDATE_URL" ]; then
+  QIM_UPDATE_URL="$(grep -E '^VITE_API_URL=' "$PROJECT_DIR/.env.production" 2>/dev/null | head -n1 | cut -d'=' -f2- | tr -d '\r')"
+  if [ -z "$QIM_UPDATE_URL" ]; then
+    QIM_UPDATE_URL="http://localhost:8080"
+    echo "⚠️  .env.production 未配置 VITE_API_URL，更新地址回退到 $QIM_UPDATE_URL（仅开发）"
+  fi
+fi
+export QIM_UPDATE_URL
+echo "✅ 更新服务器地址: $QIM_UPDATE_URL"
 
 # 7. 设置国内镜像加速（可选）
 echo ""
