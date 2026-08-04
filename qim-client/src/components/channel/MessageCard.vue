@@ -25,7 +25,7 @@
       </div>
 
       <div class="card-content">
-        <p class="content-text">{{ message.content }}</p>
+        <p class="content-text" v-html="previewTextToHtml(message.content)"></p>
       </div>
 
       <div v-if="interactive" class="card-actions">
@@ -76,7 +76,7 @@
             />
             <div class="comment-content">
               <span class="comment-author">{{ getDisplayName(comment.user) }}</span>
-              <span class="comment-text">{{ comment.content }}</span>
+              <span class="comment-text" v-html="previewTextToHtml(comment.content)"></span>
               <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
             </div>
           </div>
@@ -115,6 +115,7 @@ import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { request } from '../../composables/useRequest'
+import { previewTextToHtml } from '../../utils/emoji'
 import type { ChannelMessage, Channel } from '../../types'
 
 const { serverUrl } = useServerUrl()
@@ -380,6 +381,13 @@ const submitComment = async () => {
   white-space: pre-wrap;
 }
 
+.content-text :deep(.emoji-img) {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin: 0 1px;
+}
+
 .card-actions {
   display: flex;
   gap: 4px;
@@ -494,6 +502,13 @@ const submitComment = async () => {
   color: var(--text-color);
   line-height: 1.5;
   display: block;
+}
+
+.comment-text :deep(.emoji-img) {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .comment-time {

@@ -31,7 +31,7 @@
           </div>
         </div>
         <div class="timeline-body">
-          <p class="timeline-text">{{ message.content }}</p>
+          <p class="timeline-text" v-html="previewTextToHtml(message.content)"></p>
         </div>
         <div v-if="!interactive" class="timeline-interact-hint">
           订阅后可互动
@@ -46,6 +46,7 @@ import { ref } from 'vue'
 import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
+import { previewTextToHtml } from '../../utils/emoji'
 import Avatar from '../shared/Avatar.vue'
 import type { ChannelMessage } from '../../types'
 
@@ -191,6 +192,13 @@ const isCreator = (message: ChannelMessage): boolean => {
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+.timeline-text :deep(.emoji-img) {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .timeline-interact-hint {

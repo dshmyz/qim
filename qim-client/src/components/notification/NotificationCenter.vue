@@ -102,7 +102,7 @@
                     </span>
                   </div>
                 </div>
-                <div class="notification-text">{{ notification.content }}</div>
+                <div class="notification-text" v-html="previewTextToHtml(notification.content)"></div>
                 <div class="notification-time-row">
                   <span class="notification-time">{{ formatTime(notification.timestamp) }}</span>
                   <span v-if="notification.handled" class="badge-handled">已处理</span>
@@ -157,7 +157,7 @@
                   </span>
                 </div>
               </div>
-              <div class="notification-text">{{ notification.content }}</div>
+              <div class="notification-text" v-html="previewTextToHtml(notification.content)"></div>
               <div class="notification-time-row">
                 <span class="notification-time">{{ formatTime(notification.timestamp) }}</span>
                 <span v-if="notification.handled" class="badge-handled">已处理</span>
@@ -188,6 +188,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { type Notification, mapNotifications } from '../../utils/notificationMapper'
+import { previewTextToHtml } from '../../utils/emoji'
 
 interface Props {
   show: boolean
@@ -864,6 +865,13 @@ defineExpose({
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.notification-text :deep(.emoji-img) {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .notification-time {

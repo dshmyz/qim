@@ -38,10 +38,10 @@
         <div class="conversation-preview" :class="{ 'has-draft': hasDraft(conversation) }">
           <template v-if="hasDraft(conversation)">
             <i class="fas fa-edit draft-icon"></i>
-            <span class="conversation-preview-text">[草稿] {{ getDraftPreview(conversation) }}</span>
+            <span class="conversation-preview-text" v-html="`[草稿] ${previewTextToHtml(getDraftPreview(conversation))}`"></span>
           </template>
           <template v-else>
-            <span class="conversation-preview-text">{{ formatMessagePreview(conversation.lastMessage, conversation) }}</span>
+            <span class="conversation-preview-text" v-html="formatMessagePreviewHtml(conversation.lastMessage, conversation)"></span>
           </template>
         </div>
       </div>
@@ -70,6 +70,7 @@ import Avatar from '../shared/Avatar.vue'
 import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts'
 import { sameConversationId } from '../../utils/conversationId'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
+import { previewTextToHtml } from '../../utils/emoji'
 
 interface User {
   id: string
@@ -251,6 +252,10 @@ const formatMessagePreview = (lastMessage?: LastMessage, conversation?: Conversa
   return previewText
 }
 
+const formatMessagePreviewHtml = (lastMessage?: LastMessage, conversation?: Conversation): string => {
+  return previewTextToHtml(formatMessagePreview(lastMessage, conversation))
+}
+
 const getUnreadCount = (conversation: Conversation): number => {
   return conversation.unread_count ?? 0
 }
@@ -421,6 +426,13 @@ const getUnreadCount = (conversation: Conversation): number => {
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+.conversation-preview-text :deep(.emoji-img) {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .draft-icon {

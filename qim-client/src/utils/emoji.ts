@@ -73,3 +73,16 @@ export function classicToHtml(html: string): string {
   })
 }
 
+/**
+ * 预览文本 → HTML（用于最近会话列表、消息管理器等轻量展示场景）。
+ * 与 textToHtml 不同，此处不处理链接、@提及、任务卡片，仅做表情图片化 + HTML 转义。
+ */
+export function previewTextToHtml(text: string): string {
+  if (!text) return ''
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return classicToHtml(emojiToHtml(escaped))
+}
+

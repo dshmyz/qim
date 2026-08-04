@@ -63,7 +63,7 @@
         >
           <div class="ai-msg-bubble" :class="{ error: msg.isError }">
             <div v-if="msg.role === 'assistant'" class="ai-msg-content" v-html="renderMd(msg.content)"></div>
-            <div v-else class="ai-msg-content">{{ msg.content }}</div>
+            <div v-else class="ai-msg-content" v-html="previewTextToHtml(msg.content)"></div>
           </div>
           <!-- Action row: copy / retry / timestamp -->
           <div v-if="msg.role === 'assistant'" class="ai-msg-actions">
@@ -143,6 +143,7 @@ import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { useAIStream } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
+import { previewTextToHtml } from '../../utils/emoji'
 
 interface Props {
   visible: boolean
@@ -762,6 +763,13 @@ const autoResize = () => {
 }
 
 /* Markdown content */
+.ai-msg-content :deep(.emoji-img) {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 1px;
+}
+
 .ai-msg-content :deep(p) { margin: 0 0 8px; }
 .ai-msg-content :deep(p:last-child) { margin-bottom: 0; }
 .ai-msg-content :deep(ul),

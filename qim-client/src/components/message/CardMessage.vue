@@ -1,8 +1,8 @@
 <template>
   <div class="message-bubble card-message" :class="{ self: isSelf }">
     <div class="card-container">
-      <div v-if="card.title" class="card-title">{{ card.title }}</div>
-      <div v-if="card.text" class="card-text">{{ card.text }}</div>
+      <div v-if="card.title" class="card-title" v-html="previewTextToHtml(card.title)"></div>
+      <div v-if="card.text" class="card-text" v-html="previewTextToHtml(card.text)"></div>
       <div v-if="card.buttons && card.buttons.length" class="card-actions">
         <button
           v-for="btn in card.buttons"
@@ -13,7 +13,7 @@
           @click="handleClick(btn)"
         >
           <i v-if="submitting && selectedId === btn.id" class="fas fa-spinner fa-spin"></i>
-          <span class="card-btn-text">{{ btn.text }}</span>
+          <span class="card-btn-text" v-html="previewTextToHtml(btn.text)"></span>
           <i v-if="submitted && selectedId === btn.id" class="fas fa-check"></i>
         </button>
       </div>
@@ -25,6 +25,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useBotCardAction } from '../../composables/useBotCardAction'
+import { previewTextToHtml } from '../../utils/emoji'
 
 interface CardButton {
   id: string
@@ -154,6 +155,20 @@ watch(() => props.content, () => {
   word-break: break-word;
 }
 
+.card-text :deep(.emoji-img) {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 1px;
+}
+
+.card-title :deep(.emoji-img) {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 1px;
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -221,6 +236,13 @@ watch(() => props.content, () => {
 
 .card-btn.selected {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color), transparent 30%);
+}
+
+.card-btn-text :deep(.emoji-img) {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .card-btn.default.selected {

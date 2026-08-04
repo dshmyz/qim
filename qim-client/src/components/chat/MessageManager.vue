@@ -135,8 +135,8 @@
                   />
                   <template v-else>
                     <template v-for="(part, partIndex) in splitHighlightParts(seg.text)" :key="partIndex">
-                      <mark v-if="part.highlight" class="search-highlight">{{ part.text }}</mark>
-                      <span v-else>{{ part.text }}</span>
+                      <mark v-if="part.highlight" class="search-highlight" v-html="previewTextToHtml(part.text)"></mark>
+                      <span v-else v-html="previewTextToHtml(part.text)"></span>
                     </template>
                   </template>
                 </template>
@@ -273,6 +273,7 @@ import { getToken } from '../../composables/useRequest'
 import { parseContent } from '../../utils/mentions'
 import { downloadUrl } from '../../utils/download'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
+import { previewTextToHtml } from '../../utils/emoji'
 import MarkdownMessage from '../message/MarkdownMessage.vue'
 import MergedForwardMessage from '../message/MergedForwardMessage.vue'
 import TaskRefCard from '../message/TaskRefCard.vue'
@@ -1030,6 +1031,13 @@ onMounted(() => {
   -webkit-box-orient: vertical;
   padding-left: 0;
   user-select: text;
+}
+
+.message-manager-item-content :deep(.emoji-img) {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .message-content-file {

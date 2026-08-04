@@ -54,7 +54,7 @@
               v-if="msg.type === 'markdown' || msg.senderType === 'bot'"
               :content="msg.content"
             />
-            <span v-else>{{ msg.content }}</span>
+            <span v-else v-html="previewTextToHtml(msg.content)"></span>
             <span v-if="msg.isStreaming" class="streaming-cursor"></span>
           </div>
           <!-- Bot 回复命中笔记时的知识来源折叠标签 -->
@@ -100,6 +100,7 @@ import Avatar from '../../shared/Avatar.vue'
 import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import KnowledgeSources from '../../message/KnowledgeSources.vue'
+import { previewTextToHtml } from '../../../utils/emoji'
 import type { BotMessage } from '../../../types/bot'
 import QMessageBox from '../../../utils/qmessagebox'
 
@@ -352,6 +353,13 @@ watch(() => props.isStreaming, () => {
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
+}
+
+.content :deep(.emoji-img) {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin: 0 1px;
 }
 
 .streaming-cursor {
