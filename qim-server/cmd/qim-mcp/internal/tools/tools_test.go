@@ -97,7 +97,7 @@ func TestSendMessage(t *testing.T) {
 	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(42), "conversation_id": float64(7)}})
 	})
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	out := callTool(t, cs, "send_message", map[string]any{
 		"to_user_id": float64(13), "thread_id": float64(7), "content": "hi", "msg_type": "markdown",
@@ -118,7 +118,7 @@ func TestOpsBridgeToolsAreNotRegistered(t *testing.T) {
 	srv, _ := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
 	})
-	api := client.New(srv.URL, "qbot_test")
+	api := client.New(srv.URL, "qbot_test", "")
 	cs := setupMCP(t, api)
 
 	names := listToolNames(t, cs)
@@ -131,7 +131,7 @@ func TestSendMessage_NoThreadAutoCreate(t *testing.T) {
 	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(1), "conversation_id": float64(9)}})
 	})
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	out := callTool(t, cs, "send_message", map[string]any{"to_user_id": float64(13), "content": "hello"})
 	assert.Contains(t, out, `"conversation_id":9`)
@@ -145,7 +145,7 @@ func TestSendMessage_DefaultTextType(t *testing.T) {
 	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(1), "conversation_id": float64(1)}})
 	})
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	callTool(t, cs, "send_message", map[string]any{"to_user_id": float64(1), "content": "hello"})
 	r := lastReq(reqs)
@@ -161,7 +161,7 @@ func TestListMessages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": msgs}})
 	})
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	out := callTool(t, cs, "list_messages", map[string]any{"thread_id": float64(5), "limit": float64(20)})
 	assert.Contains(t, out, `"content":"hello"`)
@@ -180,7 +180,7 @@ func TestPollMessages_RequiresAfterID(t *testing.T) {
 	srv, _ := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": []any{}}})
 	})
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	// after_id=0 应被工具拒绝（返回错误结果），不应调 Bot API
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -200,7 +200,7 @@ func TestPollMessages_Incremental(t *testing.T) {
 		}}})
 	}))
 	t.Cleanup(srv.Close)
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	out := callTool(t, cs, "poll_messages", map[string]any{"thread_id": float64(5), "after_id": float64(20)})
 	assert.Contains(t, out, `"content":"reply"`)
@@ -228,7 +228,7 @@ func TestStreamingThreeStep(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	cs := setupMCP(t, client.New(srv.URL, "qbot_test"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	// 1) start
 	startOut := callTool(t, cs, "start_streaming_message", map[string]any{"to_user_id": float64(13)})
@@ -258,7 +258,7 @@ func TestAuthHeaderPropagated(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": []any{}}})
 	}))
 	t.Cleanup(srv.Close)
-	cs := setupMCP(t, client.New(srv.URL, "qbot_secret_xyz"))
+	cs := setupMCP(t, client.New(srv.URL, "qbot_secret_xyz", ""))
 
 	callTool(t, cs, "list_messages", map[string]any{"thread_id": float64(1)})
 	assert.Equal(t, "Bearer qbot_secret_xyz", seen)

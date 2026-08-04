@@ -105,8 +105,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import AppHeader from '../apps/AppHeader.vue'
-import Switch from '../../common/Switch.vue'
-import ModalContainer from '../../shared/ModalContainer.vue'
+import Switch from '../common/Switch.vue'
+import ModalContainer from '../shared/ModalContainer.vue'
 import RenderRuleEditor from './render-rules/RenderRuleEditor.vue'
 import RenderRuleTester from './render-rules/RenderRuleTester.vue'
 import QMessage from '../../utils/qmessage'

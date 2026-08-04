@@ -1,10 +1,5 @@
 ---
-layout: home
-
-hero: false
-sidebar: false
-aside: false
-outline: false
+layout: false
 ---
 
 <script setup>
@@ -14,34 +9,23 @@ import Home from './components/Home.vue'
 <Home />
 
 <style>
-/* 隐藏 VitePress 默认布局，让 Home 组件全屏（只影响首页） */
-.VPHome {
-  min-height: 100vh !important;
-  padding: 0 !important;
-  margin-bottom: 0 !important;
+/* layout: false 下无 VitePress Layout 包装，Home 直接渲染 */
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background: #fafbfc;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.Layout {
-  min-height: 100vh !important;
+
+/* VitePress 全局样式覆盖：仅修正必要的属性 */
+.landing-page img {
+  max-width: none !important;
 }
-/* 取消 VitePress 默认内容容器的宽度限制（只影响首页，文档页需要保留 padding 给 sidebar 让位） */
-.VPHome .vp-doc.container {
-  max-width: 100% !important;
-  padding: 0 !important;
-}
-/* 隐藏默认 hero */
-.VPHero {
-  display: none !important;
-}
-/* 隐藏 VitePress 默认导航栏，首页使用 Home 组件自带的 top-nav */
-.VPNav {
-  display: none !important;
-}
-/* 隐藏默认 features */
-.VPFeatures {
-  display: none !important;
-}
-/* 隐藏 VitePress 默认 footer，使用 Home 组件自带的 footer */
-.VPFooter {
-  display: none !important;
+.landing-page button {
+  font-family: inherit !important;
 }
 </style>

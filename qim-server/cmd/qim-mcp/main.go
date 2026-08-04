@@ -32,6 +32,7 @@ import (
 func main() {
 	serverURL := flag.String("server", "http://localhost:8080", "QIM server URL")
 	token := flag.String("token", "", "Bot 访问令牌（qbot_ 开头）。stdio 模式必填，http 模式由请求 Authorization 头传入")
+	userToken := flag.String("user-token", "", "用户 JWT（可选）。用于任务管理、日历事件、消息搜索等需要用户身份的接口")
 	transport := flag.String("transport", "stdio", "传输模式：stdio（本地）或 http（远程 StreamableHTTP）")
 	addr := flag.String("addr", ":8082", "HTTP 监听地址（仅 --transport http 有效）")
 	flag.Parse()
@@ -41,7 +42,7 @@ func main() {
 
 	switch *transport {
 	case "stdio":
-		runStdio(ctx, *serverURL, *token)
+		runStdio(ctx, *serverURL, *token, *userToken)
 	case "http":
 		runHTTP(ctx, *serverURL, *addr)
 	default:
@@ -50,13 +51,13 @@ func main() {
 	}
 }
 
-func runStdio(ctx context.Context, serverURL, token string) {
+func runStdio(ctx context.Context, serverURL, token, userToken string) {
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "--token 必填：在 QIM 客户端 BotConfigDialog 中签发 Bot 令牌后填入")
 		os.Exit(2)
 	}
 
-	api := client.New(serverURL, token)
+	api := client.New(serverURL, token, userToken)
 	adapter := tools.New(api)
 
 	s := mcp.NewServer(&mcp.Implementation{Name: "qim-bot", Version: "1.0.0"}, nil)
@@ -75,7 +76,8 @@ func runHTTP(ctx context.Context, serverURL, addr string) {
 			if token == "" {
 				return nil // 400 Bad Request
 			}
-			api := client.New(serverURL, token)
+			userToken := extractUserToken(r)
+			api := client.New(serverURL, token, userToken)
 			adapter := tools.New(api)
 			s := mcp.NewServer(&mcp.Implementation{Name: "qim-bot", Version: "1.0.0"}, nil)
 			tools.Register(s, adapter)
@@ -109,4 +111,9 @@ func extractBearerToken(r *http.Request) string {
 		return strings.TrimPrefix(auth, "Bearer ")
 	}
 	return ""
+}
+
+// extractUserToken 从 X-QIM-User-Token 头提取用户 JWT（可选）。
+func extractUserToken(r *http.Request) string {
+	return r.Header.Get("X-QIM-User-Token")
 }

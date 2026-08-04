@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 import { copyrightText } from './meta'
 
 export default defineConfig({
-  title: 'QIM 青雀',
+  title: 'NUIM 青雀',
   description: '企业级智能协作平台',
   lang: 'zh-CN',
   base: '/',
@@ -16,20 +16,25 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    // 隐藏 VitePress 默认导航，首页完全自定义
-    nav: [],
+    // 文档页顶部导航栏：仅用于文档页面，提供返回首页的入口
+    // 注意：首页导航由 Home.vue 组件独立实现，与此处配置无关
+    nav: [
+      { text: '← 返回首页', link: '/' },
+    ],
     sidebar: {
+      collapsible: true,
       '/docs/': [
         {
           text: '开发者文档',
+          collapsible: true,
           items: [
+            { text: '功能介绍', link: '/docs/features' },
             { text: 'CLI 使用指南', link: '/docs/cli' },
             { text: 'MCP 接入指南', link: '/docs/mcp' },
           ],
         },
       ],
     },
-    // 文档页顶部导航
     socialLinks: [],
     footer: {
       message: copyrightText,

@@ -2,15 +2,15 @@
 title: MCP 接入指南
 ---
 
-# QIM MCP 接入指南
+# NUIM MCP 接入指南
 
 ## 概述
 
-QIM 提供标准的 **MCP (Model Context Protocol)** 服务器 `qim-mcp`，支持 Claude Code、Cursor 等任何兼容 MCP 协议的 AI Agent 通过标准化接口在 QIM 内收发消息。
+NUIM 提供标准的 **MCP (Model Context Protocol)** 服务器 `nuim-mcp`，支持 Claude Code、Cursor 等任何兼容 MCP 协议的 AI Agent 通过标准化接口在 NUIM 内收发消息。
 
 ### 与 CLI 的区别
 
-| 特性 | `qim` CLI | `qim-mcp` MCP Server |
+| 特性 | `nuim` CLI | `nuim-mcp` MCP Server |
 |------|-----------|----------------------|
 | 协议 | 命令行 + HTTP | 标准 MCP (JSON-RPC) |
 | 适用场景 | Bash 脚本、手动操作 | Claude Code、Cursor 等 MCP 客户端 |
@@ -22,11 +22,11 @@ QIM 提供标准的 **MCP (Model Context Protocol)** 服务器 `qim-mcp`，支�
 
 ## 快速开始
 
-### 1. 构建 qim-mcp
+### 1. 构建 nuim-mcp
 
 ```bash
 cd qim-server
-go build -o qim-mcp ./cmd/qim-mcp/
+go build -o nuim-mcp ./cmd/nuim-mcp/
 ```
 
 ### 2. 获取 Bot 令牌
@@ -44,15 +44,15 @@ go build -o qim-mcp ./cmd/qim-mcp/
 ```json
 {
   "mcpServers": {
-    "qim": {
-      "command": "/path/to/qim-mcp",
+    "nuim": {
+      "command": "/path/to/nuim-mcp",
       "args": ["--token", "qbot_your_token_here", "--server", "http://localhost:8080"]
     }
   }
 }
 ```
 
-配置完成后重启 Claude Code，即可使用 QIM 工具。
+配置完成后重启 Claude Code，即可使用 NUIM 工具。
 
 ### 4. 配置 Cursor
 
@@ -61,8 +61,8 @@ go build -o qim-mcp ./cmd/qim-mcp/
 ```json
 {
   "mcpServers": {
-    "qim": {
-      "command": "/path/to/qim-mcp",
+    "nuim": {
+      "command": "/path/to/nuim-mcp",
       "args": ["--token", "qbot_your_token_here", "--server", "http://localhost:8080"]
     }
   }
@@ -78,24 +78,39 @@ go build -o qim-mcp ./cmd/qim-mcp/
 适用于本地 Claude Code / Cursor，通过标准输入输出通信：
 
 ```bash
-qim-mcp --token qbot_xxxx --server http://localhost:8080
+nuim-mcp --token qbot_xxxx --server http://localhost:8080
 ```
 
 - `--token`（必填）：Bot 访问令牌
-- `--server`（可选）：QIM 服务器地址，默认 `http://localhost:8080`
+- `--server`（可选）：NUIM 服务器地址，默认 `http://localhost:8080`
+- `--user-token`（可选）：用户 JWT，用于任务管理、日历事件、消息搜索等需要用户身份的接口
+
+#### 配置用户 JWT
+
+如需使用任务、日历等需要用户身份的工具，需先获取用户 JWT：
+
+```bash
+# 通过 CLI 登录获取 token
+nuim login
+nuim whoami  # 查看当前 token
+
+# 启动 MCP 时传入
+nuim-mcp --token qbot_xxxx --user-token eyJhbGciOi... --server http://localhost:8080
+```
 
 ### Streamable HTTP 模式（远程部署）
 
 适用于远程部署，任意 MCP 客户端通过 HTTP 调用：
 
 ```bash
-qim-mcp --transport http --addr :8082 --server http://localhost:8080
+nuim-mcp --transport http --addr :8082 --server http://localhost:8080
 ```
 
 - `--transport http`：启用 HTTP 传输
 - `--addr`：监听地址，默认 `:8082`
-- `--server`：QIM 服务器地址
-- 认证方式：每个请求通过 `Authorization: Bearer qbot_xxx` 头传入 token
+- `--server`：NUIM 服务器地址
+- 认证方式：每个请求通过 `Authorization: Bearer qbot_xxx` 头传入 Bot token
+- 用户 JWT：通过 `X-QIM-User-Token` 头传入（可选，用于任务/日历等接口）
 - 运行模式：Stateless（无会话持久化）
 
 #### HTTP 模式客户端示例
@@ -107,7 +122,7 @@ curl -X POST http://localhost:8082/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
-# 调用 send_message
+# 调用 send_message（仅需 Bot token）
 curl -X POST http://localhost:8082/mcp \
   -H "Authorization: Bearer qbot_xxxx" \
   -H "Content-Type: application/json" \
@@ -124,15 +139,35 @@ curl -X POST http://localhost:8082/mcp \
       }
     }
   }'
+
+# 调用 create_task（需用户 JWT）
+curl -X POST http://localhost:8082/mcp \
+  -H "Authorization: Bearer qbot_xxxx" \
+  -H "X-QIM-User-Token: eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "create_task",
+      "arguments": {
+        "title": "修复登录 bug",
+        "priority": "high"
+      }
+    }
+  }'
 ```
 
 ---
 
 ## MCP 工具列表
 
-qim-mcp 注册了 6 个标准 MCP 工具：
+nuim-mcp 注册了 13 个标准 MCP 工具，分为四组：
 
-### list_messages
+### 消息收发（Bot Token）
+
+#### list_messages
 
 列出指定会话的最近消息。首次进入会话时读取历史。
 
@@ -143,7 +178,7 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 
 **返回**：每行一条 JSON 消息。
 
-### poll_messages
+#### poll_messages
 
 增量拉取 `after_id` 之后的新消息。用于感知用户回复。
 
@@ -154,7 +189,7 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 
 **返回**：每行一条 JSON 消息。
 
-### send_message
+#### send_message
 
 向指定用户发送消息。`thread_id` 省略时自动创建/复用会话。
 
@@ -182,7 +217,7 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 
 用户点击按钮后，通过 `poll_messages` 收到 `type: "card_action"` 的消息，其中 `content` 包含 `action_id` 字段标识点击了哪个按钮。
 
-### start_streaming_message
+#### start_streaming_message
 
 创建流式消息占位（用户端显示 typing 状态），返回 `message_id`。
 
@@ -193,7 +228,7 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 
 **返回**：`{"message_id": 43, "conversation_id": 7}`
 
-### append_streaming_chunk
+#### append_streaming_chunk
 
 向流式消息追加一段内容增量。可多次调用。
 
@@ -204,7 +239,7 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 
 **返回**：`{"ok": true}`
 
-### finish_streaming_message
+#### finish_streaming_message
 
 收尾流式消息，将其转为最终 Markdown 渲染。调用后不再接受追加。
 
@@ -213,6 +248,112 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 | `message_id` | uint64 | 是 | 流式消息 ID |
 
 **返回**：`{"ok": true}`
+
+### 消息增强（Bot Token）
+
+#### edit_message
+
+更新一条已存在的 bot 消息内容，用于卡片状态回写、修正错误等场景。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `message_id` | uint64 | 是 | 消息 ID |
+| `content` | string | 是 | 新消息内容 |
+| `msg_type` | string | 否 | 消息类型（留空保持原类型） |
+
+**返回**：`{"success": true}`
+
+#### search_messages
+
+按关键词搜索历史消息（需要用户 JWT）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `keyword` | string | 是 | 搜索关键词 |
+| `conversation_id` | uint64 | 否 | 限定会话 ID |
+| `limit` | int | 否 | 最大返回条数 |
+
+**返回**：每行一条搜索命中 JSON。
+
+### 任务管理（用户 JWT）
+
+#### list_tasks
+
+列出当前用户的待办任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `status` | string | 否 | 过滤状态：`todo` / `doing` / `done` |
+| `limit` | int | 否 | 最大返回条数，默认 50 |
+
+**返回**：每行一条任务 JSON。
+
+#### create_task
+
+创建一条待办任务。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | string | 是 | 任务标题 |
+| `due_date` | string | 否 | 截止日期（YYYY-MM-DD） |
+| `priority` | string | 否 | 优先级：`low` / `medium`（默认） / `high` |
+| `description` | string | 否 | 任务描述 |
+
+**返回**：`{"task_id": 123}`
+
+#### update_task
+
+更新一条待办任务的字段。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | uint64 | 是 | 任务 ID |
+| `status` | string | 否 | `todo` / `doing` / `done` |
+| `priority` | string | 否 | `low` / `medium` / `high` |
+| `title` | string | 否 | 新标题 |
+| `due_date` | string | 否 | 新截止日期 |
+
+**返回**：`{"success": true}`
+
+### 日历事件（用户 JWT）
+
+#### list_events
+
+列出当前用户的日历事件。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `limit` | int | 否 | 最大返回条数，默认 50 |
+
+**返回**：每行一条事件 JSON。
+
+#### create_event
+
+创建一条日历事件。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | string | 是 | 事件标题 |
+| `start` | string | 是 | 开始时间（RFC3339 格式，如 `2026-08-01T14:00:00+08:00`） |
+| `end` | string | 是 | 结束时间（RFC3339 格式） |
+| `reminder` | int | 否 | 提前提醒分钟数，0 表示不提醒 |
+| `description` | string | 否 | 事件描述 |
+
+**返回**：`{"event_id": 456}`
+
+#### update_event
+
+更新一条日历事件的字段。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `event_id` | uint64 | 是 | 事件 ID |
+| `title` | string | 否 | 新标题 |
+| `start` | string | 否 | 新开始时间 |
+| `end` | string | 否 | 新结束时间 |
+| `reminder` | int | 否 | 新提醒分钟数 |
+
+**返回**：`{"success": true}`
 
 ---
 

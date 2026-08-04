@@ -37,7 +37,7 @@
         <div v-if="isRecalled" class="message-bubble recalled-message">
           <span>{{ isSelf ? '你' : (message.sender.name || '未知用户') }} 撤回了一条消息</span>
           <button
-            v-if="isSelf"
+            v-if="isSelf && message.type === 'text'"
             class="recall-edit-btn"
             @click="handleRecallEdit"
             title="重新编辑"

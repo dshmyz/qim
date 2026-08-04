@@ -1,6 +1,6 @@
 // Package tools 把 QIM Bot API 的操作封装为标准 MCP 工具。
-// agent（Claude Code/Cursor 等）经 MCP 调用这些工具即可在 QIM 内收发消息，
-// 无需手搓轮询脚本。工具清单与 cmd/qim CLI 操作面对齐。
+// agent（Claude Code/Cursor 等）经 MCP 调用这些工具即可在 QIM 内收发消息、
+// 管理待办、安排日历，无需手搓轮询脚本。
 package tools
 
 import (
@@ -23,6 +23,8 @@ func New(api *client.BotAPIClient) *Adapter { return &Adapter{api: api} }
 
 // Register 在 MCP server 上注册全部工具。
 func Register(s *mcp.Server, a *Adapter) {
+	// --- 消息收发（Bot Token）---
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_messages",
 		Description: "列出指定 QIM 会话（thread）的最近消息。用于首次进入会话时读取历史。返回每行一条 JSON 消息。",
@@ -52,9 +54,55 @@ func Register(s *mcp.Server, a *Adapter) {
 		Name:        "finish_streaming_message",
 		Description: "收尾一条流式消息，将其转为最终 markdown 渲染。调用后该消息不再接受追加。",
 	}, a.finishStreaming)
+
+	// --- 消息增强 ---
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "edit_message",
+		Description: "更新一条已存在的 bot 消息内容（用于卡片状态回写、修正错误等场景）。msg_type 可选，留空保持原类型。返回 {success:true}。",
+	}, a.editMessage)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "search_messages",
+		Description: "按关键词搜索历史消息（需要用户 JWT）。keyword 为搜索词，conversation_id 可选限定会话，limit 控制返回条数。返回每行一条搜索命中 JSON。",
+	}, a.searchMessages)
+
+	// --- 任务管理 ---
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_tasks",
+		Description: "列出当前用户的待办任务（需要用户 JWT）。status 可选过滤状态（todo|doing|done），limit 控制条数。返回每行一条任务 JSON。",
+	}, a.listTasks)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "create_task",
+		Description: "创建一条待办任务（需要用户 JWT）。priority 可选 low|medium|high（默认 medium），due_date 格式 YYYY-MM-DD。返回 {task_id}。",
+	}, a.createTask)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "update_task",
+		Description: "更新一条待办任务的字段（需要用户 JWT）。status 可选 todo|doing|done，priority 可选 low|medium|high。返回 {success:true}。",
+	}, a.updateTask)
+
+	// --- 日历事件 ---
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_events",
+		Description: "列出当前用户的日历事件（需要用户 JWT）。limit 控制返回条数。返回每行一条事件 JSON。",
+	}, a.listEvents)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "create_event",
+		Description: "创建一条日历事件（需要用户 JWT）。start/end 为 RFC3339 格式时间字符串（如 2026-08-01T14:00:00+08:00），reminder 为提前提醒分钟数（0=不提醒）。返回 {event_id}。",
+	}, a.createEvent)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "update_event",
+		Description: "更新一条日历事件的字段（需要用户 JWT）。返回 {success:true}。",
+	}, a.updateEvent)
 }
 
-// --- 参数类型（字段 json tag 由 SDK 反射生成 input schema）---
+// --- 参数类型 ---
 
 type listMessagesParams struct {
 	ThreadID uint64 `json:"thread_id"`
@@ -87,7 +135,59 @@ type finishStreamingParams struct {
 	MessageID uint64 `json:"message_id"`
 }
 
-// --- handlers ---
+type editMessageParams struct {
+	MessageID uint64 `json:"message_id"`
+	Content   string `json:"content"`
+	MsgType   string `json:"msg_type,omitempty"`
+}
+
+type searchMessagesParams struct {
+	Keyword        string `json:"keyword"`
+	ConversationID uint64 `json:"conversation_id,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
+}
+
+type listTasksParams struct {
+	Status string `json:"status,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+type createTaskParams struct {
+	Title       string `json:"title"`
+	DueDate     string `json:"due_date,omitempty"`
+	Priority    string `json:"priority,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type updateTaskParams struct {
+	TaskID   uint64 `json:"task_id"`
+	Status   string `json:"status,omitempty"`
+	Priority string `json:"priority,omitempty"`
+	Title    string `json:"title,omitempty"`
+	DueDate  string `json:"due_date,omitempty"`
+}
+
+type listEventsParams struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+type createEventParams struct {
+	Title       string `json:"title"`
+	Start       string `json:"start"`
+	End         string `json:"end"`
+	Reminder    int    `json:"reminder,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type updateEventParams struct {
+	EventID  uint64 `json:"event_id"`
+	Title    string `json:"title,omitempty"`
+	Start    string `json:"start,omitempty"`
+	End      string `json:"end,omitempty"`
+	Reminder int    `json:"reminder,omitempty"`
+}
+
+// --- Handlers ---
 
 func (a *Adapter) listMessages(ctx context.Context, req *mcp.CallToolRequest, p listMessagesParams) (*mcp.CallToolResult, any, error) {
 	msgs, err := a.api.ListMessages(p.ThreadID, 0, p.Limit)
@@ -142,7 +242,124 @@ func (a *Adapter) finishStreaming(ctx context.Context, req *mcp.CallToolRequest,
 	return textResult(`{"ok":true}`), nil, nil
 }
 
-// --- helpers ---
+func (a *Adapter) editMessage(ctx context.Context, req *mcp.CallToolRequest, p editMessageParams) (*mcp.CallToolResult, any, error) {
+	if err := a.api.EditMessage(p.MessageID, p.Content, p.MsgType); err != nil {
+		return nil, nil, fmt.Errorf("edit_message 失败: %w", err)
+	}
+	return textResult(`{"success":true}`), nil, nil
+}
+
+func (a *Adapter) searchMessages(ctx context.Context, req *mcp.CallToolRequest, p searchMessagesParams) (*mcp.CallToolResult, any, error) {
+	items, err := a.api.SearchMessages(p.Keyword, p.ConversationID, p.Limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("search_messages 失败: %w", err)
+	}
+	var b strings.Builder
+	for _, item := range items {
+		line, _ := json.Marshal(item)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return textResult(b.String()), nil, nil
+}
+
+func (a *Adapter) listTasks(ctx context.Context, req *mcp.CallToolRequest, p listTasksParams) (*mcp.CallToolResult, any, error) {
+	limit := p.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	tasks, err := a.api.ListTasks(p.Status, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_tasks 失败: %w", err)
+	}
+	var b strings.Builder
+	for _, t := range tasks {
+		line, _ := json.Marshal(t)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return textResult(b.String()), nil, nil
+}
+
+func (a *Adapter) createTask(ctx context.Context, req *mcp.CallToolRequest, p createTaskParams) (*mcp.CallToolResult, any, error) {
+	priority := p.Priority
+	if priority == "" {
+		priority = "medium"
+	}
+	id, err := a.api.CreateTask(p.Title, p.DueDate, priority, p.Description)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create_task 失败: %w", err)
+	}
+	return textResult(fmt.Sprintf(`{"task_id":%d}`, id)), nil, nil
+}
+
+func (a *Adapter) updateTask(ctx context.Context, req *mcp.CallToolRequest, p updateTaskParams) (*mcp.CallToolResult, any, error) {
+	fields := make(map[string]any)
+	if p.Status != "" {
+		fields["status"] = p.Status
+	}
+	if p.Priority != "" {
+		fields["priority"] = p.Priority
+	}
+	if p.Title != "" {
+		fields["title"] = p.Title
+	}
+	if p.DueDate != "" {
+		fields["due_date"] = p.DueDate
+	}
+	if err := a.api.UpdateTask(p.TaskID, fields); err != nil {
+		return nil, nil, fmt.Errorf("update_task 失败: %w", err)
+	}
+	return textResult(`{"success":true}`), nil, nil
+}
+
+func (a *Adapter) listEvents(ctx context.Context, req *mcp.CallToolRequest, p listEventsParams) (*mcp.CallToolResult, any, error) {
+	limit := p.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	events, err := a.api.ListEvents(limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_events 失败: %w", err)
+	}
+	var b strings.Builder
+	for _, e := range events {
+		line, _ := json.Marshal(e)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return textResult(b.String()), nil, nil
+}
+
+func (a *Adapter) createEvent(ctx context.Context, req *mcp.CallToolRequest, p createEventParams) (*mcp.CallToolResult, any, error) {
+	id, err := a.api.CreateEvent(p.Title, p.Start, p.End, p.Reminder, p.Description)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create_event 失败: %w", err)
+	}
+	return textResult(fmt.Sprintf(`{"event_id":%d}`, id)), nil, nil
+}
+
+func (a *Adapter) updateEvent(ctx context.Context, req *mcp.CallToolRequest, p updateEventParams) (*mcp.CallToolResult, any, error) {
+	fields := make(map[string]any)
+	if p.Title != "" {
+		fields["title"] = p.Title
+	}
+	if p.Start != "" {
+		fields["start"] = p.Start
+	}
+	if p.End != "" {
+		fields["end"] = p.End
+	}
+	if p.Reminder >= 0 {
+		fields["reminder"] = p.Reminder
+	}
+	if err := a.api.UpdateEvent(p.EventID, fields); err != nil {
+		return nil, nil, fmt.Errorf("update_event 失败: %w", err)
+	}
+	return textResult(`{"success":true}`), nil, nil
+}
+
+// --- Helpers ---
 
 func textResult(text string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
@@ -150,7 +367,6 @@ func textResult(text string) *mcp.CallToolResult {
 	}
 }
 
-// messagesToLines 把消息切片序列化为每行一条 JSON（agent 易解析）。
 func messagesToLines(msgs []client.Message) string {
 	if len(msgs) == 0 {
 		return ""

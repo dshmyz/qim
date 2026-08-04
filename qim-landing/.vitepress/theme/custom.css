@@ -1,15 +1,55 @@
-/* 增大布局最大宽度，减少宽屏下的两侧留白 */
+/* ===== 全局变量 ===== */
 :root {
   --vp-layout-max-width: 1440px;
 }
 
-/* 让 sidebar 贴左边，不随布局居中 */
+/* ===== 文档页导航栏对齐 =====
+   VitePress 默认：navbar wrapper 居中，sidebar 贴左，
+   当 max-width 被设为 1440px 时，宽屏下 VitePress 的复杂对齐逻辑
+   与窄屏的简单逻辑在不同断点切换，容易错位。
+   统一方案：navbar 全宽 + 简单对齐。
+   注意：侧边栏 padding-top 必须保留 var(--vp-nav-height) 为导航栏预留空间 */
 @media (min-width: 1440px) {
+  .VPNav .VPNavBar .wrapper {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  .VPNavBar.has-sidebar .title {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: var(--vp-sidebar-width) !important;
+    padding: 0 32px !important;
+  }
+  .VPNavBar.has-sidebar .content {
+    padding-left: var(--vp-sidebar-width) !important;
+    padding-right: 32px !important;
+  }
+  /* 侧边栏：保留 padding-top 为导航栏高度，不覆盖默认值 */
   .VPSidebar {
+    left: 0 !important;
     padding-left: 32px !important;
-    width: calc(var(--vp-sidebar-width) - 32px) !important;
+    padding-right: 32px !important;
+    padding-bottom: 96px !important;
+    width: var(--vp-sidebar-width) !important;
   }
   .VPContent.has-sidebar {
     padding-left: var(--vp-sidebar-width) !important;
   }
+}
+
+/* ===== 侧边栏分组标题样式 ===== */
+.VPSidebarItem.level-0 > .item > .text {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ===== 文档页品牌 logo ===== */
+.VPNav .VPNavBarTitle .title {
+  font-weight: 600;
+}
+
+/* ===== 返回首页链接 ===== */
+.VPNav .VPNavBarMenuLink {
+  font-weight: 500;
 }

@@ -9,8 +9,8 @@
         </div>
         <nav class="top-nav-links">
           <a class="top-nav-link" @click.prevent="scrollToFeatures">功能特性</a>
-          <a class="top-nav-link" href="/docs/cli">使用文档</a>
           <a class="top-nav-link" @click.prevent="scrollToDevDocs">开发者文档</a>
+          <a class="top-nav-link" href="/docs/cli">使用文档</a>
           <span class="top-nav-version">v{{ appVersion }}</span>
         </nav>
       </div>
@@ -23,7 +23,6 @@
           <img src="/app-logo-v1.png" :alt="productName" class="logo-img" />
         </div>
         <h1 class="title">{{ productName }} <span class="title-cn">青雀</span></h1>
-        <p class="subtitle">企业级智能协作平台</p>
         <p class="subtitle-desc">集成 AI 能力的现代化企业通讯解决方案，让团队协作更高效、更智能</p>
 
         <div class="feature-tags">
@@ -98,22 +97,10 @@
       </div>
     </section>
 
-    <!-- About Section -->
-    <section class="about" id="about">
-      <h2 class="section-title">关于 {{ productFullName }}</h2>
-      <div class="about-content">
-        <ul class="about-list">
-          <li>{{ productFullName }}是一款面向企业团队的智能协作平台，致力于将即时通讯、AI 能力与办公应用深度融合。</li>
-          <li>通过内置的文件箱、笔记、任务管理、日历等应用，团队可以在一个平台内完成沟通、协作与项目管理，无需在多个工具之间切换。</li>
-          <li>同时，青雀支持自定义 AI 助手和数字分身，让 AI 真正成为团队的生产力伙伴。</li>
-        </ul>
-      </div>
-    </section>
-
     <!-- Developer Docs Section -->
     <section class="dev-docs" id="dev-docs">
       <h2 class="section-title">开发者文档</h2>
-      <p class="dev-docs-desc">通过 CLI 命令行工具或标准 MCP 协议接入 QIM，让 AI Agent 在平台内收发消息</p>
+      <p class="dev-docs-desc">通过 CLI 命令行工具或标准 MCP 协议接入 NUIM，让 AI Agent 在平台内收发消息</p>
       <div class="dev-docs-grid">
         <a href="/docs/cli" class="doc-card">
           <div class="doc-icon" style="background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)">
@@ -136,6 +123,18 @@
           <p>标准 MCP 协议接入 Claude Code、Cursor 等 AI Agent，6 个工具开箱即用</p>
           <span class="doc-link">查看文档 →</span>
         </a>
+      </div>
+    </section>
+
+    <!-- About Section -->
+    <section class="about" id="about">
+      <h2 class="section-title">关于 {{ productFullName }}</h2>
+      <div class="about-content">
+        <ul class="about-list">
+          <li>{{ productFullName }}是一款面向企业团队的智能协作平台，致力于将即时通讯、AI 能力与办公应用深度融合。</li>
+          <li>通过内置的文件箱、笔记、任务管理、日历等应用，团队可以在一个平台内完成沟通、协作与项目管理，无需在多个工具之间切换。</li>
+          <li>同时，青雀支持自定义 AI 助手和数字分身，让 AI 真正成为团队的生产力伙伴。</li>
+        </ul>
       </div>
     </section>
 
@@ -384,9 +383,14 @@ onMounted(async () => {
 
 .landing-page {
   min-height: 100vh;
+  width: 100%;
   background: #fafbfc;
   overflow-y: auto;
   overflow-x: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #333;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 .top-nav {
@@ -402,10 +406,11 @@ onMounted(async () => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .top-nav-inner {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   height: 100%;
-  padding: 0 24px;
+  padding: 0 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -494,6 +499,8 @@ onMounted(async () => {
 
 .logo {
   margin-bottom: 32px;
+  display: flex;
+  justify-content: center;
 }
 
 .logo-img {
@@ -505,8 +512,9 @@ onMounted(async () => {
 .title {
   font-size: 64px;
   font-weight: 700;
-  margin: 0 0 8px;
+  margin: 0 0 16px;
   letter-spacing: -1px;
+  line-height: 1.1;
 }
 
 .title-cn {
