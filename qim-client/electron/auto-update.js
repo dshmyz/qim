@@ -15,6 +15,18 @@ const CHECK_UPDATE_TIMEOUT_MS = 12000
 const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 const STARTUP_CHECK_DELAY_MS = 30000
 
+// deb/桌面启动时主进程 console 不可见，把更新检查的关键结果/报错落盘，
+// 便于在 Linux 等看不到终端日志的环境排查（文件：userData/update-check.log）。
+function appendUpdateLog(app, line) {
+  try {
+    const ts = new Date().toISOString()
+    fs.appendFileSync(path.join(app.getPath('userData'), 'update-check.log'), `[${ts}] ${line}\n`)
+  } catch (error) {
+    // 落盘失败不影响更新主流程
+    console.error('[update-log] 写入更新日志失败:', error)
+  }
+}
+
 export function createUpdateService({
   app,
   ipcMain,
@@ -158,6 +170,7 @@ export function createUpdateService({
       errorReported = true
       updatePhase = 'idle'
       console.error(`检查更新超时（${CHECK_UPDATE_TIMEOUT_MS / 1000}秒）`)
+      appendUpdateLog(app, `检查更新超时（${CHECK_UPDATE_TIMEOUT_MS / 1000}秒），feed=${feedUrl}`)
       sendToWindow('update-error', '检查更新超时，请检查网络连接或服务器地址')
     }, CHECK_UPDATE_TIMEOUT_MS)
 
@@ -170,6 +183,7 @@ export function createUpdateService({
       .then(result => {
         clearTimeout(timeout)
         console.log('检查更新结果:', result)
+        appendUpdateLog(app, `检查更新完成 feed=${feedUrl} result=${JSON.stringify(result)}`)
       })
       .catch(error => {
         clearTimeout(timeout)
@@ -177,6 +191,7 @@ export function createUpdateService({
         errorReported = true
         updatePhase = 'idle'
         console.error('检查更新失败:', error)
+        appendUpdateLog(app, `检查更新失败 feed=${feedUrl} error=${error?.message || error}`)
         sendToWindow('update-error', formatUpdateError(error, 'check'))
       })
   }
@@ -229,6 +244,7 @@ export function createUpdateService({
         releaseNotes: info.releaseNotes
       }
       console.log('发现新版本:', info.version, '强制更新:', info.forceUpdate)
+      appendUpdateLog(app, `发现新版本 version=${info.version} force=${!!info.forceUpdate}`)
       sendToWindow('update-available', lastForceUpdateInfo)
     })
 
@@ -237,11 +253,13 @@ export function createUpdateService({
       resetDownloadedUpdate()
       clearForceUpdate()
       console.log('当前已是最新版本')
+      appendUpdateLog(app, '当前已是最新版本（update-not-available）')
       sendToWindow('update-not-available')
     })
 
     autoUpdater.on('error', (error) => {
       console.error('更新错误:', error)
+      appendUpdateLog(app, `更新错误 error=${error?.message || error}`)
       const errorMessage = formatUpdateError(error) // formatUpdateError 依赖当前 phase，需在重置前计算
       updatePhase = 'idle'
       resetDownloadedUpdate()

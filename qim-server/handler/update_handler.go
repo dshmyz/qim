@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -94,12 +94,35 @@ func absoluteUpdateURL(c *gin.Context, downloadURL string) string {
 	return downloadURL
 }
 
+// 更新检查结果缓存：发布新版本后大批客户端会同时发起检查，若每次都回源查询
+// （尤其 SQLite 单连接场景），容易在洪峰下把最新的 latest.yml 验证/生成拖慢，
+// 触发客户端 12 秒检查超时。这里做短 TTL 缓存把并发检查收敛到一次 DB 查询。
+var updateVersionCache = cache.NewCacheWithTTL(1024, 5*time.Second)
+
+// latestVersionCached 返回平台最新已启用版本（带灰度过滤），带 5 秒进程内缓存。
+// key 含 platform + clientID，保证灰度分桶结果不被缓存串号。
+func latestVersionCached(svc *service.VersionService, platform, clientID string) (*model.ClientVersion, error) {
+	key := platform + "\x00" + clientID
+	if v, ok := updateVersionCache.Get(key); ok {
+		if ver, ok := v.(*model.ClientVersion); ok {
+			return ver, nil
+		}
+	}
+
+	version, err := svc.GetLatestEnabled(platform, clientID)
+	if err != nil {
+		return nil, err
+	}
+	updateVersionCache.Put(key, version, 5*time.Second)
+	return version, nil
+}
+
 // HandleUpdateRequest 统一处理更新请求
 // GET /api/v1/updates/:platform/*action
 func HandleUpdateRequest(c *gin.Context) {
 	action := c.Param("action")
 	platform := c.Param("platform")
-	log.Printf("HandleUpdateRequest called: platform=%s, action=%s", platform, action)
+	logger.WithModule("Update").Debug("HandleUpdateRequest", "platform", platform, "action", action)
 	// action 格式: /latest.yml, /latest-mac.yml
 	action = strings.TrimPrefix(action, "/")
 
@@ -115,7 +138,7 @@ func RedirectUpdateFile(c *gin.Context, platformParam string, filename string) {
 	clientID := updateClientID(c)
 	db := database.GetDB()
 	svc := service.NewVersionService(db, versionStorageAccessor())
-	version, err := svc.GetLatestEnabled(platform, clientID)
+	version, err := latestVersionCached(svc, platform, clientID)
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
@@ -145,7 +168,7 @@ func GetLatestYML(c *gin.Context) {
 
 	db := database.GetDB()
 	svc := service.NewVersionService(db, versionStorageAccessor())
-	version, err := svc.GetLatestEnabled(platform, clientID)
+	version, err := latestVersionCached(svc, platform, clientID)
 	if err != nil {
 		logger.WithModule("Update").Warn("无可用版本记录",
 			"platform", platform,
