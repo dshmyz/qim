@@ -392,7 +392,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      webSecurity: false
+      webSecurity: false,
+      webviewTag: true // 内嵌应用（内部站）用 <webview> 渲染，独立会话与弹窗策略
     },
     frame: false,
     // 信创/Linux：关闭窗口阴影，避免合成器在窗口外圈再抠一次角导致黑边；
@@ -410,6 +411,10 @@ function createWindow() {
     windowOptions.icon = loadIcon(64)
   }
   mainWindow = new BrowserWindow(windowOptions)
+
+  // 备注：内嵌应用（<webview>）的弹窗策略由渲染进程按应用 origin 配置
+  // （见 UserAppContainer.vue 中 getWebContents().setWindowOpenHandler），
+  // 主进程无需在此全局拦截，避免与逐应用策略冲突。
 
   const isDev = !app.isPackaged
   const url = isDev
@@ -453,11 +458,12 @@ function createWindow() {
       console.error('关闭splash窗口失败:', e)
     }
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
-      <html><body style="font-family:system-ui;background:#f0f2f5;display:flex;align-items:center;justify-content:center;">
+      <!DOCTYPE html><html><body style="font-family:system-ui;background:#f0f2f5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
         <div style="background:#fff;padding:32px;border-radius:12px;text-align:center;max-width:400px;">
           <h2 style="color:#f5222d;margin:0 0 12px;">加载失败</h2>
           <p style="color:#666;margin:0 0 8px;">${errorDescription}</p>
           ${isDev ? '<p style="color:#999;font-size:12px;margin:0;">请先运行 <code>npm run dev</code> 启动 Vite 开发服务器</p>' : ''}
+          <button onclick="window.close()" style="margin-top:20px;padding:8px 24px;border:none;border-radius:6px;background:#1677ff;color:#fff;cursor:pointer;font-size:14px;">关闭窗口</button>
         </div>
       </body></html>
     `)}`)

@@ -57,6 +57,7 @@ const QMessage = (window as any).$QMessage
 const {
   configs,
   loading,
+  error,
   fetchConfigs,
   createConfig,
   updateConfig,
@@ -82,12 +83,18 @@ function closeModal() {
 }
 
 async function handleSave(data: CreateConfigRequest) {
-  if (editingConfig.value) {
-    await updateConfig(editingConfig.value.id, data)
-  } else {
-    await createConfig(data)
+  try {
+    if (editingConfig.value) {
+      await updateConfig(editingConfig.value.id, data)
+    } else {
+      await createConfig(data)
+    }
+    closeModal()
+  } catch {
+    // 失败时提示具体原因；关闭弹窗以复位子组件的保存 loading 状态，避免按钮卡死
+    if (error.value) QMessage.error(error.value)
+    closeModal()
   }
-  closeModal()
 }
 
 async function testConfigItem(id: number) {

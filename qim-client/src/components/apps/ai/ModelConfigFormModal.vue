@@ -111,10 +111,15 @@ function onProviderChange() {
 
 function handleClose() {
   error.value = ''
+  loading.value = false
   visible.value = false
 }
 
 async function handleSubmit() {
+  // 防重复提交：保存请求从父组件异步执行，此处无法同步拿到完成信号，
+  // 因此在保存期间保持 loading 屏蔽按钮，并由 handleClose（取消/保存完成后关闭）复位。
+  if (loading.value) return
+
   if (!form.value.config_name.trim()) {
     error.value = '请输入配置名称'
     return
@@ -127,7 +132,6 @@ async function handleSubmit() {
   error.value = ''
   loading.value = true
   emit('save', { ...form.value })
-  loading.value = false
 }
 </script>
 
