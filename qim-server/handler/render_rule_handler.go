@@ -42,7 +42,7 @@ func GetRenderRules(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"rules":   enabled,
 		"version": serverVersion,
 	})
@@ -58,7 +58,7 @@ func AdminGetRenderRules(c *gin.Context) {
 		return
 	}
 	version, _ := svc.GetVersion()
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"rules":   rules,
 		"version": version,
 	})
@@ -99,5 +99,5 @@ func AdminTestRenderRule(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"results": results})
+	response.Success(c, gin.H{"results": results})
 }
