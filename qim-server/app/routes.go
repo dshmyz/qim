@@ -222,33 +222,20 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		storagePath := storage.StaticPrefix + strings.TrimPrefix(fp, "/")
-		mgr := di.GlobalContainer.StorageManager
-		st, key, ok := mgr.ByPath(storagePath)
-		if !ok || st == nil {
-			c.AbortWithStatus(http.StatusNotFound)
+		serveStorageFile(c, storage.StaticPrefix+strings.TrimPrefix(fp, "/"))
+	})
+	// 【待清理 TBD-DEPRECATE】历史文件下载兼容路由，计划 2027-01 下线。
+	// 背景：旧客户端/历史消息里存的是 /uploads/<key>，现统一迁移到 /static/ 前缀。
+	// 保留此路由让旧格式 URL 仍可下载，无需逐个改写历史消息；ParsePath 会解析 /uploads/ 旧格式。
+	// 下线前置条件：完成 scripts/migrate_message_storage_paths.sql 对历史消息 content 的迁移，
+	// 并确认旧客户端无存量 /uploads/ URL 后，方可连同本路由一并移除。
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if strings.Contains(fp, "..") {
+			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-		defer cancel()
-		reader, err := st.Get(ctx, key)
-		if err != nil {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-		defer reader.Close()
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.Header("X-Content-Type-Options", "nosniff")
-		if ct := mime.TypeByExtension(filepath.Ext(storagePath)); ct != "" {
-			c.Header("Content-Type", ct)
-		}
-		// 危险类型（html/svg/js等）强制下载，防止存储型 XSS
-		if upload.ShouldForceDownload(storagePath) {
-			c.Header("Content-Disposition", "attachment")
-		}
-		if _, err := io.Copy(c.Writer, reader); err != nil {
-			return
-		}
+		serveStorageFile(c, "/uploads/"+strings.TrimPrefix(fp, "/"))
 	})
 	r.GET("/miniapps/*filepath", func(c *gin.Context) {
 		fp := c.Param("filepath")
@@ -873,4 +860,35 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		}
 		web.ServeLanding()(c)
 	})
+}
+
+// serveStorageFile 通过 StorageManager 根据 storagePath 读取并输出文件。
+// 被 /static/* 与 /uploads/* 两个路由共用；ParsePath 同时兼容新旧格式前缀。
+func serveStorageFile(c *gin.Context, storagePath string) {
+	mgr := di.GlobalContainer.StorageManager
+	st, key, ok := mgr.ByPath(storagePath)
+	if !ok || st == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+	reader, err := st.Get(ctx, key)
+	if err != nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	defer reader.Close()
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if ct := mime.TypeByExtension(filepath.Ext(storagePath)); ct != "" {
+		c.Header("Content-Type", ct)
+	}
+	// 危险类型（html/svg/js等）强制下载，防止存储型 XSS
+	if upload.ShouldForceDownload(storagePath) {
+		c.Header("Content-Disposition", "attachment")
+	}
+	if _, err := io.Copy(c.Writer, reader); err != nil {
+		return
+	}
 }
