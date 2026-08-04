@@ -5,6 +5,7 @@
         <h3>系统消息管理</h3>
         <div class="page-actions">
           <el-button type="primary" @click="handleCreate">创建消息</el-button>
+          <el-button @click="openChatDialog">群发私聊</el-button>
         </div>
       </div>
 
@@ -162,16 +163,86 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 群发私聊对话框：以系统账号向用户单聊会话发普通私聊消息（进最近会话），
+         与上方的"系统消息/通知"不同 -->
+    <el-dialog
+      v-model="chatDialogVisible"
+      title="群发私聊"
+      width="640px"
+      :close-on-click-modal="false"
+      class="system-message-dialog"
+    >
+      <el-form
+        ref="chatFormRef"
+        :model="chatForm"
+        :rules="chatRules"
+        label-width="80px"
+      >
+        <el-form-item label="消息内容" prop="content">
+          <el-input
+            v-model="chatForm.content"
+            type="textarea"
+            :rows="5"
+            placeholder="例如：新版本 v2.0.24 已发布，请关闭后重新打开以触发更新"
+          />
+        </el-form-item>
+        <el-form-item label="发送范围" prop="scope">
+          <el-select v-model="chatForm.scope" placeholder="请选择发送范围">
+            <el-option label="全部用户" value="all" />
+            <el-option label="指定用户" value="user" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="chatForm.scope === 'user'" label="目标用户" prop="target_user_ids">
+          <div class="multi-select-wrapper">
+            <el-select
+              v-model="chatForm.target_user_ids"
+              multiple
+              filterable
+              remote
+              collapse-tags
+              collapse-tags-tooltip
+              reserve-keyword
+              placeholder="输入关键词搜索选择用户"
+              :remote-method="searchUsers"
+              :loading="searchUserLoading"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="user in searchUserOptions"
+                :key="user.id"
+                :label="`${user.nickname || user.username}`"
+                :value="user.id"
+              >
+                <div class="user-option-item">
+                  <span class="user-option-name">{{ user.nickname || user.username }}</span>
+                  <span class="user-option-meta">ID: {{ user.id }} · {{ user.email || '' }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <div v-if="chatForm.target_user_ids.length > 0" class="selected-summary">
+              已选 <strong>{{ chatForm.target_user_ids.length }}</strong> 个用户
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="chatDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="chatSubmitting" @click="handleSendChat">
+          {{ chatForm.scope === 'all' ? '发送给全体用户' : '发送给所选用户' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { SystemMessage, Organization } from '@/types'
 import type { User } from '@/types'
-import { getSystemMessages, createSystemMessage, updateSystemMessage, deleteSystemMessage } from '@/api/systemMessages'
+import { getSystemMessages, createSystemMessage, updateSystemMessage, deleteSystemMessage, broadcastChat } from '@/api/systemMessages'
 import { getOrganizationTree } from '@/api/organization'
 import { getUsers } from '@/api/users'
 
@@ -359,6 +430,75 @@ const handleSubmit = async () => {
       ElMessage.error(error.response?.data?.message || '创建失败')
     } finally {
       submitting.value = false
+    }
+  })
+}
+
+// ---------- 群发私聊 ----------
+const chatDialogVisible = ref(false)
+const chatSubmitting = ref(false)
+const chatFormRef = ref<FormInstance>()
+const chatForm = reactive({
+  content: '',
+  scope: 'all' as 'all' | 'user',
+  target_user_ids: [] as number[],
+})
+
+const chatRules: FormRules = {
+  content: [{ required: true, message: '请输入消息内容', trigger: 'blur' }],
+  scope: [{ required: true, message: '请选择发送范围', trigger: 'change' }],
+  target_user_ids: [
+    {
+      validator: (_rule: any, value: number[], callback: Function) => {
+        if (chatForm.scope === 'user' && (!value || value.length === 0)) {
+          callback(new Error('请至少选择一个用户'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change',
+    },
+  ],
+}
+
+const openChatDialog = () => {
+  chatForm.content = ''
+  chatForm.scope = 'all'
+  chatForm.target_user_ids = []
+  chatDialogVisible.value = true
+}
+
+const handleSendChat = async () => {
+  if (!chatFormRef.value) return
+  await chatFormRef.value.validate(async (valid) => {
+    if (!valid) {
+      ElMessage.warning('请检查表单填写是否完整')
+      return
+    }
+    const scopeText = chatForm.scope === 'all' ? '全体用户' : `${chatForm.target_user_ids.length} 个用户`
+    try {
+      await ElMessageBox.confirm(
+        `将以系统账号向${scopeText}的单聊会话发送一条消息，该消息会出现在对方的「最近会话」中。确认发送？`,
+        '群发私聊确认',
+        { type: 'warning', confirmButtonText: '确认发送', cancelButtonText: '取消' }
+      )
+    } catch {
+      return // 用户取消
+    }
+    chatSubmitting.value = true
+    try {
+      const { data } = await broadcastChat({
+        content: chatForm.content,
+        target_user_ids: chatForm.scope === 'user' ? chatForm.target_user_ids : undefined,
+      })
+      const res = data.data
+      ElMessage.success(`发送完成：成功 ${res.sent}，失败 ${res.failed}`)
+      chatDialogVisible.value = false
+    } catch (error: any) {
+      console.error('群发私聊失败:', error)
+      ElMessage.error(error.response?.data?.message || '群发失败')
+    } finally {
+      chatSubmitting.value = false
     }
   })
 }

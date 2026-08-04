@@ -48,3 +48,19 @@ export const deleteSystemMessage = (id: number): Promise<AxiosResponse<ApiRespon
     method: 'delete',
   })
 }
+
+export interface BroadcastChatParams {
+  content: string
+  target_user_ids?: number[]
+  exclude_user_ids?: number[]
+}
+
+// 群发私聊：以系统账号向用户(默认全员，可指定)的单聊会话发送普通私聊消息。
+// 消息会出现在目标用户的「最近会话」列表中（区别于 createSystemMessage 的通知红点）。
+export const broadcastChat = (data: BroadcastChatParams): Promise<AxiosResponse<ApiResponse<{ total: number; sent: number; failed: number; skipped: number }>>> => {
+  return request({
+    url: '/v1/system-messages/broadcast-chat',
+    method: 'post',
+    data,
+  })
+}

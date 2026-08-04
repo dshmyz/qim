@@ -44,11 +44,17 @@ func initSystemUser() {
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&model.User{}).Where("type = ?", "system").Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
+		// 用 Unscoped 查询：系统用户可能曾被软删除（GORM 默认过滤 deleted_at IS NULL）。
+		// 若存在（含软删除）则直接复用/恢复，避免因 username 唯一索引与软删除行冲突而重复创建失败。
+		var existing model.User
+		if err := tx.Unscoped().Where("username = ?", "system").First(&existing).Error; err == nil {
+			if existing.DeletedAt.Valid {
+				if err := tx.Unscoped().Model(&model.User{}).
+					Where("id = ?", existing.ID).Update("deleted_at", nil).Error; err != nil {
+					return err
+				}
+				logger.WithModule("Init").Info("恢复被软删除的系统用户", "id", existing.ID)
+			}
 			return nil
 		}
 
