@@ -37,6 +37,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/term v0.45.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

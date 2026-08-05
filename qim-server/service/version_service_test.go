@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -137,7 +138,7 @@ func TestCreateCLI_DerivesPlatformFromOSAndArch(t *testing.T) {
 		t.Fatalf("Create 失败: %v", err)
 	}
 
-	latest, err := svc.GetLatestCLI("darwin", "arm64")
+	latest, err := svc.GetLatestCLI("darwin", "arm64", "")
 	if err != nil {
 		t.Fatalf("GetLatestCLI 失败: %v", err)
 	}
@@ -146,6 +147,193 @@ func TestCreateCLI_DerivesPlatformFromOSAndArch(t *testing.T) {
 	}
 	if latest.Platform != "darwin-arm64" {
 		t.Fatalf("期望 platform=darwin-arm64，实际 %q", latest.Platform)
+	}
+}
+
+// TestGetLatestCLI_ProductIsolation 验证 cli 与 mcp 产物互不干扰：
+// 两产物在同平台可各存一份，且需按 product 精确命中。
+func TestGetLatestCLI_ProductIsolation(t *testing.T) {
+	db := newVersionServiceTestDB(t)
+	svc := NewVersionService(db, nil)
+
+	for _, c := range []struct {
+		version string
+		appType string
+		os      string
+		arch    string
+	}{
+		{"1.0.0", "cli", "darwin", "arm64"},
+		{"1.0.0", "mcp", "darwin", "arm64"},
+		{"2.0.0", "mcp", "darwin", "arm64"},
+	} {
+		if _, err := svc.Create(CreateVersionInput{
+			Version:     c.version,
+			AppType:     c.appType,
+			Os:          c.os,
+			Arch:        c.arch,
+			DownloadURL: "/api/v1/public/files/1/download",
+			Sha256:      "sha-" + c.appType + "-" + c.version,
+			FileSize:    100,
+		}); err != nil {
+			t.Fatalf("Create(%s %s) 失败: %v", c.appType, c.version, err)
+		}
+	}
+
+	// 默认 product（cli）命中 app_type=cli，且不受 mcp 影响
+	cli, err := svc.GetLatestCLI("darwin", "arm64", "")
+	if err != nil {
+		t.Fatalf("GetLatestCLI 失败: %v", err)
+	}
+	if cli == nil || cli.Version != "1.0.0" {
+		t.Fatalf("期望 cli 命中 1.0.0，实际 %+v", cli)
+	}
+	if cli.AppType != "cli" {
+		t.Fatalf("期望 cli app_type=cli，实际 %q", cli.AppType)
+	}
+
+	// mcp 命中 app_type=mcp 的最新版本 2.0.0
+	mcp, err := svc.GetLatestCLI("darwin", "arm64", "mcp")
+	if err != nil {
+		t.Fatalf("GetLatestCLI(mcp) 失败: %v", err)
+	}
+	if mcp == nil || mcp.Version != "2.0.0" {
+		t.Fatalf("期望 mcp 命中 2.0.0，实际 %+v", mcp)
+	}
+	if mcp.AppType != "mcp" {
+		t.Fatalf("期望 mcp app_type=mcp，实际 %q", mcp.AppType)
+	}
+
+	// SHA256 map 的 key：测试库无 File 记录 → 回退规则名 "{os}-{arch}"（不含品牌前缀）
+	_, cliSha, err := svc.GetLatestCLIVersion("")
+	if err != nil {
+		t.Fatalf("GetLatestCLIVersion 失败: %v", err)
+	}
+	if _, ok := cliSha["darwin-arm64"]; !ok {
+		t.Fatalf("期望 cli sha256 map 含 darwin-arm64，实际 %v", cliSha)
+	}
+
+	_, mcpSha, err := svc.GetLatestCLIVersion("mcp")
+	if err != nil {
+		t.Fatalf("GetLatestCLIVersion(mcp) 失败: %v", err)
+	}
+	if v, ok := mcpSha["darwin-arm64"]; !ok || v == "" {
+		t.Fatalf("期望 mcp sha256 map 含 darwin-arm64，实际 %v", mcpSha)
+	}
+}
+
+// TestDownloadFilename_UsesUploadedName 验证下载文件名取上传时的 OriginalName，
+// 查不到文件记录时才回退规则名 "{os}-{arch}"（不含品牌前缀）。
+func TestDownloadFilename_UsesUploadedName(t *testing.T) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "version-test.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("打开测试数据库失败: %v", err)
+	}
+	if err := db.AutoMigrate(&model.ClientVersion{}, &model.File{}); err != nil {
+		t.Fatalf("AutoMigrate 失败: %v", err)
+	}
+	svc := NewVersionService(db, nil)
+
+	// 有文件记录：文件名取管理员上传原名
+	file := model.File{Name: "mcp-darwin-arm64", OriginalName: "my-mcp-server-darwin-arm64", StoragePath: "/x", Size: 100}
+	if err := db.Create(&file).Error; err != nil {
+		t.Fatalf("创建 File 失败: %v", err)
+	}
+	withFile, err := svc.Create(CreateVersionInput{
+		Version:     "1.0.0",
+		AppType:     "mcp",
+		Os:          "darwin",
+		Arch:        "arm64",
+		DownloadURL: fmt.Sprintf("/api/v1/public/files/%d/download", file.ID),
+		Sha256:      "abc",
+		FileSize:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create(withFile) 失败: %v", err)
+	}
+	if got := svc.DownloadFilename(withFile); got != "my-mcp-server-darwin-arm64" {
+		t.Fatalf("期望文件名用上传原名 my-mcp-server-darwin-arm64，实际 %q", got)
+	}
+
+	// 无文件记录（指向不存在的文件 ID）：回退规则名
+	noFile, err := svc.Create(CreateVersionInput{
+		Version:     "1.1.0",
+		AppType:     "mcp",
+		Os:          "windows",
+		Arch:        "amd64",
+		DownloadURL: "/api/v1/public/files/9999/download",
+		Sha256:      "def",
+		FileSize:    100,
+	})
+	if err != nil {
+		t.Fatalf("Create(noFile) 失败: %v", err)
+	}
+	if got := svc.DownloadFilename(noFile); got != "windows-amd64.exe" {
+		t.Fatalf("期望回退规则名 windows-amd64.exe，实际 %q", got)
+	}
+}
+
+// TestGetLatestCLIVersion_BatchLoadsFileOriginalNames 验证跨平台场景下
+// SHA256 map 的 key 取自 File.original_name，且查不到 file 记录时回退规则名。
+// 该用例同时回归 N+1 修复：所有 file 名应通过一次 IN 查询加载完成。
+func TestGetLatestCLIVersion_BatchLoadsFileOriginalNames(t *testing.T) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "version-batch.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("打开测试数据库失败: %v", err)
+	}
+	if err := db.AutoMigrate(&model.ClientVersion{}, &model.File{}); err != nil {
+		t.Fatalf("AutoMigrate 失败: %v", err)
+	}
+	svc := NewVersionService(db, nil)
+
+	// 三个平台各一份版本：两个指向 file 记录，一个指向不存在的 file（验证回退）
+	file1 := model.File{Name: "m1", OriginalName: "mcp-darwin-arm64-v1", StoragePath: "/x", Size: 1}
+	file2 := model.File{Name: "m2", OriginalName: "mcp-linux-amd64-v1", StoragePath: "/x", Size: 1}
+	if err := db.Create(&file1).Error; err != nil {
+		t.Fatalf("创建 file1 失败: %v", err)
+	}
+	if err := db.Create(&file2).Error; err != nil {
+		t.Fatalf("创建 file2 失败: %v", err)
+	}
+
+	for _, c := range []struct {
+		os, arch, ver, sha string
+		url                string
+	}{
+		{"darwin", "arm64", "1.0.0", "sha-darwin", fmt.Sprintf("/api/v1/public/files/%d/download", file1.ID)},
+		{"linux", "amd64", "1.0.0", "sha-linux", fmt.Sprintf("/api/v1/public/files/%d/download", file2.ID)},
+		{"windows", "amd64", "1.0.0", "sha-windows", "/api/v1/public/files/9999/download"},
+	} {
+		if _, err := svc.Create(CreateVersionInput{
+			Version:     c.ver,
+			AppType:     "mcp",
+			Os:          c.os,
+			Arch:        c.arch,
+			DownloadURL: c.url,
+			Sha256:      c.sha,
+			FileSize:    1,
+		}); err != nil {
+			t.Fatalf("Create(%s/%s) 失败: %v", c.os, c.arch, err)
+		}
+	}
+
+	_, shaMap, err := svc.GetLatestCLIVersion("mcp")
+	if err != nil {
+		t.Fatalf("GetLatestCLIVersion 失败: %v", err)
+	}
+	if len(shaMap) != 3 {
+		t.Fatalf("期望 sha256 map 含 3 个平台，实际 %d (%v)", len(shaMap), shaMap)
+	}
+	if shaMap["mcp-darwin-arm64-v1"] != "sha-darwin" {
+		t.Fatalf("期望 darwin key 取 file original_name，实际 %v", shaMap)
+	}
+	if shaMap["mcp-linux-amd64-v1"] != "sha-linux" {
+		t.Fatalf("期望 linux key 取 file original_name，实际 %v", shaMap)
+	}
+	// windows 指向不存在的 file ID → 回退规则名 "windows-amd64.exe"
+	if shaMap["windows-amd64.exe"] != "sha-windows" {
+		t.Fatalf("期望 windows 回退规则名 windows-amd64.exe，实际 %v", shaMap)
 	}
 }
 
@@ -202,11 +390,11 @@ func TestGetLatestCLIVersion_WindowsSha256KeyIncludesExe(t *testing.T) {
 		t.Fatalf("Create 失败: %v", err)
 	}
 
-	_, shaMap, err := svc.GetLatestCLIVersion()
+	_, shaMap, err := svc.GetLatestCLIVersion("")
 	if err != nil {
 		t.Fatalf("GetLatestCLIVersion 失败: %v", err)
 	}
-	if shaMap["qim-windows-amd64.exe"] != "win-sha" {
-		t.Fatalf("期望 Windows hash key 包含 .exe，实际 map=%v", shaMap)
+	if shaMap["windows-amd64.exe"] != "win-sha" {
+		t.Fatalf("期望 Windows hash key 含 .exe（回退规则名），实际 map=%v", shaMap)
 	}
 }

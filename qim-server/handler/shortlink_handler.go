@@ -1,8 +1,6 @@
 package handler
 
 import (
-	crand "crypto/rand"
-	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +8,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -398,20 +397,8 @@ func BatchDeleteShortLinks(c *gin.Context) {
 	})
 }
 
+// generateShortCode 生成 6 位短码（数字+小写+大写，共 62 字符）。
+// 复用 utils.RandomString：基于 crand.Int 严格均匀采样，避免 mod bias。
 func generateShortCode() string {
-	const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	const codeLength = 6
-
-	code := make([]byte, codeLength)
-	for i := range code {
-		idx, err := crand.Int(crand.Reader, big.NewInt(int64(len(charset))))
-		if err != nil {
-			// 极端情况（如熵不足）回退到首字符，避免返回空串
-			code[i] = charset[0]
-			continue
-		}
-		code[i] = charset[idx.Int64()]
-	}
-
-	return string(code)
+	return utils.RandomString(6, utils.Alphanumeric)
 }

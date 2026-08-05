@@ -15,6 +15,16 @@ export default defineConfig({
     ['meta', { name: 'viewport', content: 'width=device-width, initial-scale=1' }],
   ],
 
+  // 开发环境代理：页面通过相对路径 /api/... 拉取版本与下载信息，
+  // 生产由部署侧反向代理到后端，此处仅让 vitepress dev 也能联调。
+  vite: {
+    server: {
+      proxy: {
+        '/api': 'http://localhost:8080',
+      },
+    },
+  },
+
   themeConfig: {
     // 文档页顶部导航栏：仅用于文档页面，提供返回首页的入口
     // 注意：首页导航由 Home.vue 组件独立实现，与此处配置无关

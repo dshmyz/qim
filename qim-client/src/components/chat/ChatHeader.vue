@@ -8,9 +8,7 @@
           :server-url="serverUrl"
           :alt="displayName"
           size="lg"
-          :status="shouldShowStatusBadge ? conversation?.status : undefined"
-          :user-type="otherUserType"
-          :conversation-type="conversation?.type"
+          :badge="headerBadge"
         />
       </div>
       <div class="header-text">
@@ -69,6 +67,7 @@ import { computed } from 'vue'
 import type { Conversation } from '../../types'
 import Avatar from '../shared/Avatar.vue'
 import ChatHeaderActions from './ChatHeaderActions.vue'
+import { buildConversationBadge } from '../../utils/user'
 import { ref } from 'vue'
 
 interface Props {
@@ -120,24 +119,11 @@ const isGroupOrDiscussion = computed(() =>
 
 const isSingleChat = computed(() => props.conversation?.type === 'single')
 
-const isBotChat = computed(() => props.conversation?.type === 'bot')
-
-const shouldShowStatusBadge = computed(() => {
-  return isSingleChat.value || isBotChat.value
-})
-
-const otherUserType = computed(() => {
-  if (props.conversation?.type === 'bot') {
-    return 'bot'
-  }
-  
-  if (props.conversation?.type === 'single' && props.conversation.members) {
-    const otherUser = props.conversation.members.find(m => m.id !== props.currentUser?.id)
-    return otherUser?.type || 'user'
-  }
-  
-  return 'user'
-})
+// 聊天头部头像角标：统一由 buildConversationBadge 构造，Avatar 只负责渲染。
+// ChatHeader 持有 currentUser，传入以支持 single 会话 partner 推导时排除自己。
+const headerBadge = computed(() =>
+  buildConversationBadge(props.conversation, props.currentUser?.id)
+)
 
 const displayName = computed(() => props.conversation?.name || '未知会话')
 
@@ -155,8 +141,7 @@ defineExpose({
   aiLearnEnabled,
   contextMessages,
   approvalStatus,
-  rejectReason,
-  otherUserType
+  rejectReason
 })
 </script>
 

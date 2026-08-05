@@ -211,10 +211,10 @@ NUIM 提供 MCP（Model Context Protocol）协议支持，可与主流 AI Agent 
 
 ```bash
 # stdio 模式（本地）
-nuim-mcp --token qbot_xxx
+<mcp二进制名> --token qbot_xxx
 
 # HTTP 模式（远程）
-nuim-mcp --transport http --addr :8082 --server http://localhost:8080
+<mcp二进制名> --transport http --addr :8082 --server http://localhost:8080
 ```
 
 更多详情请参考 [CLI 使用指南](/docs/cli) 和 [MCP 接入指南](/docs/mcp)。

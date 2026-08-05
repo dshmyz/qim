@@ -253,6 +253,7 @@ func cliVersionToFrontend(v model.ClientVersion) gin.H {
 	return gin.H{
 		"id":                v.ID,
 		"version":           v.Version,
+		"product":           v.AppType, // "cli" | "mcp"，前端映射为 cli / mcp
 		"platform":          v.Platform,
 		"os":                v.Os,
 		"arch":              v.Arch,
@@ -276,7 +277,8 @@ func GetCLIVersions(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
-	versions, total, err := svc.List(page, pageSize, "", "cli")
+	// CLI 版本 tab 同时展示 cli（app_type=cli）与 mcp 两种产物
+	versions, total, err := svc.List(page, pageSize, "", "cli", service.ProductMCP)
 	if err != nil {
 		response.InternalServerError(c, "查询失败")
 		return
@@ -300,6 +302,7 @@ func GetCLIVersions(c *gin.Context) {
 func CreateCLIVersion(c *gin.Context) {
 	var req struct {
 		Version           string `json:"version" binding:"required"`
+		Product           string `json:"product"` // cli | mcp，空值默认 cli
 		Os                string `json:"os" binding:"required"`
 		Arch              string `json:"arch" binding:"required"`
 		DownloadUrl       string `json:"downloadUrl"`
@@ -320,7 +323,7 @@ func CreateCLIVersion(c *gin.Context) {
 	version, err := svc.Create(service.CreateVersionInput{
 		Version:           req.Version,
 		Platform:          req.Os + "-" + req.Arch,
-		AppType:           "cli",
+		AppType:           service.CLIAppType(req.Product),
 		Os:                req.Os,
 		Arch:              req.Arch,
 		DownloadURL:       req.DownloadUrl,

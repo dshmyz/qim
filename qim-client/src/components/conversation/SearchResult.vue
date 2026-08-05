@@ -13,10 +13,7 @@
           @click="$emit('select', item)"
         >
           <div class="search-popup-avatar">
-            <Avatar :src="item.avatar" :name="item.name" :server-url="serverUrl" :alt="item.name" size="md" />
-            <span v-if="item.type === 'group'" class="group-badge">群</span>
-            <span v-if="item.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
-            <span v-if="item.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
+            <Avatar :src="item.avatar" :name="item.name" :server-url="serverUrl" :alt="item.name" :badge="searchBadge(item)" size="md" />
           </div>
           <div class="search-popup-info">
             <div class="search-popup-name">{{ item.name }}</div>
@@ -52,6 +49,7 @@ import Avatar from '../shared/Avatar.vue'
 import { getAvatarUrl } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { isPrivateChatSearchResult } from '../../utils/privateChatTarget'
+import { buildSearchResultBadge } from '../../utils/user'
 
 const { serverUrl } = useServerUrl()
 
@@ -75,6 +73,9 @@ defineEmits<{
   (e: 'privateChat', item: SearchResultItem): void
   (e: 'applyJoin', item: SearchResultItem): void
 }>()
+
+// 搜索结果头像角标：统一由 buildSearchResultBadge 构造。
+const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 </script>
 
 <style scoped>
@@ -143,40 +144,6 @@ defineEmits<{
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.group-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: var(--primary-color);
-  color: white;
-  font-size: 9px;
-  padding: 0 3px;
-  border-radius: 3px;
-  line-height: 1.2;
-}
-
-.discussion-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  padding: 1px 2px;
-}
-
-.bot-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: #8b5cf6;
-  color: white;
-  font-size: 8px;
-  padding: 2px 3px;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .search-popup-info {

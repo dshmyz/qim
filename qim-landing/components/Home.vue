@@ -124,6 +124,25 @@
           <span class="doc-link">查看文档 →</span>
         </a>
       </div>
+      <div class="cli-download">
+        <div class="cli-download-info">
+          <div class="cli-download-icon">
+            <svg class="cli-dl-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+          </div>
+          <div class="cli-download-text">
+            <h3>下载 CLI 命令行工具</h3>
+            <p v-if="cliVersion">适用于 Bash 脚本与 AI Agent 集成，当前版本 v{{ cliVersion }}（{{ cliPlatformLabel }}）</p>
+            <p v-else-if="cliLoaded">当前平台暂无可用 CLI 版本</p>
+            <p v-else>检测当前平台可用版本中…</p>
+          </div>
+        </div>
+        <button class="cli-download-btn" :disabled="!cliVersion" @click="downloadCLI">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="cliDownloadIcon"></svg>
+          {{ cliDownloadLabel }}
+        </button>
+      </div>
     </section>
 
     <!-- About Section -->
@@ -200,6 +219,66 @@ const currentPlatform = computed(() => {
   if (/Linux/.test(ua)) return 'linux'
   return 'windows'
 })
+
+// ===== CLI 命令行工具下载 =====
+// CLI 二进制由服务端版本管理发布，经 /api/v1/cli/download?os=&arch= 公开下载（无需认证）。
+// 此处自动检测浏览器平台与架构，与桌面客户端下载保持一致。
+const cliPlatform = computed(() => {
+  const ua = navigator.userAgent
+  const os = currentPlatform.value // windows / macos / linux
+  // 服务端允许的 os 取值：darwin / linux / windows
+  let cliOs = 'linux'
+  if (os === 'macos') cliOs = 'darwin'
+  else if (os === 'windows') cliOs = 'windows'
+
+  const arch = /arm64|aarch64|Apple Silicon/i.test(ua) ? 'arm64' : 'amd64'
+  return { os: cliOs, arch }
+})
+
+const cliPlatformLabel = computed(() => {
+  const map: Record<string, string> = { darwin: 'macOS', linux: 'Linux', windows: 'Windows' }
+  return `${map[cliPlatform.value.os] || cliPlatform.value.os} ${cliPlatform.value.arch}`
+})
+
+const cliVersion = ref<string | null>(null)
+const cliLoaded = ref(false)
+
+const cliDownloadIcon = computed(() => {
+  const os = cliPlatform.value.os
+  if (os === 'windows') return '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'
+  if (os === 'darwin') return '<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>'
+  return '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>'
+})
+
+const cliDownloadLabel = computed(() => {
+  if (!cliVersion.value) return '暂无可用版本'
+  return `下载 CLI v${cliVersion.value}`
+})
+
+function downloadCLI() {
+  if (!cliVersion.value) {
+    alert('当前平台暂无可用 CLI 版本')
+    return
+  }
+  const { os, arch } = cliPlatform.value
+  window.open(`/api/v1/cli/download?os=${os}&arch=${arch}`, '_blank')
+}
+
+async function fetchCLIVersion() {
+  try {
+    const { os, arch } = cliPlatform.value
+    const res = await fetch(`/api/v1/cli/version?os=${os}&arch=${arch}`)
+    const json = await res.json()
+    const version = json?.data?.version
+    if (json.code === 0 && version && version !== 'unknown') {
+      cliVersion.value = version
+    }
+  } catch (error) {
+    console.error('获取 CLI 版本失败:', error)
+  } finally {
+    cliLoaded.value = true
+  }
+}
 
 const downloadIcon = computed(() => {
   const p = currentPlatform.value
@@ -352,6 +431,8 @@ onMounted(async () => {
   } catch (error) {
     console.error('获取版本列表失败:', error)
   }
+
+  fetchCLIVersion()
 })
 </script>
 
@@ -866,6 +947,110 @@ onMounted(async () => {
 
 .doc-card:hover .doc-link {
   color: #764ba2;
+}
+
+.cli-download {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 800px;
+  margin: 32px auto 0;
+  padding: 24px 28px;
+  background: #fff;
+  border: 1px solid #e6e8ee;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.cli-download-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cli-download-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+}
+
+.cli-dl-svg {
+  width: 26px;
+  height: 26px;
+  color: #fff;
+}
+
+.cli-download-text h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.cli-download-text p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.cli-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 160px;
+  height: 44px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 8px;
+  background: #409eff;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.cli-download-btn:hover:not(:disabled) {
+  background: #66b1ff;
+}
+
+.cli-download-btn:disabled {
+  background: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.cli-download-btn .btn-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 2px;
+}
+
+@media (max-width: 768px) {
+  .cli-download {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .cli-download-info {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cli-download-btn {
+    width: 100%;
+  }
 }
 
 .about .section-title {

@@ -76,6 +76,12 @@ const links: QuickLink[] = [
 ]
 
 const navigateTo = (path: string) => {
+  // 文档站点由后端同源提供（/docs/* 为 VitePress 静态站），非 admin SPA 内部路由，
+  // 用新窗口打开，避免指向 admin 内不存在的 /docs 路由。
+  if (path.startsWith('/docs/')) {
+    window.open(`${window.location.origin}${path}`, '_blank', 'noopener')
+    return
+  }
   router.push(path)
 }
 </script>

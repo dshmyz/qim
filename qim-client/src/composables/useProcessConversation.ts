@@ -36,6 +36,7 @@ export interface Conversation {
   signature?: string
   other_member_id?: string
   other_member_name?: string
+  other_member_type?: string
   [key: string]: any
 }
 
@@ -114,6 +115,7 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
       signature: conv.signature || '',
       other_member_id: conv.other_member_id || conv.OtherMemberID || '',
       other_member_name: conv.other_member_name || conv.OtherMemberName || '',
+      other_member_type: conv.other_member_type || conv.OtherMemberType || '',
       lastMessage: lastMessage ? {
         id: (conv.lastMessage?.id || conv.last_message?.id) ? (conv.lastMessage?.id || conv.last_message?.id).toString() : '',
         content: lastMessageContent,

@@ -294,8 +294,13 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
 	cfg := config.Load()
 
-	// 用配置里的日志目录/级别初始化 logger（环境变量 LOG_DIR/LOG_LEVEL 仍优先）
-	logger.Configure(cfg.Log.Dir, cfg.Log.Level)
+	// 用配置里的日志目录/级别/轮转策略初始化 logger（环境变量 LOG_DIR/LOG_LEVEL 仍优先）
+	logger.Configure(cfg.Log.Dir, cfg.Log.Level, logger.RotateConfig{
+		MaxSizeMB:  cfg.Log.MaxSizeMB,
+		MaxBackups: cfg.Log.MaxBackups,
+		MaxAgeDays: cfg.Log.MaxAgeDays,
+		Compress:   cfg.Log.Compress,
+	})
 
 	// 初始化加密密钥（AI Config 等功能依赖）
 	utils.InitEncryptionKey()

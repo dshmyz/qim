@@ -1,0 +1,7 @@
+# VitePress 构建产物与缓存
+dist/
+cache/
+
+.vitepress/cache/
+.vitepress/dist/
+.vitepress/tmp/

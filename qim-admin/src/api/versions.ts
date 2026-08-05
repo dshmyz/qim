@@ -59,7 +59,7 @@ export const getCLIVersions = (params?: PaginationParams): Promise<AxiosResponse
   })
 }
 
-export const createCLIVersion = (data: { version: string; os: string; arch: string; downloadUrl: string; sha256?: string; fileSize?: number; updateNotes?: string; forceUpdate?: boolean; rolloutPercentage?: number; minVersion?: string }): Promise<AxiosResponse<ApiResponse<Version>>> => {
+export const createCLIVersion = (data: { version: string; product?: string; os: string; arch: string; downloadUrl: string; sha256?: string; fileSize?: number; updateNotes?: string; forceUpdate?: boolean; rolloutPercentage?: number; minVersion?: string }): Promise<AxiosResponse<ApiResponse<Version>>> => {
   return request({
     url: '/v1/cli/versions',
     method: 'post',

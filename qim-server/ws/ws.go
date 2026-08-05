@@ -2,7 +2,6 @@ package ws
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -132,6 +131,21 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
+// sendJSON 将 WSMessage 序列化后写入 c.send，交由 writePump 统一写出。
+// 认证阶段 readPump 与 writePump 并发运行，不能直接 c.conn.WriteXXX，
+// 否则会与 writePump 竞争同一连接，触发 gorilla 的 concurrent write panic。
+// 非阻塞入队：认证失败/即将断连时入队失败直接丢弃即可。
+func (c *Client) sendJSON(m WSMessage) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	select {
+	case c.send <- data:
+	default:
+	}
+}
+
 func NewHub(db *gorm.DB, jwtSecret string, nodeScheme string) *Hub {
 	// 生成节点 ID
 	nodeID := generateNodeID()
@@ -172,21 +186,16 @@ func generateNodeID() string {
 	return time.Now().Format("20060102150405") + "-" + randomString(8)
 }
 
-// randomString 生成指定长度的随机字符串
+// randomString 生成指定长度的随机字符串（小写+大写+数字）。
+//
+// 修复点：原实现 rand.Read 后用 `%len(letterBytes)` 映射到 62 字符的字母表，
+// 因 256 不是 62 整数倍（256=4*62+8），前 8 个字母概率偏高（mod bias），
+// 实际上破坏了 rand.Read 的均匀分布。
+//
+// 现统一改用 utils.RandomString（基于 crand.Int 在 [0, 62) 上严格均匀采样），
+// 与项目内 handler.generateShortCode 复用同一份实现。
 func randomString(n int) string {
-	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		// 降级方案（极少发生）
-		for i := range b {
-			b[i] = letterBytes[time.Now().UnixNano()%int64(len(letterBytes))]
-		}
-		return string(b)
-	}
-	for i := range b {
-		b[i] = letterBytes[int(b[i])%len(letterBytes)]
-	}
-	return string(b)
+	return utils.RandomString(n, utils.Alphanumeric)
 }
 
 func (h *Hub) Run() {
@@ -549,13 +558,13 @@ type wsClaims struct {
 func (c *Client) handleAuth(data interface{}) {
 	dataMap, ok := data.(map[string]interface{})
 	if !ok {
-		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证数据格式错误"}})
+		c.sendJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证数据格式错误"}})
 		return
 	}
 
 	tokenStr, _ := dataMap["token"].(string)
 	if tokenStr == "" {
-		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "缺少认证令牌"}})
+		c.sendJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "缺少认证令牌"}})
 		return
 	}
 
@@ -566,13 +575,13 @@ func (c *Client) handleAuth(data interface{}) {
 
 	if err != nil || !token.Valid {
 		logger.WithModule("WS").Warn("WebSocket认证失败", "error", err)
-		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证令牌无效"}})
+		c.sendJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "认证令牌无效"}})
 		return
 	}
 
 	// 只接受 access token
 	if claims.TokenType != "" && claims.TokenType != "access" {
-		c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请使用访问令牌"}})
+		c.sendJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请使用访问令牌"}})
 		return
 	}
 
@@ -580,7 +589,7 @@ func (c *Client) handleAuth(data interface{}) {
 	c.authed = true
 	c.hub.register <- c
 
-	c.conn.WriteJSON(WSMessage{Type: "auth_success", Data: map[string]interface{}{"user_id": c.userID}})
+	c.sendJSON(WSMessage{Type: "auth_success", Data: map[string]interface{}{"user_id": c.userID}})
 
 	// 更新用户在线状态，只写连接状态，避免全量 Save 触碰账号管理等无关字段。
 	c.hub.db.Model(&model.User{}).Where("id = ?", c.userID).Update("status", StatusOnline)
@@ -617,7 +626,7 @@ func (c *Client) readPump() {
 		if !c.authed {
 			if msg.Type != "auth" {
 				logger.WithModule("WS").Warn("未认证连接收到非auth消息", "type", msg.Type)
-				c.conn.WriteJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请先发送认证消息"}})
+				c.sendJSON(WSMessage{Type: "auth_error", Data: map[string]string{"message": "请先发送认证消息"}})
 				continue
 			}
 			c.handleAuth(msg.Data)

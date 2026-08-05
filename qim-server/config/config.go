@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 type Config struct {
@@ -38,6 +39,12 @@ type StaticConfig struct {
 type LogConfig struct {
 	Dir   string `yaml:"dir"`
 	Level string `yaml:"level"` // debug / info / warn / error，默认 info
+
+	// 日志轮转（lumberjack）策略
+	MaxSizeMB  int  `yaml:"max_size_mb"`  // 单文件最大体积（MB），达到后轮转；<=0 用 lumberjack 默认 100
+	MaxBackups int  `yaml:"max_backups"`  // 保留的旧文件份数；0 表示保留全部（但受 MaxAgeDays 限制）
+	MaxAgeDays int  `yaml:"max_age_days"` // 旧文件最大保留天数；0 表示不按天数清理
+	Compress   bool `yaml:"compress"`     // 是否压缩归档的旧文件（gzip）
 }
 
 type DataInitConfig struct {
@@ -383,10 +390,7 @@ func getDefaultConfig() yamlConfig {
 		DB: DatabaseConfig{
 			Path: "./qim.db",
 		},
-		Log: LogConfig{
-			Dir:   "./logs",
-			Level: "info",
-		},
+		Log: newDefaultLogConfig(),
 		Cluster: ClusterConfig{
 			Enabled: false,
 			Nodes:   []string{},
@@ -456,5 +460,22 @@ func getDefaultConfig() yamlConfig {
 			UploadsDir:  "uploads",
 			MiniAppsDir: "static/miniapps",
 		},
+	}
+}
+
+// newDefaultLogConfig 构造默认日志配置。
+//
+// 轮转字段直接引用 logger.DefaultRotateConfig()，避免默认值在 config 与 logger
+// 两处分别维护导致不同步（如修改 logger 默认值后忘了同步 config）。
+// Dir/Level 在 logger 包中没有对应概念，仍在此处指定。
+func newDefaultLogConfig() LogConfig {
+	rc := logger.DefaultRotateConfig()
+	return LogConfig{
+		Dir:        "./logs",
+		Level:      "info",
+		MaxSizeMB:  rc.MaxSizeMB,
+		MaxBackups: rc.MaxBackups,
+		MaxAgeDays: rc.MaxAgeDays,
+		Compress:   rc.Compress,
 	}
 }

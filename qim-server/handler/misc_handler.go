@@ -145,6 +145,20 @@ func CreateSystemMessage(c *gin.Context) {
 
 	// 批量创建通知用事务包裹，避免部分失败导致某些用户收不到通知。
 	// WS 推送放事务外：事务回滚时不推送；事务成功后统一推送，保证不推"已回滚的通知"。
+	//
+	// 去重：多选部门时同一员工可能在多个部门出现；多选用户时 TargetID 可能与 TargetIDs
+	// 重复。不去重会让同一用户收到多条相同通知（DB 多条记录 + WS 多次推送）。
+	seen := make(map[uint]struct{}, len(usersToNotify))
+	deduped := make([]uint, 0, len(usersToNotify))
+	for _, uid := range usersToNotify {
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		deduped = append(deduped, uid)
+	}
+	usersToNotify = deduped
+
 	notifications := make([]model.Notification, 0, len(usersToNotify))
 	for _, notifyUserID := range usersToNotify {
 		notifications = append(notifications, model.Notification{

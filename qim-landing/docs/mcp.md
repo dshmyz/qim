@@ -6,11 +6,11 @@ title: MCP 接入指南
 
 ## 概述
 
-NUIM 提供标准的 **MCP (Model Context Protocol)** 服务器 `nuim-mcp`，支持 Claude Code、Cursor 等任何兼容 MCP 协议的 AI Agent 通过标准化接口在 NUIM 内收发消息。
+NUIM 提供标准的 **MCP (Model Context Protocol)** 服务器（分发产物类型为 `mcp`），支持 Claude Code、Cursor 等任何兼容 MCP 协议的 AI Agent 通过标准化接口在 NUIM 内收发消息。
 
 ### 与 CLI 的区别
 
-| 特性 | `nuim` CLI | `nuim-mcp` MCP Server |
+| 特性 | `cli` | `mcp` MCP Server |
 |------|-----------|----------------------|
 | 协议 | 命令行 + HTTP | 标准 MCP (JSON-RPC) |
 | 适用场景 | Bash 脚本、手动操作 | Claude Code、Cursor 等 MCP 客户端 |
@@ -18,15 +18,62 @@ NUIM 提供标准的 **MCP (Model Context Protocol)** 服务器 `nuim-mcp`，支
 | 认证方式 | 配置文件存储 token | stdio: 命令行参数; HTTP: 请求头 |
 | 消息格式 | JSON lines | MCP tool call/result |
 
+### 文档占位符说明
+
+本文档使用以下占位符，请按实际环境替换：
+
+| 占位符 | 含义 | 示例 |
+|--------|------|------|
+| `<SERVER>` | NUIM 服务器地址（含协议与端口） | `http://localhost:8080` 或 `https://qim.example.com` |
+| `<二进制名>` | mcp 产物二进制名，即管理后台发布 mcp 版本时**上传的文件名**；install.sh 会自动按此名安装到 `~/.local/bin` | `qim-mcp` |
+| `<cli二进制名>` | cli 产物二进制名，同理为发布 cli 版本时上传的文件名；用于登录获取用户 JWT | `qim-cli`（详见 [CLI 使用指南](./cli.md)） |
+| `qbot_xxxx` / `qbot_your_token_here` | Bot 访问令牌，在管理后台「Bot 运维」页面签发，固定以 `qbot_` 开头 | `qbot_3f9a2b1c8d7e...` |
+
+> 提示：二进制名由管理后台发布版本时上传的原始文件名决定，**不是固定值**。可按团队约定命名（如 `qim-mcp`、`qim-cli`），发布后 install.sh 与下载链接均按该名落地。
+
 ---
 
 ## 快速开始
 
-### 1. 构建 nuim-mcp
+### 1. 安装 mcp
+
+`mcp` 走与 `cli` 相同的分发管线，可直接从服务器下载预编译二进制（文件名为上传时设定的名字）。
+
+**方式一：安装脚本一键安装（推荐）**
+
+将 `<SERVER>` 替换为你的服务器地址：
+
+```bash
+SERVER=<SERVER> bash -c "$(curl -fsSL <SERVER>/install.sh)"
+```
+
+> 脚本会自动检测平台、下载对应预编译二进制、校验 SHA256（按上传文件名）、安装到 `~/.local/bin`（自动加入 PATH），并打印 Claude Code / Cursor 配置指引。
+
+**方式二：curl 直接下载**
+
+适用于想手动放置二进制的场景（`<二进制名>` 为管理后台发布时上传的文件名）：
+
+```bash
+# macos/arm64 例如；其他平台把 os/arch 换成 darwin/linux/windows × amd64/arm64
+curl -fsSL "<SERVER>/api/v1/cli/download?os=darwin&arch=arm64&product=mcp" -o <二进制名>
+chmod +x <二进制名>
+sudo mv <二进制名> /usr/local/bin/
+```
+
+查看当前平台可用的最新版本与校验值：
+
+```bash
+curl -fsSL "<SERVER>/api/v1/cli/version?product=mcp"
+```
+
+> 下载地址按平台区分（os/arch），返回的 `sha256` 以该版本上传的二进制文件名为 key。
+> 版本由管理后台「CLI 版本」页以「产物类型 = mcp」发布，发布后即可下载。
+
+**方式三：源码构建**
 
 ```bash
 cd qim-server
-go build -o nuim-mcp ./cmd/nuim-mcp/
+go build -o mcp ./cmd/qim-mcp/
 ```
 
 ### 2. 获取 Bot 令牌
@@ -45,7 +92,7 @@ go build -o nuim-mcp ./cmd/nuim-mcp/
 {
   "mcpServers": {
     "nuim": {
-      "command": "/path/to/nuim-mcp",
+      "command": "<二进制名>",
       "args": ["--token", "qbot_your_token_here", "--server", "http://localhost:8080"]
     }
   }
@@ -62,7 +109,7 @@ go build -o nuim-mcp ./cmd/nuim-mcp/
 {
   "mcpServers": {
     "nuim": {
-      "command": "/path/to/nuim-mcp",
+      "command": "<二进制名>",
       "args": ["--token", "qbot_your_token_here", "--server", "http://localhost:8080"]
     }
   }
@@ -78,7 +125,7 @@ go build -o nuim-mcp ./cmd/nuim-mcp/
 适用于本地 Claude Code / Cursor，通过标准输入输出通信：
 
 ```bash
-nuim-mcp --token qbot_xxxx --server http://localhost:8080
+<二进制名> --token qbot_xxxx --server http://localhost:8080
 ```
 
 - `--token`（必填）：Bot 访问令牌
@@ -90,12 +137,12 @@ nuim-mcp --token qbot_xxxx --server http://localhost:8080
 如需使用任务、日历等需要用户身份的工具，需先获取用户 JWT：
 
 ```bash
-# 通过 CLI 登录获取 token
-nuim login
-nuim whoami  # 查看当前 token
+# 通过 cli 产物登录获取 token
+<cli二进制名> login
+<cli二进制名> whoami  # 查看当前 token
 
 # 启动 MCP 时传入
-nuim-mcp --token qbot_xxxx --user-token eyJhbGciOi... --server http://localhost:8080
+<二进制名> --token qbot_xxxx --user-token eyJhbGciOi... --server http://localhost:8080
 ```
 
 ### Streamable HTTP 模式（远程部署）
@@ -103,7 +150,7 @@ nuim-mcp --token qbot_xxxx --user-token eyJhbGciOi... --server http://localhost:
 适用于远程部署，任意 MCP 客户端通过 HTTP 调用：
 
 ```bash
-nuim-mcp --transport http --addr :8082 --server http://localhost:8080
+<二进制名> --transport http --addr :8082 --server http://localhost:8080
 ```
 
 - `--transport http`：启用 HTTP 传输
@@ -112,6 +159,32 @@ nuim-mcp --transport http --addr :8082 --server http://localhost:8080
 - 认证方式：每个请求通过 `Authorization: Bearer qbot_xxx` 头传入 Bot token
 - 用户 JWT：通过 `X-QIM-User-Token` 头传入（可选，用于任务/日历等接口）
 - 运行模式：Stateless（无会话持久化）
+
+#### 生产部署建议
+
+远程 HTTP 模式暴露的是**无会话的公开 MCP 端口**，对外提供前请务必加固：
+
+1. **通过反向代理暴露并启用 TLS**（如 Nginx + Let's Encrypt），**不要**直接裸露 HTTP 端口。示例 Nginx：
+
+   ```nginx
+   server {
+     listen 443 ssl;
+     server_name mcp.example.com;
+     ssl_certificate     /etc/letsencrypt/live/mcp.example.com/fullchain.pem;
+     ssl_certificate_key /etc/letsencrypt/live/mcp.example.com/privkey.pem;
+
+     location /mcp {
+       proxy_pass http://127.0.0.1:8082/mcp;
+       proxy_set_header Host $host;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_read_timeout 120s;
+     }
+   }
+   ```
+
+2. **限制访问范围**：远程 MCP 对能触达该地址的客户端开放，建议用防火墙/IP 白名单或 VPN 限制到企业内网。
+3. **Bot 令牌即权限边界**：每个请求的 `Authorization: Bearer` 令牌决定了该连接可用哪些工具，妥善保管、按需签发/吊销。
+4. **部署进程**：建议用 systemd 托管，随系统启动并自动重启；`--addr` 建议绑定 `127.0.0.1:8082`（仅本机），由 Nginx 负责对外。
 
 #### HTTP 模式客户端示例
 
@@ -163,7 +236,7 @@ curl -X POST http://localhost:8082/mcp \
 
 ## MCP 工具列表
 
-nuim-mcp 注册了 13 个标准 MCP 工具，分为四组：
+mcp 服务器注册了 13 个标准 MCP 工具，分为四组：
 
 ### 消息收发（Bot Token）
 

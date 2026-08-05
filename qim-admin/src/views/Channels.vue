@@ -194,7 +194,7 @@ const publishChannelName = ref('')
 const publishForm = reactive({ content: '' })
 const publishMode = ref<'edit' | 'preview'>('edit')
 
-// 发布内容 Markdown 预览（复用 Docs.vue 同款 marked + sanitizeMarkdown 链路）
+// 发布内容 Markdown 预览（marked + sanitizeMarkdown 渲染链路）
 const previewContent = computed(() => {
   if (!publishForm.content) return '<p class="md-preview-empty">暂无内容</p>'
   const html = marked.parse(publishForm.content, { async: false }) as string

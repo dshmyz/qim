@@ -38,7 +38,7 @@ func CLIVersion(c *gin.Context) {
 			response.BadRequest(c, "不支持的平台")
 			return
 		}
-		v, err := svc.GetLatestCLI(goos, goarch)
+		v, err := svc.GetLatestCLI(goos, goarch, c.Query("product"))
 		if err != nil {
 			// 区分"无可用版本"（业务正常，返回 unknown）和 DB 异常（500）
 			if errors.Is(err, service.ErrNoVersionAvailable) {
@@ -48,11 +48,11 @@ func CLIVersion(c *gin.Context) {
 			}
 			return
 		}
-		response.Success(c, gin.H{"version": v.Version, "sha256": map[string]string{cliBinaryName(goos, goarch): v.Sha256}})
+		response.Success(c, gin.H{"version": v.Version, "sha256": map[string]string{svc.DownloadFilename(v): v.Sha256}})
 		return
 	}
 
-	ver, sha256Map, err := svc.GetLatestCLIVersion()
+	ver, sha256Map, err := svc.GetLatestCLIVersion(c.Query("product"))
 	if err != nil {
 		response.InternalServerError(c, "查询版本失败")
 		return
@@ -62,14 +62,6 @@ func CLIVersion(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"version": ver, "sha256": sha256Map})
-}
-
-func cliBinaryName(goos, goarch string) string {
-	name := fmt.Sprintf("qim-%s-%s", goos, goarch)
-	if goos == "windows" {
-		name += ".exe"
-	}
-	return name
 }
 
 // CLIDownload 下载预编译 CLI 二进制。
@@ -100,7 +92,7 @@ func CLIDownload(c *gin.Context) {
 		return
 	}
 
-	v, err := svc.GetLatestCLI(goos, goarch)
+	v, err := svc.GetLatestCLI(goos, goarch, c.Query("product"))
 	if err != nil {
 		response.NotFound(c, "当前平台无可用二进制")
 		return
@@ -111,7 +103,8 @@ func CLIDownload(c *gin.Context) {
 		return
 	}
 
-	binaryName := cliBinaryName(goos, goarch)
+	// 下载文件名取上传时的原名；查不到时回退规则名 "{os}-{arch}"。
+	binaryName := svc.DownloadFilename(v)
 
 	c.Header("X-Qim-Version", v.Version)
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, binaryName))

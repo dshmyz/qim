@@ -3,11 +3,137 @@ package service
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
+	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"gorm.io/gorm"
 )
+
+// cliFileIDRe 从 DownloadURL 中提取文件 ID（"/files/:id/download"）。
+var cliFileIDRe = regexp.MustCompile(`/files/(\d+)/download`)
+
+// CLI/MCP 分发产物。同一张 ClientVersion 表用 app_type 区分不同产物，
+// 避免 (app_type, version, platform) 唯一索引在 cli 与 mcp 间冲突。
+// 产物标识只用 cli / mcp 两个值，不含任何品牌名；二进制实际文件名取自上传时的原名。
+const (
+	ProductCLI = "cli" // 命令行工具，app_type = "cli"
+	ProductMCP = "mcp" // MCP Server，app_type = "mcp"
+
+	legacyMCPAppType = "nuim-mcp" // 历史遗留 app_type，仅用于读取兼容，新写入一律用 "mcp"
+)
+
+// CLIAppType 返回指定产物在 ClientVersion.app_type 中的取值（默认 → "cli"）。
+// 兼容历史别名：product 传入 "nuim-mcp" 或 "mcp" 均命中 mcp。
+func CLIAppType(product string) string {
+	if product == ProductMCP || product == legacyMCPAppType {
+		return ProductMCP
+	}
+	return ProductCLI
+}
+
+// IsCLIAppType 判断该 app_type 是否为 CLI/MCP 家族产物
+// （走 SHA256 + os/arch→platform 派生逻辑）。兼容历史 "nuim-mcp"。
+func IsCLIAppType(appType string) bool {
+	return appType == ProductCLI || appType == ProductMCP || appType == legacyMCPAppType
+}
+
+// cliAppTypes 返回指定产物应匹配的 app_type 取值列表。
+// mcp 产物额外兼容历史遗留的 "nuim-mcp" app_type，避免老记录在改版后消失。
+func cliAppTypes(product string) []string {
+	if CLIAppType(product) == ProductMCP {
+		return []string{ProductMCP, legacyMCPAppType}
+	}
+	return []string{ProductCLI}
+}
+
+// fallbackBinaryName 返回不含品牌前缀的规则名 "{os}-{arch}"（windows 加 .exe）。
+// 仅在无法解析到上传原名时作为兜底。
+func fallbackBinaryName(os, arch string) string {
+	name := os + "-" + arch
+	if os == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+// DownloadFilename 解析版本二进制的下载文件名。
+// 优先取下载文件记录的上传原名（管理员上传时叫什么就叫什么）；
+// 查不到文件/外部 URL 时回退到规则名 "{os}-{arch}"。
+//
+// 适用单次场景（如 CLIDownload）。批量场景（如 GetLatestCLIVersion 跨平台汇总）
+// 请用 batchLoadFileOriginalNames 预加载后再调 downloadFilenameFromCache，避免 N+1。
+func (s *VersionService) DownloadFilename(v *model.ClientVersion) string {
+	if v.DownloadURL != "" {
+		if matches := cliFileIDRe.FindStringSubmatch(v.DownloadURL); len(matches) == 2 {
+			fileID, err := strconv.ParseUint(matches[1], 10, 32)
+			if err == nil {
+				var file model.File
+				if err := s.db.Select("original_name").First(&file, uint(fileID)).Error; err == nil && file.OriginalName != "" {
+					return file.OriginalName
+				}
+			}
+		}
+	}
+	return fallbackBinaryName(v.Os, v.Arch)
+}
+
+// extractFileID 从 DownloadURL 中提取文件 ID；无匹配返回 0、false。
+func extractFileID(downloadURL string) (uint, bool) {
+	if downloadURL == "" {
+		return 0, false
+	}
+	matches := cliFileIDRe.FindStringSubmatch(downloadURL)
+	if len(matches) != 2 {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(matches[1], 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return uint(id), true
+}
+
+// batchLoadFileOriginalNames 批量查询给定版本列表引用的 File.original_name。
+// 返回 fileID → original_name 的映射；查不到的 fileID 不出现在 map 中。
+// 用一次 IN 查询替代每个版本单独 First，避免 N+1。
+func (s *VersionService) batchLoadFileOriginalNames(versions []*model.ClientVersion) map[uint]string {
+	ids := make(map[uint]struct{}, len(versions))
+	for _, v := range versions {
+		if id, ok := extractFileID(v.DownloadURL); ok {
+			ids[id] = struct{}{}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	list := make([]uint, 0, len(ids))
+	for id := range ids {
+		list = append(list, id)
+	}
+	var files []model.File
+	if err := s.db.Select("id, original_name").Where("id IN ?", list).Find(&files).Error; err != nil {
+		return nil
+	}
+	out := make(map[uint]string, len(files))
+	for _, f := range files {
+		if f.OriginalName != "" {
+			out[f.ID] = f.OriginalName
+		}
+	}
+	return out
+}
+
+// downloadFilenameFromCache 与 DownloadFilename 语义一致，但用预加载的 fileNames
+// 替代 DB 查询；fileNames 为 nil 或未命中时回退到规则名（不再访问 DB）。
+func downloadFilenameFromCache(v *model.ClientVersion, fileNames map[uint]string) string {
+	if id, ok := extractFileID(v.DownloadURL); ok {
+		if name, hit := fileNames[id]; hit {
+			return name
+		}
+	}
+	return fallbackBinaryName(v.Os, v.Arch)
+}
 
 // 版本相关错误
 var (
@@ -74,7 +200,7 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 	platform := input.Platform
 	if appType == "client" {
 		platform = NormalizePlatform(platform)
-	} else if appType == "cli" && platform == "" && input.Os != "" && input.Arch != "" {
+	} else if IsCLIAppType(appType) && platform == "" && input.Os != "" && input.Arch != "" {
 		platform = input.Os + "-" + input.Arch
 	}
 
@@ -105,7 +231,7 @@ func (s *VersionService) Create(input CreateVersionInput) (*model.ClientVersion,
 		Arch:              input.Arch,
 	}
 
-	if appType == "cli" {
+	if IsCLIAppType(appType) {
 		if input.DownloadURL == "" {
 			return nil, ErrMissingDownloadURL
 		}
@@ -150,8 +276,15 @@ func (s *VersionService) List(page, pageSize int, platform string, appType ...st
 	}
 
 	query := s.db.Model(&model.ClientVersion{})
-	if len(appType) > 0 && appType[0] != "" {
-		query = query.Where("app_type = ?", appType[0])
+	// appType 可传多个：IN 匹配（单值退化为 =，行为不变）
+	var apps []string
+	for _, a := range appType {
+		if a != "" {
+			apps = append(apps, a)
+		}
+	}
+	if len(apps) > 0 {
+		query = query.Where("app_type IN ?", apps)
 	}
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
@@ -251,20 +384,21 @@ func (s *VersionService) GetLatestEnabled(platform, clientID string) (*model.Cli
 	return LatestVersion(versions)
 }
 
-// GetLatestCLI 获取指定 os/arch 的最新已启用 CLI 版本
-func (s *VersionService) GetLatestCLI(os, arch string) (*model.ClientVersion, error) {
+// GetLatestCLI 获取指定 os/arch 的最新已启用 CLI/MCP 版本。
+// product 指定产物（cli | mcp），空值默认 cli。
+func (s *VersionService) GetLatestCLI(os, arch, product string) (*model.ClientVersion, error) {
 	platform := os + "-" + arch
 	var versions []model.ClientVersion
-	if err := s.db.Where("app_type = ? AND platform = ? AND enabled = ?", "cli", platform, true).Find(&versions).Error; err != nil {
+	if err := s.db.Where("app_type IN ? AND platform = ? AND enabled = ?", cliAppTypes(product), platform, true).Find(&versions).Error; err != nil {
 		return nil, err
 	}
 	return LatestVersion(versions)
 }
 
-// GetLatestCLIVersion 获取最新 CLI 版本号（跨所有平台，用于版本查询端点）
-func (s *VersionService) GetLatestCLIVersion() (string, map[string]string, error) {
+// GetLatestCLIVersion 获取指定产物最新 CLI 版本号（跨所有平台，用于版本查询端点）。
+func (s *VersionService) GetLatestCLIVersion(product string) (string, map[string]string, error) {
 	var versions []model.ClientVersion
-	if err := s.db.Where("app_type = ? AND enabled = ?", "cli", true).Find(&versions).Error; err != nil {
+	if err := s.db.Where("app_type IN ? AND enabled = ?", cliAppTypes(product), true).Find(&versions).Error; err != nil {
 		return "", nil, err
 	}
 	if len(versions) == 0 {
@@ -276,10 +410,8 @@ func (s *VersionService) GetLatestCLIVersion() (string, map[string]string, error
 		return "", nil, err
 	}
 
-	// 构建 sha256 map: {"qim-darwin-arm64": "abc...", ...}
 	// 每个平台只取最新版本的 sha256，避免同平台多版本启用时因 map 迭代顺序不确定导致
 	// 返回的哈希与 CLIDownload（返回最新版本二进制）不匹配，客户端校验失败。
-	sha256Map := make(map[string]string)
 	latestByPlatform := make(map[string]*model.ClientVersion) // platform → 该平台最新版本
 	for i := range versions {
 		v := &versions[i]
@@ -291,12 +423,20 @@ func (s *VersionService) GetLatestCLIVersion() (string, map[string]string, error
 			latestByPlatform[v.Platform] = v
 		}
 	}
+
+	// 批量预加载各版本引用的 File.original_name，避免每个平台一次 DB 查询（N+1）。
+	// 此接口为 /api/v1/cli/version 公开端点，可能被高频探测，必须避免线性 DB 抖动。
+	latestList := make([]*model.ClientVersion, 0, len(latestByPlatform))
 	for _, v := range latestByPlatform {
-		binaryName := fmt.Sprintf("qim-%s", v.Platform)
-		if v.Os == "windows" || strings.HasPrefix(v.Platform, "windows-") {
-			binaryName += ".exe"
-		}
-		sha256Map[binaryName] = v.Sha256
+		latestList = append(latestList, v)
+	}
+	fileNames := s.batchLoadFileOriginalNames(latestList)
+
+	// 构建 sha256 map，key 取该版本二进制上传时的原名
+	// （如 "mcp-darwin-arm64" / "cli-darwin-amd64.exe"，由管理员上传文件时的名字决定）。
+	sha256Map := make(map[string]string, len(latestByPlatform))
+	for _, v := range latestByPlatform {
+		sha256Map[downloadFilenameFromCache(v, fileNames)] = v.Sha256
 	}
 
 	return latest.Version, sha256Map, nil

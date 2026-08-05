@@ -42,6 +42,13 @@
 
           <el-table :data="cliVersions" v-loading="cliLoading" stripe border style="width: 100%">
             <el-table-column prop="version" label="版本" width="120" />
+            <el-table-column label="产物" width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.product === 'mcp' ? 'warning' : 'primary'" size="small" effect="plain">
+                  {{ row.product === 'mcp' ? 'mcp' : 'cli' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="平台" width="160">
               <template #default="{ row }">
                 <el-tag size="small">{{ row.platform || `${row.os}/${row.arch}` }}</el-tag>
@@ -107,6 +114,12 @@
       <el-form :model="cliForm" label-width="90px" label-position="right">
         <el-form-item label="版本号" required>
           <el-input v-model="cliForm.version" placeholder="如 1.0.0" :disabled="isCLIEdit" />
+        </el-form-item>
+        <el-form-item label="产物" required>
+          <el-radio-group v-model="cliForm.product" :disabled="isCLIEdit">
+            <el-radio value="cli">cli（命令行工具）</el-radio>
+            <el-radio value="mcp">mcp（MCP Server）</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="平台" required>
           <el-select v-model="cliForm.os" style="width: 140px" placeholder="操作系统" :disabled="isCLIEdit">
@@ -266,6 +279,7 @@ async function handleLoadDistribution() {
 interface CLIVersionRow {
   id: number
   version: string
+  product?: string // "cli" | "mcp"
   platform: string
   os: string
   arch: string
@@ -291,6 +305,7 @@ const cliUploadProgress = ref(0)
 
 const cliForm = reactive({
   version: '',
+  product: 'cli' as 'cli' | 'mcp',
   os: 'darwin',
   arch: 'arm64',
   downloadUrl: '',
@@ -322,6 +337,7 @@ async function loadCLIVersions() {
 
 function resetCLIForm() {
   cliForm.version = ''
+  cliForm.product = 'cli'
   cliForm.os = 'darwin'
   cliForm.arch = 'arm64'
   cliForm.downloadUrl = ''
@@ -401,6 +417,7 @@ function handleEditCLI(row: CLIVersionRow) {
   isCLIEdit.value = true
   cliEditingId.value = row.id
   cliForm.version = row.version
+  cliForm.product = (row.product === 'mcp' ? 'mcp' : 'cli')
   cliForm.os = row.os || 'darwin'
   cliForm.arch = row.arch || 'arm64'
   cliForm.downloadUrl = row.downloadUrl
@@ -431,6 +448,7 @@ async function handleSubmitCLI() {
     } else {
       await createCLIVersion({
         version: cliForm.version,
+        product: cliForm.product,
         os: cliForm.os,
         arch: cliForm.arch,
         downloadUrl: cliForm.downloadUrl,

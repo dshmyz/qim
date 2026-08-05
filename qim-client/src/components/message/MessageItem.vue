@@ -15,7 +15,7 @@
         :name="message.sender.name || '用户'"
         :server-url="serverUrl"
         :alt="message.sender.name || '未知用户'"
-        :user-type="isAIMessage ? 'bot' : 'user'"
+        :badge="senderBadge"
         size="md"
         class="message-avatar"
         @click="$emit('showUserProfile', message.sender)"
@@ -203,6 +203,7 @@ import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
 import { useMessageReminder, canRemind } from '../../composables/useMessageReminder'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
+import { buildSenderBadge } from '../../utils/user'
 
 const props = withDefaults(defineProps<{
   message: any
@@ -232,6 +233,9 @@ const isAIMessage = computed(() => {
   const fromField = props.message.is_ai_message || props.message.isAIMessage
   return fromOrigin || fromSenderIsBot || fromField
 })
+
+// 消息发送者头像角标：统一由 buildSenderBadge 构造。
+const senderBadge = computed(() => buildSenderBadge(props.message.sender, isAIMessage.value))
 
 const messageDisplay = computed(() => resolveMessageDisplay(props.message))
 

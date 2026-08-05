@@ -240,6 +240,7 @@ func GetConversations(c *gin.Context) {
 		Signature        string    `json:"signature,omitempty"`
 		OtherMemberID    uint      `json:"other_member_id,omitempty"`
 		OtherMemberName  string    `json:"other_member_name,omitempty"`
+		OtherMemberType  string    `json:"other_member_type,omitempty"`
 	}
 
 	groupConvIDs := make([]uint, 0, len(convMembers))
@@ -421,6 +422,7 @@ func GetConversations(c *gin.Context) {
 					convWithPin.Signature = otherUser.Signature
 					convWithPin.OtherMemberID = otherUser.ID
 					convWithPin.OtherMemberName = otherUser.Nickname
+					convWithPin.OtherMemberType = otherUser.Type
 					convWithPin.Name = otherUser.Nickname
 					convWithPin.Avatar = otherUser.Avatar
 				}

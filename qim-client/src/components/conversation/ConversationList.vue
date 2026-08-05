@@ -20,13 +20,9 @@
           :src="conversation.avatar"
           :name="conversation.name || '用户'"
           :server-url="serverUrl"
-          :alt="conversation.name"
+          :badge="conversationBadge(conversation)"
           size="md"
         />
-        <span v-if="conversation.type === 'group'" class="group-badge">群</span>
-        <span v-if="conversation.type === 'discussion'" class="discussion-badge group-badge"><i class="fas fa-comments"></i></span>
-        <span v-if="conversation.type === 'bot'" class="bot-badge"><i class="fas fa-robot"></i></span>
-        <span v-if="conversation.type === 'single' && conversation.status" class="status-indicator" :class="conversation.status"></span>
       </div>
       <div class="conversation-info">
         <div class="conversation-name">
@@ -71,11 +67,13 @@ import { DRAFT_CHANGED_EVENT, type DraftChangedDetail } from '../../utils/drafts
 import { sameConversationId } from '../../utils/conversationId'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import { previewTextToHtml } from '../../utils/emoji'
+import { buildConversationBadge } from '../../utils/user'
 
 interface User {
   id: string
   name: string
   username?: string
+  type?: 'user' | 'bot' | 'system' | 'api'
 }
 
 interface LastMessage {
@@ -106,6 +104,7 @@ interface Conversation {
   unread_count?: number
   muted?: boolean
   members?: User[]
+  otherMemberType?: string
   status?: 'online' | 'offline' | 'away' | 'busy'
 }
 
@@ -204,6 +203,10 @@ const hasDraft = (conversation: Conversation): boolean => {
   if (sameConversationId(conversation.id, props.currentConversationId)) return false
   return draftsCache.value.get(conversation.id)?.hasDraft ?? false
 }
+
+// 会话头像角标：统一由 buildConversationBadge 构造。
+// 这里仅做一层薄封装以保持模板可读性；currentUserId 不传时工具函数会从 localStorage 读取。
+const conversationBadge = (conversation: Conversation) => buildConversationBadge(conversation)
 
 const getDraftPreview = (conversation: Conversation): string => {
   return draftsCache.value.get(conversation.id)?.preview ?? ''
@@ -326,62 +329,6 @@ const getUnreadCount = (conversation: Conversation): number => {
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
-}
-
-.group-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: var(--primary-color, #1976d2);
-  color: white;
-  font-size: 10px;
-  padding: 0 4px;
-  border-radius: 4px;
-  line-height: 1.2;
-}
-
-.discussion-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  padding: 1px 3px;
-}
-
-.bot-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: var(--accent-color);
-  color: white;
-  font-size: 10px;
-  padding: 1px 3px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-indicator {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--panel-bg);
-}
-
-.status-indicator.online {
-  background: #52c41a;
-}
-
-.status-indicator.offline {
-  background: #d9d9d9;
-}
-
-.status-indicator.busy {
-  background: #ff4d4f;
 }
 
 .conversation-info {

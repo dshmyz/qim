@@ -219,7 +219,7 @@ type Message struct {
 	// Extra 存放可选的结构化附加信息（JSON 字符串）。
 	// 当前用途：Bot 回复命中创建者笔记时，记录 knowledge_sources=[{title,score}] 供前端折叠展示。
 	// 用 text 存 JSON 避免 MySQL JSON 类型在旧版本的兼容问题；空字符串表示无附加信息。
-	Extra           string         `json:"extra" gorm:"type:text;default:''"`
+	Extra           string         `json:"extra" gorm:"type:text"`
 	CreatedAt       time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
