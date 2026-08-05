@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,22 @@ func GetRenderRules(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, gin.H{
+	// 兼容性响应：同时返回新旧两种形状的渲染规则。
+	//  - data.rules / data.version：新客户端（renderRules.ts 读取 res.data.rules）
+	//  - 顶层 rules / version：旧客户端（历史版本 renderRules.ts 误读顶层 res.rules）
+	// 统一响应封装 response.Success 固定 {code,data,message}，无法在顶层平铺字段，
+	// 故此处手动构造等形结构（使用同一 code 常量），仅影响 /render-rules 单端点，不影响全局约定。
+	//
+	// TODO(临时兼容): 2026-10-01 后移除顶层平铺的 rules/version 字段。
+	// 届时老客户端（不再误读顶层字段的版本）已全部升级，只需保留 data 一种形状，
+	// 恢复为 response.Success(c, gin.H{"rules": enabled, "version": serverVersion})。
+	c.JSON(http.StatusOK, gin.H{
+		"code":    errors.ErrCodeSuccess,
+		"message": "success",
+		"data": gin.H{
+			"rules":   enabled,
+			"version": serverVersion,
+		},
 		"rules":   enabled,
 		"version": serverVersion,
 	})
