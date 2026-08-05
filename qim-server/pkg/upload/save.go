@@ -36,6 +36,10 @@ type SaveConfig struct {
 	FilenameFn   func() string   // 生成最终存储文件名（不含目录），若为 nil 则用 SafeName
 	MaxBytesRead int64           // 最多读取的字节数（用于限制内存），0 表示用 Policy.MaxSize
 	ContextFn    func() (context.Context, context.CancelFunc) // 自定义 context，nil 用默认 30s
+	// SkipTypeCheck 跳过类型/扩展名校验（黑名单 + 白名单），仅用于受信任的管理员分发来源
+	// （source = version / client_update，发布 CLI、MCP、客户端安装包等二进制产物）。
+	// 大小限制与文件名清洗仍然生效。默认 false，不影响普通上传的安全校验。
+	SkipTypeCheck bool
 }
 
 // SaveMultipartFile 公共的"读取+校验+存储"函数。
@@ -82,9 +86,11 @@ func SaveMultipartFile(header *multipart.FileHeader, cfg SaveConfig) (*SavedFile
 	// 3. 检测真实 MIME（不信任客户端 Content-Type）
 	detectedMime := DetectMimeType(fileBytes)
 
-	// 4. 校验类型（黑名单 + 可选白名单）
-	if err := cfg.Policy.ValidateType(header.Filename, detectedMime); err != nil {
-		return nil, err
+	// 4. 校验类型（黑名单 + 可选白名单）；受信任的管理员分发来源跳过（如 .exe 安装包/CLI 二进制）
+	if !cfg.SkipTypeCheck {
+		if err := cfg.Policy.ValidateType(header.Filename, detectedMime); err != nil {
+			return nil, err
+		}
 	}
 
 	// 5. 清洗文件名

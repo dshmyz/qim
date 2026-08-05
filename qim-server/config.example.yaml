@@ -1,7 +1,7 @@
 # QIM Server 配置文件
-# 
+#
 # 环境变量说明:
-# - QIM_JWT_SECRET: JWT密钥，建议设置为随机字符串
+# - JWT_SECRET: JWT密钥（与下方 jwt.secret 等价，环境变量优先），建议设置为随机字符串
 # - QIM_ADMIN_USERNAME: 管理员用户名（默认: admin）
 # - QIM_ADMIN_PASSWORD: 管理员密码（默认: admin123）
 #
@@ -27,12 +27,6 @@ jwt:
   expire: 7200  # 秒
   refresh_expire_days: 7
 
-# 日志配置
-# 设置 LOG_DIR 环境变量或配置下方 dir 后，日志会按天写入文件并自动归档
-# 不配置则仅输出到 stdout（标准输出）
-log:
-  dir: "./logs"
-
 # 数据库配置
 database:
   type: "sqlite"  # sqlite / mysql / postgresql
@@ -44,19 +38,29 @@ database:
   # password: "your-password"
   # database: "qim_server"
 
-# 日志：设置 dir 后输出拆分到 stdout + qim.log/error.log/auth.log；
-# 环境变量 LOG_DIR / LOG_LEVEL 始终优先于此配置。
+# 日志配置：设置 dir 后输出拆分到 stdout + qim.log/error.log/auth.log 并按轮转策略归档；
+# 环境变量 LOG_DIR / LOG_LEVEL 始终优先于此配置，不设置 dir 则仅输出到 stdout。
 log:
   dir: "./logs"
-  level: "info"   # debug / info / warn / error
+  level: "info"        # debug / info / warn / error
+  max_size_mb: 100     # 单文件最大体积（MB），达到后轮转；<=0 用 lumberjack 默认 100
+  max_backups: 0       # 保留的旧文件份数；0 表示保留全部（但受 max_age_days 限制）
+  max_age_days: 0      # 旧文件最大保留天数；0 表示不按天数清理
+  compress: false      # 是否压缩归档的旧文件（gzip）
 
 # 多节点配置
 cluster:
-  enabled: false
+  enabled: false        # 是否启用多节点通信
   # 其他节点的地址列表
   nodes: []
   # - "http://node1:8080"
   # - "http://node2:8080"
+  scheme: "http"        # 节点间通信协议：http 或 https，默认 http
+
+# 节点间认证：NodeAuthMiddleware 使用该密钥校验节点间内部接口请求（Header: Node-Secret）
+# 注意：node.secret 仅从配置文件读取，不支持环境变量覆盖。
+node:
+  secret: "change-me-to-random-node-secret"
 
 # 文件存储配置
 storage:
@@ -148,6 +152,12 @@ ai:
 
 # CORS 配置
 cors:
+  allowed_origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"
+
+# WebSocket 配置：与 CORS 类似，控制 WS 握手时允许的来源（routes.go 中 ws.SetAllowedOrigins）
+ws:
   allowed_origins:
     - "http://localhost:5173"
     - "http://localhost:3000"

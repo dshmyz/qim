@@ -257,10 +257,13 @@ func UploadFile(c *gin.Context) {
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 
 	// 复用公共"读取+校验+存储"函数
+	// 受信任的管理员分发来源（version / client_update）跳过类型校验，
+	// 允许发布 .exe 等 CLI/MCP/客户端安装包；此来源已在上方强制要求 system_admin 权限。
 	saved, err := upload.SaveMultipartFile(file, upload.SaveConfig{
-		Policy:    policy,
-		Storage:   st,
-		KeyPrefix: fmt.Sprintf("uploads/%s", now.Format("2006/01")),
+		Policy:        policy,
+		Storage:       st,
+		KeyPrefix:     fmt.Sprintf("uploads/%s", now.Format("2006/01")),
+		SkipTypeCheck: protectedUploadSources[source],
 		FilenameFn: func() string {
 			return fmt.Sprintf("%s%03d_%d%s", now.Format("20060102150405"), now.UnixMilli()%1000, uid, ext)
 		},
