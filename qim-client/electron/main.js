@@ -994,6 +994,7 @@ function registerIPC() {
   })
 
   updateService.registerUpdateIpc()
+  updateService.registerSafePasswordIpc()
 
   ipcMain.handle('get-default-download-path', () => {
     return app.getPath('downloads')

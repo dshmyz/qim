@@ -183,6 +183,50 @@ import { APP_CONFIG, getCopyrightShort } from '../config/appConfig'
 const productFullName = APP_CONFIG.productFullName
 const copyrightShort = getCopyrightShort()
 
+// 「记住密码」加密存储：明文不落 localStorage，只在 Electron 下经主进程 safeStorage
+// 加解密，落盘仅存 base64 密文（key: password_enc）。纯 Web 预览或加密不可用时
+// 返回 ''，调用方据此不落盘/不回填，输入框留空。
+async function encryptSavedPassword(plaintext: string): Promise<string> {
+  if (!plaintext || !window.electron?.safeStorage) return ''
+  try {
+    return await window.electron.safeStorage.encrypt(plaintext)
+  } catch (error) {
+    console.error('记住密码加密失败:', error)
+    return ''
+  }
+}
+
+async function decryptSavedPassword(base64: string): Promise<string> {
+  if (!base64 || !window.electron?.safeStorage) return ''
+  try {
+    return await window.electron.safeStorage.decrypt(base64)
+  } catch (error) {
+    console.error('记住密码解密失败:', error)
+    return ''
+  }
+}
+
+async function saveRememberedPassword(username: string, password: string, remember: boolean) {
+  const enc = remember ? await encryptSavedPassword(password) : ''
+  if (remember) {
+    localStorage.setItem('username', username)
+    localStorage.setItem('remember', 'true')
+    // 加密成功才存密文；加密不可用（'' 或非 Electron）则不落密码
+    if (enc) {
+      localStorage.setItem('password_enc', enc)
+    } else {
+      localStorage.removeItem('password_enc')
+    }
+    localStorage.removeItem('password') // 清理历史明文
+  } else {
+    localStorage.removeItem('username')
+    localStorage.removeItem('remember')
+    localStorage.removeItem('password')
+    localStorage.removeItem('password_enc')
+  }
+}
+
+
 interface FormErrors {
   username?: string
   password?: string
@@ -344,13 +388,9 @@ const login = async () => {
       localStorage.setItem('user', JSON.stringify(data.data.user))
       
       if (loginForm.remember) {
-        localStorage.setItem('username', loginForm.username)
-        localStorage.setItem('password', loginForm.password)
-        localStorage.setItem('remember', 'true')
+        await saveRememberedPassword(loginForm.username, loginForm.password, true)
       } else {
-        localStorage.removeItem('username')
-        localStorage.removeItem('password')
-        localStorage.removeItem('remember')
+        await saveRememberedPassword(loginForm.username, loginForm.password, false)
       }
 
       // 登录成功即同步服务器地址到主进程，保证更新检查与 API 使用同一地址（单一事实源）
@@ -397,13 +437,9 @@ const verifyTwoFA = async () => {
         localStorage.setItem('user', JSON.stringify(data.data.user))
         
         if (loginForm.remember) {
-          localStorage.setItem('username', loginForm.username)
-          localStorage.setItem('password', loginForm.password)
-          localStorage.setItem('remember', 'true')
+          await saveRememberedPassword(loginForm.username, loginForm.password, true)
         } else {
-          localStorage.removeItem('username')
-          localStorage.removeItem('password')
-          localStorage.removeItem('remember')
+          await saveRememberedPassword(loginForm.username, loginForm.password, false)
         }
         
         emit('login-success', data.data.user)
@@ -422,15 +458,16 @@ const verifyTwoFA = async () => {
   }
 }
 
-const loadSavedSettings = () => {
+const loadSavedSettings = async () => {
   const savedUsername = localStorage.getItem('username')
-  const savedPassword = localStorage.getItem('password')
+  const savedEncPassword = localStorage.getItem('password_enc')
   const savedRemember = localStorage.getItem('remember')
   const savedServerUrl = getStoredServerUrl()
 
   if (savedRemember === 'true' && savedUsername) {
     loginForm.username = savedUsername
-    loginForm.password = savedPassword || ''
+    // 解密回填；解密失败/非 Electron 时返回 ''，密码框留空由用户重输
+    loginForm.password = await decryptSavedPassword(savedEncPassword || '') || ''
     loginForm.remember = true
   }
   serverSettings.url = savedServerUrl

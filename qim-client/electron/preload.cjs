@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld('electron', {
       shell.openExternal(url)
     }
   },
+  safeStorage: {
+    // 记住密码用的系统安全存储加解密桥（主进程 safeStorage）
+    encrypt: (plaintext) => ipcRenderer.invoke('password:encrypt', plaintext),
+    decrypt: (base64) => ipcRenderer.invoke('password:decrypt', base64)
+  },
   screenshot: {
     take: () => {
       ipcRenderer.send('take-screenshot')

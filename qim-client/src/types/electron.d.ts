@@ -30,6 +30,10 @@ interface ElectronAPI {
   windowState: {
     isActive: () => Promise<boolean>
   }
+  safeStorage: {
+    encrypt: (plaintext: string) => Promise<string>
+    decrypt: (base64: string) => Promise<string>
+  }
 }
 
 interface Window {
