@@ -53,6 +53,7 @@
         <MessageCard
           v-for="message in sortedMessages"
           :key="message.id"
+          :id="'channel-msg-' + message.id"
           :message="message"
           :channel="channel"
           :is-creator="isCreator"
@@ -75,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, nextTick } from 'vue'
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import EmptyState from '../shared/EmptyState.vue'
 import MessageCard from './MessageCard.vue'
@@ -94,6 +95,7 @@ interface Props {
   sortOrder?: SortOrder
   creatorId?: string | number
   interactive?: boolean
+  highlightMessageId?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -102,7 +104,8 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   sortOrder: 'desc',
   creatorId: '',
-  interactive: true
+  interactive: true,
+  highlightMessageId: null
 })
 
 const emit = defineEmits<{
@@ -112,6 +115,7 @@ const emit = defineEmits<{
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
   copyLink: [message: ChannelMessage]
+  'highlight-consumed': []
 }>()
 
 const toggleSort = () => {
@@ -128,6 +132,34 @@ const sortedMessages = computed(() => {
   })
   return sorted
 })
+
+// 深链定位：当待定位消息 id 到来且消息已加载渲染时，滚动到目标并把该条高亮闪烁，随后通知上层消费清除。
+let highlightTimer: number | undefined
+watch(
+  () => [props.highlightMessageId, props.loading, props.messages.length] as const,
+  async ([messageId, loading]) => {
+    if (highlightTimer) {
+      clearTimeout(highlightTimer)
+      highlightTimer = undefined
+    }
+    if (!messageId || loading) return
+    await nextTick()
+    const target = document.getElementById('channel-msg-' + messageId)
+    if (target) {
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      target.classList.add('msg-highlight')
+      highlightTimer = window.setTimeout(() => {
+        target.classList.remove('msg-highlight')
+        emit('highlight-consumed')
+        highlightTimer = undefined
+      }, 2600)
+    } else {
+      // 目标元素未找到（如消息已被清理），直接消费避免卡住
+      emit('highlight-consumed')
+    }
+  },
+  { immediate: true }
+)
 
 const handleLike = (message: ChannelMessage) => {
   emit('like', message)

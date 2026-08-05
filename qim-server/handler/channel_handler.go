@@ -344,8 +344,9 @@ func CreateChannelMessage(c *gin.Context) {
 
 	for _, subscriber := range subscribers {
 		payload, _ := json.Marshal(map[string]interface{}{
-			"channel_id": channel.ID,
+			"channel_id":   channel.ID,
 			"channel_name": channel.Name,
+			"message_id":   channelMessage.ID,
 		})
 		notification := model.Notification{
 			UserID:         subscriber.UserID,

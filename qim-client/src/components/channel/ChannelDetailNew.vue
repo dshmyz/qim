@@ -24,6 +24,8 @@
       :sort-order="sortOrder"
       :creator-id="channel.creator_id"
       :interactive="channel.is_subscribed || isCreator"
+      :highlight-message-id="highlightMessageId"
+      @highlight-consumed="$emit('highlight-consumed')"
       @update:mode="handleModeChange"
       @update:sort-order="handleSortOrderChange"
       @like="handleLike"
@@ -145,6 +147,7 @@ interface Props {
   initialMessage?: string
   displayMode?: DisplayMode
   sortOrder?: 'asc' | 'desc'
+  highlightMessageId?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -152,7 +155,8 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   initialMessage: '',
   displayMode: 'card',
-  sortOrder: 'desc'
+  sortOrder: 'desc',
+  highlightMessageId: null
 })
 
 const emit = defineEmits<{
@@ -166,6 +170,7 @@ const emit = defineEmits<{
   comment: [message: ChannelMessage]
   copyLink: [message: ChannelMessage]
   refresh: []
+  'highlight-consumed': []
 }>()
 
 const localMessage = ref(props.initialMessage)

@@ -173,6 +173,8 @@
                 :displayMode="channelStore.messageMode"
                 :sortOrder="'desc'"
                 :loading="channelStore.messagesLoading"
+                :highlight-message-id="channelStore.pendingMessageId"
+                @highlight-consumed="channelStore.clearPendingMessageId"
                 @subscribe="handleChannelSubscribe"
                 @unsubscribe="handleChannelUnsubscribe"
                 @sendMessage="handleChannelSendMessage"
@@ -1316,10 +1318,10 @@ const handleNotificationClick = async (notification: any) => {
   const nav = resolveNotificationNav(notification)
 
   switch (nav.kind) {
-    // 频道消息：打开对应频道
+    // 频道消息：打开对应频道，并携带 messageId 以便滚动到并高亮那条消息
     case 'channel':
       activeOption.value = 'channels'
-      channelStore.selectChannel(nav.channelId)
+      await channelStore.selectChannel(nav.channelId, nav.messageId)
       break
 
     // 群聊邀请 / 入群申请：直接进入对应会话

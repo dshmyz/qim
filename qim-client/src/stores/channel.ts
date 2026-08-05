@@ -9,6 +9,8 @@ export const useChannelStore = defineStore('channel', () => {
   const channels = ref<Channel[]>([])
   const selectedChannelId = ref<string | null>(null)
   const openTabs = ref<Array<{ id: string; name: string }>>([])
+  // 待定位的消息 id：通知中心/深链指定要滚动到并高亮的某条频道消息，渲染层消费后清除
+  const pendingMessageId = ref<string | null>(null)
 
   const getStoredViewMode = (): 'list' | 'card' => {
     const stored = localStorage.getItem('channel-viewMode')
@@ -113,14 +115,20 @@ export const useChannelStore = defineStore('channel', () => {
     }
   }
 
-  async function selectChannel(channelId: string) {
+  async function selectChannel(channelId: string, messageId?: string) {
     selectedChannelId.value = channelId
+    // 深链定位：记录待定位消息，等消息加载完成由渲染层滚动+高亮后消费清除
+    pendingMessageId.value = messageId || null
     const channel = channels.value.find(c => c.id === channelId)
     if (channel) {
       addTab(channel)
       await fetchChannelMessages(channelId)
       markChannelRead(channelId)
     }
+  }
+
+  function clearPendingMessageId() {
+    pendingMessageId.value = null
   }
 
   function markChannelRead(channelId: string) {
@@ -213,6 +221,7 @@ export const useChannelStore = defineStore('channel', () => {
     channels,
     selectedChannelId,
     openTabs,
+    pendingMessageId,
     viewMode,
     messageMode,
     loading,
@@ -225,6 +234,7 @@ export const useChannelStore = defineStore('channel', () => {
     subscribeChannel,
     unsubscribeChannel,
     selectChannel,
+    clearPendingMessageId,
     addTab,
     removeTab,
     setViewMode,

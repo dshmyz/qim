@@ -8,6 +8,11 @@ describe('resolveNotificationNav - 通知点击深链路由决策', () => {
     expect(resolveNotificationNav(n)).toEqual({ kind: 'channel', channelId: '5' })
   })
 
+  it('channel_message 携带 message_id → 一并带出以便定位到具体消息', () => {
+    const n = mapNotification({ type: 'channel_message', action_payload: '{"channel_id":5,"message_id":99}' })
+    expect(resolveNotificationNav(n)).toEqual({ kind: 'channel', channelId: '5', messageId: '99' })
+  })
+
   it('group_invitation 命中 conversation_id → 进入会话', () => {
     const n = mapNotification({ type: 'group_invitation', action_payload: '{"conversation_id":8}' })
     expect(resolveNotificationNav(n)).toEqual({ kind: 'conversation', conversationId: '8' })

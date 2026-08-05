@@ -1,5 +1,5 @@
 <template>
-  <div class="message-card" :class="{ 'is-creator': isCreator, 'has-comments': comments.length > 0 || showCommentInput }" role="article" :aria-label="`来自 ${senderName} 的消息`">
+  <div class="message-card" :id="'channel-msg-' + message.id" :class="{ 'is-creator': isCreator, 'has-comments': comments.length > 0 || showCommentInput }" role="article" :aria-label="`来自 ${senderName} 的消息`">
     <div class="card-accent-bar"></div>
     <div class="card-body">
       <div class="card-top">
@@ -294,6 +294,18 @@ const submitComment = async () => {
 
 .message-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 通知中心/深链定位：目标消息瞬时闪烁高亮 */
+.message-card.msg-highlight {
+  animation: msg-highlight-flash 2.4s ease-out;
+  border-color: var(--primary-color);
+}
+
+@keyframes msg-highlight-flash {
+  0% { box-shadow: 0 0 0 3px var(--primary-light, rgba(51, 133, 255, 0.35)); background: var(--primary-light, rgba(51, 133, 255, 0.18)); }
+  50% { box-shadow: 0 0 0 3px var(--primary-light, rgba(51, 133, 255, 0.35)); background: var(--primary-light, rgba(51, 133, 255, 0.18)); }
+  100% { box-shadow: none; background: transparent; }
 }
 
 .card-accent-bar {

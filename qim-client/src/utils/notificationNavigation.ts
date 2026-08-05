@@ -11,7 +11,7 @@
  */
 
 export type NotificationNavIntent =
-  | { kind: 'channel'; channelId: string }
+  | { kind: 'channel'; channelId: string; messageId?: string }
   | { kind: 'conversation'; conversationId: string }
   | { kind: 'groups' }
   | { kind: 'task'; taskId: string }
@@ -27,9 +27,13 @@ export interface NotificationLike {
 export function resolveNotificationNav(notification: NotificationLike): NotificationNavIntent {
   const payload = notification.actionPayload || {}
 
-  // 频道消息：打开对应频道
+  // 频道消息：打开对应频道，并携带 message_id 以便定位到具体那条消息
   if (notification.type === 'channel_message' && payload.channel_id !== undefined) {
-    return { kind: 'channel', channelId: String(payload.channel_id) }
+    return {
+      kind: 'channel',
+      channelId: String(payload.channel_id),
+      messageId: payload.message_id !== undefined ? String(payload.message_id) : undefined,
+    }
   }
 
   // 群聊邀请 / 入群申请：直接进入对应会话（后端 payload 是 conversation_id）

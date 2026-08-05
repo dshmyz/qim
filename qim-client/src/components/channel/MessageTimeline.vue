@@ -3,6 +3,7 @@
     <div
       v-for="(message, index) in messages"
       :key="message.id"
+      :id="'channel-msg-' + message.id"
       class="timeline-item"
       role="article"
       :aria-label="`来自 ${getSenderName(message)} 的消息`"
@@ -89,6 +90,18 @@ const isCreator = (message: ChannelMessage): boolean => {
   gap: var(--spacing-4);
   position: relative;
   padding-bottom: var(--spacing-4);
+  border-radius: 8px;
+}
+
+/* 通知中心/深链定位：目标消息瞬时闪烁高亮 */
+.timeline-item.msg-highlight {
+  animation: timeline-highlight-flash 2.4s ease-out;
+}
+
+@keyframes timeline-highlight-flash {
+  0% { background: var(--primary-light, rgba(51, 133, 255, 0.18)); box-shadow: 0 0 0 3px var(--primary-light, rgba(51, 133, 255, 0.35)); }
+  50% { background: var(--primary-light, rgba(51, 133, 255, 0.18)); box-shadow: 0 0 0 3px var(--primary-light, rgba(51, 133, 255, 0.35)); }
+  100% { background: transparent; box-shadow: none; }
 }
 
 .timeline-item:last-child {
