@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import fs from 'fs'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
+import { registerSecurePasswordIpc } from './secure-password.js'
 import { DownloadRegistry } from './download-registry.js'
 
 const require = createRequire(import.meta.url)
@@ -994,7 +995,7 @@ function registerIPC() {
   })
 
   updateService.registerUpdateIpc()
-  updateService.registerSafePasswordIpc()
+  registerSecurePasswordIpc(ipcMain)
 
   ipcMain.handle('get-default-download-path', () => {
     return app.getPath('downloads')
