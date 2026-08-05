@@ -1544,6 +1544,12 @@ const handleReadReceiptUpdated = (event: Event) => {
 // 组件挂载时添加事件监听器
 onMounted(() => {
   isMounted.value = true
+  // ChatWindow 受 v-if="currentConversation" 控制，离开会话视图（切到其他窗口/应用）再返回时
+  // 组件会重新挂载；此时 conversation.id 从挂载起就不变，非 immediate 的 conversation watch
+  // 不会触发，导致已持久化的草稿（撤回重新编辑的内容）无法回填。挂载时主动读一次草稿恢复。
+  if (props.conversation?.id) {
+    loadDraft(String(props.conversation.id))
+  }
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
   }

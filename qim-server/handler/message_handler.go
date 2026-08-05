@@ -322,6 +322,10 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 		"is_at_mention":     isAtMention,
+		// 透出 Extra（JSON 字符串）。撤回消息时 RecallMessage 将 original_content
+		// 写入 Extra，「撤回后重新编辑」依赖它回填输入框；历史拉取若丢失该字段，
+		// 切窗口/重启后重新拉取的消息将无法回填。
+		"extra": msg.Extra,
 	}
 
 	// 分身消息：透出分身名称
@@ -661,6 +665,7 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
+		"extra":             msg.Extra,
 	}
 
 	// 分身消息：透出分身名称
