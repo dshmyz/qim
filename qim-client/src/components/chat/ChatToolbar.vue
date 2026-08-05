@@ -7,7 +7,7 @@
         title="通话"
         @click="$emit('start-voice-call')"
       />
-      <button class="call-dropdown-trigger" @click="toggleCallMenu" title="更多通话选项">
+      <button class="call-dropdown-trigger" @click="toggleCallMenu($event)" title="更多通话选项">
         <i class="fas fa-caret-down"></i>
       </button>
       <UniversalContextMenu menuId="call" :items="callMenuItems" />
@@ -56,7 +56,7 @@
       >
         {{ screenshotButtonTitle }}
       </div>
-      <button class="screenshot-dropdown-trigger" @click="toggleScreenshotMenu" title="更多截图选项">
+      <button class="screenshot-dropdown-trigger" @click="toggleScreenshotMenu($event)" title="更多截图选项">
         <i class="fas fa-caret-down"></i>
       </button>
       <UniversalContextMenu menuId="screenshot" :items="screenshotMenuItems" />
@@ -159,19 +159,27 @@ const handleShortcutsUpdated = (_event: unknown, updatedShortcuts: ShortcutsConf
   }
 }
 
-const toggleScreenshotMenu = () => {
+// 用点击目标自身定位锚点，避免 document.querySelector 误命中隐藏/错位元素导致菜单定位失效
+const anchorRectFromEvent = (event: MouseEvent): { left: number; top: number } => {
+  const btn = (event.currentTarget as HTMLElement) || event.target as HTMLElement
+  const r = btn?.getBoundingClientRect?.()
+  if (!r) return { left: 0, top: 0 }
+  return { left: r.left, top: r.bottom + 4 }
+}
+
+const toggleScreenshotMenu = (event: MouseEvent) => {
   if (showScreenshotMenu.value) closeMenu()
   else {
-    const btn = document.querySelector('.screenshot-dropdown-trigger')
-    if (btn) { const r = btn.getBoundingClientRect(); openMenu('screenshot', r.left, r.bottom + 4) }
+    const { left, top } = anchorRectFromEvent(event)
+    openMenu('screenshot', left, top)
   }
 }
 
-const toggleCallMenu = () => {
+const toggleCallMenu = (event: MouseEvent) => {
   if (showCallMenu.value) closeMenu()
   else {
-    const btn = document.querySelector('.call-dropdown-trigger')
-    if (btn) { const r = btn.getBoundingClientRect(); openMenu('call', r.left, r.bottom + 4) }
+    const { left, top } = anchorRectFromEvent(event)
+    openMenu('call', left, top)
   }
 }
 

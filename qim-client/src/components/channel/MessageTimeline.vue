@@ -176,7 +176,7 @@ const isCreator = (message: ChannelMessage): boolean => {
 
 .timeline-sender {
   font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   color: var(--text-color);
   display: flex;
   align-items: center;
@@ -203,7 +203,7 @@ const isCreator = (message: ChannelMessage): boolean => {
 
 .timeline-text {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-size: 13.5px;
   color: var(--text-color);
   line-height: 1.6;
   word-break: break-word;

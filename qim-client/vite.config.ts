@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
       __APP_PRODUCT_NAME__: JSON.stringify((pkg as any).build?.productName),
       __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN),
       __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear),
+      __APP_RELEASE_DATE__: JSON.stringify(extra.releaseDate),
+      __APP_CONTACT_EMAIL__: JSON.stringify(extra.contactEmail),
     },
     base: './',
     plugins: [vue()],

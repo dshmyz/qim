@@ -32,7 +32,9 @@
     "appId": "com.qim.app",
     "extraMetadata": {
       "productNameCN": "青雀",
-      "copyrightYear": "2026"
+      "copyrightYear": "2026",
+      "releaseDate": "2026-04-11",
+      "contactEmail": "huangqun@buaa.edu.cn"
     },
     "productName": "QIM",
     "electronVersion": "42.3.3",

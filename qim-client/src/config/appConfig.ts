@@ -7,6 +7,8 @@ export const APP_CONFIG = {
   productFullName: `${productName} ${productNameCN}`,
   copyrightYear: __APP_COPYRIGHT_YEAR__,
   version: __APP_VERSION__,
+  releaseDate: __APP_RELEASE_DATE__,
+  contactEmail: __APP_CONTACT_EMAIL__,
 }
 
 export const getProductName = (): string => {

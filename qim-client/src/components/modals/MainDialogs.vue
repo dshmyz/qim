@@ -12,7 +12,7 @@
         </div>
         <h2>{{ productFullName }}</h2>
         <p class="version">版本: {{ appVersion }}</p>
-        <p class="date">发布日期: 2026-04-11</p>
+        <p class="date">发布日期: {{ appReleaseDate }}</p>
         <div class="credits-section">
           <p class="credit-item">
             <i class="fas fa-pencil-ruler"></i>
@@ -25,7 +25,7 @@
         </div>
         <p class="contact">
           <i class="fas fa-envelope"></i>
-          联系邮箱: <a href="mailto:huangqun@buaa.edu.cn">huangqun@buaa.edu.cn</a>
+          联系邮箱: <a :href="`mailto:${appContactEmail}`">{{ appContactEmail }}</a>
         </p>
         <p class="copyright">{{ copyrightText }}</p>
         <p class="description">一款现代化的即时通讯应用，致力于提供简洁、高效、智能化的沟通体验，让团队协作更顺畅。</p>
@@ -255,6 +255,8 @@ const { serverUrl } = useServerUrl()
 const productFullName = APP_CONFIG.productFullName
 const appVersion = APP_CONFIG.version
 const copyrightText = getCopyrightText()
+const appReleaseDate = APP_CONFIG.releaseDate
+const appContactEmail = APP_CONFIG.contactEmail
 
 interface Conversation {
   id: string | number

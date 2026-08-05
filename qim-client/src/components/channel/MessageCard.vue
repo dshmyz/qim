@@ -361,7 +361,7 @@ const submitComment = async () => {
 }
 
 .author-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-color);
   display: flex;
@@ -396,7 +396,7 @@ const submitComment = async () => {
 
 .content-text {
   margin: 0;
-  font-size: 15px;
+  font-size: 13.5px;
   color: var(--text-color);
   line-height: 1.7;
   word-break: break-word;
