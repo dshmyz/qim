@@ -4,7 +4,11 @@ import (
 	"fmt"
 )
 
-type ProviderFactory struct{}
+type ProviderFactory struct {
+	// createOverride 测试注入用：非 nil 时 CreateProviderByName 走它而非内置创建逻辑。
+	// 生产代码不设置此字段，不影响正常路径。
+	createOverride func(name string, cfg ProviderConfig) (Provider, error)
+}
 
 func NewProviderFactory() *ProviderFactory {
 	return &ProviderFactory{}
@@ -99,6 +103,9 @@ func (f *ProviderFactory) createAnthropicProvider(cfg *AIConfig) Provider {
 // CreateProviderByName 根据提供商类型名称创建 Provider 实例。
 // 支持内置类型（openai/deepseek/anthropic 等）以及 custom（OpenAI 兼容）类型。
 func (f *ProviderFactory) CreateProviderByName(name string, cfg ProviderConfig) (Provider, error) {
+	if f.createOverride != nil {
+		return f.createOverride(name, cfg)
+	}
 	switch name {
 	case "openai", "deepseek",
 		"alibaba", "baidu", "tencent", "bytedance",

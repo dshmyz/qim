@@ -718,11 +718,21 @@ func (s *AIService) ChatStreamWithProviderConfig(ctx context.Context, taskType T
 	}
 
 	filtered := s.filterMessages(messages)
+	// 包装 onChunk 截获 Usage。流式响应中 usage 通常在最后一个 chunk 携带，
+	// 取最后一个非 nil 的 Usage（部分 provider 在 finish chunk 重复发送累计 usage）。
+	var capturedUsage *StreamUsage
+	wrappedOnChunk := func(chunk StreamChunk) error {
+		if chunk.Usage != nil {
+			capturedUsage = chunk.Usage
+		}
+		return onChunk(chunk)
+	}
+
 	start := time.Now()
 	if cfg.Model != "" {
-		err = provider.WithModel(cfg.Model).ChatStreamWithContext(ctx, filtered, onChunk)
+		err = provider.WithModel(cfg.Model).ChatStreamWithContext(ctx, filtered, wrappedOnChunk)
 	} else {
-		err = provider.ChatStreamWithContext(ctx, filtered, onChunk)
+		err = provider.ChatStreamWithContext(ctx, filtered, wrappedOnChunk)
 	}
 	duration := time.Since(start).Milliseconds()
 	status := "success"
@@ -731,5 +741,14 @@ func (s *AIService) ChatStreamWithProviderConfig(ctx context.Context, taskType T
 	}
 	log.Printf("[AI Usage] task=%s provider=%s model=%s source=custom duration=%dms status=%s",
 		taskType, provider.Name(), cfg.Model, duration, status)
+
+	// 与 GetCompletionWithProviderConfig 一致：截获到 usage 时上报。
+	if capturedUsage != nil && s.usageSink != nil {
+		s.usageSink(taskType, provider.Name(), cfg.Model, &TokenUsage{
+			PromptTokens:     capturedUsage.PromptTokens,
+			CompletionTokens: capturedUsage.CompletionTokens,
+			TotalTokens:      capturedUsage.TotalTokens,
+		}, duration)
+	}
 	return err
 }
