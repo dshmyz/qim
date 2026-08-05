@@ -27,9 +27,25 @@ function reconcileServerUrlFromMain() {
   window.electron.ipcRenderer.send('get-server-url')
 }
 
+// 启动时把渲染进程已持久化的服务器地址反向同步到主进程（config.json）。
+// 更新检查在主进程读 config.json.serverUrl，而该值只在「登录成功」或「手动保存服务器设置」
+// 时经 IPC 写入；老用户升级后靠 localStorage 的 token 自动登录，从不走这两个分支，导致
+// config.json.serverUrl 为空 → 检查更新报“未配置更新服务器地址”。此处兜底：只要本地已有
+// 显式保存的自定义地址，就把同一地址同步给主进程，让老用户无需重新登录/保存即可检查更新。
+// 仅同步显式保存的值（localStorage.getItem 非空），避免把 API_BASE_URL 默认值写进 config.json。
+function syncServerUrlToMain() {
+  if (!window.electron?.ipcRenderer) return
+  const saved = localStorage.getItem('serverUrl')
+  if (!saved) return
+  window.electron.ipcRenderer.send('set-server-url', saved.replace(/\/+$/, ''))
+}
+
 // 仅在非浏览器（存在主进程桥接）环境下执行启动归一
 try {
-  if (window.electron?.ipcRenderer) reconcileServerUrlFromMain()
+  if (window.electron?.ipcRenderer) {
+    syncServerUrlToMain()
+    reconcileServerUrlFromMain()
+  }
 } catch (error) {
   // 纯 Web 预览/SSR 等无 electron 环境静默跳过
 }
