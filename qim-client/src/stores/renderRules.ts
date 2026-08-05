@@ -64,23 +64,33 @@ export const useRenderRulesStore = defineStore('renderRules', () => {
 
   async function doFetchRules(): Promise<void> {
     try {
-      const res = await request<{ rules: RenderRule[]; version: number }>(
+      const res = await request<{ rules?: RenderRule[]; version?: number; data?: { rules?: RenderRule[]; version?: number } }>(
         `/api/v1/render-rules`,
         { method: 'GET', params: { version: version.value } }
       )
-      if (res && res.rules) {
+      // 响应封装要么是 { code, data: { rules, version } }（request 返回整个 body），
+      // 要么历史版本直接平铺 { rules, version }。两者都兼容。
+      const data = res?.data ?? res
+      if (data && Array.isArray(data.rules)) {
         // 预编译正则
-        rules.value = res.rules.map(rule => ({
+        rules.value = data.rules.map(rule => ({
           ...rule,
           compiledRegex: new RegExp(rule.match.pattern, rule.match.flags || 'g')
         }))
-        version.value = res.version
+        if (typeof data.version === 'number') version.value = data.version
         loaded.value = true
       }
     } catch (e) {
       // 304 表示版本未变化，说明本地已是最新规则，视为已加载。
       // 只有置 loaded 才不会再被 TextMessage 每次渲染触发重复拉取。
       if (e instanceof Error && e.message.includes('304')) {
+        // 防御：若本地规则为空却收到 304（缓存了"无规则"的旧版本），
+        // 不能视为已加载——否则会一直维持空规则、永不重新拉取，导致渲染永远失效。
+        // 此时清空版本号强制下一次携带 version=0 全量拉取。
+        if (rules.value.length === 0) {
+          version.value = 0
+          console.warn('[renderRules] 304 但本地无规则，重置版本号以重新全量拉取')
+        }
         loaded.value = true
         return
       }
