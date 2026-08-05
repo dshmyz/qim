@@ -210,3 +210,32 @@ func TestAvatarReplyGraphNeedReplyForOutOfScope(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCustomProviderExtraParams(t *testing.T) {
+	// 零值不透传：max_tokens=0 在某些 provider 会被 API 拒绝或解释为无限制；
+	// temperature=0 会覆盖 provider 默认值（用户未显式配置时不该强制覆盖）。
+	p := buildCustomProviderExtraParams(0, 0)
+	_, hasMax := p["max_tokens"]
+	_, hasTemp := p["temperature"]
+	assert.False(t, hasMax, "max_tokens=0 不应透传")
+	assert.False(t, hasTemp, "temperature=0 不应透传")
+
+	// 正常值透传
+	p = buildCustomProviderExtraParams(1000, 0.7)
+	assert.Equal(t, 1000, p["max_tokens"])
+	assert.Equal(t, 0.7, p["temperature"])
+
+	// 仅 max_tokens 有效
+	p = buildCustomProviderExtraParams(2000, 0)
+	_, hasMax = p["max_tokens"]
+	_, hasTemp = p["temperature"]
+	assert.True(t, hasMax, "max_tokens>0 应透传")
+	assert.False(t, hasTemp, "temperature=0 不应透传")
+
+	// 仅 temperature 有效
+	p = buildCustomProviderExtraParams(0, 0.5)
+	_, hasMax = p["max_tokens"]
+	_, hasTemp = p["temperature"]
+	assert.False(t, hasMax, "max_tokens=0 不应透传")
+	assert.True(t, hasTemp, "temperature>0 应透传")
+}

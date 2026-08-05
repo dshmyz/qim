@@ -464,13 +464,25 @@ func (g *AvatarReplyGraph) resolveCustomProvider(userID, configID uint) *customM
 			APIKey:  apiKey,
 			Model:   cfg.ModelName,
 			BaseURL: cfg.BaseURL,
-			// 透传用户保存的生成参数；CreateProviderByName 仅在缺失时才落到默认值
-			ExtraParams: map[string]interface{}{
-				"max_tokens":  cfg.MaxTokens,
-				"temperature": cfg.Temperature,
-			},
+			// 透传用户保存的生成参数；零值跳过让 provider 用默认值
+			ExtraParams: buildCustomProviderExtraParams(cfg.MaxTokens, cfg.Temperature),
 		},
 	}
+}
+
+// buildCustomProviderExtraParams 构建分身自选模型的 ExtraParams。
+// 仅透传有效值（> 0），零值跳过让 provider 用默认值：
+// - max_tokens=0 在某些 provider 会被 API 拒绝或解释为无限制
+// - temperature=0 会覆盖 provider 默认值（用户未显式配置时不该强制覆盖）
+func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[string]interface{} {
+	params := map[string]interface{}{}
+	if maxTokens > 0 {
+		params["max_tokens"] = maxTokens
+	}
+	if temperature > 0 {
+		params["temperature"] = temperature
+	}
+	return params
 }
 
 // needReplyForOutOfScope 判断「知识范围外」的消息是否仍有必要代表主人回复。
