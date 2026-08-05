@@ -68,6 +68,15 @@ const formatDownloadBytes = (bytes: number): string => {
   return `${bytes} B`
 }
 
+// 渲染层猜测当前平台，用于「安装中」提示给平台感知的文案（deb/AppImage = linux，nsis = win32）
+const detectUpdatePlatform = (): string => {
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('linux')) return 'linux'
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('win')) return 'win32'
+  return ''
+}
+
 /**
  * UI 状态管理 composable
  * 管理所有 UI 相关的状态：上下文菜单、模态框、对话框、操作菜单等
@@ -176,6 +185,8 @@ export function useUI() {
   const isCheckingUpdate = ref(false)
   const isDownloading = ref(false)
   const isUpdateReadyToInstall = ref(false)
+  const isInstalling = ref(false)
+  const updatePlatform = ref('')
   const downloadProgress = ref(0)
   const downloadTransferred = ref(0)
   const downloadTotal = ref(0)
@@ -534,6 +545,7 @@ export function useUI() {
           isCheckingUpdate.value = true
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
+          isInstalling.value = false
           downloadProgress.value = 0
           downloadTransferred.value = 0
           downloadTotal.value = 0
@@ -547,6 +559,7 @@ export function useUI() {
           isCheckingUpdate.value = false
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
+          isInstalling.value = false
           downloadProgress.value = 0
           downloadTransferred.value = 0
           downloadTotal.value = 0
@@ -570,6 +583,7 @@ export function useUI() {
           isCheckingUpdate.value = false
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
+          isInstalling.value = false
           downloadProgress.value = 0
           downloadTransferred.value = 0
           downloadTotal.value = 0
@@ -585,6 +599,7 @@ export function useUI() {
           isCheckingUpdate.value = false
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
+          isInstalling.value = false
           downloadProgress.value = 0
           downloadTransferred.value = 0
           downloadTotal.value = 0
@@ -622,6 +637,7 @@ export function useUI() {
         handler: (_event: any, progressObj: any) => {
           isDownloading.value = true
           isUpdateReadyToInstall.value = false
+          isInstalling.value = false
           downloadProgress.value = formatDownloadProgress(progressObj?.percent)
           downloadTransferred.value = Math.max(Number(progressObj?.transferred) || 0, 0)
           downloadTotal.value = Math.max(Number(progressObj?.total) || 0, 0)
@@ -632,6 +648,7 @@ export function useUI() {
         handler: (_event: any, _info: any) => {
           isDownloading.value = false
           isUpdateReadyToInstall.value = true
+          isInstalling.value = false
           downloadProgress.value = 100
           downloadTransferred.value = downloadTotal.value
           updateResult.value = '更新已下载完成，是否立即重启安装？'
@@ -640,11 +657,15 @@ export function useUI() {
       {
         channel: 'update-installing',
         handler: () => {
+          isCheckingUpdate.value = false
           isDownloading.value = false
           isUpdateReadyToInstall.value = false
+          isInstalling.value = true
           downloadProgress.value = 100
           downloadTransferred.value = downloadTotal.value
           updateResult.value = '正在重启并安装更新...'
+          // 主进程安装更早退出，这里记下平台，供渲染层给平台感知的安装提示文案
+          updatePlatform.value = detectUpdatePlatform()
         }
       }
     ]
@@ -747,6 +768,8 @@ export function useUI() {
     isCheckingUpdate,
     isDownloading,
     isUpdateReadyToInstall,
+    isInstalling,
+    updatePlatform,
     downloadProgress,
     downloadTransferred,
     downloadTotal,

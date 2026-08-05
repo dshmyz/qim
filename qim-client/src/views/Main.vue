@@ -600,6 +600,8 @@
       :isCheckingUpdate="isCheckingUpdate"
       :isDownloading="isDownloading"
       :isUpdateReadyToInstall="isUpdateReadyToInstall"
+      :isInstalling="isInstalling"
+      :updatePlatform="updatePlatform"
       :downloadProgress="downloadProgress"
       :downloadSizeText="downloadSizeText"
       :hasNewVersion="hasNewVersion"
@@ -1007,6 +1009,8 @@ const {
   isCheckingUpdate,
   isDownloading,
   isUpdateReadyToInstall,
+  isInstalling,
+  updatePlatform,
   downloadProgress,
   downloadSizeText,
   updateResult,

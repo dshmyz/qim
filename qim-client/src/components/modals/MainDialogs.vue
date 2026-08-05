@@ -91,6 +91,11 @@
             <p v-if="downloadSizeText" class="progress-size-text">{{ downloadSizeText }}</p>
           </div>
         </div>
+        <div v-else-if="isInstalling" class="update-installing">
+          <div class="installing-spinner"><i class="fas fa-redo-alt"></i></div>
+          <p class="installing-title">正在安装更新</p>
+          <p class="installing-text">{{ installHint }}</p>
+        </div>
         <div v-else class="update-result">
           <div class="result-icon" :class="{ 'new-version': hasNewVersion }">
             <i v-if="hasNewVersion" class="fas fa-arrow-circle-up"></i>
@@ -129,7 +134,7 @@
       </div>
       <div class="update-dialog-footer">
         <button v-if="isUpdateReadyToInstall" class="update-dialog-button update-button" @click="$emit('installUpdate')">立即重启安装</button>
-        <button v-else-if="hasNewVersion && !isDownloading" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">立即升级</button>
+        <button v-else-if="hasNewVersion && !isDownloading && !isInstalling" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">立即升级</button>
         <button v-if="!forceUpdate" class="update-dialog-button" @click="$emit('closeUpdate')">关闭</button>
       </div>
     </div>
@@ -292,6 +297,8 @@ interface Props {
   hasNewVersion: boolean
   forceUpdate: boolean
   updateResult: string
+  isInstalling?: boolean
+  updatePlatform?: string
   updateInfo?: UpdateInfo | null
   groupConversations: Conversation[]
   allEmployees: any[]
@@ -300,6 +307,17 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+// 安装中提示按平台给差异化文案：Linux 走 dpkg/AppImage 后台替换，无进度；Win 走 nsisi 安装器
+const installHint = computed(() => {
+  if (props.updatePlatform === 'linux') {
+    return '正在通过系统包管理器安装新版本，可能需要数十秒甚至更久，请耐心等待，不要强制退出。若弹出权限/密码请求，请允许以继续。'
+  }
+  if (props.updatePlatform === 'win32') {
+    return '安装器将在新窗口中显示进度，安装完成后会自动启动新版本。'
+  }
+  return '正在安装更新，完成后应用将自动重启。请耐心等待，不要强制退出。'
+})
 
 const formatReleaseDate = (value: string) => {
   const date = new Date(value)
@@ -768,8 +786,45 @@ const onTargetChange = () => {
 
 .update-loading,
 .update-downloading,
+.update-installing,
 .update-result {
   text-align: center;
+}
+
+/* 安装中：转圈动画明确「仍在进行」，并给平台感知的等待说明 */
+.installing-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid var(--border-color, #eee);
+  border-top-color: var(--primary-color, #409eff);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+}
+
+.installing-spinner i {
+  font-size: 16px;
+  color: var(--primary-color, #409eff);
+  animation: spin 1s linear infinite reverse;
+}
+
+.installing-title {
+  margin: 8px 0 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.installing-text {
+  margin: 10px auto 0;
+  max-width: 360px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .loading-spinner {
