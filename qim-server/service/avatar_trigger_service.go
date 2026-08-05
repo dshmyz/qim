@@ -57,9 +57,10 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 		effectiveMode = "mention"
 	}
 
-	// 私聊中 mention 模式自动触发
+	// 私聊中 mention 模式：不再对任何消息无条件触发（否则对方随便说一句就触发分身，导致乱回复）。
+	// 改用智能意图判断「这条消息是否真的需要分身代表主人回复」，无关/闲聊则静默（fail-closed）。
 	if !isGroupChat && effectiveMode == "mention" {
-		return true, "私聊 mention 自动触发", nil
+		return s.decideReplyByIntent(config, message, senderName)
 	}
 
 	switch effectiveMode {
@@ -80,8 +81,10 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 		}
 		return false, "用户在线", nil
 	case "keyword":
+		// 无关键词默认触发 = 对任何消息都回 → 与 all 模式混淆且极易乱回复。改 fail-closed：
+		// keyword 模式必须显式配置关键词，缺失时静默不触发（与唯一触发路径分支对齐）。
 		if len(rules.Keywords) == 0 {
-			return true, "keyword 无关键词默认触发", nil
+			return false, "keyword 模式未配置关键词", nil
 		}
 		// 大小写不敏感匹配，与旧 matchKeywords 行为一致
 		msgLower := strings.ToLower(message)
@@ -94,28 +97,40 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 	case "all":
 		return true, "all 模式", nil
 	case "smart":
-		shouldReply, confidence, reason, err := s.LLMShouldReply(config, message, senderName)
-		if err != nil {
-			return false, "", err
-		}
-		// 置信度门控：阈值 > 0 时，即使 should_reply=true，confidence 低于阈值也降级不回复（fail-closed）
-		var replyStrategy model.AvatarReplyStrategy
-		if config.ReplyStrategyJSON != "" {
-			_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
-		}
-		if shouldReply && replyStrategy.ConfidenceThreshold > 0 && confidence < replyStrategy.ConfidenceThreshold {
-			return false, fmt.Sprintf("置信度 %.2f 低于阈值 %.2f", confidence, replyStrategy.ConfidenceThreshold), nil
-		}
-		return shouldReply, reason, nil
+		return s.decideReplyByIntent(config, message, senderName)
 	default:
 		return isGroupChat && len(mentionUserIDs) > 0, "未知模式按 mention 处理", nil
 	}
 }
 
-// LLMShouldReply 仅负责 smart 模式的 LLM 意图判断，由 DecideReply 内部调用。
-// 返回 (shouldReply, confidence 0-1, reason, err)，confidence 由 LLM 自评。
+// decideReplyByIntent 用 LLM 意图判断「这条消息是否真的需要分身代表主人回复」，
+// 并应用置信度门控（阈值 > 0 时，即使 should_reply=true，confidence 低于阈值也降级不回复）。
+// 供私聊 mention 模式与 smart 模式共用，避免两处各写一套。fail-closed：判断出错时不触发。
+func (s *AvatarTriggerService) decideReplyByIntent(config model.AvatarConfig, message string, senderName string) (bool, string, error) {
+	shouldReply, confidence, reason, err := s.LLMShouldReply(config, message, senderName)
+	if err != nil {
+		return false, "", err
+	}
+	// 置信度门控：阈值 > 0 时，即使 should_reply=true，confidence 低于阈值也降级不回复（fail-closed）
+	var replyStrategy model.AvatarReplyStrategy
+	if config.ReplyStrategyJSON != "" {
+		_ = json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
+	}
+	if shouldReply && replyStrategy.ConfidenceThreshold > 0 && confidence < replyStrategy.ConfidenceThreshold {
+		return false, fmt.Sprintf("置信度 %.2f 低于阈值 %.2f", confidence, replyStrategy.ConfidenceThreshold), nil
+	}
+	return shouldReply, reason, nil
+}
+
+// LLMShouldReply 负责 LLM 意图判断「这条消息是否真的需要分身代表主人回复」，
+// 由 smart 模式与私聊 mention 模式共用。返回 (shouldReply, confidence 0-1, reason, err)。
 func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message string, senderName string) (bool, float64, string, error) {
-	prompt := fmt.Sprintf(`你是%s的AI分身。判断以下群消息是否需要你代表%s回复。
+	if s.aiService == nil {
+		logger.WithModule("AvatarTriggerService").Warn("AI 服务未初始化，静默跳过意图判断", "userID", config.UserID)
+		return false, 0, "AI 服务未初始化", nil
+	}
+
+	prompt := fmt.Sprintf(`你是%s的AI分身。判断以下消息是否需要你代表%s回复。
 
 考虑因素：
 1. 消息是否向你（或你代表的用户）提问？

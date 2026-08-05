@@ -22,6 +22,7 @@ type AvatarService struct {
 	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
 	memorySvc     *AvatarMemoryService  // 长期记忆
 	groupDocSvc   *GroupDocumentService // 群文档知识检索
+	aiConfigSvc   *AIConfigService      // 解析分身「自选模型」配置（modelConfigId → provider）
 	replyGraph    atomic.Pointer[AvatarReplyGraph] // Eino Graph 编排，原子读写避免重建与调用竞争
 	wsNotify      func(userID uint, eventType string, data map[string]interface{})
 }
@@ -48,7 +49,7 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 		aiService: aiService,
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
-	graph := NewAvatarReplyGraph(aiService, db, nil, nil, nil)
+	graph := NewAvatarReplyGraph(aiService, db, nil, nil, nil, nil)
 	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "error", err)
 	}
@@ -74,13 +75,19 @@ func (s *AvatarService) SetAIService(aiService *ai.AIService) {
 }
 
 func (s *AvatarService) rebuildReplyGraph(source string) {
-	graph := NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
+	graph := NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc, s.aiConfigSvc)
 	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "source", source, "error", err)
 		return
 	}
 	// 先编译成功再原子替换，调用方始终拿到完整可用的 graph
 	s.replyGraph.Store(graph)
+}
+
+// SetAIConfigService 注入分身「自选模型」解析服务，并重建 Graph 使其接管自选模型分支。
+func (s *AvatarService) SetAIConfigService(aiConfigSvc *AIConfigService) {
+	s.aiConfigSvc = aiConfigSvc
+	s.rebuildReplyGraph("SetAIConfigService")
 }
 
 // GetWorkerPool 获取 Worker Pool

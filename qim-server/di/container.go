@@ -164,6 +164,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	groupDocumentService := service.NewGroupDocumentService(db, storageAccessor)
 	userSettingService := service.NewUserSettingService(db)
 	aiConfigService := service.NewAIConfigService(db, ai.NewProviderFactory())
+	// 注入到分身服务，使「使用自定义模型」的 modelConfigId 真正用于回复生成
+	avatarService.SetAIConfigService(aiConfigService)
 
 	// 初始化 ChunkService
 	chunkStoragePath := cfg.Storage.Local.Path

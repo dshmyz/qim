@@ -43,6 +43,7 @@ export function useMainMessageHandlers() {
       is_ai_message: msg.is_ai_message || false,
       ai_assistant_name: msg.ai_assistant_name || '',
       avatar_name: msg.avatar_name || '',
+      disclaimer_style: msg.disclaimer_style || '',
       // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）
       knowledge_sources: Array.isArray(msg.knowledge_sources) ? msg.knowledge_sources : undefined,
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',

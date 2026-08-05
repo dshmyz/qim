@@ -97,11 +97,13 @@ func TestAvatarDecideReplyNonSmartModes(t *testing.T) {
 	}{
 		{"mention/群/被@命中", config(`{"mode":"mention"}`), 1, "在吗", true, []uint{avatarUID}, true, false},
 		{"mention/群/未@", config(`{"mode":"mention"}`), 1, "在吗", true, nil, false, false},
-		{"mention/私聊自动触发", config(`{"mode":"mention"}`), 1, "在吗", false, nil, true, false},
+		// 私聊 mention 不再无条件触发：改走智能意图判断，无 AI 服务时 fail-closed 静默，
+		// 避免对方随便说一句就触发分身导致乱回复
+		{"mention/私聊无AI服务则静默", config(`{"mode":"mention"}`), 1, "在吗", false, nil, false, false},
 		{"keyword/命中", config(`{"mode":"keyword","keywords":["请假"]}`), 1, "我请假一天", true, nil, true, false},
 		{"keyword/未命中", config(`{"mode":"keyword","keywords":["请假"]}`), 1, "今天天气好", true, nil, false, false},
 		{"keyword/大小写不敏感", config(`{"mode":"keyword","keywords":["HELP"]}`), 1, "can anyone help me?", true, nil, true, false},
-		{"keyword/无关键词默认触发", config(`{"mode":"keyword"}`), 1, "任意", true, nil, true, false},
+		{"keyword/无关键词默认不触发", config(`{"mode":"keyword"}`), 1, "任意", true, nil, false, false},
 		{"all 模式", config(`{"mode":"all"}`), 1, "任意", true, nil, true, false},
 		{"排除会话", config(`{"mode":"all","excludedConversations":[42]}`), 42, "任意", true, nil, false, false},
 		{"未启用", model.AvatarConfig{UserID: avatarUID, Enabled: false, TriggerRulesJSON: `{"mode":"all"}`}, 1, "任意", true, nil, false, false},
@@ -157,4 +159,77 @@ func mustJSON(t *testing.T, v interface{}) string {
 	b, err := json.Marshal(v)
 	require.NoError(t, err)
 	return string(b)
+}
+
+// newTriggerSvcConfig 构造一个注入了 fake LLM 的 AvatarTriggerService，
+// reply 为 LLMShouldReply 应返回的原文（fake provider 的回应）。
+func newTriggerSvcConfig(reply string) (*AvatarTriggerService, model.AvatarConfig) {
+	svc := &AvatarTriggerService{
+		aiService: newFakeAvatarAIService(reply),
+		db:        nil, // 意图判断不依赖 DB
+	}
+	cfg := model.AvatarConfig{
+		UserID: 1, Enabled: true, Name: "我的分身",
+		TriggerRulesJSON:  `{"mode":"smart"}`,
+		ReplyStrategyJSON: `{"confidenceThreshold":0.8}`, // 显式阈值，供置信度门控用例
+	}
+	return svc, cfg
+}
+
+// TestAvatarDecideReplyIntentFailClosed 覆盖「乱回复」核心防线：意图判断在各种
+// 输入下都应 fail-closed——除非 LLM 明确且高置信地判定需要回复，否则一律静默。
+func TestAvatarDecideReplyIntentFailClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		reply   string // fake LLM 返回原文
+		overT   float64
+		confThr float64 // confidenceThreshold；0 表示不门控
+		want    bool
+	}{
+		// 明确需要回复 + 高置信 → 触发
+		{"明确提问高置信触发", `{"should_reply":true,"confidence":0.95,"reason":"在问主人事务"}`, 0, 0.8, true},
+		// should_reply=false → 静默（无关闲聊）
+		{"无关闲聊静默", `{"should_reply":false,"confidence":0.9,"reason":"寒暄"}`, 0, 0.8, false},
+		// should_reply=true 但置信度低于阈值 → 降级不回复（fail-closed）
+		{"低置信度低于阈值静默", `{"should_reply":true,"confidence":0.5,"reason":"不确定"}`, 0, 0.8, false},
+		// should_reply=true、置信度等于阈值 → 触发
+		{"置信度等于阈值触发", `{"should_reply":true,"confidence":0.8,"reason":"确定"}`, 0, 0.8, true},
+		// LLM 返回不可解析内容 → fail-closed 静默（不 panic、不触发）
+		{"LLM返回非法JSON静默", `抱歉我无法判断`, 0, 0.8, false},
+		// markdown 围栏包裹的 JSON → 仍应正确解析（extractJSONObject 兜底）
+		{"markdown围栏JSON解析", "```json\n{\"should_reply\":true,\"confidence\":0.9,\"reason\":\"提问\"}\n```", 0, 0.8, true},
+		// 未配置置信度阈值（0）→ 不门控，should_reply=true 直接触发
+		{"无阈值不门控", `{"should_reply":true,"confidence":0.1,"reason":"低置信"}`, 0.1, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, cfg := newTriggerSvcConfig(tc.reply)
+			cfg.ReplyStrategyJSON = mustJSON(t, model.AvatarReplyStrategy{ConfidenceThreshold: tc.confThr})
+			got, reason, err := svc.DecideReply(cfg, 1, "今天会议改期到几点", "同事", false, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got, "reason=%s", reason)
+		})
+	}
+}
+
+// TestAvatarDecideReplyIntentMarkdownOrderMatchesSinglePath 确保 intent 判断走的是
+// smart 与私聊 mention 共用的同一通道（而非两条各自为政的逻辑），用同一消息断言
+// 两种入口结果一致。
+func TestAvatarDecideReplyIntentMarkdownOrderMatchesSinglePath(t *testing.T) {
+	reply := `{"should_reply":true,"confidence":0.9,"reason":"提问"}`
+	svc, cfg := newTriggerSvcConfig(reply)
+
+	// smart 模式（群）
+	smartCfg := cfg
+	smartCfg.TriggerRulesJSON = `{"mode":"smart"}`
+	gotSmart, _, err := svc.DecideReply(smartCfg, 1, "你是不是被裁员了？", "同事", true, nil)
+	require.NoError(t, err)
+
+	// 私聊 mention 模式
+	mentionCfg := cfg
+	mentionCfg.TriggerRulesJSON = `{"mode":"mention"}`
+	gotMention, _, err := svc.DecideReply(mentionCfg, 1, "你是不是被裁员了？", "同事", false, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, gotSmart, gotMention, "smart 与私聊 mention 应共用同一意图判断")
 }

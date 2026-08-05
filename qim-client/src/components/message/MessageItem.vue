@@ -160,7 +160,7 @@
         <div class="message-meta">
           <span class="message-meta-badge">
             <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant' && !message.isStreaming" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
-            <AvatarReplyBadge v-if="message.origin === 'avatar'" variant="footer" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
+            <AvatarReplyBadge v-if="message.origin === 'avatar'" :variant="(message.disclaimer_style as 'badge' | 'footer' | 'both') || 'footer'" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
           </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
           <div v-if="isSelf && message.isFailed" class="message-read-status failed" title="发送失败">

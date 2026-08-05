@@ -145,9 +145,9 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	send := func() {
 		// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
 		if task.IsGroupChat && replyStrategy.GroupReplyTarget == "private" {
-			p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName)
+			p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName, replyStrategy.DisclaimerStyle)
 		} else {
-			p.sendDirectReply(task, reply, &avatarUser, avatarCfgName)
+			p.sendDirectReply(task, reply, &avatarUser, avatarCfgName, replyStrategy.DisclaimerStyle)
 		}
 		now := time.Now()
 		p.db.Model(&session).Update("last_reply_at", now)
@@ -181,7 +181,7 @@ func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
 }
 
 // sendPrivateReply 发送私聊回复（群聊场景）
-func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string) {
+func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string, disclaimerStyle string) {
 	// 1. 找到或创建分身用户与触发者的私聊会话
 	convService := NewConversationService(database.GetDB())
 	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
@@ -234,6 +234,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 		"origin":         msg.Origin,
 		"sender":          msg.Sender,
 		"avatar_name":     avatarCfgName,
+		"disclaimer_style": disclaimerStyle,
 	}
 
 	if ws.GlobalHub != nil {
@@ -251,7 +252,7 @@ func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avata
 }
 
 // sendDirectReply 发送直接回复（私聊场景）
-func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string) {
+func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string, disclaimerStyle string) {
 	// 1. 创建消息
 	msg := model.Message{
 		ConversationID: task.ConversationID,
@@ -295,6 +296,7 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 		"origin":         msg.Origin,
 		"sender":          msg.Sender,
 		"avatar_name":     avatarCfgName,
+		"disclaimer_style": disclaimerStyle,
 	}
 
 	if ws.GlobalHub != nil {

@@ -656,3 +656,80 @@ func (s *AIService) Embed(text string) ([]float32, error) {
 	}
 	return provider.Embedding(text)
 }
+
+// GetCompletionWithProviderConfig 用显式传入的 ProviderConfig 临时创建 provider 完成一次非流式对话，
+// 而不改动全局 pool。用于"用户自定义模型配置"（如分身自选模型）这类 per-call 凭据，
+// 避免把每个用户的 API key 永久注册进共享 pool 造成生命周期/串味问题。
+// name 为 provider 类型名（openai/anthropic/alibaba 等，见 ProviderFactory.CreateProviderByName）。
+// 返回的 overrides 中 Provider 名取自临时 provider，供上层路由一致复用。
+func (s *AIService) GetCompletionWithProviderConfig(taskType TaskType, messages []Message, name string, cfg ProviderConfig) (string, error) {
+	provider, err := s.factory.CreateProviderByName(name, cfg)
+	if err != nil {
+		return "", fmt.Errorf("create custom provider %s: %w", name, err)
+	}
+	if !provider.IsConfigured() {
+		return "", fmt.Errorf("custom provider %s not configured", name)
+	}
+
+	filtered := s.filterMessages(messages)
+	start := time.Now()
+	var result string
+	var usage *TokenUsage
+	if up, ok := provider.(UsageProvider); ok {
+		if cfg.Model != "" {
+			if upm, ok2 := provider.WithModel(cfg.Model).(UsageProvider); ok2 {
+				result, usage, err = upm.ChatWithUsage(filtered)
+			} else {
+				result, err = provider.WithModel(cfg.Model).Chat(filtered)
+			}
+		} else {
+			result, usage, err = up.ChatWithUsage(filtered)
+		}
+	} else {
+		if cfg.Model != "" {
+			result, err = provider.WithModel(cfg.Model).Chat(filtered)
+		} else {
+			result, err = provider.Chat(filtered)
+		}
+	}
+
+	duration := time.Since(start).Milliseconds()
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	log.Printf("[AI Usage] task=%s provider=%s model=%s source=custom duration=%dms status=%s",
+		taskType, provider.Name(), cfg.Model, duration, status)
+
+	if usage != nil && s.usageSink != nil {
+		s.usageSink(taskType, provider.Name(), cfg.Model, usage, duration)
+	}
+	return result, err
+}
+
+// ChatStreamWithProviderConfig 流式版本的 GetCompletionWithProviderConfig（供 ExecuteStream/草稿模式使用）。
+func (s *AIService) ChatStreamWithProviderConfig(ctx context.Context, taskType TaskType, messages []Message, name string, cfg ProviderConfig, onChunk func(chunk StreamChunk) error) error {
+	provider, err := s.factory.CreateProviderByName(name, cfg)
+	if err != nil {
+		return fmt.Errorf("create custom provider %s: %w", name, err)
+	}
+	if !provider.IsConfigured() {
+		return fmt.Errorf("custom provider %s not configured", name)
+	}
+
+	filtered := s.filterMessages(messages)
+	start := time.Now()
+	if cfg.Model != "" {
+		err = provider.WithModel(cfg.Model).ChatStreamWithContext(ctx, filtered, onChunk)
+	} else {
+		err = provider.ChatStreamWithContext(ctx, filtered, onChunk)
+	}
+	duration := time.Since(start).Milliseconds()
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	log.Printf("[AI Usage] task=%s provider=%s model=%s source=custom duration=%dms status=%s",
+		taskType, provider.Name(), cfg.Model, duration, status)
+	return err
+}

@@ -78,6 +78,8 @@ export interface Message {
   file_size?: number
   file_url?: string
   avatar_name?: string
+  // 分身回复的免责声明展示样式（badge/footer/both），来自 owner 的 ReplyStrategy.disclaimerStyle
+  disclaimer_style?: string
   // Bot 回复命中创建者笔记时的知识来源（标题/分数），用于折叠「知识来源」标签
   knowledge_sources?: KnowledgeSource[]
   // 消息附加信息（JSON 字符串），撤回时保存原始内容用于重新编辑
