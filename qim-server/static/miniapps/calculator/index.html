@@ -151,12 +151,19 @@
       let previousInput = '';
       let operator = null;
       let shouldResetScreen = false;
+      // 刚按过 "="：结果为待用起点，下一次输入从结果开新段，不再累积旧算式
+      let freshResult = false;
+      // 完整算式文本（下行显示），只跟踪当前这一段，如 "7 + 5 × 2 ="
+      let exprText = '';
+
+      // 运算符的显示符号（按钮上 × ÷ 与键盘输入 * / 统一展示）
+      function displayOp(op) {
+        return op === '*' ? '×' : op === '/' ? '÷' : op;
+      }
 
       function updateDisplay() {
         resultDisplay.textContent = currentInput || '0';
-        if (previousInput && operator) {
-          inputDisplay.textContent = previousInput + ' ' + operator;
-        }
+        inputDisplay.textContent = exprText;
       }
 
       function calculate(a, b, op) {
@@ -188,9 +195,12 @@
           previousInput = '';
           operator = null;
           shouldResetScreen = false;
-          inputDisplay.textContent = '';
+          freshResult = false;
+          exprText = '';
         } else if (value === 'backspace') {
           currentInput = currentInput.slice(0, -1);
+          exprText = freshResult ? '' : exprText.slice(0, -1);
+          freshResult = false;
         } else if (['+', '-', '*', '/', '%'].includes(value)) {
           if (operator && !shouldResetScreen) {
             const result = calculate(previousInput, currentInput, operator);
@@ -201,7 +211,21 @@
           }
           operator = value;
           shouldResetScreen = true;
-          inputDisplay.textContent = previousInput + ' ' + value;
+          // 完整算式：刚按过 "=" 则从结果重开一段；末尾已是运算符则替换；否则追加
+          const sym = displayOp(value);
+          if (freshResult) {
+            exprText = currentInput + ' ' + sym;
+            freshResult = false;
+          } else {
+            const trimmed = exprText.trimEnd();
+            const last = trimmed.slice(-1);
+            if (['+', '-', '×', '÷', '%'].includes(last)) {
+              const head = trimmed.slice(0, -1).trimEnd();
+              exprText = (head ? head + ' ' : '') + sym;
+            } else {
+              exprText = (trimmed ? trimmed + ' ' : '') + sym;
+            }
+          }
         } else if (value === '=') {
           if (operator) {
             const result = calculate(previousInput, currentInput, operator);
@@ -209,14 +233,18 @@
             previousInput = '';
             operator = null;
             shouldResetScreen = true;
-            inputDisplay.textContent = '';
+            freshResult = true;
+            exprText = exprText.trimEnd() + ' =';
           }
         } else if (value === '.') {
           if (shouldResetScreen) {
             currentInput = '0.';
             shouldResetScreen = false;
+            exprText = freshResult ? '0.' : exprText.trimEnd() + '0.';
+            freshResult = false;
           } else if (!currentInput.includes('.')) {
             currentInput += '.';
+            exprText += '.';
           }
         } else {
           if (shouldResetScreen || currentInput === '0') {
@@ -225,9 +253,128 @@
           } else {
             currentInput += value;
           }
+          exprText = freshResult ? value : exprText + value;
+          freshResult = false;
         }
         updateDisplay();
       }
+
+      // ------------- 表达式求值（粘贴算式用） -------------
+      // 手写 tokenizer + 递归下降，刻意不用 eval/Function（企业客户端对剪贴板
+      // 求值不做 eval 以免意外代码执行）。支持：数字、`+ - * / %`、括号、
+      // 一元负号，以及 `× ÷` 与全角符号/数字归一化。语法错误/除零返回错误文案。
+      function normalizeExpr(input) {
+        return String(input)
+          .replace(/\s+/g, '')
+          .replace(/×/g, '*')
+          .replace(/÷/g, '/')
+          .replace(/＋/g, '+')
+          .replace(/－|−|﹣|−/g, '-')
+          .replace(/＊/g, '*')
+          .replace(/／/g, '/')
+          .replace(/％/g, '%')
+          .replace(/（/g, '(')
+          .replace(/）/g, ')')
+          .replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xfee0); })
+          .replace(/．/g, '.');
+      }
+
+      function tokenizeExpr(src) {
+        const tokens = [];
+        let i = 0;
+        while (i < src.length) {
+          const ch = src[i];
+          if (/[0-9.]/.test(ch)) {
+            let num = '';
+            while (i < src.length && /[0-9.]/.test(src[i])) { num += src[i++]; }
+            if ((num.match(/\./g) || []).length > 1) return null; // "1.2.3"
+            tokens.push({ type: 'number', value: num });
+            continue;
+          }
+          if ('+-*/%'.indexOf(ch) !== -1) { tokens.push({ type: 'op', value: ch }); i++; continue; }
+          if (ch === '(') { tokens.push({ type: 'lparen', value: ch }); i++; continue; }
+          if (ch === ')') { tokens.push({ type: 'rparen', value: ch }); i++; continue; }
+          return null; // 其余字符（字母、中文、标点等）非法
+        }
+        return tokens;
+      }
+
+      // expr := term (('+'|'-') term)*
+      // term := factor (('*'|'/'|'%') factor)*
+      // factor := ('-') factor | number | '(' expr ')'
+      function makeParser(tokens) {
+        let pos = 0;
+        const peek = function () { return tokens[pos]; };
+        const next = function () { return tokens[pos++]; };
+
+        function parseExpr() {
+          let value = parseTerm();
+          while (true) {
+            const t = peek();
+            if (t && t.type === 'op' && (t.value === '+' || t.value === '-')) {
+              next();
+              const rhs = parseTerm();
+              value = t.value === '+' ? value + rhs : value - rhs;
+            } else { return value; }
+          }
+        }
+
+        function parseTerm() {
+          let value = parseFactor();
+          while (true) {
+            const t = peek();
+            if (t && t.type === 'op' && (t.value === '*' || t.value === '/' || t.value === '%')) {
+              next();
+              const rhs = parseFactor();
+              if (t.value === '*') { value = value * rhs; }
+              else if (t.value === '/') {
+                if (rhs === 0) throw new Error('不能除以 0');
+                value = value / rhs;
+              } else {
+                if (rhs === 0) throw new Error('不能对 0 取模');
+                value = value % rhs;
+              }
+            } else { return value; }
+          }
+        }
+
+        function parseFactor() {
+          const t = peek();
+          if (t && t.type === 'op' && t.value === '-') { next(); return -parseFactor(); }
+          if (t && t.type === 'op' && t.value === '+') { next(); return parseFactor(); }
+          if (t && t.type === 'number') { next(); return parseFloat(t.value); }
+          if (t && t.type === 'lparen') {
+            next();
+            const inner = parseExpr();
+            const r = peek();
+            if (!r || r.type !== 'rparen') throw new Error('缺少右括号');
+            next();
+            return inner;
+          }
+          throw new Error('语法错误');
+        }
+
+        return { parseExpr: parseExpr, isEnd: function () { return pos >= tokens.length; } };
+      }
+
+      function evaluatePastedExpr(input) {
+        if (typeof input !== 'string' || input.trim() === '') {
+          return { ok: false, error: '空算式' };
+        }
+        const tokens = tokenizeExpr(normalizeExpr(input));
+        if (!tokens || tokens.length === 0) return { ok: false, error: '未识别到有效的算式' };
+        try {
+          const p = makeParser(tokens);
+          const value = p.parseExpr();
+          if (!p.isEnd()) throw new Error('语法错误');
+          return { ok: true, value: Number(value.toPrecision(12)) };
+        } catch (e) {
+          return { ok: false, error: e.message || '表达式错误' };
+        }
+      }
+      // 暴露给测试/调试用（纯客户端钩子，不影响功能）
+      window.evaluatePastedExpr = evaluatePastedExpr;
+      // ----------------------------------------------------
 
       // 键盘输入支持：iframe 获得焦点后原生 keydown 直接生效
       const keyMap = {
@@ -240,6 +387,36 @@
       };
 
       document.addEventListener('keydown', function(e) {
+        // Ctrl/Cmd+V：读取剪贴板算式直接求值
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+          e.preventDefault();
+          // readText 需要用户手势，这里恰好在 keydown 手势内；失败则静默忽略
+          navigator.clipboard.readText().then(function(text) {
+            const res = evaluatePastedExpr(text);
+            // 成功：结果放当前值，输入行显示归一化后的原算式
+            if (res.ok) {
+              currentInput = String(res.value);
+              previousInput = '';
+              operator = null;
+              shouldResetScreen = true;
+              inputDisplay.textContent = normalizeExpr(text) + ' =';
+              resultDisplay.textContent = String(res.value);
+              exprText = normalizeExpr(text) + ' =';
+              return;
+            }
+            // 错误文案（除零/括号不匹配/语法错误等）只在确实读到数学式但算不了时提示；
+            // "未识别到有效的算式"/"空算式"（如普通文本）则完全静默，不碰当前计算状态。
+            if (res.error !== '未识别到有效的算式' && res.error !== '空算式') {
+              const prev = resultDisplay.textContent;
+              resultDisplay.textContent = res.error;
+              setTimeout(function() { resultDisplay.textContent = prev; }, 1200);
+            }
+          }).catch(function() {
+            // 读取失败（无权限/非文本）：静默忽略，保留现有计算状态
+          });
+          return;
+        }
+
         const value = keyMap[e.key];
         if (!value) return;
         e.preventDefault();
