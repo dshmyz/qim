@@ -18,6 +18,7 @@
       @start-private-chat="handleStartPrivateChat"
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
+      @update-avatar-takeover="handleAvatarTakeover"
       @open-group-files="openGroupFiles()"
     />
 
@@ -417,6 +418,17 @@ const handleUpdateAvatarEnabled = async (enabled: boolean) => {
     }
   } catch (error) {
     $message.error('切换分身状态失败')
+  }
+}
+
+// 手动「接管分身」：立即暂停分身回复，按接管冷却时长后自动恢复
+const handleAvatarTakeover = async () => {
+  if (!props.conversation) return
+  try {
+    await takeoverSession(props.conversation.id)
+    $message.success('已接管分身，暂停期间由你亲自回复')
+  } catch (error) {
+    $message.error('接管分身失败')
   }
 }
 

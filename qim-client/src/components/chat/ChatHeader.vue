@@ -57,6 +57,7 @@
       @start-private-chat="(id: string) => emit('start-private-chat', id)"
       @update-ai-settings="(settings) => emit('update-ai-settings', settings)"
       @update-avatar-enabled="(value) => emit('update-avatar-enabled', value)"
+      @update-avatar-takeover="() => emit('update-avatar-takeover')"
       @open-group-files="emit('open-group-files')"
     />
   </div>
@@ -89,6 +90,7 @@ interface Emits {
   (e: 'start-private-chat', id: string): void
   (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
   (e: 'update-avatar-enabled', value: boolean): void
+  (e: 'update-avatar-takeover'): void
   (e: 'open-group-files'): void
 }
 

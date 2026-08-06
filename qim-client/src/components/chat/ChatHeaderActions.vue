@@ -40,6 +40,20 @@
           <template v-else>代替你回复消息</template>
         </div>
       </div>
+      <div
+        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved'"
+        class="avatar-takeover-menu-item"
+        @click="handleTakeoverAvatar"
+      >
+        <span class="ucm-icon"><i class="fas fa-pause-circle" style="color: #FF9800"></i></span>
+        <span class="ucm-item-label">手动接管分身</span>
+      </div>
+      <div
+        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved'"
+        class="avatar-takeover-hint"
+      >
+        <i class="fas fa-clock"></i> 暂停一段时间由你亲自回复，到期自动恢复
+      </div>
     </UniversalContextMenu>
 
     <!-- 确认对话框 -->
@@ -156,6 +170,7 @@ const emit = defineEmits<{
   'delete-group': []
   'open-group-files': []
   'update-avatar-enabled': [enabled: boolean]
+  'update-avatar-takeover': []
   'update-ai-settings': [settings: {
     aiEnabled: boolean;
     aiAssistantName: string;
@@ -234,6 +249,12 @@ const showAvatarToggle = computed(() => {
 // 处理分身开关切换
 function handleToggleAvatar(enabled: boolean) {
   emit('update-avatar-enabled', enabled)
+}
+
+// 手动接管分身：由 ChatWindow 落地 takeoverSession（与分身开关同一事件上传路径）
+function handleTakeoverAvatar() {
+  closeMenu()
+  emit('update-avatar-takeover')
 }
 
 // 方法
@@ -448,6 +469,37 @@ function handleUpdateAISettings(settings: any) {
 }
 
 .avatar-toggle-hint i {
+  margin-right: 4px;
+}
+
+.avatar-takeover-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.avatar-takeover-menu-item:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.avatar-takeover-menu-item .ucm-item-label {
+  color: var(--text-primary);
+}
+
+.avatar-takeover-hint {
+  margin-top: 2px;
+  padding: 0 16px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.avatar-takeover-hint i {
   margin-right: 4px;
 }
 

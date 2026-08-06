@@ -656,8 +656,13 @@ func (h *AvatarHandler) TakeoverSession(c *gin.Context) {
 
 	var session model.AvatarSession
 	if err := h.db.Where("user_id = ? AND conversation_id = ?", userID, convId).First(&session).Error; err != nil {
-		response.NotFound(c, "会话不存在")
-		return
+		// 会话行不存在（用户从未在此会话开过分身）也允许直接接管：
+		// 手动「接管分身」入口不应被前置状态卡住，缺失时以开启状态补建一行。
+		session = model.AvatarSession{
+			UserID:         userID,
+			ConversationID: uint(convId),
+			AvatarEnabled:  true,
+		}
 	}
 
 	// 按用户配置的接管冷却时间计算，未配置或非法时回退默认 10 分钟
