@@ -27,10 +27,10 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	// noteSvc/groupDocSvc/memorySvc 全 nil → 三处知识皆空，模拟"命中知识范围外"
 	g := &AvatarReplyGraph{db: db}
 
-	// case1: 无知识/记忆命中 + out-of-scope=false，且 AI 不可用 → fail-closed 静默
+	// case1: 无知识/记忆命中 + out-of-scope=false → 硬静默（不再依赖 AI，一律 SkipReply）
 	in := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "在吗"}
 	require.NoError(t, g.prepare(context.Background(), in, nil))
-	assert.True(t, in.SkipReply, "知识范围外且 AI 无法判断针对性时应静默")
+	assert.True(t, in.SkipReply, "知识范围外且无知识命中时应硬静默")
 
 	// case2: out-of-scope=true → 不跳过
 	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
@@ -39,25 +39,23 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	require.NoError(t, g.prepare(context.Background(), in2, nil))
 	assert.False(t, in2.SkipReply, "ReplyOutOfScope=true 时应回复")
 
-	// case3: 未配知识来源（纯人设分身），out-of-scope=false，AI 不可用 → fail-closed 静默。
-	// 若配置了可用的 AI，则由 needReplyForOutOfScope 判断消息是否有针对性（有针对性才放行）。
+	// case3: 未配知识来源（纯人设分身），out-of-scope=false → 硬静默（不依赖 AI）。
 	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
 		Update("knowledge_scope_json", `{}`).Error)
 	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
 		Update("reply_strategy_json", `{"replyOutOfScope":false}`).Error)
 	in3 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "在吗"}
 	require.NoError(t, g.prepare(context.Background(), in3, nil))
-	assert.True(t, in3.SkipReply, "无知识来源且 AI 不可用时范围外静默")
+	assert.True(t, in3.SkipReply, "无知识来源时范围外硬静默")
 
-	// case4: 仅开 Tasks（无 docs/notes/knowledge 命中）+ out-of-scope=false → 滑入范围外判定。
-	// AI 不可用 → fail-closed 静默。
+	// case4: 仅开 Tasks（无 docs/notes/knowledge 命中）+ out-of-scope=false → 范围外硬静默。
 	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
 		Update("knowledge_scope_json", `{"tasks":true}`).Error)
 	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
 		Update("reply_strategy_json", `{"replyOutOfScope":false}`).Error)
 	in4 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "在吗"}
 	require.NoError(t, g.prepare(context.Background(), in4, nil))
-	assert.True(t, in4.SkipReply, "无知识/记忆命中且 AI 不可用时，Tasks 不构成范围内依据，范围外静默")
+	assert.True(t, in4.SkipReply, "无知识/记忆命中时，Tasks 不构成范围内依据，范围外硬静默")
 }
 
 func TestAvatarReplyGraphPrepareTaskContext(t *testing.T) {
@@ -171,16 +169,15 @@ func TestAvatarReplyGraphResolveCustomModel(t *testing.T) {
 
 func uptr(v uint) *uint { return &v }
 
-// TestAvatarReplyGraphNeedReplyForOutOfScope 覆盖「乱回复」的另一道防线：知识范围外
-// 且配置为不回复时，用 LLM 判断消息是否有针对性。有针对性 → 放行；无针对性 → 静默；
-// LLM 返回非法内容 → fail-closed 静默。
+// TestAvatarReplyGraphNeedReplyForOutOfScope 覆盖「乱回复」的关键防线：知识范围外
+// 且配置为不回复时，直接硬静默（原行为会用 LLM 二次判断"是否有针对性"并可能放行闲聊，
+// 导致用户以为设置没生效）。改为硬门控后，无任何知识命中即 SkipReply，不依赖 LLM 返回。
 func TestAvatarReplyGraphNeedReplyForOutOfScope(t *testing.T) {
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
 	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
 
-	// 无知识命中 + ReplyOutOfScope=false → 进入 needReplyForOutOfScope。
-	// 配置在所有分用例间一致（判定结果只取决于 fake LLM 的返回）。
+	// 无知识命中 + ReplyOutOfScope=false → 硬静默。LLM 返回何种内容都不再影响判定。
 	cfg := model.AvatarConfig{
 		UserID:             1,
 		Enabled:            true,
@@ -191,12 +188,13 @@ func TestAvatarReplyGraphNeedReplyForOutOfScope(t *testing.T) {
 
 	cases := []struct {
 		name     string
-		reply    string // fake LLM 对针对性判断的返回
+		reply    string // fake LLM 的返回（硬门控下不再被消费）
 		wantSkip bool
 	}{
-		{"有针对性放行", `{"should_reply":true}`, false},
-		{"无针对性静默", `{"should_reply":false}`, true},
-		{"LLM返回非法JSON静默", `无法回复`, true},
+		// 即便 LLM 说"有针对性"，无知识命中仍硬静默（不再放行闲聊/问候）
+		{"无知识命中一律硬静默", `{"should_reply":true}`, true},
+		{"无知识命中一律硬静默(LLM 说无需)", `{"should_reply":false}`, true},
+		{"LLM 异常也静默", `无法回复`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

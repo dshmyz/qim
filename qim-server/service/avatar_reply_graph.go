@@ -414,25 +414,21 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 	input.History = history
 
-	// 自选模型：配置了「使用自定义模型」时解析出 provider，供 Execute/ExecuteStream 走临时 provider 生成，
-	// 也供下方范围外针对性判断（needReplyForOutOfScope）使用——门控应与实际生成走同一个模型，
-	// 避免仅配自定义模型、无系统 AI 池的分身被 fail-closed 静默禁用。
+	// 自选模型：配置了「使用自定义模型」时解析出 provider，供 Execute/ExecuteStream 走临时 provider 生成。
 	// 解析失败（配置不存在/密钥解密失败等）时置为 nil，静默回退系统默认配置，不阻断回复。
 	if !input.Config.UseSystemConfig && input.Config.ModelConfigID != nil {
 		input.CustomProvider = g.resolveCustomProvider(input.UserID, *input.Config.ModelConfigID)
 	}
 
-	// 范围外静默：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
-	// 有笔记/群知识/记忆命中 → 属于范围内，正常回复；无任何上下文命中 → 属于范围外。
+	// 范围外静默（硬门控）：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
+	// 有笔记/群知识/记忆命中 → 属于范围内，正常回复；无任何上下文命中 → 属于范围外，直接静默。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
-	// 范围外时用 LLM 判断消息是否有针对性（是否真的需要代表主人回复）：
-	// 需要 → 放行；纯闲聊/无关 → 静默。AI 不可用（又无自选模型）则 fail-closed 静默，避免刷屏。
+	// 改为硬静默：范围外不再用 LLM 二次判断（原 needReplyForOutOfScope 会因 LLM 觉得
+	// 「消息有针对性」而放行闲聊/问候，导致用户以为「知识之外不回复」没生效）。
+	// 语义对齐字面预期——无知识命中即不回，杜绝范围外乱回。
 	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryCtx != ""
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
-		need, err := g.needReplyForOutOfScope(input)
-		if err != nil || !need {
-			input.SkipReply = true
-		}
+		input.SkipReply = true
 	}
 
 	return nil
@@ -461,59 +457,8 @@ func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[stri
 	return params
 }
 
-// needReplyForOutOfScope 判断「知识范围外」的消息是否仍有必要代表主人回复。
-// 主要用于默认配置（无知识库/笔记/记忆）下的分身，避免对无关闲聊硬回导致乱回复。
-// 返回 false 表示应静默。
-// 门控模型与生成模型保持一致：分身配置了「使用自定义模型」（input.CustomProvider 非 nil）时，
-// 用用户自己的模型判断（仅配自定义模型、无系统 AI 池也能正常工作）；否则退回系统默认 AI。
-// 仅当两种模型都不可用 / 判断失败时返回 false（fail-closed）。
-func (g *AvatarReplyGraph) needReplyForOutOfScope(input *AvatarReplyContext) (bool, error) {
-	if g.aiService == nil {
-		return false, nil
-	}
-	hasCustom := input.CustomProvider != nil
-	if !hasCustom && !g.aiService.IsConfigured() {
-		return false, nil
-	}
-
-	prompt := fmt.Sprintf(`你是%s的AI分身。下面的消息并不是在你已知的知识范围内，但仍需判断：这条消息是否明确需要你代表%s回应？
-
-如果是对方真的在向%s提问、托付、或与%s高度相关需要代为处理，回复 true；
-如果只是普通寒暄、闲聊、与自己无关、或标点/表情/无意义消息，回复 false。
-
-只返回 JSON：{"should_reply": true/false}
-消息：%s`,
-		input.User.Nickname, input.User.Nickname, input.User.Nickname, input.User.Nickname, input.Message)
-
-	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	var result string
-	var err error
-	if hasCustom {
-		result, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages,
-			input.CustomProvider.ProviderName, input.CustomProvider.Config)
-	} else {
-		result, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
-	}
-	if err != nil {
-		log.Printf("[AvatarReplyGraph] 范围外针对性判断失败: userID=%d err=%v", input.UserID, err)
-		return false, err
-	}
-
-	var response struct {
-		ShouldReply bool `json:"should_reply"`
-	}
-	raw := strings.TrimSpace(result)
-	if err := json.Unmarshal([]byte(raw), &response); err != nil {
-		if sub := extractJSONObject(raw); sub != "" {
-			if err2 := json.Unmarshal([]byte(sub), &response); err2 == nil {
-				return response.ShouldReply, nil
-			}
-		}
-		log.Printf("[AvatarReplyGraph] 解析范围外针对性判断失败，静默跳过: err=%v raw=%s", err, result)
-		return false, nil
-	}
-	return response.ShouldReply, nil
-}
+// needReplyForOutOfScope 已废弃：范围外静默已改为硬门控（无知识命中即 SkipReply），
+// 不再需要 LLM 二次判断。保留此函数已无调用点，故移除。
 
 func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string) string {
 	var messages []model.Message
