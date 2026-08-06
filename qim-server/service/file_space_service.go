@@ -174,6 +174,25 @@ func (s *FileSpaceService) List(ctx context.Context, actorID uint, space FileSpa
 	return result, nil
 }
 
+// ListAllFiles 返回指定空间内全部文件，忽略文件夹层级（不按 folder_id 过滤）。
+// 用于「群 AI 绑定文档」这类需要从整个空间挑选文件的场景：文档可能被上传到
+// 任意文件夹里，若只按根目录列（List 的 folder_id IS NULL 语义）会漏掉它们。
+// 与 List 保持同一授权与 scope 校验，但不过滤 folder。
+func (s *FileSpaceService) ListAllFiles(ctx context.Context, actorID uint, space FileSpace) ([]model.File, error) {
+	if err := s.authorize(ctx, actorID, space, FileSpaceActionList); err != nil {
+		return nil, err
+	}
+
+	var files []model.File
+	if err := s.db.WithContext(ctx).Model(&model.File{}).
+		Where("scope_type = ? AND scope_id = ?", space.Type, space.ID).
+		Order("created_at DESC").
+		Find(&files).Error; err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
 func (s *FileSpaceService) CreateFolder(ctx context.Context, actorID uint, space FileSpace, name string, parentID *uint) (*model.Folder, error) {
 	if err := s.authorize(ctx, actorID, space, FileSpaceActionManage); err != nil {
 		return nil, err

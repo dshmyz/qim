@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -70,6 +71,23 @@ func DownloadGroupFile(c *gin.Context) {
 func GetGroupFiles(c *gin.Context) {
 	actorID, space, ok := groupFileRequest(c)
 	if !ok {
+		return
+	}
+
+	// all=1 时列出空间内全部文件（忽略文件夹层级），供群 AI 绑定文档选择器使用：
+	// 文档可能被上传到任意文件夹里，按根目录列会漏掉它们。
+	if strings.TrimSpace(c.Query("all")) == "1" {
+		files, err := di.GlobalContainer.FileSpaceService.ListAllFiles(c.Request.Context(), actorID, space)
+		if !respondGroupFileError(c, err) {
+			return
+		}
+		response.Success(c, gin.H{
+			"files":     files,
+			"folders":   []model.Folder{},
+			"total":     len(files),
+			"page":      1,
+			"page_size": len(files),
+		})
 		return
 	}
 

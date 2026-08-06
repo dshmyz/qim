@@ -105,16 +105,44 @@ function toggleFilePicker() {
 async function loadAvailableFiles() {
   loadingFiles.value = true
   try {
-    const response = await fetch(`${props.serverUrl}/api/v1/files?page_size=100&type=document`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    })
+    // 群 AI 的可绑定文档应来自「群文件空间」而非个人的 personal files API：
+    // 之前的实现调 GET /api/v1/files（只覆盖 scope_type='user' 的个人文件），
+    // 群文档上传后落在 scope_type='conversation'，故下拉永远为空。
+    // 这里改为读群文件接口，并带上 all=1 列出整个群空间的全部文件：
+    // 默认的无 folder_id 查询只返回根目录（folder_id IS NULL），而文档可能被
+    // 上传/移动到群文件夹里，会漏掉；all=1 忽略文件夹层级。
+    const response = await fetch(
+      `${props.serverUrl}/api/v1/groups/${props.groupId}/files?page_size=200&all=1`,
+      {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      }
+    )
     const data = await response.json()
-    availableFiles.value = data.data?.files || []
+    const files: any[] = data.data?.files || []
+    availableFiles.value = files.filter(isBindableDocument)
   } catch (e) {
     console.error('加载文件列表失败', e)
   } finally {
     loadingFiles.value = false
   }
+}
+
+// 与后端 AddGroupDocument 允许的文档 MIME 白名单保持一致，
+// 保证「可选文档」里列出的都能真正绑定成功（不过滤则会把图片/视频等也列出，点了又报错）。
+function isBindableDocument(file: any): boolean {
+  const mime = String(file.mime_type || '').split(';')[0].trim()
+  return [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+    'text/markdown'
+  ].includes(mime)
 }
 
 function isFileSelected(fileId: number) {
