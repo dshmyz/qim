@@ -103,7 +103,7 @@ const aiCustomPrompt = computed(() => props.conversation?.ai_config?.ai_custom_p
 const aiLanguage = computed(() => props.conversation?.ai_config?.ai_language ?? 'auto')
 const aiMaxLength = computed(() => props.conversation?.ai_config?.ai_max_length ?? 'medium')
 const aiMentionReplyMode = computed(() => props.conversation?.ai_config?.ai_mention_reply_mode ?? 'mention')
-const aiAntiSpamInterval = computed(() => props.conversation?.ai_config?.ai_anti_spam_interval ?? 5)
+const aiAntiSpamInterval = computed(() => props.conversation?.ai_config?.ai_anti_spam_interval ?? 0)
 const aiTriggerKeywords = computed(() => {
   const kw = props.conversation?.ai_config?.ai_trigger_keywords ?? ''
   return kw ? kw.split(',').filter(Boolean) : []

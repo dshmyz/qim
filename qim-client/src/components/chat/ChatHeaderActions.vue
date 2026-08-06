@@ -145,7 +145,7 @@ const props = withDefaults(defineProps<Props>(), {
   aiLanguage: 'auto',
   aiMaxLength: 'medium',
   aiMentionReplyMode: 'mention',
-  aiAntiSpamInterval: 5,
+  aiAntiSpamInterval: 0,
   aiTriggerKeywords: () => [],
   aiLearnEnabled: false
 })

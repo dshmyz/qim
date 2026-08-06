@@ -572,7 +572,7 @@
         :ai-language="selectedGroup?.ai_config?.ai_language ?? 'auto'"
         :ai-max-length="selectedGroup?.ai_config?.ai_max_length ?? 'medium'"
         :ai-mention-reply-mode="selectedGroup?.ai_config?.ai_mention_reply_mode ?? 'mention'"
-        :ai-anti-spam-interval="selectedGroup?.ai_config?.ai_anti_spam_interval ?? 5"
+        :ai-anti-spam-interval="selectedGroup?.ai_config?.ai_anti_spam_interval ?? 0"
         :ai-trigger-keywords="parseTriggerKeywords(selectedGroup?.ai_config?.ai_trigger_keywords)"
         :ai-learn-enabled="selectedGroup?.ai_config?.ai_learn_enabled ?? false"
         :ai-extract-todos="selectedGroup?.ai_config?.ai_extract_todos ?? false"
