@@ -82,17 +82,54 @@ func TestReminderLimiterCheckReturnsReasonWithoutStarting(t *testing.T) {
 	}
 }
 
+func TestReminderLimiterCustomCooldown(t *testing.T) {
+	limiter := newReminderLimiter()
+	limiter.SetCooldown(30 * time.Second)
+	messageID := uint(7)
+	now := time.Now()
+
+	if !limiter.start(messageID, now) {
+		t.Fatal("expected first reminder attempt to start")
+	}
+	limiter.finish(messageID, true, now)
+	if reason := limiter.check(messageID, now.Add(10*time.Second)); reason != reminderCoolingDown {
+		t.Fatalf("expected cooling-down within 30s cooldown, got %v", reason)
+	}
+	if !limiter.start(messageID, now.Add(31*time.Second)) {
+		t.Fatal("expected reminder to be allowed after 30s cooldown")
+	}
+}
+
+func TestReminderLimiterZeroCooldownAllowsRepeat(t *testing.T) {
+	limiter := newReminderLimiter()
+	limiter.SetCooldown(0) // 不限制，可反复提醒
+	messageID := uint(8)
+	now := time.Now()
+
+	if !limiter.start(messageID, now) {
+		t.Fatal("expected first reminder attempt to start")
+	}
+	limiter.finish(messageID, true, now)
+	if reason := limiter.check(messageID, now.Add(time.Second)); reason != reminderAllowed {
+		t.Fatalf("expected reminder to be allowed immediately with 0 cooldown, got %v", reason)
+	}
+}
+
 func TestReminderLimiterReasonMessage(t *testing.T) {
 	tests := []struct {
-		reason reminderLimiterReason
-		want   string
+		reason   reminderLimiterReason
+		cooldown time.Duration
+		want     string
 	}{
-		{reminderPending, "提醒发送中，请稍候"},
-		{reminderCoolingDown, "该消息已提醒过，请 1 小时后再试"},
+		{reminderPending, time.Hour, "提醒发送中，请稍候"},
+		{reminderCoolingDown, time.Hour, "该消息已提醒过，请 60 分钟后再试"},
+		{reminderCoolingDown, 90 * time.Second, "该消息已提醒过，请 1 分钟后再试"},
+		{reminderCoolingDown, 30 * time.Second, "该消息已提醒过，请 30 秒后再试"},
+		{reminderCoolingDown, 0, "该消息已提醒过，请稍后再试"},
 	}
 
 	for _, tt := range tests {
-		if got := reminderLimiterReasonMessage(tt.reason); got != tt.want {
+		if got := reminderLimiterReasonMessage(tt.reason, tt.cooldown); got != tt.want {
 			t.Fatalf("expected %q, got %q", tt.want, got)
 		}
 	}

@@ -51,8 +51,9 @@ const (
 )
 
 type reminderLimiter struct {
-	mu      sync.Mutex
-	entries map[uint]reminderLimiterState
+	mu       sync.Mutex
+	entries  map[uint]reminderLimiterState
+	cooldown time.Duration // 同消息重复提醒冷却时长；由 SetCooldown 按系统配置更新
 }
 
 func buildRemindResult(messageID uint, success bool, reminderError, systemName string) ([]byte, error) {
@@ -74,12 +75,28 @@ func buildRemindResult(messageID uint, success bool, reminderError, systemName s
 }
 
 func newReminderLimiter() *reminderLimiter {
-	return &reminderLimiter{entries: make(map[uint]reminderLimiterState)}
+	return &reminderLimiter{entries: make(map[uint]reminderLimiterState), cooldown: time.Hour}
+}
+
+// SetCooldown 更新重复提醒冷却时长（来自系统配置，0=不限制，可反复提醒）。
+func (l *reminderLimiter) SetCooldown(d time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cooldown = d
+}
+
+// cooldownLocked 返回当前冷却时长。0 表示不限制（超出冷却窗口则永远放行）。
+func (l *reminderLimiter) cooldownLocked() time.Duration {
+	return l.cooldown
 }
 
 func (l *reminderLimiter) cleanupExpiredLocked(now time.Time) {
+	cd := l.cooldownLocked()
+	if cd <= 0 {
+		return // 不限制冷却时无需清理
+	}
 	for id, entry := range l.entries {
-		if !entry.pending && !entry.lastOK.IsZero() && now.Sub(entry.lastOK) >= time.Hour {
+		if !entry.pending && !entry.lastOK.IsZero() && now.Sub(entry.lastOK) >= cd {
 			delete(l.entries, id)
 		}
 	}
@@ -90,7 +107,8 @@ func (l *reminderLimiter) checkLocked(messageID uint, now time.Time) reminderLim
 	if entry.pending {
 		return reminderPending
 	}
-	if !entry.lastOK.IsZero() && now.Sub(entry.lastOK) < time.Hour {
+	cd := l.cooldownLocked()
+	if cd > 0 && !entry.lastOK.IsZero() && now.Sub(entry.lastOK) < cd {
 		return reminderCoolingDown
 	}
 	return reminderAllowed
@@ -134,11 +152,18 @@ func (l *reminderLimiter) finish(messageID uint, success bool, now time.Time) {
 	l.entries[messageID] = entry
 }
 
-func reminderLimiterReasonMessage(reason reminderLimiterReason) string {
+func reminderLimiterReasonMessage(reason reminderLimiterReason, cooldown time.Duration) string {
 	if reason == reminderPending {
 		return "提醒发送中，请稍候"
 	}
-	return "该消息已提醒过，请 1 小时后再试"
+	if cooldown <= 0 {
+		return "该消息已提醒过，请稍后再试"
+	}
+	minutes := int(cooldown.Minutes())
+	if minutes >= 1 {
+		return fmt.Sprintf("该消息已提醒过，请 %d 分钟后再试", minutes)
+	}
+	return fmt.Sprintf("该消息已提醒过，请 %d 秒后再试", int(cooldown.Seconds()))
 }
 
 func finishReminderAttempt(limiter *reminderLimiter, messageID uint, success *bool) {
@@ -998,9 +1023,34 @@ func RemindMessage(c *gin.Context) {
 		return
 	}
 
-	// 校验：超 1 小时
-	if time.Since(msg.CreatedAt) < time.Hour {
-		response.BadRequest(c, "消息发送未满 1 小时")
+	// 校验：超触发门槛（秒，0=禁止提醒），由系统配置 messageRemindTime 控制，默认 3600
+	remindTimeLimit := 3600
+	remindCooldown := time.Hour
+	if configSvc := service.NewSystemConfigService(db); configSvc != nil {
+		if publicConfigs, err := configSvc.GetPublicConfigs(); err == nil {
+			if v, ok := publicConfigs["messageRemindTime"]; ok {
+				if iv, ok := v.(int); ok {
+					remindTimeLimit = iv
+				}
+			}
+			if v, ok := publicConfigs["messageRemindRepeatCooldown"]; ok {
+				if iv, ok := v.(int); ok {
+					remindCooldown = time.Duration(iv) * time.Second
+				}
+			}
+		}
+	}
+	remindRateLimiter.SetCooldown(remindCooldown)
+	if remindTimeLimit == 0 {
+		response.BadRequest(c, "消息提醒已关闭")
+		return
+	}
+	if time.Since(msg.CreatedAt) < time.Duration(remindTimeLimit)*time.Second {
+		if remindTimeLimit < 60 {
+			response.BadRequest(c, fmt.Sprintf("消息发送未满 %d 秒", remindTimeLimit))
+		} else {
+			response.BadRequest(c, fmt.Sprintf("消息发送未满 %d 分钟", remindTimeLimit/60))
+		}
 		return
 	}
 
@@ -1011,7 +1061,7 @@ func RemindMessage(c *gin.Context) {
 	}
 
 	if reason := remindRateLimiter.check(msg.ID, time.Now()); reason != reminderAllowed {
-		response.BadRequest(c, reminderLimiterReasonMessage(reason))
+		response.BadRequest(c, reminderLimiterReasonMessage(reason, remindCooldown))
 		return
 	}
 
@@ -1057,10 +1107,10 @@ func RemindMessage(c *gin.Context) {
 		MessageURL:            messageURL,
 	}
 
-	// 频率限制：同一消息成功提醒后每小时最多 1 次；调用中阻止重复点击。
+	// 频率限制：同一消息成功提醒后在冷却期内最多 1 次（冷却时长由系统配置控制）；调用中阻止重复点击。
 	if !remindRateLimiter.start(msg.ID, time.Now()) {
 		reason := remindRateLimiter.check(msg.ID, time.Now())
-		response.BadRequest(c, reminderLimiterReasonMessage(reason))
+		response.BadRequest(c, reminderLimiterReasonMessage(reason, remindCooldown))
 		return
 	}
 

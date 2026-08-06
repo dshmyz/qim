@@ -258,6 +258,8 @@ export interface OperationLog {
 // 系统配置相关
 export interface SystemConfig {
   messageRecallTime: number
+  messageRemindTime: number
+  messageRemindRepeatCooldown: number
   maxFileSize: number
   imageQuality: number
   enableRegistration: boolean

@@ -58,6 +58,8 @@ var publicConfigKeys = []string{
 	"enableAI",
 	"enableReadReceipt",
 	"messageRecallTime",
+	"messageRemindTime",
+	"messageRemindRepeatCooldown",
 }
 
 func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error) {
@@ -88,6 +90,14 @@ func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error)
 	}
 	if _, ok := result["messageRecallTime"]; !ok {
 		result["messageRecallTime"] = 120
+	}
+	// 发送提醒触发门槛（秒，0=禁止提醒）与同消息重复提醒冷却（秒，0=不限制）。
+	// 与 messageRecallTime 同模式：缺省 3600（1 小时），保证旧语义不变。
+	if _, ok := result["messageRemindTime"]; !ok {
+		result["messageRemindTime"] = 3600
+	}
+	if _, ok := result["messageRemindRepeatCooldown"]; !ok {
+		result["messageRemindRepeatCooldown"] = 3600
 	}
 
 	return result, nil

@@ -6,7 +6,6 @@
 import { computed } from 'vue'
 import type { Message } from '../../types'
 import { useSystemConfigStore } from '../../stores/systemConfig'
-import { canRemind } from '../../composables/useMessageReminder'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import type { ContextMenuItem } from '../shared/context-menu-types'
 
@@ -65,7 +64,7 @@ const hasCodeBlock = computed(() => {
   return /```[a-zA-Z0-9]*\n[\s\S]*?```/.test(props.message.content)
 })
 
-const canSendReminder = computed((): boolean => canRemind(props.message, props.conversationType))
+const canSendReminder = computed((): boolean => systemConfigStore.canRemind(props.message, props.conversationType))
 
 const canSmartReply = computed(() => {
   if (!props.message || !aiEnabled.value) return false

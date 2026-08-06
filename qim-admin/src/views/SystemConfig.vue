@@ -28,6 +28,30 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="发送提醒触发时间">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.messageRemindTime"
+              :min="0"
+              :max="259200"
+              :step="60"
+            />
+            <span class="desc">（秒，0 表示不允许发送提醒；默认 3600）</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="同消息重复提醒冷却">
+          <div class="form-item-with-desc">
+            <el-input-number
+              v-model="configForm.messageRemindRepeatCooldown"
+              :min="0"
+              :max="259200"
+              :step="60"
+            />
+            <span class="desc">（秒，0 表示可反复提醒；默认 3600）</span>
+          </div>
+        </el-form-item>
+
         <el-form-item label="已读/未读显示">
           <el-switch
             v-model="configForm.enableReadReceipt"
@@ -240,6 +264,8 @@ const activeTab = ref<'basic' | 'webhook'>('basic')
 
 const configForm = reactive<SystemConfig>({
   messageRecallTime: 120,
+  messageRemindTime: 3600,
+  messageRemindRepeatCooldown: 3600,
   maxFileSize: 100,
   imageQuality: 80,
   enableRegistration: true,

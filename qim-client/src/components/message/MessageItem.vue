@@ -201,7 +201,8 @@ import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
-import { useMessageReminder, canRemind } from '../../composables/useMessageReminder'
+import { useMessageReminder } from '../../composables/useMessageReminder'
+import { useSystemConfigStore } from '../../stores/systemConfig'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import { buildSenderBadge } from '../../utils/user'
 
@@ -223,9 +224,10 @@ const shouldShowReadReceipt = computed(() => {
 
 // 铃铛：直接调用 composable 的 remind，省去事件逐层转发
 const { remind } = useMessageReminder(props.serverUrl)
+const systemConfigStore = useSystemConfigStore()
 
-// canSendReminder 复用单一事实源 canRemind，与右键菜单显示条件同源
-const canSendReminder = computed((): boolean => canRemind(props.message, props.conversationType))
+// canSendReminder 复用单一事实源 systemConfigStore.canRemind，与右键菜单显示条件同源
+const canSendReminder = computed((): boolean => systemConfigStore.canRemind(props.message, props.conversationType))
 
 const isAIMessage = computed(() => {
   const fromOrigin = props.message.origin === 'assistant' || props.message.origin === 'avatar'
