@@ -11,6 +11,8 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -616,21 +618,10 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 	if input.GroupConfig != nil && input.GroupConfig.CustomPrompt != "" {
 		sb.WriteString(input.GroupConfig.CustomPrompt + "\n\n")
 	} else if input.GroupConfig != nil {
-		switch input.GroupConfig.Personality {
-		case "casual":
-			sb.WriteString("你是 QIM 企业即时通讯系统中的 AI 助手，性格轻松幽默。在回答中可以适当使用表情和emoji，语气活泼。\n\n")
-		case "concise":
-			sb.WriteString("你是 QIM 企业即时通讯系统中的 AI 助手，风格简洁高效。回答直奔主题，不废话，只说重点。\n\n")
-		case "friendly":
-			sb.WriteString("你是 QIM 企业即时通讯系统中的 AI 助手，性格温暖亲切。回答要有耐心，语气友善，像一个贴心的伙伴。\n\n")
-		case "technical":
-			sb.WriteString("你是 QIM 企业即时通讯系统中的技术专家 AI 助手。回答要有技术深度，关注细节，必要时提供代码示例和技术方案。\n\n")
-		default:
-			sb.WriteString("你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。\n\n")
-		}
+		sb.WriteString(aiprompt.BuildPersona(input.GroupConfig.Personality) + "\n\n")
 	} else {
 		// 默认人设（私聊场景）
-		sb.WriteString("你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。\n\n")
+		sb.WriteString(aiprompt.BuildPersona("") + "\n\n")
 	}
 
 	sb.WriteString(fmt.Sprintf("当前时间：%s (%s)\n\n", time.Now().Format("2006-01-02 15:04"), time.Now().Weekday().String()))
@@ -689,28 +680,23 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 	// 2. 回复规则
 	sb.WriteString("【回复规则】\n")
 
-	if input.GroupConfig != nil && input.GroupConfig.Language == "en" {
-		sb.WriteString("- Please answer in English\n")
-	} else {
-		sb.WriteString("- 请使用中文回答\n")
-	}
-
+	var rules []string
 	if input.GroupConfig != nil {
-		switch input.GroupConfig.MaxLength {
-		case "short":
-			sb.WriteString("- 回答要简短，控制在50字以内\n")
-		case "medium":
-			sb.WriteString("- 回答适中，控制在150字以内\n")
-		case "long":
-			sb.WriteString("- 回答详细，可以展开说明\n")
+		if langRule := aiprompt.LanguageRule(input.GroupConfig.Language); langRule != "" {
+			rules = append(rules, langRule)
+		}
+		if lenRule := aiprompt.LengthRule(input.GroupConfig.MaxLength); lenRule != "" {
+			rules = append(rules, lenRule)
 		}
 	} else {
-		sb.WriteString("- 回答要简洁、专业、准确\n")
+		rules = append(rules, "请使用中文回答")
+		rules = append(rules, "回答要简洁、专业、准确")
 	}
+	rules = append(rules, aiprompt.ReplyRules()...)
 
-	sb.WriteString("- 优先使用知识库中的内容回答\n")
-	sb.WriteString("- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"\n")
-	sb.WriteString("- 严禁在回复中使用 @用户名 或 @任何人 的格式。不要 @ 提及任何群成员，系统会自动处理提及。直接称呼对方名字即可，不要加 @ 前缀\n")
+	for _, r := range rules {
+		sb.WriteString("- " + r + "\n")
+	}
 
 	return sb.String()
 }
@@ -788,8 +774,8 @@ func (g *SmartReplyGraph) getProductKnowledge() string {
 }
 
 func defaultProductKnowledge() string {
-	return `【QIM 产品知识】
-QIM 是企业即时通讯系统，核心功能如下：
+	return fmt.Sprintf(`【%s 产品知识】
+%s 是企业即时通讯系统，核心功能如下：
 - 单聊/群聊/讨论组：左侧会话列表点击进入，群聊支持 @成员、消息置顶、群公告
 - AI 助手：在群聊中 @AI 或 @AI助手 提问；群聊还可配置关键词自动触发 AI 回复
 - AI 分身：个人设置中开启，可配置触发模式（@触发/离线自动/关键词/全部消息/智能判断），AI 分身会以你的身份自动回复
@@ -799,5 +785,5 @@ QIM 是企业即时通讯系统，核心功能如下：
 - 日历：左侧导航「日历」，管理日程安排
 - 文件管理：左侧导航「文件」，查看和管理上传的文件
 - 统一搜索：顶部搜索栏支持搜索消息、笔记、文件、知识库
-当用户询问产品功能或使用方法时，根据以上信息引导用户操作。`
+当用户询问产品功能或使用方法时，根据以上信息引导用户操作。`, productname.Name, productname.Name)
 }

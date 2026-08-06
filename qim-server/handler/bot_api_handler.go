@@ -456,9 +456,11 @@ func (h *BotAPIHandler) UpdateBotConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		Mode          string `json:"mode"`
-		WebhookURL    string `json:"webhook_url"`
-		WebhookSecret string `json:"webhook_secret"`
+		Mode            string `json:"mode"`
+		WebhookURL      string `json:"webhook_url"`
+		WebhookSecret   string `json:"webhook_secret"`
+		UseSystemConfig *bool  `json:"use_system_config"` // 模型来源：nil=不修改；true=系统默认
+		UserConfigID    *uint  `json:"user_config_id"`    // 自定义配置 ID；use_system_config=false 时生效
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
@@ -479,6 +481,22 @@ func (h *BotAPIHandler) UpdateBotConfig(c *gin.Context) {
 	}
 	if req.WebhookSecret != "" {
 		cfg.WebhookSecret = req.WebhookSecret
+	}
+	// 模型来源：仅显式传入时更新
+	if req.UseSystemConfig != nil {
+		cfg.UseSystemConfig = *req.UseSystemConfig
+		if *req.UseSystemConfig {
+			cfg.UserConfigID = nil // 切回系统默认时清掉自定义配置引用
+		} else if req.UserConfigID != nil {
+			cfg.UserConfigID = req.UserConfigID
+		} else {
+			// use_system_config=false 但未带 user_config_id（前端清空了选择）→ 显式清掉旧引用，
+			// 避免 UI 显示"未选"、bot 却继续用上次留下的配置。
+			cfg.UserConfigID = nil
+		}
+	} else if req.UserConfigID != nil {
+		cfg.UserConfigID = req.UserConfigID
+		cfg.UseSystemConfig = false // 显式指定配置即视为自定义
 	}
 	configJSON, _ := json.Marshal(cfg)
 

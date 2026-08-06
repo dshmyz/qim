@@ -141,13 +141,24 @@ func (f *ProviderFactory) createGenericOpenAIProvider(name string, cfg ProviderC
 }
 
 func (f *ProviderFactory) createAnthropicProviderFromConfig(cfg ProviderConfig) Provider {
+	// 合并调用方传入的生成参数（用户自选模型的 max_tokens/temperature），
+	// 缺失时才补默认值——与 openai 系一致，避免用户保存的参数被静默丢弃。
+	// 注意：必须复制 ExtraParams 再补默认值，不能就地修改 cfg.ExtraParams——
+	// 调用方可能复用/缓存该 map，就地写回会把默认值污染进调用方状态。
+	extraParams := map[string]interface{}{}
+	for k, v := range cfg.ExtraParams {
+		extraParams[k] = v
+	}
+	if _, ok := extraParams["max_tokens"]; !ok {
+		extraParams["max_tokens"] = 1000
+	}
+	if _, ok := extraParams["temperature"]; !ok {
+		extraParams["temperature"] = 0.7
+	}
 	return NewAnthropicProvider(ProviderConfig{
 		APIKey:  cfg.APIKey,
 		Model:   cfg.Model,
 		BaseURL: cfg.BaseURL,
-		ExtraParams: map[string]interface{}{
-			"max_tokens":  1000,
-			"temperature": 0.7,
-		},
+		ExtraParams: extraParams,
 	})
 }

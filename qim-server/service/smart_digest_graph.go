@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -232,7 +233,7 @@ func (g *SmartDigestGraph) createFormatNode() *compose.Lambda {
 func (g *SmartDigestGraph) buildDigestSystemPrompt(dc *digestContext) string {
 	var sb strings.Builder
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的智能消息摘要助手。你的任务是为用户的未读消息生成简洁、结构化的摘要。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的智能消息摘要助手。你的任务是为用户的未读消息生成简洁、结构化的摘要。\n\n")
 
 	sb.WriteString("【摘要规则】\n")
 	sb.WriteString("1. 按消息类型分类：@我的消息、与我相关的讨论、群聊热点话题、紧急事项\n")

@@ -53,6 +53,7 @@ func TestIsAvatarInTimeRange(t *testing.T) {
 func TestAvatarLengthHint(t *testing.T) {
 	assert.Equal(t, "回复尽量简短，以一句话为主", avatarLengthHint("short"))
 	assert.Equal(t, "回复长度适中", avatarLengthHint("medium"))
+	assert.Equal(t, "回复可以较详细，控制在 400 字以内", avatarLengthHint("very_long"))
 	assert.Equal(t, "回复可以详细，但仍需自然", avatarLengthHint("Long")) // 大小写不敏感
 	assert.Equal(t, "回复要简洁，不要过长", avatarLengthHint(""))
 	assert.Equal(t, "回复要简洁，不要过长", avatarLengthHint("unknown"))
@@ -61,6 +62,7 @@ func TestAvatarLengthHint(t *testing.T) {
 func TestAvatarMaxReplyChars(t *testing.T) {
 	assert.Equal(t, 100, avatarMaxReplyChars("short"))
 	assert.Equal(t, 300, avatarMaxReplyChars("medium"))
+	assert.Equal(t, 400, avatarMaxReplyChars("very_long"))
 	assert.Equal(t, 2000, avatarMaxReplyChars("long"))
 	assert.Equal(t, 0, avatarMaxReplyChars(""), "未配置不截断")
 }

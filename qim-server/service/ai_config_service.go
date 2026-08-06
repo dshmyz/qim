@@ -324,3 +324,38 @@ func (s *AIConfigService) GetUserOverrides(userID uint) []ai.Override {
 	}
 	return overrides
 }
+
+// customProvider 解析出的「用户自选模型」provider，供采用显式 ProviderConfig 的调用路径使用。
+// ProviderName 为空表示未命中/解析失败，调用方应回退系统默认配置。
+type customProvider struct {
+	ProviderName string
+	Config       ai.ProviderConfig
+}
+
+// resolveUserAIConfigProvider 按 configID（归属 userID）解析用户自选的 AIConfig → provider 配置。
+// 供分身（AvatarReplyGraph）与 bot internal_ai 回复共用；任何一步失败返回 nil 表示回退系统默认。
+func resolveUserAIConfigProvider(db *gorm.DB, userID, configID uint) *customProvider {
+	var cfg model.AIConfig
+	if err := db.Where("id = ? AND user_id = ?", configID, userID).First(&cfg).Error; err != nil {
+		log.Printf("[resolveUserAIConfigProvider] 自选模型配置不存在或非本人所有，回退系统默认: userID=%d configID=%d err=%v", userID, configID, err)
+		return nil
+	}
+	if !cfg.AIEnabled {
+		log.Printf("[resolveUserAIConfigProvider] 自选模型配置已禁用，回退系统默认: userID=%d configID=%d", userID, configID)
+		return nil
+	}
+	apiKey, err := utils.DecryptAPIKey(cfg.APIKeyEncrypted)
+	if err != nil {
+		log.Printf("[resolveUserAIConfigProvider] 自选模型密钥解密失败，回退系统默认: userID=%d configID=%d err=%v", userID, configID, err)
+		return nil
+	}
+	return &customProvider{
+		ProviderName: cfg.Provider,
+		Config: ai.ProviderConfig{
+			APIKey:       apiKey,
+			Model:        cfg.ModelName,
+			BaseURL:      cfg.BaseURL,
+			ExtraParams: buildCustomProviderExtraParams(cfg.MaxTokens, cfg.Temperature),
+		},
+	}
+}

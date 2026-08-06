@@ -121,6 +121,12 @@ func buildFileLogger(dir string, level slog.Level, rc RotateConfig) *slog.Logger
 		module:  "auth",
 	})
 
+	targets = append(targets, outputTarget{
+		handler: createHandler(newRotateFile(filepath.Join(dir, "ai.log"), rc), slog.LevelDebug),
+		level:   slog.LevelDebug,
+		module:  "ai",
+	})
+
 	return slog.New(newMultiHandler(targets))
 }
 

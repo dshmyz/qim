@@ -16,6 +16,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -1007,7 +1008,7 @@ func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRe
 
 // buildSidebarSystemPrompt 侧边栏元对话的 system prompt
 func buildSidebarSystemPrompt() string {
-	return `你是 QIM 企业即时通讯系统中的 AI 助手，正在通过侧边栏与用户进行元对话。
+	return fmt.Sprintf(`你是 %s 企业即时通讯系统中的 AI 助手，正在通过侧边栏与用户进行元对话。
 
 【你的角色】
 - 你是用户的私人智能助理，帮助用户理解、总结、分析当前或历史对话内容
@@ -1021,5 +1022,5 @@ func buildSidebarSystemPrompt() string {
 - 如果用户问“刚才讨论的结论是什么”，从对话记录中提炼
 - 如果用户问“帮我整理待办”，抽取行动项并以 checkbox 格式输出
 - 如果用户说“帮我创建任务”或“设置提醒”，使用 create_user_task 工具创建，并告诉用户已创建成功
-- 如果信息不足，诚实告知并建议用户提供更多上下文`
+- 如果信息不足，诚实告知并建议用户提供更多上下文`, productname.Name)
 }

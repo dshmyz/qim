@@ -323,15 +323,40 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	if s.aiService == nil {
 		streamErr = fmt.Errorf("AI 服务未配置")
 	} else {
+		// 自定义模型来源：bot 配置了「使用我的自定义配置」（!UseSystemConfig 且 UserConfigID 非空）时，
+		// 解析出创建者自选的 provider。解析失败（配置被删/禁用/密钥解密失败）→ 回退系统默认。
+		// external_webhook 已在前面 return，走到这里必定是 internal_ai。
+		var custom *customProvider
+		if !botCfg.UseSystemConfig && botCfg.UserConfigID != nil {
+			custom = resolveUserAIConfigProvider(db, bot.CreatorID, *botCfg.UserConfigID)
+			if custom == nil || custom.ProviderName == "" {
+				logger.WithModule("handleBotMessage").Warn("bot 自定义模型解析失败，回退系统默认",
+					"botID", bot.ID, "userConfigID", *botCfg.UserConfigID)
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		done := make(chan struct{})
 		go func() {
-			streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, func(chunk ai.StreamChunk) error {
+			onChunk := func(chunk ai.StreamChunk) error {
 				builder.WriteString(chunk.Content)
 				return nil
-			})
+			}
+			if custom != nil && custom.ProviderName != "" {
+				streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, ai.TaskTypeChat, aiMessages, custom.ProviderName, custom.Config, onChunk)
+				// 生成期失败（密钥失效/配额耗尽/网络错/模型名错误）且尚未流出内容时，回退系统默认，
+				// 兑现「回退系统默认…不阻断回复」契约——单条用户自定义配置出问题不应拖垮整个 bot 回复。
+				// 已流出部分内容则保留（流式中途无法干净衔接重试）。
+				if streamErr != nil && builder.Len() == 0 {
+					logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
+						"botID", bot.ID, "provider", custom.ProviderName, "error", streamErr)
+					streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+				}
+			} else {
+				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+			}
 			close(done)
 		}()
 
@@ -347,7 +372,10 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	}
 
 	response := builder.String()
-	if streamErr != nil {
+	// 自定义模型已流出部分内容后中途失败（builder.Len()>0）：保留已生成的部分，兑现
+	// 「已流出部分内容则保留」注释契约，而不是把整个回复降级成统一错误文案。
+	// 仅在完全没流出任何内容（含回退系统默认也失败）时，才用兜底错误文案。
+	if response == "" && streamErr != nil {
 		logger.WithModule("handleBotMessage").Error("AI API error", "error", streamErr)
 		response = "抱歉，AI 服务暂时不可用，请稍后再试。"
 	}

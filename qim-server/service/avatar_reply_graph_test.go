@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/stretchr/testify/assert"
@@ -129,10 +128,9 @@ func TestAvatarReplyGraphResolveCustomModel(t *testing.T) {
 		APIKeyEncrypted: encKey,
 	}).Error)
 
-	// aiConfigSvc 仅用于持有 db 引用；resolveCustomProvider 直接查 db，
-	// 以 nil aiConfigSvc 独立单测（不含 decrypt 之外的服务逻辑）
+	// resolveCustomProvider 仅依赖 db（自选模型解析已收敛到共享 resolveUserAIConfigProvider，
+	// 不再依赖注入的 AIConfigService）。用裸 graph（不注入任何服务）即可独立验证解析。
 	g := &AvatarReplyGraph{db: db}
-	g2 := &AvatarReplyGraph{db: db, aiConfigSvc: NewAIConfigService(db, ai.NewProviderFactory())}
 
 	// case1: 默认 UseSystemConfig=true → 不解析自选模型
 	in1 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: true, ModelConfigID: nil}}
@@ -140,7 +138,7 @@ func TestAvatarReplyGraphResolveCustomModel(t *testing.T) {
 
 	// case2: 关闭 UseSystemConfig + 有效的 ModelConfigID → 解析出自选 provider
 	in2 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: false, ModelConfigID: uptr(10)}}
-	require.NoError(t, g2.prepare(context.Background(), in2, &in2.Config))
+	require.NoError(t, g.prepare(context.Background(), in2, &in2.Config))
 	require.NotNil(t, in2.CustomProvider, "应命中自选模型")
 	assert.Equal(t, "deepseek", in2.CustomProvider.ProviderName)
 	assert.Equal(t, "deepseek-chat", in2.CustomProvider.Config.Model)
@@ -148,25 +146,24 @@ func TestAvatarReplyGraphResolveCustomModel(t *testing.T) {
 
 	// case3: 关闭 UseSystemConfig 但 ModelConfigID 指向不存在的配置 → 回退系统默认（nil）
 	in3 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: false, ModelConfigID: uptr(999)}}
-	require.NoError(t, g2.prepare(context.Background(), in3, &in3.Config))
+	require.NoError(t, g.prepare(context.Background(), in3, &in3.Config))
 	assert.Nil(t, in3.CustomProvider, "配置不存在时应静默回退系统默认")
 
-	// case4: 未注入 aiConfigSvc（如测试态构造）→ 回退系统默认
+	// case4: 裸 graph 仅靠 db 即可解析（曾错误依赖 AIConfigService，去除该死依赖后仍应命中）
 	in4 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: false, ModelConfigID: uptr(10)}}
-	g.aiConfigSvc = nil
 	require.NoError(t, g.prepare(context.Background(), in4, &in4.Config))
-	assert.Nil(t, in4.CustomProvider, "aiConfigSvc 未注入时不应 panic，应回退系统默认")
+	require.NotNil(t, in4.CustomProvider, "仅靠 db 即可解析，不应再依赖注入服务")
 
 	// case5: 自选配置被禁用（AIEnabled=false）→ 回退系统默认，不应用被禁的模型
 	require.NoError(t, db.Model(&model.AIConfig{}).Where("id = ?", 10).Update("ai_enabled", false).Error)
 	in5 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: false, ModelConfigID: uptr(10)}}
-	require.NoError(t, g2.prepare(context.Background(), in5, &in5.Config))
+	require.NoError(t, g.prepare(context.Background(), in5, &in5.Config))
 	assert.Nil(t, in5.CustomProvider, "被禁用的自选配置不应用于回复，应回退系统默认")
 	require.NoError(t, db.Model(&model.AIConfig{}).Where("id = ?", 10).Update("ai_enabled", true).Error)
 
 	// case6: 用户保存的生成参数（MaxTokens/Temperature）应透传到临时 provider
 	in6 := &AvatarReplyContext{UserID: 1, Message: "hi", Config: model.AvatarConfig{UserID: 1, UseSystemConfig: false, ModelConfigID: uptr(10)}}
-	require.NoError(t, g2.prepare(context.Background(), in6, &in6.Config))
+	require.NoError(t, g.prepare(context.Background(), in6, &in6.Config))
 	require.NotNil(t, in6.CustomProvider, "应命中自选模型")
 	assert.Equal(t, 1000, in6.CustomProvider.Config.ExtraParams["max_tokens"], "应透传已保存的 MaxTokens")
 	assert.Equal(t, float64(0.7), in6.CustomProvider.Config.ExtraParams["temperature"], "应透传已保存的 Temperature")
@@ -212,13 +209,14 @@ func TestAvatarReplyGraphNeedReplyForOutOfScope(t *testing.T) {
 }
 
 func TestBuildCustomProviderExtraParams(t *testing.T) {
-	// 零值不透传：max_tokens=0 在某些 provider 会被 API 拒绝或解释为无限制；
-	// temperature=0 会覆盖 provider 默认值（用户未显式配置时不该强制覆盖）。
+	// 零值透传语义（修复 #3）：
+	// - max_tokens=0 在某些 provider 会被 API 拒绝或解释为无限制，且无确定性语义 → 跳过
+	// - temperature=0 是用户显式设置的确定性输出（AIConfig.Temperature DB 默认 0.7，读到 0 必为用户故意），
+	//   必须透传，不能被跳过成 provider 默认 0.7
 	p := buildCustomProviderExtraParams(0, 0)
 	_, hasMax := p["max_tokens"]
-	_, hasTemp := p["temperature"]
 	assert.False(t, hasMax, "max_tokens=0 不应透传")
-	assert.False(t, hasTemp, "temperature=0 不应透传")
+	assert.Equal(t, float64(0), p["temperature"], "temperature=0 应透传（确定性输出）")
 
 	// 正常值透传
 	p = buildCustomProviderExtraParams(1000, 0.7)
@@ -227,15 +225,12 @@ func TestBuildCustomProviderExtraParams(t *testing.T) {
 
 	// 仅 max_tokens 有效
 	p = buildCustomProviderExtraParams(2000, 0)
-	_, hasMax = p["max_tokens"]
-	_, hasTemp = p["temperature"]
-	assert.True(t, hasMax, "max_tokens>0 应透传")
-	assert.False(t, hasTemp, "temperature=0 不应透传")
+	assert.Equal(t, 2000, p["max_tokens"])
+	assert.Equal(t, float64(0), p["temperature"], "temperature=0 应透传")
 
 	// 仅 temperature 有效
 	p = buildCustomProviderExtraParams(0, 0.5)
 	_, hasMax = p["max_tokens"]
-	_, hasTemp = p["temperature"]
 	assert.False(t, hasMax, "max_tokens=0 不应透传")
-	assert.True(t, hasTemp, "temperature>0 应透传")
+	assert.Equal(t, 0.5, p["temperature"])
 }

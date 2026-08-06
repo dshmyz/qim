@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -252,7 +253,7 @@ func (g *UnifiedSearchGraph) createBuildPromptNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, result *retrieveResult) ([]*schema.Message, error) {
 		var messages []*schema.Message
 
-		systemPrompt := `你是 QIM 企业即时通讯系统中的智能搜索助手。你的任务是根据检索到的多源信息，综合回答用户的问题。
+		systemPrompt := fmt.Sprintf(`你是 %s 企业即时通讯系统中的智能搜索助手。你的任务是根据检索到的多源信息，综合回答用户的问题。
 
 【回答规则】
 1. 优先使用检索到的信息回答问题
@@ -265,7 +266,7 @@ func (g *UnifiedSearchGraph) createBuildPromptNode() *compose.Lambda {
 - message: 历史聊天消息
 - note: 用户个人笔记
 - group_document: 群文档知识库
-- memory: 用户长期记忆`
+- memory: 用户长期记忆`, productname.Name)
 
 		messages = append(messages, &schema.Message{Role: schema.System, Content: systemPrompt})
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/utils"
 
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/compose"
@@ -35,15 +34,11 @@ type AvatarReplyContext struct {
 	SkipReply bool
 	// CustomProvider 非 nil 表示分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）。
 	// 命中时回复生成走该 provider（图外临时创建），绕开编译图内固定使用系统配置的 model 节点。
-	CustomProvider *customModelProvider
+	CustomProvider *customProvider
 }
 
-// customModelProvider 用户自选模型在回复生成阶段的临时描述。
-// providerName 是 ai.ProviderFactory.CreateProviderByName 支持的厂商名（openai/anthropic/...）。
-type customModelProvider struct {
-	ProviderName string
-	Config       ai.ProviderConfig
-}
+// 用户自选模型在回复阶段的临时描述统一由 ai_config_service.go 的 customProvider 承担
+// （与 resolveUserAIConfigProvider 共用），此处不再单独定义 customModelProvider 以免重复漂移。
 
 type AvatarReplyGraph struct {
 	runnable    compose.Runnable[*AvatarReplyContext, string]
@@ -53,7 +48,6 @@ type AvatarReplyGraph struct {
 	noteSvc     *NoteVectorService
 	memorySvc   *AvatarMemoryService
 	groupDocSvc *GroupDocumentService
-	aiConfigSvc *AIConfigService // 解析分身「自选模型」配置（modelConfigId → provider）
 }
 
 func NewAvatarReplyGraph(
@@ -62,7 +56,6 @@ func NewAvatarReplyGraph(
 	noteSvc *NoteVectorService,
 	memorySvc *AvatarMemoryService,
 	groupDocSvc *GroupDocumentService,
-	aiConfigSvc *AIConfigService,
 ) *AvatarReplyGraph {
 	return &AvatarReplyGraph{
 		aiService:   aiService,
@@ -70,7 +63,6 @@ func NewAvatarReplyGraph(
 		noteSvc:     noteSvc,
 		memorySvc:   memorySvc,
 		groupDocSvc: groupDocSvc,
-		aiConfigSvc: aiConfigSvc,
 	}
 }
 
@@ -215,6 +207,13 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		// 自选模型：绕开编译图（其 model 节点固定走系统配置），图外渲染 prompt 后
 		// 用用户自选 provider 生成，与编译图行为一致（同一套模板变量 / 截断逻辑）。
 		reply, err = g.generateWithCustomProvider(ctx, input)
+		if err != nil {
+			// 生成期失败（密钥失效/配额/网络错/provider 未配置）→ 回退系统默认，
+			// 兑现「回退系统默认…不阻断回复」契约——单条自定义配置出问题不应让分身整条不复回。
+			// 系统回退同样失败时才真正返回错误。
+			log.Printf("[AvatarReplyGraph] 自选模型生成失败，回退系统默认: userID=%d err=%v", input.UserID, err)
+			reply, err = g.runnable.Invoke(ctx, input)
+		}
 	} else {
 		reply, err = g.runnable.Invoke(ctx, input)
 	}
@@ -415,11 +414,19 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 	input.History = history
 
+	// 自选模型：配置了「使用自定义模型」时解析出 provider，供 Execute/ExecuteStream 走临时 provider 生成，
+	// 也供下方范围外针对性判断（needReplyForOutOfScope）使用——门控应与实际生成走同一个模型，
+	// 避免仅配自定义模型、无系统 AI 池的分身被 fail-closed 静默禁用。
+	// 解析失败（配置不存在/密钥解密失败等）时置为 nil，静默回退系统默认配置，不阻断回复。
+	if !input.Config.UseSystemConfig && input.Config.ModelConfigID != nil {
+		input.CustomProvider = g.resolveCustomProvider(input.UserID, *input.Config.ModelConfigID)
+	}
+
 	// 范围外静默：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
 	// 有笔记/群知识/记忆命中 → 属于范围内，正常回复；无任何上下文命中 → 属于范围外。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
 	// 范围外时用 LLM 判断消息是否有针对性（是否真的需要代表主人回复）：
-	// 需要 → 放行；纯闲聊/无关 → 静默。AI 不可用则 fail-closed 静默，避免刷屏。
+	// 需要 → 放行；纯闲聊/无关 → 静默。AI 不可用（又无自选模型）则 fail-closed 静默，避免刷屏。
 	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryCtx != ""
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
 		need, err := g.needReplyForOutOfScope(input)
@@ -428,68 +435,44 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		}
 	}
 
-	// 自选模型：配置了「使用自定义模型」时解析出 provider，供 Execute/ExecuteStream 走临时 provider 生成。
-	// 解析失败（配置不存在/密钥解密失败等）时置为 nil，静默回退系统默认配置，不阻断回复。
-	if !input.Config.UseSystemConfig && input.Config.ModelConfigID != nil {
-		input.CustomProvider = g.resolveCustomProvider(input.UserID, *input.Config.ModelConfigID)
-	}
-
 	return nil
 }
 
 // resolveCustomProvider 根据分身配置的 modelConfigID 解析出自选模型 provider。
 // 返回 nil 表示未命中或解析失败（回退系统默认配置）。userID 用于校验该 AIConfig 归属。
-func (g *AvatarReplyGraph) resolveCustomProvider(userID, configID uint) *customModelProvider {
-	if g.aiConfigSvc == nil {
-		log.Printf("[AvatarReplyGraph] 分身自选模型已配置但 AIConfigService 未注入，回退系统默认: userID=%d", userID)
-		return nil
-	}
-	var cfg model.AIConfig
-	if err := g.db.Where("id = ? AND user_id = ?", configID, userID).First(&cfg).Error; err != nil {
-		log.Printf("[AvatarReplyGraph] 分身自选模型配置不存在，回退系统默认: userID=%d configID=%d err=%v", userID, configID, err)
-		return nil
-	}
-	if !cfg.AIEnabled {
-		log.Printf("[AvatarReplyGraph] 分身自选模型配置已禁用，回退系统默认: userID=%d configID=%d", userID, configID)
-		return nil
-	}
-	apiKey, err := utils.DecryptAPIKey(cfg.APIKeyEncrypted)
-	if err != nil {
-		log.Printf("[AvatarReplyGraph] 分身自选模型密钥解密失败，回退系统默认: userID=%d configID=%d err=%v", userID, configID, err)
-		return nil
-	}
-	return &customModelProvider{
-		ProviderName: cfg.Provider,
-		Config: ai.ProviderConfig{
-			APIKey:  apiKey,
-			Model:   cfg.ModelName,
-			BaseURL: cfg.BaseURL,
-			// 透传用户保存的生成参数；零值跳过让 provider 用默认值
-			ExtraParams: buildCustomProviderExtraParams(cfg.MaxTokens, cfg.Temperature),
-		},
-	}
+// 解析逻辑与 bot 共用 ai_config_service.go 的 resolveUserAIConfigProvider，避免两处分叉漂移。
+// 仅需 db，不依赖任何注入的服务（历史上曾误挂 aiConfigSvc，已消除该死字段）。
+func (g *AvatarReplyGraph) resolveCustomProvider(userID, configID uint) *customProvider {
+	return resolveUserAIConfigProvider(g.db, userID, configID)
 }
 
 // buildCustomProviderExtraParams 构建分身自选模型的 ExtraParams。
-// 仅透传有效值（> 0），零值跳过让 provider 用默认值：
-// - max_tokens=0 在某些 provider 会被 API 拒绝或解释为无限制
-// - temperature=0 会覆盖 provider 默认值（用户未显式配置时不该强制覆盖）
+// 仅透传有效值：
+// - max_tokens>0 才传（0 对部分 provider 会被拒绝或解释为无限制，且 max_tokens=0 无确定性语义）
+// - temperature 一律透传，包括 0：AIConfig.Temperature 在 DB 层默认 0.7，读到的 0 必然是用户
+//   显式设置的确定性输出（"未设置"会落为 0.7，绝不会是 0），若跳过则用户想要的 temp=0 被
+//   provider 默认 0.7 静默覆盖
 func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[string]interface{} {
 	params := map[string]interface{}{}
 	if maxTokens > 0 {
 		params["max_tokens"] = maxTokens
 	}
-	if temperature > 0 {
-		params["temperature"] = temperature
-	}
+	params["temperature"] = temperature
 	return params
 }
 
 // needReplyForOutOfScope 判断「知识范围外」的消息是否仍有必要代表主人回复。
 // 主要用于默认配置（无知识库/笔记/记忆）下的分身，避免对无关闲聊硬回导致乱回复。
-// 返回 false 表示应静默。AI 不可用 / 判断失败时返回 false（fail-closed）。
+// 返回 false 表示应静默。
+// 门控模型与生成模型保持一致：分身配置了「使用自定义模型」（input.CustomProvider 非 nil）时，
+// 用用户自己的模型判断（仅配自定义模型、无系统 AI 池也能正常工作）；否则退回系统默认 AI。
+// 仅当两种模型都不可用 / 判断失败时返回 false（fail-closed）。
 func (g *AvatarReplyGraph) needReplyForOutOfScope(input *AvatarReplyContext) (bool, error) {
-	if g.aiService == nil || !g.aiService.IsConfigured() {
+	if g.aiService == nil {
+		return false, nil
+	}
+	hasCustom := input.CustomProvider != nil
+	if !hasCustom && !g.aiService.IsConfigured() {
 		return false, nil
 	}
 
@@ -503,7 +486,14 @@ func (g *AvatarReplyGraph) needReplyForOutOfScope(input *AvatarReplyContext) (bo
 		input.User.Nickname, input.User.Nickname, input.User.Nickname, input.User.Nickname, input.Message)
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	var result string
+	var err error
+	if hasCustom {
+		result, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages,
+			input.CustomProvider.ProviderName, input.CustomProvider.Config)
+	} else {
+		result, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	}
 	if err != nil {
 		log.Printf("[AvatarReplyGraph] 范围外针对性判断失败: userID=%d err=%v", input.UserID, err)
 		return false, err
@@ -579,6 +569,8 @@ func avatarLengthHint(maxReplyLength string) string {
 		return "回复尽量简短，以一句话为主"
 	case "medium":
 		return "回复长度适中"
+	case "very_long":
+		return "回复可以较详细，控制在 400 字以内"
 	case "long":
 		return "回复可以详细，但仍需自然"
 	default:
@@ -593,6 +585,8 @@ func avatarMaxReplyChars(maxReplyLength string) int {
 		return 100
 	case "medium":
 		return 300
+	case "very_long":
+		return 400
 	case "long":
 		return 2000
 	default:

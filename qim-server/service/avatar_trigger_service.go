@@ -124,7 +124,16 @@ func (s *AvatarTriggerService) decideReplyByIntent(config model.AvatarConfig, me
 
 // LLMShouldReply 负责 LLM 意图判断「这条消息是否真的需要分身代表主人回复」，
 // 由 smart 模式与私聊 mention 模式共用。返回 (shouldReply, confidence 0-1, reason, err)。
+// 门控模型与实际生成保持一致：分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）时，
+// 用用户自己的模型判断——仅配自定义模型、无系统 AI 池也能正常触发；否则退回系统默认 AI。
 func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message string, senderName string) (bool, float64, string, error) {
+	// 解析自选模型 provider（若配置了自定义模型）。nil 表示未配置/解析失败 → 走系统默认 AI。
+	var provider *customProvider
+	if !config.UseSystemConfig && config.ModelConfigID != nil {
+		provider = resolveUserAIConfigProvider(s.db, config.UserID, *config.ModelConfigID)
+	}
+	// AI 服务本身必须存在（两种调用都依赖它）；此处不要求全局池非空——
+	// 仅配自定义模型、无系统 AI 池时也能用用户自己的模型判断（见下方 provider 分支）。
 	if s.aiService == nil {
 		logger.WithModule("AvatarTriggerService").Warn("AI 服务未初始化，静默跳过意图判断", "userID", config.UserID)
 		return false, 0, "AI 服务未初始化", nil
@@ -145,7 +154,13 @@ confidence 为你对此判断的把握程度。
 发送者：%s`, config.Name, config.Name, message, senderName)
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := s.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	var result string
+	var err error
+	if provider != nil {
+		result, err = s.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, provider.ProviderName, provider.Config)
+	} else {
+		result, err = s.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	}
 	if err != nil {
 		logger.WithModule("AvatarTriggerService").Error("LLM判断失败", "error", err)
 		return false, 0, "", err

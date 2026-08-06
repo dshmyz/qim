@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"strings"
 	"sync"
 	"time"
@@ -77,22 +79,9 @@ func (b *SmartPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 func (b *SmartPromptBuilder) buildPersonalityPrompt(ctx *PromptContext) string {
 	if ctx.Group == nil {
-		return "你是 QIM 企业即时通讯系统中的智能助手。"
+		return "你是 " + productname.Name + " 企业即时通讯系统中的智能助手。"
 	}
-
-	aiConfig := ctx.Group.GetAIConfig()
-	switch aiConfig.Personality {
-	case "casual":
-		return "你是 QIM 企业即时通讯系统中的 AI 助手，性格轻松幽默。在回答中可以适当使用表情和emoji，语气活泼。"
-	case "concise":
-		return "你是 QIM 企业即时通讯系统中的 AI 助手，风格简洁高效。回答直奔主题，不废话，只说重点。"
-	case "friendly":
-		return "你是 QIM 企业即时通讯系统中的 AI 助手，性格温暖亲切。回答要有耐心，语气友善，像一个贴心的伙伴。"
-	case "technical":
-		return "你是 QIM 企业即时通讯系统中的技术专家 AI 助手。回答要有技术深度，关注细节，必要时提供代码示例和技术方案。"
-	default:
-		return "你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。"
-	}
+	return aiprompt.BuildPersona(ctx.Group.GetAIConfig().Personality)
 }
 
 func (b *SmartPromptBuilder) buildTimeInfo() string {
@@ -226,42 +215,21 @@ func (b *SmartPromptBuilder) buildRules(ctx *PromptContext) string {
 
 	if ctx.Group != nil {
 		aiConfig := ctx.Group.GetAIConfig()
-		switch aiConfig.Language {
-		case "zh":
-			rules = append(rules, "请使用中文回答")
-		case "en":
-			rules = append(rules, "Please answer in English")
-		default:
+		if langRule := aiprompt.LanguageRule(aiConfig.Language); langRule != "" {
+			rules = append(rules, langRule)
 		}
-	}
-
-	if ctx.Group != nil {
-		aiConfig := ctx.Group.GetAIConfig()
-		switch aiConfig.MaxLength {
-		case "short":
-			rules = append(rules, "回答要简短，控制在50字以内")
-		case "medium":
-			rules = append(rules, "回答适中，控制在150字以内")
-		case "long":
-			rules = append(rules, "回答详细，可以展开说明")
-		default:
+		if lenRule := aiprompt.LengthRule(aiConfig.MaxLength); lenRule != "" {
+			rules = append(rules, lenRule)
+		}
+		if aiConfig.CustomPrompt != "" {
+			rules = append(rules, "额外要求: "+aiConfig.CustomPrompt)
 		}
 	} else {
 		rules = append(rules, "使用中文回复")
 		rules = append(rules, "回答要简洁、专业、准确")
 	}
 
-	rules = append(rules, "优先使用知识库中的内容回答")
-	rules = append(rules, "如果知识库中没有相关内容，使用你的通用知识回答，但明确说明\"以下回答基于通用知识，建议核实\"")
-	// 重要：AI 回复不要自己添加 @ 提及，系统会自动处理 @ 提及格式
-	rules = append(rules, "回复中不要使用 @用户名 格式提及用户，系统会自动处理")
-
-	if ctx.Group != nil {
-		aiConfig := ctx.Group.GetAIConfig()
-		if aiConfig.CustomPrompt != "" {
-			rules = append(rules, "额外要求: "+aiConfig.CustomPrompt)
-		}
-	}
+	rules = append(rules, aiprompt.ReplyRules()...)
 
 	return "\n\n回复规则：\n- " + strings.Join(rules, "\n- ")
 }

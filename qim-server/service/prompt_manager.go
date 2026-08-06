@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"strings"
 	"time"
 )
@@ -194,7 +195,7 @@ func (b *SmartPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 		sb.WriteString(ctx.CustomPrompt)
 		sb.WriteString("\n\n")
 	} else {
-		sb.WriteString("你是 QIM 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。\n\n")
+		sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统中的智能助手，风格专业严谨。回答要专业、客观、有条理。\n\n")
 	}
 
 	sb.WriteString(BuildUserInfo(ctx))
@@ -231,7 +232,7 @@ func (b *TranslatePromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的翻译助手。你的任务是准确、流畅地翻译文本。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的翻译助手。你的任务是准确、流畅地翻译文本。\n\n")
 	sb.WriteString("【翻译规则】\n")
 	sb.WriteString("1. 保持原文的语义和语气\n")
 	sb.WriteString("2. 使用目标语言的自然表达方式\n")
@@ -256,7 +257,7 @@ func (b *RewritePromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的改写助手。你的任务是改写文本使其更符合特定风格和语气。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的改写助手。你的任务是改写文本使其更符合特定风格和语气。\n\n")
 	sb.WriteString("【改写规则】\n")
 	sb.WriteString("1. 保持原文的核心意思\n")
 	sb.WriteString("2. 调整表达方式以符合指定风格\n")
@@ -281,7 +282,7 @@ func (b *PolishPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的润色助手。你的任务是润色文本使其更加专业和流畅。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的润色助手。你的任务是润色文本使其更加专业和流畅。\n\n")
 	sb.WriteString("【润色规则】\n")
 	sb.WriteString("1. 修正语法和拼写错误\n")
 	sb.WriteString("2. 优化句子结构和表达\n")
@@ -303,7 +304,7 @@ func (b *SummaryPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的对话摘要助手。你的任务是为对话记录生成简洁、准确的摘要。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的对话摘要助手。你的任务是为对话记录生成简洁、准确的摘要。\n\n")
 	sb.WriteString("【摘要规则】\n")
 	sb.WriteString("1. 提取对话中的关键信息和决策\n")
 	sb.WriteString("2. 识别讨论的主要话题\n")
@@ -322,7 +323,7 @@ func (b *DigestPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的智能消息摘要助手。你的任务是为用户的未读消息生成简洁、结构化的摘要。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的智能消息摘要助手。你的任务是为用户的未读消息生成简洁、结构化的摘要。\n\n")
 	sb.WriteString("【摘要规则】\n")
 	sb.WriteString("1. 按消息类型分类：@我的消息、与我相关的讨论、群聊热点话题、紧急事项\n")
 	sb.WriteString("2. 提取每类消息的关键信息和决策\n")
@@ -341,7 +342,7 @@ func (b *SearchPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统中的智能搜索助手。你的任务是根据检索到的多源信息，综合回答用户的问题。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统中的智能搜索助手。你的任务是根据检索到的多源信息，综合回答用户的问题。\n\n")
 	sb.WriteString("【回答规则】\n")
 	sb.WriteString("1. 优先使用检索到的信息回答问题\n")
 	sb.WriteString("2. 如果多个来源有相关信息，综合整理后回答\n")
@@ -398,7 +399,7 @@ func (b *KnowledgePromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 
 	sb.WriteString(BuildBaseInfo(ctx))
 
-	sb.WriteString("你是 QIM 企业即时通讯系统的智能助手。请根据以下信息回答问题。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的智能助手。请根据以下信息回答问题。\n\n")
 	sb.WriteString("【回答规则】\n")
 	sb.WriteString("1. 优先使用知识库中的内容回答\n")
 	sb.WriteString("2. 如果知识库中没有相关内容，使用通用知识回答，但需说明\n")

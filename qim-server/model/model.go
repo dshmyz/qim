@@ -149,7 +149,9 @@ func (g *Group) GetAIConfig() *GroupAIConfig {
 			Language:         "auto",
 			MaxLength:        "medium",
 			MentionReplyMode: "mention",
-			AntiSpamInterval: 5,
+			// 防刷屏间隔默认关闭（0=不启用）。此前默认 5 分钟会让新用户以为 AI 坏了：
+			// 未配置该参数时，AI 回复后 5 分钟内不再回复。默认关掉,由用户自行决定是否开启。
+			AntiSpamInterval: 0,
 		}
 	}
 	var config GroupAIConfig
@@ -162,7 +164,7 @@ func (g *Group) GetAIConfig() *GroupAIConfig {
 			Language:         "auto",
 			MaxLength:        "medium",
 			MentionReplyMode: "mention",
-			AntiSpamInterval: 5,
+			AntiSpamInterval: 0,
 		}
 	}
 	return &config

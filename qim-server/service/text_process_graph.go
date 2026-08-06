@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -147,7 +148,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 
 	switch input.Intent {
 	case TextProcessTranslate:
-		sb.WriteString("你是 QIM 企业即时通讯系统的翻译助手。你的任务是准确、流畅地翻译文本。\n\n")
+		sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的翻译助手。你的任务是准确、流畅地翻译文本。\n\n")
 		sb.WriteString("【翻译规则】\n")
 		sb.WriteString("1. 保持原文的语义和语气\n")
 		sb.WriteString("2. 使用目标语言的自然表达方式\n")
@@ -162,7 +163,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 		}
 
 	case TextProcessRewrite:
-		sb.WriteString("你是 QIM 企业即时通讯系统的改写助手。你的任务是改写文本使其更符合特定风格和语气。\n\n")
+		sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的改写助手。你的任务是改写文本使其更符合特定风格和语气。\n\n")
 		sb.WriteString("【改写规则】\n")
 		sb.WriteString("1. 保持原文的核心意思\n")
 		sb.WriteString("2. 调整表达方式以符合指定风格\n")
@@ -177,7 +178,7 @@ func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 		}
 
 	case TextProcessPolish:
-		sb.WriteString("你是 QIM 企业即时通讯系统的润色助手。你的任务是润色文本使其更加专业和流畅。\n\n")
+		sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的润色助手。你的任务是润色文本使其更加专业和流畅。\n\n")
 		sb.WriteString("【润色规则】\n")
 		sb.WriteString("1. 修正语法和拼写错误\n")
 		sb.WriteString("2. 优化句子结构和表达\n")

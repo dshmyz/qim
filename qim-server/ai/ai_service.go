@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
+
+// aiLog 把 AI 日志路由到 module="AI" 的目标（ai.log），同时仍打到 qim.log/stdout。
+// 模块名沿用 ai 包既有约定（ai/provider.go 同样用 WithModule("AI")）。
+var aiLog = logger.WithModule("AI")
 
 type AIService struct {
 	config       *AIConfig
@@ -33,18 +38,18 @@ func NewAIService(cfg *AIConfig) *AIService {
 	for name, providerCfg := range cfg.AllProviders() {
 		provider, err := svc.factory.CreateProviderByName(name, providerCfg)
 		if err != nil {
-			log.Printf("[AI Service] Warning: Failed to init provider %s: %v", name, err)
+			aiLog.Error("provider init failed", "name", name, "error", err)
 			continue
 		}
 		svc.pool[name] = provider
 		svc.configPool[name] = provider
-		log.Printf("[AI Service] Provider %s initialized", name)
+		aiLog.Info("provider initialized", "name", name)
 	}
 
 	if len(svc.pool) == 0 {
-		log.Printf("[AI Service] Warning: No AI providers initialized")
+		aiLog.Warn("no AI providers initialized")
 	} else {
-		log.Printf("[AI Service] %d AI providers initialized", len(svc.pool))
+		aiLog.Info("AI providers initialized", "count", len(svc.pool))
 	}
 
 	return svc
@@ -126,12 +131,14 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 	}
 
 	duration := time.Since(start).Milliseconds()
+	// 与 GetCompletionStreamWithContext 一致：截获到 usage 时上报。
 	status := "success"
 	if err != nil {
 		status = "error"
 	}
-	log.Printf("[AI Usage] task=%s provider=%s model=%s duration=%dms status=%s",
-		taskType, provider.Name(), modelName, duration, status)
+	aiLog.Info("ai usage",
+		"task", taskType, "provider", provider.Name(), "model", modelName,
+		"durationMs", duration, "status", status)
 
 	// 异步落库
 	if usage != nil && s.usageSink != nil {
@@ -163,8 +170,9 @@ func (s *AIService) GetCompletionStreamWithContext(ctx context.Context, taskType
 	if err != nil {
 		status = "error"
 	}
-	log.Printf("[AI Usage] task=%s provider=%s model=%s duration=%dms status=%s",
-		taskType, provider.Name(), modelName, duration, status)
+	aiLog.Info("ai usage",
+		"task", taskType, "provider", provider.Name(), "model", modelName,
+		"durationMs", duration, "status", status)
 	return err
 }
 
@@ -203,7 +211,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		})
 	}
 
-	log.Printf("[AI Service] 尝试使用 native function calling，工具数: %d", len(toolDefs))
+	aiLog.Info("try native function calling", "tools", len(toolDefs))
 	var resp *ChatResponse
 	if modelName != "" {
 		resp, err = provider.WithModel(modelName).ChatWithTools(messages, toolDefs)
@@ -211,16 +219,16 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		resp, err = provider.ChatWithTools(messages, toolDefs)
 	}
 	if err != nil {
-		log.Printf("[AI Service] Native function calling not supported, falling back to prompt engineering: %v", err)
+		aiLog.Warn("native function calling not supported, falling back to prompt engineering", "error", err)
 		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 	}
 
 	if len(resp.ToolCalls) == 0 {
-		log.Printf("[AI Service] Native function calling - 无工具调用，直接返回回复")
+		aiLog.Info("native function calling - no tool call, direct reply")
 		return resp.Content, nil
 	}
 
-	log.Printf("[AI Service] Native function calling - 检测到 %d 个工具调用", len(resp.ToolCalls))
+	aiLog.Info("native function calling detected tool calls", "count", len(resp.ToolCalls))
 
 	newMessages := make([]Message, len(messages))
 	copy(newMessages, messages)
@@ -235,13 +243,13 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		if len(allowedSet) > 0 && !allowedSet[tc.Name] {
 			return "", fmt.Errorf("tool %s is not allowed", tc.Name)
 		}
-		log.Printf("[AI Service] 执行工具: name=%s, args=%v", tc.Name, tc.Arguments)
+		aiLog.Info("executing tool", "name", tc.Name, "args", tc.Arguments)
 		result, execErr := toolRegistry.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
 		if execErr != nil {
-			log.Printf("[AI Service] 工具执行失败: %v", execErr)
+			aiLog.Error("tool execution failed", "name", tc.Name, "error", execErr)
 			return "", execErr
 		}
-		log.Printf("[AI Service] 工具执行成功: %v", result)
+		aiLog.Info("tool execution succeeded", "name", tc.Name, "result", result)
 
 		resultJSON, _ := json.Marshal(result)
 		newMessages = append(newMessages, Message{
@@ -251,7 +259,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		})
 	}
 
-	log.Printf("[AI Service] Native function calling - 请求最终回复")
+	aiLog.Info("native function calling - requesting final reply")
 	var finalResp *ChatResponse
 	if modelName != "" {
 		finalResp, err = provider.WithModel(modelName).ChatWithTools(newMessages, toolDefs)
@@ -337,7 +345,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 		if err != nil {
 			// 首轮即失败时降级到 prompt engineering（与单轮行为一致）
 			if step == 1 {
-				log.Printf("[AI ReAct] Native function calling not supported, falling back: %v", err)
+				aiLog.Warn("react native function calling not supported, falling back", "error", err)
 				return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 			}
 			return "", fmt.Errorf("react step %d provider error: %w", step, err)
@@ -345,11 +353,11 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 
 		// 无工具调用 → 最终回答
 		if len(resp.ToolCalls) == 0 {
-			log.Printf("[AI ReAct] 完成，共 %d 步", step-1)
+			aiLog.Info("react completed", "steps", step-1)
 			return resp.Content, nil
 		}
 
-		log.Printf("[AI ReAct] step=%d tool_calls=%d", step, len(resp.ToolCalls))
+		aiLog.Info("react step", "step", step, "toolCalls", len(resp.ToolCalls))
 
 		// 追加 assistant 消息（含 tool_calls）
 		workMsgs = append(workMsgs, Message{
@@ -365,7 +373,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				if onStep != nil {
 					onStep(step, tc.Name, tc.Arguments, nil, execErr)
 				}
-				log.Printf("[AI ReAct] 工具执行失败: name=%s err=%v", tc.Name, execErr)
+				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr)
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
 					Role:       "tool",
@@ -379,7 +387,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				onStep(step, tc.Name, tc.Arguments, result, execErr)
 			}
 			if execErr != nil {
-				log.Printf("[AI ReAct] 工具执行失败: name=%s err=%v", tc.Name, execErr)
+				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr)
 				// 将错误作为 tool 结果返回给 LLM，让它决定如何处理（而非直接中断）
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
@@ -399,7 +407,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 	}
 
 	// 达到最大步数仍未结束，做最后一次无工具调用获取总结
-	log.Printf("[AI ReAct] 达到最大步数 %d，请求最终总结", maxSteps)
+	aiLog.Info("react reached max steps, requesting final summary", "maxSteps", maxSteps)
 	finalResp, err := callProvider(workMsgs)
 	if err != nil {
 		return "", fmt.Errorf("react final summary error: %w", err)
@@ -464,27 +472,27 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 		}
 	}
 
-	log.Printf("[AI Service] 工具调用 - 发送请求到 AI，工具数: %d", len(filteredTools))
+	aiLog.Info("tool prompt - sending request to AI", "tools", len(filteredTools))
 	reply, err := s.GetCompletion(taskType, newMessages, overrides...)
 	if err != nil {
-		log.Printf("[AI Service] 工具调用 - AI 请求失败: %v", err)
+		aiLog.Error("tool prompt - AI request failed", "error", err)
 		return "", err
 	}
-	log.Printf("[AI Service] 工具调用 - AI 回复: %s", reply[:min(200, len(reply))])
+	aiLog.Info("tool prompt - AI reply", "reply", reply[:min(200, len(reply))])
 
 	toolCall, err := parseToolCall(reply)
 	if err != nil || toolCall == nil {
-		log.Printf("[AI Service] 工具调用 - 未检测到工具调用")
+		aiLog.Info("tool prompt - no tool call detected")
 		return reply, nil
 	}
 
-	log.Printf("[AI Service] 工具调用 - 检测到工具调用: name=%s, args=%v", toolCall.Name, toolCall.Arguments)
+	aiLog.Info("tool prompt - tool call detected", "name", toolCall.Name, "args", toolCall.Arguments)
 	if len(allowedSet) > 0 && !allowedSet[toolCall.Name] {
 		return "", fmt.Errorf("tool %s is not allowed", toolCall.Name)
 	}
 	result, err := toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
 	if err != nil {
-		log.Printf("[AI Service] 工具执行失败: %v", err)
+		aiLog.Error("tool execution failed", "name", toolCall.Name, "error", err)
 		return "", err
 	}
 
@@ -537,7 +545,7 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	for name, providerCfg := range cfg.AllProviders() {
 		provider, err := s.factory.CreateProviderByName(name, providerCfg)
 		if err != nil {
-			log.Printf("[AI Service] Failed to update provider %s: %v", name, err)
+			aiLog.Error("failed to update provider", "name", name, "error", err)
 			continue
 		}
 		s.pool[name] = provider
@@ -582,25 +590,25 @@ func (s *AIService) ReloadProvidersFromDB(providers []DBProviderInfo) {
 		}
 		provider, err := s.factory.CreateProviderByName(p.APIType, providerCfg)
 		if err != nil {
-			log.Printf("[AI Service] Failed to load DB provider %s (type=%s): %v", p.Name, p.APIType, err)
+			aiLog.Error("failed to load DB provider", "name", p.Name, "type", p.APIType, "error", err)
 			continue
 		}
 		// 使用小写 name 作为 pool key，与 config.yaml 中的 provider 命名保持一致
 		poolKey := strings.ToLower(p.Name)
 		newPool[poolKey] = provider
-		log.Printf("[AI Service] DB provider %s loaded as %q (type=%s, model=%s)", p.Name, poolKey, p.APIType, model)
+		aiLog.Info("DB provider loaded", "name", p.Name, "poolKey", poolKey, "type", p.APIType, "model", model)
 	}
 
 	if len(newPool) > 0 {
 		s.pool = newPool
-		log.Printf("[AI Service] Reloaded %d providers from DB", len(newPool))
+		aiLog.Info("reloaded providers from DB", "count", len(newPool))
 	} else {
 		// DB 中没有已启用的 Provider，回退到 config.yaml 初始化的 pool
 		s.pool = make(map[string]Provider)
 		for k, v := range s.configPool {
 			s.pool[k] = v
 		}
-		log.Printf("[AI Service] No enabled DB providers, restored config.yaml pool (%d)", len(s.pool))
+		aiLog.Warn("no enabled DB providers, restored config.yaml pool", "count", len(s.pool))
 	}
 }
 
@@ -658,10 +666,12 @@ func (s *AIService) Embed(text string) ([]float32, error) {
 }
 
 // GetCompletionWithProviderConfig 用显式传入的 ProviderConfig 临时创建 provider 完成一次非流式对话，
-// 而不改动全局 pool。用于"用户自定义模型配置"（如分身自选模型）这类 per-call 凭据，
+// 而不改动全局 pool。用于"用户自定义模型配置"（如分身自选模型、bot 自选模型）这类 per-call 凭据，
 // 避免把每个用户的 API key 永久注册进共享 pool 造成生命周期/串味问题。
 // name 为 provider 类型名（openai/anthropic/alibaba 等，见 ProviderFactory.CreateProviderByName）。
-// 返回的 overrides 中 Provider 名取自临时 provider，供上层路由一致复用。
+// 注：非流式 Chat 不可取消，但各 provider 的底层 http.Client 已设超时（BaseProvider 120s、
+// anthropic 60s），不会永久挂起，故此处不需要额外 goroutine+select 包装——保持线性、可被调用方
+// 直接 await，避免为不存在的"无限挂起"引入并发与孤儿 goroutine。
 func (s *AIService) GetCompletionWithProviderConfig(taskType TaskType, messages []Message, name string, cfg ProviderConfig) (string, error) {
 	provider, err := s.factory.CreateProviderByName(name, cfg)
 	if err != nil {
@@ -698,8 +708,9 @@ func (s *AIService) GetCompletionWithProviderConfig(taskType TaskType, messages 
 	if err != nil {
 		status = "error"
 	}
-	log.Printf("[AI Usage] task=%s provider=%s model=%s source=custom duration=%dms status=%s",
-		taskType, provider.Name(), cfg.Model, duration, status)
+	aiLog.Info("ai usage",
+		"task", taskType, "provider", provider.Name(), "model", cfg.Model,
+		"source", "custom", "durationMs", duration, "status", status)
 
 	if usage != nil && s.usageSink != nil {
 		s.usageSink(taskType, provider.Name(), cfg.Model, usage, duration)
@@ -739,8 +750,9 @@ func (s *AIService) ChatStreamWithProviderConfig(ctx context.Context, taskType T
 	if err != nil {
 		status = "error"
 	}
-	log.Printf("[AI Usage] task=%s provider=%s model=%s source=custom duration=%dms status=%s",
-		taskType, provider.Name(), cfg.Model, duration, status)
+	aiLog.Info("ai usage",
+		"task", taskType, "provider", provider.Name(), "model", cfg.Model,
+		"source", "custom", "durationMs", duration, "status", status)
 
 	// 与 GetCompletionWithProviderConfig 一致：截获到 usage 时上报。
 	if capturedUsage != nil && s.usageSink != nil {

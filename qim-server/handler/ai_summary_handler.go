@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -140,7 +141,7 @@ func prepareSummaryData(req *GenerateSummaryRequest, userID uint) (*summaryPrepa
 
 func buildSummaryMessages(data *summaryPrepareResult) []ai.Message {
 	var sb strings.Builder
-	sb.WriteString("你是 QIM 企业即时通讯系统的对话摘要助手。请根据对话记录生成一份结构化摘要。\n\n")
+	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的对话摘要助手。请根据对话记录生成一份结构化摘要。\n\n")
 
 	sb.WriteString("【输出格式】\n")
 	sb.WriteString("请严格按以下四个部分输出（每个部分如果无内容可写“无”）：\n\n")
