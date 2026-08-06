@@ -11,6 +11,7 @@
         <select :value="replyStrategy?.maxReplyLength ?? 'medium'" @change="updateStrategy('maxReplyLength', ($event.target as HTMLSelectElement).value as 'short' | 'medium' | 'long')" class="form-select">
           <option value="short">简短（1-2 句）</option>
           <option value="medium">适中（3-5 句）</option>
+          <option value="very_long">较长（6-10 句）</option>
           <option value="long">详细（6 句以上）</option>
         </select>
       </div>

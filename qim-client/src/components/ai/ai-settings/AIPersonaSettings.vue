@@ -44,6 +44,7 @@
         <select :value="modelValue.aiMaxLength" @change="update('aiMaxLength', ($event.target as HTMLSelectElement).value)" class="form-select">
           <option value="short">简短（1-2句）</option>
           <option value="medium">适中（3-5句）</option>
+          <option value="very_long">较长（6-10句）</option>
           <option value="long">详细（不限）</option>
         </select>
       </div>
