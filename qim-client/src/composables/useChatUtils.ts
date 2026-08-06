@@ -1,5 +1,6 @@
 import type { Message } from '../types'
 import { sanitizeMarkdown } from '../utils/sanitize'
+import { emojiToHtml } from '../utils/emoji'
 
 /**
  * 聊天工具函数 composable
@@ -213,7 +214,9 @@ export function useChatUtils() {
     html = html.replace(/\n/g, '<br>')
 
     // 使用 DOMPurify 进行消毒，防止 XSS 攻击
-    return sanitizeMarkdown(html)
+    // 消毒后再把 emoji 转成一等 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
+    // 与频道渲染 channelMarkdown 一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
+    return emojiToHtml(sanitizeMarkdown(html))
   }
 
   return {

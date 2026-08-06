@@ -85,6 +85,7 @@ import { useAIActions } from '../../composables/useAIActions'
 import { useNotes } from '../../composables/useNotes'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
+import { emojiToHtml } from '../../utils/emoji'
 import QMessage from '../../utils/qmessage'
 
 interface Props {
@@ -245,7 +246,9 @@ const renderMarkdown = (text: string): string => {
   try {
     const result = marked.parse(text)
     if (result instanceof Promise) return text
-    return sanitizeMarkdown(result as string)
+    // 消毒后再把 emoji 转成 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
+    // 与主消息渲染一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
+    return emojiToHtml(sanitizeMarkdown(result as string))
   } catch {
     return text.replace(/\n/g, '<br>')
   }

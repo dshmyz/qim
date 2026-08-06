@@ -143,7 +143,7 @@ import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
 import { useAIStream } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
-import { previewTextToHtml } from '../../utils/emoji'
+import { previewTextToHtml, emojiToHtml } from '../../utils/emoji'
 
 interface Props {
   visible: boolean
@@ -361,7 +361,9 @@ const renderMd = (text: string): string => {
       '<span class="status-line">$1</span>'
     )
     const result = marked.parse(processed, { async: false }) as string
-    return sanitizeMarkdown(result)
+    // 消毒后再把 emoji 转成 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
+    // 与主消息渲染一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
+    return emojiToHtml(sanitizeMarkdown(result))
   } catch {
     return text.replace(/\n/g, '<br>')
   }
