@@ -159,28 +159,18 @@ const handleShortcutsUpdated = (_event: unknown, updatedShortcuts: ShortcutsConf
   }
 }
 
-// 用点击目标自身定位锚点，避免 document.querySelector 误命中隐藏/错位元素导致菜单定位失效
-const anchorRectFromEvent = (event: MouseEvent): { left: number; top: number } => {
-  const btn = (event.currentTarget as HTMLElement) || event.target as HTMLElement
-  const r = btn?.getBoundingClientRect?.()
-  if (!r) return { left: 0, top: 0 }
-  return { left: r.left, top: r.bottom + 4 }
-}
-
+// 锚点直接用事件指针坐标（event.clientX/Y），与全站其它上下文菜单（右键会话/成员/设置等）
+// 走同一套 openMenu 定位方式。避免依赖 getBoundingClientRect()：在部分 Linux/Electron 合成器下
+// 对普通过渡/定位元素取矩形可能拿到异常坐标，导致菜单打开后落在可视区外/看不见（表现为「点不出」）。
+// closeMenu/openMenu 内部会做视口钳制，指针坐标同样是可靠锚点。
 const toggleScreenshotMenu = (event: MouseEvent) => {
   if (showScreenshotMenu.value) closeMenu()
-  else {
-    const { left, top } = anchorRectFromEvent(event)
-    openMenu('screenshot', left, top)
-  }
+  else openMenu('screenshot', event.clientX, event.clientY)
 }
 
 const toggleCallMenu = (event: MouseEvent) => {
   if (showCallMenu.value) closeMenu()
-  else {
-    const { left, top } = anchorRectFromEvent(event)
-    openMenu('call', left, top)
-  }
+  else openMenu('call', event.clientX, event.clientY)
 }
 
 const showScreenshotTooltip = () => {
