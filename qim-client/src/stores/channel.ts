@@ -26,8 +26,13 @@ export const useChannelStore = defineStore('channel', () => {
   const loading = ref(false)
   const messagesLoading = ref(false)
 
+  // 频道 id 类型可能不一致：后端返回数字（如 2），而深链/通知导航把 channel_id 转成了字符串（"2"）。
+  // 统一按字符串比较，避免 `2 === "2"` 恒 false 导致 selectedChannel 找不到、频道详情一直空白。
+  // （与 isChannelCreator 的 String(...)===String(...) 约定一致。）
+  const matchId = (a: any, b: any) => String(a) === String(b)
+
   const selectedChannel = computed(() => {
-    return channels.value.find(c => c.id === selectedChannelId.value) || null
+    return channels.value.find(c => matchId(c.id, selectedChannelId.value)) || null
   })
 
   const subscribedChannels = computed(() => {
@@ -61,7 +66,7 @@ export const useChannelStore = defineStore('channel', () => {
         method: 'POST'
       })
       if (response.code === 0) {
-        const channel = channels.value.find(c => c.id === channelId)
+        const channel = channels.value.find(c => matchId(c.id, channelId))
         if (channel) {
           channel.is_subscribed = true
         }
@@ -81,7 +86,7 @@ export const useChannelStore = defineStore('channel', () => {
         method: 'DELETE'
       })
       if (response.code === 0) {
-        const channel = channels.value.find(c => c.id === channelId)
+        const channel = channels.value.find(c => matchId(c.id, channelId))
         if (channel) {
           channel.is_subscribed = false
         }
@@ -100,7 +105,7 @@ export const useChannelStore = defineStore('channel', () => {
     try {
       const response = await request<ApiResponse<ChannelMessage[]>>(`/api/v1/channels/${channelId}/messages`)
       if (response.code === 0) {
-        const channel = channels.value.find(c => c.id === channelId)
+        const channel = channels.value.find(c => matchId(c.id, channelId))
         if (channel) {
           channel.messages = response.data || []
         }
@@ -119,7 +124,14 @@ export const useChannelStore = defineStore('channel', () => {
     selectedChannelId.value = channelId
     // 深链定位：记录待定位消息，等消息加载完成由渲染层滚动+高亮后消费清除
     pendingMessageId.value = messageId || null
-    const channel = channels.value.find(c => c.id === channelId)
+    let channel = channels.value.find(c => matchId(c.id, channelId))
+    // 通知中心/深链可能在任何时刻触发：若频道列表尚未加载（例如用户从未打开频道 Tab，
+    // 或首次启动即点通知），selectChannel 会因找不到频道而静默失败、无法跳转。
+    // 因此在继续前先确保频道列表已加载，再做定位。
+    if (!channel) {
+      await fetchChannels()
+      channel = channels.value.find(c => matchId(c.id, channelId))
+    }
     if (channel) {
       addTab(channel)
       await fetchChannelMessages(channelId)
@@ -132,31 +144,31 @@ export const useChannelStore = defineStore('channel', () => {
   }
 
   function markChannelRead(channelId: string) {
-    const channel = channels.value.find(c => c.id === channelId)
+    const channel = channels.value.find(c => matchId(c.id, channelId))
     if (channel) {
       channel.unread_count = 0
     }
   }
 
   function incrementUnread(channelId: string) {
-    const channel = channels.value.find(c => c.id === channelId)
+    const channel = channels.value.find(c => matchId(c.id, channelId))
     if (channel) {
       channel.unread_count = (channel.unread_count || 0) + 1
     }
   }
 
   function addTab(channel: Channel) {
-    const exists = openTabs.value.find(t => t.id === channel.id)
+    const exists = openTabs.value.find(t => matchId(t.id, channel.id))
     if (!exists) {
       openTabs.value.push({ id: channel.id, name: channel.name })
     }
   }
 
   function removeTab(channelId: string) {
-    const index = openTabs.value.findIndex(t => t.id === channelId)
+    const index = openTabs.value.findIndex(t => matchId(t.id, channelId))
     if (index > -1) {
       openTabs.value.splice(index, 1)
-      if (selectedChannelId.value === channelId) {
+      if (matchId(selectedChannelId.value, channelId)) {
         selectedChannelId.value = openTabs.value.length > 0 ? openTabs.value[0].id : null
       }
     }
@@ -164,19 +176,10 @@ export const useChannelStore = defineStore('channel', () => {
 
   function isChannelCreator(channel: Channel): boolean {
     const currentUser = getCurrentUser()
-    console.log('=== isChannelCreator 调试信息 ===')
-    console.log('currentUser:', currentUser ? '存在' : '不存在')
-    console.log('channel.creator_id:', channel.creator_id, typeof channel.creator_id)
-    
     if (!currentUser || !currentUser.id || !channel.creator_id) {
-      console.log('返回 false: currentUser、currentUser.id 或 creator_id 不存在')
       return false
     }
-    
-    const result = String(currentUser.id) === String(channel.creator_id)
-    console.log('比较结果:', String(currentUser.id), '===', String(channel.creator_id), '=', result)
-    console.log('=== 调试信息结束 ===')
-    return result
+    return String(currentUser.id) === String(channel.creator_id)
   }
 
   async function sendChannelMessage(channel: Channel, message: string) {

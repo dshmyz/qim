@@ -49,8 +49,12 @@ export function resolveNotificationNav(notification: NotificationLike): Notifica
     return { kind: 'groups' }
   }
 
-  // 待办指派：打开任务应用并聚焦该任务
-  if (notification.type === 'todo_assigned' && payload.task_id !== undefined) {
+  // 待办指派 / 待办提醒：打开任务应用并聚焦该任务
+  // （todo_assigned 与 task_reminder 都带 task_id，且后端都用 confirm_reschedule 动作）
+  if (
+    (notification.type === 'todo_assigned' || notification.type === 'task_reminder') &&
+    payload.task_id !== undefined
+  ) {
     return { kind: 'task', taskId: String(payload.task_id) }
   }
 

@@ -33,6 +33,11 @@ describe('resolveNotificationNav - 通知点击深链路由决策', () => {
     expect(resolveNotificationNav(n)).toEqual({ kind: 'task', taskId: '42' })
   })
 
+  it('task_reminder 命中 task_id → 打开任务（与 todo_assigned 一致）', () => {
+    const n = mapNotification({ type: 'task_reminder', action_payload: '{"task_id":7}' })
+    expect(resolveNotificationNav(n)).toEqual({ kind: 'task', taskId: '7' })
+  })
+
   it('event_reminder 命中 event_id → 打开日历', () => {
     const n = mapNotification({ type: 'event_reminder', action_payload: '{"event_id":77}' })
     expect(resolveNotificationNav(n)).toEqual({ kind: 'calendar', eventId: 77 })
