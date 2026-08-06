@@ -255,6 +255,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			cleanPath = filepath.Join(cleanPath, "index.html")
 		}
 
+		// 小程序每次打开都应由宿主强刷（前端带 ?_t= 缓存破坏），这里再声明 no-cache，
+		// 避免浏览器在对同一 src 的重复加载中命中本地缓存而回不到服务端新版本。
+		c.Header("Cache-Control", "no-cache")
 		c.File(cleanPath)
 	})
 

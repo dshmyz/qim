@@ -77,7 +77,7 @@ const {
   handleOverlayClick,
   handleIframeLoad,
   handleIframeError,
-} = useMiniAppBridge(props, emit)
+} = useMiniAppBridge(props, emit, { useCacheBuster: true })
 
 // Drawer 独有：宽度拖拽
 const drawerWidth = ref(400)
