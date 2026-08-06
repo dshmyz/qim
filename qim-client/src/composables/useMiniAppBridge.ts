@@ -78,6 +78,28 @@ export function useMiniAppBridge(
     }
   })
 
+  // 宿主读剪贴板：优先走 Electron 主进程 clipboard（跨源 iframe / 非安全上下文 /
+  // Linux 聚焦不足时，iframe 里 navigator.clipboard.readText 会因权限策略或聚焦被拒），
+  // 失败再回落 Web Clipboard API。主进程读法三个平台行为一致，是 Linux 粘贴问题的根治。
+  const readClipboardText = async (): Promise<{ text?: string; error?: string }> => {
+    const mainClipboard = (window as any).electron?.clipboard?.readText
+    if (typeof mainClipboard === 'function') {
+      try {
+        const res = await mainClipboard()
+        if (res && res.ok) return { text: res.text }
+        if (res && res.error) return { error: res.error }
+      } catch {
+        // 主进程读法异常，走 web 层兜底
+      }
+    }
+    try {
+      const text = await navigator.clipboard.readText()
+      return { text }
+    } catch (err: any) {
+      return { error: err?.message || '读取剪贴板失败' }
+    }
+  }
+
   const getIframeAllow = (): string => {
     if (hasClipboardPermission.value) {
       return 'clipboard-read; clipboard-write'
@@ -264,19 +286,12 @@ export function useMiniAppBridge(
           }, '*')
           return
         }
-        navigator.clipboard.readText()
-          .then(text => {
-            iframeRef.value?.contentWindow?.postMessage({
-              type: 'clipboard-read-response',
-              payload: { text },
-            }, '*')
-          })
-          .catch(err => {
-            iframeRef.value?.contentWindow?.postMessage({
-              type: 'clipboard-read-response',
-              payload: { error: err.message || '读取剪贴板失败' },
-            }, '*')
-          })
+        readClipboardText().then(({ text, error }) => {
+          iframeRef.value?.contentWindow?.postMessage({
+            type: 'clipboard-read-response',
+            payload: error ? { error } : { text },
+          }, '*')
+        })
         break
       case 'clipboard-write':
         if (!hasPermission('clipboard')) {

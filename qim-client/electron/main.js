@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification, clipboard } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -883,6 +883,17 @@ function registerIPC() {
     } catch (err) {
       console.error('[notification] show failed:', err)
       return false
+    }
+  })
+
+  // 主进程剪贴板读取：小程序/计算器粘贴走这里，绕开 iframe 里 navigator.clipboard
+  // 在跨源/非安全上下文/Linux 聚焦不足时的权限策略与聚焦限制。主进程 Clipboard API
+  // 不受上述 web 层约束，Linux(X11/Wayland)/macOS/Windows 行为一致。
+  ipcMain.handle('clipboard:readText', () => {
+    try {
+      return { ok: true, text: clipboard.readText() }
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) }
     }
   })
 

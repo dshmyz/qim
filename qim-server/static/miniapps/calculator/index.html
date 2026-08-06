@@ -386,34 +386,75 @@
         'Escape': 'C',
       };
 
+      // 对剪贴板读出的算式文本做求值 + 回显（成功/错误文案的统一处理）
+      function applyPastedText(text) {
+        const res = evaluatePastedExpr(text);
+        // 成功：结果放当前值，输入行显示归一化后的原算式
+        if (res.ok) {
+          currentInput = String(res.value);
+          previousInput = '';
+          operator = null;
+          shouldResetScreen = true;
+          inputDisplay.textContent = normalizeExpr(text) + ' =';
+          resultDisplay.textContent = String(res.value);
+          exprText = normalizeExpr(text) + ' =';
+          return;
+        }
+        // 错误文案（除零/括号不匹配/语法错误等）只在确实读到数学式但算不了时提示；
+        // "未识别到有效的算式"/"空算式"（如普通文本）则完全静默，不碰当前计算状态。
+        if (res.error !== '未识别到有效的算式' && res.error !== '空算式') {
+          const prev = resultDisplay.textContent;
+          resultDisplay.textContent = res.error;
+          setTimeout(function() { resultDisplay.textContent = prev; }, 1200);
+        }
+      }
+
+      // 宿主剪贴板读取请求：优先向宿主要（宿主走主进程 clipboard，跨源/非安全上下文/Linux 聚焦都稳），
+      // 宿主超时无响应（纯浏览器环境或宿主无桥）则回落 iframe 内 navigator.clipboard.readText()。
+      function requestClipboardAndEvaluate() {
+        let settled = false;
+        const onMessage = function(event) {
+          const data = event.data;
+          if (!data || typeof data !== 'object' || data.type !== 'clipboard-read-response') return;
+          // 宿主返回了可读文本 → 直接求值（终点）。
+          if (data.payload && typeof data.payload.text === 'string') {
+            settled = true;
+            window.removeEventListener('message', onMessage);
+            applyPastedText(data.payload.text);
+            return;
+          }
+          // 宿主有桥但没读到文本（权限/空贴板等）→ 立即切换 Web Clipboard API 兜底
+          settled = true;
+          window.removeEventListener('message', onMessage);
+          tryWebClipboard();
+        };
+        window.addEventListener('message', onMessage);
+        window.parent.postMessage({ type: 'clipboard-read' }, '*');
+        // 宿主(主进程桥)毫秒级返回；600ms 未回则结果已定，切回 Web Clipboard API 兜底
+        setTimeout(function() {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('message', onMessage);
+          tryWebClipboard();
+        }, 600);
+      }
+
+      function tryWebClipboard() {
+        // readText 需要用户手势，这里恰好在 keydown 手势内；失败则静默忽略
+        navigator.clipboard.readText().then(function(text) {
+          if (typeof text === 'string' && text) {
+            applyPastedText(text);
+          }
+        }).catch(function() {
+          // 读取失败（无权限/非文本/非安全上下文）：静默忽略，保留现有计算状态
+        });
+      }
+
       document.addEventListener('keydown', function(e) {
         // Ctrl/Cmd+V：读取剪贴板算式直接求值
         if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
           e.preventDefault();
-          // readText 需要用户手势，这里恰好在 keydown 手势内；失败则静默忽略
-          navigator.clipboard.readText().then(function(text) {
-            const res = evaluatePastedExpr(text);
-            // 成功：结果放当前值，输入行显示归一化后的原算式
-            if (res.ok) {
-              currentInput = String(res.value);
-              previousInput = '';
-              operator = null;
-              shouldResetScreen = true;
-              inputDisplay.textContent = normalizeExpr(text) + ' =';
-              resultDisplay.textContent = String(res.value);
-              exprText = normalizeExpr(text) + ' =';
-              return;
-            }
-            // 错误文案（除零/括号不匹配/语法错误等）只在确实读到数学式但算不了时提示；
-            // "未识别到有效的算式"/"空算式"（如普通文本）则完全静默，不碰当前计算状态。
-            if (res.error !== '未识别到有效的算式' && res.error !== '空算式') {
-              const prev = resultDisplay.textContent;
-              resultDisplay.textContent = res.error;
-              setTimeout(function() { resultDisplay.textContent = prev; }, 1200);
-            }
-          }).catch(function() {
-            // 读取失败（无权限/非文本）：静默忽略，保留现有计算状态
-          });
+          requestClipboardAndEvaluate();
           return;
         }
 

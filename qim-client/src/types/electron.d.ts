@@ -30,6 +30,9 @@ interface ElectronAPI {
   windowState: {
     isActive: () => Promise<boolean>
   }
+  clipboard: {
+    readText: () => Promise<{ ok: boolean; text?: string; error?: string }>
+  }
   safeStorage: {
     encrypt: (plaintext: string) => Promise<string>
     decrypt: (base64: string) => Promise<string>

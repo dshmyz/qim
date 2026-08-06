@@ -763,7 +763,7 @@ func seedMiniApps(db *gorm.DB) {
 	logger.WithModule("Init").Info("初始化内置小程序数据...")
 
 	miniApps := []model.MiniApp{
-		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Path: "/miniapps/calculator/index.html", Status: "active"},
+		{AppID: "calculator", Name: "计算器", Description: "简单易用的计算器", Path: "/miniapps/calculator/index.html", Status: "active", Permissions: `["clipboard"]`},
 		{AppID: "sticky-notes", Name: "便签", Description: "快速记录想法和灵感", Path: "/miniapps/sticky-notes/index.html", Status: "active"},
 		{AppID: "todo", Name: "待办事项", Description: "任务管理工具", Path: "/miniapps/todo/index.html", Status: "active"},
 		{AppID: "json-formatter", Name: "JSON 格式化", Description: "JSON 格式化和压缩工具", Path: "/miniapps/json-formatter/index.html", Status: "active"},
@@ -774,8 +774,26 @@ func seedMiniApps(db *gorm.DB) {
 	}
 
 	for _, app := range miniApps {
-		if err := db.Create(&app).Error; err != nil {
-			logger.WithModule("Init").Error("创建内置小程序失败", "app_id", app.AppID, "error", err)
+		var existing model.MiniApp
+		err := db.Where("app_id = ?", app.AppID).First(&existing).Error
+		if err == gorm.ErrRecordNotFound {
+			// 内置应用缺失：新建
+			if cerr := db.Create(&app).Error; cerr != nil {
+				logger.WithModule("Init").Error("创建内置小程序失败", "app_id", app.AppID, "error", cerr)
+			}
+			continue
+		}
+		if err != nil {
+			logger.WithModule("Init").Error("查询内置小程序失败", "app_id", app.AppID, "error", err)
+			continue
+		}
+		// 内置应用已存在：同步其声明的能力声明（如计算器的 clipboard 读剪贴板权限），
+		// 老库（历史版本无 permissions 列值）升级后也能拿到权限，无需清库。
+		// 仅当现有 permissions 为空时写入内置声明，避免覆盖管理员手动改动。
+		if existing.Permissions == "" && app.Permissions != "" {
+			if uerr := db.Model(&model.MiniApp{}).Where("id = ?", existing.ID).Update("permissions", app.Permissions).Error; uerr != nil {
+				logger.WithModule("Init").Error("更新内置小程序权限失败", "app_id", app.AppID, "error", uerr)
+			}
 		}
 	}
 

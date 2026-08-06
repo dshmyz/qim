@@ -102,6 +102,11 @@ contextBridge.exposeInMainWorld('electron', {
   windowState: {
     isActive: () => ipcRenderer.invoke('is-main-window-active')
   },
+  clipboard: {
+    // 主进程读剪贴板：给 iframe 里 navigator.clipboard 不可用（跨源/非安全上下文/Linux 聚焦）
+    // 时兜底。返回 { ok, text } 或 { ok:false, error }，由主进程统一序列化。
+    readText: () => ipcRenderer.invoke('clipboard:readText')
+  },
   notifications: {
     show: (title, body, payload) => ipcRenderer.invoke('notification:show', { title, body, payload }),
     onNotificationClick: (callback) => {
