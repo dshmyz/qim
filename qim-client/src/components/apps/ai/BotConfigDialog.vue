@@ -9,6 +9,47 @@
         <i class="fas fa-clock"></i>
         <span>机器人当前为「{{ bot.approval_status === 'rejected' ? '已拒绝' : '待审批' }}」状态，配置和令牌签发功能暂不可用，需管理员审批通过后方可操作。</span>
       </div>
+      <!-- 模型来源 -->
+      <section class="config-section">
+        <div class="section-header">
+          <h4>模型来源</h4>
+        </div>
+        <div class="model-source">
+          <label class="radio-label">
+            <input
+              type="radio"
+              :checked="getUseSystemConfig()"
+              @change="setUseSystemConfig(true)"
+            />
+            <span>使用系统默认模型（推荐）</span>
+          </label>
+          <label class="radio-label">
+            <input
+              type="radio"
+              :checked="!getUseSystemConfig()"
+              @change="setUseSystemConfig(false)"
+            />
+            <span>使用我的自定义配置</span>
+          </label>
+        </div>
+        <div v-if="!getUseSystemConfig()" class="setting-item">
+          <label>选择配置</label>
+          <select
+            :value="getUserConfigId() || ''"
+            @change="setUserConfigId(Number(($event.target as HTMLSelectElement).value) || null)"
+            class="form-select"
+          >
+            <option value="">请选择...</option>
+            <option v-for="cfg in myConfigs" :key="cfg.id" :value="cfg.id">
+              {{ cfg.config_name }} ({{ cfg.model_name }})
+            </option>
+          </select>
+          <span v-if="myConfigs.length === 0" class="setting-hint error">
+            暂无配置，请先在「我的模型配置」中添加
+          </span>
+        </div>
+      </section>
+
       <!-- 回复模式 + Webhook 配置 + 知识库（统一子组件） -->
       <BotReplyConfigFields
         v-model:mode="form.mode"
@@ -108,6 +149,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useBotConfig } from '../../../composables/useBotConfig'
+import { useModelConfigs } from '../../../composables/useModelConfigs'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { useSystemConfigStore } from '../../../stores/systemConfig'
 import type { BotTokenInfo, BotWebhookConfig } from '../../../types/bot'
@@ -119,10 +161,11 @@ const props = defineProps<{ bot: any }>()
 const emit = defineEmits(['close', 'saved'])
 
 const { loading, issueToken, listTokens, revokeToken, updateConfig } = useBotConfig()
+const { configs: myConfigs, fetchConfigs } = useModelConfigs()
 const systemConfigStore = useSystemConfigStore()
 const vectorEnabled = computed(() => systemConfigStore.vectorEnabled)
 
-const form = ref<BotWebhookConfig>({ mode: 'internal_ai', webhook_url: '', webhook_secret: '', use_creator_notes: false })
+const form = ref<BotWebhookConfig>({ mode: 'internal_ai', webhook_url: '', webhook_secret: '', use_creator_notes: false, use_system_config: true, user_config_id: null })
 const tokens = ref<BotTokenInfo[]>([])
 const newToken = ref<{ token: string; id: number } | null>(null)
 const issuing = ref(false)
@@ -185,7 +228,25 @@ const parseCurrentConfig = () => {
     webhook_url: cfg.webhook_url || '',
     webhook_secret: '', // 不回显，留空表示不修改
     use_creator_notes: cfg.use_creator_notes === true,
+    use_system_config: cfg.use_system_config !== false, // 缺省视为系统默认
+    user_config_id: cfg.user_config_id || null,
   }
+}
+
+// 模型来源访问器：form 可能为 undefined 字段，统一兜底（模板里用，避免 TypeScript 报错）
+function getUseSystemConfig(): boolean {
+  return form.value.use_system_config !== false
+}
+function getUserConfigId(): number | null {
+  return form.value.user_config_id || null
+}
+function setUseSystemConfig(v: boolean) {
+  form.value.use_system_config = v
+  if (v) form.value.user_config_id = null // 切回系统默认时清空自定义配置引用
+}
+function setUserConfigId(id: number | null) {
+  form.value.user_config_id = id
+  if (id != null) form.value.use_system_config = false // 选了配置即视为自定义
 }
 
 const loadTokens = async () => {
@@ -195,6 +256,7 @@ const loadTokens = async () => {
 onMounted(async () => {
   parseCurrentConfig()
   await loadTokens()
+  await fetchConfigs() // 模型来源下拉：加载我的模型配置
   // 触发公开配置加载（若其他组件已加载过，store 内 loaded 标志会避免重复请求语义，此处仍保证最新）
   if (!systemConfigStore.loaded) {
     systemConfigStore.fetchPublicConfig()
@@ -250,6 +312,11 @@ const onSave = async () => {
     }
     // internal_ai 模式下送 use_creator_notes；external_webhook 模式下也送（保留 false，避免模式切换后状态遗留）
     payload.use_creator_notes = form.value.mode === 'internal_ai' && form.value.use_creator_notes === true
+    // 模型来源：始终携带，服务端按合并语义更新（切回系统默认时服务端会清空 user_config_id）
+    payload.use_system_config = form.value.use_system_config !== false
+    if (!payload.use_system_config) {
+      payload.user_config_id = form.value.user_config_id || null
+    }
     await updateConfig(props.bot.id, payload)
     QMessage.success('配置已保存')
     emit('saved')
@@ -321,4 +388,13 @@ const formatTime = (s: string) => {
 .mcp-box { margin-top: 10px; padding: 12px; background: #f9fafc; border: 1px solid #e8ecf3; border-radius: 8px; }
 .mcp-config-pre { background: #1e1e2e; color: #cdd6f4; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 6px 0 8px; white-space: pre-wrap; word-break: break-all; }
 .mcp-config-pre code, .mcp-box code { background: #eef1f6; color: #333; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.model-source { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.radio-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #555; }
+.radio-label input[type="radio"] { cursor: pointer; }
+.setting-item { margin-top: 4px; }
+.setting-item > label { display: block; margin-bottom: 5px; font-size: 13px; color: #555; }
+.form-select { width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; box-sizing: border-box; color: #333; background: #fff; }
+.form-select:focus { outline: none; border-color: var(--primary-color, #4f7cff); }
+.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: #aaa; }
+.setting-hint.error { color: #F44336; }
 </style>

@@ -32,6 +32,9 @@ export interface BotWebhookConfig {
   webhook_url?: string
   webhook_secret?: string // 仅写入，服务端不回显
   use_creator_notes?: boolean // internal_ai 模式下是否读取创建者笔记作为知识库
+  // 模型来源（internal_ai 模式）：true=用系统默认模型（推荐）；false 且 user_config_id 非空时用自定义配置
+  use_system_config?: boolean
+  user_config_id?: number | null
 }
 
 // Bot 访问令牌信息（列表用，不含明文/hash）。
