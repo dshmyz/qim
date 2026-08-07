@@ -270,7 +270,56 @@ func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedU
 		if !cfg.IsExternalWebhook() {
 			continue // 仅外部 webhook agent
 		}
+		if cfg.WebhookURL == "" {
+			// pull 模式外部 bot：无回调地址，不投递也不会自动回复。
+			// 向群内回一条系统提示，避免成员 @ 后无反应却不知何故（可感知）。
+			// 仅在被 @ 该 bot 时触发，天然克制；系统消息不经 SendMessage，不会递归再触发 OnMessageSent。
+			s.notifyPullModeBot(convID, senderID, bot.Name)
+			continue
+		}
 		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, senderID, convID, content)
+	}
+}
+
+// notifyPullModeBot 在群会话内落一条系统提示消息：被 @ 的外部 bot 未配 webhook 回调（pull 模式），不会自动回复。
+// 复用 NotifyMembersJoined 的系统消息 + WS 广播模式，便于成员在聊天流里看到原因。
+func (s *MessageService) notifyPullModeBot(convID, senderID uint, botName string) {
+	content := fmt.Sprintf("机器人「%s」未配置回调地址（pull 模式），不会自动回复；如需 @ 即回复，请到机器人设置填写 webhook_url。", botName)
+	systemMsg := &model.Message{
+		ConversationID: convID,
+		SenderID:       senderID,
+		Type:           "system",
+		Content:        content,
+		IsRead:         true,
+	}
+	if err := s.db.Create(systemMsg).Error; err != nil {
+		logger.WithModule("HandleGroupBotMention").Error("创建 pull 模式提示消息失败", "convID", convID, "error", err)
+		return
+	}
+	s.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
+		"last_message_id": systemMsg.ID,
+		"last_message_at": time.Now(),
+	})
+	if s.hub != nil {
+		var sender model.User
+		if err := s.db.First(&sender, senderID).Error; err == nil {
+			systemMsg.Sender = sender
+		}
+		newMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: map[string]interface{}{
+				"id":              systemMsg.ID,
+				"conversation_id": systemMsg.ConversationID,
+				"sender_id":       systemMsg.SenderID,
+				"type":            systemMsg.Type,
+				"content":         systemMsg.Content,
+				"is_read":         systemMsg.IsRead,
+				"created_at":      systemMsg.CreatedAt,
+				"sender":          systemMsg.Sender,
+			},
+		}
+		jsonMsg, _ := json.Marshal(newMsg)
+		s.hub.SendToConversation(convID, 0, jsonMsg)
 	}
 }
 

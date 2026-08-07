@@ -122,3 +122,41 @@ func TestHandleGroupBotMention_IgnoresNoMentionOrNonGroup(t *testing.T) {
 	svc.HandleGroupBotMention(group2.ID, human.ID, []uint{internalUser.ID}, "@内部 你好")
 	assertOutboxCount(t, db, 0, "内部 AI bot 不应走群转发")
 }
+
+// TestHandleGroupBotMention_PullModeNotices 外部 webhook bot 未配回调地址（pull 模式）时，
+// @ 它不投递 webhook，但会在群内落一条系统提示，避免成员无感知。
+func TestHandleGroupBotMention_PullModeNotices(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewMessageService(db, nil, nil)
+
+	botUser := &model.User{Username: "pullbot", Nickname: "拉取机器人", Type: "bot"}
+	human := &model.User{Username: "ph", Nickname: "成员", Type: "user"}
+	require.NoError(t, db.Create(botUser).Error)
+	require.NoError(t, db.Create(human).Error)
+
+	// 外部 agent 但 webhook_url 为空 → pull 模式
+	bot := &model.Bot{
+		Name: "PullAgent", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &botUser.ID,
+		Config: `{"mode":"external_webhook","webhook_url":""}`,
+	}
+	require.NoError(t, db.Create(bot).Error)
+
+	group := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(group).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: human.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: botUser.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: group.ID}).Error)
+
+	svc.HandleGroupBotMention(group.ID, human.ID, []uint{botUser.ID}, "@拉取机器人 在吗")
+
+	// 不应投递 webhook（空 URL）
+	assertOutboxCount(t, db, 0, "pull 模式不应入队 webhook 投递")
+
+	// 应落一条系统提示消息
+	var notice model.Message
+	err := db.Where("conversation_id = ? AND type = ?", group.ID, "system").Order("id DESC").First(&notice).Error
+	require.NoError(t, err, "应创建 pull 模式提示消息")
+	assert.Contains(t, notice.Content, "PullAgent")
+	assert.Contains(t, notice.Content, "pull 模式")
+}
+

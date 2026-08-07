@@ -26,7 +26,12 @@
     <div class="form-field">
       <label>回调地址</label>
       <input v-model="webhookUrl" placeholder="https://your-agent.example/qim-webhook" />
-      <p class="field-hint">QIM 把用户回复 POST 到此地址（HMAC-SHA256 签名）</p>
+      <p v-if="webhookUrl" class="field-hint">QIM 把用户回复 POST 到此地址（HMAC-SHA256 签名），agent 收到后可即时回复</p>
+      <p v-else class="field-hint field-hint-warn">
+        <span class="warn-badge">pull 模式</span>
+        未填回调地址：QIM 不会投递，机器人被 @ 不会自动回复。需用 CLI/MCP 主动轮询
+        <code>GET /bot/messages</code> 并由你的 agent 进程回发；否则对用户表现为「无反应」。
+      </p>
     </div>
     <div class="form-field">
       <label>签名密钥</label>

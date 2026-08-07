@@ -8,6 +8,7 @@
       <div class="add-bot-body">
         <p class="add-bot-tip">
           把外部 agent 机器人拉进群后，群成员可直接 <b>@机器人</b> 触发其回复，机器人也能在群里主动发言。
+          <span class="add-bot-tip-sub">标记「pull 模式」的机器人未配回调地址，@ 它不会自动回复，需 agent 主动轮询 <code>GET /bot/messages</code>。</span>
         </p>
 
         <div v-if="loading" class="add-bot-empty">加载中...</div>
@@ -29,7 +30,10 @@
               <i class="fas fa-robot"></i>
             </div>
             <div class="bot-info">
-              <span class="bot-name">{{ bot.name }}</span>
+              <span class="bot-name">
+                {{ bot.name }}
+                <span v-if="bot.pullMode" class="bot-pull-badge" title="未配置回调地址（pull 模式）：进群后 @ 不会自动回复，需用 CLI/MCP 轮询 GET /bot/messages 拉取并由你的 agent 回发。">pull 模式</span>
+              </span>
               <span class="bot-desc">{{ bot.description || '外部 agent 机器人' }}</span>
             </div>
             <span v-if="bot.inGroup" class="bot-state">已在群</span>
@@ -51,6 +55,8 @@ export interface ExternalBotCandidate {
   id: number
   name: string
   description?: string
+  /** 未配 webhook 回调（pull 模式）：进群后 @ 不会自动回复，需 CLI/MCP 轮询拉取 */
+  pullMode?: boolean
   /** 该 bot 是否已在当前群里（初次进入时由父组件预标记） */
   inGroup?: boolean
 }
@@ -143,6 +149,19 @@ const selectBot = (bot: ExternalBotCandidate) => {
   color: var(--primary-color, #2f6fed);
 }
 
+.add-bot-tip-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-tertiary, #aaa);
+}
+
+.add-bot-tip-sub code {
+  background: var(--border-color, #f0f0f0);
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
 .bot-list {
   display: flex;
   flex-direction: column;
@@ -196,6 +215,20 @@ const selectBot = (bot: ExternalBotCandidate) => {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary, #333);
+}
+
+.bot-pull-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffe08a;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+  vertical-align: 1px;
 }
 
 .bot-desc {

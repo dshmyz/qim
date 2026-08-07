@@ -281,6 +281,26 @@ func AddBotToGroup(c *gin.Context) {
 		return
 	}
 
+	// 入群感知：与真人入群一致，落一条群内系统消息并广播 group_member_joined，
+	// 让所有群成员在聊天流里看到「机器人加入了群聊」。
+	if bot.VirtualUserID != nil {
+		operatorName := ""
+		if userSvc := di.GlobalContainer.UserService; userSvc != nil {
+			if operator, err := userSvc.GetUser(userID.(uint)); err == nil {
+				operatorName = operator.Nickname
+				if operatorName == "" {
+					operatorName = operator.Username
+				}
+			}
+		}
+		if operatorName == "" {
+			operatorName = "系统"
+		}
+		service.NotifyMembersJoined(database.GetDB(), uint(convID), userID.(uint),
+			fmt.Sprintf("%s 添加了机器人 %s", operatorName, bot.Name),
+			[]model.User{{ID: *bot.VirtualUserID, Nickname: bot.Name, Username: bot.Name, Type: "bot"}})
+	}
+
 	if ws.GlobalHub != nil {
 		ws.GlobalHub.UpdateConversationMembers(uint(convID))
 	}

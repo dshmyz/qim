@@ -61,8 +61,8 @@
         :vector-enabled="vectorEnabled"
       />
 
-      <!-- Token 管理 -->
-      <section class="config-section">
+      <!-- Token 管理（仅外部 Agent 需要：pull 拉取 / Bot API 回发 / MCP 均凭令牌鉴权） -->
+      <section v-if="form.mode === 'external_webhook'" class="config-section">
         <div class="section-header">
           <h4>访问令牌</h4>
         </div>
@@ -100,8 +100,8 @@
         </table>
       </section>
 
-      <!-- MCP 接入引导 -->
-      <section class="config-section">
+      <!-- MCP 接入引导（仅外部 Agent：内置 AI 走服务端生成，无需外部接入） -->
+      <section v-if="form.mode === 'external_webhook'" class="config-section">
         <div class="section-header">
           <h4>MCP 接入（推荐）</h4>
           <button type="button" class="mini-btn" @click="showMcpConfig = !showMcpConfig">

@@ -3325,12 +3325,19 @@ const handleAddBotToGroup = async (group?: any) => {
         } catch { /* 忽略解析失败 */ }
         return mode === 'external_webhook' && bot.virtual_user_id != null
       })
-      .map((bot: any) => ({
-        id: bot.id,
-        name: bot.name,
-        description: bot.description || '外部 agent 机器人',
-        inGroup: inGroupMemberNames.has(bot.name)
-      }))
+      .map((bot: any) => {
+        // pull 模式：mode=external 但未填回调地址 → 不会被自动回复，仅可被 CLI/MCP 轮询
+        let cfg: any = {}
+        try { cfg = JSON.parse(bot.config || '{}') } catch { /* 忽略 */ }
+        const pullMode = cfg.mode === 'external_webhook' && !cfg.webhook_url
+        return {
+          id: bot.id,
+          name: bot.name,
+          description: bot.description || '外部 agent 机器人',
+          pullMode,
+          inGroup: inGroupMemberNames.has(bot.name)
+        }
+      })
   } catch (error: any) {
     logger.error('加载可添加机器人失败:', error)
     addBotCandidates.value = []
