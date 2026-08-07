@@ -205,7 +205,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 			// HTTP 与 WebSocket 都经由本 service 发送，因此在此统一触发一次智能回复/分身回调。
 			if s.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
 				utils.SafeGo(func() {
-					s.hub.OnMessageSent(senderID, convID, content, mentionUserIDs)
+					s.hub.OnMessageSent(&msg, mentionUserIDs)
 				})
 			}
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/handler"
 	"github.com/dshmyz/qim/qim-server/middleware"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
@@ -144,8 +145,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}
 
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
-	hub.OnMessageSent = func(senderID uint, conversationID uint, content string, _ []uint) {
+	hub.OnMessageSent = func(msg *model.Message, _ []uint) {
 		sre := handler.GetSmartReplyEngine()
+		senderID := msg.SenderID
+		conversationID := msg.ConversationID
+		content := msg.Content
 		// @all 不触发 AI，避免噪音
 		if mention.HasAnyMention(content) && mention.IsAllMentioned(mention.Parse(content)) {
 			return
@@ -161,9 +165,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		// 待办提取：独立于智能回复，只看群聊 ExtractTodos 配置
 		handler.TryExtractTodos(senderID, conversationID, content)
 
-		// 智能回复：受 Enabled/ReplyMode 等控制
+		// 智能回复：受 Enabled/ReplyMode 等控制。
+		// 透传完整消息，使 AI 路径能读取引用消息（QuotedMessageID）以提取被引用文件正文。
 		if sre != nil && msgSvc != nil {
-			sre.HandleMessage(senderID, conversationID, content, mentionUserIDs)
+			sre.HandleMessage(msg, mentionUserIDs)
 		}
 	}
 

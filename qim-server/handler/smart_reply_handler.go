@@ -88,6 +88,11 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		di.GlobalContainer.UserService,
 	)
 
+	// 注入被引用文件正文读取器，使 @AI 引用文件消息时可把文件内容喂给 AI（nil 时安全降级）。
+	if gds := di.GlobalContainer.GroupDocumentService; gds != nil {
+		e.smartReplyGraph.SetQuotedFileReader(gds)
+	}
+
 	log.Printf("[SmartReplyGraph] 开始编译 Graph...")
 	err := e.smartReplyGraph.BuildGraph()
 	if err != nil {
@@ -98,7 +103,10 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	return err
 }
 
-func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, content string, mentionUserIDs []uint) {
+func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []uint) {
+	userID := msg.SenderID
+	conversationID := msg.ConversationID
+	content := msg.Content
 	if e.aiService == nil || !e.aiService.IsConfigured() {
 		log.Printf("[SmartReply] AI 服务未配置，跳过处理")
 		return
@@ -182,7 +190,7 @@ func (e *SmartReplyEngine) HandleMessage(userID uint, conversationID uint, conte
 		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
 		case GroupAIMentionReply:
 			question := extractAIQuestion(content, assistantName)
-			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName)
+			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
 			return
 		case GroupAISkipReply:
 			return
@@ -469,7 +477,8 @@ func extractAIQuestion(content string, assistantName string) string {
 }
 
 // handleAIMention 处理 @AI 触发回复
-func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
+// origMsg 为触发这条 @AI 的原始消息（透传完整对象，供读取引用消息等属性）。
+func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string, origMsg *model.Message) {
 	log.Printf("[SmartReply] @AI 触发回复: userID=%d, convID=%d, question=%s", userID, conversationID, question[:min(50, len(question))])
 
 	if e.aiService == nil || !e.aiService.IsConfigured() {
@@ -478,15 +487,19 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 	}
 
 	if e.smartReplyGraph != nil {
-		e.handleAIMentionWithGraph(userID, conversationID, question, originalContent, assistantName)
+		e.handleAIMentionWithGraph(userID, conversationID, question, originalContent, assistantName, origMsg)
 		return
 	}
 
 	e.handleAIMentionLegacy(userID, conversationID, question, originalContent, conv, assistantName)
 }
 
-func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string) {
+func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string, origMsg *model.Message) {
 	ctx := context.Background()
+	var quotedMessageID *uint
+	if origMsg != nil {
+		quotedMessageID = origMsg.QuotedMessageID
+	}
 	input := &service.SmartReplyContext{
 		Message:         question,
 		OriginalContent: originalContent,
@@ -494,6 +507,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		ConversationID:  conversationID,
 		IsAIMention:     true,
 		AssistantName:   assistantName,
+		QuotedMessageID: quotedMessageID,
 	}
 
 	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 AI 群管理工具，

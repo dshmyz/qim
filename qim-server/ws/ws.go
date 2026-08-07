@@ -95,8 +95,11 @@ type Hub struct {
 	userSubscribers sync.Map
 	versionStats    sync.Map // key: "version|platform" → *int64，用于版本分布统计
 
-	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发
-	OnMessageSent func(senderID uint, conversationID uint, content string, mentionUserIDs []uint)
+	// OnMessageSent 回调：消息发送后触发，用于智能回复/分身触发。
+	// 透传完整消息对象（含 Type/Content/QuotedMessageID/QuotedMessage），
+	// 使下游 AI 触发路径能按需读取消息属性（content、引用、文件等），
+	// 而非每次新增需求就扩回调参数。
+	OnMessageSent func(msg *model.Message, mentionUserIDs []uint)
 
 	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
 	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
@@ -878,7 +881,7 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 
 	if c.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
-		utils.SafeGo(func() { c.hub.OnMessageSent(c.userID, convID, content, mentionUserIDs) })
+		utils.SafeGo(func() { c.hub.OnMessageSent(&msg, mentionUserIDs) })
 	}
 }
 
@@ -1153,12 +1156,21 @@ func handleScreenShareStart(c *Client, data interface{}) {
 		return
 	}
 
+	// 查询分享者昵称用于屏幕共享通知展示
+	var sharerNickname string
+	if err := db.Model(&model.User{}).Where("id = ?", c.userID).Select("nickname").First(&sharerNickname).Error; err != nil {
+		logger.WithModule("WS").Warn("查询屏幕共享者昵称失败，使用默认值", "error", err)
+		sharerNickname = "对方"
+	}
+
 	// 构建屏幕共享开始消息
 	wsMsg := WSMessage{
 		Type: "screen-share.start",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         userId,
+			"from_user_id":    c.userID,
+			"from_user_name":  sharerNickname,
 			"timestamp":       time.Now().Unix(),
 		},
 	}
@@ -1277,9 +1289,11 @@ func handleScreenShareData(c *Client, data interface{}) {
 		return
 	}
 
-	// 构建屏幕共享数据消息
+	// 构建屏幕共享数据消息。转发时沿用客户端发送的 dot 类型 "screen-share.data"，
+	// 保证接收方按同一事件名注册的 handler 能收到（此前误用下划线 "screen-share-data"
+	// 导致与前端注册名不一致、中继帧被静默丢弃）。
 	wsMsg := WSMessage{
-		Type: "screen-share-data",
+		Type: "screen-share.data",
 		Data: map[string]interface{}{
 			"conversation_id": convID,
 			"user_id":         c.userID,
@@ -1444,11 +1458,18 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 		c.hub.SendToUser(requesterID, acceptJson)
 
 		// 向响应者发送开始消息
+		var requesterName string
+		if err := db.Model(&model.User{}).Where("id = ?", requesterID).Select("nickname").First(&requesterName).Error; err != nil {
+			logger.WithModule("WS").Warn("查询请求者昵称失败，使用默认值", "error", err)
+			requesterName = "对方"
+		}
 		startMsg := WSMessage{
 			Type: "screen-share.start",
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         requesterID,
+				"from_user_id":    requesterID,
+				"from_user_name":  requesterName,
 				"timestamp":       time.Now().Unix(),
 			},
 		}
@@ -1473,6 +1494,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 
 // 处理视频通话邀请
 func handleCallInvite(c *Client, data interface{}) {
+	db := c.hub.db
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
 		logger.WithModule("WS").Warn("通话邀请数据格式错误", "data", data)
@@ -1499,14 +1521,22 @@ func handleCallInvite(c *Client, data interface{}) {
 
 	logger.WithModule("WS").Info("用户发起通话邀请", "fromUserID", c.userID, "targetUserID", targetUserID, "callType", callType)
 
+	// 查询发起者昵称用于来电通知展示
+	var callerNickname string
+	if err := db.Model(&model.User{}).Where("id = ?", c.userID).Select("nickname").First(&callerNickname).Error; err != nil {
+		logger.WithModule("WS").Warn("查询发起者昵称失败，使用默认值", "error", err)
+		callerNickname = "对方"
+	}
+
 	// 转发通话邀请给目标用户
 	callMsg := WSMessage{
 		Type: "call.start",
 		Data: map[string]interface{}{
-			"from_user_id": c.userID,
-			"call_type":    callType,
-			"signal":       signal,
-			"timestamp":    time.Now().Unix(),
+			"from_user_id":    c.userID,
+			"from_user_name":  callerNickname,
+			"call_type":       callType,
+			"signal":          signal,
+			"timestamp":       time.Now().Unix(),
 		},
 	}
 	jsonMsg, _ := json.Marshal(callMsg)

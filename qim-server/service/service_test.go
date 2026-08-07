@@ -499,7 +499,7 @@ func TestMessageService_SendMessageTriggersHubCallbackOnce(t *testing.T) {
 	db := setupServiceTestDB(t)
 	hub := ws.NewHub(db, "test-secret", "http")
 	callbackCalls := make(chan []uint, 2)
-	hub.OnMessageSent = func(_ uint, _ uint, _ string, mentionUserIDs []uint) {
+	hub.OnMessageSent = func(_ *model.Message, mentionUserIDs []uint) {
 		callbackCalls <- mentionUserIDs
 	}
 	svc := NewMessageService(db, hub, nil)
