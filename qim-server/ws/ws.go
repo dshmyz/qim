@@ -113,6 +113,7 @@ type Client struct {
 	conn     *websocket.Conn
 	send     chan []byte
 	userID   uint
+	username string // 用户名（来自 JWT，认证时缓存，用于状态变更日志）
 	authed   bool   // 是否已通过认证
 	jwtToken string // 待认证的 token
 	version  string // 客户端版本号（用于版本分布统计）
@@ -226,7 +227,7 @@ func (h *Hub) Run() {
 			logger.WithModule("WS").Info("用户连接", "userID", client.userID)
 
 			// 更新用户在线状态并广播
-			h.UpdateUserStatus(client.userID, StatusOnline)
+			h.UpdateUserStatus(client.userID, client.username, StatusOnline)
 
 		case client := <-h.unregister:
 			h.clients.LoadAndDelete(client)
@@ -244,14 +245,26 @@ func (h *Hub) Run() {
 
 				if len(clients) == 0 {
 					h.userClients.Delete(client.userID)
-					h.UpdateUserStatus(client.userID, StatusOffline)
+					h.UpdateUserStatus(client.userID, client.username, StatusOffline)
 				} else {
 					h.userClients.Store(client.userID, clients)
 				}
 			}
 
 			h.CleanupUserSubscriptions(client.userID)
-			logger.WithModule("WS").Info("用户断开连接", "userID", client.userID)
+
+			// userID=0 表示连接从未完成认证（未发合法的 auth 消息）就断开。
+			// 这类连接从未被 register，断开是无害空操作，但会刷日志。带出对端地址便于定位来源
+			// （浏览器/探活脚本直接访问 ws、或某个把 token 放 URL 且不发 auth 的老连接）。
+			if client.userID == 0 {
+				remote := "unknown"
+				if client.conn != nil && client.conn.RemoteAddr() != nil {
+					remote = client.conn.RemoteAddr().String()
+				}
+				logger.WithModule("WS").Warn("未认证连接断开", "remote", remote, "version", client.version, "platform", client.platform)
+			} else {
+				logger.WithModule("WS").Info("用户断开连接", "userID", client.userID)
+			}
 
 		case message := <-h.broadcast:
 			// 异步广播，不阻塞事件循环
@@ -312,7 +325,7 @@ func (h *Hub) asyncBroadcast(message []byte) {
 			}
 			if len(clients) == 0 {
 				h.userClients.Delete(client.userID)
-				h.UpdateUserStatus(client.userID, StatusOffline)
+				h.UpdateUserStatus(client.userID, client.username, StatusOffline)
 			} else {
 				h.userClients.Store(client.userID, clients)
 			}
@@ -587,6 +600,8 @@ func (c *Client) handleAuth(data interface{}) {
 
 	c.userID = claims.UserID
 	c.authed = true
+	// 认证成功后恢复为正常的 60s 读超时（未认证阶段用的是 10s 认证超时窗口）
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.hub.register <- c
 
 	c.sendJSON(WSMessage{Type: "auth_success", Data: map[string]interface{}{"user_id": c.userID}})
@@ -606,9 +621,21 @@ func (c *Client) readPump() {
 
 	// 设置读取消息大小限制（1MB）和读取超时
 	c.conn.SetReadLimit(1 * 1024 * 1024)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	// 未认证连接用较短的认证超时窗口：连上后须在 authTimeout 内发出合法 auth 消息，
+	// 否则 ReadJSON 超时触发断开，避免未认证连接长期占用连接/被反复连而刷日志。
+	// 认证成功后（handleAuth 里）会恢复为正常的 60s 读超时。
+	timeout := time.Duration(60 * time.Second)
+	if !c.authed {
+		timeout = time.Duration(10 * time.Second)
+	}
+	c.conn.SetReadDeadline(time.Now().Add(timeout))
+	// 收到协议级 ping 控制帧时续期读超时。但未认证连接不能通过无脑发 ping 来绕过
+	// 上面的 10s 认证超时窗口无限续命，故仅在已认证后才会把截止时间重置回 60s；
+	// 未认证时保持 10s 的硬上限，到点即断。
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if c.authed {
+			c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		}
 		return nil
 	})
 
@@ -1057,6 +1084,9 @@ func ServeWs(hub *Hub, c *gin.Context) {
 	if exists {
 		client.userID = userID.(uint)
 		client.authed = true
+		if uname, ok := c.Get("username"); ok {
+			client.username, _ = uname.(string)
+		}
 		client.hub.register <- client
 	}
 
@@ -1623,7 +1653,7 @@ func (d *StatusDebouncer) Debounce(userID uint, fn func()) {
 }
 
 // UpdateUserStatus 更新用户状态并广播
-func (h *Hub) UpdateUserStatus(userID uint, status string) {
+func (h *Hub) UpdateUserStatus(userID uint, username, status string) {
 	db := h.db
 	now := time.Now()
 
@@ -1632,12 +1662,12 @@ func (h *Hub) UpdateUserStatus(userID uint, status string) {
 		"last_online": now,
 	})
 	if result.Error != nil {
-		logger.WithModule("WS").Error("更新用户状态失败", "userID", userID, "error", result.Error)
+		logger.WithModule("WS").Error("更新用户状态失败", "userID", userID, "username", username, "error", result.Error)
 		return
 	}
 
 	if result.RowsAffected > 0 {
-		logger.WithModule("WS").Info("用户状态变更", "userID", userID, "status", status)
+		logger.WithModule("WS").Info("用户状态变更", "userID", userID, "username", username, "status", status)
 		h.statusDebouncer.Debounce(userID, func() {
 			h.BroadcastUserStatus(userID, status)
 		})
