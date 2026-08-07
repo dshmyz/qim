@@ -164,15 +164,15 @@ const (
 
 // Route 路由规则
 type Route struct {
-	Provider string   `yaml:"provider"`
-	Model    string   `yaml:"model"`
-	Fallback []string `yaml:"fallback"`
+	Provider string   `yaml:"provider" json:"provider"`
+	Model    string   `yaml:"model" json:"model"`
+	Fallback []string `yaml:"fallback" json:"fallback"`
 }
 
 // RouterConfig 路由配置
 type RouterConfig struct {
-	DefaultTask TaskType           `yaml:"default_task"`
-	Routes      map[TaskType]Route `yaml:"routes"`
+	DefaultTask TaskType           `yaml:"default_task" json:"defaultTask"`
+	Routes      map[TaskType]Route `yaml:"routes" json:"routes"`
 }
 
 // Override 覆盖规则（用户/群组级）

@@ -1,64 +1,76 @@
 <template>
   <div class="providers-page">
-    <el-card shadow="never">
-      <!-- 工具栏 -->
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <h2 class="page-title">AI 模型提供商管理</h2>
-          <p class="page-desc">管理 AI 模型提供商配置，包括 API 端点、密钥、可用模型等</p>
-        </div>
-        <div class="toolbar-right">
-          <el-button type="primary" @click="handleCreate">
-            <el-icon><Plus /></el-icon>
-            添加提供商
-          </el-button>
-          <el-button @click="handleRefresh">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </div>
-      </div>
+    <el-tabs v-model="activeTab" class="config-tabs">
+      <!-- AI 供应商 -->
+      <el-tab-pane label="AI 供应商" name="providers">
+        <el-card shadow="never">
+          <!-- 工具栏 -->
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <h2 class="page-title">AI 模型提供商管理</h2>
+              <p class="page-desc">管理 AI 模型提供商配置，包括 API 端点、密钥、可用模型等</p>
+            </div>
+            <div class="toolbar-right">
+              <el-button type="primary" @click="handleCreate">
+                <el-icon><Plus /></el-icon>
+                添加提供商
+              </el-button>
+              <el-button @click="handleRefresh">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+            </div>
+          </div>
 
-      <!-- 提供商列表 -->
-      <ProviderTable
-        :providers="aiStore.providers"
-        :loading="aiStore.loading"
-        :testing-id="aiStore.testingId"
-        @test="handleTest"
-        @edit="handleEdit"
-        @delete="handleDelete"
-        @toggle="handleToggle"
-      />
+          <!-- 提供商列表 -->
+          <ProviderTable
+            :providers="aiStore.providers"
+            :loading="aiStore.loading"
+            :testing-id="aiStore.testingId"
+            @test="handleTest"
+            @edit="handleEdit"
+            @delete="handleDelete"
+            @toggle="handleToggle"
+          />
 
-      <!-- 空状态 -->
-      <el-empty
-        v-if="!aiStore.loading && aiStore.providers.length === 0"
-        description="暂无 AI 模型提供商，请添加"
-      >
-        <el-button type="primary" @click="handleCreate">添加提供商</el-button>
-      </el-empty>
-    </el-card>
+          <!-- 空状态 -->
+          <el-empty
+            v-if="!aiStore.loading && aiStore.providers.length === 0"
+            description="暂无 AI 模型提供商，请添加"
+          >
+            <el-button type="primary" @click="handleCreate">添加提供商</el-button>
+          </el-empty>
+        </el-card>
 
-    <!-- 创建/编辑对话框 -->
-    <ProviderFormDialog
-      v-model:visible="dialogVisible"
-      :is-edit="isEdit"
-      :provider-data="currentProvider"
-      :submit-loading="submitLoading"
-      @confirm="handleDialogConfirm"
-    />
+        <!-- 创建/编辑对话框 -->
+        <ProviderFormDialog
+          v-model:visible="dialogVisible"
+          :is-edit="isEdit"
+          :provider-data="currentProvider"
+          :submit-loading="submitLoading"
+          @confirm="handleDialogConfirm"
+        />
+      </el-tab-pane>
+
+      <!-- 模型路由 -->
+      <el-tab-pane label="模型路由" name="router">
+        <Router />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Plus, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useAIStore } from '@/stores/ai'
 import type { AIProvider } from '@/types/ai'
 import ProviderTable from './components/ProviderTable.vue'
 import ProviderFormDialog from './components/ProviderFormDialog.vue'
+import Router from './Router.vue'
 
+const activeTab = ref('providers')
 const aiStore = useAIStore()
 
 // 对话框状态
@@ -151,6 +163,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+.config-tabs {
+  --el-tabs-header-margin-bottom: var(--space-5);
 }
 
 .toolbar {

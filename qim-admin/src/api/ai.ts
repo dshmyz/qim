@@ -6,6 +6,8 @@ import type {
   CreateProviderParams,
   UpdateProviderParams,
   TestConnectionResult,
+  AIRouterConfig,
+  AIRouterResponse,
 } from '@/types/ai'
 
 // Provider CRUD
@@ -52,5 +54,28 @@ export const testProviderConnection = (id: number): Promise<AxiosResponse<ApiRes
   return request({
     url: `/v1/admin/ai/providers/${id}/test`,
     method: 'post',
+  })
+}
+
+// ===== AI 模型路由（任务类型 → provider/model） =====
+export const getAIRouter = (): Promise<AxiosResponse<ApiResponse<AIRouterResponse>>> => {
+  return request({
+    url: '/v1/admin/ai/router',
+    method: 'get',
+  })
+}
+
+export const saveAIRouter = (data: AIRouterConfig): Promise<AxiosResponse<ApiResponse<{ usingDb: boolean }>>> => {
+  return request({
+    url: '/v1/admin/ai/router',
+    method: 'put',
+    data,
+  })
+}
+
+export const clearAIRouter = (): Promise<AxiosResponse<ApiResponse<{ usingDb: boolean }>>> => {
+  return request({
+    url: '/v1/admin/ai/router',
+    method: 'delete',
   })
 }

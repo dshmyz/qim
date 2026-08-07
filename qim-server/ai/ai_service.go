@@ -553,6 +553,19 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	s.router = NewModelRouter(cfg.Router)
 }
 
+// UpdateRouter 用给定 RouterConfig 重建运行时 router（不重建 provider pool、不触碰 config.yaml）。
+// 用于管理后台「AI 模型路由」保存后热更，无需重启。
+// 注意：仅替换路由表，provider pool 仍由 config.yaml / DB 供应商管理。
+func (s *AIService) UpdateRouter(rc RouterConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.config == nil {
+		s.config = &AIConfig{}
+	}
+	s.config.Router = rc
+	s.router = NewModelRouter(rc)
+}
+
 // DBProviderInfo 数据库 Provider 的纯数据描述，避免 ai 包依赖 model 包。
 type DBProviderInfo struct {
 	ID       uint
