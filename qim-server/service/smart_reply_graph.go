@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -27,6 +29,15 @@ type LegacyKnowledgeService interface {
 	BuildKnowledgeContext(query string) string
 }
 
+// QuotedDocumentReader 按 fileID 读取单个被引用对象内容（不入库）。
+// *GroupDocumentService 实现此接口；注入 nil 时被引用文件/图片解析自动降级（不回读）。
+type QuotedDocumentReader interface {
+	ExtractTextForContext(fileID uint) (name string, text string, err error)
+	// ImageURLForContext 读取被引用图片原始字节并转成 base64 data URL，供群 AI 多模态识别。
+	// 可选：未实现时（旧注入或 nil reader）图片分支按"读不了"降级。
+	ImageURLForContext(fileID uint) (name string, dataURL string, err error)
+}
+
 // GroupAIConfig 群组专属 AI 配置（非群聊场景下为 nil）
 type GroupAIConfig struct {
 	Personality  string // casual, concise, friendly, technical
@@ -47,6 +58,17 @@ type SmartReplyContext struct {
 	IsAIMention     bool
 	AssistantName   string
 	Intent          *ai.MessageIntent
+	// QuotedMessageID 用户 @AI 文本消息所引用的消息 ID（可能为 nil）。
+	// 引用了一条文件消息时，AI 可借此读取该文件正文作为上下文。
+	QuotedMessageID *uint
+	// QuotedFileCtx 被引用文件【成功解析出的正文】（供 buildHistoryMessages 注入），为空表示无正文。
+	QuotedFileCtx string
+	// QuotedFileFailed 被引用文件【读取失败/读不了】的说明（供 AI 如实告知用户），为空表示无失败。
+	// 与 QuotedFileCtx 互斥：成功时仅 QuotedFileCtx 非空，失败时仅 QuotedFileFailed 非空。
+	QuotedFileFailed string
+	// QuotedImageURL 被引用图片【成功读取】的 base64 data URL（供 AI 多模态识别图片），为空表示无图可看。
+	// 与 QuotedFileFailed 互斥：图片成功时仅 QuotedImageURL 非空，失败时仅 QuotedFileFailed 非空。
+	QuotedImageURL string
 
 	// 动态上下文
 	KnowledgeCtx string // 知识库检索结果
@@ -78,6 +100,7 @@ type SmartReplyGraph struct {
 	legacyKnowledge  LegacyKnowledgeService
 	groupMemorySvc   *GroupMemoryService
 	userSvc          *UserService
+	quotedFile       QuotedDocumentReader
 }
 
 func NewSmartReplyGraph(
@@ -103,6 +126,12 @@ func (g *SmartReplyGraph) BuildGraph() error {
 		return fmt.Errorf("构建回复 Graph 失败: %w", err)
 	}
 	return nil
+}
+
+// SetQuotedFileReader 注入被引用文件正文读取器（*GroupDocumentService 实现）。
+// 传 nil 可关闭按引用读取文件正文的能力（安全降级）。
+func (g *SmartReplyGraph) SetQuotedFileReader(reader QuotedDocumentReader) {
+	g.quotedFile = reader
 }
 
 var registerReplyMergeOnce sync.Once
@@ -156,7 +185,12 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 		return nil, err
 	}
 	historyMessages := g.buildHistoryMessages(input)
-	chatModel := NewEinoChatModel(g.aiService, ai.TaskTypeChat, input.UserID)
+	// 被引用图片时走视觉任务类型（多模态），否则常规对话；视觉任务未配置时由模型路由回退到默认任务。
+	taskType := ai.TaskTypeChat
+	if input.QuotedImageURL != "" {
+		taskType = ai.TaskTypeVision
+	}
+	chatModel := NewEinoChatModel(g.aiService, taskType, input.UserID)
 	return chatModel.Stream(ctx, historyMessages)
 }
 
@@ -263,14 +297,133 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	}
 	input.MemoryCtx = memoryCtx
 
+	// 被引用消息正文：@AI 消息引用了消息时，若被引用的是文件消息则尝试解析正文注入上下文。
+	// 仅对 @AI 提及（IsAIMention）场景生效。所有边界（非文件、解析失败、过大、为空）都显式
+	// 注入提示语，让 AI 诚实说明"看不了"，而不是假装读取——不依赖大模型自行识别。
+	if input.IsAIMention && input.QuotedMessageID != nil && g.quotedFile != nil {
+		var quoted model.Message
+		if err := g.db.First(&quoted, *input.QuotedMessageID).Error; err == nil && quoted.Type == "file" {
+			quotedName := nameOfQuoted(quoted.Content)
+			fileID := parseQuotedFileID(quoted.Content)
+			if fileID == 0 {
+				// 被引用的是文件消息但拿不到文件 id（Content 缺失/非 JSON）
+				input.QuotedFileFailed = fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其内容缺少可解析的文件信息，无法读取正文。请说明你无法读取该文件，可请对方重新发送。", quotedName)
+			} else if name, text, err := g.quotedFile.ExtractTextForContext(fileID); err == nil {
+				text = truncateQuotedFileText(text)
+				if text != "" {
+					// 截断后仍可能有内容则注入正文
+					input.QuotedFileCtx = fmt.Sprintf("📄 被引用文件「%s」的内容：\n%s", name, text)
+				} else {
+					// 解析成功但正文为空（如空文档），明确告知而非假装读到
+					input.QuotedFileFailed = fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其内容为空或无法提取出文字，请如实说明。", quotedName)
+				}
+			} else if errors.Is(err, ErrQuotedFileTooLarge) {
+				// 文件过大：提示语区别于"类型不支持"
+				input.QuotedFileFailed = fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其体积过大（超过 20MB），无法一次性读入上下文。请说明你只能读取较小的文本/文档文件，可建议对方拆分成多份。", quotedName)
+			} else {
+				// 类型不支持 / 解析失败 / 存储读取失败：显式告知 AI，让它诚实回复"读不了"
+				input.QuotedFileFailed = fmt.Sprintf("📄 你引用了一条文件消息「%s」，但该文件无法读取正文（类型不在可读取范围：txt/md/csv/json/pdf/docx/xlsx/pptx，或存在其他读取/解析错误）。请说明你无法读取该文件内容，可建议对方转成上述格式或上传到群知识库。", quotedName)
+			}
+		} else if err == nil && (quoted.Type == "image" || quoted.Type == "video" || quoted.Type == "audio") {
+			if quoted.Type == "image" {
+				// 图片：走多模态路径，成功则注入 base64 data URL（若 reader 实现了 ImageURLForContext），失败降级为"看不了"。
+				quotedName := nameOfQuoted(quoted.Content)
+				fileID := parseQuotedFileID(quoted.Content)
+				if fileID == 0 {
+					input.QuotedFileFailed = fmt.Sprintf("📷 你引用了一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName)
+				} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
+					input.QuotedImageURL = dataURL
+					input.QuotedFileCtx = fmt.Sprintf("📷 你引用了一张图片「%s」，请识别其内容并结合用户的问题回答。", name)
+				} else if errors.Is(derr, ErrQuotedImageTooLarge) {
+					input.QuotedFileFailed = fmt.Sprintf("📷 你引用了一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName)
+				} else {
+					// 读取失败 / 存储读取失败 / reader 未实现多模态：显式告知 AI 看不到图，诚实回复。
+					input.QuotedFileFailed = fmt.Sprintf("📷 你引用了一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName)
+				}
+			} else {
+				// 引用的是视频/语音消息：当前不支持解析，显式告知而不是当作无引用
+				input.QuotedFileFailed = fmt.Sprintf("📄 你引用了一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mediaTypeName(quoted.Type), mediaTypeName(quoted.Type))
+			}
+		}
+	}
+
 	return nil
 }
 
-func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*schema.Message {
-	var result []*schema.Message
+// parseQuotedFileID 从文件消息的 Content（{"url":"...","id":123}）解析出 file id。
+func parseQuotedFileID(content string) uint {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "{") {
+		return 0
+	}
+	var payload struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return 0
+	}
+	return payload.ID
+}
 
-	systemPrompt := g.buildSystemPrompt(input)
-	result = append(result, &schema.Message{Role: schema.System, Content: systemPrompt})
+// parseQuotedFileName 从文件消息的 Content（{"url":"...","name":"xx.pdf"}）解析出文件名，供提示语展示；解析失败返回空串。
+func parseQuotedFileName(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "{") {
+		return ""
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return ""
+	}
+	return payload.Name
+}
+
+// nameOfQuoted 取被引用消息的可展示名称：优先取 Content 里解析出的文件名，取不到则回退为原始 Content（最多截 80 字符），保证提示语里至少有个可辨识的占位。
+func nameOfQuoted(content string) string {
+	if name := parseQuotedFileName(content); name != "" {
+		return name
+	}
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) > 80 {
+		return trimmed[:80] + "…"
+	}
+	if trimmed == "" {
+		return "该文件"
+	}
+	return trimmed
+}
+
+// mediaTypeName 把消息类型映射成人话，用于"引用了富媒体但读不了"的提示语。
+func mediaTypeName(t string) string {
+	switch t {
+	case "image":
+		return "图片"
+	case "video":
+		return "视频"
+	case "audio":
+		return "语音"
+	default:
+		return "消息"
+	}
+}
+
+// truncateQuotedFileText 截断被引用文件正文，避免大文件撑爆 prompt（约 4000 字符/1-2k token）。
+func truncateQuotedFileText(text string) string {
+	const maxRun = 4000
+	if len(text) <= maxRun {
+		return text
+	}
+	return text[:maxRun] + "\n……（内容过长已截断）"
+}
+
+// buildContextBlocks 构造知识库/记忆/被引用文件的上下文注入消息块。
+// 纯函数：仅依赖 input 字段，不访问 DB，可独立单测。
+// 被引用文件刻意区分"成功正文"(QuotedFileCtx)与"失败告知"(QuotedFileFailed)两种语义，
+// 各自搭配对应的 assistant 应答话术，避免失败时误称"已读到文件内容"。
+func buildContextBlocks(input *SmartReplyContext) []*schema.Message {
+	var result []*schema.Message
 
 	if input.KnowledgeCtx != "" {
 		result = append(result, &schema.Message{
@@ -293,6 +446,59 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 			Content: "我记住了这些历史信息。",
 		})
 	}
+
+	if input.QuotedFileCtx != "" || input.QuotedImageURL != "" {
+		result = append(result, buildQuotedContextMessage(input))
+		result = append(result, &schema.Message{
+			Role:    schema.Assistant,
+			Content: "我已读到被引用的文件内容。",
+		})
+	}
+
+	if input.QuotedFileFailed != "" {
+		result = append(result, &schema.Message{
+			Role:    schema.User,
+			Content: input.QuotedFileFailed,
+		})
+		result = append(result, &schema.Message{
+			Role:    schema.Assistant,
+			Content: "我未能读取该文件，将如实向用户说明原因。",
+		})
+	}
+
+	return result
+}
+
+// buildQuotedContextMessage 组装被引用对象（文本目录正文 / 图片）的用户消息块。
+// 图片场景下同时注入 prompt 文本与 base64 data URL（经 MultiContent 携带，供
+// einoMessagesToAIMessages 提取为 ai.Message.ImageURL 交给多模态模型识别）。
+func buildQuotedContextMessage(input *SmartReplyContext) *schema.Message {
+	if input.QuotedImageURL == "" {
+		return &schema.Message{Role: schema.User, Content: input.QuotedFileCtx}
+	}
+	return &schema.Message{
+		Role:    schema.User,
+		Content: input.QuotedFileCtx,
+		MultiContent: []schema.ChatMessagePart{
+			{Type: schema.ChatMessagePartTypeText, Text: input.QuotedFileCtx},
+			{
+				Type: schema.ChatMessagePartTypeImageURL,
+				ImageURL: &schema.ChatMessageImageURL{
+					URL: input.QuotedImageURL,
+				},
+			},
+		},
+	}
+}
+
+func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*schema.Message {
+	var result []*schema.Message
+
+	systemPrompt := g.buildSystemPrompt(input)
+	result = append(result, &schema.Message{Role: schema.System, Content: systemPrompt})
+
+	// 上下文注入段（知识库/记忆/被引用文件）：与后续 DB 查询历史消息解耦，抽成纯函数以支持无 DB 单测。
+	result = append(result, buildContextBlocks(input)...)
 
 	db := database.GetDB()
 	var messages []model.Message

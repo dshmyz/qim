@@ -100,8 +100,24 @@ func einoMessagesToAIMessages(messages []*schema.Message) []ai.Message {
 			Role:    role,
 			Content: msg.Content,
 		}
+		// 多模态：从 MultiContent 提取图片 URL（群 AI 被引用图片以 data URL 注入），
+		// 落到 ai.Message.ImageURL 后由 MarshalJSON 转成 OpenAI image_url 数组格式。
+		if imgURL := imageURLFromMessage(msg); imgURL != "" {
+			result[i].ImageURL = imgURL
+		}
 	}
 	return result
+}
+
+// imageURLFromMessage 从 eino schema.Message 的 MultiContent 提取首个 image_url 部分的数据 URL；
+// 无图片部分返回空串。
+func imageURLFromMessage(msg *schema.Message) string {
+	for _, part := range msg.MultiContent {
+		if part.Type == schema.ChatMessagePartTypeImageURL && part.ImageURL != nil && part.ImageURL.URL != "" {
+			return part.ImageURL.URL
+		}
+	}
+	return ""
 }
 
 var _ model.ToolCallingChatModel = (*EinoChatModel)(nil)

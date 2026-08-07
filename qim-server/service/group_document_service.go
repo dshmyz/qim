@@ -2,8 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,6 +28,24 @@ import (
 // staleProcessingAfter 判定处理状态超时的阈值：超过该时长仍停留在 processing，
 // 视为崩溃/被杀/旧代码遗留的僵尸任务，读状态时自动重置为 failed 以便重试。
 const staleProcessingAfter = 5 * time.Minute
+
+// ErrQuotedFileTooLarge 被引用文件体积超过 quoteMaxFileSize 时返回的哨兵错误，
+// 供 smart_reply_graph 区分"文件过大"与"类型不支持/解析失败"两种读不了场景。
+var ErrQuotedFileTooLarge = errors.New("被引用文件过大")
+
+// quoteMaxFileSize 被引用文件允许注入上下文的最大体积（字节）。
+// 正文注入前只会截断到约 4000 字符，故无需读超大文件；docx/xlsx/pptx 是 zip 容器，
+// Size 为压缩包大小且解析文本量不可预知，故用相对宽松的 20MB 阈值。
+const quoteMaxFileSize int64 = 20 * 1024 * 1024
+
+// ErrQuotedImageTooLarge 被引用图片体积超过 quoteMaxImageSize 时返回的哨兵错误，
+// 供 smart_reply_graph 区分"图片过大"与"读取失败"两种看不了图片的场景。
+var ErrQuotedImageTooLarge = errors.New("被引用图片过大")
+
+// quoteMaxImageSize 被引用图片允许注入多模态上下文的最大体积（字节）。
+// 图片以 base64 data URL 注入（base64 膨胀约 1.33x），故阈值取 5MB，
+// 与 TranslateImage 的 maxImageTranslateSize 一致，避免超大图撑爆 prompt。
+const quoteMaxImageSize int64 = 5 * 1024 * 1024
 
 type GroupDocumentService struct {
 	db        *gorm.DB
@@ -805,6 +827,87 @@ func (s *GroupDocumentService) DeleteGroupVectors(groupID uint) error {
 	s.db.Where("group_id = ?", groupID).Delete(&model.DocumentProcessStatus{})
 	logger.WithModule("GroupDocument").Info("群知识向量清理完成", "groupID", groupID)
 	return nil
+}
+
+// ExtractTextForContext 读取指定文件（model.File）的正文并返回（不入库、不建向量）。
+// 供群 AI 回复时按引用消息读取被引用文件正文注入上下文。
+// 返回文件名与解析后的正文；内容非文档类型或解析失败时返回错误，由调用方优雅降级。
+func (s *GroupDocumentService) ExtractTextForContext(fileID uint) (name string, text string, err error) {
+	var file model.File
+	if err := s.db.First(&file, fileID).Error; err != nil {
+		return "", "", err
+	}
+	if s.store == nil {
+		return file.Name, "", fmt.Errorf("存储未初始化")
+	}
+	// 大小护栏：进入内存/解析前直接拦截超大文件，避免整个大文件进内存再解析（注：正文只需 4000 字符）。
+	// docx/xlsx/pptx 为 zip 容器，Size 是压缩包大小，解析文本量不可预知，故用相对宽松的 20MB 阈值。
+	if file.Size > quoteMaxFileSize {
+		return file.Name, "", fmt.Errorf("%w: 文件大小 %d 字节超过 %d 上限", ErrQuotedFileTooLarge, file.Size, quoteMaxFileSize)
+	}
+	if s.parser == nil {
+		s.parser = &DocumentParser{}
+	}
+	reader, err := s.store.GetByPath(context.Background(), file.StoragePath)
+	if err != nil {
+		return file.Name, "", fmt.Errorf("读取文件失败: %w", err)
+	}
+	tmpFile, err := os.CreateTemp("", "qim-quote-*"+filepath.Ext(file.Name))
+	if err != nil {
+		reader.Close()
+		return file.Name, "", fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		reader.Close()
+		tmpFile.Close()
+		return file.Name, "", fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	reader.Close()
+	tmpFile.Close()
+
+	text, err = s.parser.Parse(tmpPath)
+	if err != nil {
+		return file.Name, "", fmt.Errorf("文档解析失败: %w", err)
+	}
+	return file.Name, text, nil
+}
+
+// ImageURLForContext 读取指定图片（model.File）原始字节并转为 base64 data URL，供群 AI 多模态识别。
+// 不入库、不落临时文件，直接流式读内存；超过 quoteMaxImageSize（5MB）时返回哨兵错误
+// ErrQuotedImageTooLarge，由调用方区分"图片过大"与"读取失败"两种看不了图片的场景。
+func (s *GroupDocumentService) ImageURLForContext(fileID uint) (name string, dataURL string, err error) {
+	var file model.File
+	if err := s.db.First(&file, fileID).Error; err != nil {
+		return "", "", err
+	}
+	if s.store == nil {
+		return file.Name, "", fmt.Errorf("存储未初始化")
+	}
+	// 大小护栏：进入内存前直接拦截超大图片，避免整个大图 base64 膨胀后进 prompt。
+	// 与 ExtractedTextForContext 一致，按 file.Size 先行拦截，不读入再判断。
+	if file.Size > quoteMaxImageSize {
+		return file.Name, "", fmt.Errorf("%w: 图片大小 %d 字节超过 %d 上限", ErrQuotedImageTooLarge, file.Size, quoteMaxImageSize)
+	}
+	reader, err := s.store.GetByPath(context.Background(), file.StoragePath)
+	if err != nil {
+		return file.Name, "", fmt.Errorf("读取图片失败: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return file.Name, "", fmt.Errorf("读取图片字节失败: %w", err)
+	}
+	// 读入后二次护栏：防 Store 记录的 Size 与实际字节不一致导致的意外大图。
+	if len(data) > int(quoteMaxImageSize) {
+		return file.Name, "", fmt.Errorf("%w: 图片实际 %d 字节超过 %d 上限", ErrQuotedImageTooLarge, len(data), quoteMaxImageSize)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(file.Name))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	return file.Name, "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (s *GroupDocumentService) RetryDocument(groupDocID uint) error {
