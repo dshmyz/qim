@@ -107,8 +107,6 @@ export function useMiniAppBridge(
     return ''
   }
 
-  const shouldSandbox = computed(() => true)
-
   const fetchLatestMiniApp = async () => {
     if (!props.miniApp?.appID) return
     try {
@@ -346,7 +344,6 @@ export function useMiniAppBridge(
     keyboardRequested,
     // 计算属性
     iframeSrc,
-    shouldSandbox,
     hasClipboardPermission,
     // 方法
     getIframeAllow,

@@ -24,7 +24,6 @@
           ref="iframeRef"
           class="miniapp-iframe"
           :src="iframeSrc"
-          :sandbox="shouldSandbox ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals' : undefined"
           :allow="getIframeAllow()"
           @load="handleIframeLoad" @error="handleIframeError"
         />
@@ -55,7 +54,6 @@ const {
   error,
   errorMessage,
   iframeSrc,
-  shouldSandbox,
   getIframeAllow,
   loadMiniApp,
   close,
