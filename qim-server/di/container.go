@@ -51,6 +51,7 @@ type Container struct {
 	RenderRuleService    *service.RenderRuleService
 	BotService           *service.BotService
 	AIProviderService    *service.AIProviderService
+	AIRouterService      *service.AIRouterService
 	GroupDocumentService *service.GroupDocumentService
 	UserSettingService   *service.UserSettingService
 	AIConfigService      *service.AIConfigService
@@ -60,6 +61,7 @@ type Container struct {
 	AvatarMemoryService  *service.AvatarMemoryService
 	GroupMemoryService   *service.GroupMemoryService
 	AvatarTriggerService *service.AvatarTriggerService
+	BotMessagingService  *service.BotMessagingService
 	PromptManager        *service.PromptManager
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
@@ -76,12 +78,24 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 
 	aiService := ai.NewAIService(&cfg.AI)
 	aiProviderService := service.NewAIProviderService(db)
+	// AI 模型路由服务：DB 覆盖优先，config.yaml 为默认/兜底（此处先声明，具体配置在 db 分支内完成）
+	aiRouterService := service.NewAIRouterService(db)
+	aiRouterService.SetDefaultRouterFunc(func() *ai.RouterConfig {
+		return &cfg.AI.Router
+	})
 
 	// 从数据库加载已启用的 AI Provider，覆盖配置文件中的设置
 	// db 可能为 nil（测试环境未初始化），此时跳过 DB 加载
 	if db != nil {
 		if _, err := aiProviderService.ReloadEnabledProviders(aiService); err != nil {
 			logger.WithModule("DI").Warn("从数据库加载 AI Provider 失败", "error", err)
+		}
+
+		// 启动时若 DB 已存在路由覆盖，热更到运行中的 AIService（无需重启）
+		if dbRouter, err := aiRouterService.GetDBRouter(); err != nil {
+			logger.WithModule("DI").Warn("读取 DB AI 模型路由失败", "error", err)
+		} else if dbRouter != nil {
+			aiService.UpdateRouter(*dbRouter)
 		}
 
 		// Token 用量异步落库：每次 LLM 调用完成后写入 ai_usage_logs 表
@@ -183,7 +197,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	avatarTriggerSvc := service.NewAvatarTriggerService(aiService, db)
 
 	vectorPath := cfg.Vector.Path
-	embedder := service.NewCortexDBEmbedder(aiService)
+	embedder := service.NewGracedbEmbedder(aiService)
 
 	var err error
 	logger.WithModule("DI").Info("开始初始化 VectorService", "path", vectorPath)
@@ -200,7 +214,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	// 注入向量服务到相关服务
 	if noteVectorSvc != nil {
 		noteService.SetVectorService(noteVectorSvc)
-		groupDocumentService.SetVectorServices(vectorSvc)
+		groupDocumentService.SetVectorServices(vectorSvc, aiService)
 		avatarService.SetRAGServices(noteVectorSvc, avatarMemorySvc)
 		// 用户自建 bot（internal_ai 模式）读取创建者笔记作为知识库：
 		// SearchNotes 内部按 user_notes_<userID> 分集合，scope 天然隔离，只能读创建者自己的笔记
@@ -241,6 +255,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		RenderRuleService:    renderRuleService,
 		BotService:           botService,
 		AIProviderService:    aiProviderService,
+		AIRouterService:      aiRouterService,
 		GroupDocumentService: groupDocumentService,
 		UserSettingService:   userSettingService,
 		AIConfigService:      aiConfigService,
@@ -250,6 +265,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		AvatarMemoryService:  avatarMemorySvc,
 		GroupMemoryService:   groupMemorySvc,
 		AvatarTriggerService: avatarTriggerSvc,
+		BotMessagingService:  service.NewBotMessagingService(db, hub),
 		PromptManager:        promptManager,
 		WebSocketHub:         hub,
 		AuthMiddleware:       authMiddleware,

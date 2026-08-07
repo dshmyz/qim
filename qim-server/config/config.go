@@ -454,7 +454,7 @@ func getDefaultConfig() yamlConfig {
 			AllowedOrigins: nil,
 		},
 		Vector: VectorConfig{
-			Path: "./data/vector.db",
+			Path: "./data/gracedb",
 		},
 		Static: StaticConfig{
 			UploadsDir:  "uploads",

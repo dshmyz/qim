@@ -22,8 +22,7 @@ func AdminListVectorCollections(c *gin.Context) {
 		return
 	}
 
-	ctx := context.Background()
-	collections, err := db.Vector().ListCollections(ctx)
+	collections, err := db.ListCollections()
 	if err != nil {
 		response.InternalServerError(c, "查询失败: "+err.Error())
 		return
@@ -35,10 +34,9 @@ func AdminListVectorCollections(c *gin.Context) {
 	}
 	infos := make([]CollectionInfo, 0, len(collections))
 	for _, col := range collections {
-		stats, err := db.Vector().GetCollectionStats(ctx, col.Name)
-		count := 0
-		if err == nil && stats != nil {
-			count = int(stats.Count)
+		count, err := db.EmbeddingCount(col.Name)
+		if err != nil {
+			count = 0
 		}
 		infos = append(infos, CollectionInfo{Name: col.Name, Count: count})
 	}

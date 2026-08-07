@@ -2,36 +2,34 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"github.com/liliang-cn/cortexdb/v2/pkg/core"
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/gracedb/pkg/types"
 )
 
 type VectorService struct {
-	db *cortexdb.DB
+	db *gracedb.DB
 }
 
-func NewVectorService(path string, embedder cortexdb.Embedder) (*VectorService, error) {
+func NewVectorService(path string, embedder types.Embedder) (*VectorService, error) {
 	// 确保数据目录存在
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建向量数据目录失败: %w", err)
 	}
 
-	cfg := cortexdb.DefaultConfig(path)
-
-	var opts []cortexdb.Option
+	var opts []gracedb.Option
 	if embedder != nil {
-		opts = append(opts, cortexdb.WithEmbedder(embedder))
+		opts = append(opts, gracedb.WithEmbedder(embedder))
 	}
 
-	db, err := cortexdb.Open(cfg, opts...)
+	db, err := gracedb.Open(path, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("打开向量数据库失败: %w", err)
 	}
@@ -40,131 +38,142 @@ func NewVectorService(path string, embedder cortexdb.Embedder) (*VectorService, 
 	return &VectorService{db: db}, nil
 }
 
-// AddVector 添加向量到指定集合（自动创建集合）
-func (s *VectorService) AddVector(ctx context.Context, collection string, id string, embedding []float32, content string, metadata map[string]string) error {
-	if err := s.EnsureCollection(ctx, collection, len(embedding)); err != nil {
-		return fmt.Errorf("确保集合存在失败: %w", err)
+// ensureGracedbCollection 确保 gracedb 集合存在。
+// gracedb 的 Upsert 不会自动创建集合（集合不存在时返回 "gracedb: not found"），
+// 因此写入前必须确保集合已创建；已存在集合（ErrCollectionExists）视为成功。
+func ensureGracedbCollection(db *gracedb.DB, name string) error {
+	if name == "" {
+		return fmt.Errorf("collection 名称不能为空")
 	}
-
-	emb := &core.Embedding{
-		ID:         id,
-		Collection: collection,
-		Vector:     embedding,
-		Content:    content,
-		Metadata:   metadata,
+	_, err := db.CreateCollection(name)
+	if err == nil {
+		return nil
 	}
-	return s.db.Vector().Upsert(ctx, emb)
+	if errors.Is(err, types.ErrCollectionExists) {
+		return nil
+	}
+	return err
 }
 
-// EnsureCollection 确保集合存在，不存在则创建
-func (s *VectorService) EnsureCollection(ctx context.Context, name string, dimensions int) error {
-	_, err := s.db.Vector().CreateCollection(ctx, name, dimensions)
-	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return nil
-		}
+// AddVector 添加向量到指定集合（确保集合存在后再 Upsert）
+func (s *VectorService) AddVector(ctx context.Context, collection string, id string, embedding []float32, content string, metadata map[string]string) error {
+	if err := ensureGracedbCollection(s.db, collection); err != nil {
 		return err
 	}
-	return nil
+	_, err := s.db.Upsert(collection, id, embedding, content, metadata, nil)
+	return err
+}
+
+// EnsureCollection 确保集合存在（gracedb 的 Upsert 不会自动建集合，这里显式创建）
+func (s *VectorService) EnsureCollection(ctx context.Context, name string, dimensions int) error {
+	return ensureGracedbCollection(s.db, name)
 }
 
 // Search 在集合中搜索相似向量
-func (s *VectorService) Search(ctx context.Context, collection string, queryVector []float32, topK int) ([]core.ScoredEmbedding, error) {
-	opts := core.SearchOptions{
-		Collection: collection,
-		TopK:       topK,
+func (s *VectorService) Search(ctx context.Context, collection string, queryVector []float32, topK int) ([]types.ScoredEmbedding, error) {
+	opts := types.SearchOptions{
+		TopK: topK,
 	}
-	return s.db.Vector().Search(ctx, queryVector, opts)
+	return s.db.Search(collection, queryVector, opts)
 }
 
 // DeleteByDocID 按文档 ID 删除向量
-func (s *VectorService) DeleteByDocID(ctx context.Context, docID string) error {
-	return s.db.Vector().DeleteByDocID(ctx, docID)
+func (s *VectorService) DeleteByDocID(ctx context.Context, collection string, docID string) error {
+	return s.db.DeleteByDocID(collection, docID)
 }
 
 // DeleteByCollection 按集合名删除所有向量
 func (s *VectorService) DeleteByCollection(ctx context.Context, collection string) error {
-	return s.db.Vector().DeleteCollection(ctx, collection)
+	return s.db.DeleteCollection(collection)
 }
 
-// GetDB 返回底层 cortexdb.DB，供需要使用高层 API（SaveKnowledge/SaveMemory 等）的服务调用
-func (s *VectorService) GetDB() *cortexdb.DB {
+// GetDB 返回底层 gracedb.DB，供需要使用高层 API（SaveMemory/SearchMemory 等）的服务调用
+func (s *VectorService) GetDB() *gracedb.DB {
 	return s.db
 }
 
 // GetByCollection 获取指定集合中的所有向量（用于管理界面）
-func (s *VectorService) GetByCollection(ctx context.Context, collection string, limit int) ([]core.ScoredEmbedding, error) {
-	col, err := s.db.Vector().GetCollection(ctx, collection)
-	if err != nil {
+func (s *VectorService) GetByCollection(ctx context.Context, collection string, limit int) ([]types.ScoredEmbedding, error) {
+	if _, err := s.db.GetCollection(collection); err != nil {
 		// 集合不存在，返回空列表
 		logger.WithModule("VectorService").Info("集合不存在或获取失败", "collection", collection, "error", err)
-		return []core.ScoredEmbedding{}, nil
+		return []types.ScoredEmbedding{}, nil
 	}
 
-	if col.Dimensions <= 0 {
-		logger.WithModule("VectorService").Info("集合维度异常", "collection", collection, "dimensions", col.Dimensions)
-		return []core.ScoredEmbedding{}, nil
-	}
-
-	zeroVector := make([]float32, col.Dimensions)
-	opts := core.SearchOptions{
-		Collection: collection,
-		TopK:       limit,
-	}
-
-	results, err := s.db.Vector().Search(ctx, zeroVector, opts)
+	ids, err := s.db.ListEmbeddingIDs(collection)
 	if err != nil {
-		logger.WithModule("VectorService").Error("搜索集合失败", "collection", collection, "error", err)
-		return []core.ScoredEmbedding{}, nil
+		logger.WithModule("VectorService").Error("列出集合向量失败", "collection", collection, "error", err)
+		return []types.ScoredEmbedding{}, nil
+	}
+
+	results := make([]types.ScoredEmbedding, 0, len(ids))
+	for _, id := range ids {
+		if limit > 0 && len(results) >= limit {
+			break
+		}
+		emb, err := s.db.GetEmbedding(collection, id, true)
+		if err != nil {
+			logger.WithModule("VectorService").Error("读取向量失败", "collection", collection, "embID", id, "error", err)
+			continue
+		}
+		if emb == nil {
+			continue
+		}
+		results = append(results, types.ScoredEmbedding{
+			Embedding: types.Embedding{
+				ID:         emb.ID,
+				Collection: emb.Collection,
+				Content:    emb.Content,
+				DocID:      emb.DocID,
+				Metadata:   emb.Metadata,
+			},
+		})
 	}
 
 	return results, nil
 }
 
-// DeleteByFilter 按 metadata 过滤条件删除向量（循环分页删，每批 500，直到清完）
+// DeleteByFilter 按 metadata 过滤条件删除向量（枚举集合内向量，逐条匹配后删除）
 func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, filter map[string]string) (int, error) {
 	if collection == "" {
 		return 0, fmt.Errorf("collection 名称不能为空")
 	}
 
-	col, err := s.db.Vector().GetCollection(ctx, collection)
-	if err != nil {
+	if _, err := s.db.GetCollection(collection); err != nil {
 		return 0, nil
 	}
 
-	const batchSize = 500
-	zeroVector := make([]float32, col.Dimensions)
+	ids, err := s.db.ListEmbeddingIDs(collection)
+	if err != nil {
+		return 0, fmt.Errorf("列出集合向量失败: %w", err)
+	}
+
 	deletedCount := 0
-
-	for {
-		opts := core.SearchOptions{
-			Collection: collection,
-			TopK:       batchSize,
-			Filter:     filter,
+	for _, id := range ids {
+		emb, err := s.db.GetEmbedding(collection, id, true)
+		if err != nil || emb == nil {
+			continue
 		}
-		results, err := s.db.Vector().Search(ctx, zeroVector, opts)
-		if err != nil {
-			return deletedCount, fmt.Errorf("按过滤条件搜索失败: %w", err)
-		}
-		if len(results) == 0 {
-			break
-		}
-
-		for _, result := range results {
-			if err := s.db.Vector().DeleteByDocID(ctx, result.DocID); err != nil {
-				logger.WithModule("VectorService").Error("删除向量失败", "docID", result.DocID, "error", err)
+		if matchesFilter(emb.Metadata, filter) {
+			if err := s.db.DeleteByDocID(collection, id); err != nil {
+				logger.WithModule("VectorService").Error("删除向量失败", "collection", collection, "docID", id, "error", err)
 				continue
 			}
 			deletedCount++
 		}
-
-		// 本批不足 batchSize，说明已删完
-		if len(results) < batchSize {
-			break
-		}
 	}
 
 	return deletedCount, nil
+}
+
+// matchesFilter 判断 metadata 是否满足全部过滤条件（key=value 精确匹配）
+func matchesFilter(metadata map[string]string, filter map[string]string) bool {
+	for k, v := range filter {
+		if metadata[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // Close 关闭数据库
@@ -181,11 +190,11 @@ type SearchResult struct {
 	DocID      string            `json:"docId"`
 }
 
-// ScoredEmbeddingToSearchResult 将 cortexdb 结果转换为通用结构
-func ScoredEmbeddingToSearchResult(se core.ScoredEmbedding) SearchResult {
+// ScoredEmbeddingToSearchResult 将 gracedb 结果转换为通用结构
+func ScoredEmbeddingToSearchResult(se types.ScoredEmbedding) SearchResult {
 	return SearchResult{
 		Content:    se.Content,
-		Score:      se.Score,
+		Score:      float64(se.Score),
 		Metadata:   se.Metadata,
 		Collection: se.Collection,
 		DocID:      se.DocID,

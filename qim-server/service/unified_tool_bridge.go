@@ -1,24 +1,26 @@
 package service
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/gracedb/pkg/types"
 )
 
 type UnifiedToolBridge struct {
-	registry *ai.ToolRegistry
-	cortexDB *cortexdb.DB
+	registry  *ai.ToolRegistry
+	db        *gracedb.DB
+	aiService *ai.AIService
 }
 
-func NewUnifiedToolBridge(registry *ai.ToolRegistry, cortexDB *cortexdb.DB) *UnifiedToolBridge {
+func NewUnifiedToolBridge(registry *ai.ToolRegistry, db *gracedb.DB, aiService *ai.AIService) *UnifiedToolBridge {
 	bridge := &UnifiedToolBridge{
-		registry: registry,
-		cortexDB: cortexDB,
+		registry:  registry,
+		db:        db,
+		aiService: aiService,
 	}
 
 	bridge.registerKnowledgeTools()
@@ -80,13 +82,34 @@ func (t *KnowledgeSearchTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		}, nil
 	}
 
-	resp, err := t.bridge.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
-		Query:      query,
-		Collection: collection,
-		TopK:       topK,
-	})
+	// 语义 + 词法（FTS）混合召回，同群知识库检索路径保持一致
+	fetchK := topK * 3
+	if fetchK <= 0 {
+		fetchK = 5
+	}
+
+	queryVec, err := t.bridge.aiService.Embed(query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("生成查询向量失败: %v", err)
+	}
+	var semanticRes, ftsRes []types.ScoredEmbedding
+	if sem, se := t.bridge.db.Search(collection, queryVec, types.SearchOptions{TopK: fetchK}); se == nil {
+		semanticRes = sem
+	}
+	if fts, fe := t.bridge.db.SearchFTSWithContent(collection, query, fetchK); fe == nil {
+		ftsRes = fts
+	}
+
+	var scored []types.ScoredEmbedding
+	switch {
+	case len(semanticRes) == 0 && len(ftsRes) == 0:
+		scored = nil
+	case len(semanticRes) == 0:
+		scored = hybridDisplayScores(ftsRes, nil)
+	case len(ftsRes) == 0:
+		scored = semanticRes
+	default:
+		scored = hybridDisplayScores(mergeRRF(semanticRes, ftsRes, topK), semanticRes)
 	}
 
 	type hit struct {
@@ -96,14 +119,18 @@ func (t *KnowledgeSearchTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		Score       float64           `json:"score"`
 		Metadata    map[string]string `json:"metadata"`
 	}
-	hits := make([]hit, 0, len(resp.Results))
-	for _, r := range resp.Results {
+	hits := make([]hit, 0, len(scored))
+	for _, r := range scored {
+		metadata := r.Metadata
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
 		hits = append(hits, hit{
-			KnowledgeID: r.KnowledgeID,
-			Title:       r.Title,
-			Snippet:     r.Snippet,
-			Score:       r.Score,
-			Metadata:    r.Metadata,
+			KnowledgeID: r.DocID,
+			Title:       metadata["title"],
+			Snippet:     r.Content,
+			Score:       float64(r.Score),
+			Metadata:    metadata,
 		})
 	}
 	if len(hits) == 0 {
@@ -120,7 +147,7 @@ type KnowledgeSaveTool struct{ bridge *UnifiedToolBridge }
 
 func (t *KnowledgeSaveTool) Name() string { return "knowledge_save" }
 func (t *KnowledgeSaveTool) Description() string {
-	return "将文档内容存入知识库并自动向量化+切片，可选实体关系抽取"
+	return "将文档内容存入知识库并自动向量化+切片"
 }
 func (t *KnowledgeSaveTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -144,23 +171,61 @@ func (t *KnowledgeSaveTool) Execute(params map[string]interface{}, ctx *ai.Calle
 	if knowledgeID == "" || content == "" {
 		return nil, fmt.Errorf("knowledge_id 和 content 不能为空")
 	}
+	if collection == "" {
+		return nil, fmt.Errorf("collection 不能为空")
+	}
 
-	resp, err := t.bridge.cortexDB.SaveKnowledge(context.Background(), cortexdb.KnowledgeSaveRequest{
-		KnowledgeID: knowledgeID,
-		Title:       title,
-		Content:     content,
-		Collection:  collection,
-		ChunkSize:   chunkSize,
-	})
-	if err != nil {
-		return nil, err
+	// 确保集合存在（gracedb Upsert 不会自动建集合）
+	if err := ensureGracedbCollection(t.bridge.db, collection); err != nil {
+		return nil, fmt.Errorf("创建知识库集合失败: %v", err)
+	}
+
+	chunks := ChunkDocument(content, chunkSize)
+	if len(chunks) == 0 {
+		chunks = []Chunk{{Content: content, Title: title}}
+	}
+
+	// 逐块向量化（无批量 embedding API，串行调用），收集后一次性批量写入
+	type pendingChunk struct {
+		docID string
+		vec   []float32
+		text  string
+	}
+	var pending []pendingChunk
+	for i, chunk := range chunks {
+		if len(chunk.Content) < 10 {
+			continue
+		}
+		embedding, err := t.bridge.aiService.Embed(chunk.Content)
+		if err != nil {
+			return nil, fmt.Errorf("切片向量化失败: %v", err)
+		}
+		pending = append(pending, pendingChunk{
+			docID: fmt.Sprintf("%s_chunk_%d", knowledgeID, i),
+			vec:   embedding,
+			text:  chunk.Content,
+		})
+	}
+
+	if len(pending) > 0 {
+		vectors := make([][]float32, 0, len(pending))
+		contents := make([]string, 0, len(pending))
+		docIDs := make([]string, 0, len(pending))
+		metas := make([]map[string]string, 0, len(pending))
+		for _, p := range pending {
+			vectors = append(vectors, p.vec)
+			contents = append(contents, p.text)
+			docIDs = append(docIDs, p.docID)
+			metas = append(metas, map[string]string{"title": title})
+		}
+		if err := t.bridge.db.UpsertBatch(collection, vectors, contents, docIDs, metas); err != nil {
+			return nil, fmt.Errorf("批量存储失败: %v", err)
+		}
 	}
 
 	return map[string]interface{}{
-		"knowledge_id":   resp.Knowledge.ID,
-		"chunk_count":    len(resp.Knowledge.ChunkIDs),
-		"entity_count":   len(resp.EntityNodeIDs),
-		"relation_count": len(resp.RelationEdgeIDs),
+		"knowledge_id": knowledgeID,
+		"chunk_count":  len(pending),
 	}, nil
 }
 
@@ -203,10 +268,10 @@ func (t *MemorySearchTool) Execute(params map[string]interface{}, ctx *ai.Caller
 		return nil, fmt.Errorf("user_id 不能为空，请确保 CallerContext 中有用户ID")
 	}
 
-	resp, err := t.bridge.cortexDB.SearchMemory(context.Background(), cortexdb.MemorySearchRequest{
+	resp, err := t.bridge.db.SearchMemory(types.MemorySearchRequest{
 		Query:     query,
 		UserID:    userIDStr,
-		Scope:     cortexdb.MemoryScopeUser,
+		Scope:     "user",
 		Namespace: "avatar",
 		TopK:      topK,
 	})

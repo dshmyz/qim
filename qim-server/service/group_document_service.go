@@ -6,27 +6,51 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/gracedb/pkg/graph"
+	"github.com/dshmyz/gracedb/pkg/types"
 	"gorm.io/gorm"
 )
 
+// staleProcessingAfter 判定处理状态超时的阈值：超过该时长仍停留在 processing，
+// 视为崩溃/被杀/旧代码遗留的僵尸任务，读状态时自动重置为 failed 以便重试。
+const staleProcessingAfter = 5 * time.Minute
+
 type GroupDocumentService struct {
-	db       *gorm.DB
-	cortexDB *cortexdb.DB
-	parser   *DocumentParser
-	store    StorageAccessor
+	db        *gorm.DB
+	gracedbDB *gracedb.DB
+	aiService *ai.AIService
+	parser    *DocumentParser
+	store     StorageAccessor
+
+	// procMu/procInFlight 记录正在处理的 groupDocID，防止重试连点为同一文档堆叠多个处理 goroutine
+	procMu       sync.Mutex
+	procInFlight map[uint]struct{}
 }
 
 func NewGroupDocumentService(db *gorm.DB, store StorageAccessor) *GroupDocumentService {
-	return &GroupDocumentService{db: db, store: store}
+	return &GroupDocumentService{
+		db:           db,
+		store:        store,
+		procInFlight: make(map[uint]struct{}),
+	}
 }
 
-func (s *GroupDocumentService) SetVectorServices(vectorSvc *VectorService) {
-	s.cortexDB = vectorSvc.GetDB()
+func (s *GroupDocumentService) SetVectorServices(vectorSvc *VectorService, aiService *ai.AIService) {
+	if vectorSvc == nil {
+		return
+	}
+	s.gracedbDB = vectorSvc.GetDB()
+	s.aiService = aiService
 	s.parser = &DocumentParser{}
 }
 
@@ -77,6 +101,17 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 			result["process_status"] = status.Status
 			result["process_error"] = status.Error
 			result["chunk_count"] = status.ChunkCount
+
+			// 自愈：processing 超时（崩溃/被杀/旧代码遗留）的任务，读到即重置为
+			// failed，让用户能重试，而不是永远卡在"处理中"。
+			if status.Status == "processing" && time.Since(status.UpdatedAt) > staleProcessingAfter {
+				s.db.Model(&status).Updates(map[string]interface{}{
+					"status":  "failed",
+					"error":   "处理超过 5 分钟仍未完成，已重置，请点击重试",
+				})
+				result["process_status"] = "failed"
+				result["process_error"] = "处理超过 5 分钟仍未完成，已重置，请点击重试"
+			}
 		} else {
 			result["process_status"] = "pending"
 		}
@@ -87,17 +122,48 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 	return results, nil
 }
 
-func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
-	if s.cortexDB == nil {
+func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
+	if s.gracedbDB == nil {
 		return fmt.Errorf("向量服务未初始化")
 	}
+
+	// 并发防重入：同一文档同时只允许一个处理任务，避免多次重试堆叠 goroutine、
+	// 彼此覆盖状态。已有处理中任务时直接拒绝本次调用。
+	s.procMu.Lock()
+	if _, inFlight := s.procInFlight[groupDocID]; inFlight {
+		s.procMu.Unlock()
+		return fmt.Errorf("该文档正在处理中，请稍候")
+	}
+	s.procInFlight[groupDocID] = struct{}{}
+	s.procMu.Unlock()
+	// 无论正常返回还是 panic，都释放 in-flight 槽位
+	defer func() {
+		s.procMu.Lock()
+		delete(s.procInFlight, groupDocID)
+		s.procMu.Unlock()
+	}()
 
 	var doc model.GroupDocument
 	if err := s.db.Preload("File").First(&doc, groupDocID).Error; err != nil {
 		return fmt.Errorf("文档不存在")
 	}
 
+	// 用于 panic 兜底：status 在下方赋值，defer 闭包见到的即函数结束时最后写入的值。
+	// 若处理过程 panic，先把状态落成 failed（而非卡死在 processing），再原样抛出交由
+	// 上层 SafeGoWithLabel 记录，避免僵尸 processing 让用户无法重试。
 	var status model.DocumentProcessStatus
+	defer func() {
+		if r := recover(); r != nil {
+			if status.ID > 0 {
+				s.db.Model(&status).Updates(map[string]interface{}{
+					"status": "failed",
+					"error":  fmt.Sprintf("处理过程异常: %v", r),
+				})
+			}
+			panic(r)
+		}
+	}()
+
 	s.db.Where("group_doc_id = ?", groupDocID).Order("created_at DESC").First(&status)
 
 	if status.ID == 0 {
@@ -163,77 +229,352 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) error {
 	}
 
 	collectionName := fmt.Sprintf("group_%d", doc.GroupID)
-	knowledgeID := fmt.Sprintf("group_%d_doc_%d", doc.GroupID, doc.ID)
+	chunks := ChunkDocument(text, 800)
+	if len(chunks) == 0 {
+		chunks = []Chunk{{Content: text, Title: doc.File.Name}}
+	}
 
-	ctx := context.Background()
-	resp, err := s.cortexDB.SaveKnowledge(ctx, cortexdb.KnowledgeSaveRequest{
-		KnowledgeID: knowledgeID,
-		Title:       doc.File.Name,
-		Content:     text,
-		Collection:  collectionName,
-		ChunkSize:   800,
-		Metadata: map[string]string{
-			"group_id": fmt.Sprintf("%d", doc.GroupID),
-			"doc_id":   fmt.Sprintf("%d", doc.ID),
-			"file_id":  fmt.Sprintf("%d", doc.FileID),
-			"title":    doc.File.Name,
-		},
-	})
-
-	if err != nil {
+	// 确保群集合存在（gracedb Upsert 不会自动建集合）
+	if err := ensureGracedbCollection(s.gracedbDB, collectionName); err != nil {
 		s.db.Model(&status).Updates(map[string]interface{}{
 			"status": "failed",
-			"error":  fmt.Sprintf("知识存储失败: %v", err),
+			"error":  fmt.Sprintf("创建向量集合失败: %v", err),
 		})
 		return err
 	}
 
-	chunkCount := len(resp.Knowledge.ChunkIDs)
+	// 先清掉该文档旧向量（重处理场景），再写入新切片
+	if err := s.deleteDocumentVectors(collectionName, doc.ID); err != nil {
+		logger.WithModule("GroupDocument").Warn("清理文档旧向量失败", "doc_id", doc.ID, "error", err)
+	}
+
+	// 逐块向量化（无批量 embedding API，串行调用），收集后一次性批量写入，
+	// 把 N 次分散的 Badger 写事务合并为一次 UpsertBatch，降低写入开销。
+	type pendingChunk struct {
+		docID string
+		vec   []float32
+		text  string
+		meta  map[string]string
+	}
+	var pending []pendingChunk
+	for i, chunk := range chunks {
+		if len(chunk.Content) < 10 {
+			continue // 跳过太短的片段
+		}
+		embedding, err := s.aiService.Embed(chunk.Content)
+		if err != nil {
+			s.db.Model(&status).Updates(map[string]interface{}{
+				"status": "failed",
+				"error":  fmt.Sprintf("切片向量化失败: %v", err),
+			})
+			return err
+		}
+		pending = append(pending, pendingChunk{
+			docID: fmt.Sprintf("group_%d_doc_%d_chunk_%d", doc.GroupID, doc.ID, i),
+			vec:   embedding,
+			text:  chunk.Content,
+			meta: map[string]string{
+				"group_id": fmt.Sprintf("%d", doc.GroupID),
+				"doc_id":   fmt.Sprintf("%d", doc.ID),
+				"file_id":  fmt.Sprintf("%d", doc.FileID),
+				"title":    doc.File.Name,
+			},
+		})
+	}
+
+	// 批量写入所有切片
+	if len(pending) > 0 {
+		vectors := make([][]float32, 0, len(pending))
+		contents := make([]string, 0, len(pending))
+		docIDs := make([]string, 0, len(pending))
+		metas := make([]map[string]string, 0, len(pending))
+		for _, p := range pending {
+			vectors = append(vectors, p.vec)
+			contents = append(contents, p.text)
+			docIDs = append(docIDs, p.docID)
+			metas = append(metas, p.meta)
+		}
+		if err := s.gracedbDB.UpsertBatch(collectionName, vectors, contents, docIDs, metas); err != nil {
+			s.db.Model(&status).Updates(map[string]interface{}{
+				"status": "failed",
+				"error":  fmt.Sprintf("切片批量存储失败: %v", err),
+			})
+			return err
+		}
+	}
+
+	chunkCount := len(pending)
+
+	// 知识图谱（GraphRAG MVP）：处理完成后为文档建立实体关系图，
+	// 供群助手"关系问答"（如 PRD-2024-001 关联了什么）在向量召回外扩展邻接上下文。
+	// 建图失败不阻断主流程，仅记日志（图谱是检索增强，向量切片已成功落库）。
+	if err := s.buildDocumentGraph(doc.GroupID, doc.ID, doc.File.Name, text); err != nil {
+		logger.WithModule("GroupDocument").Warn("构建文档知识图谱失败", "doc_id", doc.ID, "error", err)
+	}
+
 	s.db.Model(&status).Updates(map[string]interface{}{
 		"status":      "completed",
 		"chunk_count": chunkCount,
 	})
 
-	logger.WithModule("GroupDocument").Info("文档处理完成", "doc_id", doc.ID, "knowledge_id", knowledgeID, "chunks", chunkCount, "entities", len(resp.EntityNodeIDs))
+	logger.WithModule("GroupDocument").Info("文档处理完成", "doc_id", doc.ID, "chunks", chunkCount)
 	return nil
 }
 
-func (s *GroupDocumentService) SearchKnowledge(groupID uint, query string, topK int) ([]SearchResult, error) {
-	return s.searchKnowledgeByMode(groupID, query, topK, cortexdb.RetrievalModeAuto)
+// deleteDocumentVectors 删除某个文档的所有语义切片（按 metadata.doc_id 过滤）。
+//
+// gracedb 没有 delete-by-metadata API，仍需遍历集合逐条核对 metadata；但把匹配到的
+// ID 汇总后走一次 DeleteEmbeddingBatch（单个事务批量删），替代逐条 DeleteByDocID，
+// 减少 Badger 写事务次数。ListEmbeddingIDs 保全部遍历，确保不遗漏任何属于该文档的切片。
+func (s *GroupDocumentService) deleteDocumentVectors(collectionName string, docID uint) error {
+	if s.gracedbDB == nil {
+		return nil
+	}
+	ids, err := s.gracedbDB.ListEmbeddingIDs(collectionName)
+	if err != nil {
+		return err
+	}
+	docIDStr := fmt.Sprintf("%d", docID)
+	var toDelete []string
+	for _, id := range ids {
+		emb, err := s.gracedbDB.GetEmbedding(collectionName, id, true)
+		if err != nil || emb == nil {
+			continue
+		}
+		if emb.Metadata["doc_id"] == docIDStr {
+			toDelete = append(toDelete, id)
+		}
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+	if err := s.gracedbDB.DeleteEmbeddingBatch(collectionName, toDelete); err != nil {
+		logger.WithModule("GroupDocument").Warn("批量删除文档切片失败", "docID", docID, "count", len(toDelete), "error", err)
+	}
+	return nil
 }
 
-func (s *GroupDocumentService) SearchKnowledgeWithMode(groupID uint, query string, topK int, mode string, graphLight bool) (*cortexdb.KnowledgeSearchResponse, error) {
-	if s.cortexDB == nil {
+// buildDocumentGraph 为单个群文档建立实体关系图（GraphRAG MVP）。
+//
+// 写入方式（幂等）：UpsertNode/UpsertEdge 覆盖式更新，重复处理同一文档不会产生重复节点。
+// 结构：一个 document 节点 + 从正文抽取的实体节点，文档→实体 "mentions" 边，
+// 实体间在同一文档内共现的 "co_occurs" 边。
+//
+// MVP 采用确定性抽取（无额外 LLM 调用），仅识别文档编码等明确 token；
+// LLM 级实体抽取作为后续增强，不在本次范围。
+func (s *GroupDocumentService) buildDocumentGraph(groupID, docID uint, title, text string) error {
+	if s.gracedbDB == nil {
+		return nil
+	}
+	g := s.gracedbDB.Graph()
+
+	docNodeID := fmt.Sprintf("doc:%d", docID)
+	docNode := &graph.GraphNode{
+		ID:   docNodeID,
+		Type: "document",
+		Labels: []string{"group_document"},
+		Properties: map[string]string{
+			"group_id": fmt.Sprintf("%d", groupID),
+			"doc_id":   fmt.Sprintf("%d", docID),
+			"title":    title,
+		},
+	}
+	if err := g.UpsertNode(docNode); err != nil {
+		return fmt.Errorf("写入文档节点失败: %w", err)
+	}
+
+	entities := extractGraphEntities(text)
+	entitySet := make(map[string]bool)
+	for _, e := range entities {
+		if entitySet[e] {
+			continue
+		}
+		entitySet[e] = true
+
+		// 实体节点
+		entityID := "entity:" + e
+		if err := g.UpsertNode(&graph.GraphNode{
+			ID:   entityID,
+			Type: "entity",
+			Labels: []string{"extracted"},
+			Properties: map[string]string{
+				"name":   e,
+				"doc_id": fmt.Sprintf("%d", docID),
+			},
+		}); err != nil {
+			return fmt.Errorf("写入实体节点失败: %w", err)
+		}
+
+		// 文档 → 实体 mentions 边
+		if err := g.UpsertEdge(&graph.GraphEdge{
+			ID:         fmt.Sprintf("%s-mentions-%s", docNodeID, entityID),
+			FromNodeID: docNodeID,
+			ToNodeID:   entityID,
+			Type:       "mentions",
+			Weight:     1.0,
+		}); err != nil {
+			return fmt.Errorf("写入 mentions 边失败: %w", err)
+		}
+	}
+
+	// 实体共现边（同一文档内的实体彼此 co_occurs），便于关系问答联动多个实体
+	entList := make([]string, 0, len(entitySet))
+	for e := range entitySet {
+		entList = append(entList, e)
+	}
+	for i := 0; i < len(entList); i++ {
+		for j := i + 1; j < len(entList); j++ {
+			a, b := "entity:"+entList[i], "entity:"+entList[j]
+			if err := g.UpsertEdge(&graph.GraphEdge{
+				ID:         fmt.Sprintf("%s-co-%s", a, b),
+				FromNodeID: a,
+				ToNodeID:   b,
+				Type:       "co_occurs",
+				Weight:     1.0,
+			}); err != nil {
+				return fmt.Errorf("写入共现边失败: %w", err)
+			}
+		}
+	}
+
+	logger.WithModule("GroupDocument").Info("文档知识图谱构建完成",
+		"doc_id", docID, "entities", len(entities))
+	return nil
+}
+
+// extractGraphEntities 用确定性规则从文档正文抽取候选实体名。
+//
+// MVP 覆盖高置信 token：文档编码（如 PRD-2024-001、BUG-123）、URL 域内的编号串等。
+// 返回去重后的实体名列表；抽取不到时返回空（调用方据此跳过建图边）。
+func extractGraphEntities(text string) []string {
+	if text == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	// 编码类 token：大写字母(可带数字) 或 数字后跟连字符和数字，如 PRD-2024-001 / BUG-123 / V1.2-3
+	codeRe := regexp.MustCompile(`[A-Za-z][A-Za-z0-9]*[-_][0-9A-Za-z]+(?:[-_][0-9A-Za-z]+)*`)
+	for _, m := range codeRe.FindAllString(text, -1) {
+		if len(m) < 3 || len(m) > 40 {
+			continue
+		}
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func (s *GroupDocumentService) SearchKnowledge(groupID uint, query string, topK int) ([]SearchResult, error) {
+	return s.searchKnowledgeByMode(groupID, query, topK)
+}
+
+// SearchKnowledgeWithMode 检索群知识库（语义 + 词法混合召回）。
+// 保留旧签名以兼容上层调用；mode/graphLight 参数在 gracedb 语义层下已无意义，忽略之。
+func (s *GroupDocumentService) SearchKnowledgeWithMode(groupID uint, query string, topK int, mode string, graphLight bool) (*types.KnowledgeSearchResponse, error) {
+	if s.gracedbDB == nil {
 		return nil, fmt.Errorf("向量服务未初始化")
 	}
 
 	collectionName := fmt.Sprintf("group_%d", groupID)
-	resp, err := s.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
-		Query:         query,
-		Collection:    collectionName,
-		TopK:          topK,
-		RetrievalMode: mode,
-		GraphLight:    graphLight,
-	})
+	resp, err := s.searchHybrid(collectionName, query, topK, nil)
 	if err != nil {
 		return nil, fmt.Errorf("搜索知识库失败: %v", err)
 	}
 	return resp, nil
 }
 
-func (s *GroupDocumentService) searchKnowledgeByMode(groupID uint, query string, topK int, mode string) ([]SearchResult, error) {
-	if s.cortexDB == nil {
+// SearchKnowledgeByDoc 在群知识库中只检索某个文档（按 metadata.doc_id 精确过滤）。
+// 供"删除前校验某文档是否已向量化"或"仅在某文档范围内检索"等场景使用。
+func (s *GroupDocumentService) SearchKnowledgeByDoc(groupID uint, docID uint, query string, topK int) (*types.KnowledgeSearchResponse, error) {
+	if s.gracedbDB == nil {
+		return nil, fmt.Errorf("向量服务未初始化")
+	}
+	collectionName := fmt.Sprintf("group_%d", groupID)
+	filter := map[string]string{"doc_id": fmt.Sprintf("%d", docID)}
+	return s.searchHybrid(collectionName, query, topK, filter)
+}
+
+// ExpandGraphKnowledge 基于向量召回的顶命中文档，扩展其知识图谱邻接上下文（GraphRAG）。
+//
+// 流程：searchHybrid 取 topK 命中 → 对顶命中的 doc 节点做两跳 GraphBFS → 把命中的
+// 实体/关联文档格式化为文本。用于"关系问答"（如 PRD-2024-001 关联了哪些人/文档），
+// 普通向量检索难答，"实体→邻接"补上。无图谱数据时返回空串，不阻断正常答复。
+func (s *GroupDocumentService) ExpandGraphKnowledge(groupID uint, query string, topK int) string {
+	if s.gracedbDB == nil {
+		return ""
+	}
+	collectionName := fmt.Sprintf("group_%d", groupID)
+	resp, err := s.searchHybrid(collectionName, query, topK, nil)
+	if err != nil || len(resp.Results) == 0 {
+		return ""
+	}
+
+	g := s.gracedbDB.Graph()
+	var parts []string
+	seen := make(map[string]bool)
+	for _, hit := range resp.Results {
+		if len(parts) >= 12 {
+			break
+		}
+		docID := hit.Metadata["doc_id"]
+		if docID == "" {
+			continue
+		}
+		docNodeID := "doc:" + docID
+		if seen[docNodeID] {
+			continue
+		}
+		seen[docNodeID] = true
+
+		res, err := g.BFS(docNodeID, graph.NeighborOptions{MaxDepth: 2})
+		if err != nil || res == nil || len(res.Nodes) == 0 {
+			continue
+		}
+		// 汇总去重后的实体/关联节点名
+		var names []string
+		for _, n := range res.Nodes {
+			if n.ID == docNodeID {
+				continue
+			}
+			label := n.ID
+			if v, ok := n.Properties["name"]; ok {
+				label = v
+			} else if v, ok := n.Properties["title"]; ok {
+				label = "文档:" + v
+			}
+			if !containsStr(names, label) {
+				names = append(names, label)
+			}
+		}
+		if len(names) > 0 {
+			parts = append(parts, fmt.Sprintf("[图谱] 文档 %s 关联: %s",
+				hit.Title, strings.Join(names, "、")))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "【知识图谱】\n" + strings.Join(parts, "\n")
+}
+
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *GroupDocumentService) searchKnowledgeByMode(groupID uint, query string, topK int) ([]SearchResult, error) {
+	if s.gracedbDB == nil {
 		return nil, fmt.Errorf("向量服务未初始化")
 	}
 
 	collectionName := fmt.Sprintf("group_%d", groupID)
-	resp, err := s.cortexDB.SearchKnowledge(context.Background(), cortexdb.KnowledgeSearchRequest{
-		Query:         query,
-		Collection:    collectionName,
-		TopK:          topK,
-		RetrievalMode: mode,
-	})
-
+	resp, err := s.searchHybrid(collectionName, query, topK, nil)
 	if err != nil {
 		return nil, fmt.Errorf("搜索知识库失败: %v", err)
 	}
@@ -258,19 +599,207 @@ func (s *GroupDocumentService) searchKnowledgeByMode(groupID uint, query string,
 	return searchResults, nil
 }
 
+// searchSemantic 纯语义检索群知识库：把 query 向量化后按余弦相似度召回切片，
+// 供 searchHybrid 作为召回的一路使用，也保留对"仅语义"场景的调用。
+// filter 非空时按 metadata 精确过滤（如 {"doc_id": "12"}），nil 表示不过滤。
+func (s *GroupDocumentService) searchSemantic(collectionName, query string, topK int, filter map[string]string) ([]types.ScoredEmbedding, error) {
+	if s.gracedbDB == nil {
+		return nil, fmt.Errorf("向量服务未初始化")
+	}
+
+	queryVec, err := s.aiService.Embed(query)
+	if err != nil {
+		return nil, fmt.Errorf("生成查询向量失败: %v", err)
+	}
+
+	opts := types.SearchOptions{TopK: topK}
+	if len(filter) > 0 {
+		opts.MetadataFilter = filter
+	}
+	return s.gracedbDB.Search(collectionName, queryVec, opts)
+}
+
+// SearchOptions 语义 + 词法（FTS）混合召回群知识库。
+//
+// 收益：纯语义检索经常漏掉"精确词/编号/人名"命中（如 PRD-2024-001、张三），
+// 词法能补上；反之词法对同义改写无能为力，语义能补上。两者用 RRF（倒数排名融合）
+// 合并排序，比单一维度召回更全。
+//
+// Score 语义保持：返回给上层消费的 Score 沿用"向量余弦相似度"（0-1），避免前端
+// 知识来源展示（score*100%）因 RRF 分数尺度变小而退化。FTS 命中但语义未命中的文档，
+// 无余弦分可用，取中性值 0.5 兜底展示。
+//
+// filter 非空时按 metadata 精确过滤（如 {"doc_id": "12"}），语义与 FTS 两路都约束在
+// 该范围内，nil 表示不过滤。
+func (s *GroupDocumentService) searchHybrid(collectionName, query string, topK int, filter map[string]string) (*types.KnowledgeSearchResponse, error) {
+	if s.gracedbDB == nil {
+		return nil, fmt.Errorf("向量服务未初始化")
+	}
+	if topK <= 0 {
+		topK = 5
+	}
+	// 多取一些候选便于 RRF 重排后仍有足够结果
+	fetchK := topK * 3
+
+	// 路 1：语义向量检索（Score 为余弦相似度 0-1）
+	semanticRes, semErr := s.searchSemantic(collectionName, query, fetchK, filter)
+	if semErr != nil {
+		semanticRes = nil
+	}
+
+	// 路 2：中文词法 FTS 检索
+	ftsRes, ftsErr := s.gracedbDB.SearchFTSWithContent(collectionName, query, fetchK)
+	if ftsErr != nil {
+		ftsRes = nil
+	}
+	// SearchFTSWithContent 不带 filter 参数，过滤由这里后置完成：
+	// 仅当 filter 非空时，剔除 metadata 不匹配的 FTS 命中。
+	if len(filter) > 0 && len(ftsRes) > 0 {
+		kept := ftsRes[:0]
+		for _, r := range ftsRes {
+			if metadataMatchFilter(r.Metadata, filter) {
+				kept = append(kept, r)
+			}
+		}
+		ftsRes = kept
+	}
+
+	if len(semanticRes) == 0 && len(ftsRes) == 0 {
+		return &types.KnowledgeSearchResponse{Query: query, Results: []types.KnowledgeSearchHit{}}, nil
+	}
+
+	// 仅一路有结果时直接使用，避免无谓 RRF
+	if len(semanticRes) == 0 {
+		ftsRes = hybridDisplayScores(ftsRes, nil)
+		return s.hitsFromScored(collectionName, query, ftsRes), nil
+	}
+	if len(ftsRes) == 0 {
+		return s.hitsFromScored(collectionName, query, semanticRes), nil
+	}
+
+	merged := mergeRRF(semanticRes, ftsRes, topK)
+	// 尽量保留语义余弦分用于展示；FTS 独占的用 0.5 兜底
+	display := hybridDisplayScores(merged, semanticRes)
+	return s.hitsFromScored(collectionName, query, display), nil
+}
+
+// hitsFromScored 把 ScoredEmbedding 列表转成 gracedb 的 KnowledgeSearchResponse 结构。
+func (s *GroupDocumentService) hitsFromScored(collectionName, query string, scored []types.ScoredEmbedding) *types.KnowledgeSearchResponse {
+	results := make([]types.KnowledgeSearchHit, 0, len(scored))
+	for _, se := range scored {
+		metadata := se.Metadata
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
+		title := metadata["title"]
+		results = append(results, types.KnowledgeSearchHit{
+			KnowledgeID: se.DocID,
+			Title:       title,
+			Snippet:     se.Content,
+			Score:       float64(se.Score),
+			Metadata:    metadata,
+		})
+	}
+	return &types.KnowledgeSearchResponse{Query: query, Results: results}
+}
+
+// mergeRRF 对语义/词法两路结果做倒数排名融合（Reciprocal Rank Fusion）后取 topK。
+func mergeRRF(semantic, fts []types.ScoredEmbedding, topK int) []types.ScoredEmbedding {
+	const k = 60.0
+	type entry struct {
+		emb types.ScoredEmbedding
+		rrf float64
+	}
+	order := make([]string, 0)
+	scores := make(map[string]*entry)
+
+	addRank := func(list []types.ScoredEmbedding) {
+		for i, emb := range list {
+			id := emb.ID
+			if id == "" {
+				id = emb.DocID
+			}
+			score := 1.0 / (k + float64(i+1))
+			if e, ok := scores[id]; ok {
+				e.rrf += score
+			} else {
+				scores[id] = &entry{emb: emb, rrf: score}
+				order = append(order, id)
+			}
+		}
+	}
+	addRank(semantic)
+	addRank(fts)
+
+	// 稳定排序：分数高者优先，同分保持语义在前
+	weighted := make([]entry, 0, len(order))
+	for _, id := range order {
+		weighted = append(weighted, *scores[id])
+	}
+	for i := 1; i < len(weighted); i++ {
+		for j := 0; j < len(weighted)-i; j++ {
+			if weighted[j].rrf < weighted[j+1].rrf {
+				weighted[j], weighted[j+1] = weighted[j+1], weighted[j]
+			}
+		}
+	}
+	if len(weighted) > topK {
+		weighted = weighted[:topK]
+	}
+	out := make([]types.ScoredEmbedding, 0, len(weighted))
+	for _, w := range weighted {
+		out = append(out, w.emb)
+	}
+	return out
+}
+
+// hybridDisplayScores 让展示分数尽量保留语义余弦相似度（0-1）语义：
+// 命中语义结果的用其余弦分；仅词法命中的用 0.5 中性值兜底，避免前端显示 0%。
+func hybridDisplayScores(scored, semantic []types.ScoredEmbedding) []types.ScoredEmbedding {
+	semScore := make(map[string]float32)
+	for _, se := range semantic {
+		id := se.ID
+		if id == "" {
+			id = se.DocID
+		}
+		semScore[id] = se.Score
+	}
+	out := make([]types.ScoredEmbedding, 0, len(scored))
+	for _, se := range scored {
+		id := se.ID
+		if id == "" {
+			id = se.DocID
+		}
+		if v, ok := semScore[id]; ok {
+			se.Score = v
+		} else {
+			se.Score = 0.5
+		}
+		out = append(out, se)
+	}
+	return out
+}
+
+// metadataMatchFilter 判断 embedding 的 metadata 是否精确满足 filter 的每个 key=value。
+// 用于对不带 filter 参数的 FTS 检索结果做后置过滤（语义检索已在 SearchOptions.MetadataFilter
+// 内层过滤，此处仅补 FTS 一路）。
+func metadataMatchFilter(metadata, filter map[string]string) bool {
+	for k, v := range filter {
+		if metadata[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *GroupDocumentService) DeleteGroupVectors(groupID uint) error {
-	if s.cortexDB == nil {
+	if s.gracedbDB == nil {
 		return nil
 	}
 
-	var docs []model.GroupDocument
-	s.db.Where("group_id = ?", groupID).Find(&docs)
-
-	for _, doc := range docs {
-		knowledgeID := fmt.Sprintf("group_%d_doc_%d", groupID, doc.ID)
-		s.cortexDB.DeleteKnowledge(context.Background(), cortexdb.KnowledgeDeleteRequest{
-			KnowledgeID: knowledgeID,
-		})
+	collectionName := fmt.Sprintf("group_%d", groupID)
+	if err := s.gracedbDB.DeleteCollection(collectionName); err != nil {
+		logger.WithModule("GroupDocument").Warn("清空群知识向量失败", "groupID", groupID, "error", err)
 	}
 
 	s.db.Where("group_id = ?", groupID).Delete(&model.DocumentProcessStatus{})

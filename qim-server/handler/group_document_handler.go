@@ -1,16 +1,20 @@
 package handler
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
+
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/utils"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -53,6 +57,88 @@ func GetGroupDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": documents,
+	})
+}
+
+// GetGroupKnowledgeGraph 返回指定群的知识图谱（非管理员接口，群成员即可查看）。
+// 群文档向量存于 gracedb 集合 "group_{group.ID}"，这里按集合读回所有向量块，
+// 组装成与管理员 GetKnowledgeGraph 一致的 nodes/edges 结构供前端渲染。
+func GetGroupKnowledgeGraph(c *gin.Context) {
+	convIDStr := c.Param("id")
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
+
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", uint(convID)).First(&group).Error; err != nil {
+		response.NotFound(c, "群聊不存在")
+		return
+	}
+
+	// 群成员身份校验，防止非成员越权查看任意群知识图谱
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+	isMember, err := isGroupMember(db, group.ConversationID, userID)
+	if err != nil {
+		response.InternalServerError(c, "校验群成员失败")
+		return
+	}
+	if !isMember {
+		response.Forbidden(c, "您不是该群成员")
+		return
+	}
+
+	maxNodes := 50
+	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
+		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+
+	nodes := make([]map[string]interface{}, 0)
+	edges := make([]map[string]interface{}, 0)
+
+	vectorSvc := di.GlobalContainer.VectorService
+	if vectorSvc == nil {
+		response.Success(c, gin.H{
+			"nodes":       nodes,
+			"edges":       edges,
+			"total_nodes": 0,
+			"total_edges": 0,
+		})
+		return
+	}
+
+	collection := fmt.Sprintf("group_%d", group.ID)
+	results, err := vectorSvc.GetByCollection(context.Background(), collection, maxNodes)
+	if err == nil {
+		for i, result := range results {
+			nodeID := fmt.Sprintf("node_%d", i)
+			nodes = append(nodes, map[string]interface{}{
+				"id":    nodeID,
+				"label": result.DocID,
+				"type":  "knowledge",
+				"x":     float64(i%10) * 100,
+				"y":     float64(i/10) * 100,
+				"data": map[string]interface{}{
+					"content":    result.Content,
+					"score":      result.Score,
+					"metadata":   result.Metadata,
+					"collection": result.Collection,
+				},
+			})
+		}
+	}
+
+	response.Success(c, gin.H{
+		"nodes":       nodes,
+		"edges":       edges,
+		"total_nodes": len(nodes),
+		"total_edges": len(edges),
 	})
 }
 
@@ -157,6 +243,19 @@ func AddGroupDocument(c *gin.Context) {
 		if mimeBase == t {
 			isAllowed = true
 			break
+		}
+	}
+
+	// OOXML 文档（docx/xlsx/pptx）是 ZIP 容器，服务端 DetectMimeType（http.DetectContentType）
+	// 一律返回 application/zip，MIME 白名单无法命中。用原始文件扩展名兜底识别，
+	// 使这类文档也能绑定进群知识库。
+	if !isAllowed {
+		ext := strings.ToLower(filepath.Ext(file.OriginalName))
+		for _, e := range []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".md"} {
+			if ext == e {
+				isAllowed = true
+				break
+			}
 		}
 	}
 

@@ -16,6 +16,23 @@
 
       <!-- 查询表单 -->
       <el-form :inline="true" class="search-form" @submit.prevent="handleSearch">
+        <el-form-item label="选择群">
+          <el-select
+            v-model="selectedGroupId"
+            placeholder="选择群（自动填充集合名）"
+            filterable
+            clearable
+            style="width: 220px"
+            @change="onGroupSelect"
+          >
+            <el-option
+              v-for="g in groups"
+              :key="g.id"
+              :label="g.name"
+              :value="g.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="集合名称">
           <el-input v-model="form.collection" placeholder="如: group_1" style="width: 200px" />
         </el-form-item>
@@ -32,7 +49,17 @@
 
       <!-- 图谱容器 -->
       <div class="graph-container" v-loading="loading">
-        <div ref="graphRef" class="graph-canvas"></div>
+        <div class="graph-canvas">
+          <EChartsGraph
+            :nodes="graphNodes"
+            :edges="graphEdges"
+            :type-colors="typeColors"
+            :show-legend="true"
+            :show-edge-label="true"
+            @node-click="onNodeClick"
+            @blank-click="clearDetail"
+          />
+        </div>
       </div>
 
       <!-- 统计信息 -->
@@ -108,40 +135,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Refresh, Connection, Link, Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
-
-interface GraphNode {
-  id: string
-  label: string
-  type: string
-  x?: number
-  y?: number
-  data?: Record<string, any>
-}
-
-interface GraphEdge {
-  source: string
-  target: string
-  label: string
-  type: string
-}
+import { getGroups } from '@/api/groups'
+import type { Group } from '@/types'
+import EChartsGraph, { type GraphNode as EGNode, type GraphEdge as EGEdge } from '@/components/charts/EChartsGraph.vue'
 
 interface GraphData {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
+  nodes: EGNode[]
+  edges: EGEdge[]
   total_nodes: number
   total_edges: number
 }
 
-type LayoutNode = GraphNode & { x: number; y: number }
-
-const graphRef = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const detailDialogVisible = ref(false)
-const selectedNode = ref<GraphNode | null>(null)
+const selectedNode = ref<EGNode | null>(null)
 
 const form = ref({
   collection: 'group_1',
@@ -149,15 +160,38 @@ const form = ref({
   maxNodes: 50,
 })
 
+// 群下拉：选中群后自动填充集合名 group_{id}，仍可手动微调
+const groups = ref<Group[]>([])
+const selectedGroupId = ref<number | undefined>(undefined)
+const fetchGroups = async () => {
+  try {
+    const res = await getGroups({ page: 1, pageSize: 100 })
+    groups.value = res.data?.data?.list || []
+  } catch (e) {
+    console.error('加载群列表失败', e)
+  }
+}
+const onGroupSelect = (id: number | undefined) => {
+  if (id != null) {
+    form.value.collection = `group_${id}`
+  }
+}
+
 const stats = ref({
   totalNodes: 0,
   totalEdges: 0,
   knowledgeCount: 0,
 })
 
-let canvas: HTMLCanvasElement | null = null
-let animationFrameId: number | null = null
-let resizeHandler: (() => void) | null = null
+// 归一化后交给统一渲染组件 EChartsGraph 的节点/边
+const graphNodes = ref<EGNode[]>([])
+const graphEdges = ref<EGEdge[]>([])
+// 管理后台配色：查询橙 / 知识紫 / 实体绿
+const typeColors: Record<string, [string, string]> = {
+  query: ['#ffd08a', '#f97316'],      // 橙 · 查询
+  knowledge: ['#c4b5fd', '#8b5cf6'],  // 紫 · 知识
+  entity: ['#86efac', '#16a34a'],     // 绿 · 实体
+}
 
 const fetchGraphData = async () => {
   try {
@@ -169,15 +203,16 @@ const fetchGraphData = async () => {
         max_nodes: form.value.maxNodes,
       },
     })
-    
+
     const data: GraphData = res.data.data
     stats.value = {
       totalNodes: data.total_nodes,
       totalEdges: data.total_edges,
-      knowledgeCount: data.nodes.filter((n: GraphNode) => n.type === 'knowledge').length,
+      knowledgeCount: data.nodes.filter((n: EGNode) => n.type === 'knowledge').length,
     }
 
-    renderGraph(data)
+    graphNodes.value = data.nodes
+    graphEdges.value = data.edges || []
   } catch (error) {
     ElMessage.error('获取知识图谱数据失败')
   } finally {
@@ -185,174 +220,15 @@ const fetchGraphData = async () => {
   }
 }
 
-const renderGraph = (data: GraphData) => {
-  if (!graphRef.value) return
+// EChartsGraph 冒泡的节点点击 → 弹出详情弹窗
+const onNodeClick = (node: EGNode) => {
+  selectedNode.value = node
+  detailDialogVisible.value = true
+}
 
-  const graphCanvas = document.createElement('canvas')
-  canvas = graphCanvas
-  graphCanvas.style.width = '100%'
-  graphCanvas.style.height = '100%'
-  graphRef.value.innerHTML = ''
-  graphRef.value.appendChild(graphCanvas)
-
-  const ctx = graphCanvas.getContext('2d')
-  if (!ctx) return
-
-  const resizeCanvas = () => {
-    const rect = graphRef.value?.getBoundingClientRect()
-    if (!rect) return
-    graphCanvas.width = rect.width
-    graphCanvas.height = rect.height
-  }
-  resizeCanvas()
-  resizeHandler = resizeCanvas
-  window.addEventListener('resize', resizeCanvas)
-
-  // 布局节点
-  const nodes: LayoutNode[] = data.nodes.map(node => ({
-    ...node,
-    x: node.x ?? Math.random() * graphCanvas.width * 0.8 + graphCanvas.width * 0.1,
-    y: node.y ?? Math.random() * graphCanvas.height * 0.8 + graphCanvas.height * 0.1,
-  }))
-  const edges = [...data.edges]
-
-  if (nodes.length === 0) return
-
-  // 使用简单力导向布局
-  const width = graphCanvas.width
-  const height = graphCanvas.height
-  
-  // 初始位置
-  nodes.forEach((node, i) => {
-    if (!node.x || !node.y) {
-      node.x = Math.random() * width * 0.8 + width * 0.1
-      node.y = Math.random() * height * 0.8 + height * 0.1
-    }
-  })
-
-  let iteration = 0
-  const maxIterations = 100
-
-  const layout = () => {
-    if (iteration >= maxIterations) {
-      draw()
-      return
-    }
-
-    // 斥力
-    for (let i = 0; i < nodes.length; i++) {
-      const nodeA = nodes[i]
-      if (!nodeA) continue
-      for (let j = i + 1; j < nodes.length; j++) {
-        const nodeB = nodes[j]
-        if (!nodeB) continue
-        const dx = nodeB.x - nodeA.x
-        const dy = nodeB.y - nodeA.y
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const force = 5000 / (dist * dist)
-        const fx = (dx / dist) * force
-        const fy = (dy / dist) * force
-        nodeA.x -= fx
-        nodeA.y -= fy
-        nodeB.x += fx
-        nodeB.y += fy
-      }
-    }
-
-    // 引力
-    edges.forEach(edge => {
-      const source = nodes.find(n => n.id === edge.source)
-      const target = nodes.find(n => n.id === edge.target)
-      if (!source || !target) return
-
-      const dx = target.x - source.x
-      const dy = target.y - source.y
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1
-      const force = dist * 0.01
-      const fx = (dx / dist) * force
-      const fy = (dy / dist) * force
-      source.x += fx
-      source.y += fy
-      target.x -= fx
-      target.y -= fy
-    })
-
-    // 中心引力
-    nodes.forEach(node => {
-      const dx = width / 2 - node.x
-      const dy = height / 2 - node.y
-      node.x += dx * 0.01
-      node.y += dy * 0.01
-    })
-
-    iteration++
-    layout()
-  }
-
-  const draw = () => {
-    ctx.clearRect(0, 0, width, height)
-
-    // 绘制边
-    edges.forEach(edge => {
-      const source = nodes.find(n => n.id === edge.source)
-      const target = nodes.find(n => n.id === edge.target)
-      if (!source || !target) return
-
-      ctx.beginPath()
-      ctx.moveTo(source.x, source.y)
-      ctx.lineTo(target.x, target.y)
-      ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)'
-      ctx.lineWidth = 2
-      ctx.stroke()
-
-      // 边标签
-      const midX = (source.x + target.x) / 2
-      const midY = (source.y + target.y) / 2
-      ctx.fillStyle = 'rgba(100, 116, 139, 0.6)'
-      ctx.font = '10px sans-serif'
-      ctx.fillText(edge.label, midX, midY - 5)
-    })
-
-    // 绘制节点
-    nodes.forEach(node => {
-      const isQuery = node.type === 'query'
-      const radius = isQuery ? 30 : 20
-      
-      ctx.beginPath()
-      ctx.arc(node.x, node.y, radius, 0, Math.PI * 2)
-      ctx.fillStyle = isQuery ? 'rgba(249, 115, 22, 0.8)' : 'rgba(168, 85, 247, 0.8)'
-      ctx.fill()
-      ctx.strokeStyle = isQuery ? '#f97316' : '#a855f7'
-      ctx.lineWidth = 2
-      ctx.stroke()
-
-      // 节点标签
-      ctx.fillStyle = '#1e293b'
-      ctx.font = '12px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(node.label.substring(0, 10), node.x, node.y + 4)
-    })
-  }
-
-  layout()
-
-  // 点击事件
-  graphCanvas.addEventListener('click', (e: MouseEvent) => {
-    const rect = graphCanvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-
-    const clickedNode = nodes.find(node => {
-      const dx = node.x - x
-      const dy = node.y - y
-      return Math.sqrt(dx * dx + dy * dy) < 25
-    })
-
-    if (clickedNode) {
-      selectedNode.value = clickedNode
-      detailDialogVisible.value = true
-    }
-  })
+const clearDetail = () => {
+  selectedNode.value = null
+  detailDialogVisible.value = false
 }
 
 const handleSearch = () => {
@@ -383,17 +259,8 @@ const getNodeTypeName = (type: string) => {
 }
 
 onMounted(() => {
+  fetchGroups()
   fetchGraphData()
-})
-
-onUnmounted(() => {
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-  }
-  if (resizeHandler) {
-    window.removeEventListener('resize', resizeHandler)
-    resizeHandler = null
-  }
 })
 </script>
 

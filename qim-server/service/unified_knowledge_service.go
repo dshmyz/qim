@@ -5,15 +5,12 @@ import (
 	"strings"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
-
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
 )
 
 type UnifiedKnowledgeService struct {
 	groupDocSvc    *GroupDocumentService
 	legacyFallback *LegacyKnowledgeFallback
 	vectorEnabled  bool
-	graphEnhanced  bool
 }
 
 type LegacyKnowledgeFallback struct {
@@ -33,35 +30,29 @@ func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *Leg
 		groupDocSvc:    groupDocSvc,
 		legacyFallback: fallback,
 		vectorEnabled:  true,
-		graphEnhanced:  false,
 	}
 }
 
 func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) []KnowledgeSnippet {
 	if s.groupDocSvc != nil && s.vectorEnabled {
-		resp, err := s.groupDocSvc.SearchKnowledgeWithMode(groupID, query, limit, cortexdb.RetrievalModeAuto, s.graphEnhanced)
+		resp, err := s.groupDocSvc.SearchKnowledgeWithMode(groupID, query, limit, "", false)
 		if err == nil && len(resp.Results) > 0 {
-			sourceTag := "auto"
-			if s.graphEnhanced {
-				sourceTag = "graph"
-			}
 			snippets := make([]KnowledgeSnippet, 0, len(resp.Results))
 			for _, r := range resp.Results {
 				snippets = append(snippets, KnowledgeSnippet{
 					Title:    r.Title,
 					Content:  r.Snippet,
 					Score:    r.Score,
-					Source:   sourceTag,
+					Source:   "auto",
 					Metadata: r.Metadata,
 				})
 			}
-			logger.WithModule("UnifiedKnowledge").Info("检索命中", "source", sourceTag, "count", len(snippets))
+			logger.WithModule("UnifiedKnowledge").Info("检索命中", "source", "auto", "count", len(snippets))
 			return snippets
 		}
 
 		if err != nil {
-			logger.WithModule("UnifiedKnowledge").Error("语义检索失败，降级到词法", "error", err)
-			return s.lexicalFallback(query, groupID, limit)
+			logger.WithModule("UnifiedKnowledge").Error("语义检索失败，降级到兜底", "error", err)
 		}
 	}
 
@@ -76,30 +67,6 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 	return nil
 }
 
-func (s *UnifiedKnowledgeService) lexicalFallback(query string, groupID uint, limit int) []KnowledgeSnippet {
-	if s.groupDocSvc == nil {
-		return nil
-	}
-
-	resp, err := s.groupDocSvc.SearchKnowledgeWithMode(groupID, query, limit, cortexdb.RetrievalModeLexical, false)
-	if err != nil || len(resp.Results) == 0 {
-		return nil
-	}
-
-	logger.WithModule("UnifiedKnowledge").Info("词法检索兜底命中", "count", len(resp.Results))
-	snippets := make([]KnowledgeSnippet, 0, len(resp.Results))
-	for _, r := range resp.Results {
-		snippets = append(snippets, KnowledgeSnippet{
-			Title:    r.Title,
-			Content:  r.Snippet,
-			Score:    r.Score,
-			Source:   "lexical",
-			Metadata: r.Metadata,
-		})
-	}
-	return snippets
-}
-
 func (s *UnifiedKnowledgeService) BuildContext(query string, groupID uint) string {
 	snippets := s.Search(query, groupID, 3)
 	if len(snippets) == 0 {
@@ -109,15 +76,7 @@ func (s *UnifiedKnowledgeService) BuildContext(query string, groupID uint) strin
 	var parts []string
 	parts = append(parts, "📚 群知识库相关内容：")
 	for i, snip := range snippets {
-		sourceTag := ""
-		switch snip.Source {
-		case "auto":
-			sourceTag = fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*10)
-		case "graph":
-			sourceTag = fmt.Sprintf("（图谱增强检索，相关度: %.1f%%）", snip.Score*10)
-		default:
-			sourceTag = fmt.Sprintf("（词法检索，相关度: %.1f%%）", snip.Score*10)
-		}
+		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*10)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", i+1, snip.Title, sourceTag, snip.Content))
 	}
 
@@ -128,6 +87,7 @@ func (s *UnifiedKnowledgeService) SetVectorEnabled(enabled bool) {
 	s.vectorEnabled = enabled
 }
 
+// SetGraphEnhanced 保留以兼容调用；gracedb 语义层下图谱增强已并入语义检索，此开关无效。
 func (s *UnifiedKnowledgeService) SetGraphEnhanced(enabled bool) {
-	s.graphEnhanced = enabled
+	_ = enabled
 }

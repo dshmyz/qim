@@ -2,6 +2,7 @@ package service
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -33,20 +35,35 @@ func NewDocumentParser() *DocumentParser {
 func (p *DocumentParser) Parse(filePath string) (string, error) {
 	ext := strings.ToLower(filePath[strings.LastIndex(filePath, ".")+1:])
 
+	var text string
+	var err error
 	switch ext {
-	case "txt", "md", "markdown":
-		return p.parseText(filePath)
+	case "txt", "md", "mdx", "markdown", "csv", "json", "log":
+		text, err = p.parseText(filePath)
 	case "pdf":
-		return p.parsePDF(filePath)
+		text, err = p.parsePDF(filePath)
 	case "docx":
-		return p.parseDocx(filePath)
+		text, err = p.parseDocx(filePath)
 	case "pptx":
-		return p.parsePptx(filePath)
+		text, err = p.parsePptx(filePath)
 	case "xlsx":
-		return p.parseXlsx(filePath)
+		text, err = p.parseXlsx(filePath)
 	default:
-		return p.parseText(filePath)
+		// 未知扩展名：直接拒绝，不尝试按纯文本读取。
+		// 覆盖 .doc/.xls/.ppt（OLE 二进制老格式）等没有解析分支的格式——
+		// 与其读进二进制字节再被下方 UTF-8 校验拦下，不如明确告知不支持该格式。
+		return "", fmt.Errorf("不支持的文件类型 .%s（支持 txt/md/csv/json/pdf/docx/pptx/xlsx）", ext)
 	}
+	if err != nil {
+		return "", err
+	}
+
+	// 防御：解析结果不是合法 UTF-8（如扫描 PDF 提取出的原始字节、文本文件内嵌的
+	// 二进制内容）会被统一拦截，避免乱码向量落库后被图谱/检索读到。
+	if !utf8.ValidString(text) {
+		return "", fmt.Errorf("解析结果不是合法 UTF-8 文本（字节数 %d，疑似二进制内容，文件可能损坏或为扫描件）", len(text))
+	}
+	return text, nil
 }
 
 // parseText 解析纯文本文件
@@ -68,6 +85,15 @@ func (p *DocumentParser) parseText(filePath string) (string, error) {
 
 // parsePDF 使用 ledongthuc/pdf 提取 PDF 文本内容
 func (p *DocumentParser) parsePDF(filePath string) (string, error) {
+	// 预处理：很多真实 PDF（尤其知网/万方下载的论文）在末尾 %%EOF 之后还残留一段
+	// 元数据/扫描尾块（如 WebFastLoad<FileProperty>...</FileProperty>）。而
+	// ledongthuc/pdf 只读文件最后 100 字节并要求以 %%EOF 结尾（read.go 的 HasSuffix
+	// 校验），尾部带数据就会误报 "not a PDF file: missing %%EOF"。
+	// 这里先把文件截断到最后一个 %%EOF 处，再交给 pdf.Open 解析。
+	if err := p.trimPDFTrailingData(filePath); err != nil {
+		return "", err
+	}
+
 	f, r, err := pdf.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("打开 PDF %s 失败: %w", filePath, err)
@@ -95,6 +121,52 @@ func (p *DocumentParser) parsePDF(filePath string) (string, error) {
 		return "", fmt.Errorf("PDF %s 无法提取文本内容", filePath)
 	}
 	return strings.Join(texts, "\n\n"), nil
+}
+
+// trimPDFTrailingData 将 PDF 文件原地截断到最后一个 %%EOF 结束处。
+// 截断点取 "%%EOF" 之后到行尾结束（含可能的 \r\n），丢弃其后所有附加数据；
+// 若文件本身已以 %%EOF 结尾则不做任何改动。找不到 %%EOF 或文件过大时直接放行，
+// 交由 pdf.Open 自己报错，保持原有行为。
+func (p *DocumentParser) trimPDFTrailingData(filePath string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("获取 PDF 文件信息 %s 失败: %w", filePath, err)
+	}
+	// 不超过大小上限才做扫描，避免超大文件整读
+	if info.Size() > maxDocumentSize || info.Size() == 0 {
+		return nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("读取 PDF 文件 %s 失败: %w", filePath, err)
+	}
+
+	idx := bytes.LastIndex(data, []byte("%%EOF"))
+	if idx < 0 {
+		// 没有 %%EOF：不修改，交给 pdf.Open 判定
+		return nil
+	}
+	// 截断点 = %%EOF 之后到行尾（保留 %%EOF 本身与紧随的换行符）
+	truncAt := idx + len("%%EOF")
+	for truncAt < len(data) && (data[truncAt] == ' ' || data[truncAt] == '\t') {
+		truncAt++
+	}
+	if truncAt < len(data) && (data[truncAt] == '\r' || data[truncAt] == '\n') {
+		if data[truncAt] == '\r' && truncAt+1 < len(data) && data[truncAt+1] == '\n' {
+			truncAt++
+		}
+		truncAt++
+	}
+	if truncAt >= len(data) {
+		// 已经以 %%EOF 结尾，无需改动
+		return nil
+	}
+
+	if err := os.WriteFile(filePath, data[:truncAt], info.Mode().Perm()); err != nil {
+		return fmt.Errorf("截断 PDF 尾部数据失败 %s: %w", filePath, err)
+	}
+	return nil
 }
 
 // parseDocx 解析 DOCX 文件（ZIP 内的 word/document.xml）
