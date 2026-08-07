@@ -20,12 +20,11 @@
 被引用图片消息(Content={"url":<storagePath>,"id":<fileID>})
   → prepareInput Type=="image" 分支
       → GroupDocumentService.ImageURLForContext(fileID)   // 读字节 → base64 data URL
-      → 成功: SmartReplyContext.QuotedImageURL = dataURL
-             SmartReplyContext.QuotedFileCtx  = "📷 你引用了一张图片「x.png」,请识别其内容…"
-      失败: SmartReplyContext.QuotedFileFailed = "看不了图" 提示语(已读到/读不了互斥)
+      → 成功: SmartReplyContext.Quoted = &QuotedContext{Kind: QuotedImage, Name, Text, ImageURL}
+      失败: SmartReplyContext.Quoted = &QuotedContext{Kind: QuotedFailed, Name, Text}   // "看不了图"提示语
   → buildContextBlocks / buildQuotedContextMessage
       → 图片块经 schema.Message.MultiContent 携带 image_url data URL
-  → ExecuteStream: 有图 → ai.TaskTypeVision (路由回退); 无图 → TaskTypeChat
+  → ExecuteStream: Quoted.Kind==QuotedImage → ai.TaskTypeVision (路由回退); 其他 → TaskTypeChat
   → einoMessagesToAIMessages / imageURLFromMessage
       → MultiContent 的 data URL 提取到 ai.Message.ImageURL
   → ai.Message.MarshalJSON 转 OpenAI image_url 数组 → 视觉模型识别
@@ -52,15 +51,36 @@ type QuotedDocumentReader interface {
 
 `*GroupDocumentService` 已实现,编译期断言。接口新增方法后,`g.quotedFile` 直接可调用;注入 nil 时整段(含图片)不执行。
 
-### 3. SmartReplyContext 新字段
+### 3. SmartReplyContext：三个字符串字段重构为 Quoted 判别联合
+
+原 `QuotedFileCtx` / `QuotedFileFailed` / `QuotedImageURL` 三个字符串字段把同一对"成功/失败"语义散在三处，且图片成功时需 `QuotedFileCtx`（提示词）与 `QuotedImageURL`（数据）并存、又都和 `QuotedFileFailed` 互斥，互斥关系靠注释维系。改为判别联合：
 
 ```go
-// QuotedImageURL 被引用图片【成功读取】的 base64 data URL,为空表示无图可看。
-// 与 QuotedFileFailed 互斥:图片成功时仅 QuotedImageURL 非空,失败时仅 QuotedFileFailed 非空。
-QuotedImageURL string
+type QuotedKind string
+
+const (
+	QuotedNone   QuotedKind = ""       // 无被引用对象
+	QuotedFile   QuotedKind = "file"   // 成功读到文件正文
+	QuotedImage  QuotedKind = "image"  // 成功读到图片（多模态）
+	QuotedFailed QuotedKind = "failed" // 读取失败/类型不支持/过大/缺信息
+)
+
+type QuotedContext struct {
+	Kind     QuotedKind
+	Name     string // 可读名称（文件名等）
+	Text     string // 注入 prompt 的成句内容（含提示语）
+	ImageURL string // image: base64 data URL
+}
 ```
 
-沿用既有互斥惯例:成功/失败只可能一个非空,消除"既说看图又说看不了"的矛盾。
+`SmartReplyContext` 只保留一个字段：
+
+```go
+// Quoted 被引用对象（文件正文 / 图片 / 读取失败）的上下文注入，nil 表示无被引用内容。
+Quoted *QuotedContext
+```
+
+成功/失败成单一 `Quoted.Kind` 分支，`buildContextBlocks` 与 `ExecuteStream` 用 switch 判别；新增媒体类型（audio/video）无需再加字段。
 
 ### 4. prepareInput 图片分支
 

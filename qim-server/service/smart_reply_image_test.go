@@ -13,13 +13,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBuildContextBlocks_Image 仅 QuotedImageURL 非空（图片成功读取）时，产出携带
+// TestBuildContextBlocks_Image 仅 Quoted.Kind=QuotedImage（图片成功读取）时，产出携带
 // 图片 image_url 的上下文块，且 imageURLFromMessage 能从中提取出 data URL。
 func TestBuildContextBlocks_Image(t *testing.T) {
 	const dataURL = "data:image/png;base64,aaaa"
 	blocks := buildContextBlocks(&SmartReplyContext{
-		QuotedImageURL: dataURL,
-		QuotedFileCtx:  "📷 你引用了一张图片「x.png」，请识别其内容并结合用户的问题回答。",
+		Quoted: &QuotedContext{
+			Kind:     QuotedImage,
+			Name:     "x.png",
+			ImageURL: dataURL,
+			Text:     "📷 你引用了一张图片「x.png」，请识别其内容并结合用户的问题回答。",
+		},
 	})
 
 	roles, contents := flattenRoles(blocks)
@@ -45,11 +49,15 @@ func TestBuildContextBlocks_Image(t *testing.T) {
 	_ = roles
 }
 
-// TestBuildContextBlocks_ImageAndFailed 图片读取失败（QuotedImageURL 为空 + QuotedFileFailed 非空）
-// 时，只产出「未能读取」应答，不产出图片 data URL 块。
+// TestBuildContextBlocks_ImageFailed 图片读取失败（Quoted.Kind=QuotedFailed）时，
+// 只产出「未能读取」应答，不产出图片 data URL 块。
 func TestBuildContextBlocks_ImageFailed(t *testing.T) {
 	blocks := buildContextBlocks(&SmartReplyContext{
-		QuotedFileFailed: "📷 你引用了一条图片消息「x.png」，但该图片当前无法读入上下文。",
+		Quoted: &QuotedContext{
+			Kind: QuotedFailed,
+			Name: "x.png",
+			Text: "📷 你引用了一条图片消息「x.png」，但该图片当前无法读入上下文。",
+		},
 	})
 	_, contents := flattenRoles(blocks)
 	if !anyContains(contents, "未能读取") {
