@@ -360,6 +360,13 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", r.Metadata["title"], r.Content))
 					}
 					groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
+
+					// 知识图谱关系扩展（GraphRAG MVP）：在向量命中的文档上做 GraphBFS，
+					// 追加"该文档关联的实体/文档"，补足"XX 关联了谁/哪些文档"这类关系问答。
+					// 无图谱数据时 ExpandGraphKnowledge 返回空串，不影响 normal 答复。
+					if graphCtx := g.groupDocSvc.ExpandGraphKnowledge(group.ID, input.Message, 3); graphCtx != "" {
+						groupKnowledge += "\n\n" + graphCtx
+					}
 				}
 			}
 		}

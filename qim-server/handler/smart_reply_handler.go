@@ -238,6 +238,12 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 
 	log.Printf("[SmartReplyGraph] 生成回复长度: %d 字符", len(result.Reply))
 
+	// 空/纯空白回复不发送，避免 AI 不可用时落空白气泡
+	if strings.TrimSpace(result.Reply) == "" {
+		log.Printf("[SmartReplyGraph] AI 回复内容为空，跳过发送: convID=%d", conversationID)
+		return
+	}
+
 	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手")
 	if err != nil {
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
@@ -865,16 +871,11 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		if existing, err := e.memorySvc.Recall(senderID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
 			return
 		}
-		should, err := e.memorySvc.ShouldRemember(content)
-		if err != nil {
-			log.Printf("[AvatarMemory] ShouldRemember 失败: user=%d err=%v", senderID, err)
-			return
-		}
-		if !should {
-			return
-		}
-		if err := e.memorySvc.Remember(senderID, conversationID, content); err != nil {
-			log.Printf("[AvatarMemory] 写入失败: user=%d err=%v", senderID, err)
+		// 记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有记忆"，仅在值得记时落库
+		if ok, err := e.memorySvc.ConsolidateMessage(senderID, conversationID, content); err != nil {
+			log.Printf("[AvatarMemory] 反射失败: user=%d err=%v", senderID, err)
+		} else if ok {
+			log.Printf("[AvatarMemory] 反射记忆已写入 user=%d", senderID)
 		}
 	}()
 }
@@ -894,16 +895,20 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 		if existing, err := e.groupMemorySvc.Recall(groupID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
 			return
 		}
-		should, err := e.groupMemorySvc.ShouldRemember(content)
-		if err != nil {
-			log.Printf("[GroupMemory] ShouldRemember 失败: group=%d err=%v", groupID, err)
-			return
+		// 群知识片段：语义召回本群知识库，作为反射的折叠素材（群记忆可以借用群知识）
+		var knowledge []string
+		if e.unifiedKnowledge != nil {
+			for _, snip := range e.unifiedKnowledge.Search(content, groupID, 3) {
+				if snip.Content != "" {
+					knowledge = append(knowledge, snip.Content)
+				}
+			}
 		}
-		if !should {
-			return
-		}
-		if err := e.groupMemorySvc.Remember(groupID, conversationID, content); err != nil {
-			log.Printf("[GroupMemory] 写入失败: group=%d err=%v", groupID, err)
+		// 群记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有群记忆/群知识"，仅值得记时落库
+		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge); err != nil {
+			log.Printf("[GroupMemory] 反射失败: group=%d err=%v", groupID, err)
+		} else if ok {
+			log.Printf("[GroupMemory] 反射记忆已写入 group=%d", groupID)
 		}
 	}()
 }

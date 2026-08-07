@@ -17,7 +17,7 @@ func newNilGroupMemoryService() *GroupMemoryService {
 func TestGroupMemoryService_NilDBSafeNoOp(t *testing.T) {
 	s := newNilGroupMemoryService()
 
-	assert.NoError(t, s.Remember(1, 2, "群决定：每周五例会"), "Remember 在 db=nil 时应 no-op 不报错")
+	assert.NoError(t, s.Remember(1, 2, "群决定：每周五例会", 3), "Remember 在 db=nil 时应 no-op 不报错")
 
 	results, err := s.Recall(1, "例会", 5)
 	assert.NoError(t, err)

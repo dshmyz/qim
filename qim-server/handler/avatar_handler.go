@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -79,6 +81,7 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.GET("/:id/tools", h.GetAvatarTools)
 
 		avatar.GET("/memories", h.GetMemories)
+		avatar.GET("/knowledge-graph", h.GetAvatarKnowledgeGraph)
 		avatar.DELETE("/memory/:id", h.DeleteMemory)
 
 		avatar.POST("/learn-persona", checkAIEnabledForAvatar(), h.TriggerLearnPersona)
@@ -1076,6 +1079,85 @@ func (h *AvatarHandler) SearchNotes(c *gin.Context) {
 	}
 
 	response.Success(c, results)
+}
+
+// GetAvatarKnowledgeGraph 返回分身的「知识图谱」数据（按来源子图）。
+// source=memory：记忆实体/主题共现图谱（来自记忆反射落库的 entities/themes）。
+// source=note：笔记向量集合（user_notes_{userID}）的片段簇。
+// 均以当前登录用户（JWT user_id）为归属，天然防越权。
+func (h *AvatarHandler) GetAvatarKnowledgeGraph(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid, ok := userID.(uint)
+	if !ok {
+		response.Unauthorized(c, "未授权")
+		return
+	}
+	source := c.Query("source")
+	if source == "" {
+		source = "memory"
+	}
+	maxNodes := 50
+	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
+		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+	if maxNodes <= 0 || maxNodes > 500 {
+		maxNodes = 50
+	}
+
+	ctx := context.Background()
+
+	// 记忆来源：实体/主题共现图谱
+	if source == "memory" {
+		memorySvc := di.GlobalContainer.AvatarMemoryService
+		if memorySvc == nil {
+			response.Success(c, gin.H{"nodes": []interface{}{}, "edges": []interface{}{}, "memories": []interface{}{}, "total_nodes": 0, "total_edges": 0})
+			return
+		}
+		graph, err := memorySvc.BuildMemoryGraph(uid, maxNodes)
+		if err != nil {
+			response.InternalServerError(c, "构建记忆图谱失败")
+			return
+		}
+		response.Success(c, gin.H{
+			"nodes":        graph.Nodes,
+			"edges":        graph.Edges,
+			"memories":     graph.Memories,
+			"total_nodes":  len(graph.Nodes),
+			"total_edges":  len(graph.Edges),
+		})
+		return
+	}
+
+	// 笔记来源：片段簇
+	vectorSvc := di.GlobalContainer.VectorService
+	if vectorSvc == nil {
+		response.Success(c, gin.H{"nodes": []interface{}{}, "edges": []interface{}{}, "total_nodes": 0, "total_edges": 0})
+		return
+	}
+	collection := fmt.Sprintf("user_notes_%d", uid)
+	results, err := vectorSvc.GetByCollection(ctx, collection, maxNodes)
+	if err != nil {
+		response.InternalServerError(c, "获取笔记图谱失败")
+		return
+	}
+	nodes := make([]map[string]interface{}, 0, len(results))
+	for i, r := range results {
+		nodes = append(nodes, map[string]interface{}{
+			"id":    fmt.Sprintf("node_%d", i),
+			"label": r.DocID,
+			"type":  "note",
+			"data": map[string]interface{}{
+				"content":  r.Content,
+				"metadata": r.Metadata,
+			},
+		})
+	}
+	response.Success(c, gin.H{
+		"nodes":       nodes,
+		"edges":       []interface{}{},
+		"total_nodes": len(nodes),
+		"total_edges": 0,
+	})
 }
 
 func (h *AvatarHandler) CheckTrigger(c *gin.Context) {

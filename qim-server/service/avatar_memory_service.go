@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -9,11 +8,12 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"github.com/liliang-cn/cortexdb/v2/pkg/cortexdb"
+	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/gracedb/pkg/types"
 )
 
 type AvatarMemoryService struct {
-	db        *cortexdb.DB
+	db        *gracedb.DB
 	aiService *ai.AIService
 }
 
@@ -24,31 +24,87 @@ func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *
 	}
 }
 
-func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content string) error {
-	ctx := context.Background()
+func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content string, importance float64) error {
 	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
 
-	_, err := s.db.SaveMemory(ctx, cortexdb.MemorySaveRequest{
+	_, err := s.db.SaveMemory(types.MemorySaveRequest{
 		MemoryID: memoryID,
 		UserID:   fmt.Sprintf("%d", userID),
 		Content:  content,
-		Scope:    cortexdb.MemoryScopeUser,
+		Scope:    "user",
 		Namespace: "avatar",
+		Importance: importance01(importance), // 1-5 → [0,1]，重要记忆在召回时更靠前
 		Metadata: map[string]interface{}{
 			"conversation_id": fmt.Sprintf("%d", conversationID),
 			"remembered_at":   fmt.Sprintf("%d", time.Now().Unix()),
+			"importance":      fmt.Sprintf("%.1f", importance), // 保留 1-5 档位供展示
 		},
 	})
 	return err
 }
 
-func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]SearchResult, error) {
-	ctx := context.Background()
+// ConsolidateMessage 记忆反射闭环（Recall→Consolidate）：先把该用户既有的相关记忆
+// 召回进来，连同当前消息一起 LLM 折叠成带主题/摘要的结构化记忆，再落库。
+//
+// 相比直接 Remember 原始消息，反射能：
+//   - 折叠重复提及的同一事实（合并去重）
+//   - 产出 Summary/Themes 结构，能在回落时作为更高层记忆被召回
+//
+// 群知识片段不在 sender 分身记忆范围内（那是群级记忆的事），此处只折叠个人既有记忆。
+// 返回是否真的落库（ShouldRemember=false 时为 false）。
+func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, content string) (bool, error) {
+	if s.db == nil {
+		return false, nil
+	}
+	memories, err := s.Recall(userID, content, 3)
+	if err != nil {
+		memories = nil
+	}
+	memSnippets := make([]string, 0, len(memories))
+	for _, m := range memories {
+		if m.Content != "" {
+			memSnippets = append(memSnippets, m.Content)
+		}
+	}
 
-	resp, err := s.db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
+	ref, verdict, err := reflectConsolidated(s.aiService, content, memSnippets, nil)
+	if err != nil {
+		return false, err
+	}
+	if !verdict.ShouldRemember || strings.TrimSpace(ref.Summary) == "" {
+		return false, nil
+	}
+
+	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
+	_, err = s.db.SaveMemory(types.MemorySaveRequest{
+		MemoryID:  memoryID,
+		UserID:    fmt.Sprintf("%d", userID),
+		Content:   ref.Summary,
+		Scope:     "user",
+		Namespace: "avatar",
+		Importance: importance01(ref.Importance),
+		Metadata: map[string]interface{}{
+			"conversation_id":          fmt.Sprintf("%d", conversationID),
+			"remembered_at":            fmt.Sprintf("%d", time.Now().Unix()),
+			"importance":               fmt.Sprintf("%.1f", ref.Importance),
+			"knowledge_memory_summary": "true", // 标记为反射摘要记忆
+			"knowledge_memory_themes":  ref.Themes,
+			"knowledge_memory_entities": ref.Entities,
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+	logger.WithModule("AvatarMemoryService").Info("记忆反射落库",
+		"userID", userID, "content", ref.Summary)
+	return true, nil
+}
+
+func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]SearchResult, error) {
+	resp, err := s.db.SearchMemory(types.MemorySearchRequest{
 		Query:     query,
 		UserID:    fmt.Sprintf("%d", userID),
-		Scope:     cortexdb.MemoryScopeUser,
+		Scope:     "user",
 		Namespace: "avatar",
 		TopK:      topK,
 	})
@@ -75,20 +131,19 @@ func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]Sea
 }
 
 func (s *AvatarMemoryService) ShouldRemember(message string) (bool, error) {
-	prompt := `判断以下对话内容是否包含值得记忆的长期信息。
-值得记忆的信息包括：个人偏好、重要决定、项目关键信息、约定事项。
-普通闲聊、简短回复不需要记忆。
-只返回 true 或 false。
-
-内容：` + message
-
-	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := s.aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
+	v, err := s.ShouldRememberWithImportance(message)
 	if err != nil {
 		return false, err
 	}
+	return v.ShouldRemember, nil
+}
 
-	return strings.Contains(strings.ToLower(strings.TrimSpace(result)), "true"), nil
+// ShouldRememberWithImportance 判断内容是否值得记，并给出重要度档位（1-5）。
+func (s *AvatarMemoryService) ShouldRememberWithImportance(message string) (RememberVerdict, error) {
+	const prompt = `判断以下对话内容是否包含值得记忆的长期信息。
+值得记忆的信息包括：个人偏好、重要决定、项目关键信息、约定事项。
+普通闲聊、简短回复不需要记忆。`
+	return evaluateRemember(s.aiService, prompt, message)
 }
 
 // ForgetMemory 删除单条用户记忆（带归属校验）。
@@ -111,9 +166,7 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 		return []MemoryRecord{}, nil
 	}
 
-	ctx := context.Background()
-
-	// 注意：CortexDB 无 ListMemories API，只能通过 SearchMemory 近似枚举。
+	// 注意：gracedb 无 ListMemories API，只能通过 SearchMemory 近似枚举。
 	// 使用多组查询词并去重，降低单一语义偏向导致的结果缺失。
 	queries := []string{" ", "工作 生活 学习", "决定 偏好 约定"}
 	seen := make(map[string]bool)
@@ -124,10 +177,10 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 			break
 		}
 		remaining := limit - len(records)
-		resp, err := s.db.SearchMemory(ctx, cortexdb.MemorySearchRequest{
+		resp, err := s.db.SearchMemory(types.MemorySearchRequest{
 			Query:     q,
 			UserID:    fmt.Sprintf("%d", userID),
-			Scope:     cortexdb.MemoryScopeUser,
+			Scope:     "user",
 			Namespace: "avatar",
 			TopK:      remaining,
 		})
@@ -141,21 +194,165 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 			}
 			seen[hit.Memory.ID] = true
 			metadataStr := make(map[string]string)
+			var entities, themes []string
 			for k, v := range hit.Memory.Metadata {
 				if s, ok := v.(string); ok {
 					metadataStr[k] = s
+					continue
+				}
+				// gracedb 把 map[string]any 的值 JSON 序列化后读回为 []interface{}
+				switch k {
+				case "knowledge_memory_entities":
+					entities = toStringSlice(v)
+				case "knowledge_memory_themes":
+					themes = toStringSlice(v)
 				}
 			}
 			records = append(records, MemoryRecord{
 				DocID:    hit.Memory.ID,
 				Content:  hit.Memory.Content,
 				Metadata: metadataStr,
+				Entities: entities,
+				Themes:   themes,
 			})
 		}
 	}
 
 	logger.WithModule("AvatarMemoryService").Info("获取用户记忆成功", "userID", userID, "count", len(records))
 	return records, nil
+}
+
+// toStringSlice 把 gracedb 读回的 metadata 数组值（JSON 反序列化后是 []interface{}，
+// 实际元素均为 string）转成 []string，忽略非字符串元素。
+func toStringSlice(v interface{}) []string {
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// MemoryGraph 是分身知识图谱「记忆」来源的聚合结果。
+type MemoryGraph struct {
+	Nodes    []MemoryGraphNode    `json:"nodes"`
+	Edges    []MemoryGraphEdge    `json:"edges"`
+	Memories []MemoryGraphMemory  `json:"memories"`
+}
+
+type MemoryGraphNode struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Type  string `json:"type"` // entity | theme
+	Count int    `json:"count"`
+}
+
+type MemoryGraphEdge struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Weight int    `json:"weight"`
+}
+
+type MemoryGraphMemory struct {
+	ID      string   `json:"id"`
+	Content string   `json:"content"`
+	// Terms 该条记忆的主题/实体集合，供前端点节点时按名字回查"包含此名词的记忆"
+	Terms []string `json:"terms"`
+}
+
+// BuildMemoryGraph 从该用户的 avatar 记忆里聚合出实体/主题共现图谱。
+// 节点 = 记忆反射落库的 entities/themes（每条记忆的），边 = 同一条记忆里共同出现的
+// 实体/主题对（weight = 共同出现的记忆条数）。点节点的关联记忆由调用方用返回的
+// memories（含每条记忆的 entities/themes 可回查）拼装。
+func (s *AvatarMemoryService) BuildMemoryGraph(userID uint, limit int) (*MemoryGraph, error) {
+	records, err := s.GetUserMemories(userID, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	graph := buildMemoryGraphFromRecords(records)
+
+	logger.WithModule("AvatarMemoryService").Info("构建记忆图谱",
+		"userID", userID, "memories", len(records), "nodes", len(graph.Nodes), "edges", len(graph.Edges))
+	return graph, nil
+}
+
+// buildMemoryGraphFromRecords 把「该用户记忆记录」聚合成语义图谱（纯函数，无 IO，便于单测）。
+func buildMemoryGraphFromRecords(records []MemoryRecord) *MemoryGraph {
+	graph := &MemoryGraph{
+		Nodes:    make([]MemoryGraphNode, 0),
+		Edges:    make([]MemoryGraphEdge, 0),
+		Memories: make([]MemoryGraphMemory, 0, len(records)),
+	}
+
+	// name -> node 索引
+	nodeIdx := make(map[string]int)
+
+	// 每条记忆的名词集合（含主题与实体），用于共现与回查
+	memoryTerms := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		graph.Memories = append(graph.Memories, MemoryGraphMemory{ID: r.DocID, Content: r.Content})
+		terms := make([]string, 0)
+		seenTerm := make(map[string]bool)
+		addNode := func(name, typ string) {
+			if name == "" || seenTerm[name] {
+				return
+			}
+			seenTerm[name] = true
+			terms = append(terms, name)
+			if idx, ok := nodeIdx[name]; ok {
+				graph.Nodes[idx].Count++
+			} else {
+				nodeIdx[name] = len(graph.Nodes)
+				graph.Nodes = append(graph.Nodes, MemoryGraphNode{
+					ID:    name,
+					Name:  name,
+					Type:  typ,
+					Count: 1,
+				})
+			}
+		}
+		for _, e := range r.Entities {
+			addNode(strings.TrimSpace(e), "entity")
+		}
+		for _, t := range r.Themes {
+			addNode(strings.TrimSpace(t), "theme")
+		}
+		memoryTerms = append(memoryTerms, terms)
+		graph.Memories[len(graph.Memories)-1].Terms = terms
+	}
+
+	// 共现边：同一条记忆内所有名词两两配对
+	edgeKey := func(a, b string) string {
+		if a < b {
+			return a + "\x00" + b
+		}
+		return b + "\x00" + a
+	}
+	edgeW := make(map[string]int)
+	for _, terms := range memoryTerms {
+		for i := 0; i < len(terms); i++ {
+			for j := i + 1; j < len(terms); j++ {
+				if terms[i] == terms[j] {
+					continue
+				}
+				k := edgeKey(terms[i], terms[j])
+				edgeW[k]++
+			}
+		}
+	}
+	for k, w := range edgeW {
+		parts := strings.Split(k, "\x00")
+		graph.Edges = append(graph.Edges, MemoryGraphEdge{Source: parts[0], Target: parts[1], Weight: w})
+	}
+
+	return graph
 }
 
 // DeleteMemory 删除单条用户记忆。
@@ -179,13 +376,16 @@ func (s *AvatarMemoryService) DeleteMemory(userID uint, memoryDocID string) erro
 	if !owned {
 		return ErrMemoryNotFound
 	}
-	ctx := context.Background()
-	_, err = s.db.DeleteMemory(ctx, cortexdb.MemoryDeleteRequest{MemoryID: memoryDocID})
-	return err
+	return s.db.DeleteMemory(memoryDocID)
 }
 
 type MemoryRecord struct {
 	DocID    string            `json:"doc_id"`
 	Content  string            `json:"content"`
 	Metadata map[string]string `json:"metadata"`
+	// Entities/Themes 来自记忆反射（reflectConsolidated）时落库的
+	// knowledge_memory_entities / knowledge_memory_themes（gracedb 存为 JSON 数组，
+	// 读回时是 []interface{}，须在枚举处单独提取为 []string），供知识图谱聚合使用。
+	Entities []string `json:"entities,omitempty"`
+	Themes   []string `json:"themes,omitempty"`
 }

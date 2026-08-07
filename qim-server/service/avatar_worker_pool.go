@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,8 +120,9 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	// 空回复表示分身选择不回复（如知识范围外且配置为不回复）
-	if reply == "" {
+	// 空/纯空白回复表示分身选择不回复（如知识范围外且配置为不回复）或 AI 不可用，
+	// 直接跳过发送，避免落空白气泡
+	if strings.TrimSpace(reply) == "" {
 		logger.WithModule("AvatarWorkerPool").Info("分身选择不回复", "user", task.UserID, "conv", task.ConversationID)
 		return
 	}
