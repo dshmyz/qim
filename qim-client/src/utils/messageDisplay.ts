@@ -81,15 +81,17 @@ const fileNameFromContent = (content: string): string => {
 const getFileName = (data: MessagePayload | null, input: MessageDisplayInput): string =>
   getString(data, 'name') || getString(data, 'fileName') || input.file_name || input.fileName || fileNameFromContent(input.content || '')
 
-const stripMarkdown = (content: string): string => content
-  .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
-  .replace(/`([^`]+)`/g, '$1')
-  .replace(/^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+)/gm, '')
-  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-  .replace(/[>*_~]/g, '')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, 120)
+const stripMarkdown = (content: string): string =>
+  // 先解析 @mention token，避免保留 @{mention:3|...} 原始文本
+  decodeToPlainText(content)
+    .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+)/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[>*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
 
 const unwrapPayload = (value: MessagePayload | null | undefined): MessagePayload | null => {
   if (!value) return null
@@ -168,8 +170,8 @@ export const resolveMessageDisplay = (input: MessageDisplayInput): MessageDispla
     const summary = `已选择：${actionText}`
     return display('system', summary, summary, actionText, '', parsed || undefined)
   }
-  if (parsed) return display('unknown', '未知消息', '[未知消息]', '未知消息')
-
+  // 兜底：所有未识别的 content 一律按纯文本展示。用户发的 JSON 文本就是普通文本，
+  // 不应被吞成「未知消息」；结构化消息（文件/卡片等）均已在上方各自的 type 分支 return。
   const text = decodeToPlainText(content) || '无内容'
   return display('text', text, text, text)
 }
